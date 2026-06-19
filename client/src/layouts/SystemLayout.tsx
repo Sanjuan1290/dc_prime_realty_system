@@ -1,4 +1,4 @@
-import { Navigate, NavLink, Outlet, useNavigate } from "react-router-dom"
+import { Navigate, NavLink, Outlet } from "react-router-dom";
 import { FaCircle } from "react-icons/fa6";
 import {
   FiBarChart2,
@@ -18,23 +18,21 @@ import {
   FiClock,
   FiX,
 } from "react-icons/fi";
-import type { IconType } from "react-icons";
-import { useEffect } from "react";
+import { useState } from "react";
 import useCurrentUser from "../utils/useCurrentUser";
 
 const SystemLayout = () => {
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const navGroups = [
     {
       title: "OVERVIEW",
-      description: 'Main summary',
-      items: [
-        { label: "Dashboard", pathname: "", icon: FiHome }
-      ],
+      description: "Main summary",
+      items: [{ label: "Dashboard", pathname: "", icon: FiHome }],
     },
     {
       title: "MANAGEMENT",
-      description: 'Projects, units, and buyers',
+      description: "Projects, units, and buyers",
       items: [
         { label: "Projects", pathname: "projects", icon: FiMap },
         { label: "Listings", pathname: "listings", icon: FiGrid },
@@ -44,7 +42,7 @@ const SystemLayout = () => {
     },
     {
       title: "Finance",
-      description: 'Payments and payouts',
+      description: "Payments and payouts",
       items: [
         { label: "Payments", pathname: "payments", icon: FiCreditCard },
         { label: "Commissions", pathname: "commissions", icon: FiDollarSign },
@@ -77,52 +75,77 @@ const SystemLayout = () => {
 
   const { data: currentUser, isLoading, isError } = useCurrentUser();
 
-  if (isLoading) return <p>Loading...</p>;
-  
-  if(isError) {
-    return <Navigate to={'/'} replace/>;
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+        <p className="rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 shadow-sm">
+          Loading...
+        </p>
+      </div>
+    );
+  }
+
+  if (isError) {
+    return <Navigate to={"/"} replace />;
   }
 
   if (currentUser.user.must_change_password) {
-    return <Navigate to={"/change-password"} replace/>
+    return <Navigate to={"/change-password"} replace />;
   }
 
   return (
-    <>
-      <header className="fixed top-0 ml-72 flex flex-1 bg-white justify-between px-4 py-2 border items-center text-sm max-h-fit left-0 right-0">
-        <div className="flex flex-col">
-          <div className="flex gap-2 items-center">
-            <FaCircle className="text-blue-600"/>
-            <h3 className="font-semibold text-base"> Dashboard</h3>
-          </div>
-          
-          <p className="text-gray-700 ">Overview</p>
-        </div>
+    <div className="min-h-screen bg-slate-50 text-slate-950">
+      {isSidebarOpen && (
+        <button
+          type="button"
+          aria-label="Close sidebar overlay"
+          onClick={() => setIsSidebarOpen(false)}
+          className="fixed inset-0 z-40 bg-slate-950/50 lg:hidden"
+        />
+      )}
 
-        <h3 className="font-semibold ">Super Admin</h3>
-      </header>
-        
-      <aside className="fixed top-0 grid h-screen w-72 grid-cols-1 grid-rows-[auto_1fr_auto] border-r border-slate-200 bg-white">
+      <aside
+        className={[
+          "fixed left-0 top-0 z-50 grid h-screen w-72 grid-cols-1 grid-rows-[auto_1fr_auto] border-r border-slate-200 bg-white shadow-xl transition-transform duration-300 lg:translate-x-0 lg:shadow-none",
+          isSidebarOpen ? "translate-x-0" : "-translate-x-full",
+        ].join(" ")}
+      >
         <div className="flex flex-col gap-4 border-b border-slate-200 bg-gradient-to-b from-white to-emerald-50 px-4 py-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-black">
-              <img src="/logo-mobile.png" alt="logo" className="h-6 w-6" />
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-black shadow-sm">
+                <img src="/logo-mobile.png" alt="logo" className="h-7 w-7" />
+              </div>
+
+              <div className="min-w-0">
+                <p className="truncate font-semibold text-slate-900">
+                  D&amp;C Prime
+                </p>
+                <p className="truncate text-sm text-slate-500">
+                  Realty management
+                </p>
+              </div>
             </div>
 
-            <div>
-              <p className="font-semibold text-slate-900">D&amp;C Prime</p>
-              <p className="text-sm text-slate-500">Realty management</p>
-            </div>
+            <button
+              type="button"
+              onClick={() => setIsSidebarOpen(false)}
+              className="rounded-xl p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900 lg:hidden"
+            >
+              <FiX className="h-5 w-5" />
+            </button>
           </div>
 
-          <div className="rounded-xl border border-slate-200 bg-white/80 p-3 text-xs">
+          <div className="rounded-xl border border-slate-200 bg-white/80 p-3 text-xs shadow-sm">
             <p className="font-semibold tracking-wider text-slate-400">
               CURRENT SECTION
             </p>
 
             <div className="mt-2 flex items-center gap-2">
               <FaCircle className="h-2.5 w-2.5 text-blue-600" />
-              <h3 className="text-base font-semibold text-slate-900">Dashboard</h3>
+              <h3 className="text-base font-semibold text-slate-900">
+                Dashboard
+              </h3>
             </div>
           </div>
         </div>
@@ -148,9 +171,11 @@ const SystemLayout = () => {
                     <NavLink
                       key={item.pathname}
                       to={item.pathname}
+                      end={item.pathname === ""}
+                      onClick={() => setIsSidebarOpen(false)}
                       className={({ isActive }) =>
                         [
-                          "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition",
+                          "group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition",
                           isActive
                             ? "bg-blue-100 text-blue-700"
                             : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
@@ -161,16 +186,16 @@ const SystemLayout = () => {
                         <>
                           <span
                             className={[
-                              "flex h-9 w-9 items-center justify-center rounded-lg",
+                              "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition",
                               isActive
                                 ? "bg-blue-600 text-white"
-                                : "bg-slate-100 text-slate-500",
+                                : "bg-slate-100 text-slate-500 group-hover:bg-blue-600 group-hover:text-white",
                             ].join(" ")}
                           >
                             <Icon className="h-4 w-4" />
                           </span>
 
-                          <span>{item.label}</span>
+                          <span className="truncate">{item.label}</span>
                         </>
                       )}
                     </NavLink>
@@ -182,23 +207,66 @@ const SystemLayout = () => {
         </nav>
 
         <div className="border-t border-slate-200 bg-slate-50 p-4">
-          <div className="mb-3 rounded-xl border border-slate-200 bg-white p-3">
-            <p className="text-sm font-semibold text-slate-900">Super Admin</p>
-            <p className="text-xs text-slate-500">superadmin@gmail.com</p>
+          <div className="mb-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+            <p className="truncate text-sm font-semibold text-slate-900">
+              Super Admin
+            </p>
+            <p className="truncate text-xs text-slate-500">
+              superadmin@gmail.com
+            </p>
           </div>
 
           <button
             type="button"
-            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-red-50 hover:text-red-700"
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-red-200 hover:bg-red-50 hover:text-red-700"
           >
+            <FiLogOut className="h-4 w-4" />
             Logout
           </button>
         </div>
       </aside>
 
-      <Outlet />
-    </>
-  )
-}
+      <header className="fixed left-0 right-0 top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white/90 px-4 text-sm backdrop-blur lg:left-72 lg:px-6">
+        <div className="flex min-w-0 items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setIsSidebarOpen(true)}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 lg:hidden"
+          >
+            <FiMenu className="h-5 w-5" />
+          </button>
 
-export default SystemLayout
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <FaCircle className="h-2.5 w-2.5 shrink-0 text-blue-600" />
+              <h3 className="truncate text-base font-semibold">Dashboard</h3>
+            </div>
+
+            <p className="truncate text-xs text-gray-600 sm:text-sm">
+              Overview
+            </p>
+          </div>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-3">
+          <div className="hidden text-right sm:block">
+            <h3 className="font-semibold">Super Admin</h3>
+            <p className="text-xs text-slate-500">System access</p>
+          </div>
+
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-sm font-bold text-white">
+            SA
+          </div>
+        </div>
+      </header>
+
+      <main className="min-h-screen pt-16 lg:pl-72">
+        <div className="p-4 sm:p-6 lg:p-8">
+          <Outlet />
+        </div>
+      </main>
+    </div>
+  );
+};
+
+export default SystemLayout;
