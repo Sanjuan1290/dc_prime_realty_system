@@ -2,6 +2,8 @@ import { FiBarChart2 } from "react-icons/fi";
 import { FaPesoSign } from "react-icons/fa6";
 import { FiHome, FiCreditCard, FiUsers, FiFileText } from "react-icons/fi";
 
+import PageHeader from "../components/PageHeader";
+
 const Dashboard = () => {
   const stats = [
     {
@@ -130,20 +132,8 @@ const Dashboard = () => {
 
   return (
     <main className="flex flex-col gap-6">
-      <section className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-5">
-        <div className="flex items-center gap-4">
-          <FiBarChart2 className="h-12 w-12 shrink-0 rounded-xl border border-blue-100 bg-blue-50 p-2.5 text-blue-700" />
-
-          <div>
-            <h1 className="text-2xl font-bold text-slate-950 sm:text-3xl">
-              Dashboard
-            </h1>
-            <p className="mt-1 text-sm text-slate-500">
-              Real-time system summary from MySQL
-            </p>
-          </div>
-        </div>
-      </section>
+        
+      <PageHeader title={'Dashboard'} description="Real-time system summary from MySQL" icon={FiBarChart2}/>
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {stats.map((stat) => {
