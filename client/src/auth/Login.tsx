@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { User } from "../types/user";
-import { useNavigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import { useFetchPost } from "../utils/useFetch";
 import useCurrentUser from "../utils/useCurrentUser";
 
@@ -35,7 +35,7 @@ const Login = () => {
   if(isLoading) return <p>Loading...</p> 
 
   if(currentUser?.user) {
-    navigate(`/${currentUser.user.role}`)
+    return <Navigate to={`/${currentUser.user.role}`}/>
   }
 
 
