@@ -6,7 +6,7 @@ export type User = {
     last_name: string,
     middle_name: string | null,
     email: string,
-    password_hash: string,
+    // password_hash: string,
     role: 'super_admin' | 
             'admin' | 
             'broker_network_manager' |

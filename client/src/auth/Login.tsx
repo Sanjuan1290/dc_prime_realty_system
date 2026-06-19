@@ -1,49 +1,43 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { User } from "../types/user";
 import { useNavigate } from "react-router-dom";
+import { useFetchPost } from "../utils/useFetch";
+import useCurrentUser from "../utils/useCurrentUser";
 
 
 const Login = () => {
 
-    const [email, setEmail] = useState('')
-    const [password, setPassword] = useState('')
+  const [email, setEmail] = useState('superadmin@gmail.com')
+  const [password, setPassword] = useState('password')
+  
+  const queryClient = useQueryClient()
+  const navigate = useNavigate()
+  
+  const { data: currentUser, isLoading } = useCurrentUser();
+  
+  const signinMutation = useMutation({
+    mutationKey: ['currentUser'],
+    mutationFn: async () => useFetchPost('/user/login', { email, password }),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['currentUser'] })
 
-    const queryClient = useQueryClient()
-    const navigate = useNavigate()
-
-    const signinMutation = useMutation({
-      mutationKey: ['token'],
-      mutationFn: async () => {
-        const res = await fetch(`${import.meta.env.VITE_API_URL}/user/login`, {
-          method: 'POST',
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ email, password })
-        })
-
-        const data = await res.json()
-
-        if(!res.ok) {
-          throw new Error(data.message || 'Request Failed')
-        }
-
-        return data
-      },
-      onSuccess: (data) => {
-        queryClient.invalidateQueries({ queryKey: ['token'] })
-
-        const user: User = data?.user
-        if(user.must_change_password){
-          navigate('/change-password', { replace: true })
-          return
-        }
-
-        navigate(`/${user.role}/dashboard`, { replace: true })
+      const user: User = data?.user
+      if(user.must_change_password){
+        navigate('/change-password', { replace: true })
+        return
       }
-    })
+
+      navigate(`/${user.role}`, { replace: true })
+    }
+  })
+
+  if(isLoading) return <p>Loading...</p> 
+
+  if(currentUser?.user) {
+    navigate(`/${currentUser.user.role}`)
+  }
+
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-4 text-slate-900 sm:px-6 lg:px-8">
