@@ -1,10 +1,49 @@
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import type { User } from "../types/user";
+import { useNavigate } from "react-router-dom";
 
 
 const Login = () => {
 
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
+
+    const queryClient = useQueryClient()
+    const navigate = useNavigate()
+
+    const signinMutation = useMutation({
+      mutationKey: ['token'],
+      mutationFn: async () => {
+        const res = await fetch(`${import.meta.env.VITE_API_URL}/user/login`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ email, password })
+        })
+
+        const data = await res.json()
+
+        if(!res.ok) {
+          throw new Error(data.message || 'Request Failed')
+        }
+
+        return data
+      },
+      onSuccess: (data) => {
+        queryClient.invalidateQueries({ queryKey: ['token'] })
+
+        const user: User = data?.user
+        if(user.must_change_password){
+          navigate('/change-password', { replace: true })
+          return
+        }
+
+        navigate(`/${user.role}/dashboard`, { replace: true })
+      }
+    })
 
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-4 text-slate-900 sm:px-6 lg:px-8">
@@ -56,7 +95,10 @@ const Login = () => {
               </div>
             </div>
 
-            <form className="flex flex-col justify-center p-6 sm:p-8 lg:p-10">
+            <form onSubmit={(e) => {
+              e.preventDefault()
+              signinMutation.mutate()
+            }} className="flex flex-col justify-center p-6 sm:p-8 lg:p-10">
               <div className="mb-8 space-y-2">
                 <p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-700">
                   Welcome back
@@ -119,11 +161,20 @@ const Login = () => {
                   </button>
                 </div>
 
+                {
+                   signinMutation.isError ? 
+                   <p className="text-red-700 bg-red-100 text-sm px-2 py-1 border border-red-400">{signinMutation.error.message}</p> 
+                   : null
+                }
+
                 <button
                   type="submit"
+                  disabled={signinMutation.isPending}
                   className="h-11 w-full rounded-lg bg-blue-600 text-sm font-semibold tracking-wide text-white transition hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-200"
                 >
-                  Sign in
+                  {
+                    signinMutation.isPending ? 'Signing in' : 'Sign in'
+                  }
                 </button>
               </div>
 
