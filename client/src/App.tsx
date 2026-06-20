@@ -11,6 +11,7 @@ import Login from "./auth/Login"
 import SystemLayout from "./layouts/SystemLayout"
 import Dashboard from "./pages/Dashboard"
 import Projects from "./pages/Projects"
+import Listings from "./pages/Listings"
 
 
 const App = () => {
@@ -22,6 +23,7 @@ const App = () => {
       <Route path="/super_admin" element={<SystemLayout />}>
         <Route index element={<Dashboard />}/>
         <Route path="projects" element={<Projects />}/>
+        <Route path="listings" element={<Listings />}/>
       </Route>
     </>
   ))

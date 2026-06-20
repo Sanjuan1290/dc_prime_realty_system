@@ -66,11 +66,11 @@ const Projects = () => {
         <main className="flex flex-col gap-6">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div className="flex-1">
-                <PageHeader
-                    title="Projects"
-                    description="Create projects and configure their default document requirements"
-                    icon={FiMap}
-                />
+                    <PageHeader
+                        title="Projects"
+                        description="Create projects and configure their default document requirements"
+                        icon={FiMap}
+                    />
                 </div>
 
                 <button
@@ -78,8 +78,8 @@ const Projects = () => {
                 onClick={() => { setIsAddProjectModalOpen(true) }}
                 className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700 sm:w-fit"
                 >
-                <FiPlus className="h-4 w-4" />
-                Add Project
+                    <FiPlus className="h-4 w-4" />
+                    Add Project
                 </button>
             </div>
 

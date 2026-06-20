@@ -2,7 +2,7 @@ import {
   FiX,
 } from "react-icons/fi";
 
-import InputLabel from "../InputLabel";
+import InputLabel from "./InputLabel";
 import { GrDocumentText } from "react-icons/gr";
 
 type Props = {
