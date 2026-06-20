@@ -6,11 +6,9 @@ import {
   FiPlus,
   FiSearch,
   FiTrash2,
-  FiX,
 } from "react-icons/fi";
-import { GrDocumentText } from "react-icons/gr";
 import PageHeader from "../components/PageHeader";
-import InputLabel from "../components/InputLabel";
+import AddProjectModal from "../components/ProjectsComponent/AddProjectModal";
 
 const Projects = () => {
   const [search, setSearch] = useState("");
@@ -236,74 +234,7 @@ const Projects = () => {
         </main>
         
         {
-            isAddProjectModalOpen && <div className="flex justify-center items-center absolute z-50 inset-0 bg-[rgba(8,8,8,0.26)]">
-
-                <div className="flex flex-col bg-white rounded-lg  p-4">
-
-                    <div className="flex justify-between">
-                        <h3 className="font-bold text-xl">ADD PROJECT</h3>
-                        <FiX onClick={() => {setIsAddProjectModalOpen(false)}} className="bg-gray-100 px-2 py-1 h-8 w-10 border hover:bg-gray-300 duration-300 text-red-500 rounded-md cursor-pointer"/>
-                    </div>
-
-                    <div className="grid grid-cols-2 text-sm">
-                        <div>
-                            <section className="flex flex-col gap-3 ">
-                                <div>
-                                    <p className="font-semibold">Project Information</p>
-                                    <p className="text-gray-600">Basic project details and status.</p>
-                                </div>
-
-                                <InputLabel label="Project name" type="text" placeholder=""/>
-                                <InputLabel label="Location" type="text" placeholder=""/>
-                                <InputLabel label="Location Code" type="text" placeholder="ex. LA, PE"/>
-                                <InputLabel label="Administrator" type="text" placeholder="Enter admin name"/>
-                                <InputLabel label="Tax declaration no." type="text" placeholder="AA-06-0005-xxxxx"/>
-                                <InputLabel label="PIN" type="text" placeholder="022-06-0005-xxx-xx"/>
-
-                                <div className="flex flex-col gap-1 ">
-                                    <label className="font-bold text-gray-800 tracking-wider">Status</label>
-                                    <select className="border border-gray-300 rounded-md py-2 px-3 outline-none focus:border-blue-600 focus:shadow-sm focus:shadow-blue-500 duration-150">
-                                        <option value="active">Active</option>
-                                        <option value="inactive">Inactive</option>
-                                    </select>
-                                </div>
-
-                            </section>
-
-                            <section className="flex flex-col gap-1 bg-gray-100 border border-gray-100 rounded-md p-3">
-                                <div className="flex items-center gap-2">
-                                    <GrDocumentText />
-                                    <h3 className="font-bold text-base"> Document Templates</h3>
-                                </div>
-                                <p className="text-gray-800">Select one or more templates. The selected documents appear on the right immediately.</p>
-
-                                <div className="grid grid-cols-2 gap-2 my-4">
-                                    <button className="border hover:bg-gray-700 hover:text-gray-50 duration-300 border-gray-400 rounded-md py-2 font-bold text-gray-700">Select All Templates</button>
-                                    <button className="border hover:bg-gray-700 hover:text-gray-50 duration-300 border-gray-400 rounded-md py-2 font-bold text-gray-700">Clear Templates</button>
-                                    <button className="border hover:bg-gray-700 hover:text-gray-50 duration-300 border-gray-400 rounded-md py-2 font-bold text-gray-700">Use All Library Docs</button>
-                                </div>
-                                
-                                <InputLabel label="" type="text" placeholder="🔍 Search Templates..."/>
-
-                                <div className="flex flex-col gap-2 mt-3">
-                                    <div className="flex gap-4 items-start cursor-pointer hover:bg-blue-100 duration-300 py-2 px-3 border border-gray-300 rounded-md">
-                                        <input type="checkbox" className=""/>
-                                        <div>
-                                            <p className="font-bold text-base">sample temp 2</p>
-                                            <p className="font-semibold text-gray-600">No description</p>
-                                            <p className="font-semibold">5 required / 5 docs</p>
-                                        </div>
-                                    </div>
-                                </div>
-
-                            </section>
-
-                        </div>
-
-                    </div>
-                </div>
-                
-        </div>
+            isAddProjectModalOpen && <AddProjectModal setIsAddProjectModalOpen={setIsAddProjectModalOpen}/>
         }
     </>
   );
