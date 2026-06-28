@@ -19,7 +19,7 @@ app.use(cookieParser())
 
 app.use(
   cors({
-    origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+    origin: process.env.CORS_ORIGIN || 'http://localhost:5174',
     credentials: true,
   })
 )
@@ -32,7 +32,7 @@ app.get('/', (req, res) => {
 app.use('/api/v1/user', userRouter)
 
 
-const PORT = process.env.PORT || 5000
+const PORT = process.env.PORT || 5001
 
 app.listen(PORT, async() => {
     try {

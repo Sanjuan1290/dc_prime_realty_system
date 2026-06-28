@@ -1,6 +1,7 @@
 
 import { FiGrid, FiPlus } from 'react-icons/fi'
 import PageHeader from '../components/PageHeader'
+import ListingRecords from '../components/ListingsComponent/ListingRecords'
 
 const Listings = () => {
 
@@ -65,6 +66,8 @@ const Listings = () => {
                 ))
             }
         </div>
+
+        <ListingRecords />
         
 
     </main>
