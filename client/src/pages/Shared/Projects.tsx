@@ -3,12 +3,11 @@ import {
   FiEdit2,
   FiEye,
   FiMap,
-  FiSearch,
-  FiTrash2,
+  FiSearch
 } from "react-icons/fi";
-import PageHeader from "../../components/PageHeader";
-import EditProjectModal from "../../components/ProjectsComponent/EditProjectModal";
-import DetailsProjectModal from "../../components/ProjectsComponent/DetailsProjectModal";
+import PageHeader from "../../components/Shared/PageHeader";
+import EditProjectModal from "../../components/Shared/ProjectsComponent/EditProjectModal";
+import DetailsProjectModal from "../../components/Shared/ProjectsComponent/DetailsProjectModal";
 import { NavLink } from "react-router-dom";
 
 const Projects = () => {

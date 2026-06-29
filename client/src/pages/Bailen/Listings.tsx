@@ -1,7 +1,7 @@
 
 import { FiGrid, FiPlus } from 'react-icons/fi'
-import PageHeader from '../../components/PageHeader'
-import ListingRecords from '../../components/ListingsComponent/ListingRecords'
+import PageHeader from '../../components/Shared/PageHeader'
+import ListingRecords from '../../components/Bailen/ListingsComponent/ListingRecords'
 
 const Listings = () => {
 

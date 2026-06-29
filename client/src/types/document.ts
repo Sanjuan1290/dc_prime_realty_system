@@ -5,13 +5,17 @@ export type Template = {
     document_ids: number[]
     template_name: string,
     template_description: string,
-    status: 'active' | 'inactive'
+    template_status: 'active' | 'inactive',
+    template_created_at: string,
+    template_updated_at: string
 }
 
 export type Document = {
     document_id: number,
     document_name: string,
     document_description: string,
-    isReusable: boolean,
-    status: 'active' | 'inactive'
+    document_is_reusable: boolean,
+    document_istatus: 'active' | 'inactive',
+    document_created_at: string,
+    document_updated_at: string
 }

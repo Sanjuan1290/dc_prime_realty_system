@@ -10,7 +10,7 @@ import Login from "./auth/Login"
 // Pages
 import SystemLayout from "./layouts/SystemLayout"
 import Dashboard from "./pages/Shared/Dashboard"
-import Projects from "./pages/System/Projects"
+import Projects from "./pages/Shared/Projects"
 import Listings from "./pages/Bailen/Listings"
 
 
