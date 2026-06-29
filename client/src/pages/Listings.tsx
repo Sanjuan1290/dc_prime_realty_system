@@ -31,11 +31,6 @@ const Listings = () => {
         }
         ,
         {
-            name: 'Superseded',
-            value: 1
-        }
-        ,
-        {
             name: 'Total Value',
             value: 490000
         }
