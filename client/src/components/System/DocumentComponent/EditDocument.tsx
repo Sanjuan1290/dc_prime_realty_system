@@ -37,7 +37,7 @@ const EditDocument = ({ document, onClose }: Props) => {
     const editDocumentMutation = useMutation({
         mutationFn: async () => {
             const res = await fetch(
-                `http://localhost:5001/api/v1/document/editDocument/${document.document_id}`,
+                `${import.meta.env.VITE_API_URL}/documents/editDocument/${document.document_id}`,
                 {
                     method: "PUT",
                     headers: {

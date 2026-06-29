@@ -45,7 +45,7 @@ const EditDocumentTemplate = ({ template, onClose }: Props) => {
             queryKey: ["documents"],
             queryFn: async () => {
                 const res = await fetch(
-                    "http://localhost:5001/api/v1/document/getDocuments"
+                    `${import.meta.env.VITE_API_URL}/documents/getDocuments`
                 );
 
                 const data = await res.json();
@@ -65,7 +65,7 @@ const EditDocumentTemplate = ({ template, onClose }: Props) => {
             queryKey: ["templates"],
             queryFn: async () => {
                 const res = await fetch(
-                    "http://localhost:5001/api/v1/document/getTemplates"
+                    "http://localhost:5001/api/v1/documents/getTemplates"
                 );
 
                 const data = await res.json();
@@ -103,7 +103,7 @@ const EditDocumentTemplate = ({ template, onClose }: Props) => {
     const editTemplateMutation = useMutation({
         mutationFn: async () => {
             const res = await fetch(
-                `http://localhost:5001/api/v1/document/editTemplate/${template.template_id}`,
+                `http://localhost:5001/api/v1/documents/editTemplate/${template.template_id}`,
                 {
                     method: "PUT",
                     headers: {

@@ -17,7 +17,7 @@ const Document_Library = ({ onEditDocument }: Props) => {
         queryKey: ["documents"],
         queryFn: async () => {
             const res = await fetch(
-                "http://localhost:5001/api/v1/document/getDocuments"
+                `${import.meta.env.VITE_API_URL}/documents/getDocuments`
             );
 
             const data = await res.json();
@@ -33,7 +33,7 @@ const Document_Library = ({ onEditDocument }: Props) => {
     const deleteDocumentMutation = useMutation({
         mutationFn: async (document_id: number) => {
             const res = await fetch(
-                `http://localhost:5001/api/v1/document/deleteDocument/${document_id}`,
+                `${import.meta.env.VITE_API_URL}/documents/deleteDocument/${document_id}`,
                 {
                     method: "DELETE",
                 }

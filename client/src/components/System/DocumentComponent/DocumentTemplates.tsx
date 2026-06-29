@@ -23,7 +23,7 @@ const DocumentTemplates = ({ onEditTemplate }: Props) => {
         queryKey: ["templates"],
         queryFn: async () => {
             const res = await fetch(
-                "http://localhost:5001/api/v1/document/getTemplates"
+                `${import.meta.env.VITE_API_URL}/documents/getTemplates`
             );
 
             const data = await res.json();
@@ -39,7 +39,7 @@ const DocumentTemplates = ({ onEditTemplate }: Props) => {
     const deleteTemplateMutation = useMutation({
         mutationFn: async (template_id: number) => {
             const res = await fetch(
-                `http://localhost:5001/api/v1/document/deleteTemplate/${template_id}`,
+                `${import.meta.env.VITE_API_URL}/documents/deleteTemplate/${template_id}`,
                 {
                     method: "DELETE",
                 }

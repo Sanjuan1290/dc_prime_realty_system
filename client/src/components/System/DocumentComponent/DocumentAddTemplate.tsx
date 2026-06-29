@@ -32,7 +32,7 @@ const DocumentAddTemplate = ({ setShowAddTemplateModal }: Props) => {
     const { data: documents = [], isLoading } = useQuery<Document[]>({
         queryKey: ["documents"],
         queryFn: async () => {
-            const res = await fetch("http://localhost:5001/api/v1/document/getDocuments");
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/documents/getDocuments`);
             const data = await res.json();
 
             if (!res.ok) {
@@ -45,7 +45,7 @@ const DocumentAddTemplate = ({ setShowAddTemplateModal }: Props) => {
 
     const addTemplateMutation = useMutation({
         mutationFn: async () => {
-            const res = await fetch("http://localhost:5001/api/v1/document/addTemplate", {
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/documents/addTemplate`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",

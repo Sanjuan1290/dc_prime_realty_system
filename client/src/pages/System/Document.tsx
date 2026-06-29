@@ -34,7 +34,7 @@ const Document = () => {
         queryKey: ["documents"],
         queryFn: async () => {
             const res = await fetch(
-                "http://localhost:5001/api/v1/document/getDocuments"
+                `${import.meta.env.VITE_API_URL}/documents/getDocuments`
             );
 
             const data = await res.json();
@@ -51,7 +51,7 @@ const Document = () => {
         queryKey: ["templates"],
         queryFn: async () => {
             const res = await fetch(
-                "http://localhost:5001/api/v1/document/getTemplates"
+                `${import.meta.env.VITE_API_URL}/documents/getTemplates`
             );
 
             const data = await res.json();

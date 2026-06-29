@@ -30,8 +30,8 @@ const AddDocument = ({ setShowAddDocumentModal }: Props) => {
 
     const addDocumentMutation = useMutation({
         mutationFn: async () => {
-            const res = await fetch(
-                "http://localhost:5001/api/v1/document/addDocument",
+            const res = await fetch( 
+                `${import.meta.env.VITE_API_URL}documents/addDocument`,
                 {
                     method: "POST",
                     headers: {
