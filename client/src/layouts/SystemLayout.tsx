@@ -35,18 +35,13 @@ const SystemLayout = () => {
       description: "Projects, units, and buyers",
       items: [
         { label: "Projects", pathname: "projects", icon: FiMap },
-        { label: "Listings", pathname: "listings", icon: FiGrid },
-        { label: "Clients", pathname: "clients", icon: FiUsers },
-        { label: "Accredited Sellers", pathname: "accredited", icon: FiUserCheck },
       ],
     },
     {
       title: "Finance",
       description: "Payments and payouts",
       items: [
-        { label: "Payments", pathname: "payments", icon: FiCreditCard },
         { label: "Commissions", pathname: "commissions", icon: FiDollarSign },
-        { label: "Cash Advances", pathname: "cash-advance", icon: FiDollarSign },
       ],
     },
     {
@@ -57,11 +52,11 @@ const SystemLayout = () => {
       ],
     },
     {
-      title: "RECORDS",
+      title: "Employees",
       items: [
-        { label: "Reports", pathname: "reports", icon: FiBarChart2 },
         { label: "Employees", pathname: "employees", icon: FiUsers },
         { label: "Attendance", pathname: "attendance", icon: FiClock },
+        { label: "Cash Advances", pathname: "cash-advance", icon: FiDollarSign },
       ],
     },
     {

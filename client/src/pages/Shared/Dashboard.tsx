@@ -2,7 +2,7 @@ import { FiBarChart2 } from "react-icons/fi";
 import { FaPesoSign } from "react-icons/fa6";
 import { FiHome, FiCreditCard, FiUsers, FiFileText } from "react-icons/fi";
 
-import PageHeader from "../components/PageHeader";
+import PageHeader from "../../components/PageHeader";
 
 const Dashboard = () => {
   const stats = [

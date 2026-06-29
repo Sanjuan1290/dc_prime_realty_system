@@ -3,18 +3,16 @@ import {
   FiEdit2,
   FiEye,
   FiMap,
-  FiPlus,
   FiSearch,
   FiTrash2,
 } from "react-icons/fi";
-import PageHeader from "../components/PageHeader";
-import AddProjectModal from "../components/ProjectsComponent/AddProjectModal";
-import EditProjectModal from "../components/ProjectsComponent/EditProjectModal";
-import DetailsProjectModal from "../components/ProjectsComponent/DetailsProjectModal";
+import PageHeader from "../../components/PageHeader";
+import EditProjectModal from "../../components/ProjectsComponent/EditProjectModal";
+import DetailsProjectModal from "../../components/ProjectsComponent/DetailsProjectModal";
+import { NavLink } from "react-router-dom";
 
 const Projects = () => {
   const [search, setSearch] = useState("");
-  const [isAddProjectModalOpen, setIsAddProjectModalOpen] = useState(false)
   const [isEditProjectModalOpen, setIsEditProjectModalOpen] = useState(false)
   const [isDetailsProjectModalOpen, setIsDetailsProjectModalOpen] = useState(false)
 
@@ -72,15 +70,6 @@ const Projects = () => {
                         icon={FiMap}
                     />
                 </div>
-
-                <button
-                type="button"
-                onClick={() => { setIsAddProjectModalOpen(true) }}
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700 sm:w-fit"
-                >
-                    <FiPlus className="h-4 w-4" />
-                    Add Project
-                </button>
             </div>
 
             <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -178,6 +167,14 @@ const Projects = () => {
 
                         <td className="px-5 py-4">
                             <div className="flex flex-wrap gap-2">
+                            <NavLink
+                                to="/Bailen"
+                                className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                            >
+                                <FiEye className="h-4 w-4" />
+                                Go to this Project
+                            </NavLink>
+
                             <button
                                 type="button"
                                 onClick={() => {setIsDetailsProjectModalOpen(true)}}
@@ -196,13 +193,6 @@ const Projects = () => {
                                 Edit
                             </button>
 
-                            <button
-                                type="button"
-                                className="inline-flex h-10 items-center gap-2 rounded-lg bg-red-600 px-3 text-sm font-bold text-white shadow-sm transition hover:bg-red-700"
-                            >
-                                <FiTrash2 className="h-4 w-4" />
-                                Delete
-                            </button>
                             </div>
                         </td>
                         </tr>
@@ -239,9 +229,6 @@ const Projects = () => {
             </section>
         </main>
         
-        {
-            isAddProjectModalOpen && <AddProjectModal setIsAddProjectModalOpen={setIsAddProjectModalOpen}/>
-        }
 
         {
             isEditProjectModalOpen && <EditProjectModal setIsEditProjectModalOpen={setIsEditProjectModalOpen}/>
