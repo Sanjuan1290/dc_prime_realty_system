@@ -1,6 +1,6 @@
 
 import express from 'express'
-import { login, getMe } from '../controllers/users.controllers.js'
+import { login, getMe } from '../../controllers/System/users.controllers.js'
 
 const router = express.Router()
 

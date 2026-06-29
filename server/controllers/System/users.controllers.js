@@ -1,5 +1,5 @@
 
-import { db } from '../db/connect.js'
+import { db } from '../../db/connect.js'
 import jwt from 'jsonwebtoken'
 import bcrypt from 'bcrypt'
 

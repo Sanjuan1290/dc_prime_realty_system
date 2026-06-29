@@ -1,17 +1,21 @@
 
 import { FiFileText, FiLayers, FiPlus } from "react-icons/fi"
-
-import PageHeader from "../../components/Shared/PageHeader"
-import DocumentTemplates from "../../components/Bailen/DocumentComponent/DocumentTemplates"
-import Document_Library from "../../components/Bailen/DocumentComponent/DocumentLibrary"
-import DocumentAddTemplate from "../../components/Bailen/DocumentComponent/DocumentAddTemplate"
 import { useState } from "react"
-import AddDocument from "../../components/Bailen/DocumentComponent/AddDocument"
+import type { Document as DocumentType, Template, DocumentTemplateList } from "../../types/document"
+import PageHeader from "../../components/Shared/PageHeader"
+import DocumentTemplates from "../../components/System/DocumentComponent/DocumentTemplates"
+import Document_Library from "../../components/System/DocumentComponent/DocumentLibrary"
+import DocumentAddTemplate from "../../components/System/DocumentComponent/DocumentAddTemplate"
+import AddDocument from "../../components/System/DocumentComponent/AddDocument"
+
 
 const Document = () => {
 
     const [showAddTemplateModal, setShowAddTemplateModal] = useState(false)
     const [showAddDocumentModal, setShowAddDocumentModal] = useState(false)
+
+    
+
   return (
     <main className="flex flex-col gap-6">
         
@@ -88,7 +92,7 @@ const Document = () => {
             showAddTemplateModal && <DocumentAddTemplate setShowAddTemplateModal={setShowAddTemplateModal}/>
         }
         {
-            showAddDocumentModal && <AddDocument  />
+            showAddDocumentModal && <AddDocument  setShowAddDocumentModal={setShowAddDocumentModal}/>
         }
     </main>
   )

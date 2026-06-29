@@ -11,7 +11,7 @@ import Login from "./auth/Login"
 import SystemLayout from "./layouts/SystemLayout"
 import Dashboard from "./pages/Shared/Dashboard"
 import Projects from "./pages/Shared/Projects"
-import Document from "./pages/Shared/Document"
+import Document from "./pages/System/Document"
 import Listings from "./pages/Bailen/Listings"
 
 
