@@ -11,6 +11,7 @@ import Login from "./auth/Login"
 import SystemLayout from "./layouts/SystemLayout"
 import Dashboard from "./pages/Shared/Dashboard"
 import Projects from "./pages/Shared/Projects"
+import Document from "./pages/Shared/Document"
 import Listings from "./pages/Bailen/Listings"
 
 
@@ -24,6 +25,7 @@ const App = () => {
         <Route index element={<Dashboard />}/>
         <Route path="projects" element={<Projects />}/>
         <Route path="listings" element={<Listings />}/>
+        <Route path="documents" element={<Document />}/>
       </Route>
     </>
   ))
