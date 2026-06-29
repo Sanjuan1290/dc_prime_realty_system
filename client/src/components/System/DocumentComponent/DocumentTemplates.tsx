@@ -1,27 +1,30 @@
+import { useMemo, useState } from "react";
 import { FiSearch, FiEdit2, FiTrash2 } from "react-icons/fi";
 import { FaCircle } from "react-icons/fa6";
-import { useQuery } from "@tanstack/react-query";
-import type { Template } from "../../../types/document";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { Template, DocumentTemplateList } from "../../../types/document";
 import { formatDateTime } from "../../../utils/formatDateTime";
-
-type TemplateDocumentRow = {
-    document_template_list_id: number;
-    template_id: number;
-    document_id: number;
-    document_is_required: boolean | 0 | 1;
-};
 
 type TemplatesResponse = {
     success: boolean;
     templates: Template[];
-    template_documents: TemplateDocumentRow[];
+    template_documents: DocumentTemplateList[];
 };
 
-const DocumentTemplates = () => {
+type Props = {
+    onEditTemplate: (template: Template) => void;
+};
+
+const DocumentTemplates = ({ onEditTemplate }: Props) => {
+    const queryClient = useQueryClient();
+    const [search, setSearch] = useState("");
+
     const { data, isLoading, isError } = useQuery<TemplatesResponse>({
         queryKey: ["templates"],
         queryFn: async () => {
-            const res = await fetch("http://localhost:5001/api/v1/document/getTemplates");
+            const res = await fetch(
+                "http://localhost:5001/api/v1/document/getTemplates"
+            );
 
             const data = await res.json();
 
@@ -33,8 +36,55 @@ const DocumentTemplates = () => {
         },
     });
 
+    const deleteTemplateMutation = useMutation({
+        mutationFn: async (template_id: number) => {
+            const res = await fetch(
+                `http://localhost:5001/api/v1/document/deleteTemplate/${template_id}`,
+                {
+                    method: "DELETE",
+                }
+            );
+
+            const data = await res.json();
+
+            if (!res.ok) {
+                throw new Error(data.message || "Failed to delete template");
+            }
+
+            return data;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["templates"] });
+        },
+    });
+
     const templates = data?.templates || [];
     const templateDocuments = data?.template_documents || [];
+
+    const filteredTemplates = useMemo(() => {
+        const keyword = search.trim().toLowerCase();
+
+        if (!keyword) return templates;
+
+        return templates.filter((template) => {
+            const name = template.template_name?.toLowerCase() || "";
+            const description = template.template_description?.toLowerCase() || "";
+            const status = template.template_status?.toLowerCase() || "";
+
+            return (
+                name.includes(keyword) ||
+                description.includes(keyword) ||
+                status.includes(keyword)
+            );
+        });
+    }, [templates, search]);
+
+    const handleDelete = (template_id: number) => {
+        const confirmed = window.confirm("Delete this template?");
+        if (!confirmed) return;
+
+        deleteTemplateMutation.mutate(template_id);
+    };
 
     if (isLoading) return <p>Loading...</p>;
     if (isError) return <p>Something went wrong. Try again later.</p>;
@@ -56,6 +106,8 @@ const DocumentTemplates = () => {
 
                     <input
                         type="text"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
                         placeholder="Search templates..."
                         className="w-full rounded-xl border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-4 text-sm text-gray-900 outline-none transition focus:border-gray-400 focus:bg-white focus:ring-2 focus:ring-gray-100"
                     />
@@ -63,6 +115,7 @@ const DocumentTemplates = () => {
 
                 <button
                     type="button"
+                    onClick={() => setSearch("")}
                     className="rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50 active:scale-[0.98]"
                 >
                     Reset
@@ -78,18 +131,18 @@ const DocumentTemplates = () => {
                     <p className="text-right">Actions</p>
                 </div>
 
-                {templates.length === 0 ? (
+                {filteredTemplates.length === 0 ? (
                     <div className="px-5 py-6 text-sm text-gray-500">
                         No templates found.
                     </div>
                 ) : (
-                    templates.map((template) => {
+                    filteredTemplates.map((template) => {
                         const documents = templateDocuments.filter(
                             (item) => item.template_id === template.template_id
                         );
 
-                        const requiredCount = documents.filter(
-                            (item) => Boolean(item.document_is_required)
+                        const requiredCount = documents.filter((item) =>
+                            Boolean(item.document_is_required)
                         ).length;
 
                         return (
@@ -122,12 +175,16 @@ const DocumentTemplates = () => {
                                 </p>
 
                                 <p className="text-gray-600">
-                                    {formatDateTime(template.template_updated_at || template.template_created_at)}
+                                    {formatDateTime(
+                                        template.template_updated_at ||
+                                            template.template_created_at
+                                    )}
                                 </p>
 
                                 <div className="flex items-center gap-2 md:justify-end">
                                     <button
                                         type="button"
+                                        onClick={() => onEditTemplate(template)}
                                         className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 active:scale-[0.98]"
                                     >
                                         <FiEdit2 className="h-4 w-4" />
@@ -136,7 +193,9 @@ const DocumentTemplates = () => {
 
                                     <button
                                         type="button"
-                                        className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 transition hover:bg-red-100 active:scale-[0.98]"
+                                        onClick={() => handleDelete(template.template_id)}
+                                        disabled={deleteTemplateMutation.isPending}
+                                        className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 transition hover:bg-red-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
                                     >
                                         <FiTrash2 className="h-4 w-4" />
                                         Delete
@@ -151,4 +210,4 @@ const DocumentTemplates = () => {
     );
 };
 
-export default DocumentTemplates;   
+export default DocumentTemplates;

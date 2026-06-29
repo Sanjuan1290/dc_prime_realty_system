@@ -1,12 +1,23 @@
-import { useMemo, useState } from "react";
-import type { Dispatch, FormEvent, SetStateAction } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { FormEvent } from "react";
 import { FiSearch } from "react-icons/fi";
 import { RxCross2 } from "react-icons/rx";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Document } from "../../../types/document";
+import type {
+    Document,
+    Template,
+    DocumentTemplateList,
+} from "../../../types/document";
 
 type Props = {
-    setShowAddTemplateModal: Dispatch<SetStateAction<boolean>>;
+    template: Template;
+    onClose: () => void;
+};
+
+type TemplatesResponse = {
+    success: boolean;
+    templates: Template[];
+    template_documents: DocumentTemplateList[];
 };
 
 type TemplateForm = {
@@ -15,66 +26,118 @@ type TemplateForm = {
     template_status: "active" | "inactive";
 };
 
-const DocumentAddTemplate = ({ setShowAddTemplateModal }: Props) => {
+const EditDocumentTemplate = ({ template, onClose }: Props) => {
     const queryClient = useQueryClient();
 
     const [search, setSearch] = useState("");
     const [errorMessage, setErrorMessage] = useState("");
 
     const [formData, setFormData] = useState<TemplateForm>({
-        template_name: "",
-        template_description: "",
-        template_status: "active",
+        template_name: template.template_name || "",
+        template_description: template.template_description || "",
+        template_status: template.template_status || "active",
     });
 
     const [selectedDocuments, setSelectedDocuments] = useState<Document[]>([]);
 
-    const { data: documents = [], isLoading } = useQuery<Document[]>({
-        queryKey: ["documents"],
-        queryFn: async () => {
-            const res = await fetch("http://localhost:5001/api/v1/document/getDocuments");
-            const data = await res.json();
+    const { data: documents = [], isLoading: isDocumentsLoading } =
+        useQuery<Document[]>({
+            queryKey: ["documents"],
+            queryFn: async () => {
+                const res = await fetch(
+                    "http://localhost:5001/api/v1/document/getDocuments"
+                );
 
-            if (!res.ok) {
-                throw new Error(data.message || "Document retrieve failed!");
-            }
+                const data = await res.json();
 
-            return data.documents || [];
-        },
-    });
+                if (!res.ok) {
+                    throw new Error(
+                        data.message || "Document retrieve failed!"
+                    );
+                }
 
-    const addTemplateMutation = useMutation({
+                return data.documents || [];
+            },
+        });
+
+    const { data: templateData, isLoading: isTemplateLoading } =
+        useQuery<TemplatesResponse>({
+            queryKey: ["templates"],
+            queryFn: async () => {
+                const res = await fetch(
+                    "http://localhost:5001/api/v1/document/getTemplates"
+                );
+
+                const data = await res.json();
+
+                if (!res.ok) {
+                    throw new Error(
+                        data.message || "Template retrieve failed!"
+                    );
+                }
+
+                return data;
+            },
+        });
+
+    const currentTemplateDocumentIds = useMemo(() => {
+        const rows = templateData?.template_documents || [];
+
+        return rows
+            .filter((item) => item.template_id === template.template_id)
+            .map((item) => item.document_id);
+    }, [templateData, template.template_id]);
+
+    useEffect(() => {
+        if (documents.length === 0) return;
+
+        const idSet = new Set(currentTemplateDocumentIds);
+
+        const currentDocuments = documents.filter((document) =>
+            idSet.has(document.document_id)
+        );
+
+        setSelectedDocuments(currentDocuments);
+    }, [documents, currentTemplateDocumentIds]);
+
+    const editTemplateMutation = useMutation({
         mutationFn: async () => {
-            const res = await fetch("http://localhost:5001/api/v1/document/addTemplate", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                    template_name: formData.template_name.trim(),
-                    template_description: formData.template_description.trim(),
-                    template_status: formData.template_status,
-                    document_ids: selectedDocuments.map(
-                        (document) => document.document_id
-                    ),
-                }),
-            });
+            const res = await fetch(
+                `http://localhost:5001/api/v1/document/editTemplate/${template.template_id}`,
+                {
+                    method: "PUT",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        template_name: formData.template_name.trim(),
+                        template_description:
+                            formData.template_description.trim(),
+                        template_status: formData.template_status,
+                        document_ids: selectedDocuments.map(
+                            (document) => document.document_id
+                        ),
+                    }),
+                }
+            );
 
             const data = await res.json();
 
             if (!res.ok) {
-                throw new Error(data.message || "Failed to add template");
+                throw new Error(data.message || "Failed to update template");
             }
 
             return data;
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["templates"] });
-            setShowAddTemplateModal(false);
+            onClose();
         },
         onError: (error) => {
             setErrorMessage(
-                error instanceof Error ? error.message : "Failed to add template"
+                error instanceof Error
+                    ? error.message
+                    : "Failed to update template"
             );
         },
     });
@@ -94,7 +157,8 @@ const DocumentAddTemplate = ({ setShowAddTemplateModal }: Props) => {
             if (!keyword) return true;
 
             const name = document.document_name?.toLowerCase() || "";
-            const description = document.document_description?.toLowerCase() || "";
+            const description =
+                document.document_description?.toLowerCase() || "";
 
             return name.includes(keyword) || description.includes(keyword);
         });
@@ -119,8 +183,10 @@ const DocumentAddTemplate = ({ setShowAddTemplateModal }: Props) => {
             return;
         }
 
-        addTemplateMutation.mutate();
+        editTemplateMutation.mutate();
     };
+
+    const isLoading = isDocumentsLoading || isTemplateLoading;
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -130,12 +196,12 @@ const DocumentAddTemplate = ({ setShowAddTemplateModal }: Props) => {
             >
                 <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
                     <h3 className="text-xl font-bold text-gray-950">
-                        Add Document Template
+                        Edit Document Template
                     </h3>
 
                     <button
                         type="button"
-                        onClick={() => setShowAddTemplateModal(false)}
+                        onClick={onClose}
                         className="flex h-10 w-10 items-center justify-center rounded-xl text-gray-500 transition hover:bg-gray-100 hover:text-gray-900 active:scale-[0.98]"
                     >
                         <RxCross2 className="h-5 w-5" />
@@ -210,7 +276,7 @@ const DocumentAddTemplate = ({ setShowAddTemplateModal }: Props) => {
                                 Template Documents
                             </h3>
                             <p className="text-sm text-gray-600">
-                                Add documents to this template. Projects can select this template and still customize the list.
+                                Edit the documents inside this template.
                             </p>
                         </div>
 
@@ -220,7 +286,7 @@ const DocumentAddTemplate = ({ setShowAddTemplateModal }: Props) => {
                                     Add Existing Documents
                                 </h3>
                                 <p className="text-xs text-gray-500">
-                                    Create new documents in the Document Library first, then search and add them to this template.
+                                    Search active documents and add them to this template.
                                 </p>
                             </div>
 
@@ -263,7 +329,9 @@ const DocumentAddTemplate = ({ setShowAddTemplateModal }: Props) => {
 
                                             <button
                                                 type="button"
-                                                onClick={() => handleAddDocument(document)}
+                                                onClick={() =>
+                                                    handleAddDocument(document)
+                                                }
                                                 className="shrink-0 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-blue-700 active:scale-[0.98]"
                                             >
                                                 Add
@@ -321,7 +389,9 @@ const DocumentAddTemplate = ({ setShowAddTemplateModal }: Props) => {
                                             <button
                                                 type="button"
                                                 onClick={() =>
-                                                    handleRemoveDocument(document.document_id)
+                                                    handleRemoveDocument(
+                                                        document.document_id
+                                                    )
                                                 }
                                                 className="rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-sm font-bold text-red-700 transition hover:bg-red-100 active:scale-[0.98]"
                                             >
@@ -344,7 +414,7 @@ const DocumentAddTemplate = ({ setShowAddTemplateModal }: Props) => {
                 <div className="flex items-center justify-end gap-2 border-t border-gray-200 bg-white px-6 py-4">
                     <button
                         type="button"
-                        onClick={() => setShowAddTemplateModal(false)}
+                        onClick={onClose}
                         className="rounded-xl border border-gray-200 bg-white px-5 py-2.5 text-sm font-bold text-gray-700 shadow-sm transition hover:bg-gray-50 active:scale-[0.98]"
                     >
                         Cancel
@@ -352,12 +422,12 @@ const DocumentAddTemplate = ({ setShowAddTemplateModal }: Props) => {
 
                     <button
                         type="submit"
-                        disabled={addTemplateMutation.isPending}
+                        disabled={editTemplateMutation.isPending}
                         className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-blue-300"
                     >
-                        {addTemplateMutation.isPending
-                            ? "Creating..."
-                            : "Create Template"}
+                        {editTemplateMutation.isPending
+                            ? "Saving..."
+                            : "Save Changes"}
                     </button>
                 </div>
             </form>
@@ -365,4 +435,4 @@ const DocumentAddTemplate = ({ setShowAddTemplateModal }: Props) => {
     );
 };
 
-export default DocumentAddTemplate;
+export default EditDocumentTemplate;

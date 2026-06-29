@@ -1,13 +1,15 @@
 import { useState } from "react";
-import type { Dispatch, FormEvent, SetStateAction } from "react";
+import type { FormEvent } from "react";
 import { RxCross2 } from "react-icons/rx";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import type { Document } from "../../../types/document";
 
 type Props = {
-    setShowAddDocumentModal: Dispatch<SetStateAction<boolean>>;
+    document: Document;
+    onClose: () => void;
 };
 
-type AddDocumentForm = {
+type EditDocumentForm = {
     document_name: string;
     document_description: string;
     document_is_reusable: "yes" | "no";
@@ -15,32 +17,35 @@ type AddDocumentForm = {
     document_is_required: "required" | "optional";
 };
 
-const AddDocument = ({ setShowAddDocumentModal }: Props) => {
+const EditDocument = ({ document, onClose }: Props) => {
     const queryClient = useQueryClient();
 
     const [errorMessage, setErrorMessage] = useState("");
 
-    const [formData, setFormData] = useState<AddDocumentForm>({
-        document_name: "",
-        document_description: "",
-        document_is_reusable: "yes",
-        document_status: "active",
-        document_is_required: "required",
+    const [formData, setFormData] = useState<EditDocumentForm>({
+        document_name: document.document_name || "",
+        document_description: document.document_description || "",
+        document_is_reusable: Boolean(document.document_is_reusable)
+            ? "yes"
+            : "no",
+        document_status: document.document_status || "active",
+        document_is_required: Boolean(document.document_is_required)
+            ? "required"
+            : "optional",
     });
 
-    const addDocumentMutation = useMutation({
+    const editDocumentMutation = useMutation({
         mutationFn: async () => {
             const res = await fetch(
-                "http://localhost:5001/api/v1/document/addDocument",
+                `http://localhost:5001/api/v1/document/editDocument/${document.document_id}`,
                 {
-                    method: "POST",
+                    method: "PUT",
                     headers: {
                         "Content-Type": "application/json",
                     },
                     body: JSON.stringify({
                         document_name: formData.document_name.trim(),
-                        document_description:
-                            formData.document_description.trim(),
+                        document_description: formData.document_description.trim(),
                         document_is_reusable:
                             formData.document_is_reusable === "yes",
                         document_status: formData.document_status,
@@ -53,18 +58,21 @@ const AddDocument = ({ setShowAddDocumentModal }: Props) => {
             const data = await res.json();
 
             if (!res.ok) {
-                throw new Error(data.message || "Failed to add document");
+                throw new Error(data.message || "Failed to update document");
             }
 
             return data;
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["documents"] });
-            setShowAddDocumentModal(false);
+            queryClient.invalidateQueries({ queryKey: ["templates"] });
+            onClose();
         },
         onError: (error) => {
             setErrorMessage(
-                error instanceof Error ? error.message : "Failed to add document"
+                error instanceof Error
+                    ? error.message
+                    : "Failed to update document"
             );
         },
     });
@@ -78,7 +86,7 @@ const AddDocument = ({ setShowAddDocumentModal }: Props) => {
             return;
         }
 
-        addDocumentMutation.mutate();
+        editDocumentMutation.mutate();
     };
 
     return (
@@ -89,12 +97,12 @@ const AddDocument = ({ setShowAddDocumentModal }: Props) => {
             >
                 <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
                     <h3 className="text-xl font-bold text-gray-950">
-                        Add Document
+                        Edit Document
                     </h3>
 
                     <button
                         type="button"
-                        onClick={() => setShowAddDocumentModal(false)}
+                        onClick={onClose}
                         className="flex h-10 w-10 items-center justify-center rounded-xl text-gray-500 transition hover:bg-gray-100 hover:text-gray-900 active:scale-[0.98]"
                     >
                         <RxCross2 className="h-5 w-5" />
@@ -217,7 +225,7 @@ const AddDocument = ({ setShowAddDocumentModal }: Props) => {
                 <div className="flex items-center justify-end gap-2 border-t border-gray-200 bg-white px-6 py-4">
                     <button
                         type="button"
-                        onClick={() => setShowAddDocumentModal(false)}
+                        onClick={onClose}
                         className="rounded-xl border border-gray-200 bg-white px-5 py-2.5 text-sm font-bold text-gray-700 shadow-sm transition hover:bg-gray-50 active:scale-[0.98]"
                     >
                         Cancel
@@ -225,12 +233,12 @@ const AddDocument = ({ setShowAddDocumentModal }: Props) => {
 
                     <button
                         type="submit"
-                        disabled={addDocumentMutation.isPending}
+                        disabled={editDocumentMutation.isPending}
                         className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-blue-300"
                     >
-                        {addDocumentMutation.isPending
-                            ? "Adding..."
-                            : "Add Document"}
+                        {editDocumentMutation.isPending
+                            ? "Saving..."
+                            : "Save Changes"}
                     </button>
                 </div>
             </form>
@@ -238,4 +246,4 @@ const AddDocument = ({ setShowAddDocumentModal }: Props) => {
     );
 };
 
-export default AddDocument;
+export default EditDocument;
