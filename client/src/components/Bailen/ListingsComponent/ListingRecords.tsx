@@ -1,232 +1,288 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { FaCircle } from "react-icons/fa6";
+import { FiEye, FiSearch } from "react-icons/fi";
+import type { BailenListingStatus, Bailen_Lot_Listing } from "../../../types/listing";
 
-const ListingRecords = () => {
+type Props = {
+  listings: Bailen_Lot_Listing[];
+  onOpenDetails: (listing: Bailen_Lot_Listing) => void;
+};
 
-    const [tableHead, setTableHead] = useState([
-        "Unit Type",
-        "Unit ID",
-        "Old Unit IDs",
-        "Area",
-        "Price Per SQM",
-        "Net Selling Price",
-        "LMF",
-        "TCP",
-        "Reservation Fee",
-        "Project",
-        "Status",
-        "Action",
-    ])
-    const [tableBody, setTableBody] = useState([
-        {
-            unit_type: 'Inner',
-            unit_id: 'LA-0203',
-            old_unit_id: [
-                'LA-204',
-                'LA-202'
-            ],
-            area: 1000,
-            price_per_sqm: 555,
-            net_selling_price: 1000 * 555,
-            LMF: .10,
-            TCP: 610500,
-            reservation_fee: 50000,
-            project: 'Bailen',
-            status: 'available'
-        },{
-            unit_type: 'Inner',
-            unit_id: 'LA-0203',
-            old_unit_id: [
-                'LA-204',
-                'LA-202'
-            ],
-            area: 1000,
-            price_per_sqm: 555,
-            net_selling_price: 1000 * 555,
-            LMF: .10,
-            TCP: 610500,
-            reservation_fee: 50000,
-            project: 'Bailen',
-            status: 'available'
-        },{
-            unit_type: 'Inner',
-            unit_id: 'LA-0203',
-            old_unit_id: [
-                'LA-204',
-                'LA-202'
-            ],
-            area: 1000,
-            price_per_sqm: 555,
-            net_selling_price: 1000 * 555,
-            LMF: .10,
-            TCP: 610500,
-            reservation_fee: 50000,
-            project: 'Bailen',
-            status: 'available'
-        }
-    ])
-    const [records, setRecords] = useState([
-        {
-            unitType: "Inner",
-            unitId: "LA-0203",
-            oldUnitIds: "-",
-            area: "1,000",
-            pricePerSqm: "₱555.00",
-            lmf: "10%",
-            rs: "₱50,000.00",
-            project: "Bailen",
-            status: "Superseded",
-        },
-    ])
+const statusOptions: ("all" | BailenListingStatus)[] = [
+  "all",
+  "available",
+  "hold",
+  "reserved",
+  "sold",
+  "pending for cancellation",
+  "cancelled",
+];
 
+const formatMoney = (value: number) =>
+  new Intl.NumberFormat("en-PH", {
+    style: "currency",
+    currency: "PHP",
+    maximumFractionDigits: 2,
+  }).format(value);
 
-return (
-  <div className="flex flex-col gap-5">
-    {/* Filters */}
-    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
-        <input
-          type="text"
-          placeholder="Search unit ID..."
-          className="h-10 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-700 outline-none transition focus:border-gray-500 focus:ring-2 focus:ring-gray-100"
-        />
+const getStatusClass = (status: BailenListingStatus) => {
+  if (status === "available") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (status === "hold") return "border-amber-200 bg-amber-50 text-amber-700";
+  if (status === "reserved" || status === "sold") return "border-blue-200 bg-blue-50 text-blue-700";
+  if (status === "pending for cancellation") return "border-orange-200 bg-orange-50 text-orange-700";
+  return "border-red-200 bg-red-50 text-red-700";
+};
 
-        <select className="h-10 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-700 outline-none transition focus:border-gray-500 focus:ring-2 focus:ring-gray-100">
-          <option value="all_projects">All Projects</option>
-          <option value="bailen">Bailen</option>
-          <option value="maragondon">Maragondon</option>
-        </select>
+const ListingRecords = ({ listings, onOpenDetails }: Props) => {
+  const [search, setSearch] = useState("");
+  const [lotTypeFilter, setLotTypeFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | BailenListingStatus>("all");
+  const [page, setPage] = useState(1);
 
-        <select className="h-10 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-700 outline-none transition focus:border-gray-500 focus:ring-2 focus:ring-gray-100">
-          <option value="all_lot_types">All Lot Types</option>
-          <option value="inner">Inner</option>
-          <option value="corner">Corner</option>
-          <option value="end">End</option>
-        </select>
+  const pageSize = 5;
 
-        <select className="h-10 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-700 outline-none transition focus:border-gray-500 focus:ring-2 focus:ring-gray-100">
-          <option value="all_status">All Status</option>
-          <option value="available">Available</option>
-          <option value="reserved">Reserved</option>
-          <option value="active">Active</option>
-          <option value="hold">Hold</option>
-          <option value="sold">Sold</option>
-          <option value="inactive">Inactive</option>
-          <option value="superseded">Superseded</option>
-        </select>
+  const filteredListings = useMemo(() => {
+    const keyword = search.trim().toLowerCase();
 
-        <button className="h-10 rounded-lg border border-gray-300 bg-gray-50 px-4 text-sm font-medium text-gray-700 transition hover:bg-gray-100 active:scale-[0.98]">
-          Reset
-        </button>
-      </div>
-    </div>
+    return listings.filter((listing) => {
+      const buyerName =
+        listing.bailen_lot_listing_client_profile?.primary_buyer.full_name.toLowerCase() ??
+        "";
+      const sellerName =
+        listing.bailen_lot_listing_commission_snapshot?.seller_name?.toLowerCase() ??
+        "";
 
-    {/* Table */}
-    <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-      <div className="w-full overflow-x-auto">
-        <table className="w-full min-w-[1200px] border-collapse text-left text-sm">
-          <thead className="bg-gray-50">
-            <tr>
-              {tableHead.map((th) => (
-                <th
-                  key={th}
-                  className="whitespace-nowrap border-b border-gray-200 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-gray-600"
-                >
-                  {th}
-                </th>
-              ))}
-            </tr>
-          </thead>
+      const matchesSearch =
+        !keyword ||
+        listing.bailen_lot_listing_unit_code.toLowerCase().includes(keyword) ||
+        listing.bailen_lot_listing_old_unit_ids.join(" ").toLowerCase().includes(keyword) ||
+        buyerName.includes(keyword) ||
+        sellerName.includes(keyword);
 
-          <tbody className="divide-y divide-gray-100">
-            {tableBody.map((tb, index) => (
-              <tr
-                key={index}
-                className="transition hover:bg-gray-50"
-              >
-                <td className="whitespace-nowrap px-4 py-4 font-medium text-gray-900">
-                  {tb.unit_type}
-                </td>
+      const matchesLotType =
+        lotTypeFilter === "all" ||
+        listing.bailen_lot_listing_lot_type === lotTypeFilter;
 
-                <td className="whitespace-nowrap px-4 py-4 font-semibold text-gray-900">
-                  {tb.unit_id}
-                </td>
+      const matchesStatus =
+        statusFilter === "all" ||
+        listing.bailen_lot_listing_status === statusFilter;
 
-                <td className="px-4 py-4">
-                  <div className="flex flex-wrap gap-1.5">
-                    {tb.old_unit_id?.length ? (
-                      tb.old_unit_id.map((oldId) => (
-                        <span
-                          key={oldId}
-                          className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-600"
-                        >
-                          {oldId}
-                        </span>
-                      ))
-                    ) : (
-                      <span className="text-gray-400">-</span>
-                    )}
-                  </div>
-                </td>
+      return matchesSearch && matchesLotType && matchesStatus;
+    });
+  }, [listings, lotTypeFilter, search, statusFilter]);
 
-                <td className="whitespace-nowrap px-4 py-4 text-gray-700">
-                  {tb.area}
-                </td>
+  const totalPages = Math.max(1, Math.ceil(filteredListings.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const pageStart = (safePage - 1) * pageSize;
+  const paginatedListings = filteredListings.slice(pageStart, pageStart + pageSize);
 
-                <td className="whitespace-nowrap px-4 py-4 text-gray-700">
-                  {tb.price_per_sqm}
-                </td>
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex flex-col gap-4 border-b border-slate-200 p-4 xl:flex-row xl:items-center xl:justify-between">
+        <div>
+          <h2 className="text-lg font-bold text-slate-950">Bailen Unit Records</h2>
+          <p className="text-sm text-slate-500">
+            Open Details to manage buyer profile, payment terms, and unit documents.
+          </p>
+        </div>
 
-                <td className="whitespace-nowrap px-4 py-4 font-medium text-gray-900">
-                  {tb.net_selling_price}
-                </td>
+        <div className="grid gap-3 md:grid-cols-[1fr_150px_180px]">
+          <label className="relative block">
+            <FiSearch className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              value={search}
+              onChange={(event) => {
+                setSearch(event.target.value);
+                setPage(1);
+              }}
+              placeholder="Search unit, buyer, old ID, or seller"
+              className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50 md:w-80"
+            />
+          </label>
 
-                <td className="whitespace-nowrap px-4 py-4 text-gray-700">
-                  {tb.LMF}
-                </td>
+          <select
+            value={lotTypeFilter}
+            onChange={(event) => {
+              setLotTypeFilter(event.target.value);
+              setPage(1);
+            }}
+            className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
+          >
+            <option value="all">All Lot Types</option>
+            <option value="inner">Inner</option>
+            <option value="corner">Corner</option>
+            <option value="end">End</option>
+          </select>
 
-                <td className="whitespace-nowrap px-4 py-4 font-medium text-gray-900">
-                  {tb.TCP}
-                </td>
-
-                <td className="whitespace-nowrap px-4 py-4 text-gray-700">
-                  {tb.reservation_fee}
-                </td>
-
-                <td className="whitespace-nowrap px-4 py-4 text-gray-700">
-                  {tb.project}
-                </td>
-
-                <td className="whitespace-nowrap px-4 py-4">
-                  <div className="inline-flex items-center gap-1.5 rounded-full border border-green-200 bg-green-50 px-3 py-1 text-xs font-semibold capitalize text-green-700">
-                    <FaCircle className="text-[7px]" />
-                    <span>{tb.status}</span>
-                  </div>
-                </td>
-
-                <td className="whitespace-nowrap px-4 py-4">
-                  <div className="flex items-center gap-2">
-                    <button className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-100 active:scale-[0.97]">
-                      Details
-                    </button>
-
-                    <button className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 transition hover:bg-blue-100 active:scale-[0.97]">
-                      Edit
-                    </button>
-
-                    <button className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 transition hover:bg-red-100 active:scale-[0.97]">
-                      Delete
-                    </button>
-                  </div>
-                </td>
-              </tr>
+          <select
+            value={statusFilter}
+            onChange={(event) => {
+              setStatusFilter(event.target.value as "all" | BailenListingStatus);
+              setPage(1);
+            }}
+            className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold capitalize text-slate-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
+          >
+            {statusOptions.map((status) => (
+              <option key={status} value={status}>
+                {status === "all" ? "All Status" : status}
+              </option>
             ))}
-          </tbody>
-        </table>
+          </select>
+        </div>
       </div>
-    </div>
-  </div>
-);
-}
 
-export default ListingRecords
+      <div className="overflow-x-auto">
+        <div className="min-w-[1450px]">
+          <div className="grid grid-cols-[0.8fr_0.9fr_1fr_0.8fr_0.9fr_1fr_0.7fr_1fr_1.1fr_0.9fr_0.9fr] border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
+            <p>Unit Type</p>
+            <p>Unit ID</p>
+            <p>Old Unit IDs</p>
+            <p>Area</p>
+            <p>Price / SQM</p>
+            <p>TCP</p>
+            <p>LMF</p>
+            <p>Buyer</p>
+            <p>Seller</p>
+            <p>Status</p>
+            <p className="text-right">Action</p>
+          </div>
+
+          <div className="divide-y divide-slate-100">
+            {paginatedListings.map((listing) => (
+              <div
+                key={listing.bailen_lot_listing_id}
+                className="grid grid-cols-[0.8fr_0.9fr_1fr_0.8fr_0.9fr_1fr_0.7fr_1fr_1.1fr_0.9fr_0.9fr] items-center px-4 py-4 text-sm transition hover:bg-slate-50"
+              >
+                <p className="font-semibold capitalize text-slate-700">
+                  {listing.bailen_lot_listing_lot_type}
+                </p>
+
+                <p className="font-bold text-slate-950">
+                  {listing.bailen_lot_listing_unit_code}
+                </p>
+
+                <div className="flex flex-wrap gap-1.5">
+                  {listing.bailen_lot_listing_old_unit_ids.length ? (
+                    listing.bailen_lot_listing_old_unit_ids.map((oldId) => (
+                      <span
+                        key={oldId}
+                        className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-bold text-slate-500"
+                      >
+                        {oldId}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-slate-400">-</span>
+                  )}
+                </div>
+
+                <p className="text-slate-700">
+                  {listing.bailen_lot_listing_lot_area_sqm.toLocaleString()} sqm
+                </p>
+
+                <p className="font-semibold text-slate-700">
+                  {formatMoney(listing.bailen_lot_listing_price_sqm)}
+                </p>
+
+                <p className="font-bold text-slate-950">
+                  {formatMoney(listing.bailen_lot_listing_total_contract_price)}
+                </p>
+
+                <p className="font-semibold text-slate-700">
+                  {listing.bailen_lot_listing_legal_misc_rate}%
+                </p>
+
+                <div>
+                  <p className="font-semibold text-slate-800">
+                    {listing.bailen_lot_listing_client_profile?.primary_buyer.full_name ??
+                      "No buyer yet"}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    {listing.bailen_lot_listing_client_profile?.profile_status ??
+                      "profile missing"}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="font-semibold text-slate-800">
+                    {listing.bailen_lot_listing_commission_snapshot?.seller_name ??
+                      "Not assigned"}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    {listing.bailen_lot_listing_commission_snapshot?.seller_group_name ??
+                      "No seller group"}
+                  </p>
+                </div>
+
+                <div>
+                  <span
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold capitalize ${getStatusClass(
+                      listing.bailen_lot_listing_status
+                    )}`}
+                  >
+                    <FaCircle className="text-[7px]" />
+                    {listing.bailen_lot_listing_status}
+                  </span>
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => onOpenDetails(listing)}
+                    className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                  >
+                    <FiEye className="h-3.5 w-3.5" />
+                    Details
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            {paginatedListings.length === 0 && (
+              <div className="px-4 py-12 text-center">
+                <p className="font-bold text-slate-700">No listings found.</p>
+                <p className="mt-1 text-sm text-slate-500">
+                  Try changing your filters or search keyword.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-3 border-t border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-slate-600">
+          Showing {paginatedListings.length ? pageStart + 1 : 0}-
+          {Math.min(pageStart + pageSize, filteredListings.length)} of{" "}
+          {filteredListings.length} records
+        </p>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            disabled={safePage === 1}
+            onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+            className="h-9 rounded-lg border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-300"
+          >
+            Previous
+          </button>
+
+          <span className="h-9 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700">
+            Page {safePage} of {totalPages}
+          </span>
+
+          <button
+            type="button"
+            disabled={safePage === totalPages}
+            onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+            className="h-9 rounded-lg border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-300"
+          >
+            Next
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+};
+
+export default ListingRecords;
