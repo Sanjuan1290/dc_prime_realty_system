@@ -22,7 +22,6 @@ type SellerGroupRecord = {
   description: string;
   bailenPoolRate: number;
   maragondonPoolRate: number;
-  generalTriasPoolRate: number;
   members: number;
   activeMembers: number;
   status: SellerGroupStatus;
@@ -45,7 +44,6 @@ const SellerGroup = () => {
       description: "Internal sales group for Bailen lot selling.",
       bailenPoolRate: 10,
       maragondonPoolRate: 8,
-      generalTriasPoolRate: 8,
       members: 12,
       activeMembers: 10,
       status: "Active",
@@ -58,7 +56,6 @@ const SellerGroup = () => {
       description: "External realty partners and broker network.",
       bailenPoolRate: 12,
       maragondonPoolRate: 10,
-      generalTriasPoolRate: 10,
       members: 8,
       activeMembers: 7,
       status: "Active",
@@ -71,7 +68,6 @@ const SellerGroup = () => {
       description: "Direct sellers handled by admin.",
       bailenPoolRate: 6,
       maragondonPoolRate: 6,
-      generalTriasPoolRate: 6,
       members: 4,
       activeMembers: 3,
       status: "Inactive",

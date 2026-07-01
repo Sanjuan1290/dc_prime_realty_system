@@ -14,7 +14,6 @@ type SellerGroupRecord = {
   description: string;
   bailenPoolRate: number;
   maragondonPoolRate: number;
-  generalTriasPoolRate: number;
   members: number;
   activeMembers: number;
   status: SellerGroupStatus;
@@ -90,7 +89,7 @@ const EditGroupModal = ({ setShowEditGroupModal, selectedGroup } : Props) => {
                   />
                 </label>
 
-                <div className="grid gap-4 md:grid-cols-4">
+                <div className="grid gap-4 md:grid-cols-3">
                   <label className="flex flex-col gap-2">
                     <p className="text-sm font-bold text-slate-700">
                       Bailen Rate
@@ -113,22 +112,6 @@ const EditGroupModal = ({ setShowEditGroupModal, selectedGroup } : Props) => {
                     </p>
                     <select
                       defaultValue={selectedGroup.maragondonPoolRate}
-                      className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
-                    >
-                      {[6, 7, 8, 9, 10, 11, 12, 13, 14, 15].map((rate) => (
-                        <option key={rate} value={rate}>
-                          {rate}%
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label className="flex flex-col gap-2">
-                    <p className="text-sm font-bold text-slate-700">
-                      General Trias Rate
-                    </p>
-                    <select
-                      defaultValue={selectedGroup.generalTriasPoolRate}
                       className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
                     >
                       {[6, 7, 8, 9, 10, 11, 12, 13, 14, 15].map((rate) => (
