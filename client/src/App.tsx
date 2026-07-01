@@ -10,11 +10,16 @@ import Login from "./auth/Login"
 // Pages
 import SystemLayout from "./layouts/SystemLayout"
 import Dashboard from "./pages/Shared/Dashboard"
+import Users from "./pages/Shared/Users"
+import Accredited from "./pages/Shared/Accredited"
+import SellerGroup from "./pages/Shared/SellerGroup"
+
 import Document from "./pages/System/Document"
 
 import BailenLayout from "./layouts/BailenLayout"
 import BailenDashboard from './pages/Bailen/Dashboard'
 import BailenListings from "./pages/Bailen/Listings"
+
 
 const App = () => {
   
@@ -25,6 +30,9 @@ const App = () => {
       <Route path="/super_admin" element={<SystemLayout />}>
         <Route index element={<Dashboard />}/>
         <Route path="documents" element={<Document />}/>
+        <Route path="users" element={<Users />}/>
+        <Route path="accredited" element={<Accredited />}/>
+        <Route path="users/seller_group" element={<SellerGroup />}/>
       </Route>
 
       <Route path="/bailenProject" element={<BailenLayout />}>

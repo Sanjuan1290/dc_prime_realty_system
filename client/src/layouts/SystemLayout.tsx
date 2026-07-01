@@ -41,7 +41,7 @@ const SystemLayout = () => {
       title: "MANAGEMENT",
       description: "management",
       items: [
-        { label: "Accredited Sellers", pathname: "/accredited", icon: FiMap },
+        { label: "Accredited Sellers", pathname: "accredited", icon: FiMap },
       ],
     },
     {

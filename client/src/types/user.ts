@@ -5,6 +5,7 @@ export type User = {
     first_name: string,
     last_name: string,
     middle_name: string | null,
+    contact_no: string,
     email: string,
     // password_hash: string,
     role: 'super_admin' | 
