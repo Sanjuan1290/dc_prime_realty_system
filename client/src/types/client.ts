@@ -38,8 +38,30 @@ export type ListingClientProfile = {
   primary_buyer_name: string;
   primary_buyer_email: string;
   primary_buyer_contact_no: string;
+  primary_buyer_address: string;
+  primary_buyer_birth_date: string;
+  primary_buyer_place_of_birth: string;
+  primary_buyer_citizenship: string;
+  primary_buyer_gender: "male" | "female" | "other";
+  primary_buyer_civil_status:
+    | "Single"
+    | "Married"
+    | "Separated"
+    | "Annulled / Divorce"
+    | "Widower";
+  primary_buyer_tin: string;
+  primary_buyer_valid_id_type: string;
+  primary_buyer_valid_id_no: string;
+  primary_buyer_employment_status: string;
+  primary_buyer_employer_or_business_name: string;
+  primary_buyer_monthly_income: number;
   second_buyer_name: string | null;
   second_buyer_email: string | null;
   second_buyer_contact_no: string | null;
+  second_buyer_employer_or_business_name: string | null;
+  second_buyer_monthly_income: number | null;
+  emergency_contact_name: string;
+  emergency_contact_no: string;
+  emergency_contact_relationship: string;
   profile_status: ListingClientProfileStatus;
 };

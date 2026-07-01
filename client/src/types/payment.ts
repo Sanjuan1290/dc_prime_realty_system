@@ -6,6 +6,8 @@ export type PaymentType =
   | "monthly_amortization"
   | "legal_misc"
   | "full_payment"
+  | "advance_payment"
+  | "balloon_payment"
   | "other";
 
 export type BailenPaymentRecord = {
@@ -25,6 +27,15 @@ export type BailenPaymentRecord = {
   remarks: string | null;
 };
 
+export type BailenSOAStatus =
+  | "unpaid"
+  | "paid"
+  | "advance"
+  | "partial"
+  | "overdue"
+  | "offset"
+  | "balloon";
+
 export type BailenSOARow = {
   due_id: number;
   listing_id: number;
@@ -38,6 +49,6 @@ export type BailenSOARow = {
   date_paid: string | null;
   amount_paid: number;
   reference_id: string | null;
-  status: "unpaid" | "paid" | "advance" | "partial" | "overdue";
+  status: BailenSOAStatus;
   ending_balance: number;
 };

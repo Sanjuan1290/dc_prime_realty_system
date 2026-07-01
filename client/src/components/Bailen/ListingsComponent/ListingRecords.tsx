@@ -1,7 +1,10 @@
 import { useMemo, useState } from "react";
 import { FaCircle } from "react-icons/fa6";
 import { FiEye, FiSearch } from "react-icons/fi";
-import type { BailenListingStatus, Bailen_Lot_Listing } from "../../../types/listing";
+import type {
+  BailenListingStatus,
+  Bailen_Lot_Listing,
+} from "../../../types/listing";
 
 type Props = {
   listings: Bailen_Lot_Listing[];
@@ -51,11 +54,14 @@ const ListingRecords = ({ listings, onOpenDetails }: Props) => {
       const sellerName =
         listing.bailen_lot_listing_commission_snapshot?.seller_name?.toLowerCase() ??
         "";
+      const cadastralNumbers =
+        listing.bailen_lot_listing_cadastral_lot_numbers.join(" ").toLowerCase();
 
       const matchesSearch =
         !keyword ||
         listing.bailen_lot_listing_unit_code.toLowerCase().includes(keyword) ||
         listing.bailen_lot_listing_old_unit_ids.join(" ").toLowerCase().includes(keyword) ||
+        cadastralNumbers.includes(keyword) ||
         buyerName.includes(keyword) ||
         sellerName.includes(keyword);
 
@@ -82,7 +88,7 @@ const ListingRecords = ({ listings, onOpenDetails }: Props) => {
         <div>
           <h2 className="text-lg font-bold text-slate-950">Bailen Unit Records</h2>
           <p className="text-sm text-slate-500">
-            Open Details to manage buyer profile, payment terms, and unit documents.
+            Open the listing page to manage unit details, client profile, payments, SOA, documents, and printouts.
           </p>
         </div>
 
@@ -95,7 +101,7 @@ const ListingRecords = ({ listings, onOpenDetails }: Props) => {
                 setSearch(event.target.value);
                 setPage(1);
               }}
-              placeholder="Search unit, buyer, old ID, or seller"
+              placeholder="Search unit, buyer, cadastral, old ID, or seller"
               className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50 md:w-80"
             />
           </label>
@@ -132,117 +138,103 @@ const ListingRecords = ({ listings, onOpenDetails }: Props) => {
       </div>
 
       <div className="overflow-x-auto">
-        <div className="min-w-[1450px]">
-          <div className="grid grid-cols-[0.8fr_0.9fr_1fr_0.8fr_0.9fr_1fr_0.7fr_1fr_1.1fr_0.9fr_0.9fr] border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
-            <p>Unit Type</p>
-            <p>Unit ID</p>
-            <p>Old Unit IDs</p>
+        <div className="min-w-[1550px]">
+          <div className="grid grid-cols-[0.85fr_0.85fr_1fr_0.75fr_0.8fr_0.95fr_0.95fr_0.95fr_1fr_0.8fr] border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
+            <p>Unit</p>
+            <p>Cadastral</p>
+            <p>Old IDs</p>
+            <p>Type</p>
             <p>Area</p>
             <p>Price / SQM</p>
             <p>TCP</p>
-            <p>LMF</p>
             <p>Buyer</p>
-            <p>Seller</p>
             <p>Status</p>
             <p className="text-right">Action</p>
           </div>
 
           <div className="divide-y divide-slate-100">
-            {paginatedListings.map((listing) => (
-              <div
-                key={listing.bailen_lot_listing_id}
-                className="grid grid-cols-[0.8fr_0.9fr_1fr_0.8fr_0.9fr_1fr_0.7fr_1fr_1.1fr_0.9fr_0.9fr] items-center px-4 py-4 text-sm transition hover:bg-slate-50"
-              >
-                <p className="font-semibold capitalize text-slate-700">
-                  {listing.bailen_lot_listing_lot_type}
-                </p>
+            {paginatedListings.map((listing) => {
+              const profile = listing.bailen_lot_listing_client_profile;
+              const hasClient = Boolean(profile);
+              const statusClass = getStatusClass(
+                listing.bailen_lot_listing_status
+              );
 
-                <p className="font-bold text-slate-950">
-                  {listing.bailen_lot_listing_unit_code}
-                </p>
+              return (
+                <div
+                  key={listing.bailen_lot_listing_id}
+                  className="grid grid-cols-[0.85fr_0.85fr_1fr_0.75fr_0.8fr_0.95fr_0.95fr_0.95fr_1fr_0.8fr] items-center px-4 py-4 text-sm transition hover:bg-slate-50"
+                >
+                  <div>
+                    <p className="font-bold text-slate-950">
+                      {listing.bailen_lot_listing_unit_code}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      ID: {listing.bailen_lot_listing_id}
+                    </p>
+                  </div>
 
-                <div className="flex flex-wrap gap-1.5">
-                  {listing.bailen_lot_listing_old_unit_ids.length ? (
-                    listing.bailen_lot_listing_old_unit_ids.map((oldId) => (
-                      <span
-                        key={oldId}
-                        className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-bold text-slate-500"
-                      >
-                        {oldId}
-                      </span>
-                    ))
-                  ) : (
-                    <span className="text-slate-400">-</span>
-                  )}
-                </div>
-
-                <p className="text-slate-700">
-                  {listing.bailen_lot_listing_lot_area_sqm.toLocaleString()} sqm
-                </p>
-
-                <p className="font-semibold text-slate-700">
-                  {formatMoney(listing.bailen_lot_listing_price_sqm)}
-                </p>
-
-                <p className="font-bold text-slate-950">
-                  {formatMoney(listing.bailen_lot_listing_total_contract_price)}
-                </p>
-
-                <p className="font-semibold text-slate-700">
-                  {listing.bailen_lot_listing_legal_misc_rate}%
-                </p>
-
-                <div>
-                  <p className="font-semibold text-slate-800">
-                    {listing.bailen_lot_listing_client_profile?.primary_buyer.full_name ??
-                      "No buyer yet"}
+                  <p className="font-semibold text-slate-700">
+                    {listing.bailen_lot_listing_cadastral_lot_numbers.join(", ") || "-"}
                   </p>
-                  <p className="text-xs text-slate-500">
-                    {listing.bailen_lot_listing_client_profile?.profile_status ??
-                      "profile missing"}
-                  </p>
-                </div>
 
-                <div>
-                  <p className="font-semibold text-slate-800">
-                    {listing.bailen_lot_listing_commission_snapshot?.seller_name ??
-                      "Not assigned"}
+                  <p className="font-medium text-slate-600">
+                    {listing.bailen_lot_listing_old_unit_ids.join(", ") || "-"}
                   </p>
-                  <p className="text-xs text-slate-500">
-                    {listing.bailen_lot_listing_commission_snapshot?.seller_group_name ??
-                      "No seller group"}
+
+                  <p className="capitalize text-slate-700">
+                    {listing.bailen_lot_listing_lot_type}
                   </p>
-                </div>
 
-                <div>
-                  <span
-                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold capitalize ${getStatusClass(
-                      listing.bailen_lot_listing_status
-                    )}`}
-                  >
-                    <FaCircle className="text-[7px]" />
-                    {listing.bailen_lot_listing_status}
-                  </span>
-                </div>
+                  <p className="font-semibold text-slate-700">
+                    {listing.bailen_lot_listing_lot_area_sqm.toLocaleString()} sqm
+                  </p>
 
-                <div className="flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() => onOpenDetails(listing)}
-                    className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
-                  >
-                    <FiEye className="h-3.5 w-3.5" />
-                    Details
-                  </button>
+                  <p className="font-semibold text-slate-700">
+                    {formatMoney(listing.bailen_lot_listing_price_sqm)}
+                  </p>
+
+                  <p className="font-bold text-slate-950">
+                    {formatMoney(listing.bailen_lot_listing_total_contract_price)}
+                  </p>
+
+                  <div>
+                    <p className="font-semibold text-slate-800">
+                      {profile?.primary_buyer.full_name || "No client yet"}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {hasClient ? "Profile saved" : "Available for reservation"}
+                    </p>
+                  </div>
+
+                  <div>
+                    <span
+                      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-bold capitalize ${statusClass}`}
+                    >
+                      <FaCircle className="h-2 w-2" />
+                      {listing.bailen_lot_listing_status}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => onOpenDetails(listing)}
+                      className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                    >
+                      <FiEye className="h-3.5 w-3.5" />
+                      Open
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
 
             {paginatedListings.length === 0 && (
-              <div className="px-4 py-12 text-center">
+              <div className="px-4 py-10 text-center">
                 <p className="font-bold text-slate-700">No listings found.</p>
                 <p className="mt-1 text-sm text-slate-500">
-                  Try changing your filters or search keyword.
+                  Try changing the search or filters.
                 </p>
               </div>
             )}
@@ -252,7 +244,7 @@ const ListingRecords = ({ listings, onOpenDetails }: Props) => {
 
       <div className="flex flex-col gap-3 border-t border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-slate-600">
-          Showing {paginatedListings.length ? pageStart + 1 : 0}-
+          Showing {filteredListings.length === 0 ? 0 : pageStart + 1}-
           {Math.min(pageStart + pageSize, filteredListings.length)} of{" "}
           {filteredListings.length} records
         </p>
@@ -260,9 +252,9 @@ const ListingRecords = ({ listings, onOpenDetails }: Props) => {
         <div className="flex items-center gap-2">
           <button
             type="button"
-            disabled={safePage === 1}
-            onClick={() => setPage((prev) => Math.max(1, prev - 1))}
-            className="h-9 rounded-lg border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-300"
+            disabled={safePage <= 1}
+            onClick={() => setPage((prevPage) => Math.max(1, prevPage - 1))}
+            className="h-9 rounded-lg border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 disabled:cursor-not-allowed disabled:text-slate-400"
           >
             Previous
           </button>
@@ -273,9 +265,9 @@ const ListingRecords = ({ listings, onOpenDetails }: Props) => {
 
           <button
             type="button"
-            disabled={safePage === totalPages}
-            onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
-            className="h-9 rounded-lg border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-300"
+            disabled={safePage >= totalPages}
+            onClick={() => setPage((prevPage) => Math.min(totalPages, prevPage + 1))}
+            className="h-9 rounded-lg border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 disabled:cursor-not-allowed disabled:text-slate-400"
           >
             Next
           </button>

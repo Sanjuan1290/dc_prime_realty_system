@@ -47,7 +47,7 @@ const BailenLayout = () => {
       description: "inventory and payments",
       items: [
         { label: "Listings", pathname: "listings", icon: FiGrid },
-        { label: "Payments", pathname: "payments", icon: MdOutlinePayment },
+        { label: "Payments Audit", pathname: "payments", icon: MdOutlinePayment },
         { label: "Commissions", pathname: "commissions", icon: FiDollarSign }
       ],
     },

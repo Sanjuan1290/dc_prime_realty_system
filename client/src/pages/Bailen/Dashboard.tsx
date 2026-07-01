@@ -15,7 +15,7 @@ import {
   FiUsers,
 } from "react-icons/fi";
 
-import type { ProjectBailen } from "../../types/project";
+import type { BailenCadastralLotNumber, ProjectBailen } from "../../types/project";
 import EditProject from "../../components/Bailen/DashboardComponent/EditProject";
 
 type ProjectResponse = {
@@ -37,6 +37,11 @@ type BailenDefaultDocument = {
 type BailenDocumentsResponse = {
   success: boolean;
   data: BailenDefaultDocument[];
+};
+
+type BailenCadastralLotNumbersResponse = {
+  success: boolean;
+  data: BailenCadastralLotNumber[];
 };
 
 const Dashboard = () => {
@@ -92,8 +97,35 @@ const Dashboard = () => {
     },
   });
 
+
+  const {
+    data: cadastralData,
+    isLoading: isCadastralLoading,
+    isError: isCadastralError,
+    refetch: refetchCadastral,
+  } = useQuery<BailenCadastralLotNumbersResponse>({
+    queryKey: ["bailen-cadastral-lot-numbers"],
+    queryFn: async () => {
+      const res = await fetch(
+        `${import.meta.env.VITE_API_URL}/bailen/project/getCadastralLotNumber`,
+        {
+          credentials: "include",
+        }
+      );
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.message || "Failed to fetch cadastral lot numbers.");
+      }
+
+      return data;
+    },
+  });
+
   const project = projectData?.data;
   const defaultDocuments = documentsData?.data || [];
+  const cadastralLotNumbers = cadastralData?.data || [];
 
   const requiredDocuments = defaultDocuments.filter(
     (document) => Number(document.document_is_required) === 1
@@ -107,8 +139,8 @@ const Dashboard = () => {
     (document) => document.document_status === "active"
   );
 
-  const isLoading = isProjectLoading || isDocumentsLoading;
-  const isError = isProjectError || isDocumentsError;
+  const isLoading = isProjectLoading || isDocumentsLoading || isCadastralLoading;
+  const isError = isProjectError || isDocumentsError || isCadastralError;
 
   const overviewCards = [
     {
@@ -158,6 +190,15 @@ const Dashboard = () => {
       value: project?.project_bailen_location_code || "-",
     },
     {
+      label: "Cadastral Lot Numbers",
+      value:
+        cadastralLotNumbers.length > 0
+          ? cadastralLotNumbers
+              .map((item) => item.bailen_cadastral_lot_number)
+              .join(", ")
+          : "-",
+    },
+    {
       label: "Administrator",
       value: project?.project_bailen_administrator_name || "-",
     },
@@ -187,6 +228,11 @@ const Dashboard = () => {
       time: "Today",
     },
     {
+      title: `${cadastralLotNumbers.length} cadastral lot numbers configured`,
+      description: "These are selectable when adding or editing Bailen listings.",
+      time: "Today",
+    },
+    {
       title: "Listing summary placeholder active",
       description: "Connect the listing summary endpoint once the API is ready.",
       time: "System",
@@ -196,6 +242,7 @@ const Dashboard = () => {
   const handleRefresh = () => {
     refetchProject();
     refetchDocuments();
+    refetchCadastral();
   };
 
   if (isLoading) {

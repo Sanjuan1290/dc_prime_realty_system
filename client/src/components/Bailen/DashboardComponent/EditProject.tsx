@@ -123,6 +123,14 @@ const EditProject = ({ setIsEditProjectModalOpen }: Props) => {
     project_bailen_status: "active",
   });
 
+  const [cadastralLotNumbers, setCadastralLotNumbers] = useState([
+    "CAD-001",
+    "CAD-002",
+    "CAD-003",
+    "CAD-004",
+  ]);
+  const [newCadastralLotNumber, setNewCadastralLotNumber] = useState("");
+
   const [selectedDocuments, setSelectedDocuments] = useState<SelectedDocument[]>(
     []
   );
@@ -325,6 +333,23 @@ const EditProject = ({ setIsEditProjectModalOpen }: Props) => {
         libraryDocument?.document_is_required ??
         1,
     };
+  };
+
+  const addCadastralLotNumber = () => {
+    const value = newCadastralLotNumber.trim().toUpperCase();
+
+    if (!value) return;
+
+    setCadastralLotNumbers((current) =>
+      current.includes(value) ? current : [...current, value]
+    );
+    setNewCadastralLotNumber("");
+  };
+
+  const removeCadastralLotNumber = (value: string) => {
+    setCadastralLotNumbers((current) =>
+      current.filter((item) => item !== value)
+    );
   };
 
   const addDocument = (document: SelectedDocument) => {
@@ -619,6 +644,54 @@ const EditProject = ({ setIsEditProjectModalOpen }: Props) => {
                     <option value="active">Active</option>
                     <option value="inactive">Inactive</option>
                   </select>
+                </div>
+              </section>
+
+              <section className="flex flex-col gap-3 rounded-2xl border border-blue-100 bg-blue-50 p-4 shadow-sm">
+                <div>
+                  <p className="font-bold text-blue-950">
+                    Cadastral Lot Numbers
+                  </p>
+                  <p className="text-sm text-blue-700">
+                    These are selectable when adding or editing Bailen listings.
+                  </p>
+                </div>
+
+                <div className="flex gap-2">
+                  <input
+                    value={newCadastralLotNumber}
+                    onChange={(event) =>
+                      setNewCadastralLotNumber(event.target.value)
+                    }
+                    placeholder="CAD-005"
+                    className="h-10 flex-1 rounded-lg border border-blue-100 bg-white px-3 text-sm font-semibold text-slate-800 outline-none duration-150 placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={addCadastralLotNumber}
+                    className="h-10 rounded-lg bg-blue-600 px-4 text-xs font-bold text-white duration-150 hover:bg-blue-700"
+                  >
+                    Add
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  {cadastralLotNumbers.map((item) => (
+                    <span
+                      key={item}
+                      className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-white px-3 py-1 text-xs font-bold text-blue-700"
+                    >
+                      {item}
+                      <button
+                        type="button"
+                        onClick={() => removeCadastralLotNumber(item)}
+                        className="text-blue-400 hover:text-red-600"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
                 </div>
               </section>
 
