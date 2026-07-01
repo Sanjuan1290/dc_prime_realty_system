@@ -3,9 +3,9 @@ import { FiAlertCircle, FiDollarSign } from "react-icons/fi";
 import PageHeader from "../../components/Shared/PageHeader";
 import CommissionDetailsModal from "../../components/Bailen/CommissionComponent/CommissionDetailsModal";
 import CommissionRecords from "../../components/Bailen/CommissionComponent/CommissionRecords";
-import type { Commission } from "../../types/commission";
+import type { Commission as CommissionType } from "../../types/commission";
 
-const commissions: Commission[] = [
+const commissions: CommissionType[] = [
   {
     commission_id: 1,
     listing_id: 2,
@@ -79,7 +79,7 @@ const formatMoney = (value: number) =>
   }).format(value);
 
 const Commission = () => {
-  const [selectedCommission, setSelectedCommission] = useState<Commission | null>(null);
+  const [selectedCommission, setSelectedCommission] = useState<CommissionType | null>(null);
 
   const grossTotal = commissions.reduce(
     (total, commission) => total + commission.gross_commission,
