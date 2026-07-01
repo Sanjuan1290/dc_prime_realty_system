@@ -11,10 +11,10 @@ import Login from "./auth/Login"
 import SystemLayout from "./layouts/SystemLayout"
 import Dashboard from "./pages/Shared/Dashboard"
 import Document from "./pages/System/Document"
-import Listings from "./pages/Bailen/Listings"
 
 import BailenLayout from "./layouts/BailenLayout"
 import BailenDashboard from './pages/Bailen/Dashboard'
+import BailenListings from "./pages/Bailen/Listings"
 
 const App = () => {
   
@@ -24,12 +24,12 @@ const App = () => {
 
       <Route path="/super_admin" element={<SystemLayout />}>
         <Route index element={<Dashboard />}/>
-        <Route path="listings" element={<Listings />}/>
         <Route path="documents" element={<Document />}/>
       </Route>
 
       <Route path="/bailenProject" element={<BailenLayout />}>
-        <Route index element={<BailenDashboard />}/>
+        <Route index element={<BailenDashboard />} />
+        <Route path="listings" element={<BailenListings />} />
       </Route>
     </>
   ))
