@@ -26,7 +26,7 @@ const BailenLayout = () => {
     {
       title: "PROJECT",
       description: "Project records",
-      items: [{ label: "Bailen Project", pathname: "project", icon: FiMap }],
+      items: [{ label: "Maragondon Project", pathname: "/maragondonProject", icon: FiMap }],
     },
     {
       title: "LISTINGS",
