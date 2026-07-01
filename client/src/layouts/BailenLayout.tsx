@@ -5,7 +5,6 @@ import { FaCircle } from "react-icons/fa6";
 import {
   FiActivity,
   FiAlertCircle,
-  FiFileText,
   FiGrid,
   FiHome,
   FiLogOut,
