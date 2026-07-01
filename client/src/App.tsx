@@ -19,7 +19,9 @@ import Document from "./pages/System/Document"
 import BailenLayout from "./layouts/BailenLayout"
 import BailenDashboard from './pages/Bailen/Dashboard'
 import BailenListings from "./pages/Bailen/Listings"
-
+import BailenPayments from './pages/Bailen/Payments'
+import BailenCommissions from './pages/Bailen/Commission'
+import BailenSettings from './pages/Bailen/Settings'
 
 const App = () => {
   
@@ -38,6 +40,9 @@ const App = () => {
       <Route path="/bailenProject" element={<BailenLayout />}>
         <Route index element={<BailenDashboard />} />
         <Route path="listings" element={<BailenListings />} />
+        <Route path="payments" element={< BailenPayments/>} />
+        <Route path="commissions" element={<BailenCommissions />} />
+        <Route path="settings" element={<BailenSettings />} />
       </Route>
     </>
   ))
