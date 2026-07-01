@@ -1,114 +1,159 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import { FiEdit2, FiSave, FiX } from "react-icons/fi";
 
-type SellerGroupStatus = "Active" | "Inactive";
+type SellerGroupStatus = "active" | "inactive";
 
 type SellerGroupRecord = {
-  id: number;
-  groupName: string;
-  groupHead: string;
-  description: string;
-  bailenPoolRate: number;
-  maragondonPoolRate: number;
-  members: number;
-  activeMembers: number;
-  status: SellerGroupStatus;
-  createdAt: string;
-};
-
-type Props = {
-  setShowDetailsModal: React.Dispatch<React.SetStateAction<boolean>>;
-  setShowEditGroupModal: React.Dispatch<React.SetStateAction<boolean>>;
-  selectedGroup: SellerGroupRecord | null;
+  seller_group_id: number;
+  seller_group_name: string;
+  seller_group_head_user_id: number | null;
+  group_head_name: string | null;
+  seller_group_description: string | null;
+  seller_group_pool_rate_bailen: number;
+  seller_group_pool_rate_maragondon: number;
+  seller_group_pool_rate_general_trias: number;
+  member_count: number;
+  active_member_count: number;
+  seller_group_status: SellerGroupStatus;
+  seller_group_created_at: string;
+  seller_group_updated_at: string;
 };
 
 type GroupMember = {
-  id: number;
-  name: string;
+  accredited_seller_id: number;
+  user_id: number;
+  full_name: string;
   email: string;
-  role: "Agent" | "Manager" | "Broker" | "Broker Network Manager";
-  bailen_rate: number;
-  maragondon_rate: number;
-  status: "Active" | "Inactive";
+  role: string;
+  reports_under_user_id: number | null;
+  reports_under_name: string | null;
+  accredited_seller_assigned_rate_bailen: number;
+  accredited_seller_assigned_rate_maragondon: number;
+  accredited_seller_assigned_rate_general_trias: number;
+  accredited_seller_status: SellerGroupStatus;
+};
+
+type DetailsResponse = {
+  group: SellerGroupRecord;
+  members: GroupMember[];
+};
+
+type Props = {
+  setShowDetailsModal: Dispatch<SetStateAction<boolean>>;
+  setShowEditGroupModal: Dispatch<SetStateAction<boolean>>;
+  selectedGroup: SellerGroupRecord;
+  onSaved: (message: string) => void;
+};
+
+const API_URL = import.meta.env.VITE_API_URL || "";
+
+const getErrorMessage = (error: unknown) => {
+  return error instanceof Error ? error.message : "Something went wrong.";
 };
 
 const DetailsModal = ({
   setShowDetailsModal,
   setShowEditGroupModal,
   selectedGroup,
+  onSaved,
 }: Props) => {
+  const [details, setDetails] = useState<DetailsResponse>({
+    group: selectedGroup,
+    members: [],
+  });
   const [editingMemberId, setEditingMemberId] = useState<number | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [warning, setWarning] = useState("");
 
-  const [members, setMembers] = useState<GroupMember[]>([
-    {
-      id: 1,
-      name: "CANTIGA, ROLINDA C.",
-      email: "rolinda@gmail.com",
-      role: "Agent",
-      bailen_rate: 3,
-      maragondon_rate: 4,
-      status: "Active",
-    },
-    {
-      id: 2,
-      name: "PARROCHO, JOSEPH E.",
-      email: "joseph@gmail.com",
-      role: "Manager",
-      bailen_rate: 5,
-      maragondon_rate: 4,
-      status: "Active",
-    },
-    {
-      id: 3,
-      name: "REYES, MARIA L.",
-      email: "maria@gmail.com",
-      role: "Broker",
-      bailen_rate: 7,
-      maragondon_rate: 5,
-      status: "Inactive",
-    },
-  ]);
+  const loadDetails = async () => {
+    setIsLoading(true);
+    setWarning("");
 
-  if (!selectedGroup) return null;
+    try {
+      const res = await fetch(`${API_URL}/seller-groups/${selectedGroup.seller_group_id}`, {
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to load group details.");
+      setDetails(data.data || { group: selectedGroup, members: [] });
+      if (data.status === "warning") setWarning(data.message);
+    } catch (error) {
+      setWarning(getErrorMessage(error));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadDetails();
+  }, [selectedGroup.seller_group_id]);
 
   const updateMemberRate = (
     memberId: number,
-    field: "bailen_rate" | "maragondon_rate",
+    field:
+      | "accredited_seller_assigned_rate_bailen"
+      | "accredited_seller_assigned_rate_maragondon"
+      | "accredited_seller_assigned_rate_general_trias",
     value: string
   ) => {
     const numericValue = Number(value);
 
-    setMembers((prevMembers) =>
-      prevMembers.map((member) =>
-        member.id === memberId
+    setDetails((currentDetails) => ({
+      ...currentDetails,
+      members: currentDetails.members.map((member) =>
+        member.accredited_seller_id === memberId
           ? {
               ...member,
               [field]: Number.isNaN(numericValue) ? 0 : numericValue,
             }
           : member
-      )
-    );
+      ),
+    }));
   };
 
-  const handleEditRate = (memberId: number) => {
-    setEditingMemberId(memberId);
+  const saveMemberRates = async (member: GroupMember) => {
+    setIsSaving(true);
+    setWarning("");
+
+    try {
+      const res = await fetch(
+        `${API_URL}/seller-groups/${selectedGroup.seller_group_id}/members/${member.accredited_seller_id}/rates`,
+        {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            accredited_seller_assigned_rate_bailen: Number(member.accredited_seller_assigned_rate_bailen),
+            accredited_seller_assigned_rate_maragondon: Number(member.accredited_seller_assigned_rate_maragondon),
+            accredited_seller_assigned_rate_general_trias: Number(member.accredited_seller_assigned_rate_general_trias),
+          }),
+        }
+      );
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to update member rates.");
+
+      setEditingMemberId(null);
+      onSaved(data.message || "Member rates updated successfully.");
+      loadDetails();
+    } catch (error) {
+      setWarning(getErrorMessage(error));
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleSaveRate = () => {
-    setEditingMemberId(null);
-  };
+  const group = details.group;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
       <div className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
           <div>
-            <h3 className="text-xl font-bold text-slate-950">
-              {selectedGroup.groupName}
-            </h3>
-            <p className="text-sm text-slate-500">
-              Seller group details, pool rates, and members.
-            </p>
+            <h3 className="text-xl font-bold text-slate-950">{group.seller_group_name}</h3>
+            <p className="text-sm text-slate-500">Seller group details, pool rates, and members.</p>
           </div>
 
           <button
@@ -122,35 +167,42 @@ const DetailsModal = ({
 
         <div className="overflow-y-auto px-6 py-5">
           <div className="grid gap-5">
-            <section className="grid gap-4 md:grid-cols-3">
+            {warning && (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
+                {warning}
+              </div>
+            )}
+
+            <section className="grid gap-4 md:grid-cols-4">
               <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <p className="text-sm font-semibold text-slate-500">
-                  Group Head
-                </p>
+                <p className="text-sm font-semibold text-slate-500">Group Head</p>
                 <h4 className="mt-2 font-bold text-slate-950">
-                  {selectedGroup.groupHead}
+                  {group.group_head_name || "No head assigned"}
                 </h4>
               </div>
 
               <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <p className="text-sm font-semibold text-slate-500">
-                  Members
-                </p>
-                <h4 className="mt-2 text-2xl font-bold text-slate-950">
-                  {selectedGroup.members}
+                <p className="text-sm font-semibold text-slate-500">Bailen Pool</p>
+                <h4 className="mt-2 text-2xl font-bold text-blue-700">
+                  {Number(group.seller_group_pool_rate_bailen).toFixed(2)}%
                 </h4>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <p className="text-sm font-semibold text-slate-500">Members</p>
+                <h4 className="mt-2 text-2xl font-bold text-slate-950">{group.member_count}</h4>
               </div>
 
               <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <p className="text-sm font-semibold text-slate-500">Status</p>
                 <span
-                  className={`mt-2 inline-flex rounded-full border px-3 py-1 text-xs font-bold ${
-                    selectedGroup.status === "Active"
+                  className={`mt-2 inline-flex rounded-full border px-3 py-1 text-xs font-bold capitalize ${
+                    group.seller_group_status === "active"
                       ? "border-emerald-200 bg-emerald-50 text-emerald-700"
                       : "border-slate-200 bg-slate-50 text-slate-500"
                   }`}
                 >
-                  {selectedGroup.status}
+                  {group.seller_group_status}
                 </span>
               </div>
             </section>
@@ -158,151 +210,196 @@ const DetailsModal = ({
             <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <h4 className="font-bold text-slate-950">Description</h4>
               <p className="mt-2 text-sm text-slate-600">
-                {selectedGroup.description}
+                {group.seller_group_description || "No description"}
               </p>
             </section>
 
-            <section className="grid gap-4 md:grid-cols-2">
+            <section className="grid gap-4 md:grid-cols-3">
               <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <p className="text-sm font-semibold text-slate-500">Bailen</p>
                 <h4 className="mt-2 text-2xl font-bold text-slate-950">
-                  {selectedGroup.bailenPoolRate}%
+                  {Number(group.seller_group_pool_rate_bailen).toFixed(2)}%
                 </h4>
               </div>
 
               <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <p className="text-sm font-semibold text-slate-500">
-                  Maragondon
-                </p>
+                <p className="text-sm font-semibold text-slate-500">Maragondon</p>
                 <h4 className="mt-2 text-2xl font-bold text-slate-950">
-                  {selectedGroup.maragondonPoolRate}%
+                  {Number(group.seller_group_pool_rate_maragondon).toFixed(2)}%
                 </h4>
               </div>
 
+              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <p className="text-sm font-semibold text-slate-500">General Trias</p>
+                <h4 className="mt-2 text-2xl font-bold text-slate-950">
+                  {Number(group.seller_group_pool_rate_general_trias).toFixed(2)}%
+                </h4>
+              </div>
             </section>
 
             <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div className="border-b border-slate-200 px-4 py-3">
                 <h4 className="font-bold text-slate-950">Group Members</h4>
                 <p className="text-sm text-slate-500">
-                  Edit member rates per project. Click Edit Rate to make the
-                  Bailen and Maragondon rate columns editable.
+                  Click Edit Rate to convert project rate columns into number inputs. Backend validates the full parent rate chain.
                 </p>
               </div>
 
               <div className="overflow-x-auto">
-                <div className="min-w-[980px]">
-                  <div className="grid grid-cols-[1.5fr_1fr_1fr_1fr_0.8fr_1fr] bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
+                <div className="min-w-[1250px]">
+                  <div className="grid grid-cols-[1.45fr_0.9fr_1.25fr_0.8fr_0.9fr_0.9fr_0.75fr_1fr] bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
                     <p>Member</p>
                     <p>Role</p>
+                    <p>Reports Under</p>
                     <p>Bailen Rate</p>
                     <p>Maragondon Rate</p>
+                    <p>Gentri Rate</p>
                     <p>Status</p>
                     <p className="text-right">Action</p>
                   </div>
 
                   <div className="divide-y divide-slate-100">
-                    {members.map((member) => {
-                      const isEditing = editingMemberId === member.id;
+                    {isLoading ? (
+                      <div className="px-4 py-10 text-center text-sm font-semibold text-slate-500">
+                        Loading members...
+                      </div>
+                    ) : details.members.length === 0 ? (
+                      <div className="px-4 py-10 text-center">
+                        <p className="font-bold text-slate-700">No members yet.</p>
+                        <p className="text-sm text-slate-500">Create seller users and assign them to this group.</p>
+                      </div>
+                    ) : (
+                      details.members.map((member) => {
+                        const isEditing = editingMemberId === member.accredited_seller_id;
 
-                      return (
-                        <div
-                          key={member.id}
-                          className="grid grid-cols-[1.5fr_1fr_1fr_1fr_0.8fr_1fr] items-center px-4 py-4 text-sm"
-                        >
-                          <div>
-                            <p className="font-bold text-slate-950">
-                              {member.name}
-                            </p>
-                            <p className="text-sm text-slate-500">
-                              {member.email}
-                            </p>
-                          </div>
-
-                          <p className="font-semibold text-slate-700">
-                            {member.role}
-                          </p>
-
-                          <div>
-                            {isEditing ? (
-                              <input
-                                type="number"
-                                min={0}
-                                step="0.01"
-                                value={member.bailen_rate}
-                                onChange={(event) =>
-                                  updateMemberRate(
-                                    member.id,
-                                    "bailen_rate",
-                                    event.target.value
-                                  )
-                                }
-                                className="h-10 w-24 rounded-xl border border-slate-200 px-3 text-sm font-bold text-blue-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
-                              />
-                            ) : (
-                              <p className="font-bold text-blue-700">
-                                {member.bailen_rate}%
-                              </p>
-                            )}
-                          </div>
-
-                          <div>
-                            {isEditing ? (
-                              <input
-                                type="number"
-                                min={0}
-                                step="0.01"
-                                value={member.maragondon_rate}
-                                onChange={(event) =>
-                                  updateMemberRate(
-                                    member.id,
-                                    "maragondon_rate",
-                                    event.target.value
-                                  )
-                                }
-                                className="h-10 w-24 rounded-xl border border-slate-200 px-3 text-sm font-bold text-blue-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
-                              />
-                            ) : (
-                              <p className="font-bold text-blue-700">
-                                {member.maragondon_rate}%
-                              </p>
-                            )}
-                          </div>
-
-                          <span
-                            className={`w-fit rounded-full border px-3 py-1 text-xs font-bold ${
-                              member.status === "Active"
-                                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                                : "border-slate-200 bg-slate-50 text-slate-500"
-                            }`}
+                        return (
+                          <div
+                            key={member.accredited_seller_id}
+                            className="grid grid-cols-[1.45fr_0.9fr_1.25fr_0.8fr_0.9fr_0.9fr_0.75fr_1fr] items-center px-4 py-4 text-sm"
                           >
-                            {member.status}
-                          </span>
+                            <div>
+                              <p className="font-bold text-slate-950">{member.full_name}</p>
+                              <p className="text-sm text-slate-500">{member.email}</p>
+                            </div>
 
-                          <div className="flex justify-end">
-                            {isEditing ? (
-                              <button
-                                type="button"
-                                onClick={handleSaveRate}
-                                className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 text-xs font-bold text-white transition hover:bg-blue-700"
-                              >
-                                <FiSave className="h-3.5 w-3.5" />
-                                Save Rate
-                              </button>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => handleEditRate(member.id)}
-                                className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
-                              >
-                                <FiEdit2 className="h-3.5 w-3.5" />
-                                Edit Rate
-                              </button>
-                            )}
+                            <p className="font-semibold capitalize text-slate-700">
+                              {member.role.replaceAll("_", " ")}
+                            </p>
+
+                            <div>
+                              <p className="font-semibold text-slate-800">
+                                {member.reports_under_name || "Direct to Developer"}
+                              </p>
+                              <p className="text-xs text-slate-500">
+                                {member.reports_under_user_id ? "Included in hierarchy chain" : "No parent seller"}
+                              </p>
+                            </div>
+
+                            <div>
+                              {isEditing ? (
+                                <input
+                                  type="number"
+                                  min={0}
+                                  step="0.01"
+                                  value={member.accredited_seller_assigned_rate_bailen}
+                                  onChange={(event) =>
+                                    updateMemberRate(
+                                      member.accredited_seller_id,
+                                      "accredited_seller_assigned_rate_bailen",
+                                      event.target.value
+                                    )
+                                  }
+                                  className="h-10 w-24 rounded-xl border border-slate-200 px-3 text-sm font-bold text-blue-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
+                                />
+                              ) : (
+                                <p className="font-bold text-blue-700">
+                                  {Number(member.accredited_seller_assigned_rate_bailen).toFixed(2)}%
+                                </p>
+                              )}
+                            </div>
+
+                            <div>
+                              {isEditing ? (
+                                <input
+                                  type="number"
+                                  min={0}
+                                  step="0.01"
+                                  value={member.accredited_seller_assigned_rate_maragondon}
+                                  onChange={(event) =>
+                                    updateMemberRate(
+                                      member.accredited_seller_id,
+                                      "accredited_seller_assigned_rate_maragondon",
+                                      event.target.value
+                                    )
+                                  }
+                                  className="h-10 w-24 rounded-xl border border-slate-200 px-3 text-sm font-bold text-blue-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
+                                />
+                              ) : (
+                                <p className="font-bold text-slate-700">
+                                  {Number(member.accredited_seller_assigned_rate_maragondon).toFixed(2)}%
+                                </p>
+                              )}
+                            </div>
+
+                            <div>
+                              {isEditing ? (
+                                <input
+                                  type="number"
+                                  min={0}
+                                  step="0.01"
+                                  value={member.accredited_seller_assigned_rate_general_trias}
+                                  onChange={(event) =>
+                                    updateMemberRate(
+                                      member.accredited_seller_id,
+                                      "accredited_seller_assigned_rate_general_trias",
+                                      event.target.value
+                                    )
+                                  }
+                                  className="h-10 w-24 rounded-xl border border-slate-200 px-3 text-sm font-bold text-blue-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
+                                />
+                              ) : (
+                                <p className="font-bold text-slate-700">
+                                  {Number(member.accredited_seller_assigned_rate_general_trias).toFixed(2)}%
+                                </p>
+                              )}
+                            </div>
+
+                            <span
+                              className={`w-fit rounded-full border px-3 py-1 text-xs font-bold capitalize ${
+                                member.accredited_seller_status === "active"
+                                  ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                  : "border-slate-200 bg-slate-50 text-slate-500"
+                              }`}
+                            >
+                              {member.accredited_seller_status}
+                            </span>
+
+                            <div className="flex justify-end">
+                              {isEditing ? (
+                                <button
+                                  type="button"
+                                  disabled={isSaving}
+                                  onClick={() => saveMemberRates(member)}
+                                  className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 text-xs font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+                                >
+                                  <FiSave className="h-3.5 w-3.5" />
+                                  Save Rate
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingMemberId(member.accredited_seller_id)}
+                                  className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                                >
+                                  <FiEdit2 className="h-3.5 w-3.5" />
+                                  Edit Rate
+                                </button>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })
+                    )}
                   </div>
                 </div>
               </div>
