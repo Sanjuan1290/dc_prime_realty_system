@@ -10,7 +10,7 @@ import { db } from './db/connect.js'
 // Routers
 import userRouter from './routers/System/users.routers.js'
 import documentRouter from './routers/System/documents.router.js'
-import projectsRouter from './routers/Shared/projects.routers.js'
+import bailenProjectRouter from './routers/Bailen/project.router.js'
 
 const app = express()
 
@@ -33,7 +33,7 @@ app.get('/', (req, res) => {
 // Routers
 app.use('/api/v1/user', userRouter)
 app.use('/api/v1/documents', documentRouter)
-app.use('/api/v1/projects', projectsRouter)
+app.use('/api/v1/bailen/project', bailenProjectRouter)
 
 
 const PORT = process.env.PORT || 5001

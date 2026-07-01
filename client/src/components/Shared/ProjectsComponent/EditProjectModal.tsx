@@ -18,8 +18,8 @@ const EditProjectModal = ({ setIsEditProjectModalOpen } : Props) => {
 
                     <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
                         <div>
-                          <h3 className="text-lg font-black tracking-tight text-slate-950">ADD PROJECT</h3>
-                          <p className="mt-1 text-sm text-slate-500">Create project details and default document requirements.</p>
+                          <h3 className="text-lg font-black tracking-tight text-slate-950">Edit Project</h3>
+                          <p className="mt-1 text-sm text-slate-500">Edit project details and default document requirements.</p>
                         </div>
 
                         <FiX onClick={() => {setIsEditProjectModalOpen(false)}} className="h-9 w-9 cursor-pointer rounded-xl border border-slate-200 bg-white p-2 text-slate-500 duration-300 hover:border-red-200 hover:bg-red-50 hover:text-red-600"/>

@@ -31,10 +31,10 @@ const SystemLayout = () => {
       items: [{ label: "Dashboard", pathname: "", icon: FiHome }],
     },
     {
-      title: "MANAGEMENT",
-      description: "Projects, units, and buyers",
+      title: "PROJECTS",
+      description: "List of Projects",
       items: [
-        { label: "Projects", pathname: "projects", icon: FiMap },
+        { label: "Bailen Project", pathname: "/bailenProject", icon: FiMap },
       ],
     },
     {

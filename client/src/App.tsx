@@ -10,10 +10,11 @@ import Login from "./auth/Login"
 // Pages
 import SystemLayout from "./layouts/SystemLayout"
 import Dashboard from "./pages/Shared/Dashboard"
-import Projects from "./pages/Shared/Projects"
 import Document from "./pages/System/Document"
 import Listings from "./pages/Bailen/Listings"
 
+import BailenLayout from "./layouts/BailenLayout"
+import BailenDashboard from './pages/Bailen/Dashboard'
 
 const App = () => {
   
@@ -23,9 +24,12 @@ const App = () => {
 
       <Route path="/super_admin" element={<SystemLayout />}>
         <Route index element={<Dashboard />}/>
-        <Route path="projects" element={<Projects />}/>
         <Route path="listings" element={<Listings />}/>
         <Route path="documents" element={<Document />}/>
+      </Route>
+
+      <Route path="/bailenProject" element={<BailenLayout />}>
+        <Route index element={<BailenDashboard />}/>
       </Route>
     </>
   ))

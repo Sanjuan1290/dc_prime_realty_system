@@ -8,10 +8,6 @@ const DetailsProjectModal = ({setIsDetailsProjectModalOpen} : Props) => {
 
     const details = [
     {
-        name: "ID",
-        value: 2,
-    },
-    {
         name: "Name",
         value: "Maragondon",
     },
@@ -39,10 +35,7 @@ const DetailsProjectModal = ({setIsDetailsProjectModalOpen} : Props) => {
         name: "Status",
         value: "active",
     },
-    {
-        name: "Document Template",
-        value: "sample temp 2",
-    },
+
     {
         name: "Default Documents",
         value: 9,
@@ -50,10 +43,6 @@ const DetailsProjectModal = ({setIsDetailsProjectModalOpen} : Props) => {
     {
         name: "Required Documents",
         value: 9,
-    },
-    {
-        name: "Ended At",
-        value: "-",
     },
     {
         name: "Created At",
