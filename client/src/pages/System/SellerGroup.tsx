@@ -9,9 +9,9 @@ import {
 } from "react-icons/fi";
 import { NavLink } from "react-router-dom";
 import { useState } from "react";
-import NewGroupModal from "../../components/Shared/SellerGroupComponent/NewGroupModal";
-import EditGroupModal from "../../components/Shared/SellerGroupComponent/EditGroupModal";
-import DetailsModal from "../../components/Shared/SellerGroupComponent/DetailsModal";
+import NewGroupModal from "../../components/System/SellerGroupComponent/NewGroupModal";
+import EditGroupModal from "../../components/System/SellerGroupComponent/EditGroupModal";
+import DetailsModal from "../../components/System/SellerGroupComponent/DetailsModal";
 
 type SellerGroupStatus = "Active" | "Inactive";
 

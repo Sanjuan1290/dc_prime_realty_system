@@ -13,8 +13,8 @@ import {
   FiKey,
 } from "react-icons/fi";
 import { useState } from "react";
-import CreateUserModal from "../../components/Shared/UsersComponent/CreateUserModal";
-import EditUserModal from "../../components/Shared/UsersComponent/EditUserModal";
+import CreateUserModal from "../../components/System/UsersComponent/CreateUserModal";
+import EditUserModal from "../../components/System/UsersComponent/EditUserModal";
 
 const Users = () => {
   const [showEditUser, setShowEditUser] = useState(false);

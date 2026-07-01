@@ -9,10 +9,10 @@ import {
 import Login from "./auth/Login"
 // Pages
 import SystemLayout from "./layouts/SystemLayout"
-import Dashboard from "./pages/Shared/Dashboard"
-import Users from "./pages/Shared/Users"
-import Accredited from "./pages/Shared/Accredited"
-import SellerGroup from "./pages/Shared/SellerGroup"
+import Dashboard from "./pages/System/Dashboard"
+import Users from "./pages/System/Users"
+import Accredited from "./pages/System/Accredited"
+import SellerGroup from "./pages/System/SellerGroup"
 
 import Document from "./pages/System/Document"
 

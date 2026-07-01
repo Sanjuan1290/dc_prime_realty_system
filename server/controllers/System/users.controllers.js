@@ -77,14 +77,14 @@ export const login = async(req, res) => {
   
 }
 
-export const createAccount = async(req, res) => { 
-  /*
-    super_admin - can create all roles accounts,
-    admin - can create all roles accounts excluding super_admin,
-    other roles cannot create account
-  */
+export const createUser = async(req, res) => { 
 }
-
+export const editUser = async(req, res) => { 
+}
+export const deactivateUser = async(req, res) => { 
+}
+export const activateUser = async(req, res) => { 
+}
 
 export const getMe = async (req, res) => {
   try {
