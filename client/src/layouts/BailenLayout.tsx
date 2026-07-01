@@ -5,6 +5,7 @@ import { FaCircle } from "react-icons/fa6";
 import {
   FiActivity,
   FiAlertCircle,
+  FiDollarSign,
   FiGrid,
   FiHome,
   FiLogOut,
@@ -47,6 +48,7 @@ const BailenLayout = () => {
       items: [
         { label: "Listings", pathname: "listings", icon: FiGrid },
         { label: "Payments", pathname: "payments", icon: MdOutlinePayment },
+        { label: "Commissions", pathname: "commissions", icon: FiDollarSign }
       ],
     },
     {

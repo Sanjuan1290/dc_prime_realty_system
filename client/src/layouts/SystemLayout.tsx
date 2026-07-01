@@ -12,7 +12,6 @@ import {
   FiShield,
   FiUsers,
   FiMap,
-  FiUserCheck,
   FiDollarSign,
   FiActivity,
   FiClock,
@@ -42,13 +41,6 @@ const SystemLayout = () => {
       description: "management",
       items: [
         { label: "Accredited Sellers", pathname: "accredited", icon: FiMap },
-      ],
-    },
-    {
-      title: "Finance",
-      description: "Payments and payouts",
-      items: [
-        { label: "Commissions", pathname: "commissions", icon: FiDollarSign },
       ],
     },
     {
