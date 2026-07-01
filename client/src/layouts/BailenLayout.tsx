@@ -1,18 +1,29 @@
 import { Navigate, NavLink, Outlet } from "react-router-dom";
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { FaCircle } from "react-icons/fa6";
 import {
   FiActivity,
+  FiAlertCircle,
   FiFileText,
   FiGrid,
   FiHome,
   FiLogOut,
   FiMap,
   FiMenu,
+  FiRefreshCcw,
   FiSettings,
   FiX,
 } from "react-icons/fi";
+import { MdOutlinePayment } from "react-icons/md";
+
 import useCurrentUser from "../utils/useCurrentUser";
+import type { ProjectBailen } from "../types/project";
+
+type ProjectResponse = {
+  success: boolean;
+  data: ProjectBailen;
+};
 
 const BailenLayout = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -26,17 +37,18 @@ const BailenLayout = () => {
     {
       title: "PROJECT",
       description: "Project records",
-      items: [{ label: "Maragondon Project", pathname: "/maragondonProject", icon: FiMap }],
+      items: [
+        { label: "Bailen Project", pathname: "/bailenProject", icon: FiMap },
+        { label: "Maragondon Project", pathname: "/maragondonProject", icon: FiMap },
+      ],
     },
     {
-      title: "LISTINGS",
-      description: "Lots and inventory",
-      items: [{ label: "Listings", pathname: "listings", icon: FiGrid }],
-    },
-    {
-      title: "COMPLIANCE",
-      description: "Requirements",
-      items: [{ label: "Documents", pathname: "documents", icon: FiFileText }],
+      title: "LISTINGS & FINANCE",
+      description: "inventory and payments",
+      items: [
+        { label: "Listings", pathname: "listings", icon: FiGrid },
+        { label: "Payments", pathname: "payments", icon: MdOutlinePayment },
+      ],
     },
     {
       title: "ADMINISTRATION",
@@ -45,25 +57,69 @@ const BailenLayout = () => {
     },
   ];
 
-  const { data: currentUser, isLoading, isError } = useCurrentUser();
+  const { data: currentUser, isLoading: isUserLoading, isError: isUserError } =
+    useCurrentUser();
 
-  if (isLoading) {
+  const {
+    data: projectData,
+    isLoading: isProjectLoading,
+    isError: isProjectError,
+    refetch: refetchProject,
+  } = useQuery<ProjectResponse>({
+    queryKey: ["bailen-project"],
+    queryFn: async () => {
+      const res = await fetch(
+        `${import.meta.env.VITE_API_URL}/bailen/project/getProject`,
+        {
+          credentials: "include",
+        }
+      );
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.message || "Failed to fetch Bailen project.");
+      }
+
+      return data;
+    },
+    retry: false,
+  });
+
+  if (isUserLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50">
         <div className="rounded-2xl border border-slate-200 bg-white px-6 py-4 shadow-sm">
-          <p className="text-sm font-semibold text-slate-700">Loading Bailen...</p>
+          <p className="text-sm font-semibold text-slate-700">
+            Loading Bailen...
+          </p>
         </div>
       </div>
     );
   }
 
-  if (isError) {
+  if (isUserError) {
     return <Navigate to="/" replace />;
   }
 
   if (currentUser.user.must_change_password) {
     return <Navigate to="/change-password" replace />;
   }
+
+  const project = projectData?.data;
+
+  const projectName = project?.project_bailen_name || "Bailen";
+  const projectLocation = project?.project_bailen_location || "Loading...";
+  const projectCode = project?.project_bailen_location_code || "LA";
+  const projectStatus = project?.project_bailen_status || "active";
+
+  const isActiveProject = projectStatus === "active";
+
+  const statusLabel = isProjectLoading
+    ? "Loading..."
+    : isProjectError
+      ? "Unavailable"
+      : projectStatus;
 
   const userInitials = `${currentUser.user.first_name?.[0] ?? ""}${
     currentUser.user.last_name?.[0] ?? ""
@@ -90,15 +146,20 @@ const BailenLayout = () => {
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
               <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-slate-950 shadow-sm">
-                <img src="/logo-mobile.png" alt="D&C Prime logo" className="h-8 w-8" />
+                <img
+                  src="/logo-mobile.png"
+                  alt="D&C Prime logo"
+                  className="h-8 w-8"
+                />
               </div>
 
               <div className="min-w-0">
                 <p className="truncate text-sm font-bold text-slate-950">
                   D&amp;C Prime Realty
                 </p>
+
                 <p className="truncate text-xs font-medium text-slate-500">
-                  Bailen Management
+                  {projectName} Management
                 </p>
               </div>
             </div>
@@ -118,28 +179,93 @@ const BailenLayout = () => {
                 <p className="text-xs font-bold tracking-wider text-slate-400">
                   ACTIVE PROJECT
                 </p>
+
                 <div className="mt-2 flex items-center gap-2">
-                  <FaCircle className="h-2.5 w-2.5 text-emerald-600" />
-                  <h2 className="text-base font-bold text-slate-950">Bailen</h2>
+                  <FaCircle
+                    className={[
+                      "h-2.5 w-2.5",
+                      isProjectError
+                        ? "text-red-600"
+                        : isActiveProject
+                          ? "text-emerald-600"
+                          : "text-slate-400",
+                    ].join(" ")}
+                  />
+
+                  <h2 className="truncate text-base font-bold text-slate-950">
+                    {projectName}
+                  </h2>
                 </div>
               </div>
 
-              <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
-                LA
+              <span
+                className={[
+                  "rounded-full px-3 py-1 text-xs font-bold",
+                  isProjectError
+                    ? "bg-red-50 text-red-700"
+                    : "bg-emerald-50 text-emerald-700",
+                ].join(" ")}
+              >
+                {projectCode}
               </span>
             </div>
 
-            <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+            {isProjectError && (
+              <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3">
+                <div className="flex items-start gap-2">
+                  <FiAlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
+
+                  <div>
+                    <p className="text-xs font-bold text-red-700">
+                      Project data failed to load.
+                    </p>
+
+                    <button
+                      type="button"
+                      onClick={() => refetchProject()}
+                      className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-red-700 hover:text-red-900"
+                    >
+                      <FiRefreshCcw className="h-3.5 w-3.5" />
+                      Retry
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="mb-3 mt-4 grid grid-cols-2 gap-2 text-xs">
               <div className="rounded-xl bg-slate-50 p-3">
                 <p className="font-semibold text-slate-400">Location</p>
-                <p className="mt-1 font-bold text-slate-800">Cavite</p>
+
+                <p className="mt-1 truncate font-bold text-slate-800">
+                  {isProjectError ? "Unavailable" : projectLocation}
+                </p>
               </div>
 
               <div className="rounded-xl bg-slate-50 p-3">
                 <p className="font-semibold text-slate-400">Status</p>
-                <p className="mt-1 font-bold text-emerald-700">Active</p>
+
+                <p
+                  className={[
+                    "mt-1 truncate font-bold capitalize",
+                    isProjectError
+                      ? "text-red-700"
+                      : isActiveProject
+                        ? "text-emerald-700"
+                        : "text-slate-500",
+                  ].join(" ")}
+                >
+                  {statusLabel}
+                </p>
               </div>
             </div>
+
+            <NavLink
+              to="/super_admin"
+              className="inline-flex w-full items-center justify-center rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-600 duration-200 hover:bg-slate-100 hover:text-slate-950"
+            >
+              Go Back
+            </NavLink>
           </div>
         </div>
 
@@ -150,6 +276,7 @@ const BailenLayout = () => {
                 <p className="text-xs font-bold tracking-wider text-slate-500">
                   {group.title}
                 </p>
+
                 <p className="text-xs text-slate-400">{group.description}</p>
               </div>
 
@@ -159,7 +286,7 @@ const BailenLayout = () => {
 
                   return (
                     <NavLink
-                      key={item.pathname}
+                      key={`${group.title}-${item.pathname}-${item.label}`}
                       to={item.pathname}
                       end={item.pathname === ""}
                       onClick={() => setIsSidebarOpen(false)}
@@ -201,6 +328,7 @@ const BailenLayout = () => {
             <p className="truncate text-sm font-bold text-slate-950">
               {currentUser.user.first_name} {currentUser.user.last_name}
             </p>
+
             <p className="truncate text-xs text-slate-500">
               {currentUser.user.email}
             </p>
@@ -228,14 +356,22 @@ const BailenLayout = () => {
 
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <FiActivity className="h-4 w-4 shrink-0 text-emerald-600" />
+              <FiActivity
+                className={[
+                  "h-4 w-4 shrink-0",
+                  isActiveProject ? "text-emerald-600" : "text-slate-400",
+                ].join(" ")}
+              />
+
               <h1 className="truncate text-base font-bold text-slate-950">
-                Bailen Project
+                {projectName} Project
               </h1>
             </div>
 
             <p className="truncate text-xs font-medium text-slate-500 sm:text-sm">
-              Project dashboard and lot inventory
+              {isProjectError
+                ? "Project data unavailable"
+                : `${projectLocation} • ${statusLabel}`}
             </p>
           </div>
         </div>
@@ -245,6 +381,7 @@ const BailenLayout = () => {
             <p className="text-sm font-bold text-slate-950">
               {currentUser.user.first_name} {currentUser.user.last_name}
             </p>
+
             <p className="text-xs text-slate-500">Project access</p>
           </div>
 
