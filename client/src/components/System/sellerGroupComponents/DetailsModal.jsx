@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FiEdit2, FiSave, FiX } from "react-icons/fi";
+import StatusAlert from "../../Shared/StatusAlert";
 import { useFetch, useFetchPatch } from "../../../utils/useFetch";
 
 const DetailsModal = ({ setShowDetailsModal, setShowEditGroupModal, selectedGroup, onSaved }) => {
@@ -8,7 +9,7 @@ const DetailsModal = ({ setShowDetailsModal, setShowEditGroupModal, selectedGrou
   const [editingMemberId, setEditingMemberId] = useState(null);
   const [warning, setWarning] = useState("");
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ["seller-group-details", selectedGroup.seller_group_id],
     queryFn: () => useFetch(`/seller-groups/${selectedGroup.seller_group_id}`),
   });
@@ -57,8 +58,10 @@ const DetailsModal = ({ setShowDetailsModal, setShowEditGroupModal, selectedGrou
 
         <div className="overflow-y-auto px-6 py-5">
           <div className="grid gap-5">
-            {warning && <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">{warning}</div>}
-            {isLoading ? <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6 text-sm font-semibold text-slate-500">Loading group details...</div> : null}
+            {updateRateMutation.isPending ? <StatusAlert type="loading" message="Saving seller rate..." /> : null}
+            {warning ? <StatusAlert type="warning" message={warning} /> : null}
+            {isLoading ? <StatusAlert type="loading" message="Loading group details..." /> : null}
+            {isError ? <StatusAlert type="error" message={error?.message || "Failed to load group details."} /> : null}
 
             <section className="grid gap-4 md:grid-cols-4">
               <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><p className="text-sm font-semibold text-slate-500">Group Head</p><h4 className="mt-2 font-bold text-slate-950">{group.group_head_name || "No head assigned"}</h4></div>
@@ -89,7 +92,7 @@ const DetailsModal = ({ setShowDetailsModal, setShowEditGroupModal, selectedGrou
                         <div><p className="font-semibold text-slate-800">{member.reports_under_name || "Direct to Developer"}</p><p className="text-xs text-slate-500">{member.reports_under_user_id ? "Included in hierarchy chain" : "No parent seller"}</p></div>
                         {["accredited_seller_assigned_rate_bailen", "accredited_seller_assigned_rate_maragondon", "accredited_seller_assigned_rate_general_trias"].map((field) => <div key={field}>{isEditing ? <input type="number" min={0} step="0.01" value={member[field]} onChange={(event) => updateMemberRate(member.accredited_seller_id, field, event.target.value)} className="h-10 w-24 rounded-xl border border-slate-200 px-3 text-sm font-bold text-blue-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" /> : <p className="font-bold text-slate-700">{Number(member[field]).toFixed(2)}%</p>}</div>)}
                         <span className={`w-fit rounded-full border px-3 py-1 text-xs font-bold capitalize ${member.accredited_seller_status === "active" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-slate-50 text-slate-500"}`}>{member.accredited_seller_status}</span>
-                        <div className="flex justify-end">{isEditing ? <button type="button" disabled={updateRateMutation.isPending} onClick={() => updateRateMutation.mutate(member)} className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 text-xs font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"><FiSave className="h-3.5 w-3.5" />Save Rate</button> : <button type="button" onClick={() => setEditingMemberId(member.accredited_seller_id)} className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"><FiEdit2 className="h-3.5 w-3.5" />Edit Rate</button>}</div>
+                        <div className="flex justify-end">{isEditing ? <button type="button" disabled={updateRateMutation.isPending} onClick={() => updateRateMutation.mutate(member)} className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 text-xs font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"><FiSave className="h-3.5 w-3.5" />{updateRateMutation.isPending ? "Saving..." : "Save Rate"}</button> : <button type="button" onClick={() => setEditingMemberId(member.accredited_seller_id)} className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"><FiEdit2 className="h-3.5 w-3.5" />Edit Rate</button>}</div>
                       </div>
                     );
                   })}
@@ -106,3 +109,4 @@ const DetailsModal = ({ setShowDetailsModal, setShowEditGroupModal, selectedGrou
 };
 
 export default DetailsModal;
+

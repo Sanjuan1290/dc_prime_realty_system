@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import PageHeader from "../../components/Shared/PageHeader";
+import StatusAlert from "../../components/Shared/StatusAlert";
 import { FaUserPlus } from "react-icons/fa";
 import { FiRefreshCw, FiSearch, FiUsers } from "react-icons/fi";
 import { formatDateTime } from "../../utils/formatDateTime";
@@ -55,7 +56,9 @@ const Accredited = () => {
     <main className="flex flex-col gap-6">
       <PageHeader title="Accredited Sellers" description="Read-only seller directory. Rates are managed by Seller Groups in User Management." icon={FaUserPlus} />
 
-      {isError && <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error.message}</div>}
+      {isLoading ? <StatusAlert type="loading" message="Loading accredited sellers..." /> : null}
+      {!isLoading && isFetching ? <StatusAlert type="info" message="Refreshing accredited sellers..." /> : null}
+      {isError ? <StatusAlert type="error" message={error?.message || "Failed to load accredited sellers."} /> : null}
 
       <section className="grid gap-4 xl:grid-cols-[0.95fr_1.5fr]">
         <div className="grid gap-4 sm:grid-cols-3">
@@ -105,3 +108,4 @@ const Accredited = () => {
 };
 
 export default Accredited;
+

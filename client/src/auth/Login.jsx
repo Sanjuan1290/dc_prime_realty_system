@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import useCurrentUser from "../utils/useCurrentUser";
+import StatusAlert from "../components/Shared/StatusAlert";
 
 
 const Login = () => {
@@ -47,7 +48,13 @@ const Login = () => {
     }
   })
 
-  if(isLoading) return <p>Loading...</p> 
+  if (isLoading) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
+        <StatusAlert type="loading" message="Checking your session..." />
+      </main>
+    );
+  }
 
   if(currentUser?.user) {
     return <Navigate to={`/${currentUser.user.role}`}/>
@@ -170,16 +177,13 @@ const Login = () => {
                   </button>
                 </div>
 
-                {
-                   signinMutation.isError ? 
-                   <p className="text-red-700 bg-red-100 text-sm px-2 py-1 border border-red-400">{signinMutation.error.message}</p> 
-                   : null
-                }
+                {signinMutation.isPending ? <StatusAlert type="loading" message="Signing in..." /> : null}
+                {signinMutation.isError ? <StatusAlert type="error" message={signinMutation.error.message} /> : null}
 
                 <button
                   type="submit"
                   disabled={signinMutation.isPending}
-                  className="h-11 w-full rounded-lg bg-blue-600 text-sm font-semibold tracking-wide text-white transition hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-200"
+                  className="h-11 w-full rounded-lg bg-blue-600 text-sm font-semibold tracking-wide text-white transition hover:bg-blue-700 focus:outline-none focus:ring-4 focus:ring-blue-200 disabled:cursor-not-allowed disabled:bg-blue-300"
                 >
                   {
                     signinMutation.isPending ? 'Signing in' : 'Sign in'

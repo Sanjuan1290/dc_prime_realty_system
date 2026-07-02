@@ -19,6 +19,7 @@ import {
 } from "react-icons/fi";
 import { useState } from "react";
 import useCurrentUser from "../utils/useCurrentUser";
+import StatusAlert from "../components/Shared/StatusAlert";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 const SystemLayout = () => {
@@ -104,9 +105,7 @@ const SystemLayout = () => {
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50">
-        <p className="rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 shadow-sm">
-          Loading...
-        </p>
+<StatusAlert type="loading" message="Loading system access..." />
       </div>
     );
   }

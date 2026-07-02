@@ -2,6 +2,7 @@ import { useState } from "react";
 import { NavLink } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import PageHeader from "../../components/Shared/PageHeader";
+import StatusAlert from "../../components/Shared/StatusAlert";
 import { FaUserPlus } from "react-icons/fa";
 import {
   FiEdit2,
@@ -33,6 +34,7 @@ const Users = () => {
   const [showCreateUser, setShowCreateUser] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [alert, setAlert] = useState(null);
+  const [activeAction, setActiveAction] = useState(null);
 
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
@@ -72,6 +74,10 @@ const Users = () => {
 
   const toggleStatusMutation = useMutation({
     mutationFn: (user) => useFetchPatch(`/user/toggleUserStatus/${user.id}`),
+    onMutate: (user) => {
+      setActiveAction({ type: "status", userId: user.id });
+      setAlert({ type: "loading", message: `${user.status === "active" ? "Deactivating" : "Activating"} user...` });
+    },
     onSuccess: (result) => {
       setAlert({ type: "success", message: result.message || "User status updated." });
       queryClient.invalidateQueries({ queryKey: ["users"] });
@@ -80,10 +86,15 @@ const Users = () => {
     onError: (mutationError) => {
       setAlert({ type: "error", message: mutationError.message });
     },
+    onSettled: () => setActiveAction(null),
   });
 
   const resetPasswordMutation = useMutation({
     mutationFn: (user) => useFetchPatch(`/user/resetPassword/${user.id}`, { password: "password" }),
+    onMutate: (user) => {
+      setActiveAction({ type: "reset", userId: user.id });
+      setAlert({ type: "loading", message: "Resetting password..." });
+    },
     onSuccess: (result) => {
       setAlert({ type: "success", message: result.message || "Password reset." });
       queryClient.invalidateQueries({ queryKey: ["users"] });
@@ -91,6 +102,7 @@ const Users = () => {
     onError: (mutationError) => {
       setAlert({ type: "error", message: mutationError.message });
     },
+    onSettled: () => setActiveAction(null),
   });
 
   const stats = [
@@ -99,6 +111,19 @@ const Users = () => {
     { label: "Inactive", value: summary.inactive, icon: FiShield, description: "Blocked from login" },
     { label: "Password Change", value: summary.mustChangePassword, icon: FiKey, description: "Required on next login" },
   ];
+
+  const handleResetPassword = (user) => {
+    const confirmed = window.confirm(`Reset password for ${user.full_name}?`);
+    if (!confirmed) return;
+    resetPasswordMutation.mutate(user);
+  };
+
+  const handleToggleStatus = (user) => {
+    const action = user.status === "active" ? "deactivate" : "activate";
+    const confirmed = window.confirm(`Are you sure you want to ${action} ${user.full_name}?`);
+    if (!confirmed) return;
+    toggleStatusMutation.mutate(user);
+  };
 
   const openEditModal = (user) => {
     setSelectedUser(user);
@@ -139,17 +164,10 @@ const Users = () => {
         </div>
       </div>
 
-      {(alert || isError) && (
-        <div
-          className={`rounded-2xl border px-4 py-3 text-sm font-semibold ${
-            alert?.type === "success"
-              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-              : "border-red-200 bg-red-50 text-red-700"
-          }`}
-        >
-          {alert?.message || error?.message || "Failed to load users."}
-        </div>
-      )}
+      {alert ? <StatusAlert type={alert.type} message={alert.message} onClose={alert.type === "loading" ? undefined : () => setAlert(null)} /> : null}
+      {isLoading ? <StatusAlert type="loading" message="Loading users..." /> : null}
+      {!isLoading && isFetching ? <StatusAlert type="info" message="Refreshing users..." /> : null}
+      {isError ? <StatusAlert type="error" message={error?.message || "Failed to load users."} /> : null}
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {stats.map((stat) => {
@@ -269,11 +287,11 @@ const Users = () => {
                       <button type="button" onClick={() => openEditModal(user)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:bg-slate-50">
                         <FiEdit2 className="h-3.5 w-3.5" /> Edit
                       </button>
-                      <button type="button" onClick={() => resetPasswordMutation.mutate(user)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 text-xs font-bold text-amber-700 hover:bg-amber-100">
-                        <FiKey className="h-3.5 w-3.5" /> Reset
+                      <button type="button" onClick={() => handleResetPassword(user)} disabled={resetPasswordMutation.isPending || toggleStatusMutation.isPending} className="inline-flex h-9 items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 text-xs font-bold text-amber-700 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60">
+                        <FiKey className="h-3.5 w-3.5" /> {activeAction?.type === "reset" && activeAction?.userId === user.id ? "Resetting..." : "Reset"}
                       </button>
-                      <button type="button" onClick={() => toggleStatusMutation.mutate(user)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:bg-slate-50">
-                        {user.status === "active" ? "Deactivate" : "Activate"}
+                      <button type="button" onClick={() => handleToggleStatus(user)} disabled={resetPasswordMutation.isPending || toggleStatusMutation.isPending} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">
+                        {activeAction?.type === "status" && activeAction?.userId === user.id ? "Updating..." : user.status === "active" ? "Deactivate" : "Activate"}
                       </button>
                     </div>
                   </div>
@@ -307,3 +325,4 @@ const Users = () => {
 };
 
 export default Users;
+

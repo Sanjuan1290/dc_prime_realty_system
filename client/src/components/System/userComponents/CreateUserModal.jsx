@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FiUserCheck, FiX } from "react-icons/fi";
+import StatusAlert from "../../Shared/StatusAlert";
 import { useFetch, useFetchPost } from "../../../utils/useFetch";
 
 const sellerRoles = ["broker_network_manager", "broker", "manager", "agent"];
@@ -96,7 +97,8 @@ const CreateUserModal = ({ setShowCreateUser, onSaved }) => {
 
         <div className="overflow-y-auto px-6 py-5">
           <div className="grid gap-5">
-            {warning && <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">{warning}</div>}
+            {createMutation.isPending ? <StatusAlert type="loading" message="Creating user..." /> : null}
+            {warning ? <StatusAlert type="warning" message={warning} /> : null}
 
             <div className="grid gap-4 md:grid-cols-3">
               <label className="flex flex-col gap-2"><p className="text-sm font-bold text-slate-700">First Name</p><input type="text" value={form.first_name} onChange={(event) => updateForm("first_name", event.target.value)} className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" /></label>
@@ -140,7 +142,7 @@ const CreateUserModal = ({ setShowCreateUser, onSaved }) => {
         </div>
 
         <div className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50 px-6 py-4 sm:flex-row sm:justify-end">
-          <button type="button" onClick={() => setShowCreateUser(false)} className="h-11 rounded-xl border border-slate-200 bg-white px-5 text-sm font-bold text-slate-700 transition hover:bg-slate-100">Cancel</button>
+          <button type="button" onClick={() => setShowCreateUser(false)} disabled={createMutation.isPending} className="h-11 rounded-xl border border-slate-200 bg-white px-5 text-sm font-bold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60">Cancel</button>
           <button type="button" disabled={createMutation.isPending} onClick={handleSubmit} className="h-11 rounded-xl bg-blue-600 px-5 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300">{createMutation.isPending ? "Creating..." : "Create User"}</button>
         </div>
       </div>
@@ -149,3 +151,4 @@ const CreateUserModal = ({ setShowCreateUser, onSaved }) => {
 };
 
 export default CreateUserModal;
+
