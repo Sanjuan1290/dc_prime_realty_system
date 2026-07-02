@@ -1,7 +1,11 @@
 import { useState } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { RxCross2 } from "react-icons/rx";
+import { apiFetch } from "../../../utils/apiFetch";
 
-const AddDocument = ({ setShowAddDocumentModal }) => {
+const AddDocument = ({ setShowAddDocumentModal, onSaved }) => {
+  const [error, setError] = useState("");
+
   const [formData, setFormData] = useState({
     document_name: "",
     document_description: "",
@@ -10,13 +14,36 @@ const AddDocument = ({ setShowAddDocumentModal }) => {
     document_is_required: "required",
   });
 
+  const addDocumentMutation = useMutation({
+    mutationFn: (payload) =>
+      apiFetch("/documents", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: () => {
+      onSaved?.();
+      setShowAddDocumentModal(false);
+    },
+    onError: (err) => {
+      setError(err.message || "Failed to add document.");
+    },
+  });
+
   const handleChange = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleSubmit = (event) => {
     event.preventDefault();
-    setShowAddDocumentModal(false);
+    setError("");
+
+    addDocumentMutation.mutate({
+      document_name: formData.document_name,
+      document_description: formData.document_description,
+      document_is_reusable: formData.document_is_reusable === "yes",
+      document_status: formData.document_status,
+      document_is_required: formData.document_is_required === "required",
+    });
   };
 
   return (
@@ -43,6 +70,12 @@ const AddDocument = ({ setShowAddDocumentModal }) => {
         </div>
 
         <div className="flex flex-col gap-5 px-6 py-5">
+          {error && (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+              {error}
+            </div>
+          )}
+
           <label className="flex flex-col gap-2">
             <span className="text-sm font-semibold text-slate-700">
               Document Name
@@ -50,9 +83,12 @@ const AddDocument = ({ setShowAddDocumentModal }) => {
             <input
               type="text"
               value={formData.document_name}
-              onChange={(event) => handleChange("document_name", event.target.value)}
+              onChange={(event) =>
+                handleChange("document_name", event.target.value)
+              }
               placeholder="Example: Valid Government ID"
               className="h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+              required
             />
           </label>
 
@@ -133,9 +169,10 @@ const AddDocument = ({ setShowAddDocumentModal }) => {
 
           <button
             type="submit"
-            className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98]"
+            disabled={addDocumentMutation.isPending}
+            className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-blue-300"
           >
-            Add Document
+            {addDocumentMutation.isPending ? "Adding..." : "Add Document"}
           </button>
         </div>
       </form>

@@ -8,6 +8,7 @@ import { db } from './db/connect.js'
 
 // Routers
 import userRouter from './routers/System/users.routers.js'
+import documentsRouter from './routers/System/documents.router.js'
 
 const app = express()
 
@@ -32,6 +33,7 @@ app.get('/api/v1/health', (req, res) => {
 
 // System Routers
 app.use('/api/v1/user', userRouter)
+app.use('/api/v1/documents', documentsRouter)
 
 
 // 404 handler

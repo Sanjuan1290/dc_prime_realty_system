@@ -20,7 +20,7 @@ import {
 import { useState } from "react";
 import useCurrentUser from "../utils/useCurrentUser";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useFetchPost } from "../utils/useFetch";
+import { apiFetchPost } from "../utils/apiFetch";
 
 const SystemLayout = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -74,7 +74,7 @@ const SystemLayout = () => {
   const { data: currentUser, isLoading, isError } = useCurrentUser();
 
   const logoutMutation = useMutation({
-    mutationFn: () => useFetchPost("/user/logout", {}),
+    mutationFn: () => apiFetchPost("/user/logout", {}),
     onSuccess: () => {
       queryClient.clear();
       navigate("/", { replace: true });
