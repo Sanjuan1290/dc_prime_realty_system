@@ -109,7 +109,7 @@ export const getMe = async (req, res) => {
 
     const [rows] = await db.query(
       `
-        SELECT
+        SELECT  
           id,
           first_name,
           last_name,
