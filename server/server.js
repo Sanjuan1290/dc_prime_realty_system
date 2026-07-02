@@ -8,10 +8,6 @@ import { db } from './db/connect.js'
 
 // Routers
 import userRouter from './routers/System/users.routers.js'
-import documentRouter from './routers/System/documents.router.js'
-import accreditedRouter from './routers/System/accredited.router.js'
-import sellerGroupRouter from './routers/System/sellerGroup.router.js'
-import bailenProjectRouter from './routers/Bailen/project.router.js'
 
 const app = express()
 
@@ -21,7 +17,7 @@ app.use(cookieParser())
 
 app.use(
   cors({
-    origin: process.env.CORS_ORIGIN || 'http://localhost:5174',
+    origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
     credentials: true,
   })
 )
@@ -36,12 +32,7 @@ app.get('/api/v1/health', (req, res) => {
 
 // System Routers
 app.use('/api/v1/user', userRouter)
-app.use('/api/v1/documents', documentRouter)
-app.use('/api/v1/accredited', accreditedRouter)
-app.use('/api/v1/seller-groups', sellerGroupRouter)
 
-// Bailen Routers
-app.use('/api/v1/bailen/project', bailenProjectRouter)
 
 // 404 handler
 app.use((req, res) => {

@@ -1,12 +1,5 @@
-import type { IconType } from "react-icons"
 
-type Props = {
-    title: string,
-    description: string,
-    icon: IconType
-}
-
-const PageHeader = ( props: Props) => {
+const PageHeader = ( props) => {
 
     const Icon = props.icon
 

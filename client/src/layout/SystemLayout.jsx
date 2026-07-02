@@ -1,4 +1,4 @@
-import { Navigate, NavLink, Outlet } from "react-router-dom";
+import { Navigate, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { FaCircle } from "react-icons/fa6";
 import {
   FiBarChart2,
@@ -19,6 +19,8 @@ import {
 } from "react-icons/fi";
 import { useState } from "react";
 import useCurrentUser from "../utils/useCurrentUser";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useFetchPost } from "../utils/useFetch";
 
 const SystemLayout = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -67,7 +69,21 @@ const SystemLayout = () => {
     },
   ];
 
+  const navigate = useNavigate();
+  const queryClient = useQueryClient()
   const { data: currentUser, isLoading, isError } = useCurrentUser();
+
+  const logoutMutation = useMutation({
+    mutationFn: () => useFetchPost("/user/logout", {}),
+    onSuccess: () => {
+      queryClient.clear();
+      navigate("/", { replace: true });
+    },
+    onError: () => {
+      queryClient.clear();
+      navigate("/", { replace: true });
+    },
+  });
 
   if (isLoading) {
     return (
@@ -212,10 +228,12 @@ const SystemLayout = () => {
 
           <button
             type="button"
-            className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-red-200 hover:bg-red-50 hover:text-red-700"
+            onClick={() => logoutMutation.mutate()}
+            disabled={logoutMutation.isPending}
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:border-red-200 hover:bg-red-50 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <FiLogOut className="h-4 w-4" />
-            Logout
+            {logoutMutation.isPending ? "Logging out..." : "Logout"}
           </button>
         </div>
       </aside>

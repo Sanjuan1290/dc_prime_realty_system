@@ -1,7 +1,7 @@
 
 
 
-export const useFetch = async (url: string) => {
+export const useFetch = async (url) => {
     const res = await fetch(`${import.meta.env.VITE_API_URL + url}`, {
         credentials: 'include'
     })
@@ -16,7 +16,7 @@ export const useFetch = async (url: string) => {
 }
 
 
-export const useFetchPost = async (url: string, body: {}) => {
+export const useFetchPost = async (url, body) => {
     const res = await fetch(`${import.meta.env.VITE_API_URL + url}` , {
         method: 'POST',
         credentials: 'include',

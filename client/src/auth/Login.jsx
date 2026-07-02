@@ -1,6 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import type { User } from "../types/user";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useFetchPost } from "../utils/useFetch";
 import useCurrentUser from "../utils/useCurrentUser";
@@ -22,7 +21,7 @@ const Login = () => {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['currentUser'] })
 
-      const user: User = data?.user
+      const user = data?.user
       if(user.must_change_password){
         navigate('/change-password', { replace: true })
         return

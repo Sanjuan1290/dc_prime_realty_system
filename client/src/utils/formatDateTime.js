@@ -1,6 +1,6 @@
 
 
-export const formatDateTime = (dateString: string) => {
+export const formatDateTime = (dateString) => {
     const date = new Date(dateString);
 
     const parts = new Intl.DateTimeFormat("en-CA", {
@@ -13,7 +13,7 @@ export const formatDateTime = (dateString: string) => {
         hour12: false,
     }).formatToParts(date);
 
-    const get = (type: string) =>
+    const get = (type) =>
         parts.find((part) => part.type === type)?.value;
 
     return `${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")}`;
