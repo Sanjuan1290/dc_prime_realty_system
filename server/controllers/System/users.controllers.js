@@ -140,3 +140,19 @@ export const getMe = async (req, res) => {
     return res.status(401).json({ message: 'Invalid or expired token' })
   }
 }
+
+
+
+
+export const getUsers = async(req, res) => {
+
+}
+export const createUser = async(req, res) => {
+
+}
+export const editUser = async(req, res) => {
+  
+}
+export const toggleUserStatus = async(req, res) => {
+  
+}

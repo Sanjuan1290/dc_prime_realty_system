@@ -4,8 +4,8 @@ import {
   createRoutesFromElements,
   Route,
 } from "react-router-dom";
-import SystemLayout from "./layout/SystemLayout";
 import Login from "./auth/Login";
+import SystemLayout from "./layout/SystemLayout";
 import Dashboard from "./pages/System/Dashboard";
 import Documents from "./pages/System/Documents";
 import SellerGroup from "./pages/System/SellerGroup";
@@ -22,6 +22,7 @@ const App = () => {
           <Route index element={<Dashboard />}/>
           <Route path="documents" element={<Documents />}/>
           <Route path="users" element={<Users />}/>
+          <Route path="accredited" element={<Accredited />}/>
           <Route path="users/seller_group" element={<SellerGroup />}/>
           <Route path="documents" element={<Documents />}/>
         </Route>
