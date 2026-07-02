@@ -20,7 +20,6 @@ import {
 import { useState } from "react";
 import useCurrentUser from "../utils/useCurrentUser";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiFetchPost } from "../utils/apiFetch";
 
 const SystemLayout = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -74,7 +73,24 @@ const SystemLayout = () => {
   const { data: currentUser, isLoading, isError } = useCurrentUser();
 
   const logoutMutation = useMutation({
-    mutationFn: () => apiFetchPost("/user/logout", {}),
+    mutationFn: async () => {
+        const res = await fetch(`${import.meta.env.VITE_API_URL + '/user/logout'}` , {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+            'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({})
+        })
+
+        const data = await res.json()
+
+        if(!res.ok) {
+            throw new Error(data.message || 'Request Failed')
+        }
+
+        return data
+    },
     onSuccess: () => {
       queryClient.clear();
       navigate("/", { replace: true });

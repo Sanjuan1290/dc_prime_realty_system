@@ -9,7 +9,7 @@ import PageHeader from "../../components/Shared/PageHeader";
 import DocumentTemplates from "../../components/System/documentComponents/DocumentTemplates";
 import Document_Library from "../../components/System/documentComponents/DocumentLibrary";
 import DocumentAddTemplate from "../../components/System/documentComponents/DocumentAddTemplate";
-import AddDocument from "../../components/System/documentComponents/AddDocument";
+// import AddDocument from "../../components/System/documentComponents/AddDocument";
 import EditDocument from "../../components/System/documentComponents/EditDocument";
 import EditDocumentTemplate from "../../components/System/documentComponents/EditDocumentTemplate";
 

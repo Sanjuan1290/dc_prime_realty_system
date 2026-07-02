@@ -1,11 +1,21 @@
 import { useQuery } from "@tanstack/react-query"
-import { apiFetch } from "./apiFetch"
-
 
 const useCurrentUser = () => {
     return useQuery({
         queryKey: ['currentUser'],
-        queryFn: async () => apiFetch('/user/me'),
+        queryFn: async () => {
+            const res = await fetch(`${import.meta.env.VITE_API_URL + '/user/me'}`, {
+                credentials: 'include'
+            })
+        
+            const data = await res.json()
+
+            if(!res.ok) {
+                throw new Error(data.message || 'Request Failed')
+            }
+
+            return data
+        },
         staleTime: 1000 * 60 * 60 * 24,
         retry: false
     })

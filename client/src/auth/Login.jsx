@@ -1,7 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
-import { apiFetchPost } from "../utils/apiFetch";
 import useCurrentUser from "../utils/useCurrentUser";
 
 
@@ -17,7 +16,24 @@ const Login = () => {
   
   const signinMutation = useMutation({
     mutationKey: ['currentUser'],
-    mutationFn: async () => apiFetchPost('/user/login', { email, password }),
+    mutationFn: async () => {
+        const res = await fetch(`${import.meta.env.VITE_API_URL + '/user/login'}` , {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+            'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({email, password})
+        })
+
+        const data = await res.json()
+
+        if(!res.ok) {
+            throw new Error(data.message || 'Request Failed')
+        }
+
+        return data
+    },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['currentUser'] })
 
