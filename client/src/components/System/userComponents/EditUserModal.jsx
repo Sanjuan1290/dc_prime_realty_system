@@ -1,12 +1,9 @@
 import { useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FiUserCheck, FiX } from "react-icons/fi";
+import { useFetch, useFetchPut } from "../../../utils/useFetch";
 
-const sellerRoles = [
-  "broker_network_manager",
-  "broker",
-  "manager",
-  "agent",
-];
+const sellerRoles = ["broker_network_manager", "broker", "manager", "agent"];
 
 const roleLabels = {
   super_admin: "Super Admin",
@@ -17,65 +14,70 @@ const roleLabels = {
   agent: "Agent",
 };
 
-const sellerGroups = [
-  { seller_group_id: 1, seller_group_name: "Prime Sales Team" },
-  { seller_group_id: 2, seller_group_name: "External Realty Group" },
-  { seller_group_id: 3, seller_group_name: "Internal Team" },
-];
-
-const parentSellers = [
-  { user_id: 2, full_name: "MARIA REYES DELA CRUZ", role: "broker_network_manager", seller_group_id: 1 },
-  { user_id: 3, full_name: "JUAN LAZARO SANTOS", role: "broker", seller_group_id: 1 },
-  { user_id: 4, full_name: "LEA GARCIA RAMOS", role: "manager", seller_group_id: 2 },
-];
-
 const EditUserModal = ({ setShowEditUser, selectedUser, onSaved }) => {
-  const [isSaving, setIsSaving] = useState(false);
+  const queryClient = useQueryClient();
   const [warning, setWarning] = useState("");
-
   const [form, setForm] = useState({
-    first_name: selectedUser.first_name || "",
-    middle_name: selectedUser.middle_name || "",
-    last_name: selectedUser.last_name || "",
-    email: selectedUser.email || "",
-    contact_no: selectedUser.contact_no || "",
-    role: selectedUser.role,
-    status: selectedUser.status,
-    seller_group_id: selectedUser.seller_group_id ? String(selectedUser.seller_group_id) : "",
-    reports_under_user_id: selectedUser.reports_under_user_id ? String(selectedUser.reports_under_user_id) : "",
-    accreditation_date: selectedUser.accreditation_date ? selectedUser.accreditation_date.slice(0, 10) : new Date().toISOString().slice(0, 10),
+    first_name: selectedUser?.first_name || "",
+    middle_name: selectedUser?.middle_name || "",
+    last_name: selectedUser?.last_name || "",
+    email: selectedUser?.email || "",
+    contact_no: selectedUser?.contact_no || "",
+    password: "password",
+    role: selectedUser?.role || "agent",
+    status: selectedUser?.status || "active",
+    seller_group_id: selectedUser?.seller_group_id ? String(selectedUser.seller_group_id) : "",
+    reports_under_user_id: selectedUser?.reports_under_user_id ? String(selectedUser.reports_under_user_id) : "",
+    accreditation_date: selectedUser?.accreditation_date ? String(selectedUser.accreditation_date).slice(0, 10) : new Date().toISOString().slice(0, 10),
   });
 
+  const { data: groupData } = useQuery({
+    queryKey: ["seller-group-options"],
+    queryFn: () => useFetch("/seller-groups/options"),
+  });
+
+  const { data: parentData } = useQuery({
+    queryKey: ["parent-sellers"],
+    queryFn: () => useFetch("/accredited/parents"),
+  });
+
+  const sellerGroups = groupData?.data || [];
+  const parentSellers = parentData?.data || [];
   const isSellerRole = sellerRoles.includes(form.role);
 
   const allowedParents = useMemo(() => {
     if (!isSellerRole) return [];
 
     return parentSellers.filter((seller) => {
-      if (seller.user_id === selectedUser.id) return false;
       if (form.role === "broker_network_manager") return false;
       if (form.role === "broker") return seller.role === "broker_network_manager";
       if (form.role === "manager") return seller.role === "broker" || seller.role === "broker_network_manager";
       return seller.role === "manager" || seller.role === "broker" || seller.role === "broker_network_manager";
     });
-  }, [form.role, isSellerRole, selectedUser.id]);
+  }, [form.role, isSellerRole, parentSellers]);
+
+  const editMutation = useMutation({
+    mutationFn: () => useFetchPut(`/user/editUser/${selectedUser.id}`, form),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["users"] });
+      queryClient.invalidateQueries({ queryKey: ["accredited"] });
+      setShowEditUser(false);
+      onSaved?.(data.message || "User updated successfully.");
+    },
+    onError: (error) => setWarning(error.message),
+  });
 
   const updateForm = (field, value) => {
     setForm((currentForm) => ({ ...currentForm, [field]: value }));
   };
 
   const handleSubmit = () => {
+    setWarning("");
     if (!form.first_name.trim() || !form.last_name.trim() || !form.email.trim()) {
       setWarning("First name, last name, and email are required.");
       return;
     }
-
-    setIsSaving(true);
-    setTimeout(() => {
-      setIsSaving(false);
-      setShowEditUser(false);
-      onSaved?.("User updated successfully.");
-    }, 200);
+    editMutation.mutate();
   };
 
   return (
@@ -87,103 +89,37 @@ const EditUserModal = ({ setShowEditUser, selectedUser, onSaved }) => {
             <p className="text-sm text-slate-500">Update account details and hierarchy.</p>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setShowEditUser(false)}
-            className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
-          >
+          <button type="button" onClick={() => setShowEditUser(false)} className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900">
             <FiX className="h-5 w-5" />
           </button>
         </div>
 
         <div className="overflow-y-auto px-6 py-5">
           <div className="grid gap-5">
-            {warning && (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
-                {warning}
-              </div>
-            )}
+            {warning && <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">{warning}</div>}
 
             <div className="grid gap-4 md:grid-cols-3">
-              <label className="flex flex-col gap-2">
-                <p className="text-sm font-bold text-slate-700">First Name</p>
-                <input
-                  type="text"
-                  value={form.first_name}
-                  onChange={(event) => updateForm("first_name", event.target.value)}
-                  className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
-                />
-              </label>
-
-              <label className="flex flex-col gap-2">
-                <p className="text-sm font-bold text-slate-700">Middle Name</p>
-                <input
-                  type="text"
-                  value={form.middle_name}
-                  onChange={(event) => updateForm("middle_name", event.target.value)}
-                  className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
-                />
-              </label>
-
-              <label className="flex flex-col gap-2">
-                <p className="text-sm font-bold text-slate-700">Last Name</p>
-                <input
-                  type="text"
-                  value={form.last_name}
-                  onChange={(event) => updateForm("last_name", event.target.value)}
-                  className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
-                />
-              </label>
+              <label className="flex flex-col gap-2"><p className="text-sm font-bold text-slate-700">First Name</p><input type="text" value={form.first_name} onChange={(event) => updateForm("first_name", event.target.value)} className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" /></label>
+              <label className="flex flex-col gap-2"><p className="text-sm font-bold text-slate-700">Middle Name</p><input type="text" value={form.middle_name} onChange={(event) => updateForm("middle_name", event.target.value)} className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" /></label>
+              <label className="flex flex-col gap-2"><p className="text-sm font-bold text-slate-700">Last Name</p><input type="text" value={form.last_name} onChange={(event) => updateForm("last_name", event.target.value)} className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" /></label>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="flex flex-col gap-2">
-                <p className="text-sm font-bold text-slate-700">Email</p>
-                <input
-                  type="email"
-                  value={form.email}
-                  onChange={(event) => updateForm("email", event.target.value)}
-                  className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
-                />
-              </label>
-
-              <label className="flex flex-col gap-2">
-                <p className="text-sm font-bold text-slate-700">Contact No.</p>
-                <input
-                  type="text"
-                  value={form.contact_no}
-                  onChange={(event) => updateForm("contact_no", event.target.value)}
-                  className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
-                />
-              </label>
+            <div className="grid gap-4 md:grid-cols-3">
+              <label className="flex flex-col gap-2"><p className="text-sm font-bold text-slate-700">Email</p><input type="email" value={form.email} onChange={(event) => updateForm("email", event.target.value)} className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" /></label>
+              <label className="flex flex-col gap-2"><p className="text-sm font-bold text-slate-700">Contact No.</p><input type="text" value={form.contact_no} onChange={(event) => updateForm("contact_no", event.target.value)} className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" /></label>
+              <label className="flex flex-col gap-2"><p className="text-sm font-bold text-slate-700">Temporary Password</p><input type="text" value={form.password} onChange={(event) => updateForm("password", event.target.value)} disabled className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" /></label>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
               <label className="flex flex-col gap-2">
                 <p className="text-sm font-bold text-slate-700">Role</p>
-                <select
-                  value={form.role}
-                  onChange={(event) => {
-                    updateForm("role", event.target.value);
-                    updateForm("reports_under_user_id", "");
-                  }}
-                  className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
-                >
-                  {Object.entries(roleLabels).map(([value, label]) => (
-                    <option key={value} value={value}>
-                      {label}
-                    </option>
-                  ))}
+                <select value={form.role} onChange={(event) => { updateForm("role", event.target.value); updateForm("reports_under_user_id", ""); }} className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50">
+                  {Object.entries(roleLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                 </select>
               </label>
-
               <label className="flex flex-col gap-2">
                 <p className="text-sm font-bold text-slate-700">Status</p>
-                <select
-                  value={form.status}
-                  onChange={(event) => updateForm("status", event.target.value)}
-                  className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
-                >
+                <select value={form.status} onChange={(event) => updateForm("status", event.target.value)} className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50">
                   <option value="active">Active</option>
                   <option value="inactive">Inactive</option>
                 </select>
@@ -192,56 +128,11 @@ const EditUserModal = ({ setShowEditUser, selectedUser, onSaved }) => {
 
             {isSellerRole && (
               <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
-                <div className="mb-4 flex items-center gap-3">
-                  <FiUserCheck className="h-5 w-5 text-blue-700" />
-                  <div>
-                    <h4 className="font-bold text-slate-950">Seller Hierarchy</h4>
-                    <p className="text-sm text-slate-500">Changing this affects seller directory assignment.</p>
-                  </div>
-                </div>
-
+                <div className="mb-4 flex items-center gap-3"><FiUserCheck className="h-5 w-5 text-blue-700" /><div><h4 className="font-bold text-slate-950">Seller Hierarchy</h4><p className="text-sm text-slate-500">Changing this affects seller directory assignment.</p></div></div>
                 <div className="grid gap-4 md:grid-cols-3">
-                  <label className="flex flex-col gap-2">
-                    <p className="text-sm font-bold text-slate-700">Seller Group</p>
-                    <select
-                      value={form.seller_group_id}
-                      onChange={(event) => updateForm("seller_group_id", event.target.value)}
-                      className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
-                    >
-                      <option value="">Select seller group</option>
-                      {sellerGroups.map((group) => (
-                        <option key={group.seller_group_id} value={group.seller_group_id}>
-                          {group.seller_group_name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label className="flex flex-col gap-2">
-                    <p className="text-sm font-bold text-slate-700">Reports Under</p>
-                    <select
-                      value={form.reports_under_user_id}
-                      onChange={(event) => updateForm("reports_under_user_id", event.target.value)}
-                      className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
-                    >
-                      <option value="">Direct to Developer / None</option>
-                      {allowedParents.map((seller) => (
-                        <option key={seller.user_id} value={seller.user_id}>
-                          {seller.full_name} - {roleLabels[seller.role]}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-
-                  <label className="flex flex-col gap-2">
-                    <p className="text-sm font-bold text-slate-700">Accreditation Date</p>
-                    <input
-                      type="date"
-                      value={form.accreditation_date}
-                      onChange={(event) => updateForm("accreditation_date", event.target.value)}
-                      className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
-                    />
-                  </label>
+                  <label className="flex flex-col gap-2"><p className="text-sm font-bold text-slate-700">Seller Group</p><select value={form.seller_group_id} onChange={(event) => updateForm("seller_group_id", event.target.value)} className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"><option value="">Select seller group</option>{sellerGroups.map((group) => <option key={group.seller_group_id} value={group.seller_group_id}>{group.seller_group_name}</option>)}</select></label>
+                  <label className="flex flex-col gap-2"><p className="text-sm font-bold text-slate-700">Reports Under</p><select value={form.reports_under_user_id} onChange={(event) => updateForm("reports_under_user_id", event.target.value)} className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"><option value="">Direct to Developer / None</option>{allowedParents.map((seller) => <option key={seller.user_id} value={seller.user_id}>{seller.full_name} - {roleLabels[seller.role]}</option>)}</select></label>
+                  <label className="flex flex-col gap-2"><p className="text-sm font-bold text-slate-700">Accreditation Date</p><input type="date" value={form.accreditation_date} onChange={(event) => updateForm("accreditation_date", event.target.value)} className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" /></label>
                 </div>
               </div>
             )}
@@ -249,22 +140,8 @@ const EditUserModal = ({ setShowEditUser, selectedUser, onSaved }) => {
         </div>
 
         <div className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50 px-6 py-4 sm:flex-row sm:justify-end">
-          <button
-            type="button"
-            onClick={() => setShowEditUser(false)}
-            className="h-11 rounded-xl border border-slate-200 bg-white px-5 text-sm font-bold text-slate-700 transition hover:bg-slate-100"
-          >
-            Cancel
-          </button>
-
-          <button
-            type="button"
-            disabled={isSaving}
-            onClick={handleSubmit}
-            className="h-11 rounded-xl bg-blue-600 px-5 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
-          >
-            {isSaving ? "Saving..." : "Save Changes"}
-          </button>
+          <button type="button" onClick={() => setShowEditUser(false)} className="h-11 rounded-xl border border-slate-200 bg-white px-5 text-sm font-bold text-slate-700 transition hover:bg-slate-100">Cancel</button>
+          <button type="button" disabled={editMutation.isPending} onClick={handleSubmit} className="h-11 rounded-xl bg-blue-600 px-5 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300">{editMutation.isPending ? "Saving..." : "Save Changes"}</button>
         </div>
       </div>
     </div>
