@@ -12,6 +12,15 @@ import SellerGroup from "./pages/System/SellerGroup";
 import Users from './pages/System/Users'
 import Accredited from './pages/System/Accredited'
 
+        // Add these imports to your current App.jsx
+import BailenLayout from './layout/BailenLayout'
+import BailenDashboard from './pages/BailenProject/Dashboard'
+import BailenListings from './pages/BailenProject/Listings'
+import BailenListingProfile from './pages/BailenProject/ListingProfile'
+import BailenPayment from './pages/BailenProject/Payment'
+import BailenPaymentLogs from './pages/BailenProject/PaymentLogs'
+import BailenCommission from './pages/BailenProject/Commission'
+
 const App = () => {
   const router = createBrowserRouter(
     createRoutesFromElements(
@@ -26,6 +35,18 @@ const App = () => {
           <Route path="users/seller_group" element={<SellerGroup />}/>
           <Route path="documents" element={<Documents />}/>
         </Route>
+
+
+
+        <Route path="/bailenProject" element={<BailenLayout />}>
+          <Route index element={<BailenDashboard />} />
+          <Route path="listings" element={<BailenListings />} />
+          <Route path="listings/:listingId" element={<BailenListingProfile />} />
+          <Route path="payments" element={<BailenPayment />} />
+          <Route path="payments-audit" element={<BailenPaymentLogs />} />
+          <Route path="commissions" element={<BailenCommission />} />
+        </Route>
+
       </>
     )
   );
