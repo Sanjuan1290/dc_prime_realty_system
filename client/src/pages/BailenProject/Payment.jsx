@@ -1,45 +1,19 @@
-import { NavLink } from 'react-router-dom'
-import { FiCreditCard, FiExternalLink } from 'react-icons/fi'
+import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { FiCreditCard, FiPlus, FiSearch } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
+import StatusAlert from '../../components/Shared/StatusAlert'
+import AddPaymentModal from '../../components/BailenProject/PaymentComponents/AddPaymentModal/AddPaymentModal'
+import { useFetch } from '../../utils/useFetch'
+import { formatMoney } from '../../utils/formatMoney'
 
 const Payment = () => {
-  return (
-    <main className="flex flex-col gap-6">
-      <PageHeader title="Bailen Payments" description="Use this as the payment landing page. Actual payment entry stays inside each listing SOA." icon={FiCreditCard} />
+  const [showAddPaymentModal, setShowAddPaymentModal] = useState(false)
+  const [search, setSearch] = useState('')
+  const { data, isLoading, isError, error } = useQuery({ queryKey: ['bailen-payments', search], queryFn: () => useFetch(`/bailen/payments?search=${encodeURIComponent(search)}`) })
+  const payments = data?.data || []
+  const summary = data?.summary || {}
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="text-xl font-bold text-slate-950">Payment workflow</h2>
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-          Payments should be recorded from the listing details page so every payment stays linked to a unit, buyer, SOA row, and reference number.
-        </p>
-
-        <div className="mt-5 grid gap-4 md:grid-cols-3">
-          {[
-            { step: '1', title: 'Open Listing', text: 'Go to Listings and open the unit details.' },
-            { step: '2', title: 'Payments & SOA', text: 'Record payment against the correct SOA row.' },
-            { step: '3', title: 'Audit Logs', text: 'Review the read-only payment audit trail.' },
-          ].map((item) => (
-            <div key={item.step} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-sm font-bold text-white">{item.step}</span>
-              <h3 className="mt-3 font-bold text-slate-950">{item.title}</h3>
-              <p className="mt-1 text-sm text-slate-500">{item.text}</p>
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-          <NavLink to="/bailenProject/listings" className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-bold text-white transition hover:bg-blue-700">
-            Open Listings
-            <FiExternalLink className="h-4 w-4" />
-          </NavLink>
-          <NavLink to="/bailenProject/payments-audit" className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 text-sm font-bold text-slate-700 transition hover:bg-slate-50">
-            View Audit Logs
-            <FiExternalLink className="h-4 w-4" />
-          </NavLink>
-        </div>
-      </section>
-    </main>
-  )
+  return <main className="flex flex-col gap-6"><div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between"><PageHeader title="Bailen Payments" description="Input verified payments from client units. Cash references are generated after saving." icon={FiCreditCard} /><button onClick={()=>setShowAddPaymentModal(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-bold text-white"><FiPlus />Add Payment</button></div>{isLoading ? <StatusAlert type="loading" message="Loading payments..." /> : null}{isError ? <StatusAlert type="error" message={error?.message || 'Failed to load payments.'} /> : null}<section className="grid gap-4 md:grid-cols-3"><div className="rounded-2xl border bg-white p-5"><p className="text-sm font-bold text-slate-500">Verified Collections</p><h3 className="mt-2 text-2xl font-black text-slate-950">{formatMoney(summary.verified_collections)}</h3></div><div className="rounded-2xl border bg-white p-5"><p className="text-sm font-bold text-slate-500">Payment Count</p><h3 className="mt-2 text-2xl font-black text-slate-950">{summary.payment_count || 0}</h3></div><div className="rounded-2xl border bg-white p-5"><p className="text-sm font-bold text-slate-500">Source</p><h3 className="mt-2 text-2xl font-black text-slate-950">Listings</h3></div></section><section className="rounded-2xl border border-slate-200 bg-white shadow-sm"><div className="flex flex-col gap-4 border-b p-4 md:flex-row md:items-center md:justify-between"><div><h2 className="text-lg font-bold">Payment Records</h2><p className="text-sm font-semibold text-slate-500">Every row is verified by the admin who encoded it.</p></div><label className="relative"><FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={search} onChange={(e)=>setSearch(e.target.value)} placeholder="Search client, unit, reference, or type" className="h-11 rounded-xl border pl-10 pr-3 text-sm font-semibold outline-none focus:border-blue-300 focus:ring-4 focus:ring-blue-50" /></label></div><div className="overflow-x-auto"><table className="w-full min-w-[980px] text-left text-sm"><thead className="bg-slate-50 text-xs font-black uppercase text-slate-500"><tr><th className="px-4 py-3">Date</th><th className="px-4 py-3">Client</th><th className="px-4 py-3">Unit</th><th className="px-4 py-3">Type</th><th className="px-4 py-3">Method</th><th className="px-4 py-3">Amount</th><th className="px-4 py-3">Reference</th><th className="px-4 py-3">Encoded By</th></tr></thead><tbody className="divide-y">{payments.map(p=><tr key={p.payment_id}><td className="px-4 py-4 font-bold">{p.payment_date}</td><td className="px-4 py-4">{p.buyer_name}</td><td className="px-4 py-4">{p.unit_code}</td><td className="px-4 py-4 capitalize">{p.payment_type?.replaceAll('_',' ')}</td><td className="px-4 py-4 capitalize">{p.payment_method?.replaceAll('_',' ')}</td><td className="px-4 py-4 font-bold text-blue-700">{formatMoney(p.amount)}</td><td className="px-4 py-4">{p.reference_id}</td><td className="px-4 py-4">{p.encoded_by_name || '-'}</td></tr>)}</tbody></table></div></section>{showAddPaymentModal ? <AddPaymentModal setShowAddPaymentModal={setShowAddPaymentModal} /> : null}</main>
 }
-
 export default Payment

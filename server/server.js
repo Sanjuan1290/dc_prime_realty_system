@@ -1,3 +1,5 @@
+
+
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
@@ -6,19 +8,26 @@ import 'express-async-errors';
 
 import { db } from './db/connect.js';
 
-// Routers
+// System Routers
 import userRouter from './routers/System/users.routers.js';
 import documentsRouter from './routers/System/documents.routers.js';
 import sellerGroupRouter from './routers/System/sellerGroup.routers.js';
 import accreditedRouter from './routers/System/accredited.routers.js';
+
+// Bailen Routers
+import bailenDashboardRouter from './routers/BailenProject/dashboard.routers.js';
+import bailenListingsRouter from './routers/BailenProject/listings.routers.js';
+import bailenListingProfileRouter from './routers/BailenProject/listingProfile.routers.js';
+import bailenPaymentsRouter from './routers/BailenProject/payments.routers.js';
+import bailenPaymentLogsRouter from './routers/BailenProject/paymentLogs.routers.js';
+import bailenCommissionsRouter from './routers/BailenProject/commissions.routers.js';
+
 
 const app = express();
 
 app.use(helmet());
 app.use(express.json({ limit: '10mb' }));
 app.use(cookieParser());
-
-
 
 app.use(
   cors({
@@ -41,7 +50,14 @@ app.use('/api/v1/documents', documentsRouter);
 app.use('/api/v1/seller-groups', sellerGroupRouter);
 app.use('/api/v1/accredited', accreditedRouter);
 
-// 404 handler
+// Bailen Routers
+app.use('/api/v1/bailen/dashboard', bailenDashboardRouter);
+app.use('/api/v1/bailen/listings', bailenListingsRouter);
+app.use('/api/v1/bailen/listing-profile', bailenListingProfileRouter);
+app.use('/api/v1/bailen/payments', bailenPaymentsRouter);
+app.use('/api/v1/bailen/payment-logs', bailenPaymentLogsRouter);
+app.use('/api/v1/bailen/commissions', bailenCommissionsRouter);
+
 app.use((req, res) => {
   res.status(404).json({
     status: 'error',
@@ -49,12 +65,9 @@ app.use((req, res) => {
   });
 });
 
-// Error handler
 app.use((err, req, res, next) => {
   if (res.headersSent) return next(err);
-
   console.error('Unhandled server error:', err);
-
   return res.status(err.statusCode || 500).json({
     status: 'error',
     message: err.message || 'Internal server error',

@@ -3,23 +3,22 @@ import {
   createBrowserRouter,
   createRoutesFromElements,
   Route,
-} from "react-router-dom";
-import Login from "./auth/Login";
-import SystemLayout from "./layout/SystemLayout";
-import Dashboard from "./pages/System/Dashboard";
-import Documents from "./pages/System/Documents";
-import SellerGroup from "./pages/System/SellerGroup";
+} from 'react-router-dom'
+import Login from './auth/Login'
+import SystemLayout from './layout/SystemLayout'
+import BailenLayout from './layout/BailenLayout'
+import SystemDashboard from './pages/System/Dashboard'
+import Documents from './pages/System/Documents'
+import SellerGroup from './pages/System/SellerGroup'
 import Users from './pages/System/Users'
 import Accredited from './pages/System/Accredited'
-
-        // Add these imports to your current App.jsx
-import BailenLayout from './layout/BailenLayout'
 import BailenDashboard from './pages/BailenProject/Dashboard'
-import BailenListings from './pages/BailenProject/Listings'
-import BailenListingProfile from './pages/BailenProject/ListingProfile'
-import BailenPayment from './pages/BailenProject/Payment'
-import BailenPaymentLogs from './pages/BailenProject/PaymentLogs'
-import BailenCommission from './pages/BailenProject/Commission'
+import Listings from './pages/BailenProject/Listings'
+import ListingProfile from './pages/BailenProject/ListingProfile'
+import Payment from './pages/BailenProject/Payment'
+import PaymentLogs from './pages/BailenProject/PaymentLogs'
+import Commission from './pages/BailenProject/Commission'
+import BailenSettings from './pages/BailenProject/Settings'
 
 const App = () => {
   const router = createBrowserRouter(
@@ -28,30 +27,27 @@ const App = () => {
         <Route path="/" element={<Login />} />
 
         <Route path="/super_admin" element={<SystemLayout />}>
-          <Route index element={<Dashboard />}/>
-          <Route path="documents" element={<Documents />}/>
-          <Route path="users" element={<Users />}/>
-          <Route path="accredited" element={<Accredited />}/>
-          <Route path="users/seller_group" element={<SellerGroup />}/>
-          <Route path="documents" element={<Documents />}/>
+          <Route index element={<SystemDashboard />} />
+          <Route path="documents" element={<Documents />} />
+          <Route path="users" element={<Users />} />
+          <Route path="accredited" element={<Accredited />} />
+          <Route path="users/seller_group" element={<SellerGroup />} />
         </Route>
-
-
 
         <Route path="/bailenProject" element={<BailenLayout />}>
           <Route index element={<BailenDashboard />} />
-          <Route path="listings" element={<BailenListings />} />
-          <Route path="listings/:listingId" element={<BailenListingProfile />} />
-          <Route path="payments" element={<BailenPayment />} />
-          <Route path="payments-audit" element={<BailenPaymentLogs />} />
-          <Route path="commissions" element={<BailenCommission />} />
+          <Route path="listings" element={<Listings />} />
+          <Route path="listings/:listingId" element={<ListingProfile />} />
+          <Route path="payments" element={<Payment />} />
+          <Route path="payment-logs" element={<PaymentLogs />} />
+          <Route path="commissions" element={<Commission />} />
+          <Route path="settings" element={<BailenSettings />} />
         </Route>
-
       </>
     )
-  );
+  )
 
-  return <RouterProvider router={router} />;
-};
+  return <RouterProvider router={router} />
+}
 
-export default App;
+export default App

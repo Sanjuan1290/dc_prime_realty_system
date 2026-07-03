@@ -1,105 +1,11 @@
 import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { FiDollarSign, FiEye } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
+import StatusAlert from '../../components/Shared/StatusAlert'
 import ReleaseDetailsModal from '../../components/BailenProject/CommissionComponents/ReleaseDetailsModal/ReleaseDetailsModal'
+import { useFetch } from '../../utils/useFetch'
+import { formatMoney } from '../../utils/formatMoney'
 
-const Commission = () => {
-  const [showReleaseDetailsModal, setShowReleaseDetailsModal] = useState(false)
-
-  const records = [
-    {
-      unit: 'LA-0402',
-      buyer: 'Robert San Juan',
-      seller: 'Rowena Cortez',
-      group: 'NORTH STAR GROUP',
-      tcp: '₱1,008,000.00',
-      gross: '₱80,640.00',
-      released: '₱0.00',
-      cashAdvance: '₱0.00',
-      netRemaining: '₱80,640.00',
-      status: 'Pending',
-    },
-  ]
-
-  const cards = [
-    { label: 'Commission Records', value: '1', note: 'Generated from sold listings' },
-    { label: 'Gross Commission', value: '₱80,640.00', note: 'Before cash advance deductions' },
-    { label: 'Released Commission', value: '₱0.00', note: 'Paid to sellers' },
-    { label: 'Next Release Day', value: '7th / 22nd', note: 'Release days only' },
-  ]
-
-  return (
-    <main className="flex flex-col gap-6">
-      <PageHeader title="Bailen Commissions" description="View listing-based commission snapshots and release readiness." icon={FiDollarSign} />
-
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {cards.map((card) => (
-          <div key={card.label} className={`rounded-2xl border p-5 shadow-sm ${card.label === 'Next Release Day' ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-white'}`}>
-            <p className={`text-sm font-bold ${card.label === 'Next Release Day' ? 'text-amber-700' : 'text-slate-500'}`}>{card.label}</p>
-            <h3 className={`mt-2 text-2xl font-bold ${card.label === 'Next Release Day' ? 'text-amber-800' : 'text-slate-950'}`}>{card.value}</h3>
-            <p className={`mt-1 text-sm ${card.label === 'Next Release Day' ? 'text-amber-700' : 'text-slate-500'}`}>{card.note}</p>
-          </div>
-        ))}
-      </section>
-
-      <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-200 p-5">
-          <h2 className="text-lg font-bold text-slate-950">Commission Records</h2>
-          <p className="text-sm text-slate-500">Each record should come from a sold listing with saved seller snapshot.</p>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[1200px] text-left text-sm">
-            <thead className="bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-500">
-              <tr>
-                <th className="px-4 py-3">Unit</th>
-                <th className="px-4 py-3">Buyer</th>
-                <th className="px-4 py-3">Seller</th>
-                <th className="px-4 py-3">Group</th>
-                <th className="px-4 py-3">TCP</th>
-                <th className="px-4 py-3">Gross</th>
-                <th className="px-4 py-3">Released</th>
-                <th className="px-4 py-3">Cash Advance</th>
-                <th className="px-4 py-3">Net Remaining</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {records.map((record) => (
-                <tr key={record.unit}>
-                  <td className="px-4 py-4 font-bold text-slate-950">{record.unit}</td>
-                  <td className="px-4 py-4 font-semibold text-slate-700">{record.buyer}</td>
-                  <td className="px-4 py-4 font-semibold text-slate-700">{record.seller}</td>
-                  <td className="px-4 py-4 font-bold text-slate-700">{record.group}</td>
-                  <td className="px-4 py-4 font-bold text-slate-950">{record.tcp}</td>
-                  <td className="px-4 py-4 font-bold text-blue-700">{record.gross}</td>
-                  <td className="px-4 py-4 font-bold text-slate-700">{record.released}</td>
-                  <td className="px-4 py-4 font-bold text-red-600">{record.cashAdvance}</td>
-                  <td className="px-4 py-4 font-bold text-emerald-700">{record.netRemaining}</td>
-                  <td className="px-4 py-4">
-                    <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">{record.status}</span>
-                  </td>
-                  <td className="px-4 py-4 text-right">
-                    <button
-                      type="button"
-                      onClick={() => setShowReleaseDetailsModal(true)}
-                      className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
-                    >
-                      <FiEye className="h-3.5 w-3.5" />
-                      View Releases
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      {showReleaseDetailsModal ? <ReleaseDetailsModal setShowReleaseDetailsModal={setShowReleaseDetailsModal} /> : null}
-    </main>
-  )
-}
-
+const Commission = () => { const [selected,setSelected]=useState(null); const {data,isLoading,isError,error}=useQuery({queryKey:['bailen-commissions'],queryFn:()=>useFetch('/bailen/commissions')}); const rows=data?.data||[]; const summary=data?.summary||{}; return <main className="flex flex-col gap-6"><PageHeader title="Bailen Commissions" description="View listing-based commission snapshots and release readiness." icon={FiDollarSign} />{isLoading?<StatusAlert type="loading" message="Loading commissions..." />:null}{isError?<StatusAlert type="error" message={error?.message||'Failed to load commissions.'} />:null}<section className="grid gap-4 md:grid-cols-4"><div className="rounded-2xl border bg-white p-5"><p className="text-sm font-bold text-slate-500">Commission Records</p><h3 className="mt-2 text-2xl font-black">{summary.total_records||0}</h3></div><div className="rounded-2xl border bg-white p-5"><p className="text-sm font-bold text-slate-500">Gross Commission</p><h3 className="mt-2 text-2xl font-black text-blue-700">{formatMoney(summary.gross_commission)}</h3></div><div className="rounded-2xl border bg-white p-5"><p className="text-sm font-bold text-slate-500">Released</p><h3 className="mt-2 text-2xl font-black text-emerald-700">{formatMoney(summary.released_amount)}</h3></div><div className="rounded-2xl border border-amber-200 bg-amber-50 p-5"><p className="text-sm font-bold text-amber-700">Release Reminder</p><h3 className="mt-2 text-2xl font-black text-amber-900">7th / 22nd</h3></div></section><section className="rounded-2xl border bg-white shadow-sm"><div className="border-b p-5"><h2 className="text-lg font-bold">Commission Records</h2><p className="text-sm font-semibold text-slate-500">Each record comes from a sold listing with saved seller snapshot.</p></div><div className="overflow-x-auto"><table className="w-full min-w-[1000px] text-left text-sm"><thead className="bg-slate-50 text-xs font-black uppercase text-slate-500"><tr><th className="px-4 py-3">Unit</th><th className="px-4 py-3">Buyer</th><th className="px-4 py-3">Seller</th><th className="px-4 py-3">Group</th><th className="px-4 py-3">TCP</th><th className="px-4 py-3">Gross</th><th className="px-4 py-3">Released</th><th className="px-4 py-3">Net Remaining</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-right">Action</th></tr></thead><tbody className="divide-y">{rows.map(row=><tr key={row.commission_id}><td className="px-4 py-4 font-bold">{row.unit_code}</td><td className="px-4 py-4">{row.buyer_name}</td><td className="px-4 py-4">{row.seller_name}</td><td className="px-4 py-4">{row.seller_group_name}</td><td className="px-4 py-4">{formatMoney(row.tcp_snapshot)}</td><td className="px-4 py-4 font-bold text-blue-700">{formatMoney(row.gross_commission)}</td><td className="px-4 py-4 font-bold text-emerald-700">{formatMoney(row.released_amount)}</td><td className="px-4 py-4 font-bold">{formatMoney(row.net_remaining)}</td><td className="px-4 py-4"><span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold capitalize text-blue-700">{row.status}</span></td><td className="px-4 py-4 text-right"><button onClick={()=>setSelected(row.commission_id)} className="inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-bold"><FiEye />View Releases</button></td></tr>)}</tbody></table></div></section>{selected ? <ReleaseDetailsModal commissionId={selected} setShowReleaseDetailsModal={()=>setSelected(null)} /> : null}</main> }
 export default Commission

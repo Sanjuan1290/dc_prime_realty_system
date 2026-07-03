@@ -1,0 +1,15 @@
+import express from 'express';
+import { getListingProfile, updateUnitStatus } from '../../controllers/BailenProject/listingProfile/listingProfile.controller.js';
+import { getSellerOptions, upsertClientProfile } from '../../controllers/BailenProject/listingProfile/clientProfile.controller.js';
+import { approveDocument, deleteDocumentUpload, uploadDocument } from '../../controllers/BailenProject/listingProfile/documents.controller.js';
+import { generateSOA } from '../../controllers/BailenProject/listingProfile/paymentsAndSOA.controller.js';
+const router = express.Router();
+router.get('/seller-options', getSellerOptions);
+router.get('/:id', getListingProfile);
+router.put('/:id/unit-status', updateUnitStatus);
+router.put('/:id/client-profile', upsertClientProfile);
+router.post('/:id/soa/generate', generateSOA);
+router.put('/:id/documents/:requirementId/upload', uploadDocument);
+router.put('/:id/documents/:requirementId/approve', approveDocument);
+router.delete('/:id/documents/:requirementId/upload', deleteDocumentUpload);
+export default router;

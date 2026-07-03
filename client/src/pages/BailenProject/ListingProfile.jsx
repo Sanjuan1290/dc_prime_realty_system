@@ -1,108 +1,88 @@
 import { useState } from 'react'
-import { NavLink } from 'react-router-dom'
+import { NavLink, useParams } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { FiArrowLeft, FiCreditCard, FiFileText, FiHome, FiPrinter, FiSave, FiUser } from 'react-icons/fi'
+import StatusAlert from '../../components/Shared/StatusAlert'
+import { useFetch } from '../../utils/useFetch'
+import { formatMoney, formatNumber } from '../../utils/formatMoney'
 import UnitStatus from '../../components/BailenProject/ListingProfileComponents/UnitStatus/UnitStatus'
 import ClientProfile from '../../components/BailenProject/ListingProfileComponents/ClientProfile/ClientProfile'
-import PaymentsSOA from '../../components/BailenProject/ListingProfileComponents/PaymentsSOA/Payments_SOA'
+import Payments_SOA from '../../components/BailenProject/ListingProfileComponents/PaymentsSOA/Payments_SOA'
 import Documents from '../../components/BailenProject/ListingProfileComponents/Documents/Documents'
 import Printouts from '../../components/BailenProject/ListingProfileComponents/Printouts/Printouts'
 
+const tabs = [
+  { key: 'unit', label: 'Unit & Status', icon: FiHome },
+  { key: 'client', label: 'Client Profile', icon: FiUser },
+  { key: 'payments', label: 'Payments & SOA', icon: FiCreditCard },
+  { key: 'documents', label: 'Documents', icon: FiFileText },
+  { key: 'printouts', label: 'Printouts', icon: FiPrinter },
+]
+
 const ListingProfile = () => {
+  const { listingId } = useParams()
   const [activeTab, setActiveTab] = useState('unit')
 
-  const tabs = [
-    { id: 'unit', label: 'Unit & Status', icon: FiHome, component: <UnitStatus /> },
-    { id: 'client', label: 'Client Profile', icon: FiUser, component: <ClientProfile /> },
-    { id: 'payments', label: 'Payments & SOA', icon: FiCreditCard, component: <PaymentsSOA /> },
-    { id: 'documents', label: 'Documents', icon: FiFileText, component: <Documents /> },
-    { id: 'printouts', label: 'Printouts', icon: FiPrinter, component: <Printouts /> },
-  ]
+  const { data, isLoading, isFetching, isError, error } = useQuery({
+    queryKey: ['bailen-listing-profile', listingId],
+    queryFn: () => useFetch(`/bailen/listing-profile/${listingId}`),
+    enabled: Boolean(listingId),
+  })
 
-  const currentTab = tabs.find((tab) => tab.id === activeTab) || tabs[0]
+  const listing = data?.listing
+  const client = data?.client_profile
+  const soaRows = data?.soa_rows || []
+  const payments = data?.payments || []
+  const documents = data?.documents || []
+
+  const completeDocs = documents.filter((doc) => doc.document_review_status === 'approved').length
+
+  const renderTab = () => {
+    if (!listing) return null
+    if (activeTab === 'unit') return <UnitStatus listing={listing} />
+    if (activeTab === 'client') return <ClientProfile listing={listing} client={client} />
+    if (activeTab === 'payments') return <Payments_SOA listing={listing} soaRows={soaRows} payments={payments} />
+    if (activeTab === 'documents') return <Documents listing={listing} documents={documents} />
+    if (activeTab === 'printouts') return <Printouts listing={listing} client={client} soaRows={soaRows} />
+    return null
+  }
 
   return (
     <main className="flex flex-col gap-6">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div>
-          <NavLink to="/bailenProject/listings" className="mb-3 inline-flex items-center gap-2 text-sm font-bold text-blue-700 hover:text-blue-800">
-            <FiArrowLeft className="h-4 w-4" />
-            Back to Listings
-          </NavLink>
-          <div className="flex items-center gap-3">
-            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
-              <FiHome className="h-5 w-5" />
-            </span>
-            <div>
-              <h1 className="text-2xl font-bold text-slate-950 sm:text-3xl">LA-0402 Listing Details</h1>
-              <p className="text-sm text-slate-500">Edit the unit, save the buyer profile per listing, manage SOA, upload documents, and prepare printouts.</p>
-            </div>
-          </div>
+          <NavLink to="/bailenProject/listings" className="mb-3 inline-flex items-center gap-2 text-sm font-bold text-blue-700 hover:text-blue-800"><FiArrowLeft />Back to Listings</NavLink>
+          <h1 className="text-3xl font-black text-slate-950">{listing?.unit_code || 'Listing'} Details</h1>
+          <p className="mt-1 text-sm font-semibold text-slate-500">Edit the unit, save the buyer profile, manage SOA, upload documents, and prepare printouts.</p>
         </div>
-
-        <button className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700">
-          <FiSave className="h-4 w-4" />
-          Save Listing Changes
-        </button>
+        <button type="button" className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-bold text-white shadow-sm"><FiSave />Save Listing Changes</button>
       </div>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <p className="text-sm font-bold text-slate-500">Unit</p>
-          <h3 className="mt-2 text-2xl font-bold text-slate-950">LA-0402</h3>
-          <p className="mt-1 text-sm text-slate-500">300 sqm</p>
-        </div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <p className="text-sm font-bold text-slate-500">TCP</p>
-          <h3 className="mt-2 text-2xl font-bold text-blue-700">₱1,008,000.00</h3>
-          <p className="mt-1 text-sm text-slate-500">Includes LMF</p>
-        </div>
-        <button
-          type="button"
-          onClick={() => setActiveTab('client')}
-          className="rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:border-blue-200 hover:bg-blue-50"
-        >
-          <p className="text-sm font-bold text-slate-500">Client Profile</p>
-          <h3 className="mt-2 text-2xl font-bold text-slate-950">Complete</h3>
-          <p className="mt-1 text-sm text-slate-500">Needed for printouts</p>
-        </button>
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <label className="text-sm font-bold text-slate-500">Status</label>
-          <select className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 outline-none focus:border-blue-300 focus:ring-4 focus:ring-blue-50">
-            <option>Sold</option>
-            <option>Available</option>
-            <option>Hold</option>
-            <option>Pending for Cancellation</option>
-            <option>Cancelled</option>
-          </select>
-        </div>
-      </section>
+      {isLoading ? <StatusAlert type="loading" message="Loading listing details..." /> : null}
+      {!isLoading && isFetching ? <StatusAlert type="info" message="Refreshing listing details..." /> : null}
+      {isError ? <StatusAlert type="error" message={error?.message || 'Failed to load listing profile.'} /> : null}
 
-      <section className="grid gap-5 xl:grid-cols-[280px_1fr]">
-        <aside className="h-fit rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-          {tabs.map((tab) => {
-            const Icon = tab.icon
-            const isActive = tab.id === activeTab
+      {listing ? (
+        <>
+          <section className="grid gap-4 lg:grid-cols-4">
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><p className="text-sm font-bold text-slate-500">Unit</p><h3 className="mt-2 text-2xl font-black text-slate-950">{listing.unit_code}</h3><p className="text-sm font-semibold text-slate-500">{formatNumber(listing.lot_area_sqm)} sqm</p></div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><p className="text-sm font-bold text-slate-500">TCP</p><h3 className="mt-2 text-2xl font-black text-blue-700">{formatMoney(listing.tcp)}</h3><p className="text-sm font-semibold text-slate-500">Includes LMF</p></div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><p className="text-sm font-bold text-slate-500">Client Profile</p><h3 className="mt-2 text-2xl font-black capitalize text-slate-950">{listing.buyer_profile_status}</h3><p className="text-sm font-semibold text-slate-500">Needed for printouts</p></div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><p className="text-sm font-bold text-slate-500">Documents</p><h3 className="mt-2 text-2xl font-black text-slate-950">{completeDocs}/{documents.length}</h3><p className="text-sm font-semibold text-slate-500">Approved documents</p></div>
+          </section>
 
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveTab(tab.id)}
-                className={`mb-1 flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-bold transition last:mb-0 ${
-                  isActive ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'
-                }`}
-              >
-                <Icon className="h-4 w-4" />
-                {tab.label}
-              </button>
-            )
-          })}
-        </aside>
-
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          {currentTab.component}
-        </section>
-      </section>
+          <section className="grid gap-5 xl:grid-cols-[260px_1fr]">
+            <aside className="h-fit rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+              {tabs.map((tab) => {
+                const Icon = tab.icon
+                const active = activeTab === tab.key
+                return <button key={tab.key} onClick={() => setActiveTab(tab.key)} className={`mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold transition ${active ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'}`}><Icon className="h-4 w-4" />{tab.label}</button>
+              })}
+            </aside>
+            <div>{renderTab()}</div>
+          </section>
+        </>
+      ) : null}
     </main>
   )
 }
