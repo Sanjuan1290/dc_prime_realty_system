@@ -1,0 +1,4 @@
+import { FiSettings } from 'react-icons/fi'
+import PageHeader from '../../components/Shared/PageHeader'
+const Settings = () => <main className="flex flex-col gap-6"><PageHeader title="Bailen Settings" description="Mock settings. Notifications are intentionally not included yet." icon={FiSettings}/><section className="grid gap-4 md:grid-cols-2"><div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm"><h2 className="text-lg font-black text-slate-950">Commission Release Days</h2><p className="mt-2 text-sm font-semibold text-slate-500">7th and 22nd of the month</p></div><div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm"><h2 className="text-lg font-black text-slate-950">Project Contact</h2><p className="mt-2 text-sm font-semibold text-slate-500">Reservation Assistance: D&C Prime Realty</p></div></section></main>
+export default Settings
