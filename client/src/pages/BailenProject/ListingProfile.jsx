@@ -6,6 +6,7 @@ import {
   FiHome,
   FiPrinter,
   FiUser,
+  FiUserCheck,
 } from 'react-icons/fi'
 import { useNavigate, useParams } from 'react-router-dom'
 
@@ -16,6 +17,7 @@ import ClientProfile from '../../components/BailenProject/ListingProfileComponen
 import PaymentsSOA from '../../components/BailenProject/ListingProfileComponents/PaymentsSOA/Payments_SOA'
 import Documents from '../../components/BailenProject/ListingProfileComponents/Documents/Documents'
 import Printouts from '../../components/BailenProject/ListingProfileComponents/Printouts/Printouts'
+import ReserveListingModal from '../../components/BailenProject/ListingProfileComponents/ReserveListingModal/ReserveListingModal'
 
 const mockListing = {
   unit_id: 'LA-0402',
@@ -32,8 +34,8 @@ const mockListing = {
   derived_unit_ids: '-',
 
   lot_type: 'Inner',
-  listing_status: 'Pending Cancellation',
-  status: 'Pending Cancellation',
+  listing_status: 'Available',
+  status: 'Available',
 
   lot_area_sqm: '300 sqm',
   lotAreaSqm: 300,
@@ -60,12 +62,11 @@ const mockListing = {
   interestRate: '0.00%',
   monthlyAmortization: 6311,
 
-  buyer_name: 'robert',
+  buyer_name: '-',
   spouse_co_owner: '-',
-  email: 'robert@gmail.com',
-  contact_no: '09575857575',
-  address:
-    'b70 l44 sampaguita st. cluster 5 bella vista, brgy. santiago, general trias, cavite',
+  email: '-',
+  contact_no: '-',
+  address: '-',
   region: 'REGION 4A',
   assigned_user: 'Super Admin',
   due_day: '1',
@@ -323,6 +324,7 @@ const ListingProfile = () => {
   const { listingId } = useParams()
 
   const [activeTab, setActiveTab] = useState('unit')
+  const [showReserveModal, setShowReserveModal] = useState(false)
   const [alert, setAlert] = useState({
     type: 'info',
     message: 'Mock listing profile only. Each tab now renders its actual component file.',
@@ -332,6 +334,15 @@ const ListingProfile = () => {
     ...mockListing,
     tcp: mockListing.tcpAmount,
     balance: mockListing.balanceAmount,
+  }
+
+  const handleReserveListing = (reservationPayload) => {
+    setShowReserveModal(false)
+
+    setAlert({
+      type: 'success',
+      message: `${reservationPayload.listing.unitId} reserved successfully in mock mode.`,
+    })
   }
 
   return (
@@ -375,7 +386,7 @@ const ListingProfile = () => {
             </div>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-4">
             <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
               <p className="text-xs font-black uppercase text-slate-500">TCP</p>
               <p className="mt-1 text-sm font-black text-slate-950">
@@ -390,12 +401,21 @@ const ListingProfile = () => {
               </p>
             </div>
 
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-              <p className="text-xs font-black uppercase text-amber-700">Status</p>
-              <p className="mt-1 text-sm font-black text-amber-800">
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+              <p className="text-xs font-black uppercase text-emerald-700">Status</p>
+              <p className="mt-1 text-sm font-black text-emerald-800">
                 {mockListing.listing_status}
               </p>
             </div>
+
+            <button
+              type="button"
+              onClick={() => setShowReserveModal(true)}
+              className="inline-flex min-h-[68px] items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98]"
+            >
+              <FiUserCheck className="h-4 w-4" />
+              Reserve
+            </button>
           </div>
         </div>
       </section>
@@ -446,6 +466,15 @@ const ListingProfile = () => {
           listing={mockListing}
           client={mockClient}
           soaRows={mockSoaRows}
+        />
+      ) : null}
+
+      {showReserveModal ? (
+        <ReserveListingModal
+          listing={mockListing}
+          client={mockClient}
+          onClose={() => setShowReserveModal(false)}
+          onReserve={handleReserveListing}
         />
       ) : null}
     </main>

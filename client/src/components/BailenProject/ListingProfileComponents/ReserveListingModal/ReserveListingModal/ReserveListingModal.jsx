@@ -1,0 +1,393 @@
+import { useMemo, useState } from 'react'
+import {
+  FiAlertCircle,
+  FiChevronLeft,
+  FiChevronRight,
+  FiLoader,
+  FiUserCheck,
+  FiX,
+} from 'react-icons/fi'
+import StatusAlert from '../../../Shared/StatusAlert'
+import ReserveClientProfileModal from './ReserveClientProfileModal'
+import ReserveDocumentChecklistModal from './ReserveDocumentChecklistModal'
+import ReservePaymentTermsModal from './ReservePaymentTermsModal'
+import { documentLibrary, projectDefaultDocuments, reserveSteps, sellers } from './reserveData'
+import { getInitialClientForm, getListingTcp, getPaymentCalculations } from './reserveUtils'
+import { StepPill } from './ReserveShared'
+
+const ReserveListingModal = ({ listing, client, onClose, onReserve }) => {
+  const [activeStep, setActiveStep] = useState(1)
+  const [clientForm, setClientForm] = useState(() => getInitialClientForm(client))
+  const [selectedDocuments, setSelectedDocuments] = useState([])
+  const [searchDocument, setSearchDocument] = useState('')
+  const [alert, setAlert] = useState(null)
+  const [isLoadingDefaults, setIsLoadingDefaults] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [deletingDocId, setDeletingDocId] = useState(null)
+
+  const [paymentForm, setPaymentForm] = useState({
+    sellerId: '1',
+    modeOfPayment: 'installment',
+    saleChannel: 'distributed',
+
+    reservationFee: String(listing?.reservationFee || '50000'),
+    startingDate: '2026-04-02',
+    firstDueDate: '2026-04-02',
+    legalMiscFee: 'include_in_monthly',
+
+    downpaymentPercentageMode: '30',
+    customDownpaymentPercentage: '',
+    downpaymentTermsMode: 'spot_cash',
+    customDownpaymentTerms: '',
+    dpDiscountPercentage: '0',
+
+    monthlyTermsMode: '36',
+    customMonthlyTerms: '',
+    interestRate: String(listing?.annualInterestRate || '0'),
+  })
+
+  const tcp = useMemo(() => getListingTcp(listing), [listing])
+
+  const hasSecondBuyer = clientForm.buyerType === 'spouses' || clientForm.buyerType === 'and_account'
+
+  const filteredDocuments = useMemo(() => {
+    const keyword = searchDocument.trim().toLowerCase()
+
+    if (!keyword) return documentLibrary
+
+    return documentLibrary.filter((document) =>
+      document.name.toLowerCase().includes(keyword)
+    )
+  }, [searchDocument])
+
+  const updatePaymentField = (key, value) => {
+    setPaymentForm((current) => ({
+      ...current,
+      [key]: value,
+    }))
+
+    if (alert?.type === 'error') {
+      setAlert(null)
+    }
+  }
+
+  const updateBuyerType = (buyerType) => {
+    setClientForm((current) => ({
+      ...current,
+      buyerType,
+      secondBuyerRole: buyerType === 'spouses' ? 'spouse' : 'co_owner',
+    }))
+
+    setAlert({
+      type: 'info',
+      message:
+        buyerType === 'single'
+          ? 'Single buyer selected. Second buyer form hidden.'
+          : 'Second buyer form shown for the Offer to Buy printout.',
+    })
+  }
+
+  const isDocumentAdded = (documentId) => selectedDocuments.some((item) => item.id === documentId)
+
+  const addDocument = (document) => {
+    if (isDocumentAdded(document.id)) {
+      setAlert({ type: 'info', message: 'Document is already added.' })
+      return
+    }
+
+    setSelectedDocuments((current) => [
+      ...current,
+      {
+        ...document,
+        requirement: 'required',
+        status: 'active',
+      },
+    ])
+
+    setAlert({
+      type: 'success',
+      message: `${document.name} added to reservation checklist.`,
+    })
+  }
+
+  const removeDocument = (documentId) => {
+    setDeletingDocId(documentId)
+    setAlert({ type: 'loading', message: 'Removing document from checklist...' })
+
+    window.setTimeout(() => {
+      setSelectedDocuments((current) => current.filter((document) => document.id !== documentId))
+      setDeletingDocId(null)
+      setAlert({ type: 'warning', message: 'Document removed from reservation checklist.' })
+    }, 350)
+  }
+
+  const loadProjectDefaults = () => {
+    setIsLoadingDefaults(true)
+    setAlert({ type: 'loading', message: 'Loading project default documents...' })
+
+    window.setTimeout(() => {
+      setSelectedDocuments(projectDefaultDocuments)
+      setIsLoadingDefaults(false)
+      setAlert({ type: 'success', message: 'Project default documents loaded.' })
+    }, 600)
+  }
+
+  const validateClientStep = () => {
+    if (!clientForm.buyerName.trim()) {
+      setAlert({ type: 'error', message: 'Principal buyer full name is required.' })
+      return false
+    }
+
+    if (!clientForm.contactNo.trim()) {
+      setAlert({ type: 'error', message: 'Principal buyer mobile number is required.' })
+      return false
+    }
+
+    if (!clientForm.presentAddress.trim()) {
+      setAlert({ type: 'error', message: 'Principal buyer present address is required.' })
+      return false
+    }
+
+    if (hasSecondBuyer && !clientForm.secondBuyerName.trim()) {
+      setAlert({ type: 'error', message: 'Spouse / second buyer full name is required.' })
+      return false
+    }
+
+    if (hasSecondBuyer && !clientForm.secondBuyerContactNo.trim()) {
+      setAlert({ type: 'error', message: 'Spouse / second buyer mobile number is required.' })
+      return false
+    }
+
+    return true
+  }
+
+  const validatePaymentStep = () => {
+    if (!paymentForm.reservationFee || Number(paymentForm.reservationFee) <= 0) {
+      setAlert({ type: 'error', message: 'Reservation fee is required.' })
+      return false
+    }
+
+    if (paymentForm.downpaymentPercentageMode === 'custom' && Number(paymentForm.customDownpaymentPercentage || 0) <= 0) {
+      setAlert({ type: 'error', message: 'Custom downpayment percentage is required.' })
+      return false
+    }
+
+    if (paymentForm.downpaymentTermsMode === 'custom' && Number(paymentForm.customDownpaymentTerms || 0) <= 0) {
+      setAlert({ type: 'error', message: 'Custom downpayment terms is required.' })
+      return false
+    }
+
+    if (paymentForm.monthlyTermsMode === 'custom' && Number(paymentForm.customMonthlyTerms || 0) <= 0) {
+      setAlert({ type: 'error', message: 'Custom monthly terms is required.' })
+      return false
+    }
+
+    return true
+  }
+
+  const goNext = () => {
+    if (activeStep === 1 && !validateClientStep()) return
+
+    setActiveStep((current) => Math.min(current + 1, 3))
+    setAlert({
+      type: 'success',
+      message: `${reserveSteps[activeStep - 1].title} saved in draft. Continue to the next step.`,
+    })
+  }
+
+  const goBack = () => {
+    setActiveStep((current) => Math.max(current - 1, 1))
+    setAlert(null)
+  }
+
+  const handleReserve = () => {
+    if (!validateClientStep()) {
+      setActiveStep(1)
+      return
+    }
+
+    if (!validatePaymentStep()) {
+      setActiveStep(3)
+      return
+    }
+
+    const selectedSeller = sellers.find((seller) => String(seller.id) === String(paymentForm.sellerId)) || sellers[0]
+    const paymentCalculations = getPaymentCalculations(tcp, paymentForm)
+
+    const payload = {
+      listing,
+      clientProfile: {
+        ...clientForm,
+        profileStatus: 'complete',
+      },
+      documents: selectedDocuments,
+      reservation: {
+        status: 'reserved',
+        seller: selectedSeller,
+        modeOfPayment: paymentForm.modeOfPayment,
+        saleChannel: paymentForm.saleChannel,
+        paymentTerms: {
+          ...paymentForm,
+          tcp,
+          downpaymentPercentage: paymentCalculations.downpaymentPercentage,
+          downpaymentTerms: paymentCalculations.downpaymentTerms,
+          monthlyTerms: paymentCalculations.monthlyTerms,
+          preview: paymentCalculations.preview,
+        },
+      },
+    }
+
+    setIsSaving(true)
+    setAlert({ type: 'loading', message: 'Creating reservation in mock mode...' })
+
+    window.setTimeout(() => {
+      setIsSaving(false)
+      setAlert({ type: 'success', message: 'Reservation created successfully in mock mode.' })
+      onReserve?.({
+        listing: {
+          unitId: listing?.unit_id || listing?.unitCode || 'LA-0000',
+        },
+        ...payload,
+      })
+    }, 900)
+  }
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/50 p-4">
+      <div className="flex h-[94vh] w-full max-w-7xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
+        <div className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 px-5">
+          <div>
+            <h2 className="text-lg font-black text-slate-950">Reserve Listing</h2>
+            <p className="text-xs font-semibold text-slate-500">
+              {listing?.unit_id || listing?.unitCode || 'Selected Unit'} · {listing?.project_name || listing?.projectName || 'Bailen Project'}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isSaving}
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+            aria-label="Close reserve listing modal"
+          >
+            <FiX className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="shrink-0 border-b border-slate-200 bg-slate-50 p-4">
+          <div className="flex gap-3 overflow-x-auto">
+            {reserveSteps.map((step) => (
+              <StepPill
+                key={step.id}
+                step={step}
+                activeStep={activeStep}
+                completed={activeStep > step.id}
+              />
+            ))}
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-5">
+          {alert ? (
+            <StatusAlert
+              type={alert.type}
+              message={alert.message}
+              onClose={alert.type === 'loading' ? undefined : () => setAlert(null)}
+              className="mb-4"
+            />
+          ) : null}
+
+          {activeStep === 1 ? (
+            <ReserveClientProfileModal
+              clientForm={clientForm}
+              setClientForm={setClientForm}
+              hasSecondBuyer={hasSecondBuyer}
+              updateBuyerType={updateBuyerType}
+            />
+          ) : null}
+
+          {activeStep === 2 ? (
+            <ReserveDocumentChecklistModal
+              filteredDocuments={filteredDocuments}
+              searchDocument={searchDocument}
+              setSearchDocument={setSearchDocument}
+              selectedDocuments={selectedDocuments}
+              isSaving={isSaving}
+              isLoadingDefaults={isLoadingDefaults}
+              deletingDocId={deletingDocId}
+              isDocumentAdded={isDocumentAdded}
+              addDocument={addDocument}
+              removeDocument={removeDocument}
+              loadProjectDefaults={loadProjectDefaults}
+            />
+          ) : null}
+
+          {activeStep === 3 ? (
+            <ReservePaymentTermsModal
+              listing={listing}
+              tcp={tcp}
+              paymentForm={paymentForm}
+              updatePaymentField={updatePaymentField}
+            />
+          ) : null}
+        </div>
+
+        <div className="flex shrink-0 flex-col gap-2 border-t border-slate-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2 text-sm font-semibold text-slate-500">
+            <FiAlertCircle className="h-4 w-4" />
+            <span>
+              Step {activeStep} of {reserveSteps.length}
+            </span>
+          </div>
+
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isSaving}
+              className="h-10 rounded-lg border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Cancel
+            </button>
+
+            {activeStep > 1 ? (
+              <button
+                type="button"
+                onClick={goBack}
+                disabled={isSaving}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <FiChevronLeft className="h-4 w-4" />
+                Back
+              </button>
+            ) : null}
+
+            {activeStep < 3 ? (
+              <button
+                type="button"
+                onClick={goNext}
+                disabled={isSaving}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Next
+                <FiChevronRight className="h-4 w-4" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleReserve}
+                disabled={isSaving}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSaving ? <FiLoader className="h-4 w-4 animate-spin" /> : <FiUserCheck className="h-4 w-4" />}
+                {isSaving ? 'Reserving...' : 'Reserve Listing'}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export default ReserveListingModal
