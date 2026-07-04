@@ -8,33 +8,64 @@ import {
   FiUser,
 } from 'react-icons/fi'
 import { useNavigate, useParams } from 'react-router-dom'
+
 import StatusAlert from '../../components/Shared/StatusAlert'
+
 import UnitStatus from '../../components/BailenProject/ListingProfileComponents/UnitStatus/UnitStatus'
+import ClientProfile from '../../components/BailenProject/ListingProfileComponents/ClientProfile/ClientProfile'
+import PaymentsSOA from '../../components/BailenProject/ListingProfileComponents/PaymentsSOA/Payments_SOA'
+import Documents from '../../components/BailenProject/ListingProfileComponents/Documents/Documents'
+import Printouts from '../../components/BailenProject/ListingProfileComponents/Printouts/Printouts'
 
 const mockListing = {
   unit_id: 'LA-0402',
+  unitCode: 'LA-0402',
+
   project_name: 'Bailen Project',
+  projectName: 'Bailen Project',
   project_location: 'Bailen, Cavite',
   administrator: 'IMELDA B. VILLALOBOS',
+
   cadastral_lot_no: '-',
   old_unit_ids: '-',
   source_unit_ids: '-',
   derived_unit_ids: '-',
+
   lot_type: 'Inner',
   listing_status: 'Pending Cancellation',
+  status: 'Pending Cancellation',
 
   lot_area_sqm: '300 sqm',
+  lotAreaSqm: 300,
+
   price_per_sqm: '₱1,200.00',
+  pricePerSqm: 1200,
+
   net_selling_price: '₱360,000.00',
+  netSellingPrice: 360000,
+
   lmf_rate: '10%',
+  legalMiscRate: 10,
+
   lmf_amount: '₱36,000.00',
+  lmfAmount: 36000,
+
   tcp: '₱396,000.00',
+  tcpAmount: 396000,
+
+  reservationFee: 50000,
+  downpayment: 118800,
+  balanceAmount: 227200,
+  terms: '36 months',
+  interestRate: '0.00%',
+  monthlyAmortization: 6311,
 
   buyer_name: 'robert',
   spouse_co_owner: '-',
   email: 'robert@gmail.com',
   contact_no: '09575857575',
-  address: 'b70 l44 sampaguita st. cluster 5 bella vista, brgy. santiago, general trias, cavite',
+  address:
+    'b70 l44 sampaguita st. cluster 5 bella vista, brgy. santiago, general trias, cavite',
   region: 'REGION 4A',
   assigned_user: 'Super Admin',
   due_day: '1',
@@ -68,6 +99,217 @@ const mockListing = {
   client_unit_updated: '2026-07-01',
 }
 
+const mockClient = {
+  profileStatus: 'incomplete',
+
+  buyerType: 'spouses',
+
+  buyerRole: 'Principal Buyer',
+  buyerName: 'robert',
+  birthDate: '',
+  placeOfBirth: '',
+  computedAge: '-',
+  citizenship: '',
+  gender: '',
+  civilStatus: '',
+  contactNo: '0957567575',
+  residencePhoneNumber: '',
+  email: 'robert@gmail.cmo',
+  tin: '',
+  presentAddress:
+    'b70 l44 cremonia st. cluster 5, bella vista, brgy. santiago, general trias, cavite',
+  presentZipCode: '',
+  permanentAddress: '',
+  permanentZipCode: '',
+
+  employmentStatus: '',
+  employerBusinessName: '',
+  employerZipCode: '',
+  natureOfWorkBusiness: '',
+  occupationPositionTitle: '',
+  monthlyIncome: '',
+  employerBusinessAddress: '',
+
+  secondBuyerRole: 'spouse',
+  secondBuyerName: '',
+  secondBuyerBirthDate: '',
+  secondBuyerPlaceOfBirth: '',
+  secondBuyerComputedAge: '-',
+  secondBuyerCitizenship: '',
+  secondBuyerGender: '',
+  secondBuyerCivilStatus: '',
+  secondBuyerContactNo: '',
+  secondBuyerResidencePhoneNumber: '',
+  secondBuyerEmail: '',
+  secondBuyerTin: '',
+  secondBuyerPresentAddress: '',
+  secondBuyerPresentZipCode: '',
+  secondBuyerPermanentAddress: '',
+  secondBuyerPermanentZipCode: '',
+
+  secondBuyerEmploymentStatus: '',
+  secondBuyerEmployerBusinessName: '',
+  secondBuyerEmployerZipCode: '',
+  secondBuyerNatureOfWorkBusiness: '',
+  secondBuyerOccupationPositionTitle: '',
+  secondBuyerMonthlyIncome: '',
+  secondBuyerEmployerBusinessAddress: '',
+
+  seller: 'Rowena Cortez',
+
+  buyerTypeLabel: 'Spouses',
+  salesOfficer: 'Rowena Cortez',
+  dateReceived: '2026-07-01',
+}
+
+const mockSoaRows = [
+  {
+    dueDate: '2026-07-01',
+    description: 'Reservation Fee',
+    beginningBalance: 396000,
+    dueAmount: 50000,
+    datePaid: '-',
+    amountPaid: 0,
+    referenceId: '-',
+    status: 'Unpaid',
+    endingBalance: 396000,
+  },
+  {
+    dueDate: '2026-07-15',
+    description: 'Downpayment',
+    beginningBalance: 346000,
+    dueAmount: 118800,
+    datePaid: '-',
+    amountPaid: 0,
+    referenceId: '-',
+    status: 'Unpaid',
+    endingBalance: 346000,
+  },
+  {
+    dueDate: '2026-08-15',
+    description: 'Monthly Amortization 1',
+    beginningBalance: 227200,
+    dueAmount: 6311,
+    datePaid: '-',
+    amountPaid: 0,
+    referenceId: '-',
+    status: 'Unpaid',
+    endingBalance: 227200,
+  },
+  {
+    dueDate: '2026-09-15',
+    description: 'Monthly Amortization 2',
+    beginningBalance: 220889,
+    dueAmount: 6311,
+    datePaid: '-',
+    amountPaid: 0,
+    referenceId: '-',
+    status: 'Unpaid',
+    endingBalance: 220889,
+  },
+]
+
+const mockDocuments = [
+  {
+    id: 1,
+    name: 'Two valid Government-issued IDs (w/ 3 specimen signatures)',
+    requirement: 'Required',
+    status: 'Missing',
+    fileName: '-',
+  },
+  {
+    id: 2,
+    name: 'TIN No. / TIN ID',
+    requirement: 'Required',
+    status: 'Missing',
+    fileName: '-',
+  },
+  {
+    id: 3,
+    name: 'PSA (Single)',
+    requirement: 'Required',
+    status: 'Missing',
+    fileName: '-',
+  },
+  {
+    id: 4,
+    name: "CLIENT REGISTRATION FORM (Seller's Copy)",
+    requirement: 'Required',
+    status: 'Missing',
+    fileName: '-',
+  },
+  {
+    id: 5,
+    name: 'CLIENT REGISTRATION FORM (Administrator Copy)',
+    requirement: 'Required',
+    status: 'Missing',
+    fileName: '-',
+  },
+  {
+    id: 6,
+    name: "BUYER'S INFORMATION FORM",
+    requirement: 'Required',
+    status: 'Missing',
+    fileName: '-',
+  },
+  {
+    id: 7,
+    name: 'INTENT TO BUY',
+    requirement: 'Required',
+    status: 'Missing',
+    fileName: '-',
+  },
+  {
+    id: 8,
+    name: "OFFER TO BUY & BUYER'S PROFILE",
+    requirement: 'Required',
+    status: 'Missing',
+    fileName: '-',
+  },
+  {
+    id: 9,
+    name: 'RESERVATION AGREEMENT',
+    requirement: 'Required',
+    status: 'Missing',
+    fileName: '-',
+  },
+  {
+    id: 10,
+    name: 'Proof of Income',
+    requirement: 'Required',
+    status: 'Missing',
+    fileName: '-',
+  },
+  {
+    id: 11,
+    name: 'Proof of Billing',
+    requirement: 'Required',
+    status: 'Missing',
+    fileName: '-',
+  },
+  {
+    id: 12,
+    name: 'Birth Certificate',
+    requirement: 'Required',
+    status: 'Missing',
+    fileName: '-',
+  },
+  {
+    id: 13,
+    name: 'Marriage Certificate',
+    requirement: 'Required',
+    status: 'Missing',
+    fileName: '-',
+  },
+  {
+    id: 14,
+    name: 'Signed Reservation Agreement',
+    requirement: 'Required',
+    status: 'Missing',
+    fileName: '-',
+  },
+]
+
 const tabs = [
   { key: 'unit', label: 'Unit & Status', icon: FiHome },
   { key: 'client', label: 'Client Profile', icon: FiUser },
@@ -76,24 +318,6 @@ const tabs = [
   { key: 'printouts', label: 'Printouts', icon: FiPrinter },
 ]
 
-const PlaceholderSection = ({ title, description }) => (
-  <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-      <div>
-        <h2 className="text-lg font-black text-slate-950">{title}</h2>
-        <p className="mt-1 text-sm font-semibold text-slate-500">{description}</p>
-      </div>
-
-      <button
-        type="button"
-        className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 transition hover:bg-slate-50 active:scale-[0.98]"
-      >
-        Edit
-      </button>
-    </div>
-  </section>
-)
-
 const ListingProfile = () => {
   const navigate = useNavigate()
   const { listingId } = useParams()
@@ -101,8 +325,14 @@ const ListingProfile = () => {
   const [activeTab, setActiveTab] = useState('unit')
   const [alert, setAlert] = useState({
     type: 'info',
-    message: 'Mock listing profile only. Each section now has its own edit action.',
+    message: 'Mock listing profile only. Each tab now renders its actual component file.',
   })
+
+  const paymentListing = {
+    ...mockListing,
+    tcp: mockListing.tcpAmount,
+    balance: mockListing.balanceAmount,
+  }
 
   return (
     <main className="flex flex-col gap-6">
@@ -130,12 +360,15 @@ const ListingProfile = () => {
               <p className="text-xs font-black uppercase tracking-wide text-blue-700">
                 Listing Details
               </p>
+
               <h1 className="mt-1 text-2xl font-black text-slate-950 sm:text-3xl">
                 {mockListing.unit_id}
               </h1>
+
               <p className="mt-1 text-sm font-semibold text-slate-500">
                 {mockListing.project_name} • {mockListing.listing_status}
               </p>
+
               <p className="mt-1 text-xs font-semibold text-slate-400">
                 Mock route id: {listingId || 'sample'}
               </p>
@@ -145,17 +378,23 @@ const ListingProfile = () => {
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
               <p className="text-xs font-black uppercase text-slate-500">TCP</p>
-              <p className="mt-1 text-sm font-black text-slate-950">{mockListing.tcp}</p>
+              <p className="mt-1 text-sm font-black text-slate-950">
+                {mockListing.tcp}
+              </p>
             </div>
 
             <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
               <p className="text-xs font-black uppercase text-slate-500">Balance</p>
-              <p className="mt-1 text-sm font-black text-slate-950">{mockListing.balance}</p>
+              <p className="mt-1 text-sm font-black text-slate-950">
+                {mockListing.balance}
+              </p>
             </div>
 
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
               <p className="text-xs font-black uppercase text-amber-700">Status</p>
-              <p className="mt-1 text-sm font-black text-amber-800">{mockListing.listing_status}</p>
+              <p className="mt-1 text-sm font-black text-amber-800">
+                {mockListing.listing_status}
+              </p>
             </div>
           </div>
         </div>
@@ -186,33 +425,27 @@ const ListingProfile = () => {
         </div>
       </section>
 
-      {activeTab === 'unit' ? <UnitStatus listing={mockListing} /> : null}
+      {activeTab === 'unit' ? (
+        <UnitStatus listing={mockListing} />
+      ) : null}
 
       {activeTab === 'client' ? (
-        <PlaceholderSection
-          title="Client Profile"
-          description="Client-specific edit action will be placed here. No global save button."
-        />
+        <ClientProfile client={mockClient} />
       ) : null}
 
       {activeTab === 'payments' ? (
-        <PlaceholderSection
-          title="Payments / SOA"
-          description="Payment and SOA edit actions will be handled inside this section."
-        />
+        <PaymentsSOA listing={paymentListing} soaRows={mockSoaRows} />
       ) : null}
 
       {activeTab === 'documents' ? (
-        <PlaceholderSection
-          title="Documents"
-          description="Document upload and review actions will be handled inside this section."
-        />
+        <Documents documents={mockDocuments} />
       ) : null}
 
       {activeTab === 'printouts' ? (
-        <PlaceholderSection
-          title="Printouts"
-          description="Offer to Buy, SOA, Buyer Profile, and printable forms will be here."
+        <Printouts
+          listing={mockListing}
+          client={mockClient}
+          soaRows={mockSoaRows}
         />
       ) : null}
     </main>
