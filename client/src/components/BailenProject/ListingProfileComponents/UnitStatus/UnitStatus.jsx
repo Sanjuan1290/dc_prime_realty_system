@@ -6,11 +6,11 @@ import {
   FiEdit3,
   FiFileText,
   FiHome,
-  FiInfo,
   FiSettings,
   FiUser,
 } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
+import EditUnitStatusModal from './EditUnitStatusModal'
 
 const fallbackListing = {
   unit_id: 'LA-0402',
@@ -19,8 +19,10 @@ const fallbackListing = {
   administrator: 'IMELDA B. VILLALOBOS',
   cadastral_lot_no: '-',
   old_unit_ids: '-',
+  source_unit_ids: '-',
+  derived_unit_ids: '-',
   lot_type: 'Inner',
-  listing_status: 'Pending Cancellation',
+  listing_status: 'Pending for Cancellation',
 
   lot_area_sqm: '300 sqm',
   price_per_sqm: '₱1,200.00',
@@ -69,10 +71,11 @@ const fallbackListing = {
 
 const statusStyles = {
   Available: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  Hold: 'border-amber-200 bg-amber-50 text-amber-700',
   Sold: 'border-blue-200 bg-blue-50 text-blue-700',
-  'Pending Cancellation': 'border-amber-200 bg-amber-50 text-amber-700',
+  'Pending Cancellation': 'border-orange-200 bg-orange-50 text-orange-700',
+  'Pending for Cancellation': 'border-orange-200 bg-orange-50 text-orange-700',
   Cancelled: 'border-red-200 bg-red-50 text-red-700',
-  Superseded: 'border-slate-200 bg-slate-100 text-slate-700',
   Incomplete: 'border-red-200 bg-red-50 text-red-700',
   Complete: 'border-emerald-200 bg-emerald-50 text-emerald-700',
   Unpaid: 'border-red-200 bg-red-50 text-red-700',
@@ -107,38 +110,19 @@ const StatusPill = ({ status }) => (
   </span>
 )
 
-const SectionCard = ({ title, description, icon: Icon, children, onEdit, active }) => (
-  <section
-    className={`rounded-2xl border bg-white shadow-sm transition ${
-      active ? 'border-blue-300 ring-4 ring-blue-50' : 'border-slate-200'
-    }`}
-  >
-    <div className="flex flex-col gap-3 border-b border-slate-200 p-5 sm:flex-row sm:items-start sm:justify-between">
-      <div className="flex items-start gap-3">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
-          <Icon className="h-5 w-5" />
-        </span>
+const SectionBlock = ({ title, description, icon: Icon, children }) => (
+  <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <div className="flex items-start gap-3 border-b border-slate-200 p-5">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
+        <Icon className="h-5 w-5" />
+      </span>
 
-        <div>
-          <h2 className="text-lg font-black text-slate-950">{title}</h2>
-          {description ? (
-            <p className="mt-1 text-sm font-semibold text-slate-500">{description}</p>
-          ) : null}
-        </div>
+      <div>
+        <h2 className="text-lg font-black text-slate-950">{title}</h2>
+        {description ? (
+          <p className="mt-1 text-sm font-semibold text-slate-500">{description}</p>
+        ) : null}
       </div>
-
-      <button
-        type="button"
-        onClick={onEdit}
-        className={`inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-sm font-black transition active:scale-[0.98] ${
-          active
-            ? 'bg-blue-600 text-white hover:bg-blue-700'
-            : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
-        }`}
-      >
-        <FiEdit3 className="h-4 w-4" />
-        {active ? 'Editing' : 'Edit'}
-      </button>
     </div>
 
     <div className="grid gap-3 p-5 sm:grid-cols-2 xl:grid-cols-4">
@@ -148,16 +132,64 @@ const SectionCard = ({ title, description, icon: Icon, children, onEdit, active 
 )
 
 const UnitStatus = ({ listing = fallbackListing }) => {
-  const [activeEditSection, setActiveEditSection] = useState(null)
+  const [unitData, setUnitData] = useState({ ...fallbackListing, ...listing })
+  const [showEditModal, setShowEditModal] = useState(false)
   const [alert, setAlert] = useState(null)
 
-  const openSectionEdit = (sectionName) => {
-    setActiveEditSection(sectionName)
+  const handleSave = (updatedListing) => {
+    setUnitData((current) => ({
+      ...current,
+      ...updatedListing,
+    }))
+
+    setShowEditModal(false)
+
     setAlert({
-      type: 'info',
-      message: `${sectionName} edit action selected. This is mock UI only.`,
+      type: 'success',
+      message: 'Listing details updated in mock mode.',
     })
   }
+
+  const handleSettleCancellation = () => {
+    setUnitData((current) => ({
+      ...current,
+      listing_status: 'Cancelled',
+      status: 'Cancelled',
+      updated_at: new Date().toISOString().slice(0, 10),
+    }))
+
+    setAlert({
+      type: 'success',
+      message: 'Cancellation settled. Unit is now marked as Cancelled in mock mode.',
+    })
+  }
+
+  const handleMakeAvailable = () => {
+    setUnitData((current) => ({
+      ...current,
+      listing_status: 'Available',
+      status: 'Available',
+      buyer_name: '-',
+      spouse_co_owner: '-',
+      email: '-',
+      contact_no: '-',
+      address: '-',
+      payment_status: '-',
+      commission_status: '-',
+      updated_at: new Date().toISOString().slice(0, 10),
+    }))
+
+    setAlert({
+      type: 'success',
+      message: 'Cancelled unit changed back to Available in mock mode.',
+    })
+  }
+
+  const showSettlementButton =
+    unitData.listing_status === 'Pending Cancellation' ||
+    unitData.listing_status === 'Pending for Cancellation'
+
+  const showAvailableButton = unitData.listing_status === 'Cancelled'
 
   return (
     <div className="flex flex-col gap-5">
@@ -176,143 +208,163 @@ const UnitStatus = ({ listing = fallbackListing }) => {
               Unit & Status
             </p>
             <h2 className="mt-1 text-2xl font-black text-slate-950">
-              Listing Details - {listing.unit_id}
+              Listing Details - {unitData.unit_id}
             </h2>
             <p className="mt-1 text-sm font-semibold text-slate-500">
-              Details are separated by section. Each section has its own edit button.
+              Main listing information. Click edit to update the unit, pricing, and status.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <StatusPill status={listing.listing_status} />
-            <StatusPill status={listing.document_status} />
-            <StatusPill status={listing.payment_status} />
+            <StatusPill status={unitData.listing_status} />
+            <StatusPill status={unitData.document_status} />
+            <StatusPill status={unitData.payment_status} />
+
+            <button
+              type="button"
+              onClick={() => setShowEditModal(true)}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-black text-white transition hover:bg-blue-700 active:scale-[0.98]"
+            >
+              <FiEdit3 className="h-4 w-4" />
+              Edit
+            </button>
+
+            {showSettlementButton ? (
+              <button
+                type="button"
+                onClick={handleSettleCancellation}
+                className="inline-flex h-10 items-center justify-center rounded-xl bg-orange-600 px-4 text-sm font-black text-white transition hover:bg-orange-700 active:scale-[0.98]"
+              >
+                Settlement
+              </button>
+            ) : null}
+
+            {showAvailableButton ? (
+              <button
+                type="button"
+                onClick={handleMakeAvailable}
+                className="inline-flex h-10 items-center justify-center rounded-xl bg-emerald-600 px-4 text-sm font-black text-white transition hover:bg-emerald-700 active:scale-[0.98]"
+              >
+                Change to Available
+              </button>
+            ) : null}
           </div>
         </div>
       </section>
 
-      <SectionCard
+      <SectionBlock
         title="Unit / Project Information"
-        description="Project, unit ID history, source IDs, and status."
+        description="Project, unit ID history, source IDs, and current listing status."
         icon={FiHome}
-        active={activeEditSection === 'Unit / Project Information'}
-        onEdit={() => openSectionEdit('Unit / Project Information')}
       >
-        <DetailBox label="Project" value={listing.project_name} />
-        <DetailBox label="Project Location" value={listing.project_location} />
-        <DetailBox label="Administrator" value={listing.administrator} />
-        <DetailBox label="Cadastral Lot No." value={listing.cadastral_lot_no} />
-        <DetailBox label="Unit ID" value={listing.unit_id} highlight />
-        <DetailBox label="Old Unit IDs" value={listing.old_unit_ids} />
-        <DetailBox label="Lot Type" value={listing.lot_type} />
-        <DetailBox label="Listing Status" value={listing.listing_status} highlight />
-      </SectionCard>
+        <DetailBox label="Project" value={unitData.project_name} />
+        <DetailBox label="Project Location" value={unitData.project_location} />
+        <DetailBox label="Administrator" value={unitData.administrator} />
+        <DetailBox label="Cadastral Lot No." value={unitData.cadastral_lot_no} />
+        <DetailBox label="Unit ID" value={unitData.unit_id} highlight />
+        <DetailBox label="Old Unit IDs" value={unitData.old_unit_ids} />
+        <DetailBox label="Source Unit IDs" value={unitData.source_unit_ids} />
+        <DetailBox label="Derived Unit IDs" value={unitData.derived_unit_ids} />
+        <DetailBox label="Lot Type" value={unitData.lot_type} />
+        <DetailBox label="Listing Status" value={unitData.listing_status} highlight />
+      </SectionBlock>
 
-      <SectionCard
+      <SectionBlock
         title="Lot Pricing"
-        description="Price per SQM, lot area, LMF, and TCP."
+        description="Price per SQM, lot area, LMF, TCP, reservation fee, and interest rate."
         icon={FiDollarSign}
-        active={activeEditSection === 'Lot Pricing'}
-        onEdit={() => openSectionEdit('Lot Pricing')}
       >
-        <DetailBox label="Lot Area SQM" value={listing.lot_area_sqm} />
-        <DetailBox label="Price / SQM" value={listing.price_per_sqm} />
-        <DetailBox label="Net Selling Price" value={listing.net_selling_price} />
-        <DetailBox label="LMF Rate" value={listing.lmf_rate} />
-        <DetailBox label="LMF Amount" value={listing.lmf_amount} />
-        <DetailBox label="TCP" value={listing.tcp} highlight />
-      </SectionCard>
+        <DetailBox label="Lot Area SQM" value={unitData.lot_area_sqm} />
+        <DetailBox label="Price / SQM" value={unitData.price_per_sqm} />
+        <DetailBox label="Net Selling Price" value={unitData.net_selling_price} />
+        <DetailBox label="LMF Rate" value={unitData.lmf_rate} />
+        <DetailBox label="LMF Amount" value={unitData.lmf_amount} />
+        <DetailBox label="TCP" value={unitData.tcp} highlight />
+        <DetailBox
+          label="Reservation Fee"
+          value={
+            typeof unitData.reservationFee === 'number'
+              ? `₱${unitData.reservationFee.toLocaleString('en-PH')}.00`
+              : unitData.reservationFee || '₱50,000.00'
+          }
+        />
+        <DetailBox label="Annual Interest Rate" value={unitData.interestRate || `${unitData.annualInterestRate || 0}%`} />
+      </SectionBlock>
 
-      <SectionCard
+      <SectionBlock
         title="Buyer Information"
         description="Buyer profile and assigned account details."
         icon={FiUser}
-        active={activeEditSection === 'Buyer Information'}
-        onEdit={() => openSectionEdit('Buyer Information')}
       >
-        <DetailBox label="Buyer Name" value={listing.buyer_name} />
-        <DetailBox label="Spouse / Co-owner" value={listing.spouse_co_owner} />
-        <DetailBox label="Email" value={listing.email} />
-        <DetailBox label="Contact No." value={listing.contact_no} />
-        <DetailBox label="Address" value={listing.address} long />
-        <DetailBox label="Region" value={listing.region} />
-        <DetailBox label="Assigned User" value={listing.assigned_user} />
-        <DetailBox label="Due Day" value={listing.due_day} />
-      </SectionCard>
+        <DetailBox label="Buyer Name" value={unitData.buyer_name} />
+        <DetailBox label="Spouse / Co-owner" value={unitData.spouse_co_owner} />
+        <DetailBox label="Email" value={unitData.email} />
+        <DetailBox label="Contact No." value={unitData.contact_no} />
+        <DetailBox label="Address" value={unitData.address} long />
+        <DetailBox label="Region" value={unitData.region} />
+        <DetailBox label="Assigned User" value={unitData.assigned_user} />
+        <DetailBox label="Due Day" value={unitData.due_day} />
+      </SectionBlock>
 
-      <SectionCard
+      <SectionBlock
         title="Payment Information"
         description="Current payment progress and balance."
         icon={FiCreditCard}
-        active={activeEditSection === 'Payment Information'}
-        onEdit={() => openSectionEdit('Payment Information')}
       >
-        <DetailBox label="Total Paid" value={listing.total_paid} />
-        <DetailBox label="Balance" value={listing.balance} highlight />
-        <DetailBox label="Payment Status" value={listing.payment_status} />
-        <DetailBox label="Payment Count" value={listing.payment_count} />
-        <DetailBox label="Latest Payment Date" value={listing.latest_payment_date} />
-        <DetailBox label="Latest Payment Amount" value={listing.latest_payment_amount} />
-      </SectionCard>
+        <DetailBox label="Total Paid" value={unitData.total_paid} />
+        <DetailBox label="Balance" value={unitData.balance} highlight />
+        <DetailBox label="Payment Status" value={unitData.payment_status} />
+        <DetailBox label="Payment Count" value={unitData.payment_count} />
+        <DetailBox label="Latest Payment Date" value={unitData.latest_payment_date} />
+        <DetailBox label="Latest Payment Amount" value={unitData.latest_payment_amount} />
+      </SectionBlock>
 
-      <SectionCard
+      <SectionBlock
         title="Seller / Commission"
         description="Seller assignment and commission summary."
         icon={FiBriefcase}
-        active={activeEditSection === 'Seller / Commission'}
-        onEdit={() => openSectionEdit('Seller / Commission')}
       >
-        <DetailBox label="Seller" value={listing.seller} />
-        <DetailBox label="Seller Role" value={listing.seller_role} />
-        <DetailBox label="Reports Under" value={listing.reports_under} />
-        <DetailBox label="Commission Rate" value={listing.commission_rate} />
-        <DetailBox label="Commission Amount" value={listing.commission_amount} highlight />
-        <DetailBox label="Released Amount" value={listing.released_amount} />
-        <DetailBox label="Remaining Commission" value={listing.remaining_commission} />
-        <DetailBox label="Commission Status" value={listing.commission_status} />
-      </SectionCard>
+        <DetailBox label="Seller" value={unitData.seller} />
+        <DetailBox label="Seller Role" value={unitData.seller_role} />
+        <DetailBox label="Reports Under" value={unitData.reports_under} />
+        <DetailBox label="Commission Rate" value={unitData.commission_rate} />
+        <DetailBox label="Commission Amount" value={unitData.commission_amount} highlight />
+        <DetailBox label="Released Amount" value={unitData.released_amount} />
+        <DetailBox label="Remaining Commission" value={unitData.remaining_commission} />
+        <DetailBox label="Commission Status" value={unitData.commission_status} />
+      </SectionBlock>
 
-      <SectionCard
+      <SectionBlock
         title="Documents"
         description="Document checklist progress."
         icon={FiFileText}
-        active={activeEditSection === 'Documents'}
-        onEdit={() => openSectionEdit('Documents')}
       >
-        <DetailBox label="Total Documents" value={listing.total_documents} />
-        <DetailBox label="Required Documents" value={listing.required_documents} />
-        <DetailBox label="Submitted Documents" value={listing.submitted_documents} />
-        <DetailBox label="Approved Documents" value={listing.approved_documents} />
-        <DetailBox label="Missing Required" value={listing.missing_required} />
-        <DetailBox label="Document Status" value={listing.document_status} highlight />
-      </SectionCard>
+        <DetailBox label="Total Documents" value={unitData.total_documents} />
+        <DetailBox label="Required Documents" value={unitData.required_documents} />
+        <DetailBox label="Submitted Documents" value={unitData.submitted_documents} />
+        <DetailBox label="Approved Documents" value={unitData.approved_documents} />
+        <DetailBox label="Missing Required" value={unitData.missing_required} />
+        <DetailBox label="Document Status" value={unitData.document_status} highlight />
+      </SectionBlock>
 
-      <SectionCard
+      <SectionBlock
         title="System Information"
         description="Created and updated timestamps."
         icon={FiSettings}
-        active={activeEditSection === 'System Information'}
-        onEdit={() => openSectionEdit('System Information')}
       >
-        <DetailBox label="Created At" value={listing.created_at} />
-        <DetailBox label="Updated At" value={listing.updated_at} />
-        <DetailBox label="Client Unit Created" value={listing.client_unit_created} />
-        <DetailBox label="Client Unit Updated" value={listing.client_unit_updated} />
-      </SectionCard>
+        <DetailBox label="Created At" value={unitData.created_at} />
+        <DetailBox label="Updated At" value={unitData.updated_at} />
+        <DetailBox label="Client Unit Created" value={unitData.client_unit_created} />
+        <DetailBox label="Client Unit Updated" value={unitData.client_unit_updated} />
+      </SectionBlock>
 
-      <section className="rounded-2xl border border-blue-200 bg-blue-50 p-5">
-        <div className="flex items-start gap-3">
-          <FiInfo className="mt-0.5 h-5 w-5 shrink-0 text-blue-700" />
-          <div>
-            <h3 className="text-sm font-black text-blue-950">
-              No global save button here
-            </h3>
-            <p className="mt-1 text-sm font-semibold text-blue-800">
-              Unit details, pricing, buyer info, payments, commissions, documents, and system info should each handle their own edit modal or section action.
-            </p>
-          </div>
-        </div>
-      </section>
+      {showEditModal ? (
+        <EditUnitStatusModal
+          listing={unitData}
+          onClose={() => setShowEditModal(false)}
+          onSave={handleSave}
+        />
+      ) : null}
     </div>
   )
 }

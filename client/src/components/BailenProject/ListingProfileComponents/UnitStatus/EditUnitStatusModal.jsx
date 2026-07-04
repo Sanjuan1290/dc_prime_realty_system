@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react'
-import { FiFileText, FiSave, FiX } from 'react-icons/fi'
+import { FiSave, FiX } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
-import EditListingDocumentsModal from '../EditListingDocumentsModal/EditListingDocumentsModal'
 
 const selectedProject = {
   id: 1,
@@ -10,120 +9,53 @@ const selectedProject = {
   cadastralLots: ['1306', '1314', '1315', '1316'],
 }
 
-const projectDefaultDocuments = [
-  {
-    id: 1,
-    name: 'Two valid Government-issued IDs (w/ 3 specimen signatures)',
-    description: 'Project Default',
-    source: 'Project Default',
-    requirement: 'required',
-    status: 'active',
-  },
-  {
-    id: 2,
-    name: 'TIN No. / TIN ID',
-    description: 'Project Default',
-    source: 'Project Default',
-    requirement: 'required',
-    status: 'active',
-  },
-  {
-    id: 3,
-    name: 'PSA (Single)',
-    description: 'Project Default',
-    source: 'Project Default',
-    requirement: 'required',
-    status: 'active',
-  },
-  {
-    id: 4,
-    name: "CLIENT REGISTRATION FORM (Seller's Copy)",
-    description: 'Project Default',
-    source: 'Project Default',
-    requirement: 'required',
-    status: 'active',
-  },
-  {
-    id: 5,
-    name: 'CLIENT REGISTRATION FORM (Administrator Copy)',
-    description: 'Project Default',
-    source: 'Project Default',
-    requirement: 'required',
-    status: 'active',
-  },
-  {
-    id: 6,
-    name: "BUYER'S INFORMATION FORM",
-    description: 'Project Default',
-    source: 'Project Default',
-    requirement: 'required',
-    status: 'active',
-  },
-  {
-    id: 7,
-    name: 'INTENT TO BUY',
-    description: 'Project Default',
-    source: 'Project Default',
-    requirement: 'required',
-    status: 'active',
-  },
-  {
-    id: 8,
-    name: "OFFER TO BUY & BUYER'S PROFILE",
-    description: 'Project Default',
-    source: 'Project Default',
-    requirement: 'required',
-    status: 'active',
-  },
-  {
-    id: 9,
-    name: 'RESERVATION AGREEMENT',
-    description: 'Project Default',
-    source: 'Project Default',
-    requirement: 'required',
-    status: 'active',
-  },
-  {
-    id: 10,
-    name: 'Proof of Billing',
-    description: 'Project Default',
-    source: 'Project Default',
-    requirement: 'required',
-    status: 'active',
-  },
-  {
-    id: 11,
-    name: 'Proof of Income',
-    description: 'Project Default',
-    source: 'Project Default',
-    requirement: 'required',
-    status: 'active',
-  },
-  {
-    id: 12,
-    name: 'Birth Certificate',
-    description: 'Project Default',
-    source: 'Project Default',
-    requirement: 'required',
-    status: 'active',
-  },
-  {
-    id: 13,
-    name: 'Marriage Certificate',
-    description: 'Project Default',
-    source: 'Project Default',
-    requirement: 'required',
-    status: 'active',
-  },
-  {
-    id: 14,
-    name: 'Signed Reservation Agreement',
-    description: 'Project Default',
-    source: 'Project Default',
-    requirement: 'required',
-    status: 'active',
-  },
+const statusOptions = [
+  { value: 'available', label: 'Available' },
+  { value: 'hold', label: 'Hold' },
+  { value: 'sold', label: 'Sold' },
+  { value: 'pending_for_cancellation', label: 'Pending for Cancellation' },
+  { value: 'cancelled', label: 'Cancelled' },
 ]
+
+const lotTypes = [
+  { value: 'inner', label: 'Inner' },
+  { value: 'corner', label: 'Corner' },
+  { value: 'end', label: 'End' },
+]
+
+const parseMoney = (value) => {
+  if (typeof value === 'number') return value
+  return Number(String(value || '').replace(/[₱,%\s,]/g, '').replace('sqm', '')) || 0
+}
+
+const parsePercent = (value) => {
+  if (typeof value === 'number') return value
+  return Number(String(value || '').replace('%', '').trim()) || 0
+}
+
+const getUnitNumber = (unitId = '') => {
+  const value = String(unitId || '')
+  return value.includes('-') ? value.split('-').pop() : value
+}
+
+const formatMoney = (value) =>
+  new Intl.NumberFormat('en-PH', {
+    style: 'currency',
+    currency: 'PHP',
+    minimumFractionDigits: 2,
+  }).format(Number(value || 0))
+
+const toStatusValue = (status = '') => {
+  const normalized = String(status).toLowerCase()
+
+  if (normalized.includes('pending')) return 'pending_for_cancellation'
+  if (normalized.includes('available')) return 'available'
+  if (normalized.includes('cancelled')) return 'cancelled'
+  if (normalized.includes('sold')) return 'sold'
+  if (normalized.includes('hold')) return 'hold'
+
+  return 'available'
+}
 
 const Field = ({
   label,
@@ -169,35 +101,46 @@ const SelectField = ({ label, value, onChange, children, helper, required = fals
   </label>
 )
 
-const money = (value) =>
-  new Intl.NumberFormat('en-PH', {
-    style: 'currency',
-    currency: 'PHP',
-    minimumFractionDigits: 2,
-  }).format(Number(value || 0))
+const BreakdownCard = ({ label, value, highlight = false }) => (
+  <div className={`rounded-xl border p-4 ${highlight ? 'border-blue-200 bg-blue-50' : 'border-slate-200 bg-white'}`}>
+    <p className={`text-xs font-black uppercase ${highlight ? 'text-blue-700' : 'text-slate-500'}`}>
+      {label}
+    </p>
+    <p className={`mt-2 text-lg font-black ${highlight ? 'text-blue-900' : 'text-slate-950'}`}>
+      {value}
+    </p>
+  </div>
+)
 
-const AddListingModal = ({ onClose, onSave, isSaving = false }) => {
+const EditUnitStatusModal = ({ listing, onClose, onSave }) => {
   const [form, setForm] = useState({
-    cadastralLotNo: '',
-    unitNumber: '',
-    oldUnitIds: '',
-    lotType: 'inner',
-    reservationFee: '50000',
-    pricePerSqm: '0',
-    lotAreaSqm: '0',
-    legalMiscRate: '10',
-    annualInterestRate: '0',
-    status: 'available',
+    cadastralLotNo: listing?.cadastral_lot_no === '-' ? '' : listing?.cadastral_lot_no || '',
+    unitNumber: getUnitNumber(listing?.unit_id || listing?.unitCode || 'LA-0402'),
+    oldUnitIds: listing?.old_unit_ids === '-' ? '' : listing?.old_unit_ids || '',
+    sourceUnitIds: listing?.source_unit_ids === '-' ? '' : listing?.source_unit_ids || '',
+    derivedUnitIds: listing?.derived_unit_ids === '-' ? '' : listing?.derived_unit_ids || '',
+    lotType: (() => {
+                const lotType = String(listing?.lot_type || 'Inner').toLowerCase()
+
+                if (lotType === 'corner') return 'corner'
+                if (lotType === 'end') return 'end'
+
+                return 'inner'
+            })(),
+    reservationFee: String(listing?.reservationFee || 50000),
+    pricePerSqm: String(listing?.pricePerSqm || parseMoney(listing?.price_per_sqm) || 0),
+    lotAreaSqm: String(listing?.lotAreaSqm || parseMoney(listing?.lot_area_sqm) || 0),
+    legalMiscRate: String(listing?.legalMiscRate || parsePercent(listing?.lmf_rate) || 10),
+    annualInterestRate: String(listing?.annualInterestRate || parsePercent(listing?.interestRate) || 0),
+    status: toStatusValue(listing?.listing_status || listing?.status),
   })
 
-  const [documentRequirements, setDocumentRequirements] = useState(projectDefaultDocuments)
-  const [showEditDocumentsModal, setShowEditDocumentsModal] = useState(false)
   const [alert, setAlert] = useState(null)
-  const [isSavingMock, setIsSavingMock] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
 
   const unitCode = useMemo(() => {
-    const number = String(form.unitNumber || '').trim()
-    return number ? `${selectedProject.locationCode}-${number}` : `${selectedProject.locationCode}-`
+    const unitNumber = String(form.unitNumber || '').trim()
+    return unitNumber ? `${selectedProject.locationCode}-${unitNumber}` : `${selectedProject.locationCode}-`
   }, [form.unitNumber])
 
   const priceBreakdown = useMemo(() => {
@@ -220,25 +163,12 @@ const AddListingModal = ({ onClose, onSave, isSaving = false }) => {
     }
   }, [form])
 
-  const requiredCount = useMemo(
-    () => documentRequirements.filter((document) => document.requirement === 'required').length,
-    [documentRequirements]
-  )
-
   const updateField = (key, value) => {
     setForm((current) => ({ ...current, [key]: value }))
 
     if (alert?.type === 'error') {
       setAlert(null)
     }
-  }
-
-  const handleDocumentsChange = (nextDocuments) => {
-    setDocumentRequirements(nextDocuments)
-    setAlert({
-      type: 'success',
-      message: 'Listing document requirements updated.',
-    })
   }
 
   const handleSubmit = (event) => {
@@ -259,50 +189,76 @@ const AddListingModal = ({ onClose, onSave, isSaving = false }) => {
       return
     }
 
+    const statusLabel = statusOptions.find((item) => item.value === form.status)?.label || 'Available'
+    const lotTypeLabel = lotTypes.find((item) => item.value === form.lotType)?.label || 'Inner'
+    const today = new Date().toISOString().slice(0, 10)
+
     const payload = {
-      ...form,
-      projectId: selectedProject.id,
-      projectName: selectedProject.name,
-      locationCode: selectedProject.locationCode,
+      ...listing,
+
+      unit_id: unitCode,
       unitCode,
-      documentRequirements,
-      priceBreakdown,
+
+      project_name: selectedProject.name,
+      projectName: selectedProject.name,
+
+      cadastral_lot_no: form.cadastralLotNo || '-',
+      old_unit_ids: form.oldUnitIds || '-',
+      source_unit_ids: form.sourceUnitIds || '-',
+      derived_unit_ids: form.derivedUnitIds || '-',
+
+      lot_type: lotTypeLabel,
+      listing_status: statusLabel,
+      status: statusLabel,
+
+      lot_area_sqm: `${Number(form.lotAreaSqm || 0)} sqm`,
+      lotAreaSqm: Number(form.lotAreaSqm || 0),
+
+      price_per_sqm: formatMoney(form.pricePerSqm),
+      pricePerSqm: Number(form.pricePerSqm || 0),
+
+      net_selling_price: formatMoney(priceBreakdown.netSellingPrice),
+      netSellingPrice: priceBreakdown.netSellingPrice,
+
+      lmf_rate: `${Number(form.legalMiscRate || 0)}%`,
+      legalMiscRate: Number(form.legalMiscRate || 0),
+
+      lmf_amount: formatMoney(priceBreakdown.lmfAmount),
+      lmfAmount: priceBreakdown.lmfAmount,
+
+      tcp: formatMoney(priceBreakdown.tcp),
+      tcpAmount: priceBreakdown.tcp,
+
+      reservationFee: Number(form.reservationFee || 0),
+      annualInterestRate: Number(form.annualInterestRate || 0),
+      interestRate: `${Number(form.annualInterestRate || 0).toFixed(2)}%`,
+
+      updated_at: today,
     }
 
-    if (onSave) {
-      onSave(payload)
-      return
-    }
-
-    setIsSavingMock(true)
-    setAlert({ type: 'loading', message: 'Adding listing in mock mode...' })
+    setIsSaving(true)
+    setAlert({ type: 'loading', message: 'Saving unit details in mock mode...' })
 
     window.setTimeout(() => {
-      setIsSavingMock(false)
-      setAlert({
-        type: 'success',
-        message: `${unitCode} added successfully in mock mode.`,
-      })
-    }, 700)
+      setIsSaving(false)
+      onSave?.(payload)
+    }, 600)
   }
 
-  const saveDisabled = isSaving || isSavingMock
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/45 p-4">
       <form
         onSubmit={handleSubmit}
         className="flex max-h-[94vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl"
       >
         <div className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 px-5">
-          <h2 className="text-lg font-black text-slate-950">Add Listing</h2>
+          <h2 className="text-lg font-black text-slate-950">Edit Listing</h2>
 
           <button
             type="button"
             onClick={onClose}
-            disabled={saveDisabled}
+            disabled={isSaving}
             className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
-            aria-label="Close add listing modal"
           >
             <FiX className="h-4 w-4" />
           </button>
@@ -316,10 +272,6 @@ const AddListingModal = ({ onClose, onSave, isSaving = false }) => {
               onClose={alert.type === 'loading' ? undefined : () => setAlert(null)}
               className="mb-4"
             />
-          ) : null}
-
-          {isSaving ? (
-            <StatusAlert type="loading" message="Saving listing..." className="mb-4" />
           ) : null}
 
           <section className="grid gap-4 md:grid-cols-2">
@@ -383,12 +335,14 @@ const AddListingModal = ({ onClose, onSave, isSaving = false }) => {
               value={form.lotType}
               onChange={(value) => updateField('lotType', value)}
             >
-              <option value="inner">Inner</option>
-              <option value="corner">Corner</option>
-              <option value="end">End</option>
+              {lotTypes.map((type) => (
+                <option key={type.value} value={type.value}>
+                  {type.label}
+                </option>
+              ))}
             </SelectField>
 
-            <Field  
+            <Field
               label="Reservation Fee"
               type="number"
               value={form.reservationFee}
@@ -437,88 +391,24 @@ const AddListingModal = ({ onClose, onSave, isSaving = false }) => {
               value={form.status}
               onChange={(value) => updateField('status', value)}
             >
-              <option value="available">Available</option>
-              <option value="hold">Hold</option>
-              <option value="sold">Sold</option>
-              <option value="pending_for_cancellation">Pending for Cancellation</option>
-              <option value="cancelled">Cancelled</option>
+              {statusOptions.map((status) => (
+                <option key={status.value} value={status.value}>
+                  {status.label}
+                </option>
+              ))}
             </SelectField>
-          </section>
-
-          <section className="mt-5 rounded-xl border border-blue-200 bg-blue-50 p-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h3 className="text-sm font-black text-slate-950">
-                  Listing Document Requirements
-                </h3>
-                <p className="mt-1 text-xs font-semibold text-slate-600">
-                  Click Edit Documents to set this listing&apos;s checklist before saving. Leave empty to use project defaults.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setShowEditDocumentsModal(true)}
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98]"
-              >
-                <FiFileText className="h-4 w-4" />
-                Edit Documents
-              </button>
-            </div>
-
-            <div className="mt-3 flex flex-wrap gap-2">
-              <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-black text-blue-700">
-                {documentRequirements.length} docs
-              </span>
-              <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-700">
-                {requiredCount} required
-              </span>
-            </div>
           </section>
 
           <section className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
             <h3 className="text-sm font-black text-slate-950">Live Price Breakdown</h3>
 
             <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <div className="rounded-xl border border-slate-200 bg-white p-4">
-                <p className="text-xs font-black uppercase text-slate-500">Net Selling Price</p>
-                <p className="mt-2 text-lg font-black text-slate-950">
-                  {money(priceBreakdown.netSellingPrice)}
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-slate-200 bg-white p-4">
-                <p className="text-xs font-black uppercase text-slate-500">LMF Amount</p>
-                <p className="mt-2 text-lg font-black text-slate-950">
-                  {money(priceBreakdown.lmfAmount)}
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-slate-200 bg-white p-4">
-                <p className="text-xs font-black uppercase text-slate-500">TCP</p>
-                <p className="mt-2 text-lg font-black text-slate-950">
-                  {money(priceBreakdown.tcp)}
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-slate-200 bg-white p-4">
-                <p className="text-xs font-black uppercase text-slate-500">Reservation Fee</p>
-                <p className="mt-2 text-lg font-black text-slate-950">
-                  {money(priceBreakdown.reservationFee)}
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-slate-200 bg-white p-4">
-                <p className="text-xs font-black uppercase text-slate-500">Annual Interest Rate</p>
-                <p className="mt-2 text-lg font-black text-slate-950">
-                  {Number(priceBreakdown.annualInterestRate || 0)}%
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-slate-200 bg-white p-4">
-                <p className="text-xs font-black uppercase text-slate-500">Preview Unit Code</p>
-                <p className="mt-2 text-lg font-black text-blue-700">{unitCode}</p>
-              </div>
+              <BreakdownCard label="Net Selling Price" value={formatMoney(priceBreakdown.netSellingPrice)} />
+              <BreakdownCard label="LMF Amount" value={formatMoney(priceBreakdown.lmfAmount)} />
+              <BreakdownCard label="TCP" value={formatMoney(priceBreakdown.tcp)} highlight />
+              <BreakdownCard label="Reservation Fee" value={formatMoney(priceBreakdown.reservationFee)} />
+              <BreakdownCard label="Annual Interest Rate" value={`${Number(priceBreakdown.annualInterestRate || 0)}%`} />
+              <BreakdownCard label="Preview Unit Code" value={unitCode} highlight />
             </div>
           </section>
         </div>
@@ -527,7 +417,7 @@ const AddListingModal = ({ onClose, onSave, isSaving = false }) => {
           <button
             type="button"
             onClick={onClose}
-            disabled={saveDisabled}
+            disabled={isSaving}
             className="h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
           >
             Cancel
@@ -535,24 +425,16 @@ const AddListingModal = ({ onClose, onSave, isSaving = false }) => {
 
           <button
             type="submit"
-            disabled={saveDisabled}
+            disabled={isSaving}
             className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <FiSave className="h-4 w-4" />
-            {saveDisabled ? 'Saving...' : 'Add Listing'}
+            {isSaving ? 'Saving...' : 'Save Changes'}
           </button>
         </div>
-
-        {showEditDocumentsModal ? (
-          <EditListingDocumentsModal
-            selectedDocuments={documentRequirements}
-            setSelectedDocuments={handleDocumentsChange}
-            onClose={() => setShowEditDocumentsModal(false)}
-          />
-        ) : null}
       </form>
     </div>
   )
 }
 
-export default AddListingModal
+export default EditUnitStatusModal
