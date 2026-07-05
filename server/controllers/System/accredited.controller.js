@@ -3,6 +3,70 @@ import { db } from '../../db/connect.js';
 const getErrorMessage = (error) => error?.message || 'Something went wrong.';
 const fullNameSql = (alias) => `TRIM(CONCAT_WS(' ', ${alias}.first_name, ${alias}.middle_name, ${alias}.last_name))`;
 
+const hydrateSellerRates = async (sellers) => {
+  const sellerIds = sellers.map((seller) => seller.accredited_seller_id).filter(Boolean);
+  if (!sellerIds.length) return sellers.map((seller) => ({ ...seller, project_rates: [], group_project_rates: [] }));
+
+  const placeholders = sellerIds.map(() => '?').join(', ');
+
+  const [sellerRateRows] = await db.query(
+    `
+      SELECT
+        asr.accredited_seller_id,
+        asr.lot_project_id,
+        lp.lot_project_name,
+        lp.lot_project_slug,
+        lp.lot_project_location_code,
+        asr.accredited_seller_project_rate,
+        asr.accredited_seller_lot_project_rate_status
+      FROM accredited_seller_lot_project_rates asr
+      INNER JOIN lot_projects lp ON lp.lot_project_id = asr.lot_project_id
+      WHERE asr.accredited_seller_id IN (${placeholders})
+      ORDER BY lp.lot_project_name ASC
+    `,
+    sellerIds
+  );
+
+  const groupIds = sellers.map((seller) => seller.seller_group_id).filter(Boolean);
+  const groupRateRows = groupIds.length
+    ? (await db.query(
+        `
+          SELECT
+            sgr.seller_group_id,
+            sgr.lot_project_id,
+            lp.lot_project_name,
+            lp.lot_project_slug,
+            lp.lot_project_location_code,
+            sgr.seller_group_pool_rate,
+            sgr.seller_group_lot_project_rate_status
+          FROM seller_group_lot_project_rates sgr
+          INNER JOIN lot_projects lp ON lp.lot_project_id = sgr.lot_project_id
+          WHERE sgr.seller_group_id IN (${groupIds.map(() => '?').join(', ')})
+          ORDER BY lp.lot_project_name ASC
+        `,
+        groupIds
+      ))[0]
+    : [];
+
+  const sellerRateMap = new Map();
+  sellerRateRows.forEach((rate) => {
+    if (!sellerRateMap.has(rate.accredited_seller_id)) sellerRateMap.set(rate.accredited_seller_id, []);
+    sellerRateMap.get(rate.accredited_seller_id).push(rate);
+  });
+
+  const groupRateMap = new Map();
+  groupRateRows.forEach((rate) => {
+    if (!groupRateMap.has(rate.seller_group_id)) groupRateMap.set(rate.seller_group_id, []);
+    groupRateMap.get(rate.seller_group_id).push(rate);
+  });
+
+  return sellers.map((seller) => ({
+    ...seller,
+    project_rates: sellerRateMap.get(seller.accredited_seller_id) || [],
+    group_project_rates: groupRateMap.get(seller.seller_group_id) || [],
+  }));
+};
+
 export const getAccredited = async (req, res) => {
   try {
     const page = Math.max(Number(req.query.page) || 1, 1);
@@ -67,12 +131,6 @@ export const getAccredited = async (req, res) => {
           ${fullNameSql('parent')} AS reports_under_name,
           a.seller_group_id,
           sg.seller_group_name,
-          sg.seller_group_pool_rate_bailen,
-          sg.seller_group_pool_rate_maragondon,
-          sg.seller_group_pool_rate_general_trias,
-          a.accredited_seller_assigned_rate_bailen,
-          a.accredited_seller_assigned_rate_maragondon,
-          a.accredited_seller_assigned_rate_general_trias,
           a.accredited_seller_accreditation_date,
           a.accredited_seller_status,
           a.accredited_seller_updated_at
@@ -86,6 +144,8 @@ export const getAccredited = async (req, res) => {
       `,
       [...params, limit, offset]
     );
+
+    const hydratedRows = await hydrateSellerRates(rows);
 
     const [summaryRows] = await db.query(`
       SELECT
@@ -101,7 +161,7 @@ export const getAccredited = async (req, res) => {
     `);
 
     return res.json({
-      data: rows,
+      data: hydratedRows,
       summary: {
         total: Number(summaryRows[0]?.total || 0),
         active: Number(summaryRows[0]?.active || 0),
@@ -132,6 +192,7 @@ export const getParentSellers = async (req, res) => {
     const [rows] = await db.query(`
       SELECT
         u.id AS user_id,
+        a.accredited_seller_id,
         ${fullNameSql('u')} AS full_name,
         u.role,
         a.seller_group_id

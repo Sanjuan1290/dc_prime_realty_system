@@ -14,6 +14,20 @@ const roleLabels = {
   agent: "Agent",
 };
 
+const SellerRatesCell = ({ rates = [] }) => {
+  if (!rates.length) return <p className="text-xs font-semibold text-slate-500">No rates</p>;
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {rates.map((rate) => (
+        <span key={rate.lot_project_id} className="rounded-lg bg-blue-50 px-2 py-1 text-[11px] font-black text-blue-700 ring-1 ring-blue-100">
+          {rate.lot_project_location_code || rate.lot_project_name}: {Number(rate.accredited_seller_project_rate || 0).toFixed(2)}%
+        </span>
+      ))}
+    </div>
+  );
+};
+
 const Accredited = () => {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
@@ -84,17 +98,15 @@ const Accredited = () => {
         </div>
 
         <div className="overflow-x-auto"><div className="min-w-[1350px]">
-          <div className="grid grid-cols-[1.35fr_0.95fr_1.1fr_1.1fr_0.8fr_0.95fr_0.8fr_0.9fr] bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500"><p>Seller</p><p>Role</p><p>Group</p><p>Reports Under</p><p>Bailen</p><p>Maragondon</p><p>Gentri</p><p>Status / Updated</p></div>
+          <div className="grid grid-cols-[1.35fr_0.95fr_1.1fr_1.1fr_2fr_0.9fr] bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500"><p>Seller</p><p>Role</p><p>Group</p><p>Reports Under</p><p>Project Rates</p><p>Status / Updated</p></div>
           <div className="divide-y divide-slate-100">
             {isLoading ? <div className="px-4 py-10 text-center text-sm font-semibold text-slate-500">Loading accredited sellers...</div> : sellers.length === 0 ? <div className="px-4 py-10 text-center text-sm font-semibold text-slate-500">No accredited sellers found.</div> : sellers.map((seller) => (
-              <div key={seller.accredited_seller_id} className="grid grid-cols-[1.35fr_0.95fr_1.1fr_1.1fr_0.8fr_0.95fr_0.8fr_0.9fr] items-center px-4 py-4 text-sm">
+              <div key={seller.accredited_seller_id} className="grid grid-cols-[1.35fr_0.95fr_1.1fr_1.1fr_2fr_0.9fr] items-center px-4 py-4 text-sm">
                 <div><p className="font-bold text-slate-950">{seller.full_name}</p><p className="text-xs text-slate-500">{seller.email} • {seller.contact_no || "No contact"}</p></div>
                 <p className="font-semibold text-slate-700">{roleLabels[seller.role] || seller.role}</p>
                 <p className="font-semibold text-slate-700">{seller.seller_group_name || "No group"}</p>
                 <p className="text-slate-600">{seller.reports_under_name || "Direct to Developer"}</p>
-                <p className="font-bold text-blue-700">{Number(seller.accredited_seller_assigned_rate_bailen).toFixed(2)}%</p>
-                <p className="font-bold text-slate-700">{Number(seller.accredited_seller_assigned_rate_maragondon).toFixed(2)}%</p>
-                <p className="font-bold text-slate-700">{Number(seller.accredited_seller_assigned_rate_general_trias).toFixed(2)}%</p>
+                <SellerRatesCell rates={seller.project_rates} />
                 <div><span className={`w-fit rounded-full border px-3 py-1 text-xs font-bold capitalize ${seller.accredited_seller_status === "active" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-slate-50 text-slate-500"}`}>{seller.accredited_seller_status}</span><p className="mt-1 text-xs text-slate-500">{seller.accredited_seller_updated_at ? formatDateTime(seller.accredited_seller_updated_at) : "—"}</p></div>
               </div>
             ))}
@@ -108,4 +120,3 @@ const Accredited = () => {
 };
 
 export default Accredited;
-

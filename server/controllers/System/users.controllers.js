@@ -10,10 +10,10 @@ const sellerRoles = new Set([
 ]);
 
 const roleDefaultRates = {
-  broker_network_manager: { bailen: 8, maragondon: 8, general_trias: 8 },
-  broker: { bailen: 7, maragondon: 7, general_trias: 7 },
-  manager: { bailen: 5, maragondon: 5, general_trias: 5 },
-  agent: { bailen: 3, maragondon: 3, general_trias: 3 },
+  broker_network_manager: 8,
+  broker: 7,
+  manager: 5,
+  agent: 3,
 };
 
 const toNullableNumber = (value) => {
@@ -31,6 +31,98 @@ const buildFullNameSql = (alias = 'u') => {
   return `TRIM(CONCAT_WS(' ', ${alias}.first_name, ${alias}.middle_name, ${alias}.last_name))`;
 };
 
+const getRoleDefaultRate = (role) => Number(roleDefaultRates[role] ?? 0);
+
+const normalizeStatus = (status) => (status === 'inactive' ? 'inactive' : 'active');
+
+const getActiveLotProjects = async (connection = db) => {
+  const [projects] = await connection.query(`
+    SELECT
+      lot_project_id,
+      lot_project_name,
+      lot_project_slug,
+      lot_project_location_code
+    FROM lot_projects
+    WHERE lot_project_status = 'active'
+    ORDER BY lot_project_name ASC
+  `);
+
+  return projects;
+};
+
+const normalizeProjectRates = (projectRates = [], projects = [], defaultRate = 0) => {
+  const rateMap = new Map(
+    Array.isArray(projectRates)
+      ? projectRates
+          .map((item) => [Number(item.lot_project_id), Number(item.accredited_seller_project_rate ?? item.rate ?? item.seller_rate ?? defaultRate)])
+          .filter(([projectId, rate]) => projectId && !Number.isNaN(rate))
+      : []
+  );
+
+  return projects.map((project) => ({
+    lot_project_id: Number(project.lot_project_id),
+    accredited_seller_project_rate: rateMap.has(Number(project.lot_project_id))
+      ? Number(rateMap.get(Number(project.lot_project_id)))
+      : defaultRate,
+  }));
+};
+
+const upsertAccreditedProjectRates = async (connection, accreditedSellerId, projectRates) => {
+  if (!projectRates.length) return;
+
+  await connection.query(
+    `
+      INSERT INTO accredited_seller_lot_project_rates (
+        accredited_seller_id,
+        lot_project_id,
+        accredited_seller_project_rate,
+        accredited_seller_lot_project_rate_status
+      ) VALUES ${projectRates.map(() => '(?, ?, ?, "active")').join(', ')}
+      ON DUPLICATE KEY UPDATE
+        accredited_seller_project_rate = VALUES(accredited_seller_project_rate),
+        accredited_seller_lot_project_rate_status = 'active'
+    `,
+    projectRates.flatMap((rate) => [
+      accreditedSellerId,
+      rate.lot_project_id,
+      Number(rate.accredited_seller_project_rate || 0),
+    ])
+  );
+};
+
+const syncManagedSellerLink = async (connection, accreditedSellerId, reportsUnderUserId) => {
+  await connection.query(
+    `DELETE FROM accredited_seller_managed_sellers WHERE managed_accredited_seller_id = ?`,
+    [accreditedSellerId]
+  );
+
+  if (!reportsUnderUserId) return;
+
+  const [parentRows] = await connection.query(
+    `
+      SELECT accredited_seller_id
+      FROM accredited_sellers
+      WHERE user_id = ?
+      LIMIT 1
+    `,
+    [reportsUnderUserId]
+  );
+
+  const parentAccreditedSellerId = parentRows[0]?.accredited_seller_id;
+  if (!parentAccreditedSellerId) return;
+
+  await connection.query(
+    `
+      INSERT INTO accredited_seller_managed_sellers (
+        manager_accredited_seller_id,
+        managed_accredited_seller_id
+      ) VALUES (?, ?)
+      ON DUPLICATE KEY UPDATE updated_at = NOW()
+    `,
+    [parentAccreditedSellerId, accreditedSellerId]
+  );
+};
+
 const getUserSelectSql = () => `
   SELECT
     u.id,
@@ -46,21 +138,57 @@ const getUserSelectSql = () => `
     u.last_login,
     u.created_at,
     u.updated_at,
+    a.accredited_seller_id,
     a.seller_group_id,
     sg.seller_group_name,
     a.accredited_seller_reports_under_user_id AS reports_under_user_id,
     ${buildFullNameSql('parent')} AS reports_under_name,
     parent.role AS reports_under_role,
     a.accredited_seller_accreditation_date AS accreditation_date,
-    a.accredited_seller_status,
-    a.accredited_seller_assigned_rate_bailen,
-    a.accredited_seller_assigned_rate_maragondon,
-    a.accredited_seller_assigned_rate_general_trias
+    a.accredited_seller_status
   FROM users u
   LEFT JOIN accredited_sellers a ON a.user_id = u.id
   LEFT JOIN seller_groups sg ON sg.seller_group_id = a.seller_group_id
   LEFT JOIN users parent ON parent.id = a.accredited_seller_reports_under_user_id
 `;
+
+const hydrateUserProjectRates = async (users) => {
+  const accreditedSellerIds = users.map((user) => user.accredited_seller_id).filter(Boolean);
+
+  if (!accreditedSellerIds.length) {
+    return users.map((user) => ({ ...user, project_rates: [] }));
+  }
+
+  const placeholders = accreditedSellerIds.map(() => '?').join(', ');
+  const [rateRows] = await db.query(
+    `
+      SELECT
+        asr.accredited_seller_id,
+        asr.lot_project_id,
+        lp.lot_project_name,
+        lp.lot_project_slug,
+        lp.lot_project_location_code,
+        asr.accredited_seller_project_rate,
+        asr.accredited_seller_lot_project_rate_status
+      FROM accredited_seller_lot_project_rates asr
+      INNER JOIN lot_projects lp ON lp.lot_project_id = asr.lot_project_id
+      WHERE asr.accredited_seller_id IN (${placeholders})
+      ORDER BY lp.lot_project_name ASC
+    `,
+    accreditedSellerIds
+  );
+
+  const rateMap = new Map();
+  rateRows.forEach((rate) => {
+    if (!rateMap.has(rate.accredited_seller_id)) rateMap.set(rate.accredited_seller_id, []);
+    rateMap.get(rate.accredited_seller_id).push(rate);
+  });
+
+  return users.map((user) => ({
+    ...user,
+    project_rates: rateMap.get(user.accredited_seller_id) || [],
+  }));
+};
 
 export const login = async (req, res) => {
   const { email, password } = req.body;
@@ -253,6 +381,8 @@ export const getUsers = async (req, res) => {
       [...params, limit, offset]
     );
 
+    const hydratedRows = await hydrateUserProjectRates(rows);
+
     const [summaryRows] = await db.query(`
       SELECT
         COUNT(*) AS total,
@@ -263,7 +393,7 @@ export const getUsers = async (req, res) => {
     `);
 
     return res.json({
-      data: rows,
+      data: hydratedRows,
       summary: {
         total: Number(summaryRows[0]?.total || 0),
         active: Number(summaryRows[0]?.active || 0),
@@ -300,9 +430,7 @@ export const createUser = async (req, res) => {
       seller_group_id,
       reports_under_user_id,
       accreditation_date,
-      accredited_seller_assigned_rate_bailen,
-      accredited_seller_assigned_rate_maragondon,
-      accredited_seller_assigned_rate_general_trias,
+      project_rates = [],
     } = req.body;
 
     if (!first_name?.trim() || !last_name?.trim() || !email?.trim()) {
@@ -335,39 +463,38 @@ export const createUser = async (req, res) => {
         email.trim(),
         passwordHash,
         role,
-        status,
+        normalizeStatus(status),
       ]
     );
 
     const userId = result.insertId;
 
     if (sellerRoles.has(role)) {
-      const defaults = roleDefaultRates[role];
-
-      await connection.query(
+      const [sellerResult] = await connection.query(
         `
           INSERT INTO accredited_sellers (
             user_id,
             seller_group_id,
             accredited_seller_reports_under_user_id,
-            accredited_seller_assigned_rate_bailen,
-            accredited_seller_assigned_rate_maragondon,
-            accredited_seller_assigned_rate_general_trias,
             accredited_seller_accreditation_date,
             accredited_seller_status
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?)
         `,
         [
           userId,
           toNullableNumber(seller_group_id),
           role === 'broker_network_manager' ? null : toNullableNumber(reports_under_user_id),
-          Number(accredited_seller_assigned_rate_bailen ?? defaults.bailen),
-          Number(accredited_seller_assigned_rate_maragondon ?? defaults.maragondon),
-          Number(accredited_seller_assigned_rate_general_trias ?? defaults.general_trias),
           accreditation_date || new Date().toISOString().slice(0, 10),
-          status,
+          normalizeStatus(status),
         ]
       );
+
+      const accreditedSellerId = sellerResult.insertId;
+      const projects = await getActiveLotProjects(connection);
+      const normalizedRates = normalizeProjectRates(project_rates, projects, getRoleDefaultRate(role));
+
+      await upsertAccreditedProjectRates(connection, accreditedSellerId, normalizedRates);
+      await syncManagedSellerLink(connection, accreditedSellerId, role === 'broker_network_manager' ? null : toNullableNumber(reports_under_user_id));
     }
 
     await connection.commit();
@@ -400,9 +527,7 @@ export const editUser = async (req, res) => {
       seller_group_id,
       reports_under_user_id,
       accreditation_date,
-      accredited_seller_assigned_rate_bailen,
-      accredited_seller_assigned_rate_maragondon,
-      accredited_seller_assigned_rate_general_trias,
+      project_rates = [],
     } = req.body;
 
     if (!first_name?.trim() || !last_name?.trim() || !email?.trim()) {
@@ -431,32 +556,24 @@ export const editUser = async (req, res) => {
         contact_no?.trim() || null,
         email.trim(),
         role,
-        status,
+        normalizeStatus(status),
         userId,
       ]
     );
 
     if (sellerRoles.has(role)) {
-      const defaults = roleDefaultRates[role];
-
       await connection.query(
         `
           INSERT INTO accredited_sellers (
             user_id,
             seller_group_id,
             accredited_seller_reports_under_user_id,
-            accredited_seller_assigned_rate_bailen,
-            accredited_seller_assigned_rate_maragondon,
-            accredited_seller_assigned_rate_general_trias,
             accredited_seller_accreditation_date,
             accredited_seller_status
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?)
           ON DUPLICATE KEY UPDATE
             seller_group_id = VALUES(seller_group_id),
             accredited_seller_reports_under_user_id = VALUES(accredited_seller_reports_under_user_id),
-            accredited_seller_assigned_rate_bailen = VALUES(accredited_seller_assigned_rate_bailen),
-            accredited_seller_assigned_rate_maragondon = VALUES(accredited_seller_assigned_rate_maragondon),
-            accredited_seller_assigned_rate_general_trias = VALUES(accredited_seller_assigned_rate_general_trias),
             accredited_seller_accreditation_date = VALUES(accredited_seller_accreditation_date),
             accredited_seller_status = VALUES(accredited_seller_status)
         `,
@@ -464,13 +581,22 @@ export const editUser = async (req, res) => {
           userId,
           toNullableNumber(seller_group_id),
           role === 'broker_network_manager' ? null : toNullableNumber(reports_under_user_id),
-          Number(accredited_seller_assigned_rate_bailen ?? defaults.bailen),
-          Number(accredited_seller_assigned_rate_maragondon ?? defaults.maragondon),
-          Number(accredited_seller_assigned_rate_general_trias ?? defaults.general_trias),
           accreditation_date || new Date().toISOString().slice(0, 10),
-          status,
+          normalizeStatus(status),
         ]
       );
+
+      const [sellerRows] = await connection.query(
+        `SELECT accredited_seller_id FROM accredited_sellers WHERE user_id = ? LIMIT 1`,
+        [userId]
+      );
+
+      const accreditedSellerId = sellerRows[0]?.accredited_seller_id;
+      const projects = await getActiveLotProjects(connection);
+      const normalizedRates = normalizeProjectRates(project_rates, projects, getRoleDefaultRate(role));
+
+      await upsertAccreditedProjectRates(connection, accreditedSellerId, normalizedRates);
+      await syncManagedSellerLink(connection, accreditedSellerId, role === 'broker_network_manager' ? null : toNullableNumber(reports_under_user_id));
     } else {
       await connection.query(`DELETE FROM accredited_sellers WHERE user_id = ?`, [userId]);
     }
@@ -496,7 +622,7 @@ export const toggleUserStatus = async (req, res) => {
 
     if (!user) return res.status(404).json({ message: 'User not found.' });
 
-    const nextStatus = req.body.status || (user.status === 'active' ? 'inactive' : 'active');
+    const nextStatus = normalizeStatus(req.body.status || (user.status === 'active' ? 'inactive' : 'active'));
 
     await db.query(`UPDATE users SET status = ? WHERE id = ?`, [nextStatus, userId]);
     await db.query(

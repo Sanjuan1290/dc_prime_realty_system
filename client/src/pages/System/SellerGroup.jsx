@@ -10,6 +10,20 @@ import EditGroupModal from "../../components/System/sellerGroupComponents/EditGr
 import DetailsModal from "../../components/System/sellerGroupComponents/DetailsModal";
 import { useFetch, useFetchPatch } from "../../utils/useFetch";
 
+const ProjectRatesCell = ({ rates = [] }) => {
+  if (!rates.length) return <p className="text-xs font-semibold text-slate-500">No project rates</p>;
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {rates.map((rate) => (
+        <span key={rate.lot_project_id} className="rounded-lg bg-blue-50 px-2 py-1 text-[11px] font-black text-blue-700 ring-1 ring-blue-100">
+          {rate.lot_project_location_code || rate.lot_project_name}: {Number(rate.seller_group_pool_rate || 0).toFixed(2)}%
+        </span>
+      ))}
+    </div>
+  );
+};
+
 const SellerGroup = () => {
   const queryClient = useQueryClient();
   const [showNewGroupModal, setShowNewGroupModal] = useState(false);
@@ -38,7 +52,7 @@ const SellerGroup = () => {
 
   const sellerGroups = data?.data || [];
   const pagination = data?.pagination || { page, limit, total: 0, totalPages: 1, hasNext: false, hasPrev: false };
-  const meta = data?.meta || { active: 0, inactive: 0, totalMembers: 0, averageBailenPool: 0 };
+  const meta = data?.meta || { active: 0, inactive: 0, totalMembers: 0, averagePool: 0 };
 
   const toggleMutation = useMutation({
     mutationFn: (group) => useFetchPatch(`/seller-groups/toggle-status/${group.seller_group_id}`),
@@ -52,6 +66,7 @@ const SellerGroup = () => {
     onSuccess: (result) => {
       setAlert({ type: "success", message: result.message || "Seller group status updated." });
       queryClient.invalidateQueries({ queryKey: ["seller-groups"] });
+      queryClient.invalidateQueries({ queryKey: ["seller-group-options"] });
     },
     onError: (mutationError) => setAlert({ type: "error", message: mutationError.message }),
     onSettled: () => setTogglingGroupId(null),
@@ -77,6 +92,7 @@ const SellerGroup = () => {
   const handleSaved = (message) => {
     setAlert({ type: "success", message });
     queryClient.invalidateQueries({ queryKey: ["seller-groups"] });
+    queryClient.invalidateQueries({ queryKey: ["seller-group-options"] });
     queryClient.invalidateQueries({ queryKey: ["users"] });
     queryClient.invalidateQueries({ queryKey: ["accredited"] });
   };
@@ -100,7 +116,7 @@ const SellerGroup = () => {
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><p className="text-sm font-semibold text-slate-500">Total Groups</p><h3 className="mt-2 text-3xl font-bold text-slate-950">{pagination.total}</h3><p className="mt-2 text-sm text-slate-500">All seller groups</p></div>
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><p className="text-sm font-semibold text-slate-500">Active Groups</p><h3 className="mt-2 text-3xl font-bold text-slate-950">{meta.active}</h3><p className="mt-2 text-sm text-slate-500">Available for assignment</p></div>
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><p className="text-sm font-semibold text-slate-500">Total Members</p><h3 className="mt-2 text-3xl font-bold text-slate-950">{meta.totalMembers}</h3><p className="mt-2 text-sm text-slate-500">Members across groups</p></div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><p className="text-sm font-semibold text-slate-500">Avg. Bailen Pool</p><h3 className="mt-2 text-3xl font-bold text-slate-950">{Number(meta.averageBailenPool || 0).toFixed(1)}%</h3><p className="mt-2 text-sm text-slate-500">Current group average</p></div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><p className="text-sm font-semibold text-slate-500">Avg. Pool Rate</p><h3 className="mt-2 text-3xl font-bold text-slate-950">{Number(meta.averagePool || 0).toFixed(1)}%</h3><p className="mt-2 text-sm text-slate-500">All active project rates</p></div>
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -114,18 +130,16 @@ const SellerGroup = () => {
         </div>
 
         <div className="overflow-x-auto"><div className="min-w-[1100px]">
-          <div className="grid grid-cols-[1.35fr_1.1fr_0.8fr_0.9fr_0.9fr_0.9fr_0.8fr_1fr] bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500"><p>Group</p><p>Head</p><p>Members</p><p>Bailen</p><p>Maragondon</p><p>Gentri</p><p>Status</p><p className="text-right">Actions</p></div>
+          <div className="grid grid-cols-[1.35fr_1.1fr_0.8fr_2fr_0.8fr_1fr] bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500"><p>Group</p><p>Head</p><p>Members</p><p>Project Pool Rates</p><p>Status</p><p className="text-right">Actions</p></div>
           <div className="divide-y divide-slate-100">
             {isLoading ? <div className="px-4 py-10 text-center text-sm font-semibold text-slate-500">Loading seller groups...</div> : sellerGroups.length === 0 ? <div className="px-4 py-10 text-center text-sm font-semibold text-slate-500">No seller groups found.</div> : sellerGroups.map((group) => (
-              <div key={group.seller_group_id} className="grid grid-cols-[1.35fr_1.1fr_0.8fr_0.9fr_0.9fr_0.9fr_0.8fr_1fr] items-center px-4 py-4 text-sm">
+              <div key={group.seller_group_id} className="grid grid-cols-[1.35fr_1.1fr_0.8fr_2fr_0.8fr_1fr] items-center px-4 py-4 text-sm">
                 <div><p className="font-bold text-slate-950">{group.seller_group_name}</p><p className="text-xs text-slate-500">{group.seller_group_description || "No description"}</p></div>
                 <p className="font-semibold text-slate-700">{group.group_head_name || "No head"}</p>
                 <p className="font-bold text-slate-950">{group.member_count} <span className="text-xs font-semibold text-slate-500">({group.active_member_count} active)</span></p>
-                <p className="font-bold text-blue-700">{Number(group.seller_group_pool_rate_bailen).toFixed(2)}%</p>
-                <p className="font-bold text-slate-700">{Number(group.seller_group_pool_rate_maragondon).toFixed(2)}%</p>
-                <p className="font-bold text-slate-700">{Number(group.seller_group_pool_rate_general_trias).toFixed(2)}%</p>
+                <ProjectRatesCell rates={group.project_rates} />
                 <span className={`w-fit rounded-full border px-3 py-1 text-xs font-bold capitalize ${group.seller_group_status === "active" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-slate-50 text-slate-500"}`}>{group.seller_group_status}</span>
-                <div className="flex justify-end gap-2"><button type="button" onClick={() => openDetailsModal(group)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:bg-slate-50"><FiEye className="h-3.5 w-3.5" />View</button><button type="button" onClick={() => openEditModal(group)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:bg-slate-50"><FiEdit2 className="h-3.5 w-3.5" />Edit</button><button type="button" onClick={() => handleToggleStatus(group)} disabled={toggleMutation.isPending} className="inline-flex h-9 items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 text-xs font-bold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"><FiTrash2 className="h-3.5 w-3.5" />{toggleMutation.isPending && togglingGroupId === group.seller_group_id ? "Updating..." : group.seller_group_status === "active" ? "Deactivate" : "Activate"}</button></div>
+                <div className="flex justify-end gap-2"><button type="button" onClick={() => openDetailsModal(group)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-50"><FiEye className="h-3.5 w-3.5" />Details</button><button type="button" onClick={() => openEditModal(group)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-bold text-blue-700 hover:bg-blue-100"><FiEdit2 className="h-3.5 w-3.5" />Edit</button><button type="button" onClick={() => handleToggleStatus(group)} disabled={toggleMutation.isPending && togglingGroupId === group.seller_group_id} className="inline-flex h-9 items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 text-xs font-bold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"><FiTrash2 className="h-3.5 w-3.5" />{toggleMutation.isPending && togglingGroupId === group.seller_group_id ? "Updating..." : group.seller_group_status === "active" ? "Deactivate" : "Activate"}</button></div>
               </div>
             ))}
           </div>
@@ -142,4 +156,3 @@ const SellerGroup = () => {
 };
 
 export default SellerGroup;
-
