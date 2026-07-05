@@ -2,76 +2,6 @@ import { useMemo, useState } from 'react'
 import { FiCheckCircle, FiSearch, FiX } from 'react-icons/fi'
 import StatusAlert from '../../Shared/StatusAlert'
 
-const documentLibrary = [
-  { id: 1, name: "BUYER'S INFORMATION FORM", description: 'No description' },
-  { id: 2, name: 'INTENT TO BUY', description: 'No description' },
-  { id: 3, name: "OFFER TO BUY & BUYER'S PROFILE", description: 'No description' },
-  { id: 4, name: 'RESERVATION AGREEMENT', description: 'No description' },
-  { id: 5, name: 'Passport ID', description: 'From library' },
-  {
-    id: 6,
-    name: "Valid ID's of both Principal and Representative",
-    description: 'From library',
-  },
-  { id: 7, name: 'Marriage Certificate', description: 'From library' },
-  {
-    id: 8,
-    name: 'Valid ID of Spouse (w/ 3 specimen signatures)',
-    description: 'From library',
-  },
-  {
-    id: 9,
-    name: "Spouse's Signature (when required)",
-    description: 'From library',
-  },
-  {
-    id: 10,
-    name: 'CENOMAR (if the buyer has like but not married)',
-    description: 'From library',
-  },
-  { id: 11, name: 'Proof of Income', description: 'From library' },
-  { id: 12, name: 'Proof of Billing', description: 'From library' },
-  { id: 13, name: 'TIN No. / TIN ID', description: 'From library' },
-  {
-    id: 14,
-    name: 'Two valid Government-issued IDs (w/ 3 specimen signatures)',
-    description: 'From library',
-  },
-]
-
-const documentTemplates = [
-  {
-    id: 1,
-    name: "Required for Submission(For OFW's or Representative)",
-    description: 'No description',
-    docs: [5, 6],
-  },
-  {
-    id: 2,
-    name: "Required for Submission(For Married Client's)",
-    description: 'No description',
-    docs: [7, 8, 9, 10],
-  },
-  {
-    id: 3,
-    name: 'Required for Submission',
-    description: 'No description',
-    docs: [1, 2, 3],
-  },
-  {
-    id: 4,
-    name: 'Standard Buyer Documents',
-    description: 'No description',
-    docs: [4, 11, 12, 13, 14],
-  },
-  {
-    id: 5,
-    name: 'Additional Identity Requirements',
-    description: 'No description',
-    docs: [5, 6, 14],
-  },
-]
-
 const Field = ({
   label,
   value,
@@ -114,7 +44,22 @@ const SelectField = ({ label, value, onChange, children, helper }) => (
   </label>
 )
 
-const AddLotProjectModal = ({ onClose, onSave }) => {
+const normalizeDocument = (document) => ({
+  id: document.document_id,
+  name: document.document_name,
+  description: document.document_description || 'No description',
+  requirement: document.document_is_required ? 'required' : 'optional',
+  status: document.document_status || 'active',
+})
+
+const AddLotProjectModal = ({
+  documents = [],
+  templates = [],
+  templateDocuments = [],
+  isLoadingDocuments = false,
+  onClose,
+  onSave,
+}) => {
   const [form, setForm] = useState({
     name: '',
     location: '',
@@ -129,28 +74,34 @@ const AddLotProjectModal = ({ onClose, onSave }) => {
   const [cadastralLots, setCadastralLots] = useState([])
   const [templateSearch, setTemplateSearch] = useState('')
   const [documentSearch, setDocumentSearch] = useState('')
-  const [selectedTemplateIds, setSelectedTemplateIds] = useState([1, 2, 3])
+  const [selectedTemplateIds, setSelectedTemplateIds] = useState([])
   const [alert, setAlert] = useState(null)
   const [isSaving, setIsSaving] = useState(false)
+  const [selectedDocuments, setSelectedDocuments] = useState([])
 
-  const [selectedDocuments, setSelectedDocuments] = useState(() => {
-    const ids = new Set()
+  const documentLibrary = useMemo(
+    () =>
+      documents
+        .filter((document) => document.document_status === 'active')
+        .map(normalizeDocument),
+    [documents]
+  )
 
-    documentTemplates
-      .filter((template) => [1, 2, 3].includes(template.id))
-      .forEach((template) => {
-        template.docs.forEach((docId) => ids.add(docId))
-      })
-
-    return Array.from(ids)
-      .map((id) => documentLibrary.find((document) => document.id === id))
-      .filter(Boolean)
-      .map((document) => ({
-        ...document,
-        requirement: 'required',
-        status: 'active',
-      }))
-  })
+  const documentTemplates = useMemo(
+    () =>
+      templates
+        .filter((template) => template.template_status === 'active')
+        .map((template) => ({
+          id: template.template_id,
+          name: template.template_name,
+          description: template.template_description || 'No description',
+          docs: templateDocuments
+            .filter((item) => Number(item.template_id) === Number(template.template_id))
+            .map((item) => Number(item.document_id))
+            .filter(Boolean),
+        })),
+    [templates, templateDocuments]
+  )
 
   const selectedDocIds = useMemo(
     () => new Set(selectedDocuments.map((document) => document.id)),
@@ -165,7 +116,7 @@ const AddLotProjectModal = ({ onClose, onSave }) => {
     return documentTemplates.filter((template) =>
       template.name.toLowerCase().includes(keyword)
     )
-  }, [templateSearch])
+  }, [documentTemplates, templateSearch])
 
   const filteredDocuments = useMemo(() => {
     const keyword = documentSearch.trim().toLowerCase()
@@ -175,7 +126,7 @@ const AddLotProjectModal = ({ onClose, onSave }) => {
     return documentLibrary.filter((document) =>
       document.name.toLowerCase().includes(keyword)
     )
-  }, [documentSearch])
+  }, [documentLibrary, documentSearch])
 
   const requiredCount = useMemo(
     () => selectedDocuments.filter((document) => document.requirement === 'required').length,
@@ -228,8 +179,8 @@ const AddLotProjectModal = ({ onClose, onSave }) => {
       ...current,
       {
         ...document,
-        requirement: 'required',
-        status: 'active',
+        requirement: document.requirement || 'required',
+        status: document.status || 'active',
       },
     ])
 
@@ -269,8 +220,8 @@ const AddLotProjectModal = ({ onClose, onSave }) => {
       .filter((document) => !selectedDocIds.has(document.id))
       .map((document) => ({
         ...document,
-        requirement: 'required',
-        status: 'active',
+        requirement: document.requirement || 'required',
+        status: document.status || 'active',
       }))
 
     if (docsToAdd.length) {
@@ -298,8 +249,8 @@ const AddLotProjectModal = ({ onClose, onSave }) => {
         .filter(Boolean)
         .map((document) => ({
           ...document,
-          requirement: 'required',
-          status: 'active',
+          requirement: document.requirement || 'required',
+          status: document.status || 'active',
         }))
     )
 
@@ -318,15 +269,15 @@ const AddLotProjectModal = ({ onClose, onSave }) => {
     setSelectedDocuments(
       documentLibrary.map((document) => ({
         ...document,
-        requirement: 'required',
-        status: 'active',
+        requirement: document.requirement || 'required',
+        status: document.status || 'active',
       }))
     )
 
     setAlert({ type: 'success', message: 'All library documents added.' })
   }
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault()
 
     if (!form.name.trim()) {
@@ -345,24 +296,29 @@ const AddLotProjectModal = ({ onClose, onSave }) => {
     }
 
     setIsSaving(true)
-    setAlert({ type: 'loading', message: 'Adding lot project in mock mode...' })
+    setAlert({ type: 'loading', message: 'Adding lot project...' })
 
-    window.setTimeout(() => {
-      setIsSaving(false)
-
-      onSave({
-        id: Date.now(),
-        type: 'lot',
+    try {
+      await onSave({
         name: form.name.trim(),
         location: form.location.trim(),
         locationCode: form.locationCode.trim().toUpperCase(),
-        cadastralLots,
-        defaultDocs: selectedDocuments.length,
-        requiredDocs: requiredCount,
+        administrator: form.administrator.trim(),
+        taxDeclarationNo: form.taxDeclarationNo.trim(),
+        pin: form.pin.trim(),
         status: form.status,
-        routePath: `/${form.name.trim().replace(/\s+/g, '').toLowerCase()}Project`,
+        cadastralLots,
+        defaultDocuments: selectedDocuments.map((document) => ({
+          document_id: document.id,
+          requirement: document.requirement,
+          status: document.status,
+          is_required: document.requirement === 'required',
+        })),
       })
-    }, 700)
+    } catch (error) {
+      setIsSaving(false)
+      setAlert({ type: 'error', message: error.message || 'Failed to add lot project.' })
+    }
   }
 
   return (
@@ -390,6 +346,14 @@ const AddLotProjectModal = ({ onClose, onSave }) => {
               type={alert.type}
               message={alert.message}
               onClose={alert.type === 'loading' ? undefined : () => setAlert(null)}
+              className="mb-4"
+            />
+          ) : null}
+
+          {isLoadingDocuments ? (
+            <StatusAlert
+              type="loading"
+              message="Loading document library and templates..."
               className="mb-4"
             />
           ) : null}

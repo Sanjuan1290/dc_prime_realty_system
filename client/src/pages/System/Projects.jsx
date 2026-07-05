@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   FiEye,
   FiFileText,
@@ -13,33 +14,12 @@ import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
 import AddLotProjectModal from '../../components/System/projectComponents/AddLotProjectModal'
 import HouseLotProjectModal from '../../components/System/projectComponents/HouseLotProjectModal'
-
-const initialProjects = [
-  {
-    id: 1,
-    type: 'lot',
-    name: 'Maragondon',
-    location: 'Maragondon, Cavite',
-    locationCode: 'PE',
-    cadastralLots: [],
-    defaultDocs: 14,
-    requiredDocs: 14,
-    status: 'active',
-    routePath: '/Maragondon-Lot-Project',
-  },
-  {
-    id: 2,
-    type: 'lot',
-    name: 'Bailen Project',
-    location: 'Bailen, Cavite',
-    locationCode: 'LA',
-    cadastralLots: ['1306', '1314'],
-    defaultDocs: 14,
-    requiredDocs: 14,
-    status: 'active',
-    routePath: '/Bailen-Lot-Project',
-  },
-]
+import {
+  useFetch,
+  useFetchDelete,
+  useFetchPatch,
+  useFetchPost,
+} from '../../utils/useFetch'
 
 const StatCard = ({ label, value }) => (
   <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -69,15 +49,132 @@ const StatusPill = ({ status }) => {
   )
 }
 
+const normalizeProject = (project) => ({
+  id: project.id || project.lot_project_id,
+  type: project.type || 'lot',
+  name: project.name || project.lot_project_name,
+  location: project.location || project.lot_project_location,
+  locationCode: project.locationCode || project.lot_project_location_code,
+  cadastralLots: project.cadastralLots || [],
+  defaultDocs: Number(project.defaultDocs || project.default_documents_count || 0),
+  requiredDocs: Number(project.requiredDocs || project.required_documents_count || 0),
+  status: project.status || project.lot_project_status,
+  routePath:
+    project.routePath ||
+    `/lot-projects/${project.slug || project.lot_project_slug}`,
+})
+
 const Projects = () => {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
 
-  const [projects, setProjects] = useState(initialProjects)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [showLotModal, setShowLotModal] = useState(false)
   const [showHouseLotModal, setShowHouseLotModal] = useState(false)
   const [alert, setAlert] = useState(null)
+  const [deletingProjectId, setDeletingProjectId] = useState(null)
+
+  const {
+    data: projectsResponse,
+    isLoading: isProjectsLoading,
+    isError: isProjectsError,
+    error: projectsError,
+  } = useQuery({
+    queryKey: ['lot-projects'],
+    queryFn: () => useFetch('/projects/lot-projects'),
+  })
+
+  const {
+    data: documentsResponse,
+    isLoading: isDocumentsLoading,
+    isError: isDocumentsError,
+    error: documentsError,
+  } = useQuery({
+    queryKey: ['documents'],
+    queryFn: () => useFetch('/documents/getDocuments'),
+  })
+
+  const {
+    data: templatesResponse,
+    isLoading: isTemplatesLoading,
+    isError: isTemplatesError,
+    error: templatesError,
+  } = useQuery({
+    queryKey: ['templates'],
+    queryFn: () => useFetch('/documents/getTemplates'),
+  })
+
+  const projects = useMemo(
+    () => (projectsResponse?.data || []).map(normalizeProject),
+    [projectsResponse]
+  )
+
+  const documents = documentsResponse?.documents || []
+  const templates = templatesResponse?.templates || []
+  const templateDocuments = templatesResponse?.template_documents || []
+
+  const addProjectMutation = useMutation({
+    mutationFn: (payload) => useFetchPost('/projects/lot-projects', payload),
+    onMutate: () => {
+      setAlert({ type: 'loading', message: 'Saving lot project...' })
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['lot-projects'] })
+      queryClient.invalidateQueries({ queryKey: ['lot-project-options'] })
+      setShowLotModal(false)
+      setAlert({ type: 'success', message: data?.message || 'Lot project added successfully.' })
+    },
+    onError: (error) => {
+      setAlert({ type: 'error', message: error.message || 'Failed to save lot project.' })
+    },
+  })
+
+  const changeStatusMutation = useMutation({
+    mutationFn: (projectId) =>
+      useFetchPatch(`/projects/lot-projects/${projectId}/status`, {
+        status: 'inactive',
+      }),
+    onMutate: () => {
+      setAlert({ type: 'loading', message: 'Changing project status to inactive...' })
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['lot-projects'] })
+      queryClient.invalidateQueries({ queryKey: ['lot-project-options'] })
+      setAlert({ type: 'warning', message: data?.message || 'Project status changed to inactive.' })
+    },
+    onError: (error) => {
+      setAlert({ type: 'error', message: error.message || 'Failed to change project status.' })
+    },
+  })
+
+  const deleteProjectMutation = useMutation({
+    mutationFn: (project) => useFetchDelete(`/projects/lot-projects/${project.id}`),
+    onMutate: (project) => {
+      setDeletingProjectId(project.id)
+      setAlert({ type: 'loading', message: `Deleting ${project.name}...` })
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['lot-projects'] })
+      queryClient.invalidateQueries({ queryKey: ['lot-project-options'] })
+      setAlert({ type: 'success', message: data?.message || 'Project deleted successfully.' })
+    },
+    onError: (error, project) => {
+      const message = error.message || 'Failed to delete project.'
+
+      if (message.toLowerCase().includes('listed unit')) {
+        const changeStatus = window.confirm(`${message}\n\nChange this project status to inactive instead?`)
+
+        if (changeStatus) {
+          changeStatusMutation.mutate(project.id)
+          return
+        }
+      }
+
+      setAlert({ type: 'error', message })
+    },
+    onSettled: () => setDeletingProjectId(null),
+  })
 
   const filteredProjects = useMemo(() => {
     const keyword = search.trim().toLowerCase()
@@ -118,14 +215,8 @@ const Projects = () => {
     setAlert({ type: 'info', message: 'Filters reset.' })
   }
 
-  const handleAddLotProject = (project) => {
-    setProjects((current) => [project, ...current])
-    setShowLotModal(false)
-
-    setAlert({
-      type: 'success',
-      message: `${project.name} added as a Lot Project in mock mode.`,
-    })
+  const handleAddLotProject = async (project) => {
+    await addProjectMutation.mutateAsync(project)
   }
 
   const handleOpenProject = (project) => {
@@ -143,12 +234,18 @@ const Projects = () => {
   const handleDelete = (projectId) => {
     const project = projects.find((item) => item.id === projectId)
 
-    setProjects((current) => current.filter((item) => item.id !== projectId))
+    if (!project) {
+      setAlert({
+        type: 'error',
+        message: 'Project not found.',
+      })
+      return
+    }
 
-    setAlert({
-      type: 'warning',
-      message: `${project?.name || 'Project'} removed in mock mode.`,
-    })
+    const confirmed = window.confirm(`Delete "${project.name}"? This cannot be undone.`)
+    if (!confirmed) return
+
+    deleteProjectMutation.mutate(project)
   }
 
   return (
@@ -157,7 +254,32 @@ const Projects = () => {
         <StatusAlert
           type={alert.type}
           message={alert.message}
-          onClose={() => setAlert(null)}
+          onClose={alert.type === 'loading' ? undefined : () => setAlert(null)}
+        />
+      ) : null}
+
+      {isProjectsLoading ? (
+        <StatusAlert type="loading" message="Loading projects..." />
+      ) : null}
+
+      {isProjectsError ? (
+        <StatusAlert
+          type="error"
+          message={projectsError?.message || 'Failed to load projects.'}
+        />
+      ) : null}
+
+      {isDocumentsError ? (
+        <StatusAlert
+          type="warning"
+          message={documentsError?.message || 'Failed to load document library.'}
+        />
+      ) : null}
+
+      {isTemplatesError ? (
+        <StatusAlert
+          type="warning"
+          message={templatesError?.message || 'Failed to load document templates.'}
         />
       ) : null}
 
@@ -172,7 +294,8 @@ const Projects = () => {
           <button
             type="button"
             onClick={() => setShowLotModal(true)}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98]"
+            disabled={isDocumentsLoading || isTemplatesLoading}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
           >
             <FiPlus className="h-4 w-4" />
             Add Lot Project
@@ -255,71 +378,77 @@ const Projects = () => {
             </thead>
 
             <tbody className="divide-y divide-slate-100">
-              {filteredProjects.map((project) => (
-                <tr key={project.id} className="transition hover:bg-slate-50">
-                  <td className="px-4 py-4 font-black text-slate-950">
-                    {project.name}
-                  </td>
+              {filteredProjects.map((project) => {
+                const isDeleting =
+                  deleteProjectMutation.isPending && deletingProjectId === project.id
 
-                  <td className="px-4 py-4">
-                    <span
-                      className={`rounded-full px-3 py-1 text-xs font-black ${
-                        project.type === 'lot'
-                          ? 'bg-blue-50 text-blue-700'
-                          : 'bg-purple-50 text-purple-700'
-                      }`}
-                    >
-                      {project.type === 'lot' ? 'Lot Project' : 'House & Lot'}
-                    </span>
-                  </td>
+                return (
+                  <tr key={project.id} className="transition hover:bg-slate-50">
+                    <td className="px-4 py-4 font-black text-slate-950">
+                      {project.name}
+                    </td>
 
-                  <td className="px-4 py-4 font-semibold text-slate-600">
-                    {project.location}
-                  </td>
-
-                  <td className="px-4 py-4">
-                    <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-black text-slate-700">
-                      {project.locationCode}
-                    </span>
-                  </td>
-
-                  <td className="px-4 py-4 font-semibold text-slate-600">
-                    {project.cadastralLots.length
-                      ? project.cadastralLots.join(', ')
-                      : '-'}
-                  </td>
-
-                  <td className="px-4 py-4 font-semibold text-slate-600">
-                    {project.defaultDocs} docs / {project.requiredDocs} required
-                  </td>
-
-                  <td className="px-4 py-4">
-                    <StatusPill status={project.status} />
-                  </td>
-
-                  <td className="px-4 py-4">
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleOpenProject(project)}
-                        className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 transition hover:bg-slate-50"
+                    <td className="px-4 py-4">
+                      <span
+                        className={`rounded-full px-3 py-1 text-xs font-black ${
+                          project.type === 'lot'
+                            ? 'bg-blue-50 text-blue-700'
+                            : 'bg-purple-50 text-purple-700'
+                        }`}
                       >
-                        <FiEye className="h-3.5 w-3.5" />
-                        Details
-                      </button>
+                        {project.type === 'lot' ? 'Lot Project' : 'House & Lot'}
+                      </span>
+                    </td>
 
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(project.id)}
-                        className="inline-flex h-9 items-center gap-2 rounded-lg bg-red-600 px-3 text-xs font-black text-white transition hover:bg-red-700"
-                      >
-                        <FiTrash2 className="h-3.5 w-3.5" />
-                        Delete
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    <td className="px-4 py-4 font-semibold text-slate-600">
+                      {project.location}
+                    </td>
+
+                    <td className="px-4 py-4">
+                      <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-black text-slate-700">
+                        {project.locationCode}
+                      </span>
+                    </td>
+
+                    <td className="px-4 py-4 font-semibold text-slate-600">
+                      {project.cadastralLots.length
+                        ? project.cadastralLots.join(', ')
+                        : '-'}
+                    </td>
+
+                    <td className="px-4 py-4 font-semibold text-slate-600">
+                      {project.defaultDocs} docs / {project.requiredDocs} required
+                    </td>
+
+                    <td className="px-4 py-4">
+                      <StatusPill status={project.status} />
+                    </td>
+
+                    <td className="px-4 py-4">
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenProject(project)}
+                          className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 transition hover:bg-slate-50"
+                        >
+                          <FiEye className="h-3.5 w-3.5" />
+                          Details
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(project.id)}
+                          disabled={deleteProjectMutation.isPending || changeStatusMutation.isPending}
+                          className="inline-flex h-9 items-center gap-2 rounded-lg bg-red-600 px-3 text-xs font-black text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          <FiTrash2 className="h-3.5 w-3.5" />
+                          {isDeleting ? 'Deleting...' : 'Delete'}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
 
               {!filteredProjects.length ? (
                 <tr>
@@ -367,6 +496,10 @@ const Projects = () => {
 
       {showLotModal ? (
         <AddLotProjectModal
+          documents={documents}
+          templates={templates}
+          templateDocuments={templateDocuments}
+          isLoadingDocuments={isDocumentsLoading || isTemplatesLoading}
           onClose={() => setShowLotModal(false)}
           onSave={handleAddLotProject}
         />

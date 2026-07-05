@@ -13,14 +13,11 @@ import sellerGroupRouter from './routers/System/sellerGroup.routers.js';
 import accreditedRouter from './routers/System/accredited.routers.js';
 import projectsRouter from './routers/System/projects.routers.js';
 
-
 const app = express();
 
 app.use(helmet());
 app.use(express.json({ limit: '10mb' }));
 app.use(cookieParser());
-
-
 
 app.use(
   cors({
