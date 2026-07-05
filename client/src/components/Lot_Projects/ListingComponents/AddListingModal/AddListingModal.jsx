@@ -1,139 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { FiFileText, FiSave, FiX } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
 import EditListingDocumentsModal from '../EditListingDocumentsModal/EditListingDocumentsModal'
 
-const selectedProject = {
-  id: 1,
-  name: 'Bailen Project',
-  locationCode: 'LA',
-  cadastralLots: ['1306', '1314', '1315', '1316'],
-}
-
-const projectDefaultDocuments = [
-  {
-    id: 1,
-    name: 'Two valid Government-issued IDs (w/ 3 specimen signatures)',
-    description: 'Project Default',
-    source: 'Project Default',
-    requirement: 'required',
-    status: 'active',
-  },
-  {
-    id: 2,
-    name: 'TIN No. / TIN ID',
-    description: 'Project Default',
-    source: 'Project Default',
-    requirement: 'required',
-    status: 'active',
-  },
-  {
-    id: 3,
-    name: 'PSA (Single)',
-    description: 'Project Default',
-    source: 'Project Default',
-    requirement: 'required',
-    status: 'active',
-  },
-  {
-    id: 4,
-    name: "CLIENT REGISTRATION FORM (Seller's Copy)",
-    description: 'Project Default',
-    source: 'Project Default',
-    requirement: 'required',
-    status: 'active',
-  },
-  {
-    id: 5,
-    name: 'CLIENT REGISTRATION FORM (Administrator Copy)',
-    description: 'Project Default',
-    source: 'Project Default',
-    requirement: 'required',
-    status: 'active',
-  },
-  {
-    id: 6,
-    name: "BUYER'S INFORMATION FORM",
-    description: 'Project Default',
-    source: 'Project Default',
-    requirement: 'required',
-    status: 'active',
-  },
-  {
-    id: 7,
-    name: 'INTENT TO BUY',
-    description: 'Project Default',
-    source: 'Project Default',
-    requirement: 'required',
-    status: 'active',
-  },
-  {
-    id: 8,
-    name: "OFFER TO BUY & BUYER'S PROFILE",
-    description: 'Project Default',
-    source: 'Project Default',
-    requirement: 'required',
-    status: 'active',
-  },
-  {
-    id: 9,
-    name: 'RESERVATION AGREEMENT',
-    description: 'Project Default',
-    source: 'Project Default',
-    requirement: 'required',
-    status: 'active',
-  },
-  {
-    id: 10,
-    name: 'Proof of Billing',
-    description: 'Project Default',
-    source: 'Project Default',
-    requirement: 'required',
-    status: 'active',
-  },
-  {
-    id: 11,
-    name: 'Proof of Income',
-    description: 'Project Default',
-    source: 'Project Default',
-    requirement: 'required',
-    status: 'active',
-  },
-  {
-    id: 12,
-    name: 'Birth Certificate',
-    description: 'Project Default',
-    source: 'Project Default',
-    requirement: 'required',
-    status: 'active',
-  },
-  {
-    id: 13,
-    name: 'Marriage Certificate',
-    description: 'Project Default',
-    source: 'Project Default',
-    requirement: 'required',
-    status: 'active',
-  },
-  {
-    id: 14,
-    name: 'Signed Reservation Agreement',
-    description: 'Project Default',
-    source: 'Project Default',
-    requirement: 'required',
-    status: 'active',
-  },
-]
-
-const Field = ({
-  label,
-  value,
-  onChange,
-  placeholder,
-  type = 'text',
-  helper,
-  required = false,
-}) => (
+const Field = ({ label, value, onChange, placeholder, type = 'text', helper, required = false }) => (
   <label className="flex flex-col gap-1.5">
     <span className="text-sm font-black text-slate-700">
       {label} {required ? <span className="text-red-500">*</span> : null}
@@ -176,7 +46,25 @@ const money = (value) =>
     minimumFractionDigits: 2,
   }).format(Number(value || 0))
 
-const AddListingModal = ({ onClose, onSave, isSaving = false }) => {
+const normalizeDocument = (document) => ({
+  ...document,
+  id: document.id || document.document_id,
+  document_id: document.document_id || document.id,
+  name: document.name || document.document_name,
+  description: document.description || document.document_description || 'Project Default',
+  source: document.source || 'Project Default',
+  requirement: document.requirement || (document.lot_project_default_document_is_required ? 'required' : 'optional'),
+  status: document.status || document.lot_project_default_document_status || document.document_status || 'active',
+})
+
+const AddListingModal = ({ project = {}, projectDefaultDocuments = [], libraryDocuments = [], isLoadingDefaults = false, onClose, onSave, isSaving = false }) => {
+  const selectedProject = useMemo(() => ({
+    id: project.id || project.lot_project_id,
+    name: project.name || project.lot_project_name || 'Lot Project',
+    locationCode: project.locationCode || project.lot_project_location_code || 'LOT',
+    cadastralLots: (project.cadastralLots || []).map((lot) => lot.lotNumber || lot.lot_project_cadastral_lot_number || lot).filter(Boolean),
+  }), [project])
+
   const [form, setForm] = useState({
     cadastralLotNo: '',
     unitNumber: '',
@@ -190,15 +78,21 @@ const AddListingModal = ({ onClose, onSave, isSaving = false }) => {
     status: 'available',
   })
 
-  const [documentRequirements, setDocumentRequirements] = useState(projectDefaultDocuments)
+  const [documentRequirements, setDocumentRequirements] = useState(() => projectDefaultDocuments.map(normalizeDocument))
   const [showEditDocumentsModal, setShowEditDocumentsModal] = useState(false)
   const [alert, setAlert] = useState(null)
-  const [isSavingMock, setIsSavingMock] = useState(false)
+  const [isSavingDraft, setIsSavingDraft] = useState(false)
+
+  useEffect(() => {
+    if (projectDefaultDocuments.length) {
+      setDocumentRequirements(projectDefaultDocuments.map(normalizeDocument))
+    }
+  }, [projectDefaultDocuments])
 
   const unitCode = useMemo(() => {
     const number = String(form.unitNumber || '').trim()
     return number ? `${selectedProject.locationCode}-${number}` : `${selectedProject.locationCode}-`
-  }, [form.unitNumber])
+  }, [form.unitNumber, selectedProject.locationCode])
 
   const priceBreakdown = useMemo(() => {
     const pricePerSqm = Number(form.pricePerSqm || 0)
@@ -211,13 +105,7 @@ const AddListingModal = ({ onClose, onSave, isSaving = false }) => {
     const lmfAmount = netSellingPrice * (legalMiscRate / 100)
     const tcp = netSellingPrice + lmfAmount
 
-    return {
-      netSellingPrice,
-      lmfAmount,
-      tcp,
-      reservationFee,
-      annualInterestRate,
-    }
+    return { netSellingPrice, lmfAmount, tcp, reservationFee, annualInterestRate }
   }, [form])
 
   const requiredCount = useMemo(
@@ -234,14 +122,11 @@ const AddListingModal = ({ onClose, onSave, isSaving = false }) => {
   }
 
   const handleDocumentsChange = (nextDocuments) => {
-    setDocumentRequirements(nextDocuments)
-    setAlert({
-      type: 'success',
-      message: 'Listing document requirements updated.',
-    })
+    setDocumentRequirements(nextDocuments.map(normalizeDocument))
+    setAlert({ type: 'success', message: 'Listing document requirements updated.' })
   }
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault()
 
     if (!form.unitNumber.trim()) {
@@ -265,28 +150,30 @@ const AddListingModal = ({ onClose, onSave, isSaving = false }) => {
       projectName: selectedProject.name,
       locationCode: selectedProject.locationCode,
       unitCode,
+      cadastralLots: form.cadastralLotNo ? [form.cadastralLotNo] : [],
       documentRequirements,
       priceBreakdown,
     }
 
     if (onSave) {
-      onSave(payload)
+      try {
+        await onSave(payload)
+      } catch (error) {
+        setAlert({ type: 'error', message: error?.message || 'Failed to add listing.' })
+      }
       return
     }
 
-    setIsSavingMock(true)
-    setAlert({ type: 'loading', message: 'Adding listing in mock mode...' })
+    setIsSavingDraft(true)
+    setAlert({ type: 'loading', message: 'Adding listing...' })
 
     window.setTimeout(() => {
-      setIsSavingMock(false)
-      setAlert({
-        type: 'success',
-        message: `${unitCode} added successfully in mock mode.`,
-      })
+      setIsSavingDraft(false)
+      setAlert({ type: 'success', message: `${unitCode} added successfully.` })
     }, 700)
   }
 
-  const saveDisabled = isSaving || isSavingMock
+  const saveDisabled = isSaving || isSavingDraft
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4">
@@ -318,125 +205,45 @@ const AddListingModal = ({ onClose, onSave, isSaving = false }) => {
             />
           ) : null}
 
-          {isSaving ? (
-            <StatusAlert type="loading" message="Saving listing..." className="mb-4" />
-          ) : null}
+          {isSaving ? <StatusAlert type="loading" message="Saving listing to database..." className="mb-4" /> : null}
+          {isLoadingDefaults ? <StatusAlert type="loading" message="Loading project default documents..." className="mb-4" /> : null}
 
           <section className="grid gap-4 md:grid-cols-2">
             <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 md:col-span-2">
-              <p className="text-xs font-black uppercase tracking-wide text-blue-700">
-                Current Project
-              </p>
-              <p className="mt-1 text-lg font-black text-slate-950">
-                {selectedProject.name}
-              </p>
-              <p className="mt-1 text-sm font-semibold text-slate-600">
-                Unit prefix is locked to {selectedProject.locationCode}-
-              </p>
+              <p className="text-xs font-black uppercase tracking-wide text-blue-700">Current Project</p>
+              <p className="mt-1 text-lg font-black text-slate-950">{selectedProject.name}</p>
+              <p className="mt-1 text-sm font-semibold text-slate-600">Unit prefix is locked to {selectedProject.locationCode}-</p>
             </div>
 
-            <SelectField
-              label="Cadastral Lot No."
-              value={form.cadastralLotNo}
-              onChange={(value) => updateField('cadastralLotNo', value)}
-              helper="Only cadastral lots from Bailen Project are shown."
-            >
+            <SelectField label="Cadastral Lot No." value={form.cadastralLotNo} onChange={(value) => updateField('cadastralLotNo', value)} helper="Only cadastral lots from this project are shown.">
               <option value="">Select cadastral lot number</option>
-              {selectedProject.cadastralLots.map((lot) => (
-                <option key={lot} value={lot}>
-                  {lot}
-                </option>
-              ))}
+              {selectedProject.cadastralLots.map((lot) => <option key={lot} value={lot}>{lot}</option>)}
             </SelectField>
 
             <label className="flex flex-col gap-1.5">
-              <span className="text-sm font-black text-slate-700">
-                Unit ID <span className="text-red-500">*</span>
-              </span>
-
+              <span className="text-sm font-black text-slate-700">Unit ID <span className="text-red-500">*</span></span>
               <div className="flex h-11 overflow-hidden rounded-xl border border-slate-300 bg-white focus-within:border-blue-400 focus-within:ring-4 focus-within:ring-blue-50">
-                <span className="flex w-24 items-center justify-center border-r border-slate-300 bg-slate-100 text-sm font-black text-blue-700">
-                  {selectedProject.locationCode}-
-                </span>
-                <input
-                  value={form.unitNumber}
-                  onChange={(event) => updateField('unitNumber', event.target.value)}
-                  placeholder="1001"
-                  className="min-w-0 flex-1 px-3 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-400"
-                />
+                <span className="flex w-24 items-center justify-center border-r border-slate-300 bg-slate-100 text-sm font-black text-blue-700">{selectedProject.locationCode}-</span>
+                <input value={form.unitNumber} onChange={(event) => updateField('unitNumber', event.target.value)} placeholder="1001" className="min-w-0 flex-1 px-3 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-400" />
               </div>
-
-              <p className="text-xs font-semibold text-slate-500">
-                Project code is locked. Admin only types the unit number after the prefix.
-              </p>
+              <p className="text-xs font-semibold text-slate-500">Project code is locked. Admin only types the unit number after the prefix.</p>
             </label>
 
-            <Field
-              label="Old Unit IDs"
-              value={form.oldUnitIds}
-              onChange={(value) => updateField('oldUnitIds', value)}
-              placeholder="Example: LA-204, Lot 204 old survey ID"
-            />
+            <Field label="Old Unit IDs" value={form.oldUnitIds} onChange={(value) => updateField('oldUnitIds', value)} placeholder={`Example: ${selectedProject.locationCode}-204, Lot 204 old survey ID`} />
 
-            <SelectField
-              label="Lot Type"
-              value={form.lotType}
-              onChange={(value) => updateField('lotType', value)}
-            >
+            <SelectField label="Lot Type" value={form.lotType} onChange={(value) => updateField('lotType', value)}>
               <option value="inner">Inner</option>
               <option value="corner">Corner</option>
               <option value="end">End</option>
             </SelectField>
 
-            <Field  
-              label="Reservation Fee"
-              type="number"
-              value={form.reservationFee}
-              onChange={(value) => updateField('reservationFee', value)}
-              placeholder="50000"
-            />
+            <Field label="Reservation Fee" type="number" value={form.reservationFee} onChange={(value) => updateField('reservationFee', value)} placeholder="50000" />
+            <Field label="Price / SQM" type="number" value={form.pricePerSqm} onChange={(value) => updateField('pricePerSqm', value)} placeholder="0" required />
+            <Field label="Lot Area SQM" type="number" value={form.lotAreaSqm} onChange={(value) => updateField('lotAreaSqm', value)} placeholder="0" required />
+            <Field label="Legal / Misc Rate (%)" type="number" value={form.legalMiscRate} onChange={(value) => updateField('legalMiscRate', value)} placeholder="10" helper="Enter percentage only. Example: 10 means 10%." />
+            <Field label="Annual Interest Rate (%)" type="number" value={form.annualInterestRate} onChange={(value) => updateField('annualInterestRate', value)} placeholder="0" helper="Used for monthly amortization and SOA interest view." />
 
-            <Field
-              label="Price / SQM"
-              type="number"
-              value={form.pricePerSqm}
-              onChange={(value) => updateField('pricePerSqm', value)}
-              placeholder="0"
-              required
-            />
-
-            <Field
-              label="Lot Area SQM"
-              type="number"
-              value={form.lotAreaSqm}
-              onChange={(value) => updateField('lotAreaSqm', value)}
-              placeholder="0"
-              required
-            />
-
-            <Field
-              label="Legal / Misc Rate (%)"
-              type="number"
-              value={form.legalMiscRate}
-              onChange={(value) => updateField('legalMiscRate', value)}
-              placeholder="10"
-              helper="Enter percentage only. Example: 10 means 10%."
-            />
-
-            <Field
-              label="Annual Interest Rate (%)"
-              type="number"
-              value={form.annualInterestRate}
-              onChange={(value) => updateField('annualInterestRate', value)}
-              placeholder="0"
-              helper="Used for monthly amortization and SOA interest view."
-            />
-
-            <SelectField
-              label="Status"
-              value={form.status}
-              onChange={(value) => updateField('status', value)}
-            >
+            <SelectField label="Status" value={form.status} onChange={(value) => updateField('status', value)}>
               <option value="available">Available</option>
               <option value="hold">Hold</option>
               <option value="sold">Sold</option>
@@ -448,105 +255,46 @@ const AddListingModal = ({ onClose, onSave, isSaving = false }) => {
           <section className="mt-5 rounded-xl border border-blue-200 bg-blue-50 p-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h3 className="text-sm font-black text-slate-950">
-                  Listing Document Requirements
-                </h3>
-                <p className="mt-1 text-xs font-semibold text-slate-600">
-                  Click Edit Documents to set this listing&apos;s checklist before saving. Leave empty to use project defaults.
-                </p>
+                <h3 className="text-sm font-black text-slate-950">Listing Document Requirements</h3>
+                <p className="mt-1 text-xs font-semibold text-slate-600">Click Edit Documents to set this listing&apos;s checklist before saving. Leave empty to use project defaults.</p>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setShowEditDocumentsModal(true)}
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98]"
-              >
+              <button type="button" onClick={() => setShowEditDocumentsModal(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98]">
                 <FiFileText className="h-4 w-4" />
                 Edit Documents
               </button>
             </div>
 
             <div className="mt-3 flex flex-wrap gap-2">
-              <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-black text-blue-700">
-                {documentRequirements.length} docs
-              </span>
-              <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-700">
-                {requiredCount} required
-              </span>
+              <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-black text-blue-700">{documentRequirements.length} docs</span>
+              <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-700">{requiredCount} required</span>
             </div>
           </section>
 
           <section className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
             <h3 className="text-sm font-black text-slate-950">Live Price Breakdown</h3>
-
             <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <div className="rounded-xl border border-slate-200 bg-white p-4">
-                <p className="text-xs font-black uppercase text-slate-500">Net Selling Price</p>
-                <p className="mt-2 text-lg font-black text-slate-950">
-                  {money(priceBreakdown.netSellingPrice)}
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-slate-200 bg-white p-4">
-                <p className="text-xs font-black uppercase text-slate-500">LMF Amount</p>
-                <p className="mt-2 text-lg font-black text-slate-950">
-                  {money(priceBreakdown.lmfAmount)}
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-slate-200 bg-white p-4">
-                <p className="text-xs font-black uppercase text-slate-500">TCP</p>
-                <p className="mt-2 text-lg font-black text-slate-950">
-                  {money(priceBreakdown.tcp)}
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-slate-200 bg-white p-4">
-                <p className="text-xs font-black uppercase text-slate-500">Reservation Fee</p>
-                <p className="mt-2 text-lg font-black text-slate-950">
-                  {money(priceBreakdown.reservationFee)}
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-slate-200 bg-white p-4">
-                <p className="text-xs font-black uppercase text-slate-500">Annual Interest Rate</p>
-                <p className="mt-2 text-lg font-black text-slate-950">
-                  {Number(priceBreakdown.annualInterestRate || 0)}%
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-slate-200 bg-white p-4">
-                <p className="text-xs font-black uppercase text-slate-500">Preview Unit Code</p>
-                <p className="mt-2 text-lg font-black text-blue-700">{unitCode}</p>
-              </div>
+              <div className="rounded-xl border border-slate-200 bg-white p-4"><p className="text-xs font-black uppercase text-slate-500">Net Selling Price</p><p className="mt-2 text-lg font-black text-slate-950">{money(priceBreakdown.netSellingPrice)}</p></div>
+              <div className="rounded-xl border border-slate-200 bg-white p-4"><p className="text-xs font-black uppercase text-slate-500">LMF Amount</p><p className="mt-2 text-lg font-black text-slate-950">{money(priceBreakdown.lmfAmount)}</p></div>
+              <div className="rounded-xl border border-slate-200 bg-white p-4"><p className="text-xs font-black uppercase text-slate-500">TCP</p><p className="mt-2 text-lg font-black text-slate-950">{money(priceBreakdown.tcp)}</p></div>
+              <div className="rounded-xl border border-slate-200 bg-white p-4"><p className="text-xs font-black uppercase text-slate-500">Reservation Fee</p><p className="mt-2 text-lg font-black text-slate-950">{money(priceBreakdown.reservationFee)}</p></div>
+              <div className="rounded-xl border border-slate-200 bg-white p-4"><p className="text-xs font-black uppercase text-slate-500">Annual Interest Rate</p><p className="mt-2 text-lg font-black text-slate-950">{Number(priceBreakdown.annualInterestRate || 0)}%</p></div>
+              <div className="rounded-xl border border-slate-200 bg-white p-4"><p className="text-xs font-black uppercase text-slate-500">Preview Unit Code</p><p className="mt-2 text-lg font-black text-blue-700">{unitCode}</p></div>
             </div>
           </section>
         </div>
 
         <div className="flex shrink-0 flex-col gap-2 border-t border-slate-200 bg-white px-5 py-4 sm:flex-row sm:justify-end">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={saveDisabled}
-            className="h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            Cancel
-          </button>
-
-          <button
-            type="submit"
-            disabled={saveDisabled}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <FiSave className="h-4 w-4" />
-            {saveDisabled ? 'Saving...' : 'Add Listing'}
-          </button>
+          <button type="button" onClick={onClose} disabled={saveDisabled} className="h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">Cancel</button>
+          <button type="submit" disabled={saveDisabled} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"><FiSave className="h-4 w-4" />{saveDisabled ? 'Saving...' : 'Add Listing'}</button>
         </div>
 
         {showEditDocumentsModal ? (
           <EditListingDocumentsModal
             selectedDocuments={documentRequirements}
             setSelectedDocuments={handleDocumentsChange}
+            libraryDocuments={libraryDocuments}
+            projectDefaultDocuments={projectDefaultDocuments}
             onClose={() => setShowEditDocumentsModal(false)}
           />
         ) : null}

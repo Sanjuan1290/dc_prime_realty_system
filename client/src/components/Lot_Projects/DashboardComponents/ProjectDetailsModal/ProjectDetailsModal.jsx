@@ -18,11 +18,13 @@ const LotBadge = ({ lot }) => (
 )
 
 const ProjectDetailsModal = ({ project, onClose, onEdit }) => {
+  const lots = project.cadastral_lots || []
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
       <div className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
         <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
-          <div><p className="text-xs font-black uppercase tracking-[0.2em] text-blue-600">Bailen Project</p><h2 className="mt-1 text-xl font-black text-slate-950">Project Details</h2><p className="mt-1 text-sm font-semibold text-slate-500">Mock project profile and lot references.</p></div>
+          <div><p className="text-xs font-black uppercase tracking-[0.2em] text-blue-600">{project.project_bailen_name || 'Lot Project'}</p><h2 className="mt-1 text-xl font-black text-slate-950">Project Details</h2><p className="mt-1 text-sm font-semibold text-slate-500">Database project profile and lot references.</p></div>
           <button type="button" onClick={onClose} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900" aria-label="Close project details"><FiX className="h-5 w-5" /></button>
         </div>
 
@@ -43,8 +45,8 @@ const ProjectDetailsModal = ({ project, onClose, onEdit }) => {
           </div>
 
           <div className="mt-6 rounded-3xl border border-slate-200 bg-slate-50 p-5">
-            <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between"><div><h3 className="text-lg font-black text-slate-950">Cadastral Lot Numbers</h3><p className="text-sm font-semibold text-slate-500">Hidden lots are not shown to new listings but remain visible in old records.</p></div><p className="text-sm font-black text-slate-600">{project.cadastral_lots.length} total</p></div>
-            <div className="mt-4 grid gap-3 md:grid-cols-2">{project.cadastral_lots.map((lot) => <LotBadge key={lot.id || lot.lotNumber} lot={lot} />)}</div>
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between"><div><h3 className="text-lg font-black text-slate-950">Cadastral Lot Numbers</h3><p className="text-sm font-semibold text-slate-500">Lots already used by listings remain visible for audit and unit references.</p></div><p className="text-sm font-black text-slate-600">{lots.length} total</p></div>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">{lots.length ? lots.map((lot) => <LotBadge key={lot.id || lot.lotNumber} lot={lot} />) : <p className="rounded-2xl border border-dashed border-slate-300 bg-white p-4 text-sm font-semibold text-slate-500 md:col-span-2">No cadastral lots saved yet.</p>}</div>
           </div>
         </div>
 
