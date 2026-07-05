@@ -6,7 +6,7 @@ import {
 } from "react-router-dom";
 import Login from "./auth/Login";
 import SystemLayout from "./layout/SystemLayout";
-import BailenLayout from "./layout/BailenLayout";
+import BailenLayout from "./layout/LotLayout";
 
 import Dashboard from "./pages/System/Dashboard";
 import Documents from "./pages/System/Documents";
