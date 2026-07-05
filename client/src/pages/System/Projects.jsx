@@ -25,7 +25,7 @@ const initialProjects = [
     defaultDocs: 14,
     requiredDocs: 14,
     status: 'active',
-    routePath: '/maragondonProject',
+    routePath: '/Maragondon-Lot-Project',
   },
   {
     id: 2,
@@ -37,7 +37,7 @@ const initialProjects = [
     defaultDocs: 14,
     requiredDocs: 14,
     status: 'active',
-    routePath: '/bailenProject',
+    routePath: '/Bailen-Lot-Project',
   },
 ]
 

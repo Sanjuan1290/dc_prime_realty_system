@@ -14,17 +14,17 @@ import SellerGroup from "./pages/System/SellerGroup";
 import Users from "./pages/System/Users";
 import Accredited from "./pages/System/Accredited";
 
-import BailenDashboard from "./pages/BailenProject/Dashboard";
-import BailenListings from "./pages/BailenProject/Listings";
-import BailenListingProfile from "./pages/BailenProject/ListingProfile";
-import BailenPaymentLogs from "./pages/BailenProject/PaymentLogs";
-import BailenCommission from "./pages/BailenProject/Commission";
-import BailenSettings from "./pages/BailenProject/Settings";
+import BailenDashboard from "./pages/Lot_Projects/Dashboard";
+import BailenListings from "./pages/Lot_Projects/Listings";
+import BailenListingProfile from "./pages/Lot_Projects/ListingProfile";
+import BailenPaymentLogs from "./pages/Lot_Projects/PaymentLogs";
+import BailenCommission from "./pages/Lot_Projects/Commission";
+import BailenSettings from "./pages/Lot_Projects/Settings";
 import Projects from "./pages/System/Projects";
 
-import OfferToBuyPrintPage from './components/BailenProject/ListingProfileComponents/Printouts/OfferToBuyPrintPage'
-import SOAPrintPage from './components/BailenProject/ListingProfileComponents/Printouts/SOAPrintPage'
-import DocumentsPrintPage from './components/BailenProject/ListingProfileComponents/Printouts/DocumentsPrintPage'
+import OfferToBuyPrintPage from './components/Lot_Projects/ListingProfileComponents/Printouts/OfferToBuyPrintPage'
+import SOAPrintPage from './components/Lot_Projects/ListingProfileComponents/Printouts/SOAPrintPage'
+import DocumentsPrintPage from './components/Lot_Projects/ListingProfileComponents/Printouts/DocumentsPrintPage'
 
 const App = () => {
   const router = createBrowserRouter(
@@ -41,7 +41,7 @@ const App = () => {
           <Route path="users/seller_group" element={<SellerGroup />} />
         </Route>
 
-        <Route path="/bailenProject" element={<BailenLayout />}>
+        <Route path="/Bailen-Lot-Project" element={<BailenLayout />}>
           <Route index element={<BailenDashboard />} />
           <Route path="listings" element={<BailenListings />} />
           <Route path="listings/:listingId" element={<BailenListingProfile />} />
@@ -51,15 +51,15 @@ const App = () => {
         </Route>
 
         <Route
-          path="/bailenProject/printouts/offer-to-buy"
+          path="/Bailen-Lot-Project/printouts/offer-to-buy"
           element={<OfferToBuyPrintPage />}
         />
         <Route
-          path="/bailenProject/printouts/statement-of-account"
+          path="/Bailen-Lot-Project/printouts/statement-of-account"
           element={<SOAPrintPage />}
         />
         <Route
-          path="/bailenProject/printouts/documents"
+          path="/Bailen-Lot-Project/printouts/documents"
           element={<DocumentsPrintPage />}
         />
       </>

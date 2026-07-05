@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { FiActivity, FiEdit3, FiEye, FiGrid, FiMapPin, FiPrinter, FiRefreshCw, FiTrendingUp } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
-import ProjectDetailsModal from '../../components/BailenProject/DashboardComponents/ProjectDetailsModal/ProjectDetailsModal'
-import EditProjectModal from '../../components/BailenProject/DashboardComponents/EditProjectModal/EditProjectModal'
+import ProjectDetailsModal from '../../components/Lot_Projects/DashboardComponents/ProjectDetailsModal/ProjectDetailsModal'
+import EditProjectModal from '../../components/Lot_Projects/DashboardComponents/EditProjectModal/EditProjectModal'
 
 const money = (value) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 2 }).format(Number(value || 0))
 

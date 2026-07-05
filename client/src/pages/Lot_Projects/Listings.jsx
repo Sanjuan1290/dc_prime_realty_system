@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { FiEye, FiFileText, FiGrid, FiPlus, FiSearch } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
-import AddListingModal from '../../components/BailenProject/ListingComponents/AddListingModal/AddListingModal'
+import AddListingModal from '../../components/Lot_Projects/ListingComponents/AddListingModal/AddListingModal'
 
 const money = (value) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value || 0))
 

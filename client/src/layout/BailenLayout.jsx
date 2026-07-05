@@ -3,11 +3,11 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { FiBarChart2, FiChevronLeft, FiCreditCard, FiDollarSign, FiGrid, FiMenu, FiSettings, FiShield, FiX } from 'react-icons/fi'
 
 const navItems = [
-  { label: 'Dashboard', path: '/bailenProject', icon: FiBarChart2, end: true },
-  { label: 'Listings / Units', path: '/bailenProject/listings', icon: FiGrid },
-  { label: 'Payments Audit', path: '/bailenProject/payments-audit', icon: FiShield },
-  { label: 'Commissions', path: '/bailenProject/commissions', icon: FiDollarSign },
-  { label: 'Settings', path: '/bailenProject/settings', icon: FiSettings },
+  { label: 'Dashboard', path: '/Bailen-Lot-Project', icon: FiBarChart2, end: true },
+  { label: 'Listings / Units', path: '/Bailen-Lot-Project/listings', icon: FiGrid },
+  { label: 'Payments Audit', path: '/Bailen-Lot-Project/payments-audit', icon: FiShield },
+  { label: 'Commissions', path: '/Bailen-Lot-Project/commissions', icon: FiDollarSign },
+  { label: 'Settings', path: '/Bailen-Lot-Project/settings', icon: FiSettings },
 ]
 
 const getPageTitle = (pathname) => {

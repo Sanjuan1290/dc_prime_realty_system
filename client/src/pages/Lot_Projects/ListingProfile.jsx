@@ -12,12 +12,12 @@ import { useNavigate, useParams } from 'react-router-dom'
 
 import StatusAlert from '../../components/Shared/StatusAlert'
 
-import UnitStatus from '../../components/BailenProject/ListingProfileComponents/UnitStatus/UnitStatus'
-import ClientProfile from '../../components/BailenProject/ListingProfileComponents/ClientProfile/ClientProfile'
-import PaymentsSOA from '../../components/BailenProject/ListingProfileComponents/PaymentsSOA/Payments_SOA'
-import Documents from '../../components/BailenProject/ListingProfileComponents/Documents/Documents'
-import Printouts from '../../components/BailenProject/ListingProfileComponents/Printouts/Printouts'
-import ReserveListingModal from '../../components/BailenProject/ListingProfileComponents/ReserveListingModal/ReserveListingModal'
+import UnitStatus from '../../components/Lot_Projects/ListingProfileComponents/UnitStatus/UnitStatus'
+import ClientProfile from '../../components/Lot_Projects/ListingProfileComponents/ClientProfile/ClientProfile'
+import PaymentsSOA from '../../components/Lot_Projects/ListingProfileComponents/PaymentsSOA/Payments_SOA'
+import Documents from '../../components/Lot_Projects/ListingProfileComponents/Documents/Documents'
+import Printouts from '../../components/Lot_Projects/ListingProfileComponents/Printouts/Printouts'
+import ReserveListingModal from '../../components/Lot_Projects/ListingProfileComponents/ReserveListingModal/ReserveListingModal'
 
 const mockListing = {
   unit_id: 'LA-0402',

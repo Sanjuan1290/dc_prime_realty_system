@@ -36,7 +36,14 @@ const SystemLayout = () => {
       description: "List of Projects",
       items: [
         { label: "Projects", pathname: "projects", icon: FiMap },
-        { label: "Bailen Project", pathname: "/bailenProject", icon: FiMap },
+      ],
+    },
+    {
+      title: "LOT PROJECTS",
+      description: "List of Lot Projects",
+      items: [
+        { label: "Bailen Lot Project", pathname: "/Bailen-Lot-Project", icon: FiMap },
+        { label: "Maragondon Lot Project", pathname: "/Maragondon-Lot-Project", icon: FiMap },
       ],
     },
     {
