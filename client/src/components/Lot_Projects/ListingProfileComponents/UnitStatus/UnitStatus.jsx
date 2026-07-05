@@ -6,361 +6,166 @@ import {
   FiEdit3,
   FiFileText,
   FiHome,
+  FiLoader,
   FiSettings,
   FiUser,
 } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
 import EditUnitStatusModal from './EditUnitStatusModal'
 
-const fallbackListing = {
-  unit_id: 'LA-0402',
-  project_name: 'Bailen Project',
-  project_location: 'Bailen, Cavite',
-  administrator: 'IMELDA B. VILLALOBOS',
-  cadastral_lot_no: '-',
-  old_unit_ids: '-',
-  source_unit_ids: '-',
-  derived_unit_ids: '-',
-  lot_type: 'Inner',
-  listing_status: 'Pending for Cancellation',
+const StatusPill = ({ status }) => {
+  const text = String(status || '-').toLowerCase()
+  const tone = text.includes('available') || text.includes('complete') || text.includes('paid')
+    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+    : text.includes('pending') || text.includes('partial')
+      ? 'border-amber-200 bg-amber-50 text-amber-700'
+      : text.includes('cancel') || text.includes('missing') || text.includes('incomplete')
+        ? 'border-red-200 bg-red-50 text-red-700'
+        : 'border-slate-200 bg-slate-100 text-slate-600'
 
-  lot_area_sqm: '300 sqm',
-  price_per_sqm: '₱1,200.00',
-  net_selling_price: '₱360,000.00',
-  lmf_rate: '10%',
-  lmf_amount: '₱36,000.00',
-  tcp: '₱396,000.00',
-
-  buyer_name: 'robert',
-  spouse_co_owner: '-',
-  email: 'robert@gmail.com',
-  contact_no: '09575857575',
-  address: 'b70 l44 sampaguita st. cluster 5 bella vista, brgy. santiago, general trias, cavite',
-  region: 'REGION 4A',
-  assigned_user: 'Super Admin',
-  due_day: '1',
-
-  total_paid: '₱0.00',
-  balance: '₱396,000.00',
-  payment_status: 'Unpaid',
-  payment_count: '0',
-  latest_payment_date: '-',
-  latest_payment_amount: '₱0.00',
-
-  seller: 'Rowena Cortez',
-  seller_role: 'Broker Network Manager',
-  reports_under: 'None',
-  commission_rate: '8%',
-  commission_amount: '₱28,800.00',
-  released_amount: '₱0.00',
-  remaining_commission: '₱28,800.00',
-  commission_status: 'On Hold',
-
-  total_documents: '14',
-  required_documents: '14',
-  submitted_documents: '0',
-  approved_documents: '0',
-  missing_required: '14',
-  document_status: 'Incomplete',
-
-  created_at: '2026-06-28',
-  updated_at: '2026-07-01',
-  client_unit_created: '2026-07-01',
-  client_unit_updated: '2026-07-01',
-}
-
-const statusStyles = {
-  Available: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-  Hold: 'border-amber-200 bg-amber-50 text-amber-700',
-  Sold: 'border-blue-200 bg-blue-50 text-blue-700',
-  'Pending Cancellation': 'border-orange-200 bg-orange-50 text-orange-700',
-  'Pending for Cancellation': 'border-orange-200 bg-orange-50 text-orange-700',
-  Cancelled: 'border-red-200 bg-red-50 text-red-700',
-  Incomplete: 'border-red-200 bg-red-50 text-red-700',
-  Complete: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-  Unpaid: 'border-red-200 bg-red-50 text-red-700',
-  Paid: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-  'On Hold': 'border-amber-200 bg-amber-50 text-amber-700',
+  return (
+    <span className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-black ${tone}`}>
+      <span className="h-1.5 w-1.5 rounded-full bg-current" />
+      {status || '-'}
+    </span>
+  )
 }
 
 const DetailBox = ({ label, value, highlight = false, long = false }) => (
-  <div
-    className={`min-h-[70px] rounded-xl border p-3 ${
-      highlight
-        ? 'border-blue-200 bg-blue-50'
-        : 'border-slate-200 bg-slate-50'
-    } ${long ? 'sm:col-span-2 xl:col-span-2' : ''}`}
-  >
-    <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">
-      {label}
-    </p>
-    <p className={`mt-1 break-words text-sm font-black ${highlight ? 'text-blue-700' : 'text-slate-950'}`}>
-      {value || '-'}
-    </p>
+  <div className={`${long ? 'md:col-span-2 xl:col-span-3' : ''} rounded-xl border p-4 ${highlight ? 'border-blue-200 bg-blue-50' : 'border-slate-200 bg-slate-50'}`}>
+    <p className={`text-xs font-black uppercase ${highlight ? 'text-blue-700' : 'text-slate-500'}`}>{label}</p>
+    <p className={`mt-1 break-words text-sm font-black ${highlight ? 'text-blue-900' : 'text-slate-950'}`}>{value || '-'}</p>
   </div>
 )
 
-const StatusPill = ({ status }) => (
-  <span
-    className={`inline-flex w-fit rounded-full border px-3 py-1 text-xs font-black ${
-      statusStyles[status] || 'border-slate-200 bg-slate-50 text-slate-700'
-    }`}
-  >
-    {status || '-'}
-  </span>
-)
-
 const SectionBlock = ({ title, description, icon: Icon, children }) => (
-  <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-    <div className="flex items-start gap-3 border-b border-slate-200 p-5">
+  <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="flex items-start gap-3">
       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
         <Icon className="h-5 w-5" />
       </span>
-
       <div>
-        <h2 className="text-lg font-black text-slate-950">{title}</h2>
-        {description ? (
-          <p className="mt-1 text-sm font-semibold text-slate-500">{description}</p>
-        ) : null}
+        <h3 className="text-lg font-black text-slate-950">{title}</h3>
+        <p className="mt-1 text-sm font-semibold text-slate-500">{description}</p>
       </div>
     </div>
 
-    <div className="grid gap-3 p-5 sm:grid-cols-2 xl:grid-cols-4">
-      {children}
-    </div>
+    <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">{children}</div>
   </section>
 )
 
-const UnitStatus = ({ listing = fallbackListing }) => {
-  const [unitData, setUnitData] = useState({ ...fallbackListing, ...listing })
+const UnitStatus = ({ listing = {}, onSave, isSaving = false }) => {
   const [showEditModal, setShowEditModal] = useState(false)
   const [alert, setAlert] = useState(null)
 
-  const handleSave = (updatedListing) => {
-    setUnitData((current) => ({
-      ...current,
-      ...updatedListing,
-    }))
-
+  const handleSave = async (payload) => {
+    await onSave?.(payload)
     setShowEditModal(false)
-
-    setAlert({
-      type: 'success',
-      message: 'Listing details updated in mock mode.',
-    })
   }
-
-  const handleSettleCancellation = () => {
-    setUnitData((current) => ({
-      ...current,
-      listing_status: 'Cancelled',
-      status: 'Cancelled',
-      updated_at: new Date().toISOString().slice(0, 10),
-    }))
-
-    setAlert({
-      type: 'success',
-      message: 'Cancellation settled. Unit is now marked as Cancelled in mock mode.',
-    })
-  }
-
-  const handleMakeAvailable = () => {
-    setUnitData((current) => ({
-      ...current,
-      listing_status: 'Available',
-      status: 'Available',
-      buyer_name: '-',
-      spouse_co_owner: '-',
-      email: '-',
-      contact_no: '-',
-      address: '-',
-      payment_status: '-',
-      commission_status: '-',
-      updated_at: new Date().toISOString().slice(0, 10),
-    }))
-
-    setAlert({
-      type: 'success',
-      message: 'Cancelled unit changed back to Available in mock mode.',
-    })
-  }
-
-  const showSettlementButton =
-    unitData.listing_status === 'Pending Cancellation' ||
-    unitData.listing_status === 'Pending for Cancellation'
-
-  const showAvailableButton = unitData.listing_status === 'Cancelled'
 
   return (
     <div className="flex flex-col gap-5">
-      {alert ? (
-        <StatusAlert
-          type={alert.type}
-          message={alert.message}
-          onClose={() => setAlert(null)}
-        />
-      ) : null}
+      {alert ? <StatusAlert type={alert.type} message={alert.message} onClose={() => setAlert(null)} /> : null}
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <p className="text-xs font-black uppercase tracking-wide text-blue-700">
-              Unit & Status
-            </p>
-            <h2 className="mt-1 text-2xl font-black text-slate-950">
-              Listing Details - {unitData.unit_id}
-            </h2>
-            <p className="mt-1 text-sm font-semibold text-slate-500">
-              Main listing information. Click edit to update the unit, pricing, and status.
-            </p>
+            <p className="text-xs font-black uppercase tracking-wide text-blue-700">Unit & Status</p>
+            <h2 className="mt-1 text-2xl font-black text-slate-950">Listing Details - {listing.unit_id || '-'}</h2>
+            <p className="mt-1 text-sm font-semibold text-slate-500">Main listing information. Click edit to update the unit, pricing, and status.</p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <StatusPill status={unitData.listing_status} />
-            <StatusPill status={unitData.document_status} />
-            <StatusPill status={unitData.payment_status} />
+            <StatusPill status={listing.listing_status} />
+            <StatusPill status={listing.document_status} />
+            <StatusPill status={listing.payment_status} />
 
             <button
               type="button"
               onClick={() => setShowEditModal(true)}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-black text-white transition hover:bg-blue-700 active:scale-[0.98]"
+              disabled={isSaving}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-black text-white transition hover:bg-blue-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-blue-300"
             >
-              <FiEdit3 className="h-4 w-4" />
+              {isSaving ? <FiLoader className="h-4 w-4 animate-spin" /> : <FiEdit3 className="h-4 w-4" />}
               Edit
             </button>
-
-            {showSettlementButton ? (
-              <button
-                type="button"
-                onClick={handleSettleCancellation}
-                className="inline-flex h-10 items-center justify-center rounded-xl bg-orange-600 px-4 text-sm font-black text-white transition hover:bg-orange-700 active:scale-[0.98]"
-              >
-                Settlement
-              </button>
-            ) : null}
-
-            {showAvailableButton ? (
-              <button
-                type="button"
-                onClick={handleMakeAvailable}
-                className="inline-flex h-10 items-center justify-center rounded-xl bg-emerald-600 px-4 text-sm font-black text-white transition hover:bg-emerald-700 active:scale-[0.98]"
-              >
-                Change to Available
-              </button>
-            ) : null}
           </div>
         </div>
       </section>
 
-      <SectionBlock
-        title="Unit / Project Information"
-        description="Project, unit ID history, source IDs, and current listing status."
-        icon={FiHome}
-      >
-        <DetailBox label="Project" value={unitData.project_name} />
-        <DetailBox label="Project Location" value={unitData.project_location} />
-        <DetailBox label="Administrator" value={unitData.administrator} />
-        <DetailBox label="Cadastral Lot No." value={unitData.cadastral_lot_no} />
-        <DetailBox label="Unit ID" value={unitData.unit_id} highlight />
-        <DetailBox label="Old Unit IDs" value={unitData.old_unit_ids} />
-        <DetailBox label="Source Unit IDs" value={unitData.source_unit_ids} />
-        <DetailBox label="Derived Unit IDs" value={unitData.derived_unit_ids} />
-        <DetailBox label="Lot Type" value={unitData.lot_type} />
-        <DetailBox label="Listing Status" value={unitData.listing_status} highlight />
+      <SectionBlock title="Unit / Project Information" description="Project, unit ID history, source IDs, and current listing status." icon={FiHome}>
+        <DetailBox label="Project" value={listing.project_name} />
+        <DetailBox label="Project Location" value={listing.project_location} />
+        <DetailBox label="Administrator" value={listing.administrator} />
+        <DetailBox label="Cadastral Lot No." value={listing.cadastral_lot_no} />
+        <DetailBox label="Unit ID" value={listing.unit_id} highlight />
+        <DetailBox label="Old Unit IDs" value={listing.old_unit_ids} />
+        <DetailBox label="Source Unit IDs" value={listing.source_unit_ids} />
+        <DetailBox label="Derived Unit IDs" value={listing.derived_unit_ids} />
+        <DetailBox label="Lot Type" value={listing.lot_type} />
+        <DetailBox label="Listing Status" value={listing.listing_status} highlight />
       </SectionBlock>
 
-      <SectionBlock
-        title="Lot Pricing"
-        description="Price per SQM, lot area, LMF, TCP, reservation fee, and interest rate."
-        icon={FiDollarSign}
-      >
-        <DetailBox label="Lot Area SQM" value={unitData.lot_area_sqm} />
-        <DetailBox label="Price / SQM" value={unitData.price_per_sqm} />
-        <DetailBox label="Net Selling Price" value={unitData.net_selling_price} />
-        <DetailBox label="LMF Rate" value={unitData.lmf_rate} />
-        <DetailBox label="LMF Amount" value={unitData.lmf_amount} />
-        <DetailBox label="TCP" value={unitData.tcp} highlight />
-        <DetailBox
-          label="Reservation Fee"
-          value={
-            typeof unitData.reservationFee === 'number'
-              ? `₱${unitData.reservationFee.toLocaleString('en-PH')}.00`
-              : unitData.reservationFee || '₱50,000.00'
-          }
-        />
-        <DetailBox label="Annual Interest Rate" value={unitData.interestRate || `${unitData.annualInterestRate || 0}%`} />
+      <SectionBlock title="Lot Pricing" description="Price per SQM, lot area, LMF, TCP, reservation fee, and interest rate." icon={FiDollarSign}>
+        <DetailBox label="Lot Area SQM" value={listing.lot_area_sqm} />
+        <DetailBox label="Price / SQM" value={listing.price_per_sqm} />
+        <DetailBox label="Net Selling Price" value={listing.net_selling_price} />
+        <DetailBox label="LMF Rate" value={listing.lmf_rate} />
+        <DetailBox label="LMF Amount" value={listing.lmf_amount} />
+        <DetailBox label="TCP" value={listing.tcp} highlight />
+        <DetailBox label="Reservation Fee" value={typeof listing.reservationFee === 'number' ? `₱${listing.reservationFee.toLocaleString('en-PH')}.00` : listing.reservationFee} />
+        <DetailBox label="Annual Interest Rate" value={listing.interestRate || `${listing.annualInterestRate || 0}%`} />
       </SectionBlock>
 
-      <SectionBlock
-        title="Buyer Information"
-        description="Buyer profile and assigned account details."
-        icon={FiUser}
-      >
-        <DetailBox label="Buyer Name" value={unitData.buyer_name} />
-        <DetailBox label="Spouse / Co-owner" value={unitData.spouse_co_owner} />
-        <DetailBox label="Email" value={unitData.email} />
-        <DetailBox label="Contact No." value={unitData.contact_no} />
-        <DetailBox label="Address" value={unitData.address} long />
-        <DetailBox label="Region" value={unitData.region} />
-        <DetailBox label="Assigned User" value={unitData.assigned_user} />
-        <DetailBox label="Due Day" value={unitData.due_day} />
+      <SectionBlock title="Buyer Information" description="Buyer profile and assigned account details." icon={FiUser}>
+        <DetailBox label="Buyer Name" value={listing.buyer_name} />
+        <DetailBox label="Email" value={listing.email} />
+        <DetailBox label="Contact No." value={listing.contact_no} />
+        <DetailBox label="Address" value={listing.address} long />
+        <DetailBox label="Region" value={listing.region} />
+        <DetailBox label="Assigned User" value={listing.assigned_user} />
+        <DetailBox label="Due Day" value={listing.due_day} />
       </SectionBlock>
 
-      <SectionBlock
-        title="Payment Information"
-        description="Current payment progress and balance."
-        icon={FiCreditCard}
-      >
-        <DetailBox label="Total Paid" value={unitData.total_paid} />
-        <DetailBox label="Balance" value={unitData.balance} highlight />
-        <DetailBox label="Payment Status" value={unitData.payment_status} />
-        <DetailBox label="Payment Count" value={unitData.payment_count} />
-        <DetailBox label="Latest Payment Date" value={unitData.latest_payment_date} />
-        <DetailBox label="Latest Payment Amount" value={unitData.latest_payment_amount} />
+      <SectionBlock title="Payment Information" description="Current payment progress and balance." icon={FiCreditCard}>
+        <DetailBox label="Total Paid" value={listing.total_paid} />
+        <DetailBox label="Balance" value={listing.balance} highlight />
+        <DetailBox label="Payment Status" value={listing.payment_status} />
+        <DetailBox label="Payment Count" value={listing.payment_count} />
+        <DetailBox label="Latest Payment Date" value={listing.latest_payment_date} />
+        <DetailBox label="Latest Payment Amount" value={listing.latest_payment_amount} />
       </SectionBlock>
 
-      <SectionBlock
-        title="Seller / Commission"
-        description="Seller assignment and commission summary."
-        icon={FiBriefcase}
-      >
-        <DetailBox label="Seller" value={unitData.seller} />
-        <DetailBox label="Seller Role" value={unitData.seller_role} />
-        <DetailBox label="Reports Under" value={unitData.reports_under} />
-        <DetailBox label="Commission Rate" value={unitData.commission_rate} />
-        <DetailBox label="Commission Amount" value={unitData.commission_amount} highlight />
-        <DetailBox label="Released Amount" value={unitData.released_amount} />
-        <DetailBox label="Remaining Commission" value={unitData.remaining_commission} />
-        <DetailBox label="Commission Status" value={unitData.commission_status} />
+      <SectionBlock title="Seller / Commission" description="Seller assignment and commission summary." icon={FiBriefcase}>
+        <DetailBox label="Seller" value={listing.seller} />
+        <DetailBox label="Seller Role" value={listing.seller_role} />
+        <DetailBox label="Reports Under" value={listing.reports_under} />
+        <DetailBox label="Commission Amount" value={listing.commission_amount} highlight />
+        <DetailBox label="Released Amount" value={listing.released_amount} />
+        <DetailBox label="Remaining Commission" value={listing.remaining_commission} />
+        <DetailBox label="Commission Status" value={listing.commission_status} />
       </SectionBlock>
 
-      <SectionBlock
-        title="Documents"
-        description="Document checklist progress."
-        icon={FiFileText}
-      >
-        <DetailBox label="Total Documents" value={unitData.total_documents} />
-        <DetailBox label="Required Documents" value={unitData.required_documents} />
-        <DetailBox label="Submitted Documents" value={unitData.submitted_documents} />
-        <DetailBox label="Approved Documents" value={unitData.approved_documents} />
-        <DetailBox label="Missing Required" value={unitData.missing_required} />
-        <DetailBox label="Document Status" value={unitData.document_status} highlight />
+      <SectionBlock title="Documents" description="Document checklist progress." icon={FiFileText}>
+        <DetailBox label="Total Documents" value={listing.total_documents} />
+        <DetailBox label="Required Documents" value={listing.required_documents} />
+        <DetailBox label="Submitted Documents" value={listing.submitted_documents} />
+        <DetailBox label="Approved Documents" value={listing.approved_documents} />
+        <DetailBox label="Missing Required" value={listing.missing_required} />
+        <DetailBox label="Document Status" value={listing.document_status} highlight />
       </SectionBlock>
 
-      <SectionBlock
-        title="System Information"
-        description="Created and updated timestamps."
-        icon={FiSettings}
-      >
-        <DetailBox label="Created At" value={unitData.created_at} />
-        <DetailBox label="Updated At" value={unitData.updated_at} />
-        <DetailBox label="Client Unit Created" value={unitData.client_unit_created} />
-        <DetailBox label="Client Unit Updated" value={unitData.client_unit_updated} />
+      <SectionBlock title="System Information" description="Created and updated timestamps." icon={FiSettings}>
+        <DetailBox label="Created At" value={listing.created_at} />
+        <DetailBox label="Updated At" value={listing.updated_at} />
+        <DetailBox label="Client Unit Created" value={listing.client_unit_created} />
+        <DetailBox label="Client Unit Updated" value={listing.client_unit_updated} />
       </SectionBlock>
 
       {showEditModal ? (
         <EditUnitStatusModal
-          listing={unitData}
+          listing={listing}
+          isSaving={isSaving}
           onClose={() => setShowEditModal(false)}
           onSave={handleSave}
         />

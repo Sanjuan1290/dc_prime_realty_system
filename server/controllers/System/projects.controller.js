@@ -1156,3 +1156,832 @@ export const deleteLotProject = async (req, res) => {
     connection.release();
   }
 };
+
+const moneyValue = (value) => Number(value || 0);
+
+const formatMoneyString = (value) =>
+  new Intl.NumberFormat('en-PH', {
+    style: 'currency',
+    currency: 'PHP',
+    minimumFractionDigits: 2,
+  }).format(Number(value || 0));
+
+const formatDateOnly = (value) => {
+  if (!value) return '-';
+  return new Date(value).toISOString().slice(0, 10);
+};
+
+const normalizeListingKeyWhere = (listingKey) => {
+  const key = String(listingKey || '').trim();
+  if (/^\d+$/.test(key)) {
+    return { sql: '(l.lot_project_listing_id = ? OR l.lot_project_listing_unit_id = ?)', params: [Number(key), key] };
+  }
+  return { sql: 'l.lot_project_listing_unit_id = ?', params: [key.toUpperCase()] };
+};
+
+const mapClientProfile = (row = {}) => {
+  if (!row?.lot_project_client_profile_id) {
+    return {
+      profileStatus: 'incomplete',
+      buyerType: 'single',
+      buyerName: '',
+      seller: '-',
+      salesOfficer: '-',
+      dateReceived: '',
+    };
+  }
+
+  return {
+    id: row.lot_project_client_profile_id,
+    lot_project_client_profile_id: row.lot_project_client_profile_id,
+    profileStatus: row.buyer_full_name ? 'complete' : 'incomplete',
+    buyerType: row.buyer_type || 'single',
+    buyerTypeLabel: row.buyer_type === 'and_account' ? 'AND Account' : row.buyer_type === 'spouses' ? 'Spouses' : 'Single',
+    buyerRole: 'Principal Buyer',
+    buyerName: row.buyer_full_name || [row.buyer_first_name, row.buyer_middle_name, row.buyer_last_name].filter(Boolean).join(' '),
+    firstName: row.buyer_first_name || '',
+    middleName: row.buyer_middle_name || '',
+    lastName: row.buyer_last_name || '',
+    suffix: row.buyer_suffix || '',
+    birthDate: row.buyer_birth_date ? formatDateOnly(row.buyer_birth_date) : '',
+    placeOfBirth: row.buyer_place_of_birth || '',
+    citizenship: row.buyer_citizenship || '',
+    gender: row.buyer_gender || '',
+    civilStatus: row.buyer_civil_status || '',
+    contactNo: row.buyer_contact_number || '',
+    email: row.buyer_email || '',
+    tin: row.buyer_tin || '',
+    presentAddress: row.buyer_present_address || '',
+    permanentAddress: row.buyer_permanent_address || '',
+    employmentStatus: row.buyer_employment_status || '',
+    employerBusinessName: row.buyer_employer_business_name || '',
+    employerBusinessAddress: row.buyer_employer_business_address || '',
+    natureOfWorkBusiness: row.buyer_nature_of_work_business || '',
+    occupationPositionTitle: row.buyer_occupation_position || '',
+    monthlyIncome: row.buyer_monthly_income || 0,
+    secondBuyerRole: row.buyer_type === 'spouses' ? 'Spouse' : 'Co-Buyer',
+    secondBuyerName: row.second_buyer_full_name || '',
+    secondBuyerBirthDate: row.second_buyer_birth_date ? formatDateOnly(row.second_buyer_birth_date) : '',
+    secondBuyerPlaceOfBirth: row.second_buyer_place_of_birth || '',
+    secondBuyerCitizenship: row.second_buyer_citizenship || '',
+    secondBuyerGender: row.second_buyer_gender || '',
+    secondBuyerCivilStatus: row.second_buyer_civil_status || '',
+    secondBuyerContactNo: row.second_buyer_contact_number || '',
+    secondBuyerEmail: row.second_buyer_email || '',
+    secondBuyerTin: row.second_buyer_tin || '',
+    secondBuyerPresentAddress: row.second_buyer_present_address || '',
+    secondBuyerPermanentAddress: row.second_buyer_permanent_address || '',
+    secondBuyerEmploymentStatus: row.second_buyer_employment_status || '',
+    secondBuyerEmployerBusinessName: row.second_buyer_employer_business_name || '',
+    secondBuyerEmployerBusinessAddress: row.second_buyer_employer_business_address || '',
+    secondBuyerNatureOfWorkBusiness: row.second_buyer_nature_of_work_business || '',
+    secondBuyerOccupationPositionTitle: row.second_buyer_occupation_position || '',
+    secondBuyerMonthlyIncome: row.second_buyer_monthly_income || 0,
+    seller: row.seller_name || '-',
+    salesOfficer: row.seller_name || '-',
+    dateReceived: row.lot_project_client_profile_created_at ? formatDateOnly(row.lot_project_client_profile_created_at) : '',
+    status: row.lot_project_client_profile_status,
+  };
+};
+
+const buildBuyerFullName = (body = {}) => {
+  const explicit = String(body.buyerName || body.buyer_full_name || '').trim();
+  if (explicit) return explicit;
+  return [body.firstName || body.buyer_first_name, body.middleName || body.buyer_middle_name, body.lastName || body.buyer_last_name, body.suffix || body.buyer_suffix]
+    .map((item) => String(item || '').trim())
+    .filter(Boolean)
+    .join(' ');
+};
+
+const mapSoaRow = (row = {}) => ({
+  ...row,
+  id: row.lot_project_payment_schedule_id,
+  dueDate: row.due_date,
+  description: row.description,
+  beginningBalance: moneyValue(row.beginning_balance),
+  dueAmount: moneyValue(row.due_amount),
+  interest: 0,
+  penalty: moneyValue(row.penalty_amount),
+  amountPaid: moneyValue(row.amount_paid),
+  datePaid: row.date_paid || '-',
+  referenceId: row.reference_id || '-',
+  status: row.schedule_status,
+  endingBalance: moneyValue(row.ending_balance),
+});
+
+const mapPaymentRow = (row = {}) => ({
+  id: row.lot_project_payment_id,
+  paymentId: row.lot_project_payment_id,
+  scheduleId: row.lot_project_payment_schedule_id,
+  client: row.buyer_full_name || '-',
+  unit: row.lot_project_listing_unit_id || '-',
+  project: row.lot_project_name || '-',
+  amount: moneyValue(row.lot_project_payment_amount),
+  type: row.lot_project_payment_type,
+  method: row.lot_project_payment_method,
+  referenceId: row.lot_project_payment_reference_id || '-',
+  paymentDate: row.lot_project_payment_date,
+  verifiedBy: row.verified_by_name || '-',
+  verifiedAt: row.lot_project_payment_verified_at,
+  status: row.lot_project_payment_status,
+});
+
+const mapDocumentRow = (row = {}) => ({
+  ...row,
+  id: row.document_id,
+  documentId: row.document_id,
+  clientDocumentId: row.lot_project_client_document_id || null,
+  name: row.document_name,
+  description: row.document_description || 'No description',
+  requirement: row.is_required ? 'Required' : 'Optional',
+  status: row.lot_project_client_document_status || 'Missing',
+  fileName: row.lot_project_client_document_file_name || '-',
+  fileUrl: row.lot_project_client_document_file_url || '',
+  images: row.lot_project_client_document_file_url ? [row.lot_project_client_document_file_url] : [],
+});
+
+const getListingProfileBundle = async (projectSlug, listingKey, connection = db) => {
+  const listingWhere = normalizeListingKeyWhere(listingKey);
+
+  const [listingRows] = await connection.query(
+    `
+      SELECT
+        p.*,
+        l.*,
+        cp.*,
+        seller_user.id AS seller_user_id,
+        TRIM(CONCAT_WS(' ', seller_user.first_name, seller_user.middle_name, seller_user.last_name)) AS seller_name,
+        seller_user.role AS seller_role,
+        parent_user.id AS reports_under_user_id,
+        TRIM(CONCAT_WS(' ', parent_user.first_name, parent_user.middle_name, parent_user.last_name)) AS reports_under_name,
+        COALESCE(payment_summary.total_paid, 0) AS total_paid,
+        COALESCE(payment_summary.payment_count, 0) AS payment_count,
+        payment_summary.latest_payment_date,
+        COALESCE(payment_summary.latest_payment_amount, 0) AS latest_payment_amount,
+        COALESCE(doc_summary.total_documents, 0) AS total_documents,
+        COALESCE(doc_summary.required_documents, 0) AS required_documents,
+        COALESCE(doc_summary.submitted_documents, 0) AS submitted_documents,
+        COALESCE(doc_summary.approved_documents, 0) AS approved_documents,
+        COALESCE(doc_summary.missing_required, 0) AS missing_required,
+        COALESCE(commission_summary.gross_commission, 0) AS gross_commission,
+        COALESCE(commission_summary.released_commission, 0) AS released_commission,
+        COALESCE(commission_summary.remaining_commission, 0) AS remaining_commission,
+        commission_summary.commission_status
+      FROM lot_project_listings l
+      INNER JOIN lot_projects p ON p.lot_project_id = l.lot_project_id
+      LEFT JOIN lot_project_client_profiles cp ON cp.lot_project_listing_id = l.lot_project_listing_id
+      LEFT JOIN (
+        SELECT
+          lot_project_listing_id,
+          SUM(lot_project_payment_amount) AS total_paid,
+          COUNT(*) AS payment_count,
+          MAX(lot_project_payment_date) AS latest_payment_date,
+          SUBSTRING_INDEX(GROUP_CONCAT(lot_project_payment_amount ORDER BY lot_project_payment_date DESC, lot_project_payment_id DESC), ',', 1) AS latest_payment_amount
+        FROM lot_project_payments
+        WHERE lot_project_payment_status = 'Verified'
+        GROUP BY lot_project_listing_id
+      ) payment_summary ON payment_summary.lot_project_listing_id = l.lot_project_listing_id
+      LEFT JOIN (
+        SELECT
+          listing_docs.lot_project_listing_id,
+          COUNT(*) AS total_documents,
+          SUM(listing_docs.is_required = 1) AS required_documents,
+          SUM(listing_docs.client_status IN ('Submitted', 'Approved')) AS submitted_documents,
+          SUM(listing_docs.client_status = 'Approved') AS approved_documents,
+          SUM(listing_docs.is_required = 1 AND listing_docs.client_status = 'Missing') AS missing_required
+        FROM (
+          SELECT
+            ld.lot_project_listing_id,
+            ld.lot_project_listing_document_is_required AS is_required,
+            COALESCE(cd.lot_project_client_document_status, 'Missing') AS client_status
+          FROM lot_project_listing_documents ld
+          LEFT JOIN lot_project_client_documents cd
+            ON cd.lot_project_listing_id = ld.lot_project_listing_id
+           AND cd.document_id = ld.document_id
+        ) listing_docs
+        GROUP BY listing_docs.lot_project_listing_id
+      ) doc_summary ON doc_summary.lot_project_listing_id = l.lot_project_listing_id
+      LEFT JOIN (
+        SELECT
+          lot_project_listing_id,
+          MIN(accredited_seller_id) AS accredited_seller_id,
+          SUM(gross_commission_amount) AS gross_commission,
+          SUM(released_commission_amount) AS released_commission,
+          SUM(net_remaining_commission_amount) AS remaining_commission,
+          MAX(commission_status) AS commission_status
+        FROM lot_project_commissions
+        GROUP BY lot_project_listing_id
+      ) commission_summary ON commission_summary.lot_project_listing_id = l.lot_project_listing_id
+      LEFT JOIN accredited_sellers seller ON seller.accredited_seller_id = commission_summary.accredited_seller_id
+      LEFT JOIN users seller_user ON seller_user.id = seller.user_id
+      LEFT JOIN users parent_user ON parent_user.id = seller.accredited_seller_reports_under_user_id
+      WHERE p.lot_project_slug = ?
+        AND ${listingWhere.sql}
+      LIMIT 1
+    `,
+    [projectSlug, ...listingWhere.params]
+  );
+
+  const row = listingRows[0];
+  if (!row) return null;
+
+  const balance = moneyValue(row.lot_project_listing_tcp) - moneyValue(row.total_paid);
+  const docStatus = Number(row.missing_required || 0) > 0 ? 'Incomplete' : 'Complete';
+  const paymentStatus = balance <= 0 ? 'Fully Paid' : Number(row.total_paid || 0) > 0 ? 'Partially Paid' : 'Unpaid';
+
+  const [cadastralRows] = await connection.query(
+    `
+      SELECT c.lot_project_cadastral_lot_number
+      FROM lot_project_cadastral_lot_numbers c
+      LEFT JOIN lot_project_listing_cadastral_lots lcl
+        ON lcl.lot_project_cadastral_lot_number_id = c.lot_project_cadastral_lot_number_id
+      WHERE c.lot_project_id = ?
+        AND (lcl.lot_project_listing_id = ? OR NOT EXISTS (
+          SELECT 1 FROM information_schema.TABLES
+          WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = 'lot_project_listing_cadastral_lots'
+        ))
+      ORDER BY c.lot_project_cadastral_lot_number ASC
+    `,
+    [row.lot_project_id, row.lot_project_listing_id]
+  ).catch(async () => [[], []]);
+
+  const listing = {
+    ...row,
+    id: row.lot_project_listing_id,
+    listingId: row.lot_project_listing_id,
+    lotProjectId: row.lot_project_id,
+    unit_id: row.lot_project_listing_unit_id,
+    unitCode: row.lot_project_listing_unit_id,
+    project_name: row.lot_project_name,
+    projectName: row.lot_project_name,
+    project_location: row.lot_project_location,
+    location: row.lot_project_location,
+    administrator: row.lot_project_administrator_name || '-',
+    cadastral_lot_no: cadastralRows?.length ? cadastralRows.map((item) => item.lot_project_cadastral_lot_number).join(', ') : '-',
+    cadastralLots: cadastralRows?.map((item) => item.lot_project_cadastral_lot_number) || [],
+    old_unit_ids: row.lot_project_listing_old_unit_ids || '-',
+    source_unit_ids: row.lot_project_listing_old_unit_ids || '-',
+    derived_unit_ids: '-',
+    lot_type: row.lot_project_listing_unit_type,
+    listing_status: getListingStatusLabel(row.lot_project_listing_status, row.lot_project_listing_sold_substatus),
+    status: getListingStatusLabel(row.lot_project_listing_status, row.lot_project_listing_sold_substatus),
+    rawStatus: row.lot_project_listing_status,
+    soldSubstatus: row.lot_project_listing_sold_substatus,
+    lot_area_sqm: `${Number(row.lot_project_listing_area_sqm || 0)} sqm`,
+    lotAreaSqm: Number(row.lot_project_listing_area_sqm || 0),
+    price_per_sqm: formatMoneyString(row.lot_project_listing_price_per_sqm),
+    pricePerSqm: Number(row.lot_project_listing_price_per_sqm || 0),
+    net_selling_price: formatMoneyString(row.lot_project_listing_net_selling_price),
+    netSellingPrice: Number(row.lot_project_listing_net_selling_price || 0),
+    lmf_rate: `${Number(row.lot_project_listing_lmf_rate || 0)}%`,
+    legalMiscRate: Number(row.lot_project_listing_lmf_rate || 0),
+    lmf_amount: formatMoneyString(row.lot_project_listing_lmf_amount),
+    lmfAmount: Number(row.lot_project_listing_lmf_amount || 0),
+    tcp: formatMoneyString(row.lot_project_listing_tcp),
+    tcpAmount: Number(row.lot_project_listing_tcp || 0),
+    reservationFee: Number(row.lot_project_listing_reservation_fee || 0),
+    balanceAmount: balance,
+    balance: formatMoneyString(balance),
+    buyer_name: row.buyer_full_name || '-',
+    email: row.buyer_email || '-',
+    contact_no: row.buyer_contact_number || '-',
+    address: row.buyer_present_address || '-',
+    region: 'REGION 4A',
+    assigned_user: row.seller_name || '-',
+    due_day: row.due_day || '-',
+    total_paid: formatMoneyString(row.total_paid),
+    payment_status: paymentStatus,
+    payment_count: String(row.payment_count || 0),
+    latest_payment_date: row.latest_payment_date || '-',
+    latest_payment_amount: formatMoneyString(row.latest_payment_amount),
+    seller: row.seller_name || '-',
+    seller_role: row.seller_role || '-',
+    reports_under: row.reports_under_name || 'Direct / None',
+    commission_rate: '-',
+    commission_amount: formatMoneyString(row.gross_commission),
+    released_amount: formatMoneyString(row.released_commission),
+    remaining_commission: formatMoneyString(row.remaining_commission),
+    commission_status: row.commission_status || '-',
+    total_documents: String(row.total_documents || 0),
+    required_documents: String(row.required_documents || 0),
+    submitted_documents: String(row.submitted_documents || 0),
+    approved_documents: String(row.approved_documents || 0),
+    missing_required: String(row.missing_required || 0),
+    document_status: docStatus,
+    created_at: row.lot_project_listing_created_at,
+    updated_at: row.lot_project_listing_updated_at,
+    client_unit_created: row.lot_project_client_profile_created_at || '-',
+    client_unit_updated: row.lot_project_client_profile_updated_at || '-',
+  };
+
+  const client = mapClientProfile(row);
+
+  const [scheduleRows] = await connection.query(
+    `
+      SELECT *
+      FROM lot_project_payment_schedules
+      WHERE lot_project_listing_id = ?
+      ORDER BY due_date ASC, lot_project_payment_schedule_id ASC
+    `,
+    [row.lot_project_listing_id]
+  );
+
+  const [payments] = await connection.query(
+    `
+      SELECT
+        pmt.*,
+        proj.lot_project_name,
+        l.lot_project_listing_unit_id,
+        cp.buyer_full_name,
+        TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS verified_by_name
+      FROM lot_project_payments pmt
+      INNER JOIN lot_projects proj ON proj.lot_project_id = pmt.lot_project_id
+      INNER JOIN lot_project_listings l ON l.lot_project_listing_id = pmt.lot_project_listing_id
+      LEFT JOIN lot_project_client_profiles cp ON cp.lot_project_client_profile_id = pmt.lot_project_client_profile_id
+      LEFT JOIN users u ON u.id = pmt.lot_project_payment_verified_by_user_id
+      WHERE pmt.lot_project_listing_id = ?
+      ORDER BY pmt.lot_project_payment_date DESC, pmt.lot_project_payment_id DESC
+    `,
+    [row.lot_project_listing_id]
+  );
+
+  const [documents] = await connection.query(
+    `
+      SELECT
+        d.document_id,
+        d.document_name,
+        d.document_description,
+        ld.lot_project_listing_document_is_required AS is_required,
+        cd.lot_project_client_document_id,
+        cd.lot_project_client_document_file_name,
+        cd.lot_project_client_document_file_url,
+        cd.lot_project_client_document_status,
+        cd.lot_project_client_document_uploaded_at,
+        cd.lot_project_client_document_approved_at
+      FROM lot_project_listing_documents ld
+      INNER JOIN documents d ON d.document_id = ld.document_id
+      LEFT JOIN lot_project_client_documents cd
+        ON cd.lot_project_listing_id = ld.lot_project_listing_id
+       AND cd.document_id = ld.document_id
+      WHERE ld.lot_project_listing_id = ?
+        AND ld.lot_project_listing_document_status = 'active'
+      ORDER BY ld.lot_project_listing_document_is_required DESC, d.document_name ASC
+    `,
+    [row.lot_project_listing_id]
+  );
+
+  return {
+    project: {
+      id: row.lot_project_id,
+      slug: row.lot_project_slug,
+      name: row.lot_project_name,
+      location: row.lot_project_location,
+      locationCode: row.lot_project_location_code,
+      administrator: row.lot_project_administrator_name,
+      taxDeclarationNo: row.lot_project_tax_declaration_no,
+      pin: row.lot_project_pin,
+      status: row.lot_project_status,
+    },
+    listing,
+    client,
+    soaRows: scheduleRows.map(mapSoaRow),
+    payments: payments.map(mapPaymentRow),
+    documents: documents.map(mapDocumentRow),
+  };
+};
+
+export const getLotProjectListingProfile = async (req, res) => {
+  try {
+    const bundle = await getListingProfileBundle(req.params.projectSlug, req.params.listingId);
+
+    if (!bundle) {
+      return res.status(404).json({ message: 'Listing not found.' });
+    }
+
+    return res.json({ success: true, data: bundle });
+  } catch (error) {
+    return res.status(500).json({ message: getErrorMessage(error) });
+  }
+};
+
+export const updateLotProjectListingStatus = async (req, res) => {
+  try {
+    const bundle = await getListingProfileBundle(req.params.projectSlug, req.params.listingId);
+    if (!bundle) return res.status(404).json({ message: 'Listing not found.' });
+
+    const listingId = bundle.listing.listingId;
+    const lotProjectId = bundle.project.id;
+    const area = Number(req.body.lotAreaSqm || req.body.area || bundle.listing.lotAreaSqm || 0);
+    const pricePerSqm = Number(req.body.pricePerSqm || bundle.listing.pricePerSqm || 0);
+    const lmfRate = Number(req.body.legalMiscRate || req.body.lmfRate || bundle.listing.legalMiscRate || 0);
+    const netSellingPrice = area * pricePerSqm;
+    const lmfAmount = netSellingPrice * (lmfRate / 100);
+    const tcp = netSellingPrice + lmfAmount;
+    const statusPayload = normalizeListingStatusPayload(req.body.status || req.body.listing_status || bundle.listing.rawStatus);
+
+    await db.query(
+      `
+        UPDATE lot_project_listings
+        SET
+          lot_project_listing_unit_type = ?,
+          lot_project_listing_unit_id = ?,
+          lot_project_listing_old_unit_ids = ?,
+          lot_project_listing_area_sqm = ?,
+          lot_project_listing_price_per_sqm = ?,
+          lot_project_listing_net_selling_price = ?,
+          lot_project_listing_lmf_rate = ?,
+          lot_project_listing_lmf_amount = ?,
+          lot_project_listing_tcp = ?,
+          lot_project_listing_reservation_fee = ?,
+          lot_project_listing_status = ?,
+          lot_project_listing_sold_substatus = ?,
+          lot_project_listing_cancellation_type = ?
+        WHERE lot_project_listing_id = ?
+          AND lot_project_id = ?
+      `,
+      [
+        normalizeLotType(req.body.lotType || req.body.unitType || bundle.listing.lot_type),
+        String(req.body.unitCode || req.body.unit_id || bundle.listing.unit_id).trim().toUpperCase(),
+        toNullable(req.body.oldUnitIds || req.body.old_unit_ids),
+        area,
+        pricePerSqm,
+        netSellingPrice,
+        lmfRate,
+        lmfAmount,
+        tcp,
+        Number(req.body.reservationFee || bundle.listing.reservationFee || 0),
+        statusPayload.status,
+        statusPayload.soldSubstatus,
+        toNullable(req.body.cancellationType || req.body.lot_project_listing_cancellation_type),
+        listingId,
+        lotProjectId,
+      ]
+    );
+
+    return res.json({ success: true, message: 'Unit and status saved successfully.' });
+  } catch (error) {
+    return res.status(500).json({ message: getErrorMessage(error) });
+  }
+};
+
+export const updateLotProjectClientProfile = async (req, res) => {
+  try {
+    const bundle = await getListingProfileBundle(req.params.projectSlug, req.params.listingId);
+    if (!bundle) return res.status(404).json({ message: 'Listing not found.' });
+
+    const body = req.body || {};
+    const buyerFullName = buildBuyerFullName(body);
+    const secondBuyerName = String(body.secondBuyerName || body.second_buyer_full_name || '').trim() || null;
+    const buyerType = body.buyerType || body.buyer_type || 'single';
+
+    await db.query(
+      `
+        INSERT INTO lot_project_client_profiles (
+          lot_project_id,
+          lot_project_listing_id,
+          buyer_type,
+          buyer_first_name,
+          buyer_middle_name,
+          buyer_last_name,
+          buyer_suffix,
+          buyer_full_name,
+          buyer_birth_date,
+          buyer_place_of_birth,
+          buyer_citizenship,
+          buyer_gender,
+          buyer_civil_status,
+          buyer_contact_number,
+          buyer_email,
+          buyer_tin,
+          buyer_present_address,
+          buyer_permanent_address,
+          buyer_employment_status,
+          buyer_employer_business_name,
+          buyer_employer_business_address,
+          buyer_nature_of_work_business,
+          buyer_occupation_position,
+          buyer_monthly_income,
+          second_buyer_full_name,
+          second_buyer_birth_date,
+          second_buyer_place_of_birth,
+          second_buyer_citizenship,
+          second_buyer_gender,
+          second_buyer_civil_status,
+          second_buyer_contact_number,
+          second_buyer_email,
+          second_buyer_tin,
+          second_buyer_present_address,
+          second_buyer_permanent_address,
+          second_buyer_employment_status,
+          second_buyer_employer_business_name,
+          second_buyer_employer_business_address,
+          second_buyer_nature_of_work_business,
+          second_buyer_occupation_position,
+          second_buyer_monthly_income,
+          lot_project_client_profile_status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
+        ON DUPLICATE KEY UPDATE
+          buyer_type = VALUES(buyer_type),
+          buyer_first_name = VALUES(buyer_first_name),
+          buyer_middle_name = VALUES(buyer_middle_name),
+          buyer_last_name = VALUES(buyer_last_name),
+          buyer_suffix = VALUES(buyer_suffix),
+          buyer_full_name = VALUES(buyer_full_name),
+          buyer_birth_date = VALUES(buyer_birth_date),
+          buyer_place_of_birth = VALUES(buyer_place_of_birth),
+          buyer_citizenship = VALUES(buyer_citizenship),
+          buyer_gender = VALUES(buyer_gender),
+          buyer_civil_status = VALUES(buyer_civil_status),
+          buyer_contact_number = VALUES(buyer_contact_number),
+          buyer_email = VALUES(buyer_email),
+          buyer_tin = VALUES(buyer_tin),
+          buyer_present_address = VALUES(buyer_present_address),
+          buyer_permanent_address = VALUES(buyer_permanent_address),
+          buyer_employment_status = VALUES(buyer_employment_status),
+          buyer_employer_business_name = VALUES(buyer_employer_business_name),
+          buyer_employer_business_address = VALUES(buyer_employer_business_address),
+          buyer_nature_of_work_business = VALUES(buyer_nature_of_work_business),
+          buyer_occupation_position = VALUES(buyer_occupation_position),
+          buyer_monthly_income = VALUES(buyer_monthly_income),
+          second_buyer_full_name = VALUES(second_buyer_full_name),
+          second_buyer_birth_date = VALUES(second_buyer_birth_date),
+          second_buyer_place_of_birth = VALUES(second_buyer_place_of_birth),
+          second_buyer_citizenship = VALUES(second_buyer_citizenship),
+          second_buyer_gender = VALUES(second_buyer_gender),
+          second_buyer_civil_status = VALUES(second_buyer_civil_status),
+          second_buyer_contact_number = VALUES(second_buyer_contact_number),
+          second_buyer_email = VALUES(second_buyer_email),
+          second_buyer_tin = VALUES(second_buyer_tin),
+          second_buyer_present_address = VALUES(second_buyer_present_address),
+          second_buyer_permanent_address = VALUES(second_buyer_permanent_address),
+          second_buyer_employment_status = VALUES(second_buyer_employment_status),
+          second_buyer_employer_business_name = VALUES(second_buyer_employer_business_name),
+          second_buyer_employer_business_address = VALUES(second_buyer_employer_business_address),
+          second_buyer_nature_of_work_business = VALUES(second_buyer_nature_of_work_business),
+          second_buyer_occupation_position = VALUES(second_buyer_occupation_position),
+          second_buyer_monthly_income = VALUES(second_buyer_monthly_income),
+          lot_project_client_profile_status = 'active'
+      `,
+      [
+        bundle.project.id,
+        bundle.listing.listingId,
+        buyerType,
+        toNullable(body.firstName || body.buyer_first_name),
+        toNullable(body.middleName || body.buyer_middle_name),
+        toNullable(body.lastName || body.buyer_last_name),
+        toNullable(body.suffix || body.buyer_suffix),
+        toNullable(buyerFullName),
+        toNullable(body.birthDate || body.buyer_birth_date),
+        toNullable(body.placeOfBirth || body.buyer_place_of_birth),
+        toNullable(body.citizenship || body.buyer_citizenship),
+        toNullable(body.gender || body.buyer_gender),
+        toNullable(body.civilStatus || body.buyer_civil_status),
+        toNullable(body.contactNo || body.buyer_contact_number),
+        toNullable(body.email || body.buyer_email),
+        toNullable(body.tin || body.buyer_tin),
+        toNullable(body.presentAddress || body.buyer_present_address),
+        toNullable(body.permanentAddress || body.buyer_permanent_address),
+        toNullable(body.employmentStatus || body.buyer_employment_status),
+        toNullable(body.employerBusinessName || body.buyer_employer_business_name),
+        toNullable(body.employerBusinessAddress || body.buyer_employer_business_address),
+        toNullable(body.natureOfWorkBusiness || body.buyer_nature_of_work_business),
+        toNullable(body.occupationPositionTitle || body.buyer_occupation_position),
+        Number(body.monthlyIncome || body.buyer_monthly_income || 0),
+        secondBuyerName,
+        toNullable(body.secondBuyerBirthDate),
+        toNullable(body.secondBuyerPlaceOfBirth),
+        toNullable(body.secondBuyerCitizenship),
+        toNullable(body.secondBuyerGender),
+        toNullable(body.secondBuyerCivilStatus),
+        toNullable(body.secondBuyerContactNo),
+        toNullable(body.secondBuyerEmail),
+        toNullable(body.secondBuyerTin),
+        toNullable(body.secondBuyerPresentAddress),
+        toNullable(body.secondBuyerPermanentAddress),
+        toNullable(body.secondBuyerEmploymentStatus),
+        toNullable(body.secondBuyerEmployerBusinessName),
+        toNullable(body.secondBuyerEmployerBusinessAddress),
+        toNullable(body.secondBuyerNatureOfWorkBusiness),
+        toNullable(body.secondBuyerOccupationPositionTitle),
+        Number(body.secondBuyerMonthlyIncome || 0),
+      ]
+    );
+
+    return res.json({ success: true, message: 'Client profile saved successfully.' });
+  } catch (error) {
+    return res.status(500).json({ message: getErrorMessage(error) });
+  }
+};
+
+const generateCashReference = (unitCode) => {
+  const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const cleanUnit = String(unitCode || 'UNIT').replace(/[^a-zA-Z0-9]/g, '');
+  const random = String(Math.floor(Math.random() * 9999) + 1).padStart(4, '0');
+  return `CASH-${date}-${cleanUnit}-${random}`;
+};
+
+export const addLotProjectPayment = async (req, res) => {
+  const connection = await db.getConnection();
+
+  try {
+    const bundle = await getListingProfileBundle(req.params.projectSlug, req.params.listingId, connection);
+    if (!bundle) return res.status(404).json({ message: 'Listing not found.' });
+    if (!bundle.client?.lot_project_client_profile_id) {
+      return res.status(400).json({ message: 'Client profile is required before adding payments.' });
+    }
+
+    const body = req.body || {};
+    const scheduleId = Number(body.soaRowId || body.lot_project_payment_schedule_id);
+    const amount = Number(body.amount || body.lot_project_payment_amount || 0);
+    const method = body.method || body.lot_project_payment_method || 'Cash';
+    const paymentDate = body.paymentDate || body.lot_project_payment_date || new Date().toISOString().slice(0, 10);
+    const paymentType = String(body.paymentType || body.lot_project_payment_type || 'other').toLowerCase().replace(/\s+/g, '_').replace(/\//g, '_');
+    const referenceId = method === 'Cash' ? (body.referenceId || generateCashReference(bundle.listing.unit_id)) : String(body.referenceId || '').trim();
+
+    if (!scheduleId) return res.status(400).json({ message: 'SOA row is required.' });
+    if (amount <= 0) return res.status(400).json({ message: 'Payment amount must be greater than 0.' });
+    if (method !== 'Cash' && !referenceId) return res.status(400).json({ message: 'Reference ID is required for non-cash payments.' });
+
+    await connection.beginTransaction();
+
+    const allowedTypes = new Set(['reservation', 'downpayment', 'monthly_amortization', 'legal_misc', 'full_payment', 'other']);
+    const finalType = allowedTypes.has(paymentType) ? paymentType : paymentType.includes('reservation') ? 'reservation' : paymentType.includes('downpayment') ? 'downpayment' : paymentType.includes('monthly') ? 'monthly_amortization' : paymentType.includes('legal') ? 'legal_misc' : paymentType.includes('full') ? 'full_payment' : 'other';
+
+    const [paymentResult] = await connection.query(
+      `
+        INSERT INTO lot_project_payments (
+          lot_project_id,
+          lot_project_listing_id,
+          lot_project_client_profile_id,
+          lot_project_payment_schedule_id,
+          lot_project_payment_type,
+          lot_project_payment_method,
+          lot_project_payment_amount,
+          lot_project_payment_date,
+          lot_project_payment_reference_id,
+          lot_project_payment_status,
+          lot_project_payment_verified_by_user_id,
+          lot_project_payment_verified_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Verified', NULL, NOW())
+      `,
+      [bundle.project.id, bundle.listing.listingId, bundle.client.lot_project_client_profile_id, scheduleId, finalType, method, amount, paymentDate, referenceId]
+    );
+
+    await connection.query(
+      `
+        UPDATE lot_project_payment_schedules
+        SET
+          amount_paid = amount_paid + ?,
+          date_paid = ?,
+          reference_id = ?,
+          ending_balance = GREATEST(beginning_balance - (amount_paid + ?), 0),
+          schedule_status = CASE
+            WHEN amount_paid + ? >= due_amount + penalty_amount THEN 'Paid'
+            WHEN amount_paid + ? > 0 THEN 'Partial'
+            ELSE schedule_status
+          END
+        WHERE lot_project_payment_schedule_id = ?
+          AND lot_project_listing_id = ?
+      `,
+      [amount, paymentDate, referenceId, amount, amount, amount, scheduleId, bundle.listing.listingId]
+    );
+
+    await connection.query(
+      `
+        INSERT INTO lot_project_payment_logs (
+          lot_project_payment_id,
+          action_type,
+          action_description,
+          action_by_user_id
+        ) VALUES (?, 'created', ?, NULL)
+      `,
+      [paymentResult.insertId, `Payment recorded for ${bundle.listing.unit_id}.`]
+    );
+
+    await connection.commit();
+
+    return res.status(201).json({ success: true, message: 'Payment saved successfully.', reference_id: referenceId });
+  } catch (error) {
+    await connection.rollback();
+    return res.status(500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
+export const uploadLotProjectClientDocument = async (req, res) => {
+  try {
+    const bundle = await getListingProfileBundle(req.params.projectSlug, req.params.listingId);
+    if (!bundle) return res.status(404).json({ message: 'Listing not found.' });
+    if (!bundle.client?.lot_project_client_profile_id) return res.status(400).json({ message: 'Client profile is required before uploading documents.' });
+
+    const documentId = Number(req.params.documentId);
+    const fileName = String(req.body.fileName || req.body.file_name || '').trim();
+    const fileUrl = String(req.body.fileUrl || req.body.file_url || '').trim() || '/docImage1.png';
+
+    if (!documentId) return res.status(400).json({ message: 'Invalid document id.' });
+    if (!fileName) return res.status(400).json({ message: 'File name is required.' });
+
+    await db.query(
+      `
+        INSERT INTO lot_project_client_documents (
+          lot_project_id,
+          lot_project_listing_id,
+          lot_project_client_profile_id,
+          document_id,
+          lot_project_client_document_file_name,
+          lot_project_client_document_file_url,
+          lot_project_client_document_status,
+          lot_project_client_document_uploaded_at
+        ) VALUES (?, ?, ?, ?, ?, ?, 'Submitted', NOW())
+        ON DUPLICATE KEY UPDATE
+          lot_project_client_document_file_name = VALUES(lot_project_client_document_file_name),
+          lot_project_client_document_file_url = VALUES(lot_project_client_document_file_url),
+          lot_project_client_document_status = 'Submitted',
+          lot_project_client_document_uploaded_at = NOW(),
+          lot_project_client_document_approved_at = NULL,
+          lot_project_client_document_approved_by_user_id = NULL
+      `,
+      [bundle.project.id, bundle.listing.listingId, bundle.client.lot_project_client_profile_id, documentId, fileName, fileUrl]
+    );
+
+    return res.json({ success: true, message: 'Document uploaded and marked as submitted.' });
+  } catch (error) {
+    return res.status(500).json({ message: getErrorMessage(error) });
+  }
+};
+
+export const updateLotProjectClientDocumentStatus = async (req, res) => {
+  try {
+    const bundle = await getListingProfileBundle(req.params.projectSlug, req.params.listingId);
+    if (!bundle) return res.status(404).json({ message: 'Listing not found.' });
+    if (!bundle.client?.lot_project_client_profile_id) return res.status(400).json({ message: 'Client profile is required before updating documents.' });
+
+    const documentId = Number(req.params.documentId);
+    const status = req.body.status || 'Approved';
+    const allowed = new Set(['Missing', 'Submitted', 'Approved', 'Rejected']);
+    const finalStatus = allowed.has(status) ? status : 'Submitted';
+
+    await db.query(
+      `
+        INSERT INTO lot_project_client_documents (
+          lot_project_id,
+          lot_project_listing_id,
+          lot_project_client_profile_id,
+          document_id,
+          lot_project_client_document_status,
+          lot_project_client_document_approved_at
+        ) VALUES (?, ?, ?, ?, ?, IF(? = 'Approved', NOW(), NULL))
+        ON DUPLICATE KEY UPDATE
+          lot_project_client_document_status = VALUES(lot_project_client_document_status),
+          lot_project_client_document_approved_at = IF(VALUES(lot_project_client_document_status) = 'Approved', NOW(), NULL)
+      `,
+      [bundle.project.id, bundle.listing.listingId, bundle.client.lot_project_client_profile_id, documentId, finalStatus, finalStatus]
+    );
+
+    return res.json({ success: true, message: `Document marked as ${finalStatus}.` });
+  } catch (error) {
+    return res.status(500).json({ message: getErrorMessage(error) });
+  }
+};
+
+export const clearLotProjectClientDocument = async (req, res) => {
+  try {
+    const bundle = await getListingProfileBundle(req.params.projectSlug, req.params.listingId);
+    if (!bundle) return res.status(404).json({ message: 'Listing not found.' });
+
+    const documentId = Number(req.params.documentId);
+
+    await db.query(
+      `
+        UPDATE lot_project_client_documents
+        SET
+          lot_project_client_document_file_name = NULL,
+          lot_project_client_document_file_url = NULL,
+          lot_project_client_document_status = 'Missing',
+          lot_project_client_document_uploaded_at = NULL,
+          lot_project_client_document_approved_at = NULL,
+          lot_project_client_document_approved_by_user_id = NULL
+        WHERE lot_project_listing_id = ?
+          AND document_id = ?
+      `,
+      [bundle.listing.listingId, documentId]
+    );
+
+    return res.json({ success: true, message: 'Document cleared and marked as missing.' });
+  } catch (error) {
+    return res.status(500).json({ message: getErrorMessage(error) });
+  }
+};
+
+export const getLotProjectListingPrintPayload = async (req, res) => {
+  try {
+    const bundle = await getListingProfileBundle(req.params.projectSlug, req.params.listingId);
+    if (!bundle) return res.status(404).json({ message: 'Listing not found.' });
+
+    return res.json({ success: true, data: bundle });
+  } catch (error) {
+    return res.status(500).json({ message: getErrorMessage(error) });
+  }
+};

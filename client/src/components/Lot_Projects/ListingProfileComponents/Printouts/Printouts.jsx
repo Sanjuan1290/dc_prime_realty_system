@@ -1,40 +1,52 @@
-import { FiFileText, FiImage, FiPrinter } from 'react-icons/fi'
+import { useParams } from 'react-router-dom'
+import { FiFileText, FiImage, FiPrinter, FiReceipt } from 'react-icons/fi'
 
-const printItems = [
+const buildPrintItems = (projectSlug) => [
   {
     title: 'Offer to Buy',
     type: 'offer-to-buy',
     desc: "Offer to Buy & Buyer's Profile form with buyer, property, terms, and signatures.",
     icon: FiFileText,
-    path: '/bailenProject/printouts/offer-to-buy',
+    path: `/lot-projects/${projectSlug}/printouts/offer-to-buy`,
   },
   {
     title: 'Statement of Account',
     type: 'statement-of-account',
-    desc: 'SOA schedule with due amount, penalty, payments, references, and balances.',
+    desc: 'SOA schedule with due amount, paid amount, references, and running balance.',
     icon: FiPrinter,
-    path: '/bailenProject/printouts/statement-of-account',
+    path: `/lot-projects/${projectSlug}/printouts/statement-of-account`,
+  },
+  {
+    title: 'Acknowledgement Receipt',
+    type: 'acknowledgement-receipt',
+    desc: 'Printable receipt for payment acknowledgement with bank/reference details.',
+    icon: FiReceipt,
+    path: `/lot-projects/${projectSlug}/printouts/acknowledgement-receipt`,
   },
   {
     title: 'Print Documents',
     type: 'documents',
     desc: 'Printable document image compilation. Images only, no document labels.',
     icon: FiImage,
-    path: '/bailenProject/printouts/documents',
+    path: `/lot-projects/${projectSlug}/printouts/documents`,
   },
 ]
 
-const Printouts = ({ listing, client, soaRows = [], documents = [] }) => {
+const Printouts = ({ listing, client, soaRows = [], documents = [], payments = [] }) => {
+  const { projectSlug = listing?.project_slug || 'bailen-lot-project' } = useParams()
+  const printItems = buildPrintItems(projectSlug)
+
   const handlePreview = (item) => {
-    localStorage.setItem(
-      'bailen_print_payload',
-      JSON.stringify({
-        listing,
-        client,
-        soaRows,
-        documents,
-      })
-    )
+    const payload = {
+      listing,
+      client,
+      soaRows,
+      documents,
+      payments,
+    }
+
+    localStorage.setItem('lot_print_payload', JSON.stringify(payload))
+    localStorage.setItem('bailen_print_payload', JSON.stringify(payload))
 
     window.open(item.path, '_blank')
   }
@@ -44,11 +56,11 @@ const Printouts = ({ listing, client, soaRows = [], documents = [] }) => {
       <div>
         <h2 className="text-xl font-black text-slate-950">Printouts</h2>
         <p className="mt-1 text-sm font-semibold text-slate-500">
-          Open complete printable pages before printing.
+          Open complete printable pages. Use the print button to save as PDF.
         </p>
       </div>
 
-      <div className="mt-5 grid gap-4 md:grid-cols-3">
+      <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {printItems.map((item) => {
           const Icon = item.icon
 
