@@ -11,6 +11,8 @@ import userRouter from './routers/System/users.routers.js';
 import documentsRouter from './routers/System/documents.routers.js';
 import sellerGroupRouter from './routers/System/sellerGroup.routers.js';
 import accreditedRouter from './routers/System/accredited.routers.js';
+import projectsRouter from './routers/System/projects.routers.js';
+
 
 const app = express();
 
@@ -40,6 +42,7 @@ app.use('/api/v1/user', userRouter);
 app.use('/api/v1/documents', documentsRouter);
 app.use('/api/v1/seller-groups', sellerGroupRouter);
 app.use('/api/v1/accredited', accreditedRouter);
+app.use('/api/v1/projects', projectsRouter);
 
 // 404 handler
 app.use((req, res) => {

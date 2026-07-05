@@ -4,27 +4,28 @@ import {
   createRoutesFromElements,
   Route,
 } from "react-router-dom";
+
 import Login from "./auth/Login";
 import SystemLayout from "./layout/SystemLayout";
-import BailenLayout from "./layout/LotLayout";
+import LotLayout from "./layout/LotLayout";
 
 import Dashboard from "./pages/System/Dashboard";
 import Documents from "./pages/System/Documents";
 import SellerGroup from "./pages/System/SellerGroup";
 import Users from "./pages/System/Users";
 import Accredited from "./pages/System/Accredited";
-
-import BailenDashboard from "./pages/Lot_Projects/Dashboard";
-import BailenListings from "./pages/Lot_Projects/Listings";
-import BailenListingProfile from "./pages/Lot_Projects/ListingProfile";
-import BailenPaymentLogs from "./pages/Lot_Projects/PaymentLogs";
-import BailenCommission from "./pages/Lot_Projects/Commission";
-import BailenSettings from "./pages/Lot_Projects/Settings";
 import Projects from "./pages/System/Projects";
 
-import OfferToBuyPrintPage from './components/Lot_Projects/ListingProfileComponents/Printouts/OfferToBuyPrintPage'
-import SOAPrintPage from './components/Lot_Projects/ListingProfileComponents/Printouts/SOAPrintPage'
-import DocumentsPrintPage from './components/Lot_Projects/ListingProfileComponents/Printouts/DocumentsPrintPage'
+import LotDashboard from "./pages/Lot_Projects/Dashboard";
+import LotListings from "./pages/Lot_Projects/Listings";
+import LotListingProfile from "./pages/Lot_Projects/ListingProfile";
+import LotPaymentLogs from "./pages/Lot_Projects/PaymentLogs";
+import LotCommission from "./pages/Lot_Projects/Commission";
+import LotSettings from "./pages/Lot_Projects/Settings";
+
+import OfferToBuyPrintPage from "./components/Lot_Projects/ListingProfileComponents/Printouts/OfferToBuyPrintPage";
+import SOAPrintPage from "./components/Lot_Projects/ListingProfileComponents/Printouts/SOAPrintPage";
+import DocumentsPrintPage from "./components/Lot_Projects/ListingProfileComponents/Printouts/DocumentsPrintPage";
 
 const App = () => {
   const router = createBrowserRouter(
@@ -41,25 +42,27 @@ const App = () => {
           <Route path="users/seller_group" element={<SellerGroup />} />
         </Route>
 
-        <Route path="/Bailen-Lot-Project" element={<BailenLayout />}>
-          <Route index element={<BailenDashboard />} />
-          <Route path="listings" element={<BailenListings />} />
-          <Route path="listings/:listingId" element={<BailenListingProfile />} />
-          <Route path="payments-audit" element={<BailenPaymentLogs />} />
-          <Route path="commissions" element={<BailenCommission />} />
-          <Route path="settings" element={<BailenSettings />} />
+        <Route path="/lot-projects/:projectSlug" element={<LotLayout />}>
+          <Route index element={<LotDashboard />} />
+          <Route path="listings" element={<LotListings />} />
+          <Route path="listings/:listingId" element={<LotListingProfile />} />
+          <Route path="payments-audit" element={<LotPaymentLogs />} />
+          <Route path="commissions" element={<LotCommission />} />
+          <Route path="settings" element={<LotSettings />} />
         </Route>
 
         <Route
-          path="/Bailen-Lot-Project/printouts/offer-to-buy"
+          path="/lot-projects/:projectSlug/printouts/offer-to-buy"
           element={<OfferToBuyPrintPage />}
         />
+
         <Route
-          path="/Bailen-Lot-Project/printouts/statement-of-account"
+          path="/lot-projects/:projectSlug/printouts/statement-of-account"
           element={<SOAPrintPage />}
         />
+
         <Route
-          path="/Bailen-Lot-Project/printouts/documents"
+          path="/lot-projects/:projectSlug/printouts/documents"
           element={<DocumentsPrintPage />}
         />
       </>
