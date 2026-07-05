@@ -6,7 +6,9 @@ import {
   getLotProjectBySlug,
   getLotProjectDashboard,
   getLotProjectListings,
+  getLotProjectListingProfile,
   createLotProjectListing,
+  updateLotProjectListing,
   createLotProject,
   updateLotProject,
   toggleLotProjectStatus,
@@ -19,10 +21,12 @@ router.get('/lot-projects', getLotProjects);
 router.get('/lot-projects/options', getLotProjectOptions);
 router.get('/lot-projects/:projectSlug/dashboard', getLotProjectDashboard);
 router.get('/lot-projects/:projectSlug/listings', getLotProjectListings);
+router.get('/lot-projects/:projectSlug/listings/:listingId', getLotProjectListingProfile);
 router.get('/lot-projects/:projectSlug', getLotProjectBySlug);
 
 router.post('/lot-projects', createLotProject);
 router.post('/lot-projects/:projectSlug/listings', createLotProjectListing);
+router.put('/lot-projects/:projectSlug/listings/:listingId', updateLotProjectListing);
 
 router.put('/lot-projects/:id', updateLotProject);
 router.patch('/lot-projects/:id/status', toggleLotProjectStatus);

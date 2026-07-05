@@ -2,13 +2,6 @@ import { useMemo, useState } from 'react'
 import { FiSave, FiX } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
 
-const selectedProject = {
-  id: 1,
-  name: 'Bailen Project',
-  locationCode: 'LA',
-  cadastralLots: ['1306', '1314', '1315', '1316'],
-}
-
 const statusOptions = [
   { value: 'available', label: 'Available' },
   { value: 'hold', label: 'Hold' },
@@ -33,8 +26,10 @@ const parsePercent = (value) => {
   return Number(String(value || '').replace('%', '').trim()) || 0
 }
 
-const getUnitNumber = (unitId = '') => {
+const getUnitNumber = (unitId = '', locationCode = '') => {
   const value = String(unitId || '')
+  const prefix = `${locationCode}-`
+  if (locationCode && value.startsWith(prefix)) return value.slice(prefix.length)
   return value.includes('-') ? value.split('-').pop() : value
 }
 
@@ -45,17 +40,28 @@ const formatMoney = (value) =>
     minimumFractionDigits: 2,
   }).format(Number(value || 0))
 
-const toStatusValue = (status = '') => {
-  const normalized = String(status).toLowerCase()
+const toStatusValue = (status = '', rawStatus = '') => {
+  const raw = String(rawStatus || '').toLowerCase()
+  if (['available', 'hold', 'sold', 'pending_for_cancellation', 'cancelled'].includes(raw)) return raw
 
+  const normalized = String(status).toLowerCase()
   if (normalized.includes('pending')) return 'pending_for_cancellation'
   if (normalized.includes('available')) return 'available'
   if (normalized.includes('cancelled')) return 'cancelled'
-  if (normalized.includes('sold')) return 'sold'
+  if (normalized.includes('sold') || normalized.includes('fully')) return 'sold'
   if (normalized.includes('hold')) return 'hold'
 
   return 'available'
 }
+
+const splitLots = (value) =>
+  String(value || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+
+const getLotNumberValue = (lot) =>
+  String(lot?.lotNumber || lot?.lot_project_cadastral_lot_number || lot?.value || lot || '').trim()
 
 const Field = ({
   label,
@@ -65,6 +71,8 @@ const Field = ({
   type = 'text',
   helper,
   required = false,
+  min,
+  step,
 }) => (
   <label className="flex flex-col gap-1.5">
     <span className="text-sm font-black text-slate-700">
@@ -73,6 +81,8 @@ const Field = ({
 
     <input
       type={type}
+      min={min}
+      step={step}
       value={value}
       onChange={(event) => onChange(event.target.value)}
       placeholder={placeholder}
@@ -83,16 +93,23 @@ const Field = ({
   </label>
 )
 
-const SelectField = ({ label, value, onChange, children, helper, required = false }) => (
+const SelectField = ({ label, value, onChange, children, helper, required = false, multiple = false }) => (
   <label className="flex flex-col gap-1.5">
     <span className="text-sm font-black text-slate-700">
       {label} {required ? <span className="text-red-500">*</span> : null}
     </span>
 
     <select
+      multiple={multiple}
       value={value}
-      onChange={(event) => onChange(event.target.value)}
-      className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
+      onChange={(event) => {
+        if (multiple) {
+          onChange(Array.from(event.target.selectedOptions).map((option) => option.value))
+          return
+        }
+        onChange(event.target.value)
+      }}
+      className={`${multiple ? 'min-h-28 py-2' : 'h-11'} rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50`}
     >
       {children}
     </select>
@@ -103,45 +120,55 @@ const SelectField = ({ label, value, onChange, children, helper, required = fals
 
 const BreakdownCard = ({ label, value, highlight = false }) => (
   <div className={`rounded-xl border p-4 ${highlight ? 'border-blue-200 bg-blue-50' : 'border-slate-200 bg-white'}`}>
-    <p className={`text-xs font-black uppercase ${highlight ? 'text-blue-700' : 'text-slate-500'}`}>
-      {label}
-    </p>
-    <p className={`mt-2 text-lg font-black ${highlight ? 'text-blue-900' : 'text-slate-950'}`}>
-      {value}
-    </p>
+    <p className={`text-xs font-black uppercase ${highlight ? 'text-blue-700' : 'text-slate-500'}`}>{label}</p>
+    <p className={`mt-2 text-lg font-black ${highlight ? 'text-blue-900' : 'text-slate-950'}`}>{value}</p>
   </div>
 )
 
-const EditUnitStatusModal = ({ listing, onClose, onSave }) => {
+const EditUnitStatusModal = ({ listing, project = {}, onClose, onSave, isSaving = false }) => {
+  const locationCode = project.locationCode || project.lot_project_location_code || listing?.locationCode || 'LA'
+  const selectedLotNumber = Array.isArray(listing?.cadastralLots)
+    ? getLotNumberValue(listing.cadastralLots[0])
+    : splitLots(listing?.cadastral_lot_no === '-' ? '' : listing?.cadastral_lot_no)[0] || ''
+
+  const cadastralOptions = useMemo(() => {
+    const options = Array.isArray(project.cadastralLots)
+      ? project.cadastralLots
+          .map(getLotNumberValue)
+          .filter(Boolean)
+      : []
+
+    if (selectedLotNumber && !options.includes(selectedLotNumber)) {
+      return [selectedLotNumber, ...options]
+    }
+
+    return options
+  }, [project.cadastralLots, selectedLotNumber])
+
   const [form, setForm] = useState({
-    cadastralLotNo: listing?.cadastral_lot_no === '-' ? '' : listing?.cadastral_lot_no || '',
-    unitNumber: getUnitNumber(listing?.unit_id || listing?.unitCode || 'LA-0402'),
+    cadastralLotNo: selectedLotNumber,
+    unitNumber: getUnitNumber(listing?.unit_id || listing?.unitCode || '', locationCode),
     oldUnitIds: listing?.old_unit_ids === '-' ? '' : listing?.old_unit_ids || '',
-    sourceUnitIds: listing?.source_unit_ids === '-' ? '' : listing?.source_unit_ids || '',
-    derivedUnitIds: listing?.derived_unit_ids === '-' ? '' : listing?.derived_unit_ids || '',
     lotType: (() => {
-                const lotType = String(listing?.lot_type || 'Inner').toLowerCase()
-
-                if (lotType === 'corner') return 'corner'
-                if (lotType === 'end') return 'end'
-
-                return 'inner'
-            })(),
-    reservationFee: String(listing?.reservationFee || 50000),
+      const lotType = String(listing?.lot_type || 'Inner').toLowerCase()
+      if (lotType === 'corner') return 'corner'
+      if (lotType === 'end') return 'end'
+      return 'inner'
+    })(),
+    reservationFee: String(listing?.reservationFee || 0),
     pricePerSqm: String(listing?.pricePerSqm || parseMoney(listing?.price_per_sqm) || 0),
     lotAreaSqm: String(listing?.lotAreaSqm || parseMoney(listing?.lot_area_sqm) || 0),
-    legalMiscRate: String(listing?.legalMiscRate || parsePercent(listing?.lmf_rate) || 10),
+    legalMiscRate: String(listing?.legalMiscRate || parsePercent(listing?.lmf_rate) || 0),
     annualInterestRate: String(listing?.annualInterestRate || parsePercent(listing?.interestRate) || 0),
-    status: toStatusValue(listing?.listing_status || listing?.status),
+    status: toStatusValue(listing?.listing_status || listing?.status, listing?.rawStatus),
   })
 
   const [alert, setAlert] = useState(null)
-  const [isSaving, setIsSaving] = useState(false)
 
   const unitCode = useMemo(() => {
-    const unitNumber = String(form.unitNumber || '').trim()
-    return unitNumber ? `${selectedProject.locationCode}-${unitNumber}` : `${selectedProject.locationCode}-`
-  }, [form.unitNumber])
+    const unitNumber = String(form.unitNumber || '').trim().toUpperCase()
+    return unitNumber ? `${locationCode}-${unitNumber}` : `${locationCode}-`
+  }, [form.unitNumber, locationCode])
 
   const priceBreakdown = useMemo(() => {
     const pricePerSqm = Number(form.pricePerSqm || 0)
@@ -165,13 +192,10 @@ const EditUnitStatusModal = ({ listing, onClose, onSave }) => {
 
   const updateField = (key, value) => {
     setForm((current) => ({ ...current, [key]: value }))
-
-    if (alert?.type === 'error') {
-      setAlert(null)
-    }
+    if (alert?.type === 'error') setAlert(null)
   }
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault()
 
     if (!form.unitNumber.trim()) {
@@ -189,60 +213,31 @@ const EditUnitStatusModal = ({ listing, onClose, onSave }) => {
       return
     }
 
-    const statusLabel = statusOptions.find((item) => item.value === form.status)?.label || 'Available'
     const lotTypeLabel = lotTypes.find((item) => item.value === form.lotType)?.label || 'Inner'
-    const today = new Date().toISOString().slice(0, 10)
 
     const payload = {
-      ...listing,
-
-      unit_id: unitCode,
       unitCode,
-
-      project_name: selectedProject.name,
-      projectName: selectedProject.name,
-
-      cadastral_lot_no: form.cadastralLotNo || '-',
-      old_unit_ids: form.oldUnitIds || '-',
-      source_unit_ids: form.sourceUnitIds || '-',
-      derived_unit_ids: form.derivedUnitIds || '-',
-
+      unit_id: unitCode,
+      cadastralLots: form.cadastralLotNo ? [form.cadastralLotNo] : [],
+      cadastral_lot_no: form.cadastralLotNo,
+      oldUnitIds: form.oldUnitIds,
+      old_unit_ids: form.oldUnitIds,
+      lotType: lotTypeLabel,
       lot_type: lotTypeLabel,
-      listing_status: statusLabel,
-      status: statusLabel,
-
-      lot_area_sqm: `${Number(form.lotAreaSqm || 0)} sqm`,
+      status: form.status,
       lotAreaSqm: Number(form.lotAreaSqm || 0),
-
-      price_per_sqm: formatMoney(form.pricePerSqm),
       pricePerSqm: Number(form.pricePerSqm || 0),
-
-      net_selling_price: formatMoney(priceBreakdown.netSellingPrice),
-      netSellingPrice: priceBreakdown.netSellingPrice,
-
-      lmf_rate: `${Number(form.legalMiscRate || 0)}%`,
       legalMiscRate: Number(form.legalMiscRate || 0),
-
-      lmf_amount: formatMoney(priceBreakdown.lmfAmount),
-      lmfAmount: priceBreakdown.lmfAmount,
-
-      tcp: formatMoney(priceBreakdown.tcp),
-      tcpAmount: priceBreakdown.tcp,
-
-      reservationFee: Number(form.reservationFee || 0),
       annualInterestRate: Number(form.annualInterestRate || 0),
-      interestRate: `${Number(form.annualInterestRate || 0).toFixed(2)}%`,
-
-      updated_at: today,
+      reservationFee: Number(form.reservationFee || 0),
     }
 
-    setIsSaving(true)
-    setAlert({ type: 'loading', message: 'Saving unit details in mock mode...' })
-
-    window.setTimeout(() => {
-      setIsSaving(false)
-      onSave?.(payload)
-    }, 600)
+    try {
+      setAlert({ type: 'loading', message: 'Saving unit details to database...' })
+      await onSave?.(payload)
+    } catch (error) {
+      setAlert({ type: 'error', message: error?.message || 'Failed to save unit details.' })
+    }
   }
 
   return (
@@ -259,6 +254,7 @@ const EditUnitStatusModal = ({ listing, onClose, onSave }) => {
             onClick={onClose}
             disabled={isSaving}
             className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+            aria-label="Close modal"
           >
             <FiX className="h-4 w-4" />
           </button>
@@ -276,14 +272,12 @@ const EditUnitStatusModal = ({ listing, onClose, onSave }) => {
 
           <section className="grid gap-4 md:grid-cols-2">
             <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 md:col-span-2">
-              <p className="text-xs font-black uppercase tracking-wide text-blue-700">
-                Current Project
-              </p>
+              <p className="text-xs font-black uppercase tracking-wide text-blue-700">Current Project</p>
               <p className="mt-1 text-lg font-black text-slate-950">
-                {selectedProject.name}
+                {project.name || project.lot_project_name || listing?.project_name || 'Lot Project'}
               </p>
               <p className="mt-1 text-sm font-semibold text-slate-600">
-                Unit prefix is locked to {selectedProject.locationCode}-
+                Unit prefix is locked to {locationCode}-
               </p>
             </div>
 
@@ -291,12 +285,12 @@ const EditUnitStatusModal = ({ listing, onClose, onSave }) => {
               label="Cadastral Lot No."
               value={form.cadastralLotNo}
               onChange={(value) => updateField('cadastralLotNo', value)}
-              helper="Only cadastral lots from Bailen Project are shown."
+              helper="Only cadastral lots from this project are shown."
             >
               <option value="">Select cadastral lot number</option>
-              {selectedProject.cadastralLots.map((lot) => (
-                <option key={lot} value={lot}>
-                  {lot}
+              {cadastralOptions.map((lotNumber) => (
+                <option key={lotNumber} value={lotNumber}>
+                  {lotNumber}
                 </option>
               ))}
             </SelectField>
@@ -308,7 +302,7 @@ const EditUnitStatusModal = ({ listing, onClose, onSave }) => {
 
               <div className="flex h-11 overflow-hidden rounded-xl border border-slate-300 bg-white focus-within:border-blue-400 focus-within:ring-4 focus-within:ring-blue-50">
                 <span className="flex w-24 items-center justify-center border-r border-slate-300 bg-slate-100 text-sm font-black text-blue-700">
-                  {selectedProject.locationCode}-
+                  {locationCode}-
                 </span>
                 <input
                   value={form.unitNumber}
@@ -319,7 +313,7 @@ const EditUnitStatusModal = ({ listing, onClose, onSave }) => {
               </div>
 
               <p className="text-xs font-semibold text-slate-500">
-                Project code is locked. Admin only types the unit number after the prefix.
+                Project code is locked. Type only the unit number after the prefix.
               </p>
             </label>
 
@@ -330,11 +324,7 @@ const EditUnitStatusModal = ({ listing, onClose, onSave }) => {
               placeholder="Example: LA-204, Lot 204 old survey ID"
             />
 
-            <SelectField
-              label="Lot Type"
-              value={form.lotType}
-              onChange={(value) => updateField('lotType', value)}
-            >
+            <SelectField label="Lot Type" value={form.lotType} onChange={(value) => updateField('lotType', value)}>
               {lotTypes.map((type) => (
                 <option key={type.value} value={type.value}>
                   {type.label}
@@ -345,6 +335,8 @@ const EditUnitStatusModal = ({ listing, onClose, onSave }) => {
             <Field
               label="Reservation Fee"
               type="number"
+              min="0"
+              step="0.01"
               value={form.reservationFee}
               onChange={(value) => updateField('reservationFee', value)}
               placeholder="50000"
@@ -353,6 +345,8 @@ const EditUnitStatusModal = ({ listing, onClose, onSave }) => {
             <Field
               label="Price / SQM"
               type="number"
+              min="0"
+              step="0.01"
               value={form.pricePerSqm}
               onChange={(value) => updateField('pricePerSqm', value)}
               placeholder="0"
@@ -362,6 +356,8 @@ const EditUnitStatusModal = ({ listing, onClose, onSave }) => {
             <Field
               label="Lot Area SQM"
               type="number"
+              min="0"
+              step="0.01"
               value={form.lotAreaSqm}
               onChange={(value) => updateField('lotAreaSqm', value)}
               placeholder="0"
@@ -371,6 +367,8 @@ const EditUnitStatusModal = ({ listing, onClose, onSave }) => {
             <Field
               label="Legal / Misc Rate (%)"
               type="number"
+              min="0"
+              step="0.01"
               value={form.legalMiscRate}
               onChange={(value) => updateField('legalMiscRate', value)}
               placeholder="10"
@@ -380,17 +378,15 @@ const EditUnitStatusModal = ({ listing, onClose, onSave }) => {
             <Field
               label="Annual Interest Rate (%)"
               type="number"
+              min="0"
+              step="0.01"
               value={form.annualInterestRate}
               onChange={(value) => updateField('annualInterestRate', value)}
               placeholder="0"
               helper="Used for monthly amortization and SOA interest view."
             />
 
-            <SelectField
-              label="Status"
-              value={form.status}
-              onChange={(value) => updateField('status', value)}
-            >
+            <SelectField label="Status" value={form.status} onChange={(value) => updateField('status', value)}>
               {statusOptions.map((status) => (
                 <option key={status.value} value={status.value}>
                   {status.label}
