@@ -762,51 +762,94 @@ const getListingLookupWhere = (value) => {
   };
 };
 
+const computeAgeFromDate = (birthDate) => {
+  if (!birthDate) return '-';
+
+  const birth = new Date(birthDate);
+  const today = new Date();
+
+  if (Number.isNaN(birth.getTime())) return '-';
+
+  let age = today.getFullYear() - birth.getFullYear();
+  const monthDiff = today.getMonth() - birth.getMonth();
+
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+    age -= 1;
+  }
+
+  return age >= 0 ? String(age) : '-';
+};
+
+const getClientCompletionStatus = (profile = {}) => {
+  const buyerType = profile.buyer_type || 'single';
+  const hasSecondBuyer = buyerType === 'spouses' || buyerType === 'and_account';
+
+  const required = [
+    profile.buyer_full_name,
+    profile.buyer_contact_number,
+    profile.buyer_email,
+    profile.buyer_present_address,
+  ];
+
+  if (hasSecondBuyer) {
+    required.push(
+      profile.second_buyer_full_name,
+      profile.second_buyer_contact_number,
+      profile.second_buyer_email
+    );
+  }
+
+  return required.some((value) => !String(value || '').trim()) ? 'incomplete' : 'complete';
+};
+
 const mapClientProfile = (profile = {}, sellerName = '-') => ({
-  profileStatus: profile.lot_project_client_profile_id ? profile.lot_project_client_profile_status || 'active' : 'incomplete',
+  id: profile.lot_project_client_profile_id || null,
+  lot_project_client_profile_id: profile.lot_project_client_profile_id || null,
+  profileStatus: getClientCompletionStatus(profile),
+  accountStatus: profile.lot_project_client_profile_status || 'active',
   buyerType: profile.buyer_type || 'single',
   buyerRole: 'Principal Buyer',
-  buyerName: profile.buyer_full_name || '-',
+  buyerName: profile.buyer_full_name || '',
   birthDate: plainDate(profile.buyer_birth_date) === '-' ? '' : plainDate(profile.buyer_birth_date),
   placeOfBirth: profile.buyer_place_of_birth || '',
-  computedAge: '-',
+  computedAge: computeAgeFromDate(profile.buyer_birth_date),
   citizenship: profile.buyer_citizenship || '',
   gender: profile.buyer_gender || '',
   civilStatus: profile.buyer_civil_status || '',
   contactNo: profile.buyer_contact_number || '',
-  residencePhoneNumber: '',
+  residencePhoneNumber: profile.buyer_residence_phone_number || '',
   email: profile.buyer_email || '',
   tin: profile.buyer_tin || '',
   presentAddress: profile.buyer_present_address || '',
-  presentZipCode: '',
+  presentZipCode: profile.buyer_present_zip_code || '',
   permanentAddress: profile.buyer_permanent_address || '',
-  permanentZipCode: '',
+  permanentZipCode: profile.buyer_permanent_zip_code || '',
   employmentStatus: profile.buyer_employment_status || '',
   employerBusinessName: profile.buyer_employer_business_name || '',
-  employerZipCode: '',
+  employerZipCode: profile.buyer_employer_zip_code || '',
   natureOfWorkBusiness: profile.buyer_nature_of_work_business || '',
   occupationPositionTitle: profile.buyer_occupation_position || '',
   monthlyIncome: profile.buyer_monthly_income ? money(profile.buyer_monthly_income) : '',
   employerBusinessAddress: profile.buyer_employer_business_address || '',
-  secondBuyerRole: profile.buyer_type === 'spouses' ? 'spouse' : 'co-owner',
+  secondBuyerRole: profile.second_buyer_role || (profile.buyer_type === 'spouses' ? 'spouse' : 'co_owner'),
   secondBuyerName: profile.second_buyer_full_name || '',
   secondBuyerBirthDate: plainDate(profile.second_buyer_birth_date) === '-' ? '' : plainDate(profile.second_buyer_birth_date),
   secondBuyerPlaceOfBirth: profile.second_buyer_place_of_birth || '',
-  secondBuyerComputedAge: '-',
+  secondBuyerComputedAge: computeAgeFromDate(profile.second_buyer_birth_date),
   secondBuyerCitizenship: profile.second_buyer_citizenship || '',
   secondBuyerGender: profile.second_buyer_gender || '',
   secondBuyerCivilStatus: profile.second_buyer_civil_status || '',
   secondBuyerContactNo: profile.second_buyer_contact_number || '',
-  secondBuyerResidencePhoneNumber: '',
+  secondBuyerResidencePhoneNumber: profile.second_buyer_residence_phone_number || '',
   secondBuyerEmail: profile.second_buyer_email || '',
   secondBuyerTin: profile.second_buyer_tin || '',
   secondBuyerPresentAddress: profile.second_buyer_present_address || '',
-  secondBuyerPresentZipCode: '',
+  secondBuyerPresentZipCode: profile.second_buyer_present_zip_code || '',
   secondBuyerPermanentAddress: profile.second_buyer_permanent_address || '',
-  secondBuyerPermanentZipCode: '',
+  secondBuyerPermanentZipCode: profile.second_buyer_permanent_zip_code || '',
   secondBuyerEmploymentStatus: profile.second_buyer_employment_status || '',
   secondBuyerEmployerBusinessName: profile.second_buyer_employer_business_name || '',
-  secondBuyerEmployerZipCode: '',
+  secondBuyerEmployerZipCode: profile.second_buyer_employer_zip_code || '',
   secondBuyerNatureOfWorkBusiness: profile.second_buyer_nature_of_work_business || '',
   secondBuyerOccupationPositionTitle: profile.second_buyer_occupation_position || '',
   secondBuyerMonthlyIncome: profile.second_buyer_monthly_income ? money(profile.second_buyer_monthly_income) : '',
@@ -1106,6 +1149,192 @@ export const getLotProjectListingProfile = async (req, res) => {
         soaRows,
         documents,
       },
+    });
+  } catch (error) {
+    return res.status(500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
+const dateOrNull = (value) => {
+  const clean = String(value || '').trim();
+  return clean ? clean.slice(0, 10) : null;
+};
+
+const parseMoneyValue = (value) => {
+  if (value === undefined || value === null || value === '') return 0;
+  const numberValue = Number(String(value).replace(/[^0-9.-]/g, ''));
+  return Number.isNaN(numberValue) ? 0 : numberValue;
+};
+
+const cleanBuyerType = (value) => {
+  const clean = String(value || 'single').trim();
+  return ['single', 'spouses', 'and_account'].includes(clean) ? clean : 'single';
+};
+
+const cleanSecondBuyerRole = (value, buyerType) => {
+  const clean = String(value || '').trim();
+  if (['spouse', 'co_owner', 'second_buyer'].includes(clean)) return clean;
+  return buyerType === 'spouses' ? 'spouse' : 'co_owner';
+};
+
+const addIfColumnExists = async (connection, tableName, columns, values, columnName, value) => {
+  if (await columnExists(connection, tableName, columnName)) {
+    columns.push(columnName);
+    values.push(value);
+  }
+};
+
+export const updateLotProjectClientProfile = async (req, res) => {
+  const connection = await db.getConnection();
+
+  try {
+    const slug = String(req.params.projectSlug || '').trim();
+    const listingLookup = String(req.params.listingId || '').trim();
+    const project = await getProjectBySlug(slug);
+
+    if (!project) return res.status(404).json({ message: 'Lot project not found.' });
+    if (!listingLookup) return res.status(400).json({ message: 'Listing id is required.' });
+    if (!(await tableExists(connection, 'lot_project_client_profiles'))) {
+      return res.status(500).json({ message: 'lot_project_client_profiles table does not exist.' });
+    }
+
+    const lookup = getListingLookupWhere(listingLookup);
+    const [listingRows] = await connection.query(
+      `
+        SELECT l.lot_project_listing_id
+        FROM lot_project_listings l
+        WHERE l.lot_project_id = ?
+          AND ${lookup.sql}
+        LIMIT 1
+      `,
+      [project.lot_project_id, ...lookup.params]
+    );
+
+    const listing = listingRows[0];
+    if (!listing) return res.status(404).json({ message: 'Listing not found.' });
+
+    const buyerType = cleanBuyerType(req.body.buyerType || req.body.buyer_type);
+    const hasSecondBuyer = buyerType === 'spouses' || buyerType === 'and_account';
+    const buyerName = String(req.body.buyerName || req.body.buyer_full_name || '').trim();
+    const secondBuyerName = String(req.body.secondBuyerName || req.body.second_buyer_full_name || '').trim();
+
+    if (!buyerName) return res.status(400).json({ message: 'Principal buyer full name is required.' });
+    if (hasSecondBuyer && !secondBuyerName) {
+      return res.status(400).json({ message: 'Second buyer / spouse full name is required.' });
+    }
+
+    const tableName = 'lot_project_client_profiles';
+    const columns = [
+      'lot_project_id',
+      'lot_project_listing_id',
+      'buyer_type',
+      'buyer_full_name',
+      'buyer_birth_date',
+      'buyer_place_of_birth',
+      'buyer_citizenship',
+      'buyer_gender',
+      'buyer_civil_status',
+      'buyer_contact_number',
+      'buyer_email',
+      'buyer_tin',
+      'buyer_present_address',
+      'buyer_permanent_address',
+      'buyer_employment_status',
+      'buyer_employer_business_name',
+      'buyer_employer_business_address',
+      'buyer_nature_of_work_business',
+      'buyer_occupation_position',
+      'buyer_monthly_income',
+      'second_buyer_full_name',
+      'second_buyer_birth_date',
+      'second_buyer_place_of_birth',
+      'second_buyer_citizenship',
+      'second_buyer_gender',
+      'second_buyer_civil_status',
+      'second_buyer_contact_number',
+      'second_buyer_email',
+      'second_buyer_tin',
+      'second_buyer_present_address',
+      'second_buyer_permanent_address',
+      'second_buyer_employment_status',
+      'second_buyer_employer_business_name',
+      'second_buyer_employer_business_address',
+      'second_buyer_nature_of_work_business',
+      'second_buyer_occupation_position',
+      'second_buyer_monthly_income',
+      'lot_project_client_profile_status',
+    ];
+
+    const values = [
+      project.lot_project_id,
+      listing.lot_project_listing_id,
+      buyerType,
+      buyerName,
+      dateOrNull(req.body.birthDate || req.body.buyer_birth_date),
+      toNullable(req.body.placeOfBirth || req.body.buyer_place_of_birth),
+      toNullable(req.body.citizenship || req.body.buyer_citizenship),
+      toNullable(req.body.gender || req.body.buyer_gender),
+      toNullable(req.body.civilStatus || req.body.buyer_civil_status),
+      toNullable(req.body.contactNo || req.body.buyer_contact_number),
+      toNullable(req.body.email || req.body.buyer_email),
+      toNullable(req.body.tin || req.body.buyer_tin),
+      toNullable(req.body.presentAddress || req.body.buyer_present_address),
+      toNullable(req.body.permanentAddress || req.body.buyer_permanent_address),
+      toNullable(req.body.employmentStatus || req.body.buyer_employment_status),
+      toNullable(req.body.employerBusinessName || req.body.buyer_employer_business_name),
+      toNullable(req.body.employerBusinessAddress || req.body.buyer_employer_business_address),
+      toNullable(req.body.natureOfWorkBusiness || req.body.buyer_nature_of_work_business),
+      toNullable(req.body.occupationPositionTitle || req.body.buyer_occupation_position),
+      parseMoneyValue(req.body.monthlyIncome || req.body.buyer_monthly_income),
+      hasSecondBuyer ? secondBuyerName : null,
+      hasSecondBuyer ? dateOrNull(req.body.secondBuyerBirthDate || req.body.second_buyer_birth_date) : null,
+      hasSecondBuyer ? toNullable(req.body.secondBuyerPlaceOfBirth || req.body.second_buyer_place_of_birth) : null,
+      hasSecondBuyer ? toNullable(req.body.secondBuyerCitizenship || req.body.second_buyer_citizenship) : null,
+      hasSecondBuyer ? toNullable(req.body.secondBuyerGender || req.body.second_buyer_gender) : null,
+      hasSecondBuyer ? toNullable(req.body.secondBuyerCivilStatus || req.body.second_buyer_civil_status) : null,
+      hasSecondBuyer ? toNullable(req.body.secondBuyerContactNo || req.body.second_buyer_contact_number) : null,
+      hasSecondBuyer ? toNullable(req.body.secondBuyerEmail || req.body.second_buyer_email) : null,
+      hasSecondBuyer ? toNullable(req.body.secondBuyerTin || req.body.second_buyer_tin) : null,
+      hasSecondBuyer ? toNullable(req.body.secondBuyerPresentAddress || req.body.second_buyer_present_address) : null,
+      hasSecondBuyer ? toNullable(req.body.secondBuyerPermanentAddress || req.body.second_buyer_permanent_address) : null,
+      hasSecondBuyer ? toNullable(req.body.secondBuyerEmploymentStatus || req.body.second_buyer_employment_status) : null,
+      hasSecondBuyer ? toNullable(req.body.secondBuyerEmployerBusinessName || req.body.second_buyer_employer_business_name) : null,
+      hasSecondBuyer ? toNullable(req.body.secondBuyerEmployerBusinessAddress || req.body.second_buyer_employer_business_address) : null,
+      hasSecondBuyer ? toNullable(req.body.secondBuyerNatureOfWorkBusiness || req.body.second_buyer_nature_of_work_business) : null,
+      hasSecondBuyer ? toNullable(req.body.secondBuyerOccupationPositionTitle || req.body.second_buyer_occupation_position) : null,
+      hasSecondBuyer ? parseMoneyValue(req.body.secondBuyerMonthlyIncome || req.body.second_buyer_monthly_income) : 0,
+      'active',
+    ];
+
+    await addIfColumnExists(connection, tableName, columns, values, 'buyer_residence_phone_number', toNullable(req.body.residencePhoneNumber));
+    await addIfColumnExists(connection, tableName, columns, values, 'buyer_present_zip_code', toNullable(req.body.presentZipCode));
+    await addIfColumnExists(connection, tableName, columns, values, 'buyer_permanent_zip_code', toNullable(req.body.permanentZipCode));
+    await addIfColumnExists(connection, tableName, columns, values, 'buyer_employer_zip_code', toNullable(req.body.employerZipCode));
+    await addIfColumnExists(connection, tableName, columns, values, 'second_buyer_role', hasSecondBuyer ? cleanSecondBuyerRole(req.body.secondBuyerRole, buyerType) : null);
+    await addIfColumnExists(connection, tableName, columns, values, 'second_buyer_residence_phone_number', hasSecondBuyer ? toNullable(req.body.secondBuyerResidencePhoneNumber) : null);
+    await addIfColumnExists(connection, tableName, columns, values, 'second_buyer_present_zip_code', hasSecondBuyer ? toNullable(req.body.secondBuyerPresentZipCode) : null);
+    await addIfColumnExists(connection, tableName, columns, values, 'second_buyer_permanent_zip_code', hasSecondBuyer ? toNullable(req.body.secondBuyerPermanentZipCode) : null);
+    await addIfColumnExists(connection, tableName, columns, values, 'second_buyer_employer_zip_code', hasSecondBuyer ? toNullable(req.body.secondBuyerEmployerZipCode) : null);
+
+    const updateAssignments = columns
+      .filter((column) => !['lot_project_id', 'lot_project_listing_id'].includes(column))
+      .map((column) => `${column} = VALUES(${column})`);
+
+    await connection.query(
+      `
+        INSERT INTO lot_project_client_profiles (${columns.join(', ')})
+        VALUES (${columns.map(() => '?').join(', ')})
+        ON DUPLICATE KEY UPDATE ${updateAssignments.join(', ')}
+      `,
+      values
+    );
+
+    return res.json({
+      success: true,
+      message: `${buyerName} buyer profile saved successfully.`,
+      listing_id: listing.lot_project_listing_id,
     });
   } catch (error) {
     return res.status(500).json({ message: getErrorMessage(error) });

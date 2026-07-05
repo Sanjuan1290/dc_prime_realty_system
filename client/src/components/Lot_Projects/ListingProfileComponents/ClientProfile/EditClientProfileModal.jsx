@@ -99,13 +99,14 @@ const Input = ({
   </label>
 )
 
-const Select = ({ label, value, onChange, children }) => (
+const Select = ({ label, value, onChange, children, disabled = false }) => (
   <label className="flex flex-col gap-1.5">
     <span className="text-xs font-black text-slate-600">{label}</span>
     <select
       value={value || ''}
       onChange={(event) => onChange(event.target.value)}
-      className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
+      disabled={disabled}
+      className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
     >
       {children}
     </select>
@@ -220,7 +221,7 @@ const PersonForm = ({ title, form, setForm, second = false }) => {
         </Select>
 
         <Input
-          label="Mobile Number"
+          label="Mobile Number / Contact Number"
           value={second ? form.secondBuyerContactNo : form.contactNo}
           onChange={(value) =>
             setForm((current) => ({
@@ -365,7 +366,7 @@ const WorkBusinessForm = ({ title, form, setForm, second = false }) => {
   )
 }
 
-const EditClientProfileModal = ({ client, onClose, onSave }) => {
+const EditClientProfileModal = ({ client, onClose, onSave, isParentSaving = false }) => {
   const [form, setForm] = useState({
     ...emptyProfile,
     ...client,
@@ -374,6 +375,7 @@ const EditClientProfileModal = ({ client, onClose, onSave }) => {
   const [alert, setAlert] = useState(null)
   const [isSaving, setIsSaving] = useState(false)
 
+  const saving = isSaving || isParentSaving
   const hasSecondBuyer = form.buyerType === 'spouses' || form.buyerType === 'and_account'
 
   const status = useMemo(() => {
@@ -402,7 +404,7 @@ const EditClientProfileModal = ({ client, onClose, onSave }) => {
     })
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.buyerName.trim()) {
       setAlert({ type: 'error', message: 'Principal buyer full name is required.' })
       return
@@ -414,16 +416,18 @@ const EditClientProfileModal = ({ client, onClose, onSave }) => {
     }
 
     setIsSaving(true)
-    setAlert({ type: 'loading', message: 'Saving buyer profile in mock mode...' })
+    setAlert({ type: 'loading', message: 'Saving buyer profile to database...' })
 
-    window.setTimeout(() => {
-      setIsSaving(false)
-
-      onSave?.({
+    try {
+      await onSave?.({
         ...form,
         profileStatus: status,
       })
-    }, 600)
+    } catch (error) {
+      setAlert({ type: 'error', message: error?.message || 'Failed to save buyer profile.' })
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   return (
@@ -440,7 +444,7 @@ const EditClientProfileModal = ({ client, onClose, onSave }) => {
           <button
             type="button"
             onClick={onClose}
-            disabled={isSaving}
+            disabled={saving}
             className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
             aria-label="Close edit client profile"
           >
@@ -464,6 +468,7 @@ const EditClientProfileModal = ({ client, onClose, onSave }) => {
                 label="Buyer Type"
                 value={form.buyerType}
                 onChange={updateBuyerType}
+                disabled={saving}
               >
                 <option value="single">Single</option>
                 <option value="spouses">Spouses</option>
@@ -529,7 +534,7 @@ const EditClientProfileModal = ({ client, onClose, onSave }) => {
           <button
             type="button"
             onClick={onClose}
-            disabled={isSaving}
+            disabled={saving}
             className="h-10 rounded-lg border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
           >
             Cancel
@@ -538,11 +543,11 @@ const EditClientProfileModal = ({ client, onClose, onSave }) => {
           <button
             type="button"
             onClick={handleSave}
-            disabled={isSaving}
+            disabled={saving}
             className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <FiSave className="h-4 w-4" />
-            {isSaving ? 'Saving...' : 'Save Buyer Profile'}
+            {saving ? 'Saving...' : 'Save Buyer Profile'}
           </button>
         </div>
       </div>

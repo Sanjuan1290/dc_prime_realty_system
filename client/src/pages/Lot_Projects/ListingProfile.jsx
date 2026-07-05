@@ -97,6 +97,22 @@ const ListingProfile = () => {
     },
   })
 
+  const updateClientProfileMutation = useMutation({
+    mutationFn: (payload) =>
+      useFetchPut(`/projects/lot-projects/${projectSlug}/listings/${listingId}/client-profile`, payload),
+    onMutate: (payload) => {
+      setAlert({ type: 'loading', message: `Saving ${payload.buyerName || 'buyer profile'}...` })
+    },
+    onSuccess: (result) => {
+      setAlert({ type: 'success', message: result?.message || 'Buyer profile updated successfully.' })
+      queryClient.invalidateQueries({ queryKey: ['lot-listing-profile', projectSlug, listingId] })
+      queryClient.invalidateQueries({ queryKey: ['lot-listings', projectSlug] })
+    },
+    onError: (error) => {
+      setAlert({ type: 'error', message: error?.message || 'Failed to update buyer profile.' })
+    },
+  })
+
   const handleReserveListing = (reservationPayload) => {
     setShowReserveModal(false)
     setAlert({
@@ -236,7 +252,11 @@ const ListingProfile = () => {
       ) : null}
 
       {!profileQuery.isLoading && !profileQuery.isError && activeTab === 'client' ? (
-        <ClientProfile client={client} />
+        <ClientProfile
+          client={client}
+          onSave={(payload) => updateClientProfileMutation.mutateAsync(payload)}
+          isSaving={updateClientProfileMutation.isPending}
+        />
       ) : null}
 
       {!profileQuery.isLoading && !profileQuery.isError && activeTab === 'payments' ? (

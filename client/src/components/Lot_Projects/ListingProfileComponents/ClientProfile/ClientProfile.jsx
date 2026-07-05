@@ -1,26 +1,25 @@
-import { useMemo, useState } from 'react'
-import { FiAlertCircle, FiEdit3, FiUser } from 'react-icons/fi'
+import { useEffect, useMemo, useState } from 'react'
+import { FiAlertCircle, FiEdit3 } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
 import EditClientProfileModal from './EditClientProfileModal'
 
 const fallbackClient = {
   profileStatus: 'incomplete',
-
-  buyerType: 'spouses',
+  buyerType: 'single',
 
   buyerRole: 'Principal Buyer',
-  buyerName: 'robert',
+  buyerName: '',
   birthDate: '',
   placeOfBirth: '',
   computedAge: '-',
   citizenship: '',
   gender: '',
   civilStatus: '',
-  contactNo: '0957567575',
+  contactNo: '',
   residencePhoneNumber: '',
-  email: 'robert@gmail.cmo',
+  email: '',
   tin: '',
-  presentAddress: 'b70 l44 cremonia st. cluster 5, bella vista, brgy. santiago, general trias, cavite',
+  presentAddress: '',
   presentZipCode: '',
   permanentAddress: '',
   permanentZipCode: '',
@@ -58,7 +57,7 @@ const fallbackClient = {
   secondBuyerMonthlyIncome: '',
   secondBuyerEmployerBusinessAddress: '',
 
-  seller: 'Rowena Cortez',
+  seller: '-',
 }
 
 const buyerTypeLabels = {
@@ -66,6 +65,23 @@ const buyerTypeLabels = {
   spouses: 'Spouses',
   and_account: 'And Account',
 }
+
+const cleanMoneyNumber = (value) => {
+  const numberValue = Number(String(value || '').replace(/[^0-9.-]/g, ''))
+  return Number.isNaN(numberValue) ? 0 : numberValue
+}
+
+const formatMoney = (value) =>
+  new Intl.NumberFormat('en-PH', {
+    style: 'currency',
+    currency: 'PHP',
+    minimumFractionDigits: 2,
+  }).format(Number(value || 0))
+
+const buildProfile = (client) => ({
+  ...fallbackClient,
+  ...(client || {}),
+})
 
 const Field = ({ label, value, placeholder = '', type = 'text', disabled = true }) => (
   <label className="flex flex-col gap-1.5">
@@ -85,7 +101,7 @@ const Field = ({ label, value, placeholder = '', type = 'text', disabled = true 
   </label>
 )
 
-const SelectPreview = ({ label, value, placeholder = 'Select' }) => (
+const SelectPreview = ({ label, value, placeholder = 'Select', options = [] }) => (
   <label className="flex flex-col gap-1.5">
     <span className="text-xs font-black text-slate-600">{label}</span>
     <select
@@ -94,7 +110,15 @@ const SelectPreview = ({ label, value, placeholder = 'Select' }) => (
       className="h-10 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-500 outline-none"
     >
       <option value="">{placeholder}</option>
-      {value ? <option value={value}>{value}</option> : null}
+      {options.length > 0
+        ? options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))
+        : value
+          ? <option value={value}>{value}</option>
+          : null}
     </select>
   </label>
 )
@@ -121,38 +145,24 @@ const WorkBusinessCard = ({ title, data, prefix = '' }) => {
           label="Employment Status"
           value={get('EmploymentStatus')}
           placeholder="Select status"
+          options={[
+            { value: 'Employed - Private', label: 'Employed - Private' },
+            { value: 'Self-Employed', label: 'Self-Employed' },
+            { value: 'Employed - Government', label: 'Employed - Government' },
+            { value: 'Professional', label: 'Professional' },
+            { value: 'OFW', label: 'OFW' },
+            { value: 'Other', label: 'Other' },
+          ]}
         />
 
-        <Field
-          label="Employer / Business Name"
-          value={get('EmployerBusinessName')}
-        />
-
-        <Field
-          label="Employer ZIP Code"
-          value={get('EmployerZipCode')}
-        />
-
-        <Field
-          label="Nature of Work / Business"
-          value={get('NatureOfWorkBusiness')}
-        />
-
-        <Field
-          label="Occupation / Position / Title"
-          value={get('OccupationPositionTitle')}
-        />
-
-        <Field
-          label="Monthly Income"
-          value={get('MonthlyIncome')}
-        />
+        <Field label="Employer / Business Name" value={get('EmployerBusinessName')} />
+        <Field label="Employer ZIP Code" value={get('EmployerZipCode')} />
+        <Field label="Nature of Work / Business" value={get('NatureOfWorkBusiness')} />
+        <Field label="Occupation / Position / Title" value={get('OccupationPositionTitle')} />
+        <Field label="Monthly Income" value={get('MonthlyIncome')} />
 
         <div className="md:col-span-2">
-          <Field
-            label="Employer / Business Address"
-            value={get('EmployerBusinessAddress')}
-          />
+          <Field label="Employer / Business Address" value={get('EmployerBusinessAddress')} />
         </div>
       </div>
     </div>
@@ -160,11 +170,9 @@ const WorkBusinessCard = ({ title, data, prefix = '' }) => {
 }
 
 const PersonDetails = ({ title, data, second = false }) => {
-  const p = second ? 'secondBuyer' : ''
-
   const value = (field) => {
     if (!second) return data[field]
-    return data[`${p}${field.charAt(0).toUpperCase()}${field.slice(1)}`]
+    return data[`secondBuyer${field.charAt(0).toUpperCase()}${field.slice(1)}`]
   }
 
   return (
@@ -175,96 +183,64 @@ const PersonDetails = ({ title, data, second = false }) => {
             label="Buyer Role"
             value={data.secondBuyerRole}
             placeholder="Select buyer role"
+            options={[
+              { value: 'spouse', label: 'Spouse' },
+              { value: 'co_owner', label: 'Co-owner' },
+              { value: 'second_buyer', label: 'Second Buyer' },
+            ]}
           />
         ) : null}
 
-        <Field
-          label="Full Name"
-          value={second ? data.secondBuyerName : data.buyerName}
-        />
-
-        <Field
-          label="Birth Date"
-          type="date"
-          value={value('birthDate')}
-          placeholder="dd/mm/yyyy"
-        />
-
-        <Field
-          label="Computed Age"
-          value={value('computedAge')}
-        />
-
-        <Field
-          label="Place of Birth"
-          value={value('placeOfBirth')}
-        />
-
-        <Field
-          label="Citizenship"
-          value={value('citizenship')}
-        />
+        <Field label="Full Name" value={second ? data.secondBuyerName : data.buyerName} />
+        <Field label="Birth Date" type="date" value={value('birthDate')} placeholder="dd/mm/yyyy" />
+        <Field label="Computed Age" value={value('computedAge')} />
+        <Field label="Place of Birth" value={value('placeOfBirth')} />
+        <Field label="Citizenship" value={value('citizenship')} />
 
         <SelectPreview
           label="Gender"
           value={value('gender')}
           placeholder="Select gender"
+          options={[
+            { value: 'Male', label: 'Male' },
+            { value: 'Female', label: 'Female' },
+          ]}
         />
 
         <SelectPreview
           label="Civil Status"
           value={value('civilStatus')}
           placeholder="Select civil status"
+          options={[
+            { value: 'Single', label: 'Single' },
+            { value: 'Married', label: 'Married' },
+            { value: 'Separated', label: 'Separated' },
+            { value: 'Annulled/Divorced', label: 'Annulled/Divorced' },
+            { value: 'Widow/er', label: 'Widow/er' },
+          ]}
         />
 
-        <Field
-          label="Mobile Number / Contact Number"
-          value={second ? data.secondBuyerContactNo : data.contactNo}
-        />
-
-        <Field
-          label="Residence Phone Number"
-          value={value('residencePhoneNumber')}
-        />
-
-        <Field
-          label="Email"
-          value={second ? data.secondBuyerEmail : data.email}
-        />
-
-        <Field
-          label="TIN"
-          value={second ? data.secondBuyerTin : data.tin}
-        />
-
-        <Field
-          label="Present Address"
-          value={value('presentAddress')}
-        />
-
-        <Field
-          label="Present ZIP Code"
-          value={value('presentZipCode')}
-        />
-
-        <Field
-          label="Permanent Address"
-          value={value('permanentAddress')}
-        />
-
-        <Field
-          label="Permanent ZIP Code"
-          value={value('permanentZipCode')}
-        />
+        <Field label="Mobile Number / Contact Number" value={second ? data.secondBuyerContactNo : data.contactNo} />
+        <Field label="Residence Phone Number" value={value('residencePhoneNumber')} />
+        <Field label="Email" value={second ? data.secondBuyerEmail : data.email} />
+        <Field label="TIN" value={second ? data.secondBuyerTin : data.tin} />
+        <Field label="Present Address" value={value('presentAddress')} />
+        <Field label="Present ZIP Code" value={value('presentZipCode')} />
+        <Field label="Permanent Address" value={value('permanentAddress')} />
+        <Field label="Permanent ZIP Code" value={value('permanentZipCode')} />
       </div>
     </Section>
   )
 }
 
-const ClientProfile = ({ client = fallbackClient }) => {
-  const [profile, setProfile] = useState({ ...fallbackClient, ...client })
+const ClientProfile = ({ client = fallbackClient, onSave, isSaving = false }) => {
+  const [profile, setProfile] = useState(() => buildProfile(client))
   const [showEditModal, setShowEditModal] = useState(false)
   const [alert, setAlert] = useState(null)
+
+  useEffect(() => {
+    setProfile(buildProfile(client))
+  }, [client])
 
   const hasSecondBuyer = profile.buyerType === 'spouses' || profile.buyerType === 'and_account'
 
@@ -287,13 +263,22 @@ const ClientProfile = ({ client = fallbackClient }) => {
     return [...requiredPrincipalFields, ...secondBuyerFields].some((value) => !String(value || '').trim())
   }, [profile, hasSecondBuyer])
 
-  const handleSave = (nextProfile) => {
+  const totalMonthlyIncome = useMemo(() => {
+    const principalIncome = cleanMoneyNumber(profile.monthlyIncome)
+    const secondIncome = hasSecondBuyer ? cleanMoneyNumber(profile.secondBuyerMonthlyIncome) : 0
+    return principalIncome + secondIncome
+  }, [profile.monthlyIncome, profile.secondBuyerMonthlyIncome, hasSecondBuyer])
+
+  const handleSave = async (nextProfile) => {
+    if (onSave) {
+      await onSave(nextProfile)
+      setAlert({ type: 'success', message: 'Buyer profile saved to database.' })
+    } else {
+      setAlert({ type: 'success', message: 'Buyer profile updated locally.' })
+    }
+
     setProfile(nextProfile)
     setShowEditModal(false)
-    setAlert({
-      type: 'success',
-      message: 'Buyer profile updated in mock mode.',
-    })
   }
 
   return (
@@ -320,7 +305,8 @@ const ClientProfile = ({ client = fallbackClient }) => {
           <button
             type="button"
             onClick={() => setShowEditModal(true)}
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-black text-white transition hover:bg-blue-700 active:scale-[0.98]"
+            disabled={isSaving}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98]"
           >
             <FiEdit3 className="h-4 w-4" />
             Edit
@@ -408,7 +394,7 @@ const ClientProfile = ({ client = fallbackClient }) => {
             <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-center">
               <p className="text-xs font-black uppercase text-blue-700">Total</p>
               <p className="mt-1 text-sm font-black text-blue-900">
-                ₱0.00
+                {formatMoney(totalMonthlyIncome)}
               </p>
             </div>
           </div>
@@ -420,6 +406,7 @@ const ClientProfile = ({ client = fallbackClient }) => {
           client={profile}
           onClose={() => setShowEditModal(false)}
           onSave={handleSave}
+          isParentSaving={isSaving}
         />
       ) : null}
     </section>
