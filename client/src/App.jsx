@@ -21,6 +21,7 @@ import BailenPayment from "./pages/BailenProject/Payment";
 import BailenPaymentLogs from "./pages/BailenProject/PaymentLogs";
 import BailenCommission from "./pages/BailenProject/Commission";
 import BailenSettings from "./pages/BailenProject/Settings";
+import Projects from "./pages/System/Projects";
 
 const App = () => {
   const router = createBrowserRouter(
@@ -30,6 +31,7 @@ const App = () => {
 
         <Route path="/super_admin" element={<SystemLayout />}>
           <Route index element={<Dashboard />} />
+          <Route path="projects" element={<Projects />} />
           <Route path="documents" element={<Documents />} />
           <Route path="users" element={<Users />} />
           <Route path="accredited" element={<Accredited />} />
