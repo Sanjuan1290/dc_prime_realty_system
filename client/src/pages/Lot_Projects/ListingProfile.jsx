@@ -1,11 +1,9 @@
-import { useMemo, useState } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
 import {
   FiArrowLeft,
   FiCreditCard,
   FiFileText,
   FiHome,
-  FiLoader,
   FiPrinter,
   FiUser,
   FiUserCheck,
@@ -20,14 +18,298 @@ import PaymentsSOA from '../../components/Lot_Projects/ListingProfileComponents/
 import Documents from '../../components/Lot_Projects/ListingProfileComponents/Documents/Documents'
 import Printouts from '../../components/Lot_Projects/ListingProfileComponents/Printouts/Printouts'
 import ReserveListingModal from '../../components/Lot_Projects/ListingProfileComponents/ReserveListingModal/ReserveListingModal'
-import { useFetch, useFetchDelete, useFetchPatch, useFetchPost, useFetchPut } from '../../utils/useFetch'
 
-const money = (value) =>
-  new Intl.NumberFormat('en-PH', {
-    style: 'currency',
-    currency: 'PHP',
-    minimumFractionDigits: 2,
-  }).format(Number(value || 0))
+const mockListing = {
+  unit_id: 'LA-0402',
+  unitCode: 'LA-0402',
+
+  project_name: 'Bailen Project',
+  projectName: 'Bailen Project',
+  project_location: 'Bailen, Cavite',
+  administrator: 'IMELDA B. VILLALOBOS',
+
+  cadastral_lot_no: '-',
+  old_unit_ids: '-',
+  source_unit_ids: '-',
+  derived_unit_ids: '-',
+
+  lot_type: 'Inner',
+  listing_status: 'Available',
+  status: 'Available',
+
+  lot_area_sqm: '300 sqm',
+  lotAreaSqm: 300,
+
+  price_per_sqm: '₱1,200.00',
+  pricePerSqm: 1200,
+
+  net_selling_price: '₱360,000.00',
+  netSellingPrice: 360000,
+
+  lmf_rate: '10%',
+  legalMiscRate: 10,
+
+  lmf_amount: '₱36,000.00',
+  lmfAmount: 36000,
+
+  tcp: '₱396,000.00',
+  tcpAmount: 396000,
+
+  reservationFee: 50000,
+  downpayment: 118800,
+  balanceAmount: 227200,
+  terms: '36 months',
+  interestRate: '0.00%',
+  monthlyAmortization: 6311,
+
+  buyer_name: '-',
+  spouse_co_owner: '-',
+  email: '-',
+  contact_no: '-',
+  address: '-',
+  region: 'REGION 4A',
+  assigned_user: 'Super Admin',
+  due_day: '1',
+
+  total_paid: '₱0.00',
+  balance: '₱396,000.00',
+  payment_status: 'Unpaid',
+  payment_count: '0',
+  latest_payment_date: '-',
+  latest_payment_amount: '₱0.00',
+
+  seller: 'Rowena Cortez',
+  seller_role: 'Broker Network Manager',
+  reports_under: 'None',
+  commission_rate: '8%',
+  commission_amount: '₱28,800.00',
+  released_amount: '₱0.00',
+  remaining_commission: '₱28,800.00',
+  commission_status: 'On Hold',
+
+  total_documents: '14',
+  required_documents: '14',
+  submitted_documents: '0',
+  approved_documents: '0',
+  missing_required: '14',
+  document_status: 'Incomplete',
+
+  created_at: '2026-06-28',
+  updated_at: '2026-07-01',
+  client_unit_created: '2026-07-01',
+  client_unit_updated: '2026-07-01',
+}
+
+const mockClient = {
+  profileStatus: 'incomplete',
+
+  buyerType: 'spouses',
+
+  buyerRole: 'Principal Buyer',
+  buyerName: 'robert',
+  birthDate: '',
+  placeOfBirth: '',
+  computedAge: '-',
+  citizenship: '',
+  gender: '',
+  civilStatus: '',
+  contactNo: '0957567575',
+  residencePhoneNumber: '',
+  email: 'robert@gmail.cmo',
+  tin: '',
+  presentAddress:
+    'b70 l44 cremonia st. cluster 5, bella vista, brgy. santiago, general trias, cavite',
+  presentZipCode: '',
+  permanentAddress: '',
+  permanentZipCode: '',
+
+  employmentStatus: '',
+  employerBusinessName: '',
+  employerZipCode: '',
+  natureOfWorkBusiness: '',
+  occupationPositionTitle: '',
+  monthlyIncome: '',
+  employerBusinessAddress: '',
+
+  secondBuyerRole: 'spouse',
+  secondBuyerName: '',
+  secondBuyerBirthDate: '',
+  secondBuyerPlaceOfBirth: '',
+  secondBuyerComputedAge: '-',
+  secondBuyerCitizenship: '',
+  secondBuyerGender: '',
+  secondBuyerCivilStatus: '',
+  secondBuyerContactNo: '',
+  secondBuyerResidencePhoneNumber: '',
+  secondBuyerEmail: '',
+  secondBuyerTin: '',
+  secondBuyerPresentAddress: '',
+  secondBuyerPresentZipCode: '',
+  secondBuyerPermanentAddress: '',
+  secondBuyerPermanentZipCode: '',
+
+  secondBuyerEmploymentStatus: '',
+  secondBuyerEmployerBusinessName: '',
+  secondBuyerEmployerZipCode: '',
+  secondBuyerNatureOfWorkBusiness: '',
+  secondBuyerOccupationPositionTitle: '',
+  secondBuyerMonthlyIncome: '',
+  secondBuyerEmployerBusinessAddress: '',
+
+  seller: 'Rowena Cortez',
+
+  buyerTypeLabel: 'Spouses',
+  salesOfficer: 'Rowena Cortez',
+  dateReceived: '2026-07-01',
+}
+
+const mockSoaRows = [
+  {
+    dueDate: '2026-07-01',
+    description: 'Reservation Fee',
+    beginningBalance: 396000,
+    dueAmount: 50000,
+    datePaid: '-',
+    amountPaid: 0,
+    referenceId: '-',
+    status: 'Unpaid',
+    endingBalance: 396000,
+  },
+  {
+    dueDate: '2026-07-15',
+    description: 'Downpayment',
+    beginningBalance: 346000,
+    dueAmount: 118800,
+    datePaid: '-',
+    amountPaid: 0,
+    referenceId: '-',
+    status: 'Unpaid',
+    endingBalance: 346000,
+  },
+  {
+    dueDate: '2026-08-15',
+    description: 'Monthly Amortization 1',
+    beginningBalance: 227200,
+    dueAmount: 6311,
+    datePaid: '-',
+    amountPaid: 0,
+    referenceId: '-',
+    status: 'Unpaid',
+    endingBalance: 227200,
+  },
+  {
+    dueDate: '2026-09-15',
+    description: 'Monthly Amortization 2',
+    beginningBalance: 220889,
+    dueAmount: 6311,
+    datePaid: '-',
+    amountPaid: 0,
+    referenceId: '-',
+    status: 'Unpaid',
+    endingBalance: 220889,
+  },
+]
+
+const mockDocuments = [
+  {
+    id: 1,
+    name: 'Two valid Government-issued IDs (w/ 3 specimen signatures)',
+    requirement: 'Required',
+    status: 'Missing',
+    fileName: '-',
+  },
+  {
+    id: 2,
+    name: 'TIN No. / TIN ID',
+    requirement: 'Required',
+    status: 'Missing',
+    fileName: '-',
+  },
+  {
+    id: 3,
+    name: 'PSA (Single)',
+    requirement: 'Required',
+    status: 'Missing',
+    fileName: '-',
+  },
+  {
+    id: 4,
+    name: "CLIENT REGISTRATION FORM (Seller's Copy)",
+    requirement: 'Required',
+    status: 'Missing',
+    fileName: '-',
+  },
+  {
+    id: 5,
+    name: 'CLIENT REGISTRATION FORM (Administrator Copy)',
+    requirement: 'Required',
+    status: 'Missing',
+    fileName: '-',
+  },
+  {
+    id: 6,
+    name: "BUYER'S INFORMATION FORM",
+    requirement: 'Required',
+    status: 'Missing',
+    fileName: '-',
+  },
+  {
+    id: 7,
+    name: 'INTENT TO BUY',
+    requirement: 'Required',
+    status: 'Missing',
+    fileName: '-',
+  },
+  {
+    id: 8,
+    name: "OFFER TO BUY & BUYER'S PROFILE",
+    requirement: 'Required',
+    status: 'Missing',
+    fileName: '-',
+  },
+  {
+    id: 9,
+    name: 'RESERVATION AGREEMENT',
+    requirement: 'Required',
+    status: 'Missing',
+    fileName: '-',
+  },
+  {
+    id: 10,
+    name: 'Proof of Income',
+    requirement: 'Required',
+    status: 'Missing',
+    fileName: '-',
+  },
+  {
+    id: 11,
+    name: 'Proof of Billing',
+    requirement: 'Required',
+    status: 'Missing',
+    fileName: '-',
+  },
+  {
+    id: 12,
+    name: 'Birth Certificate',
+    requirement: 'Required',
+    status: 'Missing',
+    fileName: '-',
+  },
+  {
+    id: 13,
+    name: 'Marriage Certificate',
+    requirement: 'Required',
+    status: 'Missing',
+    fileName: '-',
+  },
+  {
+    id: 14,
+    name: 'Signed Reservation Agreement',
+    requirement: 'Required',
+    status: 'Missing',
+    fileName: '-',
+  },
+]
 
 const tabs = [
   { key: 'unit', label: 'Unit & Status', icon: FiHome },
@@ -39,120 +321,28 @@ const tabs = [
 
 const ListingProfile = () => {
   const navigate = useNavigate()
-  const queryClient = useQueryClient()
-  const { projectSlug, listingId } = useParams()
+  const { listingId } = useParams()
 
   const [activeTab, setActiveTab] = useState('unit')
   const [showReserveModal, setShowReserveModal] = useState(false)
-  const [alert, setAlert] = useState(null)
-
-  const queryKey = ['lot-listing-profile', projectSlug, listingId]
-
-  const {
-    data,
-    isLoading,
-    isFetching,
-    isError,
-    error,
-  } = useQuery({
-    queryKey,
-    queryFn: () => useFetch(`/projects/lot-projects/${projectSlug}/listings/${listingId}`),
-    enabled: Boolean(projectSlug && listingId),
+  const [alert, setAlert] = useState({
+    type: 'info',
+    message: 'Mock listing profile only. Each tab now renders its actual component file.',
   })
 
-  const profileData = data?.data || {}
-  const project = profileData.project || {}
-  const listing = profileData.listing || {}
-  const client = profileData.client || {}
-  const soaRows = profileData.soaRows || []
-  const payments = profileData.payments || []
-  const documents = profileData.documents || []
-
-  const paymentListing = useMemo(
-    () => ({
-      ...listing,
-      tcp: listing.tcpAmount || listing.tcp,
-      balance: listing.balanceAmount ?? listing.balance,
-    }),
-    [listing]
-  )
-
-  const refreshProfile = () => {
-    queryClient.invalidateQueries({ queryKey })
-    queryClient.invalidateQueries({ queryKey: ['lot-project-dashboard', projectSlug] })
-    queryClient.invalidateQueries({ queryKey: ['lot-project-listings', projectSlug] })
+  const paymentListing = {
+    ...mockListing,
+    tcp: mockListing.tcpAmount,
+    balance: mockListing.balanceAmount,
   }
 
-  const unitMutation = useMutation({
-    mutationFn: (payload) =>
-      useFetchPut(`/projects/lot-projects/${projectSlug}/listings/${listingId}/status`, payload),
-    onMutate: () => setAlert({ type: 'loading', message: 'Saving unit and status changes...' }),
-    onSuccess: (result) => {
-      setAlert({ type: 'success', message: result?.message || 'Unit and status saved successfully.' })
-      refreshProfile()
-    },
-    onError: (mutationError) => setAlert({ type: 'error', message: mutationError?.message || 'Failed to save unit details.' }),
-  })
-
-  const clientMutation = useMutation({
-    mutationFn: (payload) =>
-      useFetchPut(`/projects/lot-projects/${projectSlug}/listings/${listingId}/client-profile`, payload),
-    onMutate: () => setAlert({ type: 'loading', message: 'Saving client profile...' }),
-    onSuccess: (result) => {
-      setAlert({ type: 'success', message: result?.message || 'Client profile saved successfully.' })
-      refreshProfile()
-    },
-    onError: (mutationError) => setAlert({ type: 'error', message: mutationError?.message || 'Failed to save client profile.' }),
-  })
-
-  const paymentMutation = useMutation({
-    mutationFn: (payload) =>
-      useFetchPost(`/projects/lot-projects/${projectSlug}/listings/${listingId}/payments`, payload),
-    onMutate: () => setAlert({ type: 'loading', message: 'Saving payment and updating SOA...' }),
-    onSuccess: (result) => {
-      setAlert({ type: 'success', message: result?.message || 'Payment saved successfully.' })
-      refreshProfile()
-    },
-    onError: (mutationError) => setAlert({ type: 'error', message: mutationError?.message || 'Failed to save payment.' }),
-  })
-
-  const uploadDocumentMutation = useMutation({
-    mutationFn: ({ documentId, payload }) =>
-      useFetchPost(`/projects/lot-projects/${projectSlug}/listings/${listingId}/documents/${documentId}/upload`, payload),
-    onMutate: () => setAlert({ type: 'loading', message: 'Saving uploaded document...' }),
-    onSuccess: (result) => {
-      setAlert({ type: 'success', message: result?.message || 'Document uploaded successfully.' })
-      refreshProfile()
-    },
-    onError: (mutationError) => setAlert({ type: 'error', message: mutationError?.message || 'Failed to upload document.' }),
-  })
-
-  const documentStatusMutation = useMutation({
-    mutationFn: ({ documentId, status }) =>
-      useFetchPatch(`/projects/lot-projects/${projectSlug}/listings/${listingId}/documents/${documentId}/status`, { status }),
-    onMutate: ({ status }) => setAlert({ type: 'loading', message: `Marking document as ${status}...` }),
-    onSuccess: (result) => {
-      setAlert({ type: 'success', message: result?.message || 'Document status updated.' })
-      refreshProfile()
-    },
-    onError: (mutationError) => setAlert({ type: 'error', message: mutationError?.message || 'Failed to update document status.' }),
-  })
-
-  const clearDocumentMutation = useMutation({
-    mutationFn: (documentId) =>
-      useFetchDelete(`/projects/lot-projects/${projectSlug}/listings/${listingId}/documents/${documentId}/upload`),
-    onMutate: () => setAlert({ type: 'loading', message: 'Clearing document upload...' }),
-    onSuccess: (result) => {
-      setAlert({ type: 'warning', message: result?.message || 'Document cleared.' })
-      refreshProfile()
-    },
-    onError: (mutationError) => setAlert({ type: 'error', message: mutationError?.message || 'Failed to clear document.' }),
-  })
-
-  const handleReserveListing = () => {
+  const handleReserveListing = (reservationPayload) => {
     setShowReserveModal(false)
-    setAlert({ type: 'info', message: 'Reservation flow will refresh this listing after saving.' })
-    refreshProfile()
+
+    setAlert({
+      type: 'success',
+      message: `${reservationPayload.listing.unitId} reserved successfully in mock mode.`,
+    })
   }
 
   return (
@@ -161,20 +351,16 @@ const ListingProfile = () => {
         <StatusAlert
           type={alert.type}
           message={alert.message}
-          onClose={alert.type === 'loading' ? undefined : () => setAlert(null)}
+          onClose={() => setAlert(null)}
         />
       ) : null}
-
-      {isLoading ? <StatusAlert type="loading" message="Loading listing profile..." /> : null}
-      {!isLoading && isFetching ? <StatusAlert type="info" message="Refreshing listing profile..." /> : null}
-      {isError ? <StatusAlert type="error" message={error?.message || 'Failed to load listing profile.'} /> : null}
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex items-start gap-4">
             <button
               type="button"
-              onClick={() => navigate(`/lot-projects/${projectSlug}/listings`)}
+              onClick={() => navigate('/bailenProject/listings')}
               className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-950 active:scale-[0.98]"
               aria-label="Back to listings"
             >
@@ -187,15 +373,15 @@ const ListingProfile = () => {
               </p>
 
               <h1 className="mt-1 text-2xl font-black text-slate-950 sm:text-3xl">
-                {isLoading ? <FiLoader className="h-7 w-7 animate-spin text-slate-300" /> : listing.unit_id || listingId}
+                {mockListing.unit_id}
               </h1>
 
               <p className="mt-1 text-sm font-semibold text-slate-500">
-                {listing.project_name || project.name || 'Lot Project'} • {listing.listing_status || 'Loading'}
+                {mockListing.project_name} • {mockListing.listing_status}
               </p>
 
               <p className="mt-1 text-xs font-semibold text-slate-400">
-                Route ID: {listingId || '-'}
+                Mock route id: {listingId || 'sample'}
               </p>
             </div>
           </div>
@@ -204,29 +390,28 @@ const ListingProfile = () => {
             <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
               <p className="text-xs font-black uppercase text-slate-500">TCP</p>
               <p className="mt-1 text-sm font-black text-slate-950">
-                {listing.tcp || money(listing.tcpAmount)}
+                {mockListing.tcp}
               </p>
             </div>
 
             <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
               <p className="text-xs font-black uppercase text-slate-500">Balance</p>
               <p className="mt-1 text-sm font-black text-slate-950">
-                {listing.balance || money(listing.balanceAmount)}
+                {mockListing.balance}
               </p>
             </div>
 
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
               <p className="text-xs font-black uppercase text-emerald-700">Status</p>
               <p className="mt-1 text-sm font-black text-emerald-800">
-                {listing.listing_status || '-'}
+                {mockListing.listing_status}
               </p>
             </div>
 
             <button
               type="button"
               onClick={() => setShowReserveModal(true)}
-              disabled={listing.rawStatus !== 'available'}
-              className="inline-flex min-h-[68px] items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-blue-300"
+              className="inline-flex min-h-[68px] items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98]"
             >
               <FiUserCheck className="h-4 w-4" />
               Reserve
@@ -261,58 +446,34 @@ const ListingProfile = () => {
       </section>
 
       {activeTab === 'unit' ? (
-        <UnitStatus
-          listing={listing}
-          isSaving={unitMutation.isPending}
-          onSave={(payload) => unitMutation.mutateAsync(payload)}
-        />
+        <UnitStatus listing={mockListing} />
       ) : null}
 
       {activeTab === 'client' ? (
-        <ClientProfile
-          client={client}
-          isSaving={clientMutation.isPending}
-          onSave={(payload) => clientMutation.mutateAsync(payload)}
-        />
+        <ClientProfile client={mockClient} />
       ) : null}
 
       {activeTab === 'payments' ? (
-        <PaymentsSOA
-          listing={paymentListing}
-          soaRows={soaRows}
-          payments={payments}
-          isSaving={paymentMutation.isPending}
-          onSavePayment={(payload) => paymentMutation.mutateAsync(payload)}
-        />
+        <PaymentsSOA listing={paymentListing} soaRows={mockSoaRows} />
       ) : null}
 
       {activeTab === 'documents' ? (
-        <Documents
-          documents={documents}
-          isUploading={uploadDocumentMutation.isPending}
-          isUpdatingStatus={documentStatusMutation.isPending}
-          isClearing={clearDocumentMutation.isPending}
-          onUpload={(documentId, payload) => uploadDocumentMutation.mutateAsync({ documentId, payload })}
-          onMarkStatus={(documentId, status) => documentStatusMutation.mutateAsync({ documentId, status })}
-          onClear={(documentId) => clearDocumentMutation.mutateAsync(documentId)}
-        />
+        <Documents documents={mockDocuments} />
       ) : null}
 
       {activeTab === 'printouts' ? (
         <Printouts
-          projectSlug={projectSlug}
-          listingId={listingId}
-          listing={listing}
-          client={client}
-          soaRows={soaRows}
-          documents={documents}
+          listing={mockListing}
+          client={mockClient}
+          soaRows={mockSoaRows}
+          documents={mockDocuments}
         />
       ) : null}
 
       {showReserveModal ? (
         <ReserveListingModal
-          listing={listing}
-          client={client}
+          listing={mockListing}
+          client={mockClient}
           onClose={() => setShowReserveModal(false)}
           onReserve={handleReserveListing}
         />

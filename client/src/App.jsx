@@ -25,7 +25,6 @@ import LotSettings from "./pages/Lot_Projects/Settings";
 
 import OfferToBuyPrintPage from "./components/Lot_Projects/ListingProfileComponents/Printouts/OfferToBuyPrintPage";
 import SOAPrintPage from "./components/Lot_Projects/ListingProfileComponents/Printouts/SOAPrintPage";
-import AcknowledgementReceiptPrintPage from "./components/Lot_Projects/ListingProfileComponents/Printouts/AcknowledgementReceiptPrintPage";
 import DocumentsPrintPage from "./components/Lot_Projects/ListingProfileComponents/Printouts/DocumentsPrintPage";
 
 const App = () => {
@@ -60,11 +59,6 @@ const App = () => {
         <Route
           path="/lot-projects/:projectSlug/printouts/statement-of-account"
           element={<SOAPrintPage />}
-        />
-
-        <Route
-          path="/lot-projects/:projectSlug/printouts/acknowledgement-receipt"
-          element={<AcknowledgementReceiptPrintPage />}
         />
 
         <Route
