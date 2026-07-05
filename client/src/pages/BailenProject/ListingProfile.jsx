@@ -466,6 +466,7 @@ const ListingProfile = () => {
           listing={mockListing}
           client={mockClient}
           soaRows={mockSoaRows}
+          documents={mockDocuments}
         />
       ) : null}
 

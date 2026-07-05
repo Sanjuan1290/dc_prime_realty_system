@@ -17,11 +17,14 @@ import Accredited from "./pages/System/Accredited";
 import BailenDashboard from "./pages/BailenProject/Dashboard";
 import BailenListings from "./pages/BailenProject/Listings";
 import BailenListingProfile from "./pages/BailenProject/ListingProfile";
-import BailenPayment from "./pages/BailenProject/Payment";
 import BailenPaymentLogs from "./pages/BailenProject/PaymentLogs";
 import BailenCommission from "./pages/BailenProject/Commission";
 import BailenSettings from "./pages/BailenProject/Settings";
 import Projects from "./pages/System/Projects";
+
+import OfferToBuyPrintPage from './components/BailenProject/ListingProfileComponents/Printouts/OfferToBuyPrintPage'
+import SOAPrintPage from './components/BailenProject/ListingProfileComponents/Printouts/SOAPrintPage'
+import DocumentsPrintPage from './components/BailenProject/ListingProfileComponents/Printouts/DocumentsPrintPage'
 
 const App = () => {
   const router = createBrowserRouter(
@@ -42,11 +45,23 @@ const App = () => {
           <Route index element={<BailenDashboard />} />
           <Route path="listings" element={<BailenListings />} />
           <Route path="listings/:listingId" element={<BailenListingProfile />} />
-          <Route path="payments" element={<BailenPayment />} />
           <Route path="payments-audit" element={<BailenPaymentLogs />} />
           <Route path="commissions" element={<BailenCommission />} />
           <Route path="settings" element={<BailenSettings />} />
         </Route>
+
+        <Route
+          path="/bailenProject/printouts/offer-to-buy"
+          element={<OfferToBuyPrintPage />}
+        />
+        <Route
+          path="/bailenProject/printouts/statement-of-account"
+          element={<SOAPrintPage />}
+        />
+        <Route
+          path="/bailenProject/printouts/documents"
+          element={<DocumentsPrintPage />}
+        />
       </>
     )
   );

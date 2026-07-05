@@ -5,7 +5,6 @@ import { FiBarChart2, FiChevronLeft, FiCreditCard, FiDollarSign, FiGrid, FiMenu,
 const navItems = [
   { label: 'Dashboard', path: '/bailenProject', icon: FiBarChart2, end: true },
   { label: 'Listings / Units', path: '/bailenProject/listings', icon: FiGrid },
-  { label: 'Payments', path: '/bailenProject/payments', icon: FiCreditCard },
   { label: 'Payments Audit', path: '/bailenProject/payments-audit', icon: FiShield },
   { label: 'Commissions', path: '/bailenProject/commissions', icon: FiDollarSign },
   { label: 'Settings', path: '/bailenProject/settings', icon: FiSettings },
@@ -15,7 +14,6 @@ const getPageTitle = (pathname) => {
   if (pathname.includes('/listings/')) return 'Listing Profile'
   if (pathname.includes('/listings')) return 'Listings / Units'
   if (pathname.includes('/payments-audit')) return 'Payments Audit / Logs'
-  if (pathname.includes('/payments')) return 'Payments'
   if (pathname.includes('/commissions')) return 'Commissions'
   if (pathname.includes('/settings')) return 'Settings'
   return 'Bailen Dashboard'

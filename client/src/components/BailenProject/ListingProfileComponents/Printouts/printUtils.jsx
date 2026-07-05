@@ -1,0 +1,146 @@
+export const money = (value) =>
+  new Intl.NumberFormat('en-PH', {
+    style: 'currency',
+    currency: 'PHP',
+    minimumFractionDigits: 2,
+  }).format(Number(value || 0))
+
+export const cleanMoney = (value) => {
+  if (typeof value === 'number') return value
+  return Number(String(value || '').replace(/[₱,\s]/g, '')) || 0
+}
+
+export const formatDate = (value) => {
+  if (!value || value === '-') return '-'
+
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) return value
+
+  return new Intl.DateTimeFormat('en-CA', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date)
+}
+
+export const getValue = (source, keys, fallback = '-') => {
+  for (const key of keys) {
+    if (
+      source?.[key] !== undefined &&
+      source?.[key] !== null &&
+      source?.[key] !== ''
+    ) {
+      return source[key]
+    }
+  }
+
+  return fallback
+}
+
+export const readPrintPayload = () => {
+  try {
+    const saved = localStorage.getItem('bailen_print_payload')
+    if (!saved) return {}
+
+    return JSON.parse(saved)
+  } catch {
+    return {}
+  }
+}
+
+export const CheckBox = ({ label, checked = false }) => (
+  <span className="mr-2 inline-flex items-center gap-1">
+    <span className="text-[10px]">{checked ? '☑' : '☐'}</span>
+    {label}
+  </span>
+)
+
+export const PrintHeaderCell = ({ children, className = '' }) => (
+  <div
+    className={`border border-black bg-[#d9d9d9] px-2 py-1 text-center text-[11px] font-black ${className}`}
+  >
+    {children}
+  </div>
+)
+
+export const PrintCell = ({ children, className = '' }) => (
+  <div
+    className={`border border-black px-2 py-1 text-[10px] leading-snug ${className}`}
+  >
+    {children}
+  </div>
+)
+
+export const getNormalizedSoaRows = (soaRows = [], listing = {}) => {
+  if (soaRows.length) {
+    return soaRows.map((row, index) => ({
+      id: row.id || index + 1,
+      dueDate: row.dueDate || row.due_date || '-',
+      description: row.description || row.payment_description || '-',
+      dueAmount: cleanMoney(row.dueAmount ?? row.due_amount),
+      penalty: cleanMoney(row.penalty ?? row.penaltyAmount ?? row.penalty_amount),
+      datePaid: row.datePaid || row.date_paid || '-',
+      amountPaid: cleanMoney(row.amountPaid ?? row.amount_paid),
+      referenceId: row.referenceId || row.reference_id || row.reference || '-',
+      remainingBalance: cleanMoney(
+        row.remainingBalance ??
+          row.endingBalance ??
+          row.runningBalance ??
+          row.ending_balance
+      ),
+    }))
+  }
+
+  const tcp = cleanMoney(getValue(listing, ['tcp', 'tcpAmount'], 396000))
+  const reservationFee = cleanMoney(getValue(listing, ['reservationFee'], 50000))
+  const downpayment = cleanMoney(getValue(listing, ['downpayment'], 118800))
+  const monthly = cleanMoney(getValue(listing, ['monthlyAmortization'], 6311))
+
+  return [
+    {
+      id: 1,
+      dueDate: '2026-07-01',
+      description: 'Reservation Fee',
+      dueAmount: reservationFee,
+      penalty: 0,
+      datePaid: '-',
+      amountPaid: 0,
+      referenceId: '-',
+      remainingBalance: tcp,
+    },
+    {
+      id: 2,
+      dueDate: '2026-07-15',
+      description: 'Downpayment',
+      dueAmount: downpayment,
+      penalty: 0,
+      datePaid: '-',
+      amountPaid: 0,
+      referenceId: '-',
+      remainingBalance: tcp - reservationFee,
+    },
+    {
+      id: 3,
+      dueDate: '2026-08-15',
+      description: 'Monthly Amortization 1',
+      dueAmount: monthly,
+      penalty: 0,
+      datePaid: '-',
+      amountPaid: 0,
+      referenceId: '-',
+      remainingBalance: tcp - reservationFee - downpayment,
+    },
+    {
+      id: 4,
+      dueDate: '2026-09-15',
+      description: 'Monthly Amortization 2',
+      dueAmount: monthly,
+      penalty: 0,
+      datePaid: '-',
+      amountPaid: 0,
+      referenceId: '-',
+      remainingBalance: tcp - reservationFee - downpayment - monthly,
+    },
+  ]
+}
