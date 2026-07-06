@@ -5,7 +5,11 @@ import bcrypt from 'bcrypt';
 export { db, jwt, bcrypt };
 
 export const getErrorMessage = (error) => {
+  if (error?.statusCode && error?.message) return error.message;
   if (error?.code === 'ER_DUP_ENTRY') return 'Duplicate project name, slug, location code, or unit ID.';
+  if (String(error?.code || '').startsWith('ER_') || error?.sqlMessage || error?.sql) {
+    return 'Database operation failed. Please check the saved data and try again.';
+  }
   return error?.message || 'Something went wrong.';
 };
 
@@ -1673,4 +1677,5 @@ export const addIfColumnExists = async (connection, tableName, columns, values, 
     values.push(value);
   }
 };
+
 

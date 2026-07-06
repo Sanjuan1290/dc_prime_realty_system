@@ -40,7 +40,7 @@ export const getValue = (source, keys, fallback = '-') => {
 
 export const readPrintPayload = () => {
   try {
-    const saved = localStorage.getItem('lot_project_print_payload') || localStorage.getItem('bailen_print_payload')
+    const saved = localStorage.getItem('lot_project_print_payload')
     if (!saved) return {}
 
     return JSON.parse(saved)
@@ -92,3 +92,4 @@ export const getNormalizedSoaRows = (soaRows = []) => {
     ),
   }))
 }
+

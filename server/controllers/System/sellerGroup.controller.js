@@ -7,7 +7,9 @@ const toNullableNumber = (value) => {
 };
 
 const getErrorMessage = (error) => {
+  if (error?.statusCode && error?.message) return error.message;
   if (error?.code === 'ER_DUP_ENTRY') return 'Seller group already exists.';
+  if (String(error?.code || '').startsWith('ER_') || error?.sqlMessage || error?.sql) return 'Database operation failed. Please try again.';
   return error?.message || 'Something went wrong.';
 };
 
@@ -619,4 +621,5 @@ export const editUserRate = async (req, res) => {
     connection.release();
   }
 };
+
 

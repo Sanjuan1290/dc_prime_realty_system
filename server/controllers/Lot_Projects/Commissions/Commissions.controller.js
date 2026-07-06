@@ -71,10 +71,18 @@ const isFinalRelease = (stage = '') => String(stage).toLowerCase() === 'retentio
 
 const normalizeReleaseStatus = (release = {}, paymentPercent = 0) => {
   const current = String(release.release_status || 'Pending');
+  const paidPercent = Number(paymentPercent || 0);
+  const triggerPercent = Number(release.release_trigger_percent || 0);
 
-  if (['Released', 'On Hold', 'Cancelled'].includes(current)) return current;
-  if (isFinalRelease(release.release_stage)) return 'On Hold';
-  return Number(paymentPercent || 0) >= Number(release.release_trigger_percent || 0) ? 'Eligible' : 'Pending';
+  if (['Released', 'Cancelled'].includes(current)) return current;
+
+  if (current === 'On Hold') {
+    if (isFinalRelease(release.release_stage) && paidPercent >= triggerPercent) return 'Eligible';
+    return 'On Hold';
+  }
+
+  if (isFinalRelease(release.release_stage) && paidPercent < triggerPercent) return 'On Hold';
+  return paidPercent >= triggerPercent ? 'Eligible' : 'Pending';
 };
 
 const getReleaseDateWarning = (settings = {}) => {
@@ -259,14 +267,20 @@ const syncReleaseStatuses = async (connection, commissionRows = []) => {
       `
         UPDATE lot_project_commission_releases
         SET release_status = CASE
-          WHEN release_status IN ('Released', 'On Hold', 'Cancelled') THEN release_status
-          WHEN release_stage = 'Retention' THEN 'On Hold'
+          WHEN release_status IN ('Released', 'Cancelled') THEN release_status
+          WHEN release_status = 'On Hold' AND NOT (release_stage = 'Retention' AND ? >= release_trigger_percent) THEN release_status
+          WHEN release_stage = 'Retention' AND ? < release_trigger_percent THEN 'On Hold'
           WHEN ? >= release_trigger_percent THEN 'Eligible'
           ELSE 'Pending'
         END
         WHERE lot_project_commission_id = ?
       `,
-      [getPaymentPercent(commission), commission.lot_project_commission_id]
+      [
+        getPaymentPercent(commission),
+        getPaymentPercent(commission),
+        getPaymentPercent(commission),
+        commission.lot_project_commission_id,
+      ]
     );
   }
 };
@@ -610,10 +624,10 @@ export const updateLotProjectCommission = async (req, res) => {
           await connection.rollback();
           return res.status(400).json({ success: false, message: 'Only on-hold stages can be unheld.' });
         }
-        const next = isFinalRelease(release.release_stage)
-          ? 'On Hold'
-          : getPaymentPercent(release) >= toNumber(release.release_trigger_percent)
-            ? 'Eligible'
+        const next = getPaymentPercent(release) >= toNumber(release.release_trigger_percent)
+          ? 'Eligible'
+          : isFinalRelease(release.release_stage)
+            ? 'On Hold'
             : 'Pending';
         nextStatus = next;
         message = `${release.release_stage} hold removed.`;
@@ -730,4 +744,5 @@ export const updateLotProjectCommission = async (req, res) => {
     connection.release();
   }
 };
+
 

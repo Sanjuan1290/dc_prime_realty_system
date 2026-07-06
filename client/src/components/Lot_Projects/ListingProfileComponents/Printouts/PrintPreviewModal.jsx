@@ -639,32 +639,47 @@ const SOAPreview = ({ listing = {}, client = {}, soaRows = [] }) => {
   )
 }
 
+const isPrintableDocumentUrl = (url = '') => {
+  const clean = String(url || '').trim()
+  if (!clean) return false
+  if (clean.startsWith('/mock-documents/')) return false
+  return clean.startsWith('data:image/') || clean.startsWith('http://') || clean.startsWith('https://')
+}
+
 const DocumentsPrintPreview = ({ documents = [] }) => {
-  const imageList =
-    documents.length > 0
-      ? documents.flatMap((document) =>
-          document.images && document.images.length
-            ? document.images
-            : ['/docImage1.png']
-        )
-      : ['/docImage1.png', '/docImage1.png', '/docImage1.png']
+  const printableDocuments = documents.flatMap((document) => {
+    const urls = document.images?.length ? document.images : [document.fileUrl || document.file_url]
+    return urls
+      .filter(isPrintableDocumentUrl)
+      .map((url) => ({ url, name: document.name || document.document_name || document.fileName || 'Uploaded Document' }))
+  })
 
   return (
     <div className="mx-auto w-[850px] bg-white p-6 shadow-lg print:shadow-none">
-      <div className="flex flex-col gap-6">
-        {imageList.map((image, index) => (
-          <div
-            key={`${image}-${index}`}
-            className="flex min-h-[980px] items-center justify-center border border-slate-300 bg-white p-4 print:min-h-screen print:border-0"
-          >
-            <img
-              src={image}
-              alt={`Document ${index + 1}`}
-              className="max-h-full max-w-full object-contain"
-            />
+      {printableDocuments.length ? (
+        <div className="flex flex-col gap-6">
+          {printableDocuments.map((document, index) => (
+            <div
+              key={`${document.url}-${index}`}
+              className="flex min-h-[980px] flex-col items-center justify-center border border-slate-300 bg-white p-4 print:min-h-screen print:border-0"
+            >
+              <p className="mb-3 text-center text-xs font-black text-slate-700 print:hidden">{document.name}</p>
+              <img
+                src={document.url}
+                alt={document.name || `Document ${index + 1}`}
+                className="max-h-full max-w-full object-contain"
+              />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="flex min-h-[720px] items-center justify-center border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
+          <div>
+            <p className="text-lg font-black text-slate-800">No printable uploaded documents</p>
+            <p className="mt-2 text-sm font-semibold text-slate-500">Upload image documents first. Mock document paths are intentionally ignored.</p>
           </div>
-        ))}
-      </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -740,3 +755,4 @@ const PrintPreviewModal = ({
 }
 
 export default PrintPreviewModal
+

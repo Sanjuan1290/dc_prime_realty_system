@@ -61,7 +61,8 @@ app.use('/api/v1/notifications', notificationsRouter);
 
 app.use((err, req, res, next) => {
   console.error(err);
-  res.status(500).json({ message: err.message || 'Internal server error' });
+  const isDatabaseError = String(err?.code || '').startsWith('ER_') || err?.sqlMessage || err?.sql;
+  res.status(500).json({ message: isDatabaseError ? 'Database operation failed. Please try again.' : err.message || 'Internal server error' });
 });
 
 const PORT = process.env.PORT || 5001;
@@ -81,3 +82,4 @@ const startServer = async () => {
 };
 
 startServer();
+

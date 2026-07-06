@@ -24,6 +24,7 @@ const toNullableNumber = (value) => {
 
 const getErrorMessage = (error) => {
   if (error?.code === 'ER_DUP_ENTRY') return 'Email already exists.';
+  if (String(error?.code || '').startsWith('ER_') || error?.sqlMessage || error?.sql) return 'Database operation failed. Please try again.';
   return error?.message || 'Something went wrong.';
 };
 
@@ -655,3 +656,4 @@ export const resetUserPassword = async (req, res) => {
     return res.status(500).json({ message: getErrorMessage(error) });
   }
 };
+

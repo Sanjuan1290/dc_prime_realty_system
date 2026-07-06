@@ -1,6 +1,9 @@
 import { db } from '../../db/connect.js';
 
-const getErrorMessage = (error) => error?.message || 'Something went wrong.';
+const getErrorMessage = (error) => {
+  if (String(error?.code || '').startsWith('ER_') || error?.sqlMessage || error?.sql) return 'Database operation failed. Please try again.';
+  return error?.message || 'Something went wrong.';
+};
 
 const tableExists = async (connection, tableName) => {
   const [rows] = await connection.query(
@@ -407,3 +410,4 @@ export const editTemplate = async (req, res) => {
     connection.release();
   }
 };
+

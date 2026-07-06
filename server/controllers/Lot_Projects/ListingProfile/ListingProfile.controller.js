@@ -124,6 +124,9 @@ export const getLotProjectListingProfile = async (req, res) => {
     const reportsUnderSelect = hasAssignedSellerColumn
       ? `COALESCE(NULLIF(TRIM(CONCAT_WS(' ', assignedReports.first_name, assignedReports.middle_name, assignedReports.last_name)), ''), NULLIF(TRIM(CONCAT_WS(' ', sellerReports.first_name, sellerReports.middle_name, sellerReports.last_name)), '')) AS reports_under,`
       : `NULLIF(TRIM(CONCAT_WS(' ', sellerReports.first_name, sellerReports.middle_name, sellerReports.last_name)), '') AS reports_under,`;
+    const assignedUserSelect = hasAssignedSellerColumn
+      ? `COALESCE(NULLIF(TRIM(CONCAT_WS(' ', assignedSeller.first_name, assignedSeller.middle_name, assignedSeller.last_name)), ''), NULLIF(TRIM(CONCAT_WS(' ', seller.first_name, seller.middle_name, seller.last_name)), '')) AS assigned_user_name`
+      : `NULLIF(TRIM(CONCAT_WS(' ', seller.first_name, seller.middle_name, seller.last_name)), '') AS assigned_user_name`;
     const assignedSellerJoin = hasAssignedSellerColumn
       ? `LEFT JOIN accredited_sellers assignedAcs ON assignedAcs.accredited_seller_id = cp.assigned_accredited_seller_id
          LEFT JOIN users assignedSeller ON assignedSeller.id = assignedAcs.user_id
@@ -155,7 +158,7 @@ export const getLotProjectListingProfile = async (req, res) => {
           commission.gross_commission_amount,
           commission.released_commission_amount AS released_amount,
           commission.commission_status,
-          COALESCE(NULLIF(TRIM(CONCAT_WS(' ', assignedSeller.first_name, assignedSeller.middle_name, assignedSeller.last_name)), ''), NULLIF(TRIM(CONCAT_WS(' ', seller.first_name, seller.middle_name, seller.last_name)), '')) AS assigned_user_name
+          ${assignedUserSelect}
         FROM lot_project_listings l
         LEFT JOIN lot_project_client_profiles cp
           ON cp.lot_project_listing_id = l.lot_project_listing_id
@@ -185,6 +188,15 @@ export const getLotProjectListingProfile = async (req, res) => {
         LEFT JOIN (
           SELECT
             lot_project_listing_id,
+            CAST(SUBSTRING_INDEX(
+              GROUP_CONCAT(
+                accredited_seller_id
+                ORDER BY FIELD(commission_seller_type, 'selling_agent', 'main_seller', 'hierarchy_seller'), lot_project_commission_id
+                SEPARATOR ','
+              ),
+              ',',
+              1
+            ) AS UNSIGNED) AS accredited_seller_id,
             SUM(commission_rate) AS commission_rate,
             SUM(gross_commission_amount) AS gross_commission_amount,
             SUM(released_commission_amount) AS released_commission_amount,
@@ -256,4 +268,5 @@ export const getLotProjectListingProfile = async (req, res) => {
     connection.release();
   }
 };
+
 
