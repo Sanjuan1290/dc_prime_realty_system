@@ -1,11 +1,5 @@
-
 import { useState } from 'react'
-import { FiLoader, FiUploadCloud, FiX } from 'react-icons/fi'
-
-const getMockFileUrl = (fileName) => {
-  const clean = String(fileName || 'uploaded-document.pdf').trim().replace(/[\\/]+/g, '-').replace(/\s+/g, '-')
-  return `/mock-documents/${encodeURIComponent(clean || 'uploaded-document.pdf')}`
-}
+import { FiFileText, FiLoader, FiUploadCloud, FiX } from 'react-icons/fi'
 
 const UploadDocumentModal = ({ document, isSaving = false, onClose, onSave }) => {
   const [file, setFile] = useState(null)
@@ -15,7 +9,9 @@ const UploadDocumentModal = ({ document, isSaving = false, onClose, onSave }) =>
 
     onSave?.({
       fileName: file.name,
-      fileUrl: getMockFileUrl(file.name),
+      fileUrl: '',
+      fileSize: file.size,
+      fileType: file.type || 'application/octet-stream',
     })
   }
 
@@ -24,7 +20,7 @@ const UploadDocumentModal = ({ document, isSaving = false, onClose, onSave }) =>
       <div className="w-full max-w-xl rounded-3xl bg-white shadow-2xl">
         <div className="flex justify-between border-b border-slate-200 px-6 py-5">
           <div>
-            <h2 className="text-xl font-black">Upload Document</h2>
+            <h2 className="text-xl font-black text-slate-950">Upload Document</h2>
             <p className="text-sm font-semibold text-slate-500">{document.name}</p>
           </div>
 
@@ -32,7 +28,8 @@ const UploadDocumentModal = ({ document, isSaving = false, onClose, onSave }) =>
             type="button"
             onClick={onClose}
             disabled={isSaving}
-            className="h-10 w-10 rounded-2xl hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+            className="h-10 w-10 rounded-2xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+            aria-label="Close upload document modal"
           >
             <FiX className="mx-auto" />
           </button>
@@ -52,10 +49,18 @@ const UploadDocumentModal = ({ document, isSaving = false, onClose, onSave }) =>
           </label>
 
           {file ? (
-            <p className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-black text-slate-700">
-              Selected: {file.name}
-            </p>
+            <div className="mt-3 flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">
+              <FiFileText className="h-5 w-5 shrink-0 text-blue-600" />
+              <div className="min-w-0">
+                <p className="truncate font-black text-slate-900">{file.name}</p>
+                <p className="text-xs text-slate-500">{file.type || 'Unknown type'} · {(file.size / 1024).toFixed(1)} KB</p>
+              </div>
+            </div>
           ) : null}
+
+          <p className="mt-3 text-xs font-semibold text-slate-500">
+            The current connection saves the document file name and status to the database. File storage can be connected to Google Drive or Cloudinary later.
+          </p>
         </div>
 
         <div className="flex justify-end gap-2 border-t px-6 py-4">

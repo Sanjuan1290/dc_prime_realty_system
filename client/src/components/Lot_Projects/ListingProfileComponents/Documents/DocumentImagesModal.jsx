@@ -1,8 +1,6 @@
 import { useMemo, useState } from 'react'
 import { FiEye, FiImage, FiSearch, FiX } from 'react-icons/fi'
 
-const imagePlaceholder = '/docImage1.png'
-
 const statusStyles = {
   Approved: 'border-emerald-200 bg-emerald-50 text-emerald-700',
   Submitted: 'border-blue-200 bg-blue-50 text-blue-700',
@@ -75,10 +73,7 @@ const DocumentImagesModal = ({ documents = [], onClose }) => {
         <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-5">
           <div className="grid gap-4 lg:grid-cols-2">
             {filteredDocuments.map((document) => {
-              const images =
-                document.images && document.images.length
-                  ? document.images
-                  : [imagePlaceholder]
+              const images = document.images && document.images.length ? document.images : []
 
               return (
                 <section
@@ -100,7 +95,7 @@ const DocumentImagesModal = ({ documents = [], onClose }) => {
                           File:{' '}
                           {document.fileName && document.fileName !== '-'
                             ? document.fileName
-                            : 'Using sample image for preview'}
+                            : 'No file uploaded'}
                         </p>
                       </div>
 
@@ -113,34 +108,42 @@ const DocumentImagesModal = ({ documents = [], onClose }) => {
                       Images
                     </p>
 
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      {images.map((image, index) => (
-                        <button
-                          key={`${document.id}-${image}-${index}`}
-                          type="button"
-                          className="group overflow-hidden rounded-xl border border-slate-200 bg-slate-50 text-left transition hover:border-blue-300 hover:ring-4 hover:ring-blue-50 active:scale-[0.99]"
-                        >
-                          <div className="aspect-[4/3] overflow-hidden bg-slate-100">
-                            <img
-                              src={image}
-                              alt={`${document.name} preview ${index + 1}`}
-                              className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
-                            />
-                          </div>
+                    {images.length ? (
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {images.map((image, index) => (
+                          <button
+                            key={`${document.id}-${image}-${index}`}
+                            type="button"
+                            className="group overflow-hidden rounded-xl border border-slate-200 bg-slate-50 text-left transition hover:border-blue-300 hover:ring-4 hover:ring-blue-50 active:scale-[0.99]"
+                          >
+                            <div className="aspect-[4/3] overflow-hidden bg-slate-100">
+                              <img
+                                src={image}
+                                alt={`${document.name} preview ${index + 1}`}
+                                className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+                              />
+                            </div>
 
-                          <div className="flex items-center justify-between gap-3 p-3">
-                            <span className="text-xs font-black text-slate-700">
-                              Image {index + 1}
-                            </span>
+                            <div className="flex items-center justify-between gap-3 p-3">
+                              <span className="text-xs font-black text-slate-700">
+                                Image {index + 1}
+                              </span>
 
-                            <span className="inline-flex items-center gap-1 text-xs font-black text-blue-700">
-                              <FiEye className="h-3.5 w-3.5" />
-                              Preview
-                            </span>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
+                              <span className="inline-flex items-center gap-1 text-xs font-black text-blue-700">
+                                <FiEye className="h-3.5 w-3.5" />
+                                Preview
+                              </span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
+                        <FiImage className="mx-auto h-8 w-8 text-slate-300" />
+                        <p className="mt-2 text-sm font-black text-slate-700">No stored preview yet</p>
+                        <p className="mt-1 text-xs font-semibold text-slate-500">The database has the file name, but no file URL was saved.</p>
+                      </div>
+                    )}
                   </div>
                 </section>
               )
@@ -177,3 +180,4 @@ const DocumentImagesModal = ({ documents = [], onClose }) => {
 }
 
 export default DocumentImagesModal
+

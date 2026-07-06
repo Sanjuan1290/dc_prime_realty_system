@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   FiAlertCircle,
   FiChevronLeft,
@@ -11,7 +11,7 @@ import StatusAlert from '../../../Shared/StatusAlert'
 import ReserveClientProfileModal from './ReserveClientProfileModal'
 import ReserveDocumentChecklistModal from './ReserveDocumentChecklistModal'
 import ReservePaymentTermsModal from './ReservePaymentTermsModal'
-import { documentLibrary as fallbackDocumentLibrary, projectDefaultDocuments as fallbackProjectDefaultDocuments, reserveSteps, sellers } from './reserveData'
+import { documentLibrary as fallbackDocumentLibrary, projectDefaultDocuments as fallbackProjectDefaultDocuments, reserveSteps } from './reserveData'
 import { getInitialClientForm, getListingTcp, getPaymentCalculations } from './reserveUtils'
 import { StepPill } from './ReserveShared'
 
@@ -32,6 +32,7 @@ const ReserveListingModal = ({
   client,
   documentLibrary: documentLibraryProp = [],
   projectDefaultDocuments: projectDefaultDocumentsProp = [],
+  sellerOptions = [],
   isLoadingDocuments = false,
   onClose,
   onReserve,
@@ -46,7 +47,7 @@ const ReserveListingModal = ({
   const [deletingDocId, setDeletingDocId] = useState(null)
 
   const [paymentForm, setPaymentForm] = useState({
-    sellerId: '1',
+    sellerId: '',
     modeOfPayment: 'installment',
     saleChannel: 'distributed',
 
@@ -54,6 +55,8 @@ const ReserveListingModal = ({
     startingDate: todayISO(),
     firstDueDate: todayISO(),
     legalMiscFee: 'include_in_monthly',
+    legalMiscFeeMode: 'include_in_monthly',
+    legalMiscFeeAmount: String(listing?.lmfAmount || listing?.legalMiscFeeAmount || 0),
 
     downpaymentPercentageMode: '30',
     customDownpaymentPercentage: '',
@@ -77,6 +80,26 @@ const ReserveListingModal = ({
     const source = projectDefaultDocumentsProp.length ? projectDefaultDocumentsProp : fallbackProjectDefaultDocuments
     return source.map(normalizeLibraryDocument).filter((document) => document.id)
   }, [projectDefaultDocumentsProp])
+
+  const availableSellers = useMemo(() => {
+    return (sellerOptions || [])
+      .map((seller) => ({
+        ...seller,
+        id: Number(seller.accredited_seller_id || seller.id),
+        name: seller.name || 'Unnamed Seller',
+        role: seller.role || 'Seller',
+        rate: seller.rate || `${Number(seller.rateValue || 0)}%`,
+        rateValue: Number(seller.rateValue ?? String(seller.rate || '0').replace('%', '')) || 0,
+        allocation: seller.allocation || 'Saved seller assignment',
+      }))
+      .filter((seller) => seller.id)
+  }, [sellerOptions])
+
+  useEffect(() => {
+    if (!paymentForm.sellerId && availableSellers.length) {
+      setPaymentForm((current) => ({ ...current, sellerId: String(availableSellers[0].id) }))
+    }
+  }, [availableSellers, paymentForm.sellerId])
 
   const hasSecondBuyer = clientForm.buyerType === 'spouses' || clientForm.buyerType === 'and_account'
 
@@ -196,6 +219,16 @@ const ReserveListingModal = ({
   }
 
   const validatePaymentStep = () => {
+    if (!availableSellers.length) {
+      setAlert({ type: 'error', message: 'No active accredited sellers found for this project.' })
+      return false
+    }
+
+    if (!paymentForm.sellerId) {
+      setAlert({ type: 'error', message: 'Assigned seller / unit manager is required.' })
+      return false
+    }
+
     if (!paymentForm.reservationFee || Number(paymentForm.reservationFee) <= 0) {
       setAlert({ type: 'error', message: 'Reservation fee is required.' })
       return false
@@ -245,7 +278,7 @@ const ReserveListingModal = ({
       return
     }
 
-    const selectedSeller = sellers.find((seller) => String(seller.id) === String(paymentForm.sellerId)) || sellers[0]
+    const selectedSeller = availableSellers.find((seller) => String(seller.id) === String(paymentForm.sellerId)) || availableSellers[0] || null
     const paymentCalculations = getPaymentCalculations(tcp, paymentForm)
 
     const payload = {
@@ -262,6 +295,9 @@ const ReserveListingModal = ({
         saleChannel: paymentForm.saleChannel,
         paymentTerms: {
           ...paymentForm,
+          sellerId: selectedSeller?.id || paymentForm.sellerId,
+          legalMiscFeeMode: paymentForm.legalMiscFeeMode || paymentForm.legalMiscFee,
+          legalMiscFeeAmount: paymentForm.legalMiscFeeAmount,
           tcp,
           downpaymentPercentage: paymentCalculations.downpaymentPercentage,
           downpaymentTerms: paymentCalculations.downpaymentTerms,
@@ -365,6 +401,7 @@ const ReserveListingModal = ({
               tcp={tcp}
               paymentForm={paymentForm}
               updatePaymentField={updatePaymentField}
+              sellerOptions={availableSellers}
             />
           ) : null}
         </div>
@@ -428,3 +465,4 @@ const ReserveListingModal = ({
 }
 
 export default ReserveListingModal
+

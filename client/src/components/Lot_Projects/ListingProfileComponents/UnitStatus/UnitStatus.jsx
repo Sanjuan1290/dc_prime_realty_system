@@ -32,7 +32,6 @@ const fallbackListing = {
   email: '-',
   contact_no: '-',
   address: '-',
-  region: '-',
   assigned_user: '-',
   due_day: '-',
   total_paid: '₱0.00',
@@ -281,7 +280,6 @@ const UnitStatus = ({ listing = fallbackListing, project = {}, onSave, isSaving 
         <DetailBox label="Email" value={unitData.email} />
         <DetailBox label="Contact No." value={unitData.contact_no} />
         <DetailBox label="Address" value={unitData.address} long />
-        <DetailBox label="Region" value={unitData.region} />
         <DetailBox label="Assigned User" value={unitData.assigned_user} />
         <DetailBox label="First Due Date" value={unitData.due_day} />
       </SectionBlock>
@@ -336,3 +334,4 @@ const UnitStatus = ({ listing = fallbackListing, project = {}, onSave, isSaving 
 }
 
 export default UnitStatus
+

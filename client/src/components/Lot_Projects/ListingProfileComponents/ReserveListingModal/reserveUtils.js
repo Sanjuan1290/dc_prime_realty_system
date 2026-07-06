@@ -101,10 +101,17 @@ export const getPaymentCalculations = (tcp, paymentForm) => {
       : Number(paymentForm.monthlyTermsMode || 0)
 
   const reservationFee = Number(paymentForm.reservationFee || 0)
-  const dpGross = Number(tcp || 0) * (downpaymentPercentage / 100)
+  const legalMiscFeeAmount = Number(paymentForm.legalMiscFeeAmount || 0)
+  const legalMiscFeeMode = paymentForm.legalMiscFeeMode || paymentForm.legalMiscFee || 'include_in_monthly'
+  const principalBase = Math.max(
+    Number(tcp || 0) - (legalMiscFeeMode === 'separate_soa_row' ? legalMiscFeeAmount : 0),
+    0
+  )
+
+  const dpGross = principalBase * (downpaymentPercentage / 100)
   const dpDiscountAmount = dpGross * (Number(paymentForm.dpDiscountPercentage || 0) / 100)
   const dpNet = Math.max(dpGross - dpDiscountAmount, 0)
-  const balance = Math.max(Number(tcp || 0) - reservationFee - dpNet, 0)
+  const balance = Math.max(principalBase - reservationFee - dpNet, 0)
   const monthlyAmortization = monthlyTerms > 0 ? balance / monthlyTerms : 0
 
   return {
@@ -113,6 +120,9 @@ export const getPaymentCalculations = (tcp, paymentForm) => {
     monthlyTerms,
     preview: {
       reservationFee,
+      legalMiscFeeAmount,
+      legalMiscFeeMode,
+      principalBase,
       dpGross,
       dpDiscountAmount,
       dpNet,

@@ -58,6 +58,7 @@ const getPaymentTypeFromDescription = (description = '') => {
   if (text.includes('advance')) return 'Advance Payment'
   if (text.includes('balloon')) return 'Balloon'
   if (text.includes('full')) return 'Full Payment'
+  if (text.includes('legal') || text.includes('misc') || text.includes('lmf')) return 'Other'
   return 'Monthly'
 }
 
@@ -265,7 +266,10 @@ const AddSOAPaymentModal = ({
       await onSave({
         paymentId: initialPayment?.paymentId || initialPayment?.id,
         soaRowId: isBalloonPayment ? null : form.soaRowId,
-        paymentType: form.paymentType,
+        paymentType:
+          form.paymentType === 'Other' && selectedRow && /legal|misc|lmf/i.test(String(selectedRow.description || ''))
+            ? 'legal_misc'
+            : form.paymentType,
         amount: cleanNumber(form.amount),
         paymentDate: form.paymentDate,
         method: form.method,
@@ -497,3 +501,4 @@ const AddSOAPaymentModal = ({
 }
 
 export default AddSOAPaymentModal
+

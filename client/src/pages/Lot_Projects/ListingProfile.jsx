@@ -71,6 +71,7 @@ const ListingProfile = () => {
   const soaRows = profile.soaRows || []
   const payments = profile.payments || []
   const documents = profile.documents || []
+  const reserveSellerOptions = profile.reserveOptions?.sellers || []
 
   const reserveDocumentsQuery = useQuery({
     queryKey: ['documents'],
@@ -361,6 +362,7 @@ const ListingProfile = () => {
           project={project}
           documentLibrary={documentLibrary}
           projectDefaultDocuments={project.defaultDocuments || []}
+          sellerOptions={reserveSellerOptions}
           isLoadingDocuments={reserveDocumentsQuery.isLoading}
           onReserve={handleReserveListing}
         />
@@ -370,3 +372,4 @@ const ListingProfile = () => {
 }
 
 export default ListingProfile
+

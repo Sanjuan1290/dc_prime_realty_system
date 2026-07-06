@@ -67,6 +67,7 @@ import {
   cleanBuyerType,
   cleanSecondBuyerRole,
   addIfColumnExists,
+  getReserveSellerOptions,
 } from '../_shared/lotProject.shared.js';
 
 export const getLotProjectListingProfile = async (req, res) => {
@@ -85,6 +86,7 @@ export const getLotProjectListingProfile = async (req, res) => {
 
     const hasListingCadastralLinks = await tableExists(connection, 'lot_project_listing_cadastral_lots');
     const hasAnnualInterestRate = await columnExists(connection, 'lot_project_listings', 'annual_interest_rate');
+    const hasAssignedSellerColumn = await columnExists(connection, 'lot_project_client_profiles', 'assigned_accredited_seller_id');
     const lookup = getListingLookupWhere(listingLookup);
 
     const cadastralSelect = hasListingCadastralLinks
@@ -98,6 +100,16 @@ export const getLotProjectListingProfile = async (req, res) => {
       : `NULL AS cadastral_lots,`;
 
     const annualInterestSelect = hasAnnualInterestRate ? 'l.annual_interest_rate,' : '0 AS annual_interest_rate,';
+    const sellerNameSelect = hasAssignedSellerColumn
+      ? `COALESCE(NULLIF(TRIM(CONCAT_WS(' ', assignedSeller.first_name, assignedSeller.middle_name, assignedSeller.last_name)), ''), NULLIF(TRIM(CONCAT_WS(' ', seller.first_name, seller.middle_name, seller.last_name)), '')) AS seller_name,`
+      : `NULLIF(TRIM(CONCAT_WS(' ', seller.first_name, seller.middle_name, seller.last_name)), '') AS seller_name,`;
+    const sellerRoleSelect = hasAssignedSellerColumn
+      ? `COALESCE(assignedSeller.role, seller.role) AS seller_role,`
+      : `seller.role AS seller_role,`;
+    const assignedSellerJoin = hasAssignedSellerColumn
+      ? `LEFT JOIN accredited_sellers assignedAcs ON assignedAcs.accredited_seller_id = cp.assigned_accredited_seller_id
+         LEFT JOIN users assignedSeller ON assignedSeller.id = assignedAcs.user_id`
+      : ``;
 
     const [rows] = await connection.query(
       `
@@ -111,8 +123,8 @@ export const getLotProjectListingProfile = async (req, res) => {
           payment_summary.latest_payment_date,
           payment_summary.latest_payment_amount,
           schedule_summary.first_due_date,
-          CONCAT_WS(' ', seller.first_name, seller.middle_name, seller.last_name) AS seller_name,
-          seller.role AS seller_role,
+          ${sellerNameSelect}
+          ${sellerRoleSelect}
           CONCAT_WS(' ', sellerReports.first_name, sellerReports.middle_name, sellerReports.last_name) AS reports_under,
           commission.commission_rate,
           commission.gross_commission_amount,
@@ -150,6 +162,7 @@ export const getLotProjectListingProfile = async (req, res) => {
           WHERE commission_seller_type IN ('main_seller', 'selling_agent')
           GROUP BY lot_project_listing_id, accredited_seller_id, commission_rate, gross_commission_amount, released_commission_amount, commission_status
         ) commission ON commission.lot_project_listing_id = l.lot_project_listing_id
+        ${assignedSellerJoin}
         LEFT JOIN accredited_sellers acs ON acs.accredited_seller_id = commission.accredited_seller_id
         LEFT JOIN users seller ON seller.id = acs.user_id
         LEFT JOIN users sellerReports ON sellerReports.id = acs.accredited_seller_reports_under_user_id
@@ -168,6 +181,7 @@ export const getLotProjectListingProfile = async (req, res) => {
     const soaRows = await getListingSoaRows(connection, project.lot_project_id, row.lot_project_listing_id, row, payments);
     const cadastralLots = await getProjectCadastralLots(project.lot_project_id);
     const defaultDocuments = await getProjectDefaultDocuments(project.lot_project_id);
+    const sellerOptions = await getReserveSellerOptions(connection, project.lot_project_id);
     const sellerName = row.seller_name || '-';
     const canEditBuyerProfile = canEditBuyerProfileForListing(row.lot_project_listing_status);
     const clientProfile = canEditBuyerProfile
@@ -193,6 +207,9 @@ export const getLotProjectListingProfile = async (req, res) => {
         soaRows,
         payments,
         documents,
+        reserveOptions: {
+          sellers: sellerOptions,
+        },
       },
     });
   } catch (error) {
@@ -201,3 +218,4 @@ export const getLotProjectListingProfile = async (req, res) => {
     connection.release();
   }
 };
+

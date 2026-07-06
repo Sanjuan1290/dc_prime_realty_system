@@ -1,5 +1,4 @@
 import { useMemo } from 'react'
-import { sellers } from './reserveData'
 import { getPaymentCalculations, money } from './reserveUtils'
 import { SectionCard, SelectInput, TextInput } from './ReserveShared'
 
@@ -10,10 +9,12 @@ const ReservePaymentTermsModal = ({
   tcp,
   paymentForm,
   updatePaymentField,
+  sellerOptions = [],
 }) => {
+  const sellers = sellerOptions || []
   const selectedSeller = useMemo(
-    () => sellers.find((seller) => String(seller.id) === String(paymentForm.sellerId)) || sellers[0],
-    [paymentForm.sellerId]
+    () => sellers.find((seller) => String(seller.id) === String(paymentForm.sellerId)) || sellers[0] || { name: '-', role: '-', rate: '0%', allocation: 'No seller selected' },
+    [sellers, paymentForm.sellerId]
   )
 
   const paymentCalculations = useMemo(
@@ -71,6 +72,7 @@ const ReservePaymentTermsModal = ({
             onChange={(value) => updatePaymentField('sellerId', value)}
             required
           >
+            <option value="">Select accredited seller</option>
             {sellers.map((seller) => (
               <option key={seller.id} value={seller.id}>
                 {seller.name} · {seller.role}
@@ -132,9 +134,12 @@ const ReservePaymentTermsModal = ({
 
           <SelectInput
             label="Legal / Misc Fee"
-            value={paymentForm.legalMiscFee}
-            onChange={(value) => updatePaymentField('legalMiscFee', value)}
-            helper="Pay later means a separate SOA row will be created."
+            value={paymentForm.legalMiscFeeMode || paymentForm.legalMiscFee}
+            onChange={(value) => {
+              updatePaymentField('legalMiscFee', value)
+              updatePaymentField('legalMiscFeeMode', value)
+            }}
+            helper={`LMF amount: ${money(paymentForm.legalMiscFeeAmount || 0)}. Pay later creates a separate SOA row.`}
           >
             <option value="include_in_monthly">Include in monthly</option>
             <option value="separate_soa_row">Pay later as separate SOA row</option>
@@ -292,6 +297,13 @@ const ReservePaymentTermsModal = ({
           </div>
 
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-xs font-black uppercase text-slate-500">LMF Treatment</p>
+            <p className="mt-1 text-xs font-black text-slate-950">
+              {paymentPreview.legalMiscFeeMode === 'separate_soa_row' ? 'Separate SOA row' : 'Included in monthly'}
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
             <p className="text-xs font-black uppercase text-slate-500">DP Gross</p>
             <p className="mt-1 text-sm font-black text-slate-950">{money(paymentPreview.dpGross)}</p>
           </div>
@@ -321,3 +333,4 @@ const ReservePaymentTermsModal = ({
 }
 
 export default ReservePaymentTermsModal
+

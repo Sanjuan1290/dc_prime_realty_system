@@ -18,7 +18,7 @@ export const TextInput = ({
     <input
       type={type}
       value={value || ''}
-      onChange={(event) => onChange(event.target.value)}
+      onChange={(event) => onChange?.(event.target.value)}
       placeholder={placeholder}
       disabled={disabled}
       className={`h-10 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-700 outline-none transition placeholder:text-slate-400 ${
@@ -32,7 +32,15 @@ export const TextInput = ({
   </label>
 )
 
-export const SelectInput = ({ label, value, onChange, children, helper, required = false }) => (
+export const SelectInput = ({
+  label,
+  value,
+  onChange,
+  children,
+  helper,
+  required = false,
+  disabled = false,
+}) => (
   <label className="flex flex-col gap-1.5">
     <span className="text-xs font-black text-slate-700">
       {label} {required ? <span className="text-red-500">*</span> : null}
@@ -40,8 +48,13 @@ export const SelectInput = ({ label, value, onChange, children, helper, required
 
     <select
       value={value || ''}
-      onChange={(event) => onChange(event.target.value)}
-      className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
+      onChange={(event) => onChange?.(event.target.value)}
+      disabled={disabled}
+      className={`h-10 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-700 outline-none transition ${
+        disabled
+          ? 'cursor-not-allowed bg-slate-100 text-slate-500'
+          : 'bg-white focus:border-blue-400 focus:ring-4 focus:ring-blue-50'
+      }`}
     >
       {children}
     </select>

@@ -439,7 +439,7 @@ export const mapClientProfile = (profile = {}, sellerName = '-') => ({
   employerZipCode: profile.buyer_employer_zip_code || '',
   natureOfWorkBusiness: profile.buyer_nature_of_work_business || '',
   occupationPositionTitle: profile.buyer_occupation_position || '',
-  monthlyIncome: profile.buyer_monthly_income ? money(profile.buyer_monthly_income) : '',
+  monthlyIncome: profile.buyer_monthly_income !== undefined && profile.buyer_monthly_income !== null ? String(profile.buyer_monthly_income) : '',
   employerBusinessAddress: profile.buyer_employer_business_address || '',
   secondBuyerRole: profile.second_buyer_role || (profile.buyer_type === 'spouses' ? 'spouse' : 'co_owner'),
   secondBuyerName: profile.second_buyer_full_name || '',
@@ -462,7 +462,7 @@ export const mapClientProfile = (profile = {}, sellerName = '-') => ({
   secondBuyerEmployerZipCode: profile.second_buyer_employer_zip_code || '',
   secondBuyerNatureOfWorkBusiness: profile.second_buyer_nature_of_work_business || '',
   secondBuyerOccupationPositionTitle: profile.second_buyer_occupation_position || '',
-  secondBuyerMonthlyIncome: profile.second_buyer_monthly_income ? money(profile.second_buyer_monthly_income) : '',
+  secondBuyerMonthlyIncome: profile.second_buyer_monthly_income !== undefined && profile.second_buyer_monthly_income !== null ? String(profile.second_buyer_monthly_income) : '',
   secondBuyerEmployerBusinessAddress: profile.second_buyer_employer_business_address || '',
   seller: sellerName || '-',
 });
@@ -538,7 +538,6 @@ export const mapProfileListing = (row = {}, project = {}, documents = []) => {
     email: row.buyer_email || '-',
     contact_no: row.buyer_contact_number || '-',
     address: row.buyer_present_address || '-',
-    region: '-',
     assigned_user: row.assigned_user_name || '-',
     due_day: row.first_due_date ? plainDate(row.first_due_date) : '-',
     total_paid: money(totalPaid),
@@ -706,6 +705,7 @@ export const getRowSortOrder = (row = {}) => {
   const order = {
     reservation: 1,
     downpayment: 2,
+    legal_misc: 2,
     monthly: 3,
     full_payment: 3,
     balloon: 4,
@@ -714,8 +714,16 @@ export const getRowSortOrder = (row = {}) => {
   return order[row.scheduleType] || 9;
 };
 
+const isReservationRow = (row = {}) => row.scheduleType === 'reservation';
+
 export const sortComputedRows = (rows = []) =>
   [...rows].sort((a, b) => {
+    // Reservation Fee is always the first SOA row, even when its due date
+    // is later than the first downpayment date. This keeps the SOA in the
+    // correct business order: Reservation -> DP -> Balloon/Other by date -> Monthly.
+    if (isReservationRow(a) && !isReservationRow(b)) return -1;
+    if (!isReservationRow(a) && isReservationRow(b)) return 1;
+
     const dateCompare = String(a.dueDate || '').localeCompare(String(b.dueDate || ''));
     if (dateCompare !== 0) return dateCompare;
 
@@ -725,12 +733,105 @@ export const sortComputedRows = (rows = []) =>
     return Number(a.sequence || 0) - Number(b.sequence || 0);
   });
 
+
+export const getReserveSellerOptions = async (connection, lotProjectId) => {
+  if (!(await tableExists(connection, 'accredited_sellers'))) return [];
+
+  const hasSellerRates = await tableExists(connection, 'accredited_seller_lot_project_rates');
+  const hasGroupRates = await tableExists(connection, 'seller_group_lot_project_rates');
+  const sellerRateJoin = hasSellerRates
+    ? `LEFT JOIN accredited_seller_lot_project_rates asr
+         ON asr.accredited_seller_id = acs.accredited_seller_id
+        AND asr.lot_project_id = ?
+        AND asr.accredited_seller_lot_project_rate_status = 'active'`
+    : '';
+  const groupRateJoin = hasGroupRates
+    ? `LEFT JOIN seller_group_lot_project_rates sgr
+         ON sgr.seller_group_id = acs.seller_group_id
+        AND sgr.lot_project_id = ?
+        AND sgr.seller_group_lot_project_rate_status = 'active'`
+    : '';
+
+  const sellerRateSelect = hasSellerRates ? 'asr.accredited_seller_project_rate' : 'NULL';
+  const groupRateSelect = hasGroupRates ? 'sgr.seller_group_pool_rate' : 'NULL';
+
+  const params = [];
+  if (hasSellerRates) params.push(lotProjectId);
+  if (hasGroupRates) params.push(lotProjectId);
+
+  const [rows] = await connection.query(
+    `
+      SELECT
+        acs.accredited_seller_id AS id,
+        acs.accredited_seller_id,
+        acs.user_id,
+        TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS name,
+        u.role,
+        COALESCE(${sellerRateSelect}, ${groupRateSelect}, 0) AS rate,
+        sg.seller_group_name,
+        ru.id AS reports_under_user_id,
+        TRIM(CONCAT_WS(' ', ru.first_name, ru.middle_name, ru.last_name)) AS reports_under_name
+      FROM accredited_sellers acs
+      INNER JOIN users u ON u.id = acs.user_id
+      LEFT JOIN seller_groups sg ON sg.seller_group_id = acs.seller_group_id
+      ${sellerRateJoin}
+      ${groupRateJoin}
+      LEFT JOIN users ru ON ru.id = acs.accredited_seller_reports_under_user_id
+      WHERE acs.accredited_seller_status = 'active'
+        AND u.status = 'active'
+      ORDER BY FIELD(u.role, 'broker_network_manager', 'broker', 'manager', 'agent'), name ASC
+    `,
+    params
+  );
+
+  const roleLabels = {
+    broker_network_manager: 'Broker Network Manager',
+    broker: 'Broker',
+    manager: 'Manager',
+    agent: 'Agent',
+  };
+
+  return rows.map((row) => ({
+    id: row.id,
+    accredited_seller_id: row.accredited_seller_id,
+    user_id: row.user_id,
+    name: row.name || 'Unnamed Seller',
+    role: roleLabels[row.role] || row.role || 'Seller',
+    roleValue: row.role,
+    rate: `${Number(row.rate || 0)}%`,
+    rateValue: Number(row.rate || 0),
+    groupName: row.seller_group_name || '-',
+    reportsUnderName: row.reports_under_name || '-',
+    allocation: row.reports_under_name
+      ? `${roleLabels[row.role] || row.role} under ${row.reports_under_name}`
+      : `${roleLabels[row.role] || row.role} direct assignment`,
+  }));
+};
+
 export const getComputedSoaTerms = (listingRow = {}, existingScheduleRows = []) => {
   const tcp = roundMoneyValue(listingRow.lot_project_listing_tcp || listingRow.tcp || 0);
+  const legalMiscFeeMode = String(
+    listingRow.soa_legal_misc_fee_mode || listingRow.legalMiscFeeMode || listingRow.legalMiscFee || 'include_in_monthly'
+  ) === 'separate_soa_row'
+    ? 'separate_soa_row'
+    : 'include_in_monthly';
+  const legalMiscFeeAmount = roundMoneyValue(
+    listingRow.soa_legal_misc_fee_amount ?? listingRow.legalMiscFeeAmount ?? listingRow.lot_project_listing_lmf_amount ?? 0
+  );
+  const principalTcp = roundMoneyValue(
+    legalMiscFeeMode === 'separate_soa_row'
+      ? Math.max(tcp - legalMiscFeeAmount, 0)
+      : tcp
+  );
+
   const firstExistingRow = existingScheduleRows[0] || {};
   const existingReservationRow = existingScheduleRows.find((row) =>
     String(row.description || '').toLowerCase().includes('reservation')
   );
+  const existingLegalMiscRow = existingScheduleRows.find((row) => {
+    const text = String(row.description || '').toLowerCase();
+    return text.includes('legal') || text.includes('misc') || text.includes('lmf');
+  });
   const existingDownpaymentRows = existingScheduleRows.filter((row) =>
     String(row.description || '').toLowerCase().includes('downpayment')
   );
@@ -758,7 +859,7 @@ export const getComputedSoaTerms = (listingRow = {}, existingScheduleRows = []) 
     0
   );
   const computedDownpaymentTotal = roundMoneyValue(
-    tcp * (downpaymentPercentage / 100) * (1 - dpDiscountPercentage / 100)
+    principalTcp * (downpaymentPercentage / 100) * (1 - dpDiscountPercentage / 100)
   );
 
   const downpaymentTotal = roundMoneyValue(inferredDownpaymentTotal || computedDownpaymentTotal);
@@ -792,7 +893,7 @@ export const getComputedSoaTerms = (listingRow = {}, existingScheduleRows = []) 
     listingRow.soa_annual_interest_rate ?? listingRow.annual_interest_rate ?? 0
   );
 
-  const financedBalance = Math.max(tcp - reservationFee - downpaymentTotal, 0);
+  const financedBalance = Math.max(principalTcp - reservationFee - downpaymentTotal, 0);
   const inferredMonthlyPrincipal = Number(existingMonthlyRows[0]?.due_amount || 0);
   const monthlyPrincipal = roundMoneyValue(
     inferredMonthlyPrincipal || (monthlyTerms > 0 ? financedBalance / monthlyTerms : financedBalance)
@@ -800,6 +901,9 @@ export const getComputedSoaTerms = (listingRow = {}, existingScheduleRows = []) 
 
   return {
     tcp,
+    principalTcp,
+    legalMiscFeeMode,
+    legalMiscFeeAmount: existingLegalMiscRow?.due_amount ? Number(existingLegalMiscRow.due_amount) : legalMiscFeeAmount,
     reservationFee,
     downpaymentPercentage,
     downpaymentTotal,
@@ -837,8 +941,28 @@ export const createComputedSoaRows = (terms = {}) => {
     sequence += 1;
   }
 
+  if (terms.legalMiscFeeMode === 'separate_soa_row' && Number(terms.legalMiscFeeAmount || 0) > 0) {
+    rows.push({
+      id: `computed-${sequence}`,
+      scheduleType: 'legal_misc',
+      sequence,
+      dueDate: terms.firstDueDate,
+      description: 'Legal / Misc Fee',
+      beginningBalance: terms.tcp,
+      dueAmount: roundMoneyValue(terms.legalMiscFeeAmount),
+      interest: 0,
+      penalty: 0,
+      datePaid: '-',
+      amountPaid: 0,
+      referenceId: '-',
+      status: 'Unpaid',
+      endingBalance: terms.tcp,
+    });
+    sequence += 1;
+  }
+
   if (String(terms.modeOfPayment || '').toLowerCase() === 'cash') {
-    const cashBalance = Math.max(terms.tcp - terms.reservationFee, 0);
+    const cashBalance = Math.max((terms.principalTcp || terms.tcp) - terms.reservationFee, 0);
 
     if (cashBalance > 0) {
       rows.push({
@@ -922,6 +1046,7 @@ export const getPaymentTargetRows = (rows, paymentType) => {
   if (cleanType === 'reservation') return rows.filter((row) => row.scheduleType === 'reservation');
   if (cleanType === 'downpayment') return rows.filter((row) => row.scheduleType === 'downpayment');
   if (cleanType === 'monthly_amortization') return rows.filter((row) => row.scheduleType === 'monthly');
+  if (cleanType === 'legal_misc') return rows.filter((row) => row.scheduleType === 'legal_misc');
   if (cleanType === 'advance_payment') return rows.filter((row) => row.scheduleType === 'monthly');
   if (cleanType === 'balloon') return rows.filter((row) => row.scheduleType === 'monthly');
   if (cleanType === 'full_payment') return rows;
@@ -1174,12 +1299,13 @@ export const getAuthenticatedUser = async (req) => {
 };
 
 export const getUserFullName = (user = {}) => {
-  const name = [user.first_name, user.middle_name, user.last_name]
+  const safeUser = user || {};
+  const name = [safeUser.first_name, safeUser.middle_name, safeUser.last_name]
     .map((part) => String(part || '').trim())
     .filter(Boolean)
     .join(' ');
 
-  return name || user.email || '-';
+  return name || safeUser.email || '-';
 };
 
 export const getListingForPayment = async (connection, project, listingLookup) => {
@@ -1215,6 +1341,7 @@ export const normalizePaymentType = (value = '') => {
   if (clean === 'advance payment' || clean === 'advance') return 'advance_payment';
   if (clean === 'balloon' || clean === 'balloon payment') return 'balloon';
   if (clean === 'full payment' || clean === 'full') return 'full_payment';
+  if (clean === 'legal misc' || clean === 'legal/misc' || clean === 'legal misc fee' || clean === 'legal / misc fee' || clean === 'lmf') return 'legal_misc';
   return 'other';
 };
 
@@ -1503,3 +1630,4 @@ export const addIfColumnExists = async (connection, tableName, columns, values, 
     values.push(value);
   }
 };
+

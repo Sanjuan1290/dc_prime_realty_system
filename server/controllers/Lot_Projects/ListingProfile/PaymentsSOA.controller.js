@@ -1,5 +1,6 @@
 import {
   db,
+  bcrypt,
   getErrorMessage,
   slugify,
   toNullable,
@@ -252,7 +253,7 @@ export const updateLotProjectListingPayment = async (req, res) => {
           action_by_user_id
         ) VALUES (?, 'updated', ?, ?)
       `,
-      [paymentId, `${getPaymentTypeLabel(paymentType)} payment updated by ${getUserFullName(user)}.`, user.id]
+      [paymentId, `${getPaymentTypeLabel(paymentType)} payment updated by ${getUserFullName(user)}.`, user?.id || null]
     );
 
     await connection.commit();
@@ -271,6 +272,35 @@ export const updateLotProjectListingPayment = async (req, res) => {
   }
 };
 
+
+const verifySuperAdminPassword = async (connection, user, password) => {
+  if (!password) return { ok: false, message: 'Super admin password is required.' };
+
+  if (user?.role === 'super_admin') {
+    const isPasswordCorrect = await bcrypt.compare(password, user.password_hash || '');
+    return isPasswordCorrect
+      ? { ok: true, superAdmin: user }
+      : { ok: false, message: 'Super admin password is incorrect.' };
+  }
+
+  const [superAdmins] = await connection.query(
+    `
+      SELECT id, first_name, middle_name, last_name, email, role, password_hash, status
+      FROM users
+      WHERE role = 'super_admin'
+        AND status = 'active'
+    `
+  );
+
+  for (const superAdmin of superAdmins) {
+    if (await bcrypt.compare(password, superAdmin.password_hash || '')) {
+      return { ok: true, superAdmin };
+    }
+  }
+
+  return { ok: false, message: user ? 'Super admin password is incorrect.' : 'Please enter a valid super admin password.' };
+};
+
 export const deleteLotProjectListingPayment = async (req, res) => {
   const connection = await db.getConnection();
 
@@ -282,18 +312,11 @@ export const deleteLotProjectListingPayment = async (req, res) => {
     const project = await getProjectBySlug(slug);
     const superAdminPassword = String(req.body.superAdminPassword || req.body.password || '').trim();
 
-    if (!user) return res.status(401).json({ message: 'Please login before deleting a payment.' });
-    if (user.role !== 'super_admin') {
-      return res.status(403).json({ message: 'Only the logged-in super admin can delete a payment.' });
+    const superAdminCheck = await verifySuperAdminPassword(connection, user, superAdminPassword);
+    if (!superAdminCheck.ok) {
+      return res.status(user ? 403 : 401).json({ message: superAdminCheck.message });
     }
-    if (!superAdminPassword) {
-      return res.status(400).json({ message: 'Super admin password is required.' });
-    }
-
-    const isPasswordCorrect = await bcrypt.compare(superAdminPassword, user.password_hash || '');
-    if (!isPasswordCorrect) {
-      return res.status(403).json({ message: 'Super admin password is incorrect.' });
-    }
+    const actionUser = user || superAdminCheck.superAdmin;
 
     if (!project) return res.status(404).json({ message: 'Lot project not found.' });
     if (!paymentId) return res.status(400).json({ message: 'Payment id is required.' });
@@ -336,3 +359,4 @@ export const deleteLotProjectListingPayment = async (req, res) => {
     connection.release();
   }
 };
+

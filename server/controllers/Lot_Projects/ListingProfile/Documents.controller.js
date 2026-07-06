@@ -79,15 +79,6 @@ const getDocumentContext = async (connection, req) => {
   return { project, listing, document };
 };
 
-const safeMockUrl = (fileName) => {
-  const clean = String(fileName || 'uploaded-document.pdf')
-    .trim()
-    .replace(/[\\/]+/g, '-')
-    .replace(/\s+/g, '-');
-
-  return `/mock-documents/${encodeURIComponent(clean || 'uploaded-document.pdf')}`;
-};
-
 export const uploadLotProjectListingDocument = async (req, res) => {
   const connection = await db.getConnection();
 
@@ -97,7 +88,7 @@ export const uploadLotProjectListingDocument = async (req, res) => {
 
     const user = await getAuthenticatedUser(req);
     const fileName = String(req.body.fileName || req.body.file_name || '').trim();
-    const fileUrl = toNullable(req.body.fileUrl || req.body.file_url) || safeMockUrl(fileName);
+    const fileUrl = toNullable(req.body.fileUrl || req.body.file_url);
 
     if (!fileName) return res.status(400).json({ message: 'Please choose a file before saving.' });
 
@@ -235,3 +226,4 @@ export const clearLotProjectListingDocument = async (req, res) => {
     connection.release();
   }
 };
+

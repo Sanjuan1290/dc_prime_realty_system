@@ -12,8 +12,6 @@ import StatusAlert from '../../../Shared/StatusAlert'
 import UploadDocumentModal from './UploadDocumentModal'
 import DocumentImagesModal from './DocumentImagesModal'
 
-const imagePlaceholder = '/docImage1.png'
-
 const statusStyles = {
   Approved: 'border-emerald-200 bg-emerald-50 text-emerald-700',
   Submitted: 'border-blue-200 bg-blue-50 text-blue-700',
@@ -236,7 +234,7 @@ const Documents = ({
           <tbody className="divide-y divide-slate-100">
             {rows.map((row) => {
               const isActive = activeDocumentId === row.id || isSaving
-              const imageSrc = row.fileUrl || row.images?.[0] || imagePlaceholder
+              const imageSrc = row.fileUrl || row.images?.[0] || ''
 
               return (
                 <tr key={row.id} className="transition hover:bg-slate-50">
@@ -258,7 +256,7 @@ const Documents = ({
                   <td className="px-4 py-4">
                     <div className="flex items-center gap-3">
                       <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
-                        {row.fileName && row.fileName !== '-' ? (
+                        {row.fileName && row.fileName !== '-' && imageSrc ? (
                           <img
                             src={imageSrc}
                             alt={row.name}
@@ -276,7 +274,7 @@ const Documents = ({
 
                         <p className="text-xs font-semibold text-slate-400">
                           {row.fileName && row.fileName !== '-'
-                            ? 'Image preview available'
+                            ? imageSrc ? 'Image preview available' : 'File saved, no preview URL yet'
                             : 'No file uploaded'}
                         </p>
                       </div>
@@ -366,3 +364,4 @@ const Documents = ({
 }
 
 export default Documents
+

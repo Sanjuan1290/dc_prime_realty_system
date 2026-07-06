@@ -17,7 +17,7 @@ const ReserveDocumentChecklistModal = ({
   <div className="flex flex-col gap-4">
     <SectionCard
       title="Reservation Document Checklist"
-      description="Select the first document checklist for this reservation."
+      description="Select the document requirements that will be created for this reservation."
       right={
         <div className="flex flex-wrap gap-2">
           <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700">
@@ -35,7 +35,7 @@ const ReserveDocumentChecklistModal = ({
           <input
             value={searchDocument}
             onChange={(event) => setSearchDocument(event.target.value)}
-            placeholder="Search and add documents..."
+            placeholder="Search document name or description..."
             className="h-11 w-full rounded-xl border border-slate-300 bg-white pl-9 pr-3 text-sm font-semibold text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
           />
         </div>
@@ -51,37 +51,43 @@ const ReserveDocumentChecklistModal = ({
         </button>
       </div>
 
-      <div className="grid max-h-[245px] gap-2 overflow-y-auto pr-1 md:grid-cols-2">
-        {filteredDocuments.map((document) => {
-          const documentId = document.document_id || document.id
-          const added = isDocumentAdded(documentId)
+      {filteredDocuments.length ? (
+        <div className="grid max-h-[245px] gap-2 overflow-y-auto pr-1 md:grid-cols-2">
+          {filteredDocuments.map((document) => {
+            const documentId = document.document_id || document.id
+            const added = isDocumentAdded(documentId)
 
-          return (
-            <div
-              key={documentId}
-              className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 transition hover:border-blue-200 hover:bg-blue-50/40"
-            >
-              <div className="min-w-0">
-                <p className="break-words text-sm font-black text-slate-950">{document.name}</p>
-                <p className="mt-1 text-xs font-semibold text-slate-500">{document.description}</p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => addDocument(document)}
-                disabled={added || isSaving}
-                className={`h-10 shrink-0 rounded-lg border px-4 text-sm font-black transition ${
-                  added
-                    ? 'cursor-not-allowed border-slate-200 bg-white text-slate-400'
-                    : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
-                }`}
+            return (
+              <div
+                key={documentId}
+                className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 transition hover:border-blue-200 hover:bg-blue-50/40"
               >
-                {added ? 'Added' : 'Add'}
-              </button>
-            </div>
-          )
-        })}
-      </div>
+                <div className="min-w-0">
+                  <p className="break-words text-sm font-black text-slate-950">{document.name}</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-500">{document.description}</p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => addDocument(document)}
+                  disabled={added || isSaving}
+                  className={`h-10 shrink-0 rounded-lg border px-4 text-sm font-black transition ${
+                    added
+                      ? 'cursor-not-allowed border-slate-200 bg-white text-slate-400'
+                      : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                  }`}
+                >
+                  {added ? 'Added' : 'Add'}
+                </button>
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-sm font-semibold text-slate-500">
+          No active documents found from the database. Add documents in System Documents first.
+        </div>
+      )}
     </SectionCard>
 
     {selectedDocuments.length ? (
@@ -101,7 +107,7 @@ const ReserveDocumentChecklistModal = ({
                 <div>
                   <p className="text-sm font-black text-slate-950">{document.name}</p>
                   <p className="mt-1 text-xs font-semibold text-slate-500">
-                    Required · Active
+                    {document.requirement === 'optional' ? 'Optional' : 'Required'} · Active
                   </p>
                 </div>
 
@@ -128,3 +134,4 @@ const ReserveDocumentChecklistModal = ({
 )
 
 export default ReserveDocumentChecklistModal
+

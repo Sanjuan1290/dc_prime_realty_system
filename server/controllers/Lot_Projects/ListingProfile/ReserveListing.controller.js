@@ -119,6 +119,7 @@ export const reserveLotProjectListing = async (req, res) => {
           lot_project_listing_unit_id,
           lot_project_listing_status,
           lot_project_listing_tcp,
+          lot_project_listing_lmf_amount,
           lot_project_listing_reservation_fee,
           annual_interest_rate
         FROM lot_project_listings
@@ -165,6 +166,14 @@ export const reserveLotProjectListing = async (req, res) => {
     const monthlyTerms = Number(
       terms.monthlyTerms ?? normalizeNumberOption(terms.monthlyTermsMode, terms.customMonthlyTerms, 36)
     );
+    const legalMiscFeeMode = String(terms.legalMiscFeeMode || terms.legalMiscFee || 'include_in_monthly') === 'separate_soa_row'
+      ? 'separate_soa_row'
+      : 'include_in_monthly';
+    const legalMiscFeeAmount = parseMoneyValue(terms.legalMiscFeeAmount || listing.lot_project_listing_lmf_amount || 0);
+    const assignedSellerId = Number(terms.sellerId || reservation.sellerId || reservation.seller?.id || reservation.seller?.accredited_seller_id || 0) || null;
+    const saleChannel = String(reservation.saleChannel || terms.saleChannel || 'distributed') === 'direct_to_developer'
+      ? 'direct_to_developer'
+      : 'distributed';
 
     const tableName = 'lot_project_client_profiles';
     const columns = [
@@ -276,6 +285,10 @@ export const reserveLotProjectListing = async (req, res) => {
     await addIfColumnExists(connection, tableName, columns, values, 'second_buyer_present_zip_code', hasSecondBuyer ? toNullable(clientProfile.secondBuyerPresentZipCode) : null);
     await addIfColumnExists(connection, tableName, columns, values, 'second_buyer_permanent_zip_code', hasSecondBuyer ? toNullable(clientProfile.secondBuyerPermanentZipCode) : null);
     await addIfColumnExists(connection, tableName, columns, values, 'second_buyer_employer_zip_code', hasSecondBuyer ? toNullable(clientProfile.secondBuyerEmployerZipCode) : null);
+    await addIfColumnExists(connection, tableName, columns, values, 'assigned_accredited_seller_id', assignedSellerId);
+    await addIfColumnExists(connection, tableName, columns, values, 'sale_channel', saleChannel);
+    await addIfColumnExists(connection, tableName, columns, values, 'soa_legal_misc_fee_mode', legalMiscFeeMode);
+    await addIfColumnExists(connection, tableName, columns, values, 'soa_legal_misc_fee_amount', legalMiscFeeAmount);
 
     const updateAssignments = columns
       .filter((column) => !['lot_project_id', 'lot_project_listing_id'].includes(column))
@@ -341,3 +354,4 @@ export const reserveLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
+

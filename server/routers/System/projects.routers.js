@@ -56,3 +56,4 @@ router.patch('/lot-projects/:id/status', toggleLotProjectStatus);
 router.delete('/lot-projects/:id', deleteLotProject);
 
 export default router;
+

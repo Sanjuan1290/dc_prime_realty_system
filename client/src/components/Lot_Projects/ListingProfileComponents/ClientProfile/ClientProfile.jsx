@@ -134,7 +134,10 @@ const Section = ({ title, children, right }) => (
 )
 
 const WorkBusinessCard = ({ title, data, prefix = '' }) => {
-  const get = (key) => data?.[`${prefix}${key}`]
+  const get = (key) => {
+    if (prefix) return data?.[`${prefix}${key}`]
+    return data?.[`${key.charAt(0).toLowerCase()}${key.slice(1)}`]
+  }
 
   return (
     <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
@@ -458,3 +461,4 @@ const ClientProfile = ({ client = fallbackClient, listing = {}, onSave, isSaving
 }
 
 export default ClientProfile
+
