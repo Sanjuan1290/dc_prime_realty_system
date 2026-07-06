@@ -4,20 +4,25 @@ import {
   getLotProjects,
   getLotProjectOptions,
   getLotProjectBySlug,
-  getLotProjectDashboard,
-  getLotProjectListings,
-  getLotProjectListingProfile,
-  updateLotProjectClientProfile,
-  createLotProjectListingPayment,
-  updateLotProjectListingPayment,
-  deleteLotProjectListingPayment,
-  createLotProjectListing,
-  updateLotProjectListing,
   createLotProject,
   updateLotProject,
   toggleLotProjectStatus,
   deleteLotProject,
 } from '../../controllers/System/projects.controller.js';
+
+import { getLotProjectDashboard } from '../../controllers/Lot_Projects/Dashboard/Dashboard.controller.js';
+import {
+  getLotProjectListings,
+  createLotProjectListing,
+  updateLotProjectListing,
+} from '../../controllers/Lot_Projects/Listings/Listings.controller.js';
+import { getLotProjectListingProfile } from '../../controllers/Lot_Projects/ListingProfile/ListingProfile.controller.js';
+import { updateLotProjectClientProfile } from '../../controllers/Lot_Projects/ListingProfile/ClientProfile.controller.js';
+import {
+  createLotProjectListingPayment,
+  updateLotProjectListingPayment,
+  deleteLotProjectListingPayment,
+} from '../../controllers/Lot_Projects/ListingProfile/PaymentsSOA.controller.js';
 
 const router = express.Router();
 

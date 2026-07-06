@@ -50,7 +50,7 @@ app.get('/api/v1/health', (req, res) => {
   res.json({ status: 'success', message: 'API is healthy' });
 });
 
-// System Routers
+// API Routers
 app.use('/api/v1/user', userRouter);
 app.use('/api/v1/documents', documentsRouter);
 app.use('/api/v1/seller-groups', sellerGroupRouter);
@@ -79,3 +79,4 @@ const startServer = async () => {
 };
 
 startServer();
+
