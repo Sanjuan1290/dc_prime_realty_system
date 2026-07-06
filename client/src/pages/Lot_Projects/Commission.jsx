@@ -9,33 +9,6 @@ import { useFetch, useFetchPatch } from '../../utils/useFetch'
 
 const money = (value) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 2 }).format(Number(value || 0))
 
-const statusLabel = (status) => ({
-  Pending: 'Not Eligible',
-  Eligible: 'Eligible',
-  'Partially Released': 'Partial',
-  Released: 'Completed',
-  'On Hold': 'On Hold',
-  Cancelled: 'Cancelled',
-}[status] || status || 'Not Eligible')
-
-const StatusPill = ({ status }) => {
-  const styles = {
-    Eligible: 'border-blue-200 bg-blue-50 text-blue-700',
-    Pending: 'border-amber-200 bg-amber-50 text-amber-700',
-    Released: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-    'Partially Released': 'border-indigo-200 bg-indigo-50 text-indigo-700',
-    Cancelled: 'border-red-200 bg-red-50 text-red-700',
-    'On Hold': 'border-slate-200 bg-slate-100 text-slate-600',
-  }
-
-  return (
-    <span className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-black ${styles[status] || styles.Pending}`}>
-      <span className="h-1.5 w-1.5 rounded-full bg-current" />
-      {statusLabel(status)}
-    </span>
-  )
-}
-
 const StatCard = ({ label, value, tone = 'slate', isMoney = true }) => {
   const styles = {
     slate: 'bg-white text-slate-950',
@@ -57,17 +30,15 @@ const Commission = () => {
   const queryClient = useQueryClient()
   const [selected, setSelected] = useState(null)
   const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState('all')
   const [saleTypeFilter, setSaleTypeFilter] = useState('all')
   const [alert, setAlert] = useState(null)
 
   const queryString = useMemo(() => {
     return new URLSearchParams({
       ...(search.trim() ? { search: search.trim() } : {}),
-      ...(statusFilter !== 'all' ? { status: statusFilter } : {}),
       ...(saleTypeFilter !== 'all' ? { saleType: saleTypeFilter.toLowerCase() } : {}),
     }).toString()
-  }, [search, statusFilter, saleTypeFilter])
+  }, [search, saleTypeFilter])
 
   const { data, isLoading, isFetching, isError, error, refetch } = useQuery({
     queryKey: ['lot-commissions', projectSlug, queryString],
@@ -99,7 +70,6 @@ const Commission = () => {
 
   const resetFilters = () => {
     setSearch('')
-    setStatusFilter('all')
     setSaleTypeFilter('all')
     setAlert({ type: 'info', message: 'Commission filters reset.' })
   }
@@ -143,21 +113,12 @@ const Commission = () => {
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="grid gap-3 xl:grid-cols-[1fr_220px_220px_auto]">
+        <div className="grid gap-3 xl:grid-cols-[1fr_220px_auto]">
           <label className="relative">
             <FiSearch className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search client, unit, seller, role..." className="h-11 w-full rounded-xl border border-slate-300 bg-white pl-11 pr-3 text-sm font-semibold text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-4 focus:ring-blue-50" />
           </label>
 
-          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50">
-            <option value="all">All Statuses</option>
-            <option value="Eligible">Eligible</option>
-            <option value="Pending">Not Eligible</option>
-            <option value="Partially Released">Partial</option>
-            <option value="Released">Completed</option>
-            <option value="On Hold">On Hold</option>
-            <option value="Cancelled">Cancelled</option>
-          </select>
 
           <select value={saleTypeFilter} onChange={(event) => setSaleTypeFilter(event.target.value)} className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50">
             <option value="all">All Sale Types</option>
@@ -176,10 +137,10 @@ const Commission = () => {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-[1300px] w-full divide-y divide-slate-200 text-sm">
+          <table className="min-w-[1420px] w-full divide-y divide-slate-200 text-sm">
             <thead className="bg-slate-50">
               <tr>
-                {['Unit', 'Client', 'Seller', 'Role', 'Level', 'Sale Type', 'Commission Base', 'Rate', 'Gross', 'Released', 'Net Remaining', 'Payment %', 'Status', 'Actions'].map((head) => (
+                {['Unit', 'Client', 'Main Seller', 'Commission Seller', 'Role', 'Level', 'Sale Type', 'Commission Base', 'Rate', 'Gross', 'Released', 'Net Remaining', 'Payment %', 'Actions'].map((head) => (
                   <th key={head} className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">{head}</th>
                 ))}
               </tr>
@@ -192,6 +153,7 @@ const Commission = () => {
                 <tr key={record.id} className="transition hover:bg-slate-50">
                   <td className="px-4 py-4 font-black text-blue-700">{record.unit}</td>
                   <td className="px-4 py-4 font-black text-slate-950">{record.client}</td>
+                  <td className="px-4 py-4 font-black text-slate-800">{record.mainSeller || '-'}</td>
                   <td className="px-4 py-4 font-semibold text-slate-700">{record.seller}</td>
                   <td className="px-4 py-4 font-semibold text-slate-600">{record.role}</td>
                   <td className="px-4 py-4"><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">{record.hierarchyLevel}</span></td>
@@ -202,7 +164,6 @@ const Commission = () => {
                   <td className="px-4 py-4 font-semibold text-emerald-700">{money(record.released)}</td>
                   <td className="px-4 py-4 font-black text-blue-700">{money(record.netRemaining)}</td>
                   <td className="px-4 py-4 font-semibold text-slate-600">{Number(record.paymentPercent || 0).toFixed(2)}%</td>
-                  <td className="px-4 py-4"><StatusPill status={record.status} /></td>
                   <td className="px-4 py-4">
                     <button type="button" onClick={() => { setSelected(record); setAlert({ type: 'info', message: `Opening commission details for ${record.seller} - ${record.unit}.` }) }} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 transition hover:bg-slate-50 active:scale-[0.98]">
                       <FiEye className="h-3.5 w-3.5" />
@@ -243,4 +204,5 @@ const Commission = () => {
 }
 
 export default Commission
+
 

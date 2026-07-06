@@ -93,7 +93,7 @@ const SOAPrintPage = () => {
                     'Date Paid',
                     'Amount Paid',
                     'Reference',
-                    'Remaining Balance',
+                    'Running Balance',
                   ].map((head) => (
                     <th
                       key={head}
@@ -159,6 +159,24 @@ const SOAPrintPage = () => {
               <p className="px-2 text-right font-black">{money(latestBalance)}</p>
             </div>
           </div>
+
+          <div className="mt-8 grid grid-cols-2 gap-20 text-[11px] font-semibold">
+            <div>
+              <div className="grid grid-cols-[90px_1fr] items-end gap-3">
+                <p>Prepared by:</p>
+                <div className="border-b border-black">&nbsp;</div>
+              </div>
+              <p className="mt-3 text-center">Administration Head</p>
+            </div>
+
+            <div>
+              <div className="grid grid-cols-[115px_1fr] items-end gap-3">
+                <p>Acknowledged by:</p>
+                <div className="border-b border-black">&nbsp;</div>
+              </div>
+              <p className="mt-3 text-center">Client Name and Signature</p>
+            </div>
+          </div>
         </div>
       </div>
     </PrintPageShell>
@@ -166,3 +184,4 @@ const SOAPrintPage = () => {
 }
 
 export default SOAPrintPage
+

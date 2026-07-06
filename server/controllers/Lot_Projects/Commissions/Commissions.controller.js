@@ -213,6 +213,8 @@ const mapCommissionRow = (row = {}, releases = [], releaseDateInfo = {}) => {
     unit: row.lot_project_listing_unit_id || '-',
     project: row.lot_project_name || '-',
     seller: row.seller_name || getUserFullName(row),
+    mainSeller: row.main_seller_name || (row.commission_seller_type === 'selling_agent' || row.commission_seller_type === 'main_seller' ? row.seller_name || getUserFullName(row) : '-'),
+    mainSellerRole: roleLabel(row.main_seller_role),
     sellerEmail: row.seller_email || '',
     sellerContactNo: row.seller_contact_no || '',
     sellerGroup: row.seller_group_name || '-',
@@ -437,9 +439,10 @@ export const getLotProjectCommissions = async (req, res) => {
         OR CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name) LIKE ?
         OR u.email LIKE ?
         OR sg.seller_group_name LIKE ?
+        OR CONCAT_WS(' ', mainSellerUser.first_name, mainSellerUser.middle_name, mainSellerUser.last_name) LIKE ?
       )`);
       const keyword = `%${search}%`;
-      params.push(keyword, keyword, keyword, keyword, keyword);
+      params.push(keyword, keyword, keyword, keyword, keyword, keyword);
     }
 
     const [rows] = await connection.query(
@@ -458,6 +461,10 @@ export const getLotProjectCommissions = async (req, res) => {
           u.email AS seller_email,
           u.contact_no AS seller_contact_no,
           NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)), '') AS seller_name,
+          mainAcs.accredited_seller_id AS main_seller_accredited_seller_id,
+          mainSellerUser.id AS main_seller_user_id,
+          mainSellerUser.role AS main_seller_role,
+          NULLIF(TRIM(CONCAT_WS(' ', mainSellerUser.first_name, mainSellerUser.middle_name, mainSellerUser.last_name)), '') AS main_seller_name,
           sg.seller_group_name,
           acs.accredited_seller_accreditation_date,
           NULLIF(TRIM(CONCAT_WS(' ', reports.first_name, reports.middle_name, reports.last_name)), '') AS reports_under
@@ -474,6 +481,10 @@ export const getLotProjectCommissions = async (req, res) => {
           ON u.id = acs.user_id
         LEFT JOIN users reports
           ON reports.id = acs.accredited_seller_reports_under_user_id
+        LEFT JOIN accredited_sellers mainAcs
+          ON mainAcs.accredited_seller_id = cp.assigned_accredited_seller_id
+        LEFT JOIN users mainSellerUser
+          ON mainSellerUser.id = mainAcs.user_id
         LEFT JOIN seller_groups sg
           ON sg.seller_group_id = acs.seller_group_id
         LEFT JOIN (
