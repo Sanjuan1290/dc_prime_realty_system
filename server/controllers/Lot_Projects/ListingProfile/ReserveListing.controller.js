@@ -166,6 +166,242 @@ const insertReservationDocuments = async (connection, projectId, listingId, clie
   );
 };
 
+
+const roundMoney = (value) => Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
+
+const releaseStages = [
+  { stage: '1st Release', trigger: 20, percent: 20 },
+  { stage: '2nd Release', trigger: 40, percent: 20 },
+  { stage: '3rd Release', trigger: 60, percent: 20 },
+  { stage: '4th Release', trigger: 75, percent: 15 },
+  { stage: 'Retention', trigger: 100, percent: 25 },
+];
+
+const loadSellerById = async (connection, accreditedSellerId) => {
+  const [rows] = await connection.query(
+    `
+      SELECT
+        acs.accredited_seller_id,
+        acs.user_id,
+        acs.seller_group_id,
+        acs.accredited_seller_reports_under_user_id,
+        acs.accredited_seller_status,
+        u.role,
+        u.status AS user_status,
+        TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS full_name
+      FROM accredited_sellers acs
+      INNER JOIN users u ON u.id = acs.user_id
+      WHERE acs.accredited_seller_id = ?
+      LIMIT 1
+    `,
+    [accreditedSellerId]
+  );
+  return rows[0] || null;
+};
+
+const loadSellerByUserId = async (connection, userId) => {
+  const [rows] = await connection.query(
+    `
+      SELECT
+        acs.accredited_seller_id,
+        acs.user_id,
+        acs.seller_group_id,
+        acs.accredited_seller_reports_under_user_id,
+        acs.accredited_seller_status,
+        u.role,
+        u.status AS user_status,
+        TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS full_name
+      FROM accredited_sellers acs
+      INNER JOIN users u ON u.id = acs.user_id
+      WHERE acs.user_id = ?
+      LIMIT 1
+    `,
+    [userId]
+  );
+  return rows[0] || null;
+};
+
+const loadSellerChain = async (connection, accreditedSellerId) => {
+  const chain = [];
+  const seen = new Set();
+  let current = await loadSellerById(connection, accreditedSellerId);
+
+  while (current && !seen.has(current.accredited_seller_id)) {
+    seen.add(current.accredited_seller_id);
+    chain.push(current);
+
+    if (!current.accredited_seller_reports_under_user_id) break;
+    current = await loadSellerByUserId(connection, current.accredited_seller_reports_under_user_id);
+  }
+
+  return chain;
+};
+
+const loadSellerRateMap = async (connection, lotProjectId, sellerIds = []) => {
+  if (!sellerIds.length || !(await tableExists(connection, 'accredited_seller_lot_project_rates'))) return new Map();
+
+  const [rows] = await connection.query(
+    `
+      SELECT accredited_seller_id, accredited_seller_project_rate
+      FROM accredited_seller_lot_project_rates
+      WHERE lot_project_id = ?
+        AND accredited_seller_lot_project_rate_status = 'active'
+        AND accredited_seller_id IN (${sellerIds.map(() => '?').join(',')})
+    `,
+    [lotProjectId, ...sellerIds]
+  );
+
+  return new Map(rows.map((row) => [Number(row.accredited_seller_id), Number(row.accredited_seller_project_rate || 0)]));
+};
+
+const loadGroupPoolRate = async (connection, lotProjectId, sellerGroupId, fallbackRate = 0) => {
+  if (!sellerGroupId || !(await tableExists(connection, 'seller_group_lot_project_rates'))) return fallbackRate;
+
+  const [rows] = await connection.query(
+    `
+      SELECT seller_group_pool_rate
+      FROM seller_group_lot_project_rates
+      WHERE seller_group_id = ?
+        AND lot_project_id = ?
+        AND seller_group_lot_project_rate_status = 'active'
+      LIMIT 1
+    `,
+    [sellerGroupId, lotProjectId]
+  );
+
+  return Number(rows[0]?.seller_group_pool_rate || fallbackRate || 0);
+};
+
+const insertCommissionReleaseRows = async (connection, commissionId, grossCommission, paymentPercent = 0) => {
+  if (!(await tableExists(connection, 'lot_project_commission_releases'))) return;
+
+  await connection.query(
+    `DELETE FROM lot_project_commission_releases WHERE lot_project_commission_id = ?`,
+    [commissionId]
+  );
+
+  await connection.query(
+    `
+      INSERT INTO lot_project_commission_releases (
+        lot_project_commission_id,
+        release_stage,
+        release_trigger_percent,
+        release_percent,
+        gross_release_amount,
+        deduction_amount,
+        net_release_amount,
+        release_status,
+        scheduled_release_date
+      ) VALUES ${releaseStages.map(() => '(?, ?, ?, ?, ?, 0, ?, ?, NULL)').join(', ')}
+    `,
+    releaseStages.flatMap((stage) => {
+      const gross = roundMoney(grossCommission * (stage.percent / 100));
+      const status = stage.stage === 'Retention'
+        ? 'On Hold'
+        : Number(paymentPercent || 0) >= stage.trigger
+          ? 'Eligible'
+          : 'Pending';
+      return [commissionId, stage.stage, stage.trigger, stage.percent, gross, gross, status];
+    })
+  );
+};
+
+const replaceReservationCommissions = async (connection, projectId, listing, clientProfileId, assignedSellerId, saleChannel) => {
+  if (!(await tableExists(connection, 'lot_project_commissions'))) return;
+  if (!(await tableExists(connection, 'accredited_sellers'))) return;
+
+  const baseAmount = roundMoney(listing.lot_project_listing_net_selling_price || listing.lot_project_listing_tcp || 0);
+  if (baseAmount <= 0) return;
+
+  const chain = await loadSellerChain(connection, assignedSellerId);
+  if (!chain.length) throw new Error('Assigned seller hierarchy could not be loaded.');
+
+  const sellerIds = chain.map((seller) => Number(seller.accredited_seller_id));
+  const rateMap = await loadSellerRateMap(connection, projectId, sellerIds);
+  const assignedSeller = chain[0];
+  const fallbackRate = Number(rateMap.get(assignedSeller.accredited_seller_id) || 0);
+  const groupPoolRate = await loadGroupPoolRate(connection, projectId, assignedSeller.seller_group_id, fallbackRate);
+
+  const ceilingRate = (seller) => {
+    if (seller.role === 'broker_network_manager') return Number(groupPoolRate || rateMap.get(seller.accredited_seller_id) || 0);
+    return Number(rateMap.get(seller.accredited_seller_id) || 0);
+  };
+
+  const commissionRows = [];
+
+  if (saleChannel === 'direct_to_developer') {
+    const rate = ceilingRate(assignedSeller) || groupPoolRate;
+    commissionRows.push({ seller: assignedSeller, rate, sellerType: 'main_seller', saleType: 'direct' });
+  } else {
+    let lowerCeiling = 0;
+    for (const seller of chain) {
+      const currentCeiling = ceilingRate(seller);
+      if (currentCeiling < lowerCeiling) {
+        throw new Error(`${seller.full_name || 'Parent seller'} rate (${currentCeiling}%) cannot be lower than the seller below them (${lowerCeiling}%). Fix seller rates before reserving.`);
+      }
+
+      const earnedRate = roundMoney(currentCeiling - lowerCeiling);
+      if (earnedRate > 0) {
+        commissionRows.push({
+          seller,
+          rate: earnedRate,
+          sellerType: seller.accredited_seller_id === assignedSeller.accredited_seller_id
+            ? seller.role === 'agent' ? 'selling_agent' : 'main_seller'
+            : 'hierarchy_seller',
+          saleType: 'distributed',
+        });
+      }
+
+      lowerCeiling = currentCeiling;
+    }
+
+    if (groupPoolRate && lowerCeiling > groupPoolRate) {
+      throw new Error(`Generated commission rate (${lowerCeiling}%) is higher than the group pool rate (${groupPoolRate}%).`);
+    }
+  }
+
+  await connection.query(`DELETE FROM lot_project_commissions WHERE lot_project_listing_id = ?`, [listing.lot_project_listing_id]);
+
+  for (const item of commissionRows) {
+    const gross = roundMoney(baseAmount * (Number(item.rate || 0) / 100));
+    const [result] = await connection.query(
+      `
+        INSERT INTO lot_project_commissions (
+          lot_project_id,
+          lot_project_listing_id,
+          lot_project_client_profile_id,
+          accredited_seller_id,
+          commission_role,
+          commission_seller_type,
+          commission_sale_type,
+          commission_base_amount,
+          commission_rate,
+          gross_commission_amount,
+          released_commission_amount,
+          net_remaining_commission_amount,
+          payment_percent,
+          commission_status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 0, 'Pending')
+      `,
+      [
+        projectId,
+        listing.lot_project_listing_id,
+        clientProfileId,
+        item.seller.accredited_seller_id,
+        item.seller.role,
+        item.sellerType,
+        item.saleType,
+        baseAmount,
+        item.rate,
+        gross,
+        gross,
+      ]
+    );
+
+    await insertCommissionReleaseRows(connection, result.insertId, gross, 0);
+  }
+};
+
 export const reserveLotProjectListing = async (req, res) => {
   const connection = await db.getConnection();
 
@@ -194,6 +430,7 @@ export const reserveLotProjectListing = async (req, res) => {
           lot_project_listing_unit_id,
           lot_project_listing_status,
           lot_project_listing_tcp,
+          lot_project_listing_net_selling_price,
           lot_project_listing_lmf_amount,
           lot_project_listing_reservation_fee,
           ${annualInterestSelect}
@@ -458,6 +695,15 @@ export const reserveLotProjectListing = async (req, res) => {
       legalMiscFeeAmount,
     });
 
+    await replaceReservationCommissions(
+      connection,
+      project.lot_project_id,
+      listing,
+      clientProfileId,
+      assignedSellerId,
+      saleChannel
+    );
+
     await connection.commit();
 
     return res.status(201).json({
@@ -474,3 +720,4 @@ export const reserveLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
+

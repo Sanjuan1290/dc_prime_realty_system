@@ -9,6 +9,15 @@ import { useFetch, useFetchPatch } from '../../utils/useFetch'
 
 const money = (value) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 2 }).format(Number(value || 0))
 
+const statusLabel = (status) => ({
+  Pending: 'Not Eligible',
+  Eligible: 'Eligible',
+  'Partially Released': 'Partial',
+  Released: 'Completed',
+  'On Hold': 'On Hold',
+  Cancelled: 'Cancelled',
+}[status] || status || 'Not Eligible')
+
 const StatusPill = ({ status }) => {
   const styles = {
     Eligible: 'border-blue-200 bg-blue-50 text-blue-700',
@@ -22,7 +31,7 @@ const StatusPill = ({ status }) => {
   return (
     <span className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-black ${styles[status] || styles.Pending}`}>
       <span className="h-1.5 w-1.5 rounded-full bg-current" />
-      {status}
+      {statusLabel(status)}
     </span>
   )
 }
@@ -70,7 +79,7 @@ const Commission = () => {
   const updateCommissionMutation = useMutation({
     mutationFn: ({ commissionId, payload }) => useFetchPatch(`/projects/lot-projects/${projectSlug}/commissions/${commissionId}`, payload),
     onMutate: ({ payload }) => {
-      const actionLabel = payload?.action === 'release' ? 'Saving commission release...' : 'Updating commission status...'
+      const actionLabel = String(payload?.action || '').includes('release') ? 'Saving commission release...' : 'Updating commission status...'
       setAlert({ type: 'loading', message: actionLabel })
     },
     onSuccess: (result) => {
@@ -143,9 +152,9 @@ const Commission = () => {
           <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50">
             <option value="all">All Statuses</option>
             <option value="Eligible">Eligible</option>
-            <option value="Pending">Pending</option>
-            <option value="Partially Released">Partially Released</option>
-            <option value="Released">Released</option>
+            <option value="Pending">Not Eligible</option>
+            <option value="Partially Released">Partial</option>
+            <option value="Released">Completed</option>
             <option value="On Hold">On Hold</option>
             <option value="Cancelled">Cancelled</option>
           </select>
@@ -234,3 +243,4 @@ const Commission = () => {
 }
 
 export default Commission
+

@@ -4,6 +4,15 @@ import StatusAlert from '../../../Shared/StatusAlert'
 
 const money = (value) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 2 }).format(Number(value || 0))
 
+const statusLabel = (status) => ({
+  Pending: 'Not Eligible',
+  Eligible: 'Eligible',
+  'Partially Released': 'Partial',
+  Released: 'Completed',
+  'On Hold': 'On Hold',
+  Cancelled: 'Cancelled',
+}[status] || status || 'Not Eligible')
+
 const InfoCard = ({ label, value }) => (
   <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
     <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">{label}</p>
@@ -24,7 +33,7 @@ const StatusPill = ({ status }) => {
   return (
     <span className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-black ${styles[status] || styles.Pending}`}>
       <span className="h-1.5 w-1.5 rounded-full bg-current" />
-      {status || 'Pending'}
+      {statusLabel(status)}
     </span>
   )
 }
@@ -189,7 +198,7 @@ const ReleaseDetailsModal = ({ commission, onClose, onAction, isSaving = false }
                         <td className="px-4 py-3">
                           <div className="flex flex-wrap gap-2">
                             {stage.status === 'Eligible' ? (
-                              <button type="button" onClick={() => openConfirm('release_stage', stage)} disabled={isSaving} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-blue-600 px-3 text-[11px] font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">
+                              <button type="button" onClick={() => openConfirm('release_stage', stage)} disabled={isSaving || !stage.isReleaseDate} title={!stage.isReleaseDate ? 'Release is locked until the next allowed release date.' : undefined} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-blue-600 px-3 text-[11px] font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">
                                 {isSaving ? <FiLoader className="h-3.5 w-3.5 animate-spin" /> : <FiSave className="h-3.5 w-3.5" />}
                                 {stage.releaseButtonLabel || 'Release'}
                               </button>
@@ -266,3 +275,4 @@ const ReleaseDetailsModal = ({ commission, onClose, onAction, isSaving = false }
 }
 
 export default ReleaseDetailsModal
+

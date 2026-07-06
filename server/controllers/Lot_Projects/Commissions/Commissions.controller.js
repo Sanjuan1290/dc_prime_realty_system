@@ -45,6 +45,20 @@ const hierarchyLabel = (value = '') => {
   return labels[value] || roleLabel(value);
 };
 
+const commissionStatusLabel = (status = '') => {
+  const labels = {
+    Pending: 'Not Eligible',
+    Eligible: 'Eligible',
+    'Partially Released': 'Partial',
+    Released: 'Completed',
+    'On Hold': 'On Hold',
+    Cancelled: 'Cancelled',
+  };
+  return labels[status] || status || 'Not Eligible';
+};
+
+const getPaymentPercent = (row = {}) => toNumber(row.computed_payment_percent ?? row.payment_percent);
+
 const releaseOrder = {
   '1st Release': 1,
   '2nd Release': 2,
@@ -120,7 +134,7 @@ const mapReleaseRow = (row = {}, paymentPercent = 0, releaseDateInfo = {}) => {
 
 const buildFallbackMilestones = (commission = {}, releaseDateInfo = {}) => {
   const gross = toNumber(commission.gross_commission_amount);
-  const paymentPercent = toNumber(commission.payment_percent);
+  const paymentPercent = getPaymentPercent(commission);
   const stages = [
     { stage: '1st Release', triggerPercent: 20, releasePercent: 20 },
     { stage: '2nd Release', triggerPercent: 40, releasePercent: 20 },
@@ -169,9 +183,10 @@ const getAggregateStatus = (commission = {}, releases = []) => {
 
   if (gross > 0 && released >= gross) return 'Released';
   if (released > 0) return 'Partially Released';
+  if (releases.some((release) => release.status === 'On Hold' && !isFinalRelease(release.stage))) return 'On Hold';
   if (releases.some((release) => release.status === 'Eligible')) return 'Eligible';
-  if (releases.some((release) => release.status === 'On Hold')) return 'On Hold';
-  return commission.commission_status || 'Pending';
+  if (commission.commission_status === 'Cancelled') return 'Cancelled';
+  return 'Pending';
 };
 
 const mapCommissionRow = (row = {}, releases = [], releaseDateInfo = {}) => {
@@ -208,8 +223,9 @@ const mapCommissionRow = (row = {}, releases = [], releaseDateInfo = {}) => {
     netRemaining: remaining,
     tcp: toNumber(row.lot_project_listing_tcp),
     paid: toNumber(row.total_paid),
-    paymentPercent: toNumber(row.payment_percent),
+    paymentPercent: getPaymentPercent(row),
     status,
+    statusLabel: commissionStatusLabel(status),
     releaseMilestones: releases,
     releaseDateInfo,
     createdAt: row.created_at,
@@ -250,7 +266,7 @@ const syncReleaseStatuses = async (connection, commissionRows = []) => {
         END
         WHERE lot_project_commission_id = ?
       `,
-      [toNumber(commission.payment_percent), commission.lot_project_commission_id]
+      [getPaymentPercent(commission), commission.lot_project_commission_id]
     );
   }
 };
@@ -291,7 +307,7 @@ const loadReleaseMilestones = async (connection, commissionRows = [], releaseDat
     releasesByCommission.set(
       commission.lot_project_commission_id,
       rows.length
-        ? rows.map((release) => mapReleaseRow(release, commission.payment_percent, releaseDateInfo))
+        ? rows.map((release) => mapReleaseRow(release, getPaymentPercent(commission), releaseDateInfo))
         : buildFallbackMilestones(commission, releaseDateInfo)
     );
   }
@@ -326,7 +342,7 @@ const recomputeCommissionFromReleases = async (connection, commissionId, lotProj
 
   const settings = await getProjectReleaseSettings(connection, lotProjectId);
   const releaseDateInfo = getReleaseDateWarning(settings);
-  const releases = releaseRows.map((release) => mapReleaseRow(release, commission.payment_percent, releaseDateInfo));
+  const releases = releaseRows.map((release) => mapReleaseRow(release, getPaymentPercent(commission), releaseDateInfo));
   const released = roundMoney(
     releases
       .filter((release) => release.status === 'Released')
@@ -386,8 +402,13 @@ export const getLotProjectCommissions = async (req, res) => {
     const params = [project.lot_project_id];
 
     if (status !== 'all') {
+      const statusMap = {
+        'Not Eligible': 'Pending',
+        Partial: 'Partially Released',
+        Completed: 'Released',
+      };
       where.push('c.commission_status = ?');
-      params.push(status);
+      params.push(statusMap[status] || status);
     }
 
     if (saleType !== 'all') {
@@ -416,6 +437,7 @@ export const getLotProjectCommissions = async (req, res) => {
           l.lot_project_listing_tcp,
           cp.buyer_full_name,
           COALESCE(payment_summary.total_paid, 0) AS total_paid,
+          LEAST(100, ROUND((COALESCE(payment_summary.total_paid, 0) / NULLIF(l.lot_project_listing_tcp, 0)) * 100, 2)) AS computed_payment_percent,
           u.first_name,
           u.middle_name,
           u.last_name,
@@ -526,10 +548,18 @@ export const updateLotProjectCommission = async (req, res) => {
 
       const [releaseRows] = await connection.query(
         `
-          SELECT r.*, c.lot_project_id, c.payment_percent
+          SELECT r.*, c.lot_project_id, c.payment_percent, LEAST(100, ROUND((COALESCE(payment_summary.total_paid, 0) / NULLIF(l.lot_project_listing_tcp, 0)) * 100, 2)) AS computed_payment_percent
           FROM lot_project_commission_releases r
           INNER JOIN lot_project_commissions c
             ON c.lot_project_commission_id = r.lot_project_commission_id
+          INNER JOIN lot_project_listings l
+            ON l.lot_project_listing_id = c.lot_project_listing_id
+          LEFT JOIN (
+            SELECT lot_project_listing_id, SUM(lot_project_payment_amount) AS total_paid
+            FROM lot_project_payments
+            WHERE lot_project_payment_status = 'Verified'
+            GROUP BY lot_project_listing_id
+          ) payment_summary ON payment_summary.lot_project_listing_id = c.lot_project_listing_id
           WHERE r.lot_project_commission_release_id = ?
             AND r.lot_project_commission_id = ?
             AND c.lot_project_id = ?
@@ -545,13 +575,20 @@ export const updateLotProjectCommission = async (req, res) => {
         return res.status(404).json({ success: false, message: 'Commission release stage not found.' });
       }
 
-      const computedStatus = normalizeReleaseStatus(release, release.payment_percent);
+      const computedStatus = normalizeReleaseStatus(release, getPaymentPercent(release));
       let nextStatus = computedStatus;
       let message = 'Commission release stage updated successfully.';
       let releasedByUserId = release.released_by_user_id;
       let actualReleaseDate = release.actual_release_date;
 
       if (action === 'release_stage') {
+        const settings = await getProjectReleaseSettings(connection, project.lot_project_id);
+        const releaseDateInfo = getReleaseDateWarning(settings);
+        if (!releaseDateInfo.isReleaseDate) {
+          await connection.rollback();
+          return res.status(400).json({ success: false, message: `Commission releases are only allowed every ${releaseDateInfo.releaseDays.join(' and ')} of the month. Next release date: ${releaseDateInfo.nextReleaseDate}.` });
+        }
+
         if (computedStatus !== 'Eligible') {
           await connection.rollback();
           return res.status(400).json({ success: false, message: `${release.release_stage} is not eligible for release yet.` });
@@ -575,7 +612,7 @@ export const updateLotProjectCommission = async (req, res) => {
         }
         const next = isFinalRelease(release.release_stage)
           ? 'On Hold'
-          : toNumber(release.payment_percent) >= toNumber(release.release_trigger_percent)
+          : getPaymentPercent(release) >= toNumber(release.release_trigger_percent)
             ? 'Eligible'
             : 'Pending';
         nextStatus = next;
@@ -693,3 +730,4 @@ export const updateLotProjectCommission = async (req, res) => {
     connection.release();
   }
 };
+

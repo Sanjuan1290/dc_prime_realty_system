@@ -142,7 +142,7 @@ export const getLotProjectListingProfile = async (req, res) => {
           payment_summary.payment_count,
           payment_summary.latest_payment_date,
           payment_summary.latest_payment_amount,
-          schedule_summary.first_due_date,
+          COALESCE(cp.soa_first_due_date, schedule_summary.first_due_date) AS first_due_date,
           ${sellerNameSelect}
           ${sellerRoleSelect}
           ${sellerEmailSelect}
@@ -155,7 +155,7 @@ export const getLotProjectListingProfile = async (req, res) => {
           commission.gross_commission_amount,
           commission.released_commission_amount AS released_amount,
           commission.commission_status,
-          NULL AS assigned_user_name
+          COALESCE(NULLIF(TRIM(CONCAT_WS(' ', assignedSeller.first_name, assignedSeller.middle_name, assignedSeller.last_name)), ''), NULLIF(TRIM(CONCAT_WS(' ', seller.first_name, seller.middle_name, seller.last_name)), '')) AS assigned_user_name
         FROM lot_project_listings l
         LEFT JOIN lot_project_client_profiles cp
           ON cp.lot_project_listing_id = l.lot_project_listing_id
@@ -171,21 +171,33 @@ export const getLotProjectListingProfile = async (req, res) => {
           GROUP BY lot_project_listing_id
         ) payment_summary ON payment_summary.lot_project_listing_id = l.lot_project_listing_id
         LEFT JOIN (
-          SELECT lot_project_listing_id, MIN(due_date) AS first_due_date
+          SELECT
+            lot_project_listing_id,
+            COALESCE(
+              MIN(CASE WHEN schedule_status IN ('Unpaid', 'Partial') AND LOWER(description) NOT LIKE '%reservation%' THEN due_date END),
+              MIN(CASE WHEN LOWER(description) LIKE '%downpayment%' THEN due_date END),
+              MIN(CASE WHEN LOWER(description) LIKE '%monthly%' THEN due_date END),
+              MIN(due_date)
+            ) AS first_due_date
           FROM lot_project_payment_schedules
           GROUP BY lot_project_listing_id
         ) schedule_summary ON schedule_summary.lot_project_listing_id = l.lot_project_listing_id
         LEFT JOIN (
           SELECT
             lot_project_listing_id,
-            accredited_seller_id,
-            commission_rate,
-            gross_commission_amount,
-            released_commission_amount,
-            commission_status
+            SUM(commission_rate) AS commission_rate,
+            SUM(gross_commission_amount) AS gross_commission_amount,
+            SUM(released_commission_amount) AS released_commission_amount,
+            CASE
+              WHEN SUM(commission_status = 'Cancelled') = COUNT(*) THEN 'Cancelled'
+              WHEN SUM(commission_status = 'On Hold') > 0 THEN 'On Hold'
+              WHEN SUM(commission_status = 'Released') = COUNT(*) THEN 'Released'
+              WHEN SUM(commission_status IN ('Released', 'Partially Released')) > 0 THEN 'Partially Released'
+              WHEN SUM(commission_status = 'Eligible') > 0 THEN 'Eligible'
+              ELSE 'Pending'
+            END AS commission_status
           FROM lot_project_commissions
-          WHERE commission_seller_type IN ('main_seller', 'selling_agent')
-          GROUP BY lot_project_listing_id, accredited_seller_id, commission_rate, gross_commission_amount, released_commission_amount, commission_status
+          GROUP BY lot_project_listing_id
         ) commission ON commission.lot_project_listing_id = l.lot_project_listing_id
         ${assignedSellerJoin}
         LEFT JOIN accredited_sellers acs ON acs.accredited_seller_id = commission.accredited_seller_id
@@ -244,3 +256,4 @@ export const getLotProjectListingProfile = async (req, res) => {
     connection.release();
   }
 };
+

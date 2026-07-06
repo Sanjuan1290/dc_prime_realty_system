@@ -309,8 +309,8 @@ const UnitStatus = ({ listing = fallbackListing, project = {}, onSave, isSaving 
         <DetailBox label="Seller Status" value={unitData.seller_status} />
         <DetailBox label="Accreditation Date" value={unitData.seller_accreditation_date} />
         <DetailBox label="Sale Channel" value={unitData.sale_channel} />
-        <DetailBox label="Commission Rate" value={unitData.commission_rate} />
-        <DetailBox label="Commission Amount" value={unitData.commission_amount} highlight />
+        <DetailBox label="Total Commission Rate" value={unitData.commission_rate} />
+        <DetailBox label="Total Commission" value={unitData.commission_amount} highlight />
         <DetailBox label="Released Amount" value={unitData.released_amount} />
         <DetailBox label="Remaining Commission" value={unitData.remaining_commission} />
         <DetailBox label="Commission Status" value={unitData.commission_status} />
@@ -346,3 +346,4 @@ const UnitStatus = ({ listing = fallbackListing, project = {}, onSave, isSaving 
 }
 
 export default UnitStatus
+

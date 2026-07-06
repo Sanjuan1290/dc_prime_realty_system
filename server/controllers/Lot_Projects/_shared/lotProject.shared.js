@@ -476,6 +476,19 @@ export const canEditBuyerProfileForListing = (status) => {
   return Boolean(statusKey && !['available', 'hold'].includes(statusKey));
 };
 
+
+export const getCommissionStatusLabel = (status = '') => {
+  const labels = {
+    Pending: 'Not Eligible',
+    Eligible: 'Eligible',
+    'Partially Released': 'Partial',
+    Released: 'Completed',
+    'On Hold': 'On Hold',
+    Cancelled: 'Cancelled',
+  };
+  return labels[status] || status || '-';
+};
+
 export const mapProfileListing = (row = {}, project = {}, documents = []) => {
   const area = Number(row.lot_project_listing_area_sqm || 0);
   const pricePerSqm = Number(row.lot_project_listing_price_per_sqm || 0);
@@ -551,8 +564,9 @@ export const mapProfileListing = (row = {}, project = {}, documents = []) => {
     email: row.buyer_email || '-',
     contact_no: row.buyer_contact_number || '-',
     address: row.buyer_present_address || '-',
-    assigned_user: row.assigned_user_name || '-',
-    due_day: row.first_due_date ? plainDate(row.first_due_date) : '-',
+    assigned_user: row.assigned_user_name || row.seller_name || '-',
+    due_day: row.first_due_date ? plainDate(row.first_due_date) : row.soa_first_due_date ? plainDate(row.soa_first_due_date) : '-',
+    first_due_date: row.first_due_date ? plainDate(row.first_due_date) : row.soa_first_due_date ? plainDate(row.soa_first_due_date) : '-',
     total_paid: money(totalPaid),
     totalPaid,
     balance: money(balance),
@@ -574,7 +588,8 @@ export const mapProfileListing = (row = {}, project = {}, documents = []) => {
     commission_amount: money(row.gross_commission_amount || 0),
     released_amount: money(row.released_amount || 0),
     remaining_commission: money(Math.max(Number(row.gross_commission_amount || 0) - Number(row.released_amount || 0), 0)),
-    commission_status: row.commission_status || '-',
+    commission_status: getCommissionStatusLabel(row.commission_status),
+    commission_status_raw: row.commission_status || '-',
     total_documents: String(documents.length),
     required_documents: String(requiredDocuments),
     submitted_documents: String(submittedDocuments),
@@ -1658,3 +1673,4 @@ export const addIfColumnExists = async (connection, tableName, columns, values, 
     values.push(value);
   }
 };
+

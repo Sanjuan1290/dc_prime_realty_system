@@ -11,6 +11,12 @@ const getErrorMessage = (error) => {
   return error?.message || 'Something went wrong.';
 };
 
+const createValidationError = (message) => {
+  const error = new Error(message);
+  error.statusCode = 400;
+  return error;
+};
+
 const validatePoolRate = (value, label = 'Pool rate') => {
   const numberValue = Number(value);
   if (Number.isNaN(numberValue) || numberValue < 6 || numberValue > 15) {
@@ -62,6 +68,76 @@ const normalizeGroupProjectRates = (projectRates = [], projects = []) => {
       `${project.lot_project_name} pool rate`
     ),
   }));
+};
+
+
+const assertPoolRatesCanCoverMemberRates = async (connection, groupId, projectRates = []) => {
+  if (!groupId || !projectRates.length) return;
+
+  for (const projectRate of projectRates) {
+    const projectId = Number(projectRate.lot_project_id);
+    const poolRate = Number(projectRate.seller_group_pool_rate || 0);
+    if (!projectId) continue;
+
+    const [rows] = await connection.query(
+      `
+        SELECT
+          asr.accredited_seller_project_rate AS highest_member_rate,
+          lp.lot_project_name,
+          TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS seller_name
+        FROM accredited_sellers acs
+        INNER JOIN accredited_seller_lot_project_rates asr
+          ON asr.accredited_seller_id = acs.accredited_seller_id
+         AND asr.lot_project_id = ?
+         AND asr.accredited_seller_lot_project_rate_status = 'active'
+        INNER JOIN users u ON u.id = acs.user_id
+        INNER JOIN lot_projects lp ON lp.lot_project_id = asr.lot_project_id
+        WHERE acs.seller_group_id = ?
+          AND acs.accredited_seller_status = 'active'
+        ORDER BY asr.accredited_seller_project_rate DESC, seller_name ASC
+        LIMIT 1
+      `,
+      [projectId, groupId]
+    );
+
+    const highest = rows[0];
+    const highestRate = Number(highest?.highest_member_rate || 0);
+    if (highestRate > poolRate) {
+      throw createValidationError(`${highest.lot_project_name} pool rate cannot be ${poolRate}%. Highest assigned member rate is ${highestRate}% for ${highest.seller_name}. Lower member rates first or set the pool rate to at least ${highestRate}%.`);
+    }
+  }
+};
+
+const assertSellerRatesWithinGroupPool = async (connection, groupId, sellerName, projectRates = []) => {
+  if (!groupId || !projectRates.length) return;
+
+  for (const item of projectRates) {
+    const projectId = Number(item.lot_project_id);
+    const sellerRate = Number(item.accredited_seller_project_rate ?? item.rate ?? 0);
+    if (!projectId) continue;
+
+    const [rows] = await connection.query(
+      `
+        SELECT
+          lp.lot_project_name,
+          COALESCE(sgr.seller_group_pool_rate, 0) AS seller_group_pool_rate
+        FROM lot_projects lp
+        LEFT JOIN seller_group_lot_project_rates sgr
+          ON sgr.lot_project_id = lp.lot_project_id
+         AND sgr.seller_group_id = ?
+         AND sgr.seller_group_lot_project_rate_status = 'active'
+        WHERE lp.lot_project_id = ?
+        LIMIT 1
+      `,
+      [groupId, projectId]
+    );
+
+    const project = rows[0];
+    const poolRate = Number(project?.seller_group_pool_rate || 0);
+    if (poolRate && sellerRate > poolRate) {
+      throw createValidationError(`${sellerName || 'Seller'} rate for ${project.lot_project_name} cannot be ${sellerRate}% because the group pool rate is only ${poolRate}%. Raise the group pool rate first or lower this member rate.`);
+    }
+  }
 };
 
 const upsertGroupProjectRates = async (connection, groupId, projectRates) => {
@@ -195,6 +271,7 @@ export const createGroup = async (req, res) => {
     const groupId = result.insertId;
     const projects = await getActiveLotProjects(connection);
     const normalizedRates = normalizeGroupProjectRates(project_rates, projects);
+    await assertPoolRatesCanCoverMemberRates(connection, groupId, normalizedRates);
     await upsertGroupProjectRates(connection, groupId, normalizedRates);
 
     await connection.commit();
@@ -205,7 +282,7 @@ export const createGroup = async (req, res) => {
     });
   } catch (error) {
     await connection.rollback();
-    return res.status(500).json({ message: getErrorMessage(error) });
+    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
   } finally {
     connection.release();
   }
@@ -304,7 +381,7 @@ export const getGroups = async (req, res) => {
       },
     });
   } catch (error) {
-    return res.status(500).json({ message: getErrorMessage(error) });
+    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
   }
 };
 
@@ -319,7 +396,7 @@ export const getGroupOptions = async (req, res) => {
 
     return res.json({ data: rows });
   } catch (error) {
-    return res.status(500).json({ message: getErrorMessage(error) });
+    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
   }
 };
 
@@ -365,6 +442,7 @@ export const editGroup = async (req, res) => {
 
     const projects = await getActiveLotProjects(connection);
     const normalizedRates = normalizeGroupProjectRates(project_rates, projects);
+    await assertPoolRatesCanCoverMemberRates(connection, groupId, normalizedRates);
     await upsertGroupProjectRates(connection, groupId, normalizedRates);
 
     await connection.commit();
@@ -372,7 +450,7 @@ export const editGroup = async (req, res) => {
     return res.json({ message: 'Seller group updated successfully.' });
   } catch (error) {
     await connection.rollback();
-    return res.status(500).json({ message: getErrorMessage(error) });
+    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
   } finally {
     connection.release();
   }
@@ -400,7 +478,7 @@ export const toggleGroupStatus = async (req, res) => {
 
     return res.json({ message: `Seller group is now ${nextStatus}.`, status: nextStatus });
   } catch (error) {
-    return res.status(500).json({ message: getErrorMessage(error) });
+    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
   }
 };
 
@@ -466,7 +544,7 @@ export const viewGroup = async (req, res) => {
       },
     });
   } catch (error) {
-    return res.status(500).json({ message: getErrorMessage(error) });
+    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
   }
 };
 
@@ -487,6 +565,24 @@ export const editUserRate = async (req, res) => {
     }
 
     await connection.beginTransaction();
+
+    const [sellerRows] = await connection.query(
+      `
+        SELECT TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS seller_name
+        FROM accredited_sellers acs
+        INNER JOIN users u ON u.id = acs.user_id
+        WHERE acs.accredited_seller_id = ?
+          AND acs.seller_group_id = ?
+        LIMIT 1
+      `,
+      [accreditedSellerId, groupId]
+    );
+
+    if (!sellerRows.length) {
+      throw createValidationError('Seller does not belong to this group.');
+    }
+
+    await assertSellerRatesWithinGroupPool(connection, groupId, sellerRows[0]?.seller_name, projectRates);
 
     for (const item of projectRates) {
       const projectId = Number(item.lot_project_id);
@@ -518,8 +614,9 @@ export const editUserRate = async (req, res) => {
     return res.json({ message: 'Seller project rates updated successfully.' });
   } catch (error) {
     await connection.rollback();
-    return res.status(500).json({ message: getErrorMessage(error) });
+    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
   } finally {
     connection.release();
   }
 };
+
