@@ -3,6 +3,7 @@ import {
   db,
   getErrorMessage,
   tableExists,
+  columnExists,
   getProjectBySlug,
   getProjectDefaultDocuments,
   getListingLookupWhere,
@@ -12,6 +13,9 @@ import {
   cleanSecondBuyerRole,
   dateOrNull,
   parseMoneyValue,
+  getComputedSoaTerms,
+  createComputedSoaRows,
+  recomputeComputedSoaBalances,
 } from '../_shared/lotProject.shared.js';
 
 const normalizeNumberOption = (modeValue, customValue, fallback = 0) => {
@@ -34,6 +38,74 @@ const normalizeDocumentPayload = (documents = []) =>
       status: document.status === 'inactive' ? 'inactive' : 'active',
     }))
     .filter((document) => document.document_id);
+
+
+const replaceReservationSchedules = async (connection, projectId, listing, clientProfileId, profileTerms) => {
+  if (!(await tableExists(connection, 'lot_project_payment_schedules'))) return;
+
+  const listingTermsRow = {
+    ...listing,
+    lot_project_client_profile_id: clientProfileId,
+    buyer_full_name: profileTerms.buyerName,
+    soa_mode_of_payment: profileTerms.modeOfPayment,
+    soa_reservation_fee: profileTerms.reservationFee,
+    soa_starting_date: profileTerms.startingDate,
+    soa_first_due_date: profileTerms.firstDueDate,
+    soa_downpayment_percentage: profileTerms.downpaymentPercentage,
+    soa_downpayment_terms: profileTerms.downpaymentTerms,
+    soa_monthly_terms: profileTerms.monthlyTerms,
+    soa_annual_interest_rate: profileTerms.annualInterestRate,
+    soa_dp_discount_percentage: profileTerms.dpDiscountPercentage,
+    soa_legal_misc_fee_mode: profileTerms.legalMiscFeeMode,
+    soa_legal_misc_fee_amount: profileTerms.legalMiscFeeAmount,
+  };
+
+  const computedTerms = getComputedSoaTerms(listingTermsRow, []);
+  const computedRows = createComputedSoaRows(computedTerms);
+  const scheduleRows = recomputeComputedSoaBalances(computedRows, computedTerms);
+
+  await connection.query(
+    `DELETE FROM lot_project_payment_schedules WHERE lot_project_listing_id = ?`,
+    [listing.lot_project_listing_id]
+  );
+
+  if (!scheduleRows.length) return;
+
+  await connection.query(
+    `
+      INSERT INTO lot_project_payment_schedules (
+        lot_project_id,
+        lot_project_listing_id,
+        lot_project_client_profile_id,
+        due_date,
+        description,
+        beginning_balance,
+        due_amount,
+        penalty_amount,
+        amount_paid,
+        date_paid,
+        reference_id,
+        ending_balance,
+        schedule_status
+      ) VALUES ${scheduleRows.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ')}
+    `,
+    scheduleRows.flatMap((row) => [
+      projectId,
+      listing.lot_project_listing_id,
+      clientProfileId,
+      row.dueDate,
+      row.description,
+      Number(row.beginningBalance || 0),
+      Number(row.dueAmount || 0),
+      Number(row.penalty || 0),
+      0,
+      null,
+      null,
+      Number(row.endingBalance || 0),
+      'Unpaid',
+    ])
+  );
+};
 
 const insertReservationDocuments = async (connection, projectId, listingId, clientProfileId, requestedDocuments) => {
   if (!(await tableExists(connection, 'lot_project_listing_documents'))) return;
@@ -111,7 +183,10 @@ export const reserveLotProjectListing = async (req, res) => {
       return res.status(500).json({ message: 'lot_project_client_profiles table does not exist.' });
     }
 
-    const lookup = getListingLookupWhere(listingLookup);
+    const lookup = getListingLookupWhere(listingLookup, '');
+    const hasAnnualInterestRate = await columnExists(connection, 'lot_project_listings', 'annual_interest_rate');
+    const annualInterestSelect = hasAnnualInterestRate ? 'annual_interest_rate' : '0 AS annual_interest_rate';
+
     const [listingRows] = await connection.query(
       `
         SELECT
@@ -121,7 +196,7 @@ export const reserveLotProjectListing = async (req, res) => {
           lot_project_listing_tcp,
           lot_project_listing_lmf_amount,
           lot_project_listing_reservation_fee,
-          annual_interest_rate
+          ${annualInterestSelect}
         FROM lot_project_listings
         WHERE lot_project_id = ?
           AND ${lookup.sql}
@@ -174,6 +249,36 @@ export const reserveLotProjectListing = async (req, res) => {
     const saleChannel = String(reservation.saleChannel || terms.saleChannel || 'distributed') === 'direct_to_developer'
       ? 'direct_to_developer'
       : 'distributed';
+
+    if (!assignedSellerId) {
+      return res.status(400).json({ message: 'Assigned seller / unit manager is required.' });
+    }
+
+    if (await tableExists(connection, 'accredited_sellers')) {
+      const [sellerRows] = await connection.query(
+        `
+          SELECT
+            acs.accredited_seller_id,
+            acs.accredited_seller_status,
+            u.id AS user_id,
+            u.role,
+            u.status AS user_status,
+            sg.seller_group_name,
+            sg.seller_group_status
+          FROM accredited_sellers acs
+          INNER JOIN users u ON u.id = acs.user_id
+          LEFT JOIN seller_groups sg ON sg.seller_group_id = acs.seller_group_id
+          WHERE acs.accredited_seller_id = ?
+          LIMIT 1
+        `,
+        [assignedSellerId]
+      );
+
+      const assignedSeller = sellerRows[0];
+      if (!assignedSeller || assignedSeller.accredited_seller_status !== 'active' || assignedSeller.user_status !== 'active') {
+        return res.status(400).json({ message: 'Assigned seller / unit manager is not active.' });
+      }
+    }
 
     const tableName = 'lot_project_client_profiles';
     const columns = [
@@ -338,6 +443,21 @@ export const reserveLotProjectListing = async (req, res) => {
       Array.isArray(req.body.documents) ? req.body.documents : []
     );
 
+    await replaceReservationSchedules(connection, project.lot_project_id, listing, clientProfileId, {
+      buyerName,
+      modeOfPayment,
+      reservationFee,
+      startingDate: dateOrNull(terms.startingDate) || new Date().toISOString().slice(0, 10),
+      firstDueDate: dateOrNull(terms.firstDueDate) || new Date().toISOString().slice(0, 10),
+      downpaymentPercentage: Number.isNaN(downpaymentPercentage) ? 30 : downpaymentPercentage,
+      downpaymentTerms: Number.isNaN(downpaymentTerms) ? 3 : downpaymentTerms,
+      monthlyTerms: Number.isNaN(monthlyTerms) ? 36 : monthlyTerms,
+      annualInterestRate: parseMoneyValue(terms.interestRate || listing.annual_interest_rate || 0),
+      dpDiscountPercentage: parseMoneyValue(terms.dpDiscountPercentage || 0),
+      legalMiscFeeMode,
+      legalMiscFeeAmount,
+    });
+
     await connection.commit();
 
     return res.status(201).json({
@@ -354,4 +474,3 @@ export const reserveLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
-

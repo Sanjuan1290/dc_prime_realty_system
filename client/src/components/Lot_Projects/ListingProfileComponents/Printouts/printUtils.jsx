@@ -40,7 +40,7 @@ export const getValue = (source, keys, fallback = '-') => {
 
 export const readPrintPayload = () => {
   try {
-    const saved = localStorage.getItem('bailen_print_payload')
+    const saved = localStorage.getItem('lot_project_print_payload') || localStorage.getItem('bailen_print_payload')
     if (!saved) return {}
 
     return JSON.parse(saved)
@@ -72,75 +72,23 @@ export const PrintCell = ({ children, className = '' }) => (
   </div>
 )
 
-export const getNormalizedSoaRows = (soaRows = [], listing = {}) => {
-  if (soaRows.length) {
-    return soaRows.map((row, index) => ({
-      id: row.id || index + 1,
-      dueDate: row.dueDate || row.due_date || '-',
-      description: row.description || row.payment_description || '-',
-      dueAmount: cleanMoney(row.dueAmount ?? row.due_amount),
-      penalty: cleanMoney(row.penalty ?? row.penaltyAmount ?? row.penalty_amount),
-      datePaid: row.datePaid || row.date_paid || '-',
-      amountPaid: cleanMoney(row.amountPaid ?? row.amount_paid),
-      referenceId: row.referenceId || row.reference_id || row.reference || '-',
-      remainingBalance: cleanMoney(
-        row.remainingBalance ??
-          row.endingBalance ??
-          row.runningBalance ??
-          row.ending_balance
-      ),
-    }))
-  }
+export const getNormalizedSoaRows = (soaRows = []) => {
+  if (!soaRows.length) return []
 
-  const tcp = cleanMoney(getValue(listing, ['tcp', 'tcpAmount'], 396000))
-  const reservationFee = cleanMoney(getValue(listing, ['reservationFee'], 50000))
-  const downpayment = cleanMoney(getValue(listing, ['downpayment'], 118800))
-  const monthly = cleanMoney(getValue(listing, ['monthlyAmortization'], 6311))
-
-  return [
-    {
-      id: 1,
-      dueDate: '2026-07-01',
-      description: 'Reservation Fee',
-      dueAmount: reservationFee,
-      penalty: 0,
-      datePaid: '-',
-      amountPaid: 0,
-      referenceId: '-',
-      remainingBalance: tcp,
-    },
-    {
-      id: 2,
-      dueDate: '2026-07-15',
-      description: 'Downpayment',
-      dueAmount: downpayment,
-      penalty: 0,
-      datePaid: '-',
-      amountPaid: 0,
-      referenceId: '-',
-      remainingBalance: tcp - reservationFee,
-    },
-    {
-      id: 3,
-      dueDate: '2026-08-15',
-      description: 'Monthly Amortization 1',
-      dueAmount: monthly,
-      penalty: 0,
-      datePaid: '-',
-      amountPaid: 0,
-      referenceId: '-',
-      remainingBalance: tcp - reservationFee - downpayment,
-    },
-    {
-      id: 4,
-      dueDate: '2026-09-15',
-      description: 'Monthly Amortization 2',
-      dueAmount: monthly,
-      penalty: 0,
-      datePaid: '-',
-      amountPaid: 0,
-      referenceId: '-',
-      remainingBalance: tcp - reservationFee - downpayment - monthly,
-    },
-  ]
+  return soaRows.map((row, index) => ({
+    id: row.id || row.lot_project_payment_schedule_id || index + 1,
+    dueDate: row.dueDate || row.due_date || '-',
+    description: row.description || row.payment_description || '-',
+    dueAmount: cleanMoney(row.dueAmount ?? row.due_amount),
+    penalty: cleanMoney(row.penalty ?? row.penaltyAmount ?? row.penalty_amount),
+    datePaid: row.datePaid || row.date_paid || '-',
+    amountPaid: cleanMoney(row.amountPaid ?? row.amount_paid),
+    referenceId: row.referenceId || row.reference_id || row.reference || '-',
+    remainingBalance: cleanMoney(
+      row.remainingBalance ??
+        row.endingBalance ??
+        row.runningBalance ??
+        row.ending_balance
+    ),
+  }))
 }

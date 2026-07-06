@@ -338,12 +338,30 @@ export const deleteLotProjectListingPayment = async (req, res) => {
 
     await connection.query(
       `
-        DELETE FROM lot_project_payments
+        UPDATE lot_project_payments
+        SET lot_project_payment_status = 'Cancelled',
+            lot_project_payment_updated_at = NOW()
         WHERE lot_project_payment_id = ?
           AND lot_project_id = ?
           AND lot_project_listing_id = ?
       `,
       [paymentId, project.lot_project_id, listing.lot_project_listing_id]
+    );
+
+    await connection.query(
+      `
+        INSERT INTO lot_project_payment_logs (
+          lot_project_payment_id,
+          action_type,
+          action_description,
+          action_by_user_id
+        ) VALUES (?, 'deleted', ?, ?)
+      `,
+      [
+        paymentId,
+        `Payment ${existingPayment.lot_project_payment_reference_id || paymentId} deleted by ${getUserFullName(actionUser)}.`,
+        actionUser?.id || null,
+      ]
     );
 
     await connection.commit();
@@ -359,4 +377,3 @@ export const deleteLotProjectListingPayment = async (req, res) => {
     connection.release();
   }
 };
-

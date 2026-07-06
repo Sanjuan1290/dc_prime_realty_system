@@ -143,9 +143,15 @@ const ListingProfile = () => {
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/documents/${document.id}/upload`,
         payload
       ),
+    onMutate: ({ document }) => {
+      setAlert({ type: 'loading', message: `Uploading ${document?.name || 'document'}...` })
+    },
     onSuccess: (result) => {
       setAlert({ type: 'success', message: result?.message || 'Document uploaded successfully.' })
       queryClient.invalidateQueries({ queryKey: ['lot-listing-profile', projectSlug, listingId] })
+    },
+    onError: (error) => {
+      setAlert({ type: 'error', message: error?.message || 'Failed to upload document.' })
     },
   })
 
@@ -155,9 +161,15 @@ const ListingProfile = () => {
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/documents/${document.id}/approve`,
         {}
       ),
+    onMutate: (document) => {
+      setAlert({ type: 'loading', message: `Approving ${document?.name || 'document'}...` })
+    },
     onSuccess: (result) => {
       setAlert({ type: 'success', message: result?.message || 'Document approved successfully.' })
       queryClient.invalidateQueries({ queryKey: ['lot-listing-profile', projectSlug, listingId] })
+    },
+    onError: (error) => {
+      setAlert({ type: 'error', message: error?.message || 'Failed to approve document.' })
     },
   })
 
@@ -167,9 +179,15 @@ const ListingProfile = () => {
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/documents/${document.id}/clear`,
         {}
       ),
+    onMutate: (document) => {
+      setAlert({ type: 'loading', message: `Clearing ${document?.name || 'document'}...` })
+    },
     onSuccess: (result) => {
       setAlert({ type: 'warning', message: result?.message || 'Document cleared successfully.' })
       queryClient.invalidateQueries({ queryKey: ['lot-listing-profile', projectSlug, listingId] })
+    },
+    onError: (error) => {
+      setAlert({ type: 'error', message: error?.message || 'Failed to clear document.' })
     },
   })
 
@@ -351,7 +369,7 @@ const ListingProfile = () => {
       ) : null}
 
       {!profileQuery.isLoading && !profileQuery.isError && activeTab === 'printouts' ? (
-        <Printouts listing={listing} client={client} soaRows={soaRows} documents={documents} />
+        <Printouts projectSlug={projectSlug} listing={listing} client={client} soaRows={soaRows} documents={documents} />
       ) : null}
 
       {showReserveModal ? (
@@ -372,4 +390,3 @@ const ListingProfile = () => {
 }
 
 export default ListingProfile
-

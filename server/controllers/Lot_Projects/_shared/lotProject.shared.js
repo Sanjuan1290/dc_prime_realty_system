@@ -357,17 +357,21 @@ export const getProjectCadastralLots = async (lotProjectId) => {
 };
 
 
-export const getListingLookupWhere = (value) => {
+export const getListingLookupWhere = (value, alias = 'l') => {
   const clean = String(value || '').trim();
+  const requestedAlias = String(alias || '').trim();
+  const safeAlias = /^[A-Za-z_][A-Za-z0-9_]*$/.test(requestedAlias) ? requestedAlias : '';
+  const column = (columnName) => (safeAlias ? `${safeAlias}.${columnName}` : columnName);
+
   if (/^\d+$/.test(clean)) {
     return {
-      sql: 'l.lot_project_listing_id = ?',
+      sql: `${column('lot_project_listing_id')} = ?`,
       params: [Number(clean)],
     };
   }
 
   return {
-    sql: 'l.lot_project_listing_unit_id = ?',
+    sql: `${column('lot_project_listing_unit_id')} = ?`,
     params: [clean.toUpperCase()],
   };
 };
@@ -704,11 +708,11 @@ export const createBalloonPrincipalRow = (payment = {}, index = 1) => {
 export const getRowSortOrder = (row = {}) => {
   const order = {
     reservation: 1,
-    downpayment: 2,
     legal_misc: 2,
-    monthly: 3,
-    full_payment: 3,
-    balloon: 4,
+    downpayment: 3,
+    monthly: 4,
+    full_payment: 5,
+    balloon: 6,
   };
 
   return order[row.scheduleType] || 9;
@@ -883,10 +887,18 @@ export const getComputedSoaTerms = (listingRow = {}, existingScheduleRows = []) 
   );
 
   const startingDate = normalizeDateInput(
-    listingRow.soa_starting_date || listingRow.starting_date || firstExistingRow.due_date || new Date()
+    listingRow.soa_starting_date ||
+      listingRow.starting_date ||
+      existingReservationRow?.due_date ||
+      firstExistingRow.due_date ||
+      new Date()
   );
   const firstDueDate = normalizeDateInput(
-    listingRow.soa_first_due_date || listingRow.first_due_date || firstExistingRow.due_date || startingDate
+    listingRow.soa_first_due_date ||
+      listingRow.first_due_date ||
+      existingDownpaymentRows[0]?.due_date ||
+      firstExistingRow.due_date ||
+      startingDate
   );
 
   const annualInterestRate = Number(
@@ -1423,6 +1435,7 @@ export const getListingPayments = async (connection, lotProjectId, listingId) =>
         ON u.id = p.lot_project_payment_verified_by_user_id
       WHERE p.lot_project_id = ?
         AND p.lot_project_listing_id = ?
+        AND p.lot_project_payment_status = 'Verified'
       ORDER BY p.lot_project_payment_date DESC, p.lot_project_payment_id DESC
     `,
     [lotProjectId, listingId]
@@ -1630,4 +1643,3 @@ export const addIfColumnExists = async (connection, tableName, columns, values, 
     values.push(value);
   }
 };
-

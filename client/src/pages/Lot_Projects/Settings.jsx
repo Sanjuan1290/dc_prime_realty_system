@@ -1,18 +1,21 @@
 import { useState } from 'react'
-import { FiEdit2, FiSettings } from 'react-icons/fi'
+import { useParams } from 'react-router-dom'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { FiEdit2, FiRefreshCw, FiSettings } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
 import EditSettingsModal from '../../components/Lot_Projects/SettingsComponents/EditSettingsModal/EditSettingsModal'
+import { useFetch, useFetchPut } from '../../utils/useFetch'
 
-const initialSettings = {
-  releaseDayOne: '7',
-  releaseDayTwo: '22',
-  reservationContactName: 'D&C Prime Realty',
-  reservationContactEmail: 'dcprimerealty@gmail.com',
-  reservationContactNumber: '0912-345-6789',
-  companyName: 'D&C Prime Realty',
-  companyEmail: 'dcprimerealty@gmail.com',
-  companyContactNumber: '(046) 866-0616',
+const daySuffix = (value) => {
+  const number = Number(value || 0)
+  if (!number) return '-'
+  if ([11, 12, 13].includes(number % 100)) return `${number}th of the month`
+  const last = number % 10
+  if (last === 1) return `${number}st of the month`
+  if (last === 2) return `${number}nd of the month`
+  if (last === 3) return `${number}rd of the month`
+  return `${number}th of the month`
 }
 
 const InfoItem = ({ label, value }) => (
@@ -38,18 +41,44 @@ const SettingCard = ({ title, description, children }) => (
 )
 
 const Settings = () => {
-  const [settings, setSettings] = useState(initialSettings)
+  const { projectSlug } = useParams()
+  const queryClient = useQueryClient()
   const [showEdit, setShowEdit] = useState(false)
   const [alert, setAlert] = useState(null)
 
-  const handleSaveSettings = (updatedSettings) => {
-    setSettings(updatedSettings)
-    setShowEdit(false)
+  const { data, isLoading, isFetching, isError, error, refetch } = useQuery({
+    queryKey: ['lot-project-settings', projectSlug],
+    queryFn: () => useFetch(`/projects/lot-projects/${projectSlug}/settings`),
+    enabled: Boolean(projectSlug),
+  })
 
-    setAlert({
-      type: 'success',
-      message: 'Settings saved successfully in mock mode.',
-    })
+  const settings = data?.data || {}
+  const project = data?.project || {}
+  const canEdit = Boolean(data?.canEdit)
+
+  const updateSettingsMutation = useMutation({
+    mutationFn: (payload) => useFetchPut(`/projects/lot-projects/${projectSlug}/settings`, payload),
+    onMutate: () => {
+      setAlert({ type: 'loading', message: 'Saving project settings...' })
+    },
+    onSuccess: (result) => {
+      setShowEdit(false)
+      setAlert({ type: 'success', message: result?.message || 'Project settings saved successfully.' })
+      queryClient.invalidateQueries({ queryKey: ['lot-project-settings', projectSlug] })
+      queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] })
+    },
+    onError: (mutationError) => {
+      setAlert({ type: 'error', message: mutationError?.message || 'Failed to save settings.' })
+    },
+  })
+
+  const handleSaveSettings = (updatedSettings) => {
+    updateSettingsMutation.mutate(updatedSettings)
+  }
+
+  const handleRefresh = () => {
+    setAlert({ type: 'info', message: 'Refreshing project settings...' })
+    refetch()
   }
 
   return (
@@ -58,32 +87,53 @@ const Settings = () => {
         <StatusAlert
           type={alert.type}
           message={alert.message}
-          onClose={() => setAlert(null)}
+          onClose={alert.type === 'loading' ? undefined : () => setAlert(null)}
         />
       ) : null}
+      {isLoading ? <StatusAlert type="loading" message="Loading project settings..." /> : null}
+      {!isLoading && isFetching ? <StatusAlert type="info" message="Refreshing project settings..." /> : null}
+      {isError ? <StatusAlert type="error" message={error?.message || 'Failed to load settings.'} /> : null}
 
       <section className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <PageHeader
-          title="Bailen Settings"
+          title={`${project.name || 'Lot Project'} Settings`}
           description="Manage commission release days, reservation contact, and company information."
           icon={FiSettings}
         />
 
-        <button
-          type="button"
-          onClick={() => {
-            setShowEdit(true)
-            setAlert({
-              type: 'info',
-              message: 'Edit Settings opened.',
-            })
-          }}
-          className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98]"
-        >
-          <FiEdit2 className="h-4 w-4" />
-          Edit Settings
-        </button>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <button
+            type="button"
+            onClick={handleRefresh}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 active:scale-[0.98]"
+          >
+            <FiRefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              if (!canEdit) {
+                setAlert({ type: 'warning', message: 'Only super admin can edit project settings.' })
+                return
+              }
+
+              setShowEdit(true)
+              setAlert({ type: 'info', message: 'Edit Settings opened.' })
+            }}
+            disabled={isLoading || updateSettingsMutation.isPending}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <FiEdit2 className="h-4 w-4" />
+            {canEdit ? 'Edit Settings' : 'View Only'}
+          </button>
+        </div>
       </section>
+
+      {!canEdit && !isLoading ? (
+        <StatusAlert type="info" message="Settings are view-only for this account. Only super admin can edit release days and project contact details." />
+      ) : null}
 
       <section className="grid gap-4 md:grid-cols-2">
         <SettingCard
@@ -91,14 +141,8 @@ const Settings = () => {
           description="Allowed days when Super Admin can release eligible commissions."
         >
           <div className="grid gap-3 sm:grid-cols-2">
-            <InfoItem
-              label="First Release Day"
-              value={`${settings.releaseDayOne}th of the month`}
-            />
-            <InfoItem
-              label="Second Release Day"
-              value={`${settings.releaseDayTwo}nd of the month`}
-            />
+            <InfoItem label="First Release Day" value={daySuffix(settings.releaseDayOne)} />
+            <InfoItem label="Second Release Day" value={daySuffix(settings.releaseDayTwo)} />
           </div>
         </SettingCard>
 
@@ -116,9 +160,7 @@ const Settings = () => {
 
       <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
         <div>
-          <h2 className="text-lg font-black text-slate-950">
-            Company Information
-          </h2>
+          <h2 className="text-lg font-black text-slate-950">Company Information</h2>
           <p className="mt-1 text-sm font-semibold text-slate-500">
             Used for printouts, headers, and system identity.
           </p>
@@ -127,22 +169,18 @@ const Settings = () => {
         <div className="mt-5 grid gap-3 md:grid-cols-3">
           <InfoItem label="Company Name" value={settings.companyName} />
           <InfoItem label="Company Email" value={settings.companyEmail} />
-          <InfoItem
-            label="Company Contact Number"
-            value={settings.companyContactNumber}
-          />
+          <InfoItem label="Company Contact Number" value={settings.companyContactNumber} />
         </div>
       </section>
 
       {showEdit ? (
         <EditSettingsModal
           settings={settings}
+          isSaving={updateSettingsMutation.isPending}
           onClose={() => {
+            if (updateSettingsMutation.isPending) return
             setShowEdit(false)
-            setAlert({
-              type: 'info',
-              message: 'Edit cancelled.',
-            })
+            setAlert({ type: 'info', message: 'Edit cancelled.' })
           }}
           onSave={handleSaveSettings}
         />

@@ -15,6 +15,7 @@ import SellerGroup from "./pages/System/SellerGroup";
 import Users from "./pages/System/Users";
 import Accredited from "./pages/System/Accredited";
 import Projects from "./pages/System/Projects";
+import Notifications from "./pages/System/Notifications";
 
 import LotDashboard from "./pages/Lot_Projects/Dashboard";
 import LotListings from "./pages/Lot_Projects/Listings";
@@ -40,6 +41,7 @@ const App = () => {
           <Route path="users" element={<Users />} />
           <Route path="accredited" element={<Accredited />} />
           <Route path="users/seller_group" element={<SellerGroup />} />
+          <Route path="notifications" element={<Notifications />} />
         </Route>
 
         <Route path="/lot-projects/:projectSlug" element={<LotLayout />}>

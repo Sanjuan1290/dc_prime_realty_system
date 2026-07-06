@@ -1,0 +1,537 @@
+import {
+  db,
+  getAuthenticatedUser,
+  getErrorMessage,
+  tableExists,
+} from '../Lot_Projects/_shared/lotProject.shared.js';
+
+const toDateOnly = (value) => {
+  if (!value) return '-';
+  if (typeof value === 'string') return value.slice(0, 10);
+  return new Date(value).toISOString().slice(0, 10);
+};
+
+const toMoneyNumber = (value) => Number(Number(value || 0).toFixed(2));
+
+const money = (value) =>
+  new Intl.NumberFormat('en-PH', {
+    style: 'currency',
+    currency: 'PHP',
+    minimumFractionDigits: 2,
+  }).format(Number(value || 0));
+
+const fullName = (row = {}) => {
+  const name = [row.buyer_first_name, row.buyer_middle_name, row.buyer_last_name]
+    .map((part) => String(part || '').trim())
+    .filter(Boolean)
+    .join(' ');
+
+  return row.buyer_full_name || name || 'No buyer name';
+};
+
+const adminRoles = new Set(['super_admin', 'admin']);
+
+const canManageNotifications = (user = {}) => adminRoles.has(user.role);
+
+const notificationLogTableSql = `
+  CREATE TABLE IF NOT EXISTS lot_project_notification_logs (
+    notification_log_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    lot_project_id INT UNSIGNED NULL,
+    lot_project_listing_id INT UNSIGNED NULL,
+    lot_project_client_profile_id INT UNSIGNED NULL,
+    lot_project_payment_schedule_id INT UNSIGNED NULL,
+    notification_type ENUM('due_soon','overdue') NOT NULL,
+    recipient_email VARCHAR(150) NOT NULL,
+    subject VARCHAR(255) NOT NULL,
+    message TEXT NOT NULL,
+    sent_by_user_id INT UNSIGNED NULL,
+    sent_at DATETIME NULL,
+    send_status ENUM('sent','failed','contacted') NOT NULL DEFAULT 'sent',
+    error_message TEXT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (notification_log_id),
+    KEY idx_notification_schedule (lot_project_payment_schedule_id),
+    KEY idx_notification_project (lot_project_id),
+    KEY idx_notification_listing (lot_project_listing_id),
+    KEY idx_notification_client (lot_project_client_profile_id),
+    KEY idx_notification_sender (sent_by_user_id),
+    CONSTRAINT fk_notification_project
+      FOREIGN KEY (lot_project_id) REFERENCES lot_projects (lot_project_id)
+      ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT fk_notification_listing
+      FOREIGN KEY (lot_project_listing_id) REFERENCES lot_project_listings (lot_project_listing_id)
+      ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT fk_notification_client_profile
+      FOREIGN KEY (lot_project_client_profile_id) REFERENCES lot_project_client_profiles (lot_project_client_profile_id)
+      ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT fk_notification_schedule
+      FOREIGN KEY (lot_project_payment_schedule_id) REFERENCES lot_project_payment_schedules (lot_project_payment_schedule_id)
+      ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT fk_notification_sender
+      FOREIGN KEY (sent_by_user_id) REFERENCES users (id)
+      ON DELETE SET NULL ON UPDATE CASCADE
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+`;
+
+const ensureNotificationTable = async (connection) => {
+  await connection.query(notificationLogTableSql);
+};
+
+const mapNotificationRow = (row = {}) => {
+  const dueAmount = toMoneyNumber(row.due_amount);
+  const penaltyAmount = toMoneyNumber(row.penalty_amount);
+  const amountPaid = toMoneyNumber(row.amount_paid);
+  const totalDue = toMoneyNumber(dueAmount + penaltyAmount);
+  const balance = toMoneyNumber(Math.max(totalDue - amountPaid, 0));
+  const notificationType = row.notification_type || (row.is_overdue ? 'overdue' : 'due_soon');
+
+  return {
+    id: row.lot_project_payment_schedule_id,
+    scheduleId: row.lot_project_payment_schedule_id,
+    notificationType,
+    statusLabel: notificationType === 'overdue' ? 'Overdue' : 'Due Soon',
+    projectId: row.lot_project_id,
+    projectName: row.lot_project_name || 'Lot Project',
+    projectSlug: row.lot_project_slug,
+    listingId: row.lot_project_listing_id,
+    unitId: row.lot_project_listing_unit_id,
+    clientProfileId: row.lot_project_client_profile_id,
+    buyerName: fullName(row),
+    buyerEmail: row.buyer_email || '',
+    buyerContactNumber: row.buyer_contact_number || '',
+    dueDate: toDateOnly(row.due_date),
+    description: row.description || '-',
+    dueAmount,
+    penaltyAmount,
+    amountPaid,
+    paymentDue: balance,
+    balance,
+    totalDue,
+    scheduleStatus: row.schedule_status || 'Unpaid',
+    lastNotificationStatus: row.last_notification_status || null,
+    lastNotificationAt: row.last_notification_at ? toDateOnly(row.last_notification_at) : null,
+    lastNotificationType: row.last_notification_type || null,
+    listingPath: row.lot_project_slug && row.lot_project_listing_unit_id
+      ? `/lot-projects/${row.lot_project_slug}/listings/${row.lot_project_listing_unit_id}`
+      : '',
+  };
+};
+
+const getScheduleNotificationRow = async (connection, scheduleId) => {
+  const [rows] = await connection.query(
+    `
+      SELECT
+        s.*,
+        p.lot_project_name,
+        p.lot_project_slug,
+        l.lot_project_listing_unit_id,
+        cp.buyer_first_name,
+        cp.buyer_middle_name,
+        cp.buyer_last_name,
+        cp.buyer_full_name,
+        cp.buyer_email,
+        cp.buyer_contact_number,
+        CASE
+          WHEN s.due_date < CURDATE() THEN 'overdue'
+          ELSE 'due_soon'
+        END AS notification_type
+      FROM lot_project_payment_schedules s
+      INNER JOIN lot_projects p
+        ON p.lot_project_id = s.lot_project_id
+      INNER JOIN lot_project_listings l
+        ON l.lot_project_listing_id = s.lot_project_listing_id
+      INNER JOIN lot_project_client_profiles cp
+        ON cp.lot_project_client_profile_id = s.lot_project_client_profile_id
+      WHERE s.lot_project_payment_schedule_id = ?
+      LIMIT 1
+    `,
+    [scheduleId]
+  );
+
+  return rows[0] || null;
+};
+
+const buildNotificationMessage = (row = {}) => {
+  const notification = mapNotificationRow(row);
+  const isOverdue = notification.notificationType === 'overdue';
+  const subject = isOverdue
+    ? `Overdue Payment Notice - ${notification.projectName} ${notification.unitId}`
+    : `Payment Reminder - ${notification.projectName} ${notification.unitId}`;
+
+  const textMessage = [
+    `Hello ${notification.buyerName},`,
+    '',
+    isOverdue
+      ? 'This is a payment overdue notice for your real estate account.'
+      : 'This is a payment reminder for your upcoming due date.',
+    '',
+    `Project: ${notification.projectName}`,
+    `Unit ID: ${notification.unitId}`,
+    `Due Date: ${notification.dueDate}`,
+    `Description: ${notification.description}`,
+    `Payment Due: ${money(notification.paymentDue)}`,
+    `Penalty: ${money(notification.penaltyAmount)}`,
+    `Remaining Balance: ${money(notification.balance)}`,
+    '',
+    'Please coordinate with D&C Prime Realty for payment confirmation.',
+    '',
+    'Thank you.',
+  ].join('\n');
+
+  const htmlMessage = `
+    <div style="font-family:Arial,sans-serif;color:#0f172a;line-height:1.6">
+      <p>Hello <strong>${notification.buyerName}</strong>,</p>
+      <p>${isOverdue
+        ? 'This is a payment overdue notice for your real estate account.'
+        : 'This is a payment reminder for your upcoming due date.'}</p>
+      <table cellpadding="8" cellspacing="0" style="border-collapse:collapse;border:1px solid #e2e8f0;min-width:420px">
+        <tr><td style="border:1px solid #e2e8f0;font-weight:bold">Project</td><td style="border:1px solid #e2e8f0">${notification.projectName}</td></tr>
+        <tr><td style="border:1px solid #e2e8f0;font-weight:bold">Unit ID</td><td style="border:1px solid #e2e8f0">${notification.unitId}</td></tr>
+        <tr><td style="border:1px solid #e2e8f0;font-weight:bold">Due Date</td><td style="border:1px solid #e2e8f0">${notification.dueDate}</td></tr>
+        <tr><td style="border:1px solid #e2e8f0;font-weight:bold">Description</td><td style="border:1px solid #e2e8f0">${notification.description}</td></tr>
+        <tr><td style="border:1px solid #e2e8f0;font-weight:bold">Payment Due</td><td style="border:1px solid #e2e8f0">${money(notification.paymentDue)}</td></tr>
+        <tr><td style="border:1px solid #e2e8f0;font-weight:bold">Penalty</td><td style="border:1px solid #e2e8f0">${money(notification.penaltyAmount)}</td></tr>
+        <tr><td style="border:1px solid #e2e8f0;font-weight:bold">Remaining Balance</td><td style="border:1px solid #e2e8f0">${money(notification.balance)}</td></tr>
+      </table>
+      <p>Please coordinate with D&amp;C Prime Realty for payment confirmation.</p>
+      <p>Thank you.</p>
+    </div>
+  `;
+
+  return { subject, textMessage, htmlMessage };
+};
+
+const sendEmail = async ({ to, subject, text, html }) => {
+  const requiredEnv = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS'];
+  const missing = requiredEnv.filter((key) => !String(process.env[key] || '').trim());
+
+  if (missing.length > 0) {
+    throw new Error(`SMTP is not configured. Missing: ${missing.join(', ')}`);
+  }
+
+  let nodemailer;
+  try {
+    nodemailer = await import('nodemailer');
+  } catch {
+    throw new Error('Email package is missing. Run npm install in the server folder first.');
+  }
+
+  const transporter = nodemailer.default.createTransport({
+    host: process.env.SMTP_HOST,
+    port: Number(process.env.SMTP_PORT || 587),
+    secure: String(process.env.SMTP_SECURE || '').toLowerCase() === 'true',
+    auth: {
+      user: process.env.SMTP_USER,
+      pass: process.env.SMTP_PASS,
+    },
+  });
+
+  await transporter.sendMail({
+    from: process.env.SMTP_FROM || process.env.SMTP_USER,
+    to,
+    subject,
+    text,
+    html,
+  });
+};
+
+export const getPaymentDueNotifications = async (req, res) => {
+  const connection = await db.getConnection();
+
+  try {
+    const user = await getAuthenticatedUser(req);
+    if (!user) return res.status(401).json({ message: 'Please login before viewing notifications.' });
+    if (!canManageNotifications(user)) return res.status(403).json({ message: 'Admin access only.' });
+
+    if (!(await tableExists(connection, 'lot_project_payment_schedules'))) {
+      return res.status(500).json({ message: 'lot_project_payment_schedules table does not exist.' });
+    }
+
+    await ensureNotificationTable(connection);
+
+    const category = String(req.query.category || 'all').toLowerCase();
+    const search = String(req.query.search || '').trim();
+    const projectSlug = String(req.query.projectSlug || '').trim();
+
+    const where = [
+      `s.schedule_status IN ('Unpaid', 'Partial', 'Overdue')`,
+      `GREATEST((s.due_amount + s.penalty_amount) - s.amount_paid, 0) > 0`,
+      `(
+        (s.due_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY))
+        OR s.due_date < CURDATE()
+      )`,
+    ];
+    const params = [];
+
+    if (category === 'due_soon') {
+      where.push(`s.due_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)`);
+    }
+
+    if (category === 'overdue') {
+      where.push(`s.due_date < CURDATE()`);
+    }
+
+    if (projectSlug) {
+      where.push(`p.lot_project_slug = ?`);
+      params.push(projectSlug);
+    }
+
+    if (search) {
+      where.push(`(
+        p.lot_project_name LIKE ?
+        OR l.lot_project_listing_unit_id LIKE ?
+        OR cp.buyer_full_name LIKE ?
+        OR cp.buyer_email LIKE ?
+        OR s.description LIKE ?
+      )`);
+      const like = `%${search}%`;
+      params.push(like, like, like, like, like);
+    }
+
+    const [rows] = await connection.query(
+      `
+        SELECT
+          s.*,
+          p.lot_project_name,
+          p.lot_project_slug,
+          l.lot_project_listing_unit_id,
+          cp.buyer_first_name,
+          cp.buyer_middle_name,
+          cp.buyer_last_name,
+          cp.buyer_full_name,
+          cp.buyer_email,
+          cp.buyer_contact_number,
+          CASE
+            WHEN s.due_date < CURDATE() THEN 'overdue'
+            ELSE 'due_soon'
+          END AS notification_type,
+          latest_log.send_status AS last_notification_status,
+          latest_log.created_at AS last_notification_at,
+          latest_log.notification_type AS last_notification_type
+        FROM lot_project_payment_schedules s
+        INNER JOIN lot_projects p
+          ON p.lot_project_id = s.lot_project_id
+        INNER JOIN lot_project_listings l
+          ON l.lot_project_listing_id = s.lot_project_listing_id
+        INNER JOIN lot_project_client_profiles cp
+          ON cp.lot_project_client_profile_id = s.lot_project_client_profile_id
+        LEFT JOIN (
+          SELECT nl.*
+          FROM lot_project_notification_logs nl
+          INNER JOIN (
+            SELECT lot_project_payment_schedule_id, MAX(notification_log_id) AS latest_id
+            FROM lot_project_notification_logs
+            GROUP BY lot_project_payment_schedule_id
+          ) latest
+            ON latest.latest_id = nl.notification_log_id
+        ) latest_log
+          ON latest_log.lot_project_payment_schedule_id = s.lot_project_payment_schedule_id
+        WHERE ${where.join(' AND ')}
+        ORDER BY
+          CASE WHEN s.due_date < CURDATE() THEN 0 ELSE 1 END,
+          s.due_date ASC,
+          p.lot_project_name ASC,
+          l.lot_project_listing_unit_id ASC
+      `,
+      params
+    );
+
+    const notifications = rows.map(mapNotificationRow);
+    const summary = notifications.reduce(
+      (acc, item) => {
+        acc.total += 1;
+        acc.totalPaymentDue += item.paymentDue;
+        acc.totalPenalty += item.penaltyAmount;
+        if (item.notificationType === 'overdue') acc.overdue += 1;
+        if (item.notificationType === 'due_soon') acc.dueSoon += 1;
+        return acc;
+      },
+      { total: 0, dueSoon: 0, overdue: 0, totalPaymentDue: 0, totalPenalty: 0 }
+    );
+
+    summary.totalPaymentDue = toMoneyNumber(summary.totalPaymentDue);
+    summary.totalPenalty = toMoneyNumber(summary.totalPenalty);
+
+    return res.json({
+      success: true,
+      message: 'Payment notifications loaded.',
+      data: {
+        summary,
+        notifications,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
+export const sendPaymentDueNotification = async (req, res) => {
+  const connection = await db.getConnection();
+
+  try {
+    const user = await getAuthenticatedUser(req);
+    if (!user) return res.status(401).json({ message: 'Please login before sending a notification.' });
+    if (!canManageNotifications(user)) return res.status(403).json({ message: 'Admin access only.' });
+
+    await ensureNotificationTable(connection);
+
+    const scheduleId = Number(req.params.scheduleId || 0);
+    if (!scheduleId) return res.status(400).json({ message: 'Payment schedule id is required.' });
+
+    const row = await getScheduleNotificationRow(connection, scheduleId);
+    if (!row) return res.status(404).json({ message: 'Payment schedule not found.' });
+
+    const notification = mapNotificationRow(row);
+    if (!notification.buyerEmail) {
+      return res.status(400).json({ message: 'Buyer email is missing. Add buyer email before sending notification.' });
+    }
+
+    if (!['due_soon', 'overdue'].includes(notification.notificationType)) {
+      return res.status(400).json({ message: 'This schedule is not due soon or overdue.' });
+    }
+
+    const { subject, textMessage, htmlMessage } = buildNotificationMessage(row);
+
+    try {
+      await sendEmail({
+        to: notification.buyerEmail,
+        subject,
+        text: textMessage,
+        html: htmlMessage,
+      });
+
+      await connection.query(
+        `
+          INSERT INTO lot_project_notification_logs (
+            lot_project_id,
+            lot_project_listing_id,
+            lot_project_client_profile_id,
+            lot_project_payment_schedule_id,
+            notification_type,
+            recipient_email,
+            subject,
+            message,
+            sent_by_user_id,
+            sent_at,
+            send_status
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 'sent')
+        `,
+        [
+          row.lot_project_id,
+          row.lot_project_listing_id,
+          row.lot_project_client_profile_id,
+          row.lot_project_payment_schedule_id,
+          notification.notificationType,
+          notification.buyerEmail,
+          subject,
+          textMessage,
+          user.id,
+        ]
+      );
+
+      return res.json({
+        success: true,
+        message: `${notification.statusLabel} email sent to ${notification.buyerEmail}.`,
+      });
+    } catch (emailError) {
+      await connection.query(
+        `
+          INSERT INTO lot_project_notification_logs (
+            lot_project_id,
+            lot_project_listing_id,
+            lot_project_client_profile_id,
+            lot_project_payment_schedule_id,
+            notification_type,
+            recipient_email,
+            subject,
+            message,
+            sent_by_user_id,
+            sent_at,
+            send_status,
+            error_message
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 'failed', ?)
+        `,
+        [
+          row.lot_project_id,
+          row.lot_project_listing_id,
+          row.lot_project_client_profile_id,
+          row.lot_project_payment_schedule_id,
+          notification.notificationType,
+          notification.buyerEmail,
+          subject,
+          textMessage,
+          user.id,
+          emailError?.message || 'Failed to send email.',
+        ]
+      );
+
+      return res.status(500).json({ message: emailError?.message || 'Failed to send notification email.' });
+    }
+  } catch (error) {
+    return res.status(500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
+export const markPaymentDueContacted = async (req, res) => {
+  const connection = await db.getConnection();
+
+  try {
+    const user = await getAuthenticatedUser(req);
+    if (!user) return res.status(401).json({ message: 'Please login before marking notification as contacted.' });
+    if (!canManageNotifications(user)) return res.status(403).json({ message: 'Admin access only.' });
+
+    await ensureNotificationTable(connection);
+
+    const scheduleId = Number(req.params.scheduleId || 0);
+    if (!scheduleId) return res.status(400).json({ message: 'Payment schedule id is required.' });
+
+    const row = await getScheduleNotificationRow(connection, scheduleId);
+    if (!row) return res.status(404).json({ message: 'Payment schedule not found.' });
+
+    const notification = mapNotificationRow(row);
+    const subject = `${notification.statusLabel} contacted - ${notification.projectName} ${notification.unitId}`;
+    const message = String(req.body?.message || `Marked as contacted by ${user.email}.`).trim();
+
+    await connection.query(
+      `
+        INSERT INTO lot_project_notification_logs (
+          lot_project_id,
+          lot_project_listing_id,
+          lot_project_client_profile_id,
+          lot_project_payment_schedule_id,
+          notification_type,
+          recipient_email,
+          subject,
+          message,
+          sent_by_user_id,
+          sent_at,
+          send_status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 'contacted')
+      `,
+      [
+        row.lot_project_id,
+        row.lot_project_listing_id,
+        row.lot_project_client_profile_id,
+        row.lot_project_payment_schedule_id,
+        notification.notificationType,
+        notification.buyerEmail || 'no-email-on-file',
+        subject,
+        message,
+        user.id,
+      ]
+    );
+
+    return res.json({
+      success: true,
+      message: `${notification.projectName} ${notification.unitId} marked as contacted.`,
+    });
+  } catch (error) {
+    return res.status(500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};

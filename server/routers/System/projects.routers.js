@@ -29,6 +29,15 @@ import {
   updateLotProjectListingPayment,
   deleteLotProjectListingPayment,
 } from '../../controllers/Lot_Projects/ListingProfile/PaymentsSOA.controller.js';
+import { getLotProjectPaymentLogs } from '../../controllers/Lot_Projects/PaymentLogs/PaymentLogs.controller.js';
+import {
+  getLotProjectCommissions,
+  updateLotProjectCommission,
+} from '../../controllers/Lot_Projects/Commissions/Commissions.controller.js';
+import {
+  getLotProjectSettings,
+  updateLotProjectSettings,
+} from '../../controllers/Lot_Projects/Settings/Settings.controller.js';
 
 const router = express.Router();
 
@@ -36,6 +45,11 @@ router.get('/lot-projects', getLotProjects);
 router.get('/lot-projects/options', getLotProjectOptions);
 router.get('/lot-projects/:projectSlug/dashboard', getLotProjectDashboard);
 router.get('/lot-projects/:projectSlug/listings', getLotProjectListings);
+router.get('/lot-projects/:projectSlug/payment-logs', getLotProjectPaymentLogs);
+router.get('/lot-projects/:projectSlug/commissions', getLotProjectCommissions);
+router.patch('/lot-projects/:projectSlug/commissions/:commissionId', updateLotProjectCommission);
+router.get('/lot-projects/:projectSlug/settings', getLotProjectSettings);
+router.put('/lot-projects/:projectSlug/settings', updateLotProjectSettings);
 router.get('/lot-projects/:projectSlug/listings/:listingId', getLotProjectListingProfile);
 router.get('/lot-projects/:projectSlug', getLotProjectBySlug);
 
@@ -56,4 +70,3 @@ router.patch('/lot-projects/:id/status', toggleLotProjectStatus);
 router.delete('/lot-projects/:id', deleteLotProject);
 
 export default router;
-

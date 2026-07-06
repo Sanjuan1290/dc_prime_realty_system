@@ -1,6 +1,192 @@
-import { FiActivity, FiSearch } from 'react-icons/fi'
+import { useMemo, useState } from 'react'
+import { useParams } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import { FiActivity, FiRefreshCw, FiSearch } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
+import StatusAlert from '../../components/Shared/StatusAlert'
+import { useFetch } from '../../utils/useFetch'
+
 const money = (value) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value || 0))
-const logs=[{date:'2026-07-01',unit:'LA-0402',buyer:'Robert San Juan',amount:50000,type:'Reservation',method:'Cash',ref:'CASH-20260701-LA0402-0001',encodedBy:'Super Admin'},{date:'2026-07-15',unit:'LA-0402',buyer:'Robert San Juan',amount:118800,type:'Downpayment',method:'Bank Transfer',ref:'BDO-874612',encodedBy:'Super Admin'},{date:'2026-06-30',unit:'LA-0501',buyer:'Nico Reyes',amount:550000,type:'Full Payment',method:'Bank Transfer',ref:'BPI-20260630-LA0501',encodedBy:'Admin'}]
-const PaymentLogs = () => <main className="flex flex-col gap-6"><PageHeader title="Bailen Payments Audit / Logs" description="Mock payment input history. No status column because admin input is already verified." icon={FiActivity}/><section className="rounded-3xl border border-slate-200 bg-white shadow-sm"><div className="flex flex-col gap-3 border-b p-5 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="text-lg font-black">Payment Logs</h2><p className="text-sm font-semibold text-slate-500">All entries are verified by design.</p></div><label className="relative"><FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"/><input placeholder="Search logs..." className="h-11 rounded-2xl border border-slate-200 pl-11 pr-3 text-sm font-semibold"/></label></div><div className="overflow-x-auto"><table className="min-w-[950px] divide-y divide-slate-200 text-sm"><thead className="bg-slate-50"><tr>{['Payment Date','Unit','Buyer','Amount','Type','Method','Reference ID','Encoded By'].map(h=><th key={h} className="px-4 py-3 text-left text-xs font-black uppercase text-slate-500">{h}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{logs.map((log,i)=><tr key={i} className="hover:bg-slate-50"><td className="px-4 py-3 font-semibold">{log.date}</td><td className="px-4 py-3 font-black">{log.unit}</td><td className="px-4 py-3">{log.buyer}</td><td className="px-4 py-3 font-black">{money(log.amount)}</td><td className="px-4 py-3">{log.type}</td><td className="px-4 py-3">{log.method}</td><td className="px-4 py-3">{log.ref}</td><td className="px-4 py-3">{log.encodedBy}</td></tr>)}</tbody></table></div></section></main>
+
+const actionTone = (action = '') => {
+  const tones = {
+    created: 'bg-emerald-50 text-emerald-700 ring-emerald-100',
+    updated: 'bg-blue-50 text-blue-700 ring-blue-100',
+    verified: 'bg-emerald-50 text-emerald-700 ring-emerald-100',
+    rejected: 'bg-red-50 text-red-700 ring-red-100',
+    cancelled: 'bg-amber-50 text-amber-700 ring-amber-100',
+    deleted: 'bg-red-50 text-red-700 ring-red-100',
+  }
+
+  return tones[action] || 'bg-slate-100 text-slate-700 ring-slate-200'
+}
+
+const PaymentLogs = () => {
+  const { projectSlug } = useParams()
+  const [search, setSearch] = useState('')
+  const [actionFilter, setActionFilter] = useState('all')
+  const [alert, setAlert] = useState(null)
+
+  const queryString = useMemo(() => {
+    return new URLSearchParams({
+      ...(search.trim() ? { search: search.trim() } : {}),
+      ...(actionFilter !== 'all' ? { action: actionFilter } : {}),
+    }).toString()
+  }, [search, actionFilter])
+
+  const { data, isLoading, isFetching, isError, error, refetch } = useQuery({
+    queryKey: ['lot-payment-logs', projectSlug, queryString],
+    queryFn: () => useFetch(`/projects/lot-projects/${projectSlug}/payment-logs${queryString ? `?${queryString}` : ''}`),
+    enabled: Boolean(projectSlug),
+    keepPreviousData: true,
+  })
+
+  const logs = data?.data || []
+  const stats = data?.stats || {}
+  const project = data?.project || {}
+
+  const resetFilters = () => {
+    setSearch('')
+    setActionFilter('all')
+    setAlert({ type: 'info', message: 'Payment log filters reset.' })
+  }
+
+  const refreshLogs = () => {
+    setAlert({ type: 'info', message: 'Refreshing payment logs...' })
+    refetch()
+  }
+
+  return (
+    <main className="flex flex-col gap-6">
+      {alert ? <StatusAlert type={alert.type} message={alert.message} onClose={() => setAlert(null)} /> : null}
+      {isLoading ? <StatusAlert type="loading" message="Loading payment audit logs..." /> : null}
+      {!isLoading && isFetching ? <StatusAlert type="info" message="Refreshing payment audit logs..." /> : null}
+      {isError ? <StatusAlert type="error" message={error?.message || 'Failed to load payment logs.'} /> : null}
+
+      <section className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+        <PageHeader
+          title={`${project.name || 'Lot Project'} Payments Audit / Logs`}
+          description="Database-connected payment action history for created, edited, verified, cancelled, and deleted payment records."
+          icon={FiActivity}
+        />
+
+        <button
+          type="button"
+          onClick={refreshLogs}
+          className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 active:scale-[0.98]"
+        >
+          <FiRefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
+          Refresh
+        </button>
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-3">
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-sm font-black text-slate-500">Total Log Entries</p>
+          <p className="mt-3 text-2xl font-black text-slate-950">{isLoading ? '...' : stats.total || 0}</p>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-blue-50 p-5 text-blue-700 shadow-sm">
+          <p className="text-sm font-black text-slate-500">Logged Payment Amount</p>
+          <p className="mt-3 text-2xl font-black">{isLoading ? '...' : money(stats.amount || 0)}</p>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-amber-50 p-5 text-amber-700 shadow-sm">
+          <p className="text-sm font-black text-slate-500">Cancelled / Deleted</p>
+          <p className="mt-3 text-2xl font-black">{isLoading ? '...' : Number(stats.cancelled || 0) + Number(stats.deleted || 0)}</p>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="grid gap-3 lg:grid-cols-[1fr_220px_auto]">
+          <label className="relative">
+            <FiSearch className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search unit, buyer, reference, encoded by..."
+              className="h-11 w-full rounded-xl border border-slate-300 bg-white pl-11 pr-3 text-sm font-semibold text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
+            />
+          </label>
+
+          <select
+            value={actionFilter}
+            onChange={(event) => setActionFilter(event.target.value)}
+            className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
+          >
+            <option value="all">All Actions</option>
+            <option value="created">Created</option>
+            <option value="updated">Updated</option>
+            <option value="verified">Verified</option>
+            <option value="cancelled">Cancelled</option>
+            <option value="deleted">Deleted</option>
+            <option value="rejected">Rejected</option>
+          </select>
+
+          <button
+            type="button"
+            onClick={resetFilters}
+            className="h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50"
+          >
+            Reset Filters
+          </button>
+        </div>
+      </section>
+
+      <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-200 bg-white px-5 py-4">
+          <h2 className="text-lg font-black text-slate-950">Payment Logs</h2>
+          <p className="mt-1 text-sm font-semibold text-slate-500">Showing {logs.length} database record(s).</p>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="min-w-[1250px] w-full divide-y divide-slate-200 text-sm">
+            <thead className="bg-slate-50">
+              <tr>
+                {['Action Date', 'Project', 'Unit', 'Buyer', 'Amount', 'Type', 'Method', 'Reference ID', 'Action', 'Encoded By', 'Description'].map((head) => (
+                  <th key={head} className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">
+                    {head}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+
+            <tbody className="divide-y divide-slate-100">
+              {isLoading ? (
+                <tr>
+                  <td colSpan={11} className="px-4 py-10 text-center text-sm font-semibold text-slate-500">Loading payment logs...</td>
+                </tr>
+              ) : null}
+
+              {!isLoading && logs.map((log) => (
+                <tr key={log.id} className="transition hover:bg-slate-50">
+                  <td className="px-4 py-4 font-semibold text-slate-700">{log.actionAtText}</td>
+                  <td className="px-4 py-4 font-semibold text-slate-700">{log.project}</td>
+                  <td className="px-4 py-4 font-black text-blue-700">{log.unit}</td>
+                  <td className="px-4 py-4 font-black text-slate-950">{log.buyer}</td>
+                  <td className="px-4 py-4 font-black text-slate-950">{money(log.amount)}</td>
+                  <td className="px-4 py-4 font-semibold text-slate-700">{log.paymentType}</td>
+                  <td className="px-4 py-4 font-semibold text-slate-700">{log.paymentMethod}</td>
+                  <td className="px-4 py-4 font-semibold text-slate-700">{log.referenceId}</td>
+                  <td className="px-4 py-4"><span className={`rounded-full px-3 py-1 text-xs font-black ring-1 ${actionTone(log.action)}`}>{log.actionLabel}</span></td>
+                  <td className="px-4 py-4 font-semibold text-slate-700">{log.encodedBy}</td>
+                  <td className="px-4 py-4 font-semibold text-slate-600">{log.actionDescription}</td>
+                </tr>
+              ))}
+
+              {!isLoading && !logs.length ? (
+                <tr>
+                  <td colSpan={11} className="px-4 py-12 text-center">
+                    <FiActivity className="mx-auto h-8 w-8 text-slate-300" />
+                    <p className="mt-3 text-sm font-black text-slate-700">No payment logs found</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-500">Try changing your search or filters.</p>
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  )
+}
+
 export default PaymentLogs

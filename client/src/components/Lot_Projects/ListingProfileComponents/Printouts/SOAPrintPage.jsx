@@ -25,8 +25,8 @@ const AmountRow = ({ label, value }) => (
 const SOAPrintPage = () => {
   const { listing = {}, client = {}, soaRows = [] } = readPrintPayload()
 
-  const rows = getNormalizedSoaRows(soaRows, listing)
-  const tcp = cleanMoney(getValue(listing, ['tcp', 'tcpAmount'], 396000))
+  const rows = getNormalizedSoaRows(soaRows)
+  const tcp = cleanMoney(getValue(listing, ['tcpAmount', 'tcp'], 0))
   const legalMisc = cleanMoney(getValue(listing, ['lmfAmount', 'legalMiscAmount'], 0))
   const totalAmount = tcp + legalMisc
   const latestBalance = cleanMoney(rows[rows.length - 1]?.remainingBalance || 0)
@@ -56,11 +56,11 @@ const SOAPrintPage = () => {
 
               <SOAInfoRow
                 label="Statement Date:"
-                value={getValue(listing, ['statementDate'], 'July 5, 2026')}
+                value={getValue(listing, ['statementDate'], new Date().toISOString().slice(0, 10))}
               />
               <SOAInfoRow
                 label="Property Address:"
-                value={getValue(listing, ['project_location', 'location'], 'Bailen, Cavite')}
+                value={getValue(listing, ['project_location', 'location'], '-')}
               />
               <SOAInfoRow
                 label="Buyer’s Name:"
@@ -68,7 +68,7 @@ const SOAPrintPage = () => {
               />
               <SOAInfoRow
                 label="Unit No:"
-                value={getValue(listing, ['unit_id', 'unitCode'], 'LA-0402')}
+                value={getValue(listing, ['unit_id', 'unitCode'], '-')}
               />
 
               <h3 className="border-b-2 border-black py-1 text-center text-base font-black">
@@ -106,7 +106,7 @@ const SOAPrintPage = () => {
               </thead>
 
               <tbody>
-                {rows.map((row) => (
+                {rows.length ? rows.map((row) => (
                   <tr key={row.id}>
                     <td className="border border-black px-2 py-1 text-center font-bold">
                       {formatDate(row.dueDate)}
@@ -140,7 +140,13 @@ const SOAPrintPage = () => {
                       {money(row.remainingBalance)}
                     </td>
                   </tr>
-                ))}
+                )) : (
+                  <tr>
+                    <td colSpan={8} className="border border-black px-2 py-8 text-center font-bold">
+                      No statement of account rows available yet. Reserve the unit first.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>

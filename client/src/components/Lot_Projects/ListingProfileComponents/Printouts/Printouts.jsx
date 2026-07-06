@@ -6,28 +6,28 @@ const printItems = [
     type: 'offer-to-buy',
     desc: "Offer to Buy & Buyer's Profile form with buyer, property, terms, and signatures.",
     icon: FiFileText,
-    path: '/bailenProject/printouts/offer-to-buy',
+    path: 'offer-to-buy',
   },
   {
     title: 'Statement of Account',
     type: 'statement-of-account',
     desc: 'SOA schedule with due amount, penalty, payments, references, and balances.',
     icon: FiPrinter,
-    path: '/bailenProject/printouts/statement-of-account',
+    path: 'statement-of-account',
   },
   {
     title: 'Print Documents',
     type: 'documents',
-    desc: 'Printable document image compilation. Images only, no document labels.',
+    desc: 'Printable document image compilation using uploaded document files.',
     icon: FiImage,
-    path: '/bailenProject/printouts/documents',
+    path: 'documents',
   },
 ]
 
-const Printouts = ({ listing, client, soaRows = [], documents = [] }) => {
+const Printouts = ({ projectSlug, listing, client, soaRows = [], documents = [] }) => {
   const handlePreview = (item) => {
     localStorage.setItem(
-      'bailen_print_payload',
+      'lot_project_print_payload',
       JSON.stringify({
         listing,
         client,
@@ -36,7 +36,7 @@ const Printouts = ({ listing, client, soaRows = [], documents = [] }) => {
       })
     )
 
-    window.open(item.path, '_blank')
+    window.open(`/lot-projects/${projectSlug}/printouts/${item.path}`, '_blank')
   }
 
   return (

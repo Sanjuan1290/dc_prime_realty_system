@@ -55,85 +55,33 @@ const PrintCell = ({ children, className = '' }) => (
   </div>
 )
 
-const getNormalizedSoaRows = (soaRows = [], listing = {}) => {
-  if (soaRows.length) {
-    return soaRows.map((row, index) => ({
-      id: row.id || index + 1,
-      dueDate: row.dueDate || row.due_date || '-',
-      description: row.description || row.payment_description || '-',
-      dueAmount: cleanMoney(row.dueAmount ?? row.due_amount),
-      penalty: cleanMoney(row.penalty ?? row.penaltyAmount ?? row.penalty_amount),
-      datePaid: row.datePaid || row.date_paid || '-',
-      amountPaid: cleanMoney(row.amountPaid ?? row.amount_paid),
-      referenceId: row.referenceId || row.reference_id || row.reference || '-',
-      remainingBalance: cleanMoney(
-        row.remainingBalance ??
-          row.endingBalance ??
-          row.runningBalance ??
-          row.ending_balance
-      ),
-    }))
-  }
+const getNormalizedSoaRows = (soaRows = []) => {
+  if (!soaRows.length) return []
 
-  const tcp = cleanMoney(getValue(listing, ['tcp', 'tcpAmount'], 396000))
-  const reservationFee = cleanMoney(getValue(listing, ['reservationFee'], 50000))
-  const downpayment = cleanMoney(getValue(listing, ['downpayment'], 118800))
-  const monthly = cleanMoney(getValue(listing, ['monthlyAmortization'], 6311))
-
-  return [
-    {
-      id: 1,
-      dueDate: '2026-07-01',
-      description: 'Reservation Fee',
-      dueAmount: reservationFee,
-      penalty: 0,
-      datePaid: '-',
-      amountPaid: 0,
-      referenceId: '-',
-      remainingBalance: tcp,
-    },
-    {
-      id: 2,
-      dueDate: '2026-07-15',
-      description: 'Downpayment',
-      dueAmount: downpayment,
-      penalty: 0,
-      datePaid: '-',
-      amountPaid: 0,
-      referenceId: '-',
-      remainingBalance: tcp - reservationFee,
-    },
-    {
-      id: 3,
-      dueDate: '2026-08-15',
-      description: 'Monthly Amortization 1',
-      dueAmount: monthly,
-      penalty: 0,
-      datePaid: '-',
-      amountPaid: 0,
-      referenceId: '-',
-      remainingBalance: tcp - reservationFee - downpayment,
-    },
-    {
-      id: 4,
-      dueDate: '2026-09-15',
-      description: 'Monthly Amortization 2',
-      dueAmount: monthly,
-      penalty: 0,
-      datePaid: '-',
-      amountPaid: 0,
-      referenceId: '-',
-      remainingBalance: tcp - reservationFee - downpayment - monthly,
-    },
-  ]
+  return soaRows.map((row, index) => ({
+    id: row.id || index + 1,
+    dueDate: row.dueDate || row.due_date || '-',
+    description: row.description || row.payment_description || '-',
+    dueAmount: cleanMoney(row.dueAmount ?? row.due_amount),
+    penalty: cleanMoney(row.penalty ?? row.penaltyAmount ?? row.penalty_amount),
+    datePaid: row.datePaid || row.date_paid || '-',
+    amountPaid: cleanMoney(row.amountPaid ?? row.amount_paid),
+    referenceId: row.referenceId || row.reference_id || row.reference || '-',
+    remainingBalance: cleanMoney(
+      row.remainingBalance ??
+        row.endingBalance ??
+        row.runningBalance ??
+        row.ending_balance
+    ),
+  }))
 }
 
 const OfferToBuyPreview = ({ listing = {}, client = {} }) => {
-  const tcp = cleanMoney(getValue(listing, ['tcp', 'tcpAmount'], 396000))
-  const reservationFee = cleanMoney(getValue(listing, ['reservationFee'], 50000))
-  const downpayment = cleanMoney(getValue(listing, ['downpayment'], 118800))
+  const tcp = cleanMoney(getValue(listing, ['tcpAmount', 'tcp'], 0))
+  const reservationFee = cleanMoney(getValue(listing, ['reservationFee'], 0))
+  const downpayment = cleanMoney(getValue(listing, ['downpayment'], 0))
   const balance = cleanMoney(getValue(listing, ['balanceAmount', 'balance'], tcp - reservationFee - downpayment))
-  const monthly = cleanMoney(getValue(listing, ['monthlyAmortization'], 6311))
+  const monthly = cleanMoney(getValue(listing, ['monthlyAmortization'], 0))
 
   const buyerType = getValue(client, ['buyerType'], 'single')
   const isSpouses = buyerType === 'spouses'
@@ -141,7 +89,7 @@ const OfferToBuyPreview = ({ listing = {}, client = {} }) => {
 
   const buyerName = getValue(client, ['buyerName'], getValue(listing, ['buyer_name'], '-'))
   const secondBuyerName = getValue(client, ['secondBuyerName'], '')
-  const seller = getValue(client, ['seller', 'salesOfficer'], getValue(listing, ['seller'], 'Rowena Cortez'))
+  const seller = getValue(client, ['seller', 'salesOfficer'], getValue(listing, ['seller'], '-'))
 
   return (
     <div className="mx-auto w-[920px] bg-white text-black shadow-lg print:shadow-none">
@@ -171,7 +119,7 @@ const OfferToBuyPreview = ({ listing = {}, client = {} }) => {
             <p>
               Date Received:{' '}
               <span className="font-black">
-                {getValue(client, ['dateReceived'], '2026-07-01')}
+                {getValue(client, ['dateReceived'], new Date().toISOString().slice(0, 10))}
               </span>
             </p>
           </div>
@@ -182,7 +130,7 @@ const OfferToBuyPreview = ({ listing = {}, client = {} }) => {
         <div className="grid grid-cols-[1fr]">
           <PrintCell>
             <span className="font-black">Location:</span>{' '}
-            {getValue(listing, ['project_location', 'location'], 'Bailen, Cavite')}
+            {getValue(listing, ['project_location', 'location'], '-')}
           </PrintCell>
         </div>
 
@@ -204,7 +152,7 @@ const OfferToBuyPreview = ({ listing = {}, client = {} }) => {
 
           <PrintCell>
             <span className="font-black">Description/Improvements:</span>{' '}
-            Unit {getValue(listing, ['unit_id', 'unitCode'], 'LA-0402')}
+            Unit {getValue(listing, ['unit_id', 'unitCode'], '-')}
           </PrintCell>
         </div>
 
@@ -558,7 +506,7 @@ const OfferToBuyPreview = ({ listing = {}, client = {} }) => {
 
 const SOAPreview = ({ listing = {}, client = {}, soaRows = [] }) => {
   const rows = getNormalizedSoaRows(soaRows, listing)
-  const tcp = cleanMoney(getValue(listing, ['tcp', 'tcpAmount'], 396000))
+  const tcp = cleanMoney(getValue(listing, ['tcpAmount', 'tcp'], 0))
   const legalMisc = cleanMoney(getValue(listing, ['lmfAmount', 'legalMiscAmount'], 0))
   const totalAmount = tcp + legalMisc
   const latestBalance = cleanMoney(rows[rows.length - 1]?.remainingBalance || 0)
@@ -586,10 +534,10 @@ const SOAPreview = ({ listing = {}, client = {}, soaRows = [] }) => {
             </h2>
 
             {[
-              ['Statement Date:', getValue(listing, ['statementDate'], 'July 5, 2026')],
-              ['Property Address:', getValue(listing, ['project_location', 'location'], 'Bailen, Cavite')],
+              ['Statement Date:', getValue(listing, ['statementDate'], new Date().toISOString().slice(0, 10))],
+              ['Property Address:', getValue(listing, ['project_location', 'location'], '-')],
               ['Buyer’s Name:', getValue(client, ['buyerName'], getValue(listing, ['buyer_name'], '-'))],
-              ['Unit No:', getValue(listing, ['unit_id', 'unitCode'], 'LA-0402')],
+              ['Unit No:', getValue(listing, ['unit_id', 'unitCode'], '-')],
             ].map(([label, value]) => (
               <div key={label} className="grid grid-cols-[115px_1fr] border-b border-black text-[10px]">
                 <div className="border-r border-black px-1.5 py-0.5 font-black">{label}</div>

@@ -12,13 +12,13 @@ import {
 const OfferToBuyPrintPage = () => {
   const { listing = {}, client = {} } = readPrintPayload()
 
-  const tcp = cleanMoney(getValue(listing, ['tcp', 'tcpAmount'], 396000))
-  const reservationFee = cleanMoney(getValue(listing, ['reservationFee'], 50000))
-  const downpayment = cleanMoney(getValue(listing, ['downpayment'], 118800))
+  const tcp = cleanMoney(getValue(listing, ['tcpAmount', 'tcp'], 0))
+  const reservationFee = cleanMoney(getValue(listing, ['reservationFee'], 0))
+  const downpayment = cleanMoney(getValue(listing, ['downpayment'], 0))
   const balance = cleanMoney(
     getValue(listing, ['balanceAmount', 'balance'], tcp - reservationFee - downpayment)
   )
-  const monthly = cleanMoney(getValue(listing, ['monthlyAmortization'], 6311))
+  const monthly = cleanMoney(getValue(listing, ['monthlyAmortization'], 0))
 
   const buyerType = getValue(client, ['buyerType'], 'single')
   const isSpouses = buyerType === 'spouses'
@@ -33,7 +33,7 @@ const OfferToBuyPrintPage = () => {
   const seller = getValue(
     client,
     ['seller', 'salesOfficer'],
-    getValue(listing, ['seller'], 'Rowena Cortez')
+    getValue(listing, ['seller'], '-')
   )
 
   const TermsRow = ({ label, value }) => (
@@ -71,7 +71,7 @@ const OfferToBuyPrintPage = () => {
               <p>
                 Date Received:{' '}
                 <span className="font-black">
-                  {getValue(client, ['dateReceived'], '2026-07-01')}
+                  {getValue(client, ['dateReceived'], new Date().toISOString().slice(0, 10))}
                 </span>
               </p>
             </div>
@@ -81,7 +81,7 @@ const OfferToBuyPrintPage = () => {
 
           <PrintCell>
             <span className="font-black">Location:</span>{' '}
-            {getValue(listing, ['project_location', 'location'], 'Bailen, Cavite')}
+            {getValue(listing, ['project_location', 'location'], '-')}
           </PrintCell>
 
           <div className="grid grid-cols-4">
@@ -102,7 +102,7 @@ const OfferToBuyPrintPage = () => {
 
             <PrintCell>
               <span className="font-black">Description/Improvements:</span>{' '}
-              Unit {getValue(listing, ['unit_id', 'unitCode'], 'LA-0402')}
+              Unit {getValue(listing, ['unit_id', 'unitCode'], '-')}
             </PrintCell>
           </div>
 
