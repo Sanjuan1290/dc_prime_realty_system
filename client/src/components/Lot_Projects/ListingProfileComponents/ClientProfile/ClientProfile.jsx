@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { FiAlertCircle, FiEdit3 } from 'react-icons/fi'
+import { FiAlertCircle, FiEdit3, FiLock } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
 import EditClientProfileModal from './EditClientProfileModal'
 
@@ -233,7 +233,7 @@ const PersonDetails = ({ title, data, second = false }) => {
   )
 }
 
-const ClientProfile = ({ client = fallbackClient, onSave, isSaving = false }) => {
+const ClientProfile = ({ client = fallbackClient, listing = {}, onSave, isSaving = false }) => {
   const [profile, setProfile] = useState(() => buildProfile(client))
   const [showEditModal, setShowEditModal] = useState(false)
   const [alert, setAlert] = useState(null)
@@ -243,6 +243,25 @@ const ClientProfile = ({ client = fallbackClient, onSave, isSaving = false }) =>
   }, [client])
 
   const hasSecondBuyer = profile.buyerType === 'spouses' || profile.buyerType === 'and_account'
+  const listingStatusKey = String(
+    listing?.rawStatus ||
+      listing?.lot_project_listing_status ||
+      listing?.listing_status ||
+      listing?.status ||
+      ''
+  )
+    .trim()
+    .toLowerCase()
+
+  const isReservedListing = Boolean(
+    listing?.canEditBuyerProfile ??
+      (listingStatusKey && !['available', 'hold'].includes(listingStatusKey))
+  )
+
+  const buyerProfileLockedMessage =
+    listingStatusKey === 'hold'
+      ? 'This unit is on hold. Reserve or sell this unit first before editing the buyer profile.'
+      : 'Reserve this unit first before editing the buyer profile.'
 
   const profileIsIncomplete = useMemo(() => {
     const requiredPrincipalFields = [
@@ -270,6 +289,12 @@ const ClientProfile = ({ client = fallbackClient, onSave, isSaving = false }) =>
   }, [profile.monthlyIncome, profile.secondBuyerMonthlyIncome, hasSecondBuyer])
 
   const handleSave = async (nextProfile) => {
+    if (!isReservedListing) {
+      setAlert({ type: 'warning', message: buyerProfileLockedMessage })
+      setShowEditModal(false)
+      return
+    }
+
     if (onSave) {
       await onSave(nextProfile)
       setAlert({ type: 'success', message: 'Buyer profile saved to database.' })
@@ -304,12 +329,24 @@ const ClientProfile = ({ client = fallbackClient, onSave, isSaving = false }) =>
 
           <button
             type="button"
-            onClick={() => setShowEditModal(true)}
-            disabled={isSaving}
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98]"
+            onClick={() => {
+              if (!isReservedListing) {
+                setAlert({ type: 'warning', message: buyerProfileLockedMessage })
+                return
+              }
+
+              setShowEditModal(true)
+            }}
+            disabled={isSaving || !isReservedListing}
+            title={!isReservedListing ? buyerProfileLockedMessage : 'Edit buyer profile'}
+            className={`inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98] ${
+              isReservedListing
+                ? 'bg-blue-600 text-white hover:bg-blue-700'
+                : 'border border-slate-200 bg-slate-100 text-slate-500'
+            }`}
           >
-            <FiEdit3 className="h-4 w-4" />
-            Edit
+            {isReservedListing ? <FiEdit3 className="h-4 w-4" /> : <FiLock className="h-4 w-4" />}
+            {isReservedListing ? 'Edit' : 'Reserve First'}
           </button>
         </div>
       </div>
@@ -323,7 +360,14 @@ const ClientProfile = ({ client = fallbackClient, onSave, isSaving = false }) =>
         />
       ) : null}
 
-      {profileIsIncomplete ? (
+      {!isReservedListing ? (
+        <div className="mb-4 flex items-start gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-800">
+          <FiLock className="mt-0.5 h-4 w-4 shrink-0" />
+          <p>{buyerProfileLockedMessage}</p>
+        </div>
+      ) : null}
+
+      {isReservedListing && profileIsIncomplete ? (
         <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
           <FiAlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
           <p>Buyer profile is incomplete</p>
@@ -401,7 +445,7 @@ const ClientProfile = ({ client = fallbackClient, onSave, isSaving = false }) =>
         </Section>
       </div>
 
-      {showEditModal ? (
+      {showEditModal && isReservedListing ? (
         <EditClientProfileModal
           client={profile}
           onClose={() => setShowEditModal(false)}

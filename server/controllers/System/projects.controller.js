@@ -859,6 +859,11 @@ const mapClientProfile = (profile = {}, sellerName = '-') => ({
   seller: sellerName || '-',
 });
 
+const canEditBuyerProfileForListing = (status) => {
+  const statusKey = String(status || '').trim().toLowerCase();
+  return Boolean(statusKey && !['available', 'hold'].includes(statusKey));
+};
+
 const mapProfileListing = (row = {}, project = {}, documents = []) => {
   const area = Number(row.lot_project_listing_area_sqm || 0);
   const pricePerSqm = Number(row.lot_project_listing_price_per_sqm || 0);
@@ -876,11 +881,19 @@ const mapProfileListing = (row = {}, project = {}, documents = []) => {
   const requiredDocuments = documents.filter((doc) => doc.requirement === 'Required').length;
   const missingRequired = documents.filter((doc) => doc.requirement === 'Required' && doc.status === 'Missing').length;
   const listingStatus = getListingStatusLabel(row.lot_project_listing_status, row.lot_project_listing_sold_substatus);
+  const hasClientProfile = Boolean(row.lot_project_client_profile_id || row.buyer_full_name);
+  const canEditBuyerProfile = canEditBuyerProfileForListing(row.lot_project_listing_status);
+  const canUsePayments = hasClientProfile && canEditBuyerProfile;
 
   return {
     ...row,
     id: row.lot_project_listing_id,
     lot_project_listing_id: row.lot_project_listing_id,
+    lot_project_client_profile_id: row.lot_project_client_profile_id || null,
+    clientProfileId: row.lot_project_client_profile_id || null,
+    hasClientProfile,
+    canEditBuyerProfile,
+    canUsePayments,
     unit_id: row.lot_project_listing_unit_id,
     unitCode: row.lot_project_listing_unit_id,
     project_name: project.lot_project_name,
@@ -1053,6 +1066,56 @@ const appendPaymentReference = (row, payment) => {
     row.referenceId = `${row.referenceId}, ${reference}`;
   }
 };
+
+const getPaymentAmountValue = (payment = {}) =>
+  roundMoneyValue(payment.amount ?? payment.lot_project_payment_amount ?? 0);
+
+const createBalloonPrincipalRow = (payment = {}, index = 1) => {
+  const paymentId = payment.paymentId || payment.id || payment.lot_project_payment_id || index;
+  const paidDate = payment.paymentDate || payment.lot_project_payment_date || new Date();
+  const amountPaid = getPaymentAmountValue(payment);
+  const referenceId = payment.referenceId || payment.lot_project_payment_reference_id || '-';
+
+  return {
+    id: `balloon-${paymentId}`,
+    scheduleType: 'balloon',
+    sequence: 100000 + Number(index || 0),
+    dueDate: normalizeDateInput(paidDate),
+    description: 'Balloon Payment',
+    beginningBalance: 0,
+    dueAmount: 0,
+    interest: 0,
+    penalty: 0,
+    datePaid: normalizeDateInput(paidDate),
+    amountPaid,
+    referenceId,
+    status: amountPaid > 0 ? 'Paid' : 'Unpaid',
+    endingBalance: 0,
+  };
+};
+
+const getRowSortOrder = (row = {}) => {
+  const order = {
+    reservation: 1,
+    downpayment: 2,
+    monthly: 3,
+    full_payment: 3,
+    balloon: 4,
+  };
+
+  return order[row.scheduleType] || 9;
+};
+
+const sortComputedRows = (rows = []) =>
+  [...rows].sort((a, b) => {
+    const dateCompare = String(a.dueDate || '').localeCompare(String(b.dueDate || ''));
+    if (dateCompare !== 0) return dateCompare;
+
+    const orderCompare = getRowSortOrder(a) - getRowSortOrder(b);
+    if (orderCompare !== 0) return orderCompare;
+
+    return Number(a.sequence || 0) - Number(b.sequence || 0);
+  });
 
 const getComputedSoaTerms = (listingRow = {}, existingScheduleRows = []) => {
   const tcp = roundMoneyValue(listingRow.lot_project_listing_tcp || listingRow.tcp || 0);
@@ -1263,12 +1326,21 @@ const allocatePaymentsToComputedRows = (rows = [], payments = []) => {
     const dateA = String(a.paymentDate || a.lot_project_payment_date || '');
     const dateB = String(b.paymentDate || b.lot_project_payment_date || '');
     if (dateA !== dateB) return dateA.localeCompare(dateB);
-    return Number(a.paymentId || a.id || 0) - Number(b.paymentId || b.id || 0);
+    return Number(a.paymentId || a.id || a.lot_project_payment_id || 0) - Number(b.paymentId || b.id || b.lot_project_payment_id || 0);
   });
+
+  let balloonCounter = 0;
 
   for (const payment of sortedPayments) {
     const type = payment.paymentTypeValue || normalizePaymentType(payment.paymentType || payment.type);
-    let remaining = roundMoneyValue(payment.amount ?? payment.lot_project_payment_amount ?? 0);
+    let remaining = getPaymentAmountValue(payment);
+
+    if (type === 'balloon') {
+      balloonCounter += 1;
+      rows.push(createBalloonPrincipalRow(payment, balloonCounter));
+      continue;
+    }
+
     const targetRows = getPaymentTargetRows(rows, type);
 
     for (const row of targetRows) {
@@ -1284,28 +1356,85 @@ const allocatePaymentsToComputedRows = (rows = [], payments = []) => {
     }
   }
 
-  return rows;
+  return sortComputedRows(rows);
 };
+
 
 const recomputeComputedSoaBalances = (rows = [], terms = {}) => {
   const today = new Date().toISOString().slice(0, 10);
   let runningBalance = roundMoneyValue(terms.tcp || 0);
+  let projectedMonthlyBalance = null;
   const visibleRows = [];
 
-  for (const row of rows) {
+  for (const row of sortComputedRows(rows)) {
+    const scheduleType = row.scheduleType;
+    let amountPaid = roundMoneyValue(Number(row.amountPaid || 0));
+
+    if (runningBalance <= 0 && amountPaid <= 0) break;
+
     row.beginningBalance = runningBalance;
 
-    if (row.scheduleType === 'monthly' || row.scheduleType === 'full_payment') {
-      row.dueAmount = roundMoneyValue(Math.min(Number(row.dueAmount || 0), runningBalance));
+    if (scheduleType === 'balloon') {
+      row.dueAmount = 0;
+      row.interest = 0;
+      row.penalty = 0;
+
+      const principalPaid = roundMoneyValue(Math.min(amountPaid, runningBalance));
+      runningBalance = roundMoneyValue(Math.max(runningBalance - principalPaid, 0));
+      projectedMonthlyBalance = null;
+
+      row.amountPaid = principalPaid;
+      row.endingBalance = runningBalance;
+      row.status = principalPaid > 0 ? 'Paid' : 'Unpaid';
+
+      visibleRows.push({
+        id: row.id,
+        dueDate: row.dueDate,
+        description: row.description,
+        beginningBalance: row.beginningBalance,
+        dueAmount: row.dueAmount,
+        interest: row.interest || 0,
+        penalty: row.penalty || 0,
+        datePaid: row.datePaid || '-',
+        amountPaid: row.amountPaid || 0,
+        referenceId: row.referenceId || '-',
+        status: row.status,
+        endingBalance: row.endingBalance,
+      });
+
+      if (runningBalance <= 0) break;
+      continue;
     }
 
-    if (row.scheduleType === 'monthly' && Number(terms.annualInterestRate || 0) > 0 && runningBalance > 0) {
+    if (scheduleType === 'monthly') {
+      const baseMonthlyPrincipal = roundMoneyValue(Number(terms.monthlyPrincipal || row.dueAmount || 0));
+
+      if (amountPaid <= 0) {
+        if (projectedMonthlyBalance === null) projectedMonthlyBalance = runningBalance;
+        if (projectedMonthlyBalance <= 0) break;
+
+        row.dueAmount = roundMoneyValue(Math.min(baseMonthlyPrincipal, projectedMonthlyBalance));
+        projectedMonthlyBalance = roundMoneyValue(Math.max(projectedMonthlyBalance - row.dueAmount, 0));
+      } else {
+        row.dueAmount = roundMoneyValue(Math.min(Number(row.dueAmount || 0), runningBalance));
+        projectedMonthlyBalance = null;
+      }
+    }
+
+    if (scheduleType === 'full_payment') {
+      row.dueAmount = roundMoneyValue(Math.min(Number(row.dueAmount || 0), runningBalance));
+      projectedMonthlyBalance = null;
+    }
+
+    if (scheduleType === 'monthly' && Number(terms.annualInterestRate || 0) > 0 && runningBalance > 0) {
       row.interest = roundMoneyValue(runningBalance * (Number(terms.annualInterestRate || 0) / 100 / 12));
     }
 
     const totalDue = getScheduleTotalDue(row);
-    const amountPaid = roundMoneyValue(Number(row.amountPaid || 0));
-    const principalPaid = roundMoneyValue(Math.min(amountPaid, Number(row.dueAmount || 0), runningBalance));
+    amountPaid = roundMoneyValue(Number(row.amountPaid || 0));
+    const principalPaid = scheduleType === 'full_payment'
+      ? roundMoneyValue(Math.min(amountPaid, runningBalance))
+      : roundMoneyValue(Math.min(amountPaid, Number(row.dueAmount || 0), runningBalance));
 
     runningBalance = roundMoneyValue(Math.max(runningBalance - principalPaid, 0));
     row.endingBalance = runningBalance;
@@ -1317,6 +1446,8 @@ const recomputeComputedSoaBalances = (rows = [], terms = {}) => {
     } else {
       row.status = row.datePaid !== '-' && row.dueDate && row.datePaid < row.dueDate ? 'Advance' : 'Paid';
     }
+
+    if (amountPaid > 0) projectedMonthlyBalance = null;
 
     visibleRows.push({
       id: row.id,
@@ -1339,6 +1470,7 @@ const recomputeComputedSoaBalances = (rows = [], terms = {}) => {
   return visibleRows;
 };
 
+
 const getExistingSoaScheduleRows = async (connection, lotProjectId, listingId) => {
   if (!(await tableExists(connection, 'lot_project_payment_schedules'))) return [];
 
@@ -1356,7 +1488,30 @@ const getExistingSoaScheduleRows = async (connection, lotProjectId, listingId) =
   return rows;
 };
 
+const canGenerateListingSoa = (listingRow = {}) => {
+  const rawStatus = String(
+    listingRow.lot_project_listing_status ||
+      listingRow.rawStatus ||
+      listingRow.status ||
+      ''
+  )
+    .trim()
+    .toLowerCase();
+
+  const hasBuyerProfile = Boolean(
+    listingRow.lot_project_client_profile_id ||
+      String(listingRow.buyer_full_name || '').trim()
+  );
+
+  if (!hasBuyerProfile) return false;
+  if (rawStatus === 'available' || rawStatus === 'hold') return false;
+
+  return true;
+};
+
 const getListingSoaRows = async (connection, lotProjectId, listingId, listingRow = {}, payments = []) => {
+  if (!canGenerateListingSoa(listingRow)) return [];
+
   const existingScheduleRows = await getExistingSoaScheduleRows(connection, lotProjectId, listingId);
   const terms = getComputedSoaTerms(listingRow, existingScheduleRows);
   const computedRows = createComputedSoaRows(terms);
@@ -1465,6 +1620,10 @@ export const getLotProjectListingProfile = async (req, res) => {
     const cadastralLots = await getProjectCadastralLots(project.lot_project_id);
     const defaultDocuments = await getProjectDefaultDocuments(project.lot_project_id);
     const sellerName = row.seller_name || '-';
+    const canEditBuyerProfile = canEditBuyerProfileForListing(row.lot_project_listing_status);
+    const clientProfile = canEditBuyerProfile
+      ? mapClientProfile(row, sellerName)
+      : { profileStatus: 'not_reserved', buyerType: 'single', seller: '-' };
 
     return res.json({
       success: true,
@@ -1481,7 +1640,7 @@ export const getLotProjectListingProfile = async (req, res) => {
           defaultDocuments,
         },
         listing: mapProfileListing(row, project, documents),
-        client: mapClientProfile(row, sellerName),
+        client: clientProfile,
         soaRows,
         payments,
         documents,
@@ -1495,12 +1654,32 @@ export const getLotProjectListingProfile = async (req, res) => {
 };
 
 
+const getRequestToken = (req) => {
+  const authorization = String(req.headers?.authorization || '').trim();
+
+  if (authorization.toLowerCase().startsWith('bearer ')) {
+    return authorization.slice(7).trim();
+  }
+
+  return (
+    req.cookies?.token ||
+    req.cookies?.authToken ||
+    req.cookies?.auth_token ||
+    req.cookies?.access_token ||
+    null
+  );
+};
+
 const getAuthenticatedUser = async (req) => {
-  const token = req.cookies?.token;
-  if (!token) return null;
+  const token = getRequestToken(req);
+  if (!token || !process.env.JWT_SECRET) return null;
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const userId = decoded.id || decoded.user_id || decoded.userId;
+
+    if (!userId) return null;
+
     const [rows] = await db.query(
       `
         SELECT id, first_name, middle_name, last_name, email, role, password_hash, status
@@ -1508,7 +1687,7 @@ const getAuthenticatedUser = async (req) => {
         WHERE id = ?
         LIMIT 1
       `,
-      [decoded.id]
+      [userId]
     );
 
     const user = rows[0];
@@ -1867,7 +2046,9 @@ export const updateLotProjectClientProfile = async (req, res) => {
     const lookup = getListingLookupWhere(listingLookup);
     const [listingRows] = await connection.query(
       `
-        SELECT l.lot_project_listing_id
+        SELECT
+          l.lot_project_listing_id,
+          l.lot_project_listing_status
         FROM lot_project_listings l
         WHERE l.lot_project_id = ?
           AND ${lookup.sql}
@@ -1878,6 +2059,11 @@ export const updateLotProjectClientProfile = async (req, res) => {
 
     const listing = listingRows[0];
     if (!listing) return res.status(404).json({ message: 'Listing not found.' });
+    if (!canEditBuyerProfileForListing(listing.lot_project_listing_status)) {
+      return res.status(400).json({
+        message: 'Reserve this unit first before editing the buyer profile.',
+      });
+    }
 
     const buyerType = cleanBuyerType(req.body.buyerType || req.body.buyer_type);
     const hasSecondBuyer = buyerType === 'spouses' || buyerType === 'and_account';
@@ -2173,7 +2359,6 @@ export const createLotProjectListingPayment = async (req, res) => {
     const listingLookup = String(req.params.listingId || '').trim();
     const project = await getProjectBySlug(slug);
 
-    if (!user) return res.status(401).json({ message: 'Please login before adding a payment.' });
     if (!project) return res.status(404).json({ message: 'Lot project not found.' });
     if (!listingLookup) return res.status(400).json({ message: 'Listing id is required.' });
     if (!(await tableExists(connection, 'lot_project_payments'))) {
@@ -2231,7 +2416,7 @@ export const createLotProjectListingPayment = async (req, res) => {
         amount,
         paymentDate,
         referenceId,
-        user.id,
+        user?.id || null,
       ]
     );
 
@@ -2246,7 +2431,7 @@ export const createLotProjectListingPayment = async (req, res) => {
           action_by_user_id
         ) VALUES (?, 'created', ?, ?)
       `,
-      [paymentId, `${getPaymentTypeLabel(paymentType)} payment created and verified for ${listing.lot_project_listing_unit_id}.`, user.id]
+      [paymentId, `${getPaymentTypeLabel(paymentType)} payment created and verified for ${listing.lot_project_listing_unit_id}.`, user?.id || null]
     );
 
     await connection.commit();
@@ -2275,7 +2460,6 @@ export const updateLotProjectListingPayment = async (req, res) => {
     const paymentId = Number(req.params.paymentId || 0);
     const project = await getProjectBySlug(slug);
 
-    if (!user) return res.status(401).json({ message: 'Please login before editing a payment.' });
     if (!project) return res.status(404).json({ message: 'Lot project not found.' });
     if (!paymentId) return res.status(400).json({ message: 'Payment id is required.' });
 
@@ -2333,7 +2517,7 @@ export const updateLotProjectListingPayment = async (req, res) => {
         amount,
         paymentDate,
         referenceId,
-        user.id,
+        user?.id || null,
         paymentId,
         project.lot_project_id,
         listing.lot_project_listing_id,

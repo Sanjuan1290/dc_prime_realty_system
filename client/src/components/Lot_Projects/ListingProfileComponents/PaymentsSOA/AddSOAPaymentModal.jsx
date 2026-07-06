@@ -163,13 +163,15 @@ const AddSOAPaymentModal = ({
         : '',
   })
 
+  const isBalloonPayment = form.paymentType === 'Balloon'
+
   const selectedRow = useMemo(
     () => rows.find((row) => String(row.id) === String(form.soaRowId)),
     [rows, form.soaRowId]
   )
 
   const suggestedAmount = useMemo(() => {
-    if (!selectedRow) return 0
+    if (isBalloonPayment || !selectedRow) return 0
 
     return (
       Number(selectedRow.dueAmount || 0) +
@@ -177,7 +179,7 @@ const AddSOAPaymentModal = ({
       Number(selectedRow.penalty || 0) -
       Number(selectedRow.amountPaid || 0)
     )
-  }, [selectedRow])
+  }, [isBalloonPayment, selectedRow])
 
   const automaticInterest = Number(selectedRow?.interest || 0)
   const automaticPenalty = Number(selectedRow?.penalty || 0)
@@ -190,9 +192,28 @@ const AddSOAPaymentModal = ({
         next.referenceId = isEdit && current.method === 'Cash' ? current.referenceId : ''
       }
 
+      if (key === 'paymentType') {
+        if (value === 'Balloon') {
+          next.soaRowId = ''
+        } else if (!next.soaRowId && suggestedRow) {
+          next.soaRowId = String(suggestedRow.id || '')
+          if (!isEdit) {
+            next.amount = String(
+              Math.max(
+                Number(suggestedRow.dueAmount || 0) +
+                  Number(suggestedRow.interest || 0) +
+                  Number(suggestedRow.penalty || 0) -
+                  Number(suggestedRow.amountPaid || 0),
+                0
+              )
+            )
+          }
+        }
+      }
+
       if (key === 'soaRowId') {
         const nextRow = rows.find((row) => String(row.id) === String(value))
-        if (!isEdit && nextRow) {
+        if (!isEdit && nextRow && next.paymentType !== 'Balloon') {
           next.paymentType = getPaymentTypeFromDescription(nextRow.description)
           next.amount = String(
             Math.max(
@@ -215,7 +236,7 @@ const AddSOAPaymentModal = ({
   const handleSubmit = async (event) => {
     event.preventDefault()
 
-    if (!form.soaRowId) {
+    if (!isBalloonPayment && !form.soaRowId) {
       setAlert({ type: 'error', message: 'Select an SOA row for this payment.' })
       return
     }
@@ -243,7 +264,7 @@ const AddSOAPaymentModal = ({
 
       await onSave({
         paymentId: initialPayment?.paymentId || initialPayment?.id,
-        soaRowId: form.soaRowId,
+        soaRowId: isBalloonPayment ? null : form.soaRowId,
         paymentType: form.paymentType,
         amount: cleanNumber(form.amount),
         paymentDate: form.paymentDate,
@@ -301,7 +322,11 @@ const AddSOAPaymentModal = ({
                   {buyerName} · {unitCode} · {projectName}
                 </p>
 
-                {selectedRow ? (
+                {isBalloonPayment ? (
+                  <p className="mt-1 text-xs font-semibold text-blue-700">
+                    Balloon payment applies directly to principal and shortens the remaining monthly rows.
+                  </p>
+                ) : selectedRow ? (
                   <p className="mt-1 text-xs font-semibold text-blue-700">
                     Payment applies to{' '}
                     <span className="font-black">{selectedRow.description}</span> ·{' '}
@@ -340,18 +365,30 @@ const AddSOAPaymentModal = ({
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
-            <SelectField
-              label="Apply To SOA Row"
-              value={form.soaRowId}
-              onChange={(value) => updateField('soaRowId', value)}
-              required
-            >
-              {rows.map((row) => (
-                <option key={row.id} value={row.id}>
-                  {row.description} · Due {row.dueDate} · {money(row.dueAmount)}
-                </option>
-              ))}
-            </SelectField>
+            {isBalloonPayment ? (
+              <div className="flex flex-col gap-1.5">
+                <span className="text-sm font-black text-slate-700">Apply To SOA Row</span>
+                <div className="flex min-h-11 items-center rounded-xl border border-slate-200 bg-slate-100 px-3 text-sm font-semibold text-slate-600">
+                  Not required. Balloon payments go directly to principal.
+                </div>
+                <p className="text-xs font-semibold text-slate-500">
+                  This will reduce the principal balance and shorten the remaining monthly schedule.
+                </p>
+              </div>
+            ) : (
+              <SelectField
+                label="Apply To SOA Row"
+                value={form.soaRowId}
+                onChange={(value) => updateField('soaRowId', value)}
+                required
+              >
+                {rows.map((row) => (
+                  <option key={row.id} value={row.id}>
+                    {row.description} · Due {row.dueDate} · {money(row.dueAmount)}
+                  </option>
+                ))}
+              </SelectField>
+            )}
 
             <SelectField
               label="Payment Type"
@@ -372,7 +409,11 @@ const AddSOAPaymentModal = ({
               value={form.amount}
               onChange={(value) => updateField('amount', value)}
               placeholder="0.00"
-              helper={`Suggested unpaid amount: ${money(suggestedAmount)}`}
+              helper={
+                isBalloonPayment
+                  ? 'Balloon amount will be deducted from principal, not from a scheduled monthly row.'
+                  : `Suggested unpaid amount: ${money(suggestedAmount)}`
+              }
               required
             />
 

@@ -15,13 +15,29 @@ import projectsRouter from './routers/System/projects.routers.js';
 
 const app = express();
 
+const allowedOrigins = new Set([
+  'http://localhost:5173',
+  'http://localhost:5174',
+  ...(process.env.CORS_ORIGIN || '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean),
+]);
+
 app.use(helmet());
 app.use(express.json({ limit: '10mb' }));
 app.use(cookieParser());
 
 app.use(
   cors({
-    origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+    origin(origin, callback) {
+      if (!origin || allowedOrigins.has(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error(`CORS origin not allowed: ${origin}`));
+    },
     credentials: true,
   })
 );
@@ -41,36 +57,25 @@ app.use('/api/v1/seller-groups', sellerGroupRouter);
 app.use('/api/v1/accredited', accreditedRouter);
 app.use('/api/v1/projects', projectsRouter);
 
-// 404 handler
-app.use((req, res) => {
-  res.status(404).json({
-    status: 'error',
-    message: `Route not found: ${req.method} ${req.originalUrl}`,
-  });
-});
-
-// Error handler
 app.use((err, req, res, next) => {
-  if (res.headersSent) return next(err);
-
-  console.error('Unhandled server error:', err);
-
-  return res.status(err.statusCode || 500).json({
-    status: 'error',
-    message: err.message || 'Internal server error',
-  });
+  console.error(err);
+  res.status(500).json({ message: err.message || 'Internal server error' });
 });
 
 const PORT = process.env.PORT || 5001;
 
-app.listen(PORT, async () => {
+const startServer = async () => {
   try {
-    console.log(`Server running on port ${PORT}`);
     await db.query('SELECT 1');
-    console.log('🟢 Database connected successfully');
-  } catch (err) {
-    console.error('Failed to start server:', err.message);
-    console.log('🔴 Database connection failed');
+    console.log('✅ MySQL connected');
+
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+    });
+  } catch (error) {
+    console.error('❌ Failed to start server:', error.message);
     process.exit(1);
   }
-});
+};
+
+startServer();

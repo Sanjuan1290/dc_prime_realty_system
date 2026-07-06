@@ -255,6 +255,7 @@ const ListingProfile = () => {
       {!profileQuery.isLoading && !profileQuery.isError && activeTab === 'client' ? (
         <ClientProfile
           client={client}
+          listing={listing}
           onSave={(payload) => updateClientProfileMutation.mutateAsync(payload)}
           isSaving={updateClientProfileMutation.isPending}
         />

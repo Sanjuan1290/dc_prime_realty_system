@@ -272,6 +272,40 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
   const rows = useMemo(() => normalizeRows(soaRows), [soaRows])
   const paymentRecords = useMemo(() => normalizePayments(payments, listing), [payments, listing])
 
+  const unitCode = getListingValue(listing, ['unit_id', 'unitCode', 'unitNo'], 'Unit')
+  const projectName = getListingValue(listing, ['project_name', 'projectName'], 'Project')
+  const buyerName = getListingValue(listing, ['buyer_name', 'buyerName', 'clientName'], '-')
+  const displayStatus = getListingValue(listing, ['listing_status', 'status'], 'Available')
+  const listingStatusKey = String(
+    listing?.rawStatus ||
+      listing?.lot_project_listing_status ||
+      listing?.listing_status ||
+      listing?.status ||
+      ''
+  )
+    .trim()
+    .toLowerCase()
+
+  const hasClientProfile = Boolean(
+    listing?.hasClientProfile ||
+      listing?.clientProfileId ||
+      listing?.lot_project_client_profile_id ||
+      (buyerName && buyerName !== '-')
+  )
+
+  const canUsePayments = Boolean(
+    listing?.canUsePayments ??
+      (hasClientProfile && !['available', 'hold'].includes(listingStatusKey))
+  )
+
+  const noSoaTitle = !hasClientProfile
+    ? 'No buyer profile yet'
+    : 'No SOA for this unit yet'
+
+  const noSoaMessage = !hasClientProfile
+    ? 'Reserve this unit first before creating payments or a statement of account.'
+    : 'This unit is still available or on hold, so payments and SOA are not generated yet.'
+
   const [alert, setAlert] = useState(null)
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [editingPayment, setEditingPayment] = useState(null)
@@ -416,6 +450,62 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
       paymentId: deletePayment.paymentId || deletePayment.id,
       superAdminPassword: deletePassword,
     })
+  }
+
+  if (!canUsePayments) {
+    return (
+      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+        {alert ? (
+          <StatusAlert
+            type={alert.type}
+            message={alert.message}
+            onClose={() => setAlert(null)}
+            className="mb-4"
+          />
+        ) : null}
+
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div>
+            <h2 className="text-2xl font-black text-slate-950">Payments & SOA</h2>
+            <p className="mt-1 text-sm font-semibold text-slate-500">
+              Payments and SOA are only available after this unit is reserved or sold.
+            </p>
+          </div>
+
+          <span className="inline-flex h-10 w-fit items-center justify-center rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-500">
+            Add Payment Disabled
+          </span>
+        </div>
+
+        <div className="mt-6 rounded-3xl border border-dashed border-blue-200 bg-blue-50 p-8 text-center">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-blue-700 shadow-sm">
+            <FiCreditCard className="h-7 w-7" />
+          </div>
+
+          <h3 className="mt-4 text-xl font-black text-slate-950">{noSoaTitle}</h3>
+          <p className="mx-auto mt-2 max-w-2xl text-sm font-semibold text-slate-600">
+            {noSoaMessage}
+          </p>
+
+          <div className="mx-auto mt-6 grid max-w-4xl gap-3 text-left md:grid-cols-3">
+            <div className="rounded-2xl border border-blue-100 bg-white p-4">
+              <p className="text-xs font-black uppercase tracking-wide text-slate-500">Unit</p>
+              <p className="mt-1 text-sm font-black text-slate-950">{unitCode}</p>
+            </div>
+
+            <div className="rounded-2xl border border-blue-100 bg-white p-4">
+              <p className="text-xs font-black uppercase tracking-wide text-slate-500">Project</p>
+              <p className="mt-1 text-sm font-black text-slate-950">{projectName}</p>
+            </div>
+
+            <div className="rounded-2xl border border-blue-100 bg-white p-4">
+              <p className="text-xs font-black uppercase tracking-wide text-slate-500">Status</p>
+              <p className="mt-1 text-sm font-black text-slate-950">{displayStatus}</p>
+            </div>
+          </div>
+        </div>
+      </section>
+    )
   }
 
   return (
