@@ -1,4 +1,6 @@
 import { db } from '../../db/connect.js';
+import jwt from 'jsonwebtoken';
+import bcrypt from 'bcrypt';
 
 const getErrorMessage = (error) => {
   if (error?.code === 'ER_DUP_ENTRY') return 'Duplicate project name, slug, location code, or unit ID.';
@@ -1001,7 +1003,343 @@ const getListingDocuments = async (connection, lotProjectId, listingId, clientPr
   }));
 };
 
-const getListingSoaRows = async (connection, lotProjectId, listingId) => {
+const roundMoneyValue = (value) => Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
+
+const normalizeDateInput = (value) => {
+  if (!value || value === '-') return new Date().toISOString().slice(0, 10);
+  if (typeof value === 'string') return value.slice(0, 10);
+  return new Date(value).toISOString().slice(0, 10);
+};
+
+const addMonthsToDate = (value, months = 0) => {
+  const base = new Date(`${normalizeDateInput(value)}T00:00:00`);
+  const result = Number.isNaN(base.getTime()) ? new Date() : new Date(base);
+  const originalDay = result.getDate();
+
+  result.setMonth(result.getMonth() + Number(months || 0));
+
+  if (result.getDate() !== originalDay) {
+    result.setDate(0);
+  }
+
+  return result.toISOString().slice(0, 10);
+};
+
+const getOrdinalLabel = (number) => {
+  const value = Number(number || 0);
+  const lastTwo = value % 100;
+
+  if (lastTwo >= 11 && lastTwo <= 13) return `${value}th`;
+
+  const last = value % 10;
+  if (last === 1) return `${value}st`;
+  if (last === 2) return `${value}nd`;
+  if (last === 3) return `${value}rd`;
+  return `${value}th`;
+};
+
+const getScheduleTotalDue = (row = {}) =>
+  roundMoneyValue(Number(row.dueAmount || 0) + Number(row.interest || 0) + Number(row.penalty || 0));
+
+const appendPaymentReference = (row, payment) => {
+  const reference = payment.referenceId || payment.lot_project_payment_reference_id || '-';
+  const paidDate = payment.paymentDate || payment.lot_project_payment_date || '-';
+
+  row.datePaid = paidDate && paidDate !== '-' ? normalizeDateInput(paidDate) : '-';
+
+  if (!row.referenceId || row.referenceId === '-') {
+    row.referenceId = reference;
+  } else if (reference && reference !== '-' && !String(row.referenceId).split(', ').includes(reference)) {
+    row.referenceId = `${row.referenceId}, ${reference}`;
+  }
+};
+
+const getComputedSoaTerms = (listingRow = {}, existingScheduleRows = []) => {
+  const tcp = roundMoneyValue(listingRow.lot_project_listing_tcp || listingRow.tcp || 0);
+  const firstExistingRow = existingScheduleRows[0] || {};
+  const existingReservationRow = existingScheduleRows.find((row) =>
+    String(row.description || '').toLowerCase().includes('reservation')
+  );
+  const existingDownpaymentRows = existingScheduleRows.filter((row) =>
+    String(row.description || '').toLowerCase().includes('downpayment')
+  );
+  const existingMonthlyRows = existingScheduleRows.filter((row) =>
+    String(row.description || '').toLowerCase().includes('monthly')
+  );
+
+  const reservationFee = roundMoneyValue(
+    listingRow.reservation_fee ||
+      listingRow.soa_reservation_fee ||
+      existingReservationRow?.due_amount ||
+      listingRow.lot_project_listing_reservation_fee ||
+      0
+  );
+
+  const downpaymentPercentage = Number(
+    listingRow.downpayment_percentage || listingRow.soa_downpayment_percentage || 30
+  );
+  const dpDiscountPercentage = Number(
+    listingRow.dp_discount_percentage || listingRow.soa_dp_discount_percentage || 0
+  );
+
+  const inferredDownpaymentTotal = existingDownpaymentRows.reduce(
+    (sum, row) => sum + Number(row.due_amount || 0),
+    0
+  );
+  const computedDownpaymentTotal = roundMoneyValue(
+    tcp * (downpaymentPercentage / 100) * (1 - dpDiscountPercentage / 100)
+  );
+
+  const downpaymentTotal = roundMoneyValue(inferredDownpaymentTotal || computedDownpaymentTotal);
+
+  const downpaymentTerms = Math.max(
+    Number(
+      listingRow.downpayment_terms ??
+        listingRow.soa_downpayment_terms ??
+        (existingDownpaymentRows.length || 3)
+    ),
+    0
+  );
+
+  const monthlyTerms = Math.max(
+    Number(
+      listingRow.monthly_terms ??
+        listingRow.soa_monthly_terms ??
+        (existingMonthlyRows.length || 36)
+    ),
+    1
+  );
+
+  const startingDate = normalizeDateInput(
+    listingRow.soa_starting_date || listingRow.starting_date || firstExistingRow.due_date || new Date()
+  );
+  const firstDueDate = normalizeDateInput(
+    listingRow.soa_first_due_date || listingRow.first_due_date || firstExistingRow.due_date || startingDate
+  );
+
+  const annualInterestRate = Number(
+    listingRow.soa_annual_interest_rate ?? listingRow.annual_interest_rate ?? 0
+  );
+
+  const financedBalance = Math.max(tcp - reservationFee - downpaymentTotal, 0);
+  const inferredMonthlyPrincipal = Number(existingMonthlyRows[0]?.due_amount || 0);
+  const monthlyPrincipal = roundMoneyValue(
+    inferredMonthlyPrincipal || (monthlyTerms > 0 ? financedBalance / monthlyTerms : financedBalance)
+  );
+
+  return {
+    tcp,
+    reservationFee,
+    downpaymentPercentage,
+    downpaymentTotal,
+    downpaymentTerms,
+    monthlyTerms,
+    monthlyPrincipal,
+    annualInterestRate,
+    startingDate,
+    firstDueDate,
+    modeOfPayment: listingRow.soa_mode_of_payment || listingRow.mode_of_payment || 'installment',
+  };
+};
+
+const createComputedSoaRows = (terms = {}) => {
+  const rows = [];
+  let sequence = 1;
+
+  if (terms.reservationFee > 0) {
+    rows.push({
+      id: `computed-${sequence}`,
+      scheduleType: 'reservation',
+      sequence,
+      dueDate: terms.startingDate,
+      description: 'Reservation Fee',
+      beginningBalance: terms.tcp,
+      dueAmount: terms.reservationFee,
+      interest: 0,
+      penalty: 0,
+      datePaid: '-',
+      amountPaid: 0,
+      referenceId: '-',
+      status: 'Unpaid',
+      endingBalance: terms.tcp,
+    });
+    sequence += 1;
+  }
+
+  if (String(terms.modeOfPayment || '').toLowerCase() === 'cash') {
+    const cashBalance = Math.max(terms.tcp - terms.reservationFee, 0);
+
+    if (cashBalance > 0) {
+      rows.push({
+        id: `computed-${sequence}`,
+        scheduleType: 'full_payment',
+        sequence,
+        dueDate: terms.firstDueDate,
+        description: 'Full Payment',
+        beginningBalance: terms.tcp,
+        dueAmount: roundMoneyValue(cashBalance),
+        interest: 0,
+        penalty: 0,
+        datePaid: '-',
+        amountPaid: 0,
+        referenceId: '-',
+        status: 'Unpaid',
+        endingBalance: terms.tcp,
+      });
+    }
+
+    return rows;
+  }
+
+  const dpTerms = terms.downpaymentTerms <= 0 ? 1 : terms.downpaymentTerms;
+  const baseDownpayment = dpTerms > 0 ? roundMoneyValue(terms.downpaymentTotal / dpTerms) : 0;
+  let downpaymentRemainder = terms.downpaymentTotal;
+
+  for (let index = 1; index <= dpTerms; index += 1) {
+    if (downpaymentRemainder <= 0) break;
+
+    const isLast = index === dpTerms;
+    const dueAmount = roundMoneyValue(isLast ? downpaymentRemainder : baseDownpayment);
+    downpaymentRemainder = roundMoneyValue(downpaymentRemainder - dueAmount);
+
+    rows.push({
+      id: `computed-${sequence}`,
+      scheduleType: 'downpayment',
+      sequence,
+      dueDate: addMonthsToDate(terms.firstDueDate, index - 1),
+      description: dpTerms === 1 ? 'Downpayment' : `${getOrdinalLabel(index)} Downpayment`,
+      beginningBalance: terms.tcp,
+      dueAmount,
+      interest: 0,
+      penalty: 0,
+      datePaid: '-',
+      amountPaid: 0,
+      referenceId: '-',
+      status: 'Unpaid',
+      endingBalance: terms.tcp,
+    });
+    sequence += 1;
+  }
+
+  for (let index = 1; index <= terms.monthlyTerms; index += 1) {
+    const dueDate = addMonthsToDate(terms.firstDueDate, dpTerms + index - 1);
+    rows.push({
+      id: `computed-${sequence}`,
+      scheduleType: 'monthly',
+      sequence,
+      dueDate,
+      description: `${getOrdinalLabel(index)} Monthly Payment`,
+      beginningBalance: terms.tcp,
+      dueAmount: terms.monthlyPrincipal,
+      interest: 0,
+      penalty: 0,
+      datePaid: '-',
+      amountPaid: 0,
+      referenceId: '-',
+      status: 'Unpaid',
+      endingBalance: terms.tcp,
+    });
+    sequence += 1;
+  }
+
+  return rows;
+};
+
+const getPaymentTargetRows = (rows, paymentType) => {
+  const cleanType = String(paymentType || '').toLowerCase();
+
+  if (cleanType === 'reservation') return rows.filter((row) => row.scheduleType === 'reservation');
+  if (cleanType === 'downpayment') return rows.filter((row) => row.scheduleType === 'downpayment');
+  if (cleanType === 'monthly_amortization') return rows.filter((row) => row.scheduleType === 'monthly');
+  if (cleanType === 'advance_payment') return rows.filter((row) => row.scheduleType === 'monthly');
+  if (cleanType === 'balloon') return rows.filter((row) => row.scheduleType === 'monthly');
+  if (cleanType === 'full_payment') return rows;
+
+  return rows;
+};
+
+const allocatePaymentsToComputedRows = (rows = [], payments = []) => {
+  const sortedPayments = [...payments].sort((a, b) => {
+    const dateA = String(a.paymentDate || a.lot_project_payment_date || '');
+    const dateB = String(b.paymentDate || b.lot_project_payment_date || '');
+    if (dateA !== dateB) return dateA.localeCompare(dateB);
+    return Number(a.paymentId || a.id || 0) - Number(b.paymentId || b.id || 0);
+  });
+
+  for (const payment of sortedPayments) {
+    const type = payment.paymentTypeValue || normalizePaymentType(payment.paymentType || payment.type);
+    let remaining = roundMoneyValue(payment.amount ?? payment.lot_project_payment_amount ?? 0);
+    const targetRows = getPaymentTargetRows(rows, type);
+
+    for (const row of targetRows) {
+      if (remaining <= 0) break;
+
+      const unpaid = Math.max(getScheduleTotalDue(row) - Number(row.amountPaid || 0), 0);
+      if (unpaid <= 0) continue;
+
+      const appliedAmount = roundMoneyValue(Math.min(remaining, unpaid));
+      row.amountPaid = roundMoneyValue(Number(row.amountPaid || 0) + appliedAmount);
+      appendPaymentReference(row, payment);
+      remaining = roundMoneyValue(remaining - appliedAmount);
+    }
+  }
+
+  return rows;
+};
+
+const recomputeComputedSoaBalances = (rows = [], terms = {}) => {
+  const today = new Date().toISOString().slice(0, 10);
+  let runningBalance = roundMoneyValue(terms.tcp || 0);
+  const visibleRows = [];
+
+  for (const row of rows) {
+    row.beginningBalance = runningBalance;
+
+    if (row.scheduleType === 'monthly' || row.scheduleType === 'full_payment') {
+      row.dueAmount = roundMoneyValue(Math.min(Number(row.dueAmount || 0), runningBalance));
+    }
+
+    if (row.scheduleType === 'monthly' && Number(terms.annualInterestRate || 0) > 0 && runningBalance > 0) {
+      row.interest = roundMoneyValue(runningBalance * (Number(terms.annualInterestRate || 0) / 100 / 12));
+    }
+
+    const totalDue = getScheduleTotalDue(row);
+    const amountPaid = roundMoneyValue(Number(row.amountPaid || 0));
+    const principalPaid = roundMoneyValue(Math.min(amountPaid, Number(row.dueAmount || 0), runningBalance));
+
+    runningBalance = roundMoneyValue(Math.max(runningBalance - principalPaid, 0));
+    row.endingBalance = runningBalance;
+
+    if (amountPaid <= 0) {
+      row.status = row.dueDate && row.dueDate < today ? 'Overdue' : 'Unpaid';
+    } else if (amountPaid + 0.009 < totalDue) {
+      row.status = 'Partial';
+    } else {
+      row.status = row.datePaid !== '-' && row.dueDate && row.datePaid < row.dueDate ? 'Advance' : 'Paid';
+    }
+
+    visibleRows.push({
+      id: row.id,
+      dueDate: row.dueDate,
+      description: row.description,
+      beginningBalance: row.beginningBalance,
+      dueAmount: row.dueAmount,
+      interest: row.interest || 0,
+      penalty: row.penalty || 0,
+      datePaid: row.datePaid || '-',
+      amountPaid: row.amountPaid || 0,
+      referenceId: row.referenceId || '-',
+      status: row.status,
+      endingBalance: row.endingBalance,
+    });
+
+    if (runningBalance <= 0 && amountPaid > 0) break;
+  }
+
+  return visibleRows;
+};
+
+const getExistingSoaScheduleRows = async (connection, lotProjectId, listingId) => {
   if (!(await tableExists(connection, 'lot_project_payment_schedules'))) return [];
 
   const [rows] = await connection.query(
@@ -1015,19 +1353,16 @@ const getListingSoaRows = async (connection, lotProjectId, listingId) => {
     [lotProjectId, listingId]
   );
 
-  return rows.map((row) => ({
-    id: row.lot_project_payment_schedule_id,
-    dueDate: plainDate(row.due_date),
-    description: row.description,
-    beginningBalance: Number(row.beginning_balance || 0),
-    dueAmount: Number(row.due_amount || 0),
-    penalty: Number(row.penalty_amount || 0),
-    datePaid: row.date_paid ? plainDate(row.date_paid) : '-',
-    amountPaid: Number(row.amount_paid || 0),
-    referenceId: row.reference_id || '-',
-    status: row.schedule_status || 'Unpaid',
-    endingBalance: Number(row.ending_balance || 0),
-  }));
+  return rows;
+};
+
+const getListingSoaRows = async (connection, lotProjectId, listingId, listingRow = {}, payments = []) => {
+  const existingScheduleRows = await getExistingSoaScheduleRows(connection, lotProjectId, listingId);
+  const terms = getComputedSoaTerms(listingRow, existingScheduleRows);
+  const computedRows = createComputedSoaRows(terms);
+  const rowsWithPayments = allocatePaymentsToComputedRows(computedRows, payments);
+
+  return recomputeComputedSoaBalances(rowsWithPayments, terms);
 };
 
 export const getLotProjectListingProfile = async (req, res) => {
@@ -1125,7 +1460,8 @@ export const getLotProjectListingProfile = async (req, res) => {
     if (!row) return res.status(404).json({ message: 'Listing not found.' });
 
     const documents = await getListingDocuments(connection, project.lot_project_id, row.lot_project_listing_id, row.lot_project_client_profile_id);
-    const soaRows = await getListingSoaRows(connection, project.lot_project_id, row.lot_project_listing_id);
+    const payments = await getListingPayments(connection, project.lot_project_id, row.lot_project_listing_id);
+    const soaRows = await getListingSoaRows(connection, project.lot_project_id, row.lot_project_listing_id, row, payments);
     const cadastralLots = await getProjectCadastralLots(project.lot_project_id);
     const defaultDocuments = await getProjectDefaultDocuments(project.lot_project_id);
     const sellerName = row.seller_name || '-';
@@ -1147,6 +1483,7 @@ export const getLotProjectListingProfile = async (req, res) => {
         listing: mapProfileListing(row, project, documents),
         client: mapClientProfile(row, sellerName),
         soaRows,
+        payments,
         documents,
       },
     });
@@ -1155,6 +1492,333 @@ export const getLotProjectListingProfile = async (req, res) => {
   } finally {
     connection.release();
   }
+};
+
+
+const getAuthenticatedUser = async (req) => {
+  const token = req.cookies?.token;
+  if (!token) return null;
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const [rows] = await db.query(
+      `
+        SELECT id, first_name, middle_name, last_name, email, role, password_hash, status
+        FROM users
+        WHERE id = ?
+        LIMIT 1
+      `,
+      [decoded.id]
+    );
+
+    const user = rows[0];
+    if (!user || user.status !== 'active') return null;
+    return user;
+  } catch {
+    return null;
+  }
+};
+
+const getUserFullName = (user = {}) => {
+  const name = [user.first_name, user.middle_name, user.last_name]
+    .map((part) => String(part || '').trim())
+    .filter(Boolean)
+    .join(' ');
+
+  return name || user.email || '-';
+};
+
+const getListingForPayment = async (connection, project, listingLookup) => {
+  const lookup = getListingLookupWhere(listingLookup);
+  const [rows] = await connection.query(
+    `
+      SELECT
+        l.lot_project_listing_id,
+        l.lot_project_id,
+        l.lot_project_listing_unit_id,
+        l.lot_project_listing_tcp,
+        cp.lot_project_client_profile_id,
+        cp.buyer_full_name
+      FROM lot_project_listings l
+      LEFT JOIN lot_project_client_profiles cp
+        ON cp.lot_project_listing_id = l.lot_project_listing_id
+      WHERE l.lot_project_id = ?
+        AND ${lookup.sql}
+      LIMIT 1
+    `,
+    [project.lot_project_id, ...lookup.params]
+  );
+
+  return rows[0] || null;
+};
+
+const normalizePaymentType = (value = '') => {
+  const clean = String(value || '').trim().toLowerCase().replace(/[_-]+/g, ' ');
+
+  if (clean === 'reservation') return 'reservation';
+  if (clean === 'downpayment' || clean === 'down payment') return 'downpayment';
+  if (clean === 'monthly' || clean === 'monthly amortization') return 'monthly_amortization';
+  if (clean === 'advance payment' || clean === 'advance') return 'advance_payment';
+  if (clean === 'balloon' || clean === 'balloon payment') return 'balloon';
+  if (clean === 'full payment' || clean === 'full') return 'full_payment';
+  return 'other';
+};
+
+const getPaymentTypeLabel = (value = '') => {
+  const labels = {
+    reservation: 'Reservation',
+    downpayment: 'Downpayment',
+    monthly_amortization: 'Monthly',
+    advance_payment: 'Advance Payment',
+    balloon: 'Balloon',
+    full_payment: 'Full Payment',
+    legal_misc: 'Other',
+    other: 'Other',
+  };
+
+  return labels[String(value || '').toLowerCase()] || 'Other';
+};
+
+const normalizePaymentMethod = (value = '') => {
+  const clean = String(value || 'Cash').trim().toLowerCase();
+
+  if (clean === 'cash') return 'Cash';
+  if (clean === 'bank transfer' || clean === 'bank') return 'Bank Transfer';
+  if (clean === 'online transfer' || clean === 'online payment' || clean === 'gcash') return 'Online Payment';
+  if (clean === 'check' || clean === 'cheque') return 'Check';
+  return 'Other';
+};
+
+const getNextCashReference = async (connection, unitCode) => {
+  const dateKey = new Date().toISOString().slice(0, 10).replaceAll('-', '');
+  const cleanUnit = String(unitCode || 'UNIT').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  const prefix = `CASH-${dateKey}-${cleanUnit}`;
+
+  const [rows] = await connection.query(
+    `
+      SELECT COUNT(*) AS total
+      FROM lot_project_payments
+      WHERE lot_project_payment_reference_id LIKE ?
+    `,
+    [`${prefix}-%`]
+  );
+
+  const nextNumber = String(Number(rows[0]?.total || 0) + 1).padStart(4, '0');
+  return `${prefix}-${nextNumber}`;
+};
+
+const mapPaymentRow = (row = {}) => ({
+  id: row.lot_project_payment_id,
+  paymentId: row.lot_project_payment_id,
+  soaRowId: row.lot_project_payment_schedule_id,
+  paymentType: getPaymentTypeLabel(row.lot_project_payment_type),
+  paymentTypeValue: row.lot_project_payment_type,
+  scheduleDescription: row.schedule_description || '-',
+  type: getPaymentTypeLabel(row.lot_project_payment_type),
+  method: row.lot_project_payment_method || '-',
+  amount: Number(row.lot_project_payment_amount || 0),
+  paymentDate: plainDate(row.lot_project_payment_date),
+  referenceId: row.lot_project_payment_reference_id || '-',
+  verifiedBy: row.verified_by_name || '-',
+  verifiedAt: formatDateTime(row.lot_project_payment_verified_at),
+  status: row.lot_project_payment_status || 'Verified',
+  createdAt: formatDateTime(row.lot_project_payment_created_at),
+  updatedAt: formatDateTime(row.lot_project_payment_updated_at),
+});
+
+const getListingPayments = async (connection, lotProjectId, listingId) => {
+  if (!(await tableExists(connection, 'lot_project_payments'))) return [];
+
+  const [rows] = await connection.query(
+    `
+      SELECT
+        p.*,
+        ps.description AS schedule_description,
+        TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS verified_by_name
+      FROM lot_project_payments p
+      LEFT JOIN lot_project_payment_schedules ps
+        ON ps.lot_project_payment_schedule_id = p.lot_project_payment_schedule_id
+      LEFT JOIN users u
+        ON u.id = p.lot_project_payment_verified_by_user_id
+      WHERE p.lot_project_id = ?
+        AND p.lot_project_listing_id = ?
+      ORDER BY p.lot_project_payment_date DESC, p.lot_project_payment_id DESC
+    `,
+    [lotProjectId, listingId]
+  );
+
+  return rows.map(mapPaymentRow);
+};
+
+const recomputeListingScheduleBalances = async (connection, listing) => {
+  const [rows] = await connection.query(
+    `
+      SELECT *
+      FROM lot_project_payment_schedules
+      WHERE lot_project_id = ?
+        AND lot_project_listing_id = ?
+      ORDER BY due_date ASC, lot_project_payment_schedule_id ASC
+    `,
+    [listing.lot_project_id, listing.lot_project_listing_id]
+  );
+
+  let runningBalance = Number(listing.lot_project_listing_tcp || 0);
+
+  for (const row of rows) {
+    const beginningBalance = runningBalance;
+    const paidAmount = Number(row.amount_paid || 0);
+    runningBalance = Math.max(runningBalance - paidAmount, 0);
+
+    await connection.query(
+      `
+        UPDATE lot_project_payment_schedules
+        SET beginning_balance = ?,
+            ending_balance = ?
+        WHERE lot_project_payment_schedule_id = ?
+      `,
+      [beginningBalance, runningBalance, row.lot_project_payment_schedule_id]
+    );
+  }
+};
+
+const applyPaymentToSchedules = async (connection, listing, paymentId, preferredScheduleId, amount, paymentDate, referenceId) => {
+  if (!(await tableExists(connection, 'lot_project_payment_allocations'))) {
+    throw new Error('lot_project_payment_allocations table does not exist. Run the payments SOA migration first.');
+  }
+
+  const [scheduleRows] = await connection.query(
+    `
+      SELECT *
+      FROM lot_project_payment_schedules
+      WHERE lot_project_id = ?
+        AND lot_project_listing_id = ?
+      ORDER BY
+        CASE WHEN lot_project_payment_schedule_id = ? THEN 0 ELSE 1 END,
+        due_date ASC,
+        lot_project_payment_schedule_id ASC
+    `,
+    [listing.lot_project_id, listing.lot_project_listing_id, preferredScheduleId || 0]
+  );
+
+  if (!scheduleRows.length) {
+    throw new Error('No SOA schedule row is available for this listing.');
+  }
+
+  let remaining = Number(amount || 0);
+
+  for (const row of scheduleRows) {
+    if (remaining <= 0) break;
+
+    const totalDue = Number(row.due_amount || 0) + Number(row.penalty_amount || 0);
+    const currentPaid = Number(row.amount_paid || 0);
+    const unpaidForRow = Math.max(totalDue - currentPaid, 0);
+
+    if (unpaidForRow <= 0) continue;
+
+    const appliedAmount = Math.min(remaining, unpaidForRow);
+    const nextPaid = currentPaid + appliedAmount;
+    const isPaid = nextPaid >= totalDue;
+    const paidBeforeDue = paymentDate && row.due_date && new Date(paymentDate) < new Date(row.due_date);
+    const nextStatus = isPaid ? (paidBeforeDue ? 'Advance' : 'Paid') : 'Partial';
+
+    await connection.query(
+      `
+        UPDATE lot_project_payment_schedules
+        SET amount_paid = ?,
+            date_paid = ?,
+            reference_id = ?,
+            schedule_status = ?
+        WHERE lot_project_payment_schedule_id = ?
+      `,
+      [nextPaid, paymentDate, referenceId, nextStatus, row.lot_project_payment_schedule_id]
+    );
+
+    await connection.query(
+      `
+        INSERT INTO lot_project_payment_allocations (
+          lot_project_payment_id,
+          lot_project_payment_schedule_id,
+          applied_amount
+        ) VALUES (?, ?, ?)
+      `,
+      [paymentId, row.lot_project_payment_schedule_id, appliedAmount]
+    );
+
+    remaining -= appliedAmount;
+  }
+
+  if (remaining > 0) {
+    throw new Error('Payment amount exceeds the remaining unpaid SOA balance.');
+  }
+
+  await recomputeListingScheduleBalances(connection, listing);
+};
+
+const reversePaymentAllocations = async (connection, listing, paymentId) => {
+  if (!(await tableExists(connection, 'lot_project_payment_allocations'))) return;
+
+  const [allocations] = await connection.query(
+    `
+      SELECT lot_project_payment_schedule_id, applied_amount
+      FROM lot_project_payment_allocations
+      WHERE lot_project_payment_id = ?
+    `,
+    [paymentId]
+  );
+
+  for (const allocation of allocations) {
+    const [scheduleRows] = await connection.query(
+      `
+        SELECT amount_paid, due_amount, penalty_amount
+        FROM lot_project_payment_schedules
+        WHERE lot_project_payment_schedule_id = ?
+        LIMIT 1
+      `,
+      [allocation.lot_project_payment_schedule_id]
+    );
+
+    const schedule = scheduleRows[0];
+    if (!schedule) continue;
+
+    const nextPaid = Math.max(Number(schedule.amount_paid || 0) - Number(allocation.applied_amount || 0), 0);
+    const totalDue = Number(schedule.due_amount || 0) + Number(schedule.penalty_amount || 0);
+    const nextStatus = nextPaid <= 0 ? 'Unpaid' : nextPaid >= totalDue ? 'Paid' : 'Partial';
+
+    await connection.query(
+      `
+        UPDATE lot_project_payment_schedules
+        SET amount_paid = ?,
+            date_paid = CASE WHEN ? <= 0 THEN NULL ELSE date_paid END,
+            reference_id = CASE WHEN ? <= 0 THEN NULL ELSE reference_id END,
+            schedule_status = ?
+        WHERE lot_project_payment_schedule_id = ?
+      `,
+      [nextPaid, nextPaid, nextPaid, nextStatus, allocation.lot_project_payment_schedule_id]
+    );
+  }
+
+  await connection.query(
+    `DELETE FROM lot_project_payment_allocations WHERE lot_project_payment_id = ?`,
+    [paymentId]
+  );
+
+  await recomputeListingScheduleBalances(connection, listing);
+};
+
+const getPaymentById = async (connection, project, listing, paymentId) => {
+  const [rows] = await connection.query(
+    `
+      SELECT *
+      FROM lot_project_payments
+      WHERE lot_project_payment_id = ?
+        AND lot_project_id = ?
+        AND lot_project_listing_id = ?
+      LIMIT 1
+    `,
+    [paymentId, project.lot_project_id, listing.lot_project_listing_id]
+  );
+
+  return rows[0] || null;
 };
 
 const dateOrNull = (value) => {
@@ -1490,6 +2154,277 @@ export const updateLotProjectListing = async (req, res) => {
       message: `${unitCode} updated successfully.`,
       listing_id: existingListing.lot_project_listing_id,
       unit_id: unitCode,
+    });
+  } catch (error) {
+    await connection.rollback();
+    return res.status(500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
+
+export const createLotProjectListingPayment = async (req, res) => {
+  const connection = await db.getConnection();
+
+  try {
+    const user = await getAuthenticatedUser(req);
+    const slug = String(req.params.projectSlug || '').trim();
+    const listingLookup = String(req.params.listingId || '').trim();
+    const project = await getProjectBySlug(slug);
+
+    if (!user) return res.status(401).json({ message: 'Please login before adding a payment.' });
+    if (!project) return res.status(404).json({ message: 'Lot project not found.' });
+    if (!listingLookup) return res.status(400).json({ message: 'Listing id is required.' });
+    if (!(await tableExists(connection, 'lot_project_payments'))) {
+      return res.status(500).json({ message: 'lot_project_payments table does not exist.' });
+    }
+
+    const listing = await getListingForPayment(connection, project, listingLookup);
+    if (!listing) return res.status(404).json({ message: 'Listing not found.' });
+    if (!listing.lot_project_client_profile_id) {
+      return res.status(400).json({ message: 'This listing has no buyer profile yet.' });
+    }
+
+    const amount = parseMoneyValue(req.body.amount);
+    const paymentDate = dateOrNull(req.body.paymentDate || req.body.payment_date) || new Date().toISOString().slice(0, 10);
+    const paymentType = normalizePaymentType(req.body.paymentType || req.body.payment_type);
+    const paymentMethod = normalizePaymentMethod(req.body.method || req.body.paymentMethod || req.body.payment_method);
+    const scheduleId = toNullableNumber(req.body.soaRowId || req.body.paymentScheduleId || req.body.lot_project_payment_schedule_id);
+
+    if (amount <= 0) return res.status(400).json({ message: 'Payment amount must be greater than 0.' });
+
+    const referenceId = paymentMethod === 'Cash'
+      ? await getNextCashReference(connection, listing.lot_project_listing_unit_id)
+      : toNullable(req.body.referenceId || req.body.reference_id);
+
+    if (paymentMethod !== 'Cash' && !referenceId) {
+      return res.status(400).json({ message: 'Reference ID is required for non-cash payments.' });
+    }
+
+    await connection.beginTransaction();
+
+    const [paymentResult] = await connection.query(
+      `
+        INSERT INTO lot_project_payments (
+          lot_project_id,
+          lot_project_listing_id,
+          lot_project_client_profile_id,
+          lot_project_payment_schedule_id,
+          lot_project_payment_type,
+          lot_project_payment_method,
+          lot_project_payment_amount,
+          lot_project_payment_date,
+          lot_project_payment_reference_id,
+          lot_project_payment_status,
+          lot_project_payment_verified_by_user_id,
+          lot_project_payment_verified_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Verified', ?, NOW())
+      `,
+      [
+        project.lot_project_id,
+        listing.lot_project_listing_id,
+        listing.lot_project_client_profile_id,
+        scheduleId,
+        paymentType,
+        paymentMethod,
+        amount,
+        paymentDate,
+        referenceId,
+        user.id,
+      ]
+    );
+
+    const paymentId = paymentResult.insertId;
+
+    await connection.query(
+      `
+        INSERT INTO lot_project_payment_logs (
+          lot_project_payment_id,
+          action_type,
+          action_description,
+          action_by_user_id
+        ) VALUES (?, 'created', ?, ?)
+      `,
+      [paymentId, `${getPaymentTypeLabel(paymentType)} payment created and verified for ${listing.lot_project_listing_unit_id}.`, user.id]
+    );
+
+    await connection.commit();
+
+    return res.status(201).json({
+      success: true,
+      message: `${getPaymentTypeLabel(paymentType)} payment saved and verified successfully.`,
+      payment_id: paymentId,
+      reference_id: referenceId,
+    });
+  } catch (error) {
+    await connection.rollback();
+    return res.status(500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
+export const updateLotProjectListingPayment = async (req, res) => {
+  const connection = await db.getConnection();
+
+  try {
+    const user = await getAuthenticatedUser(req);
+    const slug = String(req.params.projectSlug || '').trim();
+    const listingLookup = String(req.params.listingId || '').trim();
+    const paymentId = Number(req.params.paymentId || 0);
+    const project = await getProjectBySlug(slug);
+
+    if (!user) return res.status(401).json({ message: 'Please login before editing a payment.' });
+    if (!project) return res.status(404).json({ message: 'Lot project not found.' });
+    if (!paymentId) return res.status(400).json({ message: 'Payment id is required.' });
+
+    const listing = await getListingForPayment(connection, project, listingLookup);
+    if (!listing) return res.status(404).json({ message: 'Listing not found.' });
+
+    const existingPayment = await getPaymentById(connection, project, listing, paymentId);
+    if (!existingPayment) return res.status(404).json({ message: 'Payment not found.' });
+
+    const amount = parseMoneyValue(req.body.amount);
+    const paymentDate = dateOrNull(req.body.paymentDate || req.body.payment_date) || plainDate(existingPayment.lot_project_payment_date);
+    const paymentType = normalizePaymentType(req.body.paymentType || req.body.payment_type || existingPayment.lot_project_payment_type);
+    const paymentMethod = normalizePaymentMethod(req.body.method || req.body.paymentMethod || req.body.payment_method || existingPayment.lot_project_payment_method);
+    const scheduleId = toNullableNumber(req.body.soaRowId || req.body.paymentScheduleId || req.body.lot_project_payment_schedule_id || existingPayment.lot_project_payment_schedule_id);
+
+    if (amount <= 0) return res.status(400).json({ message: 'Payment amount must be greater than 0.' });
+
+    const referenceId = paymentMethod === 'Cash'
+      ? (existingPayment.lot_project_payment_reference_id || await getNextCashReference(connection, listing.lot_project_listing_unit_id))
+      : toNullable(req.body.referenceId || req.body.reference_id);
+
+    if (paymentMethod !== 'Cash' && !referenceId) {
+      return res.status(400).json({ message: 'Reference ID is required for non-cash payments.' });
+    }
+
+    await connection.beginTransaction();
+
+    if (await tableExists(connection, 'lot_project_payment_allocations')) {
+      await connection.query(
+        `DELETE FROM lot_project_payment_allocations WHERE lot_project_payment_id = ?`,
+        [paymentId]
+      );
+    }
+
+    await connection.query(
+      `
+        UPDATE lot_project_payments
+        SET lot_project_payment_schedule_id = ?,
+            lot_project_payment_type = ?,
+            lot_project_payment_method = ?,
+            lot_project_payment_amount = ?,
+            lot_project_payment_date = ?,
+            lot_project_payment_reference_id = ?,
+            lot_project_payment_status = 'Verified',
+            lot_project_payment_verified_by_user_id = ?,
+            lot_project_payment_verified_at = NOW()
+        WHERE lot_project_payment_id = ?
+          AND lot_project_id = ?
+          AND lot_project_listing_id = ?
+      `,
+      [
+        scheduleId,
+        paymentType,
+        paymentMethod,
+        amount,
+        paymentDate,
+        referenceId,
+        user.id,
+        paymentId,
+        project.lot_project_id,
+        listing.lot_project_listing_id,
+      ]
+    );
+
+    await connection.query(
+      `
+        INSERT INTO lot_project_payment_logs (
+          lot_project_payment_id,
+          action_type,
+          action_description,
+          action_by_user_id
+        ) VALUES (?, 'updated', ?, ?)
+      `,
+      [paymentId, `${getPaymentTypeLabel(paymentType)} payment updated by ${getUserFullName(user)}.`, user.id]
+    );
+
+    await connection.commit();
+
+    return res.json({
+      success: true,
+      message: `${getPaymentTypeLabel(paymentType)} payment updated successfully.`,
+      payment_id: paymentId,
+      reference_id: referenceId,
+    });
+  } catch (error) {
+    await connection.rollback();
+    return res.status(500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
+export const deleteLotProjectListingPayment = async (req, res) => {
+  const connection = await db.getConnection();
+
+  try {
+    const user = await getAuthenticatedUser(req);
+    const slug = String(req.params.projectSlug || '').trim();
+    const listingLookup = String(req.params.listingId || '').trim();
+    const paymentId = Number(req.params.paymentId || 0);
+    const project = await getProjectBySlug(slug);
+    const superAdminPassword = String(req.body.superAdminPassword || req.body.password || '').trim();
+
+    if (!user) return res.status(401).json({ message: 'Please login before deleting a payment.' });
+    if (user.role !== 'super_admin') {
+      return res.status(403).json({ message: 'Only the logged-in super admin can delete a payment.' });
+    }
+    if (!superAdminPassword) {
+      return res.status(400).json({ message: 'Super admin password is required.' });
+    }
+
+    const isPasswordCorrect = await bcrypt.compare(superAdminPassword, user.password_hash || '');
+    if (!isPasswordCorrect) {
+      return res.status(403).json({ message: 'Super admin password is incorrect.' });
+    }
+
+    if (!project) return res.status(404).json({ message: 'Lot project not found.' });
+    if (!paymentId) return res.status(400).json({ message: 'Payment id is required.' });
+
+    const listing = await getListingForPayment(connection, project, listingLookup);
+    if (!listing) return res.status(404).json({ message: 'Listing not found.' });
+
+    const existingPayment = await getPaymentById(connection, project, listing, paymentId);
+    if (!existingPayment) return res.status(404).json({ message: 'Payment not found.' });
+
+    await connection.beginTransaction();
+
+    if (await tableExists(connection, 'lot_project_payment_allocations')) {
+      await connection.query(
+        `DELETE FROM lot_project_payment_allocations WHERE lot_project_payment_id = ?`,
+        [paymentId]
+      );
+    }
+
+    await connection.query(
+      `
+        DELETE FROM lot_project_payments
+        WHERE lot_project_payment_id = ?
+          AND lot_project_id = ?
+          AND lot_project_listing_id = ?
+      `,
+      [paymentId, project.lot_project_id, listing.lot_project_listing_id]
+    );
+
+    await connection.commit();
+
+    return res.json({
+      success: true,
+      message: `Payment ${existingPayment.lot_project_payment_reference_id || paymentId} deleted successfully.`,
     });
   } catch (error) {
     await connection.rollback();

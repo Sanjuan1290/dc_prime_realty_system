@@ -8,6 +8,9 @@ import {
   getLotProjectListings,
   getLotProjectListingProfile,
   updateLotProjectClientProfile,
+  createLotProjectListingPayment,
+  updateLotProjectListingPayment,
+  deleteLotProjectListingPayment,
   createLotProjectListing,
   updateLotProjectListing,
   createLotProject,
@@ -29,6 +32,9 @@ router.post('/lot-projects', createLotProject);
 router.post('/lot-projects/:projectSlug/listings', createLotProjectListing);
 router.put('/lot-projects/:projectSlug/listings/:listingId', updateLotProjectListing);
 router.put('/lot-projects/:projectSlug/listings/:listingId/client-profile', updateLotProjectClientProfile);
+router.post('/lot-projects/:projectSlug/listings/:listingId/payments', createLotProjectListingPayment);
+router.put('/lot-projects/:projectSlug/listings/:listingId/payments/:paymentId', updateLotProjectListingPayment);
+router.post('/lot-projects/:projectSlug/listings/:listingId/payments/:paymentId/delete', deleteLotProjectListingPayment);
 
 router.put('/lot-projects/:id', updateLotProject);
 router.patch('/lot-projects/:id/status', toggleLotProjectStatus);

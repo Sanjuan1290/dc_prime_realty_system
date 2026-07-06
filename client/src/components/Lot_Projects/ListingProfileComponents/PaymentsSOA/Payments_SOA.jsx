@@ -1,12 +1,18 @@
 import { useMemo, useState } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useParams } from 'react-router-dom'
 import {
+  FiAlertTriangle,
   FiCheckCircle,
   FiCreditCard,
   FiEdit2,
   FiPlus,
-  FiRefreshCw,
   FiSearch,
+  FiTrash2,
+  FiX,
 } from 'react-icons/fi'
+import StatusAlert from '../../../Shared/StatusAlert'
+import { useFetchPost, useFetchPut } from '../../../../utils/useFetch'
 import AddSOAPaymentModal from './AddSOAPaymentModal'
 
 const money = (value) =>
@@ -25,8 +31,7 @@ const formatDate = (value) => {
   if (!value || value === '-') return '-'
 
   const date = new Date(value)
-
-  if (Number.isNaN(date.getTime())) return value
+  if (Number.isNaN(date.getTime())) return String(value).slice(0, 10)
 
   return new Intl.DateTimeFormat('en-CA', {
     year: 'numeric',
@@ -49,113 +54,84 @@ const getListingValue = (listing, keys, fallback = '') => {
   return fallback
 }
 
-const normalizeRows = (rows = [], listing = {}) => {
-  if (rows.length) {
-    return rows.map((row, index) => ({
-      id: row.id || index + 1,
-      dueDate: row.dueDate || row.due_date || '',
-      description: row.description || row.payment_description || '',
-      beginningBalance: cleanMoney(row.beginningBalance ?? row.beginning_balance),
-      dueAmount: cleanMoney(row.dueAmount ?? row.due_amount),
-      interest: cleanMoney(row.interest ?? row.interestAmount ?? row.interest_amount),
-      penalty: cleanMoney(row.penalty ?? row.penaltyAmount ?? row.penalty_amount),
-      datePaid: row.datePaid || row.date_paid || '',
-      amountPaid: cleanMoney(row.amountPaid ?? row.amount_paid),
-      referenceId: row.referenceId || row.reference_id || row.reference || '-',
-      paymentMethod: row.paymentMethod || row.payment_method || '-',
-      verifiedBy: row.verifiedBy || row.verified_by || '-',
-      status: row.status || 'Unpaid',
-      endingBalance: cleanMoney(
-        row.endingBalance ??
-          row.remainingBalance ??
-          row.runningBalance ??
-          row.ending_balance
-      ),
-    }))
-  }
-
-  const tcp = cleanMoney(listing?.tcp || listing?.tcpAmount || 396000)
-  const reservationFee = cleanMoney(listing?.reservationFee || 50000)
-  const downpayment = cleanMoney(listing?.downpayment || 118800)
-  const monthly = cleanMoney(listing?.monthlyAmortization || 6311)
-
-  return [
-    {
-      id: 1,
-      dueDate: '2026-07-01',
-      description: 'Reservation Fee',
-      beginningBalance: tcp,
-      dueAmount: reservationFee,
-      interest: 0,
-      penalty: 0,
-      datePaid: '',
-      amountPaid: 0,
-      referenceId: '-',
-      paymentMethod: '-',
-      verifiedBy: '-',
-      status: 'Unpaid',
-      endingBalance: tcp,
-    },
-    {
-      id: 2,
-      dueDate: '2026-07-15',
-      description: 'Downpayment',
-      beginningBalance: tcp - reservationFee,
-      dueAmount: downpayment,
-      interest: 0,
-      penalty: 0,
-      datePaid: '',
-      amountPaid: 0,
-      referenceId: '-',
-      paymentMethod: '-',
-      verifiedBy: '-',
-      status: 'Unpaid',
-      endingBalance: tcp - reservationFee,
-    },
-    {
-      id: 3,
-      dueDate: '2026-08-15',
-      description: 'Monthly Amortization 1',
-      beginningBalance: tcp - reservationFee - downpayment,
-      dueAmount: monthly,
-      interest: 0,
-      penalty: 0,
-      datePaid: '',
-      amountPaid: 0,
-      referenceId: '-',
-      paymentMethod: '-',
-      verifiedBy: '-',
-      status: 'Unpaid',
-      endingBalance: tcp - reservationFee - downpayment,
-    },
-    {
-      id: 4,
-      dueDate: '2026-09-15',
-      description: 'Monthly Amortization 2',
-      beginningBalance: tcp - reservationFee - downpayment - monthly,
-      dueAmount: monthly,
-      interest: 0,
-      penalty: 0,
-      datePaid: '',
-      amountPaid: 0,
-      referenceId: '-',
-      paymentMethod: '-',
-      verifiedBy: '-',
-      status: 'Unpaid',
-      endingBalance: tcp - reservationFee - downpayment - monthly,
-    },
-  ]
+const normalizeRows = (rows = []) => {
+  return rows.map((row, index) => ({
+    id: row.id || row.lot_project_payment_schedule_id || index + 1,
+    dueDate: row.dueDate || row.due_date || '',
+    description: row.description || row.payment_description || '',
+    beginningBalance: cleanMoney(row.beginningBalance ?? row.beginning_balance),
+    dueAmount: cleanMoney(row.dueAmount ?? row.due_amount),
+    interest: cleanMoney(row.interest ?? row.interestAmount ?? row.interest_amount),
+    penalty: cleanMoney(row.penalty ?? row.penaltyAmount ?? row.penalty_amount),
+    datePaid: row.datePaid || row.date_paid || '',
+    amountPaid: cleanMoney(row.amountPaid ?? row.amount_paid),
+    referenceId: row.referenceId || row.reference_id || row.reference || '-',
+    paymentMethod: row.paymentMethod || row.payment_method || '-',
+    verifiedBy: row.verifiedBy || row.verified_by || '-',
+    status: row.status || row.schedule_status || 'Unpaid',
+    endingBalance: cleanMoney(
+      row.endingBalance ??
+        row.remainingBalance ??
+        row.runningBalance ??
+        row.ending_balance
+    ),
+  }))
 }
+
+const normalizePayments = (payments = [], listing = {}) => {
+  const buyerName = getListingValue(listing, ['buyer_name', 'buyerName', 'clientName'], '-')
+  const unitCode = getListingValue(listing, ['unit_id', 'unitCode', 'unitNo'], '-')
+  const projectName = getListingValue(listing, ['project_name', 'projectName'], '-')
+
+  return payments.map((payment, index) => ({
+    id: payment.id || payment.paymentId || index + 1,
+    paymentId: payment.paymentId || payment.id,
+    soaRowId: payment.soaRowId || payment.lot_project_payment_schedule_id || '',
+    client: payment.client || buyerName,
+    unit: payment.unit || unitCode,
+    project: payment.project || projectName,
+    type: payment.type || payment.paymentType || 'Other',
+    paymentType: payment.paymentType || payment.type || 'Other',
+    amount: cleanMoney(payment.amount ?? payment.lot_project_payment_amount),
+    method: payment.method || payment.paymentMethod || payment.lot_project_payment_method || '-',
+    referenceId:
+      payment.referenceId ||
+      payment.reference_id ||
+      payment.lot_project_payment_reference_id ||
+      '-',
+    paymentDate:
+      payment.paymentDate ||
+      payment.payment_date ||
+      payment.lot_project_payment_date ||
+      '',
+    verifiedBy: payment.verifiedBy || payment.verified_by || '-',
+    verifiedAt: payment.verifiedAt || payment.verified_at || '',
+    status: payment.status || payment.lot_project_payment_status || 'Verified',
+    scheduleDescription: payment.scheduleDescription || payment.schedule_description || '-',
+  }))
+}
+
+const paymentTypeOptions = [
+  'Reservation',
+  'Downpayment',
+  'Monthly',
+  'Advance Payment',
+  'Balloon',
+  'Full Payment',
+  'Other',
+]
 
 const StatusPill = ({ status }) => {
   const normalized = String(status || '').toLowerCase()
 
   const styles = {
     paid: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+    advance: 'border-blue-200 bg-blue-50 text-blue-700',
     verified: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-    pending: 'border-amber-200 bg-amber-50 text-amber-700',
-    rejected: 'border-red-200 bg-red-50 text-red-700',
+    partial: 'border-amber-200 bg-amber-50 text-amber-700',
+    overdue: 'border-red-200 bg-red-50 text-red-700',
     unpaid: 'border-slate-200 bg-slate-100 text-slate-600',
+    cancelled: 'border-slate-200 bg-slate-100 text-slate-600',
   }
 
   const color = styles[normalized] || styles.unpaid
@@ -189,49 +165,173 @@ const SummaryCard = ({ label, value, tone = 'slate', isMoney = true }) => {
   )
 }
 
-const PaymentsSOA = ({ listing = {}, soaRows = [] }) => {
-  const [rows, setRows] = useState(() => normalizeRows(soaRows, listing))
-  const [showAdd, setShowAdd] = useState(false)
+const DeletePaymentModal = ({ payment, password, setPassword, alert, isDeleting, onClose, onConfirm }) => {
+  if (!payment) return null
+
+  return (
+    <div className="fixed inset-0 z-[75] flex items-center justify-center bg-slate-950/50 p-4">
+      <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-red-50 text-red-700">
+              <FiAlertTriangle className="h-5 w-5" />
+            </div>
+            <div>
+              <h3 className="text-lg font-black text-slate-950">Delete Payment</h3>
+              <p className="text-sm font-semibold text-slate-500">
+                Super admin password is required.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+          >
+            <FiX className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="p-5">
+          {alert ? (
+            <StatusAlert
+              type={alert.type}
+              message={alert.message}
+              onClose={alert.type === 'loading' ? undefined : null}
+              className="mb-4"
+            />
+          ) : null}
+
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-800">
+            This will remove the payment record and reverse the amount applied to the SOA.
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div>
+                <p className="font-black text-slate-500">Reference ID</p>
+                <p className="mt-1 font-semibold text-slate-900">{payment.referenceId}</p>
+              </div>
+              <div>
+                <p className="font-black text-slate-500">Amount</p>
+                <p className="mt-1 font-semibold text-slate-900">{money(payment.amount)}</p>
+              </div>
+              <div>
+                <p className="font-black text-slate-500">Type</p>
+                <p className="mt-1 font-semibold text-slate-900">{payment.type}</p>
+              </div>
+              <div>
+                <p className="font-black text-slate-500">Date</p>
+                <p className="mt-1 font-semibold text-slate-900">{formatDate(payment.paymentDate)}</p>
+              </div>
+            </div>
+          </div>
+
+          <label className="mt-4 flex flex-col gap-1.5">
+            <span className="text-sm font-black text-slate-700">
+              Super Admin Password <span className="text-red-500">*</span>
+            </span>
+            <input
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="Enter super admin password"
+              className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-red-400 focus:ring-4 focus:ring-red-50"
+            />
+          </label>
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-slate-200 bg-white px-5 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-10 rounded-lg border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50"
+          >
+            Cancel
+          </button>
+
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={isDeleting}
+            className="h-10 rounded-lg bg-red-600 px-5 text-sm font-black text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-red-300"
+          >
+            {isDeleting ? 'Deleting...' : 'Delete Payment'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
+  const { projectSlug, listingId } = useParams()
+  const queryClient = useQueryClient()
+
+  const rows = useMemo(() => normalizeRows(soaRows), [soaRows])
+  const paymentRecords = useMemo(() => normalizePayments(payments, listing), [payments, listing])
+
+  const [alert, setAlert] = useState(null)
+  const [showPaymentModal, setShowPaymentModal] = useState(false)
+  const [editingPayment, setEditingPayment] = useState(null)
+  const [deletePayment, setDeletePayment] = useState(null)
+  const [deletePassword, setDeletePassword] = useState('')
+  const [deleteAlert, setDeleteAlert] = useState(null)
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
 
-  const buyerName = getListingValue(
-    listing,
-    ['buyer_name', 'buyerName', 'clientName'],
-    'robert'
-  )
+  const profileKey = ['lot-listing-profile', projectSlug, listingId]
 
-  const unitCode = getListingValue(
-    listing,
-    ['unit_id', 'unitCode', 'unitNo'],
-    'LA-0402'
-  )
+  const invalidateProfile = () => {
+    queryClient.invalidateQueries({ queryKey: profileKey })
+    queryClient.invalidateQueries({ queryKey: ['lot-listings', projectSlug] })
+    queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] })
+  }
 
-  const projectName = getListingValue(
-    listing,
-    ['project_name', 'projectName'],
-    'Bailen Project'
-  )
+  const createPaymentMutation = useMutation({
+    mutationFn: (payload) =>
+      useFetchPost(`/projects/lot-projects/${projectSlug}/listings/${listingId}/payments`, payload),
+    onSuccess: (result) => {
+      setShowPaymentModal(false)
+      setEditingPayment(null)
+      setAlert({ type: 'success', message: result?.message || 'Payment saved successfully.' })
+      invalidateProfile()
+    },
+  })
 
-  const tcp = cleanMoney(
-    getListingValue(listing, ['tcp', 'tcpAmount', 'totalContractPrice'], 0)
-  )
+  const updatePaymentMutation = useMutation({
+    mutationFn: (payload) =>
+      useFetchPut(
+        `/projects/lot-projects/${projectSlug}/listings/${listingId}/payments/${payload.paymentId}`,
+        payload
+      ),
+    onSuccess: (result) => {
+      setShowPaymentModal(false)
+      setEditingPayment(null)
+      setAlert({ type: 'success', message: result?.message || 'Payment updated successfully.' })
+      invalidateProfile()
+    },
+  })
 
-  const paymentRecords = useMemo(() => {
-    return rows
-      .filter((row) => Number(row.amountPaid || 0) > 0)
-      .map((row) => ({
-        ...row,
-        client: buyerName,
-        unit: unitCode,
-        project: projectName,
-        type: row.description,
-        amount: row.amountPaid,
-        method: row.paymentMethod || '-',
-        paymentDate: row.datePaid,
-      }))
-  }, [rows, buyerName, unitCode, projectName])
+  const deletePaymentMutation = useMutation({
+    mutationFn: ({ paymentId, superAdminPassword }) =>
+      useFetchPost(
+        `/projects/lot-projects/${projectSlug}/listings/${listingId}/payments/${paymentId}/delete`,
+        { superAdminPassword }
+      ),
+    onSuccess: (result) => {
+      setDeletePayment(null)
+      setDeletePassword('')
+      setDeleteAlert(null)
+      setAlert({ type: 'success', message: result?.message || 'Payment deleted successfully.' })
+      invalidateProfile()
+    },
+    onError: (error) => {
+      setDeleteAlert({ type: 'error', message: error?.message || 'Failed to delete payment.' })
+    },
+  })
 
   const filteredPayments = useMemo(() => {
     const keyword = search.trim().toLowerCase()
@@ -243,13 +343,8 @@ const PaymentsSOA = ({ listing = {}, soaRows = [] }) => {
           .toLowerCase()
           .includes(keyword)
 
-      const matchesType =
-        typeFilter === 'all' ||
-        payment.type.toLowerCase().includes(typeFilter.toLowerCase())
-
-      const matchesStatus =
-        statusFilter === 'all' ||
-        payment.status.toLowerCase() === statusFilter.toLowerCase()
+      const matchesType = typeFilter === 'all' || payment.type === typeFilter
+      const matchesStatus = statusFilter === 'all' || payment.status === statusFilter
 
       return matchesSearch && matchesType && matchesStatus
     })
@@ -271,27 +366,14 @@ const PaymentsSOA = ({ listing = {}, soaRows = [] }) => {
   )
 
   const totalPaid = useMemo(
-    () => rows.reduce((sum, row) => sum + Number(row.amountPaid || 0), 0),
-    [rows]
+    () => paymentRecords.reduce((sum, payment) => sum + Number(payment.amount || 0), 0),
+    [paymentRecords]
   )
 
-  const pendingAmount = useMemo(
-    () =>
-      rows.reduce((sum, row) => {
-        const status = String(row.status || '').toLowerCase()
-        return status === 'pending' ? sum + Number(row.amountPaid || 0) : sum
-      }, 0),
-    [rows]
-  )
-
-  const rejectedAmount = useMemo(
-    () =>
-      rows.reduce((sum, row) => {
-        const status = String(row.status || '').toLowerCase()
-        return status === 'rejected' ? sum + Number(row.amountPaid || 0) : sum
-      }, 0),
-    [rows]
-  )
+  const remainingBalance = useMemo(() => {
+    if (!rows.length) return cleanMoney(listing?.balanceAmount ?? listing?.balance)
+    return Number(rows[rows.length - 1]?.endingBalance || 0)
+  }, [rows, listing])
 
   const resetFilters = () => {
     setSearch('')
@@ -299,50 +381,65 @@ const PaymentsSOA = ({ listing = {}, soaRows = [] }) => {
     setStatusFilter('all')
   }
 
-  const handleSavePayment = (payment) => {
-    setRows((current) =>
-      current.map((row) => {
-        if (String(row.id) !== String(payment.soaRowId)) return row
+  const openAddModal = () => {
+    setEditingPayment(null)
+    setShowPaymentModal(true)
+  }
 
-        const totalRowDue =
-          Number(row.dueAmount || 0) +
-          Number(payment.interest || 0) +
-          Number(payment.penalty || 0)
+  const openEditModal = (payment) => {
+    setEditingPayment(payment)
+    setShowPaymentModal(true)
+  }
 
-        const paidAmount = Number(payment.amount || 0)
-        const isFullyPaid = paidAmount >= totalRowDue
+  const handleSavePayment = async (payload) => {
+    if (payload.paymentId) {
+      await updatePaymentMutation.mutateAsync(payload)
+      return
+    }
 
-        return {
-          ...row,
-          interest: Number(payment.interest || 0),
-          penalty: Number(payment.penalty || 0),
-          datePaid: payment.paymentDate,
-          amountPaid: paidAmount,
-          referenceId: payment.referenceId,
-          paymentMethod: payment.method,
-          verifiedBy: payment.status === 'Verified' ? 'Super Admin' : '-',
-          status: payment.status === 'Verified' && isFullyPaid ? 'Paid' : payment.status,
-          endingBalance: Math.max(Number(row.beginningBalance || 0) - paidAmount, 0),
-        }
-      })
-    )
+    await createPaymentMutation.mutateAsync(payload)
+  }
 
-    setShowAdd(false)
+  const handleDeleteClick = (payment) => {
+    setDeletePayment(payment)
+    setDeletePassword('')
+    setDeleteAlert(null)
+  }
+
+  const handleConfirmDelete = () => {
+    if (!deletePassword.trim()) {
+      setDeleteAlert({ type: 'error', message: 'Super admin password is required.' })
+      return
+    }
+
+    deletePaymentMutation.mutate({
+      paymentId: deletePayment.paymentId || deletePayment.id,
+      superAdminPassword: deletePassword,
+    })
   }
 
   return (
     <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+      {alert ? (
+        <StatusAlert
+          type={alert.type}
+          message={alert.message}
+          onClose={() => setAlert(null)}
+          className="mb-4"
+        />
+      ) : null}
+
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div>
           <h2 className="text-2xl font-black text-slate-950">Payments & SOA</h2>
           <p className="mt-1 text-sm font-semibold text-slate-500">
-            Record payments and view the statement of account with interest and penalties.
+            Record verified payments and view the complete computed statement of account.
           </p>
         </div>
 
         <button
           type="button"
-          onClick={() => setShowAdd(true)}
+          onClick={openAddModal}
           className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98]"
         >
           <FiPlus className="h-4 w-4" />
@@ -352,9 +449,9 @@ const PaymentsSOA = ({ listing = {}, soaRows = [] }) => {
 
       <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <SummaryCard label="Payment Records" value={paymentRecords.length} isMoney={false} />
-        <SummaryCard label="Verified Collections" value={totalPaid} />
-        <SummaryCard label="Pending" value={pendingAmount} tone="amber" />
-        <SummaryCard label="Rejected" value={rejectedAmount} tone="red" />
+        <SummaryCard label="Verified Collections" value={totalPaid} tone="emerald" />
+        <SummaryCard label="Total Due" value={totalDue + totalInterest + totalPenalty} tone="blue" />
+        <SummaryCard label="Remaining Balance" value={remainingBalance} tone="amber" />
       </div>
 
       <div className="mt-6 grid gap-3 xl:grid-cols-[1fr_220px_220px_auto]">
@@ -374,11 +471,11 @@ const PaymentsSOA = ({ listing = {}, soaRows = [] }) => {
           className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
         >
           <option value="all">All Types</option>
-          <option value="Reservation">Reservation</option>
-          <option value="Downpayment">Downpayment</option>
-          <option value="Monthly">Monthly</option>
-          <option value="Legal">Legal / Misc</option>
-          <option value="Full">Full Payment</option>
+          {paymentTypeOptions.map((type) => (
+            <option key={type} value={type}>
+              {type}
+            </option>
+          ))}
         </select>
 
         <select
@@ -387,10 +484,7 @@ const PaymentsSOA = ({ listing = {}, soaRows = [] }) => {
           className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
         >
           <option value="all">All Statuses</option>
-          <option value="Paid">Paid</option>
           <option value="Verified">Verified</option>
-          <option value="Pending">Pending</option>
-          <option value="Rejected">Rejected</option>
         </select>
 
         <button
@@ -432,7 +526,7 @@ const PaymentsSOA = ({ listing = {}, soaRows = [] }) => {
 
             <tbody className="divide-y divide-slate-100">
               {filteredPayments.map((payment) => (
-                <tr key={payment.id} className="transition hover:bg-slate-50">
+                <tr key={payment.paymentId || payment.id} className="transition hover:bg-slate-50">
                   <td className="px-4 py-4 font-black text-slate-950">
                     {payment.client}
                   </td>
@@ -469,9 +563,9 @@ const PaymentsSOA = ({ listing = {}, soaRows = [] }) => {
                     <p className="font-semibold text-slate-700">
                       {payment.verifiedBy}
                     </p>
-                    {payment.verifiedBy !== '-' ? (
+                    {payment.verifiedAt && payment.verifiedAt !== '-' ? (
                       <p className="text-xs font-semibold text-slate-500">
-                        {formatDate(payment.paymentDate)}
+                        {payment.verifiedAt}
                       </p>
                     ) : null}
                   </td>
@@ -484,6 +578,7 @@ const PaymentsSOA = ({ listing = {}, soaRows = [] }) => {
                     <div className="flex gap-2">
                       <button
                         type="button"
+                        onClick={() => openEditModal(payment)}
                         className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 transition hover:bg-slate-50"
                       >
                         <FiEdit2 className="h-3.5 w-3.5" />
@@ -492,10 +587,11 @@ const PaymentsSOA = ({ listing = {}, soaRows = [] }) => {
 
                       <button
                         type="button"
-                        className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 transition hover:bg-slate-50"
+                        onClick={() => handleDeleteClick(payment)}
+                        className="inline-flex h-9 items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 text-xs font-black text-red-700 transition hover:bg-red-100"
                       >
-                        <FiRefreshCw className="h-3.5 w-3.5" />
-                        Status
+                        <FiTrash2 className="h-3.5 w-3.5" />
+                        Delete
                       </button>
                     </div>
                   </td>
@@ -510,7 +606,7 @@ const PaymentsSOA = ({ listing = {}, soaRows = [] }) => {
                       No payment records yet
                     </p>
                     <p className="mt-1 text-sm font-semibold text-slate-500">
-                      Add a payment to create a collection record.
+                      Add a payment to create a verified collection record.
                     </p>
                   </td>
                 </tr>
@@ -521,7 +617,7 @@ const PaymentsSOA = ({ listing = {}, soaRows = [] }) => {
 
         <div className="flex flex-col gap-3 border-t border-slate-200 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm font-semibold text-slate-600">
-            Showing 1-{filteredPayments.length} of {filteredPayments.length} records
+            Showing {filteredPayments.length ? 1 : 0}-{filteredPayments.length} of {filteredPayments.length} records
           </p>
 
           <div className="flex items-center gap-2">
@@ -554,12 +650,12 @@ const PaymentsSOA = ({ listing = {}, soaRows = [] }) => {
                 Statement of Account
               </h3>
               <p className="text-sm font-semibold text-slate-500">
-                SOA schedule with due amount, interest, penalty, payment, and ending balance.
+                Complete SOA schedule with due amount, interest, penalty, payment, and ending balance.
               </p>
             </div>
 
             <div className="text-sm font-black text-slate-700">
-              Balance: {money(rows[rows.length - 1]?.endingBalance || 0)}
+              Balance: {money(remainingBalance)}
             </div>
           </div>
         </div>
@@ -623,7 +719,7 @@ const PaymentsSOA = ({ listing = {}, soaRows = [] }) => {
                   </td>
 
                   <td className="px-4 py-3 font-black text-emerald-700">
-                    {Number(row.amountPaid || 0) > 0 ? money(row.amountPaid) : money(0)}
+                    {money(row.amountPaid)}
                   </td>
 
                   <td className="px-4 py-3 font-semibold text-slate-600">
@@ -639,6 +735,20 @@ const PaymentsSOA = ({ listing = {}, soaRows = [] }) => {
                   </td>
                 </tr>
               ))}
+
+              {!rows.length ? (
+                <tr>
+                  <td colSpan={11} className="px-4 py-10 text-center">
+                    <FiCheckCircle className="mx-auto h-8 w-8 text-slate-300" />
+                    <p className="mt-3 text-sm font-black text-slate-700">
+                      No SOA schedule yet
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-slate-500">
+                      Create the reservation/payment schedule first.
+                    </p>
+                  </td>
+                </tr>
+              ) : null}
             </tbody>
           </table>
         </div>
@@ -649,20 +759,40 @@ const PaymentsSOA = ({ listing = {}, soaRows = [] }) => {
               Total amount to fully pay as of statement date:
             </span>
             <span className="text-lg font-black text-slate-950">
-              {money(rows[rows.length - 1]?.endingBalance || 0)}
+              {money(remainingBalance)}
             </span>
           </div>
         </div>
       </section>
 
-      {showAdd ? (
+      {showPaymentModal ? (
         <AddSOAPaymentModal
           listing={listing}
           rows={rows}
-          onClose={() => setShowAdd(false)}
+          initialPayment={editingPayment}
+          mode={editingPayment ? 'edit' : 'add'}
+          isSaving={createPaymentMutation.isPending || updatePaymentMutation.isPending}
+          onClose={() => {
+            setShowPaymentModal(false)
+            setEditingPayment(null)
+          }}
           onSave={handleSavePayment}
         />
       ) : null}
+
+      <DeletePaymentModal
+        payment={deletePayment}
+        password={deletePassword}
+        setPassword={setDeletePassword}
+        alert={deleteAlert}
+        isDeleting={deletePaymentMutation.isPending}
+        onClose={() => {
+          setDeletePayment(null)
+          setDeletePassword('')
+          setDeleteAlert(null)
+        }}
+        onConfirm={handleConfirmDelete}
+      />
     </section>
   )
 }

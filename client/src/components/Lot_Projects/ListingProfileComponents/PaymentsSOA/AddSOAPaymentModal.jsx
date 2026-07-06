@@ -11,6 +11,16 @@ const money = (value) =>
 
 const todayISO = () => new Date().toISOString().slice(0, 10)
 
+const paymentTypes = [
+  'Reservation',
+  'Downpayment',
+  'Monthly',
+  'Advance Payment',
+  'Balloon',
+  'Full Payment',
+  'Other',
+]
+
 const getListingValue = (listing, keys, fallback = '') => {
   for (const key of keys) {
     if (
@@ -35,30 +45,33 @@ const getSuggestedRow = (rows = []) => {
         Number(row.interest || 0) +
         Number(row.penalty || 0)
 
-      return (status === 'unpaid' || status === 'pending') && amountPaid < totalDue
+      return ['unpaid', 'partial', 'overdue'].includes(status) && amountPaid < totalDue
     }) || rows[0]
   )
 }
 
 const getPaymentTypeFromDescription = (description = '') => {
-  const text = description.toLowerCase()
+  const text = String(description || '').toLowerCase()
 
   if (text.includes('reservation')) return 'Reservation'
-  if (text.includes('downpayment')) return 'Downpayment'
-  if (text.includes('legal') || text.includes('misc')) return 'Legal / Misc'
-  if (text.includes('full')) return 'Full Payment'
+  if (text.includes('downpayment') || text.includes('down payment')) return 'Downpayment'
   if (text.includes('advance')) return 'Advance Payment'
-  if (text.includes('offset')) return 'Offset Payment'
-  if (text.includes('balloon')) return 'Balloon Payment'
-
+  if (text.includes('balloon')) return 'Balloon'
+  if (text.includes('full')) return 'Full Payment'
   return 'Monthly'
 }
 
-const generateCashReference = (unitCode) => {
-  const date = todayISO().replaceAll('-', '')
-  const cleanUnit = String(unitCode || 'UNIT').replace(/[^a-zA-Z0-9]/g, '')
-  return `CASH-${date}-${cleanUnit}-0001`
+const normalizePaymentType = (value = '') => {
+  const clean = String(value || '').trim()
+  return paymentTypes.includes(clean) ? clean : 'Other'
 }
+
+const formatDate = (value) => {
+  if (!value || value === '-') return todayISO()
+  return String(value).slice(0, 10)
+}
+
+const cleanNumber = (value) => Number(String(value || '').replace(/[^0-9.-]/g, '')) || 0
 
 const Field = ({
   label,
@@ -112,41 +125,42 @@ const SelectField = ({ label, value, onChange, children, helper, required = fals
   </label>
 )
 
-const AddSOAPaymentModal = ({ listing = {}, rows = [], onClose, onSave }) => {
-  const suggestedRow = getSuggestedRow(rows)
+const AddSOAPaymentModal = ({
+  listing = {},
+  rows = [],
+  initialPayment = null,
+  mode = 'add',
+  isSaving = false,
+  onClose,
+  onSave,
+}) => {
+  const isEdit = mode === 'edit' && initialPayment
+  const suggestedRow = isEdit
+    ? rows.find((row) => String(row.id) === String(initialPayment.soaRowId)) || getSuggestedRow(rows)
+    : getSuggestedRow(rows)
 
-  const unitCode = getListingValue(
-    listing,
-    ['unit_id', 'unitCode', 'unitNo'],
-    'LA-0402'
-  )
-
-  const buyerName = getListingValue(
-    listing,
-    ['buyer_name', 'buyerName', 'clientName'],
-    'robert'
-  )
-
-  const projectName = getListingValue(
-    listing,
-    ['project_name', 'projectName'],
-    'Bailen Project'
-  )
+  const unitCode = getListingValue(listing, ['unit_id', 'unitCode', 'unitNo'], 'Unit')
+  const buyerName = getListingValue(listing, ['buyer_name', 'buyerName', 'clientName'], 'Client')
+  const projectName = getListingValue(listing, ['project_name', 'projectName'], 'Project')
 
   const [alert, setAlert] = useState(null)
-
   const [form, setForm] = useState({
-    soaRowId: String(suggestedRow?.id || ''),
-    paymentType: getPaymentTypeFromDescription(suggestedRow?.description),
-    amount: String(
-      Number(suggestedRow?.dueAmount || 0) +
-        Number(suggestedRow?.interest || 0) +
-        Number(suggestedRow?.penalty || 0)
+    soaRowId: String(initialPayment?.soaRowId || suggestedRow?.id || ''),
+    paymentType: normalizePaymentType(
+      initialPayment?.paymentType || initialPayment?.type || getPaymentTypeFromDescription(suggestedRow?.description)
     ),
-    paymentDate: todayISO(),
-    method: 'Cash',
-    referenceId: '',
-    status: 'Verified',
+    amount: String(
+      initialPayment?.amount ||
+        Number(suggestedRow?.dueAmount || 0) +
+          Number(suggestedRow?.interest || 0) +
+          Number(suggestedRow?.penalty || 0)
+    ),
+    paymentDate: formatDate(initialPayment?.paymentDate),
+    method: initialPayment?.method || 'Cash',
+    referenceId:
+      initialPayment?.referenceId && initialPayment?.referenceId !== '-'
+        ? initialPayment.referenceId
+        : '',
   })
 
   const selectedRow = useMemo(
@@ -160,7 +174,8 @@ const AddSOAPaymentModal = ({ listing = {}, rows = [], onClose, onSave }) => {
     return (
       Number(selectedRow.dueAmount || 0) +
       Number(selectedRow.interest || 0) +
-      Number(selectedRow.penalty || 0)
+      Number(selectedRow.penalty || 0) -
+      Number(selectedRow.amountPaid || 0)
     )
   }, [selectedRow])
 
@@ -169,73 +184,75 @@ const AddSOAPaymentModal = ({ listing = {}, rows = [], onClose, onSave }) => {
 
   const updateField = (key, value) => {
     setForm((current) => {
-      const next = {
-        ...current,
-        [key]: value,
+      const next = { ...current, [key]: value }
+
+      if (key === 'method' && value === 'Cash') {
+        next.referenceId = isEdit && current.method === 'Cash' ? current.referenceId : ''
       }
 
-      if (key === 'method' && value !== 'Cash') {
-        next.referenceId = ''
+      if (key === 'soaRowId') {
+        const nextRow = rows.find((row) => String(row.id) === String(value))
+        if (!isEdit && nextRow) {
+          next.paymentType = getPaymentTypeFromDescription(nextRow.description)
+          next.amount = String(
+            Math.max(
+              Number(nextRow.dueAmount || 0) +
+                Number(nextRow.interest || 0) +
+                Number(nextRow.penalty || 0) -
+                Number(nextRow.amountPaid || 0),
+              0
+            )
+          )
+        }
       }
 
       return next
     })
 
-    if (alert?.type === 'error') {
-      setAlert(null)
-    }
+    if (alert?.type === 'error') setAlert(null)
   }
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault()
 
     if (!form.soaRowId) {
-      setAlert({
-        type: 'error',
-        message: 'No SOA row is available for payment.',
-      })
+      setAlert({ type: 'error', message: 'Select an SOA row for this payment.' })
       return
     }
 
-    if (!form.amount || Number(form.amount) <= 0) {
+    if (!form.amount || cleanNumber(form.amount) <= 0) {
       setAlert({ type: 'error', message: 'Payment amount is required.' })
       return
     }
 
     if (form.paymentDate > todayISO()) {
-      setAlert({
-        type: 'error',
-        message:
-          'Future payment dates are blocked. Use Advance Payment if the buyer pays ahead.',
-      })
+      setAlert({ type: 'error', message: 'Future payment dates are blocked.' })
       return
     }
 
     if (form.method !== 'Cash' && !form.referenceId.trim()) {
       setAlert({
         type: 'error',
-        message:
-          'Reference ID / OR No. / Transaction No. is required for non-cash payments.',
+        message: 'Reference ID / OR No. / Transaction No. is required for non-cash payments.',
       })
       return
     }
 
-    const referenceId =
-      form.method === 'Cash'
-        ? generateCashReference(unitCode)
-        : form.referenceId.trim()
+    try {
+      setAlert({ type: 'loading', message: isEdit ? 'Updating payment...' : 'Saving payment...' })
 
-    setAlert({ type: 'loading', message: 'Saving payment in mock mode...' })
-
-    window.setTimeout(() => {
-      onSave({
-        ...form,
-        amount: Number(form.amount || 0),
-        interest: automaticInterest,
-        penalty: automaticPenalty,
-        referenceId,
+      await onSave({
+        paymentId: initialPayment?.paymentId || initialPayment?.id,
+        soaRowId: form.soaRowId,
+        paymentType: form.paymentType,
+        amount: cleanNumber(form.amount),
+        paymentDate: form.paymentDate,
+        method: form.method,
+        referenceId: form.method === 'Cash' ? form.referenceId : form.referenceId.trim(),
       })
-    }, 600)
+    } catch (error) {
+      setAlert({ type: 'error', message: error?.message || 'Failed to save payment.' })
+    }
   }
 
   return (
@@ -246,7 +263,9 @@ const AddSOAPaymentModal = ({ listing = {}, rows = [], onClose, onSave }) => {
       >
         <div className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 px-5">
           <div>
-            <h2 className="text-xl font-black text-slate-950">Add Payment</h2>
+            <h2 className="text-xl font-black text-slate-950">
+              {isEdit ? 'Edit Payment' : 'Add Payment'}
+            </h2>
             <p className="text-sm font-semibold text-slate-500">
               {buyerName} · {unitCode} · {projectName}
             </p>
@@ -284,13 +303,13 @@ const AddSOAPaymentModal = ({ listing = {}, rows = [], onClose, onSave }) => {
 
                 {selectedRow ? (
                   <p className="mt-1 text-xs font-semibold text-blue-700">
-                    Payment will apply to next unpaid SOA row:{' '}
+                    Payment applies to{' '}
                     <span className="font-black">{selectedRow.description}</span> ·{' '}
-                    {money(suggestedAmount)}
+                    Suggested unpaid amount: {money(suggestedAmount)}
                   </p>
                 ) : (
                   <p className="mt-1 text-xs font-semibold text-red-700">
-                    No unpaid SOA row available.
+                    No SOA row available.
                   </p>
                 )}
               </div>
@@ -306,18 +325,14 @@ const AddSOAPaymentModal = ({ listing = {}, rows = [], onClose, onSave }) => {
             </div>
 
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-              <p className="text-xs font-black uppercase text-amber-700">
-                Interest
-              </p>
+              <p className="text-xs font-black uppercase text-amber-700">Interest</p>
               <p className="mt-1 text-lg font-black text-amber-900">
                 {money(automaticInterest)}
               </p>
             </div>
 
             <div className="rounded-xl border border-red-200 bg-red-50 p-4">
-              <p className="text-xs font-black uppercase text-red-700">
-                Penalty
-              </p>
+              <p className="text-xs font-black uppercase text-red-700">Penalty</p>
               <p className="mt-1 text-lg font-black text-red-900">
                 {money(automaticPenalty)}
               </p>
@@ -326,20 +341,29 @@ const AddSOAPaymentModal = ({ listing = {}, rows = [], onClose, onSave }) => {
 
           <div className="grid gap-4 md:grid-cols-2">
             <SelectField
+              label="Apply To SOA Row"
+              value={form.soaRowId}
+              onChange={(value) => updateField('soaRowId', value)}
+              required
+            >
+              {rows.map((row) => (
+                <option key={row.id} value={row.id}>
+                  {row.description} · Due {row.dueDate} · {money(row.dueAmount)}
+                </option>
+              ))}
+            </SelectField>
+
+            <SelectField
               label="Payment Type"
               value={form.paymentType}
               onChange={(value) => updateField('paymentType', value)}
               required
             >
-              <option value="Reservation">Reservation</option>
-              <option value="Downpayment">Downpayment</option>
-              <option value="Monthly">Monthly</option>
-              <option value="Legal / Misc">Legal / Misc</option>
-              <option value="Full Payment">Full Payment</option>
-              <option value="Advance Payment">Advance Payment</option>
-              <option value="Offset Payment">Offset Payment</option>
-              <option value="Balloon Payment">Balloon Payment</option>
-              <option value="Other">Other</option>
+              {paymentTypes.map((type) => (
+                <option key={type} value={type}>
+                  {type}
+                </option>
+              ))}
             </SelectField>
 
             <Field
@@ -348,7 +372,7 @@ const AddSOAPaymentModal = ({ listing = {}, rows = [], onClose, onSave }) => {
               value={form.amount}
               onChange={(value) => updateField('amount', value)}
               placeholder="0.00"
-              helper={`Suggested amount: ${money(suggestedAmount)}`}
+              helper={`Suggested unpaid amount: ${money(suggestedAmount)}`}
               required
             />
 
@@ -358,7 +382,7 @@ const AddSOAPaymentModal = ({ listing = {}, rows = [], onClose, onSave }) => {
               value={form.paymentDate}
               max={todayISO()}
               onChange={(value) => updateField('paymentDate', value)}
-              helper="Future dates are blocked. To pay ahead of a monthly due, choose Advance Payment instead."
+              helper="Future dates are blocked."
               required
             />
 
@@ -370,49 +394,34 @@ const AddSOAPaymentModal = ({ listing = {}, rows = [], onClose, onSave }) => {
             >
               <option value="Cash">Cash</option>
               <option value="Bank Transfer">Bank Transfer</option>
-              <option value="Online Transfer">Online Transfer</option>
-              <option value="GCash">GCash</option>
+              <option value="Online Payment">Online Payment</option>
               <option value="Check">Check</option>
               <option value="Other">Other</option>
             </SelectField>
 
-            <SelectField
-              label="Status"
-              value={form.status}
-              onChange={(value) => updateField('status', value)}
-              required
-            >
-              <option value="Verified">Verified</option>
-              <option value="Pending">Pending</option>
-              <option value="Rejected">Rejected</option>
-            </SelectField>
-
-            <div className="md:col-span-2">
-              <Field
-                label="Reference ID / OR No. / Transaction No."
-                value={
-                  form.method === 'Cash'
-                    ? 'Auto-generated after saving'
-                    : form.referenceId
-                }
-                onChange={(value) => updateField('referenceId', value)}
-                placeholder="Enter bank ref, OR no., transaction no."
-                disabled={form.method === 'Cash'}
-                helper={
-                  form.method === 'Cash'
-                    ? 'Cash payments will get a reference like CASH-YYYYMMDD-UNIT-0001.'
-                    : 'Required for bank, online, GCash, check, and other payment methods.'
-                }
-              />
-            </div>
+            <Field
+              label="Reference ID / OR No. / Transaction No."
+              value={
+                form.method === 'Cash' && !isEdit
+                  ? 'Auto-generated after saving'
+                  : form.referenceId
+              }
+              onChange={(value) => updateField('referenceId', value)}
+              placeholder="Enter bank ref, OR no., transaction no."
+              disabled={form.method === 'Cash'}
+              helper={
+                form.method === 'Cash'
+                  ? 'Cash payments will get a reference like CASH-YYYYMMDD-UNIT-0001.'
+                  : 'Required for bank, online, check, and other payment methods.'
+              }
+            />
           </div>
 
           <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
             <div className="flex items-start gap-3 text-sm font-semibold text-slate-600">
               <FiAlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-slate-400" />
               <p>
-                Interest and penalty are computed automatically from the SOA. The
-                payment form only records the actual collection.
+                Payment status is removed here because admin-added payments are saved as verified automatically.
               </p>
             </div>
           </div>
@@ -429,9 +438,16 @@ const AddSOAPaymentModal = ({ listing = {}, rows = [], onClose, onSave }) => {
 
           <button
             type="submit"
-            className="h-10 rounded-lg bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700"
+            disabled={isSaving || alert?.type === 'loading'}
+            className="h-10 rounded-lg bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
           >
-            Add Payment
+            {isSaving || alert?.type === 'loading'
+              ? isEdit
+                ? 'Updating...'
+                : 'Saving...'
+              : isEdit
+                ? 'Save Changes'
+                : 'Add Payment'}
           </button>
         </div>
       </form>

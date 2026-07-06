@@ -69,6 +69,7 @@ const ListingProfile = () => {
   const listing = profile.listing || emptyListing
   const client = profile.client || {}
   const soaRows = profile.soaRows || []
+  const payments = profile.payments || []
   const documents = profile.documents || []
 
   const paymentListing = useMemo(
@@ -260,7 +261,7 @@ const ListingProfile = () => {
       ) : null}
 
       {!profileQuery.isLoading && !profileQuery.isError && activeTab === 'payments' ? (
-        <PaymentsSOA listing={paymentListing} soaRows={soaRows} />
+        <PaymentsSOA listing={paymentListing} soaRows={soaRows} payments={payments} />
       ) : null}
 
       {!profileQuery.isLoading && !profileQuery.isError && activeTab === 'documents' ? (
