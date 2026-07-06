@@ -11,11 +11,31 @@ import StatusAlert from '../../../Shared/StatusAlert'
 import ReserveClientProfileModal from './ReserveClientProfileModal'
 import ReserveDocumentChecklistModal from './ReserveDocumentChecklistModal'
 import ReservePaymentTermsModal from './ReservePaymentTermsModal'
-import { documentLibrary, projectDefaultDocuments, reserveSteps, sellers } from './reserveData'
+import { documentLibrary as fallbackDocumentLibrary, projectDefaultDocuments as fallbackProjectDefaultDocuments, reserveSteps, sellers } from './reserveData'
 import { getInitialClientForm, getListingTcp, getPaymentCalculations } from './reserveUtils'
 import { StepPill } from './ReserveShared'
 
-const ReserveListingModal = ({ listing, client, onClose, onReserve }) => {
+const todayISO = () => new Date().toISOString().slice(0, 10)
+
+const normalizeLibraryDocument = (document) => ({
+  ...document,
+  id: Number(document.document_id || document.id),
+  document_id: Number(document.document_id || document.id),
+  name: document.name || document.document_name,
+  description: document.description || document.document_description || 'No description',
+  requirement: document.requirement || (document.document_is_required ? 'required' : 'required'),
+  status: document.status || document.document_status || 'active',
+})
+
+const ReserveListingModal = ({
+  listing,
+  client,
+  documentLibrary: documentLibraryProp = [],
+  projectDefaultDocuments: projectDefaultDocumentsProp = [],
+  isLoadingDocuments = false,
+  onClose,
+  onReserve,
+}) => {
   const [activeStep, setActiveStep] = useState(1)
   const [clientForm, setClientForm] = useState(() => getInitialClientForm(client))
   const [selectedDocuments, setSelectedDocuments] = useState([])
@@ -31,8 +51,8 @@ const ReserveListingModal = ({ listing, client, onClose, onReserve }) => {
     saleChannel: 'distributed',
 
     reservationFee: String(listing?.reservationFee || '50000'),
-    startingDate: '2026-04-02',
-    firstDueDate: '2026-04-02',
+    startingDate: todayISO(),
+    firstDueDate: todayISO(),
     legalMiscFee: 'include_in_monthly',
 
     downpaymentPercentageMode: '30',
@@ -48,6 +68,16 @@ const ReserveListingModal = ({ listing, client, onClose, onReserve }) => {
 
   const tcp = useMemo(() => getListingTcp(listing), [listing])
 
+  const documentLibrary = useMemo(() => {
+    const source = documentLibraryProp.length ? documentLibraryProp : fallbackDocumentLibrary
+    return source.map(normalizeLibraryDocument).filter((document) => document.id)
+  }, [documentLibraryProp])
+
+  const projectDefaultDocuments = useMemo(() => {
+    const source = projectDefaultDocumentsProp.length ? projectDefaultDocumentsProp : fallbackProjectDefaultDocuments
+    return source.map(normalizeLibraryDocument).filter((document) => document.id)
+  }, [projectDefaultDocumentsProp])
+
   const hasSecondBuyer = clientForm.buyerType === 'spouses' || clientForm.buyerType === 'and_account'
 
   const filteredDocuments = useMemo(() => {
@@ -56,9 +86,9 @@ const ReserveListingModal = ({ listing, client, onClose, onReserve }) => {
     if (!keyword) return documentLibrary
 
     return documentLibrary.filter((document) =>
-      document.name.toLowerCase().includes(keyword)
+      String(document.name || '').toLowerCase().includes(keyword)
     )
-  }, [searchDocument])
+  }, [documentLibrary, searchDocument])
 
   const updatePaymentField = (key, value) => {
     setPaymentForm((current) => ({
@@ -87,10 +117,12 @@ const ReserveListingModal = ({ listing, client, onClose, onReserve }) => {
     })
   }
 
-  const isDocumentAdded = (documentId) => selectedDocuments.some((item) => item.id === documentId)
+  const isDocumentAdded = (documentId) => selectedDocuments.some((item) => Number(item.document_id || item.id) === Number(documentId))
 
   const addDocument = (document) => {
-    if (isDocumentAdded(document.id)) {
+    const documentId = Number(document.document_id || document.id)
+
+    if (isDocumentAdded(documentId)) {
       setAlert({ type: 'info', message: 'Document is already added.' })
       return
     }
@@ -99,7 +131,9 @@ const ReserveListingModal = ({ listing, client, onClose, onReserve }) => {
       ...current,
       {
         ...document,
-        requirement: 'required',
+        id: documentId,
+        document_id: documentId,
+        requirement: document.requirement || 'required',
         status: 'active',
       },
     ])
@@ -115,7 +149,7 @@ const ReserveListingModal = ({ listing, client, onClose, onReserve }) => {
     setAlert({ type: 'loading', message: 'Removing document from checklist...' })
 
     window.setTimeout(() => {
-      setSelectedDocuments((current) => current.filter((document) => document.id !== documentId))
+      setSelectedDocuments((current) => current.filter((document) => Number(document.document_id || document.id) !== Number(documentId)))
       setDeletingDocId(null)
       setAlert({ type: 'warning', message: 'Document removed from reservation checklist.' })
     }, 350)
@@ -200,7 +234,7 @@ const ReserveListingModal = ({ listing, client, onClose, onReserve }) => {
     setAlert(null)
   }
 
-  const handleReserve = () => {
+  const handleReserve = async () => {
     if (!validateClientStep()) {
       setActiveStep(1)
       return
@@ -238,18 +272,21 @@ const ReserveListingModal = ({ listing, client, onClose, onReserve }) => {
     }
 
     setIsSaving(true)
-    setAlert({ type: 'loading', message: 'Creating reservation in mock mode...' })
+    setAlert({ type: 'loading', message: 'Saving reservation to database...' })
 
-    window.setTimeout(() => {
-      setIsSaving(false)
-      setAlert({ type: 'success', message: 'Reservation created successfully in mock mode.' })
-      onReserve?.({
+    try {
+      await onReserve?.({
         listing: {
           unitId: listing?.unit_id || listing?.unitCode || 'LA-0000',
         },
         ...payload,
       })
-    }, 900)
+      setAlert({ type: 'success', message: 'Reservation saved successfully.' })
+    } catch (error) {
+      setAlert({ type: 'error', message: error?.message || 'Failed to reserve listing.' })
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   return (
@@ -313,7 +350,7 @@ const ReserveListingModal = ({ listing, client, onClose, onReserve }) => {
               setSearchDocument={setSearchDocument}
               selectedDocuments={selectedDocuments}
               isSaving={isSaving}
-              isLoadingDefaults={isLoadingDefaults}
+              isLoadingDefaults={isLoadingDefaults || isLoadingDocuments}
               deletingDocId={deletingDocId}
               isDocumentAdded={isDocumentAdded}
               addDocument={addDocument}

@@ -19,7 +19,7 @@ import PaymentsSOA from '../../components/Lot_Projects/ListingProfileComponents/
 import Documents from '../../components/Lot_Projects/ListingProfileComponents/Documents/Documents'
 import Printouts from '../../components/Lot_Projects/ListingProfileComponents/Printouts/Printouts'
 import ReserveListingModal from '../../components/Lot_Projects/ListingProfileComponents/ReserveListingModal/ReserveListingModal'
-import { useFetch, useFetchPut } from '../../utils/useFetch'
+import { useFetch, useFetchPatch, useFetchPost, useFetchPut } from '../../utils/useFetch'
 
 const money = (value) =>
   new Intl.NumberFormat('en-PH', {
@@ -72,6 +72,26 @@ const ListingProfile = () => {
   const payments = profile.payments || []
   const documents = profile.documents || []
 
+  const reserveDocumentsQuery = useQuery({
+    queryKey: ['documents'],
+    queryFn: () => useFetch('/documents/getDocuments'),
+    enabled: showReserveModal,
+    staleTime: 1000 * 60 * 5,
+  })
+
+  const documentLibrary = useMemo(
+    () =>
+      (reserveDocumentsQuery.data?.documents || []).map((document) => ({
+        id: document.document_id,
+        document_id: document.document_id,
+        name: document.document_name,
+        description: document.document_description || 'No description',
+        requirement: document.document_is_required ? 'required' : 'optional',
+        status: document.document_status || 'active',
+      })),
+    [reserveDocumentsQuery.data]
+  )
+
   const paymentListing = useMemo(
     () => ({
       ...listing,
@@ -98,6 +118,60 @@ const ListingProfile = () => {
     },
   })
 
+  const reserveListingMutation = useMutation({
+    mutationFn: (payload) =>
+      useFetchPost(`/projects/lot-projects/${projectSlug}/listings/${listingId}/reserve`, payload),
+    onMutate: (payload) => {
+      setAlert({ type: 'loading', message: `Reserving ${payload?.clientProfile?.buyerName || 'listing'}...` })
+    },
+    onSuccess: (result) => {
+      setShowReserveModal(false)
+      setAlert({ type: 'success', message: result?.message || 'Reservation saved successfully.' })
+      queryClient.invalidateQueries({ queryKey: ['lot-listing-profile', projectSlug, listingId] })
+      queryClient.invalidateQueries({ queryKey: ['lot-listings', projectSlug] })
+      queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] })
+    },
+    onError: (error) => {
+      setAlert({ type: 'error', message: error?.message || 'Failed to reserve listing.' })
+    },
+  })
+
+  const uploadDocumentMutation = useMutation({
+    mutationFn: ({ document, payload }) =>
+      useFetchPut(
+        `/projects/lot-projects/${projectSlug}/listings/${listingId}/documents/${document.id}/upload`,
+        payload
+      ),
+    onSuccess: (result) => {
+      setAlert({ type: 'success', message: result?.message || 'Document uploaded successfully.' })
+      queryClient.invalidateQueries({ queryKey: ['lot-listing-profile', projectSlug, listingId] })
+    },
+  })
+
+  const approveDocumentMutation = useMutation({
+    mutationFn: (document) =>
+      useFetchPatch(
+        `/projects/lot-projects/${projectSlug}/listings/${listingId}/documents/${document.id}/approve`,
+        {}
+      ),
+    onSuccess: (result) => {
+      setAlert({ type: 'success', message: result?.message || 'Document approved successfully.' })
+      queryClient.invalidateQueries({ queryKey: ['lot-listing-profile', projectSlug, listingId] })
+    },
+  })
+
+  const clearDocumentMutation = useMutation({
+    mutationFn: (document) =>
+      useFetchPatch(
+        `/projects/lot-projects/${projectSlug}/listings/${listingId}/documents/${document.id}/clear`,
+        {}
+      ),
+    onSuccess: (result) => {
+      setAlert({ type: 'warning', message: result?.message || 'Document cleared successfully.' })
+      queryClient.invalidateQueries({ queryKey: ['lot-listing-profile', projectSlug, listingId] })
+    },
+  })
+
   const updateClientProfileMutation = useMutation({
     mutationFn: (payload) =>
       useFetchPut(`/projects/lot-projects/${projectSlug}/listings/${listingId}/client-profile`, payload),
@@ -114,19 +188,14 @@ const ListingProfile = () => {
     },
   })
 
-  const handleReserveListing = (reservationPayload) => {
-    setShowReserveModal(false)
-    setAlert({
-      type: 'info',
-      message: `${reservationPayload?.listing?.unitId || listing.unit_id} reservation form is still local. Connect the reservation save API next.`,
-    })
-  }
+  const handleReserveListing = (reservationPayload) => reserveListingMutation.mutateAsync(reservationPayload)
 
   const handleRefresh = () => {
     profileQuery.refetch()
   }
 
-  const canReserve = listing.rawStatus === 'available' || listing.listing_status === 'Available'
+  const canReserve = listing.rawStatus === 'available' || listing.rawStatus === 'hold' || listing.listing_status === 'Available'
+  const canManageDocuments = Boolean(listing.hasClientProfile && listing.canEditBuyerProfile)
 
   return (
     <main className="flex flex-col gap-6">
@@ -266,7 +335,18 @@ const ListingProfile = () => {
       ) : null}
 
       {!profileQuery.isLoading && !profileQuery.isError && activeTab === 'documents' ? (
-        <Documents documents={documents} />
+        <Documents
+          documents={documents}
+          canManage={canManageDocuments}
+          onUploadDocument={(document, payload) => uploadDocumentMutation.mutateAsync({ document, payload })}
+          onApproveDocument={(document) => approveDocumentMutation.mutateAsync(document)}
+          onClearDocument={(document) => clearDocumentMutation.mutateAsync(document)}
+          isSaving={
+            uploadDocumentMutation.isPending ||
+            approveDocumentMutation.isPending ||
+            clearDocumentMutation.isPending
+          }
+        />
       ) : null}
 
       {!profileQuery.isLoading && !profileQuery.isError && activeTab === 'printouts' ? (
@@ -278,6 +358,10 @@ const ListingProfile = () => {
           listing={listing}
           client={client}
           onClose={() => setShowReserveModal(false)}
+          project={project}
+          documentLibrary={documentLibrary}
+          projectDefaultDocuments={project.defaultDocuments || []}
+          isLoadingDocuments={reserveDocumentsQuery.isLoading}
           onReserve={handleReserveListing}
         />
       ) : null}

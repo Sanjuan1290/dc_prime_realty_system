@@ -1,5 +1,4 @@
 import { FiFileText, FiLoader, FiSearch, FiTrash2 } from 'react-icons/fi'
-import { documentLibrary } from './reserveData'
 import { SectionCard } from './ReserveShared'
 
 const ReserveDocumentChecklistModal = ({
@@ -53,12 +52,13 @@ const ReserveDocumentChecklistModal = ({
       </div>
 
       <div className="grid max-h-[245px] gap-2 overflow-y-auto pr-1 md:grid-cols-2">
-        {(filteredDocuments.length ? filteredDocuments : documentLibrary).map((document) => {
-          const added = isDocumentAdded(document.id)
+        {filteredDocuments.map((document) => {
+          const documentId = document.document_id || document.id
+          const added = isDocumentAdded(documentId)
 
           return (
             <div
-              key={document.id}
+              key={documentId}
               className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 transition hover:border-blue-200 hover:bg-blue-50/40"
             >
               <div className="min-w-0">
@@ -88,11 +88,12 @@ const ReserveDocumentChecklistModal = ({
       <SectionCard title="Selected Documents">
         <div className="space-y-2">
           {selectedDocuments.map((document) => {
-            const isDeleting = deletingDocId === document.id
+            const documentId = document.document_id || document.id
+            const isDeleting = Number(deletingDocId) === Number(documentId)
 
             return (
               <div
-                key={document.id}
+                key={documentId}
                 className={`flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 transition sm:flex-row sm:items-center sm:justify-between ${
                   isDeleting ? 'opacity-60' : ''
                 }`}
@@ -106,7 +107,7 @@ const ReserveDocumentChecklistModal = ({
 
                 <button
                   type="button"
-                  onClick={() => removeDocument(document.id)}
+                  onClick={() => removeDocument(documentId)}
                   disabled={isDeleting || isSaving}
                   className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-red-600 px-4 text-sm font-black text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
@@ -120,7 +121,7 @@ const ReserveDocumentChecklistModal = ({
       </SectionCard>
     ) : (
       <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-5 text-sm font-semibold text-slate-500">
-        No documents selected yet. You can continue, but the reservation will start without a checklist.
+        No documents selected yet. You can continue, but the reservation will use project defaults if available.
       </div>
     )}
   </div>

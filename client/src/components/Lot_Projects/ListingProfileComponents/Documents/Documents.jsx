@@ -1,5 +1,7 @@
+
 import { useMemo, useState } from 'react'
 import {
+  FiAlertCircle,
   FiCheckCircle,
   FiImage,
   FiLoader,
@@ -16,6 +18,7 @@ const statusStyles = {
   Approved: 'border-emerald-200 bg-emerald-50 text-emerald-700',
   Submitted: 'border-blue-200 bg-blue-50 text-blue-700',
   Missing: 'border-red-200 bg-red-50 text-red-700',
+  Rejected: 'border-red-200 bg-red-50 text-red-700',
   Pending: 'border-amber-200 bg-amber-50 text-amber-700',
 }
 
@@ -45,12 +48,19 @@ const RequirementPill = ({ value }) => (
   </span>
 )
 
-const Documents = ({ documents = [] }) => {
-  const [rows, setRows] = useState(documents)
+const Documents = ({
+  documents = [],
+  canManage = false,
+  onUploadDocument,
+  onApproveDocument,
+  onClearDocument,
+  isSaving = false,
+}) => {
+  const rows = documents
   const [uploadDoc, setUploadDoc] = useState(null)
   const [showImages, setShowImages] = useState(false)
   const [alert, setAlert] = useState(null)
-  const [clearingId, setClearingId] = useState(null)
+  const [activeDocumentId, setActiveDocumentId] = useState(null)
 
   const approvedCount = useMemo(
     () => rows.filter((row) => row.status === 'Approved').length,
@@ -73,105 +83,75 @@ const Documents = ({ documents = [] }) => {
   )
 
   const handleUploadClick = (document) => {
-    setUploadDoc(document)
-    setAlert({
-      type: 'info',
-      message: `Uploading document for ${document.name}.`,
-    })
-  }
-
-  const handleUploadSave = (fileName) => {
-    if (!uploadDoc) return
-
-    setAlert({
-      type: 'loading',
-      message: 'Saving uploaded document...',
-    })
-
-    window.setTimeout(() => {
-      setRows((current) =>
-        current.map((document) =>
-          document.id === uploadDoc.id
-            ? {
-                ...document,
-                status: 'Submitted',
-                fileName,
-                images: [imagePlaceholder],
-              }
-            : document
-        )
-      )
-
-      setUploadDoc(null)
-
-      setAlert({
-        type: 'success',
-        message: `${uploadDoc.name} submitted successfully.`,
-      })
-    }, 500)
-  }
-
-  const handleClearDocument = (document) => {
-    setClearingId(document.id)
-    setAlert({
-      type: 'loading',
-      message: `Clearing ${document.name}...`,
-    })
-
-    window.setTimeout(() => {
-      setRows((current) =>
-        current.map((item) =>
-          item.id === document.id
-            ? {
-                ...item,
-                status: 'Missing',
-                fileName: '-',
-                images: [],
-              }
-            : item
-        )
-      )
-
-      setClearingId(null)
-
-      setAlert({
-        type: 'warning',
-        message: `${document.name} was cleared and marked as missing.`,
-      })
-    }, 500)
-  }
-
-  const handleApproveDocument = (document) => {
-    if (document.status === 'Missing') {
-      setAlert({
-        type: 'error',
-        message: `Upload ${document.name} before approving it.`,
-      })
+    if (!canManage) {
+      setAlert({ type: 'error', message: 'Reserve this unit first before uploading documents.' })
       return
     }
 
-    setAlert({
-      type: 'loading',
-      message: `Approving ${document.name}...`,
-    })
+    setUploadDoc(document)
+    setAlert(null)
+  }
 
-    window.setTimeout(() => {
-      setRows((current) =>
-        current.map((item) =>
-          item.id === document.id
-            ? {
-                ...item,
-                status: 'Approved',
-              }
-            : item
-        )
-      )
+  const handleUploadSave = async (payload) => {
+    if (!uploadDoc) return
 
-      setAlert({
-        type: 'success',
-        message: `${document.name} approved successfully.`,
-      })
-    }, 500)
+    setActiveDocumentId(uploadDoc.id)
+    setAlert({ type: 'loading', message: `Saving ${uploadDoc.name}...` })
+
+    try {
+      await onUploadDocument?.(uploadDoc, payload)
+      setUploadDoc(null)
+      setAlert({ type: 'success', message: `${uploadDoc.name} submitted successfully.` })
+    } catch (error) {
+      setAlert({ type: 'error', message: error?.message || 'Failed to upload document.' })
+    } finally {
+      setActiveDocumentId(null)
+    }
+  }
+
+  const handleClearDocument = async (document) => {
+    if (!canManage) {
+      setAlert({ type: 'error', message: 'Reserve this unit first before clearing documents.' })
+      return
+    }
+
+    if (!window.confirm(`Clear ${document.name} and mark it as missing?`)) return
+
+    setActiveDocumentId(document.id)
+    setAlert({ type: 'loading', message: `Clearing ${document.name}...` })
+
+    try {
+      await onClearDocument?.(document)
+      setAlert({ type: 'warning', message: `${document.name} was cleared and marked as missing.` })
+    } catch (error) {
+      setAlert({ type: 'error', message: error?.message || 'Failed to clear document.' })
+    } finally {
+      setActiveDocumentId(null)
+    }
+  }
+
+  const handleApproveDocument = async (document) => {
+    if (!canManage) {
+      setAlert({ type: 'error', message: 'Reserve this unit first before approving documents.' })
+      return
+    }
+
+    if (document.status === 'Missing') {
+      setAlert({ type: 'error', message: `Upload ${document.name} before approving it.` })
+      return
+    }
+
+    setActiveDocumentId(document.id)
+    setAlert({ type: 'loading', message: `Approving ${document.name}...` })
+
+    try {
+      await onApproveDocument?.(document)
+      setAlert({ type: 'success', message: `${document.name} approved successfully.` })
+    } catch (error) {
+      setAlert({ type: 'error', message: error?.message || 'Failed to approve document.' })
+    } finally {
+      setActiveDocumentId(null)
+    }
   }
 
   return (
@@ -183,6 +163,13 @@ const Documents = ({ documents = [] }) => {
             message={alert.message}
             onClose={alert.type === 'loading' ? undefined : () => setAlert(null)}
           />
+        </div>
+      ) : null}
+
+      {!canManage ? (
+        <div className="mb-4 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
+          <FiAlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+          <p>Reserve this unit first before uploading, approving, or clearing buyer documents.</p>
         </div>
       ) : null}
 
@@ -220,13 +207,7 @@ const Documents = ({ documents = [] }) => {
 
           <button
             type="button"
-            onClick={() => {
-              setShowImages(true)
-              setAlert({
-                type: 'info',
-                message: 'Document Images opened.',
-              })
-            }}
+            onClick={() => setShowImages(true)}
             className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98]"
           >
             <FiImage className="h-4 w-4" />
@@ -254,14 +235,15 @@ const Documents = ({ documents = [] }) => {
 
           <tbody className="divide-y divide-slate-100">
             {rows.map((row) => {
-              const isClearing = clearingId === row.id
+              const isActive = activeDocumentId === row.id || isSaving
+              const imageSrc = row.fileUrl || row.images?.[0] || imagePlaceholder
 
               return (
                 <tr key={row.id} className="transition hover:bg-slate-50">
                   <td className="px-4 py-4">
                     <p className="font-black text-slate-950">{row.name}</p>
                     <p className="mt-1 text-xs font-semibold text-slate-500">
-                      Document label for buyer requirements.
+                      {row.description || 'Document label for buyer requirements.'}
                     </p>
                   </td>
 
@@ -278,7 +260,7 @@ const Documents = ({ documents = [] }) => {
                       <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
                         {row.fileName && row.fileName !== '-' ? (
                           <img
-                            src={imagePlaceholder}
+                            src={imageSrc}
                             alt={row.name}
                             className="h-full w-full object-cover"
                           />
@@ -306,7 +288,8 @@ const Documents = ({ documents = [] }) => {
                       <button
                         type="button"
                         onClick={() => handleUploadClick(row)}
-                        className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 transition hover:bg-slate-50"
+                        disabled={!canManage || isActive}
+                        className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         <FiUploadCloud className="h-4 w-4" />
                         Upload
@@ -315,7 +298,8 @@ const Documents = ({ documents = [] }) => {
                       <button
                         type="button"
                         onClick={() => handleApproveDocument(row)}
-                        className="inline-flex h-9 items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-black text-emerald-700 transition hover:bg-emerald-100"
+                        disabled={!canManage || isActive || row.status === 'Missing'}
+                        className="inline-flex h-9 items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-black text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         <FiCheckCircle className="h-4 w-4" />
                         Approve
@@ -324,15 +308,15 @@ const Documents = ({ documents = [] }) => {
                       <button
                         type="button"
                         onClick={() => handleClearDocument(row)}
-                        disabled={isClearing}
+                        disabled={!canManage || isActive}
                         className="inline-flex h-9 items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 text-xs font-black text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        {isClearing ? (
+                        {isActive ? (
                           <FiLoader className="h-4 w-4 animate-spin" />
                         ) : (
                           <FiTrash2 className="h-4 w-4" />
                         )}
-                        {isClearing ? 'Clearing...' : 'Clear'}
+                        {isActive ? 'Saving...' : 'Clear'}
                       </button>
                     </div>
                   </td>
@@ -350,7 +334,7 @@ const Documents = ({ documents = [] }) => {
                   </p>
 
                   <p className="mt-1 text-sm font-semibold text-slate-500">
-                    Add document requirements first before uploading files.
+                    Reserve this listing or add document requirements first.
                   </p>
                 </td>
               </tr>
@@ -362,12 +346,10 @@ const Documents = ({ documents = [] }) => {
       {uploadDoc ? (
         <UploadDocumentModal
           document={uploadDoc}
+          isSaving={activeDocumentId === uploadDoc.id || isSaving}
           onClose={() => {
             setUploadDoc(null)
-            setAlert({
-              type: 'info',
-              message: 'Upload cancelled.',
-            })
+            setAlert(null)
           }}
           onSave={handleUploadSave}
         />
