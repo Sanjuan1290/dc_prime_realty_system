@@ -42,7 +42,13 @@ const fallbackListing = {
   latest_payment_amount: '₱0.00',
   seller: '-',
   seller_role: '-',
+  seller_email: '-',
+  seller_contact_no: '-',
+  seller_group: '-',
+  seller_status: '-',
+  seller_accreditation_date: '-',
   reports_under: '-',
+  sale_channel: '-',
   commission_rate: '-',
   commission_amount: '₱0.00',
   released_amount: '₱0.00',
@@ -296,7 +302,13 @@ const UnitStatus = ({ listing = fallbackListing, project = {}, onSave, isSaving 
       <SectionBlock title="Seller / Commission" description="Seller assignment and commission summary." icon={FiBriefcase}>
         <DetailBox label="Seller" value={unitData.seller} />
         <DetailBox label="Seller Role" value={unitData.seller_role} />
+        <DetailBox label="Seller Email" value={unitData.seller_email} />
+        <DetailBox label="Seller Contact No." value={unitData.seller_contact_no} />
+        <DetailBox label="Seller Group" value={unitData.seller_group} />
         <DetailBox label="Reports Under" value={unitData.reports_under} />
+        <DetailBox label="Seller Status" value={unitData.seller_status} />
+        <DetailBox label="Accreditation Date" value={unitData.seller_accreditation_date} />
+        <DetailBox label="Sale Channel" value={unitData.sale_channel} />
         <DetailBox label="Commission Rate" value={unitData.commission_rate} />
         <DetailBox label="Commission Amount" value={unitData.commission_amount} highlight />
         <DetailBox label="Released Amount" value={unitData.released_amount} />
@@ -334,4 +346,3 @@ const UnitStatus = ({ listing = fallbackListing, project = {}, onSave, isSaving 
 }
 
 export default UnitStatus
-

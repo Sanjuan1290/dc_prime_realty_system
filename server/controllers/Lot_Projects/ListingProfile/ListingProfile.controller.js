@@ -106,9 +106,29 @@ export const getLotProjectListingProfile = async (req, res) => {
     const sellerRoleSelect = hasAssignedSellerColumn
       ? `COALESCE(assignedSeller.role, seller.role) AS seller_role,`
       : `seller.role AS seller_role,`;
+    const sellerEmailSelect = hasAssignedSellerColumn
+      ? `COALESCE(assignedSeller.email, seller.email) AS seller_email,`
+      : `seller.email AS seller_email,`;
+    const sellerContactSelect = hasAssignedSellerColumn
+      ? `COALESCE(assignedSeller.contact_no, seller.contact_no) AS seller_contact_no,`
+      : `seller.contact_no AS seller_contact_no,`;
+    const sellerGroupSelect = hasAssignedSellerColumn
+      ? `COALESCE(assignedSg.seller_group_name, sg.seller_group_name) AS seller_group_name,`
+      : `sg.seller_group_name AS seller_group_name,`;
+    const sellerStatusSelect = hasAssignedSellerColumn
+      ? `COALESCE(assignedAcs.accredited_seller_status, acs.accredited_seller_status) AS seller_status,`
+      : `acs.accredited_seller_status AS seller_status,`;
+    const sellerAccreditationSelect = hasAssignedSellerColumn
+      ? `COALESCE(assignedAcs.accredited_seller_accreditation_date, acs.accredited_seller_accreditation_date) AS seller_accreditation_date,`
+      : `acs.accredited_seller_accreditation_date AS seller_accreditation_date,`;
+    const reportsUnderSelect = hasAssignedSellerColumn
+      ? `COALESCE(NULLIF(TRIM(CONCAT_WS(' ', assignedReports.first_name, assignedReports.middle_name, assignedReports.last_name)), ''), NULLIF(TRIM(CONCAT_WS(' ', sellerReports.first_name, sellerReports.middle_name, sellerReports.last_name)), '')) AS reports_under,`
+      : `NULLIF(TRIM(CONCAT_WS(' ', sellerReports.first_name, sellerReports.middle_name, sellerReports.last_name)), '') AS reports_under,`;
     const assignedSellerJoin = hasAssignedSellerColumn
       ? `LEFT JOIN accredited_sellers assignedAcs ON assignedAcs.accredited_seller_id = cp.assigned_accredited_seller_id
-         LEFT JOIN users assignedSeller ON assignedSeller.id = assignedAcs.user_id`
+         LEFT JOIN users assignedSeller ON assignedSeller.id = assignedAcs.user_id
+         LEFT JOIN seller_groups assignedSg ON assignedSg.seller_group_id = assignedAcs.seller_group_id
+         LEFT JOIN users assignedReports ON assignedReports.id = assignedAcs.accredited_seller_reports_under_user_id`
       : ``;
 
     const [rows] = await connection.query(
@@ -125,7 +145,12 @@ export const getLotProjectListingProfile = async (req, res) => {
           schedule_summary.first_due_date,
           ${sellerNameSelect}
           ${sellerRoleSelect}
-          CONCAT_WS(' ', sellerReports.first_name, sellerReports.middle_name, sellerReports.last_name) AS reports_under,
+          ${sellerEmailSelect}
+          ${sellerContactSelect}
+          ${sellerGroupSelect}
+          ${sellerStatusSelect}
+          ${sellerAccreditationSelect}
+          ${reportsUnderSelect}
           commission.commission_rate,
           commission.gross_commission_amount,
           commission.released_commission_amount AS released_amount,
@@ -165,6 +190,7 @@ export const getLotProjectListingProfile = async (req, res) => {
         ${assignedSellerJoin}
         LEFT JOIN accredited_sellers acs ON acs.accredited_seller_id = commission.accredited_seller_id
         LEFT JOIN users seller ON seller.id = acs.user_id
+        LEFT JOIN seller_groups sg ON sg.seller_group_id = acs.seller_group_id
         LEFT JOIN users sellerReports ON sellerReports.id = acs.accredited_seller_reports_under_user_id
         WHERE l.lot_project_id = ?
           AND ${lookup.sql}
@@ -218,4 +244,3 @@ export const getLotProjectListingProfile = async (req, res) => {
     connection.release();
   }
 };
-

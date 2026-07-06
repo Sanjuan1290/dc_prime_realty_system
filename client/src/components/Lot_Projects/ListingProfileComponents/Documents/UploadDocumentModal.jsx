@@ -4,15 +4,32 @@ import { FiFileText, FiLoader, FiUploadCloud, FiX } from 'react-icons/fi'
 const UploadDocumentModal = ({ document, isSaving = false, onClose, onSave }) => {
   const [file, setFile] = useState(null)
 
-  const handleSave = () => {
+  const [error, setError] = useState('')
+
+  const readFileAsDataUrl = (selectedFile) =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result || '')
+      reader.onerror = () => reject(new Error('Failed to read selected file.'))
+      reader.readAsDataURL(selectedFile)
+    })
+
+  const handleSave = async () => {
     if (!file || isSaving) return
 
-    onSave?.({
-      fileName: file.name,
-      fileUrl: '',
-      fileSize: file.size,
-      fileType: file.type || 'application/octet-stream',
-    })
+    setError('')
+
+    try {
+      const fileUrl = await readFileAsDataUrl(file)
+      onSave?.({
+        fileName: file.name,
+        fileUrl,
+        fileSize: file.size,
+        fileType: file.type || 'application/octet-stream',
+      })
+    } catch (readError) {
+      setError(readError?.message || 'Failed to read selected file.')
+    }
   }
 
   return (
@@ -43,8 +60,12 @@ const UploadDocumentModal = ({ document, isSaving = false, onClose, onSave }) =>
             <input
               type="file"
               className="hidden"
+              accept="image/*,.pdf"
               disabled={isSaving}
-              onChange={(event) => setFile(event.target.files?.[0] || null)}
+              onChange={(event) => {
+                setError('')
+                setFile(event.target.files?.[0] || null)
+              }}
             />
           </label>
 
@@ -58,8 +79,14 @@ const UploadDocumentModal = ({ document, isSaving = false, onClose, onSave }) =>
             </div>
           ) : null}
 
+          {error ? (
+            <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-black text-red-700">
+              {error}
+            </p>
+          ) : null}
+
           <p className="mt-3 text-xs font-semibold text-slate-500">
-            The current connection saves the document file name and status to the database. File storage can be connected to Google Drive or Cloudinary later.
+            Images are saved with preview data so Document Images and Print Documents can display them. Large PDF storage can be connected to Google Drive or Cloudinary later.
           </p>
         </div>
 
