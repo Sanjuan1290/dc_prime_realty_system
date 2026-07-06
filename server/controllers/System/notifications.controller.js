@@ -133,7 +133,8 @@ const getScheduleNotificationRow = async (connection, scheduleId) => {
         cp.buyer_contact_number,
         CASE
           WHEN s.due_date < CURDATE() THEN 'overdue'
-          ELSE 'due_soon'
+          WHEN s.due_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY) THEN 'due_soon'
+          ELSE 'not_due'
         END AS notification_type
       FROM lot_project_payment_schedules s
       INNER JOIN lot_projects p
@@ -389,7 +390,7 @@ export const sendPaymentDueNotification = async (req, res) => {
     }
 
     if (!['due_soon', 'overdue'].includes(notification.notificationType)) {
-      return res.status(400).json({ message: 'This schedule is not due soon or overdue.' });
+      return res.status(400).json({ message: 'This schedule is not due within 7 days or overdue.' });
     }
 
     const { subject, textMessage, htmlMessage } = buildNotificationMessage(row);
@@ -535,3 +536,4 @@ export const markPaymentDueContacted = async (req, res) => {
     connection.release();
   }
 };
+

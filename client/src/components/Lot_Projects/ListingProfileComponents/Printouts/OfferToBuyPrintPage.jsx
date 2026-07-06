@@ -1,30 +1,13 @@
 import PrintPageShell from './PrintPageShell'
 import { cleanMoney, formatDate, getNormalizedSoaRows, getValue, money, readPrintPayload } from './printUtils'
 
-const text = (value) => (value === undefined || value === null || value === '-' ? '' : String(value))
-const valueFrom = (source, keys, fallback = '') => text(getValue(source, keys, fallback))
+const blank = (value) => {
+  if (value === undefined || value === null || value === '-') return ''
+  return String(value)
+}
 
-const Check = ({ checked = false, label }) => (
-  <span className="mr-4 inline-flex items-center gap-1 whitespace-nowrap align-middle">
-    <span className="inline-flex h-[12px] w-[12px] items-center justify-center border border-black text-[9px] leading-none">
-      {checked ? '✓' : ''}
-    </span>
-    <span>{label}</span>
-  </span>
-)
-
-const Section = ({ children, blue = false, className = '' }) => (
-  <div className={`${blue ? 'bg-[#1f4e79] text-white' : 'bg-[#d9d9d9] text-black'} border border-black py-[3px] text-center text-[11px] font-black uppercase leading-none ${className}`}>
-    {children}
-  </div>
-)
-
-const Cell = ({ children, className = '' }) => (
-  <div className={`border border-black px-[5px] py-[3px] text-[10px] leading-tight ${className}`}>{children}</div>
-)
-
-const Label = ({ children }) => <span className="font-black">{children}</span>
-const FieldLine = ({ label, value, className = '' }) => <Cell className={className}><Label>{label}</Label> {value}</Cell>
+const valueFrom = (source, keys, fallback = '') => blank(getValue(source, keys, fallback))
+const moneyBlank = (value) => (Number(value || 0) > 0 ? money(value) : '')
 
 const getRowAmount = (rows, keyword) => rows
   .filter((row) => String(row.description || '').toLowerCase().includes(keyword))
@@ -35,199 +18,460 @@ const getMonthlyAmount = (rows) => {
   return cleanMoney(row?.dueAmount || 0)
 }
 
-const employmentChecked = (value, target) => String(value || '').toLowerCase().includes(target.toLowerCase())
-const getKey = (prefix, key) => prefix ? `${prefix}${key}` : `${key.charAt(0).toLowerCase()}${key.slice(1)}`
+const isChecked = (value, target) => String(value || '').toLowerCase().includes(target.toLowerCase())
 
-const CivilStatusBox = ({ value = '' }) => {
-  const civilStatus = value.toLowerCase()
+const Box = ({ checked = false }) => (
+  <span className="otb-box" aria-hidden="true">{checked ? '✓' : ''}</span>
+)
+
+const SmallCheck = ({ checked = false, label }) => (
+  <span className="otb-check"><Box checked={checked} /> {label}</span>
+)
+
+const Field = ({ label, value }) => (
+  <span><strong>{label}</strong>{value ? ` ${value}` : ''}</span>
+)
+
+const buyerField = (client, key) => valueFrom(client, [key], '')
+const secondBuyerField = (client, suffix) => valueFrom(client, [`secondBuyer${suffix}`], '')
+
+const civilChecks = (value) => {
+  const civil = String(value || '').toLowerCase()
   return (
-    <Cell className="min-h-[58px]">
-      <Label>Civil Status</Label><br />
-      <div className="grid grid-cols-2 gap-y-[3px] pt-[4px]">
-        <Check label="Single/Married" checked={civilStatus === 'single' || civilStatus === 'married'} />
-        <Check label="Separated" checked={civilStatus === 'separated'} />
-        <Check label="Annulled/Divorced" checked={civilStatus.includes('annulled') || civilStatus.includes('divorced')} />
-        <Check label="Widow/er" checked={civilStatus.includes('widow')} />
-      </div>
-    </Cell>
-  )
-}
-
-const BuyerBlock = ({ client, prefix = '', title, buyerName }) => {
-  const get = (key) => valueFrom(client, [getKey(prefix, key)], '')
-
-  return (
-    <div>
-      <FieldLine className="min-h-[26px] font-black" label={title} value={buyerName} />
-      <div className="grid grid-cols-2">
-        <FieldLine label="Date of Birth:" value={formatDate(get('BirthDate'))} />
-        <FieldLine label="Place of Birth:" value={get('PlaceOfBirth')} />
-      </div>
-      <div className="grid grid-cols-2">
-        <FieldLine label="Citizenship:" value={get('Citizenship')} />
-        <FieldLine label="Gender:" value={get('Gender')} />
-      </div>
-      <CivilStatusBox value={get('CivilStatus')} />
-      <div className="grid grid-cols-[1fr_105px]">
-        <FieldLine label="Present Address:" value={get('PresentAddress')} className="min-h-[34px]" />
-        <FieldLine label="Zip Code" value={get('PresentZipCode')} className="min-h-[34px]" />
-      </div>
-      <FieldLine label="Permanent Address:" value={get('PermanentAddress')} />
-      <FieldLine label="Mobile No.:" value={get('ContactNo')} />
-      <FieldLine label="Residence Phone Number:" value={get('ResidencePhoneNumber')} />
-      <FieldLine label="E-mail Add:" value={get('Email')} />
-      <FieldLine label="TIN:" value={get('Tin')} />
+    <div className="otb-check-grid">
+      <SmallCheck label="Single/Married" checked={civil === 'single' || civil === 'married'} />
+      <SmallCheck label="Separated" checked={civil.includes('separated')} />
+      <SmallCheck label="Annulled/Divorced" checked={civil.includes('annulled') || civil.includes('divorced')} />
+      <SmallCheck label="Widow/er" checked={civil.includes('widow')} />
     </div>
   )
 }
 
-const WorkBlock = ({ client, prefix = '' }) => {
-  const get = (key) => valueFrom(client, [getKey(prefix, key)], '')
-  const employmentStatus = get('EmploymentStatus')
-  const otherChecked = employmentStatus && !['private', 'business', 'government', 'professional', 'ngo', 'ofw', 'immigrant'].some((item) => employmentChecked(employmentStatus, item))
+const employmentChecks = (value) => {
+  const status = String(value || '').toLowerCase()
+  return (
+    <div className="otb-check-grid employment">
+      <SmallCheck label="Employed - Private" checked={status.includes('private')} />
+      <SmallCheck label="Self-Employed (With Business)" checked={status.includes('business')} />
+      <SmallCheck label="Employed Government" checked={status.includes('government')} />
+      <SmallCheck label="Self-Employed (Professional)" checked={status.includes('professional')} />
+      <SmallCheck label="Employed - NGO" checked={status.includes('ngo')} />
+      <SmallCheck label="OFW/immigrant" checked={status.includes('ofw') || status.includes('immigrant')} />
+    </div>
+  )
+}
+
+const BuyerColumn = ({ title, name, client, second = false }) => {
+  const get = (key) => second ? secondBuyerField(client, key) : buyerField(client, key.charAt(0).toLowerCase() + key.slice(1))
+  const civil = second ? secondBuyerField(client, 'CivilStatus') : buyerField(client, 'civilStatus')
 
   return (
-    <div>
-      <Section className="normal-case">Work/Business Information</Section>
-      <Cell className="min-h-[88px]">
-        <Label>Employment Status: (Please check)</Label>
-        <div className="grid grid-cols-2 gap-y-[4px] pt-[5px]">
-          <Check label="Employed - Private" checked={employmentChecked(employmentStatus, 'private')} />
-          <Check label="Self-Employed (With Business)" checked={employmentChecked(employmentStatus, 'business')} />
-          <Check label="Employed Government" checked={employmentChecked(employmentStatus, 'government')} />
-          <Check label="Self-Employed (Professional)" checked={employmentChecked(employmentStatus, 'professional')} />
-          <Check label="Employed - NGO" checked={employmentChecked(employmentStatus, 'ngo')} />
-          <Check label="OFW/immigrant" checked={employmentChecked(employmentStatus, 'ofw') || employmentChecked(employmentStatus, 'immigrant')} />
-        </div>
-        <div className="pt-[3px]"><Label>Other:</Label> {otherChecked ? employmentStatus : ''}</div>
-      </Cell>
-      <FieldLine label="Employer/Business Name:" value={get('EmployerBusinessName')} />
-      <div className="grid grid-cols-[1fr_105px]">
-        <FieldLine label="Employer/Business Address:" value={get('EmployerBusinessAddress')} />
-        <FieldLine label="Zip Code:" value={get('EmployerZipCode')} />
-      </div>
-      <FieldLine label="Nature of Work/Business:" value={get('NatureOfWorkBusiness')} />
-      <FieldLine label="Occupation/Position/Title:" value={get('OccupationPositionTitle')} />
-    </div>
+    <td colSpan="6" className="otb-nested-cell">
+      <table className="otb-inner-table">
+        <tbody>
+          <tr><td colSpan="4" className="otb-field-line strong">{title}: {name}</td></tr>
+          <tr>
+            <td colSpan="2"><Field label="Date of Birth:" value={formatDate(get('BirthDate'))} /></td>
+            <td colSpan="2"><Field label="Place of Birth:" value={get('PlaceOfBirth')} /></td>
+          </tr>
+          <tr>
+            <td colSpan="2"><Field label="Citizenship:" value={get('Citizenship')} /></td>
+            <td colSpan="2"><Field label="Gender:" value={get('Gender')} /></td>
+          </tr>
+          <tr><td colSpan="4" className="otb-civil"><strong>Civil Status</strong>{civilChecks(civil)}</td></tr>
+          <tr>
+            <td colSpan="3"><Field label="Present Address:" value={get('PresentAddress')} /></td>
+            <td><Field label="Zip Code" value={get('PresentZipCode')} /></td>
+          </tr>
+          <tr><td colSpan="4"><Field label="Permanent Address:" value={get('PermanentAddress')} /></td></tr>
+          <tr><td colSpan="4"><Field label="Mobile No.:" value={get('ContactNo')} /></td></tr>
+          <tr><td colSpan="4"><Field label="Residence Phone Number:" value={get('ResidencePhoneNumber')} /></td></tr>
+          <tr><td colSpan="4"><Field label="E-mail Add:" value={get('Email')} /></td></tr>
+          <tr><td colSpan="4"><Field label="TIN:" value={get('Tin')} /></td></tr>
+        </tbody>
+      </table>
+    </td>
+  )
+}
+
+const WorkColumn = ({ client, second = false }) => {
+  const get = (key) => second ? secondBuyerField(client, key) : buyerField(client, key.charAt(0).toLowerCase() + key.slice(1))
+
+  return (
+    <td colSpan="6" className="otb-nested-cell">
+      <table className="otb-inner-table">
+        <tbody>
+          <tr><th className="otb-subhead" colSpan="4">Work/Business Information</th></tr>
+          <tr>
+            <td colSpan="4" className="otb-employment">
+              <strong>Employment Status: (Please check)</strong>
+              {employmentChecks(get('EmploymentStatus'))}
+              <div><strong>Other:</strong> {get('EmploymentStatus')}</div>
+            </td>
+          </tr>
+          <tr><td colSpan="4"><Field label="Employer/Business Name:" value={get('EmployerBusinessName')} /></td></tr>
+          <tr>
+            <td colSpan="3"><Field label="Employer/Business Address:" value={get('EmployerBusinessAddress')} /></td>
+            <td><Field label="Zip Code:" value={get('EmployerZipCode')} /></td>
+          </tr>
+          <tr><td colSpan="4"><Field label="Nature of Work/Business:" value={get('NatureOfWorkBusiness')} /></td></tr>
+          <tr><td colSpan="4"><Field label="Occupation/Position/Title:" value={get('OccupationPositionTitle')} /></td></tr>
+        </tbody>
+      </table>
+    </td>
   )
 }
 
 const OfferToBuyPrintPage = () => {
   const { listing = {}, client = {}, soaRows = [] } = readPrintPayload()
   const rows = getNormalizedSoaRows(soaRows)
+
   const tcp = cleanMoney(getValue(listing, ['tcpAmount', 'tcp'], 0))
   const reservationFee = getRowAmount(rows, 'reservation') || cleanMoney(getValue(listing, ['reservationFee'], 0))
   const downpayment = getRowAmount(rows, 'downpayment') || cleanMoney(getValue(listing, ['downpayment'], 0))
   const balance = cleanMoney(getValue(listing, ['balanceAmount', 'balance'], Math.max(tcp - reservationFee - downpayment, 0)))
   const monthly = cleanMoney(getValue(listing, ['monthlyAmortization'], getMonthlyAmount(rows)))
   const monthlyTerms = Number(getValue(listing, ['soaMonthlyTerms', 'monthlyTerms'], 0)) || rows.filter((row) => String(row.description || '').toLowerCase().includes('monthly')).length || 36
+
   const buyerType = valueFrom(client, ['buyerType'], 'single')
   const modeOfPayment = valueFrom(listing, ['soaModeOfPayment', 'modeOfPayment'], 'installment').toLowerCase()
   const buyerName = valueFrom(client, ['buyerName'], valueFrom(listing, ['buyer_name'], ''))
   const secondBuyerName = valueFrom(client, ['secondBuyerName'], '')
-  const seller = valueFrom(listing, ['seller'], valueFrom(client, ['seller', 'salesOfficer'], ''))
+  const seller = valueFrom(listing, ['mainSeller', 'seller'], valueFrom(client, ['seller', 'salesOfficer'], ''))
+  const dateReceived = formatDate(valueFrom(client, ['dateReceived'], valueFrom(listing, ['client_unit_created'], new Date().toISOString())))
   const monthlyIncome = cleanMoney(getValue(client, ['monthlyIncome'], 0))
   const secondMonthlyIncome = cleanMoney(getValue(client, ['secondBuyerMonthlyIncome'], 0))
+  const totalIncome = monthlyIncome + secondMonthlyIncome
 
   return (
     <PrintPageShell title="Offer To Buy & Buyer&apos;s Profile">
-      <section className="print-page mx-auto h-[297mm] w-[210mm] bg-white p-[8mm] text-black shadow-lg print:p-[7mm] print:shadow-none">
-        <div className="h-full border-2 border-black font-sans text-[10px] leading-tight">
-          <div className="px-[7px] py-[5px]">
-            <h1 className="text-[15px] font-black leading-none">Offer To Buy &amp; Buyer&apos;s Profile</h1>
-            <p className="mt-[2px] text-[12px] font-black">Real Estate Sales - For Individual</p>
-            <div className="mt-[4px] grid grid-cols-[1fr_250px_170px] items-center gap-2">
-              <p>
-                <Label>Buyer Type</Label>{' '}
-                <Check label="Single" checked={buyerType === 'single'} />
-                <Check label="Spouses" checked={buyerType === 'spouses'} />
-                <Check label="and Account" checked={buyerType === 'and_account'} />
-              </p>
-              <div className="grid grid-cols-[85px_1fr] items-center"><Label>Sales Officer:</Label><span className="min-h-[20px] border border-black px-1 font-bold">{seller}</span></div>
-              <p><Label>Date Received:</Label> {formatDate(valueFrom(client, ['dateReceived'], valueFrom(listing, ['client_unit_created'], '')))}</p>
-            </div>
-          </div>
+      <section className="print-page otb-page mx-auto bg-white text-black shadow-lg print:shadow-none">
+        <style>{`
+          .otb-page {
+            width: 210mm;
+            min-height: 297mm;
+            padding: 8mm 9mm;
+            font-family: Arial, Helvetica, sans-serif;
+          }
 
-          <Section className="py-[5px] text-[16px]">PROPERTY DESCRIPTION</Section>
-          <Cell className="min-h-[36px] text-[13px]"><Label>Location:</Label> {valueFrom(listing, ['project_location', 'location'], '')}</Cell>
-          <div className="grid grid-cols-[1.05fr_1.05fr_1fr_2.2fr]">
-            <FieldLine label="Property Type:" value={valueFrom(listing, ['lot_type'], '')} />
-            <FieldLine label="Lot Area (sqm):" value={valueFrom(listing, ['lotAreaSqm', 'area'], '')} />
-            <FieldLine label="Classification:" value={valueFrom(listing, ['classification', 'lot_type'], '')} />
-            <FieldLine label="Description/Improvements:" value={`Unit ${valueFrom(listing, ['unit_id', 'unitCode'], '')}`} />
-          </div>
+          .otb-form {
+            width: 100%;
+            min-height: 273mm;
+            border: 1.4px solid #4b5563;
+            font-size: 8.7px;
+            line-height: 1.08;
+            color: #111827;
+            background: #ffffff;
+          }
 
-          <Section>OFFER TERMS AND CONDITIONS</Section>
-          <div className="border border-black py-[4px] text-center text-[9.5px] italic">
-            I/We, hereby offer to purchase the property described above under the following terms and conditions.
-          </div>
+          .otb-form table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+          }
 
-          <div className="grid grid-cols-2">
-            <div className="grid grid-cols-[160px_1fr]">
-              <Cell className="col-span-2 min-h-[72px] font-black"><Check label="CASH" checked={modeOfPayment === 'cash'} /></Cell>
-              <FieldLine label="Purchase Price:" value={modeOfPayment === 'cash' ? money(tcp) : ''} />
-              <Cell />
-              <FieldLine label="Reservation Fee:" value={modeOfPayment === 'cash' ? money(reservationFee) : ''} />
-              <Cell />
-              <FieldLine label="Balance:" value={modeOfPayment === 'cash' ? money(balance) : ''} className="min-h-[42px]" />
-              <Cell className="min-h-[42px]" />
-              <FieldLine label="Deferred Cash:" value="" className="min-h-[62px]" />
-              <Cell className="min-h-[62px]" />
-            </div>
-            <div className="grid grid-cols-[170px_1fr]">
-              <Cell className="col-span-2 min-h-[72px] font-black"><Check label="INSTALLMENT/In-house Financing" checked={modeOfPayment !== 'cash'} /></Cell>
-              <FieldLine label="Purchase Price:" value={money(tcp)} />
-              <Cell />
-              <FieldLine label="Reservation Fee:" value={money(reservationFee)} />
-              <Cell />
-              <FieldLine label="Downpayment:" value={money(downpayment)} />
-              <Cell />
-              <FieldLine label="Balance:" value={money(balance)} className="min-h-[42px]" />
-              <Cell className="min-h-[42px]" />
-              <FieldLine label="Terms (months/years to pay):" value={`${monthlyTerms} months`} />
-              <Cell />
-              <FieldLine label="Interest Rate:" value={valueFrom(listing, ['interestRate'], '0.00%')} />
-              <Cell />
-              <FieldLine label="Monthly Amortization:" value={money(monthly)} />
-              <Cell />
-            </div>
-          </div>
+          .otb-form td,
+          .otb-form th {
+            border: 1px solid #7b7f86;
+            padding: 2.2px 4px;
+            vertical-align: top;
+          }
 
-          <Section>INDIVIDUAL BUYER/S INFORMATION</Section>
-          <div className="grid grid-cols-2">
-            <BuyerBlock title="Principal Full-name (Last Name, First Name, Middle Name)" client={client} buyerName={buyerName} />
-            <BuyerBlock title="Spouse/Second Buyer&apos;s Name (Last Name, First Name, Middle Name)" client={client} prefix="secondBuyer" buyerName={secondBuyerName} />
-          </div>
+          .otb-title-cell {
+            border-left: 0 !important;
+            border-right: 0 !important;
+            border-top: 0 !important;
+            padding: 5px 7px 4px !important;
+          }
 
-          <div className="grid grid-cols-2">
-            <WorkBlock client={client} />
-            <WorkBlock client={client} prefix="secondBuyer" />
-          </div>
+          .otb-title {
+            margin: 0;
+            font-size: 13px;
+            font-weight: 800;
+            line-height: 1;
+          }
 
-          <Section>INCOME DETAILS (MONTHLY)</Section>
-          <div className="grid grid-cols-3">
-            <Cell className="min-h-[46px] text-center"><Label>PRINCIPAL</Label><br />{monthlyIncome ? money(monthlyIncome) : ''}</Cell>
-            <Cell className="min-h-[46px] text-center"><Label>SPOUSE/SECOND BUYER</Label><br />{secondMonthlyIncome ? money(secondMonthlyIncome) : ''}</Cell>
-            <Cell className="min-h-[46px] text-center"><Label>TOTAL</Label><br />{monthlyIncome || secondMonthlyIncome ? money(monthlyIncome + secondMonthlyIncome) : ''}</Cell>
-          </div>
+          .otb-subtitle {
+            margin-top: 1px;
+            font-size: 11px;
+            font-weight: 700;
+          }
 
-          <Section blue className="py-[5px]">SIGNATURES of BUYER/S</Section>
-          <div className="grid grid-cols-2">
-            <Cell className="h-[76px] pt-[56px] text-center font-black">Signature over Printed Name of Principal Buyer</Cell>
-            <Cell className="h-[76px] pt-[56px] text-center font-black">Signature over Printed Name of Spouse/Second Buyer</Cell>
-          </div>
+          .otb-header-grid {
+            display: grid;
+            grid-template-columns: 1fr 210px 150px;
+            align-items: center;
+            gap: 7px;
+            margin-top: 2px;
+          }
 
-          <Section>SALES AGENT:</Section>
-          <div className="grid grid-cols-[1.2fr_160px_1.6fr]">
-            <FieldLine label="Name:" value={seller} />
-            <FieldLine label="TIN No.:" value="" />
-            <FieldLine label="Address:" value="" />
-          </div>
-          <div className="grid grid-cols-3">
-            <Cell className="min-h-[26px]"><Label>Last Name</Label></Cell>
-            <Cell className="min-h-[26px]"><Label>First Name</Label></Cell>
-            <Cell className="min-h-[26px]"><Label>Middle Name</Label></Cell>
-          </div>
+          .otb-sales-box {
+            display: grid;
+            grid-template-columns: 72px 1fr;
+            align-items: center;
+            gap: 2px;
+          }
+
+          .otb-line-box {
+            min-height: 15px;
+            border: 1px solid #7b7f86;
+            padding: 1px 4px;
+            font-weight: 700;
+          }
+
+          .otb-section {
+            background: #d9d9d9;
+            text-align: center;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: .2px;
+          }
+
+          .otb-main-section {
+            font-size: 17px;
+            letter-spacing: .7px;
+            padding: 3px 4px !important;
+          }
+
+          .otb-subhead {
+            background: #d9d9d9;
+            text-align: center;
+            font-weight: 800;
+          }
+
+          .otb-location {
+            height: 24px;
+            font-size: 14px;
+            padding-top: 6px !important;
+          }
+
+          .otb-note {
+            text-align: center;
+            font-size: 8px;
+            font-style: italic;
+            height: 13px;
+            padding: 2px !important;
+          }
+
+          .otb-box {
+            display: inline-flex;
+            width: 9px;
+            height: 9px;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid #6b7280;
+            font-size: 8px;
+            font-weight: 800;
+            line-height: 1;
+            vertical-align: middle;
+          }
+
+          .otb-check {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            white-space: nowrap;
+          }
+
+          .otb-check-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 3px 10px;
+            margin-top: 5px;
+          }
+
+          .otb-check-grid.employment {
+            margin-top: 4px;
+            gap: 3px 12px;
+          }
+
+          .otb-term-title {
+            height: 58px;
+            font-weight: 800;
+          }
+
+          .otb-field-tall {
+            height: 34px;
+          }
+
+          .otb-buyer-title {
+            height: 21px;
+            font-weight: 800;
+          }
+
+          .otb-nested-cell {
+            padding: 0 !important;
+            border: 0 !important;
+          }
+
+          .otb-inner-table td,
+          .otb-inner-table th {
+            height: 17px;
+          }
+
+          .otb-inner-table .otb-civil {
+            height: 48px;
+          }
+
+          .otb-employment {
+            height: 69px;
+          }
+
+          .otb-income-cell {
+            height: 28px;
+            text-align: center;
+            font-weight: 800;
+          }
+
+          .otb-blue {
+            background: #1f4e79;
+            color: #ffffff;
+            text-align: center;
+            font-weight: 800;
+            text-transform: uppercase;
+          }
+
+          .otb-signature-space {
+            height: 43px;
+          }
+
+          .otb-signature-label {
+            height: 23px;
+            text-align: center;
+            font-weight: 800;
+            vertical-align: middle !important;
+          }
+
+          .otb-footer-blank {
+            height: 43mm;
+          }
+
+          @media print {
+            .otb-page {
+              width: 210mm !important;
+              min-height: 297mm !important;
+              padding: 7mm 8mm !important;
+              margin: 0 !important;
+              box-shadow: none !important;
+            }
+            .otb-form {
+              min-height: 276mm !important;
+            }
+          }
+        `}</style>
+
+        <div className="otb-form">
+          <table>
+            <tbody>
+              <tr>
+                <td colSpan="12" className="otb-title-cell">
+                  <h1 className="otb-title">Offer To Buy &amp; Buyer&apos;s Profile</h1>
+                  <div className="otb-subtitle">Real Estate Sales - For Individual</div>
+                  <div className="otb-header-grid">
+                    <div>
+                      <strong>Buyer Type</strong>{' '}
+                      <SmallCheck label="Single" checked={buyerType === 'single'} />{' '}
+                      <SmallCheck label="Spouses" checked={buyerType === 'spouses'} />{' '}
+                      <SmallCheck label="and Account" checked={buyerType === 'and_account'} />
+                    </div>
+                    <div className="otb-sales-box"><strong>Sales Officer:</strong><span className="otb-line-box">{seller}</span></div>
+                    <div><strong>Date Received:</strong> {dateReceived}</div>
+                  </div>
+                </td>
+              </tr>
+
+              <tr><th colSpan="12" className="otb-section otb-main-section">PROPERTY DESCRIPTION</th></tr>
+              <tr><td colSpan="12" className="otb-location"><strong>Location:</strong> {valueFrom(listing, ['project_location', 'location'], '')}</td></tr>
+              <tr>
+                <td colSpan="3"><Field label="Property Type:" value={valueFrom(listing, ['lot_type'], '')} /></td>
+                <td colSpan="3"><Field label="Lot Area (sqm):" value={valueFrom(listing, ['lotAreaSqm', 'area'], '')} /></td>
+                <td colSpan="2"><Field label="Classification:" value={valueFrom(listing, ['classification', 'lot_type'], '')} /></td>
+                <td colSpan="4"><Field label="Description/Improvements:" value={`Unit ${valueFrom(listing, ['unit_id', 'unitCode'], '')}`} /></td>
+              </tr>
+
+              <tr><th colSpan="12" className="otb-section">OFFER TERMS AND CONDITIONS</th></tr>
+              <tr><td colSpan="12" className="otb-note">I/We, hereby offer to purchase the property described above under the following terms and conditions.</td></tr>
+              <tr>
+                <td colSpan="6" className="otb-term-title"><SmallCheck label="CASH" checked={modeOfPayment === 'cash'} /></td>
+                <td colSpan="6" className="otb-term-title"><SmallCheck label="INSTALLMENT/In-house Financing" checked={modeOfPayment !== 'cash'} /></td>
+              </tr>
+              <tr>
+                <td colSpan="3"><Field label="Purchase Price:" value={modeOfPayment === 'cash' ? `Php ${moneyBlank(tcp)}` : ''} /></td>
+                <td colSpan="3"></td>
+                <td colSpan="3"><Field label="Purchase Price:" value={`Php ${moneyBlank(tcp)}`} /></td>
+                <td colSpan="3"></td>
+              </tr>
+              <tr>
+                <td colSpan="3"><Field label="Reservation Fee:" value={modeOfPayment === 'cash' ? moneyBlank(reservationFee) : ''} /></td>
+                <td colSpan="3"></td>
+                <td colSpan="3"><Field label="Reservation Fee:" value={moneyBlank(reservationFee)} /></td>
+                <td colSpan="3"></td>
+              </tr>
+              <tr>
+                <td colSpan="3" className="otb-field-tall"><Field label="Balance:" value={modeOfPayment === 'cash' ? moneyBlank(Math.max(tcp - reservationFee, 0)) : ''} /></td>
+                <td colSpan="3" className="otb-field-tall"></td>
+                <td colSpan="3"><Field label="Downpayment:" value={moneyBlank(downpayment)} /></td>
+                <td colSpan="3"></td>
+              </tr>
+              <tr>
+                <td colSpan="3" className="otb-field-tall"><Field label="Deferred Cash:" value="" /></td>
+                <td colSpan="3" className="otb-field-tall"></td>
+                <td colSpan="3"><Field label="Balance:" value={moneyBlank(balance)} /></td>
+                <td colSpan="3"></td>
+              </tr>
+              <tr>
+                <td colSpan="6" rowSpan="3"></td>
+                <td colSpan="3"><Field label="Terms (months/years to pay):" value={`${monthlyTerms} months`} /></td>
+                <td colSpan="3"></td>
+              </tr>
+              <tr>
+                <td colSpan="3"><Field label="Interest Rate:" value={valueFrom(listing, ['interestRate'], '0.00%')} /></td>
+                <td colSpan="3"></td>
+              </tr>
+              <tr>
+                <td colSpan="3"><Field label="Monthly Amortization:" value={moneyBlank(monthly)} /></td>
+                <td colSpan="3"></td>
+              </tr>
+
+              <tr><th colSpan="12" className="otb-section">INDIVIDUAL BUYER/S INFORMATION</th></tr>
+              <tr>
+                <BuyerColumn title="Principal Full-name (Last Name, First Name, Middle Name)" name={buyerName} client={client} />
+                <BuyerColumn title="Spouse/Second Buyer's Name (Last Name, First Name, Middle Name)" name={secondBuyerName} client={client} second />
+              </tr>
+              <tr>
+                <WorkColumn client={client} />
+                <WorkColumn client={client} second />
+              </tr>
+
+              <tr><th colSpan="12" className="otb-section">INCOME DETAILS (MONTHLY)</th></tr>
+              <tr>
+                <td colSpan="4" className="otb-income-cell">PRINCIPAL<br />{moneyBlank(monthlyIncome)}</td>
+                <td colSpan="4" className="otb-income-cell">SPOUSE/SECOND BUYER<br />{moneyBlank(secondMonthlyIncome)}</td>
+                <td colSpan="4" className="otb-income-cell">TOTAL<br />{moneyBlank(totalIncome)}</td>
+              </tr>
+              <tr><th colSpan="12" className="otb-blue">SIGNATURES OF BUYER/S</th></tr>
+              <tr>
+                <td colSpan="6" className="otb-signature-space"></td>
+                <td colSpan="6" className="otb-signature-space"></td>
+              </tr>
+              <tr>
+                <td colSpan="6" className="otb-signature-label">Signature over Printed Name of Principal Buyer</td>
+                <td colSpan="6" className="otb-signature-label">Signature over Printed Name of Spouse/Second Buyer</td>
+              </tr>
+              <tr><th colSpan="12" className="otb-section">SALES AGENT:</th></tr>
+              <tr>
+                <td colSpan="4"><Field label="Name:" value={seller} /></td>
+                <td colSpan="3"><Field label="TIN No.:" value="" /></td>
+                <td colSpan="5"><Field label="Address:" value="" /></td>
+              </tr>
+              <tr>
+                <td colSpan="4"><strong>Last Name</strong></td>
+                <td colSpan="4"><strong>First Name</strong></td>
+                <td colSpan="4"><strong>Middle Name</strong></td>
+              </tr>
+              <tr><td colSpan="12" className="otb-footer-blank"></td></tr>
+            </tbody>
+          </table>
         </div>
       </section>
     </PrintPageShell>
