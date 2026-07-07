@@ -1,10 +1,94 @@
 import { db } from '../../db/connect.js';
+import { getAuthenticatedUser } from '../Lot_Projects/_shared/lotProject.shared.js';
 
 const getErrorMessage = (error) => {
   if (String(error?.code || '').startsWith('ER_') || error?.sqlMessage || error?.sql) return 'Database operation failed. Please try again.';
   return error?.message || 'Something went wrong.';
 };
 const fullNameSql = (alias) => `TRIM(CONCAT_WS(' ', ${alias}.first_name, ${alias}.middle_name, ${alias}.last_name))`;
+
+const accreditedSellerDocumentsTableSql = `
+  CREATE TABLE IF NOT EXISTS accredited_seller_documents (
+    accredited_seller_document_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    accredited_seller_id INT UNSIGNED NOT NULL,
+    document_type VARCHAR(100) NOT NULL DEFAULT 'proof_of_income',
+    file_name VARCHAR(255) NULL,
+    file_url LONGTEXT NOT NULL,
+    file_mime_type VARCHAR(150) NULL,
+    file_size_bytes INT UNSIGNED NULL,
+    uploaded_by_user_id INT UNSIGNED NULL,
+    uploaded_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    document_status ENUM('active', 'archived') NOT NULL DEFAULT 'active',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (accredited_seller_document_id),
+    KEY idx_accredited_seller_documents_seller (accredited_seller_id),
+    KEY idx_accredited_seller_documents_type (document_type),
+    KEY idx_accredited_seller_documents_uploader (uploaded_by_user_id),
+    CONSTRAINT fk_accredited_seller_documents_seller
+      FOREIGN KEY (accredited_seller_id) REFERENCES accredited_sellers (accredited_seller_id)
+      ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_accredited_seller_documents_uploader
+      FOREIGN KEY (uploaded_by_user_id) REFERENCES users (id)
+      ON DELETE SET NULL ON UPDATE CASCADE
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+`;
+
+const ensureAccreditedSellerDocumentsTable = async (connection = db) => {
+  await connection.query(accreditedSellerDocumentsTableSql);
+};
+
+const mapProofOfIncomeDocument = (row = {}) => ({
+  id: row.accredited_seller_document_id,
+  accreditedSellerId: row.accredited_seller_id,
+  documentType: row.document_type,
+  fileName: row.file_name,
+  fileUrl: row.file_url,
+  fileMimeType: row.file_mime_type,
+  fileSizeBytes: row.file_size_bytes,
+  uploadedAt: row.uploaded_at,
+  status: row.document_status,
+});
+
+const hydrateSellerDocuments = async (sellers) => {
+  const sellerIds = sellers.map((seller) => seller.accredited_seller_id).filter(Boolean);
+  if (!sellerIds.length) return sellers.map((seller) => ({ ...seller, proof_of_income_document: null, proofOfIncomeDocument: null }));
+
+  await ensureAccreditedSellerDocumentsTable();
+
+  const [documentRows] = await db.query(
+    `
+      SELECT d.*
+      FROM accredited_seller_documents d
+      INNER JOIN (
+        SELECT accredited_seller_id, MAX(accredited_seller_document_id) AS latest_document_id
+        FROM accredited_seller_documents
+        WHERE document_type = 'proof_of_income'
+          AND document_status = 'active'
+          AND accredited_seller_id IN (${sellerIds.map(() => '?').join(', ')})
+        GROUP BY accredited_seller_id
+      ) latest
+        ON latest.latest_document_id = d.accredited_seller_document_id
+      ORDER BY d.uploaded_at DESC, d.accredited_seller_document_id DESC
+    `,
+    sellerIds
+  );
+
+  const documentMap = new Map();
+  documentRows.forEach((document) => {
+    documentMap.set(document.accredited_seller_id, mapProofOfIncomeDocument(document));
+  });
+
+  return sellers.map((seller) => {
+    const document = documentMap.get(seller.accredited_seller_id) || null;
+    return {
+      ...seller,
+      proof_of_income_document: document,
+      proofOfIncomeDocument: document,
+    };
+  });
+};
+
 
 const hydrateSellerRates = async (sellers) => {
   const sellerIds = sellers.map((seller) => seller.accredited_seller_id).filter(Boolean);
@@ -148,7 +232,7 @@ export const getAccredited = async (req, res) => {
       [...params, limit, offset]
     );
 
-    const hydratedRows = await hydrateSellerRates(rows);
+    const hydratedRows = await hydrateSellerDocuments(await hydrateSellerRates(rows));
 
     const [summaryRows] = await db.query(`
       SELECT
@@ -213,3 +297,81 @@ export const getParentSellers = async (req, res) => {
   }
 };
 
+
+
+
+export const uploadAccreditedSellerProofOfIncome = async (req, res) => {
+  const connection = await db.getConnection();
+
+  try {
+    const user = await getAuthenticatedUser(req);
+    if (!user) return res.status(401).json({ message: 'Please login before uploading proof of income.' });
+
+    const sellerId = Number(req.params.sellerId || 0);
+    const fileName = String(req.body.fileName || '').trim();
+    const fileUrl = String(req.body.fileUrl || '').trim();
+    const fileMimeType = String(req.body.fileType || req.body.fileMimeType || '').trim() || 'application/octet-stream';
+    const fileSizeBytes = Math.max(Number(req.body.fileSize || req.body.fileSizeBytes || 0), 0);
+
+    if (!sellerId) return res.status(400).json({ message: 'Seller id is required.' });
+    if (!fileUrl) return res.status(400).json({ message: 'Proof of income file is required.' });
+
+    await ensureAccreditedSellerDocumentsTable(connection);
+    await connection.beginTransaction();
+
+    const [sellerRows] = await connection.query(
+      `
+        SELECT accredited_seller_id
+        FROM accredited_sellers
+        WHERE accredited_seller_id = ?
+        LIMIT 1
+      `,
+      [sellerId]
+    );
+
+    if (!sellerRows[0]) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Accredited seller not found.' });
+    }
+
+    const [result] = await connection.query(
+      `
+        INSERT INTO accredited_seller_documents (
+          accredited_seller_id,
+          document_type,
+          file_name,
+          file_url,
+          file_mime_type,
+          file_size_bytes,
+          uploaded_by_user_id,
+          uploaded_at,
+          document_status
+        ) VALUES (?, 'proof_of_income', ?, ?, ?, ?, ?, NOW(), 'active')
+      `,
+      [sellerId, fileName || 'proof-of-income', fileUrl, fileMimeType, fileSizeBytes, user.id]
+    );
+
+    const [documentRows] = await connection.query(
+      `
+        SELECT *
+        FROM accredited_seller_documents
+        WHERE accredited_seller_document_id = ?
+        LIMIT 1
+      `,
+      [result.insertId]
+    );
+
+    await connection.commit();
+
+    return res.json({
+      success: true,
+      message: 'Proof of income uploaded successfully.',
+      document: mapProofOfIncomeDocument(documentRows[0]),
+    });
+  } catch (error) {
+    await connection.rollback();
+    return res.status(500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};

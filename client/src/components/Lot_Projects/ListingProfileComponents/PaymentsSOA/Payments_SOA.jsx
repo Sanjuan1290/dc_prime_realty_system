@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useParams } from 'react-router-dom'
 import {
@@ -8,6 +8,7 @@ import {
   FiEdit2,
   FiPlus,
   FiSearch,
+  FiSettings,
   FiTrash2,
   FiX,
 } from 'react-icons/fi'
@@ -265,6 +266,128 @@ const DeletePaymentModal = ({ payment, password, setPassword, alert, isDeleting,
   )
 }
 
+
+const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, onSave }) => {
+  const [form, setForm] = useState(() => ({
+    dpDiscountPercentage: String(getListingValue(listing, ['soaDpDiscountPercentage'], 0)),
+    downpaymentPercentage: String(getListingValue(listing, ['soaDownpaymentPercentage'], 30)),
+    downpaymentTerms: String(getListingValue(listing, ['soaDownpaymentTerms'], 3)),
+    monthlyTerms: String(getListingValue(listing, ['soaMonthlyTerms'], 36)),
+    annualInterestRate: String(getListingValue(listing, ['soaAnnualInterestRate'], 0)),
+    firstDueDate: getListingValue(listing, ['soaFirstDueDate', 'first_due_date'], ''),
+  }))
+  const [modalAlert, setModalAlert] = useState({
+    type: 'info',
+    message: 'Changing SOA terms recomputes the schedule. This is allowed only before payments are recorded.',
+  })
+
+  useEffect(() => {
+    if (serverAlert?.type === 'error') {
+      setModalAlert(serverAlert)
+    }
+  }, [serverAlert])
+
+  const updateForm = (key, value) => {
+    setForm((current) => ({ ...current, [key]: value }))
+    if (modalAlert?.type === 'error') setModalAlert(null)
+  }
+
+  const submit = (event) => {
+    event.preventDefault()
+
+    const dpDiscountPercentage = Number(form.dpDiscountPercentage || 0)
+    const downpaymentPercentage = Number(form.downpaymentPercentage || 0)
+    const downpaymentTerms = Number(form.downpaymentTerms || 0)
+    const monthlyTerms = Number(form.monthlyTerms || 0)
+    const annualInterestRate = Number(form.annualInterestRate || 0)
+
+    if (dpDiscountPercentage < 0 || dpDiscountPercentage > 100) {
+      setModalAlert({ type: 'error', message: 'DP Discount % must be between 0 and 100.' })
+      return
+    }
+
+    if (downpaymentPercentage < 0 || downpaymentPercentage > 100) {
+      setModalAlert({ type: 'error', message: 'Downpayment % must be between 0 and 100.' })
+      return
+    }
+
+    if (!Number.isInteger(downpaymentTerms) || downpaymentTerms < 0) {
+      setModalAlert({ type: 'error', message: 'Downpayment terms must be zero or greater.' })
+      return
+    }
+
+    if (!Number.isInteger(monthlyTerms) || monthlyTerms < 1) {
+      setModalAlert({ type: 'error', message: 'Monthly terms must be at least 1.' })
+      return
+    }
+
+    if (annualInterestRate < 0) {
+      setModalAlert({ type: 'error', message: 'Annual interest rate cannot be negative.' })
+      return
+    }
+
+    setModalAlert({ type: 'loading', message: 'Saving SOA terms and recomputing schedule...' })
+    onSave({
+      dpDiscountPercentage,
+      downpaymentPercentage,
+      downpaymentTerms,
+      monthlyTerms,
+      annualInterestRate,
+      firstDueDate: form.firstDueDate || null,
+    })
+  }
+
+  const Field = ({ label, value, onChange, type = 'number', placeholder = '', helper }) => (
+    <label className="flex flex-col gap-1.5">
+      <span className="text-sm font-black text-slate-700">{label}</span>
+      <input
+        type={type}
+        value={value ?? ''}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        disabled={isSaving}
+        className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
+      />
+      {helper ? <span className="text-xs font-semibold text-slate-500">{helper}</span> : null}
+    </label>
+  )
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/50 p-4">
+      <form onSubmit={submit} className="w-full max-w-3xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+          <div>
+            <h3 className="text-lg font-black text-slate-950">Edit SOA Terms</h3>
+            <p className="text-sm font-semibold text-slate-500">Update DP Discount % and recompute the payment schedule.</p>
+          </div>
+          <button type="button" onClick={onClose} disabled={isSaving} className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60" aria-label="Close SOA terms modal">
+            <FiX className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="p-5">
+          {modalAlert ? <StatusAlert type={modalAlert.type} message={modalAlert.message} onClose={modalAlert.type === 'loading' ? undefined : () => setModalAlert(null)} className="mb-4" /> : null}
+          <div className="grid gap-4 md:grid-cols-2">
+            <Field label="DP Discount %" value={form.dpDiscountPercentage} onChange={(value) => updateForm('dpDiscountPercentage', value)} placeholder="Example: 5" helper="Discount applied to the computed downpayment total." />
+            <Field label="Downpayment %" value={form.downpaymentPercentage} onChange={(value) => updateForm('downpaymentPercentage', value)} placeholder="Example: 30" />
+            <Field label="Downpayment Terms" value={form.downpaymentTerms} onChange={(value) => updateForm('downpaymentTerms', value)} placeholder="Example: 3" />
+            <Field label="Monthly Terms" value={form.monthlyTerms} onChange={(value) => updateForm('monthlyTerms', value)} placeholder="Example: 36" />
+            <Field label="Annual Interest Rate %" value={form.annualInterestRate} onChange={(value) => updateForm('annualInterestRate', value)} placeholder="Example: 7.5" />
+            <Field label="First Due Date" type="date" value={form.firstDueDate && form.firstDueDate !== '-' ? form.firstDueDate : ''} onChange={(value) => updateForm('firstDueDate', value)} />
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-slate-200 bg-white px-5 py-4">
+          <button type="button" onClick={onClose} disabled={isSaving} className="h-10 rounded-lg border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">Cancel</button>
+          <button type="submit" disabled={isSaving} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300">
+            {isSaving ? 'Saving...' : 'Save SOA Terms'}
+          </button>
+        </div>
+      </form>
+    </div>
+  )
+}
+
 const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
   const { projectSlug, listingId } = useParams()
   const queryClient = useQueryClient()
@@ -308,6 +431,7 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
 
   const [alert, setAlert] = useState(null)
   const [showPaymentModal, setShowPaymentModal] = useState(false)
+  const [showSoaTermsModal, setShowSoaTermsModal] = useState(false)
   const [editingPayment, setEditingPayment] = useState(null)
   const [deletePayment, setDeletePayment] = useState(null)
   const [deletePassword, setDeletePassword] = useState('')
@@ -366,6 +490,23 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
       setDeleteAlert({ type: 'error', message: error?.message || 'Failed to delete payment.' })
     },
   })
+
+  const updateSoaTermsMutation = useMutation({
+    mutationFn: (payload) =>
+      useFetchPut(`/projects/lot-projects/${projectSlug}/listings/${listingId}/soa-terms`, payload),
+    onSuccess: (result) => {
+      setShowSoaTermsModal(false)
+      setAlert({ type: 'success', message: result?.message || 'SOA terms saved successfully.' })
+      invalidateProfile()
+    },
+    onError: (error) => {
+      setAlert({ type: 'error', message: error?.message || 'Failed to save SOA terms.' })
+    },
+  })
+
+  const handleSaveSoaTerms = (payload) => {
+    updateSoaTermsMutation.mutate(payload)
+  }
 
   const filteredPayments = useMemo(() => {
     const keyword = search.trim().toLowerCase()
@@ -527,14 +668,24 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={openAddModal}
-          className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98]"
-        >
-          <FiPlus className="h-4 w-4" />
-          Add Payment
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setShowSoaTermsModal(true)}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-50 active:scale-[0.98]"
+          >
+            <FiSettings className="h-4 w-4" />
+            Edit SOA Terms
+          </button>
+          <button
+            type="button"
+            onClick={openAddModal}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98]"
+          >
+            <FiPlus className="h-4 w-4" />
+            Add Payment
+          </button>
+        </div>
       </div>
 
       <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -855,6 +1006,19 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
         </div>
       </section>
 
+      {showSoaTermsModal ? (
+        <SoaTermsModal
+          listing={listing}
+          isSaving={updateSoaTermsMutation.isPending}
+          serverAlert={alert?.type === 'error' ? alert : null}
+          onClose={() => {
+            if (updateSoaTermsMutation.isPending) return
+            setShowSoaTermsModal(false)
+          }}
+          onSave={handleSaveSoaTerms}
+        />
+      ) : null}
+
       {showPaymentModal ? (
         <AddSOAPaymentModal
           listing={listing}
@@ -888,3 +1052,4 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
 }
 
 export default PaymentsSOA
+

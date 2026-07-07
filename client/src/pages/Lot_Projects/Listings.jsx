@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { FiEye, FiFileText, FiGrid, FiPlus, FiSearch } from 'react-icons/fi'
+import { FiEye, FiFileText, FiGrid, FiPlus, FiSearch, FiTrash2 } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
 import AddListingModal from '../../components/Lot_Projects/ListingComponents/AddListingModal/AddListingModal'
-import { useFetch, useFetchPost } from '../../utils/useFetch'
+import { useFetch, useFetchDelete, useFetchPost } from '../../utils/useFetch'
 
 const money = (value) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value || 0))
 
@@ -58,6 +58,21 @@ const Listings = () => {
     },
   })
 
+  const deleteListingMutation = useMutation({
+    mutationFn: (listingId) => useFetchDelete(`/projects/lot-projects/${projectSlug}/listings/${listingId}`),
+    onMutate: () => {
+      setAlert({ type: 'loading', message: 'Deleting listing...' })
+    },
+    onSuccess: (result) => {
+      setAlert({ type: 'success', message: result?.message || 'Listing deleted.' })
+      queryClient.invalidateQueries({ queryKey: ['lot-listings', projectSlug] })
+      queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] })
+    },
+    onError: (mutationError) => {
+      setAlert({ type: 'error', message: mutationError?.message || 'Failed to delete listing.' })
+    },
+  })
+
   const listings = data?.data || []
   const project = data?.project || {}
   const overviewData = data?.overview || {
@@ -76,6 +91,20 @@ const Listings = () => {
 
   const handleAddListing = async (payload) => {
     await addListingMutation.mutateAsync(payload)
+  }
+
+  const handleDeleteListing = (listing) => {
+    const listingKey = listing.routeId || listing.id || listing.unitCode
+    const unitLabel = listing.unitCode || 'this listing'
+
+    if (!listingKey) {
+      setAlert({ type: 'error', message: 'Listing ID is missing. Please refresh and try again.' })
+      return
+    }
+
+    if (!window.confirm(`Delete ${unitLabel}? This cannot be undone.`)) return
+
+    deleteListingMutation.mutate(listingKey)
   }
 
   return (
@@ -113,7 +142,7 @@ const Listings = () => {
                 <td className="px-4 py-4 font-semibold text-slate-700">{listing.lotType}</td><td className="px-4 py-4 font-semibold text-slate-700">{listing.area} sqm</td><td className="px-4 py-4 font-semibold text-slate-700">{money(listing.pricePerSqm)}</td><td className="px-4 py-4 font-black text-slate-900">{money(listing.netSellingPrice)}</td><td className="px-4 py-4 font-semibold text-slate-700">{listing.lmfRate}%</td><td className="px-4 py-4 font-black text-slate-900">{money(listing.tcp)}</td><td className="px-4 py-4 font-semibold text-slate-700">{money(listing.reservationFee)}</td><td className="px-4 py-4 font-semibold text-slate-700">{listing.buyer}</td>
                 <td className="px-4 py-4"><span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700 ring-1 ring-blue-100"><FiFileText className="h-3.5 w-3.5" />{listing.documentStatus}</span></td>
                 <td className="px-4 py-4"><span className={`rounded-full px-3 py-1 text-xs font-black ring-1 ${statusTone(listing.status)}`}>{listing.status}</span></td>
-                <td className="px-4 py-4"><Link to={`/lot-projects/${projectSlug}/listings/${listing.routeId || listing.id || listing.unitCode}`} className="inline-flex h-9 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 transition hover:bg-slate-50"><FiEye className="h-4 w-4" />Details</Link></td>
+                <td className="px-4 py-4"><div className="flex flex-wrap gap-2"><Link to={`/lot-projects/${projectSlug}/listings/${listing.routeId || listing.id || listing.unitCode}`} className="inline-flex h-9 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 transition hover:bg-slate-50"><FiEye className="h-4 w-4" />Details</Link><button type="button" onClick={() => handleDeleteListing(listing)} disabled={deleteListingMutation.isPending} className="inline-flex h-9 items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 text-xs font-black text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"><FiTrash2 className="h-4 w-4" />Delete</button></div></td>
               </tr>)}
             </tbody>
           </table>
@@ -126,3 +155,4 @@ const Listings = () => {
 }
 
 export default Listings
+

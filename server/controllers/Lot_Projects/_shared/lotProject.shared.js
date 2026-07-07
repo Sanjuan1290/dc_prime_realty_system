@@ -563,6 +563,7 @@ export const mapProfileListing = (row = {}, project = {}, documents = []) => {
     soaDownpaymentTerms: Number(row.soa_downpayment_terms || 0),
     soaMonthlyTerms: Number(row.soa_monthly_terms || 0),
     soaAnnualInterestRate: Number(row.soa_annual_interest_rate || annualInterestRate || 0),
+    soaDpDiscountPercentage: Number(row.soa_dp_discount_percentage || 0),
     buyer_name: row.buyer_full_name || '-',
     spouse_co_owner: row.second_buyer_full_name || '-',
     email: row.buyer_email || '-',
@@ -1677,5 +1678,6 @@ export const addIfColumnExists = async (connection, tableName, columns, values, 
     values.push(value);
   }
 };
+
 
 

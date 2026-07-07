@@ -27,6 +27,7 @@ import LotSettings from "./pages/Lot_Projects/Settings";
 import OfferToBuyPrintPage from "./components/Lot_Projects/ListingProfileComponents/Printouts/OfferToBuyPrintPage";
 import SOAPrintPage from "./components/Lot_Projects/ListingProfileComponents/Printouts/SOAPrintPage";
 import DocumentsPrintPage from "./components/Lot_Projects/ListingProfileComponents/Printouts/DocumentsPrintPage";
+import AccreditedSellerProofOfIncomePrintPage from "./components/Lot_Projects/ListingProfileComponents/Printouts/AccreditedSellerProofOfIncomePrintPage";
 
 const App = () => {
   const router = createBrowserRouter(
@@ -64,6 +65,11 @@ const App = () => {
         />
 
         <Route
+          path="/super_admin/accredited/proof-of-income/print"
+          element={<AccreditedSellerProofOfIncomePrintPage />}
+        />
+
+        <Route
           path="/lot-projects/:projectSlug/printouts/documents"
           element={<DocumentsPrintPage />}
         />
@@ -75,3 +81,4 @@ const App = () => {
 };
 
 export default App;
+

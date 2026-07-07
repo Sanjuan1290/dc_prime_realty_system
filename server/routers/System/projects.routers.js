@@ -15,6 +15,7 @@ import {
   getLotProjectListings,
   createLotProjectListing,
   updateLotProjectListing,
+  deleteLotProjectListing,
 } from '../../controllers/Lot_Projects/Listings/Listings.controller.js';
 import { getLotProjectListingProfile } from '../../controllers/Lot_Projects/ListingProfile/ListingProfile.controller.js';
 import { updateLotProjectClientProfile } from '../../controllers/Lot_Projects/ListingProfile/ClientProfile.controller.js';
@@ -28,6 +29,7 @@ import {
   createLotProjectListingPayment,
   updateLotProjectListingPayment,
   deleteLotProjectListingPayment,
+  updateLotProjectListingSoaTerms,
 } from '../../controllers/Lot_Projects/ListingProfile/PaymentsSOA.controller.js';
 import { getLotProjectPaymentLogs } from '../../controllers/Lot_Projects/PaymentLogs/PaymentLogs.controller.js';
 import {
@@ -56,11 +58,13 @@ router.get('/lot-projects/:projectSlug', getLotProjectBySlug);
 router.post('/lot-projects', createLotProject);
 router.post('/lot-projects/:projectSlug/listings', createLotProjectListing);
 router.put('/lot-projects/:projectSlug/listings/:listingId', updateLotProjectListing);
+router.delete('/lot-projects/:projectSlug/listings/:listingId', deleteLotProjectListing);
 router.put('/lot-projects/:projectSlug/listings/:listingId/client-profile', updateLotProjectClientProfile);
 router.post('/lot-projects/:projectSlug/listings/:listingId/reserve', reserveLotProjectListing);
 router.put('/lot-projects/:projectSlug/listings/:listingId/documents/:documentId/upload', uploadLotProjectListingDocument);
 router.patch('/lot-projects/:projectSlug/listings/:listingId/documents/:documentId/approve', approveLotProjectListingDocument);
 router.patch('/lot-projects/:projectSlug/listings/:listingId/documents/:documentId/clear', clearLotProjectListingDocument);
+router.put('/lot-projects/:projectSlug/listings/:listingId/soa-terms', updateLotProjectListingSoaTerms);
 router.post('/lot-projects/:projectSlug/listings/:listingId/payments', createLotProjectListingPayment);
 router.put('/lot-projects/:projectSlug/listings/:listingId/payments/:paymentId', updateLotProjectListingPayment);
 router.post('/lot-projects/:projectSlug/listings/:listingId/payments/:paymentId/delete', deleteLotProjectListingPayment);
@@ -70,3 +74,4 @@ router.patch('/lot-projects/:id/status', toggleLotProjectStatus);
 router.delete('/lot-projects/:id', deleteLotProject);
 
 export default router;
+

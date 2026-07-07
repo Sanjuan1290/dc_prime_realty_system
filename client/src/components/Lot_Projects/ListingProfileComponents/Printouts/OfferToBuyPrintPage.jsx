@@ -343,7 +343,21 @@ const OfferToBuyPrintPage = () => {
           }
 
           .otb-footer-blank {
-            height: 43mm;
+            height: 20mm;
+          }
+
+          .otb-remarks-line {
+            display: inline-block;
+            min-width: 136mm;
+            border-bottom: 1px solid #7b7f86;
+            height: 10px;
+          }
+
+          .otb-approval-cell {
+            height: 26px;
+            text-align: center;
+            vertical-align: bottom !important;
+            font-weight: 800;
           }
 
           @media print {
@@ -391,47 +405,63 @@ const OfferToBuyPrintPage = () => {
 
               <tr><th colSpan="12" className="otb-section">OFFER TERMS AND CONDITIONS</th></tr>
               <tr><td colSpan="12" className="otb-note">I/We, hereby offer to purchase the property described above under the following terms and conditions.</td></tr>
-              <tr>
-                <td colSpan="6" className="otb-term-title"><SmallCheck label="CASH" checked={modeOfPayment === 'cash'} /></td>
-                <td colSpan="6" className="otb-term-title"><SmallCheck label="INSTALLMENT/In-house Financing" checked={modeOfPayment !== 'cash'} /></td>
-              </tr>
-              <tr>
-                <td colSpan="3"><Field label="Purchase Price:" value={modeOfPayment === 'cash' ? `Php ${moneyBlank(tcp)}` : ''} /></td>
-                <td colSpan="3"></td>
-                <td colSpan="3"><Field label="Purchase Price:" value={`Php ${moneyBlank(tcp)}`} /></td>
-                <td colSpan="3"></td>
-              </tr>
-              <tr>
-                <td colSpan="3"><Field label="Reservation Fee:" value={modeOfPayment === 'cash' ? moneyBlank(reservationFee) : ''} /></td>
-                <td colSpan="3"></td>
-                <td colSpan="3"><Field label="Reservation Fee:" value={moneyBlank(reservationFee)} /></td>
-                <td colSpan="3"></td>
-              </tr>
-              <tr>
-                <td colSpan="3" className="otb-field-tall"><Field label="Balance:" value={modeOfPayment === 'cash' ? moneyBlank(Math.max(tcp - reservationFee, 0)) : ''} /></td>
-                <td colSpan="3" className="otb-field-tall"></td>
-                <td colSpan="3"><Field label="Downpayment:" value={moneyBlank(downpayment)} /></td>
-                <td colSpan="3"></td>
-              </tr>
-              <tr>
-                <td colSpan="3" className="otb-field-tall"><Field label="Deferred Cash:" value="" /></td>
-                <td colSpan="3" className="otb-field-tall"></td>
-                <td colSpan="3"><Field label="Balance:" value={moneyBlank(balance)} /></td>
-                <td colSpan="3"></td>
-              </tr>
-              <tr>
-                <td colSpan="6" rowSpan="3"></td>
-                <td colSpan="3"><Field label="Terms (months/years to pay):" value={`${monthlyTerms} months`} /></td>
-                <td colSpan="3"></td>
-              </tr>
-              <tr>
-                <td colSpan="3"><Field label="Interest Rate:" value={valueFrom(listing, ['interestRate'], '0.00%')} /></td>
-                <td colSpan="3"></td>
-              </tr>
-              <tr>
-                <td colSpan="3"><Field label="Monthly Amortization:" value={moneyBlank(monthly)} /></td>
-                <td colSpan="3"></td>
-              </tr>
+              {modeOfPayment === 'cash' ? (
+                <>
+                  <tr>
+                    <td colSpan="12" className="otb-term-title"><SmallCheck label="CASH" checked /></td>
+                  </tr>
+                  <tr>
+                    <td colSpan="4"><Field label="Purchase Price:" value={`Php ${moneyBlank(tcp)}`} /></td>
+                    <td colSpan="8"></td>
+                  </tr>
+                  <tr>
+                    <td colSpan="4"><Field label="Reservation Fee:" value={moneyBlank(reservationFee)} /></td>
+                    <td colSpan="8"></td>
+                  </tr>
+                  <tr>
+                    <td colSpan="4" className="otb-field-tall"><Field label="Balance:" value={moneyBlank(Math.max(tcp - reservationFee, 0))} /></td>
+                    <td colSpan="8" className="otb-field-tall"></td>
+                  </tr>
+                  <tr>
+                    <td colSpan="4" className="otb-field-tall"><Field label="Deferred Cash:" value="" /></td>
+                    <td colSpan="8" className="otb-field-tall"></td>
+                  </tr>
+                </>
+              ) : (
+                <>
+                  <tr>
+                    <td colSpan="12" className="otb-term-title"><SmallCheck label="INSTALLMENT/In-house Financing" checked /></td>
+                  </tr>
+                  <tr>
+                    <td colSpan="4"><Field label="Purchase Price:" value={`Php ${moneyBlank(tcp)}`} /></td>
+                    <td colSpan="8"></td>
+                  </tr>
+                  <tr>
+                    <td colSpan="4"><Field label="Reservation Fee:" value={moneyBlank(reservationFee)} /></td>
+                    <td colSpan="8"></td>
+                  </tr>
+                  <tr>
+                    <td colSpan="4"><Field label="Downpayment:" value={moneyBlank(downpayment)} /></td>
+                    <td colSpan="8"></td>
+                  </tr>
+                  <tr>
+                    <td colSpan="4"><Field label="Balance:" value={moneyBlank(balance)} /></td>
+                    <td colSpan="8"></td>
+                  </tr>
+                  <tr>
+                    <td colSpan="4"><Field label="Terms (months/years to pay):" value={`${monthlyTerms} months`} /></td>
+                    <td colSpan="8"></td>
+                  </tr>
+                  <tr>
+                    <td colSpan="4"><Field label="Interest Rate:" value={valueFrom(listing, ['interestRate'], '0.00%')} /></td>
+                    <td colSpan="8"></td>
+                  </tr>
+                  <tr>
+                    <td colSpan="4"><Field label="Monthly Amortization:" value={moneyBlank(monthly)} /></td>
+                    <td colSpan="8"></td>
+                  </tr>
+                </>
+              )}
 
               <tr><th colSpan="12" className="otb-section">INDIVIDUAL BUYER/S INFORMATION</th></tr>
               <tr>
@@ -469,7 +499,16 @@ const OfferToBuyPrintPage = () => {
                 <td colSpan="4"><strong>First Name</strong></td>
                 <td colSpan="4"><strong>Middle Name</strong></td>
               </tr>
-              <tr><td colSpan="12" className="otb-footer-blank"></td></tr>
+              <tr>
+                <td colSpan="12" className="otb-footer-blank">
+                  <strong>Remarks / Notes:</strong> <span className="otb-remarks-line"></span>
+                </td>
+              </tr>
+              <tr>
+                <td colSpan="4" className="otb-approval-cell">Approved By<br />Printed Name / Signature</td>
+                <td colSpan="4" className="otb-approval-cell">Position</td>
+                <td colSpan="4" className="otb-approval-cell">Date</td>
+              </tr>
             </tbody>
           </table>
         </div>
@@ -479,3 +518,4 @@ const OfferToBuyPrintPage = () => {
 }
 
 export default OfferToBuyPrintPage
+

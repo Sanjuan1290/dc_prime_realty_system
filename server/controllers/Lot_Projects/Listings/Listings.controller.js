@@ -405,6 +405,7 @@ export const createLotProjectListing = async (req, res) => {
     const lotAreaSqm = Number(req.body.lotAreaSqm || req.body.area || 0);
     const legalMiscRate = Number(req.body.legalMiscRate || req.body.lmfRate || 0);
     const reservationFee = Number(req.body.reservationFee || 0);
+    const annualInterestRate = Number(req.body.annualInterestRate || 0);
     const listingStatus = normalizeListingStatusPayload(req.body.status);
 
     if (!unitNumber && !req.body.unitCode) {
@@ -422,42 +423,54 @@ export const createLotProjectListing = async (req, res) => {
     const netSellingPrice = pricePerSqm * lotAreaSqm;
     const lmfAmount = netSellingPrice * (legalMiscRate / 100);
     const tcp = netSellingPrice + lmfAmount;
+    const hasAnnualInterestRate = await columnExists(connection, 'lot_project_listings', 'annual_interest_rate');
+
+    const insertColumns = [
+      'lot_project_id',
+      'lot_project_listing_unit_type',
+      'lot_project_listing_unit_id',
+      'lot_project_listing_old_unit_ids',
+      'lot_project_listing_area_sqm',
+      'lot_project_listing_price_per_sqm',
+      'lot_project_listing_net_selling_price',
+      'lot_project_listing_lmf_rate',
+      'lot_project_listing_lmf_amount',
+      'lot_project_listing_tcp',
+      'lot_project_listing_reservation_fee',
+      'lot_project_listing_status',
+      'lot_project_listing_sold_substatus',
+    ];
+
+    const insertValues = [
+      project.lot_project_id,
+      normalizeLotType(req.body.lotType || req.body.unitType),
+      unitCode,
+      toNullable(req.body.oldUnitIds),
+      lotAreaSqm,
+      pricePerSqm,
+      netSellingPrice,
+      legalMiscRate,
+      lmfAmount,
+      tcp,
+      reservationFee,
+      listingStatus.status,
+      listingStatus.soldSubstatus,
+    ];
+
+    if (hasAnnualInterestRate) {
+      insertColumns.push('annual_interest_rate');
+      insertValues.push(annualInterestRate);
+    }
 
     await connection.beginTransaction();
 
     const [listingResult] = await connection.query(
       `
         INSERT INTO lot_project_listings (
-          lot_project_id,
-          lot_project_listing_unit_type,
-          lot_project_listing_unit_id,
-          lot_project_listing_old_unit_ids,
-          lot_project_listing_area_sqm,
-          lot_project_listing_price_per_sqm,
-          lot_project_listing_net_selling_price,
-          lot_project_listing_lmf_rate,
-          lot_project_listing_lmf_amount,
-          lot_project_listing_tcp,
-          lot_project_listing_reservation_fee,
-          lot_project_listing_status,
-          lot_project_listing_sold_substatus
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ${insertColumns.join(',\n          ')}
+        ) VALUES (${insertColumns.map(() => '?').join(', ')})
       `,
-      [
-        project.lot_project_id,
-        normalizeLotType(req.body.lotType || req.body.unitType),
-        unitCode,
-        toNullable(req.body.oldUnitIds),
-        lotAreaSqm,
-        pricePerSqm,
-        netSellingPrice,
-        legalMiscRate,
-        lmfAmount,
-        tcp,
-        reservationFee,
-        listingStatus.status,
-        listingStatus.soldSubstatus,
-      ]
+      insertValues
     );
 
     const listingId = listingResult.insertId;
@@ -533,6 +546,114 @@ export const createLotProjectListing = async (req, res) => {
       listing_id: listingId,
       unit_id: unitCode,
     });
+  } catch (error) {
+    await connection.rollback();
+    return res.status(500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
+
+
+export const deleteLotProjectListing = async (req, res) => {
+  const connection = await db.getConnection();
+
+  try {
+    const slug = String(req.params.projectSlug || '').trim();
+    const listingLookup = String(req.params.listingId || '').trim();
+    const project = await getProjectBySlug(slug);
+
+    if (!project) return res.status(404).json({ message: 'Lot project not found.' });
+    if (!listingLookup) return res.status(400).json({ message: 'Listing id is required.' });
+
+    const lookup = getListingLookupWhere(listingLookup);
+
+    await connection.beginTransaction();
+
+    const [existingRows] = await connection.query(
+      `
+        SELECT lot_project_listing_id, lot_project_listing_status
+        FROM lot_project_listings l
+        WHERE l.lot_project_id = ?
+          AND ${lookup.sql}
+        LIMIT 1
+      `,
+      [project.lot_project_id, ...lookup.params]
+    );
+
+    const existingListing = existingRows[0];
+    if (!existingListing) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Listing not found.' });
+    }
+
+    const paymentCountRows = await tableExists(connection, 'lot_project_payments')
+      ? (await connection.query(
+          `SELECT COUNT(*) AS payment_count FROM lot_project_payments WHERE lot_project_listing_id = ?`,
+          [existingListing.lot_project_listing_id]
+        ))[0]
+      : [{ payment_count: 0 }];
+
+    if (Number(paymentCountRows[0]?.payment_count || 0) > 0) {
+      await connection.rollback();
+      return res.status(400).json({
+        message: 'This listing has recorded payments and cannot be deleted. Cancel the listing instead.',
+      });
+    }
+
+    if (
+      (await tableExists(connection, 'lot_project_commission_releases')) &&
+      (await tableExists(connection, 'lot_project_commissions')) &&
+      (await columnExists(connection, 'lot_project_commissions', 'lot_project_listing_id'))
+    ) {
+      await connection.query(
+        `
+          DELETE cr
+          FROM lot_project_commission_releases cr
+          INNER JOIN lot_project_commissions c
+            ON c.lot_project_commission_id = cr.lot_project_commission_id
+          WHERE c.lot_project_listing_id = ?
+        `,
+        [existingListing.lot_project_listing_id]
+      );
+    }
+
+    const dependentTables = [
+      'lot_project_client_documents',
+      'lot_project_payment_schedules',
+      'lot_project_listing_documents',
+      'lot_project_listing_cadastral_lots',
+      'lot_project_commissions',
+      'lot_project_notification_logs',
+      'lot_project_client_profiles',
+    ];
+
+    for (const tableName of dependentTables) {
+      if (
+        (await tableExists(connection, tableName)) &&
+        (await columnExists(connection, tableName, 'lot_project_listing_id'))
+      ) {
+        await connection.query(
+          `DELETE FROM ${tableName} WHERE lot_project_listing_id = ?`,
+          [existingListing.lot_project_listing_id]
+        );
+      }
+    }
+
+    const [result] = await connection.query(
+      `DELETE FROM lot_project_listings WHERE lot_project_listing_id = ? AND lot_project_id = ?`,
+      [existingListing.lot_project_listing_id, project.lot_project_id]
+    );
+
+    if (result.affectedRows === 0) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Listing not found.' });
+    }
+
+    await connection.commit();
+
+    return res.json({ success: true, message: 'Listing deleted successfully.' });
   } catch (error) {
     await connection.rollback();
     return res.status(500).json({ message: getErrorMessage(error) });
