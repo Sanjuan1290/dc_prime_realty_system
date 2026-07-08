@@ -305,6 +305,64 @@ const replaceListingSchedulesForProfile = async (connection, projectId, listingR
   );
 };
 
+
+const clearListingSaleDataForAvailable = async (connection, listingId) => {
+  if (await tableExists(connection, 'lot_project_payment_allocations')) {
+    await connection.query(
+      `
+        DELETE pa
+        FROM lot_project_payment_allocations pa
+        LEFT JOIN lot_project_payments p
+          ON p.lot_project_payment_id = pa.lot_project_payment_id
+        LEFT JOIN lot_project_payment_schedules ps
+          ON ps.lot_project_payment_schedule_id = pa.lot_project_payment_schedule_id
+        WHERE p.lot_project_listing_id = ?
+           OR ps.lot_project_listing_id = ?
+      `,
+      [listingId, listingId]
+    );
+  }
+
+  if (
+    (await tableExists(connection, 'lot_project_commission_releases')) &&
+    (await tableExists(connection, 'lot_project_commissions'))
+  ) {
+    await connection.query(
+      `
+        DELETE cr
+        FROM lot_project_commission_releases cr
+        INNER JOIN lot_project_commissions c
+          ON c.lot_project_commission_id = cr.lot_project_commission_id
+        WHERE c.lot_project_listing_id = ?
+      `,
+      [listingId]
+    );
+  }
+
+  const childTables = [
+    'lot_project_commissions',
+    'lot_project_payments',
+    'lot_project_payment_schedules',
+    'lot_project_client_documents',
+  ];
+
+  for (const tableName of childTables) {
+    if (await tableExists(connection, tableName)) {
+      await connection.query(
+        `DELETE FROM ${tableName} WHERE lot_project_listing_id = ?`,
+        [listingId]
+      );
+    }
+  }
+
+  if (await tableExists(connection, 'lot_project_client_profiles')) {
+    await connection.query(
+      `DELETE FROM lot_project_client_profiles WHERE lot_project_listing_id = ?`,
+      [listingId]
+    );
+  }
+};
+
 const syncListingInterestToUnlockedSoa = async (connection, projectId, listingId, annualInterestRate) => {
   if (!(await tableExists(connection, 'lot_project_client_profiles'))) return { synced: 0, skipped: 0 };
 
@@ -418,7 +476,7 @@ export const updateLotProjectListing = async (req, res) => {
 
     const [existingRows] = await connection.query(
       `
-        SELECT lot_project_listing_id
+        SELECT lot_project_listing_id, lot_project_listing_status
         FROM lot_project_listings l
         WHERE l.lot_project_id = ?
           AND ${lookup.sql}
@@ -492,6 +550,11 @@ export const updateLotProjectListing = async (req, res) => {
       return res.status(404).json({ message: 'Listing not found.' });
     }
 
+    const resetToAvailable = listingStatus.status === 'available' && existingListing.lot_project_listing_status !== 'available';
+    if (resetToAvailable) {
+      await clearListingSaleDataForAvailable(connection, existingListing.lot_project_listing_id);
+    }
+
     if (hasListingCadastralLinks) {
       await connection.query(
         `DELETE FROM lot_project_listing_cadastral_lots WHERE lot_project_listing_id = ?`,
@@ -538,11 +601,13 @@ export const updateLotProjectListing = async (req, res) => {
 
     return res.json({
       success: true,
-      message: soaSyncResult.synced > 0
-        ? `${unitCode} updated successfully. SOA interest was synced and recomputed for ${soaSyncResult.synced} buyer account(s).`
-        : soaSyncResult.skipped > 0
-          ? `${unitCode} updated successfully. Existing SOA was not changed because it has payments or a custom SOA rate.`
-          : `${unitCode} updated successfully.`,
+      message: resetToAvailable
+        ? `${unitCode} changed to available. Previous buyer, payment, commission, and submitted document data were removed.`
+        : soaSyncResult.synced > 0
+          ? `${unitCode} updated successfully. SOA interest was synced and recomputed for ${soaSyncResult.synced} buyer account(s).`
+          : soaSyncResult.skipped > 0
+            ? `${unitCode} updated successfully. Existing SOA was not changed because it has payments or a custom SOA rate.`
+            : `${unitCode} updated successfully.`,
       listing_id: existingListing.lot_project_listing_id,
       unit_id: unitCode,
     });

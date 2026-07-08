@@ -1,8 +1,8 @@
-
 import { useMemo, useState } from 'react'
 import {
   FiAlertCircle,
   FiCheckCircle,
+  FiEdit3,
   FiImage,
   FiLoader,
   FiTrash2,
@@ -11,6 +11,7 @@ import {
 import StatusAlert from '../../../Shared/StatusAlert'
 import UploadDocumentModal from './UploadDocumentModal'
 import DocumentImagesModal from './DocumentImagesModal'
+import EditListingDocumentsModal from '../../ListingComponents/EditListingDocumentsModal/EditListingDocumentsModal'
 
 const statusStyles = {
   Approved: 'border-emerald-200 bg-emerald-50 text-emerald-700',
@@ -46,17 +47,61 @@ const RequirementPill = ({ value }) => (
   </span>
 )
 
+const sanitizeCloudinaryPathPart = (value, fallback = 'item') => {
+  const clean = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+
+  return clean || fallback
+}
+
+const buildClientUnitDocumentFolder = ({ projectSlug, listing, client, document }) => {
+  const projectPart = sanitizeCloudinaryPathPart(projectSlug || listing?.projectSlug || listing?.project_slug, 'project')
+  const unitPart = sanitizeCloudinaryPathPart(
+    listing?.unit_id ||
+      listing?.unitCode ||
+      listing?.lot_project_listing_unit_id ||
+      listing?.routeId ||
+      listing?.id,
+    'unit'
+  )
+  const clientProfilePart = sanitizeCloudinaryPathPart(
+    client?.lot_project_client_profile_id ||
+      client?.clientProfileId ||
+      client?.id ||
+      listing?.clientProfileId,
+    'client-profile'
+  )
+  const documentPart = sanitizeCloudinaryPathPart(
+    `${document?.document_id || document?.documentId || document?.id || 'document'}-${document?.name || document?.document_name || 'document'}`,
+    'document'
+  )
+
+  return `dc-prime/client-units/${projectPart}/${unitPart}/${clientProfilePart}/${documentPart}`
+}
+
 const Documents = ({
   documents = [],
   canManage = false,
+  canEditRequirements = false,
+  projectSlug = '',
+  listing = {},
+  client = {},
+  libraryDocuments = [],
+  projectDefaultDocuments = [],
   onUploadDocument,
   onApproveDocument,
   onClearDocument,
+  onSaveRequirements,
   isSaving = false,
+  isSavingRequirements = false,
 }) => {
   const rows = documents
   const [uploadDoc, setUploadDoc] = useState(null)
   const [showImages, setShowImages] = useState(false)
+  const [showEditRequirements, setShowEditRequirements] = useState(false)
   const [alert, setAlert] = useState(null)
   const [activeDocumentId, setActiveDocumentId] = useState(null)
 
@@ -152,6 +197,19 @@ const Documents = ({
     }
   }
 
+  const handleSaveRequirements = async (nextDocuments) => {
+    setAlert({ type: 'loading', message: 'Saving document requirements...' })
+
+    try {
+      await onSaveRequirements?.(nextDocuments)
+      setShowEditRequirements(false)
+      setAlert({ type: 'success', message: 'Document requirements updated.' })
+    } catch (error) {
+      setAlert({ type: 'error', message: error?.message || 'Failed to save document requirements.' })
+      throw error
+    }
+  }
+
   return (
     <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
       {alert ? (
@@ -202,6 +260,16 @@ const Documents = ({
               {requiredCount} required
             </span>
           </div>
+
+          <button
+            type="button"
+            onClick={() => setShowEditRequirements(true)}
+            disabled={!canEditRequirements || isSavingRequirements}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98]"
+          >
+            <FiEdit3 className="h-4 w-4" />
+            Edit Requirements
+          </button>
 
           <button
             type="button"
@@ -344,6 +412,7 @@ const Documents = ({
       {uploadDoc ? (
         <UploadDocumentModal
           document={uploadDoc}
+          uploadFolder={buildClientUnitDocumentFolder({ projectSlug, listing, client, document: uploadDoc })}
           isSaving={activeDocumentId === uploadDoc.id || isSaving}
           onClose={() => {
             setUploadDoc(null)
@@ -357,6 +426,20 @@ const Documents = ({
         <DocumentImagesModal
           documents={rows}
           onClose={() => setShowImages(false)}
+        />
+      ) : null}
+
+      {showEditRequirements ? (
+        <EditListingDocumentsModal
+          selectedDocuments={rows}
+          libraryDocuments={libraryDocuments}
+          projectDefaultDocuments={projectDefaultDocuments}
+          title="Edit Document Requirements"
+          subtitle="Changes apply to this existing listing. Removed requirements are hidden from the checklist, but existing uploaded files are not deleted."
+          saveLabel="Save Requirements"
+          isSaving={isSavingRequirements}
+          onSave={handleSaveRequirements}
+          onClose={() => setShowEditRequirements(false)}
         />
       ) : null}
     </section>

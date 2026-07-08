@@ -74,7 +74,6 @@ const statusStyles = {
   'Pending Cancellation': 'border-orange-200 bg-orange-50 text-orange-700',
   'Pending for Cancellation': 'border-orange-200 bg-orange-50 text-orange-700',
   Cancelled: 'border-red-200 bg-red-50 text-red-700',
-  Superseded: 'border-slate-200 bg-slate-50 text-slate-700',
   Incomplete: 'border-red-200 bg-red-50 text-red-700',
   Complete: 'border-emerald-200 bg-emerald-50 text-emerald-700',
   Unpaid: 'border-red-200 bg-red-50 text-red-700',
@@ -161,6 +160,12 @@ const UnitStatus = ({ listing = fallbackListing, project = {}, onSave, isSaving 
   }
 
   const handleMakeAvailable = async () => {
+    const confirmed = window.confirm(
+      'Changing this listing back to available will permanently remove the previous buyer profile, payment records, SOA schedules, submitted buyer documents, and commission records for this unit. Continue?'
+    )
+
+    if (!confirmed) return
+
     await handleSave({
       ...unitData,
       unitCode: unitData.unit_id || unitData.unitCode,

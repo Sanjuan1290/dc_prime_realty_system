@@ -59,6 +59,33 @@ const getPaymentTypeFromDescription = (description = '') => {
   return 'Monthly'
 }
 
+const getRowMatchesPaymentType = (row = {}, paymentType = '') => {
+  const type = normalizePaymentType(paymentType)
+  const rowType = getPaymentTypeFromDescription(row.description)
+  const text = String(row.description || '').toLowerCase()
+
+  if (type === 'Advance Payment') return rowType === 'Monthly'
+  if (type === 'Other') return rowType === 'Other' || text.includes('legal') || text.includes('misc') || text.includes('lmf')
+  return rowType === type
+}
+
+const getRowUnpaidAmount = (row = {}) =>
+  Math.max(getRowTotalDue(row) - Number(row.amountPaid || 0), 0)
+
+const getSuggestedRowForPaymentType = (rows = [], paymentType = '') => {
+  const matchingRows = rows.filter((row) => getRowMatchesPaymentType(row, paymentType))
+
+  return (
+    matchingRows.find((row) => {
+      const status = String(row.status || '').toLowerCase()
+      return ['unpaid', 'partial', 'overdue'].includes(status) && getRowUnpaidAmount(row) > 0
+    }) ||
+    matchingRows.find((row) => getRowUnpaidAmount(row) > 0) ||
+    matchingRows[0] ||
+    getSuggestedRow(rows)
+  )
+}
+
 const normalizePaymentType = (value = '') => {
   const clean = String(value || '').trim()
   return paymentTypes.includes(clean) ? clean : 'Other'
@@ -165,6 +192,7 @@ const AddSOAPaymentModal = ({
         ? initialPayment.referenceId
         : '',
   })
+  const [amountManuallyEdited, setAmountManuallyEdited] = useState(Boolean(isEdit && initialPayment?.amount))
 
   const isBalloonPayment = form.paymentType === 'Balloon'
 
@@ -186,6 +214,12 @@ const AddSOAPaymentModal = ({
   const automaticPenalty = Number(selectedRow?.penalty || 0)
 
   const updateField = (key, value) => {
+    const shouldPreserveManualAmount = amountManuallyEdited || isEdit
+
+    if (key === 'amount') {
+      setAmountManuallyEdited(true)
+    }
+
     setForm((current) => {
       const next = { ...current, [key]: value }
 
@@ -194,33 +228,32 @@ const AddSOAPaymentModal = ({
       }
 
       if (key === 'paymentType') {
-        if (value === 'Balloon') {
+        const nextType = normalizePaymentType(value)
+
+        if (nextType === 'Balloon') {
           next.soaRowId = ''
-        } else if (!next.soaRowId && suggestedRow) {
-          next.soaRowId = String(suggestedRow.id || '')
-          if (!isEdit) {
-            next.amount = String(
-              Math.max(
-                getRowTotalDue(suggestedRow) -
-                  Number(suggestedRow.amountPaid || 0),
-                0
-              )
-            )
+        } else {
+          const nextRow = getSuggestedRowForPaymentType(rows, nextType)
+
+          if (nextRow) {
+            next.soaRowId = String(nextRow.id || '')
+
+            if (!shouldPreserveManualAmount) {
+              next.amount = String(getRowUnpaidAmount(nextRow))
+            }
           }
         }
       }
 
       if (key === 'soaRowId') {
         const nextRow = rows.find((row) => String(row.id) === String(value))
-        if (!isEdit && nextRow && next.paymentType !== 'Balloon') {
+
+        if (nextRow && next.paymentType !== 'Balloon') {
           next.paymentType = getPaymentTypeFromDescription(nextRow.description)
-          next.amount = String(
-            Math.max(
-              getRowTotalDue(nextRow) -
-                Number(nextRow.amountPaid || 0),
-              0
-            )
-          )
+
+          if (!shouldPreserveManualAmount) {
+            next.amount = String(getRowUnpaidAmount(nextRow))
+          }
         }
       }
 

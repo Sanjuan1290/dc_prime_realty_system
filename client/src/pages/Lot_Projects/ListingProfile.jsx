@@ -125,14 +125,14 @@ const ListingProfile = () => {
   const reserveDocumentsQuery = useQuery({
     queryKey: ['documents'],
     queryFn: () => useFetch('/documents/getDocuments'),
-    enabled: showReserveModal,
+    enabled: showReserveModal || activeTab === 'documents',
     staleTime: 1000 * 60 * 5,
   })
 
   const reserveTemplatesQuery = useQuery({
     queryKey: ['document-templates'],
     queryFn: () => useFetch('/documents/getTemplates'),
-    enabled: showReserveModal,
+    enabled: showReserveModal || activeTab === 'documents',
     staleTime: 1000 * 60 * 5,
   })
 
@@ -265,6 +265,26 @@ const ListingProfile = () => {
     },
     onError: (error) => {
       setAlert({ type: 'error', message: error?.message || 'Failed to clear document.' })
+    },
+  })
+
+  const updateDocumentRequirementsMutation = useMutation({
+    mutationFn: (nextDocuments) =>
+      useFetchPut(
+        `/projects/lot-projects/${projectSlug}/listings/${listingId}/document-requirements`,
+        { documents: nextDocuments }
+      ),
+    onMutate: () => {
+      setAlert({ type: 'loading', message: 'Saving document requirements...' })
+    },
+    onSuccess: (result) => {
+      setAlert({ type: 'success', message: result?.message || 'Document requirements updated successfully.' })
+      queryClient.invalidateQueries({ queryKey: ['lot-listing-profile', projectSlug, listingId] })
+      queryClient.invalidateQueries({ queryKey: ['lot-listings', projectSlug] })
+      queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] })
+    },
+    onError: (error) => {
+      setAlert({ type: 'error', message: error?.message || 'Failed to update document requirements.' })
     },
   })
 
@@ -454,14 +474,22 @@ const ListingProfile = () => {
         <Documents
           documents={documents}
           canManage={canManageDocuments}
+          canEditRequirements={Boolean(listing.id || listing.routeId || listingId)}
+          projectSlug={projectSlug}
+          listing={listing}
+          client={client}
+          libraryDocuments={documentLibrary}
+          projectDefaultDocuments={project.defaultDocuments || []}
           onUploadDocument={(document, payload) => uploadDocumentMutation.mutateAsync({ document, payload })}
           onApproveDocument={(document) => approveDocumentMutation.mutateAsync(document)}
           onClearDocument={(document) => clearDocumentMutation.mutateAsync(document)}
+          onSaveRequirements={(nextDocuments) => updateDocumentRequirementsMutation.mutateAsync(nextDocuments)}
           isSaving={
             uploadDocumentMutation.isPending ||
             approveDocumentMutation.isPending ||
             clearDocumentMutation.isPending
           }
+          isSavingRequirements={updateDocumentRequirementsMutation.isPending}
         />
       ) : null}
 

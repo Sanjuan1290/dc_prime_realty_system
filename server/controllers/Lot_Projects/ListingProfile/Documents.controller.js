@@ -1,4 +1,3 @@
-
 import {
   db,
   getErrorMessage,
@@ -67,16 +66,133 @@ const getDocumentContext = async (connection, req) => {
       WHERE lpd.lot_project_id = ?
         AND lpd.lot_project_listing_id = ?
         AND lpd.lot_project_listing_document_status = 'active'
-        AND (lpd.lot_project_listing_document_id = ? OR lpd.document_id = ?)
+        AND lpd.lot_project_listing_document_id = ?
       LIMIT 1
     `,
-    [project.lot_project_id, listing.lot_project_listing_id, documentLookup, documentLookup]
+    [project.lot_project_id, listing.lot_project_listing_id, documentLookup]
   );
 
   const document = documentRows[0];
   if (!document) return { errorStatus: 404, errorMessage: 'Document requirement not found for this listing.' };
 
   return { project, listing, document };
+};
+
+
+export const updateLotProjectListingDocumentRequirements = async (req, res) => {
+  const connection = await db.getConnection();
+
+  try {
+    const slug = String(req.params.projectSlug || '').trim();
+    const listingLookup = String(req.params.listingId || '').trim();
+    const project = await getProjectBySlug(slug);
+
+    if (!project) return res.status(404).json({ message: 'Lot project not found.' });
+    if (!listingLookup) return res.status(400).json({ message: 'Listing id is required.' });
+
+    const requiredTables = ['lot_project_listings', 'lot_project_listing_documents', 'documents'];
+    for (const tableName of requiredTables) {
+      if (!(await tableExists(connection, tableName))) {
+        return res.status(500).json({ message: `${tableName} table does not exist.` });
+      }
+    }
+
+    const lookup = getListingLookupWhere(listingLookup);
+    const [listingRows] = await connection.query(
+      `
+        SELECT lot_project_listing_id
+        FROM lot_project_listings l
+        WHERE l.lot_project_id = ?
+          AND ${lookup.sql}
+        LIMIT 1
+      `,
+      [project.lot_project_id, ...lookup.params]
+    );
+
+    const listing = listingRows[0];
+    if (!listing) return res.status(404).json({ message: 'Listing not found.' });
+
+    const rawDocuments = Array.isArray(req.body.documents)
+      ? req.body.documents
+      : Array.isArray(req.body.documentRequirements)
+        ? req.body.documentRequirements
+        : [];
+
+    const documentMap = new Map();
+    rawDocuments.forEach((document) => {
+      const documentId = Number(document.document_id || document.documentId || document.id || 0);
+      if (!documentId) return;
+
+      documentMap.set(documentId, {
+        document_id: documentId,
+        is_required: String(document.requirement || '').toLowerCase() === 'optional' || document.is_required === false ? 0 : 1,
+        status: String(document.status || 'active').toLowerCase() === 'inactive' ? 'inactive' : 'active',
+      });
+    });
+
+    const cleanDocuments = [...documentMap.values()];
+
+    await connection.beginTransaction();
+
+    if (cleanDocuments.length > 0) {
+      await connection.query(
+        `
+          UPDATE lot_project_listing_documents
+          SET lot_project_listing_document_status = 'inactive'
+          WHERE lot_project_id = ?
+            AND lot_project_listing_id = ?
+            AND document_id NOT IN (${cleanDocuments.map(() => '?').join(', ')})
+        `,
+        [project.lot_project_id, listing.lot_project_listing_id, ...cleanDocuments.map((document) => document.document_id)]
+      );
+
+      await connection.query(
+        `
+          INSERT INTO lot_project_listing_documents (
+            lot_project_id,
+            lot_project_listing_id,
+            document_id,
+            lot_project_listing_document_is_required,
+            lot_project_listing_document_status
+          ) VALUES ${cleanDocuments.map(() => '(?, ?, ?, ?, ?)').join(', ')}
+          ON DUPLICATE KEY UPDATE
+            lot_project_listing_document_is_required = VALUES(lot_project_listing_document_is_required),
+            lot_project_listing_document_status = VALUES(lot_project_listing_document_status),
+            lot_project_listing_document_updated_at = NOW()
+        `,
+        cleanDocuments.flatMap((document) => [
+          project.lot_project_id,
+          listing.lot_project_listing_id,
+          document.document_id,
+          document.is_required,
+          document.status,
+        ])
+      );
+    } else {
+      await connection.query(
+        `
+          UPDATE lot_project_listing_documents
+          SET lot_project_listing_document_status = 'inactive'
+          WHERE lot_project_id = ?
+            AND lot_project_listing_id = ?
+        `,
+        [project.lot_project_id, listing.lot_project_listing_id]
+      );
+    }
+
+    await connection.commit();
+
+    return res.json({
+      success: true,
+      message: 'Document requirements updated successfully.',
+      document_count: cleanDocuments.length,
+    });
+  } catch (error) {
+    await connection.rollback();
+    return res.status(500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
 };
 
 export const uploadLotProjectListingDocument = async (req, res) => {

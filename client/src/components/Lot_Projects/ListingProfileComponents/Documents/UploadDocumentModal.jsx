@@ -1,34 +1,75 @@
 import { useState } from 'react'
 import { FiFileText, FiLoader, FiUploadCloud, FiX } from 'react-icons/fi'
 
-const UploadDocumentModal = ({ document, isSaving = false, onClose, onSave }) => {
-  const [file, setFile] = useState(null)
+const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME
+const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET
+const CLOUDINARY_UPLOAD_URL = CLOUDINARY_CLOUD_NAME
+  ? `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`
+  : ''
 
+const uploadFileToCloudinary = async (selectedFile, { folder = '' } = {}) => {
+  if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_UPLOAD_PRESET) {
+    throw new Error('Cloudinary is not configured. Add VITE_CLOUDINARY_CLOUD_NAME and VITE_CLOUDINARY_UPLOAD_PRESET in client/.env.')
+  }
+
+  const formData = new FormData()
+  formData.append('file', selectedFile)
+  formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET)
+
+  if (folder) {
+    formData.append('folder', folder)
+    formData.append('tags', 'dc_prime,client_unit_document')
+  }
+
+  const response = await fetch(CLOUDINARY_UPLOAD_URL, {
+    method: 'POST',
+    body: formData,
+  })
+
+  const data = await response.json().catch(() => null)
+
+  if (!response.ok) {
+    throw new Error(data?.error?.message || 'Cloudinary upload failed.')
+  }
+
+  if (!data?.secure_url) {
+    throw new Error('Cloudinary did not return a secure file URL.')
+  }
+
+  return data
+}
+
+const UploadDocumentModal = ({ document, uploadFolder = '', isSaving = false, onClose, onSave }) => {
+  const [file, setFile] = useState(null)
+  const [isUploading, setIsUploading] = useState(false)
   const [error, setError] = useState('')
 
-  const readFileAsDataUrl = (selectedFile) =>
-    new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve(reader.result || '')
-      reader.onerror = () => reject(new Error('Failed to read selected file.'))
-      reader.readAsDataURL(selectedFile)
-    })
+  const isBusy = isSaving || isUploading
 
   const handleSave = async () => {
-    if (!file || isSaving) return
+    if (!file || isBusy) return
 
     setError('')
+    setIsUploading(true)
 
     try {
-      const fileUrl = await readFileAsDataUrl(file)
+      const uploadedFile = await uploadFileToCloudinary(file, { folder: uploadFolder })
+
       onSave?.({
         fileName: file.name,
-        fileUrl,
-        fileSize: file.size,
-        fileType: file.type || 'application/octet-stream',
+        fileUrl: uploadedFile.secure_url,
+        fileSize: uploadedFile.bytes || file.size,
+        fileType: uploadedFile.resource_type === 'image'
+          ? file.type || uploadedFile.format || 'image/*'
+          : file.type || 'application/octet-stream',
+        cloudinaryPublicId: uploadedFile.public_id || null,
+        cloudinaryResourceType: uploadedFile.resource_type || null,
+        cloudinaryFolder: uploadFolder || null,
       })
-    } catch (readError) {
-      setError(readError?.message || 'Failed to read selected file.')
+    } catch (uploadError) {
+      setError(uploadError?.message || 'Failed to upload file to Cloudinary.')
+    } finally {
+      setIsUploading(false)
     }
   }
 
@@ -44,7 +85,7 @@ const UploadDocumentModal = ({ document, isSaving = false, onClose, onSave }) =>
           <button
             type="button"
             onClick={onClose}
-            disabled={isSaving}
+            disabled={isBusy}
             className="h-10 w-10 rounded-2xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
             aria-label="Close upload document modal"
           >
@@ -61,7 +102,7 @@ const UploadDocumentModal = ({ document, isSaving = false, onClose, onSave }) =>
               type="file"
               className="hidden"
               accept="image/*,.pdf"
-              disabled={isSaving}
+              disabled={isBusy}
               onChange={(event) => {
                 setError('')
                 setFile(event.target.files?.[0] || null)
@@ -86,7 +127,7 @@ const UploadDocumentModal = ({ document, isSaving = false, onClose, onSave }) =>
           ) : null}
 
           <p className="mt-3 text-xs font-semibold text-slate-500">
-            Images are saved with preview data so Document Images and Print Documents can display them. Large PDF storage can be connected to Google Drive or Cloudinary later.
+            Files are uploaded to Cloudinary first and grouped by project, unit, client profile, and document type. The submitted document stores the returned Cloudinary secure URL instead of base64 preview data.
           </p>
         </div>
 
@@ -94,7 +135,7 @@ const UploadDocumentModal = ({ document, isSaving = false, onClose, onSave }) =>
           <button
             type="button"
             onClick={onClose}
-            disabled={isSaving}
+            disabled={isBusy}
             className="h-11 rounded-2xl border px-5 text-sm font-black disabled:cursor-not-allowed disabled:opacity-60"
           >
             Cancel
@@ -103,11 +144,11 @@ const UploadDocumentModal = ({ document, isSaving = false, onClose, onSave }) =>
           <button
             type="button"
             onClick={handleSave}
-            disabled={!file || isSaving}
+            disabled={!file || isBusy}
             className="inline-flex h-11 items-center gap-2 rounded-2xl bg-blue-600 px-5 text-sm font-black text-white disabled:cursor-not-allowed disabled:bg-blue-300"
           >
-            {isSaving ? <FiLoader className="h-4 w-4 animate-spin" /> : null}
-            {isSaving ? 'Saving...' : 'Save Upload'}
+            {isBusy ? <FiLoader className="h-4 w-4 animate-spin" /> : null}
+            {isUploading ? 'Uploading...' : isSaving ? 'Saving...' : 'Save Upload'}
           </button>
         </div>
       </div>

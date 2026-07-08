@@ -70,6 +70,20 @@ import {
   getReserveSellerOptions,
 } from '../_shared/lotProject.shared.js';
 
+const getColumnDefinition = async (connection, tableName, columnName) => {
+  const [rows] = await connection.query(
+    `SHOW COLUMNS FROM ${tableName} LIKE ?`,
+    [columnName]
+  );
+
+  return rows[0] || null;
+};
+
+const listingStatusAllowsHold = async (connection) => {
+  const column = await getColumnDefinition(connection, 'lot_project_listings', 'lot_project_listing_status');
+  return String(column?.Type || '').includes("'hold'");
+};
+
 export const getLotProjectListingProfile = async (req, res) => {
   const connection = await db.getConnection();
 
@@ -300,22 +314,31 @@ export const holdLotProjectListing = async (req, res) => {
       return res.status(400).json({ message: 'Only available listings can be put on hold.' });
     }
 
+    if (!(await listingStatusAllowsHold(connection))) {
+      return res.status(400).json({
+        message: "Listing status enum is missing 'hold'. Run server/migrations/20260708_fix_hold_listing_fields.sql first.",
+      });
+    }
+
     const requiredHoldColumns = ['hold_client_name', 'hold_note', 'hold_created_at', 'hold_created_by_user_id'];
     for (const column of requiredHoldColumns) {
       if (!(await columnExists(connection, 'lot_project_listings', column))) {
-        return res.status(400).json({ message: 'Hold fields are missing. Run server/migrations/20260708_add_listing_hold_fields.sql first.' });
+        return res.status(400).json({ message: 'Hold fields are missing. Run server/migrations/20260708_fix_hold_listing_fields.sql first.' });
       }
     }
 
     const updateColumns = [
       'lot_project_listing_status = ?',
-      'lot_project_listing_sold_substatus = NULL',
       'hold_client_name = ?',
       'hold_note = ?',
       'hold_created_at = NOW()',
       'hold_created_by_user_id = ?',
     ];
     const updateParams = ['hold', clientName, holdNote || null, req.user?.id || null];
+
+    if (await columnExists(connection, 'lot_project_listings', 'lot_project_listing_sold_substatus')) {
+      updateColumns.splice(1, 0, 'lot_project_listing_sold_substatus = NULL');
+    }
 
     updateParams.push(project.lot_project_id, listing.lot_project_listing_id);
 
@@ -339,4 +362,3 @@ export const holdLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
-
