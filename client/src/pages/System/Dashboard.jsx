@@ -2,10 +2,13 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
+  Area,
+  Bar,
+  BarChart,
   CartesianGrid,
+  ComposedChart,
   Legend,
   Line,
-  LineChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -68,9 +71,11 @@ const shortLabel = (value = '', max = 18) => {
 const ChartTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null
 
+  const title = label || payload[0]?.name || ''
+
   return (
     <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs shadow-lg">
-      <p className="font-black text-slate-900">{label}</p>
+      {title ? <p className="font-black text-slate-900">{title}</p> : null}
       <div className="mt-1 grid gap-1">
         {payload.map((item) => {
           const isPeso = /sales|collected|pending|inventory|commission|released|eligible|remaining|value|amount/i.test(item.dataKey)
@@ -231,16 +236,16 @@ const ProjectReportCard = ({ report }) => {
       <div className="mt-4 h-44 rounded-2xl border border-slate-100 bg-slate-50 p-3">
         {report.salesTrend.length ? (
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={report.salesTrend} margin={{ top: 5, right: 8, left: 0, bottom: 0 }}>
+            <ComposedChart data={report.salesTrend} margin={{ top: 5, right: 8, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+              <XAxis dataKey="label" tick={{ fontSize: 11 }} minTickGap={16} />
               <YAxis yAxisId="money" tickFormatter={compactMoney} tick={{ fontSize: 11 }} width={44} />
               <YAxis yAxisId="count" orientation="right" allowDecimals={false} tick={{ fontSize: 11 }} width={28} />
               <Tooltip content={<ChartTooltip />} />
-              <Line yAxisId="money" type="monotone" dataKey="totalSales" name="Sales" stroke={chartColors.blue} strokeWidth={2} dot={false} />
-              <Line yAxisId="money" type="monotone" dataKey="collected" name="Collected" stroke={chartColors.green} strokeWidth={2} dot={false} />
+              <Area yAxisId="money" type="monotone" dataKey="totalSales" name="Sales" stroke={chartColors.blue} fill={chartColors.blue} fillOpacity={0.12} strokeWidth={2} />
+              <Area yAxisId="money" type="monotone" dataKey="collected" name="Collected" stroke={chartColors.green} fill={chartColors.green} fillOpacity={0.12} strokeWidth={2} />
               <Line yAxisId="count" type="monotone" dataKey="saleCount" name="Sales Count" stroke={chartColors.amber} strokeWidth={2} dot />
-            </LineChart>
+            </ComposedChart>
           </ResponsiveContainer>
         ) : <EmptyChart />}
       </div>
@@ -447,90 +452,90 @@ const Dashboard = () => {
       </section>
 
       <section className="grid gap-6 xl:grid-cols-2">
-        <ChartCard title="Company Sales Trend" description="Line graph for total sales, collections, and sales count across all lot projects.">
+        <ChartCard title="Company Sales Trend" description="Area trend for total sales and collections with sales count as a line across all lot projects.">
           {companySalesTrend.length ? (
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={companySalesTrend} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+              <ComposedChart data={companySalesTrend} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                <XAxis dataKey="label" tick={{ fontSize: 11 }} minTickGap={18} />
                 <YAxis yAxisId="money" tickFormatter={compactMoney} tick={{ fontSize: 11 }} />
                 <YAxis yAxisId="count" orientation="right" allowDecimals={false} tick={{ fontSize: 11 }} />
                 <Tooltip content={<ChartTooltip />} />
                 <Legend />
-                <Line yAxisId="money" type="monotone" dataKey="totalSales" name="Total Sales" stroke={chartColors.blue} strokeWidth={3} dot={false} />
-                <Line yAxisId="money" type="monotone" dataKey="collected" name="Collected" stroke={chartColors.green} strokeWidth={3} dot={false} />
+                <Area yAxisId="money" type="monotone" dataKey="totalSales" name="Total Sales" stroke={chartColors.blue} fill={chartColors.blue} fillOpacity={0.12} strokeWidth={3} />
+                <Area yAxisId="money" type="monotone" dataKey="collected" name="Collected" stroke={chartColors.green} fill={chartColors.green} fillOpacity={0.12} strokeWidth={3} />
                 <Line yAxisId="count" type="monotone" dataKey="saleCount" name="Sales Count" stroke={chartColors.amber} strokeWidth={3} dot />
-              </LineChart>
+              </ComposedChart>
             </ResponsiveContainer>
           ) : <EmptyChart />}
         </ChartCard>
 
-        <ChartCard title="Total Sales per Project" description="Total sales, collections, and pending sales per project.">
+        <ChartCard title="Total Sales per Project" description="Column chart for total sales, collections, and pending sales per project.">
           {projectSalesChart.length ? (
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={projectSalesChart} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+              <BarChart data={projectSalesChart} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="project" tick={{ fontSize: 11 }} />
                 <YAxis tickFormatter={compactMoney} tick={{ fontSize: 11 }} />
                 <Tooltip content={<ChartTooltip />} />
                 <Legend />
-                <Line type="monotone" dataKey="totalSales" name="Total Sales" stroke={chartColors.blue} strokeWidth={3} dot />
-                <Line type="monotone" dataKey="collected" name="Collected" stroke={chartColors.green} strokeWidth={3} dot />
-                <Line type="monotone" dataKey="pendingSales" name="Pending" stroke={chartColors.amber} strokeWidth={3} dot />
-              </LineChart>
+                <Bar dataKey="totalSales" name="Total Sales" fill={chartColors.blue} radius={[8, 8, 0, 0]} />
+                <Bar dataKey="collected" name="Collected" fill={chartColors.green} radius={[8, 8, 0, 0]} />
+                <Bar dataKey="pendingSales" name="Pending" fill={chartColors.amber} radius={[8, 8, 0, 0]} />
+              </BarChart>
             </ResponsiveContainer>
           ) : <EmptyChart />}
         </ChartCard>
       </section>
 
       <section className="grid gap-6 xl:grid-cols-2">
-        <ChartCard title="Sales Count per Project" description="Number of sales and collection entries per project in the selected graph range.">
+        <ChartCard title="Sales Count per Project" description="Column chart for number of sales and collection entries per project in the selected graph range.">
           {projectSalesCountChart.length ? (
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={projectSalesCountChart} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+              <BarChart data={projectSalesCountChart} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="project" tick={{ fontSize: 11 }} />
                 <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
                 <Tooltip content={<ChartTooltip />} />
                 <Legend />
-                <Line type="monotone" dataKey="salesCount" name="Sales Count" stroke={chartColors.blue} strokeWidth={3} dot />
-                <Line type="monotone" dataKey="collections" name="Payment Entries" stroke={chartColors.green} strokeWidth={3} dot />
-              </LineChart>
+                <Bar dataKey="salesCount" name="Sales Count" fill={chartColors.blue} radius={[8, 8, 0, 0]} />
+                <Bar dataKey="collections" name="Payment Entries" fill={chartColors.green} radius={[8, 8, 0, 0]} />
+              </BarChart>
             </ResponsiveContainer>
           ) : <EmptyChart />}
         </ChartCard>
 
-        <ChartCard title="Inventory by Project" description="Listed, available, and sold lot value per project.">
+        <ChartCard title="Inventory by Project" description="Column chart for listed, available, and sold lot value per project.">
           {projectInventoryChart.length ? (
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={projectInventoryChart} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+              <BarChart data={projectInventoryChart} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="project" tick={{ fontSize: 11 }} />
                 <YAxis tickFormatter={compactMoney} tick={{ fontSize: 11 }} />
                 <Tooltip content={<ChartTooltip />} />
                 <Legend />
-                <Line type="monotone" dataKey="listedInventory" name="Listed" stroke={chartColors.slate} strokeWidth={3} dot />
-                <Line type="monotone" dataKey="availableInventory" name="Available" stroke={chartColors.amber} strokeWidth={3} dot />
-                <Line type="monotone" dataKey="soldInventory" name="Sold" stroke={chartColors.indigo} strokeWidth={3} dot />
-              </LineChart>
+                <Bar dataKey="listedInventory" name="Listed" fill={chartColors.slate} radius={[8, 8, 0, 0]} />
+                <Bar dataKey="availableInventory" name="Available" fill={chartColors.amber} radius={[8, 8, 0, 0]} />
+                <Bar dataKey="soldInventory" name="Sold" fill={chartColors.indigo} radius={[8, 8, 0, 0]} />
+              </BarChart>
             </ResponsiveContainer>
           ) : <EmptyChart />}
         </ChartCard>
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-        <ChartCard title="Unit Dues by Project" description="Counts of due-soon and overdue unit schedules.">
+        <ChartCard title="Unit Dues by Project" description="Column chart for due-soon and overdue unit schedules.">
           {projectDueChart.length ? (
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={projectDueChart} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+              <BarChart data={projectDueChart} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="project" tick={{ fontSize: 11 }} />
                 <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
                 <Tooltip content={<ChartTooltip />} />
                 <Legend />
-                <Line type="monotone" dataKey="upcoming" name="Due Soon" stroke={chartColors.blue} strokeWidth={3} dot />
-                <Line type="monotone" dataKey="overdue" name="Overdue" stroke={chartColors.red} strokeWidth={3} dot />
-              </LineChart>
+                <Bar dataKey="upcoming" name="Due Soon" fill={chartColors.blue} radius={[8, 8, 0, 0]} />
+                <Bar dataKey="overdue" name="Overdue" fill={chartColors.red} radius={[8, 8, 0, 0]} />
+              </BarChart>
             </ResponsiveContainer>
           ) : <EmptyChart />}
         </ChartCard>
@@ -561,7 +566,7 @@ const Dashboard = () => {
       <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
         <div>
           <h2 className="text-lg font-black text-slate-950">Project Reports</h2>
-          <p className="mt-1 text-sm font-semibold text-slate-500">Separate report card and line graph for every created lot project.</p>
+          <p className="mt-1 text-sm font-semibold text-slate-500">Separate report card and compact trend chart for every created lot project.</p>
         </div>
 
         <div className="mt-5 grid gap-5 xl:grid-cols-2">

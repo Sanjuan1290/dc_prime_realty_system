@@ -49,6 +49,18 @@ const endOfMonth = (date) => new Date(date.getFullYear(), date.getMonth() + 1, 0
 const addMonths = (date, months) => new Date(date.getFullYear(), date.getMonth() + months, date.getDate());
 const addDays = (date, days) => new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
 
+const shouldBackfillTrendBuckets = (dateRange = {}) => {
+  if (dateRange.preset === 'all') return false;
+
+  const fromDate = parseDateOnly(dateRange.from);
+  const toDate = parseDateOnly(dateRange.to);
+  if (!fromDate || !toDate) return false;
+
+  const days = getDayDiff(fromDate, toDate);
+  if (dateRange.groupBy === 'day') return days <= 45;
+  return days <= 370;
+};
+
 const getDayDiff = (fromDate, toDate) => {
   const ms = toDate.getTime() - fromDate.getTime();
   return Math.max(Math.ceil(ms / (1000 * 60 * 60 * 24)), 0);
@@ -89,7 +101,7 @@ const resolveDashboardDateRange = (query = {}) => {
     preset: preset === 'custom' ? 'custom' : (['this_month', 'last_month', '2_months', '3_months', '6_months', '12_months', 'all'].includes(preset) ? preset : '3_months'),
     from: toDateOnly(fromDate),
     to: toDateOnly(toDate),
-    groupBy: dayDiff > 100 ? 'month' : 'day',
+    groupBy: dayDiff > 45 ? 'month' : 'day',
   };
 };
 
@@ -133,8 +145,10 @@ const makeEmptyTrendBuckets = (dateRange) => {
 };
 
 const mergeTrendRows = (dateRange, salesRows = [], collectionRows = []) => {
+  const baseBuckets = shouldBackfillTrendBuckets(dateRange) ? makeEmptyTrendBuckets(dateRange) : [];
+
   const byPeriod = new Map(
-    makeEmptyTrendBuckets(dateRange).map((bucket) => [
+    baseBuckets.map((bucket) => [
       bucket.period,
       {
         ...bucket,
@@ -315,9 +329,7 @@ export const getLotProjectDashboard = async (req, res) => {
     const releaseReleasedExpr = hasCommissionReleases
       ? 'COALESCE(release_summary.released_amount, 0)'
       : 'c.released_commission_amount';
-    const releaseDeductionExpr = hasCommissionReleases
-      ? 'COALESCE(release_summary.deduction_amount, 0)'
-      : '0';
+    const releaseDeductionExpr = '0';
 
     const [summaryRows] = await connection.query(
       `
@@ -800,23 +812,16 @@ export const getLotProjectDashboard = async (req, res) => {
           const scheduleBalance = row.actual_remaining_balance === null || row.actual_remaining_balance === undefined
             ? Math.max(tcp - paid, 0)
             : Math.max(toNumber(row.actual_remaining_balance), 0);
-          const isEffectivelyCollected = tcp > 0 && paid + 0.009 >= tcp;
-          const isFullyPaid =
-            row.lot_project_listing_sold_substatus === 'fully_paid' ||
-            isEffectivelyCollected ||
-            (tcp > 0 && scheduleBalance <= 0.009);
+          const isFullyPaid = row.lot_project_listing_sold_substatus === 'fully_paid' || (tcp > 0 && scheduleBalance <= 0.009);
           const progressPercent = tcp > 0
             ? (isFullyPaid ? 100 : Math.min((paid / tcp) * 100, 100))
             : 0;
-          const mappedRow = mapListingRow(row);
 
           return {
-            ...mappedRow,
-            status: isFullyPaid ? 'Fully Paid' : mappedRow.status,
-            soldSubstatus: isFullyPaid ? 'fully_paid' : mappedRow.soldSubstatus,
+            ...mapListingRow(row),
             collected: isFullyPaid ? tcp : paid,
             balance: isFullyPaid ? 0 : Math.max(tcp - paid, 0),
-            scheduleBalance: isFullyPaid ? 0 : scheduleBalance,
+            scheduleBalance,
             progressValue: progressPercent,
             progress: `${progressPercent.toFixed(1)}%`,
             documents: formatDocumentsLabel(row),
@@ -825,7 +830,7 @@ export const getLotProjectDashboard = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Lot project dashboard failed:', error);
+    console.error('Lot project dashboard error:', error);
     return res.status(500).json({ success: false, message: getErrorMessage(error) });
   } finally {
     connection.release();

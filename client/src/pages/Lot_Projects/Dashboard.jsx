@@ -2,10 +2,16 @@ import { useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  Area,
+  Bar,
+  BarChart,
   CartesianGrid,
+  Cell,
+  ComposedChart,
   Legend,
   Line,
-  LineChart,
+  Pie,
+  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -42,6 +48,8 @@ const chartColors = {
   slate: '#475569',
 }
 
+const pieColors = [chartColors.blue, chartColors.green, chartColors.amber, chartColors.red, chartColors.indigo, chartColors.slate]
+
 const dateRangeOptions = [
   { value: 'this_month', label: 'This Month' },
   { value: 'last_month', label: 'Last Month' },
@@ -70,12 +78,14 @@ const shortLabel = (value = '', max = 18) => {
 const ChartTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null
 
+  const title = label || payload[0]?.name || ''
+
   return (
     <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs shadow-lg">
-      <p className="font-black text-slate-900">{label}</p>
+      {title ? <p className="font-black text-slate-900">{title}</p> : null}
       <div className="mt-1 grid gap-1">
         {payload.map((item) => {
-          const isPeso = /sales|collected|pending|inventory|commission|released|eligible|remaining|value|amount|gross|deductions/i.test(item.dataKey)
+          const isPeso = /sales|collected|pending|inventory|commission|released|eligible|remaining|value|amount|gross/i.test(item.dataKey)
           return (
             <p key={item.dataKey} className="font-semibold text-slate-600">
               {item.name}: <span className="font-black text-slate-950">{isPeso ? money(item.value) : number(item.value)}</span>
@@ -207,10 +217,10 @@ const InfoMetric = ({ label, value, helper }) => (
 
 const PerformanceTable = ({ rows = [], type = 'seller' }) => (
   <div className="overflow-x-auto rounded-2xl border border-slate-200">
-    <table className="min-w-[980px] w-full divide-y divide-slate-200 text-sm">
+    <table className="min-w-[880px] w-full divide-y divide-slate-200 text-sm">
       <thead className="bg-slate-50">
         <tr>
-          {[type === 'seller' ? 'Seller' : 'Group', 'Sales', 'Sales Value', 'Gross', 'Eligible', 'Released', 'Deductions', 'Remaining'].map((head) => (
+          {[type === 'seller' ? 'Seller' : 'Group', 'Sales', 'Sales Value', 'Gross', 'Eligible', 'Released', 'Remaining'].map((head) => (
             <th key={head} className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">{head}</th>
           ))}
         </tr>
@@ -227,12 +237,11 @@ const PerformanceTable = ({ rows = [], type = 'seller' }) => (
             <td className="px-4 py-4 font-black text-slate-900">{money(row.grossCommission)}</td>
             <td className="px-4 py-4 font-black text-blue-700">{money(row.eligibleCommission)}</td>
             <td className="px-4 py-4 font-semibold text-emerald-700">{money(row.releasedCommission)}</td>
-            <td className="px-4 py-4 font-semibold text-red-700">{money(row.cashAdvanceDeductions)}</td>
             <td className="px-4 py-4 font-black text-amber-700">{money(row.remainingCommission)}</td>
           </tr>
         )) : (
           <tr>
-            <td colSpan={8} className="px-4 py-10 text-center font-semibold text-slate-500">No performance data yet.</td>
+            <td colSpan={7} className="px-4 py-10 text-center font-semibold text-slate-500">No performance data yet.</td>
           </tr>
         )}
       </tbody>
@@ -353,7 +362,6 @@ const Dashboard = () => {
     { label: 'Total', value: Number(stats.totalCommission || 0) },
     { label: 'Eligible', value: Number(stats.eligibleCommission || 0) },
     { label: 'Released', value: Number(stats.releasedCommission || 0) },
-    { label: 'Deductions', value: Number(stats.cashAdvanceDeductions || 0) },
     { label: 'Remaining', value: Number(stats.netRemainingCommission || 0) },
   ]
 
@@ -382,7 +390,7 @@ const Dashboard = () => {
   return (
     <main className="flex flex-col gap-6">
       <section className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-        <PageHeader title={`${project.project_bailen_name || 'Lot Project'} Dashboard`} description="Project overview, line graphs, unit activity, documents, and project controls." icon={FiMapPin} />
+        <PageHeader title={`${project.project_bailen_name || 'Lot Project'} Dashboard`} description="Project overview, chart analytics, unit activity, documents, and project controls." icon={FiMapPin} />
         <div className="flex flex-col gap-2 sm:flex-row">
           <button type="button" onClick={() => setShowDetails(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-50"><FiEye className="h-4 w-4" />View Details</button>
           <button type="button" onClick={() => setShowEdit(true)} disabled={isDocumentsLoading || isTemplatesLoading} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"><FiEdit3 className="h-4 w-4" />Edit Project</button>
@@ -417,59 +425,59 @@ const Dashboard = () => {
       </section>
 
       <section className="grid gap-6 xl:grid-cols-2">
-        <ChartCard title="Sales & Collections Trend" description="Line graph for sales value, collections, and number of sales over the selected date range.">
+        <ChartCard title="Sales & Collections Trend" description="Area trend for money values with sales count as a line over the selected date range.">
           {salesTrend.length ? (
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={salesTrend} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+              <ComposedChart data={salesTrend} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                <XAxis dataKey="label" tick={{ fontSize: 11 }} minTickGap={18} />
                 <YAxis yAxisId="money" tickFormatter={compactMoney} tick={{ fontSize: 11 }} />
                 <YAxis yAxisId="count" orientation="right" allowDecimals={false} tick={{ fontSize: 11 }} />
                 <Tooltip content={<ChartTooltip />} />
                 <Legend />
-                <Line yAxisId="money" type="monotone" dataKey="totalSales" name="Total Sales" stroke={chartColors.blue} strokeWidth={3} dot={false} />
-                <Line yAxisId="money" type="monotone" dataKey="collected" name="Collected" stroke={chartColors.green} strokeWidth={3} dot={false} />
+                <Area yAxisId="money" type="monotone" dataKey="totalSales" name="Total Sales" stroke={chartColors.blue} fill={chartColors.blue} fillOpacity={0.12} strokeWidth={3} />
+                <Area yAxisId="money" type="monotone" dataKey="collected" name="Collected" stroke={chartColors.green} fill={chartColors.green} fillOpacity={0.12} strokeWidth={3} />
                 <Line yAxisId="count" type="monotone" dataKey="saleCount" name="Sales Count" stroke={chartColors.amber} strokeWidth={3} dot />
-              </LineChart>
+              </ComposedChart>
             </ResponsiveContainer>
           ) : <EmptyChart />}
         </ChartCard>
 
-        <ChartCard title="Commission Line Graph" description="Commission liability, eligible releases, released amount, deductions, and remaining balance.">
+        <ChartCard title="Commission Comparison" description="Column chart for commission liability, eligible releases, released amount, and remaining balance.">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={commissionChartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+            <BarChart data={commissionChartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
               <XAxis dataKey="label" tick={{ fontSize: 12 }} />
               <YAxis tickFormatter={compactMoney} tick={{ fontSize: 11 }} />
               <Tooltip content={<ChartTooltip />} />
-              <Line type="monotone" dataKey="value" name="Amount" stroke={chartColors.indigo} strokeWidth={3} dot />
-            </LineChart>
+              <Bar dataKey="value" name="Amount" fill={chartColors.indigo} radius={[8, 8, 0, 0]} />
+            </BarChart>
           </ResponsiveContainer>
         </ChartCard>
       </section>
 
       <section className="grid gap-6 xl:grid-cols-2">
-        <ChartCard title="Inventory Line Graph" description="Listed, available, and sold lot value.">
+        <ChartCard title="Inventory Value Comparison" description="Column chart for listed, available, and sold lot value.">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={inventoryChartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+            <BarChart data={inventoryChartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} />
               <XAxis dataKey="label" tick={{ fontSize: 12 }} />
               <YAxis tickFormatter={compactMoney} tick={{ fontSize: 11 }} />
               <Tooltip content={<ChartTooltip />} />
-              <Line type="monotone" dataKey="value" name="Amount" stroke={chartColors.amber} strokeWidth={3} dot />
-            </LineChart>
+              <Bar dataKey="value" name="Amount" fill={chartColors.amber} radius={[8, 8, 0, 0]} />
+            </BarChart>
           </ResponsiveContainer>
         </ChartCard>
 
-        <ChartCard title="Unit Status Line Graph" description="Count of units by current listing status.">
+        <ChartCard title="Unit Status Mix" description="Pie chart showing how units are distributed by current status.">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={unitStatusChartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-              <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+            <PieChart>
               <Tooltip content={<ChartTooltip />} />
-              <Line type="monotone" dataKey="count" name="Units" stroke={chartColors.green} strokeWidth={3} dot />
-            </LineChart>
+              <Legend />
+              <Pie data={unitStatusChartData.filter((item) => item.count > 0)} dataKey="count" nameKey="label" innerRadius={55} outerRadius={95} paddingAngle={2}>
+                {unitStatusChartData.filter((item) => item.count > 0).map((entry, index) => <Cell key={entry.label} fill={pieColors[index % pieColors.length]} />)}
+              </Pie>
+            </PieChart>
           </ResponsiveContainer>
         </ChartCard>
       </section>
@@ -481,8 +489,7 @@ const Dashboard = () => {
             <InfoMetric label="Total Commission" value={money(stats.totalCommission)} helper="Full liability, including future releases." />
             <InfoMetric label="Eligible Now" value={money(stats.eligibleCommission)} helper="Releases ready for payment." />
             <InfoMetric label="Released" value={money(stats.releasedCommission)} helper="Amount already released." />
-            <InfoMetric label="Cash Advance Deductions" value={money(stats.cashAdvanceDeductions)} helper="Deductions recorded against releases." />
-            <InfoMetric label="Net Remaining" value={money(stats.netRemainingCommission)} helper="Still payable after releases and deductions." />
+            <InfoMetric label="Net Remaining" value={money(stats.netRemainingCommission)} helper="Still payable after released amounts." />
           </div>
         </div>
 
@@ -509,36 +516,36 @@ const Dashboard = () => {
       </section>
 
       <section className="grid gap-6 xl:grid-cols-2">
-        <ChartCard title="Seller Sales Line Graph" description="Number of sales and sales value by individual seller.">
+        <ChartCard title="Seller Sales Comparison" description="Column-line chart for sales value and sales count by individual seller.">
           {sellerChartData.length ? (
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={sellerChartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+              <ComposedChart data={sellerChartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                 <YAxis yAxisId="money" tickFormatter={compactMoney} tick={{ fontSize: 11 }} />
                 <YAxis yAxisId="count" orientation="right" allowDecimals={false} tick={{ fontSize: 11 }} />
                 <Tooltip content={<ChartTooltip />} />
                 <Legend />
-                <Line yAxisId="money" type="monotone" dataKey="salesAmount" name="Sales Value" stroke={chartColors.blue} strokeWidth={3} dot />
+                <Bar yAxisId="money" dataKey="salesAmount" name="Sales Value" fill={chartColors.blue} radius={[8, 8, 0, 0]} />
                 <Line yAxisId="count" type="monotone" dataKey="salesCount" name="Sales Count" stroke={chartColors.green} strokeWidth={3} dot />
-              </LineChart>
+              </ComposedChart>
             </ResponsiveContainer>
           ) : <EmptyChart message="No seller performance data yet." />}
         </ChartCard>
 
-        <ChartCard title="Group Sales Line Graph" description="Number of sales and sales value by seller group.">
+        <ChartCard title="Group Sales Comparison" description="Column-line chart for sales value and sales count by seller group.">
           {groupChartData.length ? (
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={groupChartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+              <ComposedChart data={groupChartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="name" tick={{ fontSize: 11 }} />
                 <YAxis yAxisId="money" tickFormatter={compactMoney} tick={{ fontSize: 11 }} />
                 <YAxis yAxisId="count" orientation="right" allowDecimals={false} tick={{ fontSize: 11 }} />
                 <Tooltip content={<ChartTooltip />} />
                 <Legend />
-                <Line yAxisId="money" type="monotone" dataKey="salesAmount" name="Sales Value" stroke={chartColors.indigo} strokeWidth={3} dot />
+                <Bar yAxisId="money" dataKey="salesAmount" name="Sales Value" fill={chartColors.indigo} radius={[8, 8, 0, 0]} />
                 <Line yAxisId="count" type="monotone" dataKey="salesCount" name="Sales Count" stroke={chartColors.amber} strokeWidth={3} dot />
-              </LineChart>
+              </ComposedChart>
             </ResponsiveContainer>
           ) : <EmptyChart message="No group performance data yet." />}
         </ChartCard>
@@ -569,13 +576,13 @@ const Dashboard = () => {
             <div className="h-56">
               {upcomingDuesChartData.length ? (
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={upcomingDuesChartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                    <XAxis dataKey="unit" tick={{ fontSize: 11 }} />
-                    <YAxis tickFormatter={compactMoney} tick={{ fontSize: 11 }} />
+                  <BarChart data={upcomingDuesChartData} layout="vertical" margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                    <XAxis type="number" tickFormatter={compactMoney} tick={{ fontSize: 11 }} />
+                    <YAxis type="category" dataKey="unit" tick={{ fontSize: 11 }} width={70} />
                     <Tooltip content={<ChartTooltip />} />
-                    <Line type="monotone" dataKey="balanceDue" name="Balance Due" stroke={chartColors.red} strokeWidth={3} dot />
-                  </LineChart>
+                    <Bar dataKey="balanceDue" name="Balance Due" fill={chartColors.red} radius={[0, 8, 8, 0]} />
+                  </BarChart>
                 </ResponsiveContainer>
               ) : <EmptyChart message="No upcoming dues within 7 days." />}
             </div>
