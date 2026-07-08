@@ -40,6 +40,8 @@ const getLastStatusLabel = (value) => {
   return labels[value] || 'Not Sent'
 }
 
+const pageSizeOptions = [10, 25, 50]
+
 const SummaryCard = ({ label, value, icon: Icon, tone = 'slate', helper }) => {
   const tones = {
     slate: 'border-slate-200 bg-white text-slate-900',
@@ -85,6 +87,8 @@ const Notifications = () => {
   const [category, setCategory] = useState('all')
   const [search, setSearch] = useState('')
   const [alert, setAlert] = useState(null)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
 
   const queryClient = useQueryClient()
 
@@ -147,6 +151,12 @@ const Notifications = () => {
     totalPaymentDue: 0,
     totalPenalty: 0,
   }
+
+  const totalPages = Math.max(1, Math.ceil(notifications.length / pageSize))
+  const currentPage = Math.min(page, totalPages)
+  const startIndex = notifications.length ? (currentPage - 1) * pageSize : 0
+  const endIndex = Math.min(startIndex + pageSize, notifications.length)
+  const paginatedNotifications = notifications.slice(startIndex, endIndex)
 
   const isBusy = sendMutation.isPending || contactedMutation.isPending
 
@@ -221,7 +231,10 @@ const Notifications = () => {
               <FiSearch className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
                 value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                onChange={(event) => {
+                  setSearch(event.target.value)
+                  setPage(1)
+                }}
                 placeholder="Search project, unit, buyer, email..."
                 className="h-11 w-full rounded-2xl border border-slate-200 bg-white pl-11 pr-3 text-sm font-semibold text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
               />
@@ -229,7 +242,10 @@ const Notifications = () => {
 
             <select
               value={category}
-              onChange={(event) => setCategory(event.target.value)}
+              onChange={(event) => {
+                setCategory(event.target.value)
+                setPage(1)
+              }}
               className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
             >
               <option value="all">All Notices</option>
@@ -246,8 +262,9 @@ const Notifications = () => {
         ) : notifications.length === 0 ? (
           <EmptyState category={category} />
         ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-[1250px] divide-y divide-slate-200 text-sm">
+          <>
+            <div className="overflow-x-auto">
+              <table className="min-w-[1250px] divide-y divide-slate-200 text-sm">
               <thead className="bg-slate-50">
                 <tr>
                   {[
@@ -272,7 +289,7 @@ const Notifications = () => {
               </thead>
 
               <tbody className="divide-y divide-slate-100">
-                {notifications.map((item) => (
+                {paginatedNotifications.map((item) => (
                   <tr key={item.scheduleId} className="align-top transition hover:bg-slate-50">
                     <td className="px-4 py-4 font-black text-slate-900">{item.projectName}</td>
                     <td className="px-4 py-4">
@@ -332,8 +349,47 @@ const Notifications = () => {
                   </tr>
                 ))}
               </tbody>
-            </table>
-          </div>
+              </table>
+            </div>
+
+            <div className="flex flex-col gap-3 border-t border-slate-200 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm font-semibold text-slate-600">
+                Showing {notifications.length ? `${startIndex + 1}-${endIndex}` : '0'} of {notifications.length} notices
+              </p>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={pageSize}
+                  onChange={(event) => {
+                    setPageSize(Number(event.target.value))
+                    setPage(1)
+                  }}
+                  className="h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-700 outline-none"
+                >
+                  {pageSizeOptions.map((size) => <option key={size} value={size}>{size}</option>)}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setPage((current) => Math.max(current - 1, 1))}
+                  disabled={currentPage <= 1}
+                  className="h-10 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Previous
+                </button>
+                <span className="inline-flex h-10 items-center rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-700">
+                  Page {currentPage} of {totalPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPage((current) => Math.min(current + 1, totalPages))}
+                  disabled={currentPage >= totalPages}
+                  className="h-10 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          </>
         )}
       </section>
     </main>
@@ -341,3 +397,6 @@ const Notifications = () => {
 }
 
 export default Notifications
+
+
+

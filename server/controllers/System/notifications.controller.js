@@ -3,6 +3,7 @@ import {
   getAuthenticatedUser,
   getErrorMessage,
   tableExists,
+  columnExists,
 } from '../Lot_Projects/_shared/lotProject.shared.js';
 
 const toDateOnly = (value) => {
@@ -79,9 +80,10 @@ const ensureNotificationTable = async (connection) => {
 
 const mapNotificationRow = (row = {}) => {
   const dueAmount = toMoneyNumber(row.due_amount);
+  const discountAmount = toMoneyNumber(row.discount_amount ?? row.discountAmount ?? 0);
   const penaltyAmount = toMoneyNumber(row.penalty_amount);
   const amountPaid = toMoneyNumber(row.amount_paid);
-  const totalDue = toMoneyNumber(dueAmount + penaltyAmount);
+  const totalDue = toMoneyNumber(Math.max(dueAmount - discountAmount, 0) + penaltyAmount);
   const balance = toMoneyNumber(Math.max(totalDue - amountPaid, 0));
   const notificationType = row.notification_type || (row.is_overdue ? 'overdue' : 'due_soon');
 
@@ -102,6 +104,7 @@ const mapNotificationRow = (row = {}) => {
     dueDate: toDateOnly(row.due_date),
     description: row.description || '-',
     dueAmount,
+    discountAmount,
     penaltyAmount,
     amountPaid,
     paymentDue: balance,
@@ -117,11 +120,37 @@ const mapNotificationRow = (row = {}) => {
   };
 };
 
+const getScheduleDiscountExpression = async (connection, alias = 's', clientAlias = 'cp') => {
+  const downpaymentDiscountFallback = `CASE
+    WHEN LOWER(${alias}.description) LIKE '%downpayment%' OR LOWER(${alias}.description) LIKE '%down payment%'
+      THEN ROUND(${alias}.due_amount * (COALESCE(${clientAlias}.soa_dp_discount_percentage, 0) / 100), 2)
+    ELSE 0
+  END`;
+
+  const hasDiscountAmount = await columnExists(connection, 'lot_project_payment_schedules', 'discount_amount');
+  return hasDiscountAmount
+    ? `GREATEST(COALESCE(${alias}.discount_amount, 0), ${downpaymentDiscountFallback})`
+    : downpaymentDiscountFallback;
+};
+
+const getScheduleSortSql = (alias = 's') => `
+  CASE
+    WHEN LOWER(${alias}.description) LIKE '%legal%' OR LOWER(${alias}.description) LIKE '%misc%' OR LOWER(${alias}.description) LIKE '%lmf%' THEN 0
+    WHEN LOWER(${alias}.description) LIKE '%reservation%' THEN 1
+    WHEN LOWER(${alias}.description) LIKE '%downpayment%' OR LOWER(${alias}.description) LIKE '%down payment%' THEN 2
+    WHEN LOWER(${alias}.description) LIKE '%monthly%' THEN 3
+    ELSE 4
+  END
+`;
+
 const getScheduleNotificationRow = async (connection, scheduleId) => {
+  const discountExpr = await getScheduleDiscountExpression(connection, 's');
+
   const [rows] = await connection.query(
     `
       SELECT
         s.*,
+        ${discountExpr} AS discount_amount,
         p.lot_project_name,
         p.lot_project_slug,
         l.lot_project_listing_unit_id,
@@ -253,10 +282,12 @@ export const getPaymentDueNotifications = async (req, res) => {
     const category = String(req.query.category || 'all').toLowerCase();
     const search = String(req.query.search || '').trim();
     const projectSlug = String(req.query.projectSlug || '').trim();
+    const discountExpr = await getScheduleDiscountExpression(connection, 's');
+    const unpaidBalanceExpr = `GREATEST((s.due_amount + s.penalty_amount - ${discountExpr}) - s.amount_paid, 0)`;
 
     const where = [
       `s.schedule_status IN ('Unpaid', 'Partial', 'Overdue')`,
-      `GREATEST((s.due_amount + s.penalty_amount) - s.amount_paid, 0) > 0`,
+      `${unpaidBalanceExpr} > 0`,
       `(
         (s.due_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY))
         OR s.due_date < CURDATE()
@@ -293,6 +324,7 @@ export const getPaymentDueNotifications = async (req, res) => {
       `
         SELECT
           s.*,
+          ${discountExpr} AS discount_amount,
           p.lot_project_name,
           p.lot_project_slug,
           l.lot_project_listing_unit_id,
@@ -331,6 +363,7 @@ export const getPaymentDueNotifications = async (req, res) => {
         ORDER BY
           CASE WHEN s.due_date < CURDATE() THEN 0 ELSE 1 END,
           s.due_date ASC,
+          ${getScheduleSortSql('s')},
           p.lot_project_name ASC,
           l.lot_project_listing_unit_id ASC
       `,
@@ -536,3 +569,6 @@ export const markPaymentDueContacted = async (req, res) => {
     connection.release();
   }
 };
+
+
+
