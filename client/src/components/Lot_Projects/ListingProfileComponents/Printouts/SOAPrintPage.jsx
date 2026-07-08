@@ -82,22 +82,27 @@ const SOAPrintPage = () => {
           </div>
 
           <div className="mt-28">
-            <table className="w-full border-collapse text-[9px]">
+            <table className="w-full border-collapse text-[7px]">
               <thead>
                 <tr>
                   {[
                     'Due Date',
                     'Description',
+                    'Beginning Balance',
                     'Monthly Due',
+                    'Principal',
+                    // 'Interest',
+                    'Discount',
                     'Penalty',
                     'Date Paid',
                     'Amount Paid',
                     'Reference',
+                    'Status',
                     'Running Balance',
                   ].map((head) => (
                     <th
                       key={head}
-                      className="border-2 border-black px-2 py-2 text-center font-black"
+                      className="border-2 border-black px-1 py-1.5 text-center font-black"
                     >
                       {head}
                     </th>
@@ -108,41 +113,61 @@ const SOAPrintPage = () => {
               <tbody>
                 {rows.length ? rows.map((row) => (
                   <tr key={row.id}>
-                    <td className="border border-black px-2 py-1 text-center font-bold">
+                    <td className="border border-black px-1 py-1 text-center font-bold">
                       {formatDate(row.dueDate)}
                     </td>
 
-                    <td className="border border-black px-2 py-1 font-bold">
+                    <td className="border border-black px-1 py-1 font-bold">
                       {row.description}
                     </td>
 
-                    <td className="border border-black px-2 py-1 text-right font-black">
-                      {money(row.totalDue || row.dueAmount)}
+                    <td className="border border-black px-1 py-1 text-right font-bold">
+                      {money(row.beginningBalance)}
                     </td>
 
-                    <td className="border border-black px-2 py-1 text-right font-bold">
+                    <td className="border border-black px-1 py-1 text-right font-black">
+                      {money(row.dueAmount)}
+                    </td>
+
+                    <td className="border border-black px-1 py-1 text-right font-bold">
+                      {money(row.principalAmount)}
+                    </td>
+{/* 
+                    <td className="border border-black px-1 py-1 text-right font-bold">
+                      {money(row.interest)}
+                    </td> */}
+
+                    <td className="border border-black px-1 py-1 text-right font-bold">
+                      {money(row.discountAmount)}
+                    </td>
+
+                    <td className="border border-black px-1 py-1 text-right font-bold">
                       {Number(row.penalty || 0) > 0 ? money(row.penalty) : '0.00'}
                     </td>
 
-                    <td className="border border-black px-2 py-1 text-center font-bold">
+                    <td className="border border-black px-1 py-1 text-center font-bold">
                       {formatDate(row.datePaid)}
                     </td>
 
-                    <td className="border border-black px-2 py-1 text-right font-bold">
+                    <td className="border border-black px-1 py-1 text-right font-bold">
                       {Number(row.amountPaid || 0) > 0 ? money(row.amountPaid) : ''}
                     </td>
 
-                    <td className="border border-black px-2 py-1 text-center font-bold">
+                    <td className="border border-black px-1 py-1 text-center font-bold">
                       {row.referenceId || '-'}
                     </td>
 
-                    <td className="border border-black px-2 py-1 text-right font-black">
+                    <td className="border border-black px-1 py-1 text-center font-bold">
+                      {row.status || '-'}
+                    </td>
+
+                    <td className="border border-black px-1 py-1 text-right font-black">
                       {money(row.remainingBalance)}
                     </td>
                   </tr>
                 )) : (
                   <tr>
-                    <td colSpan={8} className="border border-black px-2 py-8 text-center font-bold">
+                    <td colSpan={13} className="border border-black px-2 py-8 text-center font-bold">
                       No statement of account rows available yet. Reserve the unit first.
                     </td>
                   </tr>
@@ -184,3 +209,6 @@ const SOAPrintPage = () => {
 }
 
 export default SOAPrintPage
+
+
+
