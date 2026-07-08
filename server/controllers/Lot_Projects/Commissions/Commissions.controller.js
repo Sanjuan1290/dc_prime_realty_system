@@ -84,28 +84,50 @@ const scheduleSummaryJoin = `
   LEFT JOIN (
     SELECT
       lot_project_listing_id,
-      COUNT(*) AS schedule_count,
-      COALESCE(SUM(GREATEST((due_amount + penalty_amount) - amount_paid, 0)), 0) AS unpaid_scheduled_due,
-      CAST(SUBSTRING_INDEX(
-        GROUP_CONCAT(ending_balance ORDER BY due_date DESC, lot_project_payment_schedule_id DESC),
-        ',',
-        1
-      ) AS DECIMAL(14,2)) AS actual_remaining_balance
+      COUNT(*) AS schedule_count
     FROM lot_project_payment_schedules
     WHERE schedule_status <> 'Cancelled'
     GROUP BY lot_project_listing_id
   ) schedule_summary ON schedule_summary.lot_project_listing_id = c.lot_project_listing_id
 `;
 
+const downpaymentGrossSql = `
+  ROUND(l.lot_project_listing_tcp * (COALESCE(cp.soa_downpayment_percentage, 30) / 100), 2)
+`;
+
+const downpaymentDiscountTotalSql = `
+  ROUND((${downpaymentGrossSql}) * (COALESCE(cp.soa_dp_discount_percentage, 0) / 100), 2)
+`;
+
+const downpaymentNetSql = `
+  GREATEST((${downpaymentGrossSql}) - (${downpaymentDiscountTotalSql}), 0)
+`;
+
+const earnedDownpaymentDiscountSql = `
+  CASE
+    WHEN (${downpaymentDiscountTotalSql}) <= 0 THEN 0
+    WHEN (${downpaymentNetSql}) <= 0 THEN (${downpaymentDiscountTotalSql})
+    ELSE LEAST(
+      (${downpaymentDiscountTotalSql}),
+      ROUND((${downpaymentDiscountTotalSql}) * (COALESCE(payment_summary.downpayment_paid, 0) / NULLIF((${downpaymentNetSql}), 0)), 2)
+    )
+  END
+`;
+
+const paidValueWithDiscountSql = `
+  ROUND(COALESCE(payment_summary.total_paid, 0) + (${earnedDownpaymentDiscountSql}), 2)
+`;
+
+const actualRemainingBalanceSql = `
+  GREATEST(ROUND(l.lot_project_listing_tcp - (${paidValueWithDiscountSql}), 2), 0)
+`;
+
+const unpaidScheduledDueSql = actualRemainingBalanceSql;
+
 const computedPaymentPercentSql = `
   CASE
-    WHEN COALESCE(schedule_summary.schedule_count, 0) > 0
-      AND COALESCE(schedule_summary.actual_remaining_balance, l.lot_project_listing_tcp) <= 0.009
-      AND COALESCE(schedule_summary.unpaid_scheduled_due, l.lot_project_listing_tcp) <= 0.009
-      THEN 100
-    WHEN COALESCE(schedule_summary.schedule_count, 0) > 0
-      THEN LEAST(100, ROUND(((l.lot_project_listing_tcp - GREATEST(COALESCE(schedule_summary.actual_remaining_balance, l.lot_project_listing_tcp), 0)) / NULLIF(l.lot_project_listing_tcp, 0)) * 100, 2))
-    ELSE LEAST(100, ROUND((COALESCE(payment_summary.total_paid, 0) / NULLIF(l.lot_project_listing_tcp, 0)) * 100, 2))
+    WHEN l.lot_project_listing_tcp <= 0 THEN 0
+    ELSE LEAST(100, ROUND(((${paidValueWithDiscountSql}) / NULLIF(l.lot_project_listing_tcp, 0)) * 100, 2))
   END
 `;
 
@@ -422,16 +444,21 @@ const recomputeCommissionFromReleases = async (connection, commissionId, lotProj
         c.*,
         l.lot_project_listing_tcp,
         COALESCE(payment_summary.total_paid, 0) AS total_paid,
-        COALESCE(schedule_summary.actual_remaining_balance, GREATEST(l.lot_project_listing_tcp - COALESCE(payment_summary.total_paid, 0), 0)) AS actual_remaining_balance,
-        COALESCE(schedule_summary.unpaid_scheduled_due, GREATEST(l.lot_project_listing_tcp - COALESCE(payment_summary.total_paid, 0), 0)) AS unpaid_scheduled_due,
+        ${actualRemainingBalanceSql} AS actual_remaining_balance,
+        ${unpaidScheduledDueSql} AS unpaid_scheduled_due,
         ${getRequiredDocumentCountSql('l')} AS required_document_count,
         ${getCompletedRequiredDocumentCountSql('l', 'c')} AS completed_required_document_count,
         ${computedPaymentPercentSql} AS computed_payment_percent
       FROM lot_project_commissions c
       INNER JOIN lot_project_listings l
         ON l.lot_project_listing_id = c.lot_project_listing_id
+      LEFT JOIN lot_project_client_profiles cp
+        ON cp.lot_project_client_profile_id = c.lot_project_client_profile_id
       LEFT JOIN (
-        SELECT lot_project_listing_id, SUM(lot_project_payment_amount) AS total_paid
+        SELECT
+          lot_project_listing_id,
+          SUM(lot_project_payment_amount) AS total_paid,
+          SUM(CASE WHEN lot_project_payment_type IN ('downpayment', 'down_payment') THEN lot_project_payment_amount ELSE 0 END) AS downpayment_paid
         FROM lot_project_payments
         WHERE lot_project_payment_status = 'Verified'
         GROUP BY lot_project_listing_id
@@ -555,8 +582,8 @@ export const getLotProjectCommissions = async (req, res) => {
           l.lot_project_listing_tcp,
           cp.buyer_full_name,
           COALESCE(payment_summary.total_paid, 0) AS total_paid,
-          COALESCE(schedule_summary.actual_remaining_balance, GREATEST(l.lot_project_listing_tcp - COALESCE(payment_summary.total_paid, 0), 0)) AS actual_remaining_balance,
-          COALESCE(schedule_summary.unpaid_scheduled_due, GREATEST(l.lot_project_listing_tcp - COALESCE(payment_summary.total_paid, 0), 0)) AS unpaid_scheduled_due,
+          ${actualRemainingBalanceSql} AS actual_remaining_balance,
+          ${unpaidScheduledDueSql} AS unpaid_scheduled_due,
           ${getRequiredDocumentCountSql('l')} AS required_document_count,
           ${getCompletedRequiredDocumentCountSql('l', 'c')} AS completed_required_document_count,
           ${computedPaymentPercentSql} AS computed_payment_percent,
@@ -595,7 +622,8 @@ export const getLotProjectCommissions = async (req, res) => {
         LEFT JOIN (
           SELECT
             lot_project_listing_id,
-            SUM(lot_project_payment_amount) AS total_paid
+            SUM(lot_project_payment_amount) AS total_paid,
+            SUM(CASE WHEN lot_project_payment_type IN ('downpayment', 'down_payment') THEN lot_project_payment_amount ELSE 0 END) AS downpayment_paid
           FROM lot_project_payments
           WHERE lot_project_payment_status = 'Verified'
           GROUP BY lot_project_listing_id
@@ -683,8 +711,8 @@ export const updateLotProjectCommission = async (req, res) => {
             r.*,
             c.lot_project_id,
             c.payment_percent,
-            COALESCE(schedule_summary.actual_remaining_balance, GREATEST(l.lot_project_listing_tcp - COALESCE(payment_summary.total_paid, 0), 0)) AS actual_remaining_balance,
-            COALESCE(schedule_summary.unpaid_scheduled_due, GREATEST(l.lot_project_listing_tcp - COALESCE(payment_summary.total_paid, 0), 0)) AS unpaid_scheduled_due,
+            ${actualRemainingBalanceSql} AS actual_remaining_balance,
+            ${unpaidScheduledDueSql} AS unpaid_scheduled_due,
             ${getRequiredDocumentCountSql('l')} AS required_document_count,
             ${getCompletedRequiredDocumentCountSql('l', 'c')} AS completed_required_document_count,
             ${computedPaymentPercentSql} AS computed_payment_percent
@@ -693,8 +721,13 @@ export const updateLotProjectCommission = async (req, res) => {
             ON c.lot_project_commission_id = r.lot_project_commission_id
           INNER JOIN lot_project_listings l
             ON l.lot_project_listing_id = c.lot_project_listing_id
+          LEFT JOIN lot_project_client_profiles cp
+            ON cp.lot_project_client_profile_id = c.lot_project_client_profile_id
           LEFT JOIN (
-            SELECT lot_project_listing_id, SUM(lot_project_payment_amount) AS total_paid
+            SELECT
+              lot_project_listing_id,
+              SUM(lot_project_payment_amount) AS total_paid,
+              SUM(CASE WHEN lot_project_payment_type IN ('downpayment', 'down_payment') THEN lot_project_payment_amount ELSE 0 END) AS downpayment_paid
             FROM lot_project_payments
             WHERE lot_project_payment_status = 'Verified'
             GROUP BY lot_project_listing_id
