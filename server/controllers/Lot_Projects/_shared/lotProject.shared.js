@@ -798,6 +798,49 @@ export const getScheduleTotalDue = (row = {}) => {
   return roundMoneyValue(Math.max(dueAmount - discountAmount, 0) + (hasPrincipalBreakdown ? 0 : interest) + penalty);
 };
 
+export const getStoredRowDiscountAmount = (row = {}, clientProfile = {}) => {
+  const description = String(row.description || '').toLowerCase();
+  const isDownpaymentRow = description.includes('downpayment') || description.includes('down payment');
+  if (!isDownpaymentRow) return 0;
+
+  const explicitDiscount = row.discount_amount ?? row.discountAmount;
+  const fallbackDiscount = roundMoneyValue(
+    Number(row.due_amount || 0) * (Number(clientProfile.soa_dp_discount_percentage || 0) / 100)
+  );
+
+  return roundMoneyValue(Math.max(Number(explicitDiscount || 0), fallbackDiscount));
+};
+
+export const getStoredRowTotalDue = (row = {}, clientProfile = {}) => {
+  const dueAmount = Number(row.due_amount || 0);
+  const penaltyAmount = Number(row.penalty_amount || 0);
+  const discountAmount = getStoredRowDiscountAmount(row, clientProfile);
+  return roundMoneyValue(Math.max(dueAmount - discountAmount, 0) + penaltyAmount);
+};
+
+export const getStoredScheduleType = (row = {}) => {
+  const text = String(row.description || '').toLowerCase();
+  if (text.includes('reservation')) return 'reservation';
+  if (text.includes('legal') || text.includes('misc') || text.includes('lmf')) return 'legal_misc';
+  if (text.includes('downpayment') || text.includes('down payment')) return 'downpayment';
+  if (text.includes('monthly')) return 'monthly';
+  if (text.includes('full payment')) return 'full_payment';
+  if (text.includes('balloon')) return 'balloon';
+  return 'other';
+};
+
+export const paymentTypeToStoredScheduleType = (paymentType) => {
+  const cleanType = String(paymentType || '').toLowerCase();
+  if (cleanType === 'reservation') return 'reservation';
+  if (cleanType === 'downpayment') return 'downpayment';
+  if (cleanType === 'legal_misc') return 'legal_misc';
+  if (['monthly_amortization', 'advance_payment', 'balloon'].includes(cleanType)) return 'monthly';
+  return null;
+};
+
+const isSameScheduleId = (row = {}, scheduleId) =>
+  Number(row.lot_project_payment_schedule_id || 0) === Number(scheduleId || 0);
+
 export const appendPaymentReference = (row, payment) => {
   const reference = payment.referenceId || payment.lot_project_payment_reference_id || '-';
   const paidDate = payment.paymentDate || payment.lot_project_payment_date || '-';
@@ -843,25 +886,28 @@ export const createBalloonPrincipalRow = (payment = {}, index = 1) => {
 export const getRowSortOrder = (row = {}) => {
   const order = {
     reservation: 1,
-    legal_misc: 2,
-    downpayment: 3,
-    monthly: 4,
-    full_payment: 5,
-    balloon: 6,
+    downpayment: 2,
+    monthly: 3,
+    full_payment: 4,
+    balloon: 5,
+    legal_misc: 6,
   };
 
   return order[row.scheduleType] || 9;
 };
 
 const isReservationRow = (row = {}) => row.scheduleType === 'reservation';
+const isLegalMiscRow = (row = {}) => row.scheduleType === 'legal_misc';
 
 export const sortComputedRows = (rows = []) =>
   [...rows].sort((a, b) => {
-    // Reservation Fee is always the first SOA row, even when its due date
-    // is later than the first downpayment date. This keeps the SOA in the
-    // correct business order: Reservation -> DP -> Balloon/Other by date -> Monthly.
+    // Reservation Fee is always first, and Legal/Misc Fee is always last
+    // because it has no scheduled due date.
     if (isReservationRow(a) && !isReservationRow(b)) return -1;
     if (!isReservationRow(a) && isReservationRow(b)) return 1;
+
+    if (isLegalMiscRow(a) && !isLegalMiscRow(b)) return 1;
+    if (!isLegalMiscRow(a) && isLegalMiscRow(b)) return -1;
 
     const dateCompare = String(a.dueDate || '').localeCompare(String(b.dueDate || ''));
     if (dateCompare !== 0) return dateCompare;
@@ -949,18 +995,8 @@ export const getReserveSellerOptions = async (connection, lotProjectId) => {
 
 const normalizeInterestCalculationType = () => 'amortized';
 
-const getEffectiveSoaInterestRate = (listingRow = {}) => {
-  const listingRate = Number(listingRow.annual_interest_rate ?? listingRow.lot_project_listing_annual_interest_rate ?? 0);
-  const rawSoaRate = listingRow.soa_annual_interest_rate;
-  const overrideFlag = Number(listingRow.soa_interest_rate_overridden ?? listingRow.soaInterestRateOverridden ?? 0);
-  const hasExplicitOverride = overrideFlag === 1 || overrideFlag === true;
-
-  if (hasExplicitOverride && rawSoaRate !== undefined && rawSoaRate !== null && rawSoaRate !== '') {
-    return Number(rawSoaRate || 0);
-  }
-
-  return listingRate;
-};
+const getEffectiveSoaInterestRate = (listingRow = {}) =>
+  Number(listingRow.annual_interest_rate ?? listingRow.lot_project_listing_annual_interest_rate ?? 0);
 
 const getMonthlyAmortizationAmount = (financedBalance, annualInterestRate, monthlyTerms) => {
   const principal = roundMoneyValue(financedBalance || 0);
@@ -1126,7 +1162,7 @@ export const createComputedSoaRows = (terms = {}) => {
       id: `computed-${sequence}`,
       scheduleType: 'legal_misc',
       sequence,
-      dueDate: terms.firstDueDate,
+      dueDate: null,
       description: 'Legal / Misc Fee',
       beginningBalance: terms.tcp,
       dueAmount: roundMoneyValue(terms.legalMiscFeeAmount),
@@ -1432,7 +1468,10 @@ export const getExistingSoaScheduleRows = async (connection, lotProjectId, listi
       FROM lot_project_payment_schedules
       WHERE lot_project_id = ?
         AND lot_project_listing_id = ?
-      ORDER BY due_date ASC, lot_project_payment_schedule_id ASC
+      ORDER BY
+        CASE WHEN due_date IS NULL THEN 1 ELSE 0 END,
+        due_date ASC,
+        lot_project_payment_schedule_id ASC
     `,
     [lotProjectId, listingId]
   );
@@ -1702,10 +1741,21 @@ export const recomputeListingScheduleBalances = async (connection, listing) => {
   }
 };
 
-export const applyPaymentToSchedules = async (connection, listing, paymentId, preferredScheduleId, amount, paymentDate, referenceId) => {
+export const applyPaymentToSchedules = async (connection, listing, paymentId, preferredScheduleId, amount, paymentDate, referenceId, paymentType) => {
   if (!(await tableExists(connection, 'lot_project_payment_allocations'))) {
     throw new Error('lot_project_payment_allocations table does not exist. Run the payments SOA migration first.');
   }
+
+  const [clientProfileRows] = await connection.query(
+    `
+      SELECT *
+      FROM lot_project_client_profiles
+      WHERE lot_project_client_profile_id = ?
+      LIMIT 1
+    `,
+    [listing.lot_project_client_profile_id]
+  );
+  const clientProfile = clientProfileRows[0] || listing || {};
 
   const [scheduleRows] = await connection.query(
     `
@@ -1715,6 +1765,7 @@ export const applyPaymentToSchedules = async (connection, listing, paymentId, pr
         AND lot_project_listing_id = ?
       ORDER BY
         CASE WHEN lot_project_payment_schedule_id = ? THEN 0 ELSE 1 END,
+        CASE WHEN due_date IS NULL THEN 1 ELSE 0 END,
         due_date ASC,
         lot_project_payment_schedule_id ASC
     `,
@@ -1725,14 +1776,23 @@ export const applyPaymentToSchedules = async (connection, listing, paymentId, pr
     throw new Error('No SOA schedule row is available for this listing.');
   }
 
+  const restrictedType = paymentTypeToStoredScheduleType(paymentType);
+  const preferredRow = preferredScheduleId
+    ? scheduleRows.find((row) => isSameScheduleId(row, preferredScheduleId))
+    : null;
+  const typeFilteredRows = restrictedType
+    ? scheduleRows.filter((row) => getStoredScheduleType(row) === restrictedType || isSameScheduleId(row, preferredScheduleId))
+    : scheduleRows;
+  const orderedTargets = preferredRow
+    ? [preferredRow, ...typeFilteredRows.filter((row) => !isSameScheduleId(row, preferredRow.lot_project_payment_schedule_id))]
+    : typeFilteredRows;
+
   let remaining = roundMoneyValue(Number(amount || 0));
 
-  for (const row of scheduleRows) {
+  for (const row of orderedTargets) {
     if (remaining <= 0) break;
 
-    const dueAmount = Number(row.due_amount || 0);
-    const penaltyAmount = Number(row.penalty_amount || 0);
-    const totalDue = roundMoneyValue(dueAmount + penaltyAmount);
+    const totalDue = getStoredRowTotalDue(row, clientProfile);
     const currentPaid = Number(row.amount_paid || 0);
     const unpaidForRow = Math.max(totalDue - currentPaid, 0);
 
@@ -1771,7 +1831,7 @@ export const applyPaymentToSchedules = async (connection, listing, paymentId, pr
   }
 
   if (remaining > 0) {
-    throw new Error('Payment amount exceeds the remaining unpaid SOA balance.');
+    throw new Error('Payment amount exceeds the remaining unpaid SOA balance for this payment type.');
   }
 
   await recomputeListingScheduleBalances(connection, listing);
@@ -1779,6 +1839,17 @@ export const applyPaymentToSchedules = async (connection, listing, paymentId, pr
 
 export const reversePaymentAllocations = async (connection, listing, paymentId) => {
   if (!(await tableExists(connection, 'lot_project_payment_allocations'))) return;
+
+  const [clientProfileRows] = await connection.query(
+    `
+      SELECT *
+      FROM lot_project_client_profiles
+      WHERE lot_project_client_profile_id = ?
+      LIMIT 1
+    `,
+    [listing.lot_project_client_profile_id]
+  );
+  const clientProfile = clientProfileRows[0] || listing || {};
 
   const [allocations] = await connection.query(
     `
@@ -1792,7 +1863,7 @@ export const reversePaymentAllocations = async (connection, listing, paymentId) 
   for (const allocation of allocations) {
     const [scheduleRows] = await connection.query(
       `
-        SELECT amount_paid, due_amount, penalty_amount
+        SELECT *
         FROM lot_project_payment_schedules
         WHERE lot_project_payment_schedule_id = ?
         LIMIT 1
@@ -1803,9 +1874,14 @@ export const reversePaymentAllocations = async (connection, listing, paymentId) 
     const schedule = scheduleRows[0];
     if (!schedule) continue;
 
-    const nextPaid = Math.max(Number(schedule.amount_paid || 0) - Number(allocation.applied_amount || 0), 0);
-    const totalDue = Number(schedule.due_amount || 0) + Number(schedule.penalty_amount || 0);
-    const nextStatus = nextPaid <= 0 ? 'Unpaid' : nextPaid >= totalDue ? 'Paid' : 'Partial';
+    const nextPaid = roundMoneyValue(Math.max(Number(schedule.amount_paid || 0) - Number(allocation.applied_amount || 0), 0));
+    const totalDue = getStoredRowTotalDue(schedule, clientProfile);
+    const paidBeforeDue = schedule.date_paid && schedule.due_date && String(schedule.date_paid).slice(0, 10) < String(schedule.due_date).slice(0, 10);
+    const nextStatus = nextPaid <= 0
+      ? 'Unpaid'
+      : nextPaid + 0.009 >= totalDue
+        ? (paidBeforeDue ? 'Advance' : 'Paid')
+        : 'Partial';
 
     await connection.query(
       `
@@ -1872,3 +1948,6 @@ export const addIfColumnExists = async (connection, tableName, columns, values, 
     values.push(value);
   }
 };
+
+
+

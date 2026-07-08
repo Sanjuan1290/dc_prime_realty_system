@@ -280,8 +280,6 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
     downpaymentPercentage: String(getListingValue(listing, ['soaDownpaymentPercentage'], 30)),
     downpaymentTerms: String(getListingValue(listing, ['soaDownpaymentTerms'], 3)),
     monthlyTerms: String(getListingValue(listing, ['soaMonthlyTerms'], 36)),
-    annualInterestRate: String(getListingValue(listing, ['soaAnnualInterestRate'], getListingValue(listing, ['annualInterestRate'], 0))),
-    interestRateSource: getListingValue(listing, ['soaInterestRateSource'], 'listing'),
     firstDueDate: getListingValue(listing, ['soaFirstDueDate', 'first_due_date'], ''),
   }))
   const [modalAlert, setModalAlert] = useState({
@@ -296,13 +294,7 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
   }, [serverAlert])
 
   const updateForm = (key, value) => {
-    setForm((current) => {
-      const next = { ...current, [key]: value }
-      if (key === 'interestRateSource' && value === 'listing') {
-        next.annualInterestRate = String(Number(getListingValue(listing, ['annualInterestRate'], 0)))
-      }
-      return next
-    })
+    setForm((current) => ({ ...current, [key]: value }))
     if (modalAlert?.type === 'error') setModalAlert(null)
   }
 
@@ -313,8 +305,6 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
     const downpaymentPercentage = Number(form.downpaymentPercentage || 0)
     const downpaymentTerms = Number(form.downpaymentTerms || 0)
     const monthlyTerms = Number(form.monthlyTerms || 0)
-    const annualInterestRate = Number(form.annualInterestRate || 0)
-    const interestRateSource = form.interestRateSource === 'listing' ? 'listing' : 'custom'
     if (dpDiscountPercentage < 0 || dpDiscountPercentage > 100) {
       setModalAlert({ type: 'error', message: 'DP Discount % must be between 0 and 100.' })
       return
@@ -335,32 +325,18 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
       return
     }
 
-    if (annualInterestRate < 0) {
-      setModalAlert({ type: 'error', message: 'Annual interest rate cannot be negative.' })
-      return
-    }
-
     setModalAlert({ type: 'loading', message: 'Saving SOA terms and recomputing schedule...' })
     onSave({
       dpDiscountPercentage,
       downpaymentPercentage,
       downpaymentTerms,
       monthlyTerms,
-      annualInterestRate,
-      interestRateSource,
+      interestRateSource: 'listing',
       firstDueDate: form.firstDueDate || null,
     })
   }
 
   const listingInterestRate = Number(getListingValue(listing, ['annualInterestRate'], 0))
-  const syncFromListing = () => {
-    setForm((current) => ({
-      ...current,
-      annualInterestRate: String(listingInterestRate),
-      interestRateSource: 'listing',
-    }))
-    setModalAlert({ type: 'info', message: `SOA interest will sync from listing rate (${listingInterestRate.toFixed(2)}%).` })
-  }
 
   const Field = ({ label, value, onChange, type = 'number', placeholder = '', helper }) => (
     <label className="flex flex-col gap-1.5">
@@ -383,7 +359,7 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
           <div>
             <h3 className="text-lg font-black text-slate-950">Edit SOA Terms</h3>
-            <p className="text-sm font-semibold text-slate-500">Update SOA terms, interest source, and recompute the amortization schedule.</p>
+            <p className="text-sm font-semibold text-slate-500">Update SOA terms and recompute the amortization schedule.</p>
           </div>
           <button type="button" onClick={onClose} disabled={isSaving} className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60" aria-label="Close SOA terms modal">
             <FiX className="h-4 w-4" />
@@ -397,22 +373,11 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
             <Field label="Downpayment %" value={form.downpaymentPercentage} onChange={(value) => updateForm('downpaymentPercentage', value)} placeholder="Example: 30" />
             <Field label="Downpayment Terms" value={form.downpaymentTerms} onChange={(value) => updateForm('downpaymentTerms', value)} placeholder="Example: 3" />
             <Field label="Monthly Terms" value={form.monthlyTerms} onChange={(value) => updateForm('monthlyTerms', value)} placeholder="Example: 36" />
-            <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm font-semibold text-blue-900">
+            <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm font-semibold text-blue-900 md:col-span-2">
               <p className="text-xs font-black uppercase tracking-wide text-blue-700">Listing Annual Interest Rate</p>
               <p className="mt-1 text-xl font-black">{listingInterestRate.toFixed(2)}%</p>
-              <button type="button" onClick={syncFromListing} disabled={isSaving} className="mt-3 h-9 rounded-lg bg-blue-600 px-4 text-xs font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300">
-                Sync from Listing
-              </button>
+              <p className="mt-1 text-xs font-semibold text-blue-700">SOA interest always follows the rate set in Edit Listing. Update it there if it needs to change.</p>
             </div>
-            <label className="flex flex-col gap-1.5">
-              <span className="text-sm font-black text-slate-700">Interest Rate Source</span>
-              <select value={form.interestRateSource} onChange={(event) => updateForm('interestRateSource', event.target.value)} disabled={isSaving} className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:bg-slate-100">
-                <option value="listing">Use Listing Rate</option>
-                <option value="custom">Custom SOA Rate</option>
-              </select>
-              <span className="text-xs font-semibold text-slate-500">Use listing rate to avoid silent duplicate values, or set a custom rate for this buyer.</span>
-            </label>
-            <Field label="Annual Interest Rate %" value={form.annualInterestRate} onChange={(value) => updateForm('annualInterestRate', value)} placeholder="Example: 7.5" helper={form.interestRateSource === 'listing' ? 'Synced from Edit Listing rate.' : 'Custom SOA rate for this buyer only.'} />
             <Field label="First Due Date" type="date" value={form.firstDueDate && form.firstDueDate !== '-' ? form.firstDueDate : ''} onChange={(value) => updateForm('firstDueDate', value)} />
           </div>
         </div>
@@ -1106,3 +1071,6 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
 }
 
 export default PaymentsSOA
+
+
+

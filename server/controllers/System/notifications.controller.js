@@ -21,6 +21,33 @@ const money = (value) =>
     minimumFractionDigits: 2,
   }).format(Number(value || 0));
 
+const amountOnly = (value) =>
+  new Intl.NumberFormat('en-PH', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number(value || 0));
+
+const longDate = (value) => {
+  if (!value || value === '-') return '-';
+  const clean = toDateOnly(value);
+  const [year, month, day] = clean.split('-').map(Number);
+  if (!year || !month || !day) return clean;
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: 'Asia/Manila',
+  }).format(new Date(Date.UTC(year, month - 1, day)));
+};
+
+const escapeHtml = (value = '') =>
+  String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
 const fullName = (row = {}) => {
   const name = [row.buyer_first_name, row.buyer_middle_name, row.buyer_last_name]
     .map((part) => String(part || '').trim())
@@ -98,6 +125,11 @@ const mapNotificationRow = (row = {}) => {
     listingId: row.lot_project_listing_id,
     unitId: row.lot_project_listing_unit_id,
     clientProfileId: row.lot_project_client_profile_id,
+    totalContractPrice: toMoneyNumber(row.lot_project_listing_tcp),
+    legalMiscFee: toMoneyNumber(row.lot_project_listing_lmf_amount),
+    companyName: row.company_name || 'D&C Prime Realty',
+    companyEmail: row.company_email || process.env.SMTP_USER || 'dcprimegold@gmail.com',
+    companyContactNumber: row.company_contact_number || row.reservation_contact_number || '(046) 866 0616',
     buyerName: fullName(row),
     buyerEmail: row.buyer_email || '',
     buyerContactNumber: row.buyer_contact_number || '',
@@ -135,10 +167,10 @@ const getScheduleDiscountExpression = async (connection, alias = 's', clientAlia
 
 const getScheduleSortSql = (alias = 's') => `
   CASE
-    WHEN LOWER(${alias}.description) LIKE '%legal%' OR LOWER(${alias}.description) LIKE '%misc%' OR LOWER(${alias}.description) LIKE '%lmf%' THEN 0
-    WHEN LOWER(${alias}.description) LIKE '%reservation%' THEN 1
-    WHEN LOWER(${alias}.description) LIKE '%downpayment%' OR LOWER(${alias}.description) LIKE '%down payment%' THEN 2
-    WHEN LOWER(${alias}.description) LIKE '%monthly%' THEN 3
+    WHEN LOWER(${alias}.description) LIKE '%reservation%' THEN 0
+    WHEN LOWER(${alias}.description) LIKE '%downpayment%' OR LOWER(${alias}.description) LIKE '%down payment%' THEN 1
+    WHEN LOWER(${alias}.description) LIKE '%monthly%' THEN 2
+    WHEN LOWER(${alias}.description) LIKE '%legal%' OR LOWER(${alias}.description) LIKE '%misc%' OR LOWER(${alias}.description) LIKE '%lmf%' THEN 3
     ELSE 4
   END
 `;
@@ -154,6 +186,12 @@ const getScheduleNotificationRow = async (connection, scheduleId) => {
         p.lot_project_name,
         p.lot_project_slug,
         l.lot_project_listing_unit_id,
+        l.lot_project_listing_tcp,
+        l.lot_project_listing_lmf_amount,
+        st.company_name,
+        st.company_email,
+        st.company_contact_number,
+        st.reservation_contact_number,
         cp.buyer_first_name,
         cp.buyer_middle_name,
         cp.buyer_last_name,
@@ -172,6 +210,8 @@ const getScheduleNotificationRow = async (connection, scheduleId) => {
         ON l.lot_project_listing_id = s.lot_project_listing_id
       INNER JOIN lot_project_client_profiles cp
         ON cp.lot_project_client_profile_id = s.lot_project_client_profile_id
+      LEFT JOIN lot_project_settings st
+        ON st.lot_project_id = p.lot_project_id
       WHERE s.lot_project_payment_schedule_id = ?
       LIMIT 1
     `,
@@ -184,47 +224,121 @@ const getScheduleNotificationRow = async (connection, scheduleId) => {
 const buildNotificationMessage = (row = {}) => {
   const notification = mapNotificationRow(row);
   const isOverdue = notification.notificationType === 'overdue';
+  const statementAsOf = longDate(notification.dueDate);
+  const dueLabel = `${notification.description} Due on ${statementAsOf}`;
+  const amountDueImmediately = isOverdue ? notification.paymentDue : 0;
+  const companyName = escapeHtml(notification.companyName || 'D&C Prime Realty');
+  const companyEmail = escapeHtml(notification.companyEmail || 'dcprimegold@gmail.com');
+  const companyContactNumber = escapeHtml(notification.companyContactNumber || '(046) 866 0616');
+  const logoUrl = String(process.env.EMAIL_LOGO_URL || '').trim();
   const subject = isOverdue
-    ? `Overdue Payment Notice - ${notification.projectName} ${notification.unitId}`
-    : `Payment Reminder - ${notification.projectName} ${notification.unitId}`;
+    ? `Statement of Account - Overdue - ${notification.projectName} ${notification.unitId}`
+    : `Statement of Account - Payment Reminder - ${notification.projectName} ${notification.unitId}`;
 
   const textMessage = [
-    `Hello ${notification.buyerName},`,
+    'STATEMENT OF ACCOUNT',
     '',
-    isOverdue
-      ? 'This is a payment overdue notice for your real estate account.'
-      : 'This is a payment reminder for your upcoming due date.',
+    'Unit D, Mia\'s Building, Purok 1,',
+    'Mataas na Lupa, Indang, Cavite,',
+    '4122 Philippines',
     '',
+    `Statement Date: As of ${statementAsOf}`,
+    `SOA Number: SOA-${notification.scheduleId}`,
     `Project: ${notification.projectName}`,
-    `Unit ID: ${notification.unitId}`,
-    `Due Date: ${notification.dueDate}`,
-    `Description: ${notification.description}`,
-    `Payment Due: ${money(notification.paymentDue)}`,
-    `Penalty: ${money(notification.penaltyAmount)}`,
-    `Remaining Balance: ${money(notification.balance)}`,
+    `Unit No.: ${notification.unitId}`,
     '',
-    'Please coordinate with D&C Prime Realty for payment confirmation.',
+    'AMOUNT DETAILS',
+    `Total Contract Price: ${amountOnly(notification.totalContractPrice)}`,
+    `Legal/Miscellaneous: ${amountOnly(notification.legalMiscFee)}`,
+    `Total Amount: PHP ${amountOnly(notification.totalContractPrice)}`,
     '',
-    'Thank you.',
+    `This is to bill the total amount of ${amountOnly(notification.paymentDue)}`,
+    `Amortization: ${isOverdue ? amountOnly(notification.paymentDue) : amountOnly(0)}`,
+    `Penalty: ${amountOnly(notification.penaltyAmount)}`,
+    'Miscellaneous Fees & Adjustments: 0.00',
+    `Amount Due Immediately: ${amountOnly(amountDueImmediately)}`,
+    '',
+    `${notification.description} Due on ${statementAsOf}: ${amountOnly(notification.paymentDue)}`,
+    '',
+    `NOTE: All transactions after ${statementAsOf} are not reflected in this Statement of Account (SOA).`,
+    '',
+    'Please pay on or before the due date to avoid penalties.',
+    'Payments made after the statement date are not yet reflected.',
+    'If payments have been made, kindly disregard this statement.',
+    `For inquiries, please call ${notification.companyContactNumber || '(046) 866 0616'} or email ${notification.companyEmail || 'dcprimegold@gmail.com'}.`,
+    '',
+    'PAYMENT REMINDERS',
+    "Always provide buyer's full name and CIN when making payments.",
+    'All check payments should be made payable to the order of D&C PRIME REALTY.',
   ].join('\n');
 
   const htmlMessage = `
-    <div style="font-family:Arial,sans-serif;color:#0f172a;line-height:1.6">
-      <p>Hello <strong>${notification.buyerName}</strong>,</p>
-      <p>${isOverdue
-        ? 'This is a payment overdue notice for your real estate account.'
-        : 'This is a payment reminder for your upcoming due date.'}</p>
-      <table cellpadding="8" cellspacing="0" style="border-collapse:collapse;border:1px solid #e2e8f0;min-width:420px">
-        <tr><td style="border:1px solid #e2e8f0;font-weight:bold">Project</td><td style="border:1px solid #e2e8f0">${notification.projectName}</td></tr>
-        <tr><td style="border:1px solid #e2e8f0;font-weight:bold">Unit ID</td><td style="border:1px solid #e2e8f0">${notification.unitId}</td></tr>
-        <tr><td style="border:1px solid #e2e8f0;font-weight:bold">Due Date</td><td style="border:1px solid #e2e8f0">${notification.dueDate}</td></tr>
-        <tr><td style="border:1px solid #e2e8f0;font-weight:bold">Description</td><td style="border:1px solid #e2e8f0">${notification.description}</td></tr>
-        <tr><td style="border:1px solid #e2e8f0;font-weight:bold">Payment Due</td><td style="border:1px solid #e2e8f0">${money(notification.paymentDue)}</td></tr>
-        <tr><td style="border:1px solid #e2e8f0;font-weight:bold">Penalty</td><td style="border:1px solid #e2e8f0">${money(notification.penaltyAmount)}</td></tr>
-        <tr><td style="border:1px solid #e2e8f0;font-weight:bold">Remaining Balance</td><td style="border:1px solid #e2e8f0">${money(notification.balance)}</td></tr>
-      </table>
-      <p>Please coordinate with D&amp;C Prime Realty for payment confirmation.</p>
-      <p>Thank you.</p>
+    <div style="margin:0;background:#ffffff;color:#000000;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.35">
+      <div style="max-width:760px;margin:0 auto;padding:18px 16px 24px;background:#ffffff">
+        <div style="display:flex;justify-content:space-between;gap:24px;align-items:flex-start">
+          <div style="width:46%;min-width:260px">
+            ${logoUrl ? `<img src="${escapeHtml(logoUrl)}" alt="${companyName}" style="display:block;width:62px;height:auto;margin-bottom:28px" />` : `<div style="font-size:11px;font-weight:bold;color:#f59e0b;margin-bottom:28px">${companyName}</div>`}
+            <div style="white-space:pre-line">Unit D, Mia's Building, Purok 1,\nMataas na Lupa, Indang, Cavite,\n4122 Philippines</div>
+          </div>
+
+          <div style="width:39%;min-width:260px">
+            <h2 style="margin:16px 0 10px;text-align:center;font-size:16px;line-height:1.1;font-weight:700">STATEMENT OF ACCOUNT</h2>
+            <table cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;font-size:11px">
+              <tr><td style="border:1px solid #000;padding:2px 5px;width:40%">Statement Date</td><td style="border:1px solid #000;padding:2px 5px;text-align:center">As of ${escapeHtml(statementAsOf)}</td></tr>
+              <tr><td style="border:1px solid #000;padding:2px 5px">SOA Number</td><td style="border:1px solid #000;padding:2px 5px;text-align:center">SOA-${notification.scheduleId}</td></tr>
+              <tr><td style="border:1px solid #000;padding:2px 5px">Project</td><td style="border:1px solid #000;padding:2px 5px;text-align:center">${escapeHtml(notification.projectName)}</td></tr>
+              <tr><td style="border:1px solid #000;padding:2px 5px">Unit No.</td><td style="border:1px solid #000;padding:2px 5px;text-align:center">${escapeHtml(notification.unitId)}</td></tr>
+            </table>
+
+            <h3 style="margin:14px 0 8px;text-align:center;font-size:15px;font-weight:700">AMOUNT DETAILS</h3>
+            <table cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;font-size:11px">
+              <tr><td style="border:1px solid #000;padding:2px 5px">Total Contract Price</td><td style="border:1px solid #000;padding:2px 5px;text-align:right">${amountOnly(notification.totalContractPrice)}</td></tr>
+              <tr><td style="border:1px solid #000;padding:2px 5px">Legal/Miscellaneous</td><td style="border:1px solid #000;padding:2px 5px;text-align:right">${amountOnly(notification.legalMiscFee)}</td></tr>
+              <tr><td style="border:1px solid #000;padding:2px 5px;font-weight:700">Total Amount</td><td style="border:1px solid #000;padding:2px 5px;text-align:right;font-weight:700">PHP ${amountOnly(notification.totalContractPrice)}</td></tr>
+            </table>
+          </div>
+        </div>
+
+        <div style="border-top:1px dashed #000;margin:22px 0 20px"></div>
+
+        <table cellpadding="0" cellspacing="0" style="width:82%;margin-left:68px;border-collapse:collapse;font-size:12px">
+          <tr>
+            <td style="border:2px solid #000;padding:2px 5px;font-weight:700">This is to bill the total amount of</td>
+            <td style="border:2px solid #000;padding:2px 5px;text-align:right;font-weight:700;width:160px">${amountOnly(notification.paymentDue)}</td>
+          </tr>
+        </table>
+
+        <table cellpadding="0" cellspacing="0" style="width:76%;margin-left:72px;margin-top:3px;border-collapse:collapse;font-size:12px">
+          <tr><td style="padding:1px 0">${isOverdue ? 'Overdue Amount' : 'Amortization'}</td><td style="padding:1px 0;text-align:right">${isOverdue ? amountOnly(notification.paymentDue) : amountOnly(0)}</td></tr>
+          <tr><td style="padding:1px 0">Penalty</td><td style="padding:1px 0;text-align:right">${amountOnly(notification.penaltyAmount)}</td></tr>
+          <tr><td style="padding:1px 0">Miscellaneous Fees &amp; Adjustments</td><td style="padding:1px 0;text-align:right">0.00</td></tr>
+          <tr><td style="padding:1px 0;font-weight:700">Amount Due Immediately</td><td style="padding:1px 0;text-align:right;font-weight:700">${amountOnly(amountDueImmediately)}</td></tr>
+        </table>
+
+        <table cellpadding="0" cellspacing="0" style="width:76%;margin-left:72px;margin-top:16px;border-collapse:collapse;font-size:14px;font-weight:700">
+          <tr><td>${escapeHtml(dueLabel)}</td><td style="text-align:right;width:180px">${amountOnly(notification.paymentDue)}</td></tr>
+        </table>
+
+        <p style="margin:28px 0 12px 72px;font-size:11px;font-weight:700">NOTE: All transactions after ${escapeHtml(statementAsOf)} are not reflected in this Statement of Account (SOA).</p>
+
+        <div style="border-top:1px dashed #000;margin:0 0 8px"></div>
+
+        <div style="margin-left:72px;font-size:12px">
+          <div>&bull;Please pay on or before the due date to avoid penalties.</div>
+          <div>&bull;Payments made after the statement date are not yet reflected.</div>
+          <div>&bull;If payments have been made, kindly disregard this statement.</div>
+          <div>&bull;For inquiries, please call ${companyContactNumber} or email to ${companyEmail}</div>
+        </div>
+
+        <div style="margin-top:12px;text-align:center;font-size:12px;font-weight:700">PAYMENT REMINDERS</div>
+        <div style="margin:10px 0 20px 72px;font-size:12px">
+          <div>&bull;ALWAYS PROVIDE BUYER'S FULL NAME AND CIN WHEN MAKING PAYMENTS.</div>
+          <div>&bull;All check payments should be made payable to the order of D&amp;C PRIME REALTY.</div>
+        </div>
+
+        <div style="border-top:1px dashed #000;margin:0 0 28px"></div>
+        <div style="border-top:3px solid #000"></div>
+      </div>
     </div>
   `;
 
@@ -288,6 +402,7 @@ export const getPaymentDueNotifications = async (req, res) => {
     const where = [
       `s.schedule_status IN ('Unpaid', 'Partial', 'Overdue')`,
       `${unpaidBalanceExpr} > 0`,
+      `s.due_date IS NOT NULL`,
       `(
         (s.due_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY))
         OR s.due_date < CURDATE()
@@ -328,6 +443,12 @@ export const getPaymentDueNotifications = async (req, res) => {
           p.lot_project_name,
           p.lot_project_slug,
           l.lot_project_listing_unit_id,
+          l.lot_project_listing_tcp,
+          l.lot_project_listing_lmf_amount,
+          st.company_name,
+          st.company_email,
+          st.company_contact_number,
+          st.reservation_contact_number,
           cp.buyer_first_name,
           cp.buyer_middle_name,
           cp.buyer_last_name,
@@ -348,6 +469,8 @@ export const getPaymentDueNotifications = async (req, res) => {
           ON l.lot_project_listing_id = s.lot_project_listing_id
         INNER JOIN lot_project_client_profiles cp
           ON cp.lot_project_client_profile_id = s.lot_project_client_profile_id
+        LEFT JOIN lot_project_settings st
+          ON st.lot_project_id = p.lot_project_id
         LEFT JOIN (
           SELECT nl.*
           FROM lot_project_notification_logs nl
@@ -569,6 +692,9 @@ export const markPaymentDueContacted = async (req, res) => {
     connection.release();
   }
 };
+
+
+
 
 
 
