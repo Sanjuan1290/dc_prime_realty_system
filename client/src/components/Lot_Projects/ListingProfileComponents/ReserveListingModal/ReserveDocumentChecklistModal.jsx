@@ -13,6 +13,10 @@ const ReserveDocumentChecklistModal = ({
   addDocument,
   removeDocument,
   loadProjectDefaults,
+  documentTemplates = [],
+  selectedTemplateId,
+  setSelectedTemplateId,
+  loadSelectedTemplate,
 }) => (
   <div className="flex flex-col gap-4">
     <SectionCard
@@ -40,15 +44,39 @@ const ReserveDocumentChecklistModal = ({
           />
         </div>
 
-        <button
-          type="button"
-          onClick={loadProjectDefaults}
-          disabled={isLoadingDefaults || isSaving}
-          className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {isLoadingDefaults ? <FiLoader className="h-4 w-4 animate-spin" /> : <FiFileText className="h-4 w-4" />}
-          Load Project Defaults
-        </button>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <select
+            value={selectedTemplateId || ''}
+            onChange={(event) => setSelectedTemplateId(event.target.value)}
+            disabled={isSaving || isLoadingDefaults || !documentTemplates.length}
+            className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <option value="">Select template</option>
+            {documentTemplates.map((template) => (
+              <option key={template.template_id} value={template.template_id}>{template.template_name}</option>
+            ))}
+          </select>
+
+          <button
+            type="button"
+            onClick={loadSelectedTemplate}
+            disabled={isLoadingDefaults || isSaving || !selectedTemplateId}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 text-sm font-black text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isLoadingDefaults ? <FiLoader className="h-4 w-4 animate-spin" /> : <FiFileText className="h-4 w-4" />}
+            Load from Template
+          </button>
+
+          <button
+            type="button"
+            onClick={loadProjectDefaults}
+            disabled={isLoadingDefaults || isSaving}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isLoadingDefaults ? <FiLoader className="h-4 w-4 animate-spin" /> : <FiFileText className="h-4 w-4" />}
+            Load Project Defaults
+          </button>
+        </div>
       </div>
 
       {filteredDocuments.length ? (
@@ -134,4 +162,3 @@ const ReserveDocumentChecklistModal = ({
 )
 
 export default ReserveDocumentChecklistModal
-

@@ -249,17 +249,48 @@ const loadSellerByUserId = async (connection, userId) => {
   return rows[0] || null;
 };
 
+const loadGroupHeadSeller = async (connection, sellerGroupId) => {
+  if (!sellerGroupId || !(await tableExists(connection, 'seller_groups'))) return null;
+
+  const [rows] = await connection.query(
+    `
+      SELECT seller_group_head_user_id
+      FROM seller_groups
+      WHERE seller_group_id = ?
+        AND seller_group_status = 'active'
+      LIMIT 1
+    `,
+    [sellerGroupId]
+  );
+
+  const headUserId = rows[0]?.seller_group_head_user_id;
+  if (!headUserId) return null;
+
+  const headSeller = await loadSellerByUserId(connection, headUserId);
+  if (!headSeller) return null;
+  if (headSeller.accredited_seller_status !== 'active' || headSeller.user_status !== 'active') return null;
+
+  return { ...headSeller, is_group_head: true };
+};
+
 const loadSellerChain = async (connection, accreditedSellerId) => {
   const chain = [];
   const seen = new Set();
   let current = await loadSellerById(connection, accreditedSellerId);
+  let terminalSeller = null;
 
   while (current && !seen.has(current.accredited_seller_id)) {
     seen.add(current.accredited_seller_id);
     chain.push(current);
+    terminalSeller = current;
 
     if (!current.accredited_seller_reports_under_user_id) break;
     current = await loadSellerByUserId(connection, current.accredited_seller_reports_under_user_id);
+  }
+
+  const headSeller = await loadGroupHeadSeller(connection, terminalSeller?.seller_group_id || chain[0]?.seller_group_id);
+  if (headSeller && !seen.has(headSeller.accredited_seller_id)) {
+    chain.push(headSeller);
   }
 
   return chain;
@@ -341,12 +372,15 @@ const replaceReservationCommissions = async (connection, projectId, listing, cli
   const baseAmount = roundMoney(listing.lot_project_listing_net_selling_price || listing.lot_project_listing_tcp || 0);
   if (baseAmount <= 0) return;
 
-  const chain = await loadSellerChain(connection, assignedSellerId);
+  const chain = await loadSellerChain(connection, assignedSellerId, projectId);
   if (!chain.length) throw new Error('Assigned seller hierarchy could not be loaded.');
 
   const sellerIds = chain.map((seller) => Number(seller.accredited_seller_id));
   const rateMap = await loadSellerRateMap(connection, projectId, sellerIds);
-  const assignedSeller = chain[0];
+  const commissionChain = chain.filter((seller) =>
+    !seller.is_group_head || Number(rateMap.get(Number(seller.accredited_seller_id)) || 0) > 0
+  );
+  const assignedSeller = commissionChain[0];
   const fallbackRate = Number(rateMap.get(assignedSeller.accredited_seller_id) || 0);
   const groupPoolRate = await loadGroupPoolRate(connection, projectId, assignedSeller.seller_group_id, fallbackRate);
 
@@ -362,7 +396,7 @@ const replaceReservationCommissions = async (connection, projectId, listing, cli
     commissionRows.push({ seller: assignedSeller, rate, sellerType: 'main_seller', saleType: 'direct' });
   } else {
     let lowerCeiling = 0;
-    for (const seller of chain) {
+    for (const seller of commissionChain) {
       const currentCeiling = ceilingRate(seller);
       if (currentCeiling < lowerCeiling) {
         throw new Error(`${seller.full_name || 'Parent seller'} rate (${currentCeiling}%) cannot be lower than the seller below them (${lowerCeiling}%). Fix seller rates before reserving.`);
@@ -549,9 +583,6 @@ export const reserveLotProjectListing = async (req, res) => {
     const selectedInterestRate = parseMoneyValue(terms.interestRate || listing.annual_interest_rate || 0);
     const listingInterestRate = parseMoneyValue(listing.annual_interest_rate || 0);
     const interestRateOverridden = terms.interestRate !== undefined && terms.interestRate !== null && terms.interestRate !== '' && Math.abs(selectedInterestRate - listingInterestRate) > 0.0001 ? 1 : 0;
-    const interestCalculationType = String(terms.interestCalculationType || terms.soaInterestCalculationType || 'amortized').toLowerCase() === 'diminishing'
-      ? 'diminishing'
-      : 'amortized';
 
     const columns = [
       'lot_project_id',
@@ -667,7 +698,6 @@ export const reserveLotProjectListing = async (req, res) => {
     await addIfColumnExists(connection, tableName, columns, values, 'soa_legal_misc_fee_mode', legalMiscFeeMode);
     await addIfColumnExists(connection, tableName, columns, values, 'soa_legal_misc_fee_amount', legalMiscFeeAmount);
     await addIfColumnExists(connection, tableName, columns, values, 'soa_interest_rate_overridden', interestRateOverridden);
-    await addIfColumnExists(connection, tableName, columns, values, 'soa_interest_calculation_type', interestCalculationType);
 
     const updateAssignments = columns
       .filter((column) => !['lot_project_id', 'lot_project_listing_id'].includes(column))
@@ -728,7 +758,6 @@ export const reserveLotProjectListing = async (req, res) => {
       monthlyTerms: Number.isNaN(monthlyTerms) ? 36 : monthlyTerms,
       annualInterestRate: selectedInterestRate,
       dpDiscountPercentage: parseMoneyValue(terms.dpDiscountPercentage || 0),
-      interestCalculationType,
       legalMiscFeeMode,
       legalMiscFeeAmount,
     });

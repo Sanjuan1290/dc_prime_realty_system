@@ -7,6 +7,7 @@ import {
   getProjectCadastralLots,
   mapListingRow,
   formatDocumentsLabel,
+  todayDateOnly,
 } from '../_shared/lotProject.shared.js';
 
 const toNumber = (value) => Number(value || 0);
@@ -221,6 +222,66 @@ export const getLotProjectDashboard = async (req, res) => {
             : '0%',
           documents: formatDocumentsLabel(row),
         })),
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
+export const getLotProjectPriceList = async (req, res) => {
+  const connection = await db.getConnection();
+
+  try {
+    const slug = String(req.params.projectSlug || '').trim();
+    const project = await getProjectBySlug(slug);
+
+    if (!project) {
+      return res.status(404).json({ success: false, message: 'Lot project not found.' });
+    }
+
+    const projectPayload = await buildProjectPayload(project);
+    const hasListings = await tableExists(connection, 'lot_project_listings');
+
+    if (!hasListings) {
+      return res.json({ success: true, data: { project: projectPayload, listings: [] } });
+    }
+
+    const hasListingCadastralLinks = await tableExists(connection, 'lot_project_listing_cadastral_lots');
+    const cadastralSelect = hasListingCadastralLinks
+      ? `(
+          SELECT GROUP_CONCAT(c.lot_project_cadastral_lot_number ORDER BY c.lot_project_cadastral_lot_number SEPARATOR ', ')
+          FROM lot_project_listing_cadastral_lots lcl
+          INNER JOIN lot_project_cadastral_lot_numbers c
+            ON c.lot_project_cadastral_lot_number_id = lcl.lot_project_cadastral_lot_number_id
+          WHERE lcl.lot_project_listing_id = l.lot_project_listing_id
+        ) AS cadastral_lots,`
+      : `NULL AS cadastral_lots,`;
+
+    const [rows] = await connection.query(
+      `
+        SELECT
+          l.*,
+          ${cadastralSelect}
+          NULL AS buyer_full_name,
+          0 AS listing_document_count,
+          0 AS project_default_document_count,
+          0 AS project_required_document_count
+        FROM lot_project_listings l
+        WHERE l.lot_project_id = ?
+        ORDER BY l.lot_project_listing_unit_id ASC, l.lot_project_listing_id ASC
+      `,
+      [project.lot_project_id]
+    );
+
+    return res.json({
+      success: true,
+      data: {
+        project: projectPayload,
+        listings: rows.map(mapListingRow),
+        printedAt: todayDateOnly(),
       },
     });
   } catch (error) {

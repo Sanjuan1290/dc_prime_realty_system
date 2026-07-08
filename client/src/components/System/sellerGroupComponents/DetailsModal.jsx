@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FiEdit2, FiSave, FiX } from "react-icons/fi";
+import { FiEdit2, FiSave, FiSearch, FiX } from "react-icons/fi";
 import StatusAlert from "../../Shared/StatusAlert";
 import { useFetch, useFetchPatch } from "../../../utils/useFetch";
 
@@ -21,6 +21,7 @@ const DetailsModal = ({ setShowDetailsModal, setShowEditGroupModal, selectedGrou
   const [editingMemberId, setEditingMemberId] = useState(null);
   const [warning, setWarning] = useState("");
   const [localMembers, setLocalMembers] = useState(null);
+  const [memberSearch, setMemberSearch] = useState("");
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["seller-group-details", selectedGroup.seller_group_id],
@@ -31,6 +32,12 @@ const DetailsModal = ({ setShowDetailsModal, setShowEditGroupModal, selectedGrou
   const group = details.group;
   const members = localMembers || details.members || [];
   const projectRates = group?.project_rates || [];
+  const filteredMembers = members.filter((member) => {
+    const keyword = memberSearch.trim().toLowerCase();
+    if (!keyword) return true;
+    return [member.full_name, member.email, member.role, member.reports_under_name]
+      .some((value) => String(value || "").toLowerCase().includes(keyword));
+  });
 
   const updateRateMutation = useMutation({
     mutationFn: (member) =>
@@ -108,15 +115,15 @@ const DetailsModal = ({ setShowDetailsModal, setShowEditGroupModal, selectedGrou
             </section>
 
             <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-              <div className="border-b border-slate-200 px-4 py-3"><h4 className="font-bold text-slate-950">Group Members</h4><p className="text-sm text-slate-500">Click Edit Rate to convert project rate columns into number inputs.</p></div>
+              <div className="border-b border-slate-200 px-4 py-3"><h4 className="font-bold text-slate-950">Group Members</h4><p className="text-sm text-slate-500">Click Edit Rate to convert project rate columns into number inputs. Group Head uses this same project-rate table.</p><div className="relative mt-3 max-w-md"><FiSearch className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={memberSearch} onChange={(event) => setMemberSearch(event.target.value)} placeholder="Search member name, email, or role..." className="h-10 w-full rounded-xl border border-slate-300 bg-white pl-9 pr-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50" /></div></div>
               <div className="overflow-x-auto"><div className="min-w-[1250px]">
                 <div className="grid grid-cols-[1.45fr_0.9fr_1.25fr_2fr_0.75fr_1fr] bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500"><p>Member</p><p>Role</p><p>Reports Under</p><p>Project Rates</p><p>Status</p><p className="text-right">Action</p></div>
                 <div className="divide-y divide-slate-100">
-                  {members.length === 0 ? <div className="px-4 py-10 text-center"><p className="font-bold text-slate-700">No members yet.</p><p className="text-sm text-slate-500">Create seller users and assign them to this group.</p></div> : members.map((member) => {
+                  {filteredMembers.length === 0 ? <div className="px-4 py-10 text-center"><p className="font-bold text-slate-700">No matching members.</p><p className="text-sm text-slate-500">Try another name, email, or role.</p></div> : filteredMembers.map((member) => {
                     const isEditing = editingMemberId === member.accredited_seller_id;
                     return (
                       <div key={member.accredited_seller_id} className="grid grid-cols-[1.45fr_0.9fr_1.25fr_2fr_0.75fr_1fr] items-center px-4 py-4 text-sm">
-                        <div><p className="font-bold text-slate-950">{member.full_name}</p><p className="text-sm text-slate-500">{member.email}</p></div>
+                        <div><div className="flex flex-wrap items-center gap-2"><p className="font-bold text-slate-950">{member.full_name}</p>{Number(group.seller_group_head_user_id) === Number(member.user_id) ? <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-amber-700 ring-1 ring-amber-100">Group Head</span> : null}</div><p className="text-sm text-slate-500">{member.email}</p></div>
                         <p className="font-semibold capitalize text-slate-700">{roleLabels[member.role] || member.role.replaceAll("_", " ")}</p>
                         <div><p className="font-semibold text-slate-800">{member.reports_under_name || "Direct to Developer"}</p><p className="text-xs text-slate-500">{member.reports_under_user_id ? "Included in hierarchy chain" : "No parent seller"}</p></div>
                         <div className="grid gap-2 md:grid-cols-2">

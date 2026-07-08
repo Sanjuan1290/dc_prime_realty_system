@@ -10,14 +10,20 @@ import {
   deleteLotProject,
 } from '../../controllers/System/projects.controller.js';
 
-import { getLotProjectDashboard } from '../../controllers/Lot_Projects/Dashboard/Dashboard.controller.js';
+import {
+  getLotProjectDashboard,
+  getLotProjectPriceList,
+} from '../../controllers/Lot_Projects/Dashboard/Dashboard.controller.js';
 import {
   getLotProjectListings,
   createLotProjectListing,
   updateLotProjectListing,
   deleteLotProjectListing,
 } from '../../controllers/Lot_Projects/Listings/Listings.controller.js';
-import { getLotProjectListingProfile } from '../../controllers/Lot_Projects/ListingProfile/ListingProfile.controller.js';
+import {
+  getLotProjectListingProfile,
+  holdLotProjectListing,
+} from '../../controllers/Lot_Projects/ListingProfile/ListingProfile.controller.js';
 import { updateLotProjectClientProfile } from '../../controllers/Lot_Projects/ListingProfile/ClientProfile.controller.js';
 import { reserveLotProjectListing } from '../../controllers/Lot_Projects/ListingProfile/ReserveListing.controller.js';
 import {
@@ -46,6 +52,7 @@ const router = express.Router();
 router.get('/lot-projects', getLotProjects);
 router.get('/lot-projects/options', getLotProjectOptions);
 router.get('/lot-projects/:projectSlug/dashboard', getLotProjectDashboard);
+router.get('/lot-projects/:projectSlug/price-list', getLotProjectPriceList);
 router.get('/lot-projects/:projectSlug/listings', getLotProjectListings);
 router.get('/lot-projects/:projectSlug/payment-logs', getLotProjectPaymentLogs);
 router.get('/lot-projects/:projectSlug/commissions', getLotProjectCommissions);
@@ -61,6 +68,7 @@ router.put('/lot-projects/:projectSlug/listings/:listingId', updateLotProjectLis
 router.delete('/lot-projects/:projectSlug/listings/:listingId', deleteLotProjectListing);
 router.put('/lot-projects/:projectSlug/listings/:listingId/client-profile', updateLotProjectClientProfile);
 router.post('/lot-projects/:projectSlug/listings/:listingId/reserve', reserveLotProjectListing);
+router.patch('/lot-projects/:projectSlug/listings/:listingId/hold', holdLotProjectListing);
 router.put('/lot-projects/:projectSlug/listings/:listingId/documents/:documentId/upload', uploadLotProjectListingDocument);
 router.patch('/lot-projects/:projectSlug/listings/:listingId/documents/:documentId/approve', approveLotProjectListingDocument);
 router.patch('/lot-projects/:projectSlug/listings/:listingId/documents/:documentId/clear', clearLotProjectListingDocument);
@@ -74,4 +82,3 @@ router.patch('/lot-projects/:id/status', toggleLotProjectStatus);
 router.delete('/lot-projects/:id', deleteLotProject);
 
 export default router;
-

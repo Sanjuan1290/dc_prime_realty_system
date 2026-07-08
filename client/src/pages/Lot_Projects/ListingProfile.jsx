@@ -6,6 +6,7 @@ import {
   FiFileText,
   FiHome,
   FiPrinter,
+  FiPauseCircle,
   FiRefreshCw,
   FiUser,
   FiUserCheck,
@@ -48,6 +49,53 @@ const emptyListing = {
   status: '-',
 }
 
+
+const HoldListingModal = ({ listing, isSaving, onClose, onSubmit }) => {
+  const [clientName, setClientName] = useState(listing?.heldForName || '')
+  const [note, setNote] = useState(listing?.holdNote || '')
+
+  const submit = (event) => {
+    event.preventDefault()
+    if (!clientName.trim()) return
+    onSubmit?.({ clientName: clientName.trim(), note: note.trim() })
+  }
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/50 p-4">
+      <form onSubmit={submit} className="w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+          <div>
+            <h3 className="text-lg font-black text-slate-950">Hold Listing</h3>
+            <p className="text-sm font-semibold text-slate-500">Temporarily hold {listing?.unit_id || listing?.unitCode || 'this unit'} for a client.</p>
+          </div>
+          <button type="button" onClick={onClose} disabled={isSaving} className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:opacity-60">
+            ×
+          </button>
+        </div>
+
+        <div className="space-y-4 p-5">
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-black text-slate-700">Client Name <span className="text-red-500">*</span></span>
+            <input value={clientName} onChange={(event) => setClientName(event.target.value)} disabled={isSaving} placeholder="Enter client name" className="h-11 w-full rounded-xl border border-slate-300 px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100" />
+          </label>
+
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-black text-slate-700">Note</span>
+            <textarea value={note} onChange={(event) => setNote(event.target.value)} disabled={isSaving} rows={4} placeholder="Optional hold note" className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100" />
+          </label>
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4">
+          <button type="button" onClick={onClose} disabled={isSaving} className="h-10 rounded-lg border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:opacity-60">Cancel</button>
+          <button type="submit" disabled={isSaving || !clientName.trim()} className="inline-flex h-10 items-center justify-center rounded-lg bg-amber-600 px-5 text-sm font-black text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:bg-amber-300">
+            {isSaving ? 'Saving...' : 'Hold Listing'}
+          </button>
+        </div>
+      </form>
+    </div>
+  )
+}
+
 const ListingProfile = () => {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -55,6 +103,7 @@ const ListingProfile = () => {
 
   const [activeTab, setActiveTab] = useState('unit')
   const [showReserveModal, setShowReserveModal] = useState(false)
+  const [showHoldModal, setShowHoldModal] = useState(false)
   const [alert, setAlert] = useState(null)
 
   const profileQuery = useQuery({
@@ -79,6 +128,16 @@ const ListingProfile = () => {
     enabled: showReserveModal,
     staleTime: 1000 * 60 * 5,
   })
+
+  const reserveTemplatesQuery = useQuery({
+    queryKey: ['document-templates'],
+    queryFn: () => useFetch('/documents/getTemplates'),
+    enabled: showReserveModal,
+    staleTime: 1000 * 60 * 5,
+  })
+
+  const documentTemplates = reserveTemplatesQuery.data?.templates || []
+  const templateDocuments = reserveTemplatesQuery.data?.template_documents || []
 
   const documentLibrary = useMemo(
     () =>
@@ -134,6 +193,24 @@ const ListingProfile = () => {
     },
     onError: (error) => {
       setAlert({ type: 'error', message: error?.message || 'Failed to reserve listing.' })
+    },
+  })
+
+  const holdListingMutation = useMutation({
+    mutationFn: (payload) =>
+      useFetchPatch(`/projects/lot-projects/${projectSlug}/listings/${listingId}/hold`, payload),
+    onMutate: (payload) => {
+      setAlert({ type: 'loading', message: `Holding unit for ${payload.clientName || 'client'}...` })
+    },
+    onSuccess: (result) => {
+      setShowHoldModal(false)
+      setAlert({ type: 'success', message: result?.message || 'Listing held successfully.' })
+      queryClient.invalidateQueries({ queryKey: ['lot-listing-profile', projectSlug, listingId] })
+      queryClient.invalidateQueries({ queryKey: ['lot-listings', projectSlug] })
+      queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] })
+    },
+    onError: (error) => {
+      setAlert({ type: 'error', message: error?.message || 'Failed to hold listing.' })
     },
   })
 
@@ -213,7 +290,8 @@ const ListingProfile = () => {
     profileQuery.refetch()
   }
 
-  const canReserve = listing.rawStatus === 'available' || listing.rawStatus === 'hold' || listing.listing_status === 'Available'
+  const canHold = listing.rawStatus === 'available' || listing.listing_status === 'Available'
+  const canReserve = listing.rawStatus === 'available' || listing.listing_status === 'Available'
   const canManageDocuments = Boolean(listing.hasClientProfile && listing.canEditBuyerProfile)
 
   return (
@@ -255,13 +333,19 @@ const ListingProfile = () => {
                 {listing.project_name || project.name || 'Lot Project'} • {listing.listing_status || '-'}
               </p>
 
+              {listing.rawStatus === 'hold' && listing.heldForName ? (
+                <p className="mt-1 rounded-full bg-amber-50 px-3 py-1 text-xs font-black text-amber-700 ring-1 ring-amber-100">
+                  Held for: {listing.heldForName}
+                </p>
+              ) : null}
+
               <p className="mt-1 text-xs font-semibold text-slate-400">
                 Database route id: {listingId || '-'}
               </p>
             </div>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-5">
+          <div className="grid gap-3 sm:grid-cols-6">
             <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
               <p className="text-xs font-black uppercase text-slate-500">TCP</p>
               <p className="mt-1 text-sm font-black text-slate-950">
@@ -281,6 +365,9 @@ const ListingProfile = () => {
               <p className="mt-1 text-sm font-black text-emerald-800">
                 {listing.listing_status || '-'}
               </p>
+              {listing.rawStatus === 'hold' && listing.heldForName ? (
+                <p className="mt-1 text-xs font-black text-amber-700">Held for: {listing.heldForName}</p>
+              ) : null}
             </div>
 
             <button
@@ -291,6 +378,16 @@ const ListingProfile = () => {
             >
               <FiRefreshCw className={`h-4 w-4 ${profileQuery.isFetching ? 'animate-spin' : ''}`} />
               Refresh
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowHoldModal(true)}
+              disabled={!canHold || profileQuery.isLoading || holdListingMutation.isPending}
+              className="inline-flex min-h-[68px] items-center justify-center gap-2 rounded-xl bg-amber-600 px-4 text-sm font-black text-white shadow-sm transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98]"
+            >
+              <FiPauseCircle className="h-4 w-4" />
+              Hold
             </button>
 
             <button
@@ -372,6 +469,15 @@ const ListingProfile = () => {
         <Printouts projectSlug={projectSlug} listing={listing} client={client} soaRows={soaRows} documents={documents} />
       ) : null}
 
+      {showHoldModal ? (
+        <HoldListingModal
+          listing={listing}
+          isSaving={holdListingMutation.isPending}
+          onClose={() => setShowHoldModal(false)}
+          onSubmit={(payload) => holdListingMutation.mutateAsync(payload)}
+        />
+      ) : null}
+
       {showReserveModal ? (
         <ReserveListingModal
           listing={listing}
@@ -381,7 +487,9 @@ const ListingProfile = () => {
           documentLibrary={documentLibrary}
           projectDefaultDocuments={project.defaultDocuments || []}
           sellerOptions={reserveSellerOptions}
-          isLoadingDocuments={reserveDocumentsQuery.isLoading}
+          documentTemplates={documentTemplates}
+          templateDocuments={templateDocuments}
+          isLoadingDocuments={reserveDocumentsQuery.isLoading || reserveTemplatesQuery.isLoading}
           onReserve={handleReserveListing}
         />
       ) : null}

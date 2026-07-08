@@ -12,4 +12,3 @@ router.get('/parents', getParentSellers);
 router.post('/:sellerId/proof-of-income', uploadAccreditedSellerProofOfIncome);
 
 export default router;
-

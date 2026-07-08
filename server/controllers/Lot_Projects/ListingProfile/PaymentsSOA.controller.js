@@ -336,9 +336,6 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
     const annualInterestRate = interestRateSource === 'listing'
       ? Number(listing.annual_interest_rate || 0)
       : Number(req.body.annualInterestRate ?? req.body.soa_annual_interest_rate ?? listing.soa_annual_interest_rate ?? listing.annual_interest_rate ?? 0);
-    const interestCalculationType = String(req.body.interestCalculationType || req.body.soa_interest_calculation_type || listing.soa_interest_calculation_type || 'amortized').toLowerCase() === 'diminishing'
-      ? 'diminishing'
-      : 'amortized';
     const firstDueDate = dateOrNull(req.body.firstDueDate || req.body.soa_first_due_date || listing.soa_first_due_date);
 
     if (dpDiscountPercentage < 0 || dpDiscountPercentage > 100) {
@@ -377,7 +374,6 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
     await addProfileUpdate('soa_monthly_terms', monthlyTerms);
     await addProfileUpdate('soa_annual_interest_rate', annualInterestRate);
     await addProfileUpdate('soa_interest_rate_overridden', interestRateSource === 'custom' ? 1 : 0);
-    await addProfileUpdate('soa_interest_calculation_type', interestCalculationType);
     await addProfileUpdate('soa_first_due_date', firstDueDate);
 
     await connection.beginTransaction();
@@ -409,7 +405,6 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
         soa_monthly_terms: monthlyTerms,
         soa_annual_interest_rate: annualInterestRate,
         soa_interest_rate_overridden: interestRateSource === 'custom' ? 1 : 0,
-        soa_interest_calculation_type: interestCalculationType,
         soa_first_due_date: firstDueDate,
       };
       const terms = getComputedSoaTerms(updatedListing, []);
@@ -501,7 +496,6 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
         monthlyTerms,
         annualInterestRate,
         interestRateSource,
-        interestCalculationType,
         firstDueDate,
       },
     });

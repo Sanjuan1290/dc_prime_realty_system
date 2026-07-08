@@ -126,7 +126,7 @@ const Listings = () => {
           <div><h2 className="text-lg font-black text-slate-950">Unit Inventory</h2><p className="text-sm font-semibold text-slate-500">Showing {listings.length} database record(s).</p></div>
           <div className="flex flex-col gap-2 sm:flex-row">
             <label className="relative"><FiSearch className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search unit, buyer, cadastral..." className="h-11 w-full rounded-2xl border border-slate-200 bg-white pl-11 pr-3 text-sm font-semibold outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50 sm:w-80" /></label>
-            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="h-11 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-black text-slate-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"><option value="all">All Status</option><option value="available">Available</option><option value="sold">Sold / Active</option><option value="fully_paid">Fully Paid</option><option value="hold">Hold</option><option value="pending_for_cancellation">Pending Cancellation</option><option value="cancelled">Cancelled</option><option value="superseded">Superseded</option></select>
+            <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="h-11 rounded-2xl border border-slate-200 bg-white px-3 text-sm font-black text-slate-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"><option value="all">All Status</option><option value="available">Available</option><option value="sold">Sold / Active</option><option value="fully_paid">Fully Paid</option><option value="hold">Hold</option><option value="pending_for_cancellation">Pending Cancellation</option><option value="cancelled">Cancelled</option></select>
           </div>
         </div>
 
@@ -155,4 +155,3 @@ const Listings = () => {
 }
 
 export default Listings
-

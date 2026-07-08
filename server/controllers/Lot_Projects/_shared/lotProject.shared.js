@@ -71,9 +71,20 @@ export const money = (value) =>
     minimumFractionDigits: 2,
   }).format(Number(value || 0));
 
+export const todayDateOnly = () =>
+  new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Manila',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+
 export const plainDate = (value) => {
   if (!value) return '-';
-  if (typeof value === 'string') return value.slice(0, 10);
+  if (typeof value === 'string') {
+    const match = value.match(/^(\d{4}-\d{2}-\d{2})/);
+    return match ? match[1] : value.slice(0, 10);
+  }
   return new Date(value).toISOString().slice(0, 10);
 };
 
@@ -145,7 +156,6 @@ export const getListingStatusLabel = (status = '', soldSubstatus = null) => {
     sold: 'Sold / Active',
     pending_for_cancellation: 'Pending Cancellation',
     cancelled: 'Cancelled',
-    superseded: 'Superseded',
   };
 
   return map[status] || status || 'Available';
@@ -177,7 +187,6 @@ export const normalizeListingStatusPayload = (value = '') => {
     'sold',
     'pending_for_cancellation',
     'cancelled',
-    'superseded',
   ]);
 
   return {
@@ -217,6 +226,9 @@ export const mapListingRow = (row = {}) => ({
   buyer: row.buyer_full_name || row.buyer_name || 'No buyer yet',
   documentStatus: row.document_status || formatDocumentsLabel(row),
   status: getListingStatusLabel(row.lot_project_listing_status, row.lot_project_listing_sold_substatus),
+  heldForName: row.hold_client_name || '',
+  holdNote: row.hold_note || '',
+  holdCreatedAt: row.hold_created_at ? plainDate(row.hold_created_at) : '',
   rawStatus: row.lot_project_listing_status,
   soldSubstatus: row.lot_project_listing_sold_substatus,
   routeId: row.lot_project_listing_id || row.lot_project_listing_unit_id,
@@ -534,6 +546,9 @@ export const mapProfileListing = (row = {}, project = {}, documents = []) => {
     old_unit_ids: row.lot_project_listing_old_unit_ids || '-',
     lot_type: normalizeLotType(row.lot_project_listing_unit_type),
     listing_status: listingStatus,
+    heldForName: row.hold_client_name || '',
+    holdNote: row.hold_note || '',
+    holdCreatedAt: row.hold_created_at ? plainDate(row.hold_created_at) : '',
     rawStatus: row.lot_project_listing_status,
     soldSubstatus: row.lot_project_listing_sold_substatus,
     status: listingStatus,
@@ -566,7 +581,6 @@ export const mapProfileListing = (row = {}, project = {}, documents = []) => {
     soaListingAnnualInterestRate: annualInterestRate,
     soaInterestRateSource: Number(row.soa_interest_rate_overridden || 0) === 1 ? 'custom' : 'listing',
     soaInterestRateOverridden: Number(row.soa_interest_rate_overridden || 0) === 1,
-    soaInterestCalculationType: row.soa_interest_calculation_type || 'amortized',
     soaDpDiscountPercentage: Number(row.soa_dp_discount_percentage || 0),
     buyer_name: row.buyer_full_name || '-',
     spouse_co_owner: row.second_buyer_full_name || '-',
@@ -669,23 +683,35 @@ export const getListingDocuments = async (connection, lotProjectId, listingId, c
 export const roundMoneyValue = (value) => Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
 
 export const normalizeDateInput = (value) => {
-  if (!value || value === '-') return new Date().toISOString().slice(0, 10);
-  if (typeof value === 'string') return value.slice(0, 10);
+  if (!value || value === '-') return todayDateOnly();
+
+  if (typeof value === 'string') {
+    const clean = value.trim();
+    const isoMatch = clean.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+
+    const slashMatch = clean.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (slashMatch) {
+      const [, dd, mm, yyyy] = slashMatch;
+      return `${yyyy}-${String(mm).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+    }
+  }
+
   return new Date(value).toISOString().slice(0, 10);
 };
 
 export const addMonthsToDate = (value, months = 0) => {
-  const base = new Date(`${normalizeDateInput(value)}T00:00:00`);
-  const result = Number.isNaN(base.getTime()) ? new Date() : new Date(base);
-  const originalDay = result.getDate();
+  const [y, m, d] = normalizeDateInput(value).split('-').map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d));
+  const originalDay = date.getUTCDate();
 
-  result.setMonth(result.getMonth() + Number(months || 0));
+  date.setUTCMonth(date.getUTCMonth() + Number(months || 0));
 
-  if (result.getDate() !== originalDay) {
-    result.setDate(0);
+  if (date.getUTCDate() !== originalDay) {
+    date.setUTCDate(0);
   }
 
-  return result.toISOString().slice(0, 10);
+  return date.toISOString().slice(0, 10);
 };
 
 export const getOrdinalLabel = (number) => {
@@ -744,9 +770,11 @@ export const createBalloonPrincipalRow = (payment = {}, index = 1) => {
     scheduleType: 'balloon',
     sequence: 100000 + Number(index || 0),
     dueDate: normalizeDateInput(paidDate),
-    description: 'Balloon Payment',
+    description: 'Balloon Principal Reduction',
     beginningBalance: 0,
-    dueAmount: 0,
+    dueAmount: amountPaid,
+    monthlyAmortizationAmount: amountPaid,
+    principalAmount: amountPaid,
     interest: 0,
     penalty: 0,
     datePaid: normalizeDateInput(paidDate),
@@ -864,10 +892,7 @@ export const getReserveSellerOptions = async (connection, lotProjectId) => {
   }));
 };
 
-const normalizeInterestCalculationType = (value = '') => {
-  const clean = String(value || 'amortized').trim().toLowerCase();
-  return clean === 'diminishing' ? 'diminishing' : 'amortized';
-};
+const normalizeInterestCalculationType = () => 'amortized';
 
 const getEffectiveSoaInterestRate = (listingRow = {}) => {
   const listingRate = Number(listingRow.annual_interest_rate ?? listingRow.lot_project_listing_annual_interest_rate ?? 0);
@@ -986,9 +1011,6 @@ export const getComputedSoaTerms = (listingRow = {}, existingScheduleRows = []) 
 
   const annualInterestRate = getEffectiveSoaInterestRate(listingRow);
   const interestRateSource = Number(listingRow.soa_interest_rate_overridden || 0) === 1 ? 'custom' : 'listing';
-  const interestCalculationType = normalizeInterestCalculationType(
-    listingRow.soa_interest_calculation_type || listingRow.interestCalculationType || 'amortized'
-  );
   const financedBalance = roundMoneyValue(Math.max(principalTcp - reservationFee - downpaymentTotal, 0));
   const monthlyPrincipal = roundMoneyValue(monthlyTerms > 0 ? financedBalance / monthlyTerms : financedBalance);
   const monthlyAmortization = getMonthlyAmortizationAmount(financedBalance, annualInterestRate, monthlyTerms);
@@ -1008,7 +1030,6 @@ export const getComputedSoaTerms = (listingRow = {}, existingScheduleRows = []) 
     annualInterestRate,
     listingAnnualInterestRate: Number(listingRow.annual_interest_rate || 0),
     interestRateSource,
-    interestCalculationType,
     financedBalance,
     startingDate,
     firstDueDate,
@@ -1216,11 +1237,10 @@ const getPaymentBreakdownForRow = (row = {}, amountPaid = 0) => {
 };
 
 export const recomputeComputedSoaBalances = (rows = [], terms = {}) => {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayDateOnly();
   let runningBalance = roundMoneyValue(terms.tcp || 0);
   let projectedMonthlyBalance = roundMoneyValue(terms.financedBalance || 0);
   const monthlyRate = Number(terms.annualInterestRate || 0) / 100 / 12;
-  const interestCalculationType = normalizeInterestCalculationType(terms.interestCalculationType);
   const sortedRows = sortComputedRows(rows);
   const monthlyRows = sortedRows.filter((row) => row.scheduleType === 'monthly');
   const visibleRows = [];
@@ -1235,67 +1255,46 @@ export const recomputeComputedSoaBalances = (rows = [], terms = {}) => {
     row.beginningBalance = runningBalance;
 
     if (scheduleType === 'balloon') {
-      row.dueAmount = 0;
-      row.monthlyAmortizationAmount = 0;
       row.interest = 0;
-      row.principalAmount = 0;
       row.penalty = 0;
+      row.monthlyAmortizationAmount = amountPaid;
+      row.dueAmount = amountPaid;
+      row.principalAmount = amountPaid;
 
       const principalPaid = roundMoneyValue(Math.min(amountPaid, runningBalance));
       runningBalance = roundMoneyValue(Math.max(runningBalance - principalPaid, 0));
-      projectedMonthlyBalance = runningBalance;
+      projectedMonthlyBalance = roundMoneyValue(Math.max(projectedMonthlyBalance - principalPaid, 0));
 
       row.amountPaid = principalPaid;
       row.endingBalance = runningBalance;
       row.status = principalPaid > 0 ? 'Paid' : 'Unpaid';
 
-      visibleRows.push({
-        id: row.id,
-        dueDate: row.dueDate,
-        description: row.description,
-        beginningBalance: row.beginningBalance,
-        dueAmount: row.dueAmount,
-        monthlyAmortizationAmount: row.monthlyAmortizationAmount || row.dueAmount,
-        principalAmount: row.principalAmount || 0,
-        interest: row.interest || 0,
-        penalty: row.penalty || 0,
-        datePaid: row.datePaid || '-',
-        amountPaid: row.amountPaid || 0,
-        paidPrincipalAmount: principalPaid,
-        paidInterestAmount: 0,
-        paidPenaltyAmount: 0,
-        referenceId: row.referenceId || '-',
-        status: row.status,
-        endingBalance: row.endingBalance,
-        totalDue: getScheduleTotalDue(row),
-      });
-
+      // Balloon is a principal-reduction payment, not a fake scheduled SOA due row.
+      // It remains visible in payment logs, while future monthly rows stay locked and shorten from the back.
       if (runningBalance <= 0) break;
       continue;
     }
 
     if (scheduleType === 'monthly') {
-      const isLastMonthly = monthlyIndex === monthlyRows.length - 1;
+      const remainingMonthlyRows = Math.max(monthlyRows.length - monthlyIndex, 1);
       const amortizedPayment = roundMoneyValue(Number(terms.monthlyAmortization || row.monthlyAmortizationAmount || row.dueAmount || 0));
-      const diminishingPrincipal = roundMoneyValue(Number(terms.monthlyPrincipal || row.dueAmount || 0));
-      const scheduledBalance = Math.max(projectedMonthlyBalance, 0);
+      const scheduledBalance = roundMoneyValue(Math.max(projectedMonthlyBalance, 0));
 
       if (scheduledBalance <= 0 && amountPaid <= 0) break;
 
-      if (interestCalculationType === 'diminishing') {
-        row.interest = roundMoneyValue(scheduledBalance * monthlyRate);
-        row.principalAmount = roundMoneyValue(Math.min(diminishingPrincipal, scheduledBalance));
+      row.interest = roundMoneyValue(scheduledBalance * monthlyRate);
+      const normalPrincipal = roundMoneyValue(Math.max(amortizedPayment - row.interest, 0));
+      const isFinalPayoff = remainingMonthlyRows === 1 || normalPrincipal >= scheduledBalance;
+
+      if (isFinalPayoff) {
+        row.principalAmount = scheduledBalance;
         row.dueAmount = roundMoneyValue(row.principalAmount + row.interest);
-        row.monthlyAmortizationAmount = row.dueAmount;
       } else {
-        row.interest = roundMoneyValue(scheduledBalance * monthlyRate);
-        row.dueAmount = isLastMonthly
-          ? roundMoneyValue(scheduledBalance + row.interest)
-          : amortizedPayment;
-        row.monthlyAmortizationAmount = row.dueAmount;
-        row.principalAmount = roundMoneyValue(Math.min(Math.max(row.dueAmount - row.interest, 0), scheduledBalance));
+        row.dueAmount = amortizedPayment;
+        row.principalAmount = roundMoneyValue(Math.min(normalPrincipal, scheduledBalance));
       }
 
+      row.monthlyAmortizationAmount = row.dueAmount;
       projectedMonthlyBalance = roundMoneyValue(Math.max(projectedMonthlyBalance - row.principalAmount, 0));
       monthlyIndex += 1;
     }
@@ -1520,7 +1519,7 @@ export const normalizePaymentMethod = (value = '') => {
 };
 
 export const getNextCashReference = async (connection, unitCode) => {
-  const dateKey = new Date().toISOString().slice(0, 10).replaceAll('-', '');
+  const dateKey = todayDateOnly().replaceAll('-', '');
   const cleanUnit = String(unitCode || 'UNIT').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
   const prefix = `CASH-${dateKey}-${cleanUnit}`;
 
@@ -1671,7 +1670,7 @@ export const applyPaymentToSchedules = async (connection, listing, paymentId, pr
     const appliedAmount = roundMoneyValue(Math.min(remaining, unpaidForRow));
     const nextPaid = roundMoneyValue(currentPaid + appliedAmount);
     const isPaid = nextPaid + 0.009 >= totalDue;
-    const paidBeforeDue = paymentDate && row.due_date && new Date(paymentDate) < new Date(row.due_date);
+    const paidBeforeDue = paymentDate && row.due_date && String(paymentDate).slice(0, 10) < String(row.due_date).slice(0, 10);
     const nextStatus = isPaid ? (paidBeforeDue ? 'Advance' : 'Paid') : 'Partial';
 
     await connection.query(

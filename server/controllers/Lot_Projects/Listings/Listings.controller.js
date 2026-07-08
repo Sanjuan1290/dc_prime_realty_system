@@ -309,8 +309,6 @@ const syncListingInterestToUnlockedSoa = async (connection, projectId, listingId
   if (!(await tableExists(connection, 'lot_project_client_profiles'))) return { synced: 0, skipped: 0 };
 
   const hasOverrideColumn = await columnExists(connection, 'lot_project_client_profiles', 'soa_interest_rate_overridden');
-  const hasScheduleTypeColumn = await columnExists(connection, 'lot_project_client_profiles', 'soa_interest_calculation_type');
-
   const [profileRows] = await connection.query(
     `
       SELECT l.*, cp.*
@@ -359,10 +357,6 @@ const syncListingInterestToUnlockedSoa = async (connection, projectId, listingId
     if (hasOverrideColumn) {
       updateColumns.push('soa_interest_rate_overridden = 0');
     }
-    if (hasScheduleTypeColumn && !profile.soa_interest_calculation_type) {
-      updateColumns.push("soa_interest_calculation_type = 'amortized'");
-    }
-
     if (updateColumns.length) {
       await connection.query(
         `
@@ -379,7 +373,6 @@ const syncListingInterestToUnlockedSoa = async (connection, projectId, listingId
       annual_interest_rate: annualInterestRate,
       soa_annual_interest_rate: annualInterestRate,
       soa_interest_rate_overridden: 0,
-      soa_interest_calculation_type: profile.soa_interest_calculation_type || 'amortized',
     });
 
     synced += 1;
@@ -473,6 +466,15 @@ export const updateLotProjectListing = async (req, res) => {
     if (hasAnnualInterestRate) {
       updateColumns.push('annual_interest_rate = ?');
       updateParams.push(annualInterestRate);
+    }
+
+    if (listingStatus.status !== 'hold') {
+      const holdColumns = ['hold_client_name', 'hold_note', 'hold_created_at', 'hold_created_by_user_id'];
+      for (const column of holdColumns) {
+        if (await columnExists(connection, 'lot_project_listings', column)) {
+          updateColumns.push(`${column} = NULL`);
+        }
+      }
     }
 
     const [result] = await connection.query(

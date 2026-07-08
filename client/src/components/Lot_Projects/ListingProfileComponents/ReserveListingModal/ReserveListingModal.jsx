@@ -33,6 +33,8 @@ const ReserveListingModal = ({
   documentLibrary: documentLibraryProp = [],
   projectDefaultDocuments: projectDefaultDocumentsProp = [],
   sellerOptions = [],
+  documentTemplates = [],
+  templateDocuments = [],
   isLoadingDocuments = false,
   onClose,
   onReserve,
@@ -41,6 +43,7 @@ const ReserveListingModal = ({
   const [clientForm, setClientForm] = useState(() => getInitialClientForm(client))
   const [selectedDocuments, setSelectedDocuments] = useState([])
   const [searchDocument, setSearchDocument] = useState('')
+  const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [alert, setAlert] = useState(null)
   const [isLoadingDefaults, setIsLoadingDefaults] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
@@ -80,6 +83,10 @@ const ReserveListingModal = ({
     const source = projectDefaultDocumentsProp.length ? projectDefaultDocumentsProp : fallbackProjectDefaultDocuments
     return source.map(normalizeLibraryDocument).filter((document) => document.id)
   }, [projectDefaultDocumentsProp])
+
+  const activeDocumentTemplates = useMemo(() => {
+    return (documentTemplates || []).filter((template) => template.template_status !== 'inactive')
+  }, [documentTemplates])
 
   const availableSellers = useMemo(() => {
     return (sellerOptions || [])
@@ -167,6 +174,45 @@ const ReserveListingModal = ({
     })
   }
 
+  const mergeSelectedDocuments = (documents = []) => {
+    setSelectedDocuments((current) => {
+      const existingIds = new Set(current.map((document) => Number(document.document_id || document.id)))
+      const additions = documents
+        .map(normalizeLibraryDocument)
+        .filter((document) => document.id && !existingIds.has(Number(document.id)))
+
+      return [...current, ...additions]
+    })
+  }
+
+  const loadSelectedTemplate = () => {
+    const template = activeDocumentTemplates.find((item) => String(item.template_id) === String(selectedTemplateId))
+    if (!template) {
+      setAlert({ type: 'error', message: 'Select a template first.' })
+      return
+    }
+
+    const documents = templateDocuments
+      .filter((document) => String(document.template_id) === String(selectedTemplateId))
+      .map((document) => ({
+        ...document,
+        id: document.document_id,
+        document_id: document.document_id,
+        name: document.document_name,
+        description: document.document_description || 'No description',
+        requirement: document.document_is_required ? 'required' : 'optional',
+        status: document.document_status || 'active',
+      }))
+
+    if (!documents.length) {
+      setAlert({ type: 'warning', message: 'Selected template has no documents.' })
+      return
+    }
+
+    mergeSelectedDocuments(documents)
+    setAlert({ type: 'success', message: `${template.template_name} documents loaded.` })
+  }
+
   const removeDocument = (documentId) => {
     setDeletingDocId(documentId)
     setAlert({ type: 'loading', message: 'Removing document from checklist...' })
@@ -183,7 +229,7 @@ const ReserveListingModal = ({
     setAlert({ type: 'loading', message: 'Loading project default documents...' })
 
     window.setTimeout(() => {
-      setSelectedDocuments(projectDefaultDocuments)
+      mergeSelectedDocuments(projectDefaultDocuments)
       setIsLoadingDefaults(false)
       setAlert({ type: 'success', message: 'Project default documents loaded.' })
     }, 600)
@@ -392,6 +438,10 @@ const ReserveListingModal = ({
               addDocument={addDocument}
               removeDocument={removeDocument}
               loadProjectDefaults={loadProjectDefaults}
+              documentTemplates={activeDocumentTemplates}
+              selectedTemplateId={selectedTemplateId}
+              setSelectedTemplateId={setSelectedTemplateId}
+              loadSelectedTemplate={loadSelectedTemplate}
             />
           ) : null}
 
@@ -465,4 +515,3 @@ const ReserveListingModal = ({
 }
 
 export default ReserveListingModal
-

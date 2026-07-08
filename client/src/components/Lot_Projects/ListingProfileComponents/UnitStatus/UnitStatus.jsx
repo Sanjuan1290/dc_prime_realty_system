@@ -346,4 +346,3 @@ const UnitStatus = ({ listing = fallbackListing, project = {}, onSave, isSaving 
 }
 
 export default UnitStatus
-

@@ -524,9 +524,10 @@ export const viewGroup = async (req, res) => {
         INNER JOIN users u ON u.id = a.user_id
         LEFT JOIN users parent ON parent.id = a.accredited_seller_reports_under_user_id
         WHERE a.seller_group_id = ?
+          OR a.user_id = ?
         ORDER BY FIELD(u.role, 'broker_network_manager', 'broker', 'manager', 'agent'), full_name ASC
       `,
-      [groupId]
+      [groupId, group.seller_group_head_user_id || 0]
     );
 
     const [hydratedGroup] = await hydrateGroupRates([
@@ -573,11 +574,12 @@ export const editUserRate = async (req, res) => {
         SELECT TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS seller_name
         FROM accredited_sellers acs
         INNER JOIN users u ON u.id = acs.user_id
+        INNER JOIN seller_groups sg ON sg.seller_group_id = ?
         WHERE acs.accredited_seller_id = ?
-          AND acs.seller_group_id = ?
+          AND (acs.seller_group_id = ? OR acs.user_id = sg.seller_group_head_user_id)
         LIMIT 1
       `,
-      [accreditedSellerId, groupId]
+      [groupId, accreditedSellerId, groupId]
     );
 
     if (!sellerRows.length) {
@@ -621,5 +623,3 @@ export const editUserRate = async (req, res) => {
     connection.release();
   }
 };
-
-

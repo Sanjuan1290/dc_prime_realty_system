@@ -13,11 +13,16 @@ export const cleanMoney = (value) => {
 export const formatDate = (value) => {
   if (!value || value === '-') return '-'
 
-  const date = new Date(value)
+  const text = String(value).trim()
+  const match = text.match(/^(\d{4}-\d{2}-\d{2})/)
+  if (match) return match[1]
 
-  if (Number.isNaN(date.getTime())) return value
+  const date = new Date(text)
+
+  if (Number.isNaN(date.getTime())) return text
 
   return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Manila',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',

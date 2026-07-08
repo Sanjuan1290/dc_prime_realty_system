@@ -268,5 +268,75 @@ export const getLotProjectListingProfile = async (req, res) => {
     connection.release();
   }
 };
+export const holdLotProjectListing = async (req, res) => {
+  const connection = await db.getConnection();
 
+  try {
+    const slug = String(req.params.projectSlug || '').trim();
+    const listingLookup = String(req.params.listingId || '').trim();
+    const clientName = String(req.body.clientName || req.body.hold_client_name || '').trim();
+    const holdNote = String(req.body.note || req.body.hold_note || '').trim();
+
+    if (!clientName) return res.status(400).json({ message: 'Client name is required.' });
+
+    const project = await getProjectBySlug(slug);
+    if (!project) return res.status(404).json({ message: 'Lot project not found.' });
+
+    const lookup = getListingLookupWhere(listingLookup);
+    const [rows] = await connection.query(
+      `
+        SELECT *
+        FROM lot_project_listings
+        WHERE lot_project_id = ?
+          AND ${lookup.sql}
+        LIMIT 1
+      `,
+      [project.lot_project_id, ...lookup.params]
+    );
+
+    const listing = rows[0];
+    if (!listing) return res.status(404).json({ message: 'Listing not found.' });
+    if (listing.lot_project_listing_status !== 'available') {
+      return res.status(400).json({ message: 'Only available listings can be put on hold.' });
+    }
+
+    const requiredHoldColumns = ['hold_client_name', 'hold_note', 'hold_created_at', 'hold_created_by_user_id'];
+    for (const column of requiredHoldColumns) {
+      if (!(await columnExists(connection, 'lot_project_listings', column))) {
+        return res.status(400).json({ message: 'Hold fields are missing. Run server/migrations/20260708_add_listing_hold_fields.sql first.' });
+      }
+    }
+
+    const updateColumns = [
+      'lot_project_listing_status = ?',
+      'lot_project_listing_sold_substatus = NULL',
+      'hold_client_name = ?',
+      'hold_note = ?',
+      'hold_created_at = NOW()',
+      'hold_created_by_user_id = ?',
+    ];
+    const updateParams = ['hold', clientName, holdNote || null, req.user?.id || null];
+
+    updateParams.push(project.lot_project_id, listing.lot_project_listing_id);
+
+    await connection.query(
+      `
+        UPDATE lot_project_listings
+        SET ${updateColumns.join(', ')}
+        WHERE lot_project_id = ?
+          AND lot_project_listing_id = ?
+      `,
+      updateParams
+    );
+
+    return res.json({
+      success: true,
+      message: `Listing held for ${clientName}.`,
+    });
+  } catch (error) {
+    return res.status(500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
 

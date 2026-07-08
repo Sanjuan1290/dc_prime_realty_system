@@ -281,7 +281,6 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
     monthlyTerms: String(getListingValue(listing, ['soaMonthlyTerms'], 36)),
     annualInterestRate: String(getListingValue(listing, ['soaAnnualInterestRate'], getListingValue(listing, ['annualInterestRate'], 0))),
     interestRateSource: getListingValue(listing, ['soaInterestRateSource'], 'listing'),
-    interestCalculationType: getListingValue(listing, ['soaInterestCalculationType'], 'amortized'),
     firstDueDate: getListingValue(listing, ['soaFirstDueDate', 'first_due_date'], ''),
   }))
   const [modalAlert, setModalAlert] = useState({
@@ -315,8 +314,6 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
     const monthlyTerms = Number(form.monthlyTerms || 0)
     const annualInterestRate = Number(form.annualInterestRate || 0)
     const interestRateSource = form.interestRateSource === 'listing' ? 'listing' : 'custom'
-    const interestCalculationType = form.interestCalculationType === 'diminishing' ? 'diminishing' : 'amortized'
-
     if (dpDiscountPercentage < 0 || dpDiscountPercentage > 100) {
       setModalAlert({ type: 'error', message: 'DP Discount % must be between 0 and 100.' })
       return
@@ -350,7 +347,6 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
       monthlyTerms,
       annualInterestRate,
       interestRateSource,
-      interestCalculationType,
       firstDueDate: form.firstDueDate || null,
     })
   }
@@ -416,14 +412,6 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
               <span className="text-xs font-semibold text-slate-500">Use listing rate to avoid silent duplicate values, or set a custom rate for this buyer.</span>
             </label>
             <Field label="Annual Interest Rate %" value={form.annualInterestRate} onChange={(value) => updateForm('annualInterestRate', value)} placeholder="Example: 7.5" helper={form.interestRateSource === 'listing' ? 'Synced from Edit Listing rate.' : 'Custom SOA rate for this buyer only.'} />
-            <label className="flex flex-col gap-1.5">
-              <span className="text-sm font-black text-slate-700">Interest Calculation Type</span>
-              <select value={form.interestCalculationType} onChange={(event) => updateForm('interestCalculationType', event.target.value)} disabled={isSaving} className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:bg-slate-100">
-                <option value="amortized">Amortized - fixed monthly payment</option>
-                <option value="diminishing">Diminishing - fixed principal + declining interest</option>
-              </select>
-              <span className="text-xs font-semibold text-slate-500">Amortized keeps monthly payment fixed while interest decreases and principal increases.</span>
-            </label>
             <Field label="First Due Date" type="date" value={form.firstDueDate && form.firstDueDate !== '-' ? form.firstDueDate : ''} onChange={(value) => updateForm('firstDueDate', value)} />
           </div>
         </div>

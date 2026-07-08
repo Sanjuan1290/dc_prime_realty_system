@@ -28,6 +28,7 @@ import OfferToBuyPrintPage from "./components/Lot_Projects/ListingProfileCompone
 import SOAPrintPage from "./components/Lot_Projects/ListingProfileComponents/Printouts/SOAPrintPage";
 import DocumentsPrintPage from "./components/Lot_Projects/ListingProfileComponents/Printouts/DocumentsPrintPage";
 import AccreditedSellerProofOfIncomePrintPage from "./components/Lot_Projects/ListingProfileComponents/Printouts/AccreditedSellerProofOfIncomePrintPage";
+import ProjectPriceListPrintPage from "./components/Lot_Projects/ListingProfileComponents/Printouts/ProjectPriceListPrintPage";
 
 const App = () => {
   const router = createBrowserRouter(
@@ -73,6 +74,11 @@ const App = () => {
           path="/lot-projects/:projectSlug/printouts/documents"
           element={<DocumentsPrintPage />}
         />
+
+        <Route
+          path="/lot-projects/:projectSlug/price-list/print"
+          element={<ProjectPriceListPrintPage />}
+        />
       </>
     )
   );
@@ -81,4 +87,3 @@ const App = () => {
 };
 
 export default App;
-

@@ -107,7 +107,7 @@ const Dashboard = () => {
   }
 
   const handlePrintPriceList = () => {
-    setAlert({ type: 'info', message: 'Price list printing will be connected after the listings printout module.' })
+    window.open(`/lot-projects/${projectSlug}/price-list/print`, '_blank')
   }
 
   return (
