@@ -8,6 +8,7 @@ import {
   FiPrinter,
   FiPauseCircle,
   FiRefreshCw,
+  FiUnlock,
   FiUser,
   FiUserCheck,
 } from 'react-icons/fi'
@@ -214,6 +215,23 @@ const ListingProfile = () => {
     },
   })
 
+  const unholdListingMutation = useMutation({
+    mutationFn: () =>
+      useFetchPatch(`/projects/lot-projects/${projectSlug}/listings/${listingId}/unhold`, {}),
+    onMutate: () => {
+      setAlert({ type: 'loading', message: 'Returning listing to available...' })
+    },
+    onSuccess: (result) => {
+      setAlert({ type: 'success', message: result?.message || 'Listing returned to available.' })
+      queryClient.invalidateQueries({ queryKey: ['lot-listing-profile', projectSlug, listingId] })
+      queryClient.invalidateQueries({ queryKey: ['lot-listings', projectSlug] })
+      queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] })
+    },
+    onError: (error) => {
+      setAlert({ type: 'error', message: error?.message || 'Failed to unhold listing.' })
+    },
+  })
+
   const uploadDocumentMutation = useMutation({
     mutationFn: ({ document, payload }) =>
       useFetchPut(
@@ -310,6 +328,7 @@ const ListingProfile = () => {
     profileQuery.refetch()
   }
 
+  const isHeld = listing.rawStatus === 'hold' || listing.listing_status === 'Hold'
   const canHold = listing.rawStatus === 'available' || listing.listing_status === 'Available'
   const canReserve = listing.rawStatus === 'available' || listing.listing_status === 'Available'
   const canManageDocuments = Boolean(listing.hasClientProfile && listing.canEditBuyerProfile)
@@ -402,12 +421,30 @@ const ListingProfile = () => {
 
             <button
               type="button"
-              onClick={() => setShowHoldModal(true)}
-              disabled={!canHold || profileQuery.isLoading || holdListingMutation.isPending}
-              className="inline-flex min-h-[68px] items-center justify-center gap-2 rounded-xl bg-amber-600 px-4 text-sm font-black text-white shadow-sm transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98]"
+              onClick={() => {
+                if (isHeld) {
+                  if (window.confirm('Unhold this listing and return it to available?')) {
+                    unholdListingMutation.mutate()
+                  }
+                  return
+                }
+
+                setShowHoldModal(true)
+              }}
+              disabled={
+                profileQuery.isLoading ||
+                holdListingMutation.isPending ||
+                unholdListingMutation.isPending ||
+                (!canHold && !isHeld)
+              }
+              className={`inline-flex min-h-[68px] items-center justify-center gap-2 rounded-xl px-4 text-sm font-black text-white shadow-sm transition disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98] ${
+                isHeld
+                  ? 'bg-slate-700 hover:bg-slate-800'
+                  : 'bg-amber-600 hover:bg-amber-700'
+              }`}
             >
-              <FiPauseCircle className="h-4 w-4" />
-              Hold
+              {isHeld ? <FiUnlock className="h-4 w-4" /> : <FiPauseCircle className="h-4 w-4" />}
+              {isHeld ? 'Unhold' : 'Hold'}
             </button>
 
             <button

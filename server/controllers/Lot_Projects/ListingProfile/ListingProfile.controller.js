@@ -299,9 +299,9 @@ export const holdLotProjectListing = async (req, res) => {
     const lookup = getListingLookupWhere(listingLookup);
     const [rows] = await connection.query(
       `
-        SELECT *
-        FROM lot_project_listings
-        WHERE lot_project_id = ?
+        SELECT l.*
+        FROM lot_project_listings l
+        WHERE l.lot_project_id = ?
           AND ${lookup.sql}
         LIMIT 1
       `,
@@ -357,8 +357,110 @@ export const holdLotProjectListing = async (req, res) => {
       message: `Listing held for ${clientName}.`,
     });
   } catch (error) {
+    console.error('Hold listing failed:', {
+      code: error?.code,
+      errno: error?.errno,
+      sqlState: error?.sqlState,
+      sqlMessage: error?.sqlMessage,
+    });
+
+    const sqlMessage = String(error?.sqlMessage || error?.message || '');
+
+    if (sqlMessage.includes('lot_project_listing_sold_substatus')) {
+      return res.status(400).json({
+        message: 'Hold failed because your database is missing lot_project_listing_sold_substatus. Apply the latest listing schema/migration or use the updated Hold controller that checks this column first.',
+      });
+    }
+
+    if (sqlMessage.toLowerCase().includes('data truncated') || sqlMessage.includes("lot_project_listing_status")) {
+      return res.status(400).json({
+        message: "Hold failed because the lot_project_listing_status enum in your active database does not allow 'hold'. Run SHOW COLUMNS FROM lot_project_listings LIKE 'lot_project_listing_status' and update the enum to include hold.",
+      });
+    }
+
+    if (sqlMessage.includes('hold_client_name') || sqlMessage.includes('hold_note') || sqlMessage.includes('hold_created_at') || sqlMessage.includes('hold_created_by_user_id')) {
+      return res.status(400).json({
+        message: 'Hold failed because one or more hold columns are missing. Run the hold fields migration on the same database your server is using.',
+      });
+    }
+
     return res.status(500).json({ message: getErrorMessage(error) });
   } finally {
     connection.release();
   }
 };
+
+export const unholdLotProjectListing = async (req, res) => {
+  const connection = await db.getConnection();
+
+  try {
+    const slug = String(req.params.projectSlug || '').trim();
+    const listingLookup = String(req.params.listingId || '').trim();
+
+    const project = await getProjectBySlug(slug);
+    if (!project) return res.status(404).json({ message: 'Lot project not found.' });
+
+    const lookup = getListingLookupWhere(listingLookup);
+    const [rows] = await connection.query(
+      `
+        SELECT l.*
+        FROM lot_project_listings l
+        WHERE l.lot_project_id = ?
+          AND ${lookup.sql}
+        LIMIT 1
+      `,
+      [project.lot_project_id, ...lookup.params]
+    );
+
+    const listing = rows[0];
+    if (!listing) return res.status(404).json({ message: 'Listing not found.' });
+    if (listing.lot_project_listing_status !== 'hold') {
+      return res.status(400).json({ message: 'Only held listings can be unheld.' });
+    }
+
+    const updateColumns = [
+      'lot_project_listing_status = ?',
+    ];
+    const updateParams = ['available'];
+
+    if (await columnExists(connection, 'lot_project_listings', 'lot_project_listing_sold_substatus')) {
+      updateColumns.push('lot_project_listing_sold_substatus = NULL');
+    }
+
+    const holdColumns = ['hold_client_name', 'hold_note', 'hold_created_at', 'hold_created_by_user_id'];
+    for (const column of holdColumns) {
+      if (await columnExists(connection, 'lot_project_listings', column)) {
+        updateColumns.push(`${column} = NULL`);
+      }
+    }
+
+    updateParams.push(project.lot_project_id, listing.lot_project_listing_id);
+
+    await connection.query(
+      `
+        UPDATE lot_project_listings
+        SET ${updateColumns.join(', ')}
+        WHERE lot_project_id = ?
+          AND lot_project_listing_id = ?
+      `,
+      updateParams
+    );
+
+    return res.json({
+      success: true,
+      message: 'Listing returned to available.',
+    });
+  } catch (error) {
+    console.error('Unhold listing failed:', {
+      code: error?.code,
+      errno: error?.errno,
+      sqlState: error?.sqlState,
+      sqlMessage: error?.sqlMessage,
+    });
+
+    return res.status(500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+

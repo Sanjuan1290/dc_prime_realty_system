@@ -23,6 +23,7 @@ import {
 import {
   getLotProjectListingProfile,
   holdLotProjectListing,
+  unholdLotProjectListing,
 } from '../../controllers/Lot_Projects/ListingProfile/ListingProfile.controller.js';
 import { updateLotProjectClientProfile } from '../../controllers/Lot_Projects/ListingProfile/ClientProfile.controller.js';
 import { reserveLotProjectListing } from '../../controllers/Lot_Projects/ListingProfile/ReserveListing.controller.js';
@@ -70,6 +71,7 @@ router.delete('/lot-projects/:projectSlug/listings/:listingId', deleteLotProject
 router.put('/lot-projects/:projectSlug/listings/:listingId/client-profile', updateLotProjectClientProfile);
 router.post('/lot-projects/:projectSlug/listings/:listingId/reserve', reserveLotProjectListing);
 router.patch('/lot-projects/:projectSlug/listings/:listingId/hold', holdLotProjectListing);
+router.patch('/lot-projects/:projectSlug/listings/:listingId/unhold', unholdLotProjectListing);
 router.put('/lot-projects/:projectSlug/listings/:listingId/document-requirements', updateLotProjectListingDocumentRequirements);
 router.put('/lot-projects/:projectSlug/listings/:listingId/documents/:documentId/upload', uploadLotProjectListingDocument);
 router.patch('/lot-projects/:projectSlug/listings/:listingId/documents/:documentId/approve', approveLotProjectListingDocument);
