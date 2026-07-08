@@ -508,7 +508,7 @@ const SOAPreview = ({ listing = {}, client = {}, soaRows = [] }) => {
   const rows = getNormalizedSoaRows(soaRows, listing)
   const tcp = cleanMoney(getValue(listing, ['tcpAmount', 'tcp'], 0))
   const legalMisc = cleanMoney(getValue(listing, ['lmfAmount', 'legalMiscAmount'], 0))
-  const totalAmount = tcp + legalMisc
+  const totalAmount = tcp
   const latestBalance = cleanMoney(rows[rows.length - 1]?.remainingBalance || 0)
 
   return (
@@ -551,7 +551,7 @@ const SOAPreview = ({ listing = {}, client = {}, soaRows = [] }) => {
 
             {[
               ['Total Contract Price:', money(tcp)],
-              ['Legal Miscellaneous:', money(legalMisc)],
+              ['Legal Miscellaneous (included):', money(legalMisc)],
               ['Total Amount:', money(totalAmount)],
             ].map(([label, value]) => (
               <div key={label} className="grid grid-cols-[170px_1fr] border-b border-black text-[10px] last:border-b-0">

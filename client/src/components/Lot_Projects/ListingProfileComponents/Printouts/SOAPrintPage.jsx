@@ -28,7 +28,7 @@ const SOAPrintPage = () => {
   const rows = getNormalizedSoaRows(soaRows)
   const tcp = cleanMoney(getValue(listing, ['tcpAmount', 'tcp'], 0))
   const legalMisc = cleanMoney(getValue(listing, ['lmfAmount', 'legalMiscAmount'], 0))
-  const totalAmount = tcp + legalMisc
+  const totalAmount = tcp
   const latestBalance = cleanMoney(rows[rows.length - 1]?.remainingBalance || 0)
 
   return (
@@ -76,7 +76,7 @@ const SOAPrintPage = () => {
               </h3>
 
               <AmountRow label="Total Contract Price:" value={money(tcp)} />
-              <AmountRow label="Legal Miscellaneous:" value={money(legalMisc)} />
+              <AmountRow label="Legal Miscellaneous (included):" value={money(legalMisc)} />
               <AmountRow label="Total Amount:" value={money(totalAmount)} />
             </div>
           </div>
@@ -189,6 +189,3 @@ const SOAPrintPage = () => {
 }
 
 export default SOAPrintPage
-
-
-
