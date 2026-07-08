@@ -452,7 +452,7 @@ export const getLotProjectDashboard = async (req, res) => {
       : [[]];
 
     const saleDateSelect = hasClientProfiles
-      ? 'DATE(COALESCE(cp.created_at, l.lot_project_listing_updated_at))'
+      ? 'DATE(COALESCE(cp.lot_project_client_profile_created_at, l.lot_project_listing_updated_at))'
       : 'DATE(l.lot_project_listing_updated_at)';
     const saleClientJoin = hasClientProfiles
       ? 'LEFT JOIN lot_project_client_profiles cp ON cp.lot_project_listing_id = l.lot_project_listing_id'
@@ -800,16 +800,23 @@ export const getLotProjectDashboard = async (req, res) => {
           const scheduleBalance = row.actual_remaining_balance === null || row.actual_remaining_balance === undefined
             ? Math.max(tcp - paid, 0)
             : Math.max(toNumber(row.actual_remaining_balance), 0);
-          const isFullyPaid = row.lot_project_listing_sold_substatus === 'fully_paid' || (tcp > 0 && scheduleBalance <= 0.009);
+          const isEffectivelyCollected = tcp > 0 && paid + 0.009 >= tcp;
+          const isFullyPaid =
+            row.lot_project_listing_sold_substatus === 'fully_paid' ||
+            isEffectivelyCollected ||
+            (tcp > 0 && scheduleBalance <= 0.009);
           const progressPercent = tcp > 0
             ? (isFullyPaid ? 100 : Math.min((paid / tcp) * 100, 100))
             : 0;
+          const mappedRow = mapListingRow(row);
 
           return {
-            ...mapListingRow(row),
+            ...mappedRow,
+            status: isFullyPaid ? 'Fully Paid' : mappedRow.status,
+            soldSubstatus: isFullyPaid ? 'fully_paid' : mappedRow.soldSubstatus,
             collected: isFullyPaid ? tcp : paid,
             balance: isFullyPaid ? 0 : Math.max(tcp - paid, 0),
-            scheduleBalance,
+            scheduleBalance: isFullyPaid ? 0 : scheduleBalance,
             progressValue: progressPercent,
             progress: `${progressPercent.toFixed(1)}%`,
             documents: formatDocumentsLabel(row),
@@ -818,6 +825,7 @@ export const getLotProjectDashboard = async (req, res) => {
       },
     });
   } catch (error) {
+    console.error('Lot project dashboard failed:', error);
     return res.status(500).json({ success: false, message: getErrorMessage(error) });
   } finally {
     connection.release();
