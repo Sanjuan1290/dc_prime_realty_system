@@ -15,6 +15,7 @@ const StatCard = ({ label, value, tone = 'slate', isMoney = true }) => {
     slate: 'bg-white text-slate-950',
     blue: 'bg-blue-50 text-blue-700',
     emerald: 'bg-emerald-50 text-emerald-700',
+    indigo: 'bg-indigo-50 text-indigo-700',
     amber: 'bg-amber-50 text-amber-700',
   }
 
@@ -26,11 +27,21 @@ const StatCard = ({ label, value, tone = 'slate', isMoney = true }) => {
   )
 }
 
+const getEligibleReleaseAmount = (record = {}) => {
+  const milestones = Array.isArray(record.releaseMilestones) ? record.releaseMilestones : []
+  return milestones
+    .filter((stage) => String(stage.status || '').toLowerCase() === 'eligible')
+    .reduce((sum, stage) => sum + Number(stage.netAmount ?? stage.net_release_amount ?? stage.grossAmount ?? 0), 0)
+}
+
 const getEligibilityKey = (record = {}) => {
+  if (getEligibleReleaseAmount(record) > 0) return 'eligible'
+
   const status = String(record.statusLabel || record.status || '').toLowerCase()
   if (status === 'eligible') return 'eligible'
-  if (status === 'not eligible' || status === 'pending') return 'not_eligible'
-  return 'other'
+  if (status === 'cancelled' || status === 'released' || status === 'completed') return 'other'
+
+  return 'not_eligible'
 }
 
 const Commission = () => {
@@ -95,10 +106,11 @@ const Commission = () => {
         summary.total += 1
         summary.gross += Number(item.grossCommission || 0)
         summary.released += Number(item.released || 0)
+        summary.eligible += Number(item.eligibleToRelease ?? getEligibleReleaseAmount(item))
         summary.remaining += Number(item.netRemaining || 0)
         return summary
       },
-      { total: 0, gross: 0, released: 0, remaining: 0 }
+      { total: 0, gross: 0, released: 0, eligible: 0, remaining: 0 }
     ),
     [filteredRecords]
   )
@@ -148,9 +160,10 @@ const Commission = () => {
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <StatCard label="Commission Records" value={isLoading ? '...' : displayStats.total || 0} isMoney={false} />
         <StatCard label="Gross Commission" value={displayStats.gross || 0} tone="blue" />
+        <StatCard label="Eligible to Release" value={displayStats.eligible || 0} tone="indigo" />
         <StatCard label="Released" value={displayStats.released || 0} tone="emerald" />
         <StatCard label="Net Remaining" value={displayStats.remaining || 0} tone="amber" />
       </section>

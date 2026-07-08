@@ -289,11 +289,11 @@ const getAggregateStatus = (commission = {}, releases = []) => {
     .filter((release) => release.status === 'Released')
     .reduce((sum, release) => sum + toNumber(release.netAmount), 0);
 
+  if (commission.commission_status === 'Cancelled') return 'Cancelled';
   if (gross > 0 && released >= gross) return 'Released';
-  if (released > 0) return 'Partially Released';
   if (releases.some((release) => release.status === 'On Hold' && !isFinalRelease(release.stage))) return 'On Hold';
   if (releases.some((release) => release.status === 'Eligible')) return 'Eligible';
-  if (commission.commission_status === 'Cancelled') return 'Cancelled';
+  if (released > 0) return 'Partially Released';
   return 'Pending';
 };
 
@@ -302,8 +302,13 @@ const mapCommissionRow = (row = {}, releases = [], releaseDateInfo = {}) => {
   const releasedFromMilestones = releases
     .filter((release) => release.status === 'Released')
     .reduce((sum, release) => sum + toNumber(release.netAmount), 0);
+  const eligibleToRelease = releases
+    .filter((release) => release.status === 'Eligible')
+    .reduce((sum, release) => sum + toNumber(release.netAmount), 0);
+  const cashAdvanceDeduction = releases
+    .reduce((sum, release) => sum + toNumber(release.deductionAmount), 0);
   const released = releases.length ? releasedFromMilestones : toNumber(row.released_commission_amount);
-  const remaining = Math.max(gross - released, 0);
+  const remaining = Math.max(gross - released - cashAdvanceDeduction, 0);
   const status = releases.length ? getAggregateStatus(row, releases) : row.commission_status || 'Pending';
 
   return {
@@ -329,7 +334,8 @@ const mapCommissionRow = (row = {}, releases = [], releaseDateInfo = {}) => {
     rate: toNumber(row.commission_rate),
     grossCommission: gross,
     released,
-    cashAdvanceDeduction: 0,
+    eligibleToRelease,
+    cashAdvanceDeduction,
     netRemaining: remaining,
     tcp: toNumber(row.lot_project_listing_tcp),
     paid: toNumber(row.total_paid),
@@ -643,12 +649,14 @@ export const getLotProjectCommissions = async (req, res) => {
         summary.total += 1;
         summary.gross += toNumber(item.grossCommission);
         summary.released += toNumber(item.released);
+        summary.eligibleToRelease += toNumber(item.eligibleToRelease);
+        summary.cashAdvanceDeduction += toNumber(item.cashAdvanceDeduction);
         summary.remaining += toNumber(item.netRemaining);
         if (!summary.byStatus[item.status]) summary.byStatus[item.status] = 0;
         summary.byStatus[item.status] += 1;
         return summary;
       },
-      { total: 0, gross: 0, released: 0, remaining: 0, byStatus: {} }
+      { total: 0, gross: 0, released: 0, eligibleToRelease: 0, cashAdvanceDeduction: 0, remaining: 0, byStatus: {} }
     );
 
     return res.json({
