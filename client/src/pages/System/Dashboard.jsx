@@ -1,17 +1,27 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
-  Bar,
-  BarChart,
   CartesianGrid,
   Legend,
+  Line,
+  LineChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts'
-import { FiActivity, FiArrowRight, FiGrid, FiHome, FiLayers, FiMapPin, FiTrendingUp, FiUsers } from 'react-icons/fi'
+import {
+  FiActivity,
+  FiArrowRight,
+  FiGrid,
+  FiHome,
+  FiLayers,
+  FiMapPin,
+  FiRefreshCw,
+  FiTrendingUp,
+  FiUsers,
+} from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
 import { useFetch } from '../../utils/useFetch'
@@ -28,6 +38,26 @@ const chartColors = {
   red: '#dc2626',
   indigo: '#4f46e5',
   slate: '#475569',
+}
+
+const dateRangeOptions = [
+  { value: 'this_month', label: 'This Month' },
+  { value: 'last_month', label: 'Last Month' },
+  { value: '2_months', label: '2 Months' },
+  { value: '3_months', label: '3 Months' },
+  { value: '6_months', label: '6 Months' },
+  { value: '12_months', label: '12 Months' },
+  { value: 'all', label: 'All' },
+  { value: 'custom', label: 'Custom' },
+]
+
+const todayDate = () => new Date().toISOString().slice(0, 10)
+
+const getDefaultFromDate = () => {
+  const date = new Date()
+  date.setMonth(date.getMonth() - 3)
+  date.setDate(date.getDate() + 1)
+  return date.toISOString().slice(0, 10)
 }
 
 const shortLabel = (value = '', max = 18) => {
@@ -69,6 +99,56 @@ const EmptyChart = ({ message = 'No chart data yet.' }) => (
   <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 text-sm font-semibold text-slate-500">
     {message}
   </div>
+)
+
+const DateRangeFilter = ({ range, setRange, dateFrom, setDateFrom, dateTo, setDateTo, isFetching }) => (
+  <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+      <div>
+        <p className="text-sm font-black text-slate-950">Graph Date Filter</p>
+        <p className="mt-1 text-sm font-semibold text-slate-500">
+          Applies to company and per-project line graphs.
+        </p>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-3 xl:min-w-[620px]">
+        <label className="grid gap-1">
+          <span className="text-xs font-black uppercase tracking-wide text-slate-500">Range</span>
+          <select
+            value={range}
+            onChange={(event) => setRange(event.target.value)}
+            className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
+          >
+            {dateRangeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+
+        <label className="grid gap-1">
+          <span className="text-xs font-black uppercase tracking-wide text-slate-500">From</span>
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(event) => setDateFrom(event.target.value)}
+            disabled={range !== 'custom'}
+            className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100 disabled:text-slate-400"
+          />
+        </label>
+
+        <label className="grid gap-1">
+          <span className="text-xs font-black uppercase tracking-wide text-slate-500">To</span>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(event) => setDateTo(event.target.value)}
+            disabled={range !== 'custom'}
+            className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100 disabled:text-slate-400"
+          />
+        </label>
+      </div>
+    </div>
+
+    {isFetching ? <p className="mt-3 text-xs font-black text-blue-700">Updating graph data...</p> : null}
+  </section>
 )
 
 const MetricCard = ({ label, value, helper, icon: Icon, tone = 'blue' }) => {
@@ -126,12 +206,7 @@ const ProjectTypeCard = ({ title, count, value, helper, icon: Icon, to, disabled
 const ProjectReportCard = ({ report }) => {
   const stats = report.stats || {}
   const collectionProgress = Number(stats.collectionProgress || 0)
-  const chartData = [
-    { label: 'Sales', value: Number(stats.totalSales || 0) },
-    { label: 'Collected', value: Number(stats.totalCollected || 0) },
-    { label: 'Inventory', value: Number(stats.availableLotValue || 0) },
-    { label: 'Payable', value: Number(stats.eligibleCommission || 0) },
-  ]
+  const saleCount = report.salesTrend.reduce((sum, item) => sum + Number(item.saleCount || 0), 0)
 
   return (
     <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -149,20 +224,25 @@ const ProjectReportCard = ({ report }) => {
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <div className="rounded-2xl bg-blue-50 p-3"><p className="text-[10px] font-black uppercase tracking-wide text-blue-700">Total Sales</p><p className="mt-1 font-black text-blue-900">{money(stats.totalSales)}</p></div>
         <div className="rounded-2xl bg-emerald-50 p-3"><p className="text-[10px] font-black uppercase tracking-wide text-emerald-700">Collected</p><p className="mt-1 font-black text-emerald-900">{money(stats.totalCollected)}</p></div>
-        <div className="rounded-2xl bg-amber-50 p-3"><p className="text-[10px] font-black uppercase tracking-wide text-amber-700">Available Inventory</p><p className="mt-1 font-black text-amber-900">{money(stats.availableLotValue)}</p></div>
+        <div className="rounded-2xl bg-amber-50 p-3"><p className="text-[10px] font-black uppercase tracking-wide text-amber-700">Sales Count</p><p className="mt-1 font-black text-amber-900">{number(saleCount)}</p></div>
         <div className="rounded-2xl bg-indigo-50 p-3"><p className="text-[10px] font-black uppercase tracking-wide text-indigo-700">Payable Commission</p><p className="mt-1 font-black text-indigo-900">{money(stats.eligibleCommission)}</p></div>
       </div>
 
       <div className="mt-4 h-44 rounded-2xl border border-slate-100 bg-slate-50 p-3">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={chartData} margin={{ top: 5, right: 8, left: 0, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} />
-            <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-            <YAxis tickFormatter={compactMoney} tick={{ fontSize: 11 }} width={44} />
-            <Tooltip content={<ChartTooltip />} />
-            <Bar dataKey="value" name="Amount" fill={chartColors.blue} radius={[8, 8, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
+        {report.salesTrend.length ? (
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={report.salesTrend} margin={{ top: 5, right: 8, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+              <YAxis yAxisId="money" tickFormatter={compactMoney} tick={{ fontSize: 11 }} width={44} />
+              <YAxis yAxisId="count" orientation="right" allowDecimals={false} tick={{ fontSize: 11 }} width={28} />
+              <Tooltip content={<ChartTooltip />} />
+              <Line yAxisId="money" type="monotone" dataKey="totalSales" name="Sales" stroke={chartColors.blue} strokeWidth={2} dot={false} />
+              <Line yAxisId="money" type="monotone" dataKey="collected" name="Collected" stroke={chartColors.green} strokeWidth={2} dot={false} />
+              <Line yAxisId="count" type="monotone" dataKey="saleCount" name="Sales Count" stroke={chartColors.amber} strokeWidth={2} dot />
+            </LineChart>
+          </ResponsiveContainer>
+        ) : <EmptyChart />}
       </div>
 
       <div className="mt-4">
@@ -178,7 +258,46 @@ const ProjectReportCard = ({ report }) => {
   )
 }
 
+const mergeCompanyTrend = (projectReports = []) => {
+  const byPeriod = new Map()
+
+  projectReports.forEach((project) => {
+    ;(project.salesTrend || []).forEach((item) => {
+      const current = byPeriod.get(item.period) || {
+        period: item.period,
+        label: item.label,
+        saleCount: 0,
+        totalSales: 0,
+        collected: 0,
+        collectionCount: 0,
+      }
+
+      current.saleCount += Number(item.saleCount || 0)
+      current.totalSales += Number(item.totalSales || 0)
+      current.collected += Number(item.collected || 0)
+      current.collectionCount += Number(item.collectionCount || 0)
+
+      byPeriod.set(item.period, current)
+    })
+  })
+
+  return [...byPeriod.values()].sort((a, b) => String(a.period).localeCompare(String(b.period)))
+}
+
 const Dashboard = () => {
+  const [dateRange, setDateRange] = useState('3_months')
+  const [dateFrom, setDateFrom] = useState(getDefaultFromDate())
+  const [dateTo, setDateTo] = useState(todayDate())
+
+  const dashboardQuery = useMemo(() => {
+    const params = new URLSearchParams({ range: dateRange })
+    if (dateRange === 'custom') {
+      if (dateFrom) params.set('from', dateFrom)
+      if (dateTo) params.set('to', dateTo)
+    }
+    return params.toString()
+  }, [dateRange, dateFrom, dateTo])
+
   const { data: projectsData, isLoading: isProjectsLoading, isError: isProjectsError, error: projectsError } = useQuery({
     queryKey: ['system-dashboard-lot-projects'],
     queryFn: () => useFetch('/projects/lot-projects'),
@@ -186,13 +305,13 @@ const Dashboard = () => {
 
   const lotProjects = projectsData?.data || []
 
-  const { data: dashboardList = [], isLoading: isDashboardsLoading, isError: isDashboardsError, error: dashboardsError } = useQuery({
-    queryKey: ['system-dashboard-lot-stats', lotProjects.map((project) => project.slug || project.lot_project_slug).join('|')],
+  const { data: dashboardList = [], isLoading: isDashboardsLoading, isFetching: isDashboardsFetching, isError: isDashboardsError, error: dashboardsError } = useQuery({
+    queryKey: ['system-dashboard-lot-stats', lotProjects.map((project) => project.slug || project.lot_project_slug).join('|'), dashboardQuery],
     queryFn: async () => {
       const results = await Promise.all(
         lotProjects.map((project) => {
           const slug = project.slug || project.lot_project_slug
-          return useFetch(`/projects/lot-projects/${slug}/dashboard`)
+          return useFetch(`/projects/lot-projects/${slug}/dashboard?${dashboardQuery}`)
         })
       )
 
@@ -215,6 +334,7 @@ const Dashboard = () => {
         status: payload.status || payload.lot_project_status || project.status || project.lot_project_status || 'active',
         documents: project.defaultDocumentsCount || project.default_documents_count || 0,
         stats: dashboard.stats || {},
+        salesTrend: dashboard.salesTrend || [],
       }
     }),
     [dashboardList, lotProjects]
@@ -251,12 +371,19 @@ const Dashboard = () => {
 
   const collectionProgress = summary.totalSales > 0 ? Math.min((summary.collected / summary.totalSales) * 100, 100) : 0
   const isLoading = isProjectsLoading || isDashboardsLoading
+  const companySalesTrend = useMemo(() => mergeCompanyTrend(projectReports), [projectReports])
 
   const projectSalesChart = projectReports.map((report) => ({
     project: shortLabel(report.name),
     totalSales: Number(report.stats?.totalSales || 0),
     collected: Number(report.stats?.totalCollected || 0),
     pendingSales: Number(report.stats?.pendingSales || 0),
+  }))
+
+  const projectSalesCountChart = projectReports.map((report) => ({
+    project: shortLabel(report.name),
+    salesCount: report.salesTrend.reduce((sum, item) => sum + Number(item.saleCount || 0), 0),
+    collections: report.salesTrend.reduce((sum, item) => sum + Number(item.collectionCount || 0), 0),
   }))
 
   const projectInventoryChart = projectReports.map((report) => ({
@@ -281,6 +408,16 @@ const Dashboard = () => {
       {isProjectsLoading ? <StatusAlert type="loading" message="Loading system dashboard..." /> : null}
       {isProjectsError ? <StatusAlert type="error" message={projectsError?.message || 'Failed to load system dashboard.'} /> : null}
       {isDashboardsError ? <StatusAlert type="error" message={dashboardsError?.message || 'Failed to load lot project dashboard totals.'} /> : null}
+
+      <DateRangeFilter
+        range={dateRange}
+        setRange={setDateRange}
+        dateFrom={dateFrom}
+        setDateFrom={setDateFrom}
+        dateTo={dateTo}
+        setDateTo={setDateTo}
+        isFetching={isDashboardsFetching}
+      />
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Total Sales" value={isLoading ? '...' : money(summary.totalSales)} helper="All tracked lot project sales." icon={FiTrendingUp} tone="blue" />
@@ -310,19 +447,55 @@ const Dashboard = () => {
       </section>
 
       <section className="grid gap-6 xl:grid-cols-2">
-        <ChartCard title="Sales by Project" description="Total sales, collections, and pending sales for each lot project.">
-          {projectSalesChart.length ? (
+        <ChartCard title="Company Sales Trend" description="Line graph for total sales, collections, and sales count across all lot projects.">
+          {companySalesTrend.length ? (
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={projectSalesChart} layout="vertical" margin={{ top: 5, right: 20, left: 30, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                <XAxis type="number" tickFormatter={compactMoney} tick={{ fontSize: 11 }} />
-                <YAxis type="category" dataKey="project" tick={{ fontSize: 11 }} width={110} />
+              <LineChart data={companySalesTrend} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                <YAxis yAxisId="money" tickFormatter={compactMoney} tick={{ fontSize: 11 }} />
+                <YAxis yAxisId="count" orientation="right" allowDecimals={false} tick={{ fontSize: 11 }} />
                 <Tooltip content={<ChartTooltip />} />
                 <Legend />
-                <Bar dataKey="totalSales" name="Total Sales" fill={chartColors.blue} radius={[0, 8, 8, 0]} />
-                <Bar dataKey="collected" name="Collected" fill={chartColors.green} radius={[0, 8, 8, 0]} />
-                <Bar dataKey="pendingSales" name="Pending" fill={chartColors.amber} radius={[0, 8, 8, 0]} />
-              </BarChart>
+                <Line yAxisId="money" type="monotone" dataKey="totalSales" name="Total Sales" stroke={chartColors.blue} strokeWidth={3} dot={false} />
+                <Line yAxisId="money" type="monotone" dataKey="collected" name="Collected" stroke={chartColors.green} strokeWidth={3} dot={false} />
+                <Line yAxisId="count" type="monotone" dataKey="saleCount" name="Sales Count" stroke={chartColors.amber} strokeWidth={3} dot />
+              </LineChart>
+            </ResponsiveContainer>
+          ) : <EmptyChart />}
+        </ChartCard>
+
+        <ChartCard title="Total Sales per Project" description="Total sales, collections, and pending sales per project.">
+          {projectSalesChart.length ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={projectSalesChart} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="project" tick={{ fontSize: 11 }} />
+                <YAxis tickFormatter={compactMoney} tick={{ fontSize: 11 }} />
+                <Tooltip content={<ChartTooltip />} />
+                <Legend />
+                <Line type="monotone" dataKey="totalSales" name="Total Sales" stroke={chartColors.blue} strokeWidth={3} dot />
+                <Line type="monotone" dataKey="collected" name="Collected" stroke={chartColors.green} strokeWidth={3} dot />
+                <Line type="monotone" dataKey="pendingSales" name="Pending" stroke={chartColors.amber} strokeWidth={3} dot />
+              </LineChart>
+            </ResponsiveContainer>
+          ) : <EmptyChart />}
+        </ChartCard>
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-2">
+        <ChartCard title="Sales Count per Project" description="Number of sales and collection entries per project in the selected graph range.">
+          {projectSalesCountChart.length ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={projectSalesCountChart} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="project" tick={{ fontSize: 11 }} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                <Tooltip content={<ChartTooltip />} />
+                <Legend />
+                <Line type="monotone" dataKey="salesCount" name="Sales Count" stroke={chartColors.blue} strokeWidth={3} dot />
+                <Line type="monotone" dataKey="collections" name="Payment Entries" stroke={chartColors.green} strokeWidth={3} dot />
+              </LineChart>
             </ResponsiveContainer>
           ) : <EmptyChart />}
         </ChartCard>
@@ -330,16 +503,16 @@ const Dashboard = () => {
         <ChartCard title="Inventory by Project" description="Listed, available, and sold lot value per project.">
           {projectInventoryChart.length ? (
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={projectInventoryChart} layout="vertical" margin={{ top: 5, right: 20, left: 30, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                <XAxis type="number" tickFormatter={compactMoney} tick={{ fontSize: 11 }} />
-                <YAxis type="category" dataKey="project" tick={{ fontSize: 11 }} width={110} />
+              <LineChart data={projectInventoryChart} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="project" tick={{ fontSize: 11 }} />
+                <YAxis tickFormatter={compactMoney} tick={{ fontSize: 11 }} />
                 <Tooltip content={<ChartTooltip />} />
                 <Legend />
-                <Bar dataKey="listedInventory" name="Listed" fill={chartColors.slate} radius={[0, 8, 8, 0]} />
-                <Bar dataKey="availableInventory" name="Available" fill={chartColors.amber} radius={[0, 8, 8, 0]} />
-                <Bar dataKey="soldInventory" name="Sold" fill={chartColors.indigo} radius={[0, 8, 8, 0]} />
-              </BarChart>
+                <Line type="monotone" dataKey="listedInventory" name="Listed" stroke={chartColors.slate} strokeWidth={3} dot />
+                <Line type="monotone" dataKey="availableInventory" name="Available" stroke={chartColors.amber} strokeWidth={3} dot />
+                <Line type="monotone" dataKey="soldInventory" name="Sold" stroke={chartColors.indigo} strokeWidth={3} dot />
+              </LineChart>
             </ResponsiveContainer>
           ) : <EmptyChart />}
         </ChartCard>
@@ -349,15 +522,15 @@ const Dashboard = () => {
         <ChartCard title="Unit Dues by Project" description="Counts of due-soon and overdue unit schedules.">
           {projectDueChart.length ? (
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={projectDueChart} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+              <LineChart data={projectDueChart} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="project" tick={{ fontSize: 11 }} />
                 <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
                 <Tooltip content={<ChartTooltip />} />
                 <Legend />
-                <Bar dataKey="upcoming" name="Due Soon" fill={chartColors.blue} radius={[8, 8, 0, 0]} />
-                <Bar dataKey="overdue" name="Overdue" fill={chartColors.red} radius={[8, 8, 0, 0]} />
-              </BarChart>
+                <Line type="monotone" dataKey="upcoming" name="Due Soon" stroke={chartColors.blue} strokeWidth={3} dot />
+                <Line type="monotone" dataKey="overdue" name="Overdue" stroke={chartColors.red} strokeWidth={3} dot />
+              </LineChart>
             </ResponsiveContainer>
           ) : <EmptyChart />}
         </ChartCard>
@@ -388,7 +561,7 @@ const Dashboard = () => {
       <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
         <div>
           <h2 className="text-lg font-black text-slate-950">Project Reports</h2>
-          <p className="mt-1 text-sm font-semibold text-slate-500">Separate report card for every created lot project.</p>
+          <p className="mt-1 text-sm font-semibold text-slate-500">Separate report card and line graph for every created lot project.</p>
         </div>
 
         <div className="mt-5 grid gap-5 xl:grid-cols-2">
@@ -409,35 +582,41 @@ const Dashboard = () => {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-[780px] w-full divide-y divide-slate-200 text-sm">
+          <table className="min-w-[920px] w-full divide-y divide-slate-200 text-sm">
             <thead className="bg-slate-50">
               <tr>
-                {['Project', 'Location', 'Status', 'Documents', 'Action'].map((head) => (
+                {['Project', 'Location', 'Sales', 'Sales Count', 'Collected', 'Status', 'Action'].map((head) => (
                   <th key={head} className="px-5 py-3 text-left text-xs font-black uppercase tracking-wider text-slate-500">{head}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {projectReports.length ? projectReports.map((project) => (
-                <tr key={project.id || project.slug} className="transition hover:bg-slate-50">
-                  <td className="px-5 py-4 font-black text-slate-950">{project.name}</td>
-                  <td className="px-5 py-4 font-semibold text-slate-600">{project.location || '-'}</td>
-                  <td className="px-5 py-4">
-                    <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700 ring-1 ring-emerald-100">
-                      {project.status || 'active'}
-                    </span>
-                  </td>
-                  <td className="px-5 py-4 font-semibold text-slate-600">{project.documents || 0}</td>
-                  <td className="px-5 py-4">
-                    <Link to={`/lot-projects/${project.slug}`} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 transition hover:bg-slate-50">
-                      Open
-                      <FiArrowRight className="h-3.5 w-3.5" />
-                    </Link>
-                  </td>
-                </tr>
-              )) : (
+              {projectReports.length ? projectReports.map((project) => {
+                const saleCount = project.salesTrend.reduce((sum, item) => sum + Number(item.saleCount || 0), 0)
+
+                return (
+                  <tr key={project.id || project.slug} className="transition hover:bg-slate-50">
+                    <td className="px-5 py-4 font-black text-slate-950">{project.name}</td>
+                    <td className="px-5 py-4 font-semibold text-slate-600">{project.location || '-'}</td>
+                    <td className="px-5 py-4 font-black text-blue-700">{money(project.stats?.totalSales)}</td>
+                    <td className="px-5 py-4 font-black text-slate-900">{number(saleCount)}</td>
+                    <td className="px-5 py-4 font-semibold text-emerald-700">{money(project.stats?.totalCollected)}</td>
+                    <td className="px-5 py-4">
+                      <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700 ring-1 ring-emerald-100">
+                        {project.status || 'active'}
+                      </span>
+                    </td>
+                    <td className="px-5 py-4">
+                      <Link to={`/lot-projects/${project.slug}`} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 transition hover:bg-slate-50">
+                        Open
+                        <FiArrowRight className="h-3.5 w-3.5" />
+                      </Link>
+                    </td>
+                  </tr>
+                )
+              }) : (
                 <tr>
-                  <td colSpan={5} className="px-5 py-10 text-center font-semibold text-slate-500">No lot projects yet.</td>
+                  <td colSpan={7} className="px-5 py-10 text-center font-semibold text-slate-500">No lot projects yet.</td>
                 </tr>
               )}
             </tbody>

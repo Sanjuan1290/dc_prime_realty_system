@@ -11,6 +11,7 @@ import {
 } from '../_shared/lotProject.shared.js';
 
 const toNumber = (value) => Number(value || 0);
+const roundMoney = (value) => Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
 
 const buildProjectPayload = async (project) => {
   const cadastralLots = await getProjectCadastralLots(project.lot_project_id);
@@ -27,6 +28,177 @@ const buildProjectPayload = async (project) => {
   };
 };
 
+const toDateOnly = (date) => {
+  const value = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(value.getTime())) return null;
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, '0');
+  const day = String(value.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const parseDateOnly = (value) => {
+  const match = String(value || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const startOfMonth = (date) => new Date(date.getFullYear(), date.getMonth(), 1);
+const endOfMonth = (date) => new Date(date.getFullYear(), date.getMonth() + 1, 0);
+const addMonths = (date, months) => new Date(date.getFullYear(), date.getMonth() + months, date.getDate());
+const addDays = (date, days) => new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
+
+const getDayDiff = (fromDate, toDate) => {
+  const ms = toDate.getTime() - fromDate.getTime();
+  return Math.max(Math.ceil(ms / (1000 * 60 * 60 * 24)), 0);
+};
+
+const resolveDashboardDateRange = (query = {}) => {
+  const today = new Date();
+  const preset = String(query.range || query.dateRange || '3_months').toLowerCase();
+
+  let fromDate;
+  let toDate = today;
+
+  if (preset === 'custom') {
+    fromDate = parseDateOnly(query.from || query.dateFrom) || startOfMonth(today);
+    toDate = parseDateOnly(query.to || query.dateTo) || today;
+    if (fromDate > toDate) [fromDate, toDate] = [toDate, fromDate];
+  } else if (preset === 'this_month') {
+    fromDate = startOfMonth(today);
+    toDate = today;
+  } else if (preset === 'last_month') {
+    const lastMonth = addMonths(today, -1);
+    fromDate = startOfMonth(lastMonth);
+    toDate = endOfMonth(lastMonth);
+  } else if (preset === '2_months') {
+    fromDate = addDays(addMonths(today, -2), 1);
+  } else if (preset === '6_months') {
+    fromDate = addDays(addMonths(today, -6), 1);
+  } else if (preset === '12_months') {
+    fromDate = addDays(addMonths(today, -12), 1);
+  } else if (preset === 'all') {
+    fromDate = new Date(2000, 0, 1);
+  } else {
+    fromDate = addDays(addMonths(today, -3), 1);
+  }
+
+  const dayDiff = getDayDiff(fromDate, toDate);
+  return {
+    preset: preset === 'custom' ? 'custom' : (['this_month', 'last_month', '2_months', '3_months', '6_months', '12_months', 'all'].includes(preset) ? preset : '3_months'),
+    from: toDateOnly(fromDate),
+    to: toDateOnly(toDate),
+    groupBy: dayDiff > 100 ? 'month' : 'day',
+  };
+};
+
+const formatPeriodLabel = (period, groupBy) => {
+  if (!period) return '-';
+  const text = String(period);
+  if (groupBy === 'month') {
+    const [year, month] = text.split('-');
+    const date = new Date(Number(year), Number(month || 1) - 1, 1);
+    return date.toLocaleDateString('en-PH', { month: 'short', year: 'numeric' });
+  }
+
+  const date = parseDateOnly(text);
+  return date ? date.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' }) : text;
+};
+
+const addPeriod = (date, groupBy) => groupBy === 'month'
+  ? new Date(date.getFullYear(), date.getMonth() + 1, 1)
+  : addDays(date, 1);
+
+const normalizePeriod = (date, groupBy) => {
+  if (groupBy === 'month') return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+  return toDateOnly(date);
+};
+
+const makeEmptyTrendBuckets = (dateRange) => {
+  const buckets = [];
+  let current = parseDateOnly(dateRange.from);
+  const end = parseDateOnly(dateRange.to);
+
+  if (!current || !end) return buckets;
+  if (dateRange.groupBy === 'month') current = startOfMonth(current);
+
+  while (current <= end) {
+    const period = normalizePeriod(current, dateRange.groupBy);
+    buckets.push({ period, label: formatPeriodLabel(period, dateRange.groupBy) });
+    current = addPeriod(current, dateRange.groupBy);
+  }
+
+  return buckets;
+};
+
+const mergeTrendRows = (dateRange, salesRows = [], collectionRows = []) => {
+  const byPeriod = new Map(
+    makeEmptyTrendBuckets(dateRange).map((bucket) => [
+      bucket.period,
+      {
+        ...bucket,
+        saleCount: 0,
+        totalSales: 0,
+        collectionCount: 0,
+        collected: 0,
+      },
+    ])
+  );
+
+  for (const row of salesRows) {
+    const period = String(row.period || '');
+    const current = byPeriod.get(period) || {
+      period,
+      label: formatPeriodLabel(period, dateRange.groupBy),
+      saleCount: 0,
+      totalSales: 0,
+      collectionCount: 0,
+      collected: 0,
+    };
+
+    current.saleCount += toNumber(row.sale_count);
+    current.totalSales += toNumber(row.total_sales);
+    byPeriod.set(period, current);
+  }
+
+  for (const row of collectionRows) {
+    const period = String(row.period || '');
+    const current = byPeriod.get(period) || {
+      period,
+      label: formatPeriodLabel(period, dateRange.groupBy),
+      saleCount: 0,
+      totalSales: 0,
+      collectionCount: 0,
+      collected: 0,
+    };
+
+    current.collectionCount += toNumber(row.collection_count);
+    current.collected += toNumber(row.collected_amount);
+    byPeriod.set(period, current);
+  }
+
+  return [...byPeriod.values()]
+    .sort((a, b) => String(a.period).localeCompare(String(b.period)))
+    .map((item) => ({
+      ...item,
+      totalSales: roundMoney(item.totalSales),
+      collected: roundMoney(item.collected),
+    }));
+};
+
+const mapBreakdownTrend = (rows = [], nameKey = 'name') => rows.map((row) => ({
+  period: row.period,
+  label: row.label,
+  [nameKey]: row.name || '-',
+  saleCount: toNumber(row.sale_count),
+  salesAmount: roundMoney(row.sales_amount),
+}));
+
+const getPeriodSql = (column, groupBy) => groupBy === 'month'
+  ? `DATE_FORMAT(${column}, '%Y-%m')`
+  : `DATE(${column})`;
+
 export const getLotProjectDashboard = async (req, res) => {
   const connection = await db.getConnection();
 
@@ -40,6 +212,7 @@ export const getLotProjectDashboard = async (req, res) => {
 
     const projectPayload = await buildProjectPayload(project);
     const hasListings = await tableExists(connection, 'lot_project_listings');
+    const dateRange = resolveDashboardDateRange(req.query);
 
     const emptyStats = {
       totalUnits: 0,
@@ -75,10 +248,14 @@ export const getLotProjectDashboard = async (req, res) => {
         data: {
           project: projectPayload,
           stats: emptyStats,
-          recentUnits: [],
+          dateRange,
+          salesTrend: mergeTrendRows(dateRange),
+          sellerSalesTrend: [],
+          groupSalesTrend: [],
           upcomingDues: [],
           sellerPerformance: [],
           groupPerformance: [],
+          recentUnits: [],
         },
       });
     }
@@ -100,6 +277,23 @@ export const getLotProjectDashboard = async (req, res) => {
             AND p.lot_project_payment_status = 'Verified'
         ), 0)`
       : '0';
+
+    const downpaymentDiscountCreditExpr = hasClientProfiles
+      ? `CASE
+          WHEN cp.lot_project_client_profile_id IS NOT NULL
+            THEN ROUND(
+              (l.lot_project_listing_tcp * (COALESCE(cp.soa_downpayment_percentage, 0) / 100))
+              * (COALESCE(cp.soa_dp_discount_percentage, 0) / 100),
+              2
+            )
+          ELSE 0
+        END`
+      : '0';
+
+    const effectiveCollectedExpr = `CASE
+      WHEN l.lot_project_listing_sold_substatus = 'fully_paid' THEN l.lot_project_listing_tcp
+      ELSE LEAST(${paymentSummarySelect} + ${downpaymentDiscountCreditExpr}, l.lot_project_listing_tcp)
+    END`;
 
     const releaseSummaryJoin = hasCommissionReleases
       ? `
@@ -149,9 +343,10 @@ export const getLotProjectDashboard = async (req, res) => {
       `
         SELECT
           COALESCE(SUM(l.lot_project_listing_tcp), 0) AS totalSales,
-          COALESCE(SUM(${paymentSummarySelect}), 0) AS totalCollected,
-          COALESCE(SUM(l.lot_project_listing_tcp - ${paymentSummarySelect}), 0) AS pendingSales
+          COALESCE(SUM(${effectiveCollectedExpr}), 0) AS totalCollected,
+          COALESCE(SUM(GREATEST(l.lot_project_listing_tcp - ${effectiveCollectedExpr}, 0)), 0) AS pendingSales
         FROM lot_project_listings l
+        ${hasClientProfiles ? 'LEFT JOIN lot_project_client_profiles cp ON cp.lot_project_listing_id = l.lot_project_listing_id' : ''}
         WHERE l.lot_project_id = ?
           AND l.lot_project_listing_status IN ('sold', 'pending_for_cancellation', 'cancelled')
       `,
@@ -181,12 +376,25 @@ export const getLotProjectDashboard = async (req, res) => {
           netRemainingCommission: 0,
         }]];
 
+    const downpaymentRowSql = `(LOWER(s.description) LIKE '%downpayment%' OR LOWER(s.description) LIKE '%down payment%')`;
+    const expectedDownpaymentGrossSql = `ROUND((l.lot_project_listing_tcp * (COALESCE(cp.soa_downpayment_percentage, 0) / 100)) / GREATEST(COALESCE(cp.soa_downpayment_terms, 0), 1), 2)`;
+    const expectedDownpaymentDiscountSql = `ROUND(${expectedDownpaymentGrossSql} * (COALESCE(cp.soa_dp_discount_percentage, 0) / 100), 2)`;
+    const expectedDownpaymentNetSql = `ROUND(${expectedDownpaymentGrossSql} - ${expectedDownpaymentDiscountSql}, 2)`;
     const dueDiscountExpr = `CASE
-      WHEN LOWER(s.description) LIKE '%downpayment%' OR LOWER(s.description) LIKE '%down payment%'
-        THEN ROUND(s.due_amount * (COALESCE(cp.soa_dp_discount_percentage, 0) / 100), 2)
+      WHEN ${downpaymentRowSql} AND COALESCE(cp.soa_dp_discount_percentage, 0) > 0
+        THEN ${expectedDownpaymentDiscountSql}
       ELSE 0
     END`;
-    const dueBalanceExpr = `GREATEST((s.due_amount + s.penalty_amount - ${dueDiscountExpr}) - s.amount_paid, 0)`;
+    const dueCashRequiredExpr = `CASE
+      WHEN ${downpaymentRowSql} AND COALESCE(cp.soa_dp_discount_percentage, 0) > 0
+        THEN CASE
+          WHEN ABS(s.due_amount - ${expectedDownpaymentNetSql}) <= 0.05
+            THEN s.due_amount + s.penalty_amount
+          ELSE GREATEST(s.due_amount - ${dueDiscountExpr}, 0) + s.penalty_amount
+        END
+      ELSE s.due_amount + s.penalty_amount
+    END`;
+    const dueBalanceExpr = `GREATEST((${dueCashRequiredExpr}) - s.amount_paid, 0)`;
 
     const [scheduleRows] = hasSchedules
       ? await connection.query(
@@ -201,6 +409,8 @@ export const getLotProjectDashboard = async (req, res) => {
                 ELSE 0
               END), 0) AS upcomingDueAmount
             FROM lot_project_payment_schedules s
+            INNER JOIN lot_project_listings l
+              ON l.lot_project_listing_id = s.lot_project_listing_id
             LEFT JOIN lot_project_client_profiles cp
               ON cp.lot_project_client_profile_id = s.lot_project_client_profile_id
             WHERE s.lot_project_id = ?
@@ -241,6 +451,54 @@ export const getLotProjectDashboard = async (req, res) => {
         )
       : [[]];
 
+    const saleDateSelect = hasClientProfiles
+      ? 'DATE(COALESCE(cp.created_at, l.lot_project_listing_updated_at))'
+      : 'DATE(l.lot_project_listing_updated_at)';
+    const saleClientJoin = hasClientProfiles
+      ? 'LEFT JOIN lot_project_client_profiles cp ON cp.lot_project_listing_id = l.lot_project_listing_id'
+      : '';
+
+    const [salesTrendRows] = await connection.query(
+      `
+        SELECT
+          ${getPeriodSql('sale_date', dateRange.groupBy)} AS period,
+          COUNT(*) AS sale_count,
+          COALESCE(SUM(tcp), 0) AS total_sales
+        FROM (
+          SELECT
+            l.lot_project_listing_id,
+            l.lot_project_listing_tcp AS tcp,
+            ${saleDateSelect} AS sale_date
+          FROM lot_project_listings l
+          ${saleClientJoin}
+          WHERE l.lot_project_id = ?
+            AND l.lot_project_listing_status IN ('sold', 'pending_for_cancellation', 'cancelled')
+        ) sales_data
+        WHERE sale_date BETWEEN ? AND ?
+        GROUP BY period
+        ORDER BY period ASC
+      `,
+      [project.lot_project_id, dateRange.from, dateRange.to]
+    );
+
+    const [collectionTrendRows] = hasPayments
+      ? await connection.query(
+          `
+            SELECT
+              ${getPeriodSql('lot_project_payment_date', dateRange.groupBy)} AS period,
+              COUNT(*) AS collection_count,
+              COALESCE(SUM(lot_project_payment_amount), 0) AS collected_amount
+            FROM lot_project_payments
+            WHERE lot_project_id = ?
+              AND lot_project_payment_status = 'Verified'
+              AND lot_project_payment_date BETWEEN ? AND ?
+            GROUP BY period
+            ORDER BY period ASC
+          `,
+          [project.lot_project_id, dateRange.from, dateRange.to]
+        )
+      : [[]];
+
     const sellerPerformanceQuery = hasCommissions
       ? `
         SELECT
@@ -250,6 +508,7 @@ export const getLotProjectDashboard = async (req, res) => {
           u.role AS seller_role,
           COALESCE(sg.seller_group_name, 'No Group') AS seller_group_name,
           COUNT(DISTINCT c.lot_project_listing_id) AS unit_count,
+          COALESCE(SUM(c.commission_base_amount), 0) AS sales_amount,
           COALESCE(SUM(c.gross_commission_amount), 0) AS gross_commission,
           COALESCE(SUM(${releaseEligibleExpr}), 0) AS eligible_commission,
           COALESCE(SUM(${releaseReleasedExpr}), 0) AS released_commission,
@@ -265,7 +524,7 @@ export const getLotProjectDashboard = async (req, res) => {
         ${releaseSummaryJoin}
         WHERE c.lot_project_id = ?
         GROUP BY acs.accredited_seller_id, sg.seller_group_id, u.first_name, u.middle_name, u.last_name, u.role, sg.seller_group_name
-        ORDER BY gross_commission DESC, seller_name ASC
+        ORDER BY sales_amount DESC, gross_commission DESC, seller_name ASC
         LIMIT 8
       `
       : '';
@@ -273,23 +532,37 @@ export const getLotProjectDashboard = async (req, res) => {
     const groupPerformanceQuery = hasCommissions
       ? `
         SELECT
-          sg.seller_group_id,
-          COALESCE(sg.seller_group_name, 'No Group') AS seller_group_name,
-          COUNT(DISTINCT c.lot_project_listing_id) AS unit_count,
-          COALESCE(SUM(c.gross_commission_amount), 0) AS gross_commission,
-          COALESCE(SUM(${releaseEligibleExpr}), 0) AS eligible_commission,
-          COALESCE(SUM(${releaseReleasedExpr}), 0) AS released_commission,
-          COALESCE(SUM(${releaseDeductionExpr}), 0) AS deduction_amount,
-          COALESCE(SUM(GREATEST(c.gross_commission_amount - ${releaseReleasedExpr} - ${releaseDeductionExpr}, 0)), 0) AS remaining_commission
-        FROM lot_project_commissions c
-        LEFT JOIN accredited_sellers acs
-          ON acs.accredited_seller_id = c.accredited_seller_id
-        LEFT JOIN seller_groups sg
-          ON sg.seller_group_id = acs.seller_group_id
-        ${releaseSummaryJoin}
-        WHERE c.lot_project_id = ?
-        GROUP BY sg.seller_group_id, sg.seller_group_name
-        ORDER BY gross_commission DESC, seller_group_name ASC
+          group_data.seller_group_id,
+          group_data.seller_group_name,
+          COUNT(*) AS unit_count,
+          COALESCE(SUM(group_data.sales_amount), 0) AS sales_amount,
+          COALESCE(SUM(group_data.gross_commission), 0) AS gross_commission,
+          COALESCE(SUM(group_data.eligible_commission), 0) AS eligible_commission,
+          COALESCE(SUM(group_data.released_commission), 0) AS released_commission,
+          COALESCE(SUM(group_data.deduction_amount), 0) AS deduction_amount,
+          COALESCE(SUM(group_data.remaining_commission), 0) AS remaining_commission
+        FROM (
+          SELECT
+            COALESCE(sg.seller_group_id, 0) AS seller_group_id,
+            COALESCE(sg.seller_group_name, 'No Group') AS seller_group_name,
+            c.lot_project_listing_id,
+            MAX(c.commission_base_amount) AS sales_amount,
+            SUM(c.gross_commission_amount) AS gross_commission,
+            SUM(${releaseEligibleExpr}) AS eligible_commission,
+            SUM(${releaseReleasedExpr}) AS released_commission,
+            SUM(${releaseDeductionExpr}) AS deduction_amount,
+            SUM(GREATEST(c.gross_commission_amount - ${releaseReleasedExpr} - ${releaseDeductionExpr}, 0)) AS remaining_commission
+          FROM lot_project_commissions c
+          LEFT JOIN accredited_sellers acs
+            ON acs.accredited_seller_id = c.accredited_seller_id
+          LEFT JOIN seller_groups sg
+            ON sg.seller_group_id = acs.seller_group_id
+          ${releaseSummaryJoin}
+          WHERE c.lot_project_id = ?
+          GROUP BY COALESCE(sg.seller_group_id, 0), COALESCE(sg.seller_group_name, 'No Group'), c.lot_project_listing_id
+        ) group_data
+        GROUP BY group_data.seller_group_id, group_data.seller_group_name
+        ORDER BY sales_amount DESC, gross_commission DESC, seller_group_name ASC
         LIMIT 8
       `
       : '';
@@ -300,6 +573,59 @@ export const getLotProjectDashboard = async (req, res) => {
 
     const [groupRows] = hasCommissions
       ? await connection.query(groupPerformanceQuery, [project.lot_project_id])
+      : [[]];
+
+    const [sellerTrendRows] = hasCommissions
+      ? await connection.query(
+          `
+            SELECT
+              ${getPeriodSql('DATE(c.created_at)', dateRange.groupBy)} AS period,
+              COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)), ''), 'Unassigned Seller') AS name,
+              COUNT(DISTINCT c.lot_project_listing_id) AS sale_count,
+              COALESCE(SUM(c.commission_base_amount), 0) AS sales_amount
+            FROM lot_project_commissions c
+            LEFT JOIN accredited_sellers acs
+              ON acs.accredited_seller_id = c.accredited_seller_id
+            LEFT JOIN users u
+              ON u.id = acs.user_id
+            WHERE c.lot_project_id = ?
+              AND DATE(c.created_at) BETWEEN ? AND ?
+            GROUP BY period, c.accredited_seller_id, name
+            ORDER BY period ASC, sales_amount DESC, name ASC
+          `,
+          [project.lot_project_id, dateRange.from, dateRange.to]
+        )
+      : [[]];
+
+    const [groupTrendRows] = hasCommissions
+      ? await connection.query(
+          `
+            SELECT
+              group_rows.period,
+              group_rows.name,
+              COUNT(*) AS sale_count,
+              COALESCE(SUM(group_rows.sales_amount), 0) AS sales_amount
+            FROM (
+              SELECT
+                ${getPeriodSql('DATE(c.created_at)', dateRange.groupBy)} AS period,
+                COALESCE(sg.seller_group_name, 'No Group') AS name,
+                COALESCE(sg.seller_group_id, 0) AS seller_group_id,
+                c.lot_project_listing_id,
+                MAX(c.commission_base_amount) AS sales_amount
+              FROM lot_project_commissions c
+              LEFT JOIN accredited_sellers acs
+                ON acs.accredited_seller_id = c.accredited_seller_id
+              LEFT JOIN seller_groups sg
+                ON sg.seller_group_id = acs.seller_group_id
+              WHERE c.lot_project_id = ?
+                AND DATE(c.created_at) BETWEEN ? AND ?
+              GROUP BY period, COALESCE(sg.seller_group_id, 0), COALESCE(sg.seller_group_name, 'No Group'), c.lot_project_listing_id
+            ) group_rows
+            GROUP BY group_rows.period, group_rows.seller_group_id, group_rows.name
+            ORDER BY group_rows.period ASC, sales_amount DESC, group_rows.name ASC
+          `,
+          [project.lot_project_id, dateRange.from, dateRange.to]
+        )
       : [[]];
 
     const cadastralSelect = hasListingCadastralLinks
@@ -327,6 +653,36 @@ export const getLotProjectDashboard = async (req, res) => {
         `
       : `LEFT JOIN (SELECT NULL AS lot_project_listing_id, 0 AS listing_document_count) ldoc ON 1 = 0`;
 
+    const scheduleBalanceJoin = hasSchedules
+      ? `
+          LEFT JOIN (
+            SELECT
+              s.lot_project_listing_id,
+              COALESCE(SUM(GREATEST((CASE
+                WHEN (LOWER(s.description) LIKE '%downpayment%' OR LOWER(s.description) LIKE '%down payment%')
+                  AND COALESCE(cp2.soa_dp_discount_percentage, 0) > 0
+                  THEN CASE
+                    WHEN ABS(s.due_amount - ROUND(
+                      ((l2.lot_project_listing_tcp * (COALESCE(cp2.soa_downpayment_percentage, 0) / 100)) / GREATEST(COALESCE(cp2.soa_downpayment_terms, 0), 1))
+                      - (((l2.lot_project_listing_tcp * (COALESCE(cp2.soa_downpayment_percentage, 0) / 100)) / GREATEST(COALESCE(cp2.soa_downpayment_terms, 0), 1)) * (COALESCE(cp2.soa_dp_discount_percentage, 0) / 100)),
+                      2
+                    )) <= 0.05
+                      THEN s.due_amount + s.penalty_amount
+                    ELSE GREATEST(s.due_amount - ROUND(((l2.lot_project_listing_tcp * (COALESCE(cp2.soa_downpayment_percentage, 0) / 100)) / GREATEST(COALESCE(cp2.soa_downpayment_terms, 0), 1)) * (COALESCE(cp2.soa_dp_discount_percentage, 0) / 100), 2), 0) + s.penalty_amount
+                  END
+                ELSE s.due_amount + s.penalty_amount
+              END) - s.amount_paid, 0)), 0) AS actual_remaining_balance
+            FROM lot_project_payment_schedules s
+            INNER JOIN lot_project_listings l2
+              ON l2.lot_project_listing_id = s.lot_project_listing_id
+            LEFT JOIN lot_project_client_profiles cp2
+              ON cp2.lot_project_client_profile_id = s.lot_project_client_profile_id
+            WHERE s.schedule_status <> 'Cancelled'
+            GROUP BY s.lot_project_listing_id
+          ) sbalance ON sbalance.lot_project_listing_id = l.lot_project_listing_id
+        `
+      : `LEFT JOIN (SELECT NULL AS lot_project_listing_id, NULL AS actual_remaining_balance) sbalance ON 1 = 0`;
+
     const [recentRows] = await connection.query(
       `
         SELECT
@@ -334,12 +690,15 @@ export const getLotProjectDashboard = async (req, res) => {
           ${cadastralSelect}
           cp.buyer_full_name,
           ${paymentSummarySelect} AS total_paid,
+          ${effectiveCollectedExpr} AS effective_collected,
+          sbalance.actual_remaining_balance,
           COALESCE(ldoc.listing_document_count, 0) AS listing_document_count,
           COALESCE(pdoc.project_default_document_count, 0) AS project_default_document_count,
           COALESCE(pdoc.project_required_document_count, 0) AS project_required_document_count
         FROM lot_project_listings l
         ${clientJoin}
         ${listingDocumentJoin}
+        ${scheduleBalanceJoin}
         LEFT JOIN (
           SELECT
             lot_project_id,
@@ -367,6 +726,10 @@ export const getLotProjectDashboard = async (req, res) => {
       success: true,
       data: {
         project: projectPayload,
+        dateRange,
+        salesTrend: mergeTrendRows(dateRange, salesTrendRows, collectionTrendRows),
+        sellerSalesTrend: mapBreakdownTrend(sellerTrendRows, 'seller'),
+        groupSalesTrend: mapBreakdownTrend(groupTrendRows, 'group'),
         stats: {
           ...emptyStats,
           totalUnits: toNumber(summary.totalUnits),
@@ -413,6 +776,7 @@ export const getLotProjectDashboard = async (req, res) => {
           role: row.seller_role,
           group: row.seller_group_name,
           units: toNumber(row.unit_count),
+          salesAmount: toNumber(row.sales_amount),
           grossCommission: toNumber(row.gross_commission),
           eligibleCommission: toNumber(row.eligible_commission),
           releasedCommission: toNumber(row.released_commission),
@@ -423,21 +787,34 @@ export const getLotProjectDashboard = async (req, res) => {
           id: row.seller_group_id,
           group: row.seller_group_name,
           units: toNumber(row.unit_count),
+          salesAmount: toNumber(row.sales_amount),
           grossCommission: toNumber(row.gross_commission),
           eligibleCommission: toNumber(row.eligible_commission),
           releasedCommission: toNumber(row.released_commission),
           cashAdvanceDeductions: toNumber(row.deduction_amount),
           remainingCommission: toNumber(row.remaining_commission),
         })),
-        recentUnits: recentRows.map((row) => ({
-          ...mapListingRow(row),
-          collected: toNumber(row.total_paid),
-          balance: Math.max(toNumber(row.lot_project_listing_tcp) - toNumber(row.total_paid), 0),
-          progress: toNumber(row.lot_project_listing_tcp) > 0
-            ? `${Math.min((toNumber(row.total_paid) / toNumber(row.lot_project_listing_tcp)) * 100, 100).toFixed(1)}%`
-            : '0%',
-          documents: formatDocumentsLabel(row),
-        })),
+        recentUnits: recentRows.map((row) => {
+          const tcp = toNumber(row.lot_project_listing_tcp);
+          const paid = toNumber(row.effective_collected ?? row.total_paid);
+          const scheduleBalance = row.actual_remaining_balance === null || row.actual_remaining_balance === undefined
+            ? Math.max(tcp - paid, 0)
+            : Math.max(toNumber(row.actual_remaining_balance), 0);
+          const isFullyPaid = row.lot_project_listing_sold_substatus === 'fully_paid' || (tcp > 0 && scheduleBalance <= 0.009);
+          const progressPercent = tcp > 0
+            ? (isFullyPaid ? 100 : Math.min((paid / tcp) * 100, 100))
+            : 0;
+
+          return {
+            ...mapListingRow(row),
+            collected: isFullyPaid ? tcp : paid,
+            balance: isFullyPaid ? 0 : Math.max(tcp - paid, 0),
+            scheduleBalance,
+            progressValue: progressPercent,
+            progress: `${progressPercent.toFixed(1)}%`,
+            documents: formatDocumentsLabel(row),
+          };
+        }),
       },
     });
   } catch (error) {
@@ -507,3 +884,4 @@ export const getLotProjectPriceList = async (req, res) => {
     connection.release();
   }
 };
+

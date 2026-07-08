@@ -798,25 +798,94 @@ export const getScheduleTotalDue = (row = {}) => {
   return roundMoneyValue(Math.max(dueAmount - discountAmount, 0) + (hasPrincipalBreakdown ? 0 : interest) + penalty);
 };
 
-export const getStoredRowDiscountAmount = (row = {}, clientProfile = {}) => {
+const isStoredDownpaymentRow = (row = {}) => {
   const description = String(row.description || '').toLowerCase();
-  const isDownpaymentRow = description.includes('downpayment') || description.includes('down payment');
-  if (!isDownpaymentRow) return 0;
+  return description.includes('downpayment') || description.includes('down payment');
+};
 
-  const explicitDiscount = row.discount_amount ?? row.discountAmount;
-  const fallbackDiscount = roundMoneyValue(
-    Number(row.due_amount || 0) * (Number(clientProfile.soa_dp_discount_percentage || 0) / 100)
+const getDownpaymentDiscountRate = (clientProfile = {}) => Number(clientProfile.soa_dp_discount_percentage || 0);
+
+const getExpectedDownpaymentGrossPerRow = (row = {}, clientProfile = {}) => {
+  const tcp = Number(
+    clientProfile.lot_project_listing_tcp ||
+      clientProfile.tcp ||
+      clientProfile.total_contract_price ||
+      0
   );
+  const downpaymentPercentage = Number(clientProfile.soa_downpayment_percentage || 0);
+  const downpaymentTerms = Math.max(Number(clientProfile.soa_downpayment_terms || 0), 1);
 
-  return roundMoneyValue(Math.max(Number(explicitDiscount || 0), fallbackDiscount));
+  if (tcp <= 0 || downpaymentPercentage <= 0) return 0;
+
+  const grossTotal = roundMoneyValue(tcp * (downpaymentPercentage / 100));
+  const baseGross = roundMoneyValue(grossTotal / downpaymentTerms);
+  const rowIndex = Number(row.sequence || row.row_number || 0);
+  const isLast = downpaymentTerms === 1 || rowIndex === downpaymentTerms;
+
+  return isLast
+    ? roundMoneyValue(grossTotal - (baseGross * (downpaymentTerms - 1)))
+    : baseGross;
 };
 
-export const getStoredRowTotalDue = (row = {}, clientProfile = {}) => {
-  const dueAmount = Number(row.due_amount || 0);
-  const penaltyAmount = Number(row.penalty_amount || 0);
-  const discountAmount = getStoredRowDiscountAmount(row, clientProfile);
-  return roundMoneyValue(Math.max(dueAmount - discountAmount, 0) + penaltyAmount);
+export const getStoredRowDiscountInfo = (row = {}, clientProfile = {}) => {
+  if (!isStoredDownpaymentRow(row)) {
+    return {
+      discountAmount: 0,
+      discountAlreadyAppliedToDueAmount: false,
+      cashDueAmount: roundMoneyValue(Number(row.due_amount || 0) + Number(row.penalty_amount || 0)),
+    };
+  }
+
+  const dueAmount = roundMoneyValue(Number(row.due_amount || 0));
+  const penaltyAmount = roundMoneyValue(Number(row.penalty_amount || 0));
+  const rate = getDownpaymentDiscountRate(clientProfile);
+
+  if (dueAmount <= 0 || rate <= 0) {
+    return {
+      discountAmount: 0,
+      discountAlreadyAppliedToDueAmount: false,
+      cashDueAmount: roundMoneyValue(dueAmount + penaltyAmount),
+    };
+  }
+
+  const explicitDiscount = Number(row.discount_amount ?? row.discountAmount ?? 0);
+  if (explicitDiscount > 0) {
+    return {
+      discountAmount: roundMoneyValue(explicitDiscount),
+      discountAlreadyAppliedToDueAmount: false,
+      cashDueAmount: roundMoneyValue(Math.max(dueAmount - explicitDiscount, 0) + penaltyAmount),
+    };
+  }
+
+  const expectedGross = getExpectedDownpaymentGrossPerRow(row, clientProfile);
+  const expectedDiscount = expectedGross > 0 ? roundMoneyValue(expectedGross * (rate / 100)) : 0;
+  const expectedNet = expectedGross > 0 ? roundMoneyValue(Math.max(expectedGross - expectedDiscount, 0)) : 0;
+  const looksStoredNet = expectedNet > 0 && Math.abs(dueAmount - expectedNet) <= 0.05;
+
+  if (looksStoredNet) {
+    return {
+      discountAmount: expectedDiscount,
+      discountAlreadyAppliedToDueAmount: true,
+      cashDueAmount: roundMoneyValue(dueAmount + penaltyAmount),
+    };
+  }
+
+  const fallbackDiscount = expectedDiscount > 0
+    ? expectedDiscount
+    : roundMoneyValue(dueAmount * (rate / 100));
+
+  return {
+    discountAmount: fallbackDiscount,
+    discountAlreadyAppliedToDueAmount: false,
+    cashDueAmount: roundMoneyValue(Math.max(dueAmount - fallbackDiscount, 0) + penaltyAmount),
+  };
 };
+
+export const getStoredRowDiscountAmount = (row = {}, clientProfile = {}) =>
+  getStoredRowDiscountInfo(row, clientProfile).discountAmount;
+
+export const getStoredRowTotalDue = (row = {}, clientProfile = {}) =>
+  getStoredRowDiscountInfo(row, clientProfile).cashDueAmount;
 
 export const getStoredScheduleType = (row = {}) => {
   const text = String(row.description || '').toLowerCase();
@@ -1697,12 +1766,26 @@ export const recomputeListingScheduleBalances = async (connection, listing) => {
       FROM lot_project_payment_schedules
       WHERE lot_project_id = ?
         AND lot_project_listing_id = ?
-      ORDER BY due_date ASC, lot_project_payment_schedule_id ASC
+      ORDER BY
+        CASE WHEN due_date IS NULL THEN 1 ELSE 0 END,
+        due_date ASC,
+        lot_project_payment_schedule_id ASC
     `,
     [listing.lot_project_id, listing.lot_project_listing_id]
   );
 
-  let runningBalance = Number(listing.lot_project_listing_tcp || 0);
+  const [clientProfileRows] = await connection.query(
+    `
+      SELECT *
+      FROM lot_project_client_profiles
+      WHERE lot_project_listing_id = ?
+      LIMIT 1
+    `,
+    [listing.lot_project_listing_id]
+  );
+
+  const clientProfile = { ...(listing || {}), ...(clientProfileRows[0] || {}) };
+  let runningBalance = Number(listing.lot_project_listing_tcp || clientProfile.lot_project_listing_tcp || 0);
   const hasPaidColumns = await columnExists(connection, 'lot_project_payment_schedules', 'paid_principal_amount');
 
   for (const row of rows) {
@@ -1711,6 +1794,7 @@ export const recomputeListingScheduleBalances = async (connection, listing) => {
     const penaltyDue = Number(row.penalty_amount || 0);
     const interestDue = Number(row.interest_amount || 0);
     const principalDue = Number(row.principal_amount ?? row.due_amount ?? 0);
+    const discountInfo = getStoredRowDiscountInfo(row, clientProfile);
 
     let remainingPaid = paidAmount;
     const paidPenalty = roundMoneyValue(Math.min(remainingPaid, penaltyDue));
@@ -1720,7 +1804,12 @@ export const recomputeListingScheduleBalances = async (connection, listing) => {
     remainingPaid = roundMoneyValue(Math.max(remainingPaid - paidInterest, 0));
 
     const paidPrincipal = roundMoneyValue(Math.min(remainingPaid, principalDue, runningBalance));
-    runningBalance = roundMoneyValue(Math.max(runningBalance - paidPrincipal, 0));
+    const principalCashDue = roundMoneyValue(Math.max(discountInfo.cashDueAmount - penaltyDue - interestDue, 0));
+    const discountCredit = discountInfo.discountAmount > 0 && paidPrincipal > 0
+      ? roundMoneyValue(Math.min(discountInfo.discountAmount, discountInfo.discountAmount * Math.min(paidPrincipal / Math.max(principalCashDue, 1), 1)))
+      : 0;
+    const principalReduction = roundMoneyValue(Math.min(paidPrincipal + discountCredit, runningBalance));
+    runningBalance = roundMoneyValue(Math.max(runningBalance - principalReduction, 0));
 
     const setColumns = ['beginning_balance = ?', 'ending_balance = ?'];
     const values = [beginningBalance, runningBalance];
@@ -1755,7 +1844,7 @@ export const applyPaymentToSchedules = async (connection, listing, paymentId, pr
     `,
     [listing.lot_project_client_profile_id]
   );
-  const clientProfile = clientProfileRows[0] || listing || {};
+  const clientProfile = { ...(listing || {}), ...(clientProfileRows[0] || {}) };
 
   const [scheduleRows] = await connection.query(
     `
@@ -1849,7 +1938,7 @@ export const reversePaymentAllocations = async (connection, listing, paymentId) 
     `,
     [listing.lot_project_client_profile_id]
   );
-  const clientProfile = clientProfileRows[0] || listing || {};
+  const clientProfile = { ...(listing || {}), ...(clientProfileRows[0] || {}) };
 
   const [allocations] = await connection.query(
     `
@@ -1948,6 +2037,7 @@ export const addIfColumnExists = async (connection, tableName, columns, values, 
     values.push(value);
   }
 };
+
 
 
 

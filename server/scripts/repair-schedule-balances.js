@@ -2,38 +2,125 @@ import { db } from '../db/connect.js';
 import {
   applyPaymentToSchedules,
   columnExists,
+  createComputedSoaRows,
+  getComputedSoaTerms,
+  recomputeComputedSoaBalances,
   recomputeListingScheduleBalances,
   tableExists,
 } from '../controllers/Lot_Projects/_shared/lotProject.shared.js';
 
-const resetListingSchedules = async (connection, listing) => {
-  const resetColumns = [
-    'amount_paid = 0',
-    'date_paid = NULL',
-    'reference_id = NULL',
-    "schedule_status = 'Unpaid'",
-  ];
 
-  if (await columnExists(connection, 'lot_project_payment_schedules', 'paid_penalty_amount')) {
-    resetColumns.push('paid_penalty_amount = 0');
+const rebuildListingSchedules = async (connection, listing) => {
+  await connection.query(
+    `DELETE FROM lot_project_payment_schedules WHERE lot_project_id = ? AND lot_project_listing_id = ?`,
+    [listing.lot_project_id, listing.lot_project_listing_id]
+  );
+
+  const terms = getComputedSoaTerms(listing, []);
+  const computedRows = createComputedSoaRows(terms);
+  const scheduleRows = recomputeComputedSoaBalances(computedRows, terms);
+
+  if (!scheduleRows.length) return;
+
+  const baseColumns = [
+    'lot_project_id',
+    'lot_project_listing_id',
+    'lot_project_client_profile_id',
+    'due_date',
+    'description',
+    'beginning_balance',
+    'due_amount',
+    'penalty_amount',
+    'amount_paid',
+    'date_paid',
+    'reference_id',
+    'ending_balance',
+    'schedule_status',
+  ];
+  const optionalColumns = [];
+
+  for (const column of [
+    'interest_amount',
+    'discount_amount',
+    'principal_amount',
+    'monthly_amortization_amount',
+    'paid_interest_amount',
+    'paid_principal_amount',
+    'paid_penalty_amount',
+  ]) {
+    if (await columnExists(connection, 'lot_project_payment_schedules', column)) optionalColumns.push(column);
   }
-  if (await columnExists(connection, 'lot_project_payment_schedules', 'paid_interest_amount')) {
-    resetColumns.push('paid_interest_amount = 0');
-  }
-  if (await columnExists(connection, 'lot_project_payment_schedules', 'paid_principal_amount')) {
-    resetColumns.push('paid_principal_amount = 0');
-  }
+
+  const columns = [...baseColumns, ...optionalColumns];
+  const values = scheduleRows.flatMap((row) => {
+    const baseValues = [
+      listing.lot_project_id,
+      listing.lot_project_listing_id,
+      listing.lot_project_client_profile_id,
+      row.dueDate,
+      row.description,
+      Number(row.beginningBalance || 0),
+      Number(row.dueAmount || 0),
+      Number(row.penalty || 0),
+      0,
+      null,
+      null,
+      Number(row.endingBalance || 0),
+      'Unpaid',
+    ];
+
+    const optionalValues = optionalColumns.map((column) => {
+      if (column === 'interest_amount') return Number(row.interest || 0);
+      if (column === 'discount_amount') return Number(row.discountAmount || row.discount_amount || 0);
+      if (column === 'principal_amount') return Number(row.principalAmount || row.principal_amount || 0);
+      if (column === 'monthly_amortization_amount') return Number(row.monthlyAmortizationAmount || row.dueAmount || 0);
+      if (column === 'paid_interest_amount') return Number(row.paidInterestAmount || 0);
+      if (column === 'paid_principal_amount') return Number(row.paidPrincipalAmount || 0);
+      if (column === 'paid_penalty_amount') return Number(row.paidPenaltyAmount || 0);
+      return 0;
+    });
+
+    return [...baseValues, ...optionalValues];
+  });
 
   await connection.query(
     `
-      UPDATE lot_project_payment_schedules
-      SET ${resetColumns.join(', ')}
+      INSERT INTO lot_project_payment_schedules (
+        ${columns.join(',\n        ')}
+      ) VALUES ${scheduleRows.map(() => `(${columns.map(() => '?').join(', ')})`).join(', ')}
+    `,
+    values
+  );
+};
+
+const syncFullyPaidSubstatus = async (connection, listing) => {
+  const [rows] = await connection.query(
+    `
+      SELECT COALESCE(MAX(ending_balance), 0) AS remaining_balance
+      FROM lot_project_payment_schedules
       WHERE lot_project_id = ?
         AND lot_project_listing_id = ?
+        AND LOWER(description) NOT LIKE '%legal%'
+        AND LOWER(description) NOT LIKE '%misc%'
+        AND LOWER(description) NOT LIKE '%lmf%'
     `,
     [listing.lot_project_id, listing.lot_project_listing_id]
   );
+
+  if (Number(rows[0]?.remaining_balance || 0) <= 0.009) {
+    await connection.query(
+      `
+        UPDATE lot_project_listings
+        SET lot_project_listing_sold_substatus = 'fully_paid'
+        WHERE lot_project_id = ?
+          AND lot_project_listing_id = ?
+          AND lot_project_listing_status = 'sold'
+      `,
+      [listing.lot_project_id, listing.lot_project_listing_id]
+    );
+  }
 };
+
 
 const getVerifiedPayments = async (connection, listing) => {
   const [rows] = await connection.query(
@@ -71,9 +158,12 @@ const run = async () => {
       `
         UPDATE lot_project_payment_schedules
         SET due_date = NULL
-        WHERE LOWER(description) LIKE '%legal%'
-           OR LOWER(description) LIKE '%misc%'
-           OR LOWER(description) LIKE '%lmf%'
+        WHERE lot_project_payment_schedule_id > 0
+          AND (
+            LOWER(description) LIKE '%legal%'
+            OR LOWER(description) LIKE '%misc%'
+            OR LOWER(description) LIKE '%lmf%'
+          )
       `
     );
 
@@ -99,7 +189,7 @@ const run = async () => {
         [listing.lot_project_id, listing.lot_project_listing_id]
       );
 
-      await resetListingSchedules(connection, listing);
+      await rebuildListingSchedules(connection, listing);
 
       const payments = await getVerifiedPayments(connection, listing);
       for (const payment of payments) {
@@ -116,7 +206,8 @@ const run = async () => {
       }
 
       await recomputeListingScheduleBalances(connection, listing);
-      console.log(`Repaired ${listing.lot_project_listing_unit_id}: replayed ${payments.length} verified payment(s).`);
+      await syncFullyPaidSubstatus(connection, listing);
+      console.log(`Repaired ${listing.lot_project_listing_unit_id}: rebuilt schedule and replayed ${payments.length} verified payment(s).`);
     }
 
     await connection.commit();
@@ -132,3 +223,4 @@ const run = async () => {
 };
 
 run();
+
