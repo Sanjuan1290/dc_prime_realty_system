@@ -32,6 +32,7 @@ const Commission = () => {
   const [search, setSearch] = useState('')
   const [saleTypeFilter, setSaleTypeFilter] = useState('all')
   const [alert, setAlert] = useState(null)
+  const [modalNotice, setModalNotice] = useState(null)
 
   const queryString = useMemo(() => {
     return new URLSearchParams({
@@ -51,16 +52,22 @@ const Commission = () => {
     mutationFn: ({ commissionId, payload }) => useFetchPatch(`/projects/lot-projects/${projectSlug}/commissions/${commissionId}`, payload),
     onMutate: ({ payload }) => {
       const actionLabel = String(payload?.action || '').includes('release') ? 'Saving commission release...' : 'Updating commission status...'
-      setAlert({ type: 'loading', message: actionLabel })
+      const notice = { type: 'loading', title: 'Saving', message: actionLabel }
+      if (selected) setModalNotice(notice)
+      else setAlert(notice)
     },
     onSuccess: (result) => {
-      setAlert({ type: 'success', message: result?.message || 'Commission updated successfully.' })
+      const notice = { type: 'success', title: 'Commission updated', message: result?.message || 'Commission updated successfully.' }
+      if (selected) setModalNotice(notice)
+      else setAlert(notice)
       queryClient.invalidateQueries({ queryKey: ['lot-commissions', projectSlug] })
       queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] })
       setSelected((current) => current ? { ...current, ...(result?.data || {}) } : current)
     },
     onError: (mutationError) => {
-      setAlert({ type: 'error', message: mutationError?.message || 'Failed to update commission.' })
+      const notice = { type: 'error', title: 'Commission error', message: mutationError?.message || 'Failed to update commission.' }
+      if (selected) setModalNotice(notice)
+      else setAlert(notice)
     },
   })
 
@@ -165,7 +172,7 @@ const Commission = () => {
                   <td className="px-4 py-4 font-black text-blue-700">{money(record.netRemaining)}</td>
                   <td className="px-4 py-4 font-semibold text-slate-600">{Number(record.paymentPercent || 0).toFixed(2)}%</td>
                   <td className="px-4 py-4">
-                    <button type="button" onClick={() => { setSelected(record); setAlert({ type: 'info', message: `Opening commission details for ${record.seller} - ${record.unit}.` }) }} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 transition hover:bg-slate-50 active:scale-[0.98]">
+                    <button type="button" onClick={() => { setSelected(record); setModalNotice(null) }} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 transition hover:bg-slate-50 active:scale-[0.98]">
                       <FiEye className="h-3.5 w-3.5" />
                       Details
                     </button>
@@ -195,8 +202,13 @@ const Commission = () => {
         <ReleaseDetailsModal
           commission={selected}
           isSaving={updateCommissionMutation.isPending}
-          onClose={() => setSelected(null)}
+          onClose={() => {
+            setSelected(null)
+            setModalNotice(null)
+          }}
           onAction={handleCommissionAction}
+          serverNotice={modalNotice}
+          onClearServerNotice={() => setModalNotice(null)}
         />
       ) : null}
     </main>

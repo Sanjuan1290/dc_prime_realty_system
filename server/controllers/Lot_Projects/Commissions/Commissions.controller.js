@@ -59,6 +59,73 @@ const commissionStatusLabel = (status = '') => {
 
 const getPaymentPercent = (row = {}) => toNumber(row.computed_payment_percent ?? row.payment_percent);
 
+const getRequiredDocumentCountSql = (listingAlias = 'l') => `(
+  SELECT COUNT(*)
+  FROM lot_project_listing_documents lpd
+  WHERE lpd.lot_project_listing_id = ${listingAlias}.lot_project_listing_id
+    AND lpd.lot_project_listing_document_status = 'active'
+    AND lpd.lot_project_listing_document_is_required = 1
+)`;
+
+const getCompletedRequiredDocumentCountSql = (listingAlias = 'l', commissionAlias = 'c') => `(
+  SELECT COUNT(*)
+  FROM lot_project_listing_documents lpd
+  INNER JOIN lot_project_client_documents lcd
+    ON lcd.lot_project_listing_id = lpd.lot_project_listing_id
+    AND lcd.document_id = lpd.document_id
+    AND lcd.lot_project_client_profile_id = ${commissionAlias}.lot_project_client_profile_id
+    AND lcd.lot_project_client_document_status IN ('Submitted', 'Approved')
+  WHERE lpd.lot_project_listing_id = ${listingAlias}.lot_project_listing_id
+    AND lpd.lot_project_listing_document_status = 'active'
+    AND lpd.lot_project_listing_document_is_required = 1
+)`;
+
+const scheduleSummaryJoin = `
+  LEFT JOIN (
+    SELECT
+      lot_project_listing_id,
+      COUNT(*) AS schedule_count,
+      COALESCE(SUM(GREATEST((due_amount + penalty_amount) - amount_paid, 0)), 0) AS unpaid_scheduled_due,
+      CAST(SUBSTRING_INDEX(
+        GROUP_CONCAT(ending_balance ORDER BY due_date DESC, lot_project_payment_schedule_id DESC),
+        ',',
+        1
+      ) AS DECIMAL(14,2)) AS actual_remaining_balance
+    FROM lot_project_payment_schedules
+    WHERE schedule_status <> 'Cancelled'
+    GROUP BY lot_project_listing_id
+  ) schedule_summary ON schedule_summary.lot_project_listing_id = c.lot_project_listing_id
+`;
+
+const computedPaymentPercentSql = `
+  CASE
+    WHEN COALESCE(schedule_summary.schedule_count, 0) > 0
+      AND COALESCE(schedule_summary.actual_remaining_balance, l.lot_project_listing_tcp) <= 0.009
+      AND COALESCE(schedule_summary.unpaid_scheduled_due, l.lot_project_listing_tcp) <= 0.009
+      THEN 100
+    WHEN COALESCE(schedule_summary.schedule_count, 0) > 0
+      THEN LEAST(100, ROUND(((l.lot_project_listing_tcp - GREATEST(COALESCE(schedule_summary.actual_remaining_balance, l.lot_project_listing_tcp), 0)) / NULLIF(l.lot_project_listing_tcp, 0)) * 100, 2))
+    ELSE LEAST(100, ROUND((COALESCE(payment_summary.total_paid, 0) / NULLIF(l.lot_project_listing_tcp, 0)) * 100, 2))
+  END
+`;
+
+const isPaymentComplete = (row = {}) => {
+  const percent = getPaymentPercent(row);
+  const remaining = toNumber(row.actual_remaining_balance ?? row.remainingBalance ?? row.remaining_balance);
+  const unpaid = toNumber(row.unpaid_scheduled_due ?? row.unpaidScheduledDue);
+
+  return percent >= 100 || (remaining <= 0.009 && unpaid <= 0.009);
+};
+
+const areDocumentsComplete = (row = {}) => {
+  const required = toNumber(row.required_document_count ?? row.requiredDocumentCount);
+  const completed = toNumber(row.completed_required_document_count ?? row.completedRequiredDocumentCount);
+
+  return required <= 0 || completed >= required;
+};
+
+const isRetentionReady = (row = {}) => isPaymentComplete(row) && areDocumentsComplete(row);
+
 const releaseOrder = {
   '1st Release': 1,
   '2nd Release': 2,
@@ -69,19 +136,22 @@ const releaseOrder = {
 
 const isFinalRelease = (stage = '') => String(stage).toLowerCase() === 'retention';
 
-const normalizeReleaseStatus = (release = {}, paymentPercent = 0) => {
+const normalizeReleaseStatus = (release = {}, paymentPercent = 0, eligibility = {}) => {
   const current = String(release.release_status || 'Pending');
   const paidPercent = Number(paymentPercent || 0);
   const triggerPercent = Number(release.release_trigger_percent || 0);
+  const finalRelease = isFinalRelease(release.release_stage);
+  const retentionReady = Boolean(eligibility.retentionReady);
 
   if (['Released', 'Cancelled'].includes(current)) return current;
 
-  if (current === 'On Hold') {
-    if (isFinalRelease(release.release_stage) && paidPercent >= triggerPercent) return 'Eligible';
-    return 'On Hold';
+  if (current === 'On Hold') return 'On Hold';
+
+  if (finalRelease) {
+    if (!retentionReady || paidPercent < triggerPercent) return 'On Hold';
+    return current === 'Eligible' ? 'Eligible' : 'On Hold';
   }
 
-  if (isFinalRelease(release.release_stage) && paidPercent < triggerPercent) return 'On Hold';
   return paidPercent >= triggerPercent ? 'Eligible' : 'Pending';
 };
 
@@ -112,8 +182,9 @@ const getReleaseDateWarning = (settings = {}) => {
   };
 };
 
-const mapReleaseRow = (row = {}, paymentPercent = 0, releaseDateInfo = {}) => {
-  const status = normalizeReleaseStatus(row, paymentPercent);
+const mapReleaseRow = (row = {}, paymentPercent = 0, releaseDateInfo = {}, commission = row) => {
+  const retentionReady = isRetentionReady(commission);
+  const status = normalizeReleaseStatus(row, paymentPercent, { retentionReady });
 
   return {
     id: row.lot_project_commission_release_id,
@@ -135,14 +206,18 @@ const mapReleaseRow = (row = {}, paymentPercent = 0, releaseDateInfo = {}) => {
     isReleaseDate: releaseDateInfo.isReleaseDate,
     canRelease: status === 'Eligible',
     canHold: !['Released', 'On Hold', 'Cancelled'].includes(status),
-    canUnhold: status === 'On Hold',
+    canUnhold: status === 'On Hold' && (!isFinalRelease(row.release_stage) || retentionReady),
     canCancel: status !== 'Released' && status !== 'Cancelled',
+    retentionReady,
+    paymentComplete: isPaymentComplete(commission),
+    documentsComplete: areDocumentsComplete(commission),
   };
 };
 
 const buildFallbackMilestones = (commission = {}, releaseDateInfo = {}) => {
   const gross = toNumber(commission.gross_commission_amount);
   const paymentPercent = getPaymentPercent(commission);
+  const retentionReady = isRetentionReady(commission);
   const stages = [
     { stage: '1st Release', triggerPercent: 20, releasePercent: 20 },
     { stage: '2nd Release', triggerPercent: 40, releasePercent: 20 },
@@ -177,8 +252,11 @@ const buildFallbackMilestones = (commission = {}, releaseDateInfo = {}) => {
       isReleaseDate: releaseDateInfo.isReleaseDate,
       canRelease: status === 'Eligible',
       canHold: !['Released', 'On Hold', 'Cancelled'].includes(status),
-      canUnhold: status === 'On Hold',
+      canUnhold: status === 'On Hold' && (!isFinalRelease(stage.stage) || retentionReady),
       canCancel: status !== 'Released' && status !== 'Cancelled',
+      retentionReady,
+      paymentComplete: isPaymentComplete(commission),
+      documentsComplete: areDocumentsComplete(commission),
     };
   });
 };
@@ -234,6 +312,13 @@ const mapCommissionRow = (row = {}, releases = [], releaseDateInfo = {}) => {
     tcp: toNumber(row.lot_project_listing_tcp),
     paid: toNumber(row.total_paid),
     paymentPercent: getPaymentPercent(row),
+    remainingBalance: toNumber(row.actual_remaining_balance),
+    unpaidScheduledDue: toNumber(row.unpaid_scheduled_due),
+    requiredDocumentCount: toNumber(row.required_document_count),
+    completedRequiredDocumentCount: toNumber(row.completed_required_document_count),
+    documentsComplete: areDocumentsComplete(row),
+    paymentComplete: isPaymentComplete(row),
+    retentionReady: isRetentionReady(row),
     status,
     statusLabel: commissionStatusLabel(status),
     releaseMilestones: releases,
@@ -270,16 +355,15 @@ const syncReleaseStatuses = async (connection, commissionRows = []) => {
         UPDATE lot_project_commission_releases
         SET release_status = CASE
           WHEN release_status IN ('Released', 'Cancelled') THEN release_status
-          WHEN release_status = 'On Hold' AND NOT (release_stage = 'Retention' AND ? >= release_trigger_percent) THEN release_status
-          WHEN release_stage = 'Retention' AND ? < release_trigger_percent THEN 'On Hold'
+          WHEN release_status = 'On Hold' THEN release_status
+          WHEN release_stage = 'Retention' AND ? = 0 THEN 'On Hold'
           WHEN ? >= release_trigger_percent THEN 'Eligible'
           ELSE 'Pending'
         END
         WHERE lot_project_commission_id = ?
       `,
       [
-        getPaymentPercent(commission),
-        getPaymentPercent(commission),
+        isRetentionReady(commission) ? 1 : 0,
         getPaymentPercent(commission),
         commission.lot_project_commission_id,
       ]
@@ -323,7 +407,7 @@ const loadReleaseMilestones = async (connection, commissionRows = [], releaseDat
     releasesByCommission.set(
       commission.lot_project_commission_id,
       rows.length
-        ? rows.map((release) => mapReleaseRow(release, getPaymentPercent(commission), releaseDateInfo))
+        ? rows.map((release) => mapReleaseRow(release, getPaymentPercent(commission), releaseDateInfo, commission))
         : buildFallbackMilestones(commission, releaseDateInfo)
     );
   }
@@ -334,10 +418,27 @@ const loadReleaseMilestones = async (connection, commissionRows = [], releaseDat
 const recomputeCommissionFromReleases = async (connection, commissionId, lotProjectId) => {
   const [commissionRows] = await connection.query(
     `
-      SELECT *
-      FROM lot_project_commissions
-      WHERE lot_project_commission_id = ?
-        AND lot_project_id = ?
+      SELECT
+        c.*,
+        l.lot_project_listing_tcp,
+        COALESCE(payment_summary.total_paid, 0) AS total_paid,
+        COALESCE(schedule_summary.actual_remaining_balance, GREATEST(l.lot_project_listing_tcp - COALESCE(payment_summary.total_paid, 0), 0)) AS actual_remaining_balance,
+        COALESCE(schedule_summary.unpaid_scheduled_due, GREATEST(l.lot_project_listing_tcp - COALESCE(payment_summary.total_paid, 0), 0)) AS unpaid_scheduled_due,
+        ${getRequiredDocumentCountSql('l')} AS required_document_count,
+        ${getCompletedRequiredDocumentCountSql('l', 'c')} AS completed_required_document_count,
+        ${computedPaymentPercentSql} AS computed_payment_percent
+      FROM lot_project_commissions c
+      INNER JOIN lot_project_listings l
+        ON l.lot_project_listing_id = c.lot_project_listing_id
+      LEFT JOIN (
+        SELECT lot_project_listing_id, SUM(lot_project_payment_amount) AS total_paid
+        FROM lot_project_payments
+        WHERE lot_project_payment_status = 'Verified'
+        GROUP BY lot_project_listing_id
+      ) payment_summary ON payment_summary.lot_project_listing_id = c.lot_project_listing_id
+      ${scheduleSummaryJoin}
+      WHERE c.lot_project_commission_id = ?
+        AND c.lot_project_id = ?
       LIMIT 1
     `,
     [commissionId, lotProjectId]
@@ -358,7 +459,7 @@ const recomputeCommissionFromReleases = async (connection, commissionId, lotProj
 
   const settings = await getProjectReleaseSettings(connection, lotProjectId);
   const releaseDateInfo = getReleaseDateWarning(settings);
-  const releases = releaseRows.map((release) => mapReleaseRow(release, getPaymentPercent(commission), releaseDateInfo));
+  const releases = releaseRows.map((release) => mapReleaseRow(release, getPaymentPercent(commission), releaseDateInfo, commission));
   const released = roundMoney(
     releases
       .filter((release) => release.status === 'Released')
@@ -454,7 +555,11 @@ export const getLotProjectCommissions = async (req, res) => {
           l.lot_project_listing_tcp,
           cp.buyer_full_name,
           COALESCE(payment_summary.total_paid, 0) AS total_paid,
-          LEAST(100, ROUND((COALESCE(payment_summary.total_paid, 0) / NULLIF(l.lot_project_listing_tcp, 0)) * 100, 2)) AS computed_payment_percent,
+          COALESCE(schedule_summary.actual_remaining_balance, GREATEST(l.lot_project_listing_tcp - COALESCE(payment_summary.total_paid, 0), 0)) AS actual_remaining_balance,
+          COALESCE(schedule_summary.unpaid_scheduled_due, GREATEST(l.lot_project_listing_tcp - COALESCE(payment_summary.total_paid, 0), 0)) AS unpaid_scheduled_due,
+          ${getRequiredDocumentCountSql('l')} AS required_document_count,
+          ${getCompletedRequiredDocumentCountSql('l', 'c')} AS completed_required_document_count,
+          ${computedPaymentPercentSql} AS computed_payment_percent,
           u.first_name,
           u.middle_name,
           u.last_name,
@@ -495,6 +600,7 @@ export const getLotProjectCommissions = async (req, res) => {
           WHERE lot_project_payment_status = 'Verified'
           GROUP BY lot_project_listing_id
         ) payment_summary ON payment_summary.lot_project_listing_id = c.lot_project_listing_id
+        ${scheduleSummaryJoin}
         WHERE ${where.join(' AND ')}
         ORDER BY l.lot_project_listing_unit_id ASC, FIELD(c.commission_role, 'broker_network_manager', 'broker', 'manager', 'agent'), c.lot_project_commission_id ASC
       `,
@@ -573,7 +679,15 @@ export const updateLotProjectCommission = async (req, res) => {
 
       const [releaseRows] = await connection.query(
         `
-          SELECT r.*, c.lot_project_id, c.payment_percent, LEAST(100, ROUND((COALESCE(payment_summary.total_paid, 0) / NULLIF(l.lot_project_listing_tcp, 0)) * 100, 2)) AS computed_payment_percent
+          SELECT
+            r.*,
+            c.lot_project_id,
+            c.payment_percent,
+            COALESCE(schedule_summary.actual_remaining_balance, GREATEST(l.lot_project_listing_tcp - COALESCE(payment_summary.total_paid, 0), 0)) AS actual_remaining_balance,
+            COALESCE(schedule_summary.unpaid_scheduled_due, GREATEST(l.lot_project_listing_tcp - COALESCE(payment_summary.total_paid, 0), 0)) AS unpaid_scheduled_due,
+            ${getRequiredDocumentCountSql('l')} AS required_document_count,
+            ${getCompletedRequiredDocumentCountSql('l', 'c')} AS completed_required_document_count,
+            ${computedPaymentPercentSql} AS computed_payment_percent
           FROM lot_project_commission_releases r
           INNER JOIN lot_project_commissions c
             ON c.lot_project_commission_id = r.lot_project_commission_id
@@ -585,6 +699,7 @@ export const updateLotProjectCommission = async (req, res) => {
             WHERE lot_project_payment_status = 'Verified'
             GROUP BY lot_project_listing_id
           ) payment_summary ON payment_summary.lot_project_listing_id = c.lot_project_listing_id
+          ${scheduleSummaryJoin}
           WHERE r.lot_project_commission_release_id = ?
             AND r.lot_project_commission_id = ?
             AND c.lot_project_id = ?
@@ -600,7 +715,7 @@ export const updateLotProjectCommission = async (req, res) => {
         return res.status(404).json({ success: false, message: 'Commission release stage not found.' });
       }
 
-      const computedStatus = normalizeReleaseStatus(release, getPaymentPercent(release));
+      const computedStatus = normalizeReleaseStatus(release, getPaymentPercent(release), { retentionReady: isRetentionReady(release) });
       let nextStatus = computedStatus;
       let message = 'Commission release stage updated successfully.';
       let releasedByUserId = release.released_by_user_id;
@@ -635,6 +750,15 @@ export const updateLotProjectCommission = async (req, res) => {
           await connection.rollback();
           return res.status(400).json({ success: false, message: 'Only on-hold stages can be unheld.' });
         }
+
+        if (isFinalRelease(release.release_stage) && !isRetentionReady(release)) {
+          await connection.rollback();
+          return res.status(400).json({
+            success: false,
+            message: 'Retention can only be unheld when all required documents are complete and the account is fully paid.',
+          });
+        }
+
         const next = getPaymentPercent(release) >= toNumber(release.release_trigger_percent)
           ? 'Eligible'
           : isFinalRelease(release.release_stage)

@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react'
 import { FiAlertCircle, FiLoader, FiPauseCircle, FiPlayCircle, FiSave, FiX } from 'react-icons/fi'
-import StatusAlert from '../../../Shared/StatusAlert'
 
 const money = (value) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 2 }).format(Number(value || 0))
 
@@ -38,49 +37,129 @@ const StatusPill = ({ status }) => {
   )
 }
 
-const getActionLabel = (action) => {
+const ModalNotice = ({ notice, onClose }) => {
+  if (!notice) return null
+
+  const styles = {
+    info: 'border-blue-200 bg-blue-50 text-blue-900',
+    warning: 'border-amber-200 bg-amber-50 text-amber-900',
+    error: 'border-red-200 bg-red-50 text-red-900',
+    success: 'border-emerald-200 bg-emerald-50 text-emerald-900',
+    loading: 'border-slate-200 bg-slate-50 text-slate-900',
+  }
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/50 p-4">
+      <div className={`w-full max-w-md rounded-2xl border p-5 shadow-2xl ${styles[notice.type] || styles.info}`}>
+        <div className="flex items-start gap-3">
+          {notice.type === 'loading' ? (
+            <FiLoader className="mt-0.5 h-5 w-5 shrink-0 animate-spin" />
+          ) : (
+            <FiAlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+          )}
+
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-black">{notice.title || 'Commission notice'}</p>
+            <p className="mt-1 text-sm font-semibold leading-relaxed">{notice.message}</p>
+          </div>
+        </div>
+
+        {notice.type !== 'loading' ? (
+          <div className="mt-5 flex justify-end">
+            <button type="button" onClick={onClose} className="h-10 rounded-xl bg-white px-5 text-sm font-black text-slate-800 shadow-sm transition hover:bg-slate-50">
+              OK
+            </button>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+const ConfirmDialog = ({ action, stage, isSaving, onCancel, onConfirm }) => {
+  if (!action || !stage) return null
+
   const labels = {
     release_stage: 'release this stage',
     hold_stage: 'hold this stage',
     unhold_stage: 'unhold this stage',
     cancel_stage: 'cancel this stage',
   }
-  return labels[action] || action
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/50 p-4">
+      <div className="w-full max-w-md rounded-2xl border border-blue-200 bg-blue-50 p-5 text-blue-900 shadow-2xl">
+        <div className="flex items-start gap-3">
+          <FiAlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-black">Confirm Action</p>
+            <p className="mt-1 text-sm font-semibold leading-relaxed">
+              Are you sure you want to {labels[action] || action} for {stage.stage}?
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" onClick={onCancel} className="h-10 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50">
+            No
+          </button>
+
+          <button type="button" onClick={onConfirm} disabled={isSaving} className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">
+            {isSaving ? <FiLoader className="h-4 w-4 animate-spin" /> : null}
+            Yes, Continue
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
-const ReleaseDetailsModal = ({ commission, onClose, onAction, isSaving = false }) => {
+const ReleaseDetailsModal = ({ commission, onClose, onAction, isSaving = false, serverNotice = null, onClearServerNotice }) => {
   const grossCommission = Number(commission.grossCommission || commission.gross || 0)
   const released = Number(commission.released || 0)
   const netRemaining = Math.max(Number(commission.netRemaining ?? grossCommission - released), 0)
   const milestones = useMemo(() => commission.releaseMilestones || [], [commission.releaseMilestones])
   const releaseDateInfo = commission.releaseDateInfo || {}
+  const retentionReady = Boolean(commission.retentionReady || (commission.paymentComplete && commission.documentsComplete))
+  const retentionBlockedMessage = 'Retention can only be unheld when all required documents are complete and the account is fully paid.'
   const [confirmAction, setConfirmAction] = useState(null)
   const [selectedStage, setSelectedStage] = useState(null)
-  const [alert, setAlert] = useState({
-    type: 'info',
-    message: 'Review each release stage. Eligible stages are released one milestone at a time.',
-  })
+  const [notice, setNotice] = useState(null)
+  const activeNotice = notice || serverNotice
 
   const openConfirm = (action, stage) => {
     if (!stage?.releaseId) {
-      setAlert({ type: 'error', message: 'This release stage is missing a database id. Refresh the page first.' })
+      setNotice({ type: 'error', title: 'Missing release stage', message: 'This release stage is missing a database id. Refresh the page first.' })
+      return
+    }
+
+    if (action === 'release_stage' && !stage.isReleaseDate) {
+      setNotice({
+        type: 'warning',
+        title: 'Release date locked',
+        message: `Eligible commissions can only be released every ${releaseDateInfo.releaseDays?.join(' and ') || '7 and 22'} of the month. Next release date: ${releaseDateInfo.nextReleaseDate || '-'}.`,
+      })
       return
     }
 
     if (action === 'release_stage' && stage.status !== 'Eligible') {
-      setAlert({ type: 'error', message: `${stage.stage} is not eligible for release yet.` })
+      setNotice({ type: 'error', title: 'Not eligible', message: `${stage.stage} is not eligible for release yet.` })
+      return
+    }
+
+    if (action === 'unhold_stage' && stage.stage === 'Retention' && !retentionReady) {
+      setNotice({ type: 'warning', title: 'Retention locked', message: retentionBlockedMessage })
       return
     }
 
     setSelectedStage(stage)
     setConfirmAction(action)
-    setAlert({ type: 'info', message: `Please confirm before you ${getActionLabel(action)}.` })
   }
 
   const submitAction = () => {
     if (!confirmAction || !selectedStage || isSaving) return
 
-    setAlert({ type: 'loading', message: 'Saving commission release stage...' })
     onAction?.(commission, {
       action: confirmAction,
       releaseId: selectedStage.releaseId,
@@ -100,36 +179,6 @@ const ReleaseDetailsModal = ({ commission, onClose, onAction, isSaving = false }
         </div>
 
         <div className="p-3">
-          {alert ? (
-            <div className="mb-3">
-              <StatusAlert type={alert.type} message={alert.message} onClose={alert.type === 'loading' ? undefined : () => setAlert(null)} />
-            </div>
-          ) : null}
-
-          {confirmAction && selectedStage ? (
-            <div className="mb-3 rounded-lg border border-blue-200 bg-blue-50 p-3">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-start gap-3">
-                  <FiAlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-blue-700" />
-                  <div>
-                    <p className="text-sm font-black text-blue-900">Confirm Action</p>
-                    <p className="mt-1 text-xs font-semibold text-blue-800">
-                      Are you sure you want to {getActionLabel(confirmAction)} for {selectedStage.stage}?
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex gap-2">
-                  <button type="button" onClick={() => { setConfirmAction(null); setSelectedStage(null); setAlert({ type: 'info', message: 'Action cancelled.' }) }} className="h-9 rounded-lg border border-slate-300 bg-white px-4 text-xs font-black text-slate-700 transition hover:bg-slate-50">No</button>
-                  <button type="button" onClick={submitAction} disabled={isSaving} className="inline-flex h-9 items-center gap-2 rounded-lg bg-blue-600 px-4 text-xs font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">
-                    {isSaving ? <FiLoader className="h-3.5 w-3.5 animate-spin" /> : null}
-                    Yes, Continue
-                  </button>
-                </div>
-              </div>
-            </div>
-          ) : null}
-
           <section>
             <h3 className="text-sm font-black text-slate-950">Commission Information</h3>
 
@@ -143,7 +192,6 @@ const ReleaseDetailsModal = ({ commission, onClose, onAction, isSaving = false }
               <InfoCard label="Gross Commission" value={money(grossCommission)} />
               <InfoCard label="Released" value={money(released)} />
               <InfoCard label="Net Remaining" value={money(netRemaining)} />
-              <InfoCard label="Cash Advance Deduction" value={money(commission.cashAdvanceDeduction)} />
               <InfoCard label="Seller Group" value={commission.sellerGroup || '-'} />
               <InfoCard label="Reports Under" value={commission.reportsUnder || '-'} />
             </div>
@@ -165,17 +213,11 @@ const ReleaseDetailsModal = ({ commission, onClose, onAction, isSaving = false }
           <section className="mt-5">
             <h3 className="text-sm font-black text-slate-950">Main Release Milestones</h3>
 
-            {!releaseDateInfo.isReleaseDate ? (
-              <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-700">
-                Eligible commissions can only be released every {releaseDateInfo.releaseDays?.join(' and ') || '7 and 22'} of the month. Next release date: {releaseDateInfo.nextReleaseDate || '-'}.
-              </div>
-            ) : null}
-
             <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200">
-              <table className="min-w-[920px] w-full divide-y divide-slate-200 text-xs">
+              <table className="min-w-[840px] w-full divide-y divide-slate-200 text-xs">
                 <thead className="bg-slate-50">
                   <tr>
-                    {['Stage', 'Trigger %', 'Release %', 'Gross', 'Deduction', 'Net', 'Status', 'Actions'].map((head) => (
+                    {['Stage', 'Trigger %', 'Release %', 'Gross', 'Net', 'Status', 'Actions'].map((head) => (
                       <th key={head} className="px-4 py-3 text-left font-black text-slate-700">{head}</th>
                     ))}
                   </tr>
@@ -192,13 +234,12 @@ const ReleaseDetailsModal = ({ commission, onClose, onAction, isSaving = false }
                         <td className="px-4 py-3 font-semibold text-slate-600">{stage.stage === 'Retention' ? '-' : `${Number(stage.triggerPercent || 0)}%`}</td>
                         <td className="px-4 py-3 font-semibold text-slate-600">{Number(stage.releasePercent || 0)}%</td>
                         <td className="px-4 py-3 font-semibold text-slate-700">{money(stage.grossAmount)}</td>
-                        <td className="px-4 py-3 font-semibold text-slate-700">{money(stage.deductionAmount)}</td>
                         <td className="px-4 py-3 font-black text-slate-900">{money(stage.netAmount)}</td>
                         <td className="px-4 py-3"><StatusPill status={stage.status} /></td>
                         <td className="px-4 py-3">
                           <div className="flex flex-wrap gap-2">
                             {stage.status === 'Eligible' ? (
-                              <button type="button" onClick={() => openConfirm('release_stage', stage)} disabled={isSaving || !stage.isReleaseDate} title={!stage.isReleaseDate ? 'Release is locked until the next allowed release date.' : undefined} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-blue-600 px-3 text-[11px] font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">
+                              <button type="button" onClick={() => openConfirm('release_stage', stage)} disabled={isSaving} title={!stage.isReleaseDate ? 'Release is locked until the next allowed release date.' : undefined} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-blue-600 px-3 text-[11px] font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">
                                 {isSaving ? <FiLoader className="h-3.5 w-3.5 animate-spin" /> : <FiSave className="h-3.5 w-3.5" />}
                                 {stage.releaseButtonLabel || 'Release'}
                               </button>
@@ -212,7 +253,7 @@ const ReleaseDetailsModal = ({ commission, onClose, onAction, isSaving = false }
                             ) : null}
 
                             {isOnHold ? (
-                              <button type="button" onClick={() => openConfirm('unhold_stage', stage)} disabled={isSaving} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-[11px] font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">
+                              <button type="button" onClick={() => openConfirm('unhold_stage', stage)} disabled={isSaving} title={stage.stage === 'Retention' && !retentionReady ? retentionBlockedMessage : undefined} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-[11px] font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">
                                 <FiPlayCircle className="h-3.5 w-3.5" />
                                 Unhold
                               </button>
@@ -231,33 +272,11 @@ const ReleaseDetailsModal = ({ commission, onClose, onAction, isSaving = false }
 
                   {!milestones.length ? (
                     <tr>
-                      <td colSpan={8} className="px-4 py-10 text-center font-semibold text-slate-500">
+                      <td colSpan={7} className="px-4 py-10 text-center font-semibold text-slate-500">
                         No release milestones found for this commission.
                       </td>
                     </tr>
                   ) : null}
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          <section className="mt-5">
-            <h3 className="text-sm font-black text-slate-950">Cash Advance Deductions</h3>
-            <div className="mt-3 overflow-hidden rounded-xl border border-slate-200">
-              <table className="w-full min-w-[720px] divide-y divide-slate-200 text-xs">
-                <thead className="bg-slate-50">
-                  <tr>
-                    {['Release Stage', 'Cash Advance', 'Amount', 'Remaining Balance', 'Created By', 'Date'].map((head) => (
-                      <th key={head} className="px-4 py-3 text-left font-black text-slate-700">{head}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td colSpan={6} className="px-4 py-10 text-center font-black text-slate-700">
-                      No cash advance deductions yet
-                    </td>
-                  </tr>
                 </tbody>
               </table>
             </div>
@@ -270,6 +289,22 @@ const ReleaseDetailsModal = ({ commission, onClose, onAction, isSaving = false }
           </button>
         </div>
       </div>
+
+      <ConfirmDialog
+        action={confirmAction}
+        stage={selectedStage}
+        isSaving={isSaving}
+        onCancel={() => {
+          setConfirmAction(null)
+          setSelectedStage(null)
+        }}
+        onConfirm={submitAction}
+      />
+
+      <ModalNotice notice={activeNotice} onClose={() => {
+        if (notice) setNotice(null)
+        else onClearServerNotice?.()
+      }} />
     </div>
   )
 }

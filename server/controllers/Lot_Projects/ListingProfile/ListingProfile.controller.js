@@ -84,6 +84,38 @@ const listingStatusAllowsHold = async (connection) => {
   return String(column?.Type || '').includes("'hold'");
 };
 
+const getRowUnpaidAmount = (row = {}) => roundMoneyValue(
+  Math.max(getScheduleTotalDue(row) - Number(row.amountPaid || 0), 0)
+);
+
+const applyActualPaymentStateToListing = (listing = {}, soaRows = []) => {
+  if (!soaRows.length) return listing;
+
+  const lastRow = soaRows[soaRows.length - 1] || {};
+  const actualRemainingBalance = roundMoneyValue(Number(lastRow.endingBalance || 0));
+  const unpaidScheduledDue = roundMoneyValue(
+    soaRows.reduce((sum, row) => sum + getRowUnpaidAmount(row), 0)
+  );
+  const paymentCount = Number(listing.payment_count || listing.paymentCount || 0);
+  const isFullyPaid = actualRemainingBalance <= 0.009 && unpaidScheduledDue <= 0.009 && paymentCount > 0;
+
+  const nextListing = {
+    ...listing,
+    balance: money(actualRemainingBalance),
+    balanceAmount: actualRemainingBalance,
+    unpaidScheduledDue,
+    payment_status: paymentCount === 0 ? 'Unpaid' : isFullyPaid ? 'Paid' : 'Partial',
+  };
+
+  if (isFullyPaid && String(nextListing.rawStatus || '').toLowerCase() === 'sold') {
+    nextListing.listing_status = 'Fully Paid';
+    nextListing.status = 'Fully Paid';
+    nextListing.soldSubstatus = 'fully_paid';
+  }
+
+  return nextListing;
+};
+
 export const getLotProjectListingProfile = async (req, res) => {
   const connection = await db.getConnection();
 
@@ -266,7 +298,7 @@ export const getLotProjectListingProfile = async (req, res) => {
           cadastralLots,
           defaultDocuments,
         },
-        listing: mapProfileListing(row, project, documents),
+        listing: applyActualPaymentStateToListing(mapProfileListing(row, project, documents), soaRows),
         client: clientProfile,
         soaRows,
         payments,
@@ -463,4 +495,3 @@ export const unholdLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
-

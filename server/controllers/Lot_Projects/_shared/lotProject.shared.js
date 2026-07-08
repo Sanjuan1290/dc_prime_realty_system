@@ -1378,13 +1378,12 @@ export const recomputeComputedSoaBalances = (rows = [], terms = {}) => {
     amountPaid = roundMoneyValue(Number(row.amountPaid || 0));
     const { penaltyPaid, interestPaid, principalPaid } = getPaymentBreakdownForRow(row, amountPaid);
     const discountAmount = roundMoneyValue(Number(row.discountAmount || row.discount_amount || 0));
-    const isFullyPaid = amountPaid > 0 && amountPaid + 0.009 >= totalDue;
-    const discountCredit = isFullyPaid ? discountAmount : 0;
+    const principalDue = roundMoneyValue(Number(row.principalAmount ?? row.principal_amount ?? row.dueAmount ?? 0));
+    const discountCredit = principalPaid > 0 && discountAmount > 0
+      ? roundMoneyValue(Math.min(discountAmount, principalDue > 0 ? discountAmount * (principalPaid / principalDue) : discountAmount))
+      : 0;
     const actualPrincipalReduction = roundMoneyValue(principalPaid + discountCredit);
 
-    // Do not project future balances from unpaid schedule rows.
-    // Balance only changes when a real payment has reduced principal.
-    // If a discounted DP row is fully paid, credit the discount together with the paid net principal.
     runningBalance = roundMoneyValue(Math.max(runningBalance - actualPrincipalReduction, 0));
     row.endingBalance = runningBalance;
 
@@ -1873,7 +1872,3 @@ export const addIfColumnExists = async (connection, tableName, columns, values, 
     values.push(value);
   }
 };
-
-
-
-

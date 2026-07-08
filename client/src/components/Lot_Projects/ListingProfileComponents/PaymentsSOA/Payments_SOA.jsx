@@ -566,7 +566,11 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
   }, [paymentRecords, search, typeFilter, statusFilter])
 
   const totalDue = useMemo(
-    () => rows.reduce((sum, row) => sum + Number(row.totalDue || row.dueAmount || 0), 0),
+    () => rows.reduce((sum, row) => {
+      const rowTotal = Number(row.totalDue ?? row.dueAmount ?? 0)
+      const rowPaid = Number(row.amountPaid || 0)
+      return sum + Math.max(rowTotal - rowPaid, 0)
+    }, 0),
     [rows]
   )
 
@@ -731,7 +735,7 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
       <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <SummaryCard label="Payment Records" value={paymentRecords.length} isMoney={false} />
         <SummaryCard label="Verified Collections" value={totalPaid} tone="emerald" />
-        <SummaryCard label="Total Scheduled Due" value={totalDue} tone="blue" />
+        <SummaryCard label="Unpaid Scheduled Due" value={totalDue} tone="blue" />
         <SummaryCard label="Remaining Principal Balance" value={remainingBalance} tone="amber" />
       </div>
 
@@ -1102,6 +1106,3 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
 }
 
 export default PaymentsSOA
-
-
-
