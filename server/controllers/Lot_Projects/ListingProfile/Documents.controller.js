@@ -5,8 +5,61 @@ import {
   getProjectBySlug,
   getListingLookupWhere,
   getAuthenticatedUser,
+  parseClientDocumentImages,
   toNullable,
 } from '../_shared/lotProject.shared.js';
+
+
+const normalizeUploadedDocumentFiles = (body = {}) => {
+  const rawFiles = Array.isArray(body.files)
+    ? body.files
+    : Array.isArray(body.uploadedFiles)
+      ? body.uploadedFiles
+      : [];
+
+  const normalizedFiles = rawFiles
+    .map((file, index) => {
+      if (!file || typeof file !== 'object') return null;
+      const url = String(file.fileUrl || file.file_url || file.url || file.secure_url || '').trim();
+      if (!url) return null;
+
+      return {
+        url,
+        fileName: String(file.fileName || file.file_name || file.originalFilename || file.original_filename || `Document Image ${index + 1}`).trim(),
+        fileSize: Number(file.fileSize || file.file_size || file.bytes || 0),
+        fileType: String(file.fileType || file.file_type || file.format || '').trim(),
+        cloudinaryPublicId: file.cloudinaryPublicId || file.cloudinary_public_id || file.public_id || null,
+        cloudinaryResourceType: file.cloudinaryResourceType || file.cloudinary_resource_type || file.resource_type || null,
+        cloudinaryFolder: file.cloudinaryFolder || file.cloudinary_folder || file.folder || null,
+        uploadedAt: new Date().toISOString(),
+      };
+    })
+    .filter(Boolean);
+
+  const singleUrl = toNullable(body.fileUrl || body.file_url || body.url || body.secure_url);
+  const singleName = String(body.fileName || body.file_name || body.originalFilename || body.original_filename || '').trim();
+
+  if (!normalizedFiles.length && singleUrl) {
+    normalizedFiles.push({
+      url: singleUrl,
+      fileName: singleName || 'Document Image 1',
+      fileSize: Number(body.fileSize || body.file_size || 0),
+      fileType: String(body.fileType || body.file_type || '').trim(),
+      cloudinaryPublicId: body.cloudinaryPublicId || body.cloudinary_public_id || body.public_id || null,
+      cloudinaryResourceType: body.cloudinaryResourceType || body.cloudinary_resource_type || body.resource_type || null,
+      cloudinaryFolder: body.cloudinaryFolder || body.cloudinary_folder || body.folder || null,
+      uploadedAt: new Date().toISOString(),
+    });
+  }
+
+  return normalizedFiles;
+};
+
+const getStoredDocumentFileName = (imageEntries = []) => {
+  if (!imageEntries.length) return null;
+  if (imageEntries.length === 1) return String(imageEntries[0].fileName || 'Document Image 1').slice(0, 255);
+  return `${imageEntries.length} document image(s)`.slice(0, 255);
+};
 
 const getDocumentContext = async (connection, req) => {
   const slug = String(req.params.projectSlug || '').trim();
@@ -203,10 +256,28 @@ export const uploadLotProjectListingDocument = async (req, res) => {
     if (context.errorStatus) return res.status(context.errorStatus).json({ message: context.errorMessage });
 
     const user = await getAuthenticatedUser(req);
-    const fileName = String(req.body.fileName || req.body.file_name || '').trim();
-    const fileUrl = toNullable(req.body.fileUrl || req.body.file_url);
+    const uploadedFiles = normalizeUploadedDocumentFiles(req.body);
 
-    if (!fileName) return res.status(400).json({ message: 'Please choose a file before saving.' });
+    if (!uploadedFiles.length) return res.status(400).json({ message: 'Please choose at least one image before saving.' });
+
+    const [existingRows] = await connection.query(
+      `
+        SELECT lot_project_client_document_file_name, lot_project_client_document_file_url
+        FROM lot_project_client_documents
+        WHERE lot_project_client_profile_id = ?
+          AND document_id = ?
+        LIMIT 1
+      `,
+      [context.listing.lot_project_client_profile_id, context.document.document_id]
+    );
+
+    const existingImages = parseClientDocumentImages(
+      existingRows[0]?.lot_project_client_document_file_url,
+      existingRows[0]?.lot_project_client_document_file_name
+    );
+    const combinedImages = [...existingImages, ...uploadedFiles];
+    const storedFileName = getStoredDocumentFileName(combinedImages);
+    const storedFileUrl = JSON.stringify(combinedImages);
 
     await connection.query(
       `
@@ -235,16 +306,20 @@ export const uploadLotProjectListingDocument = async (req, res) => {
         context.listing.lot_project_listing_id,
         context.listing.lot_project_client_profile_id,
         context.document.document_id,
-        fileName,
-        fileUrl,
+        storedFileName,
+        storedFileUrl,
       ]
     );
 
     return res.json({
       success: true,
-      message: `${context.document.document_name} uploaded and marked as submitted.`,
-      fileName,
-      fileUrl,
+      message: `${uploadedFiles.length} image(s) added to ${context.document.document_name}.`,
+      fileName: storedFileName,
+      fileUrl: combinedImages[0]?.url || '',
+      images: combinedImages.map((image) => image.url).filter(Boolean),
+      imageEntries: combinedImages,
+      uploadedCount: uploadedFiles.length,
+      totalImages: combinedImages.length,
       verified_by_user_id: user?.id || null,
     });
   } catch (error) {
@@ -342,3 +417,6 @@ export const clearLotProjectListingDocument = async (req, res) => {
     connection.release();
   }
 };
+
+
+

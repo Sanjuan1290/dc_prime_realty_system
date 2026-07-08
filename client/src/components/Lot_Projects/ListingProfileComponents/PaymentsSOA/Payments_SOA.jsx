@@ -65,7 +65,7 @@ const normalizeRows = (rows = []) => {
     monthlyAmortizationAmount: cleanMoney(row.monthlyAmortizationAmount ?? row.monthly_amortization_amount ?? row.dueAmount ?? row.due_amount),
     principalAmount: cleanMoney(row.principalAmount ?? row.principal_amount ?? row.dueAmount ?? row.due_amount),
     interest: cleanMoney(row.interest ?? row.interestAmount ?? row.interest_amount),
-    discountAmount: cleanMoney(row.discountAmount ?? row.discount_amount ?? row.discount),
+    discountAmount: cleanMoney(row.discountAmount ?? row.discount_amount),
     penalty: cleanMoney(row.penalty ?? row.penaltyAmount ?? row.penalty_amount),
     datePaid: row.datePaid || row.date_paid || '',
     amountPaid: cleanMoney(row.amountPaid ?? row.amount_paid),
@@ -881,7 +881,7 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
 
               {!filteredPayments.length ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-10 text-center">
+                  <td colSpan={13} className="px-4 py-10 text-center">
                     <FiCreditCard className="mx-auto h-8 w-8 text-slate-300" />
                     <p className="mt-3 text-sm font-black text-slate-700">
                       No payment records yet
@@ -931,7 +931,7 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
                 Statement of Account
               </h3>
               <p className="text-sm font-semibold text-slate-500">
-                Complete SOA schedule with gross monthly due, discount, principal, interest, penalty, payment, and remaining principal balance.
+                Complete SOA schedule with gross monthly due, principal, interest, discount, penalty, payment, and remaining principal balance.
               </p>
             </div>
 
@@ -942,7 +942,7 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-[1350px] w-full divide-y divide-slate-200 text-sm">
+          <table className="min-w-[1250px] w-full divide-y divide-slate-200 text-sm">
             <thead className="bg-white">
               <tr>
                 {[

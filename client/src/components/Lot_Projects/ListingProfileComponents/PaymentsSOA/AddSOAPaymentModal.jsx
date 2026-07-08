@@ -101,7 +101,7 @@ const cleanNumber = (value) => Number(String(value || '').replace(/[^0-9.-]/g, '
 const getRowTotalDue = (row = {}) => {
   const explicitTotal = Number(row.totalDue || 0)
   if (explicitTotal > 0) return explicitTotal
-  return Number(row.dueAmount || 0) + Number(row.interest || 0) + Number(row.penalty || 0)
+  return Math.max(Number(row.dueAmount || 0) - Number(row.discountAmount || 0), 0) + Number(row.interest || 0) + Number(row.penalty || 0)
 }
 
 
@@ -530,3 +530,6 @@ const AddSOAPaymentModal = ({
 }
 
 export default AddSOAPaymentModal
+
+
+

@@ -87,7 +87,7 @@ export const getNormalizedSoaRows = (soaRows = []) => {
     dueAmount: cleanMoney(row.dueAmount ?? row.due_amount),
     principalAmount: cleanMoney(row.principalAmount ?? row.principal_amount ?? row.dueAmount ?? row.due_amount),
     interest: cleanMoney(row.interest ?? row.interestAmount ?? row.interest_amount),
-    discountAmount: cleanMoney(row.discountAmount ?? row.discount_amount ?? row.discount),
+    discountAmount: cleanMoney(row.discountAmount ?? row.discount_amount),
     totalDue: cleanMoney(row.totalDue ?? row.total_due ?? row.dueAmount ?? row.due_amount),
     penalty: cleanMoney(row.penalty ?? row.penaltyAmount ?? row.penalty_amount),
     datePaid: row.datePaid || row.date_paid || '-',

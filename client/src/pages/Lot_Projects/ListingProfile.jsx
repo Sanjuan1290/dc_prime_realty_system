@@ -513,6 +513,7 @@ const ListingProfile = () => {
           canManage={canManageDocuments}
           canEditRequirements={Boolean(listing.id || listing.routeId || listingId)}
           projectSlug={projectSlug}
+          project={project}
           listing={listing}
           client={client}
           libraryDocuments={documentLibrary}
@@ -563,3 +564,6 @@ const ListingProfile = () => {
 }
 
 export default ListingProfile
+
+
+

@@ -51,14 +51,29 @@ const sanitizeCloudinaryPathPart = (value, fallback = 'item') => {
   const clean = String(value || '')
     .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
 
   return clean || fallback
 }
 
-const buildClientUnitDocumentFolder = ({ projectSlug, listing, client, document }) => {
-  const projectPart = sanitizeCloudinaryPathPart(projectSlug || listing?.projectSlug || listing?.project_slug, 'project')
+const getDocumentImageUrl = (image) => {
+  if (!image) return ''
+  if (typeof image === 'string') return image
+  return image.url || image.secure_url || image.fileUrl || image.file_url || ''
+}
+
+const buildClientUnitDocumentFolder = ({ projectSlug, project, listing, document }) => {
+  const projectPart = sanitizeCloudinaryPathPart(
+    project?.name ||
+      project?.lot_project_name ||
+      listing?.project_name ||
+      listing?.projectName ||
+      projectSlug ||
+      listing?.projectSlug ||
+      listing?.project_slug,
+    'project'
+  )
   const unitPart = sanitizeCloudinaryPathPart(
     listing?.unit_id ||
       listing?.unitCode ||
@@ -67,19 +82,12 @@ const buildClientUnitDocumentFolder = ({ projectSlug, listing, client, document 
       listing?.id,
     'unit'
   )
-  const clientProfilePart = sanitizeCloudinaryPathPart(
-    client?.lot_project_client_profile_id ||
-      client?.clientProfileId ||
-      client?.id ||
-      listing?.clientProfileId,
-    'client-profile'
-  )
   const documentPart = sanitizeCloudinaryPathPart(
-    `${document?.document_id || document?.documentId || document?.id || 'document'}-${document?.name || document?.document_name || 'document'}`,
+    document?.name || document?.document_name || document?.documentName || document?.document_id || document?.documentId || document?.id,
     'document'
   )
 
-  return `dc-prime/client-units/${projectPart}/${unitPart}/${clientProfilePart}/${documentPart}`
+  return `dc_prime/${projectPart}/${unitPart}/${documentPart}/documentimages`
 }
 
 const Documents = ({
@@ -87,6 +95,7 @@ const Documents = ({
   canManage = false,
   canEditRequirements = false,
   projectSlug = '',
+  project = {},
   listing = {},
   client = {},
   libraryDocuments = [],
@@ -302,7 +311,7 @@ const Documents = ({
           <tbody className="divide-y divide-slate-100">
             {rows.map((row) => {
               const isActive = activeDocumentId === row.id || isSaving
-              const imageSrc = row.fileUrl || row.images?.[0] || ''
+              const imageSrc = row.fileUrl || getDocumentImageUrl(row.images?.[0]) || ''
 
               return (
                 <tr key={row.id} className="transition hover:bg-slate-50">
@@ -342,7 +351,7 @@ const Documents = ({
 
                         <p className="text-xs font-semibold text-slate-400">
                           {row.fileName && row.fileName !== '-'
-                            ? imageSrc ? 'Image preview available' : 'File saved, no preview URL yet'
+                            ? `${row.imageCount || row.images?.length || 1} image(s) saved`
                             : 'No file uploaded'}
                         </p>
                       </div>
@@ -358,7 +367,7 @@ const Documents = ({
                         className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         <FiUploadCloud className="h-4 w-4" />
-                        Upload
+                        Add Images
                       </button>
 
                       <button
@@ -412,7 +421,7 @@ const Documents = ({
       {uploadDoc ? (
         <UploadDocumentModal
           document={uploadDoc}
-          uploadFolder={buildClientUnitDocumentFolder({ projectSlug, listing, client, document: uploadDoc })}
+          uploadFolder={buildClientUnitDocumentFolder({ projectSlug, project, listing, client, document: uploadDoc })}
           isSaving={activeDocumentId === uploadDoc.id || isSaving}
           onClose={() => {
             setUploadDoc(null)
@@ -447,3 +456,6 @@ const Documents = ({
 }
 
 export default Documents
+
+
+

@@ -626,6 +626,50 @@ export const mapProfileListing = (row = {}, project = {}, documents = []) => {
   };
 };
 
+
+const normalizeClientDocumentImageEntries = (fileUrlValue, fileNameValue = '') => {
+  const fallbackFileName = String(fileNameValue || '').trim();
+  const raw = String(fileUrlValue || '').trim();
+  if (!raw) return [];
+
+  const toEntry = (item, index = 0) => {
+    if (!item) return null;
+
+    if (typeof item === 'string') {
+      const url = item.trim();
+      if (!url) return null;
+      return {
+        url,
+        fileName: fallbackFileName || `Document Image ${index + 1}`,
+      };
+    }
+
+    if (typeof item === 'object') {
+      const url = String(item.url || item.secure_url || item.fileUrl || item.file_url || '').trim();
+      if (!url) return null;
+      return {
+        ...item,
+        url,
+        fileName: item.fileName || item.file_name || item.originalFilename || item.original_filename || fallbackFileName || `Document Image ${index + 1}`,
+      };
+    }
+
+    return null;
+  };
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed.map(toEntry).filter(Boolean);
+    const single = toEntry(parsed, 0);
+    return single ? [single] : [];
+  } catch {
+    return [{ url: raw, fileName: fallbackFileName || 'Document Image 1' }];
+  }
+};
+
+export const parseClientDocumentImages = (fileUrlValue, fileNameValue = '') =>
+  normalizeClientDocumentImageEntries(fileUrlValue, fileNameValue);
+
 export const getListingDocuments = async (connection, lotProjectId, listingId, clientProfileId) => {
   const hasListingDocuments = await tableExists(connection, 'lot_project_listing_documents');
   const hasClientDocuments = await tableExists(connection, 'lot_project_client_documents');
@@ -667,17 +711,27 @@ export const getListingDocuments = async (connection, lotProjectId, listingId, c
     params
   );
 
-  return rows.map((document) => ({
-    id: document.lot_project_listing_document_id,
-    document_id: document.document_id,
-    name: document.document_name,
-    description: document.document_description || 'Document requirement',
-    requirement: document.lot_project_listing_document_is_required ? 'Required' : 'Optional',
-    status: document.lot_project_client_document_status || 'Missing',
-    fileName: document.lot_project_client_document_file_name || '-',
-    fileUrl: document.lot_project_client_document_file_url || '',
-    images: document.lot_project_client_document_file_url ? [document.lot_project_client_document_file_url] : [],
-  }));
+  return rows.map((document) => {
+    const imageEntries = parseClientDocumentImages(
+      document.lot_project_client_document_file_url,
+      document.lot_project_client_document_file_name
+    );
+    const imageUrls = imageEntries.map((image) => image.url).filter(Boolean);
+
+    return {
+      id: document.lot_project_listing_document_id,
+      document_id: document.document_id,
+      name: document.document_name,
+      description: document.document_description || 'Document requirement',
+      requirement: document.lot_project_listing_document_is_required ? 'Required' : 'Optional',
+      status: document.lot_project_client_document_status || 'Missing',
+      fileName: document.lot_project_client_document_file_name || (imageEntries.length ? `${imageEntries.length} file(s)` : '-'),
+      fileUrl: imageUrls[0] || '',
+      images: imageUrls,
+      imageEntries,
+      imageCount: imageUrls.length,
+    };
+  });
 };
 
 export const roundMoneyValue = (value) => Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
@@ -730,7 +784,7 @@ export const getOrdinalLabel = (number) => {
 export const getScheduleTotalDue = (row = {}) => {
   const penalty = Number(row.penalty ?? row.penaltyAmount ?? row.penalty_amount ?? 0);
   const dueAmount = Number(row.dueAmount ?? row.due_amount ?? 0);
-  const discountAmount = Number(row.discountAmount ?? row.discount_amount ?? row.discount ?? 0);
+  const discountAmount = Number(row.discountAmount ?? row.discount_amount ?? 0);
   const interest = Number(row.interest ?? row.interestAmount ?? row.interest_amount ?? 0);
   const hasPrincipalBreakdown =
     row.scheduleType === 'monthly' &&
@@ -967,11 +1021,14 @@ export const getComputedSoaTerms = (listingRow = {}, existingScheduleRows = []) 
     listingRow.dp_discount_percentage || listingRow.soa_dp_discount_percentage || 0
   );
 
-  const downpaymentGrossTotal = roundMoneyValue(principalTcp * (downpaymentPercentage / 100));
-  const downpaymentDiscountTotal = roundMoneyValue(downpaymentGrossTotal * (dpDiscountPercentage / 100));
-  const computedDownpaymentTotal = roundMoneyValue(
-    Math.max(downpaymentGrossTotal - downpaymentDiscountTotal, 0)
+  const inferredDownpaymentGrossTotal = existingDownpaymentRows.reduce(
+    (sum, row) => sum + Number(row.due_amount || 0),
+    0
   );
+  const computedDownpaymentGrossTotal = roundMoneyValue(principalTcp * (downpaymentPercentage / 100));
+  const downpaymentGrossTotal = roundMoneyValue(computedDownpaymentGrossTotal || inferredDownpaymentGrossTotal);
+  const downpaymentDiscountTotal = roundMoneyValue(downpaymentGrossTotal * (dpDiscountPercentage / 100));
+  const computedDownpaymentTotal = roundMoneyValue(Math.max(downpaymentGrossTotal - downpaymentDiscountTotal, 0));
 
   const downpaymentTotal = computedDownpaymentTotal;
 
@@ -1010,7 +1067,7 @@ export const getComputedSoaTerms = (listingRow = {}, existingScheduleRows = []) 
 
   const annualInterestRate = getEffectiveSoaInterestRate(listingRow);
   const interestRateSource = Number(listingRow.soa_interest_rate_overridden || 0) === 1 ? 'custom' : 'listing';
-  const financedBalance = roundMoneyValue(Math.max(principalTcp - reservationFee - downpaymentTotal, 0));
+  const financedBalance = roundMoneyValue(Math.max(principalTcp - reservationFee - downpaymentGrossTotal, 0));
   const monthlyPrincipal = roundMoneyValue(monthlyTerms > 0 ? financedBalance / monthlyTerms : financedBalance);
   const monthlyAmortization = getMonthlyAmortizationAmount(financedBalance, annualInterestRate, monthlyTerms);
 
@@ -1052,7 +1109,6 @@ export const createComputedSoaRows = (terms = {}) => {
       description: 'Reservation Fee',
       beginningBalance: terms.tcp,
       dueAmount: terms.reservationFee,
-      discountAmount: 0,
       principalAmount: terms.reservationFee,
       interest: 0,
       penalty: 0,
@@ -1074,7 +1130,6 @@ export const createComputedSoaRows = (terms = {}) => {
       description: 'Legal / Misc Fee',
       beginningBalance: terms.tcp,
       dueAmount: roundMoneyValue(terms.legalMiscFeeAmount),
-      discountAmount: 0,
       principalAmount: 0,
       interest: 0,
       penalty: 0,
@@ -1099,7 +1154,6 @@ export const createComputedSoaRows = (terms = {}) => {
         description: 'Full Payment',
         beginningBalance: terms.tcp,
         dueAmount: roundMoneyValue(cashBalance),
-        discountAmount: 0,
         principalAmount: roundMoneyValue(cashBalance),
         interest: 0,
         penalty: 0,
@@ -1115,20 +1169,17 @@ export const createComputedSoaRows = (terms = {}) => {
   }
 
   const dpTerms = terms.downpaymentTerms <= 0 ? 1 : terms.downpaymentTerms;
-  const downpaymentGrossTotal = roundMoneyValue(terms.downpaymentGrossTotal ?? terms.downpaymentTotal ?? 0);
-  const downpaymentDiscountTotal = roundMoneyValue(terms.downpaymentDiscountTotal ?? 0);
-  const baseDownpaymentGross = dpTerms > 0 ? roundMoneyValue(downpaymentGrossTotal / dpTerms) : 0;
-  const baseDownpaymentDiscount = dpTerms > 0 ? roundMoneyValue(downpaymentDiscountTotal / dpTerms) : 0;
-  let downpaymentGrossRemainder = downpaymentGrossTotal;
-  let downpaymentDiscountRemainder = downpaymentDiscountTotal;
+  const baseDownpaymentGross = dpTerms > 0 ? roundMoneyValue((terms.downpaymentGrossTotal || terms.downpaymentTotal || 0) / dpTerms) : 0;
+  let downpaymentGrossRemainder = roundMoneyValue(terms.downpaymentGrossTotal || terms.downpaymentTotal || 0);
+  let downpaymentDiscountRemainder = roundMoneyValue(terms.downpaymentDiscountTotal || 0);
 
   for (let index = 1; index <= dpTerms; index += 1) {
     if (downpaymentGrossRemainder <= 0) break;
 
     const isLast = index === dpTerms;
     const dueAmount = roundMoneyValue(isLast ? downpaymentGrossRemainder : baseDownpaymentGross);
-    const discountAmount = roundMoneyValue(isLast ? downpaymentDiscountRemainder : Math.min(baseDownpaymentDiscount, downpaymentDiscountRemainder));
-    const netPrincipalAmount = roundMoneyValue(Math.max(dueAmount - discountAmount, 0));
+    const discountAmount = roundMoneyValue(isLast ? downpaymentDiscountRemainder : dueAmount * (Number(terms.dpDiscountPercentage || 0) / 100));
+    const principalAmount = roundMoneyValue(Math.max(dueAmount - discountAmount, 0));
     downpaymentGrossRemainder = roundMoneyValue(downpaymentGrossRemainder - dueAmount);
     downpaymentDiscountRemainder = roundMoneyValue(downpaymentDiscountRemainder - discountAmount);
 
@@ -1141,7 +1192,7 @@ export const createComputedSoaRows = (terms = {}) => {
       beginningBalance: terms.tcp,
       dueAmount,
       discountAmount,
-      principalAmount: netPrincipalAmount,
+      principalAmount,
       interest: 0,
       penalty: 0,
       datePaid: '-',
@@ -1163,7 +1214,6 @@ export const createComputedSoaRows = (terms = {}) => {
       description: `${getOrdinalLabel(index)} Monthly Payment`,
       beginningBalance: terms.tcp,
       dueAmount: terms.monthlyAmortization || terms.monthlyPrincipal,
-      discountAmount: 0,
       monthlyAmortizationAmount: terms.monthlyAmortization || terms.monthlyPrincipal,
       principalAmount: 0,
       interest: 0,
@@ -1267,7 +1317,6 @@ export const recomputeComputedSoaBalances = (rows = [], terms = {}) => {
     if (runningBalance <= 0 && amountPaid <= 0 && !['legal_misc'].includes(scheduleType)) break;
 
     row.beginningBalance = runningBalance;
-    row.discountAmount = roundMoneyValue(Number(row.discountAmount ?? row.discount_amount ?? row.discount ?? 0));
 
     if (scheduleType === 'balloon') {
       row.interest = 0;
@@ -1328,11 +1377,11 @@ export const recomputeComputedSoaBalances = (rows = [], terms = {}) => {
     const totalDue = getScheduleTotalDue(row);
     amountPaid = roundMoneyValue(Number(row.amountPaid || 0));
     const { penaltyPaid, interestPaid, principalPaid } = getPaymentBreakdownForRow(row, amountPaid);
+    const scheduledPrincipalReduction = roundMoneyValue(
+      Number(row.principalAmount || 0) + Number(row.discountAmount || row.discount_amount || 0)
+    );
 
-    const scheduledPrincipal = ['legal_misc'].includes(scheduleType)
-      ? 0
-      : roundMoneyValue(Number(row.principalAmount ?? row.principal_amount ?? row.dueAmount ?? 0));
-    runningBalance = roundMoneyValue(Math.max(runningBalance - scheduledPrincipal, 0));
+    runningBalance = roundMoneyValue(Math.max(runningBalance - scheduledPrincipalReduction, 0));
     row.endingBalance = runningBalance;
 
     if (amountPaid <= 0) {
@@ -1352,7 +1401,7 @@ export const recomputeComputedSoaBalances = (rows = [], terms = {}) => {
       monthlyAmortizationAmount: row.monthlyAmortizationAmount || row.dueAmount,
       principalAmount: row.principalAmount || 0,
       interest: row.interest || 0,
-      discountAmount: row.discountAmount || 0,
+      discountAmount: row.discountAmount || row.discount_amount || 0,
       penalty: row.penalty || 0,
       datePaid: row.datePaid || '-',
       amountPaid: row.amountPaid || 0,

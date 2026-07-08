@@ -437,6 +437,7 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
         };
 
         await addOptionalColumn('interest_amount');
+        await addOptionalColumn('discount_amount');
         await addOptionalColumn('principal_amount');
         await addOptionalColumn('monthly_amortization_amount');
         await addOptionalColumn('paid_interest_amount');
@@ -462,6 +463,7 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
           ];
           const optionalValues = optionalColumns.map((column) => {
             if (column === 'interest_amount') return roundMoneyValue(row.interest || 0);
+            if (column === 'discount_amount') return roundMoneyValue(row.discountAmount || row.discount_amount || 0);
             if (column === 'principal_amount') return roundMoneyValue(row.principalAmount || row.principal_amount || 0);
             if (column === 'monthly_amortization_amount') return roundMoneyValue(row.monthlyAmortizationAmount || row.dueAmount || 0);
             if (column === 'paid_interest_amount') return roundMoneyValue(row.paidInterestAmount || 0);
@@ -607,3 +609,6 @@ export const deleteLotProjectListingPayment = async (req, res) => {
     connection.release();
   }
 };
+
+
+
