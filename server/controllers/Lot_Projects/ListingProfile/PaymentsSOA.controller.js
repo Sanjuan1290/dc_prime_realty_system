@@ -154,6 +154,10 @@ export const createLotProjectListingPayment = async (req, res) => {
       [paymentId, `${getPaymentTypeLabel(paymentType)} payment created and verified for ${listing.lot_project_listing_unit_id}.`, user?.id || null]
     );
 
+    if (await tableExists(connection, 'lot_project_payment_schedules')) {
+      await applyPaymentToSchedules(connection, listing, paymentId, scheduleId, amount, paymentDate, referenceId);
+    }
+
     await connection.commit();
 
     return res.status(201).json({
@@ -207,12 +211,7 @@ export const updateLotProjectListingPayment = async (req, res) => {
 
     await connection.beginTransaction();
 
-    if (await tableExists(connection, 'lot_project_payment_allocations')) {
-      await connection.query(
-        `DELETE FROM lot_project_payment_allocations WHERE lot_project_payment_id = ?`,
-        [paymentId]
-      );
-    }
+    await reversePaymentAllocations(connection, listing, paymentId);
 
     await connection.query(
       `
@@ -255,6 +254,10 @@ export const updateLotProjectListingPayment = async (req, res) => {
       `,
       [paymentId, `${getPaymentTypeLabel(paymentType)} payment updated by ${getUserFullName(user)}.`, user?.id || null]
     );
+
+    if (await tableExists(connection, 'lot_project_payment_schedules')) {
+      await applyPaymentToSchedules(connection, listing, paymentId, scheduleId, amount, paymentDate, referenceId);
+    }
 
     await connection.commit();
 
@@ -327,7 +330,15 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
     const downpaymentPercentage = Number(req.body.downpaymentPercentage ?? req.body.soa_downpayment_percentage ?? listing.soa_downpayment_percentage ?? 30);
     const downpaymentTerms = Number(req.body.downpaymentTerms ?? req.body.soa_downpayment_terms ?? listing.soa_downpayment_terms ?? 3);
     const monthlyTerms = Number(req.body.monthlyTerms ?? req.body.soa_monthly_terms ?? listing.soa_monthly_terms ?? 36);
-    const annualInterestRate = Number(req.body.annualInterestRate ?? req.body.soa_annual_interest_rate ?? listing.soa_annual_interest_rate ?? listing.annual_interest_rate ?? 0);
+    const interestRateSource = String(req.body.interestRateSource || req.body.soa_interest_rate_source || 'custom').toLowerCase() === 'listing'
+      ? 'listing'
+      : 'custom';
+    const annualInterestRate = interestRateSource === 'listing'
+      ? Number(listing.annual_interest_rate || 0)
+      : Number(req.body.annualInterestRate ?? req.body.soa_annual_interest_rate ?? listing.soa_annual_interest_rate ?? listing.annual_interest_rate ?? 0);
+    const interestCalculationType = String(req.body.interestCalculationType || req.body.soa_interest_calculation_type || listing.soa_interest_calculation_type || 'amortized').toLowerCase() === 'diminishing'
+      ? 'diminishing'
+      : 'amortized';
     const firstDueDate = dateOrNull(req.body.firstDueDate || req.body.soa_first_due_date || listing.soa_first_due_date);
 
     if (dpDiscountPercentage < 0 || dpDiscountPercentage > 100) {
@@ -346,6 +357,10 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
       return res.status(400).json({ message: 'Monthly terms must be at least 1.' });
     }
 
+    if (annualInterestRate < 0) {
+      return res.status(400).json({ message: 'Annual interest rate cannot be negative.' });
+    }
+
     const updateColumns = [];
     const updateParams = [];
 
@@ -361,6 +376,8 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
     await addProfileUpdate('soa_downpayment_terms', downpaymentTerms);
     await addProfileUpdate('soa_monthly_terms', monthlyTerms);
     await addProfileUpdate('soa_annual_interest_rate', annualInterestRate);
+    await addProfileUpdate('soa_interest_rate_overridden', interestRateSource === 'custom' ? 1 : 0);
+    await addProfileUpdate('soa_interest_calculation_type', interestCalculationType);
     await addProfileUpdate('soa_first_due_date', firstDueDate);
 
     await connection.beginTransaction();
@@ -391,6 +408,8 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
         soa_downpayment_terms: downpaymentTerms,
         soa_monthly_terms: monthlyTerms,
         soa_annual_interest_rate: annualInterestRate,
+        soa_interest_rate_overridden: interestRateSource === 'custom' ? 1 : 0,
+        soa_interest_calculation_type: interestCalculationType,
         soa_first_due_date: firstDueDate,
       };
       const terms = getComputedSoaTerms(updatedListing, []);
@@ -402,27 +421,36 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
       );
 
       if (computedRows.length > 0) {
-        await connection.query(
-          `
-            INSERT INTO lot_project_payment_schedules (
-              lot_project_id,
-              lot_project_listing_id,
-              lot_project_client_profile_id,
-              due_date,
-              description,
-              beginning_balance,
-              due_amount,
-              penalty_amount,
-              amount_paid,
-              date_paid,
-              reference_id,
-              ending_balance,
-              schedule_status,
-              created_at,
-              updated_at
-            ) VALUES ${computedRows.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())').join(', ')}
-          `,
-          computedRows.flatMap((row) => [
+        const baseColumns = [
+          'lot_project_id',
+          'lot_project_listing_id',
+          'lot_project_client_profile_id',
+          'due_date',
+          'description',
+          'beginning_balance',
+          'due_amount',
+          'penalty_amount',
+          'amount_paid',
+          'date_paid',
+          'reference_id',
+          'ending_balance',
+          'schedule_status',
+        ];
+        const optionalColumns = [];
+        const addOptionalColumn = async (column) => {
+          if (await columnExists(connection, 'lot_project_payment_schedules', column)) optionalColumns.push(column);
+        };
+
+        await addOptionalColumn('interest_amount');
+        await addOptionalColumn('principal_amount');
+        await addOptionalColumn('monthly_amortization_amount');
+        await addOptionalColumn('paid_interest_amount');
+        await addOptionalColumn('paid_principal_amount');
+        await addOptionalColumn('paid_penalty_amount');
+
+        const columns = [...baseColumns, ...optionalColumns, 'created_at', 'updated_at'];
+        const insertValues = computedRows.flatMap((row) => {
+          const baseValues = [
             project.lot_project_id,
             listing.lot_project_listing_id,
             listing.lot_project_client_profile_id,
@@ -436,7 +464,27 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
             row.referenceId && row.referenceId !== '-' ? row.referenceId : null,
             roundMoneyValue(row.endingBalance || 0),
             row.status || 'Unpaid',
-          ])
+          ];
+          const optionalValues = optionalColumns.map((column) => {
+            if (column === 'interest_amount') return roundMoneyValue(row.interest || 0);
+            if (column === 'principal_amount') return roundMoneyValue(row.principalAmount || row.principal_amount || 0);
+            if (column === 'monthly_amortization_amount') return roundMoneyValue(row.monthlyAmortizationAmount || row.dueAmount || 0);
+            if (column === 'paid_interest_amount') return roundMoneyValue(row.paidInterestAmount || 0);
+            if (column === 'paid_principal_amount') return roundMoneyValue(row.paidPrincipalAmount || 0);
+            if (column === 'paid_penalty_amount') return roundMoneyValue(row.paidPenaltyAmount || 0);
+            return 0;
+          });
+
+          return [...baseValues, ...optionalValues];
+        });
+
+        await connection.query(
+          `
+            INSERT INTO lot_project_payment_schedules (
+              ${columns.join(',\n              ')}
+            ) VALUES ${computedRows.map(() => `(${columns.map((column) => column === 'created_at' || column === 'updated_at' ? 'NOW()' : '?').join(', ')})`).join(', ')}
+          `,
+          insertValues
         );
       }
     }
@@ -452,6 +500,8 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
         downpaymentTerms,
         monthlyTerms,
         annualInterestRate,
+        interestRateSource,
+        interestCalculationType,
         firstDueDate,
       },
     });
@@ -520,12 +570,7 @@ export const deleteLotProjectListingPayment = async (req, res) => {
 
     await connection.beginTransaction();
 
-    if (await tableExists(connection, 'lot_project_payment_allocations')) {
-      await connection.query(
-        `DELETE FROM lot_project_payment_allocations WHERE lot_project_payment_id = ?`,
-        [paymentId]
-      );
-    }
+    await reversePaymentAllocations(connection, listing, paymentId);
 
     await connection.query(
       `
@@ -568,4 +613,3 @@ export const deleteLotProjectListingPayment = async (req, res) => {
     connection.release();
   }
 };
-

@@ -40,10 +40,7 @@ const getSuggestedRow = (rows = []) => {
     rows.find((row) => {
       const status = String(row.status || '').toLowerCase()
       const amountPaid = Number(row.amountPaid || 0)
-      const totalDue =
-        Number(row.dueAmount || 0) +
-        Number(row.interest || 0) +
-        Number(row.penalty || 0)
+      const totalDue = getRowTotalDue(row)
 
       return ['unpaid', 'partial', 'overdue'].includes(status) && amountPaid < totalDue
     }) || rows[0]
@@ -73,6 +70,13 @@ const formatDate = (value) => {
 }
 
 const cleanNumber = (value) => Number(String(value || '').replace(/[^0-9.-]/g, '')) || 0
+
+const getRowTotalDue = (row = {}) => {
+  const explicitTotal = Number(row.totalDue || 0)
+  if (explicitTotal > 0) return explicitTotal
+  return Number(row.dueAmount || 0) + Number(row.interest || 0) + Number(row.penalty || 0)
+}
+
 
 const Field = ({
   label,
@@ -152,9 +156,7 @@ const AddSOAPaymentModal = ({
     ),
     amount: String(
       initialPayment?.amount ||
-        Number(suggestedRow?.dueAmount || 0) +
-          Number(suggestedRow?.interest || 0) +
-          Number(suggestedRow?.penalty || 0)
+        getRowTotalDue(suggestedRow)
     ),
     paymentDate: formatDate(initialPayment?.paymentDate),
     method: initialPayment?.method || 'Cash',
@@ -175,9 +177,7 @@ const AddSOAPaymentModal = ({
     if (isBalloonPayment || !selectedRow) return 0
 
     return (
-      Number(selectedRow.dueAmount || 0) +
-      Number(selectedRow.interest || 0) +
-      Number(selectedRow.penalty || 0) -
+      getRowTotalDue(selectedRow) -
       Number(selectedRow.amountPaid || 0)
     )
   }, [isBalloonPayment, selectedRow])
@@ -201,9 +201,7 @@ const AddSOAPaymentModal = ({
           if (!isEdit) {
             next.amount = String(
               Math.max(
-                Number(suggestedRow.dueAmount || 0) +
-                  Number(suggestedRow.interest || 0) +
-                  Number(suggestedRow.penalty || 0) -
+                getRowTotalDue(suggestedRow) -
                   Number(suggestedRow.amountPaid || 0),
                 0
               )
@@ -218,9 +216,7 @@ const AddSOAPaymentModal = ({
           next.paymentType = getPaymentTypeFromDescription(nextRow.description)
           next.amount = String(
             Math.max(
-              Number(nextRow.dueAmount || 0) +
-                Number(nextRow.interest || 0) +
-                Number(nextRow.penalty || 0) -
+              getRowTotalDue(nextRow) -
                 Number(nextRow.amountPaid || 0),
               0
             )
@@ -349,7 +345,7 @@ const AddSOAPaymentModal = ({
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
               <p className="text-xs font-black uppercase text-slate-500">Due Amount</p>
               <p className="mt-1 text-lg font-black text-slate-950">
-                {money(selectedRow?.dueAmount || 0)}
+                {money(getRowTotalDue(selectedRow))}
               </p>
             </div>
 
@@ -388,7 +384,7 @@ const AddSOAPaymentModal = ({
               >
                 {rows.map((row) => (
                   <option key={row.id} value={row.id}>
-                    {row.description} · Due {row.dueDate} · {money(row.dueAmount)}
+                    {row.description} · Due {row.dueDate} · {money(getRowTotalDue(row))}
                   </option>
                 ))}
               </SelectField>
@@ -501,4 +497,3 @@ const AddSOAPaymentModal = ({
 }
 
 export default AddSOAPaymentModal
-

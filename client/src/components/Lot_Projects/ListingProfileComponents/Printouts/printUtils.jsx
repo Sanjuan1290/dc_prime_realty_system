@@ -80,6 +80,9 @@ export const getNormalizedSoaRows = (soaRows = []) => {
     dueDate: row.dueDate || row.due_date || '-',
     description: row.description || row.payment_description || '-',
     dueAmount: cleanMoney(row.dueAmount ?? row.due_amount),
+    principalAmount: cleanMoney(row.principalAmount ?? row.principal_amount ?? row.dueAmount ?? row.due_amount),
+    interest: cleanMoney(row.interest ?? row.interestAmount ?? row.interest_amount),
+    totalDue: cleanMoney(row.totalDue ?? row.total_due ?? row.dueAmount ?? row.due_amount),
     penalty: cleanMoney(row.penalty ?? row.penaltyAmount ?? row.penalty_amount),
     datePaid: row.datePaid || row.date_paid || '-',
     amountPaid: cleanMoney(row.amountPaid ?? row.amount_paid),
@@ -92,4 +95,3 @@ export const getNormalizedSoaRows = (soaRows = []) => {
     ),
   }))
 }
-

@@ -62,10 +62,16 @@ const normalizeRows = (rows = []) => {
     description: row.description || row.payment_description || '',
     beginningBalance: cleanMoney(row.beginningBalance ?? row.beginning_balance),
     dueAmount: cleanMoney(row.dueAmount ?? row.due_amount),
+    monthlyAmortizationAmount: cleanMoney(row.monthlyAmortizationAmount ?? row.monthly_amortization_amount ?? row.dueAmount ?? row.due_amount),
+    principalAmount: cleanMoney(row.principalAmount ?? row.principal_amount ?? row.dueAmount ?? row.due_amount),
     interest: cleanMoney(row.interest ?? row.interestAmount ?? row.interest_amount),
     penalty: cleanMoney(row.penalty ?? row.penaltyAmount ?? row.penalty_amount),
     datePaid: row.datePaid || row.date_paid || '',
     amountPaid: cleanMoney(row.amountPaid ?? row.amount_paid),
+    paidPrincipalAmount: cleanMoney(row.paidPrincipalAmount ?? row.paid_principal_amount),
+    paidInterestAmount: cleanMoney(row.paidInterestAmount ?? row.paid_interest_amount),
+    paidPenaltyAmount: cleanMoney(row.paidPenaltyAmount ?? row.paid_penalty_amount),
+    totalDue: cleanMoney(row.totalDue ?? row.total_due ?? row.dueAmount ?? row.due_amount),
     referenceId: row.referenceId || row.reference_id || row.reference || '-',
     paymentMethod: row.paymentMethod || row.payment_method || '-',
     verifiedBy: row.verifiedBy || row.verified_by || '-',
@@ -273,7 +279,9 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
     downpaymentPercentage: String(getListingValue(listing, ['soaDownpaymentPercentage'], 30)),
     downpaymentTerms: String(getListingValue(listing, ['soaDownpaymentTerms'], 3)),
     monthlyTerms: String(getListingValue(listing, ['soaMonthlyTerms'], 36)),
-    annualInterestRate: String(getListingValue(listing, ['soaAnnualInterestRate'], 0)),
+    annualInterestRate: String(getListingValue(listing, ['soaAnnualInterestRate'], getListingValue(listing, ['annualInterestRate'], 0))),
+    interestRateSource: getListingValue(listing, ['soaInterestRateSource'], 'listing'),
+    interestCalculationType: getListingValue(listing, ['soaInterestCalculationType'], 'amortized'),
     firstDueDate: getListingValue(listing, ['soaFirstDueDate', 'first_due_date'], ''),
   }))
   const [modalAlert, setModalAlert] = useState({
@@ -288,7 +296,13 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
   }, [serverAlert])
 
   const updateForm = (key, value) => {
-    setForm((current) => ({ ...current, [key]: value }))
+    setForm((current) => {
+      const next = { ...current, [key]: value }
+      if (key === 'interestRateSource' && value === 'listing') {
+        next.annualInterestRate = String(Number(getListingValue(listing, ['annualInterestRate'], 0)))
+      }
+      return next
+    })
     if (modalAlert?.type === 'error') setModalAlert(null)
   }
 
@@ -300,6 +314,8 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
     const downpaymentTerms = Number(form.downpaymentTerms || 0)
     const monthlyTerms = Number(form.monthlyTerms || 0)
     const annualInterestRate = Number(form.annualInterestRate || 0)
+    const interestRateSource = form.interestRateSource === 'listing' ? 'listing' : 'custom'
+    const interestCalculationType = form.interestCalculationType === 'diminishing' ? 'diminishing' : 'amortized'
 
     if (dpDiscountPercentage < 0 || dpDiscountPercentage > 100) {
       setModalAlert({ type: 'error', message: 'DP Discount % must be between 0 and 100.' })
@@ -333,8 +349,20 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
       downpaymentTerms,
       monthlyTerms,
       annualInterestRate,
+      interestRateSource,
+      interestCalculationType,
       firstDueDate: form.firstDueDate || null,
     })
+  }
+
+  const listingInterestRate = Number(getListingValue(listing, ['annualInterestRate'], 0))
+  const syncFromListing = () => {
+    setForm((current) => ({
+      ...current,
+      annualInterestRate: String(listingInterestRate),
+      interestRateSource: 'listing',
+    }))
+    setModalAlert({ type: 'info', message: `SOA interest will sync from listing rate (${listingInterestRate.toFixed(2)}%).` })
   }
 
   const Field = ({ label, value, onChange, type = 'number', placeholder = '', helper }) => (
@@ -358,7 +386,7 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
           <div>
             <h3 className="text-lg font-black text-slate-950">Edit SOA Terms</h3>
-            <p className="text-sm font-semibold text-slate-500">Update DP Discount % and recompute the payment schedule.</p>
+            <p className="text-sm font-semibold text-slate-500">Update SOA terms, interest source, and recompute the amortization schedule.</p>
           </div>
           <button type="button" onClick={onClose} disabled={isSaving} className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60" aria-label="Close SOA terms modal">
             <FiX className="h-4 w-4" />
@@ -372,7 +400,30 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
             <Field label="Downpayment %" value={form.downpaymentPercentage} onChange={(value) => updateForm('downpaymentPercentage', value)} placeholder="Example: 30" />
             <Field label="Downpayment Terms" value={form.downpaymentTerms} onChange={(value) => updateForm('downpaymentTerms', value)} placeholder="Example: 3" />
             <Field label="Monthly Terms" value={form.monthlyTerms} onChange={(value) => updateForm('monthlyTerms', value)} placeholder="Example: 36" />
-            <Field label="Annual Interest Rate %" value={form.annualInterestRate} onChange={(value) => updateForm('annualInterestRate', value)} placeholder="Example: 7.5" />
+            <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm font-semibold text-blue-900">
+              <p className="text-xs font-black uppercase tracking-wide text-blue-700">Listing Annual Interest Rate</p>
+              <p className="mt-1 text-xl font-black">{listingInterestRate.toFixed(2)}%</p>
+              <button type="button" onClick={syncFromListing} disabled={isSaving} className="mt-3 h-9 rounded-lg bg-blue-600 px-4 text-xs font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300">
+                Sync from Listing
+              </button>
+            </div>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-sm font-black text-slate-700">Interest Rate Source</span>
+              <select value={form.interestRateSource} onChange={(event) => updateForm('interestRateSource', event.target.value)} disabled={isSaving} className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:bg-slate-100">
+                <option value="listing">Use Listing Rate</option>
+                <option value="custom">Custom SOA Rate</option>
+              </select>
+              <span className="text-xs font-semibold text-slate-500">Use listing rate to avoid silent duplicate values, or set a custom rate for this buyer.</span>
+            </label>
+            <Field label="Annual Interest Rate %" value={form.annualInterestRate} onChange={(value) => updateForm('annualInterestRate', value)} placeholder="Example: 7.5" helper={form.interestRateSource === 'listing' ? 'Synced from Edit Listing rate.' : 'Custom SOA rate for this buyer only.'} />
+            <label className="flex flex-col gap-1.5">
+              <span className="text-sm font-black text-slate-700">Interest Calculation Type</span>
+              <select value={form.interestCalculationType} onChange={(event) => updateForm('interestCalculationType', event.target.value)} disabled={isSaving} className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:bg-slate-100">
+                <option value="amortized">Amortized - fixed monthly payment</option>
+                <option value="diminishing">Diminishing - fixed principal + declining interest</option>
+              </select>
+              <span className="text-xs font-semibold text-slate-500">Amortized keeps monthly payment fixed while interest decreases and principal increases.</span>
+            </label>
             <Field label="First Due Date" type="date" value={form.firstDueDate && form.firstDueDate !== '-' ? form.firstDueDate : ''} onChange={(value) => updateForm('firstDueDate', value)} />
           </div>
         </div>
@@ -526,7 +577,7 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
   }, [paymentRecords, search, typeFilter, statusFilter])
 
   const totalDue = useMemo(
-    () => rows.reduce((sum, row) => sum + Number(row.dueAmount || 0), 0),
+    () => rows.reduce((sum, row) => sum + Number(row.totalDue || row.dueAmount || 0), 0),
     [rows]
   )
 
@@ -691,8 +742,8 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
       <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <SummaryCard label="Payment Records" value={paymentRecords.length} isMoney={false} />
         <SummaryCard label="Verified Collections" value={totalPaid} tone="emerald" />
-        <SummaryCard label="Total Due" value={totalDue + totalInterest + totalPenalty} tone="blue" />
-        <SummaryCard label="Remaining Balance" value={remainingBalance} tone="amber" />
+        <SummaryCard label="Total Scheduled Due" value={totalDue} tone="blue" />
+        <SummaryCard label="Remaining Principal Balance" value={remainingBalance} tone="amber" />
       </div>
 
       <div className="mt-6 grid gap-3 xl:grid-cols-[1fr_220px_220px_auto]">
@@ -841,7 +892,7 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
 
               {!filteredPayments.length ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-10 text-center">
+                  <td colSpan={12} className="px-4 py-10 text-center">
                     <FiCreditCard className="mx-auto h-8 w-8 text-slate-300" />
                     <p className="mt-3 text-sm font-black text-slate-700">
                       No payment records yet
@@ -891,12 +942,12 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
                 Statement of Account
               </h3>
               <p className="text-sm font-semibold text-slate-500">
-                Complete SOA schedule with due amount, interest, penalty, payment, and ending balance.
+                Complete SOA schedule with fixed monthly due, principal, interest, penalty, payment, and remaining principal balance.
               </p>
             </div>
 
             <div className="text-sm font-black text-slate-700">
-              Balance: {money(remainingBalance)}
+              Remaining Principal: {money(remainingBalance)}
             </div>
           </div>
         </div>
@@ -909,7 +960,8 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
                   'Due Date',
                   'Description',
                   'Beginning Balance',
-                  'Due Amount',
+                  'Monthly Due',
+                  'Principal',
                   'Interest',
                   'Penalty',
                   'Date Paid',
@@ -944,7 +996,11 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
                   </td>
 
                   <td className="px-4 py-3 font-black text-slate-950">
-                    {money(row.dueAmount)}
+                    {money(row.totalDue || row.dueAmount)}
+                  </td>
+
+                  <td className="px-4 py-3 font-semibold text-blue-700">
+                    {money(row.principalAmount)}
                   </td>
 
                   <td className="px-4 py-3 font-semibold text-amber-700">
@@ -979,7 +1035,7 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
 
               {!rows.length ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-10 text-center">
+                  <td colSpan={12} className="px-4 py-10 text-center">
                     <FiCheckCircle className="mx-auto h-8 w-8 text-slate-300" />
                     <p className="mt-3 text-sm font-black text-slate-700">
                       No SOA schedule yet
@@ -997,7 +1053,7 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
         <div className="border-t border-slate-200 bg-slate-50 px-5 py-4">
           <div className="flex flex-col gap-2 text-sm sm:flex-row sm:items-center sm:justify-end">
             <span className="font-semibold text-slate-500">
-              Total amount to fully pay as of statement date:
+              Remaining principal balance as of statement date:
             </span>
             <span className="text-lg font-black text-slate-950">
               {money(remainingBalance)}
@@ -1052,4 +1108,3 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
 }
 
 export default PaymentsSOA
-

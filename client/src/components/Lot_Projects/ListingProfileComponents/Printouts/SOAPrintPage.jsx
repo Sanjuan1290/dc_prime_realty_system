@@ -88,7 +88,7 @@ const SOAPrintPage = () => {
                   {[
                     'Due Date',
                     'Description',
-                    'Due Amount',
+                    'Monthly Due',
                     'Penalty',
                     'Date Paid',
                     'Amount Paid',
@@ -117,7 +117,7 @@ const SOAPrintPage = () => {
                     </td>
 
                     <td className="border border-black px-2 py-1 text-right font-black">
-                      {money(row.dueAmount)}
+                      {money(row.totalDue || row.dueAmount)}
                     </td>
 
                     <td className="border border-black px-2 py-1 text-right font-bold">
@@ -154,7 +154,7 @@ const SOAPrintPage = () => {
           <div className="mt-8 flex justify-end">
             <div className="grid grid-cols-[300px_150px] text-[12px]">
               <p className="px-2 text-right font-semibold">
-                Total amount to fully pay as of statement date
+                Remaining principal balance as of statement date
               </p>
               <p className="px-2 text-right font-black">{money(latestBalance)}</p>
             </div>
@@ -184,4 +184,3 @@ const SOAPrintPage = () => {
 }
 
 export default SOAPrintPage
-

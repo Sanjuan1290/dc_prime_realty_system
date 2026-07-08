@@ -71,25 +71,36 @@ const replaceReservationSchedules = async (connection, projectId, listing, clien
 
   if (!scheduleRows.length) return;
 
-  await connection.query(
-    `
-      INSERT INTO lot_project_payment_schedules (
-        lot_project_id,
-        lot_project_listing_id,
-        lot_project_client_profile_id,
-        due_date,
-        description,
-        beginning_balance,
-        due_amount,
-        penalty_amount,
-        amount_paid,
-        date_paid,
-        reference_id,
-        ending_balance,
-        schedule_status
-      ) VALUES ${scheduleRows.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ')}
-    `,
-    scheduleRows.flatMap((row) => [
+  const baseColumns = [
+    'lot_project_id',
+    'lot_project_listing_id',
+    'lot_project_client_profile_id',
+    'due_date',
+    'description',
+    'beginning_balance',
+    'due_amount',
+    'penalty_amount',
+    'amount_paid',
+    'date_paid',
+    'reference_id',
+    'ending_balance',
+    'schedule_status',
+  ];
+  const optionalColumns = [];
+  const addOptionalColumn = async (column) => {
+    if (await columnExists(connection, 'lot_project_payment_schedules', column)) optionalColumns.push(column);
+  };
+
+  await addOptionalColumn('interest_amount');
+  await addOptionalColumn('principal_amount');
+  await addOptionalColumn('monthly_amortization_amount');
+  await addOptionalColumn('paid_interest_amount');
+  await addOptionalColumn('paid_principal_amount');
+  await addOptionalColumn('paid_penalty_amount');
+
+  const columns = [...baseColumns, ...optionalColumns];
+  const values = scheduleRows.flatMap((row) => {
+    const baseValues = [
       projectId,
       listing.lot_project_listing_id,
       clientProfileId,
@@ -103,7 +114,24 @@ const replaceReservationSchedules = async (connection, projectId, listing, clien
       null,
       Number(row.endingBalance || 0),
       'Unpaid',
-    ])
+    ];
+    const optionalValues = optionalColumns.map((column) => {
+      if (column === 'interest_amount') return Number(row.interest || 0);
+      if (column === 'principal_amount') return Number(row.principalAmount || row.principal_amount || 0);
+      if (column === 'monthly_amortization_amount') return Number(row.monthlyAmortizationAmount || row.dueAmount || 0);
+      return 0;
+    });
+
+    return [...baseValues, ...optionalValues];
+  });
+
+  await connection.query(
+    `
+      INSERT INTO lot_project_payment_schedules (
+        ${columns.join(',\n        ')}
+      ) VALUES ${scheduleRows.map(() => `(${columns.map(() => '?').join(', ')})`).join(', ')}
+    `,
+    values
   );
 };
 
@@ -518,6 +546,13 @@ export const reserveLotProjectListing = async (req, res) => {
     }
 
     const tableName = 'lot_project_client_profiles';
+    const selectedInterestRate = parseMoneyValue(terms.interestRate || listing.annual_interest_rate || 0);
+    const listingInterestRate = parseMoneyValue(listing.annual_interest_rate || 0);
+    const interestRateOverridden = terms.interestRate !== undefined && terms.interestRate !== null && terms.interestRate !== '' && Math.abs(selectedInterestRate - listingInterestRate) > 0.0001 ? 1 : 0;
+    const interestCalculationType = String(terms.interestCalculationType || terms.soaInterestCalculationType || 'amortized').toLowerCase() === 'diminishing'
+      ? 'diminishing'
+      : 'amortized';
+
     const columns = [
       'lot_project_id',
       'lot_project_listing_id',
@@ -614,7 +649,7 @@ export const reserveLotProjectListing = async (req, res) => {
       Number.isNaN(downpaymentPercentage) ? 30 : downpaymentPercentage,
       Number.isNaN(downpaymentTerms) ? 3 : downpaymentTerms,
       Number.isNaN(monthlyTerms) ? 36 : monthlyTerms,
-      parseMoneyValue(terms.interestRate || listing.annual_interest_rate || 0),
+      selectedInterestRate,
       parseMoneyValue(terms.dpDiscountPercentage || 0),
     ];
 
@@ -631,6 +666,8 @@ export const reserveLotProjectListing = async (req, res) => {
     await addIfColumnExists(connection, tableName, columns, values, 'sale_channel', saleChannel);
     await addIfColumnExists(connection, tableName, columns, values, 'soa_legal_misc_fee_mode', legalMiscFeeMode);
     await addIfColumnExists(connection, tableName, columns, values, 'soa_legal_misc_fee_amount', legalMiscFeeAmount);
+    await addIfColumnExists(connection, tableName, columns, values, 'soa_interest_rate_overridden', interestRateOverridden);
+    await addIfColumnExists(connection, tableName, columns, values, 'soa_interest_calculation_type', interestCalculationType);
 
     const updateAssignments = columns
       .filter((column) => !['lot_project_id', 'lot_project_listing_id'].includes(column))
@@ -689,8 +726,9 @@ export const reserveLotProjectListing = async (req, res) => {
       downpaymentPercentage: Number.isNaN(downpaymentPercentage) ? 30 : downpaymentPercentage,
       downpaymentTerms: Number.isNaN(downpaymentTerms) ? 3 : downpaymentTerms,
       monthlyTerms: Number.isNaN(monthlyTerms) ? 36 : monthlyTerms,
-      annualInterestRate: parseMoneyValue(terms.interestRate || listing.annual_interest_rate || 0),
+      annualInterestRate: selectedInterestRate,
       dpDiscountPercentage: parseMoneyValue(terms.dpDiscountPercentage || 0),
+      interestCalculationType,
       legalMiscFeeMode,
       legalMiscFeeAmount,
     });
@@ -720,4 +758,3 @@ export const reserveLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
-

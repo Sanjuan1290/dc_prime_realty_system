@@ -562,7 +562,11 @@ export const mapProfileListing = (row = {}, project = {}, documents = []) => {
     soaDownpaymentPercentage: Number(row.soa_downpayment_percentage || 0),
     soaDownpaymentTerms: Number(row.soa_downpayment_terms || 0),
     soaMonthlyTerms: Number(row.soa_monthly_terms || 0),
-    soaAnnualInterestRate: Number(row.soa_annual_interest_rate || annualInterestRate || 0),
+    soaAnnualInterestRate: Number(Number(row.soa_interest_rate_overridden || 0) === 1 ? row.soa_annual_interest_rate : annualInterestRate),
+    soaListingAnnualInterestRate: annualInterestRate,
+    soaInterestRateSource: Number(row.soa_interest_rate_overridden || 0) === 1 ? 'custom' : 'listing',
+    soaInterestRateOverridden: Number(row.soa_interest_rate_overridden || 0) === 1,
+    soaInterestCalculationType: row.soa_interest_calculation_type || 'amortized',
     soaDpDiscountPercentage: Number(row.soa_dp_discount_percentage || 0),
     buyer_name: row.buyer_full_name || '-',
     spouse_co_owner: row.second_buyer_full_name || '-',
@@ -697,8 +701,21 @@ export const getOrdinalLabel = (number) => {
   return `${value}th`;
 };
 
-export const getScheduleTotalDue = (row = {}) =>
-  roundMoneyValue(Number(row.dueAmount || 0) + Number(row.interest || 0) + Number(row.penalty || 0));
+export const getScheduleTotalDue = (row = {}) => {
+  const penalty = Number(row.penalty ?? row.penaltyAmount ?? row.penalty_amount ?? 0);
+  const dueAmount = Number(row.dueAmount ?? row.due_amount ?? 0);
+  const interest = Number(row.interest ?? row.interestAmount ?? row.interest_amount ?? 0);
+  const hasPrincipalBreakdown =
+    row.scheduleType === 'monthly' &&
+    (
+      row.principalAmount !== undefined ||
+      row.principal_amount !== undefined ||
+      row.monthlyAmortizationAmount !== undefined ||
+      row.monthly_amortization_amount !== undefined
+    );
+
+  return roundMoneyValue(dueAmount + (hasPrincipalBreakdown ? 0 : interest) + penalty);
+};
 
 export const appendPaymentReference = (row, payment) => {
   const reference = payment.referenceId || payment.lot_project_payment_reference_id || '-';
@@ -847,6 +864,37 @@ export const getReserveSellerOptions = async (connection, lotProjectId) => {
   }));
 };
 
+const normalizeInterestCalculationType = (value = '') => {
+  const clean = String(value || 'amortized').trim().toLowerCase();
+  return clean === 'diminishing' ? 'diminishing' : 'amortized';
+};
+
+const getEffectiveSoaInterestRate = (listingRow = {}) => {
+  const listingRate = Number(listingRow.annual_interest_rate ?? listingRow.lot_project_listing_annual_interest_rate ?? 0);
+  const rawSoaRate = listingRow.soa_annual_interest_rate;
+  const overrideFlag = Number(listingRow.soa_interest_rate_overridden ?? listingRow.soaInterestRateOverridden ?? 0);
+  const hasExplicitOverride = overrideFlag === 1 || overrideFlag === true;
+
+  if (hasExplicitOverride && rawSoaRate !== undefined && rawSoaRate !== null && rawSoaRate !== '') {
+    return Number(rawSoaRate || 0);
+  }
+
+  return listingRate;
+};
+
+const getMonthlyAmortizationAmount = (financedBalance, annualInterestRate, monthlyTerms) => {
+  const principal = roundMoneyValue(financedBalance || 0);
+  const terms = Number(monthlyTerms || 0);
+
+  if (principal <= 0 || terms <= 0) return 0;
+
+  const monthlyRate = Number(annualInterestRate || 0) / 100 / 12;
+  if (monthlyRate <= 0) return roundMoneyValue(principal / terms);
+
+  const factor = Math.pow(1 + monthlyRate, terms);
+  return roundMoneyValue(principal * ((monthlyRate * factor) / (factor - 1)));
+};
+
 export const getComputedSoaTerms = (listingRow = {}, existingScheduleRows = []) => {
   const tcp = roundMoneyValue(listingRow.lot_project_listing_tcp || listingRow.tcp || 0);
   const legalMiscFeeMode = String(
@@ -936,15 +984,14 @@ export const getComputedSoaTerms = (listingRow = {}, existingScheduleRows = []) 
       startingDate
   );
 
-  const annualInterestRate = Number(
-    listingRow.soa_annual_interest_rate ?? listingRow.annual_interest_rate ?? 0
+  const annualInterestRate = getEffectiveSoaInterestRate(listingRow);
+  const interestRateSource = Number(listingRow.soa_interest_rate_overridden || 0) === 1 ? 'custom' : 'listing';
+  const interestCalculationType = normalizeInterestCalculationType(
+    listingRow.soa_interest_calculation_type || listingRow.interestCalculationType || 'amortized'
   );
-
-  const financedBalance = Math.max(principalTcp - reservationFee - downpaymentTotal, 0);
-  const inferredMonthlyPrincipal = Number(existingMonthlyRows[0]?.due_amount || 0);
-  const monthlyPrincipal = roundMoneyValue(
-    inferredMonthlyPrincipal || (monthlyTerms > 0 ? financedBalance / monthlyTerms : financedBalance)
-  );
+  const financedBalance = roundMoneyValue(Math.max(principalTcp - reservationFee - downpaymentTotal, 0));
+  const monthlyPrincipal = roundMoneyValue(monthlyTerms > 0 ? financedBalance / monthlyTerms : financedBalance);
+  const monthlyAmortization = getMonthlyAmortizationAmount(financedBalance, annualInterestRate, monthlyTerms);
 
   return {
     tcp,
@@ -957,7 +1004,12 @@ export const getComputedSoaTerms = (listingRow = {}, existingScheduleRows = []) 
     downpaymentTerms,
     monthlyTerms,
     monthlyPrincipal,
+    monthlyAmortization,
     annualInterestRate,
+    listingAnnualInterestRate: Number(listingRow.annual_interest_rate || 0),
+    interestRateSource,
+    interestCalculationType,
+    financedBalance,
     startingDate,
     firstDueDate,
     modeOfPayment: listingRow.soa_mode_of_payment || listingRow.mode_of_payment || 'installment',
@@ -977,6 +1029,7 @@ export const createComputedSoaRows = (terms = {}) => {
       description: 'Reservation Fee',
       beginningBalance: terms.tcp,
       dueAmount: terms.reservationFee,
+      principalAmount: terms.reservationFee,
       interest: 0,
       penalty: 0,
       datePaid: '-',
@@ -997,6 +1050,7 @@ export const createComputedSoaRows = (terms = {}) => {
       description: 'Legal / Misc Fee',
       beginningBalance: terms.tcp,
       dueAmount: roundMoneyValue(terms.legalMiscFeeAmount),
+      principalAmount: 0,
       interest: 0,
       penalty: 0,
       datePaid: '-',
@@ -1020,6 +1074,7 @@ export const createComputedSoaRows = (terms = {}) => {
         description: 'Full Payment',
         beginningBalance: terms.tcp,
         dueAmount: roundMoneyValue(cashBalance),
+        principalAmount: roundMoneyValue(cashBalance),
         interest: 0,
         penalty: 0,
         datePaid: '-',
@@ -1052,6 +1107,7 @@ export const createComputedSoaRows = (terms = {}) => {
       description: dpTerms === 1 ? 'Downpayment' : `${getOrdinalLabel(index)} Downpayment`,
       beginningBalance: terms.tcp,
       dueAmount,
+      principalAmount: dueAmount,
       interest: 0,
       penalty: 0,
       datePaid: '-',
@@ -1072,7 +1128,9 @@ export const createComputedSoaRows = (terms = {}) => {
       dueDate,
       description: `${getOrdinalLabel(index)} Monthly Payment`,
       beginningBalance: terms.tcp,
-      dueAmount: terms.monthlyPrincipal,
+      dueAmount: terms.monthlyAmortization || terms.monthlyPrincipal,
+      monthlyAmortizationAmount: terms.monthlyAmortization || terms.monthlyPrincipal,
+      principalAmount: 0,
       interest: 0,
       penalty: 0,
       datePaid: '-',
@@ -1140,28 +1198,52 @@ export const allocatePaymentsToComputedRows = (rows = [], payments = []) => {
 };
 
 
+const getPaymentBreakdownForRow = (row = {}, amountPaid = 0) => {
+  let remaining = roundMoneyValue(amountPaid);
+  const penaltyDue = Number(row.penalty || 0);
+  const interestDue = Number(row.interest || 0);
+  const principalDue = Number(row.principalAmount ?? row.principal_amount ?? row.dueAmount ?? 0);
+
+  const penaltyPaid = roundMoneyValue(Math.min(remaining, penaltyDue));
+  remaining = roundMoneyValue(Math.max(remaining - penaltyPaid, 0));
+
+  const interestPaid = roundMoneyValue(Math.min(remaining, interestDue));
+  remaining = roundMoneyValue(Math.max(remaining - interestPaid, 0));
+
+  const principalPaid = roundMoneyValue(Math.min(remaining, principalDue));
+
+  return { penaltyPaid, interestPaid, principalPaid };
+};
+
 export const recomputeComputedSoaBalances = (rows = [], terms = {}) => {
   const today = new Date().toISOString().slice(0, 10);
   let runningBalance = roundMoneyValue(terms.tcp || 0);
-  let projectedMonthlyBalance = null;
+  let projectedMonthlyBalance = roundMoneyValue(terms.financedBalance || 0);
+  const monthlyRate = Number(terms.annualInterestRate || 0) / 100 / 12;
+  const interestCalculationType = normalizeInterestCalculationType(terms.interestCalculationType);
+  const sortedRows = sortComputedRows(rows);
+  const monthlyRows = sortedRows.filter((row) => row.scheduleType === 'monthly');
   const visibleRows = [];
+  let monthlyIndex = 0;
 
-  for (const row of sortComputedRows(rows)) {
+  for (const row of sortedRows) {
     const scheduleType = row.scheduleType;
     let amountPaid = roundMoneyValue(Number(row.amountPaid || 0));
 
-    if (runningBalance <= 0 && amountPaid <= 0) break;
+    if (runningBalance <= 0 && amountPaid <= 0 && !['legal_misc'].includes(scheduleType)) break;
 
     row.beginningBalance = runningBalance;
 
     if (scheduleType === 'balloon') {
       row.dueAmount = 0;
+      row.monthlyAmortizationAmount = 0;
       row.interest = 0;
+      row.principalAmount = 0;
       row.penalty = 0;
 
       const principalPaid = roundMoneyValue(Math.min(amountPaid, runningBalance));
       runningBalance = roundMoneyValue(Math.max(runningBalance - principalPaid, 0));
-      projectedMonthlyBalance = null;
+      projectedMonthlyBalance = runningBalance;
 
       row.amountPaid = principalPaid;
       row.endingBalance = runningBalance;
@@ -1173,13 +1255,19 @@ export const recomputeComputedSoaBalances = (rows = [], terms = {}) => {
         description: row.description,
         beginningBalance: row.beginningBalance,
         dueAmount: row.dueAmount,
+        monthlyAmortizationAmount: row.monthlyAmortizationAmount || row.dueAmount,
+        principalAmount: row.principalAmount || 0,
         interest: row.interest || 0,
         penalty: row.penalty || 0,
         datePaid: row.datePaid || '-',
         amountPaid: row.amountPaid || 0,
+        paidPrincipalAmount: principalPaid,
+        paidInterestAmount: 0,
+        paidPenaltyAmount: 0,
         referenceId: row.referenceId || '-',
         status: row.status,
         endingBalance: row.endingBalance,
+        totalDue: getScheduleTotalDue(row),
       });
 
       if (runningBalance <= 0) break;
@@ -1187,34 +1275,45 @@ export const recomputeComputedSoaBalances = (rows = [], terms = {}) => {
     }
 
     if (scheduleType === 'monthly') {
-      const baseMonthlyPrincipal = roundMoneyValue(Number(terms.monthlyPrincipal || row.dueAmount || 0));
+      const isLastMonthly = monthlyIndex === monthlyRows.length - 1;
+      const amortizedPayment = roundMoneyValue(Number(terms.monthlyAmortization || row.monthlyAmortizationAmount || row.dueAmount || 0));
+      const diminishingPrincipal = roundMoneyValue(Number(terms.monthlyPrincipal || row.dueAmount || 0));
+      const scheduledBalance = Math.max(projectedMonthlyBalance, 0);
 
-      if (amountPaid <= 0) {
-        if (projectedMonthlyBalance === null) projectedMonthlyBalance = runningBalance;
-        if (projectedMonthlyBalance <= 0) break;
+      if (scheduledBalance <= 0 && amountPaid <= 0) break;
 
-        row.dueAmount = roundMoneyValue(Math.min(baseMonthlyPrincipal, projectedMonthlyBalance));
-        projectedMonthlyBalance = roundMoneyValue(Math.max(projectedMonthlyBalance - row.dueAmount, 0));
+      if (interestCalculationType === 'diminishing') {
+        row.interest = roundMoneyValue(scheduledBalance * monthlyRate);
+        row.principalAmount = roundMoneyValue(Math.min(diminishingPrincipal, scheduledBalance));
+        row.dueAmount = roundMoneyValue(row.principalAmount + row.interest);
+        row.monthlyAmortizationAmount = row.dueAmount;
       } else {
-        row.dueAmount = roundMoneyValue(Math.min(Number(row.dueAmount || 0), runningBalance));
-        projectedMonthlyBalance = null;
+        row.interest = roundMoneyValue(scheduledBalance * monthlyRate);
+        row.dueAmount = isLastMonthly
+          ? roundMoneyValue(scheduledBalance + row.interest)
+          : amortizedPayment;
+        row.monthlyAmortizationAmount = row.dueAmount;
+        row.principalAmount = roundMoneyValue(Math.min(Math.max(row.dueAmount - row.interest, 0), scheduledBalance));
       }
+
+      projectedMonthlyBalance = roundMoneyValue(Math.max(projectedMonthlyBalance - row.principalAmount, 0));
+      monthlyIndex += 1;
     }
 
     if (scheduleType === 'full_payment') {
       row.dueAmount = roundMoneyValue(Math.min(Number(row.dueAmount || 0), runningBalance));
-      projectedMonthlyBalance = null;
+      row.principalAmount = row.dueAmount;
+      row.monthlyAmortizationAmount = row.dueAmount;
     }
 
-    if (scheduleType === 'monthly' && Number(terms.annualInterestRate || 0) > 0 && runningBalance > 0) {
-      row.interest = roundMoneyValue(runningBalance * (Number(terms.annualInterestRate || 0) / 100 / 12));
+    if (scheduleType !== 'monthly') {
+      row.principalAmount = Number(row.principalAmount ?? row.dueAmount ?? 0);
+      row.monthlyAmortizationAmount = Number(row.monthlyAmortizationAmount ?? row.dueAmount ?? 0);
     }
 
     const totalDue = getScheduleTotalDue(row);
     amountPaid = roundMoneyValue(Number(row.amountPaid || 0));
-    const principalPaid = scheduleType === 'full_payment'
-      ? roundMoneyValue(Math.min(amountPaid, runningBalance))
-      : roundMoneyValue(Math.min(amountPaid, Number(row.dueAmount || 0), runningBalance));
+    const { penaltyPaid, interestPaid, principalPaid } = getPaymentBreakdownForRow(row, amountPaid);
 
     runningBalance = roundMoneyValue(Math.max(runningBalance - principalPaid, 0));
     row.endingBalance = runningBalance;
@@ -1227,21 +1326,25 @@ export const recomputeComputedSoaBalances = (rows = [], terms = {}) => {
       row.status = row.datePaid !== '-' && row.dueDate && row.datePaid < row.dueDate ? 'Advance' : 'Paid';
     }
 
-    if (amountPaid > 0) projectedMonthlyBalance = null;
-
     visibleRows.push({
       id: row.id,
       dueDate: row.dueDate,
       description: row.description,
       beginningBalance: row.beginningBalance,
       dueAmount: row.dueAmount,
+      monthlyAmortizationAmount: row.monthlyAmortizationAmount || row.dueAmount,
+      principalAmount: row.principalAmount || 0,
       interest: row.interest || 0,
       penalty: row.penalty || 0,
       datePaid: row.datePaid || '-',
       amountPaid: row.amountPaid || 0,
+      paidPrincipalAmount: principalPaid,
+      paidInterestAmount: interestPaid,
+      paidPenaltyAmount: penaltyPaid,
       referenceId: row.referenceId || '-',
       status: row.status,
       endingBalance: row.endingBalance,
+      totalDue,
     });
 
     if (runningBalance <= 0 && amountPaid > 0) break;
@@ -1249,7 +1352,6 @@ export const recomputeComputedSoaBalances = (rows = [], terms = {}) => {
 
   return visibleRows;
 };
-
 
 export const getExistingSoaScheduleRows = async (connection, lotProjectId, listingId) => {
   if (!(await tableExists(connection, 'lot_project_payment_schedules'))) return [];
@@ -1492,20 +1594,40 @@ export const recomputeListingScheduleBalances = async (connection, listing) => {
   );
 
   let runningBalance = Number(listing.lot_project_listing_tcp || 0);
+  const hasPaidColumns = await columnExists(connection, 'lot_project_payment_schedules', 'paid_principal_amount');
 
   for (const row of rows) {
     const beginningBalance = runningBalance;
     const paidAmount = Number(row.amount_paid || 0);
-    runningBalance = Math.max(runningBalance - paidAmount, 0);
+    const penaltyDue = Number(row.penalty_amount || 0);
+    const interestDue = Number(row.interest_amount || 0);
+    const principalDue = Number(row.principal_amount ?? row.due_amount ?? 0);
+
+    let remainingPaid = paidAmount;
+    const paidPenalty = roundMoneyValue(Math.min(remainingPaid, penaltyDue));
+    remainingPaid = roundMoneyValue(Math.max(remainingPaid - paidPenalty, 0));
+
+    const paidInterest = roundMoneyValue(Math.min(remainingPaid, interestDue));
+    remainingPaid = roundMoneyValue(Math.max(remainingPaid - paidInterest, 0));
+
+    const paidPrincipal = roundMoneyValue(Math.min(remainingPaid, principalDue, runningBalance));
+    runningBalance = roundMoneyValue(Math.max(runningBalance - paidPrincipal, 0));
+
+    const setColumns = ['beginning_balance = ?', 'ending_balance = ?'];
+    const values = [beginningBalance, runningBalance];
+
+    if (hasPaidColumns) {
+      setColumns.push('paid_penalty_amount = ?', 'paid_interest_amount = ?', 'paid_principal_amount = ?');
+      values.push(paidPenalty, paidInterest, paidPrincipal);
+    }
 
     await connection.query(
       `
         UPDATE lot_project_payment_schedules
-        SET beginning_balance = ?,
-            ending_balance = ?
+        SET ${setColumns.join(',\n            ')}
         WHERE lot_project_payment_schedule_id = ?
       `,
-      [beginningBalance, runningBalance, row.lot_project_payment_schedule_id]
+      [...values, row.lot_project_payment_schedule_id]
     );
   }
 };
@@ -1533,20 +1655,22 @@ export const applyPaymentToSchedules = async (connection, listing, paymentId, pr
     throw new Error('No SOA schedule row is available for this listing.');
   }
 
-  let remaining = Number(amount || 0);
+  let remaining = roundMoneyValue(Number(amount || 0));
 
   for (const row of scheduleRows) {
     if (remaining <= 0) break;
 
-    const totalDue = Number(row.due_amount || 0) + Number(row.penalty_amount || 0);
+    const dueAmount = Number(row.due_amount || 0);
+    const penaltyAmount = Number(row.penalty_amount || 0);
+    const totalDue = roundMoneyValue(dueAmount + penaltyAmount);
     const currentPaid = Number(row.amount_paid || 0);
     const unpaidForRow = Math.max(totalDue - currentPaid, 0);
 
     if (unpaidForRow <= 0) continue;
 
-    const appliedAmount = Math.min(remaining, unpaidForRow);
-    const nextPaid = currentPaid + appliedAmount;
-    const isPaid = nextPaid >= totalDue;
+    const appliedAmount = roundMoneyValue(Math.min(remaining, unpaidForRow));
+    const nextPaid = roundMoneyValue(currentPaid + appliedAmount);
+    const isPaid = nextPaid + 0.009 >= totalDue;
     const paidBeforeDue = paymentDate && row.due_date && new Date(paymentDate) < new Date(row.due_date);
     const nextStatus = isPaid ? (paidBeforeDue ? 'Advance' : 'Paid') : 'Partial';
 
@@ -1573,7 +1697,7 @@ export const applyPaymentToSchedules = async (connection, listing, paymentId, pr
       [paymentId, row.lot_project_payment_schedule_id, appliedAmount]
     );
 
-    remaining -= appliedAmount;
+    remaining = roundMoneyValue(remaining - appliedAmount);
   }
 
   if (remaining > 0) {
@@ -1678,6 +1802,3 @@ export const addIfColumnExists = async (connection, tableName, columns, values, 
     values.push(value);
   }
 };
-
-
-

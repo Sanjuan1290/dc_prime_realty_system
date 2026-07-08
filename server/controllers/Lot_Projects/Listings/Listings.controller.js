@@ -224,6 +224,170 @@ export const getLotProjectListings = async (req, res) => {
 
 
 
+
+const replaceListingSchedulesForProfile = async (connection, projectId, listingRow) => {
+  if (!(await tableExists(connection, 'lot_project_payment_schedules'))) return;
+
+  const terms = getComputedSoaTerms(listingRow, []);
+  const computedRows = recomputeComputedSoaBalances(createComputedSoaRows(terms), terms);
+
+  await connection.query(
+    `DELETE FROM lot_project_payment_schedules WHERE lot_project_listing_id = ?`,
+    [listingRow.lot_project_listing_id]
+  );
+
+  if (!computedRows.length) return;
+
+  const baseColumns = [
+    'lot_project_id',
+    'lot_project_listing_id',
+    'lot_project_client_profile_id',
+    'due_date',
+    'description',
+    'beginning_balance',
+    'due_amount',
+    'penalty_amount',
+    'amount_paid',
+    'date_paid',
+    'reference_id',
+    'ending_balance',
+    'schedule_status',
+  ];
+  const optionalColumns = [];
+  const addOptionalColumn = async (column) => {
+    if (await columnExists(connection, 'lot_project_payment_schedules', column)) optionalColumns.push(column);
+  };
+
+  await addOptionalColumn('interest_amount');
+  await addOptionalColumn('principal_amount');
+  await addOptionalColumn('monthly_amortization_amount');
+  await addOptionalColumn('paid_interest_amount');
+  await addOptionalColumn('paid_principal_amount');
+  await addOptionalColumn('paid_penalty_amount');
+
+  const columns = [...baseColumns, ...optionalColumns, 'created_at', 'updated_at'];
+  const values = computedRows.flatMap((row) => {
+    const baseValues = [
+      projectId,
+      listingRow.lot_project_listing_id,
+      listingRow.lot_project_client_profile_id,
+      row.dueDate,
+      row.description,
+      roundMoneyValue(row.beginningBalance || 0),
+      roundMoneyValue(row.dueAmount || 0),
+      roundMoneyValue(row.penalty || 0),
+      roundMoneyValue(row.amountPaid || 0),
+      row.datePaid && row.datePaid !== '-' ? row.datePaid : null,
+      row.referenceId && row.referenceId !== '-' ? row.referenceId : null,
+      roundMoneyValue(row.endingBalance || 0),
+      row.status || 'Unpaid',
+    ];
+    const optionalValues = optionalColumns.map((column) => {
+      if (column === 'interest_amount') return roundMoneyValue(row.interest || 0);
+      if (column === 'principal_amount') return roundMoneyValue(row.principalAmount || 0);
+      if (column === 'monthly_amortization_amount') return roundMoneyValue(row.monthlyAmortizationAmount || row.dueAmount || 0);
+      if (column === 'paid_interest_amount') return roundMoneyValue(row.paidInterestAmount || 0);
+      if (column === 'paid_principal_amount') return roundMoneyValue(row.paidPrincipalAmount || 0);
+      if (column === 'paid_penalty_amount') return roundMoneyValue(row.paidPenaltyAmount || 0);
+      return 0;
+    });
+
+    return [...baseValues, ...optionalValues];
+  });
+
+  await connection.query(
+    `
+      INSERT INTO lot_project_payment_schedules (
+        ${columns.join(',\n        ')}
+      ) VALUES ${computedRows.map(() => `(${columns.map((column) => column === 'created_at' || column === 'updated_at' ? 'NOW()' : '?').join(', ')})`).join(', ')}
+    `,
+    values
+  );
+};
+
+const syncListingInterestToUnlockedSoa = async (connection, projectId, listingId, annualInterestRate) => {
+  if (!(await tableExists(connection, 'lot_project_client_profiles'))) return { synced: 0, skipped: 0 };
+
+  const hasOverrideColumn = await columnExists(connection, 'lot_project_client_profiles', 'soa_interest_rate_overridden');
+  const hasScheduleTypeColumn = await columnExists(connection, 'lot_project_client_profiles', 'soa_interest_calculation_type');
+
+  const [profileRows] = await connection.query(
+    `
+      SELECT l.*, cp.*
+      FROM lot_project_listings l
+      INNER JOIN lot_project_client_profiles cp
+        ON cp.lot_project_listing_id = l.lot_project_listing_id
+      WHERE l.lot_project_id = ?
+        AND l.lot_project_listing_id = ?
+    `,
+    [projectId, listingId]
+  );
+
+  let synced = 0;
+  let skipped = 0;
+
+  for (const profile of profileRows) {
+    if (hasOverrideColumn && Number(profile.soa_interest_rate_overridden || 0) === 1) {
+      skipped += 1;
+      continue;
+    }
+
+    const paymentCount = await tableExists(connection, 'lot_project_payments')
+      ? (await connection.query(
+          `
+            SELECT COUNT(*) AS total
+            FROM lot_project_payments
+            WHERE lot_project_id = ?
+              AND lot_project_listing_id = ?
+              AND lot_project_payment_status <> 'Cancelled'
+          `,
+          [projectId, listingId]
+        ))[0][0]?.total
+      : 0;
+
+    if (Number(paymentCount || 0) > 0) {
+      skipped += 1;
+      continue;
+    }
+
+    const updateColumns = [];
+    const updateParams = [];
+    if (await columnExists(connection, 'lot_project_client_profiles', 'soa_annual_interest_rate')) {
+      updateColumns.push('soa_annual_interest_rate = ?');
+      updateParams.push(annualInterestRate);
+    }
+    if (hasOverrideColumn) {
+      updateColumns.push('soa_interest_rate_overridden = 0');
+    }
+    if (hasScheduleTypeColumn && !profile.soa_interest_calculation_type) {
+      updateColumns.push("soa_interest_calculation_type = 'amortized'");
+    }
+
+    if (updateColumns.length) {
+      await connection.query(
+        `
+          UPDATE lot_project_client_profiles
+          SET ${updateColumns.join(', ')}
+          WHERE lot_project_client_profile_id = ?
+        `,
+        [...updateParams, profile.lot_project_client_profile_id]
+      );
+    }
+
+    await replaceListingSchedulesForProfile(connection, projectId, {
+      ...profile,
+      annual_interest_rate: annualInterestRate,
+      soa_annual_interest_rate: annualInterestRate,
+      soa_interest_rate_overridden: 0,
+      soa_interest_calculation_type: profile.soa_interest_calculation_type || 'amortized',
+    });
+
+    synced += 1;
+  }
+
+  return { synced, skipped };
+};
+
 export const updateLotProjectListing = async (req, res) => {
   const connection = await db.getConnection();
 
@@ -364,11 +528,19 @@ export const updateLotProjectListing = async (req, res) => {
       }
     }
 
+    const soaSyncResult = hasAnnualInterestRate
+      ? await syncListingInterestToUnlockedSoa(connection, project.lot_project_id, existingListing.lot_project_listing_id, annualInterestRate)
+      : { synced: 0, skipped: 0 };
+
     await connection.commit();
 
     return res.json({
       success: true,
-      message: `${unitCode} updated successfully.`,
+      message: soaSyncResult.synced > 0
+        ? `${unitCode} updated successfully. SOA interest was synced and recomputed for ${soaSyncResult.synced} buyer account(s).`
+        : soaSyncResult.skipped > 0
+          ? `${unitCode} updated successfully. Existing SOA was not changed because it has payments or a custom SOA rate.`
+          : `${unitCode} updated successfully.`,
       listing_id: existingListing.lot_project_listing_id,
       unit_id: unitCode,
     });
