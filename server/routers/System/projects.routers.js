@@ -32,7 +32,7 @@ import {
   uploadLotProjectListingDocument,
   approveLotProjectListingDocument,
   clearLotProjectListingDocument,
-} from '../../controllers/Lot_Projects/ListingProfile/Documents.c ontroller.js';
+} from '../../controllers/Lot_Projects/ListingProfile/Documents.controller.js';
 import {
   createLotProjectListingPayment,
   updateLotProjectListingPayment,
