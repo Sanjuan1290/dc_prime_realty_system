@@ -13,6 +13,8 @@ import sellerGroupRouter from './routers/System/sellerGroup.routers.js';
 import accreditedRouter from './routers/System/accredited.routers.js';
 import projectsRouter from './routers/System/projects.routers.js';
 import notificationsRouter from './routers/System/notifications.routers.js';
+import auditLogsRouter from './routers/System/auditLogs.router.js';
+import systemSettingsRouter from './routers/System/systemSettings.routers.js';
 
 const app = express();
 
@@ -58,6 +60,8 @@ app.use('/api/v1/seller-groups', sellerGroupRouter);
 app.use('/api/v1/accredited', accreditedRouter);
 app.use('/api/v1/projects', projectsRouter);
 app.use('/api/v1/notifications', notificationsRouter);
+app.use('/api/v1/audit-logs', auditLogsRouter);
+app.use('/api/v1/system-settings', systemSettingsRouter);
 
 app.use((err, req, res, next) => {
   console.error(err);
@@ -82,3 +86,4 @@ const startServer = async () => {
 };
 
 startServer();
+

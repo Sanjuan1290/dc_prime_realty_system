@@ -16,6 +16,8 @@ import Users from "./pages/System/Users";
 import Accredited from "./pages/System/Accredited";
 import Projects from "./pages/System/Projects";
 import Notifications from "./pages/System/Notifications";
+import AuditLogs from "./pages/System/AuditLogs";
+import Settings from "./pages/System/Settings";
 
 import LotDashboard from "./pages/Lot_Projects/Dashboard";
 import LotListings from "./pages/Lot_Projects/Listings";
@@ -44,6 +46,8 @@ const App = () => {
           <Route path="accredited" element={<Accredited />} />
           <Route path="users/seller_group" element={<SellerGroup />} />
           <Route path="notifications" element={<Notifications />} />
+          <Route path="audit-logs" element={<AuditLogs />} />
+          <Route path="settings" element={<Settings />} />
         </Route>
 
         <Route path="/lot-projects/:projectSlug" element={<LotLayout />}>
@@ -87,3 +91,4 @@ const App = () => {
 };
 
 export default App;
+

@@ -1,6 +1,7 @@
 import { db } from '../../db/connect.js';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
+import { writeAuditLog } from './auditLogs.controller.js';
 
 const sellerRoles = new Set([
   'broker_network_manager',
@@ -245,6 +246,16 @@ export const login = async (req, res) => {
 
   await db.query(`UPDATE users SET last_login = NOW() WHERE id = ?`, [user.id]);
 
+  await writeAuditLog(db, req, {
+    actor: user,
+    action: 'login',
+    module: 'Authentication',
+    entityType: 'user',
+    entityId: String(user.id),
+    title: 'User logged in',
+    description: `${user.email} logged in successfully.`,
+  });
+
   return res.status(200).json({
     message: user.must_change_password
       ? 'Login successful. Password change is required.'
@@ -268,6 +279,13 @@ export const login = async (req, res) => {
 
 export const logout = async (req, res) => {
   try {
+    await writeAuditLog(db, req, {
+      action: 'logout',
+      module: 'Authentication',
+      title: 'User logged out',
+      description: 'User ended the current session.',
+    });
+
     res.clearCookie('token', {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -498,6 +516,16 @@ export const createUser = async (req, res) => {
       await syncManagedSellerLink(connection, accreditedSellerId, role === 'broker_network_manager' ? null : toNullableNumber(reports_under_user_id));
     }
 
+    await writeAuditLog(connection, req, {
+      action: 'create',
+      module: 'Users',
+      entityType: 'user',
+      entityId: String(userId),
+      title: 'Created user account',
+      description: `Created account for ${first_name.trim()} ${last_name.trim()} (${email.trim()}).`,
+      metadata: { role, status: normalizeStatus(status), seller_group_id, reports_under_user_id },
+    });
+
     await connection.commit();
 
     return res.status(201).json({ message: 'User created successfully.', user_id: userId });
@@ -602,6 +630,16 @@ export const editUser = async (req, res) => {
       await connection.query(`DELETE FROM accredited_sellers WHERE user_id = ?`, [userId]);
     }
 
+    await writeAuditLog(connection, req, {
+      action: 'update',
+      module: 'Users',
+      entityType: 'user',
+      entityId: String(userId),
+      title: 'Updated user account',
+      description: `Updated account for ${first_name.trim()} ${last_name.trim()} (${email.trim()}).`,
+      metadata: { role, status: normalizeStatus(status), seller_group_id, reports_under_user_id },
+    });
+
     await connection.commit();
 
     return res.json({ message: 'User updated successfully.' });
@@ -631,6 +669,16 @@ export const toggleUserStatus = async (req, res) => {
       [nextStatus, userId]
     );
 
+    await writeAuditLog(db, req, {
+      action: 'update',
+      module: 'Users',
+      entityType: 'user',
+      entityId: String(userId),
+      title: 'Changed user account status',
+      description: `User account status changed to ${nextStatus}.`,
+      metadata: { previousStatus: user.status, nextStatus },
+    });
+
     return res.json({ message: `User is now ${nextStatus}.`, status: nextStatus });
   } catch (error) {
     return res.status(500).json({ message: getErrorMessage(error) });
@@ -651,8 +699,18 @@ export const resetUserPassword = async (req, res) => {
       [passwordHash, userId]
     );
 
+    await writeAuditLog(db, req, {
+      action: 'update',
+      module: 'Users',
+      entityType: 'user',
+      entityId: String(userId),
+      title: 'Reset user password',
+      description: 'User password was reset and must be changed on next login.',
+    });
+
     return res.json({ message: 'Password reset successfully. User must change password on next login.' });
   } catch (error) {
     return res.status(500).json({ message: getErrorMessage(error) });
   }
 };
+
