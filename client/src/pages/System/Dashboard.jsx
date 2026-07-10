@@ -68,6 +68,16 @@ const shortLabel = (value = '', max = 18) => {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text
 }
 
+const isMoneyChartKey = (dataKey = '') => {
+  const key = String(dataKey || '')
+
+  if (/count|entries|units|clients|projects|listings|collections/i.test(key)) {
+    return false
+  }
+
+  return /totalSales|pendingSales|salesAmount|collected|inventory|commission|released|eligible|remaining|value|amount|gross|net/i.test(key)
+}
+
 const ChartTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null
 
@@ -78,7 +88,7 @@ const ChartTooltip = ({ active, payload, label }) => {
       {title ? <p className="font-black text-slate-900">{title}</p> : null}
       <div className="mt-1 grid gap-1">
         {payload.map((item) => {
-          const isPeso = /sales|collected|pending|inventory|commission|released|eligible|remaining|value|amount/i.test(item.dataKey)
+          const isPeso = isMoneyChartKey(item.dataKey)
           return (
             <p key={item.dataKey} className="font-semibold text-slate-600">
               {item.name}: <span className="font-black text-slate-950">{isPeso ? money(item.value) : number(item.value)}</span>
@@ -633,3 +643,4 @@ const Dashboard = () => {
 }
 
 export default Dashboard
+
