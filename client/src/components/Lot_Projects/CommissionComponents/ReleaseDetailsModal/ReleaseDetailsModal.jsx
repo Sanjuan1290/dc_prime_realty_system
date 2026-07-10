@@ -184,6 +184,8 @@ const ReleaseDetailsModal = ({ commission, onClose, onAction, isSaving = false, 
 
             <div className="mt-3 grid gap-2 md:grid-cols-4">
               <InfoCard label="Seller" value={commission.seller || '-'} />
+              <InfoCard label="Seller Email" value={commission.sellerEmail || '-'} />
+              <InfoCard label="Seller Contact No." value={commission.sellerContactNo || '-'} />
               <InfoCard label="Role" value={commission.role || '-'} />
               <InfoCard label="Seller Type" value={commission.sellerType || '-'} />
               <InfoCard label="Sale Type" value={commission.saleType || '-'} />
@@ -310,3 +312,4 @@ const ReleaseDetailsModal = ({ commission, onClose, onAction, isSaving = false, 
 }
 
 export default ReleaseDetailsModal
+

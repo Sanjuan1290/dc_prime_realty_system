@@ -89,7 +89,6 @@ const SOAPrintPage = () => {
                     'Due Date',
                     'Description',
                     'Monthly Due',
-                    'Discount',
                     'Penalty',
                     'Date Paid',
                     'Amount Paid',
@@ -122,10 +121,6 @@ const SOAPrintPage = () => {
                     </td>
 
                     <td className="border border-black px-2 py-1 text-right font-bold">
-                      {Number(row.discountAmount || 0) > 0 ? money(row.discountAmount) : '0.00'}
-                    </td>
-
-                    <td className="border border-black px-2 py-1 text-right font-bold">
                       {Number(row.penalty || 0) > 0 ? money(row.penalty) : '0.00'}
                     </td>
 
@@ -147,7 +142,7 @@ const SOAPrintPage = () => {
                   </tr>
                 )) : (
                   <tr>
-                    <td colSpan={9} className="border border-black px-2 py-8 text-center font-bold">
+                    <td colSpan={8} className="border border-black px-2 py-8 text-center font-bold">
                       No statement of account rows available yet. Reserve the unit first.
                     </td>
                   </tr>
@@ -189,3 +184,4 @@ const SOAPrintPage = () => {
 }
 
 export default SOAPrintPage
+

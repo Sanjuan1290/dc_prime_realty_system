@@ -25,6 +25,8 @@ const dateTimeText = (value) => {
     minute: '2-digit',
   });
 };
+const isDateOnly = (value = '') => /^\d{4}-\d{2}-\d{2}$/.test(String(value || '').trim());
+
 const titleCase = (value = '') =>
   String(value || '')
     .replace(/_/g, ' ')
@@ -39,6 +41,8 @@ export const getLotProjectPaymentLogs = async (req, res) => {
     const slug = String(req.params.projectSlug || '').trim();
     const search = String(req.query.search || '').trim();
     const action = String(req.query.action || 'all').trim();
+    const dateFrom = String(req.query.dateFrom || '').trim();
+    const dateTo = String(req.query.dateTo || '').trim();
     const project = await getProjectBySlug(slug);
 
     if (!project) {
@@ -58,6 +62,16 @@ export const getLotProjectPaymentLogs = async (req, res) => {
     if (action !== 'all') {
       where.push('pl.action_type = ?');
       params.push(action);
+    }
+
+    if (dateFrom && isDateOnly(dateFrom)) {
+      where.push('pl.action_at >= ?');
+      params.push(`${dateFrom} 00:00:00`);
+    }
+
+    if (dateTo && isDateOnly(dateTo)) {
+      where.push('pl.action_at < DATE_ADD(?, INTERVAL 1 DAY)');
+      params.push(`${dateTo} 00:00:00`);
     }
 
     if (search) {
@@ -158,3 +172,4 @@ export const getLotProjectPaymentLogs = async (req, res) => {
     connection.release();
   }
 };
+

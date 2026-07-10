@@ -24,6 +24,8 @@ const PaymentLogs = () => {
   const { projectSlug } = useParams()
   const [search, setSearch] = useState('')
   const [actionFilter, setActionFilter] = useState('all')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
   const [alert, setAlert] = useState(null)
@@ -32,8 +34,10 @@ const PaymentLogs = () => {
     return new URLSearchParams({
       ...(search.trim() ? { search: search.trim() } : {}),
       ...(actionFilter !== 'all' ? { action: actionFilter } : {}),
+      ...(dateFrom ? { dateFrom } : {}),
+      ...(dateTo ? { dateTo } : {}),
     }).toString()
-  }, [search, actionFilter])
+  }, [search, actionFilter, dateFrom, dateTo])
 
   const { data, isLoading, isFetching, isError, error, refetch } = useQuery({
     queryKey: ['lot-payment-logs', projectSlug, queryString],
@@ -54,6 +58,8 @@ const PaymentLogs = () => {
   const resetFilters = () => {
     setSearch('')
     setActionFilter('all')
+    setDateFrom('')
+    setDateTo('')
     setPage(1)
     setAlert({ type: 'info', message: 'Payment log filters reset.' })
   }
@@ -103,7 +109,7 @@ const PaymentLogs = () => {
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="grid gap-3 lg:grid-cols-[1fr_220px_auto]">
+        <div className="grid gap-3 lg:grid-cols-[1fr_170px_170px_220px_auto]">
           <label className="relative">
             <FiSearch className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
@@ -114,6 +120,38 @@ const PaymentLogs = () => {
               }}
               placeholder="Search unit, buyer, reference, encoded by..."
               className="h-11 w-full rounded-xl border border-slate-300 bg-white pl-11 pr-3 text-sm font-semibold text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
+            />
+          </label>
+
+          <label className="relative">
+            <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-xs font-black uppercase tracking-wide text-slate-400">
+              From
+            </span>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(event) => {
+                setDateFrom(event.target.value)
+                setPage(1)
+              }}
+              className="h-11 w-full rounded-xl border border-slate-300 bg-white pl-16 pr-3 text-sm font-black text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
+              aria-label="Filter payment logs from date"
+            />
+          </label>
+
+          <label className="relative">
+            <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-xs font-black uppercase tracking-wide text-slate-400">
+              To
+            </span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(event) => {
+                setDateTo(event.target.value)
+                setPage(1)
+              }}
+              className="h-11 w-full rounded-xl border border-slate-300 bg-white pl-12 pr-3 text-sm font-black text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
+              aria-label="Filter payment logs to date"
             />
           </label>
 
@@ -240,3 +278,4 @@ const PaymentLogs = () => {
 }
 
 export default PaymentLogs
+
