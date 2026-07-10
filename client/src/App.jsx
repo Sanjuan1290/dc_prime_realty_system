@@ -6,6 +6,7 @@ import {
 } from "react-router-dom";
 
 import Login from "./auth/Login";
+import ChangePassword from "./auth/ChangePassword";
 import SystemLayout from "./layout/SystemLayout";
 import LotLayout from "./layout/LotLayout";
 
@@ -37,6 +38,7 @@ const App = () => {
     createRoutesFromElements(
       <>
         <Route path="/" element={<Login />} />
+        <Route path="/change-password" element={<ChangePassword />} />
 
         <Route path="/super_admin" element={<SystemLayout />}>
           <Route index element={<Dashboard />} />
@@ -91,4 +93,5 @@ const App = () => {
 };
 
 export default App;
+
 

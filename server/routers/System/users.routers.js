@@ -3,6 +3,7 @@ import {
   login,
   logout,
   getMe,
+  changePassword,
   getUsers,
   createUser,
   editUser,
@@ -15,6 +16,7 @@ const router = express.Router();
 router.post('/login', login);
 router.post('/logout', logout);
 router.get('/me', getMe);
+router.patch('/change-password', changePassword);
 
 router.get('/getUsers', getUsers);
 router.post('/createUser', createUser);
@@ -23,3 +25,4 @@ router.patch('/toggleUserStatus/:id', toggleUserStatus);
 router.patch('/resetPassword/:id', resetUserPassword);
 
 export default router;
+

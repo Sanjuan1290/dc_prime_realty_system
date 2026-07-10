@@ -37,6 +37,10 @@ const getRoleDefaultRate = (role) => Number(roleDefaultRates[role] ?? 0);
 
 const normalizeStatus = (status) => (status === 'inactive' ? 'inactive' : 'active');
 
+const buildPersonName = (user = {}) => {
+  return [user.first_name, user.middle_name, user.last_name].filter(Boolean).join(' ').trim() || user.email || 'User';
+};
+
 const getActiveLotProjects = async (connection = db) => {
   const [projects] = await connection.query(`
     SELECT
@@ -252,6 +256,7 @@ export const login = async (req, res) => {
     module: 'Authentication',
     entityType: 'user',
     entityId: String(user.id),
+    entityLabel: buildPersonName(user),
     title: 'User logged in',
     description: `${user.email} logged in successfully.`,
   });
@@ -338,6 +343,127 @@ export const getMe = async (req, res) => {
     return res.json({ user, message: 'Successfully getMe :3' });
   } catch {
     return res.status(401).json({ message: 'Invalid or expired token' });
+  }
+};
+
+
+export const changePassword = async (req, res) => {
+  try {
+    const token = req.cookies.token;
+
+    if (!token) {
+      return res.status(401).json({ message: 'You must be logged in to change your password.' });
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const userId = Number(decoded.id);
+
+    if (!userId) return res.status(401).json({ message: 'Invalid or expired session.' });
+
+    const currentPassword = String(req.body.current_password ?? req.body.currentPassword ?? '');
+    const newPassword = String(req.body.new_password ?? req.body.newPassword ?? '');
+    const confirmPassword = String(req.body.confirm_password ?? req.body.confirmPassword ?? '');
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      return res.status(400).json({ message: 'Current password, new password, and confirmation are required.' });
+    }
+
+    if (newPassword.length < 8) {
+      return res.status(400).json({ message: 'New password must be at least 8 characters.' });
+    }
+
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({ message: 'New password and confirmation do not match.' });
+    }
+
+    if (newPassword === currentPassword) {
+      return res.status(400).json({ message: 'New password must be different from the current password.' });
+    }
+
+    if (newPassword.toLowerCase() === 'password') {
+      return res.status(400).json({ message: 'Do not use the temporary default password.' });
+    }
+
+    const [rows] = await db.query(
+      `
+        SELECT
+          id,
+          first_name,
+          middle_name,
+          last_name,
+          contact_no,
+          email,
+          password_hash,
+          role,
+          status,
+          must_change_password,
+          last_login,
+          created_at,
+          updated_at
+        FROM users
+        WHERE id = ?
+        LIMIT 1
+      `,
+      [userId]
+    );
+
+    const user = rows[0];
+
+    if (!user) return res.status(404).json({ message: 'User not found.' });
+    if (user.status !== 'active') return res.status(403).json({ message: 'Account is not active.' });
+
+    const isCurrentPasswordCorrect = await bcrypt.compare(currentPassword, user.password_hash);
+
+    if (!isCurrentPasswordCorrect) {
+      return res.status(401).json({ message: 'Current password is incorrect.' });
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+
+    await db.query(
+      `
+        UPDATE users
+        SET password_hash = ?, must_change_password = 0, updated_at = NOW()
+        WHERE id = ?
+      `,
+      [passwordHash, userId]
+    );
+
+    await writeAuditLog(db, req, {
+      actor: user,
+      action: 'update',
+      module: 'Users',
+      entityType: 'user',
+      entityId: String(userId),
+      entityLabel: buildPersonName(user),
+      title: 'Changed password',
+      description: 'User changed their password after a reset requirement.',
+      metadata: { previousMustChangePassword: Boolean(user.must_change_password) },
+    });
+
+    return res.json({
+      message: 'Password changed successfully.',
+      user: {
+        id: user.id,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        middle_name: user.middle_name,
+        contact_no: user.contact_no,
+        email: user.email,
+        role: user.role,
+        status: user.status,
+        must_change_password: false,
+        last_login: user.last_login,
+        created_at: user.created_at,
+        updated_at: user.updated_at,
+      },
+    });
+  } catch (error) {
+    if (error?.name === 'JsonWebTokenError' || error?.name === 'TokenExpiredError') {
+      return res.status(401).json({ message: 'Invalid or expired session.' });
+    }
+
+    return res.status(500).json({ message: getErrorMessage(error) });
   }
 };
 
@@ -488,7 +614,6 @@ export const createUser = async (req, res) => {
 
     const userId = result.insertId;
     let accreditedSellerId = null;
-    const userFullName = `${first_name.trim()} ${last_name.trim()}`;
 
     if (sellerRoles.has(role)) {
       const [sellerResult] = await connection.query(
@@ -523,21 +648,21 @@ export const createUser = async (req, res) => {
       module: 'Users',
       entityType: 'user',
       entityId: String(userId),
-      entityLabel: userFullName,
+      entityLabel: `${first_name.trim()} ${last_name.trim()}`,
       title: 'Created user account',
-      description: `Created account for ${userFullName} (${email.trim()}).`,
+      description: `Created account for ${first_name.trim()} ${last_name.trim()} (${email.trim()}).`,
       metadata: { role, status: normalizeStatus(status), seller_group_id, reports_under_user_id },
     });
 
-    if (sellerRoles.has(role) && accreditedSellerId) {
+    if (accreditedSellerId) {
       await writeAuditLog(connection, req, {
         action: 'create',
         module: 'Accreditation',
         entityType: 'accredited_seller',
         entityId: String(accreditedSellerId),
-        entityLabel: userFullName,
+        entityLabel: `${first_name.trim()} ${last_name.trim()}`,
         title: 'Accredited seller',
-        description: `Accredited seller profile created for ${userFullName}.`,
+        description: `Accredited ${first_name.trim()} ${last_name.trim()} as ${role}.`,
         metadata: { role, status: normalizeStatus(status), seller_group_id, reports_under_user_id },
       });
     }
@@ -581,9 +706,6 @@ export const editUser = async (req, res) => {
 
     await connection.beginTransaction();
 
-    let accreditedSellerId = null;
-    const userFullName = `${first_name.trim()} ${last_name.trim()}`;
-
     await connection.query(
       `
         UPDATE users
@@ -608,6 +730,8 @@ export const editUser = async (req, res) => {
         userId,
       ]
     );
+
+    let accreditedSellerId = null;
 
     if (sellerRoles.has(role)) {
       await connection.query(
@@ -654,21 +778,21 @@ export const editUser = async (req, res) => {
       module: 'Users',
       entityType: 'user',
       entityId: String(userId),
-      entityLabel: userFullName,
+      entityLabel: `${first_name.trim()} ${last_name.trim()}`,
       title: 'Updated user account',
-      description: `Updated account for ${userFullName} (${email.trim()}).`,
+      description: `Updated account for ${first_name.trim()} ${last_name.trim()} (${email.trim()}).`,
       metadata: { role, status: normalizeStatus(status), seller_group_id, reports_under_user_id },
     });
 
-    if (sellerRoles.has(role) && accreditedSellerId) {
+    if (accreditedSellerId) {
       await writeAuditLog(connection, req, {
         action: 'update',
         module: 'Accreditation',
         entityType: 'accredited_seller',
         entityId: String(accreditedSellerId),
-        entityLabel: userFullName,
+        entityLabel: `${first_name.trim()} ${last_name.trim()}`,
         title: 'Updated accreditation',
-        description: `Updated accreditation details for ${userFullName}.`,
+        description: `Updated accreditation for ${first_name.trim()} ${last_name.trim()}.`,
         metadata: { role, status: normalizeStatus(status), seller_group_id, reports_under_user_id },
       });
     }
@@ -690,7 +814,7 @@ export const toggleUserStatus = async (req, res) => {
     if (!userId) return res.status(400).json({ message: 'Invalid user id.' });
 
     const [rows] = await db.query(
-      `SELECT status, ${buildFullNameSql('users')} AS full_name FROM users WHERE id = ? LIMIT 1`,
+      `SELECT id, first_name, middle_name, last_name, email, status FROM users WHERE id = ? LIMIT 1`,
       [userId]
     );
     const user = rows[0];
@@ -710,7 +834,7 @@ export const toggleUserStatus = async (req, res) => {
       module: 'Users',
       entityType: 'user',
       entityId: String(userId),
-      entityLabel: user.full_name || `User #${userId}`,
+      entityLabel: buildPersonName(user),
       title: 'Changed user account status',
       description: `User account status changed to ${nextStatus}.`,
       metadata: { previousStatus: user.status, nextStatus },
@@ -729,12 +853,13 @@ export const resetUserPassword = async (req, res) => {
 
     if (!userId) return res.status(400).json({ message: 'Invalid user id.' });
 
-    const [userRows] = await db.query(
-      `SELECT ${buildFullNameSql('users')} AS full_name FROM users WHERE id = ? LIMIT 1`,
+    const [rows] = await db.query(
+      `SELECT id, first_name, middle_name, last_name, email FROM users WHERE id = ? LIMIT 1`,
       [userId]
     );
-    const targetUser = userRows[0];
-    if (!targetUser) return res.status(404).json({ message: 'User not found.' });
+    const user = rows[0];
+
+    if (!user) return res.status(404).json({ message: 'User not found.' });
 
     const passwordHash = await bcrypt.hash(String(newPassword), 10);
 
@@ -748,13 +873,15 @@ export const resetUserPassword = async (req, res) => {
       module: 'Users',
       entityType: 'user',
       entityId: String(userId),
-      entityLabel: targetUser.full_name || `User #${userId}`,
+      entityLabel: buildPersonName(user),
       title: 'Reset user password',
       description: 'User password was reset and must be changed on next login.',
     });
 
-    return res.json({ message: 'Password reset successfully. User must change password on next login.' });
+    return res.json({ message: 'Password reset successfully. User must change password at /change-password on next login.' });
   } catch (error) {
     return res.status(500).json({ message: getErrorMessage(error) });
   }
 };
+
+

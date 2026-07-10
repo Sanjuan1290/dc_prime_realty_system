@@ -39,7 +39,7 @@ const Login = () => {
       queryClient.invalidateQueries({ queryKey: ['currentUser'] })
 
       const user = data?.user
-      if(user.must_change_password){
+      if(user?.must_change_password){
         navigate('/change-password', { replace: true })
         return
       }
@@ -56,8 +56,12 @@ const Login = () => {
     );
   }
 
+  if(currentUser?.user?.must_change_password) {
+    return <Navigate to="/change-password" replace />
+  }
+
   if(currentUser?.user) {
-    return <Navigate to={`/${currentUser.user.role}`}/>
+    return <Navigate to={`/${currentUser.user.role}`} replace />
   }
 
 
@@ -203,3 +207,4 @@ const Login = () => {
 };
 
 export default Login;
+

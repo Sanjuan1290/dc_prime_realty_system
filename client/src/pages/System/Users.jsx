@@ -5,6 +5,7 @@ import PageHeader from "../../components/Shared/PageHeader";
 import StatusAlert from "../../components/Shared/StatusAlert";
 import { FaUserPlus } from "react-icons/fa";
 import {
+  FiAlertTriangle,
   FiEdit2,
   FiKey,
   FiPlus,
@@ -28,11 +29,65 @@ const roleLabels = {
   agent: "Agent",
 };
 
+
+const ResetPasswordConfirmModal = ({ user, onClose, onConfirm, isSaving }) => {
+  if (!user) return null
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+      <div className="w-full max-w-lg overflow-hidden rounded-3xl border border-amber-100 bg-white shadow-2xl">
+        <div className="flex items-start gap-3 border-b border-amber-100 bg-amber-50 px-6 py-5">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-amber-700 shadow-sm">
+            <FiAlertTriangle className="h-5 w-5" />
+          </div>
+
+          <div className="min-w-0">
+            <h2 className="text-xl font-black text-amber-950">Reset Password?</h2>
+            <p className="mt-1 text-sm font-semibold leading-6 text-amber-800">
+              This will set the temporary password to <span className="font-black">password</span> and force the user to open /change-password on next login.
+            </p>
+          </div>
+        </div>
+
+        <div className="p-6">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-xs font-black uppercase tracking-wide text-slate-400">User</p>
+            <p className="mt-1 font-black text-slate-950">{user.full_name}</p>
+            <p className="text-sm font-semibold text-slate-500">{user.email}</p>
+          </div>
+
+          <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isSaving}
+              className="h-11 rounded-2xl border border-slate-200 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Cancel
+            </button>
+
+            <button
+              type="button"
+              onClick={onConfirm}
+              disabled={isSaving}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-amber-600 px-5 text-sm font-black text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <FiKey className="h-4 w-4" />
+              {isSaving ? 'Resetting...' : 'Yes, Reset Password'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const Users = () => {
   const queryClient = useQueryClient();
   const [showEditUser, setShowEditUser] = useState(false);
   const [showCreateUser, setShowCreateUser] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
+  const [resetTarget, setResetTarget] = useState(null);
   const [alert, setAlert] = useState(null);
   const [activeAction, setActiveAction] = useState(null);
 
@@ -96,6 +151,7 @@ const Users = () => {
       setAlert({ type: "loading", message: "Resetting password..." });
     },
     onSuccess: (result) => {
+      setResetTarget(null);
       setAlert({ type: "success", message: result.message || "Password reset." });
       queryClient.invalidateQueries({ queryKey: ["users"] });
     },
@@ -113,9 +169,13 @@ const Users = () => {
   ];
 
   const handleResetPassword = (user) => {
-    const confirmed = window.confirm(`Reset password for ${user.full_name}?`);
-    if (!confirmed) return;
-    resetPasswordMutation.mutate(user);
+    setResetTarget(user);
+    setAlert({ type: "warning", message: `Review and confirm password reset for ${user.full_name}.` });
+  };
+
+  const confirmResetPassword = () => {
+    if (!resetTarget || resetPasswordMutation.isPending) return;
+    resetPasswordMutation.mutate(resetTarget);
   };
 
   const handleToggleStatus = (user) => {
@@ -320,8 +380,18 @@ const Users = () => {
 
       {showCreateUser && <CreateUserModal setShowCreateUser={setShowCreateUser} onSaved={handleSaved} />}
       {showEditUser && selectedUser && <EditUserModal setShowEditUser={setShowEditUser} selectedUser={selectedUser} onSaved={handleSaved} />}
+      <ResetPasswordConfirmModal
+        user={resetTarget}
+        onClose={() => {
+          setResetTarget(null);
+          setAlert(null);
+        }}
+        onConfirm={confirmResetPassword}
+        isSaving={resetPasswordMutation.isPending}
+      />
     </main>
   );
 };
 
 export default Users;
+
