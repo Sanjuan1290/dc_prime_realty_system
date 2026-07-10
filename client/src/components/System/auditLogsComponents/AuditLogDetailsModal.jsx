@@ -36,7 +36,7 @@ const AuditLogDetailsModal = ({ log, onClose }) => {
             <DetailRow label="User" value={log.actorName} />
             <DetailRow label="User Email" value={log.actorEmail} />
             <DetailRow label="Module" value={log.module} />
-            <DetailRow label="Entity" value={`${log.entityType || '-'} ${log.entityId ? `#${log.entityId}` : ''}`} />
+            <DetailRow label="Entity" value={log.entityLabel || (log.entityType ? `${log.entityType}${log.entityId ? ` #${log.entityId}` : ''}` : '-')} />
             <DetailRow label="IP Address" value={log.ipAddress} />
             <DetailRow label="User Agent" value={log.userAgent} />
           </div>

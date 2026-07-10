@@ -69,6 +69,7 @@ import {
   addIfColumnExists,
   getReserveSellerOptions,
 } from '../_shared/lotProject.shared.js';
+import { writeAuditLog } from '../../System/auditLogs.controller.js';
 
 const getColumnDefinition = async (connection, tableName, columnName) => {
   const [rows] = await connection.query(
@@ -374,6 +375,8 @@ export const holdLotProjectListing = async (req, res) => {
 
     updateParams.push(project.lot_project_id, listing.lot_project_listing_id);
 
+    await connection.beginTransaction();
+
     await connection.query(
       `
         UPDATE lot_project_listings
@@ -384,11 +387,25 @@ export const holdLotProjectListing = async (req, res) => {
       updateParams
     );
 
+    await writeAuditLog(connection, req, {
+      action: 'update',
+      module: 'Listings',
+      entityType: 'lot_project_listing',
+      entityId: String(listing.lot_project_listing_id),
+      entityLabel: `Unit ${listing.lot_project_listing_unit_id} — ${project.lot_project_name}`,
+      title: 'Placed listing on hold',
+      description: `Placed ${listing.lot_project_listing_unit_id} on hold for ${clientName}.`,
+      metadata: { clientName, holdNote },
+    });
+
+    await connection.commit();
+
     return res.json({
       success: true,
       message: `Listing held for ${clientName}.`,
     });
   } catch (error) {
+    try { await connection.rollback(); } catch {}
     console.error('Hold listing failed:', {
       code: error?.code,
       errno: error?.errno,
@@ -468,6 +485,8 @@ export const unholdLotProjectListing = async (req, res) => {
 
     updateParams.push(project.lot_project_id, listing.lot_project_listing_id);
 
+    await connection.beginTransaction();
+
     await connection.query(
       `
         UPDATE lot_project_listings
@@ -478,11 +497,25 @@ export const unholdLotProjectListing = async (req, res) => {
       updateParams
     );
 
+    await writeAuditLog(connection, req, {
+      action: 'update',
+      module: 'Listings',
+      entityType: 'lot_project_listing',
+      entityId: String(listing.lot_project_listing_id),
+      entityLabel: `Unit ${listing.lot_project_listing_unit_id} — ${project.lot_project_name}`,
+      title: 'Removed listing hold',
+      description: `Returned ${listing.lot_project_listing_unit_id} to available status.`,
+      metadata: { previousHoldClientName: listing.hold_client_name || null },
+    });
+
+    await connection.commit();
+
     return res.json({
       success: true,
       message: 'Listing returned to available.',
     });
   } catch (error) {
+    try { await connection.rollback(); } catch {}
     console.error('Unhold listing failed:', {
       code: error?.code,
       errno: error?.errno,

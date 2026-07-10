@@ -6,6 +6,7 @@ import {
   getAuthenticatedUser,
   toNullable,
 } from '../_shared/lotProject.shared.js';
+import { writeAuditLog } from '../../System/auditLogs.controller.js';
 
 const toDay = (value, fallback) => {
   const number = Number(value || fallback);
@@ -137,6 +138,19 @@ export const updateLotProjectSettings = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Release days must be different.' });
     }
 
+    const settingsPayload = {
+      releaseDayOne,
+      releaseDayTwo,
+      reservationContactName: toNullable(req.body.reservationContactName),
+      reservationContactEmail: toNullable(req.body.reservationContactEmail),
+      reservationContactNumber: toNullable(req.body.reservationContactNumber),
+      companyName: toNullable(req.body.companyName),
+      companyEmail: toNullable(req.body.companyEmail),
+      companyContactNumber: toNullable(req.body.companyContactNumber),
+    };
+
+    await connection.beginTransaction();
+
     await connection.query(
       `
         INSERT INTO lot_project_settings (
@@ -162,16 +176,30 @@ export const updateLotProjectSettings = async (req, res) => {
       `,
       [
         project.lot_project_id,
-        releaseDayOne,
-        releaseDayTwo,
-        toNullable(req.body.reservationContactName),
-        toNullable(req.body.reservationContactEmail),
-        toNullable(req.body.reservationContactNumber),
-        toNullable(req.body.companyName),
-        toNullable(req.body.companyEmail),
-        toNullable(req.body.companyContactNumber),
+        settingsPayload.releaseDayOne,
+        settingsPayload.releaseDayTwo,
+        settingsPayload.reservationContactName,
+        settingsPayload.reservationContactEmail,
+        settingsPayload.reservationContactNumber,
+        settingsPayload.companyName,
+        settingsPayload.companyEmail,
+        settingsPayload.companyContactNumber,
       ]
     );
+
+    await writeAuditLog(connection, req, {
+      actor: currentUser,
+      action: 'update',
+      module: 'Project Settings',
+      entityType: 'lot_project_settings',
+      entityId: project.lot_project_id,
+      entityLabel: project.lot_project_name,
+      title: 'Updated project release settings',
+      description: `${currentUser.first_name || currentUser.email || 'A user'} updated release settings for ${project.lot_project_name}.`,
+      metadata: settingsPayload,
+    });
+
+    await connection.commit();
 
     const settings = await getOrCreateSettingsRow(connection, project);
 
@@ -182,6 +210,7 @@ export const updateLotProjectSettings = async (req, res) => {
       canEdit: true,
     });
   } catch (error) {
+    try { await connection.rollback(); } catch (_) {}
     return res.status(500).json({ success: false, message: getErrorMessage(error) });
   } finally {
     connection.release();

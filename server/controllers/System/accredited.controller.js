@@ -1,4 +1,5 @@
 import { db } from '../../db/connect.js';
+import { writeAuditLog } from './auditLogs.controller.js';
 import { getAuthenticatedUser } from '../Lot_Projects/_shared/lotProject.shared.js';
 
 const getErrorMessage = (error) => {
@@ -321,9 +322,12 @@ export const uploadAccreditedSellerProofOfIncome = async (req, res) => {
 
     const [sellerRows] = await connection.query(
       `
-        SELECT accredited_seller_id
-        FROM accredited_sellers
-        WHERE accredited_seller_id = ?
+        SELECT
+          acs.accredited_seller_id,
+          ${fullNameSql('u')} AS seller_name
+        FROM accredited_sellers acs
+        INNER JOIN users u ON u.id = acs.user_id
+        WHERE acs.accredited_seller_id = ?
         LIMIT 1
       `,
       [sellerId]
@@ -360,6 +364,22 @@ export const uploadAccreditedSellerProofOfIncome = async (req, res) => {
       `,
       [result.insertId]
     );
+
+    await writeAuditLog(connection, req, {
+      action: 'create',
+      module: 'Accreditation',
+      entityType: 'accredited_seller',
+      entityId: String(sellerId),
+      entityLabel: sellerRows[0]?.seller_name || `Seller #${sellerId}`,
+      title: 'Uploaded proof of income',
+      description: `Uploaded proof of income for ${sellerRows[0]?.seller_name || `seller #${sellerId}`}.`,
+      metadata: {
+        documentId: result.insertId,
+        fileName: fileName || 'proof-of-income',
+        fileMimeType,
+        fileSizeBytes,
+      },
+    });
 
     await connection.commit();
 

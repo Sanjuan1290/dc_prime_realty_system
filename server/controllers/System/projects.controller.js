@@ -68,6 +68,7 @@ import {
   cleanSecondBuyerRole,
   addIfColumnExists,
 } from '../Lot_Projects/_shared/lotProject.shared.js';
+import { writeAuditLog } from './auditLogs.controller.js';
 
 export const getLotProjects = async (req, res) => {
   try {
@@ -251,6 +252,17 @@ export const createLotProject = async (req, res) => {
       [lotProjectId, 'D&C Prime Realty', 'dcprimerealty@gmail.com', '0912-345-6789', 'D&C Prime Realty', 'dcprimerealty@gmail.com', '(046) 866-0616']
     );
 
+    await writeAuditLog(connection, req, {
+      action: 'create',
+      module: 'Projects',
+      entityType: 'lot_project',
+      entityId: String(lotProjectId),
+      entityLabel: payload.name,
+      title: 'Created lot project',
+      description: `Created lot project ${payload.name}.`,
+      metadata: { slug: payload.slug, locationCode: payload.locationCode, status: payload.status },
+    });
+
     await connection.commit();
 
     return res.status(201).json({
@@ -342,6 +354,17 @@ export const updateLotProject = async (req, res) => {
         cleanDocuments.flatMap((document) => [lotProjectId, document.document_id, document.is_required, document.status])
       );
     }
+
+    await writeAuditLog(connection, req, {
+      action: 'update',
+      module: 'Projects',
+      entityType: 'lot_project',
+      entityId: String(lotProjectId),
+      entityLabel: payload.name,
+      title: 'Updated lot project',
+      description: `Updated lot project ${payload.name}.`,
+      metadata: { slug: payload.slug, locationCode: payload.locationCode, status: payload.status },
+    });
 
     await connection.commit();
 

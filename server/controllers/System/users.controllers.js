@@ -487,6 +487,8 @@ export const createUser = async (req, res) => {
     );
 
     const userId = result.insertId;
+    let accreditedSellerId = null;
+    const userFullName = `${first_name.trim()} ${last_name.trim()}`;
 
     if (sellerRoles.has(role)) {
       const [sellerResult] = await connection.query(
@@ -508,7 +510,7 @@ export const createUser = async (req, res) => {
         ]
       );
 
-      const accreditedSellerId = sellerResult.insertId;
+      accreditedSellerId = sellerResult.insertId;
       const projects = await getActiveLotProjects(connection);
       const normalizedRates = normalizeProjectRates(project_rates, projects, getRoleDefaultRate(role));
 
@@ -521,10 +523,24 @@ export const createUser = async (req, res) => {
       module: 'Users',
       entityType: 'user',
       entityId: String(userId),
+      entityLabel: userFullName,
       title: 'Created user account',
-      description: `Created account for ${first_name.trim()} ${last_name.trim()} (${email.trim()}).`,
+      description: `Created account for ${userFullName} (${email.trim()}).`,
       metadata: { role, status: normalizeStatus(status), seller_group_id, reports_under_user_id },
     });
+
+    if (sellerRoles.has(role) && accreditedSellerId) {
+      await writeAuditLog(connection, req, {
+        action: 'create',
+        module: 'Accreditation',
+        entityType: 'accredited_seller',
+        entityId: String(accreditedSellerId),
+        entityLabel: userFullName,
+        title: 'Accredited seller',
+        description: `Accredited seller profile created for ${userFullName}.`,
+        metadata: { role, status: normalizeStatus(status), seller_group_id, reports_under_user_id },
+      });
+    }
 
     await connection.commit();
 
@@ -564,6 +580,9 @@ export const editUser = async (req, res) => {
     }
 
     await connection.beginTransaction();
+
+    let accreditedSellerId = null;
+    const userFullName = `${first_name.trim()} ${last_name.trim()}`;
 
     await connection.query(
       `
@@ -620,7 +639,7 @@ export const editUser = async (req, res) => {
         [userId]
       );
 
-      const accreditedSellerId = sellerRows[0]?.accredited_seller_id;
+      accreditedSellerId = sellerRows[0]?.accredited_seller_id;
       const projects = await getActiveLotProjects(connection);
       const normalizedRates = normalizeProjectRates(project_rates, projects, getRoleDefaultRate(role));
 
@@ -635,10 +654,24 @@ export const editUser = async (req, res) => {
       module: 'Users',
       entityType: 'user',
       entityId: String(userId),
+      entityLabel: userFullName,
       title: 'Updated user account',
-      description: `Updated account for ${first_name.trim()} ${last_name.trim()} (${email.trim()}).`,
+      description: `Updated account for ${userFullName} (${email.trim()}).`,
       metadata: { role, status: normalizeStatus(status), seller_group_id, reports_under_user_id },
     });
+
+    if (sellerRoles.has(role) && accreditedSellerId) {
+      await writeAuditLog(connection, req, {
+        action: 'update',
+        module: 'Accreditation',
+        entityType: 'accredited_seller',
+        entityId: String(accreditedSellerId),
+        entityLabel: userFullName,
+        title: 'Updated accreditation',
+        description: `Updated accreditation details for ${userFullName}.`,
+        metadata: { role, status: normalizeStatus(status), seller_group_id, reports_under_user_id },
+      });
+    }
 
     await connection.commit();
 
@@ -656,7 +689,10 @@ export const toggleUserStatus = async (req, res) => {
     const userId = Number(req.params.id);
     if (!userId) return res.status(400).json({ message: 'Invalid user id.' });
 
-    const [rows] = await db.query(`SELECT status FROM users WHERE id = ? LIMIT 1`, [userId]);
+    const [rows] = await db.query(
+      `SELECT status, ${buildFullNameSql('users')} AS full_name FROM users WHERE id = ? LIMIT 1`,
+      [userId]
+    );
     const user = rows[0];
 
     if (!user) return res.status(404).json({ message: 'User not found.' });
@@ -674,6 +710,7 @@ export const toggleUserStatus = async (req, res) => {
       module: 'Users',
       entityType: 'user',
       entityId: String(userId),
+      entityLabel: user.full_name || `User #${userId}`,
       title: 'Changed user account status',
       description: `User account status changed to ${nextStatus}.`,
       metadata: { previousStatus: user.status, nextStatus },
@@ -692,6 +729,13 @@ export const resetUserPassword = async (req, res) => {
 
     if (!userId) return res.status(400).json({ message: 'Invalid user id.' });
 
+    const [userRows] = await db.query(
+      `SELECT ${buildFullNameSql('users')} AS full_name FROM users WHERE id = ? LIMIT 1`,
+      [userId]
+    );
+    const targetUser = userRows[0];
+    if (!targetUser) return res.status(404).json({ message: 'User not found.' });
+
     const passwordHash = await bcrypt.hash(String(newPassword), 10);
 
     await db.query(
@@ -704,6 +748,7 @@ export const resetUserPassword = async (req, res) => {
       module: 'Users',
       entityType: 'user',
       entityId: String(userId),
+      entityLabel: targetUser.full_name || `User #${userId}`,
       title: 'Reset user password',
       description: 'User password was reset and must be changed on next login.',
     });
@@ -713,4 +758,3 @@ export const resetUserPassword = async (req, res) => {
     return res.status(500).json({ message: getErrorMessage(error) });
   }
 };
-

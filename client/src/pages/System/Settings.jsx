@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { FiRefreshCw, FiSettings } from 'react-icons/fi'
+import { FiEdit2, FiRefreshCw, FiSettings } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
 import SystemSettingsForm from '../../components/System/settingsComponents/SystemSettingsForm'
@@ -43,6 +43,7 @@ const Settings = () => {
   const queryClient = useQueryClient()
   const [form, setForm] = useState(defaultForm)
   const [alert, setAlert] = useState(null)
+  const [isEditing, setIsEditing] = useState(false)
 
   const { data, isLoading, isFetching, isError, error, refetch } = useQuery({
     queryKey: ['system-settings'],
@@ -52,14 +53,15 @@ const Settings = () => {
   const settings = data?.data || null
 
   useEffect(() => {
-    if (settings) setForm(mapSettingsToForm(settings))
-  }, [settings])
+    if (settings && !isEditing) setForm(mapSettingsToForm(settings))
+  }, [settings, isEditing])
 
   const saveMutation = useMutation({
     mutationFn: (payload) => useFetchPut('/system-settings', payload),
     onMutate: () => setAlert({ type: 'loading', message: 'Saving system settings...' }),
     onSuccess: (result) => {
       setAlert({ type: 'success', message: result?.message || 'System settings saved.' })
+      setIsEditing(false)
       queryClient.invalidateQueries({ queryKey: ['system-settings'] })
       queryClient.invalidateQueries({ queryKey: ['audit-logs'] })
     },
@@ -68,7 +70,14 @@ const Settings = () => {
 
   const handleSubmit = (event) => {
     event.preventDefault()
+    if (!isEditing) return
     saveMutation.mutate(form)
+  }
+
+  const handleCancel = () => {
+    setForm(mapSettingsToForm(settings || defaultForm))
+    setIsEditing(false)
+    setAlert(null)
   }
 
   return (
@@ -80,15 +89,29 @@ const Settings = () => {
           icon={FiSettings}
         />
 
-        <button
-          type="button"
-          onClick={() => refetch()}
-          disabled={isFetching}
-          className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 text-sm font-black text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          <FiRefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
-          Refresh
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => refetch()}
+            disabled={isFetching || saveMutation.isPending}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 text-sm font-black text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <FiRefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+
+          {!isEditing ? (
+            <button
+              type="button"
+              onClick={() => setIsEditing(true)}
+              disabled={isLoading || isError || !settings}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <FiEdit2 className="h-4 w-4" />
+              Edit Settings
+            </button>
+          ) : null}
+        </div>
       </div>
 
       {alert ? (
@@ -110,7 +133,14 @@ const Settings = () => {
         </section>
       ) : null}
 
-      <SystemSettingsForm form={form} setForm={setForm} onSubmit={handleSubmit} isSaving={saveMutation.isPending} />
+      <SystemSettingsForm
+        form={form}
+        setForm={setForm}
+        onSubmit={handleSubmit}
+        isSaving={saveMutation.isPending}
+        disabled={!isEditing}
+        onCancel={handleCancel}
+      />
     </main>
   )
 }

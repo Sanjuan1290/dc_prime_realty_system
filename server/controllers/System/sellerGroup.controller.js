@@ -1,4 +1,5 @@
 import { db } from '../../db/connect.js';
+import { writeAuditLog } from './auditLogs.controller.js';
 
 const toNullableNumber = (value) => {
   if (value === undefined || value === null || value === '') return null;
@@ -276,6 +277,17 @@ export const createGroup = async (req, res) => {
     await assertPoolRatesCanCoverMemberRates(connection, groupId, normalizedRates);
     await upsertGroupProjectRates(connection, groupId, normalizedRates);
 
+    await writeAuditLog(connection, req, {
+      action: 'create',
+      module: 'Seller Groups',
+      entityType: 'seller_group',
+      entityId: String(groupId),
+      entityLabel: seller_group_name.trim(),
+      title: 'Created seller group',
+      description: `Created seller group ${seller_group_name.trim()}.`,
+      metadata: { status: normalizeStatus(seller_group_status), projectRates: normalizedRates },
+    });
+
     await connection.commit();
 
     return res.status(201).json({
@@ -446,6 +458,17 @@ export const editGroup = async (req, res) => {
     const normalizedRates = normalizeGroupProjectRates(project_rates, projects);
     await assertPoolRatesCanCoverMemberRates(connection, groupId, normalizedRates);
     await upsertGroupProjectRates(connection, groupId, normalizedRates);
+
+    await writeAuditLog(connection, req, {
+      action: 'update',
+      module: 'Seller Groups',
+      entityType: 'seller_group',
+      entityId: String(groupId),
+      entityLabel: seller_group_name.trim(),
+      title: 'Updated seller group',
+      description: `Updated seller group ${seller_group_name.trim()}.`,
+      metadata: { status: normalizeStatus(seller_group_status), projectRates: normalizedRates },
+    });
 
     await connection.commit();
 

@@ -69,7 +69,7 @@ const AuditLogTable = ({ logs = [], isLoading, pagination, onView, onDelete, pag
                   <p className="mt-1 line-clamp-2 max-w-md text-xs font-semibold text-slate-500">{log.description || 'No description provided.'}</p>
                 </td>
                 <td className="px-5 py-4 font-semibold text-slate-600">
-                  {log.entityType || '-'}{log.entityId ? ` #${log.entityId}` : ''}
+                  {log.entityLabel || (log.entityType ? `${log.entityType}${log.entityId ? ` #${log.entityId}` : ''}` : '-')}
                 </td>
                 <td className="px-5 py-4">
                   <div className="flex gap-2">

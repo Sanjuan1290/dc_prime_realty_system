@@ -8,6 +8,7 @@ import {
   parseClientDocumentImages,
   toNullable,
 } from '../_shared/lotProject.shared.js';
+import { writeAuditLog } from '../../System/auditLogs.controller.js';
 
 
 const normalizeUploadedDocumentFiles = (body = {}) => {
@@ -91,7 +92,8 @@ const getDocumentContext = async (connection, req) => {
         l.lot_project_listing_id,
         l.lot_project_listing_unit_id,
         l.lot_project_listing_status,
-        cp.lot_project_client_profile_id
+        cp.lot_project_client_profile_id,
+        cp.buyer_full_name
       FROM lot_project_listings l
       LEFT JOIN lot_project_client_profiles cp
         ON cp.lot_project_listing_id = l.lot_project_listing_id
@@ -279,6 +281,8 @@ export const uploadLotProjectListingDocument = async (req, res) => {
     const storedFileName = getStoredDocumentFileName(combinedImages);
     const storedFileUrl = JSON.stringify(combinedImages);
 
+    await connection.beginTransaction();
+
     await connection.query(
       `
         INSERT INTO lot_project_client_documents (
@@ -311,6 +315,41 @@ export const uploadLotProjectListingDocument = async (req, res) => {
       ]
     );
 
+    const [clientDocumentRows] = await connection.query(
+      `
+        SELECT lot_project_client_document_id
+        FROM lot_project_client_documents
+        WHERE lot_project_client_profile_id = ?
+          AND document_id = ?
+        LIMIT 1
+      `,
+      [context.listing.lot_project_client_profile_id, context.document.document_id]
+    );
+
+    const clientDocumentId = clientDocumentRows[0]?.lot_project_client_document_id;
+    const clientName = context.listing.buyer_full_name || context.listing.lot_project_listing_unit_id;
+
+    await writeAuditLog(connection, req, {
+      action: existingImages.length ? 'update' : 'create',
+      module: 'Documents',
+      entityType: 'lot_project_client_document',
+      entityId: clientDocumentId ? String(clientDocumentId) : String(context.document.document_id),
+      entityLabel: `${context.document.document_name} — ${clientName}`,
+      title: 'Uploaded client document',
+      description: `Uploaded ${uploadedFiles.length} image(s) for ${context.document.document_name} of ${clientName}.`,
+      metadata: {
+        listingId: context.listing.lot_project_listing_id,
+        unitId: context.listing.lot_project_listing_unit_id,
+        clientProfileId: context.listing.lot_project_client_profile_id,
+        documentId: context.document.document_id,
+        documentName: context.document.document_name,
+        uploadedCount: uploadedFiles.length,
+        totalImages: combinedImages.length,
+      },
+    });
+
+    await connection.commit();
+
     return res.json({
       success: true,
       message: `${uploadedFiles.length} image(s) added to ${context.document.document_name}.`,
@@ -323,6 +362,7 @@ export const uploadLotProjectListingDocument = async (req, res) => {
       verified_by_user_id: user?.id || null,
     });
   } catch (error) {
+    try { await connection.rollback(); } catch {}
     return res.status(500).json({ message: getErrorMessage(error) });
   } finally {
     connection.release();
@@ -417,6 +457,3 @@ export const clearLotProjectListingDocument = async (req, res) => {
     connection.release();
   }
 };
-
-
-

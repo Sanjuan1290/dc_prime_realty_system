@@ -208,6 +208,7 @@ export const updateSystemSettings = async (req, res) => {
       module: 'System Settings',
       entityType: 'system_settings',
       entityId: '1',
+      entityLabel: payload.companyName || 'Global system settings',
       title: 'Updated system settings',
       description: `${getUserFullName(actor)} updated global system settings.`,
       metadata: payload,

@@ -68,6 +68,7 @@ import {
   cleanSecondBuyerRole,
   addIfColumnExists,
 } from '../_shared/lotProject.shared.js';
+import { writeAuditLog } from '../../System/auditLogs.controller.js';
 
 export const getLotProjectListings = async (req, res) => {
   const connection = await db.getConnection();
@@ -597,6 +598,24 @@ export const updateLotProjectListing = async (req, res) => {
       ? await syncListingInterestToUnlockedSoa(connection, project.lot_project_id, existingListing.lot_project_listing_id, annualInterestRate)
       : { synced: 0, skipped: 0 };
 
+    await writeAuditLog(connection, req, {
+      action: 'update',
+      module: 'Listings',
+      entityType: 'lot_project_listing',
+      entityId: String(existingListing.lot_project_listing_id),
+      entityLabel: `Unit ${unitCode} — ${project.lot_project_name}`,
+      title: 'Updated listing details',
+      description: `Updated ${unitCode} in ${project.lot_project_name}.`,
+      metadata: {
+        unitCode,
+        previousStatus: existingListing.lot_project_listing_status,
+        nextStatus: listingStatus.status,
+        soldSubstatus: listingStatus.soldSubstatus,
+        resetToAvailable,
+        soaSyncResult,
+      },
+    });
+
     await connection.commit();
 
     return res.json({
@@ -776,6 +795,17 @@ export const createLotProjectListing = async (req, res) => {
         );
       }
     }
+
+    await writeAuditLog(connection, req, {
+      action: 'create',
+      module: 'Listings',
+      entityType: 'lot_project_listing',
+      entityId: String(listingId),
+      entityLabel: `Unit ${unitCode} — ${project.lot_project_name}`,
+      title: 'Added new listing',
+      description: `Added ${unitCode} to ${project.lot_project_name}.`,
+      metadata: { unitCode, status: listingStatus.status, soldSubstatus: listingStatus.soldSubstatus },
+    });
 
     await connection.commit();
 

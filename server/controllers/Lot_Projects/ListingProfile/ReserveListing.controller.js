@@ -16,6 +16,7 @@ import {
   createComputedSoaRows,
   recomputeComputedSoaBalances,
 } from '../_shared/lotProject.shared.js';
+import { writeAuditLog } from '../../System/auditLogs.controller.js';
 
 const normalizeNumberOption = (modeValue, customValue, fallback = 0) => {
   if (modeValue === 'custom') return Number(customValue || 0);
@@ -769,6 +770,24 @@ export const reserveLotProjectListing = async (req, res) => {
       assignedSellerId,
       saleChannel
     );
+
+    await writeAuditLog(connection, req, {
+      action: 'create',
+      module: 'Reservations',
+      entityType: 'lot_project_listing',
+      entityId: String(listing.lot_project_listing_id),
+      entityLabel: `Unit ${listing.lot_project_listing_unit_id} — ${buyerName}`,
+      title: 'Reserved listing for client',
+      description: `Reserved ${listing.lot_project_listing_unit_id} for ${buyerName}.`,
+      metadata: {
+        clientProfileId,
+        buyerName,
+        buyerType,
+        modeOfPayment,
+        assignedSellerId,
+        saleChannel,
+      },
+    });
 
     await connection.commit();
 

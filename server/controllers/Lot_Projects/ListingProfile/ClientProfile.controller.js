@@ -68,6 +68,7 @@ import {
   cleanSecondBuyerRole,
   addIfColumnExists,
 } from '../_shared/lotProject.shared.js';
+import { writeAuditLog } from '../../System/auditLogs.controller.js';
 
 export const updateLotProjectClientProfile = async (req, res) => {
   const connection = await db.getConnection();
@@ -88,6 +89,7 @@ export const updateLotProjectClientProfile = async (req, res) => {
       `
         SELECT
           l.lot_project_listing_id,
+          l.lot_project_listing_unit_id,
           l.lot_project_listing_status
         FROM lot_project_listings l
         WHERE l.lot_project_id = ?
@@ -212,6 +214,8 @@ export const updateLotProjectClientProfile = async (req, res) => {
       .filter((column) => !['lot_project_id', 'lot_project_listing_id'].includes(column))
       .map((column) => `${column} = VALUES(${column})`);
 
+    await connection.beginTransaction();
+
     await connection.query(
       `
         INSERT INTO lot_project_client_profiles (${columns.join(', ')})
@@ -221,12 +225,43 @@ export const updateLotProjectClientProfile = async (req, res) => {
       values
     );
 
+    const [profileRows] = await connection.query(
+      `
+        SELECT lot_project_client_profile_id
+        FROM lot_project_client_profiles
+        WHERE lot_project_listing_id = ?
+        LIMIT 1
+      `,
+      [listing.lot_project_listing_id]
+    );
+
+    const clientProfileId = profileRows[0]?.lot_project_client_profile_id;
+
+    await writeAuditLog(connection, req, {
+      action: 'update',
+      module: 'Client Profiles',
+      entityType: 'lot_project_client_profile',
+      entityId: clientProfileId ? String(clientProfileId) : String(listing.lot_project_listing_id),
+      entityLabel: buyerName,
+      title: 'Updated client profile',
+      description: `Updated buyer profile for ${buyerName}.`,
+      metadata: {
+        listingId: listing.lot_project_listing_id,
+        unitId: listing.lot_project_listing_unit_id || null,
+        buyerType,
+        hasSecondBuyer,
+      },
+    });
+
+    await connection.commit();
+
     return res.json({
       success: true,
       message: `${buyerName} buyer profile saved successfully.`,
       listing_id: listing.lot_project_listing_id,
     });
   } catch (error) {
+    try { await connection.rollback(); } catch {}
     return res.status(500).json({ message: getErrorMessage(error) });
   } finally {
     connection.release();

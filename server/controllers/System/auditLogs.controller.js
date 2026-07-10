@@ -48,6 +48,54 @@ const normalizeAction = (value) => {
 
 const buildLike = (value) => `%${String(value || '').trim()}%`;
 
+const summaryCache = {
+  expiresAt: 0,
+  data: null,
+};
+
+const getCachedSummaryAndModules = async (connection) => {
+  const now = Date.now();
+  if (summaryCache.data && summaryCache.expiresAt > now) return summaryCache.data;
+
+  const [[summaryRow]] = await connection.query(
+    `
+      SELECT
+        COUNT(*) AS total,
+        COALESCE(SUM(action = 'create'), 0) AS created,
+        COALESCE(SUM(action = 'update'), 0) AS updated,
+        COALESCE(SUM(action = 'delete'), 0) AS deleted,
+        COALESCE(SUM(audit_log_created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)), 0) AS last24Hours
+      FROM audit_logs
+    `
+  );
+
+  const [moduleRows] = await connection.query(
+    `
+      SELECT module, COUNT(*) AS total
+      FROM audit_logs
+      GROUP BY module
+      ORDER BY module ASC
+    `
+  );
+
+  summaryCache.data = {
+    summary: {
+      total: Number(summaryRow.total || 0),
+      created: Number(summaryRow.created || 0),
+      updated: Number(summaryRow.updated || 0),
+      deleted: Number(summaryRow.deleted || 0),
+      last24Hours: Number(summaryRow.last24Hours || 0),
+    },
+    modules: moduleRows.map((row) => ({
+      module: row.module,
+      total: Number(row.total || 0),
+    })),
+  };
+  summaryCache.expiresAt = now + 45 * 1000;
+
+  return summaryCache.data;
+};
+
 const requireAdmin = async (req) => {
   const user = await getAuthenticatedUser(req);
   if (!user) {
@@ -76,6 +124,7 @@ export const auditLogTableSql = `
     module VARCHAR(100) NOT NULL,
     entity_type VARCHAR(100) NULL,
     entity_id VARCHAR(120) NULL,
+    entity_label VARCHAR(255) NULL,
     title VARCHAR(255) NOT NULL,
     description TEXT NULL,
     metadata_json JSON NULL,
@@ -85,6 +134,8 @@ export const auditLogTableSql = `
     PRIMARY KEY (audit_log_id),
     KEY idx_audit_action (action),
     KEY idx_audit_module (module),
+    KEY idx_audit_entity (entity_type, entity_id),
+    KEY idx_audit_module_action (module, action),
     KEY idx_audit_actor (actor_user_id),
     KEY idx_audit_created (audit_log_created_at),
     CONSTRAINT fk_audit_actor
@@ -114,12 +165,13 @@ export const writeAuditLog = async (connection = db, req, payload = {}) => {
         module,
         entity_type,
         entity_id,
+        entity_label,
         title,
         description,
         metadata_json,
         ip_address,
         user_agent
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     [
       actor?.id || null,
@@ -130,6 +182,7 @@ export const writeAuditLog = async (connection = db, req, payload = {}) => {
       cleanText(payload.module, 'System'),
       cleanText(payload.entityType) || null,
       cleanText(payload.entityId) || null,
+      cleanText(payload.entityLabel) || null,
       cleanText(payload.title, 'System activity'),
       cleanText(payload.description) || null,
       metadata,
@@ -150,6 +203,7 @@ const mapAuditLog = (row = {}) => ({
   module: row.module,
   entityType: row.entity_type,
   entityId: row.entity_id,
+  entityLabel: row.entity_label,
   title: row.title,
   description: row.description,
   metadata: parseMetadata(row.metadata_json),
@@ -179,10 +233,11 @@ export const getAuditLogs = async (req, res) => {
         al.module LIKE ? OR
         al.entity_type LIKE ? OR
         al.entity_id LIKE ? OR
+        al.entity_label LIKE ? OR
         al.actor_name LIKE ? OR
         al.actor_email LIKE ?
       )`);
-      values.push(...Array(7).fill(buildLike(req.query.search)));
+      values.push(...Array(8).fill(buildLike(req.query.search)));
     }
 
     if (cleanText(req.query.action) && req.query.action !== 'all') {
@@ -228,41 +283,13 @@ export const getAuditLogs = async (req, res) => {
       values
     );
 
-    const [[summaryRow]] = await connection.query(
-      `
-        SELECT
-          COUNT(*) AS total,
-          COALESCE(SUM(action = 'create'), 0) AS created,
-          COALESCE(SUM(action = 'update'), 0) AS updated,
-          COALESCE(SUM(action = 'delete'), 0) AS deleted,
-          COALESCE(SUM(audit_log_created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)), 0) AS last24Hours
-        FROM audit_logs
-      `
-    );
-
-    const [moduleRows] = await connection.query(
-      `
-        SELECT module, COUNT(*) AS total
-        FROM audit_logs
-        GROUP BY module
-        ORDER BY module ASC
-      `
-    );
+    const { summary, modules } = await getCachedSummaryAndModules(connection);
 
     return res.json({
       success: true,
       data: rows.map(mapAuditLog),
-      summary: {
-        total: Number(summaryRow.total || 0),
-        created: Number(summaryRow.created || 0),
-        updated: Number(summaryRow.updated || 0),
-        deleted: Number(summaryRow.deleted || 0),
-        last24Hours: Number(summaryRow.last24Hours || 0),
-      },
-      modules: moduleRows.map((row) => ({
-        module: row.module,
-        total: Number(row.total || 0),
-      })),
+      summary,
+      modules,
       pagination: {
         page,
         limit,
@@ -290,6 +317,7 @@ export const createAuditLog = async (req, res) => {
       module: cleanText(req.body.module, 'Manual Entry'),
       entityType: cleanText(req.body.entityType) || null,
       entityId: cleanText(req.body.entityId) || null,
+      entityLabel: cleanText(req.body.entityLabel) || null,
       title: cleanText(req.body.title),
       description: cleanText(req.body.description),
       metadata: req.body.metadata || null,

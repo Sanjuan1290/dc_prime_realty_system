@@ -6,6 +6,7 @@ import {
   getAuthenticatedUser,
   getUserFullName,
 } from '../_shared/lotProject.shared.js';
+import { writeAuditLog } from '../../System/auditLogs.controller.js';
 
 const toNumber = (value) => Number(value || 0);
 const roundMoney = (value) => Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
@@ -829,6 +830,55 @@ export const updateLotProjectCommission = async (req, res) => {
       );
 
       const data = await recomputeCommissionFromReleases(connection, commissionId, project.lot_project_id);
+
+      if (action === 'release_stage') {
+        const [contextRows] = await connection.query(
+          `
+            SELECT
+              c.lot_project_commission_id,
+              c.lot_project_listing_id,
+              c.accredited_seller_id,
+              l.lot_project_listing_unit_id,
+              cp.buyer_full_name,
+              NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)), '') AS seller_name
+            FROM lot_project_commissions c
+            INNER JOIN lot_project_listings l
+              ON l.lot_project_listing_id = c.lot_project_listing_id
+            LEFT JOIN lot_project_client_profiles cp
+              ON cp.lot_project_client_profile_id = c.lot_project_client_profile_id
+            LEFT JOIN accredited_sellers acs
+              ON acs.accredited_seller_id = c.accredited_seller_id
+            LEFT JOIN users u
+              ON u.id = acs.user_id
+            WHERE c.lot_project_commission_id = ?
+              AND c.lot_project_id = ?
+            LIMIT 1
+          `,
+          [commissionId, project.lot_project_id]
+        );
+        const commissionContext = contextRows[0] || {};
+        const sellerName = commissionContext.seller_name || 'Seller';
+        const releaseAmount = toNumber(release.net_release_amount);
+
+        await writeAuditLog(connection, req, {
+          action: 'release',
+          module: 'Commissions',
+          entityType: 'lot_project_commission',
+          entityId: String(commissionId),
+          entityLabel: `${sellerName} — ₱${releaseAmount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          title: 'Released commission',
+          description: `Released ${release.release_stage} commission for ${sellerName}.`,
+          metadata: {
+            releaseId,
+            releaseStage: release.release_stage,
+            releaseAmount,
+            listingId: commissionContext.lot_project_listing_id || null,
+            unitId: commissionContext.lot_project_listing_unit_id || null,
+            clientName: commissionContext.buyer_full_name || null,
+          },
+        });
+      }
+
       await connection.commit();
 
       return res.json({ success: true, message, data });
@@ -886,6 +936,8 @@ export const updateLotProjectCommission = async (req, res) => {
 
     const nextRemaining = Math.max(gross - nextReleased, 0);
 
+    await connection.beginTransaction();
+
     await connection.query(
       `
         UPDATE lot_project_commissions
@@ -898,6 +950,51 @@ export const updateLotProjectCommission = async (req, res) => {
       `,
       [nextReleased, nextRemaining, nextStatus, commissionId, project.lot_project_id]
     );
+
+    if (action === 'release') {
+      const [contextRows] = await connection.query(
+        `
+          SELECT
+            c.lot_project_listing_id,
+            l.lot_project_listing_unit_id,
+            cp.buyer_full_name,
+            NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)), '') AS seller_name
+          FROM lot_project_commissions c
+          INNER JOIN lot_project_listings l
+            ON l.lot_project_listing_id = c.lot_project_listing_id
+          LEFT JOIN lot_project_client_profiles cp
+            ON cp.lot_project_client_profile_id = c.lot_project_client_profile_id
+          LEFT JOIN accredited_sellers acs
+            ON acs.accredited_seller_id = c.accredited_seller_id
+          LEFT JOIN users u
+            ON u.id = acs.user_id
+          WHERE c.lot_project_commission_id = ?
+            AND c.lot_project_id = ?
+          LIMIT 1
+        `,
+        [commissionId, project.lot_project_id]
+      );
+      const commissionContext = contextRows[0] || {};
+      const sellerName = commissionContext.seller_name || 'Seller';
+
+      await writeAuditLog(connection, req, {
+        action: 'release',
+        module: 'Commissions',
+        entityType: 'lot_project_commission',
+        entityId: String(commissionId),
+        entityLabel: `${sellerName} — ₱${amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+        title: 'Released commission',
+        description: `Released commission for ${sellerName}.`,
+        metadata: {
+          amount,
+          listingId: commissionContext.lot_project_listing_id || null,
+          unitId: commissionContext.lot_project_listing_unit_id || null,
+          clientName: commissionContext.buyer_full_name || null,
+        },
+      });
+    }
+
+    await connection.commit();
 
     return res.json({
       success: true,

@@ -69,6 +69,7 @@ import {
   cleanSecondBuyerRole,
   addIfColumnExists,
 } from '../_shared/lotProject.shared.js';
+import { writeAuditLog } from '../../System/auditLogs.controller.js';
 
 export const createLotProjectListingPayment = async (req, res) => {
   const connection = await db.getConnection();
@@ -157,6 +158,27 @@ export const createLotProjectListingPayment = async (req, res) => {
     if (await tableExists(connection, 'lot_project_payment_schedules')) {
       await applyPaymentToSchedules(connection, listing, paymentId, scheduleId, amount, paymentDate, referenceId, paymentType);
     }
+
+    await writeAuditLog(connection, req, {
+      action: 'create',
+      module: 'Payments',
+      entityType: 'lot_project_payment',
+      entityId: String(paymentId),
+      entityLabel: `${referenceId || `Payment #${paymentId}`} — ${listing.buyer_full_name || listing.lot_project_listing_unit_id}`,
+      title: 'Recorded SOA payment',
+      description: `Recorded ${getPaymentTypeLabel(paymentType)} payment for ${listing.buyer_full_name || listing.lot_project_listing_unit_id}.`,
+      metadata: {
+        listingId: listing.lot_project_listing_id,
+        unitId: listing.lot_project_listing_unit_id,
+        clientName: listing.buyer_full_name || null,
+        amount,
+        paymentDate,
+        paymentType,
+        paymentMethod,
+        referenceId,
+        scheduleId,
+      },
+    });
 
     await connection.commit();
 
@@ -482,6 +504,25 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
       }
     }
 
+    await writeAuditLog(connection, req, {
+      action: 'update',
+      module: 'Payments',
+      entityType: 'lot_project_listing',
+      entityId: String(listing.lot_project_listing_id),
+      entityLabel: `Unit ${listing.lot_project_listing_unit_id} — ${listing.buyer_full_name || 'Client'}`,
+      title: 'Updated SOA terms',
+      description: `Updated SOA terms for ${listing.buyer_full_name || listing.lot_project_listing_unit_id}.`,
+      metadata: {
+        clientProfileId: listing.lot_project_client_profile_id,
+        dpDiscountPercentage,
+        downpaymentPercentage,
+        downpaymentTerms,
+        monthlyTerms,
+        annualInterestRate,
+        firstDueDate,
+      },
+    });
+
     await connection.commit();
 
     return res.json({
@@ -605,9 +646,3 @@ export const deleteLotProjectListingPayment = async (req, res) => {
     connection.release();
   }
 };
-
-
-
-
-
-
