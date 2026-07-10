@@ -47,6 +47,72 @@ const safeDeleteByColumn = async (connection, tableName, columnName, value) => {
   );
 };
 
+
+const normalizeRequiredValue = (value, fallback = true) => {
+  if (value === false || value === 0 || value === '0') return 0;
+  if (value === true || value === 1 || value === '1') return 1;
+
+  const normalized = String(value ?? '').trim().toLowerCase();
+  if (normalized === 'optional' || normalized === 'false') return 0;
+  if (normalized === 'required' || normalized === 'true') return 1;
+
+  return fallback ? 1 : 0;
+};
+
+const getTemplateDocumentRows = async (connection, documentIds = [], templateDocuments = []) => {
+  const explicitRows = Array.isArray(templateDocuments)
+    ? templateDocuments
+        .map((document) => ({
+          document_id: Number(document.document_id || document.id),
+          is_required: normalizeRequiredValue(
+            document.is_required ??
+              document.requirement ??
+              document.template_document_list_is_required ??
+              document.document_is_required,
+            true
+          ),
+        }))
+        .filter((document) => document.document_id)
+    : [];
+
+  const requestedIds = [
+    ...new Set([
+      ...documentIds.map(Number).filter(Boolean),
+      ...explicitRows.map((document) => document.document_id),
+    ]),
+  ];
+
+  if (requestedIds.length === 0) return [];
+
+  const [libraryRows] = await connection.query(
+    `
+      SELECT document_id, document_is_required
+      FROM documents
+      WHERE document_id IN (${requestedIds.map(() => '?').join(', ')})
+    `,
+    requestedIds
+  );
+
+  const libraryRequirement = new Map(
+    libraryRows.map((document) => [
+      Number(document.document_id),
+      normalizeRequiredValue(document.document_is_required, true),
+    ])
+  );
+  const explicitRequirement = new Map(
+    explicitRows.map((document) => [document.document_id, document.is_required])
+  );
+
+  return requestedIds
+    .filter((documentId) => libraryRequirement.has(documentId))
+    .map((documentId) => ({
+      document_id: documentId,
+      is_required: explicitRequirement.has(documentId)
+        ? explicitRequirement.get(documentId)
+        : libraryRequirement.get(documentId),
+    }));
+};
+
 export const getDocuments = async (req, res) => {
   try {
     const [documents] = await db.query(`
@@ -91,7 +157,9 @@ export const getTemplates = async (req, res) => {
         d.document_name,
         d.document_description,
         d.document_is_reusable,
-        d.document_is_required,
+        tdl.template_document_list_is_required,
+        tdl.template_document_list_is_required AS document_is_required,
+        d.document_is_required AS library_document_is_required,
         d.document_status,
         tdl.template_document_list_created_at AS template_document_created_at,
         tdl.template_document_list_updated_at AS template_document_updated_at
@@ -161,6 +229,7 @@ export const addTemplate = async (req, res) => {
       template_description,
       template_status = 'active',
       document_ids = [],
+      template_documents = [],
     } = req.body;
 
     if (!template_name?.trim()) {
@@ -181,15 +250,27 @@ export const addTemplate = async (req, res) => {
     );
 
     const templateId = result.insertId;
-    const uniqueDocumentIds = [...new Set(document_ids.map(Number).filter(Boolean))];
+    const templateDocumentRows = await getTemplateDocumentRows(
+      connection,
+      document_ids,
+      template_documents
+    );
 
-    if (uniqueDocumentIds.length > 0) {
+    if (templateDocumentRows.length > 0) {
       await connection.query(
         `
-          INSERT INTO template_document_list (template_id, document_id)
-          VALUES ${uniqueDocumentIds.map(() => '(?, ?)').join(', ')}
+          INSERT INTO template_document_list (
+            template_id,
+            document_id,
+            template_document_list_is_required
+          )
+          VALUES ${templateDocumentRows.map(() => '(?, ?, ?)').join(', ')}
         `,
-        uniqueDocumentIds.flatMap((documentId) => [templateId, documentId])
+        templateDocumentRows.flatMap((document) => [
+          templateId,
+          document.document_id,
+          document.is_required,
+        ])
       );
     }
 
@@ -369,6 +450,7 @@ export const editTemplate = async (req, res) => {
       template_description,
       template_status = 'active',
       document_ids = [],
+      template_documents = [],
     } = req.body;
 
     if (!template_name?.trim()) {
@@ -388,15 +470,27 @@ export const editTemplate = async (req, res) => {
 
     await connection.query(`DELETE FROM template_document_list WHERE template_id = ?`, [templateId]);
 
-    const uniqueDocumentIds = [...new Set(document_ids.map(Number).filter(Boolean))];
+    const templateDocumentRows = await getTemplateDocumentRows(
+      connection,
+      document_ids,
+      template_documents
+    );
 
-    if (uniqueDocumentIds.length > 0) {
+    if (templateDocumentRows.length > 0) {
       await connection.query(
         `
-          INSERT INTO template_document_list (template_id, document_id)
-          VALUES ${uniqueDocumentIds.map(() => '(?, ?)').join(', ')}
+          INSERT INTO template_document_list (
+            template_id,
+            document_id,
+            template_document_list_is_required
+          )
+          VALUES ${templateDocumentRows.map(() => '(?, ?, ?)').join(', ')}
         `,
-        uniqueDocumentIds.flatMap((documentId) => [templateId, documentId])
+        templateDocumentRows.flatMap((document) => [
+          templateId,
+          document.document_id,
+          document.is_required,
+        ])
       );
     }
 

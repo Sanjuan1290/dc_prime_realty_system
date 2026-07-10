@@ -5,18 +5,41 @@ import { RxCross2 } from "react-icons/rx";
 import StatusAlert from "../../Shared/StatusAlert";
 import { useFetchPut } from "../../../utils/useFetch";
 
+const toRequiredBoolean = (value) =>
+  value === true || value === 1 || value === '1' || value === 'required'
+
+
 const EditDocumentTemplate = ({ template, documents = [], templateDocuments = [], onClose, onSaved }) => {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [formData, setFormData] = useState({ template_name: template?.template_name || "", template_description: template?.template_description || "", template_status: template?.template_status || "active" });
   const [selectedDocuments, setSelectedDocuments] = useState(() => {
-    const currentIds = new Set(templateDocuments.filter((item) => item.template_id === template?.template_id).map((item) => item.document_id));
-    return documents.filter((document) => currentIds.has(document.document_id));
+    const currentTemplateDocuments = templateDocuments.filter(
+      (item) => Number(item.template_id) === Number(template?.template_id)
+    );
+
+    return currentTemplateDocuments
+      .map((templateDocument) => {
+        const libraryDocument = documents.find(
+          (document) => Number(document.document_id) === Number(templateDocument.document_id)
+        );
+
+        if (!libraryDocument) return null;
+
+        return {
+          ...libraryDocument,
+          document_is_required: toRequiredBoolean(
+            templateDocument.template_document_list_is_required ??
+              templateDocument.document_is_required
+          ),
+        };
+      })
+      .filter(Boolean);
   });
   const selectedDocumentIds = useMemo(() => new Set(selectedDocuments.map((document) => document.document_id)), [selectedDocuments]);
   const availableDocuments = useMemo(() => { const keyword = search.trim().toLowerCase(); return documents.filter((document) => { if (selectedDocumentIds.has(document.document_id)) return false; if (document.document_status !== "active") return false; if (!keyword) return true; return document.document_name?.toLowerCase().includes(keyword) || document.document_description?.toLowerCase().includes(keyword); }); }, [documents, search, selectedDocumentIds]);
-  const mutation = useMutation({ mutationFn: () => useFetchPut(`/documents/editTemplate/${template.template_id}`, { ...formData, document_ids: selectedDocuments.map((document) => document.document_id) }), onSuccess: (data) => { queryClient.invalidateQueries({ queryKey: ["templates"] }); onClose(); onSaved?.(data?.message || "Template saved successfully."); }, onError: (error) => setErrorMessage(error.message) });
+  const mutation = useMutation({ mutationFn: () => useFetchPut(`/documents/editTemplate/${template.template_id}`, { ...formData, document_ids: selectedDocuments.map((document) => document.document_id), template_documents: selectedDocuments.map((document) => ({ document_id: document.document_id, is_required: toRequiredBoolean(document.document_is_required) })) }), onSuccess: (data) => { queryClient.invalidateQueries({ queryKey: ["templates"] }); onClose(); onSaved?.(data?.message || "Template saved successfully."); }, onError: (error) => setErrorMessage(error.message) });
   const handleChange = (field, value) => { setErrorMessage(""); setFormData((prev) => ({ ...prev, [field]: value })); };
   const handleSubmit = (event) => { event.preventDefault(); setErrorMessage(""); if (!formData.template_name.trim()) { setErrorMessage("Template name is required"); return; } mutation.mutate(); };
   return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm"><form onSubmit={handleSubmit} className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"><div className="flex items-center justify-between border-b border-slate-200 px-6 py-4"><div><h3 className="text-xl font-bold text-slate-950">Edit Document Template</h3><p className="mt-1 text-sm text-slate-500">Edit the checklist name, status, and selected documents.</p></div><button type="button" onClick={() => onClose()} className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 active:scale-[0.98]"><RxCross2 className="h-5 w-5" /></button></div><div className="flex-1 overflow-y-auto px-6 py-5"><div className="grid grid-cols-1 gap-4 md:grid-cols-2"><label className="flex flex-col gap-2"><span className="text-sm font-semibold text-slate-700">Template Name</span><input type="text" value={formData.template_name} onChange={(event) => handleChange("template_name", event.target.value)} placeholder="Example: Standard Lot Buyer Checklist" className="h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 shadow-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100" /></label><label className="flex flex-col gap-2"><span className="text-sm font-semibold text-slate-700">Status</span><select value={formData.template_status} onChange={(event) => handleChange("template_status", event.target.value)} className="h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 shadow-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"><option value="active">Active</option><option value="inactive">Inactive</option></select></label><label className="flex flex-col gap-2 md:col-span-2"><span className="text-sm font-semibold text-slate-700">Template Description</span><textarea rows={4} value={formData.template_description} onChange={(event) => handleChange("template_description", event.target.value)} placeholder="Example: Standard requirements for residential lot buyers" className="resize-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100" /></label></div><TemplateDocuments documents={availableDocuments} selectedDocuments={selectedDocuments} search={search} setSearch={setSearch} setSelectedDocuments={setSelectedDocuments} />{mutation.isPending && <StatusAlert type="loading" message="Saving template changes..." className="mt-4" />} {errorMessage && <StatusAlert type="error" message={errorMessage} className="mt-4" />}</div><div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-white px-6 py-4"><button type="button" onClick={() => onClose()} disabled={mutation.isPending} className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60">Cancel</button><button type="submit" disabled={mutation.isPending} className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-blue-300">{mutation.isPending ? "Saving..." : "Save Changes"}</button></div></form></div>;

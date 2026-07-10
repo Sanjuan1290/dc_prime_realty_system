@@ -44,40 +44,120 @@ const SelectField = ({ label, value, onChange, children, helper }) => (
   </label>
 )
 
-const normalizeDocument = (document) => ({
-  id: document.document_id,
-  name: document.document_name,
-  description: document.document_description || 'No description',
-  requirement: document.document_is_required ? 'required' : 'optional',
-  status: document.document_status || 'active',
+const normalizeRequirement = (value, fallback = 'required') => {
+  if (value === false || value === 0 || value === '0') return 'optional'
+  if (value === true || value === 1 || value === '1') return 'required'
+
+  const normalized = String(value ?? '').trim().toLowerCase()
+  if (normalized === 'optional' || normalized === 'false') return 'optional'
+  if (normalized === 'required' || normalized === 'true') return 'required'
+
+  return fallback
+}
+
+const normalizeStatus = (value) =>
+  String(value || 'active').trim().toLowerCase() === 'inactive' ? 'inactive' : 'active'
+
+const getDocumentId = (document = {}) =>
+  Number(document.document_id || document.id || 0)
+
+const normalizeDocument = (document = {}, fallbackRequirement = 'required') => ({
+  ...document,
+  id: getDocumentId(document),
+  document_id: getDocumentId(document),
+  name: document.name || document.document_name || 'Unnamed document',
+  description: document.description || document.document_description || 'No description',
+  requirement: normalizeRequirement(
+    document.requirement ??
+      document.template_document_list_is_required ??
+      document.lot_project_default_document_is_required ??
+      document.document_is_required,
+    fallbackRequirement
+  ),
+  status: normalizeStatus(
+    document.status ||
+      document.lot_project_default_document_status ||
+      document.document_status
+  ),
 })
 
+const normalizeProjectDocuments = (project = {}) =>
+  (project.defaultDocuments || project.default_documents || [])
+    .map((document) => normalizeDocument(document, 'required'))
+    .filter((document) => document.id)
+
+const normalizeCadastralLots = (project = {}) =>
+  (project.cadastral_lots || project.cadastralLots || project.cadastralLots || [])
+    .map((lot) =>
+      String(lot?.lotNumber || lot?.lot_project_cadastral_lot_number || lot || '').trim()
+    )
+    .filter(Boolean)
+
+const mergeDocumentLists = (currentDocuments = [], incomingDocuments = []) => {
+  const merged = new Map(
+    currentDocuments
+      .map((document) => normalizeDocument(document, 'required'))
+      .filter((document) => document.id)
+      .map((document) => [document.id, document])
+  )
+
+  incomingDocuments
+    .map((document) => normalizeDocument(document, 'required'))
+    .filter((document) => document.id)
+    .forEach((document) => {
+      const existing = merged.get(document.id)
+
+      if (!existing) {
+        merged.set(document.id, document)
+        return
+      }
+
+      merged.set(document.id, {
+        ...existing,
+        name: existing.name || document.name,
+        description: existing.description || document.description,
+        requirement:
+          existing.requirement === 'required' || document.requirement === 'required'
+            ? 'required'
+            : 'optional',
+      })
+    })
+
+  return Array.from(merged.values())
+}
+
 const AddLotProjectModal = ({
+  project = null,
+  mode = 'create',
   documents = [],
   templates = [],
   templateDocuments = [],
   isLoadingDocuments = false,
+  isSaving: externalIsSaving = false,
   onClose,
   onSave,
 }) => {
-  const [form, setForm] = useState({
-    name: '',
-    location: '',
-    locationCode: '',
-    administrator: '',
-    taxDeclarationNo: '',
-    pin: '',
-    status: 'active',
-  })
+  const isEdit = mode === 'edit' || Boolean(project)
+
+  const [form, setForm] = useState(() => ({
+    name: project?.project_bailen_name || project?.lot_project_name || project?.name || '',
+    location: project?.project_bailen_location || project?.lot_project_location || project?.location || '',
+    locationCode: project?.project_bailen_location_code || project?.lot_project_location_code || project?.locationCode || '',
+    administrator: project?.project_bailen_administrator_name || project?.lot_project_administrator_name || project?.administrator || '',
+    taxDeclarationNo: project?.project_bailen_tax_declaration_no || project?.lot_project_tax_declaration_no || project?.taxDeclarationNo || '',
+    pin: project?.project_bailen_pin || project?.lot_project_pin || project?.pin || '',
+    status: project?.project_bailen_status || project?.lot_project_status || project?.status || 'active',
+  }))
 
   const [cadastralInput, setCadastralInput] = useState('')
-  const [cadastralLots, setCadastralLots] = useState([])
+  const [cadastralLots, setCadastralLots] = useState(() => normalizeCadastralLots(project || {}))
   const [templateSearch, setTemplateSearch] = useState('')
   const [documentSearch, setDocumentSearch] = useState('')
   const [selectedTemplateIds, setSelectedTemplateIds] = useState([])
   const [alert, setAlert] = useState(null)
-  const [isSaving, setIsSaving] = useState(false)
-  const [selectedDocuments, setSelectedDocuments] = useState([])
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [selectedDocuments, setSelectedDocuments] = useState(() => normalizeProjectDocuments(project || {}))
+  const isSaving = externalIsSaving || isSubmitting
 
   const documentLibrary = useMemo(
     () =>
@@ -91,15 +171,27 @@ const AddLotProjectModal = ({
     () =>
       templates
         .filter((template) => template.template_status === 'active')
-        .map((template) => ({
-          id: template.template_id,
-          name: template.template_name,
-          description: template.template_description || 'No description',
-          docs: templateDocuments
+        .map((template) => {
+          const docs = templateDocuments
             .filter((item) => Number(item.template_id) === Number(template.template_id))
-            .map((item) => Number(item.document_id))
-            .filter(Boolean),
-        })),
+            .map((item) => ({
+              documentId: Number(item.document_id),
+              requirement: normalizeRequirement(
+                item.template_document_list_is_required ?? item.document_is_required,
+                'required'
+              ),
+              status: normalizeStatus(item.document_status),
+            }))
+            .filter((item) => item.documentId)
+
+          return {
+            id: template.template_id,
+            name: template.template_name,
+            description: template.template_description || 'No description',
+            docs,
+            required: docs.filter((document) => document.requirement === 'required').length,
+          }
+        }),
     [templates, templateDocuments]
   )
 
@@ -175,15 +267,7 @@ const AddLotProjectModal = ({
       return
     }
 
-    setSelectedDocuments((current) => [
-      ...current,
-      {
-        ...document,
-        requirement: document.requirement || 'required',
-        status: document.status || 'active',
-      },
-    ])
-
+    setSelectedDocuments((current) => mergeDocumentLists(current, [document]))
     setAlert({ type: 'success', message: `${document.name} added.` })
   }
 
@@ -203,30 +287,38 @@ const AddLotProjectModal = ({
     )
   }
 
+  const getDocumentsFromTemplates = (templateRows = []) =>
+    templateRows.flatMap((template) =>
+      template.docs
+        .map((templateDocument) => {
+          const libraryDocument = documentLibrary.find(
+            (document) => document.id === templateDocument.documentId
+          )
+
+          if (!libraryDocument) return null
+
+          return {
+            ...libraryDocument,
+            requirement: templateDocument.requirement,
+            status: templateDocument.status,
+          }
+        })
+        .filter(Boolean)
+    )
+
   const toggleTemplate = (template) => {
     const exists = selectedTemplateIds.includes(template.id)
 
     if (exists) {
       setSelectedTemplateIds((current) => current.filter((id) => id !== template.id))
-      setAlert({ type: 'warning', message: `${template.name} template unchecked.` })
+      setAlert({ type: 'warning', message: `${template.name} template unchecked. Documents are kept for manual review.` })
       return
     }
 
     setSelectedTemplateIds((current) => [...current, template.id])
-
-    const docsToAdd = template.docs
-      .map((docId) => documentLibrary.find((document) => document.id === docId))
-      .filter(Boolean)
-      .filter((document) => !selectedDocIds.has(document.id))
-      .map((document) => ({
-        ...document,
-        requirement: document.requirement || 'required',
-        status: document.status || 'active',
-      }))
-
-    if (docsToAdd.length) {
-      setSelectedDocuments((current) => [...current, ...docsToAdd])
-    }
+    setSelectedDocuments((current) =>
+      mergeDocumentLists(current, getDocumentsFromTemplates([template]))
+    )
 
     setAlert({
       type: 'success',
@@ -236,24 +328,9 @@ const AddLotProjectModal = ({
 
   const selectAllTemplates = () => {
     setSelectedTemplateIds(documentTemplates.map((template) => template.id))
-
-    const ids = new Set()
-
-    documentTemplates.forEach((template) => {
-      template.docs.forEach((docId) => ids.add(docId))
-    })
-
-    setSelectedDocuments(
-      Array.from(ids)
-        .map((id) => documentLibrary.find((document) => document.id === id))
-        .filter(Boolean)
-        .map((document) => ({
-          ...document,
-          requirement: document.requirement || 'required',
-          status: document.status || 'active',
-        }))
+    setSelectedDocuments((current) =>
+      mergeDocumentLists(current, getDocumentsFromTemplates(documentTemplates))
     )
-
     setAlert({ type: 'success', message: 'All document templates selected.' })
   }
 
@@ -266,14 +343,7 @@ const AddLotProjectModal = ({
   }
 
   const useAllLibraryDocs = () => {
-    setSelectedDocuments(
-      documentLibrary.map((document) => ({
-        ...document,
-        requirement: document.requirement || 'required',
-        status: document.status || 'active',
-      }))
-    )
-
+    setSelectedDocuments((current) => mergeDocumentLists(current, documentLibrary))
     setAlert({ type: 'success', message: 'All library documents added.' })
   }
 
@@ -295,8 +365,11 @@ const AddLotProjectModal = ({
       return
     }
 
-    setIsSaving(true)
-    setAlert({ type: 'loading', message: 'Adding lot project...' })
+    setIsSubmitting(true)
+    setAlert({
+      type: 'loading',
+      message: isEdit ? 'Saving project changes...' : 'Adding lot project...',
+    })
 
     try {
       await onSave({
@@ -316,8 +389,11 @@ const AddLotProjectModal = ({
         })),
       })
     } catch (error) {
-      setIsSaving(false)
-      setAlert({ type: 'error', message: error.message || 'Failed to add lot project.' })
+      setIsSubmitting(false)
+      setAlert({
+        type: 'error',
+        message: error.message || (isEdit ? 'Failed to save project changes.' : 'Failed to add lot project.'),
+      })
     }
   }
 
@@ -328,7 +404,7 @@ const AddLotProjectModal = ({
         className="flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl"
       >
         <div className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 px-5">
-          <h2 className="text-base font-black text-slate-950">Add Lot Project</h2>
+          <h2 className="text-base font-black text-slate-950">{isEdit ? 'Edit Lot Project' : 'Add Lot Project'}</h2>
 
           <button
             type="button"
@@ -544,7 +620,7 @@ const AddLotProjectModal = ({
                             </p>
 
                             <span className="mt-2 inline-flex rounded-full bg-slate-100 px-2 py-1 text-[11px] font-black text-slate-600">
-                              {template.docs.length} required / {template.docs.length} docs
+                              {template.required} required / {template.docs.length} docs
                             </span>
                           </div>
                         </div>
@@ -730,7 +806,7 @@ const AddLotProjectModal = ({
             ) : (
               <>
                 <FiCheckCircle className="h-4 w-4" />
-                Add Lot Project
+                {isEdit ? 'Save Changes' : 'Add Lot Project'}
               </>
             )}
           </button>

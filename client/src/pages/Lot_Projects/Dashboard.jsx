@@ -352,7 +352,7 @@ const Dashboard = () => {
     },
   })
 
-  const handleSaveProject = (updatedProject) => updateProjectMutation.mutate(updatedProject)
+  const handleSaveProject = (updatedProject) => updateProjectMutation.mutateAsync(updatedProject)
 
   const handleRefresh = () => {
     setAlert({ type: 'info', message: 'Refreshing project dashboard...' })
@@ -661,4 +661,3 @@ const Dashboard = () => {
 }
 
 export default Dashboard
-
