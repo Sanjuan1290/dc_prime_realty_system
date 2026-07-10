@@ -1,14 +1,14 @@
 import express from 'express';
 import {
-  createAuditLog,
-  deleteAuditLog,
+  confirmAuditLogDeletion,
   getAuditLogs,
+  requestAuditLogDeletion,
 } from '../../controllers/System/auditLogs.controller.js';
 
 const router = express.Router();
 
 router.get('/', getAuditLogs);
-router.post('/', createAuditLog);
-router.delete('/:auditLogId', deleteAuditLog);
+router.post('/delete-all/request', requestAuditLogDeletion);
+router.post('/delete-all/confirm', confirmAuditLogDeletion);
 
 export default router;

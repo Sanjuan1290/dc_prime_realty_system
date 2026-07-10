@@ -18,11 +18,7 @@ const clampDay = (value, fallback) => {
   if (!Number.isFinite(numeric)) return fallback;
   return Math.min(Math.max(Math.trunc(numeric), 1), 31);
 };
-const clampRetention = (value) => {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return 365;
-  return Math.min(Math.max(Math.trunc(numeric), 30), 3650);
-};
+
 
 const requireAdmin = async (req) => {
   const user = await getAuthenticatedUser(req);
@@ -56,7 +52,6 @@ const systemSettingsTableSql = `
     reservation_contact_number VARCHAR(60) NULL,
     default_release_day_one TINYINT UNSIGNED NOT NULL DEFAULT 7,
     default_release_day_two TINYINT UNSIGNED NOT NULL DEFAULT 22,
-    audit_retention_days INT UNSIGNED NOT NULL DEFAULT 365,
     updated_by_user_id INT UNSIGNED NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -95,7 +90,6 @@ const mapSettings = (row = {}) => ({
   reservationContactNumber: row.reservation_contact_number,
   defaultReleaseDayOne: Number(row.default_release_day_one || 7),
   defaultReleaseDayTwo: Number(row.default_release_day_two || 22),
-  auditRetentionDays: Number(row.audit_retention_days || 365),
   updatedByUserId: row.updated_by_user_id,
   updatedByName: row.updated_by_name || null,
   createdAt: row.created_at,
@@ -115,7 +109,6 @@ const normalizeSettingsPayload = (body = {}) => ({
   reservationContactNumber: nullableText(body.reservationContactNumber),
   defaultReleaseDayOne: clampDay(body.defaultReleaseDayOne, 7),
   defaultReleaseDayTwo: clampDay(body.defaultReleaseDayTwo, 22),
-  auditRetentionDays: clampRetention(body.auditRetentionDays),
 });
 
 export const getSystemSettings = async (req, res) => {
@@ -180,7 +173,6 @@ export const updateSystemSettings = async (req, res) => {
           reservation_contact_number = ?,
           default_release_day_one = ?,
           default_release_day_two = ?,
-          audit_retention_days = ?,
           updated_by_user_id = ?
         WHERE system_setting_id = 1
       `,
@@ -197,7 +189,6 @@ export const updateSystemSettings = async (req, res) => {
         payload.reservationContactNumber,
         payload.defaultReleaseDayOne,
         payload.defaultReleaseDayTwo,
-        payload.auditRetentionDays,
         actor.id,
       ]
     );

@@ -20,7 +20,6 @@ const defaultForm = {
   reservationContactNumber: '',
   defaultReleaseDayOne: 7,
   defaultReleaseDayTwo: 22,
-  auditRetentionDays: 365,
 }
 
 const mapSettingsToForm = (settings = {}) => ({
@@ -36,7 +35,6 @@ const mapSettingsToForm = (settings = {}) => ({
   reservationContactNumber: settings.reservationContactNumber || '',
   defaultReleaseDayOne: settings.defaultReleaseDayOne || 7,
   defaultReleaseDayTwo: settings.defaultReleaseDayTwo || 22,
-  auditRetentionDays: settings.auditRetentionDays || 365,
 })
 
 const Settings = () => {

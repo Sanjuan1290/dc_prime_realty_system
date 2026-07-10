@@ -78,9 +78,6 @@ const SystemSettingsForm = ({ form, setForm, onSubmit, isSaving, disabled = fals
           <Field label="Default Release Day 2" helper="Allowed commission release day fallback.">
             <input disabled={disabled} type="number" min="1" max="31" value={form.defaultReleaseDayTwo} onChange={(e) => update('defaultReleaseDayTwo', e.target.value)} className={inputClass} />
           </Field>
-          <Field label="Audit Retention Days" helper="Suggested retention period for audit review.">
-            <input disabled={disabled} type="number" min="30" max="3650" value={form.auditRetentionDays} onChange={(e) => update('auditRetentionDays', e.target.value)} className={inputClass} />
-          </Field>
         </div>
       </section>
 

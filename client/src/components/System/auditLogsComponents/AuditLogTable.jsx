@@ -1,4 +1,4 @@
-import { FiEye, FiTrash2 } from 'react-icons/fi'
+import { FiEye } from 'react-icons/fi'
 import { formatDateTime } from '../../../utils/formatDateTime'
 
 const actionStyles = {
@@ -17,7 +17,7 @@ const ActionBadge = ({ value }) => (
   </span>
 )
 
-const AuditLogTable = ({ logs = [], isLoading, pagination, onView, onDelete, page, setPage, limit, setLimit }) => {
+const AuditLogTable = ({ logs = [], isLoading, pagination, onView, page, setPage, limit, setLimit }) => {
   const totalPages = pagination?.totalPages || 1
 
   return (
@@ -25,7 +25,7 @@ const AuditLogTable = ({ logs = [], isLoading, pagination, onView, onDelete, pag
       <div className="border-b border-slate-200 px-5 py-4">
         <h2 className="text-lg font-black text-slate-950">Audit Trail Records</h2>
         <p className="mt-1 text-sm font-semibold text-slate-500">
-          System activity from real database records. No mock audit data is used.
+          System activity from real database records. Audit entries cannot be edited manually.
         </p>
       </div>
 
@@ -72,22 +72,13 @@ const AuditLogTable = ({ logs = [], isLoading, pagination, onView, onDelete, pag
                   {log.entityLabel || (log.entityType ? `${log.entityType}${log.entityId ? ` #${log.entityId}` : ''}` : '-')}
                 </td>
                 <td className="px-5 py-4">
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => onView(log)}
-                      className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
-                    >
-                      <FiEye className="h-4 w-4" /> Details
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onDelete(log)}
-                      className="inline-flex h-9 items-center gap-2 rounded-xl border border-red-100 bg-red-50 px-3 text-xs font-black text-red-700 transition hover:bg-red-100"
-                    >
-                      <FiTrash2 className="h-4 w-4" /> Delete
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onView(log)}
+                    className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                  >
+                    <FiEye className="h-4 w-4" /> Details
+                  </button>
                 </td>
               </tr>
             ))}

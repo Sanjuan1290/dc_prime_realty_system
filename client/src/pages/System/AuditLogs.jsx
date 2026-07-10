@@ -3,12 +3,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FiActivity, FiClock, FiDatabase, FiPlus, FiRefreshCw, FiTrash2 } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
-import AddAuditLogModal from '../../components/System/auditLogsComponents/AddAuditLogModal'
 import AuditLogDetailsModal from '../../components/System/auditLogsComponents/AuditLogDetailsModal'
 import AuditLogFilters from '../../components/System/auditLogsComponents/AuditLogFilters'
 import AuditLogTable from '../../components/System/auditLogsComponents/AuditLogTable'
-import DeleteAuditLogModal from '../../components/System/auditLogsComponents/DeleteAuditLogModal'
-import { useFetch, useFetchDelete, useFetchPost } from '../../utils/useFetch'
+import DeleteAuditLogsModal from '../../components/System/auditLogsComponents/DeleteAuditLogsModal'
+import { useFetch, useFetchPost } from '../../utils/useFetch'
+import useCurrentUser from '../../utils/useCurrentUser'
 
 const StatCard = ({ label, value, helper, icon: Icon, tone = 'slate' }) => {
   const tones = {
@@ -37,6 +37,7 @@ const StatCard = ({ label, value, helper, icon: Icon, tone = 'slate' }) => {
 
 const AuditLogs = () => {
   const queryClient = useQueryClient()
+  const { data: currentUserData } = useCurrentUser()
   const [alert, setAlert] = useState(null)
   const [search, setSearch] = useState('')
   const [action, setAction] = useState('all')
@@ -45,9 +46,12 @@ const AuditLogs = () => {
   const [to, setTo] = useState('')
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(10)
-  const [showAddModal, setShowAddModal] = useState(false)
   const [selectedLog, setSelectedLog] = useState(null)
-  const [deleteLog, setDeleteLog] = useState(null)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [deleteRequest, setDeleteRequest] = useState(null)
+  const [deleteError, setDeleteError] = useState('')
+
+  const isSuperAdmin = currentUserData?.user?.role === 'super_admin'
 
   const queryString = useMemo(() => {
     const params = new URLSearchParams({ page: String(page), limit: String(limit) })
@@ -65,26 +69,35 @@ const AuditLogs = () => {
     keepPreviousData: true,
   })
 
-  const createMutation = useMutation({
-    mutationFn: (payload) => useFetchPost('/audit-logs', payload),
-    onMutate: () => setAlert({ type: 'loading', message: 'Saving audit log entry...' }),
+  const requestDeleteMutation = useMutation({
+    mutationFn: (password) => useFetchPost('/audit-logs/delete-all/request', { password }),
+    onMutate: () => setDeleteError(''),
     onSuccess: (result) => {
-      setShowAddModal(false)
-      setAlert({ type: 'success', message: result?.message || 'Audit log saved.' })
-      queryClient.invalidateQueries({ queryKey: ['audit-logs'] })
+      setDeleteRequest(result?.data || null)
+      setDeleteError('')
     },
-    onError: (mutationError) => setAlert({ type: 'error', message: mutationError?.message || 'Failed to save audit log.' }),
+    onError: (mutationError) => {
+      setDeleteError(mutationError?.message || 'Failed to send the verification code.')
+    },
   })
 
-  const deleteMutation = useMutation({
-    mutationFn: (log) => useFetchDelete(`/audit-logs/${log.id}`),
-    onMutate: () => setAlert({ type: 'loading', message: 'Deleting audit log entry...' }),
+  const confirmDeleteMutation = useMutation({
+    mutationFn: (code) => useFetchPost('/audit-logs/delete-all/confirm', {
+      verificationId: deleteRequest?.verificationId,
+      code,
+    }),
+    onMutate: () => setDeleteError(''),
     onSuccess: (result) => {
-      setDeleteLog(null)
-      setAlert({ type: 'success', message: result?.message || 'Audit log deleted.' })
+      setShowDeleteModal(false)
+      setDeleteRequest(null)
+      setDeleteError('')
+      setPage(1)
+      setAlert({ type: 'success', message: result?.message || 'Audit logs deleted.' })
       queryClient.invalidateQueries({ queryKey: ['audit-logs'] })
     },
-    onError: (mutationError) => setAlert({ type: 'error', message: mutationError?.message || 'Failed to delete audit log.' }),
+    onError: (mutationError) => {
+      setDeleteError(mutationError?.message || 'Failed to delete audit logs.')
+    },
   })
 
   const summary = data?.summary || { total: 0, created: 0, updated: 0, deleted: 0, last24Hours: 0 }
@@ -101,12 +114,21 @@ const AuditLogs = () => {
     setPage(1)
   }
 
-  const handleCreate = (payload) => {
-    createMutation.mutate(payload)
+  const openDeleteModal = () => {
+    setDeleteRequest(null)
+    setDeleteError('')
+    requestDeleteMutation.reset()
+    confirmDeleteMutation.reset()
+    setShowDeleteModal(true)
   }
 
-  const handleDelete = (log) => {
-    deleteMutation.mutate(log)
+  const closeDeleteModal = () => {
+    if (requestDeleteMutation.isPending || confirmDeleteMutation.isPending) return
+    setShowDeleteModal(false)
+    setDeleteRequest(null)
+    setDeleteError('')
+    requestDeleteMutation.reset()
+    confirmDeleteMutation.reset()
   }
 
   return (
@@ -114,7 +136,7 @@ const AuditLogs = () => {
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <PageHeader
           title="Audit Logs"
-          description="Track important system activity, settings changes, and admin notes."
+          description="Track system activity, account actions, settings changes, and security events."
           icon={FiActivity}
         />
 
@@ -128,14 +150,17 @@ const AuditLogs = () => {
             <FiRefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
             Refresh
           </button>
-          <button
-            type="button"
-            onClick={() => setShowAddModal(true)}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 text-sm font-black text-white shadow-sm transition hover:bg-blue-700"
-          >
-            <FiPlus className="h-4 w-4" />
-            Add Manual Entry
-          </button>
+
+          {isSuperAdmin ? (
+            <button
+              type="button"
+              onClick={openDeleteModal}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-red-600 px-5 text-sm font-black text-white shadow-sm transition hover:bg-red-700"
+            >
+              <FiTrash2 className="h-4 w-4" />
+              Delete Audit Logs
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -181,31 +206,25 @@ const AuditLogs = () => {
         isLoading={isLoading}
         pagination={pagination}
         onView={setSelectedLog}
-        onDelete={setDeleteLog}
         page={page}
         setPage={setPage}
         limit={limit}
         setLimit={setLimit}
       />
 
-      {showAddModal ? (
-        <AddAuditLogModal
-          onClose={() => setShowAddModal(false)}
-          onSubmit={handleCreate}
-          isSaving={createMutation.isPending}
-        />
-      ) : null}
-
       {selectedLog ? (
         <AuditLogDetailsModal log={selectedLog} onClose={() => setSelectedLog(null)} />
       ) : null}
 
-      {deleteLog ? (
-        <DeleteAuditLogModal
-          log={deleteLog}
-          onClose={() => setDeleteLog(null)}
-          onConfirm={handleDelete}
-          isDeleting={deleteMutation.isPending}
+      {showDeleteModal ? (
+        <DeleteAuditLogsModal
+          onClose={closeDeleteModal}
+          onRequestCode={(password) => requestDeleteMutation.mutate(password)}
+          onConfirmCode={(code) => confirmDeleteMutation.mutate(code)}
+          requestData={deleteRequest}
+          errorMessage={deleteError}
+          isRequesting={requestDeleteMutation.isPending}
+          isDeleting={confirmDeleteMutation.isPending}
         />
       ) : null}
     </main>
