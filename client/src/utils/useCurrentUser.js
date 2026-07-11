@@ -1,24 +1,13 @@
-import { useQuery } from "@tanstack/react-query"
+import { useQuery } from '@tanstack/react-query'
+import { apiRequest } from './apiClient'
 
 const useCurrentUser = () => {
-    return useQuery({
-        queryKey: ['currentUser'],
-        queryFn: async () => {
-            const res = await fetch(`${import.meta.env.VITE_API_URL + '/user/me'}`, {
-                credentials: 'include'
-            })
-        
-            const data = await res.json()
-
-            if(!res.ok) {
-                throw new Error(data.message || 'Request Failed')
-            }
-
-            return data
-        },
-        staleTime: 1000 * 60 * 60 * 24,
-        retry: false
-    })
+  return useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => apiRequest('/user/me', { skipAuthRedirect: true }),
+    staleTime: 1000 * 60 * 5,
+    retry: false,
+  })
 }
 
 export default useCurrentUser

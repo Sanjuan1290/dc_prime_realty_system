@@ -42,6 +42,7 @@ import {
   sortComputedRows,
   getComputedSoaTerms,
   createComputedSoaRows,
+  applyComputedPenaltiesToRows,
   getPaymentTargetRows,
   allocatePaymentsToComputedRows,
   recomputeComputedSoaBalances,
@@ -230,7 +231,10 @@ const replaceListingSchedulesForProfile = async (connection, projectId, listingR
   if (!(await tableExists(connection, 'lot_project_payment_schedules'))) return;
 
   const terms = getComputedSoaTerms(listingRow, []);
-  const computedRows = recomputeComputedSoaBalances(createComputedSoaRows(terms), terms);
+  const computedRows = recomputeComputedSoaBalances(
+    applyComputedPenaltiesToRows(createComputedSoaRows(terms), terms),
+    terms
+  );
 
   await connection.query(
     `DELETE FROM lot_project_payment_schedules WHERE lot_project_listing_id = ?`,
@@ -260,6 +264,7 @@ const replaceListingSchedulesForProfile = async (connection, projectId, listingR
   };
 
   await addOptionalColumn('interest_amount');
+  await addOptionalColumn('discount_amount');
   await addOptionalColumn('principal_amount');
   await addOptionalColumn('monthly_amortization_amount');
   await addOptionalColumn('paid_interest_amount');
@@ -285,6 +290,7 @@ const replaceListingSchedulesForProfile = async (connection, projectId, listingR
     ];
     const optionalValues = optionalColumns.map((column) => {
       if (column === 'interest_amount') return roundMoneyValue(row.interest || 0);
+      if (column === 'discount_amount') return roundMoneyValue(row.discountAmount || row.discount_amount || 0);
       if (column === 'principal_amount') return roundMoneyValue(row.principalAmount || 0);
       if (column === 'monthly_amortization_amount') return roundMoneyValue(row.monthlyAmortizationAmount || row.dueAmount || 0);
       if (column === 'paid_interest_amount') return roundMoneyValue(row.paidInterestAmount || 0);

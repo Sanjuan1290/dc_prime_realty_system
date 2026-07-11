@@ -1,6 +1,10 @@
 import { db } from '../../../db/connect.js';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
+import {
+  addDaysToDate as addPenaltyDaysToDate,
+  calculateSchedulePenalty as calculateFlatSchedulePenalty,
+} from '../../../utils/penalty.js';
 
 export { db, jwt, bcrypt };
 
@@ -582,6 +586,8 @@ export const mapProfileListing = (row = {}, project = {}, documents = []) => {
     soaInterestRateSource: Number(row.soa_interest_rate_overridden || 0) === 1 ? 'custom' : 'listing',
     soaInterestRateOverridden: Number(row.soa_interest_rate_overridden || 0) === 1,
     soaDpDiscountPercentage: Number(row.soa_dp_discount_percentage || 0),
+    soaPenaltyRatePercent: Number(row.soa_penalty_rate_percent || 0),
+    soaPenaltyGraceDays: Number(row.soa_penalty_grace_days || 0),
     buyer_name: row.buyer_full_name || '-',
     spouse_co_owner: row.second_buyer_full_name || '-',
     email: row.buyer_email || '-',
@@ -767,6 +773,35 @@ export const addMonthsToDate = (value, months = 0) => {
 
   return date.toISOString().slice(0, 10);
 };
+
+
+export const addDaysToDate = addPenaltyDaysToDate;
+
+export const calculateSchedulePenalty = (options = {}) =>
+  calculateFlatSchedulePenalty({
+    ...options,
+    asOfDate: options.asOfDate || todayDateOnly(),
+  });
+
+export const applyComputedPenaltiesToRows = (rows = [], terms = {}, asOfDate = todayDateOnly()) =>
+  rows.map((row) => {
+    const amountPaid = roundMoneyValue(Number(row.amountPaid || 0));
+    const dueAmount = roundMoneyValue(Number(row.dueAmount || 0));
+    const rowAsOfDate = amountPaid + 0.009 >= dueAmount && row.datePaid && row.datePaid !== '-'
+      ? row.datePaid
+      : asOfDate;
+
+    return {
+      ...row,
+      penalty: calculateSchedulePenalty({
+        dueDate: row.dueDate,
+        dueAmount,
+        ratePercent: terms.penaltyRatePercent,
+        graceDays: terms.penaltyGraceDays,
+        asOfDate: rowAsOfDate,
+      }),
+    };
+  });
 
 export const getOrdinalLabel = (number) => {
   const value = Number(number || 0);
@@ -1172,6 +1207,8 @@ export const getComputedSoaTerms = (listingRow = {}, existingScheduleRows = []) 
 
   const annualInterestRate = getEffectiveSoaInterestRate(listingRow);
   const interestRateSource = Number(listingRow.soa_interest_rate_overridden || 0) === 1 ? 'custom' : 'listing';
+  const penaltyRatePercent = Math.max(Number(listingRow.soa_penalty_rate_percent || listingRow.penaltyRatePercent || 0), 0);
+  const penaltyGraceDays = Math.max(Number(listingRow.soa_penalty_grace_days || listingRow.penaltyGraceDays || 0), 0);
   const financedBalance = roundMoneyValue(Math.max(principalTcp - reservationFee - downpaymentGrossTotal, 0));
   const monthlyPrincipal = roundMoneyValue(monthlyTerms > 0 ? financedBalance / monthlyTerms : financedBalance);
   const monthlyAmortization = getMonthlyAmortizationAmount(financedBalance, annualInterestRate, monthlyTerms);
@@ -1192,6 +1229,8 @@ export const getComputedSoaTerms = (listingRow = {}, existingScheduleRows = []) 
     monthlyPrincipal,
     monthlyAmortization,
     annualInterestRate,
+    penaltyRatePercent,
+    penaltyGraceDays,
     listingAnnualInterestRate: Number(listingRow.annual_interest_rate || 0),
     interestRateSource,
     financedBalance,
@@ -1574,8 +1613,17 @@ export const getListingSoaRows = async (connection, lotProjectId, listingId, lis
 
   const existingScheduleRows = await getExistingSoaScheduleRows(connection, lotProjectId, listingId);
   const terms = getComputedSoaTerms(listingRow, existingScheduleRows);
-  const computedRows = createComputedSoaRows(terms);
-  const rowsWithPayments = allocatePaymentsToComputedRows(computedRows, payments);
+
+  // First pass identifies when each schedule row was paid. Penalty is then calculated
+  // up to that payment date for paid rows, or up to today for unpaid/partial rows.
+  const provisionalRows = allocatePaymentsToComputedRows(createComputedSoaRows(terms), payments);
+  const penaltyRows = applyComputedPenaltiesToRows(provisionalRows, terms);
+  const penaltiesById = new Map(penaltyRows.map((row) => [row.id, row.penalty]));
+  const rowsWithPenalties = createComputedSoaRows(terms).map((row) => ({
+    ...row,
+    penalty: penaltiesById.get(row.id) || 0,
+  }));
+  const rowsWithPayments = allocatePaymentsToComputedRows(rowsWithPenalties, payments);
 
   return recomputeComputedSoaBalances(rowsWithPayments, terms);
 };
@@ -1598,6 +1646,8 @@ export const getRequestToken = (req) => {
 };
 
 export const getAuthenticatedUser = async (req) => {
+  if (req?.user?.id) return req.user;
+
   const token = getRequestToken(req);
   if (!token || !process.env.JWT_SECRET) return null;
 
@@ -1609,7 +1659,7 @@ export const getAuthenticatedUser = async (req) => {
 
     const [rows] = await db.query(
       `
-        SELECT id, first_name, middle_name, last_name, email, role, password_hash, status
+        SELECT id, first_name, middle_name, last_name, email, role, password_hash, status, must_change_password
         FROM users
         WHERE id = ?
         LIMIT 1
@@ -1830,10 +1880,95 @@ export const recomputeListingScheduleBalances = async (connection, listing) => {
   }
 };
 
+export const refreshListingSchedulePenalties = async (
+  connection,
+  listing,
+  asOfDate = todayDateOnly(),
+  { lockRows = false } = {}
+) => {
+  if (!(await tableExists(connection, 'lot_project_payment_schedules'))) return;
+  if (!(await columnExists(connection, 'lot_project_client_profiles', 'soa_penalty_rate_percent'))) return;
+  if (!(await columnExists(connection, 'lot_project_client_profiles', 'soa_penalty_grace_days'))) return;
+
+  const [profileRows] = await connection.query(
+    `
+      SELECT soa_penalty_rate_percent, soa_penalty_grace_days
+      FROM lot_project_client_profiles
+      WHERE lot_project_listing_id = ?
+      LIMIT 1
+    `,
+    [listing.lot_project_listing_id]
+  );
+
+  const profile = profileRows[0] || {};
+  const ratePercent = Math.max(Number(profile.soa_penalty_rate_percent || 0), 0);
+  const graceDays = Math.max(Number(profile.soa_penalty_grace_days || 0), 0);
+
+  const [rows] = await connection.query(
+    `
+      SELECT *
+      FROM lot_project_payment_schedules
+      WHERE lot_project_id = ?
+        AND lot_project_listing_id = ?
+      ORDER BY
+        CASE WHEN due_date IS NULL THEN 1 ELSE 0 END,
+        due_date ASC,
+        lot_project_payment_schedule_id ASC
+      ${lockRows ? 'FOR UPDATE' : ''}
+    `,
+    [listing.lot_project_id, listing.lot_project_listing_id]
+  );
+
+  for (const row of rows) {
+    if (!row.due_date || row.schedule_status === 'Cancelled') continue;
+
+    const dueAmount = roundMoneyValue(Number(row.due_amount || 0));
+    const amountPaid = roundMoneyValue(Number(row.amount_paid || 0));
+    const baseDuePaid = amountPaid + 0.009 >= dueAmount;
+    const rowAsOfDate = baseDuePaid && row.date_paid ? row.date_paid : asOfDate;
+    const calculatedPenalty = calculateSchedulePenalty({
+      dueDate: row.due_date,
+      dueAmount,
+      ratePercent,
+      graceDays,
+      asOfDate: rowAsOfDate,
+    });
+    const paidPenalty = roundMoneyValue(Number(row.paid_penalty_amount || 0));
+    const penaltyAmount = roundMoneyValue(Math.max(calculatedPenalty, paidPenalty));
+    const totalDue = roundMoneyValue(dueAmount + penaltyAmount);
+
+    let status = 'Unpaid';
+    if (amountPaid <= 0) {
+      status = row.due_date && normalizeDateInput(row.due_date) < normalizeDateInput(asOfDate)
+        ? 'Overdue'
+        : 'Unpaid';
+    } else if (amountPaid + 0.009 < totalDue) {
+      status = 'Partial';
+    } else {
+      const paidBeforeDue = row.date_paid && normalizeDateInput(row.date_paid) < normalizeDateInput(row.due_date);
+      status = paidBeforeDue ? 'Advance' : 'Paid';
+    }
+
+    await connection.query(
+      `
+        UPDATE lot_project_payment_schedules
+        SET penalty_amount = ?,
+            schedule_status = ?
+        WHERE lot_project_payment_schedule_id = ?
+      `,
+      [penaltyAmount, status, row.lot_project_payment_schedule_id]
+    );
+  }
+
+  await recomputeListingScheduleBalances(connection, listing);
+};
+
 export const applyPaymentToSchedules = async (connection, listing, paymentId, preferredScheduleId, amount, paymentDate, referenceId, paymentType) => {
   if (!(await tableExists(connection, 'lot_project_payment_allocations'))) {
     throw new Error('lot_project_payment_allocations table does not exist. Run the payments SOA migration first.');
   }
+
+  await refreshListingSchedulePenalties(connection, listing, paymentDate || todayDateOnly(), { lockRows: true });
 
   const [clientProfileRows] = await connection.query(
     `
@@ -1990,7 +2125,7 @@ export const reversePaymentAllocations = async (connection, listing, paymentId) 
     [paymentId]
   );
 
-  await recomputeListingScheduleBalances(connection, listing);
+  await refreshListingSchedulePenalties(connection, listing, todayDateOnly(), { lockRows: true });
 };
 
 export const getPaymentById = async (connection, project, listing, paymentId) => {
@@ -2037,7 +2172,3 @@ export const addIfColumnExists = async (connection, tableName, columns, values, 
     values.push(value);
   }
 };
-
-
-
-

@@ -14,6 +14,18 @@ const toDay = (value, fallback) => {
   return number;
 };
 
+const toPenaltyRate = (value, fallback = 0) => {
+  const number = Number(value ?? fallback);
+  if (Number.isNaN(number) || number < 0 || number > 100) return null;
+  return number;
+};
+
+const toGraceDays = (value, fallback = 0) => {
+  const number = Number(value ?? fallback);
+  if (!Number.isInteger(number) || number < 0 || number > 365) return null;
+  return number;
+};
+
 const mapSettings = (row = {}, project = {}) => ({
   id: row.lot_project_setting_id || null,
   lotProjectId: project.lot_project_id,
@@ -25,6 +37,8 @@ const mapSettings = (row = {}, project = {}) => ({
   companyName: row.company_name || 'D&C Prime Realty',
   companyEmail: row.company_email || '',
   companyContactNumber: row.company_contact_number || '',
+  defaultPenaltyRatePercent: String(row.default_penalty_rate_percent ?? 0),
+  defaultPenaltyGraceDays: String(row.default_penalty_grace_days ?? 0),
   createdAt: row.lot_project_setting_created_at || null,
   updatedAt: row.lot_project_setting_updated_at || null,
 });
@@ -53,8 +67,10 @@ const getOrCreateSettingsRow = async (connection, project) => {
         reservation_contact_number,
         company_name,
         company_email,
-        company_contact_number
-      ) VALUES (?, 7, 22, ?, NULL, NULL, 'D&C Prime Realty', NULL, NULL)
+        company_contact_number,
+        default_penalty_rate_percent,
+        default_penalty_grace_days
+      ) VALUES (?, 7, 22, ?, NULL, NULL, 'D&C Prime Realty', NULL, NULL, 0, 0)
     `,
     [project.lot_project_id, project.lot_project_administrator_name || 'D&C Prime Realty']
   );
@@ -133,6 +149,22 @@ export const updateLotProjectSettings = async (req, res) => {
 
     const releaseDayOne = toDay(req.body.releaseDayOne ?? req.body.release_day_one, 7);
     const releaseDayTwo = toDay(req.body.releaseDayTwo ?? req.body.release_day_two, 22);
+    const defaultPenaltyRatePercent = toPenaltyRate(
+      req.body.defaultPenaltyRatePercent ?? req.body.default_penalty_rate_percent,
+      0
+    );
+    const defaultPenaltyGraceDays = toGraceDays(
+      req.body.defaultPenaltyGraceDays ?? req.body.default_penalty_grace_days,
+      0
+    );
+
+    if (defaultPenaltyRatePercent === null) {
+      return res.status(400).json({ success: false, message: 'Penalty rate must be between 0 and 100.' });
+    }
+
+    if (defaultPenaltyGraceDays === null) {
+      return res.status(400).json({ success: false, message: 'Penalty grace days must be between 0 and 365.' });
+    }
 
     if (releaseDayOne === releaseDayTwo) {
       return res.status(400).json({ success: false, message: 'Release days must be different.' });
@@ -147,6 +179,8 @@ export const updateLotProjectSettings = async (req, res) => {
       companyName: toNullable(req.body.companyName),
       companyEmail: toNullable(req.body.companyEmail),
       companyContactNumber: toNullable(req.body.companyContactNumber),
+      defaultPenaltyRatePercent,
+      defaultPenaltyGraceDays,
     };
 
     await connection.beginTransaction();
@@ -162,8 +196,10 @@ export const updateLotProjectSettings = async (req, res) => {
           reservation_contact_number,
           company_name,
           company_email,
-          company_contact_number
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          company_contact_number,
+          default_penalty_rate_percent,
+          default_penalty_grace_days
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
           release_day_one = VALUES(release_day_one),
           release_day_two = VALUES(release_day_two),
@@ -172,7 +208,9 @@ export const updateLotProjectSettings = async (req, res) => {
           reservation_contact_number = VALUES(reservation_contact_number),
           company_name = VALUES(company_name),
           company_email = VALUES(company_email),
-          company_contact_number = VALUES(company_contact_number)
+          company_contact_number = VALUES(company_contact_number),
+          default_penalty_rate_percent = VALUES(default_penalty_rate_percent),
+          default_penalty_grace_days = VALUES(default_penalty_grace_days)
       `,
       [
         project.lot_project_id,
@@ -184,6 +222,8 @@ export const updateLotProjectSettings = async (req, res) => {
         settingsPayload.companyName,
         settingsPayload.companyEmail,
         settingsPayload.companyContactNumber,
+        settingsPayload.defaultPenaltyRatePercent,
+        settingsPayload.defaultPenaltyGraceDays,
       ]
     );
 

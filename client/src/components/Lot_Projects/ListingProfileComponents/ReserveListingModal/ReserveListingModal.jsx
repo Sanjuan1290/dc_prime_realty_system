@@ -33,6 +33,7 @@ const ReserveListingModal = ({
   documentLibrary: documentLibraryProp = [],
   projectDefaultDocuments: projectDefaultDocumentsProp = [],
   sellerOptions = [],
+  penaltyTerms = { ratePercent: 0, graceDays: 0 },
   documentTemplates = [],
   templateDocuments = [],
   isLoadingDocuments = false,
@@ -70,9 +71,19 @@ const ReserveListingModal = ({
     monthlyTermsMode: '36',
     customMonthlyTerms: '',
     interestRate: String(listing?.annualInterestRate || '0'),
+    penaltyRatePercent: String(penaltyTerms?.ratePercent ?? 0),
+    penaltyGraceDays: String(penaltyTerms?.graceDays ?? 0),
   })
 
   const tcp = useMemo(() => getListingTcp(listing), [listing])
+
+  useEffect(() => {
+    setPaymentForm((current) => ({
+      ...current,
+      penaltyRatePercent: String(penaltyTerms?.ratePercent ?? current.penaltyRatePercent ?? 0),
+      penaltyGraceDays: String(penaltyTerms?.graceDays ?? current.penaltyGraceDays ?? 0),
+    }))
+  }, [penaltyTerms?.ratePercent, penaltyTerms?.graceDays])
 
   const documentLibrary = useMemo(() => {
     const source = documentLibraryProp.length ? documentLibraryProp : fallbackDocumentLibrary
@@ -292,6 +303,18 @@ const ReserveListingModal = ({
 
     if (paymentForm.monthlyTermsMode === 'custom' && Number(paymentForm.customMonthlyTerms || 0) <= 0) {
       setAlert({ type: 'error', message: 'Custom monthly terms is required.' })
+      return false
+    }
+
+    const penaltyRatePercent = Number(paymentForm.penaltyRatePercent || 0)
+    if (Number.isNaN(penaltyRatePercent) || penaltyRatePercent < 0 || penaltyRatePercent > 100) {
+      setAlert({ type: 'error', message: 'Penalty rate must be between 0 and 100.' })
+      return false
+    }
+
+    const penaltyGraceDays = Number(paymentForm.penaltyGraceDays || 0)
+    if (!Number.isInteger(penaltyGraceDays) || penaltyGraceDays < 0 || penaltyGraceDays > 365) {
+      setAlert({ type: 'error', message: 'Penalty grace days must be a whole number between 0 and 365.' })
       return false
     }
 

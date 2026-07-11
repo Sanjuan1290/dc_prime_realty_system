@@ -43,6 +43,7 @@ import {
   sortComputedRows,
   getComputedSoaTerms,
   createComputedSoaRows,
+  applyComputedPenaltiesToRows,
   getPaymentTargetRows,
   allocatePaymentsToComputedRows,
   recomputeComputedSoaBalances,
@@ -355,6 +356,20 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
     const interestRateSource = 'listing';
     const annualInterestRate = Number(listing.annual_interest_rate || 0);
     const firstDueDate = dateOrNull(req.body.firstDueDate || req.body.soa_first_due_date || listing.soa_first_due_date);
+    const penaltyRatePercent = Number(
+      req.body.penaltyRatePercent ?? req.body.soa_penalty_rate_percent ?? listing.soa_penalty_rate_percent ?? 0
+    );
+    const penaltyGraceDays = Number(
+      req.body.penaltyGraceDays ?? req.body.soa_penalty_grace_days ?? listing.soa_penalty_grace_days ?? 0
+    );
+
+    if (Number.isNaN(penaltyRatePercent) || penaltyRatePercent < 0 || penaltyRatePercent > 100) {
+      return res.status(400).json({ message: 'Penalty rate must be between 0 and 100.' });
+    }
+
+    if (!Number.isInteger(penaltyGraceDays) || penaltyGraceDays < 0 || penaltyGraceDays > 365) {
+      return res.status(400).json({ message: 'Penalty grace days must be between 0 and 365.' });
+    }
 
     if (dpDiscountPercentage < 0 || dpDiscountPercentage > 100) {
       return res.status(400).json({ message: 'DP Discount % must be between 0 and 100.' });
@@ -393,6 +408,8 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
     await addProfileUpdate('soa_annual_interest_rate', annualInterestRate);
     await addProfileUpdate('soa_interest_rate_overridden', 0);
     await addProfileUpdate('soa_first_due_date', firstDueDate);
+    await addProfileUpdate('soa_penalty_rate_percent', penaltyRatePercent);
+    await addProfileUpdate('soa_penalty_grace_days', penaltyGraceDays);
 
     await connection.beginTransaction();
 
@@ -424,9 +441,14 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
         soa_annual_interest_rate: annualInterestRate,
         soa_interest_rate_overridden: 0,
         soa_first_due_date: firstDueDate,
+        soa_penalty_rate_percent: penaltyRatePercent,
+        soa_penalty_grace_days: penaltyGraceDays,
       };
       const terms = getComputedSoaTerms(updatedListing, []);
-      const computedRows = recomputeComputedSoaBalances(createComputedSoaRows(terms), terms);
+      const computedRows = recomputeComputedSoaBalances(
+        applyComputedPenaltiesToRows(createComputedSoaRows(terms), terms),
+        terms
+      );
 
       await connection.query(
         `DELETE FROM lot_project_payment_schedules WHERE lot_project_listing_id = ?`,
@@ -520,6 +542,8 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
         monthlyTerms,
         annualInterestRate,
         firstDueDate,
+        penaltyRatePercent,
+        penaltyGraceDays,
       },
     });
 
@@ -536,6 +560,8 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
         annualInterestRate,
         interestRateSource,
         firstDueDate,
+        penaltyRatePercent,
+        penaltyGraceDays,
       },
     });
   } catch (error) {

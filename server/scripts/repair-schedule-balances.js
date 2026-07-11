@@ -3,6 +3,7 @@ import {
   applyPaymentToSchedules,
   columnExists,
   createComputedSoaRows,
+  applyComputedPenaltiesToRows,
   getComputedSoaTerms,
   recomputeComputedSoaBalances,
   recomputeListingScheduleBalances,
@@ -17,7 +18,7 @@ const rebuildListingSchedules = async (connection, listing) => {
   );
 
   const terms = getComputedSoaTerms(listing, []);
-  const computedRows = createComputedSoaRows(terms);
+  const computedRows = applyComputedPenaltiesToRows(createComputedSoaRows(terms), terms);
   const scheduleRows = recomputeComputedSoaBalances(computedRows, terms);
 
   if (!scheduleRows.length) return;
@@ -66,7 +67,7 @@ const rebuildListingSchedules = async (connection, listing) => {
       null,
       null,
       Number(row.endingBalance || 0),
-      'Unpaid',
+      row.status || 'Unpaid',
     ];
 
     const optionalValues = optionalColumns.map((column) => {
@@ -223,4 +224,3 @@ const run = async () => {
 };
 
 run();
-

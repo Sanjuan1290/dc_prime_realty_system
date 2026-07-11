@@ -30,6 +30,8 @@ const EditSettingsModal = ({ settings, onClose, onSave, isSaving = false }) => {
     companyName: settings?.companyName || '',
     companyEmail: settings?.companyEmail || '',
     companyContactNumber: settings?.companyContactNumber || '',
+    defaultPenaltyRatePercent: settings?.defaultPenaltyRatePercent || '0',
+    defaultPenaltyGraceDays: settings?.defaultPenaltyGraceDays || '0',
   }))
   const [alert, setAlert] = useState(null)
 
@@ -65,6 +67,19 @@ const EditSettingsModal = ({ settings, onClose, onSave, isSaving = false }) => {
       return
     }
 
+    const defaultPenaltyRatePercent = Number(form.defaultPenaltyRatePercent || 0)
+    const defaultPenaltyGraceDays = Number(form.defaultPenaltyGraceDays || 0)
+
+    if (Number.isNaN(defaultPenaltyRatePercent) || defaultPenaltyRatePercent < 0 || defaultPenaltyRatePercent > 100) {
+      setAlert({ type: 'error', message: 'Penalty rate must be between 0 and 100.' })
+      return
+    }
+
+    if (!Number.isInteger(defaultPenaltyGraceDays) || defaultPenaltyGraceDays < 0 || defaultPenaltyGraceDays > 365) {
+      setAlert({ type: 'error', message: 'Penalty grace days must be between 0 and 365.' })
+      return
+    }
+
     if (!form.reservationContactName.trim()) {
       setAlert({ type: 'error', message: 'Reservation contact name is required.' })
       return
@@ -80,6 +95,8 @@ const EditSettingsModal = ({ settings, onClose, onSave, isSaving = false }) => {
       ...form,
       releaseDayOne: String(releaseDayOne),
       releaseDayTwo: String(releaseDayTwo),
+      defaultPenaltyRatePercent: String(defaultPenaltyRatePercent),
+      defaultPenaltyGraceDays: String(defaultPenaltyGraceDays),
     })
   }
 
@@ -89,7 +106,7 @@ const EditSettingsModal = ({ settings, onClose, onSave, isSaving = false }) => {
         <div className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 px-5">
           <div>
             <h2 className="text-xl font-black text-slate-950">Edit Settings</h2>
-            <p className="text-sm font-semibold text-slate-500">Update release days, reservation contact, and company details.</p>
+            <p className="text-sm font-semibold text-slate-500">Update release days, penalty defaults, reservation contact, and company details.</p>
           </div>
 
           <button type="button" onClick={onClose} disabled={isSaving} className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60" aria-label="Close edit settings">
@@ -111,6 +128,16 @@ const EditSettingsModal = ({ settings, onClose, onSave, isSaving = false }) => {
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               <Field label="First Release Day" type="number" value={form.releaseDayOne} onChange={(value) => updateForm('releaseDayOne', value)} placeholder="Example: 7" helper="Allowed range: 1 to 31" required />
               <Field label="Second Release Day" type="number" value={form.releaseDayTwo} onChange={(value) => updateForm('releaseDayTwo', value)} placeholder="Example: 22" helper="Allowed range: 1 to 31" required />
+            </div>
+          </section>
+
+          <section className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <h3 className="text-base font-black text-slate-950">Late Payment Penalty</h3>
+            <p className="mt-1 text-sm font-semibold text-slate-500">These values are copied into each buyer's SOA terms when a listing is reserved.</p>
+
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <Field label="Penalty Rate per Month Started (%)" type="number" value={form.defaultPenaltyRatePercent} onChange={(value) => updateForm('defaultPenaltyRatePercent', value)} placeholder="Example: 3" helper="Flat rate based on the scheduled due amount. Use 0 to disable penalties." required />
+              <Field label="Grace Period (Days)" type="number" value={form.defaultPenaltyGraceDays} onChange={(value) => updateForm('defaultPenaltyGraceDays', value)} placeholder="Example: 5" helper="Penalty starts after this many days past the due date." required />
             </div>
           </section>
 

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FaCircle } from "react-icons/fa6";
 import {
@@ -52,11 +52,7 @@ const SystemLayout = () => {
   const location = useLocation();
   const queryClient = useQueryClient();
 
-  const {
-    data: currentUser,
-    isLoading: isCurrentUserLoading,
-    isError: isCurrentUserError,
-  } = useCurrentUser();
+  const { data: currentUser } = useCurrentUser();
 
   const {
     data: lotProjectsData,
@@ -111,6 +107,7 @@ const SystemLayout = () => {
   });
 
   const user = currentUser?.user;
+  const isSuperAdmin = String(user?.role || '').toLowerCase() === 'super_admin';
 
   const lotProjectItems = useMemo(() => {
     const projects = lotProjectsData?.data || [];
@@ -177,7 +174,7 @@ const SystemLayout = () => {
         title: "ADMINISTRATION",
         description: "User access and system settings",
         items: [
-          { label: "Users", pathname: "users", icon: FiShield },
+          ...(isSuperAdmin ? [{ label: "Users", pathname: "users", icon: FiShield }] : []),
           { label: "Settings", pathname: "settings", icon: FiSettings },
         ],
       },
@@ -187,6 +184,7 @@ const SystemLayout = () => {
       isLotProjectsError,
       lotProjectsError?.message,
       lotProjectItems,
+      isSuperAdmin,
     ]
   );
 
@@ -212,22 +210,6 @@ const SystemLayout = () => {
 
     return { label: "Dashboard" };
   }, [location.pathname, navGroups]);
-
-  if (isCurrentUserLoading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
-        <StatusAlert type="loading" message="Loading system access..." />
-      </div>
-    );
-  }
-
-  if (isCurrentUserError) {
-    return <Navigate to="/" replace />;
-  }
-
-  if (user?.must_change_password) {
-    return <Navigate to="/change-password" replace />;
-  }
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-950">

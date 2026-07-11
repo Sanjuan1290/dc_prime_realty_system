@@ -239,6 +239,26 @@ const ReservePaymentTermsModal = ({
           />
 
           <TextInput
+            label="Penalty Rate per Month Started (%)"
+            type="number"
+            value={paymentForm.penaltyRatePercent}
+            onChange={(value) => updatePaymentField('penaltyRatePercent', value)}
+            placeholder="Example: 3"
+            helper="Copied from project settings for this buyer. Use 0 to disable penalties."
+            required
+          />
+
+          <TextInput
+            label="Penalty Grace Period (Days)"
+            type="number"
+            value={paymentForm.penaltyGraceDays}
+            onChange={(value) => updatePaymentField('penaltyGraceDays', value)}
+            placeholder="Example: 5"
+            helper="Penalty begins after this many calendar days past the due date."
+            required
+          />
+
+          <TextInput
             label="Monthly Amortization"
             value={money(paymentPreview.monthlyAmortization)}
             onChange={() => null}

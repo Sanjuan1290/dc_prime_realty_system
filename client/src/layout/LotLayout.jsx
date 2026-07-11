@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react'
 import {
-  Navigate,
   NavLink,
   Outlet,
   useLocation,
@@ -39,11 +38,7 @@ const LotLayout = () => {
   const location = useLocation()
   const navigate = useNavigate()
 
-  const {
-    data: currentUser,
-    isLoading: isCurrentUserLoading,
-    isError: isCurrentUserError,
-  } = useCurrentUser()
+  const { data: currentUser } = useCurrentUser()
 
   const user = currentUser?.user
 
@@ -78,20 +73,12 @@ const LotLayout = () => {
     [location.pathname, project?.lot_project_name]
   )
 
-  if (isCurrentUserLoading || isLoading) {
+  if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-100 p-4">
         <StatusAlert type="loading" message="Loading lot project workspace..." />
       </div>
     )
-  }
-
-  if (isCurrentUserError || !user) {
-    return <Navigate to="/" replace />
-  }
-
-  if (user?.must_change_password) {
-    return <Navigate to="/change-password" replace />
   }
 
   if (isError) {
@@ -252,4 +239,3 @@ const LotLayout = () => {
 }
 
 export default LotLayout
-

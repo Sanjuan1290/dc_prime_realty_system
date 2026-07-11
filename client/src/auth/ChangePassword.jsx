@@ -5,8 +5,7 @@ import { FiLock, FiShield } from 'react-icons/fi'
 import StatusAlert from '../components/Shared/StatusAlert'
 import useCurrentUser from '../utils/useCurrentUser'
 import { useFetchPatch } from '../utils/useFetch'
-
-const getDefaultRoute = (role) => `/${role || 'super_admin'}`
+import getDefaultRoute from '../utils/getDefaultRoute'
 
 const ChangePassword = () => {
   const [currentPassword, setCurrentPassword] = useState('')
@@ -24,7 +23,7 @@ const ChangePassword = () => {
       current_password: currentPassword,
       new_password: newPassword,
       confirm_password: confirmPassword,
-    }),
+    }, { skipAuthRedirect: true }),
     onMutate: () => {
       setNotice({ type: 'loading', message: 'Changing password...' })
     },

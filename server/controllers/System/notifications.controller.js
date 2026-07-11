@@ -4,6 +4,8 @@ import {
   getErrorMessage,
   tableExists,
   columnExists,
+  todayDateOnly,
+  refreshListingSchedulePenalties,
 } from '../Lot_Projects/_shared/lotProject.shared.js';
 
 const toDateOnly = (value) => {
@@ -60,6 +62,30 @@ const fullName = (row = {}) => {
 const adminRoles = new Set(['super_admin', 'admin']);
 
 const canManageNotifications = (user = {}) => adminRoles.has(user.role);
+
+const refreshDueSchedulePenalties = async (connection) => {
+  if (!(await columnExists(connection, 'lot_project_client_profiles', 'soa_penalty_rate_percent'))) return;
+  if (!(await columnExists(connection, 'lot_project_client_profiles', 'soa_penalty_grace_days'))) return;
+
+  const [listings] = await connection.query(
+    `
+      SELECT DISTINCT
+        l.lot_project_id,
+        l.lot_project_listing_id,
+        l.lot_project_listing_tcp
+      FROM lot_project_payment_schedules s
+      INNER JOIN lot_project_listings l
+        ON l.lot_project_listing_id = s.lot_project_listing_id
+      WHERE s.due_date IS NOT NULL
+        AND s.due_date < CURDATE()
+        AND s.schedule_status IN ('Unpaid', 'Partial', 'Overdue', 'Paid')
+    `
+  );
+
+  for (const listing of listings) {
+    await refreshListingSchedulePenalties(connection, listing, todayDateOnly());
+  }
+};
 
 const notificationLogTableSql = `
   CREATE TABLE IF NOT EXISTS lot_project_notification_logs (
@@ -392,6 +418,7 @@ export const getPaymentDueNotifications = async (req, res) => {
     }
 
     await ensureNotificationTable(connection);
+    await refreshDueSchedulePenalties(connection);
 
     const category = String(req.query.category || 'all').toLowerCase();
     const search = String(req.query.search || '').trim();
@@ -692,9 +719,3 @@ export const markPaymentDueContacted = async (req, res) => {
     connection.release();
   }
 };
-
-
-
-
-
-

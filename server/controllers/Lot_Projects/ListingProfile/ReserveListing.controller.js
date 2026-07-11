@@ -14,6 +14,7 @@ import {
   parseMoneyValue,
   getComputedSoaTerms,
   createComputedSoaRows,
+  applyComputedPenaltiesToRows,
   recomputeComputedSoaBalances,
 } from '../_shared/lotProject.shared.js';
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
@@ -56,12 +57,14 @@ const replaceReservationSchedules = async (connection, projectId, listing, clien
     soa_monthly_terms: profileTerms.monthlyTerms,
     soa_annual_interest_rate: profileTerms.annualInterestRate,
     soa_dp_discount_percentage: profileTerms.dpDiscountPercentage,
+    soa_penalty_rate_percent: profileTerms.penaltyRatePercent,
+    soa_penalty_grace_days: profileTerms.penaltyGraceDays,
     soa_legal_misc_fee_mode: profileTerms.legalMiscFeeMode,
     soa_legal_misc_fee_amount: profileTerms.legalMiscFeeAmount,
   };
 
   const computedTerms = getComputedSoaTerms(listingTermsRow, []);
-  const computedRows = createComputedSoaRows(computedTerms);
+  const computedRows = applyComputedPenaltiesToRows(createComputedSoaRows(computedTerms), computedTerms);
   const scheduleRows = recomputeComputedSoaBalances(computedRows, computedTerms);
 
   await connection.query(
@@ -92,6 +95,7 @@ const replaceReservationSchedules = async (connection, projectId, listing, clien
   };
 
   await addOptionalColumn('interest_amount');
+  await addOptionalColumn('discount_amount');
   await addOptionalColumn('principal_amount');
   await addOptionalColumn('monthly_amortization_amount');
   await addOptionalColumn('paid_interest_amount');
@@ -113,10 +117,11 @@ const replaceReservationSchedules = async (connection, projectId, listing, clien
       null,
       null,
       Number(row.endingBalance || 0),
-      'Unpaid',
+      row.status || 'Unpaid',
     ];
     const optionalValues = optionalColumns.map((column) => {
       if (column === 'interest_amount') return Number(row.interest || 0);
+      if (column === 'discount_amount') return Number(row.discountAmount || row.discount_amount || 0);
       if (column === 'principal_amount') return Number(row.principalAmount || row.principal_amount || 0);
       if (column === 'monthly_amortization_amount') return Number(row.monthlyAmortizationAmount || row.dueAmount || 0);
       return 0;
@@ -549,6 +554,39 @@ export const reserveLotProjectListing = async (req, res) => {
       ? 'direct_to_developer'
       : 'distributed';
 
+    let defaultPenaltyRatePercent = 0;
+    let defaultPenaltyGraceDays = 0;
+
+    if (
+      await tableExists(connection, 'lot_project_settings') &&
+      await columnExists(connection, 'lot_project_settings', 'default_penalty_rate_percent') &&
+      await columnExists(connection, 'lot_project_settings', 'default_penalty_grace_days')
+    ) {
+      const [settingsRows] = await connection.query(
+        `
+          SELECT default_penalty_rate_percent, default_penalty_grace_days
+          FROM lot_project_settings
+          WHERE lot_project_id = ?
+          LIMIT 1
+        `,
+        [project.lot_project_id]
+      );
+
+      defaultPenaltyRatePercent = Number(settingsRows[0]?.default_penalty_rate_percent || 0);
+      defaultPenaltyGraceDays = Number(settingsRows[0]?.default_penalty_grace_days || 0);
+    }
+
+    const penaltyRatePercent = Number(terms.penaltyRatePercent ?? terms.soa_penalty_rate_percent ?? defaultPenaltyRatePercent);
+    const penaltyGraceDays = Number(terms.penaltyGraceDays ?? terms.soa_penalty_grace_days ?? defaultPenaltyGraceDays);
+
+    if (Number.isNaN(penaltyRatePercent) || penaltyRatePercent < 0 || penaltyRatePercent > 100) {
+      return res.status(400).json({ message: 'Penalty rate must be between 0 and 100.' });
+    }
+
+    if (!Number.isInteger(penaltyGraceDays) || penaltyGraceDays < 0 || penaltyGraceDays > 365) {
+      return res.status(400).json({ message: 'Penalty grace days must be between 0 and 365.' });
+    }
+
     if (!assignedSellerId) {
       return res.status(400).json({ message: 'Assigned seller / unit manager is required.' });
     }
@@ -698,6 +736,8 @@ export const reserveLotProjectListing = async (req, res) => {
     await addIfColumnExists(connection, tableName, columns, values, 'soa_legal_misc_fee_mode', legalMiscFeeMode);
     await addIfColumnExists(connection, tableName, columns, values, 'soa_legal_misc_fee_amount', legalMiscFeeAmount);
     await addIfColumnExists(connection, tableName, columns, values, 'soa_interest_rate_overridden', interestRateOverridden);
+    await addIfColumnExists(connection, tableName, columns, values, 'soa_penalty_rate_percent', penaltyRatePercent);
+    await addIfColumnExists(connection, tableName, columns, values, 'soa_penalty_grace_days', penaltyGraceDays);
 
     const updateAssignments = columns
       .filter((column) => !['lot_project_id', 'lot_project_listing_id'].includes(column))
@@ -758,6 +798,8 @@ export const reserveLotProjectListing = async (req, res) => {
       monthlyTerms: Number.isNaN(monthlyTerms) ? 36 : monthlyTerms,
       annualInterestRate: selectedInterestRate,
       dpDiscountPercentage: parseMoneyValue(terms.dpDiscountPercentage || 0),
+      penaltyRatePercent,
+      penaltyGraceDays,
       legalMiscFeeMode,
       legalMiscFeeAmount,
     });
@@ -786,6 +828,8 @@ export const reserveLotProjectListing = async (req, res) => {
         modeOfPayment,
         assignedSellerId,
         saleChannel,
+        penaltyRatePercent,
+        penaltyGraceDays,
       },
     });
 

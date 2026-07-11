@@ -5,6 +5,7 @@ import helmet from 'helmet';
 import 'express-async-errors';
 
 import { db } from './db/connect.js';
+import { apiRateLimiter } from './middleware/rateLimit.middleware.js';
 
 // Routers
 import userRouter from './routers/System/users.routers.js';
@@ -17,6 +18,16 @@ import auditLogsRouter from './routers/System/auditLogs.router.js';
 import systemSettingsRouter from './routers/System/systemSettings.routers.js';
 
 const app = express();
+
+const trustProxy = String(process.env.TRUST_PROXY || '').trim();
+if (trustProxy) {
+  if (trustProxy.toLowerCase() === 'true') {
+    app.set('trust proxy', true);
+  } else {
+    const numericTrustProxy = Number(trustProxy);
+    app.set('trust proxy', Number.isInteger(numericTrustProxy) ? numericTrustProxy : trustProxy);
+  }
+}
 
 const allowedOrigins = new Set([
   'http://localhost:5173',
@@ -54,6 +65,7 @@ app.get('/api/v1/health', (req, res) => {
 });
 
 // API Routers
+app.use('/api/v1', apiRateLimiter);
 app.use('/api/v1/user', userRouter);
 app.use('/api/v1/documents', documentsRouter);
 app.use('/api/v1/seller-groups', sellerGroupRouter);
@@ -86,4 +98,3 @@ const startServer = async () => {
 };
 
 startServer();
-

@@ -280,6 +280,8 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
     downpaymentPercentage: String(getListingValue(listing, ['soaDownpaymentPercentage'], 30)),
     downpaymentTerms: String(getListingValue(listing, ['soaDownpaymentTerms'], 3)),
     monthlyTerms: String(getListingValue(listing, ['soaMonthlyTerms'], 36)),
+    penaltyRatePercent: String(getListingValue(listing, ['soaPenaltyRatePercent'], 0)),
+    penaltyGraceDays: String(getListingValue(listing, ['soaPenaltyGraceDays'], 0)),
     firstDueDate: getListingValue(listing, ['soaFirstDueDate', 'first_due_date'], ''),
   }))
   const [modalAlert, setModalAlert] = useState({
@@ -305,6 +307,19 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
     const downpaymentPercentage = Number(form.downpaymentPercentage || 0)
     const downpaymentTerms = Number(form.downpaymentTerms || 0)
     const monthlyTerms = Number(form.monthlyTerms || 0)
+    const penaltyRatePercent = Number(form.penaltyRatePercent || 0)
+    const penaltyGraceDays = Number(form.penaltyGraceDays || 0)
+
+    if (Number.isNaN(penaltyRatePercent) || penaltyRatePercent < 0 || penaltyRatePercent > 100) {
+      setModalAlert({ type: 'error', message: 'Penalty rate must be between 0 and 100.' })
+      return
+    }
+
+    if (!Number.isInteger(penaltyGraceDays) || penaltyGraceDays < 0 || penaltyGraceDays > 365) {
+      setModalAlert({ type: 'error', message: 'Penalty grace days must be between 0 and 365.' })
+      return
+    }
+
     if (dpDiscountPercentage < 0 || dpDiscountPercentage > 100) {
       setModalAlert({ type: 'error', message: 'DP Discount % must be between 0 and 100.' })
       return
@@ -331,6 +346,8 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
       downpaymentPercentage,
       downpaymentTerms,
       monthlyTerms,
+      penaltyRatePercent,
+      penaltyGraceDays,
       interestRateSource: 'listing',
       firstDueDate: form.firstDueDate || null,
     })
@@ -373,6 +390,8 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
             <Field label="Downpayment %" value={form.downpaymentPercentage} onChange={(value) => updateForm('downpaymentPercentage', value)} placeholder="Example: 30" />
             <Field label="Downpayment Terms" value={form.downpaymentTerms} onChange={(value) => updateForm('downpaymentTerms', value)} placeholder="Example: 3" />
             <Field label="Monthly Terms" value={form.monthlyTerms} onChange={(value) => updateForm('monthlyTerms', value)} placeholder="Example: 36" />
+            <Field label="Penalty Rate per Month Started (%)" value={form.penaltyRatePercent} onChange={(value) => updateForm('penaltyRatePercent', value)} placeholder="Example: 3" helper="Flat penalty based on the scheduled due amount. Use 0 to disable." />
+            <Field label="Penalty Grace Days" value={form.penaltyGraceDays} onChange={(value) => updateForm('penaltyGraceDays', value)} placeholder="Example: 5" helper="Penalty starts after the grace period ends." />
             <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm font-semibold text-blue-900 md:col-span-2">
               <p className="text-xs font-black uppercase tracking-wide text-blue-700">Listing Annual Interest Rate</p>
               <p className="mt-1 text-xl font-black">{listingInterestRate.toFixed(2)}%</p>
@@ -1071,6 +1090,3 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
 }
 
 export default PaymentsSOA
-
-
-

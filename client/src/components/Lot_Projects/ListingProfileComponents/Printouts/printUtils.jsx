@@ -101,6 +101,3 @@ export const getNormalizedSoaRows = (soaRows = []) => {
     ),
   }))
 }
-
-
-
