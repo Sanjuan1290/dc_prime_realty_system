@@ -6,15 +6,25 @@ import { useFetch, useFetchPut } from "../../../utils/useFetch";
 
 const rateOptions = [6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
 
+const normalizeRateValue = (value, fallback = 8) => {
+  const numericValue = Number(value);
+  return String(rateOptions.includes(numericValue) ? numericValue : fallback);
+};
+
 const normalizeProjectRates = (projects = [], currentRates = []) => {
   const rateMap = new Map((currentRates || []).map((rate) => [Number(rate.lot_project_id), rate]));
 
-  return projects.map((project) => ({
-    lot_project_id: Number(project.lot_project_id || project.id),
-    lot_project_name: project.lot_project_name || project.label,
-    lot_project_location_code: project.lot_project_location_code,
-    seller_group_pool_rate: String(rateMap.get(Number(project.lot_project_id || project.id))?.seller_group_pool_rate ?? 8),
-  }));
+  return projects.map((project) => {
+    const projectId = Number(project.lot_project_id || project.id);
+    const savedRate = rateMap.get(projectId)?.seller_group_pool_rate;
+
+    return {
+      lot_project_id: projectId,
+      lot_project_name: project.lot_project_name || project.label,
+      lot_project_location_code: project.lot_project_location_code,
+      seller_group_pool_rate: normalizeRateValue(savedRate),
+    };
+  });
 };
 
 const EditGroupModal = ({ setShowEditGroupModal, selectedGroup, onSaved }) => {
@@ -43,8 +53,8 @@ const EditGroupModal = ({ setShowEditGroupModal, selectedGroup, onSaved }) => {
 
   useEffect(() => {
     if (!lotProjects.length) return;
-    setProjectRates((current) => normalizeProjectRates(lotProjects, current));
-  }, [lotProjects.length]);
+    setProjectRates(normalizeProjectRates(lotProjects, selectedGroup?.project_rates || []));
+  }, [lotProjects.length, selectedGroup?.seller_group_id]);
 
   const createMutation = useMutation({
     mutationFn: () => useFetchPut(`/seller-groups/edit/${selectedGroup.seller_group_id}`, { ...form, project_rates: projectRates }),
@@ -120,4 +130,3 @@ const EditGroupModal = ({ setShowEditGroupModal, selectedGroup, onSaved }) => {
 };
 
 export default EditGroupModal;
-
