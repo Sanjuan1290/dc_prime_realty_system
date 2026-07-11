@@ -13,7 +13,7 @@ const ReservePaymentTermsModal = ({
   updatePaymentField,
   sellerOptions = [],
 }) => {
-  const sellers = sellerOptions || []
+  const sellers = sellerOptions
   const selectedSeller = useMemo(
     () => sellers.find((seller) => String(seller.id) === String(paymentForm.sellerId)) || sellers[0] || { name: '-', role: '-', rate: '0%', allocation: 'No seller selected' },
     [sellers, paymentForm.sellerId]
@@ -313,7 +313,7 @@ const ReservePaymentTermsModal = ({
       </div>
 
       <SectionCard title="Payment Preview">
-        <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-8">
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
             <p className="text-xs font-black uppercase text-slate-500">TCP</p>
             <p className="mt-1 text-sm font-black text-slate-950">{money(tcp)}</p>
@@ -342,6 +342,13 @@ const ReservePaymentTermsModal = ({
             <p className="text-xs font-black uppercase text-amber-700">DP Discount</p>
             <p className="mt-1 text-sm font-black text-amber-900">
               {money(paymentPreview.dpDiscountAmount)}
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-xs font-black uppercase text-slate-500">DP Net Payable</p>
+            <p className="mt-1 text-sm font-black text-slate-950">
+              {money(paymentPreview.dpNet)}
             </p>
           </div>
 

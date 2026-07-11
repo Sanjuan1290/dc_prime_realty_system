@@ -111,7 +111,16 @@ export const getPaymentCalculations = (tcp, paymentForm) => {
   const dpGross = principalBase * (downpaymentPercentage / 100)
   const dpDiscountAmount = dpGross * (Number(paymentForm.dpDiscountPercentage || 0) / 100)
   const dpNet = Math.max(dpGross - dpDiscountAmount, 0)
-  const balance = Math.max(principalBase - reservationFee - dpNet, 0)
+
+  // The discount reduces the cash the buyer pays for the downpayment, but the
+  // full gross downpayment is still credited against the financed balance.
+  // Written explicitly as net payment + discount credit so the preview cannot
+  // accidentally finance the discount amount.
+  const downpaymentCredit = dpNet + dpDiscountAmount
+  const balance = Math.max(
+    principalBase - reservationFee - downpaymentCredit,
+    0
+  )
   const monthlyAmortization = monthlyTerms > 0 ? balance / monthlyTerms : 0
 
   return {
@@ -126,6 +135,7 @@ export const getPaymentCalculations = (tcp, paymentForm) => {
       dpGross,
       dpDiscountAmount,
       dpNet,
+      downpaymentCredit,
       balance,
       monthlyAmortization,
     },

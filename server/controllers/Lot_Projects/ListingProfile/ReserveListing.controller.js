@@ -25,6 +25,37 @@ const normalizeNumberOption = (modeValue, customValue, fallback = 0) => {
   return Number.isNaN(numberValue) ? fallback : numberValue;
 };
 
+const getMissingDailyPenaltySchemaItems = async (connection) => {
+  const missing = [];
+
+  const requiredTables = [
+    'lot_project_payment_schedules',
+    'lot_project_penalty_reliefs',
+  ];
+
+  for (const tableName of requiredTables) {
+    if (!(await tableExists(connection, tableName))) {
+      missing.push(`table ${tableName}`);
+    }
+  }
+
+  const requiredColumns = [
+    ['lot_project_client_profiles', 'soa_penalty_calculation_method'],
+    ['lot_project_payment_schedules', 'calculated_penalty_amount'],
+    ['lot_project_payment_schedules', 'waived_penalty_amount'],
+    ['lot_project_payment_schedules', 'penalty_calculated_through'],
+  ];
+
+  for (const [tableName, columnName] of requiredColumns) {
+    if (missing.includes(`table ${tableName}`)) continue;
+    if (!(await columnExists(connection, tableName, columnName))) {
+      missing.push(`${tableName}.${columnName}`);
+    }
+  }
+
+  return missing;
+};
+
 const normalizeDocumentPayload = (documents = []) =>
   documents
     .map((document) => ({
@@ -480,9 +511,11 @@ export const reserveLotProjectListing = async (req, res) => {
     if (!(await tableExists(connection, 'lot_project_client_profiles'))) {
       return res.status(500).json({ message: 'lot_project_client_profiles table does not exist.' });
     }
-    if (!(await columnExists(connection, 'lot_project_client_profiles', 'soa_penalty_calculation_method'))) {
+    const missingDailyPenaltySchema = await getMissingDailyPenaltySchemaItems(connection);
+    if (missingDailyPenaltySchema.length) {
       return res.status(500).json({
-        message: 'Daily penalty fields are missing. Run server/migrations/20260711_add_daily_penalty_reliefs.sql first.',
+        message: `Daily penalty database migration is incomplete. Missing: ${missingDailyPenaltySchema.join(', ')}. Run server/migrations/20260711_add_daily_penalty_reliefs.sql against the same database configured in server/.env, then restart the API.`,
+        missing_schema_items: missingDailyPenaltySchema,
       });
     }
 
