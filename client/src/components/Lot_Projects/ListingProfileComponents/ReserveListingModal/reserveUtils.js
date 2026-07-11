@@ -11,6 +11,12 @@ export const getListingTcp = (listing) => {
   return Number(String(listing?.tcp || '').replace(/[₱,\s]/g, '')) || 0
 }
 
+export const buildDisplayName = ({ firstName = '', middleName = '', lastName = '', suffix = '' } = {}) =>
+  [firstName, middleName, lastName, suffix]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ')
+
 export const computeAge = (birthDate) => {
   if (!birthDate) return '-'
 
@@ -32,7 +38,16 @@ export const computeAge = (birthDate) => {
 export const getInitialClientForm = (client = {}) => ({
   buyerType: client.buyerType || 'single',
 
-  buyerName: client.buyerName || '',
+  buyerFirstName: client.buyerFirstName || '',
+  buyerMiddleName: client.buyerMiddleName || '',
+  buyerLastName: client.buyerLastName || '',
+  buyerSuffix: client.buyerSuffix || '',
+  buyerName: client.buyerName || buildDisplayName({
+    firstName: client.buyerFirstName,
+    middleName: client.buyerMiddleName,
+    lastName: client.buyerLastName,
+    suffix: client.buyerSuffix,
+  }),
   birthDate: client.birthDate || '',
   computedAge: client.computedAge || '-',
   placeOfBirth: client.placeOfBirth || '',
@@ -57,7 +72,16 @@ export const getInitialClientForm = (client = {}) => ({
   employerBusinessAddress: client.employerBusinessAddress || '',
 
   secondBuyerRole: client.secondBuyerRole || 'spouse',
-  secondBuyerName: client.secondBuyerName || '',
+  secondBuyerFirstName: client.secondBuyerFirstName || '',
+  secondBuyerMiddleName: client.secondBuyerMiddleName || '',
+  secondBuyerLastName: client.secondBuyerLastName || '',
+  secondBuyerSuffix: client.secondBuyerSuffix || '',
+  secondBuyerName: client.secondBuyerName || buildDisplayName({
+    firstName: client.secondBuyerFirstName,
+    middleName: client.secondBuyerMiddleName,
+    lastName: client.secondBuyerLastName,
+    suffix: client.secondBuyerSuffix,
+  }),
   secondBuyerBirthDate: client.secondBuyerBirthDate || '',
   secondBuyerComputedAge: client.secondBuyerComputedAge || '-',
   secondBuyerPlaceOfBirth: client.secondBuyerPlaceOfBirth || '',
@@ -141,4 +165,5 @@ export const getPaymentCalculations = (tcp, paymentForm) => {
     },
   }
 }
+
 

@@ -75,7 +75,7 @@ const isMoneyChartKey = (dataKey = '') => {
     return false
   }
 
-  return /totalSales|pendingSales|salesAmount|collected|inventory|commission|released|eligible|remaining|value|amount|gross|net/i.test(key)
+  return /totalSales|pendingSales|salesAmount|collected|discount|settled|inventory|commission|released|eligible|remaining|value|amount|gross|net/i.test(key)
 }
 
 const ChartTooltip = ({ active, payload, label }) => {
@@ -220,7 +220,8 @@ const ProjectTypeCard = ({ title, count, value, helper, icon: Icon, to, disabled
 
 const ProjectReportCard = ({ report }) => {
   const stats = report.stats || {}
-  const collectionProgress = Number(stats.collectionProgress || 0)
+  const cashProgress = Number(stats.cashCollectionProgress ?? stats.collectionProgress ?? 0)
+  const settlementProgress = Number(stats.settlementProgress ?? 0)
   const saleCount = report.salesTrend.reduce((sum, item) => sum + Number(item.saleCount || 0), 0)
 
   return (
@@ -236,11 +237,13 @@ const ProjectReportCard = ({ report }) => {
         </Link>
       </div>
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <div className="rounded-2xl bg-blue-50 p-3"><p className="text-[10px] font-black uppercase tracking-wide text-blue-700">Total Sales</p><p className="mt-1 font-black text-blue-900">{money(stats.totalSales)}</p></div>
-        <div className="rounded-2xl bg-emerald-50 p-3"><p className="text-[10px] font-black uppercase tracking-wide text-emerald-700">Collected</p><p className="mt-1 font-black text-emerald-900">{money(stats.totalCollected)}</p></div>
-        <div className="rounded-2xl bg-amber-50 p-3"><p className="text-[10px] font-black uppercase tracking-wide text-amber-700">Sales Count</p><p className="mt-1 font-black text-amber-900">{number(saleCount)}</p></div>
-        <div className="rounded-2xl bg-indigo-50 p-3"><p className="text-[10px] font-black uppercase tracking-wide text-indigo-700">Payable Commission</p><p className="mt-1 font-black text-indigo-900">{money(stats.eligibleCommission)}</p></div>
+        <div className="rounded-2xl bg-emerald-50 p-3"><p className="text-[10px] font-black uppercase tracking-wide text-emerald-700">Cash Collected</p><p className="mt-1 font-black text-emerald-900">{money(stats.totalCashCollected ?? stats.totalCollected)}</p></div>
+        <div className="rounded-2xl bg-amber-50 p-3"><p className="text-[10px] font-black uppercase tracking-wide text-amber-700">Discount Applied</p><p className="mt-1 font-black text-amber-900">{money(stats.discountApplied)}</p></div>
+        <div className="rounded-2xl bg-indigo-50 p-3"><p className="text-[10px] font-black uppercase tracking-wide text-indigo-700">Settled Value</p><p className="mt-1 font-black text-indigo-900">{money(stats.settledValue)}</p></div>
+        <div className="rounded-2xl bg-slate-100 p-3"><p className="text-[10px] font-black uppercase tracking-wide text-slate-600">Sales Count</p><p className="mt-1 font-black text-slate-900">{number(saleCount)}</p></div>
+        <div className="rounded-2xl bg-violet-50 p-3"><p className="text-[10px] font-black uppercase tracking-wide text-violet-700">Payable Commission</p><p className="mt-1 font-black text-violet-900">{money(stats.eligibleCommission)}</p></div>
       </div>
 
       <div className="mt-4 h-44 rounded-2xl border border-slate-100 bg-slate-50 p-3">
@@ -253,20 +256,32 @@ const ProjectReportCard = ({ report }) => {
               <YAxis yAxisId="count" orientation="right" allowDecimals={false} tick={{ fontSize: 11 }} width={28} />
               <Tooltip content={<ChartTooltip />} />
               <Area yAxisId="money" type="monotone" dataKey="totalSales" name="Sales" stroke={chartColors.blue} fill={chartColors.blue} fillOpacity={0.12} strokeWidth={2} />
-              <Area yAxisId="money" type="monotone" dataKey="collected" name="Collected" stroke={chartColors.green} fill={chartColors.green} fillOpacity={0.12} strokeWidth={2} />
-              <Line yAxisId="count" type="monotone" dataKey="saleCount" name="Sales Count" stroke={chartColors.amber} strokeWidth={2} dot />
+              <Area yAxisId="money" type="monotone" dataKey="collected" name="Cash Collected" stroke={chartColors.green} fill={chartColors.green} fillOpacity={0.12} strokeWidth={2} />
+              <Line yAxisId="money" type="monotone" dataKey="discountApplied" name="Discount Applied" stroke={chartColors.amber} strokeWidth={2} dot={false} />
+              <Line yAxisId="count" type="monotone" dataKey="saleCount" name="Sales Count" stroke={chartColors.indigo} strokeWidth={2} dot />
             </ComposedChart>
           </ResponsiveContainer>
         ) : <EmptyChart />}
       </div>
 
-      <div className="mt-4">
-        <div className="flex items-center justify-between text-xs font-black text-slate-500">
-          <span>Collection Progress</span>
-          <span>{percent(collectionProgress)}</span>
+      <div className="mt-4 grid gap-3">
+        <div>
+          <div className="flex items-center justify-between text-xs font-black text-slate-500">
+            <span>Cash Collection Progress</span>
+            <span>{percent(cashProgress)}</span>
+          </div>
+          <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-slate-100">
+            <div className="h-full rounded-full bg-emerald-500" style={{ width: `${Math.min(cashProgress, 100)}%` }} />
+          </div>
         </div>
-        <div className="mt-2 h-3 overflow-hidden rounded-full bg-slate-100">
-          <div className="h-full rounded-full bg-emerald-500" style={{ width: `${Math.min(collectionProgress, 100)}%` }} />
+        <div>
+          <div className="flex items-center justify-between text-xs font-black text-slate-500">
+            <span>Account Settlement Progress</span>
+            <span>{percent(settlementProgress)}</span>
+          </div>
+          <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-slate-100">
+            <div className="h-full rounded-full bg-indigo-500" style={{ width: `${Math.min(settlementProgress, 100)}%` }} />
+          </div>
         </div>
       </div>
     </div>
@@ -284,12 +299,16 @@ const mergeCompanyTrend = (projectReports = []) => {
         saleCount: 0,
         totalSales: 0,
         collected: 0,
+        discountApplied: 0,
+        settledValue: 0,
         collectionCount: 0,
       }
 
       current.saleCount += Number(item.saleCount || 0)
       current.totalSales += Number(item.totalSales || 0)
       current.collected += Number(item.collected || 0)
+      current.discountApplied += Number(item.discountApplied || 0)
+      current.settledValue += Number(item.settledValue ?? (Number(item.collected || 0) + Number(item.discountApplied || 0)))
       current.collectionCount += Number(item.collectionCount || 0)
 
       byPeriod.set(item.period, current)
@@ -360,7 +379,9 @@ const Dashboard = () => {
       (total, item) => {
         const stats = item.stats || {}
         total.totalSales += Number(stats.totalSales || 0)
-        total.collected += Number(stats.totalCollected || 0)
+        total.cashCollected += Number(stats.totalCashCollected ?? stats.totalCollected ?? 0)
+        total.discountApplied += Number(stats.discountApplied || 0)
+        total.settledValue += Number(stats.settledValue ?? ((stats.totalCashCollected ?? stats.totalCollected ?? 0) + Number(stats.discountApplied || 0)))
         total.pendingSales += Number(stats.pendingSales || 0)
         total.availableInventory += Number(stats.availableLotValue || 0)
         total.listedInventory += Number(stats.listedLotValue || 0)
@@ -372,7 +393,9 @@ const Dashboard = () => {
       },
       {
         totalSales: 0,
-        collected: 0,
+        cashCollected: 0,
+        discountApplied: 0,
+        settledValue: 0,
         pendingSales: 0,
         availableInventory: 0,
         listedInventory: 0,
@@ -384,14 +407,17 @@ const Dashboard = () => {
     )
   }, [projectReports])
 
-  const collectionProgress = summary.totalSales > 0 ? Math.min((summary.collected / summary.totalSales) * 100, 100) : 0
+  const cashCollectionProgress = summary.totalSales > 0 ? Math.min((summary.cashCollected / summary.totalSales) * 100, 100) : 0
+  const settlementProgress = summary.totalSales > 0 ? Math.min((summary.settledValue / summary.totalSales) * 100, 100) : 0
   const isLoading = isProjectsLoading || isDashboardsLoading
   const companySalesTrend = useMemo(() => mergeCompanyTrend(projectReports), [projectReports])
 
   const projectSalesChart = projectReports.map((report) => ({
     project: shortLabel(report.name),
     totalSales: Number(report.stats?.totalSales || 0),
-    collected: Number(report.stats?.totalCollected || 0),
+    cashCollected: Number(report.stats?.totalCashCollected ?? report.stats?.totalCollected ?? 0),
+    discountApplied: Number(report.stats?.discountApplied || 0),
+    settledValue: Number(report.stats?.settledValue || 0),
     pendingSales: Number(report.stats?.pendingSales || 0),
   }))
 
@@ -434,11 +460,12 @@ const Dashboard = () => {
         isFetching={isDashboardsFetching}
       />
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Total Sales" value={isLoading ? '...' : money(summary.totalSales)} helper="All tracked lot project sales." icon={FiTrendingUp} tone="blue" />
-        <MetricCard label="Collected" value={isLoading ? '...' : money(summary.collected)} helper={`${percent(collectionProgress)} collection progress.`} icon={FiActivity} tone="green" />
-        <MetricCard label="Available Inventory" value={isLoading ? '...' : money(summary.availableInventory)} helper="Lot inventory available to sell." icon={FiGrid} tone="amber" />
-        <MetricCard label="Payable Commission" value={isLoading ? '...' : money(summary.payableCommission)} helper="Eligible releases ready for payout." icon={FiUsers} tone="indigo" />
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <MetricCard label="Total Sales" value={isLoading ? '...' : money(summary.totalSales)} helper="Booked contract value." icon={FiTrendingUp} tone="blue" />
+        <MetricCard label="Cash Collected" value={isLoading ? '...' : money(summary.cashCollected)} helper={`${percent(cashCollectionProgress)} cash collection progress.`} icon={FiActivity} tone="green" />
+        <MetricCard label="Discount Applied" value={isLoading ? '...' : money(summary.discountApplied)} helper="Earned downpayment discount. Not cash." icon={FiGrid} tone="amber" />
+        <MetricCard label="Settled Value" value={isLoading ? '...' : money(summary.settledValue)} helper={`${percent(settlementProgress)} of sales satisfied.`} icon={FiLayers} tone="indigo" />
+        <MetricCard label="Payable Commission" value={isLoading ? '...' : money(summary.payableCommission)} helper="Eligible releases ready for payout." icon={FiUsers} tone="slate" />
       </section>
 
       <section className="grid gap-6 xl:grid-cols-2">
@@ -462,7 +489,7 @@ const Dashboard = () => {
       </section>
 
       <section className="grid gap-6 xl:grid-cols-2">
-        <ChartCard title="Company Sales Trend" description="Area trend for total sales and collections with sales count as a line across all lot projects.">
+        <ChartCard title="Company Sales Trend" description="Sales, actual cash collections, and earned discount across all lot projects.">
           {companySalesTrend.length ? (
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={companySalesTrend} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
@@ -473,14 +500,15 @@ const Dashboard = () => {
                 <Tooltip content={<ChartTooltip />} />
                 <Legend />
                 <Area yAxisId="money" type="monotone" dataKey="totalSales" name="Total Sales" stroke={chartColors.blue} fill={chartColors.blue} fillOpacity={0.12} strokeWidth={3} />
-                <Area yAxisId="money" type="monotone" dataKey="collected" name="Collected" stroke={chartColors.green} fill={chartColors.green} fillOpacity={0.12} strokeWidth={3} />
-                <Line yAxisId="count" type="monotone" dataKey="saleCount" name="Sales Count" stroke={chartColors.amber} strokeWidth={3} dot />
+                <Area yAxisId="money" type="monotone" dataKey="collected" name="Cash Collected" stroke={chartColors.green} fill={chartColors.green} fillOpacity={0.12} strokeWidth={3} />
+                <Line yAxisId="money" type="monotone" dataKey="discountApplied" name="Discount Applied" stroke={chartColors.amber} strokeWidth={3} dot={false} />
+                <Line yAxisId="count" type="monotone" dataKey="saleCount" name="Sales Count" stroke={chartColors.indigo} strokeWidth={3} dot />
               </ComposedChart>
             </ResponsiveContainer>
           ) : <EmptyChart />}
         </ChartCard>
 
-        <ChartCard title="Total Sales per Project" description="Column chart for total sales, collections, and pending sales per project.">
+        <ChartCard title="Sales and Settlement per Project" description="Actual cash and earned discount are shown separately.">
           {projectSalesChart.length ? (
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={projectSalesChart} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
@@ -490,8 +518,9 @@ const Dashboard = () => {
                 <Tooltip content={<ChartTooltip />} />
                 <Legend />
                 <Bar dataKey="totalSales" name="Total Sales" fill={chartColors.blue} radius={[8, 8, 0, 0]} />
-                <Bar dataKey="collected" name="Collected" fill={chartColors.green} radius={[8, 8, 0, 0]} />
-                <Bar dataKey="pendingSales" name="Pending" fill={chartColors.amber} radius={[8, 8, 0, 0]} />
+                <Bar dataKey="cashCollected" name="Cash Collected" fill={chartColors.green} radius={[8, 8, 0, 0]} />
+                <Bar dataKey="discountApplied" name="Discount Applied" fill={chartColors.amber} radius={[8, 8, 0, 0]} />
+                <Bar dataKey="pendingSales" name="Outstanding" fill={chartColors.slate} radius={[8, 8, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           ) : <EmptyChart />}
@@ -579,7 +608,7 @@ const Dashboard = () => {
           <table className="min-w-[920px] w-full divide-y divide-slate-200 text-sm">
             <thead className="bg-slate-50">
               <tr>
-                {['Project', 'Location', 'Sales', 'Sales Count', 'Collected', 'Status', 'Action'].map((head) => (
+                {['Project', 'Location', 'Sales', 'Sales Count', 'Cash Collected', 'Discount', 'Settled', 'Status', 'Action'].map((head) => (
                   <th key={head} className="px-5 py-3 text-left text-xs font-black uppercase tracking-wider text-slate-500">{head}</th>
                 ))}
               </tr>
@@ -594,7 +623,9 @@ const Dashboard = () => {
                     <td className="px-5 py-4 font-semibold text-slate-600">{project.location || '-'}</td>
                     <td className="px-5 py-4 font-black text-blue-700">{money(project.stats?.totalSales)}</td>
                     <td className="px-5 py-4 font-black text-slate-900">{number(saleCount)}</td>
-                    <td className="px-5 py-4 font-semibold text-emerald-700">{money(project.stats?.totalCollected)}</td>
+                    <td className="px-5 py-4 font-semibold text-emerald-700">{money(project.stats?.totalCashCollected ?? project.stats?.totalCollected)}</td>
+                    <td className="px-5 py-4 font-semibold text-amber-700">{money(project.stats?.discountApplied)}</td>
+                    <td className="px-5 py-4 font-semibold text-indigo-700">{money(project.stats?.settledValue)}</td>
                     <td className="px-5 py-4">
                       <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700 ring-1 ring-emerald-100">
                         {project.status || 'active'}
@@ -610,7 +641,7 @@ const Dashboard = () => {
                 )
               }) : (
                 <tr>
-                  <td colSpan={7} className="px-5 py-10 text-center font-semibold text-slate-500">No lot projects yet.</td>
+                  <td colSpan={9} className="px-5 py-10 text-center font-semibold text-slate-500">No lot projects yet.</td>
                 </tr>
               )}
             </tbody>
@@ -622,5 +653,6 @@ const Dashboard = () => {
 }
 
 export default Dashboard
+
 
 

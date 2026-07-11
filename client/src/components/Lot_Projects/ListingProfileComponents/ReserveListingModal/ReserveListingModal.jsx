@@ -238,8 +238,8 @@ const ReserveListingModal = ({
   }
 
   const validateClientStep = () => {
-    if (!clientForm.buyerName.trim()) {
-      setAlert({ type: 'error', message: 'Principal buyer full name is required.' })
+    if (!clientForm.buyerFirstName.trim() || !clientForm.buyerLastName.trim()) {
+      setAlert({ type: 'error', message: 'Principal buyer first name and last name are required.' })
       return false
     }
 
@@ -253,8 +253,8 @@ const ReserveListingModal = ({
       return false
     }
 
-    if (hasSecondBuyer && !clientForm.secondBuyerName.trim()) {
-      setAlert({ type: 'error', message: 'Spouse / second buyer full name is required.' })
+    if (hasSecondBuyer && (!clientForm.secondBuyerFirstName.trim() || !clientForm.secondBuyerLastName.trim())) {
+      setAlert({ type: 'error', message: 'Spouse / second buyer first name and last name are required.' })
       return false
     }
 
@@ -529,4 +529,5 @@ const ReserveListingModal = ({
 }
 
 export default ReserveListingModal
+
 

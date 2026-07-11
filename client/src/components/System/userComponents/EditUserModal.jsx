@@ -61,6 +61,8 @@ const getInitialForm = (user = {}) => ({
   email: user.email || "",
   contact_no: user.contact_no || "",
   tin_no: user.tin_no || "",
+  prc_no: user.prc_no || "",
+  address: user.address || "",
   role: user.role || "agent",
   status: user.status || "active",
   seller_group_id: user.seller_group_id ? String(user.seller_group_id) : "",
@@ -542,7 +544,7 @@ const EditUserModal = ({ setShowEditUser, selectedUser, onSaved }) => {
                   </label>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-3">
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                   <label className="flex flex-col gap-2">
                     <p className="text-sm font-bold text-slate-700">Email *</p>
                     <input type="email" value={form.email} onChange={(event) => updateForm("email", event.target.value)} placeholder="user@example.com" className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" />
@@ -555,7 +557,16 @@ const EditUserModal = ({ setShowEditUser, selectedUser, onSaved }) => {
                     <p className="text-sm font-bold text-slate-700">TIN No.</p>
                     <input type="text" value={form.tin_no} onChange={(event) => updateForm("tin_no", event.target.value)} placeholder="000-000-000-000" className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" />
                   </label>
+                  <label className="flex flex-col gap-2">
+                    <p className="text-sm font-bold text-slate-700">PRC No. <span className="font-medium text-slate-400">(optional)</span></p>
+                    <input type="text" value={form.prc_no} onChange={(event) => updateForm("prc_no", event.target.value)} placeholder="PRC registration number" className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" />
+                  </label>
                 </div>
+
+                <label className="flex flex-col gap-2">
+                  <p className="text-sm font-bold text-slate-700">Address</p>
+                  <input type="text" value={form.address} onChange={(event) => updateForm("address", event.target.value)} placeholder="Complete seller address" className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" />
+                </label>
 
                 <div className="grid gap-4 md:grid-cols-3">
                   <label className="flex flex-col gap-2">
@@ -707,3 +718,4 @@ const EditUserModal = ({ setShowEditUser, selectedUser, onSaved }) => {
 };
 
 export default EditUserModal;
+

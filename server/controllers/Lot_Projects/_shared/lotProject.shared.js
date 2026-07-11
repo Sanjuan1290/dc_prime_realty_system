@@ -439,7 +439,11 @@ export const mapClientProfile = (profile = {}, sellerName = '-') => ({
   accountStatus: profile.lot_project_client_profile_status || 'active',
   buyerType: profile.buyer_type || 'single',
   buyerRole: 'Principal Buyer',
-  buyerName: profile.buyer_full_name || '',
+  buyerFirstName: profile.buyer_first_name || '',
+  buyerMiddleName: profile.buyer_middle_name || '',
+  buyerLastName: profile.buyer_last_name || '',
+  buyerSuffix: profile.buyer_suffix || '',
+  buyerName: profile.buyer_full_name || [profile.buyer_first_name, profile.buyer_middle_name, profile.buyer_last_name, profile.buyer_suffix].filter(Boolean).join(' '),
   birthDate: plainDate(profile.buyer_birth_date) === '-' ? '' : plainDate(profile.buyer_birth_date),
   placeOfBirth: profile.buyer_place_of_birth || '',
   computedAge: computeAgeFromDate(profile.buyer_birth_date),
@@ -462,7 +466,11 @@ export const mapClientProfile = (profile = {}, sellerName = '-') => ({
   monthlyIncome: profile.buyer_monthly_income !== undefined && profile.buyer_monthly_income !== null ? String(profile.buyer_monthly_income) : '',
   employerBusinessAddress: profile.buyer_employer_business_address || '',
   secondBuyerRole: profile.second_buyer_role || (profile.buyer_type === 'spouses' ? 'spouse' : 'co_owner'),
-  secondBuyerName: profile.second_buyer_full_name || '',
+  secondBuyerFirstName: profile.second_buyer_first_name || '',
+  secondBuyerMiddleName: profile.second_buyer_middle_name || '',
+  secondBuyerLastName: profile.second_buyer_last_name || '',
+  secondBuyerSuffix: profile.second_buyer_suffix || '',
+  secondBuyerName: profile.second_buyer_full_name || [profile.second_buyer_first_name, profile.second_buyer_middle_name, profile.second_buyer_last_name, profile.second_buyer_suffix].filter(Boolean).join(' '),
   secondBuyerBirthDate: plainDate(profile.second_buyer_birth_date) === '-' ? '' : plainDate(profile.second_buyer_birth_date),
   secondBuyerPlaceOfBirth: profile.second_buyer_place_of_birth || '',
   secondBuyerComputedAge: computeAgeFromDate(profile.second_buyer_birth_date),
@@ -607,6 +615,11 @@ export const mapProfileListing = (row = {}, project = {}, documents = []) => {
     seller_contact_no: row.seller_contact_no || '-',
     seller_tin_no: row.seller_tin_no || '-',
     sellerTinNo: row.seller_tin_no || '-',
+    sellerFirstName: row.seller_first_name || '',
+    sellerMiddleName: row.seller_middle_name || '',
+    sellerLastName: row.seller_last_name || '',
+    sellerPrcNo: row.seller_prc_no || '',
+    sellerAddress: row.seller_address || '',
     seller_group: row.seller_group_name || '-',
     seller_status: row.seller_status || '-',
     seller_accreditation_date: row.seller_accreditation_date ? plainDate(row.seller_accreditation_date) : '-',
@@ -2674,6 +2687,7 @@ export const addIfColumnExists = async (connection, tableName, columns, values, 
     values.push(value);
   }
 };
+
 
 
 

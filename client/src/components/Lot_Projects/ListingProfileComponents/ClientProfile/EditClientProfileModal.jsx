@@ -6,6 +6,10 @@ const emptyProfile = {
   profileStatus: 'incomplete',
   buyerType: 'single',
 
+  buyerFirstName: '',
+  buyerMiddleName: '',
+  buyerLastName: '',
+  buyerSuffix: '',
   buyerName: '',
   birthDate: '',
   placeOfBirth: '',
@@ -31,6 +35,10 @@ const emptyProfile = {
   employerBusinessAddress: '',
 
   secondBuyerRole: 'spouse',
+  secondBuyerFirstName: '',
+  secondBuyerMiddleName: '',
+  secondBuyerLastName: '',
+  secondBuyerSuffix: '',
   secondBuyerName: '',
   secondBuyerBirthDate: '',
   secondBuyerPlaceOfBirth: '',
@@ -55,6 +63,12 @@ const emptyProfile = {
   secondBuyerMonthlyIncome: '',
   secondBuyerEmployerBusinessAddress: '',
 }
+
+const buildDisplayName = ({ firstName = '', middleName = '', lastName = '', suffix = '' } = {}) =>
+  [firstName, middleName, lastName, suffix]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' ')
 
 const computeAge = (birthDate) => {
   if (!birthDate) return '-'
@@ -137,6 +151,15 @@ const PersonForm = ({ title, form, setForm, second = false }) => {
         [targetKey]: value,
       }
 
+      if (['firstName', 'middleName', 'lastName', 'suffix'].includes(field)) {
+        next[second ? 'secondBuyerName' : 'buyerName'] = buildDisplayName({
+          firstName: next[key('firstName')],
+          middleName: next[key('middleName')],
+          lastName: next[key('lastName')],
+          suffix: next[key('suffix')],
+        })
+      }
+
       if (field === 'birthDate') {
         next[key('computedAge')] = computeAge(value)
       }
@@ -161,14 +184,28 @@ const PersonForm = ({ title, form, setForm, second = false }) => {
         ) : null}
 
         <Input
-          label="Full Name"
-          value={second ? form.secondBuyerName : form.buyerName}
-          onChange={(value) =>
-            setForm((current) => ({
-              ...current,
-              [second ? 'secondBuyerName' : 'buyerName']: value,
-            }))
-          }
+          label="Last Name"
+          value={getValue('lastName')}
+          onChange={(value) => updateValue('lastName', value)}
+        />
+
+        <Input
+          label="First Name"
+          value={getValue('firstName')}
+          onChange={(value) => updateValue('firstName', value)}
+        />
+
+        <Input
+          label="Middle Name"
+          value={getValue('middleName')}
+          onChange={(value) => updateValue('middleName', value)}
+        />
+
+        <Input
+          label="Suffix"
+          value={getValue('suffix')}
+          onChange={(value) => updateValue('suffix', value)}
+          placeholder="Jr., Sr., III"
         />
 
         <Input
@@ -379,10 +416,10 @@ const EditClientProfileModal = ({ client, onClose, onSave, isParentSaving = fals
   const hasSecondBuyer = form.buyerType === 'spouses' || form.buyerType === 'and_account'
 
   const status = useMemo(() => {
-    const required = [form.buyerName, form.contactNo, form.email, form.presentAddress]
+    const required = [form.buyerFirstName, form.buyerLastName, form.contactNo, form.email, form.presentAddress]
 
     if (hasSecondBuyer) {
-      required.push(form.secondBuyerName, form.secondBuyerContactNo, form.secondBuyerEmail)
+      required.push(form.secondBuyerFirstName, form.secondBuyerLastName, form.secondBuyerContactNo, form.secondBuyerEmail)
     }
 
     return required.some((value) => !String(value || '').trim()) ? 'incomplete' : 'complete'
@@ -405,13 +442,13 @@ const EditClientProfileModal = ({ client, onClose, onSave, isParentSaving = fals
   }
 
   const handleSave = async () => {
-    if (!form.buyerName.trim()) {
-      setAlert({ type: 'error', message: 'Principal buyer full name is required.' })
+    if (!form.buyerFirstName.trim() || !form.buyerLastName.trim()) {
+      setAlert({ type: 'error', message: 'Principal buyer first name and last name are required.' })
       return
     }
 
-    if (hasSecondBuyer && !form.secondBuyerName.trim()) {
-      setAlert({ type: 'error', message: 'Second buyer / spouse full name is required.' })
+    if (hasSecondBuyer && (!form.secondBuyerFirstName.trim() || !form.secondBuyerLastName.trim())) {
+      setAlert({ type: 'error', message: 'Second buyer / spouse first name and last name are required.' })
       return
     }
 
@@ -556,4 +593,5 @@ const EditClientProfileModal = ({ client, onClose, onSave, isParentSaving = fals
 }
 
 export default EditClientProfileModal
+
 

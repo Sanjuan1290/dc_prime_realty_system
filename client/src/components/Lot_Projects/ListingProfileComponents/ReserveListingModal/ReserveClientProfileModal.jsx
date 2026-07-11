@@ -1,8 +1,12 @@
 import { SectionCard, SelectInput, TextInput } from './ReserveShared'
-import { computeAge } from './reserveUtils'
+import { buildDisplayName, computeAge } from './reserveUtils'
 
 const PersonFields = ({ title, form, setForm, second = false }) => {
   const nameKey = second ? 'secondBuyerName' : 'buyerName'
+  const firstNameKey = second ? 'secondBuyerFirstName' : 'buyerFirstName'
+  const middleNameKey = second ? 'secondBuyerMiddleName' : 'buyerMiddleName'
+  const lastNameKey = second ? 'secondBuyerLastName' : 'buyerLastName'
+  const suffixKey = second ? 'secondBuyerSuffix' : 'buyerSuffix'
   const birthDateKey = second ? 'secondBuyerBirthDate' : 'birthDate'
   const computedAgeKey = second ? 'secondBuyerComputedAge' : 'computedAge'
   const placeOfBirthKey = second ? 'secondBuyerPlaceOfBirth' : 'placeOfBirth'
@@ -21,6 +25,15 @@ const PersonFields = ({ title, form, setForm, second = false }) => {
   const update = (key, value) => {
     setForm((current) => {
       const next = { ...current, [key]: value }
+
+      if ([firstNameKey, middleNameKey, lastNameKey, suffixKey].includes(key)) {
+        next[nameKey] = buildDisplayName({
+          firstName: next[firstNameKey],
+          middleName: next[middleNameKey],
+          lastName: next[lastNameKey],
+          suffix: next[suffixKey],
+        })
+      }
 
       if (key === birthDateKey) {
         next[computedAgeKey] = computeAge(value)
@@ -46,11 +59,33 @@ const PersonFields = ({ title, form, setForm, second = false }) => {
         ) : null}
 
         <TextInput
-          label="Full Name"
-          value={form[nameKey]}
-          onChange={(value) => update(nameKey, value)}
-          placeholder={second ? 'Full name of spouse / second buyer' : 'Full name of principal buyer'}
+          label="Last Name"
+          value={form[lastNameKey]}
+          onChange={(value) => update(lastNameKey, value)}
+          placeholder="Last name"
           required
+        />
+
+        <TextInput
+          label="First Name"
+          value={form[firstNameKey]}
+          onChange={(value) => update(firstNameKey, value)}
+          placeholder="First name"
+          required
+        />
+
+        <TextInput
+          label="Middle Name"
+          value={form[middleNameKey]}
+          onChange={(value) => update(middleNameKey, value)}
+          placeholder="Optional middle name"
+        />
+
+        <TextInput
+          label="Suffix"
+          value={form[suffixKey]}
+          onChange={(value) => update(suffixKey, value)}
+          placeholder="Jr., Sr., III"
         />
 
         <TextInput
@@ -312,4 +347,5 @@ const ReserveClientProfileModal = ({ clientForm, setClientForm, hasSecondBuyer, 
 )
 
 export default ReserveClientProfileModal
+
 

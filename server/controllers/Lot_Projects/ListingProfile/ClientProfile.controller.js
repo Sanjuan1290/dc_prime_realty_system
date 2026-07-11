@@ -70,6 +70,15 @@ import {
 } from '../_shared/lotProject.shared.js';
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
 
+const cleanNamePart = (value) => String(value || '').trim();
+const buildBuyerFullName = ({ firstName, middleName, lastName, suffix, fallback = '' } = {}) => {
+  const generated = [firstName, middleName, lastName, suffix]
+    .map(cleanNamePart)
+    .filter(Boolean)
+    .join(' ');
+  return generated || cleanNamePart(fallback);
+};
+
 export const updateLotProjectClientProfile = async (req, res) => {
   const connection = await db.getConnection();
 
@@ -109,12 +118,34 @@ export const updateLotProjectClientProfile = async (req, res) => {
 
     const buyerType = cleanBuyerType(req.body.buyerType || req.body.buyer_type);
     const hasSecondBuyer = buyerType === 'spouses' || buyerType === 'and_account';
-    const buyerName = String(req.body.buyerName || req.body.buyer_full_name || '').trim();
-    const secondBuyerName = String(req.body.secondBuyerName || req.body.second_buyer_full_name || '').trim();
+    const buyerFirstName = cleanNamePart(req.body.buyerFirstName || req.body.buyer_first_name);
+    const buyerMiddleName = cleanNamePart(req.body.buyerMiddleName || req.body.buyer_middle_name);
+    const buyerLastName = cleanNamePart(req.body.buyerLastName || req.body.buyer_last_name);
+    const buyerSuffix = cleanNamePart(req.body.buyerSuffix || req.body.buyer_suffix);
+    const buyerName = buildBuyerFullName({
+      firstName: buyerFirstName,
+      middleName: buyerMiddleName,
+      lastName: buyerLastName,
+      suffix: buyerSuffix,
+      fallback: req.body.buyerName || req.body.buyer_full_name,
+    });
+    const secondBuyerFirstName = cleanNamePart(req.body.secondBuyerFirstName || req.body.second_buyer_first_name);
+    const secondBuyerMiddleName = cleanNamePart(req.body.secondBuyerMiddleName || req.body.second_buyer_middle_name);
+    const secondBuyerLastName = cleanNamePart(req.body.secondBuyerLastName || req.body.second_buyer_last_name);
+    const secondBuyerSuffix = cleanNamePart(req.body.secondBuyerSuffix || req.body.second_buyer_suffix);
+    const secondBuyerName = buildBuyerFullName({
+      firstName: secondBuyerFirstName,
+      middleName: secondBuyerMiddleName,
+      lastName: secondBuyerLastName,
+      suffix: secondBuyerSuffix,
+      fallback: req.body.secondBuyerName || req.body.second_buyer_full_name,
+    });
 
-    if (!buyerName) return res.status(400).json({ message: 'Principal buyer full name is required.' });
-    if (hasSecondBuyer && !secondBuyerName) {
-      return res.status(400).json({ message: 'Second buyer / spouse full name is required.' });
+    if (!buyerFirstName || !buyerLastName) {
+      return res.status(400).json({ message: 'Principal buyer first name and last name are required.' });
+    }
+    if (hasSecondBuyer && (!secondBuyerFirstName || !secondBuyerLastName)) {
+      return res.status(400).json({ message: 'Second buyer / spouse first name and last name are required.' });
     }
 
     const tableName = 'lot_project_client_profiles';
@@ -122,6 +153,10 @@ export const updateLotProjectClientProfile = async (req, res) => {
       'lot_project_id',
       'lot_project_listing_id',
       'buyer_type',
+      'buyer_first_name',
+      'buyer_middle_name',
+      'buyer_last_name',
+      'buyer_suffix',
       'buyer_full_name',
       'buyer_birth_date',
       'buyer_place_of_birth',
@@ -140,6 +175,10 @@ export const updateLotProjectClientProfile = async (req, res) => {
       'buyer_occupation_position',
       'buyer_monthly_income',
       'second_buyer_full_name',
+      'second_buyer_first_name',
+      'second_buyer_middle_name',
+      'second_buyer_last_name',
+      'second_buyer_suffix',
       'second_buyer_birth_date',
       'second_buyer_place_of_birth',
       'second_buyer_citizenship',
@@ -163,6 +202,10 @@ export const updateLotProjectClientProfile = async (req, res) => {
       project.lot_project_id,
       listing.lot_project_listing_id,
       buyerType,
+      toNullable(buyerFirstName),
+      toNullable(buyerMiddleName),
+      toNullable(buyerLastName),
+      toNullable(buyerSuffix),
       buyerName,
       dateOrNull(req.body.birthDate || req.body.buyer_birth_date),
       toNullable(req.body.placeOfBirth || req.body.buyer_place_of_birth),
@@ -181,6 +224,10 @@ export const updateLotProjectClientProfile = async (req, res) => {
       toNullable(req.body.occupationPositionTitle || req.body.buyer_occupation_position),
       parseMoneyValue(req.body.monthlyIncome || req.body.buyer_monthly_income),
       hasSecondBuyer ? secondBuyerName : null,
+      hasSecondBuyer ? toNullable(secondBuyerFirstName) : null,
+      hasSecondBuyer ? toNullable(secondBuyerMiddleName) : null,
+      hasSecondBuyer ? toNullable(secondBuyerLastName) : null,
+      hasSecondBuyer ? toNullable(secondBuyerSuffix) : null,
       hasSecondBuyer ? dateOrNull(req.body.secondBuyerBirthDate || req.body.second_buyer_birth_date) : null,
       hasSecondBuyer ? toNullable(req.body.secondBuyerPlaceOfBirth || req.body.second_buyer_place_of_birth) : null,
       hasSecondBuyer ? toNullable(req.body.secondBuyerCitizenship || req.body.second_buyer_citizenship) : null,
@@ -267,4 +314,5 @@ export const updateLotProjectClientProfile = async (req, res) => {
     connection.release();
   }
 };
+
 

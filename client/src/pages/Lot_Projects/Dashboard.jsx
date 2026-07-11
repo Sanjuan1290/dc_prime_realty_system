@@ -82,7 +82,7 @@ const isMoneyChartKey = (dataKey = '') => {
     return false
   }
 
-  return /totalSales|pendingSales|salesAmount|collected|inventory|commission|released|eligible|remaining|value|amount|gross|net/i.test(key)
+  return /totalSales|pendingSales|salesAmount|collected|discount|settled|inventory|commission|released|eligible|remaining|value|amount|gross|net/i.test(key)
 }
 
 const ChartTooltip = ({ active, payload, label }) => {
@@ -362,9 +362,11 @@ const Dashboard = () => {
   const handlePrintPriceList = () => window.open(`/lot-projects/${projectSlug}/price-list/print`, '_blank')
 
   const topStats = [
-    { label: 'Collection Progress', value: isLoading ? '...' : percent(stats.collectionProgress), helper: 'Collected against booked sales.', tone: 'blue', icon: FiTrendingUp },
-    { label: 'Total Sales', value: isLoading ? '...' : money(stats.totalSales), helper: 'Booked sold and reserved contract value.', tone: 'slate', icon: FiCreditCard },
-    { label: 'Collected', value: isLoading ? '...' : money(stats.totalCollected), helper: 'Verified payments posted.', tone: 'green', icon: FiActivity },
+    { label: 'Total Sales', value: isLoading ? '...' : money(stats.totalSales), helper: 'Booked contract value.', tone: 'slate', icon: FiCreditCard },
+    { label: 'Cash Collected', value: isLoading ? '...' : money(stats.totalCashCollected ?? stats.totalCollected), helper: `${percent(stats.cashCollectionProgress ?? stats.collectionProgress)} cash progress.`, tone: 'green', icon: FiActivity },
+    { label: 'Discount Applied', value: isLoading ? '...' : money(stats.discountApplied), helper: 'Earned downpayment discount. Not cash.', tone: 'amber', icon: FiCreditCard },
+    { label: 'Settled Value', value: isLoading ? '...' : money(stats.settledValue), helper: `${percent(stats.settlementProgress)} of sales satisfied.`, tone: 'blue', icon: FiTrendingUp },
+    { label: 'Outstanding Value', value: isLoading ? '...' : money(stats.pendingSales), helper: 'Contract value still unsettled.', tone: 'red', icon: FiCreditCard },
     { label: 'Payable Commission', value: isLoading ? '...' : money(stats.eligibleCommission), helper: 'Eligible releases ready for payout.', tone: 'indigo', icon: FiUsers },
   ]
 
@@ -429,7 +431,7 @@ const Dashboard = () => {
           <button type="button" onClick={handleRefresh} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-black text-slate-700 transition hover:bg-slate-50"><FiRefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />Refresh</button>
         </div>
 
-        <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {topStats.map((item) => <MetricCard key={item.label} {...item} />)}
         </div>
       </section>
@@ -448,16 +450,18 @@ const Dashboard = () => {
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-50"><tr>{['Unit','Buyer','TCP','Collection','Status'].map((head) => <th key={head} className="px-5 py-3 text-left text-xs font-black uppercase tracking-wider text-slate-500">{head}</th>)}</tr></thead>
+              <thead className="bg-slate-50"><tr>{['Unit','Buyer','TCP','Cash Collected','Discount','Settlement','Status'].map((head) => <th key={head} className="px-5 py-3 text-left text-xs font-black uppercase tracking-wider text-slate-500">{head}</th>)}</tr></thead>
               <tbody className="divide-y divide-slate-100">
-                {isLoading ? <tr><td colSpan={5} className="px-5 py-8 text-center text-sm font-semibold text-slate-500">Loading recent units...</td></tr> : null}
-                {!isLoading && recentUnits.length === 0 ? <tr><td colSpan={5} className="px-5 py-8 text-center text-sm font-semibold text-slate-500">No recent unit records yet.</td></tr> : null}
+                {isLoading ? <tr><td colSpan={7} className="px-5 py-8 text-center text-sm font-semibold text-slate-500">Loading recent units...</td></tr> : null}
+                {!isLoading && recentUnits.length === 0 ? <tr><td colSpan={7} className="px-5 py-8 text-center text-sm font-semibold text-slate-500">No recent unit records yet.</td></tr> : null}
                 {!isLoading && recentUnits.map((row) => (
                   <tr key={row.id || row.unitCode} className="transition hover:bg-slate-50">
                     <td className="px-5 py-4 font-black text-slate-950">{row.unitCode}</td>
                     <td className="px-5 py-4 font-semibold text-slate-700">{row.buyer}</td>
                     <td className="px-5 py-4 font-black text-slate-900">{money(row.tcp)}</td>
-                    <td className="px-5 py-4 font-semibold text-slate-700">{row.progress || '0%'}</td>
+                    <td className="px-5 py-4 font-semibold text-emerald-700">{money(row.cashCollected ?? row.collected)}</td>
+                    <td className="px-5 py-4 font-semibold text-amber-700">{money(row.discountApplied)}</td>
+                    <td className="px-5 py-4 font-semibold text-indigo-700">{row.progress || '0%'}</td>
                     <td className="px-5 py-4"><Badge tone={row.status === 'Fully Paid' ? 'green' : row.status?.includes('Pending') ? 'amber' : 'blue'}>{row.status}</Badge></td>
                   </tr>
                 ))}
@@ -529,7 +533,7 @@ const Dashboard = () => {
       </section>
 
       <section className="grid gap-6 xl:grid-cols-2">
-        <ChartCard title="Sales & Collections Trend" description="Area trend for money values with sales count as a line over the selected date range.">
+        <ChartCard title="Sales, Cash, and Discount Trend" description="Actual cash and earned discount are plotted separately over the selected date range.">
           {salesTrend.length ? (
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={salesTrend} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
@@ -540,8 +544,9 @@ const Dashboard = () => {
                 <Tooltip content={<ChartTooltip />} />
                 <Legend />
                 <Area yAxisId="money" type="monotone" dataKey="totalSales" name="Total Sales" stroke={chartColors.blue} fill={chartColors.blue} fillOpacity={0.12} strokeWidth={3} />
-                <Area yAxisId="money" type="monotone" dataKey="collected" name="Collected" stroke={chartColors.green} fill={chartColors.green} fillOpacity={0.12} strokeWidth={3} />
-                <Line yAxisId="count" type="monotone" dataKey="saleCount" name="Sales Count" stroke={chartColors.amber} strokeWidth={3} dot />
+                <Area yAxisId="money" type="monotone" dataKey="collected" name="Cash Collected" stroke={chartColors.green} fill={chartColors.green} fillOpacity={0.12} strokeWidth={3} />
+                <Line yAxisId="money" type="monotone" dataKey="discountApplied" name="Discount Applied" stroke={chartColors.amber} strokeWidth={3} dot={false} />
+                <Line yAxisId="count" type="monotone" dataKey="saleCount" name="Sales Count" stroke={chartColors.indigo} strokeWidth={3} dot />
               </ComposedChart>
             </ResponsiveContainer>
           ) : <EmptyChart />}
@@ -609,4 +614,5 @@ const Dashboard = () => {
 }
 
 export default Dashboard
+
 

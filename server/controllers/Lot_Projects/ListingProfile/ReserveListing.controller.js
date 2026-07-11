@@ -18,6 +18,15 @@ import {
 } from '../_shared/lotProject.shared.js';
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
 
+const cleanNamePart = (value) => String(value || '').trim();
+const buildBuyerFullName = ({ firstName, middleName, lastName, suffix, fallback = '' } = {}) => {
+  const generated = [firstName, middleName, lastName, suffix]
+    .map(cleanNamePart)
+    .filter(Boolean)
+    .join(' ');
+  return generated || cleanNamePart(fallback);
+};
+
 const normalizeNumberOption = (modeValue, customValue, fallback = 0) => {
   if (modeValue === 'custom') return Number(customValue || 0);
   if (modeValue === 'spot_cash') return 0;
@@ -553,18 +562,40 @@ export const reserveLotProjectListing = async (req, res) => {
     const terms = reservation.paymentTerms || req.body.paymentTerms || {};
     const buyerType = cleanBuyerType(clientProfile.buyerType || clientProfile.buyer_type);
     const hasSecondBuyer = buyerType === 'spouses' || buyerType === 'and_account';
-    const buyerName = String(clientProfile.buyerName || clientProfile.buyer_full_name || '').trim();
-    const secondBuyerName = String(clientProfile.secondBuyerName || clientProfile.second_buyer_full_name || '').trim();
+    const buyerFirstName = cleanNamePart(clientProfile.buyerFirstName || clientProfile.buyer_first_name);
+    const buyerMiddleName = cleanNamePart(clientProfile.buyerMiddleName || clientProfile.buyer_middle_name);
+    const buyerLastName = cleanNamePart(clientProfile.buyerLastName || clientProfile.buyer_last_name);
+    const buyerSuffix = cleanNamePart(clientProfile.buyerSuffix || clientProfile.buyer_suffix);
+    const buyerName = buildBuyerFullName({
+      firstName: buyerFirstName,
+      middleName: buyerMiddleName,
+      lastName: buyerLastName,
+      suffix: buyerSuffix,
+      fallback: clientProfile.buyerName || clientProfile.buyer_full_name,
+    });
+    const secondBuyerFirstName = cleanNamePart(clientProfile.secondBuyerFirstName || clientProfile.second_buyer_first_name);
+    const secondBuyerMiddleName = cleanNamePart(clientProfile.secondBuyerMiddleName || clientProfile.second_buyer_middle_name);
+    const secondBuyerLastName = cleanNamePart(clientProfile.secondBuyerLastName || clientProfile.second_buyer_last_name);
+    const secondBuyerSuffix = cleanNamePart(clientProfile.secondBuyerSuffix || clientProfile.second_buyer_suffix);
+    const secondBuyerName = buildBuyerFullName({
+      firstName: secondBuyerFirstName,
+      middleName: secondBuyerMiddleName,
+      lastName: secondBuyerLastName,
+      suffix: secondBuyerSuffix,
+      fallback: clientProfile.secondBuyerName || clientProfile.second_buyer_full_name,
+    });
 
-    if (!buyerName) return res.status(400).json({ message: 'Principal buyer full name is required.' });
+    if (!buyerFirstName || !buyerLastName) {
+      return res.status(400).json({ message: 'Principal buyer first name and last name are required.' });
+    }
     if (!clientProfile.contactNo && !clientProfile.buyer_contact_number) {
       return res.status(400).json({ message: 'Principal buyer mobile number is required.' });
     }
     if (!clientProfile.presentAddress && !clientProfile.buyer_present_address) {
       return res.status(400).json({ message: 'Principal buyer present address is required.' });
     }
-    if (hasSecondBuyer && !secondBuyerName) {
-      return res.status(400).json({ message: 'Second buyer / spouse full name is required.' });
+    if (hasSecondBuyer && (!secondBuyerFirstName || !secondBuyerLastName)) {
+      return res.status(400).json({ message: 'Second buyer / spouse first name and last name are required.' });
     }
 
     const modeOfPayment = reservation.modeOfPayment === 'cash' || terms.modeOfPayment === 'cash' ? 'cash' : 'installment';
@@ -635,6 +666,10 @@ export const reserveLotProjectListing = async (req, res) => {
       'lot_project_id',
       'lot_project_listing_id',
       'buyer_type',
+      'buyer_first_name',
+      'buyer_middle_name',
+      'buyer_last_name',
+      'buyer_suffix',
       'buyer_full_name',
       'buyer_birth_date',
       'buyer_place_of_birth',
@@ -653,6 +688,10 @@ export const reserveLotProjectListing = async (req, res) => {
       'buyer_occupation_position',
       'buyer_monthly_income',
       'second_buyer_full_name',
+      'second_buyer_first_name',
+      'second_buyer_middle_name',
+      'second_buyer_last_name',
+      'second_buyer_suffix',
       'second_buyer_birth_date',
       'second_buyer_place_of_birth',
       'second_buyer_citizenship',
@@ -685,6 +724,10 @@ export const reserveLotProjectListing = async (req, res) => {
       project.lot_project_id,
       listing.lot_project_listing_id,
       buyerType,
+      toNullable(buyerFirstName),
+      toNullable(buyerMiddleName),
+      toNullable(buyerLastName),
+      toNullable(buyerSuffix),
       buyerName,
       dateOrNull(clientProfile.birthDate || clientProfile.buyer_birth_date),
       toNullable(clientProfile.placeOfBirth || clientProfile.buyer_place_of_birth),
@@ -703,6 +746,10 @@ export const reserveLotProjectListing = async (req, res) => {
       toNullable(clientProfile.occupationPositionTitle || clientProfile.buyer_occupation_position),
       parseMoneyValue(clientProfile.monthlyIncome || clientProfile.buyer_monthly_income),
       hasSecondBuyer ? secondBuyerName : null,
+      hasSecondBuyer ? toNullable(secondBuyerFirstName) : null,
+      hasSecondBuyer ? toNullable(secondBuyerMiddleName) : null,
+      hasSecondBuyer ? toNullable(secondBuyerLastName) : null,
+      hasSecondBuyer ? toNullable(secondBuyerSuffix) : null,
       hasSecondBuyer ? dateOrNull(clientProfile.secondBuyerBirthDate || clientProfile.second_buyer_birth_date) : null,
       hasSecondBuyer ? toNullable(clientProfile.secondBuyerPlaceOfBirth || clientProfile.second_buyer_place_of_birth) : null,
       hasSecondBuyer ? toNullable(clientProfile.secondBuyerCitizenship || clientProfile.second_buyer_citizenship) : null,
@@ -858,4 +905,5 @@ export const reserveLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
+
 

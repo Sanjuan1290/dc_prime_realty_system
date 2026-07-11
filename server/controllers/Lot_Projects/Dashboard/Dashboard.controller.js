@@ -144,33 +144,26 @@ const makeEmptyTrendBuckets = (dateRange) => {
   return buckets;
 };
 
-const mergeTrendRows = (dateRange, salesRows = [], collectionRows = []) => {
+const mergeTrendRows = (dateRange, salesRows = [], collectionRows = [], discountRows = []) => {
   const baseBuckets = shouldBackfillTrendBuckets(dateRange) ? makeEmptyTrendBuckets(dateRange) : [];
 
+  const makeBucket = (period, label = formatPeriodLabel(period, dateRange.groupBy)) => ({
+    period,
+    label,
+    saleCount: 0,
+    totalSales: 0,
+    collectionCount: 0,
+    collected: 0,
+    discountApplied: 0,
+  });
+
   const byPeriod = new Map(
-    baseBuckets.map((bucket) => [
-      bucket.period,
-      {
-        ...bucket,
-        saleCount: 0,
-        totalSales: 0,
-        collectionCount: 0,
-        collected: 0,
-      },
-    ])
+    baseBuckets.map((bucket) => [bucket.period, makeBucket(bucket.period, bucket.label)])
   );
 
   for (const row of salesRows) {
     const period = String(row.period || '');
-    const current = byPeriod.get(period) || {
-      period,
-      label: formatPeriodLabel(period, dateRange.groupBy),
-      saleCount: 0,
-      totalSales: 0,
-      collectionCount: 0,
-      collected: 0,
-    };
-
+    const current = byPeriod.get(period) || makeBucket(period);
     current.saleCount += toNumber(row.sale_count);
     current.totalSales += toNumber(row.total_sales);
     byPeriod.set(period, current);
@@ -178,17 +171,16 @@ const mergeTrendRows = (dateRange, salesRows = [], collectionRows = []) => {
 
   for (const row of collectionRows) {
     const period = String(row.period || '');
-    const current = byPeriod.get(period) || {
-      period,
-      label: formatPeriodLabel(period, dateRange.groupBy),
-      saleCount: 0,
-      totalSales: 0,
-      collectionCount: 0,
-      collected: 0,
-    };
-
+    const current = byPeriod.get(period) || makeBucket(period);
     current.collectionCount += toNumber(row.collection_count);
     current.collected += toNumber(row.collected_amount);
+    byPeriod.set(period, current);
+  }
+
+  for (const row of discountRows) {
+    const period = String(row.period || '');
+    const current = byPeriod.get(period) || makeBucket(period);
+    current.discountApplied += toNumber(row.discount_amount ?? row.discountApplied);
     byPeriod.set(period, current);
   }
 
@@ -198,6 +190,8 @@ const mergeTrendRows = (dateRange, salesRows = [], collectionRows = []) => {
       ...item,
       totalSales: roundMoney(item.totalSales),
       collected: roundMoney(item.collected),
+      discountApplied: roundMoney(item.discountApplied),
+      settledValue: roundMoney(item.collected + item.discountApplied),
     }));
 };
 
@@ -212,6 +206,50 @@ const mapBreakdownTrend = (rows = [], nameKey = 'name') => rows.map((row) => ({
 const getPeriodSql = (column, groupBy) => groupBy === 'month'
   ? `DATE_FORMAT(${column}, '%Y-%m')`
   : `DATE(${column})`;
+
+
+const buildEarnedDiscountTrendRows = (paymentRows = [], dateRange = {}) => {
+  const from = String(dateRange.from || '');
+  const to = String(dateRange.to || '');
+  const totalsByPeriod = new Map();
+  const paidByListing = new Map();
+
+  for (const row of paymentRows) {
+    const listingId = Number(row.lot_project_listing_id || 0);
+    if (!listingId) continue;
+
+    const grossDownpayment = toNumber(row.lot_project_listing_tcp)
+      * (toNumber(row.soa_downpayment_percentage) / 100);
+    const totalDiscount = roundMoney(grossDownpayment * (toNumber(row.soa_dp_discount_percentage) / 100));
+    const netDownpayment = Math.max(roundMoney(grossDownpayment - totalDiscount), 0);
+    const previousPaid = toNumber(paidByListing.get(listingId));
+    const nextPaid = previousPaid + toNumber(row.lot_project_payment_amount);
+    paidByListing.set(listingId, nextPaid);
+
+    if (totalDiscount <= 0) continue;
+
+    const earnedBefore = netDownpayment <= 0
+      ? totalDiscount
+      : Math.min(totalDiscount, roundMoney(totalDiscount * (previousPaid / netDownpayment)));
+    const earnedAfter = netDownpayment <= 0
+      ? totalDiscount
+      : Math.min(totalDiscount, roundMoney(totalDiscount * (nextPaid / netDownpayment)));
+    const earnedNow = Math.max(roundMoney(earnedAfter - earnedBefore), 0);
+    const paymentDate = String(row.lot_project_payment_date || '').slice(0, 10);
+
+    if (earnedNow <= 0 || !paymentDate || paymentDate < from || paymentDate > to) continue;
+
+    const date = parseDateOnly(paymentDate);
+    if (!date) continue;
+    const period = normalizePeriod(date, dateRange.groupBy);
+    totalsByPeriod.set(period, roundMoney(toNumber(totalsByPeriod.get(period)) + earnedNow));
+  }
+
+  return [...totalsByPeriod.entries()].map(([period, discountAmount]) => ({
+    period,
+    discount_amount: discountAmount,
+  }));
+};
 
 export const getLotProjectDashboard = async (req, res) => {
   const connection = await db.getConnection();
@@ -239,9 +277,14 @@ export const getLotProjectDashboard = async (req, res) => {
       totalContractPrice: 0,
       totalSales: 0,
       totalCollected: 0,
+      totalCashCollected: 0,
+      discountApplied: 0,
+      settledValue: 0,
       pendingSales: 0,
       outstandingBalance: 0,
       collectionProgress: 0,
+      cashCollectionProgress: 0,
+      settlementProgress: 0,
       listedLotValue: 0,
       availableLotValue: 0,
       soldLotValue: 0,
@@ -292,22 +335,35 @@ export const getLotProjectDashboard = async (req, res) => {
         ), 0)`
       : '0';
 
-    const downpaymentDiscountCreditExpr = hasClientProfiles
-      ? `CASE
-          WHEN cp.lot_project_client_profile_id IS NOT NULL
-            THEN ROUND(
-              (l.lot_project_listing_tcp * (COALESCE(cp.soa_downpayment_percentage, 0) / 100))
-              * (COALESCE(cp.soa_dp_discount_percentage, 0) / 100),
-              2
-            )
-          ELSE 0
-        END`
+    const downpaymentPaidSelect = hasPayments
+      ? `COALESCE((
+          SELECT SUM(p.lot_project_payment_amount)
+          FROM lot_project_payments p
+          WHERE p.lot_project_id = l.lot_project_id
+            AND p.lot_project_listing_id = l.lot_project_listing_id
+            AND p.lot_project_payment_status = 'Verified'
+            AND p.lot_project_payment_type IN ('downpayment', 'down_payment')
+        ), 0)`
       : '0';
 
-    const effectiveCollectedExpr = `CASE
-      WHEN l.lot_project_listing_sold_substatus = 'fully_paid' THEN l.lot_project_listing_tcp
-      ELSE LEAST(${paymentSummarySelect} + ${downpaymentDiscountCreditExpr}, l.lot_project_listing_tcp)
-    END`;
+    const downpaymentGrossExpr = hasClientProfiles
+      ? `(l.lot_project_listing_tcp * (COALESCE(cp.soa_downpayment_percentage, 0) / 100))`
+      : '0';
+    const totalDiscountExpr = hasClientProfiles
+      ? `ROUND((${downpaymentGrossExpr}) * (COALESCE(cp.soa_dp_discount_percentage, 0) / 100), 2)`
+      : '0';
+    const netDownpaymentExpr = `GREATEST(ROUND((${downpaymentGrossExpr}) - (${totalDiscountExpr}), 2), 0)`;
+    const earnedDiscountExpr = hasClientProfiles
+      ? `CASE
+          WHEN (${totalDiscountExpr}) <= 0 THEN 0
+          WHEN (${netDownpaymentExpr}) <= 0 THEN (${totalDiscountExpr})
+          ELSE LEAST(
+            (${totalDiscountExpr}),
+            ROUND((${totalDiscountExpr}) * (${downpaymentPaidSelect}) / NULLIF((${netDownpaymentExpr}), 0), 2)
+          )
+        END`
+      : '0';
+    const settledValueExpr = `LEAST(${paymentSummarySelect} + (${earnedDiscountExpr}), l.lot_project_listing_tcp)`;
 
     const releaseSummaryJoin = hasCommissionReleases
       ? `
@@ -355,8 +411,10 @@ export const getLotProjectDashboard = async (req, res) => {
       `
         SELECT
           COALESCE(SUM(l.lot_project_listing_tcp), 0) AS totalSales,
-          COALESCE(SUM(${effectiveCollectedExpr}), 0) AS totalCollected,
-          COALESCE(SUM(GREATEST(l.lot_project_listing_tcp - ${effectiveCollectedExpr}, 0)), 0) AS pendingSales
+          COALESCE(SUM(${paymentSummarySelect}), 0) AS totalCashCollected,
+          COALESCE(SUM(${earnedDiscountExpr}), 0) AS discountApplied,
+          COALESCE(SUM(${settledValueExpr}), 0) AS settledValue,
+          COALESCE(SUM(GREATEST(l.lot_project_listing_tcp - ${settledValueExpr}, 0)), 0) AS pendingSales
         FROM lot_project_listings l
         ${hasClientProfiles ? 'LEFT JOIN lot_project_client_profiles cp ON cp.lot_project_listing_id = l.lot_project_listing_id' : ''}
         WHERE l.lot_project_id = ?
@@ -510,6 +568,33 @@ export const getLotProjectDashboard = async (req, res) => {
           [project.lot_project_id, dateRange.from, dateRange.to]
         )
       : [[]];
+
+    const [discountPaymentRows] = hasPayments && hasClientProfiles
+      ? await connection.query(
+          `
+            SELECT
+              p.lot_project_payment_id,
+              p.lot_project_listing_id,
+              p.lot_project_payment_date,
+              p.lot_project_payment_amount,
+              l.lot_project_listing_tcp,
+              cp.soa_downpayment_percentage,
+              cp.soa_dp_discount_percentage
+            FROM lot_project_payments p
+            INNER JOIN lot_project_listings l
+              ON l.lot_project_listing_id = p.lot_project_listing_id
+            INNER JOIN lot_project_client_profiles cp
+              ON cp.lot_project_listing_id = p.lot_project_listing_id
+            WHERE p.lot_project_id = ?
+              AND p.lot_project_payment_status = 'Verified'
+              AND p.lot_project_payment_type IN ('downpayment', 'down_payment')
+              AND p.lot_project_payment_date <= ?
+            ORDER BY p.lot_project_listing_id ASC, p.lot_project_payment_date ASC, p.lot_project_payment_id ASC
+          `,
+          [project.lot_project_id, dateRange.to]
+        )
+      : [[]];
+    const discountTrendRows = buildEarnedDiscountTrendRows(discountPaymentRows, dateRange);
 
     const sellerPerformanceQuery = hasCommissions
       ? `
@@ -702,7 +787,8 @@ export const getLotProjectDashboard = async (req, res) => {
           ${cadastralSelect}
           cp.buyer_full_name,
           ${paymentSummarySelect} AS total_paid,
-          ${effectiveCollectedExpr} AS effective_collected,
+          ${earnedDiscountExpr} AS discount_applied,
+          ${settledValueExpr} AS settled_value,
           sbalance.actual_remaining_balance,
           COALESCE(ldoc.listing_document_count, 0) AS listing_document_count,
           COALESCE(pdoc.project_default_document_count, 0) AS project_default_document_count,
@@ -732,14 +818,16 @@ export const getLotProjectDashboard = async (req, res) => {
     const commissionSummary = commissionRows[0] || {};
     const scheduleSummary = scheduleRows[0] || {};
     const totalSales = toNumber(moneySummary.totalSales);
-    const totalCollected = toNumber(moneySummary.totalCollected);
+    const totalCashCollected = toNumber(moneySummary.totalCashCollected);
+    const discountApplied = toNumber(moneySummary.discountApplied);
+    const settledValue = toNumber(moneySummary.settledValue);
 
     return res.json({
       success: true,
       data: {
         project: projectPayload,
         dateRange,
-        salesTrend: mergeTrendRows(dateRange, salesTrendRows, collectionTrendRows),
+        salesTrend: mergeTrendRows(dateRange, salesTrendRows, collectionTrendRows, discountTrendRows),
         sellerSalesTrend: mapBreakdownTrend(sellerTrendRows, 'seller'),
         groupSalesTrend: mapBreakdownTrend(groupTrendRows, 'group'),
         stats: {
@@ -753,10 +841,15 @@ export const getLotProjectDashboard = async (req, res) => {
           cancelled: toNumber(summary.cancelled),
           totalContractPrice: toNumber(summary.totalContractPrice),
           totalSales,
-          totalCollected,
+          totalCollected: totalCashCollected,
+          totalCashCollected,
+          discountApplied,
+          settledValue,
           pendingSales: Math.max(toNumber(moneySummary.pendingSales), 0),
           outstandingBalance: Math.max(toNumber(moneySummary.pendingSales), 0),
-          collectionProgress: totalSales > 0 ? Math.min((totalCollected / totalSales) * 100, 100) : 0,
+          collectionProgress: totalSales > 0 ? Math.min((totalCashCollected / totalSales) * 100, 100) : 0,
+          cashCollectionProgress: totalSales > 0 ? Math.min((totalCashCollected / totalSales) * 100, 100) : 0,
+          settlementProgress: totalSales > 0 ? Math.min((settledValue / totalSales) * 100, 100) : 0,
           listedLotValue: toNumber(summary.listedLotValue),
           availableLotValue: toNumber(summary.availableLotValue),
           soldLotValue: toNumber(summary.soldLotValue),
@@ -808,19 +901,24 @@ export const getLotProjectDashboard = async (req, res) => {
         })),
         recentUnits: recentRows.map((row) => {
           const tcp = toNumber(row.lot_project_listing_tcp);
-          const paid = toNumber(row.effective_collected ?? row.total_paid);
+          const cashCollected = toNumber(row.total_paid);
+          const unitDiscountApplied = toNumber(row.discount_applied);
+          const unitSettledValue = Math.min(toNumber(row.settled_value), tcp);
           const scheduleBalance = row.actual_remaining_balance === null || row.actual_remaining_balance === undefined
-            ? Math.max(tcp - paid, 0)
+            ? Math.max(tcp - unitSettledValue, 0)
             : Math.max(toNumber(row.actual_remaining_balance), 0);
           const isFullyPaid = row.lot_project_listing_sold_substatus === 'fully_paid' || (tcp > 0 && scheduleBalance <= 0.009);
           const progressPercent = tcp > 0
-            ? (isFullyPaid ? 100 : Math.min((paid / tcp) * 100, 100))
+            ? (isFullyPaid ? 100 : Math.min((unitSettledValue / tcp) * 100, 100))
             : 0;
 
           return {
             ...mapListingRow(row),
-            collected: isFullyPaid ? tcp : paid,
-            balance: isFullyPaid ? 0 : Math.max(tcp - paid, 0),
+            collected: cashCollected,
+            cashCollected,
+            discountApplied: unitDiscountApplied,
+            settledValue: isFullyPaid ? tcp : unitSettledValue,
+            balance: isFullyPaid ? 0 : Math.max(tcp - unitSettledValue, 0),
             scheduleBalance,
             progressValue: progressPercent,
             progress: `${progressPercent.toFixed(1)}%`,
@@ -897,5 +995,6 @@ export const getLotProjectPriceList = async (req, res) => {
     connection.release();
   }
 };
+
 
 

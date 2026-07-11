@@ -138,6 +138,8 @@ const getUserSelectSql = () => `
     ${buildFullNameSql('u')} AS full_name,
     u.contact_no,
     u.tin_no,
+    u.prc_no,
+    u.address,
     u.email,
     u.role,
     u.status,
@@ -213,6 +215,8 @@ export const login = async (req, res) => {
         middle_name,
         contact_no,
         tin_no,
+        prc_no,
+        address,
         email,
         password_hash,
         role,
@@ -274,6 +278,8 @@ export const login = async (req, res) => {
       middle_name: user.middle_name,
       contact_no: user.contact_no,
       tin_no: user.tin_no,
+      prc_no: user.prc_no,
+      address: user.address,
       email: user.email,
       role: user.role,
       status: user.status,
@@ -397,6 +403,8 @@ export const changePassword = async (req, res) => {
           last_name,
           contact_no,
           tin_no,
+          prc_no,
+          address,
           email,
           password_hash,
           role,
@@ -491,10 +499,12 @@ export const getUsers = async (req, res) => {
         u.email LIKE ? OR
         IFNULL(u.contact_no, '') LIKE ? OR
         IFNULL(u.tin_no, '') LIKE ? OR
+        IFNULL(u.prc_no, '') LIKE ? OR
+        IFNULL(u.address, '') LIKE ? OR
         IFNULL(sg.seller_group_name, '') LIKE ?
       )`);
       const keyword = `%${search}%`;
-      params.push(keyword, keyword, keyword, keyword, keyword);
+      params.push(keyword, keyword, keyword, keyword, keyword, keyword, keyword);
     }
 
     if (role !== 'all') {
@@ -576,6 +586,8 @@ export const createUser = async (req, res) => {
       middle_name,
       contact_no,
       tin_no,
+      prc_no,
+      address,
       email,
       password = 'password',
       role = 'agent',
@@ -602,12 +614,14 @@ export const createUser = async (req, res) => {
           middle_name,
           contact_no,
           tin_no,
+          prc_no,
+          address,
           email,
           password_hash,
           role,
           status,
           must_change_password
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
       `,
       [
         first_name.trim(),
@@ -615,6 +629,8 @@ export const createUser = async (req, res) => {
         middle_name?.trim() || null,
         contact_no?.trim() || null,
         tin_no?.trim() || null,
+        prc_no?.trim() || null,
+        address?.trim() || null,
         email.trim(),
         passwordHash,
         role,
@@ -702,6 +718,8 @@ export const editUser = async (req, res) => {
       middle_name,
       contact_no,
       tin_no,
+      prc_no,
+      address,
       email,
       role,
       status,
@@ -726,6 +744,8 @@ export const editUser = async (req, res) => {
           middle_name = ?,
           contact_no = ?,
           tin_no = ?,
+          prc_no = ?,
+          address = ?,
           email = ?,
           role = ?,
           status = ?
@@ -737,6 +757,8 @@ export const editUser = async (req, res) => {
         middle_name?.trim() || null,
         contact_no?.trim() || null,
         tin_no?.trim() || null,
+        prc_no?.trim() || null,
+        address?.trim() || null,
         email.trim(),
         role,
         normalizeStatus(status),
@@ -896,6 +918,7 @@ export const resetUserPassword = async (req, res) => {
     return res.status(500).json({ message: getErrorMessage(error) });
   }
 };
+
 
 
 

@@ -134,6 +134,8 @@ export const getLotProjectListingProfile = async (req, res) => {
     const hasListingCadastralLinks = await tableExists(connection, 'lot_project_listing_cadastral_lots');
     const hasAnnualInterestRate = await columnExists(connection, 'lot_project_listings', 'annual_interest_rate');
     const hasAssignedSellerColumn = await columnExists(connection, 'lot_project_client_profiles', 'assigned_accredited_seller_id');
+    const hasSellerPrcNo = await columnExists(connection, 'users', 'prc_no');
+    const hasSellerAddress = await columnExists(connection, 'users', 'address');
     const lookup = getListingLookupWhere(listingLookup);
 
     const cadastralSelect = hasListingCadastralLinks
@@ -162,6 +164,25 @@ export const getLotProjectListingProfile = async (req, res) => {
     const sellerTinSelect = hasAssignedSellerColumn
       ? `COALESCE(NULLIF(assignedSeller.tin_no, ''), NULLIF(seller.tin_no, '')) AS seller_tin_no,`
       : `NULLIF(seller.tin_no, '') AS seller_tin_no,`;
+    const sellerFirstNameSelect = hasAssignedSellerColumn
+      ? `COALESCE(NULLIF(assignedSeller.first_name, ''), NULLIF(seller.first_name, '')) AS seller_first_name,`
+      : `NULLIF(seller.first_name, '') AS seller_first_name,`;
+    const sellerMiddleNameSelect = hasAssignedSellerColumn
+      ? `COALESCE(NULLIF(assignedSeller.middle_name, ''), NULLIF(seller.middle_name, '')) AS seller_middle_name,`
+      : `NULLIF(seller.middle_name, '') AS seller_middle_name,`;
+    const sellerLastNameSelect = hasAssignedSellerColumn
+      ? `COALESCE(NULLIF(assignedSeller.last_name, ''), NULLIF(seller.last_name, '')) AS seller_last_name,`
+      : `NULLIF(seller.last_name, '') AS seller_last_name,`;
+    const sellerPrcSelect = hasSellerPrcNo
+      ? (hasAssignedSellerColumn
+        ? `COALESCE(NULLIF(assignedSeller.prc_no, ''), NULLIF(seller.prc_no, '')) AS seller_prc_no,`
+        : `NULLIF(seller.prc_no, '') AS seller_prc_no,`)
+      : `NULL AS seller_prc_no,`;
+    const sellerAddressSelect = hasSellerAddress
+      ? (hasAssignedSellerColumn
+        ? `COALESCE(NULLIF(assignedSeller.address, ''), NULLIF(seller.address, '')) AS seller_address,`
+        : `NULLIF(seller.address, '') AS seller_address,`)
+      : `NULL AS seller_address,`;
     const sellerGroupSelect = hasAssignedSellerColumn
       ? `COALESCE(assignedSg.seller_group_name, sg.seller_group_name) AS seller_group_name,`
       : `sg.seller_group_name AS seller_group_name,`;
@@ -201,6 +222,11 @@ export const getLotProjectListingProfile = async (req, res) => {
           ${sellerEmailSelect}
           ${sellerContactSelect}
           ${sellerTinSelect}
+          ${sellerFirstNameSelect}
+          ${sellerMiddleNameSelect}
+          ${sellerLastNameSelect}
+          ${sellerPrcSelect}
+          ${sellerAddressSelect}
           ${sellerGroupSelect}
           ${sellerStatusSelect}
           ${sellerAccreditationSelect}
@@ -532,4 +558,5 @@ export const unholdLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
+
 

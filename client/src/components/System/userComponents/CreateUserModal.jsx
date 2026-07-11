@@ -202,6 +202,8 @@ const CreateUserModal = ({ setShowCreateUser, onSaved }) => {
     email: "",
     contact_no: "",
     tin_no: "",
+    prc_no: "",
+    address: "",
     password: "password",
     role: "agent",
     status: "active",
@@ -507,6 +509,17 @@ const CreateUserModal = ({ setShowCreateUser, onSaved }) => {
                     <input type="text" value={form.tin_no} onChange={(event) => updateForm("tin_no", event.target.value)} placeholder="000-000-000-000" className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" />
                   </label>
                   <label className="flex flex-col gap-2">
+                    <p className="text-sm font-bold text-slate-700">PRC No. <span className="font-medium text-slate-400">(optional)</span></p>
+                    <input type="text" value={form.prc_no} onChange={(event) => updateForm("prc_no", event.target.value)} placeholder="PRC registration number" className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" />
+                  </label>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-[2fr_1fr]">
+                  <label className="flex flex-col gap-2">
+                    <p className="text-sm font-bold text-slate-700">Address</p>
+                    <input type="text" value={form.address} onChange={(event) => updateForm("address", event.target.value)} placeholder="Complete seller address" className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" />
+                  </label>
+                  <label className="flex flex-col gap-2">
                     <p className="text-sm font-bold text-slate-700">Temporary Password *</p>
                     <input type="text" value={form.password} onChange={(event) => updateForm("password", event.target.value)} placeholder="Default: password" className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" />
                   </label>
@@ -658,3 +671,4 @@ const CreateUserModal = ({ setShowCreateUser, onSaved }) => {
 };
 
 export default CreateUserModal;
+

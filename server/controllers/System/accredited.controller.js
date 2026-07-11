@@ -212,8 +212,14 @@ export const getAccredited = async (req, res) => {
           a.accredited_seller_id,
           a.user_id,
           ${fullNameSql('u')} AS full_name,
+          u.first_name,
+          u.middle_name,
+          u.last_name,
           u.email,
           u.contact_no,
+          u.tin_no,
+          u.prc_no,
+          u.address,
           u.role,
           a.accredited_seller_reports_under_user_id AS reports_under_user_id,
           ${fullNameSql('parent')} AS reports_under_name,
@@ -391,6 +397,488 @@ export const uploadAccreditedSellerProofOfIncome = async (req, res) => {
   } catch (error) {
     await connection.rollback();
     return res.status(500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
+const commissionReceiptTableSql = `
+  CREATE TABLE IF NOT EXISTS lot_project_commission_receipts (
+    lot_project_commission_receipt_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    lot_project_id INT UNSIGNED NOT NULL,
+    lot_project_listing_id INT UNSIGNED NOT NULL,
+    lot_project_client_profile_id INT UNSIGNED NOT NULL,
+    lot_project_commission_id INT UNSIGNED NOT NULL,
+    accredited_seller_id INT UNSIGNED NOT NULL,
+    bank_name VARCHAR(150) NOT NULL,
+    account_number VARCHAR(100) NOT NULL,
+    receipt_date DATE NOT NULL,
+    reference_number VARCHAR(150) NOT NULL,
+    witness_name VARCHAR(255) NOT NULL,
+    total_amount DECIMAL(14,2) NOT NULL DEFAULT 0.00,
+    receipt_status ENUM('active', 'void') NOT NULL DEFAULT 'active',
+    created_by_user_id INT UNSIGNED NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (lot_project_commission_receipt_id),
+    KEY idx_commission_receipt_seller (accredited_seller_id),
+    KEY idx_commission_receipt_commission (lot_project_commission_id),
+    KEY idx_commission_receipt_listing (lot_project_listing_id),
+    KEY idx_commission_receipt_date (receipt_date),
+    KEY idx_commission_receipt_creator (created_by_user_id),
+    CONSTRAINT fk_commission_receipt_project
+      FOREIGN KEY (lot_project_id) REFERENCES lot_projects (lot_project_id)
+      ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_commission_receipt_listing
+      FOREIGN KEY (lot_project_listing_id) REFERENCES lot_project_listings (lot_project_listing_id)
+      ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_commission_receipt_client
+      FOREIGN KEY (lot_project_client_profile_id) REFERENCES lot_project_client_profiles (lot_project_client_profile_id)
+      ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_commission_receipt_commission
+      FOREIGN KEY (lot_project_commission_id) REFERENCES lot_project_commissions (lot_project_commission_id)
+      ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_commission_receipt_seller
+      FOREIGN KEY (accredited_seller_id) REFERENCES accredited_sellers (accredited_seller_id)
+      ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_commission_receipt_creator
+      FOREIGN KEY (created_by_user_id) REFERENCES users (id)
+      ON DELETE SET NULL ON UPDATE CASCADE
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+`;
+
+const commissionReceiptItemTableSql = `
+  CREATE TABLE IF NOT EXISTS lot_project_commission_receipt_items (
+    lot_project_commission_receipt_item_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    lot_project_commission_receipt_id INT UNSIGNED NOT NULL,
+    lot_project_commission_release_id INT UNSIGNED NOT NULL,
+    release_amount DECIMAL(14,2) NOT NULL DEFAULT 0.00,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (lot_project_commission_receipt_item_id),
+    UNIQUE KEY uq_commission_receipt_release (lot_project_commission_release_id),
+    KEY idx_commission_receipt_item_receipt (lot_project_commission_receipt_id),
+    CONSTRAINT fk_commission_receipt_item_receipt
+      FOREIGN KEY (lot_project_commission_receipt_id) REFERENCES lot_project_commission_receipts (lot_project_commission_receipt_id)
+      ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_commission_receipt_item_release
+      FOREIGN KEY (lot_project_commission_release_id) REFERENCES lot_project_commission_releases (lot_project_commission_release_id)
+      ON DELETE RESTRICT ON UPDATE CASCADE
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+`;
+
+const ensureCommissionReceiptTables = async (connection = db) => {
+  await connection.query(commissionReceiptTableSql);
+  await connection.query(commissionReceiptItemTableSql);
+};
+
+const requireReceiptManager = async (req, res) => {
+  const user = await getAuthenticatedUser(req);
+  if (!user) {
+    res.status(401).json({ message: 'Please login before managing proof of income receipts.' });
+    return null;
+  }
+
+  if (!['super_admin', 'admin'].includes(user.role)) {
+    res.status(403).json({ message: 'Admin access is required to manage proof of income receipts.' });
+    return null;
+  }
+
+  return user;
+};
+
+const roundMoney = (value) => Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
+
+const mapReleaseForReceipt = (row = {}) => ({
+  releaseId: Number(row.lot_project_commission_release_id || row.release_id || 0),
+  stage: row.release_stage,
+  releasePercent: Number(row.release_percent || 0),
+  grossAmount: roundMoney(row.gross_release_amount),
+  deductionAmount: roundMoney(row.deduction_amount),
+  amount: roundMoney(row.net_release_amount ?? row.release_amount),
+  actualReleaseDate: row.actual_release_date,
+});
+
+const mapReceiptRows = (receiptRows = [], itemRows = []) => {
+  const itemMap = new Map();
+  itemRows.forEach((row) => {
+    const receiptId = Number(row.lot_project_commission_receipt_id || 0);
+    if (!itemMap.has(receiptId)) itemMap.set(receiptId, []);
+    itemMap.get(receiptId).push(mapReleaseForReceipt(row));
+  });
+
+  return receiptRows.map((row) => ({
+    receiptId: Number(row.lot_project_commission_receipt_id),
+    commissionId: Number(row.lot_project_commission_id),
+    projectId: Number(row.lot_project_id),
+    listingId: Number(row.lot_project_listing_id),
+    clientProfileId: Number(row.lot_project_client_profile_id),
+    accreditedSellerId: Number(row.accredited_seller_id),
+    projectName: row.lot_project_name,
+    projectLocation: row.lot_project_location,
+    unitId: row.lot_project_listing_unit_id,
+    buyerName: row.buyer_full_name,
+    bankName: row.bank_name,
+    accountNumber: row.account_number,
+    receiptDate: row.receipt_date,
+    referenceNumber: row.reference_number,
+    witnessName: row.witness_name,
+    totalAmount: roundMoney(row.total_amount),
+    status: row.receipt_status,
+    createdAt: row.created_at,
+    createdByName: row.created_by_name,
+    releases: itemMap.get(Number(row.lot_project_commission_receipt_id)) || [],
+  }));
+};
+
+const getSellerReceiptIdentity = async (connection, sellerId) => {
+  const [rows] = await connection.query(
+    `
+      SELECT
+        a.accredited_seller_id,
+        a.user_id,
+        ${fullNameSql('u')} AS full_name,
+        u.first_name,
+        u.middle_name,
+        u.last_name,
+        u.email,
+        u.contact_no,
+        u.tin_no,
+        u.prc_no,
+        u.address,
+        u.role,
+        a.seller_group_id,
+        sg.seller_group_name,
+        a.accredited_seller_status
+      FROM accredited_sellers a
+      INNER JOIN users u ON u.id = a.user_id
+      LEFT JOIN seller_groups sg ON sg.seller_group_id = a.seller_group_id
+      WHERE a.accredited_seller_id = ?
+      LIMIT 1
+    `,
+    [sellerId]
+  );
+  return rows[0] || null;
+};
+
+const loadSellerReceiptData = async (connection, sellerId) => {
+  const seller = await getSellerReceiptIdentity(connection, sellerId);
+  if (!seller) return null;
+
+  const [availableRows] = await connection.query(
+    `
+      SELECT
+        c.lot_project_commission_id,
+        c.lot_project_id,
+        c.lot_project_listing_id,
+        c.lot_project_client_profile_id,
+        c.accredited_seller_id,
+        c.commission_role,
+        c.commission_rate,
+        lp.lot_project_name,
+        lp.lot_project_location,
+        l.lot_project_listing_unit_id,
+        cp.buyer_full_name,
+        r.lot_project_commission_release_id,
+        r.release_stage,
+        r.release_percent,
+        r.gross_release_amount,
+        r.deduction_amount,
+        r.net_release_amount,
+        r.actual_release_date
+      FROM lot_project_commission_releases r
+      INNER JOIN lot_project_commissions c
+        ON c.lot_project_commission_id = r.lot_project_commission_id
+      INNER JOIN lot_projects lp
+        ON lp.lot_project_id = c.lot_project_id
+      INNER JOIN lot_project_listings l
+        ON l.lot_project_listing_id = c.lot_project_listing_id
+      INNER JOIN lot_project_client_profiles cp
+        ON cp.lot_project_client_profile_id = c.lot_project_client_profile_id
+      LEFT JOIN lot_project_commission_receipt_items receipt_item
+        ON receipt_item.lot_project_commission_release_id = r.lot_project_commission_release_id
+      WHERE c.accredited_seller_id = ?
+        AND r.release_status = 'Released'
+        AND receipt_item.lot_project_commission_receipt_item_id IS NULL
+      ORDER BY r.actual_release_date ASC,
+        FIELD(r.release_stage, '1st Release', '2nd Release', '3rd Release', '4th Release', 'Retention') ASC,
+        r.lot_project_commission_release_id ASC
+    `,
+    [sellerId]
+  );
+
+  const groupMap = new Map();
+  availableRows.forEach((row) => {
+    const commissionId = Number(row.lot_project_commission_id);
+    if (!groupMap.has(commissionId)) {
+      groupMap.set(commissionId, {
+        commissionId,
+        projectId: Number(row.lot_project_id),
+        listingId: Number(row.lot_project_listing_id),
+        clientProfileId: Number(row.lot_project_client_profile_id),
+        accreditedSellerId: Number(row.accredited_seller_id),
+        commissionRole: row.commission_role,
+        commissionRate: Number(row.commission_rate || 0),
+        projectName: row.lot_project_name,
+        projectLocation: row.lot_project_location,
+        unitId: row.lot_project_listing_unit_id,
+        buyerName: row.buyer_full_name,
+        releases: [],
+        totalAmount: 0,
+      });
+    }
+
+    const group = groupMap.get(commissionId);
+    const release = mapReleaseForReceipt(row);
+    group.releases.push(release);
+    group.totalAmount = roundMoney(group.totalAmount + release.amount);
+  });
+
+  const [receiptRows] = await connection.query(
+    `
+      SELECT
+        receipt.*,
+        lp.lot_project_name,
+        lp.lot_project_location,
+        l.lot_project_listing_unit_id,
+        cp.buyer_full_name,
+        ${fullNameSql('creator')} AS created_by_name
+      FROM lot_project_commission_receipts receipt
+      INNER JOIN lot_projects lp ON lp.lot_project_id = receipt.lot_project_id
+      INNER JOIN lot_project_listings l ON l.lot_project_listing_id = receipt.lot_project_listing_id
+      INNER JOIN lot_project_client_profiles cp ON cp.lot_project_client_profile_id = receipt.lot_project_client_profile_id
+      LEFT JOIN users creator ON creator.id = receipt.created_by_user_id
+      WHERE receipt.accredited_seller_id = ?
+      ORDER BY receipt.receipt_date DESC, receipt.lot_project_commission_receipt_id DESC
+    `,
+    [sellerId]
+  );
+
+  let itemRows = [];
+  if (receiptRows.length) {
+    const receiptIds = receiptRows.map((row) => row.lot_project_commission_receipt_id);
+    [itemRows] = await connection.query(
+      `
+        SELECT
+          item.lot_project_commission_receipt_id,
+          item.release_amount,
+          r.lot_project_commission_release_id,
+          r.release_stage,
+          r.release_percent,
+          r.gross_release_amount,
+          r.deduction_amount,
+          r.net_release_amount,
+          r.actual_release_date
+        FROM lot_project_commission_receipt_items item
+        INNER JOIN lot_project_commission_releases r
+          ON r.lot_project_commission_release_id = item.lot_project_commission_release_id
+        WHERE item.lot_project_commission_receipt_id IN (${receiptIds.map(() => '?').join(', ')})
+        ORDER BY item.lot_project_commission_receipt_id DESC,
+          FIELD(r.release_stage, '1st Release', '2nd Release', '3rd Release', '4th Release', 'Retention') ASC
+      `,
+      receiptIds
+    );
+  }
+
+  return {
+    seller,
+    availableGroups: [...groupMap.values()],
+    receipts: mapReceiptRows(receiptRows, itemRows),
+  };
+};
+
+export const getAccreditedSellerProofOfIncomeData = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    const user = await requireReceiptManager(req, res);
+    if (!user) return;
+
+    const sellerId = Number(req.params.sellerId || 0);
+    if (!sellerId) return res.status(400).json({ message: 'Seller id is required.' });
+
+    await ensureCommissionReceiptTables(connection);
+    const data = await loadSellerReceiptData(connection, sellerId);
+    if (!data) return res.status(404).json({ message: 'Accredited seller not found.' });
+
+    return res.json({ success: true, data });
+  } catch (error) {
+    return res.status(500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
+export const createAccreditedSellerProofOfIncomeReceipt = async (req, res) => {
+  const connection = await db.getConnection();
+
+  try {
+    const user = await requireReceiptManager(req, res);
+    if (!user) return;
+
+    const sellerId = Number(req.params.sellerId || 0);
+    const commissionId = Number(req.body.commissionId || 0);
+    const releaseIds = [...new Set((Array.isArray(req.body.releaseIds) ? req.body.releaseIds : []).map(Number).filter(Boolean))];
+    const bankName = String(req.body.bankName || '').trim();
+    const accountNumber = String(req.body.accountNumber || '').trim();
+    const receiptDate = String(req.body.receiptDate || '').trim();
+    const referenceNumber = String(req.body.referenceNumber || '').trim();
+    const witnessName = String(req.body.witnessName || '').trim();
+
+    if (!sellerId) return res.status(400).json({ message: 'Seller id is required.' });
+    if (!commissionId) return res.status(400).json({ message: 'Select a commission release group.' });
+    if (!releaseIds.length) return res.status(400).json({ message: 'Select at least one released commission stage.' });
+    if (!bankName) return res.status(400).json({ message: 'Bank is required.' });
+    if (!accountNumber) return res.status(400).json({ message: 'Account number is required.' });
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(receiptDate)) return res.status(400).json({ message: 'Enter a valid receipt date.' });
+    if (!referenceNumber) return res.status(400).json({ message: 'Reference number is required.' });
+    if (!witnessName) return res.status(400).json({ message: 'Witness name is required.' });
+
+    await ensureCommissionReceiptTables(connection);
+    await connection.beginTransaction();
+
+    const seller = await getSellerReceiptIdentity(connection, sellerId);
+    if (!seller) throw Object.assign(new Error('Accredited seller not found.'), { statusCode: 404 });
+
+    const placeholders = releaseIds.map(() => '?').join(', ');
+    const [releaseRows] = await connection.query(
+      `
+        SELECT
+          c.lot_project_commission_id,
+          c.lot_project_id,
+          c.lot_project_listing_id,
+          c.lot_project_client_profile_id,
+          c.accredited_seller_id,
+          c.commission_role,
+          lp.lot_project_name,
+          lp.lot_project_location,
+          l.lot_project_listing_unit_id,
+          cp.buyer_full_name,
+          r.lot_project_commission_release_id,
+          r.release_stage,
+          r.release_percent,
+          r.gross_release_amount,
+          r.deduction_amount,
+          r.net_release_amount,
+          r.release_status,
+          r.actual_release_date,
+          receipt_item.lot_project_commission_receipt_item_id
+        FROM lot_project_commission_releases r
+        INNER JOIN lot_project_commissions c
+          ON c.lot_project_commission_id = r.lot_project_commission_id
+        INNER JOIN lot_projects lp
+          ON lp.lot_project_id = c.lot_project_id
+        INNER JOIN lot_project_listings l
+          ON l.lot_project_listing_id = c.lot_project_listing_id
+        INNER JOIN lot_project_client_profiles cp
+          ON cp.lot_project_client_profile_id = c.lot_project_client_profile_id
+        LEFT JOIN lot_project_commission_receipt_items receipt_item
+          ON receipt_item.lot_project_commission_release_id = r.lot_project_commission_release_id
+        WHERE r.lot_project_commission_release_id IN (${placeholders})
+        FOR UPDATE
+      `,
+      releaseIds
+    );
+
+    if (releaseRows.length !== releaseIds.length) {
+      throw Object.assign(new Error('One or more selected commission releases no longer exist.'), { statusCode: 400 });
+    }
+
+    const invalidRow = releaseRows.find((row) =>
+      Number(row.accredited_seller_id) !== sellerId ||
+      Number(row.lot_project_commission_id) !== commissionId ||
+      row.release_status !== 'Released' ||
+      row.lot_project_commission_receipt_item_id
+    );
+
+    if (invalidRow) {
+      throw Object.assign(new Error('Selected releases must be released, belong to the same seller and listing, and not be included in another receipt.'), { statusCode: 409 });
+    }
+
+    const first = releaseRows[0];
+    const totalAmount = roundMoney(releaseRows.reduce((sum, row) => sum + Number(row.net_release_amount || 0), 0));
+    if (totalAmount <= 0) throw Object.assign(new Error('Selected releases have no payable amount.'), { statusCode: 400 });
+
+    const [receiptResult] = await connection.query(
+      `
+        INSERT INTO lot_project_commission_receipts (
+          lot_project_id,
+          lot_project_listing_id,
+          lot_project_client_profile_id,
+          lot_project_commission_id,
+          accredited_seller_id,
+          bank_name,
+          account_number,
+          receipt_date,
+          reference_number,
+          witness_name,
+          total_amount,
+          receipt_status,
+          created_by_user_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)
+      `,
+      [
+        first.lot_project_id,
+        first.lot_project_listing_id,
+        first.lot_project_client_profile_id,
+        commissionId,
+        sellerId,
+        bankName,
+        accountNumber,
+        receiptDate,
+        referenceNumber,
+        witnessName,
+        totalAmount,
+        user.id,
+      ]
+    );
+
+    const itemValues = releaseRows.map((row) => [
+      receiptResult.insertId,
+      row.lot_project_commission_release_id,
+      roundMoney(row.net_release_amount),
+    ]);
+
+    await connection.query(
+      `
+        INSERT INTO lot_project_commission_receipt_items (
+          lot_project_commission_receipt_id,
+          lot_project_commission_release_id,
+          release_amount
+        ) VALUES ?
+      `,
+      [itemValues]
+    );
+
+    await writeAuditLog(connection, req, {
+      action: 'create',
+      module: 'Commissions',
+      entityType: 'lot_project_commission_receipt',
+      entityId: String(receiptResult.insertId),
+      entityLabel: `${seller.full_name} — ${first.lot_project_listing_unit_id}`,
+      title: 'Generated seller proof of income receipt',
+      description: `Generated a ${totalAmount.toFixed(2)} proof of income receipt from ${releaseRows.length} released commission stage(s).`,
+      metadata: {
+        sellerId,
+        commissionId,
+        releaseIds,
+        referenceNumber,
+        totalAmount,
+      },
+    });
+
+    await connection.commit();
+
+    const data = await loadSellerReceiptData(connection, sellerId);
+    const receipt = data?.receipts?.find((item) => Number(item.receiptId) === Number(receiptResult.insertId));
+
+    return res.status(201).json({
+      success: true,
+      message: `Proof of income receipt generated from ${releaseRows.length} released commission stage(s).`,
+      receipt,
+      data,
+    });
+  } catch (error) {
+    try { await connection.rollback(); } catch {}
+    return res.status(error?.statusCode || 500).json({ message: getErrorMessage(error) });
   } finally {
     connection.release();
   }

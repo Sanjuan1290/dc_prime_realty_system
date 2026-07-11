@@ -64,12 +64,24 @@ const employmentChecks = (value) => {
 const BuyerColumn = ({ title, name, client, second = false }) => {
   const get = (key) => second ? secondBuyerField(client, key) : buyerField(client, key.charAt(0).toLowerCase() + key.slice(1))
   const civil = second ? secondBuyerField(client, 'CivilStatus') : buyerField(client, 'civilStatus')
+  const lastName = second ? secondBuyerField(client, 'LastName') : buyerField(client, 'buyerLastName')
+  const firstName = second ? secondBuyerField(client, 'FirstName') : buyerField(client, 'buyerFirstName')
+  const middleName = second ? secondBuyerField(client, 'MiddleName') : buyerField(client, 'buyerMiddleName')
+  const suffix = second ? secondBuyerField(client, 'Suffix') : buyerField(client, 'buyerSuffix')
+  const hasSplitName = Boolean(lastName || firstName || middleName || suffix)
 
   return (
     <td colSpan="6" className="otb-nested-cell">
       <table className="otb-inner-table">
         <tbody>
-          <tr><td colSpan="4" className="otb-field-line strong">{title}: {name}</td></tr>
+          <tr><td colSpan="4" className="otb-field-line strong">{title}</td></tr>
+          <tr>
+            <td><Field label="Last Name:" value={lastName} /></td>
+            <td><Field label="First Name:" value={firstName} /></td>
+            <td><Field label="Middle Name:" value={middleName} /></td>
+            <td><Field label="Suffix:" value={suffix} /></td>
+          </tr>
+          {!hasSplitName && name ? <tr><td colSpan="4"><Field label="Existing Full Name:" value={name} /></td></tr> : null}
           <tr>
             <td colSpan="2"><Field label="Date of Birth:" value={formatDate(get('BirthDate'))} /></td>
             <td colSpan="2"><Field label="Place of Birth:" value={get('PlaceOfBirth')} /></td>
@@ -139,6 +151,10 @@ const OfferToBuyPrintPage = () => {
   const secondBuyerName = valueFrom(client, ['secondBuyerName'], '')
   const seller = valueFrom(listing, ['mainSeller', 'seller'], valueFrom(client, ['seller', 'salesOfficer'], ''))
   const sellerTinNo = valueFrom(listing, ['sellerTinNo', 'seller_tin_no'], '')
+  const sellerLastName = valueFrom(listing, ['sellerLastName', 'seller_last_name'], '')
+  const sellerFirstName = valueFrom(listing, ['sellerFirstName', 'seller_first_name'], '')
+  const sellerMiddleName = valueFrom(listing, ['sellerMiddleName', 'seller_middle_name'], '')
+  const sellerAddress = valueFrom(listing, ['sellerAddress', 'seller_address'], '')
   const dateReceived = formatDate(valueFrom(client, ['dateReceived'], valueFrom(listing, ['client_unit_created'], new Date().toISOString())))
   const monthlyIncome = cleanMoney(getValue(client, ['monthlyIncome'], 0))
   const secondMonthlyIncome = cleanMoney(getValue(client, ['secondBuyerMonthlyIncome'], 0))
@@ -488,24 +504,18 @@ const OfferToBuyPrintPage = () => {
               </tr>
               <tr><th colSpan="12" className="otb-section">SALES AGENT:</th></tr>
               <tr>
-                <td colSpan="4"><Field label="Name:" value={seller} /></td>
-                <td colSpan="3"><Field label="TIN No.:" value={sellerTinNo} /></td>
-                <td colSpan="5"><Field label="Address:" value="" /></td>
+                <td colSpan="1"><strong>Name:</strong></td>
+                <td colSpan="3" className="otb-field-line strong">{sellerLastName || (!sellerFirstName && !sellerMiddleName ? seller : '')}</td>
+                <td colSpan="3" className="otb-field-line strong">{sellerFirstName}</td>
+                <td colSpan="3" className="otb-field-line strong">{sellerMiddleName}</td>
+                <td colSpan="2"><Field label="TIN No.:" value={sellerTinNo} /></td>
               </tr>
               <tr>
-                <td colSpan="4"><strong>Last Name</strong></td>
-                <td colSpan="4"><strong>First Name</strong></td>
-                <td colSpan="4"><strong>Middle Name</strong></td>
-              </tr>
-              <tr>
-                <td colSpan="12" className="otb-footer-blank">
-                  <strong>Remarks / Notes:</strong> <span className="otb-remarks-line"></span>
-                </td>
-              </tr>
-              <tr>
-                <td colSpan="4" className="otb-approval-cell">Approved By<br />Printed Name / Signature</td>
-                <td colSpan="4" className="otb-approval-cell">Position</td>
-                <td colSpan="4" className="otb-approval-cell">Date</td>
+                <td colSpan="1"></td>
+                <td colSpan="3" className="text-center"><strong>Last Name</strong></td>
+                <td colSpan="3" className="text-center"><strong>First Name</strong></td>
+                <td colSpan="3" className="text-center"><strong>Middle Name</strong></td>
+                <td colSpan="2"><Field label="Address:" value={sellerAddress} /></td>
               </tr>
             </tbody>
           </table>
@@ -516,4 +526,5 @@ const OfferToBuyPrintPage = () => {
 }
 
 export default OfferToBuyPrintPage
+
 
