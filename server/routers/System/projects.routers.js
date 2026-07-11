@@ -1,6 +1,4 @@
 import express from 'express';
-import { requireAdmin, requireAuth, requirePasswordChanged, requireSuperAdmin } from '../../middleware/auth.middleware.js';
-import { passwordRateLimiter, sensitiveActionRateLimiter } from '../../middleware/rateLimit.middleware.js';
 
 import {
   getLotProjects,
@@ -40,6 +38,9 @@ import {
   updateLotProjectListingPayment,
   deleteLotProjectListingPayment,
   updateLotProjectListingSoaTerms,
+  grantPaymentSchedulePenaltyExtension,
+  waivePaymentSchedulePenalty,
+  restorePaymentSchedulePenaltyWaiver,
 } from '../../controllers/Lot_Projects/ListingProfile/PaymentsSOA.controller.js';
 import { getLotProjectPaymentLogs } from '../../controllers/Lot_Projects/PaymentLogs/PaymentLogs.controller.js';
 import {
@@ -53,8 +54,6 @@ import {
 
 const router = express.Router();
 
-router.use(requireAuth, requirePasswordChanged, requireAdmin);
-
 router.get('/lot-projects', getLotProjects);
 router.get('/lot-projects/options', getLotProjectOptions);
 router.get('/lot-projects/:projectSlug/dashboard', getLotProjectDashboard);
@@ -62,31 +61,35 @@ router.get('/lot-projects/:projectSlug/price-list', getLotProjectPriceList);
 router.get('/lot-projects/:projectSlug/listings', getLotProjectListings);
 router.get('/lot-projects/:projectSlug/payment-logs', getLotProjectPaymentLogs);
 router.get('/lot-projects/:projectSlug/commissions', getLotProjectCommissions);
-router.patch('/lot-projects/:projectSlug/commissions/:commissionId', sensitiveActionRateLimiter, updateLotProjectCommission);
+router.patch('/lot-projects/:projectSlug/commissions/:commissionId', updateLotProjectCommission);
 router.get('/lot-projects/:projectSlug/settings', getLotProjectSettings);
-router.put('/lot-projects/:projectSlug/settings', requireSuperAdmin, sensitiveActionRateLimiter, updateLotProjectSettings);
+router.put('/lot-projects/:projectSlug/settings', updateLotProjectSettings);
 router.get('/lot-projects/:projectSlug/listings/:listingId', getLotProjectListingProfile);
 router.get('/lot-projects/:projectSlug', getLotProjectBySlug);
 
-router.post('/lot-projects', sensitiveActionRateLimiter, createLotProject);
-router.post('/lot-projects/:projectSlug/listings', sensitiveActionRateLimiter, createLotProjectListing);
-router.put('/lot-projects/:projectSlug/listings/:listingId', sensitiveActionRateLimiter, updateLotProjectListing);
-router.delete('/lot-projects/:projectSlug/listings/:listingId', sensitiveActionRateLimiter, deleteLotProjectListing);
-router.put('/lot-projects/:projectSlug/listings/:listingId/client-profile', sensitiveActionRateLimiter, updateLotProjectClientProfile);
-router.post('/lot-projects/:projectSlug/listings/:listingId/reserve', sensitiveActionRateLimiter, reserveLotProjectListing);
-router.patch('/lot-projects/:projectSlug/listings/:listingId/hold', sensitiveActionRateLimiter, holdLotProjectListing);
-router.patch('/lot-projects/:projectSlug/listings/:listingId/unhold', sensitiveActionRateLimiter, unholdLotProjectListing);
-router.put('/lot-projects/:projectSlug/listings/:listingId/document-requirements', sensitiveActionRateLimiter, updateLotProjectListingDocumentRequirements);
-router.put('/lot-projects/:projectSlug/listings/:listingId/documents/:documentId/upload', sensitiveActionRateLimiter, uploadLotProjectListingDocument);
-router.patch('/lot-projects/:projectSlug/listings/:listingId/documents/:documentId/approve', sensitiveActionRateLimiter, approveLotProjectListingDocument);
-router.patch('/lot-projects/:projectSlug/listings/:listingId/documents/:documentId/clear', sensitiveActionRateLimiter, clearLotProjectListingDocument);
-router.put('/lot-projects/:projectSlug/listings/:listingId/soa-terms', sensitiveActionRateLimiter, updateLotProjectListingSoaTerms);
-router.post('/lot-projects/:projectSlug/listings/:listingId/payments', sensitiveActionRateLimiter, createLotProjectListingPayment);
-router.put('/lot-projects/:projectSlug/listings/:listingId/payments/:paymentId', sensitiveActionRateLimiter, updateLotProjectListingPayment);
-router.post('/lot-projects/:projectSlug/listings/:listingId/payments/:paymentId/delete', passwordRateLimiter, deleteLotProjectListingPayment);
+router.post('/lot-projects', createLotProject);
+router.post('/lot-projects/:projectSlug/listings', createLotProjectListing);
+router.put('/lot-projects/:projectSlug/listings/:listingId', updateLotProjectListing);
+router.delete('/lot-projects/:projectSlug/listings/:listingId', deleteLotProjectListing);
+router.put('/lot-projects/:projectSlug/listings/:listingId/client-profile', updateLotProjectClientProfile);
+router.post('/lot-projects/:projectSlug/listings/:listingId/reserve', reserveLotProjectListing);
+router.patch('/lot-projects/:projectSlug/listings/:listingId/hold', holdLotProjectListing);
+router.patch('/lot-projects/:projectSlug/listings/:listingId/unhold', unholdLotProjectListing);
+router.put('/lot-projects/:projectSlug/listings/:listingId/document-requirements', updateLotProjectListingDocumentRequirements);
+router.put('/lot-projects/:projectSlug/listings/:listingId/documents/:documentId/upload', uploadLotProjectListingDocument);
+router.patch('/lot-projects/:projectSlug/listings/:listingId/documents/:documentId/approve', approveLotProjectListingDocument);
+router.patch('/lot-projects/:projectSlug/listings/:listingId/documents/:documentId/clear', clearLotProjectListingDocument);
+router.put('/lot-projects/:projectSlug/listings/:listingId/soa-terms', updateLotProjectListingSoaTerms);
+router.post('/lot-projects/:projectSlug/listings/:listingId/payments', createLotProjectListingPayment);
+router.put('/lot-projects/:projectSlug/listings/:listingId/payments/:paymentId', updateLotProjectListingPayment);
+router.post('/lot-projects/:projectSlug/listings/:listingId/payments/:paymentId/delete', deleteLotProjectListingPayment);
+router.post('/lot-projects/:projectSlug/listings/:listingId/payment-schedules/:scheduleId/penalty-extension', grantPaymentSchedulePenaltyExtension);
+router.post('/lot-projects/:projectSlug/listings/:listingId/payment-schedules/:scheduleId/penalty-waiver', waivePaymentSchedulePenalty);
+router.post('/lot-projects/:projectSlug/listings/:listingId/penalty-reliefs/:reliefId/restore', restorePaymentSchedulePenaltyWaiver);
 
-router.put('/lot-projects/:id', sensitiveActionRateLimiter, updateLotProject);
-router.patch('/lot-projects/:id/status', sensitiveActionRateLimiter, toggleLotProjectStatus);
-router.delete('/lot-projects/:id', requireSuperAdmin, passwordRateLimiter, deleteLotProject);
+router.put('/lot-projects/:id', updateLotProject);
+router.patch('/lot-projects/:id/status', toggleLotProjectStatus);
+router.delete('/lot-projects/:id', deleteLotProject);
 
 export default router;
+

@@ -4,9 +4,10 @@
   "description": "",
   "main": "server.js",
   "scripts": {
-    "test": "node --test",
+    "test": "node --test tests/*.test.js",
     "start": "node server.js",
-    "dev": "nodemon server.js"
+    "dev": "nodemon server.js",
+    "refresh-penalties": "node -e \"import('./jobs/dailyPenalty.job.js').then(({refreshDailyPenaltyCaches}) => refreshDailyPenaltyCaches().then(console.log).finally(() => process.exit()))\""
   },
   "keywords": [],
   "author": "",

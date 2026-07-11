@@ -3,6 +3,8 @@ import { getPaymentCalculations, money } from './reserveUtils'
 import { SectionCard, SelectInput, TextInput } from './ReserveShared'
 
 const downpaymentTermOptions = Array.from({ length: 12 }, (_, index) => String(index + 1))
+const dailyPenaltyRateOptions = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 2, 3, 4, 5]
+const penaltyGraceDayOptions = Array.from({ length: 31 }, (_, index) => String(index + 1))
 
 const ReservePaymentTermsModal = ({
   listing,
@@ -238,25 +240,33 @@ const ReservePaymentTermsModal = ({
             helper="This is set from the selected listing. Edit the listing to change it."
           />
 
-          <TextInput
-            label="Penalty Rate per Month Started (%)"
-            type="number"
-            value={paymentForm.penaltyRatePercent}
-            onChange={(value) => updatePaymentField('penaltyRatePercent', value)}
-            placeholder="Example: 3"
-            helper="Copied from project settings for this buyer. Use 0 to disable penalties."
+          <SelectInput
+            label="Daily Penalty Rate for Overdue Installment (%)"
+            value={paymentForm.dailyPenaltyRate}
+            onChange={(value) => updatePaymentField('dailyPenaltyRate', value)}
+            helper="Saved with this buyer's reservation. It will not change when project policies change later."
             required
-          />
+          >
+            {dailyPenaltyRateOptions.map((value) => (
+              <option key={value} value={String(value)}>
+                {value}% per day
+              </option>
+            ))}
+          </SelectInput>
 
-          <TextInput
-            label="Penalty Grace Period (Days)"
-            type="number"
+          <SelectInput
+            label="Penalty-Free Grace Period"
             value={paymentForm.penaltyGraceDays}
             onChange={(value) => updatePaymentField('penaltyGraceDays', value)}
-            placeholder="Example: 5"
-            helper="Penalty begins after this many calendar days past the due date."
+            helper="Penalty begins on the next calendar day after this grace period ends."
             required
-          />
+          >
+            {penaltyGraceDayOptions.map((value) => (
+              <option key={value} value={value}>
+                {value} day{value === '1' ? '' : 's'}
+              </option>
+            ))}
+          </SelectInput>
 
           <TextInput
             label="Monthly Amortization"
@@ -353,3 +363,4 @@ const ReservePaymentTermsModal = ({
 }
 
 export default ReservePaymentTermsModal
+

@@ -1,0 +1,154 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { calculateScheduleDailyPenalty } from '../controllers/Lot_Projects/_shared/lotProject.shared.js';
+
+const profile = {
+  soa_penalty_calculation_method: 'daily',
+  soa_penalty_rate_percent: 0.1,
+  soa_penalty_grace_days: 1,
+};
+
+const schedule = {
+  lot_project_payment_schedule_id: 1,
+  due_date: '2026-07-01',
+  description: '1st Monthly Payment',
+  due_amount: 10000,
+  penalty_amount: 0,
+  amount_paid: 0,
+  schedule_status: 'Unpaid',
+};
+
+test('daily penalty starts after the grace period and includes the statement date', () => {
+  const result = calculateScheduleDailyPenalty({
+    row: schedule,
+    clientProfile: profile,
+    asOfDate: '2026-07-05',
+  });
+
+  assert.equal(result.penaltyStartDate, '2026-07-03');
+  assert.equal(result.calculatedPenaltyAmount, 30);
+  assert.equal(result.penaltyAmount, 30);
+});
+
+test('partial payment reduces the penalty base from its payment date', () => {
+  const result = calculateScheduleDailyPenalty({
+    row: schedule,
+    clientProfile: profile,
+    allocations: [
+      {
+        lot_project_payment_id: 1,
+        payment_date: '2026-07-04',
+        applied_amount: 4000,
+      },
+    ],
+    asOfDate: '2026-07-05',
+  });
+
+  assert.equal(result.calculatedPenaltyAmount, 22.02);
+  assert.equal(result.paidPenaltyAmount, 10);
+  assert.equal(result.unpaidBaseAmount, 6010);
+  assert.equal(result.outstandingPenaltyAmount, 12.02);
+});
+
+test('active extension temporarily suppresses penalty', () => {
+  const result = calculateScheduleDailyPenalty({
+    row: schedule,
+    clientProfile: profile,
+    reliefs: [
+      {
+        penalty_relief_id: 5,
+        relief_type: 'penalty_free_extension',
+        promised_payment_date: '2026-07-05',
+        status: 'active',
+        reason: 'Client promised payment.',
+        created_at: '2026-07-02 09:00:00',
+      },
+    ],
+    asOfDate: '2026-07-04',
+  });
+
+  assert.equal(result.penaltyAmount, 0);
+  assert.equal(result.activeExtension.status, 'active');
+});
+
+test('broken extension restores the penalty from the original start date', () => {
+  const result = calculateScheduleDailyPenalty({
+    row: schedule,
+    clientProfile: profile,
+    reliefs: [
+      {
+        penalty_relief_id: 5,
+        relief_type: 'penalty_free_extension',
+        promised_payment_date: '2026-07-05',
+        status: 'active',
+        reason: 'Client promised payment.',
+        created_at: '2026-07-02 09:00:00',
+      },
+    ],
+    asOfDate: '2026-07-06',
+  });
+
+  assert.equal(result.activeExtension.status, 'broken');
+  assert.equal(result.calculatedPenaltyAmount, 40);
+});
+
+test('waiver reduces the penalty without changing the calculated amount', () => {
+  const result = calculateScheduleDailyPenalty({
+    row: schedule,
+    clientProfile: profile,
+    reliefs: [
+      {
+        penalty_relief_id: 7,
+        relief_type: 'partial_waiver',
+        relief_amount: 10,
+        status: 'active',
+        reason: 'Approved partial waiver.',
+        created_at: '2026-07-05 08:00:00',
+      },
+    ],
+    asOfDate: '2026-07-05',
+  });
+
+  assert.equal(result.calculatedPenaltyAmount, 30);
+  assert.equal(result.waivedPenaltyAmount, 10);
+  assert.equal(result.penaltyAmount, 20);
+});
+
+test('future SOA rows cannot receive a penalty-free extension yet', () => {
+  const result = calculateScheduleDailyPenalty({
+    row: { ...schedule, due_date: '2026-07-10' },
+    clientProfile: profile,
+    asOfDate: '2026-07-01',
+  });
+
+  assert.equal(result.canGrantExtension, false);
+});
+
+test('full payment by the promised date honors the extension and keeps penalty at zero', () => {
+  const result = calculateScheduleDailyPenalty({
+    row: schedule,
+    clientProfile: profile,
+    allocations: [
+      {
+        lot_project_payment_id: 2,
+        payment_date: '2026-07-05',
+        applied_amount: 10000,
+      },
+    ],
+    reliefs: [
+      {
+        penalty_relief_id: 8,
+        relief_type: 'penalty_free_extension',
+        promised_payment_date: '2026-07-05',
+        status: 'active',
+        reason: 'Client promised payment.',
+        created_at: '2026-07-02 09:00:00',
+      },
+    ],
+    asOfDate: '2026-07-06',
+  });
+
+  assert.equal(result.activeExtension.status, 'honored');
+  assert.equal(result.penaltyAmount, 0);
+  assert.equal(result.unpaidBaseAmount, 0);
+});

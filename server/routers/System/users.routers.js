@@ -10,30 +10,20 @@ import {
   toggleUserStatus,
   resetUserPassword,
 } from '../../controllers/System/users.controllers.js';
-import {
-  requireAuth,
-  requirePasswordChanged,
-  requireSuperAdmin,
-} from '../../middleware/auth.middleware.js';
-import {
-  loginRateLimiter,
-  passwordRateLimiter,
-  sensitiveActionRateLimiter,
-} from '../../middleware/rateLimit.middleware.js';
 
 const router = express.Router();
 
-router.post('/login', loginRateLimiter, login);
-router.post('/logout', requireAuth, logout);
-router.get('/me', requireAuth, getMe);
-router.patch('/change-password', passwordRateLimiter, requireAuth, changePassword);
-
-router.use(requireAuth, requirePasswordChanged, requireSuperAdmin);
+router.post('/login', login);
+router.post('/logout', logout);
+router.get('/me', getMe);
+router.patch('/change-password', changePassword);
 
 router.get('/getUsers', getUsers);
-router.post('/createUser', sensitiveActionRateLimiter, createUser);
-router.put('/editUser/:id', sensitiveActionRateLimiter, editUser);
-router.patch('/toggleUserStatus/:id', sensitiveActionRateLimiter, toggleUserStatus);
-router.patch('/resetPassword/:id', passwordRateLimiter, resetUserPassword);
+router.post('/createUser', createUser);
+router.put('/editUser/:id', editUser);
+router.patch('/toggleUserStatus/:id', toggleUserStatus);
+router.patch('/resetPassword/:id', resetUserPassword);
 
 export default router;
+
+

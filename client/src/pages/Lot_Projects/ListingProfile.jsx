@@ -122,7 +122,6 @@ const ListingProfile = () => {
   const payments = profile.payments || []
   const documents = profile.documents || []
   const reserveSellerOptions = profile.reserveOptions?.sellers || []
-  const reservePenaltyTerms = profile.reserveOptions?.penaltyTerms || { ratePercent: 0, graceDays: 0 }
 
   const reserveDocumentsQuery = useQuery({
     queryKey: ['documents'],
@@ -554,7 +553,6 @@ const ListingProfile = () => {
           documentLibrary={documentLibrary}
           projectDefaultDocuments={project.defaultDocuments || []}
           sellerOptions={reserveSellerOptions}
-          penaltyTerms={reservePenaltyTerms}
           documentTemplates={documentTemplates}
           templateDocuments={templateDocuments}
           isLoadingDocuments={reserveDocumentsQuery.isLoading || reserveTemplatesQuery.isLoading}
@@ -566,3 +564,7 @@ const ListingProfile = () => {
 }
 
 export default ListingProfile
+
+
+
+

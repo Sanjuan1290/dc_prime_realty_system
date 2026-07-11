@@ -395,3 +395,4 @@ export const uploadAccreditedSellerProofOfIncome = async (req, res) => {
     connection.release();
   }
 };
+

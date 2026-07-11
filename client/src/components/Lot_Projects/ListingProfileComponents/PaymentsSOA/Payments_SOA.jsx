@@ -4,6 +4,7 @@ import { useParams } from 'react-router-dom'
 import {
   FiAlertTriangle,
   FiCheckCircle,
+  FiClock,
   FiCreditCard,
   FiEdit2,
   FiPlus,
@@ -14,7 +15,9 @@ import {
 } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
 import { useFetchPost, useFetchPut } from '../../../../utils/useFetch'
+import useCurrentUser from '../../../../utils/useCurrentUser'
 import AddSOAPaymentModal from './AddSOAPaymentModal'
+import PenaltyReliefModal from './PenaltyReliefModal'
 
 const money = (value) =>
   new Intl.NumberFormat('en-PH', {
@@ -57,7 +60,8 @@ const getListingValue = (listing, keys, fallback = '') => {
 
 const normalizeRows = (rows = []) => {
   return rows.map((row, index) => ({
-    id: row.id || row.lot_project_payment_schedule_id || index + 1,
+    id: row.id || row.scheduleId || row.lot_project_payment_schedule_id || index + 1,
+    scheduleId: Number(row.scheduleId || row.lot_project_payment_schedule_id || row.id || 0),
     dueDate: row.dueDate || row.due_date || '',
     description: row.description || row.payment_description || '',
     beginningBalance: cleanMoney(row.beginningBalance ?? row.beginning_balance),
@@ -67,6 +71,17 @@ const normalizeRows = (rows = []) => {
     interest: cleanMoney(row.interest ?? row.interestAmount ?? row.interest_amount),
     discountAmount: cleanMoney(row.discountAmount ?? row.discount_amount),
     penalty: cleanMoney(row.penalty ?? row.penaltyAmount ?? row.penalty_amount),
+    calculatedPenaltyAmount: cleanMoney(row.calculatedPenaltyAmount ?? row.calculated_penalty_amount ?? row.penalty ?? row.penalty_amount),
+    waivedPenaltyAmount: cleanMoney(row.waivedPenaltyAmount ?? row.waived_penalty_amount),
+    outstandingPenaltyAmount: cleanMoney(row.outstandingPenaltyAmount ?? row.outstanding_penalty_amount),
+    penaltyRatePercent: Number(row.penaltyRatePercent ?? row.penalty_rate_percent ?? 0),
+    penaltyGraceDays: Number(row.penaltyGraceDays ?? row.penalty_grace_days ?? 0),
+    penaltyStartDate: row.penaltyStartDate || row.penalty_start_date || '',
+    penaltyCalculatedThrough: row.penaltyCalculatedThrough || row.penalty_calculated_through || '',
+    penaltyReliefs: row.penaltyReliefs || row.penalty_reliefs || [],
+    activePenaltyExtension: row.activePenaltyExtension || row.active_penalty_extension || null,
+    canGrantPenaltyExtension: Boolean(row.canGrantPenaltyExtension ?? row.can_grant_penalty_extension),
+    canWaivePenalty: Boolean(row.canWaivePenalty ?? row.can_waive_penalty),
     datePaid: row.datePaid || row.date_paid || '',
     amountPaid: cleanMoney(row.amountPaid ?? row.amount_paid),
     paidPrincipalAmount: cleanMoney(row.paidPrincipalAmount ?? row.paid_principal_amount),
@@ -280,8 +295,6 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
     downpaymentPercentage: String(getListingValue(listing, ['soaDownpaymentPercentage'], 30)),
     downpaymentTerms: String(getListingValue(listing, ['soaDownpaymentTerms'], 3)),
     monthlyTerms: String(getListingValue(listing, ['soaMonthlyTerms'], 36)),
-    penaltyRatePercent: String(getListingValue(listing, ['soaPenaltyRatePercent'], 0)),
-    penaltyGraceDays: String(getListingValue(listing, ['soaPenaltyGraceDays'], 0)),
     firstDueDate: getListingValue(listing, ['soaFirstDueDate', 'first_due_date'], ''),
   }))
   const [modalAlert, setModalAlert] = useState({
@@ -307,19 +320,6 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
     const downpaymentPercentage = Number(form.downpaymentPercentage || 0)
     const downpaymentTerms = Number(form.downpaymentTerms || 0)
     const monthlyTerms = Number(form.monthlyTerms || 0)
-    const penaltyRatePercent = Number(form.penaltyRatePercent || 0)
-    const penaltyGraceDays = Number(form.penaltyGraceDays || 0)
-
-    if (Number.isNaN(penaltyRatePercent) || penaltyRatePercent < 0 || penaltyRatePercent > 100) {
-      setModalAlert({ type: 'error', message: 'Penalty rate must be between 0 and 100.' })
-      return
-    }
-
-    if (!Number.isInteger(penaltyGraceDays) || penaltyGraceDays < 0 || penaltyGraceDays > 365) {
-      setModalAlert({ type: 'error', message: 'Penalty grace days must be between 0 and 365.' })
-      return
-    }
-
     if (dpDiscountPercentage < 0 || dpDiscountPercentage > 100) {
       setModalAlert({ type: 'error', message: 'DP Discount % must be between 0 and 100.' })
       return
@@ -346,8 +346,6 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
       downpaymentPercentage,
       downpaymentTerms,
       monthlyTerms,
-      penaltyRatePercent,
-      penaltyGraceDays,
       interestRateSource: 'listing',
       firstDueDate: form.firstDueDate || null,
     })
@@ -390,8 +388,6 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
             <Field label="Downpayment %" value={form.downpaymentPercentage} onChange={(value) => updateForm('downpaymentPercentage', value)} placeholder="Example: 30" />
             <Field label="Downpayment Terms" value={form.downpaymentTerms} onChange={(value) => updateForm('downpaymentTerms', value)} placeholder="Example: 3" />
             <Field label="Monthly Terms" value={form.monthlyTerms} onChange={(value) => updateForm('monthlyTerms', value)} placeholder="Example: 36" />
-            <Field label="Penalty Rate per Month Started (%)" value={form.penaltyRatePercent} onChange={(value) => updateForm('penaltyRatePercent', value)} placeholder="Example: 3" helper="Flat penalty based on the scheduled due amount. Use 0 to disable." />
-            <Field label="Penalty Grace Days" value={form.penaltyGraceDays} onChange={(value) => updateForm('penaltyGraceDays', value)} placeholder="Example: 5" helper="Penalty starts after the grace period ends." />
             <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm font-semibold text-blue-900 md:col-span-2">
               <p className="text-xs font-black uppercase tracking-wide text-blue-700">Listing Annual Interest Rate</p>
               <p className="mt-1 text-xl font-black">{listingInterestRate.toFixed(2)}%</p>
@@ -415,6 +411,8 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
 const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
   const { projectSlug, listingId } = useParams()
   const queryClient = useQueryClient()
+  const { data: currentUserData } = useCurrentUser()
+  const canManagePenaltyRelief = ['admin', 'super_admin'].includes(currentUserData?.user?.role)
 
   const rows = useMemo(() => normalizeRows(soaRows), [soaRows])
   const paymentRecords = useMemo(() => normalizePayments(payments, listing), [payments, listing])
@@ -460,6 +458,8 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
   const [deletePayment, setDeletePayment] = useState(null)
   const [deletePassword, setDeletePassword] = useState('')
   const [deleteAlert, setDeleteAlert] = useState(null)
+  const [penaltyReliefRow, setPenaltyReliefRow] = useState(null)
+  const [penaltyReliefAlert, setPenaltyReliefAlert] = useState(null)
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
@@ -526,6 +526,51 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
     onError: (error) => {
       setAlert({ type: 'error', message: error?.message || 'Failed to save SOA terms.' })
     },
+  })
+
+  const grantPenaltyExtensionMutation = useMutation({
+    mutationFn: ({ scheduleId, ...payload }) =>
+      useFetchPost(
+        `/projects/lot-projects/${projectSlug}/listings/${listingId}/payment-schedules/${scheduleId}/penalty-extension`,
+        payload
+      ),
+    onSuccess: (result) => {
+      setPenaltyReliefRow(null)
+      setPenaltyReliefAlert(null)
+      setAlert({ type: 'success', message: result?.message || 'Penalty-free extension saved.' })
+      invalidateProfile()
+    },
+    onError: (error) => setPenaltyReliefAlert({ type: 'error', message: error?.message || 'Failed to save penalty-free extension.' }),
+  })
+
+  const waivePenaltyMutation = useMutation({
+    mutationFn: ({ scheduleId, ...payload }) =>
+      useFetchPost(
+        `/projects/lot-projects/${projectSlug}/listings/${listingId}/payment-schedules/${scheduleId}/penalty-waiver`,
+        payload
+      ),
+    onSuccess: (result) => {
+      setPenaltyReliefRow(null)
+      setPenaltyReliefAlert(null)
+      setAlert({ type: 'success', message: result?.message || 'Penalty waiver saved.' })
+      invalidateProfile()
+    },
+    onError: (error) => setPenaltyReliefAlert({ type: 'error', message: error?.message || 'Failed to save penalty waiver.' }),
+  })
+
+  const restorePenaltyMutation = useMutation({
+    mutationFn: ({ reliefId, ...payload }) =>
+      useFetchPost(
+        `/projects/lot-projects/${projectSlug}/listings/${listingId}/penalty-reliefs/${reliefId}/restore`,
+        payload
+      ),
+    onSuccess: (result) => {
+      setPenaltyReliefRow(null)
+      setPenaltyReliefAlert(null)
+      setAlert({ type: 'success', message: result?.message || 'Waived penalty restored.' })
+      invalidateProfile()
+    },
+    onError: (error) => setPenaltyReliefAlert({ type: 'error', message: error?.message || 'Failed to restore waived penalty.' }),
   })
 
   const handleSaveSoaTerms = (payload) => {
@@ -919,7 +964,7 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
                 Statement of Account
               </h3>
               <p className="text-sm font-semibold text-slate-500">
-                Complete SOA schedule with gross monthly due, principal, interest, discount, penalty, payment, and remaining principal balance.
+                Complete SOA schedule with installment penalties, relief history, payments, and remaining principal balance.
               </p>
             </div>
 
@@ -942,11 +987,13 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
                   'Interest',
                   'Discount',
                   'Penalty',
+                  'Penalty Relief',
                   'Date Paid',
                   'Amount Paid',
                   'Reference ID',
                   'Status',
                   'Ending Balance',
+                  'Actions',
                 ].map((head) => (
                   <th
                     key={head}
@@ -989,8 +1036,30 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
                     {money(row.discountAmount)}
                   </td>
 
-                  <td className="px-4 py-3 font-semibold text-red-700">
-                    {money(row.penalty)}
+                  <td className="px-4 py-3">
+                    <p className="font-black text-red-700">{money(row.penalty)}</p>
+                    {row.waivedPenaltyAmount > 0 ? (
+                      <p className="mt-1 text-xs font-semibold text-emerald-700">
+                        Waived {money(row.waivedPenaltyAmount)}
+                      </p>
+                    ) : null}
+                  </td>
+
+                  <td className="px-4 py-3">
+                    {row.activePenaltyExtension ? (
+                      <div className="min-w-[180px] rounded-xl border border-blue-200 bg-blue-50 px-3 py-2">
+                        <p className="text-xs font-black uppercase text-blue-700">Extension {row.activePenaltyExtension.status}</p>
+                        <p className="mt-1 text-xs font-semibold text-blue-900">
+                          Until {formatDate(row.activePenaltyExtension.promisedPaymentDate)}
+                        </p>
+                      </div>
+                    ) : row.penaltyReliefs?.length ? (
+                      <span className="text-xs font-black text-slate-600">
+                        {row.penaltyReliefs.length} relief record{row.penaltyReliefs.length === 1 ? '' : 's'}
+                      </span>
+                    ) : (
+                      <span className="text-xs font-semibold text-slate-400">None</span>
+                    )}
                   </td>
 
                   <td className="px-4 py-3 font-semibold text-slate-600">
@@ -1012,12 +1081,30 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
                   <td className="px-4 py-3 font-black text-slate-950">
                     {money(row.endingBalance)}
                   </td>
+
+                  <td className="px-4 py-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPenaltyReliefRow(row)
+                        setPenaltyReliefAlert(null)
+                      }}
+                      disabled={
+                        !row.scheduleId ||
+                        (!row.penaltyReliefs?.length && (!canManagePenaltyRelief || (!row.canGrantPenaltyExtension && !row.canWaivePenalty)))
+                      }
+                      className="inline-flex h-9 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400"
+                    >
+                      <FiClock className="h-3.5 w-3.5" />
+                      {canManagePenaltyRelief ? 'Penalty Relief' : 'Relief History'}
+                    </button>
+                  </td>
                 </tr>
               ))}
 
               {!rows.length ? (
                 <tr>
-                  <td colSpan={13} className="px-4 py-10 text-center">
+                  <td colSpan={15} className="px-4 py-10 text-center">
                     <FiCheckCircle className="mx-auto h-8 w-8 text-slate-300" />
                     <p className="mt-3 text-sm font-black text-slate-700">
                       No SOA schedule yet
@@ -1072,6 +1159,23 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
         />
       ) : null}
 
+      {penaltyReliefRow ? (
+        <PenaltyReliefModal
+          row={penaltyReliefRow}
+          alert={penaltyReliefAlert}
+          canManage={canManagePenaltyRelief}
+          isSaving={grantPenaltyExtensionMutation.isPending || waivePenaltyMutation.isPending || restorePenaltyMutation.isPending}
+          onClose={() => {
+            if (grantPenaltyExtensionMutation.isPending || waivePenaltyMutation.isPending || restorePenaltyMutation.isPending) return
+            setPenaltyReliefRow(null)
+            setPenaltyReliefAlert(null)
+          }}
+          onGrantExtension={(payload) => grantPenaltyExtensionMutation.mutate({ scheduleId: penaltyReliefRow.scheduleId, ...payload })}
+          onWaive={(payload) => waivePenaltyMutation.mutate({ scheduleId: penaltyReliefRow.scheduleId, ...payload })}
+          onRestore={(payload) => restorePenaltyMutation.mutate(payload)}
+        />
+      ) : null}
+
       <DeletePaymentModal
         payment={deletePayment}
         password={deletePassword}
@@ -1090,3 +1194,7 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
 }
 
 export default PaymentsSOA
+
+
+
+

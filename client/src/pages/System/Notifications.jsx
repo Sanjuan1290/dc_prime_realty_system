@@ -214,7 +214,7 @@ const Notifications = () => {
         <SummaryCard label="Due Within 7 Days" value={summary.dueSoon} icon={FiClock} tone="blue" helper="Unpaid or partial" />
         <SummaryCard label="Overdue" value={summary.overdue} icon={FiAlertTriangle} tone="red" helper="Past due schedules" />
         <SummaryCard label="Payment Due" value={money(summary.totalPaymentDue)} icon={FiMail} tone="amber" helper="Unpaid balance" />
-        <SummaryCard label="Penalty" value={money(summary.totalPenalty)} icon={FiAlertTriangle} tone="red" helper="Self-input penalty" />
+        <SummaryCard label="Penalty" value={money(summary.totalPenalty)} icon={FiAlertTriangle} tone="red" helper="Auto-calculated daily penalty" />
       </section>
 
       <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
@@ -397,3 +397,7 @@ const Notifications = () => {
 }
 
 export default Notifications
+
+
+
+

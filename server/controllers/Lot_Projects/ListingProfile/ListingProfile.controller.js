@@ -279,29 +279,6 @@ export const getLotProjectListingProfile = async (req, res) => {
     const cadastralLots = await getProjectCadastralLots(project.lot_project_id);
     const defaultDocuments = await getProjectDefaultDocuments(project.lot_project_id);
     const sellerOptions = await getReserveSellerOptions(connection, project.lot_project_id);
-    let reservePenaltyTerms = { ratePercent: 0, graceDays: 0 };
-
-    if (
-      await tableExists(connection, 'lot_project_settings') &&
-      await columnExists(connection, 'lot_project_settings', 'default_penalty_rate_percent') &&
-      await columnExists(connection, 'lot_project_settings', 'default_penalty_grace_days')
-    ) {
-      const [penaltySettingRows] = await connection.query(
-        `
-          SELECT default_penalty_rate_percent, default_penalty_grace_days
-          FROM lot_project_settings
-          WHERE lot_project_id = ?
-          LIMIT 1
-        `,
-        [project.lot_project_id]
-      );
-
-      reservePenaltyTerms = {
-        ratePercent: Number(penaltySettingRows[0]?.default_penalty_rate_percent || 0),
-        graceDays: Number(penaltySettingRows[0]?.default_penalty_grace_days || 0),
-      };
-    }
-
     const sellerName = row.seller_name || '-';
     const canEditBuyerProfile = canEditBuyerProfileForListing(row.lot_project_listing_status);
     const clientProfile = canEditBuyerProfile
@@ -329,7 +306,6 @@ export const getLotProjectListingProfile = async (req, res) => {
         documents,
         reserveOptions: {
           sellers: sellerOptions,
-          penaltyTerms: reservePenaltyTerms,
         },
       },
     });
@@ -552,3 +528,4 @@ export const unholdLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
+

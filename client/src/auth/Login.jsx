@@ -1,10 +1,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import useCurrentUser from "../utils/useCurrentUser";
 import StatusAlert from "../components/Shared/StatusAlert";
-import getDefaultRoute from "../utils/getDefaultRoute";
-import { apiRequest } from "../utils/apiClient";
 
 
 const Login = () => {
@@ -14,17 +12,29 @@ const Login = () => {
   
   const queryClient = useQueryClient()
   const navigate = useNavigate()
-  const location = useLocation()
   
   const { data: currentUser, isLoading } = useCurrentUser();
   
   const signinMutation = useMutation({
     mutationKey: ['currentUser'],
-    mutationFn: () => apiRequest('/user/login', {
-      method: 'POST',
-      body: JSON.stringify({ email, password }),
-      skipAuthRedirect: true,
-    }),
+    mutationFn: async () => {
+        const res = await fetch(`${import.meta.env.VITE_API_URL + '/user/login'}` , {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+            'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({email, password})
+        })
+
+        const data = await res.json()
+
+        if(!res.ok) {
+            throw new Error(data.message || 'Request Failed')
+        }
+
+        return data
+    },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['currentUser'] })
 
@@ -34,7 +44,7 @@ const Login = () => {
         return
       }
 
-      navigate(getDefaultRoute(user.role), { replace: true })
+      navigate(`/${user.role}`, { replace: true })
     }
   })
 
@@ -51,7 +61,7 @@ const Login = () => {
   }
 
   if(currentUser?.user) {
-    return <Navigate to={getDefaultRoute(currentUser.user.role)} replace />
+    return <Navigate to={`/${currentUser.user.role}`} replace />
   }
 
 
@@ -171,9 +181,6 @@ const Login = () => {
                   </button>
                 </div>
 
-                {location.state?.message ? (
-                  <StatusAlert type="warning" message={location.state.message} />
-                ) : null}
                 {signinMutation.isPending ? <StatusAlert type="loading" message="Signing in..." /> : null}
                 {signinMutation.isError ? <StatusAlert type="error" message={signinMutation.error.message} /> : null}
 
@@ -200,3 +207,5 @@ const Login = () => {
 };
 
 export default Login;
+
+

@@ -1,10 +1,6 @@
 import { db } from '../../../db/connect.js';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
-import {
-  addDaysToDate as addPenaltyDaysToDate,
-  calculateSchedulePenalty as calculateFlatSchedulePenalty,
-} from '../../../utils/penalty.js';
 
 export { db, jwt, bcrypt };
 
@@ -588,6 +584,7 @@ export const mapProfileListing = (row = {}, project = {}, documents = []) => {
     soaDpDiscountPercentage: Number(row.soa_dp_discount_percentage || 0),
     soaPenaltyRatePercent: Number(row.soa_penalty_rate_percent || 0),
     soaPenaltyGraceDays: Number(row.soa_penalty_grace_days || 0),
+    soaPenaltyCalculationMethod: row.soa_penalty_calculation_method || (Number(row.soa_penalty_rate_percent || 0) > 0 ? 'monthly_started' : 'none'),
     buyer_name: row.buyer_full_name || '-',
     spouse_co_owner: row.second_buyer_full_name || '-',
     email: row.buyer_email || '-',
@@ -774,35 +771,6 @@ export const addMonthsToDate = (value, months = 0) => {
   return date.toISOString().slice(0, 10);
 };
 
-
-export const addDaysToDate = addPenaltyDaysToDate;
-
-export const calculateSchedulePenalty = (options = {}) =>
-  calculateFlatSchedulePenalty({
-    ...options,
-    asOfDate: options.asOfDate || todayDateOnly(),
-  });
-
-export const applyComputedPenaltiesToRows = (rows = [], terms = {}, asOfDate = todayDateOnly()) =>
-  rows.map((row) => {
-    const amountPaid = roundMoneyValue(Number(row.amountPaid || 0));
-    const dueAmount = roundMoneyValue(Number(row.dueAmount || 0));
-    const rowAsOfDate = amountPaid + 0.009 >= dueAmount && row.datePaid && row.datePaid !== '-'
-      ? row.datePaid
-      : asOfDate;
-
-    return {
-      ...row,
-      penalty: calculateSchedulePenalty({
-        dueDate: row.dueDate,
-        dueAmount,
-        ratePercent: terms.penaltyRatePercent,
-        graceDays: terms.penaltyGraceDays,
-        asOfDate: rowAsOfDate,
-      }),
-    };
-  });
-
 export const getOrdinalLabel = (number) => {
   const value = Number(number || 0);
   const lastTwo = value % 100;
@@ -921,6 +889,470 @@ export const getStoredRowDiscountAmount = (row = {}, clientProfile = {}) =>
 
 export const getStoredRowTotalDue = (row = {}, clientProfile = {}) =>
   getStoredRowDiscountInfo(row, clientProfile).cashDueAmount;
+
+
+const dateOnlyToUtcMs = (value) => {
+  const clean = plainDate(value);
+  if (!clean || clean === '-') return null;
+  const [year, month, day] = clean.split('-').map(Number);
+  if (!year || !month || !day) return null;
+  return Date.UTC(year, month - 1, day);
+};
+
+const addCalendarDays = (value, days = 0) => {
+  const utcMs = dateOnlyToUtcMs(value);
+  if (utcMs === null) return null;
+  return new Date(utcMs + (Number(days || 0) * 86400000)).toISOString().slice(0, 10);
+};
+
+const calendarDayDiff = (fromValue, toValue) => {
+  const fromMs = dateOnlyToUtcMs(fromValue);
+  const toMs = dateOnlyToUtcMs(toValue);
+  if (fromMs === null || toMs === null) return 0;
+  return Math.max(Math.round((toMs - fromMs) / 86400000), 0);
+};
+
+const isPenaltyReliefActive = (relief = {}) =>
+  !['cancelled'].includes(String(relief.status || '').toLowerCase());
+
+const getPenaltyBaseDueAmount = (row = {}, clientProfile = {}) => {
+  const storedPenalty = Number(row.penalty_amount || 0);
+  const cashDue = Number(getStoredRowDiscountInfo(row, clientProfile).cashDueAmount || 0);
+  return roundMoneyValue(Math.max(cashDue - storedPenalty, 0));
+};
+
+const getPenaltyEligibleSchedule = (row = {}) => {
+  const type = getStoredScheduleType(row);
+  if (['reservation', 'legal_misc', 'balloon'].includes(type)) return false;
+  return String(row.schedule_status || '').toLowerCase() !== 'cancelled';
+};
+
+const mapPenaltyReliefRow = (row = {}) => ({
+  id: Number(row.penalty_relief_id || 0),
+  penaltyReliefId: Number(row.penalty_relief_id || 0),
+  scheduleId: Number(row.lot_project_payment_schedule_id || 0),
+  reliefType: row.relief_type,
+  promisedPaymentDate: plainDate(row.promised_payment_date),
+  reliefAmount: roundMoneyValue(row.relief_amount || 0),
+  restoresPenaltyReliefId: row.restores_penalty_relief_id ? Number(row.restores_penalty_relief_id) : null,
+  status: row.status || 'active',
+  reason: row.reason || '',
+  internalNotes: row.internal_notes || '',
+  approvedByUserId: row.approved_by_user_id ? Number(row.approved_by_user_id) : null,
+  approvedByName: row.approved_by_name || '-',
+  createdAt: formatDateTime(row.created_at),
+  rawCreatedAt: row.created_at,
+});
+
+const getEffectiveExtensionState = ({ reliefs = [], allocations = [], baseDue = 0, asOfDate }) => {
+  const extensions = reliefs
+    .filter((relief) => relief.relief_type === 'penalty_free_extension' && isPenaltyReliefActive(relief))
+    .sort((a, b) => Number(b.penalty_relief_id || 0) - Number(a.penalty_relief_id || 0));
+  const extension = extensions[0];
+  if (!extension?.promised_payment_date) return null;
+
+  const promisedDate = plainDate(extension.promised_payment_date);
+  const paidByPromise = roundMoneyValue(
+    allocations
+      .filter((allocation) => plainDate(allocation.payment_date) <= promisedDate)
+      .reduce((sum, allocation) => sum + Number(allocation.applied_amount || 0), 0)
+  );
+  const honored = paidByPromise + 0.009 >= baseDue;
+  const currentDate = plainDate(asOfDate);
+  const status = honored
+    ? 'honored'
+    : currentDate <= promisedDate
+      ? 'active'
+      : paidByPromise > 0
+        ? 'partially_honored'
+        : 'broken';
+
+  return {
+    id: Number(extension.penalty_relief_id),
+    penaltyReliefId: Number(extension.penalty_relief_id),
+    promisedPaymentDate: promisedDate,
+    status,
+    reason: extension.reason || '',
+    internalNotes: extension.internal_notes || '',
+    approvedByName: extension.approved_by_name || '-',
+    paidByPromise,
+    suppressPenalty: honored || currentDate <= promisedDate,
+  };
+};
+
+export const calculateScheduleDailyPenalty = ({
+  row = {},
+  clientProfile = {},
+  allocations = [],
+  reliefs = [],
+  asOfDate = todayDateOnly(),
+} = {}) => {
+  const method = String(clientProfile.soa_penalty_calculation_method || 'none').toLowerCase();
+  const ratePercent = Number(clientProfile.soa_penalty_rate_percent || 0);
+  const graceDays = Math.max(Number(clientProfile.soa_penalty_grace_days || 0), 0);
+  const baseDue = getPenaltyBaseDueAmount(row, clientProfile);
+  const mappedReliefs = reliefs.map(mapPenaltyReliefRow);
+
+  if (!getPenaltyEligibleSchedule(row) || baseDue <= 0 || method === 'none' || ratePercent <= 0) {
+    return {
+      scheduleId: Number(row.lot_project_payment_schedule_id || 0),
+      method,
+      ratePercent,
+      graceDays,
+      baseDueAmount: baseDue,
+      unpaidBaseAmount: roundMoneyValue(Math.max(baseDue - Number(row.amount_paid || 0), 0)),
+      calculatedPenaltyAmount: 0,
+      waivedPenaltyAmount: 0,
+      penaltyAmount: 0,
+      paidPenaltyAmount: 0,
+      outstandingPenaltyAmount: 0,
+      penaltyStartDate: row.due_date ? addCalendarDays(row.due_date, graceDays + 1) : null,
+      penaltyCalculatedThrough: plainDate(asOfDate),
+      reliefs: mappedReliefs,
+      activeExtension: null,
+      canGrantExtension: false,
+      canWaivePenalty: false,
+    };
+  }
+
+  if (method !== 'daily') {
+    const calculated = roundMoneyValue(row.calculated_penalty_amount ?? row.penalty_amount ?? 0);
+    const waiverTotal = roundMoneyValue(
+      reliefs
+        .filter((relief) => ['full_waiver', 'partial_waiver'].includes(relief.relief_type) && isPenaltyReliefActive(relief))
+        .reduce((sum, relief) => sum + Number(relief.relief_amount || 0), 0)
+    );
+    const restoredTotal = roundMoneyValue(
+      reliefs
+        .filter((relief) => relief.relief_type === 'restoration' && isPenaltyReliefActive(relief))
+        .reduce((sum, relief) => sum + Number(relief.relief_amount || 0), 0)
+    );
+    const waived = roundMoneyValue(Math.min(Math.max(waiverTotal - restoredTotal, 0), calculated));
+    const penaltyAmount = roundMoneyValue(Math.max(calculated - waived, 0));
+    const paidPenalty = roundMoneyValue(Math.min(Number(row.paid_penalty_amount || 0), penaltyAmount));
+
+    return {
+      scheduleId: Number(row.lot_project_payment_schedule_id || 0),
+      method,
+      ratePercent,
+      graceDays,
+      baseDueAmount: baseDue,
+      unpaidBaseAmount: roundMoneyValue(Math.max(baseDue - Math.max(Number(row.amount_paid || 0) - paidPenalty, 0), 0)),
+      calculatedPenaltyAmount: calculated,
+      waivedPenaltyAmount: waived,
+      penaltyAmount,
+      paidPenaltyAmount: paidPenalty,
+      outstandingPenaltyAmount: roundMoneyValue(Math.max(penaltyAmount - paidPenalty, 0)),
+      penaltyStartDate: row.due_date ? addCalendarDays(row.due_date, graceDays + 1) : null,
+      penaltyCalculatedThrough: plainDate(asOfDate),
+      reliefs: mappedReliefs,
+      activeExtension: null,
+      canGrantExtension: false,
+      canWaivePenalty: penaltyAmount - paidPenalty > 0.009,
+    };
+  }
+
+  const cleanAsOfDate = plainDate(asOfDate);
+  const penaltyStartDate = row.due_date ? addCalendarDays(row.due_date, graceDays + 1) : null;
+  const sortedAllocations = [...allocations]
+    .filter((allocation) => allocation.payment_date && Number(allocation.applied_amount || 0) > 0)
+    .sort((a, b) => {
+      const dateCompare = plainDate(a.payment_date).localeCompare(plainDate(b.payment_date));
+      if (dateCompare !== 0) return dateCompare;
+      return Number(a.lot_project_payment_id || 0) - Number(b.lot_project_payment_id || 0);
+    });
+  const activeExtension = getEffectiveExtensionState({
+    reliefs,
+    allocations: sortedAllocations,
+    baseDue,
+    asOfDate: cleanAsOfDate,
+  });
+
+  if (!penaltyStartDate || activeExtension?.suppressPenalty) {
+    const totalApplied = roundMoneyValue(sortedAllocations.reduce((sum, item) => sum + Number(item.applied_amount || 0), 0));
+    return {
+      scheduleId: Number(row.lot_project_payment_schedule_id || 0),
+      method,
+      ratePercent,
+      graceDays,
+      baseDueAmount: baseDue,
+      unpaidBaseAmount: roundMoneyValue(Math.max(baseDue - totalApplied, 0)),
+      calculatedPenaltyAmount: 0,
+      waivedPenaltyAmount: 0,
+      penaltyAmount: 0,
+      paidPenaltyAmount: 0,
+      outstandingPenaltyAmount: 0,
+      penaltyStartDate,
+      penaltyCalculatedThrough: cleanAsOfDate,
+      reliefs: mappedReliefs,
+      activeExtension,
+      canGrantExtension: false,
+      canWaivePenalty: false,
+    };
+  }
+
+  const reliefEvents = reliefs
+    .filter(isPenaltyReliefActive)
+    .filter((relief) => ['full_waiver', 'partial_waiver', 'restoration'].includes(relief.relief_type))
+    .map((relief) => ({
+      kind: 'relief',
+      date: plainDate(relief.created_at || cleanAsOfDate),
+      relief,
+    }));
+  const paymentEvents = sortedAllocations.map((allocation) => ({
+    kind: 'payment',
+    date: plainDate(allocation.payment_date),
+    allocation,
+  }));
+  const events = [...reliefEvents, ...paymentEvents]
+    .filter((event) => event.date && event.date !== '-')
+    .sort((a, b) => {
+      const dateCompare = a.date.localeCompare(b.date);
+      if (dateCompare !== 0) return dateCompare;
+      if (a.kind !== b.kind) return a.kind === 'relief' ? -1 : 1;
+      return 0;
+    });
+
+  let currentBase = baseDue;
+  let calculatedPenalty = 0;
+  let waiverBalance = 0;
+  let paidPenalty = 0;
+  let cursorDate = penaltyStartDate;
+  const dailyRate = ratePercent / 100;
+
+  const accrueUntilExclusive = (eventDate) => {
+    if (!cursorDate || currentBase <= 0 || eventDate <= cursorDate) return;
+    const days = calendarDayDiff(cursorDate, eventDate);
+    if (days > 0) {
+      calculatedPenalty = roundMoneyValue(calculatedPenalty + (currentBase * dailyRate * days));
+      cursorDate = eventDate;
+    }
+  };
+
+  for (const event of events) {
+    if (event.date > cleanAsOfDate) break;
+
+    if (event.date >= penaltyStartDate) {
+      accrueUntilExclusive(event.date);
+    }
+
+    if (event.kind === 'relief') {
+      const amount = Number(event.relief.relief_amount || 0);
+      if (event.relief.relief_type === 'restoration') {
+        waiverBalance = roundMoneyValue(Math.max(waiverBalance - amount, 0));
+      } else {
+        waiverBalance = roundMoneyValue(waiverBalance + amount);
+      }
+      continue;
+    }
+
+    let paymentAmount = roundMoneyValue(event.allocation.applied_amount || 0);
+    const outstandingPenalty = roundMoneyValue(
+      Math.max(calculatedPenalty - waiverBalance - paidPenalty, 0)
+    );
+    const penaltyPayment = roundMoneyValue(Math.min(paymentAmount, outstandingPenalty));
+    paidPenalty = roundMoneyValue(paidPenalty + penaltyPayment);
+    paymentAmount = roundMoneyValue(Math.max(paymentAmount - penaltyPayment, 0));
+    currentBase = roundMoneyValue(Math.max(currentBase - paymentAmount, 0));
+
+    if (event.date < penaltyStartDate) {
+      cursorDate = penaltyStartDate;
+    } else {
+      cursorDate = event.date;
+    }
+  }
+
+  if (cleanAsOfDate >= penaltyStartDate && currentBase > 0) {
+    const endExclusive = addCalendarDays(cleanAsOfDate, 1);
+    accrueUntilExclusive(endExclusive);
+  }
+
+  const waivedPenalty = roundMoneyValue(Math.min(waiverBalance, calculatedPenalty));
+  const penaltyAmount = roundMoneyValue(Math.max(calculatedPenalty - waivedPenalty, 0));
+  paidPenalty = roundMoneyValue(Math.min(paidPenalty, penaltyAmount));
+  const outstandingPenalty = roundMoneyValue(Math.max(penaltyAmount - paidPenalty, 0));
+
+  return {
+    scheduleId: Number(row.lot_project_payment_schedule_id || 0),
+    method,
+    ratePercent,
+    graceDays,
+    baseDueAmount: baseDue,
+    unpaidBaseAmount: currentBase,
+    calculatedPenaltyAmount: calculatedPenalty,
+    waivedPenaltyAmount: waivedPenalty,
+    penaltyAmount,
+    paidPenaltyAmount: paidPenalty,
+    outstandingPenaltyAmount: outstandingPenalty,
+    penaltyStartDate,
+    penaltyCalculatedThrough: cleanAsOfDate,
+    reliefs: mappedReliefs,
+    activeExtension,
+    canGrantExtension:
+      currentBase > 0.009 &&
+      calculatedPenalty <= 0.009 &&
+      !activeExtension &&
+      Boolean(row.due_date) &&
+      cleanAsOfDate >= plainDate(row.due_date),
+    canWaivePenalty: outstandingPenalty > 0.009,
+  };
+};
+
+export const getListingPenaltySnapshots = async (
+  connection,
+  lotProjectId,
+  listingId,
+  clientProfile = {},
+  scheduleRows = [],
+  asOfDate = todayDateOnly()
+) => {
+  if (!scheduleRows.length) return new Map();
+
+  const scheduleIds = scheduleRows
+    .map((row) => Number(row.lot_project_payment_schedule_id || 0))
+    .filter(Boolean);
+  if (!scheduleIds.length) return new Map();
+
+  const placeholders = scheduleIds.map(() => '?').join(', ');
+  let allocations = [];
+  if (await tableExists(connection, 'lot_project_payment_allocations')) {
+    const [allocationRows] = await connection.query(
+      `
+        SELECT
+          pa.lot_project_payment_schedule_id,
+          pa.applied_amount,
+          p.lot_project_payment_id,
+          p.lot_project_payment_date AS payment_date
+        FROM lot_project_payment_allocations pa
+        INNER JOIN lot_project_payments p
+          ON p.lot_project_payment_id = pa.lot_project_payment_id
+        WHERE pa.lot_project_payment_schedule_id IN (${placeholders})
+          AND p.lot_project_payment_status = 'Verified'
+        ORDER BY p.lot_project_payment_date ASC, p.lot_project_payment_id ASC
+      `,
+      scheduleIds
+    );
+    allocations = allocationRows;
+  }
+
+  let reliefRows = [];
+  if (await tableExists(connection, 'lot_project_penalty_reliefs')) {
+    const [rows] = await connection.query(
+      `
+        SELECT
+          pr.*,
+          TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS approved_by_name
+        FROM lot_project_penalty_reliefs pr
+        LEFT JOIN users u ON u.id = pr.approved_by_user_id
+        WHERE pr.lot_project_id = ?
+          AND pr.lot_project_listing_id = ?
+          AND pr.lot_project_payment_schedule_id IN (${placeholders})
+        ORDER BY pr.created_at ASC, pr.penalty_relief_id ASC
+      `,
+      [lotProjectId, listingId, ...scheduleIds]
+    );
+    reliefRows = rows;
+  }
+
+  const allocationsBySchedule = new Map();
+  allocations.forEach((allocation) => {
+    const key = Number(allocation.lot_project_payment_schedule_id);
+    if (!allocationsBySchedule.has(key)) allocationsBySchedule.set(key, []);
+    allocationsBySchedule.get(key).push(allocation);
+  });
+
+  const reliefsBySchedule = new Map();
+  reliefRows.forEach((relief) => {
+    const key = Number(relief.lot_project_payment_schedule_id);
+    if (!reliefsBySchedule.has(key)) reliefsBySchedule.set(key, []);
+    reliefsBySchedule.get(key).push(relief);
+  });
+
+  const snapshots = new Map();
+  scheduleRows.forEach((row) => {
+    const scheduleId = Number(row.lot_project_payment_schedule_id || 0);
+    snapshots.set(scheduleId, calculateScheduleDailyPenalty({
+      row,
+      clientProfile,
+      allocations: allocationsBySchedule.get(scheduleId) || [],
+      reliefs: reliefsBySchedule.get(scheduleId) || [],
+      asOfDate,
+    }));
+  });
+
+  return snapshots;
+};
+
+export const refreshListingPenaltyCache = async (
+  connection,
+  listing,
+  asOfDate = todayDateOnly()
+) => {
+  if (!(await tableExists(connection, 'lot_project_payment_schedules'))) return new Map();
+
+  const [profileRows] = await connection.query(
+    `SELECT * FROM lot_project_client_profiles WHERE lot_project_listing_id = ? LIMIT 1`,
+    [listing.lot_project_listing_id]
+  );
+  const clientProfile = { ...(listing || {}), ...(profileRows[0] || {}) };
+  const scheduleRows = await getExistingSoaScheduleRows(
+    connection,
+    listing.lot_project_id,
+    listing.lot_project_listing_id
+  );
+  const snapshots = await getListingPenaltySnapshots(
+    connection,
+    listing.lot_project_id,
+    listing.lot_project_listing_id,
+    clientProfile,
+    scheduleRows,
+    asOfDate
+  );
+
+  const hasCalculatedColumn = await columnExists(connection, 'lot_project_payment_schedules', 'calculated_penalty_amount');
+  const hasWaivedColumn = await columnExists(connection, 'lot_project_payment_schedules', 'waived_penalty_amount');
+  const hasThroughColumn = await columnExists(connection, 'lot_project_payment_schedules', 'penalty_calculated_through');
+
+  for (const row of scheduleRows) {
+    const snapshot = snapshots.get(Number(row.lot_project_payment_schedule_id));
+    if (!snapshot) continue;
+
+    const setColumns = ['penalty_amount = ?', 'paid_penalty_amount = ?'];
+    const params = [snapshot.penaltyAmount, snapshot.paidPenaltyAmount];
+    if (hasCalculatedColumn) {
+      setColumns.push('calculated_penalty_amount = ?');
+      params.push(snapshot.calculatedPenaltyAmount);
+    }
+    if (hasWaivedColumn) {
+      setColumns.push('waived_penalty_amount = ?');
+      params.push(snapshot.waivedPenaltyAmount);
+    }
+    if (hasThroughColumn) {
+      setColumns.push('penalty_calculated_through = ?');
+      params.push(snapshot.penaltyCalculatedThrough);
+    }
+
+    await connection.query(
+      `UPDATE lot_project_payment_schedules SET ${setColumns.join(', ')} WHERE lot_project_payment_schedule_id = ?`,
+      [...params, row.lot_project_payment_schedule_id]
+    );
+
+    if (snapshot.activeExtension && await tableExists(connection, 'lot_project_penalty_reliefs')) {
+      await connection.query(
+        `
+          UPDATE lot_project_penalty_reliefs
+          SET status = ?,
+              honored_at = CASE WHEN ? = 'honored' THEN COALESCE(honored_at, NOW()) ELSE honored_at END
+          WHERE penalty_relief_id = ?
+            AND status <> 'cancelled'
+        `,
+        [snapshot.activeExtension.status, snapshot.activeExtension.status, snapshot.activeExtension.penaltyReliefId]
+      );
+    }
+  }
+
+  return snapshots;
+};
 
 export const getStoredScheduleType = (row = {}) => {
   const text = String(row.description || '').toLowerCase();
@@ -1207,8 +1639,6 @@ export const getComputedSoaTerms = (listingRow = {}, existingScheduleRows = []) 
 
   const annualInterestRate = getEffectiveSoaInterestRate(listingRow);
   const interestRateSource = Number(listingRow.soa_interest_rate_overridden || 0) === 1 ? 'custom' : 'listing';
-  const penaltyRatePercent = Math.max(Number(listingRow.soa_penalty_rate_percent || listingRow.penaltyRatePercent || 0), 0);
-  const penaltyGraceDays = Math.max(Number(listingRow.soa_penalty_grace_days || listingRow.penaltyGraceDays || 0), 0);
   const financedBalance = roundMoneyValue(Math.max(principalTcp - reservationFee - downpaymentGrossTotal, 0));
   const monthlyPrincipal = roundMoneyValue(monthlyTerms > 0 ? financedBalance / monthlyTerms : financedBalance);
   const monthlyAmortization = getMonthlyAmortizationAmount(financedBalance, annualInterestRate, monthlyTerms);
@@ -1229,8 +1659,6 @@ export const getComputedSoaTerms = (listingRow = {}, existingScheduleRows = []) 
     monthlyPrincipal,
     monthlyAmortization,
     annualInterestRate,
-    penaltyRatePercent,
-    penaltyGraceDays,
     listingAnnualInterestRate: Number(listingRow.annual_interest_rate || 0),
     interestRateSource,
     financedBalance,
@@ -1520,7 +1948,23 @@ export const recomputeComputedSoaBalances = (rows = [], terms = {}) => {
 
     const totalDue = getScheduleTotalDue(row);
     amountPaid = roundMoneyValue(Number(row.amountPaid || 0));
-    const { penaltyPaid, interestPaid, principalPaid } = getPaymentBreakdownForRow(row, amountPaid);
+    const computedBreakdown = getPaymentBreakdownForRow(row, amountPaid);
+    const hasExplicitBreakdown =
+      row.paidPenaltyAmount !== undefined ||
+      row.paid_penalty_amount !== undefined ||
+      row.paidInterestAmount !== undefined ||
+      row.paid_interest_amount !== undefined ||
+      row.paidPrincipalAmount !== undefined ||
+      row.paid_principal_amount !== undefined;
+    const penaltyPaid = hasExplicitBreakdown
+      ? roundMoneyValue(row.paidPenaltyAmount ?? row.paid_penalty_amount ?? computedBreakdown.penaltyPaid)
+      : computedBreakdown.penaltyPaid;
+    const interestPaid = hasExplicitBreakdown
+      ? roundMoneyValue(row.paidInterestAmount ?? row.paid_interest_amount ?? computedBreakdown.interestPaid)
+      : computedBreakdown.interestPaid;
+    const principalPaid = hasExplicitBreakdown
+      ? roundMoneyValue(row.paidPrincipalAmount ?? row.paid_principal_amount ?? computedBreakdown.principalPaid)
+      : computedBreakdown.principalPaid;
     const discountAmount = roundMoneyValue(Number(row.discountAmount || row.discount_amount || 0));
     const principalDue = roundMoneyValue(Number(row.principalAmount ?? row.principal_amount ?? row.dueAmount ?? 0));
     const discountCredit = principalPaid > 0 && discountAmount > 0
@@ -1541,6 +1985,7 @@ export const recomputeComputedSoaBalances = (rows = [], terms = {}) => {
 
     visibleRows.push({
       id: row.id,
+      scheduleId: row.scheduleId || row.lot_project_payment_schedule_id || row.id,
       dueDate: row.dueDate,
       description: row.description,
       beginningBalance: row.beginningBalance,
@@ -1550,6 +1995,17 @@ export const recomputeComputedSoaBalances = (rows = [], terms = {}) => {
       interest: row.interest || 0,
       discountAmount: row.discountAmount || row.discount_amount || 0,
       penalty: row.penalty || 0,
+      calculatedPenaltyAmount: row.calculatedPenaltyAmount ?? row.calculated_penalty_amount ?? row.penalty ?? 0,
+      waivedPenaltyAmount: row.waivedPenaltyAmount ?? row.waived_penalty_amount ?? 0,
+      outstandingPenaltyAmount: row.outstandingPenaltyAmount ?? Math.max(Number(row.penalty || 0) - penaltyPaid, 0),
+      penaltyRatePercent: row.penaltyRatePercent ?? row.ratePercent ?? 0,
+      penaltyGraceDays: row.penaltyGraceDays ?? row.graceDays ?? 0,
+      penaltyStartDate: row.penaltyStartDate || null,
+      penaltyCalculatedThrough: row.penaltyCalculatedThrough || null,
+      penaltyReliefs: row.penaltyReliefs || row.reliefs || [],
+      activePenaltyExtension: row.activePenaltyExtension || row.activeExtension || null,
+      canGrantPenaltyExtension: Boolean(row.canGrantPenaltyExtension ?? row.canGrantExtension),
+      canWaivePenalty: Boolean(row.canWaivePenalty),
       datePaid: row.datePaid || '-',
       amountPaid: row.amountPaid || 0,
       paidPrincipalAmount: principalPaid,
@@ -1614,17 +2070,62 @@ export const getListingSoaRows = async (connection, lotProjectId, listingId, lis
   const existingScheduleRows = await getExistingSoaScheduleRows(connection, lotProjectId, listingId);
   const terms = getComputedSoaTerms(listingRow, existingScheduleRows);
 
-  // First pass identifies when each schedule row was paid. Penalty is then calculated
-  // up to that payment date for paid rows, or up to today for unpaid/partial rows.
-  const provisionalRows = allocatePaymentsToComputedRows(createComputedSoaRows(terms), payments);
-  const penaltyRows = applyComputedPenaltiesToRows(provisionalRows, terms);
-  const penaltiesById = new Map(penaltyRows.map((row) => [row.id, row.penalty]));
-  const rowsWithPenalties = createComputedSoaRows(terms).map((row) => ({
-    ...row,
-    penalty: penaltiesById.get(row.id) || 0,
-  }));
-  const rowsWithPayments = allocatePaymentsToComputedRows(rowsWithPenalties, payments);
+  if (existingScheduleRows.length) {
+    const clientProfile = { ...(listingRow || {}) };
+    const snapshots = await getListingPenaltySnapshots(
+      connection,
+      lotProjectId,
+      listingId,
+      clientProfile,
+      existingScheduleRows,
+      todayDateOnly()
+    );
 
+    const storedRows = existingScheduleRows.map((row, index) => {
+      const scheduleId = Number(row.lot_project_payment_schedule_id || 0);
+      const snapshot = snapshots.get(scheduleId) || {};
+      return {
+        id: scheduleId,
+        scheduleId,
+        lot_project_payment_schedule_id: scheduleId,
+        scheduleType: getStoredScheduleType(row),
+        sequence: index + 1,
+        dueDate: plainDate(row.due_date),
+        description: row.description,
+        beginningBalance: Number(row.beginning_balance || 0),
+        dueAmount: Number(row.due_amount || 0),
+        monthlyAmortizationAmount: Number(row.monthly_amortization_amount || row.due_amount || 0),
+        principalAmount: Number(row.principal_amount ?? row.due_amount ?? 0),
+        interest: Number(row.interest_amount || 0),
+        discountAmount: getStoredRowDiscountAmount(row, clientProfile),
+        penalty: Number(snapshot.penaltyAmount ?? row.penalty_amount ?? 0),
+        calculatedPenaltyAmount: Number(snapshot.calculatedPenaltyAmount ?? row.calculated_penalty_amount ?? row.penalty_amount ?? 0),
+        waivedPenaltyAmount: Number(snapshot.waivedPenaltyAmount ?? row.waived_penalty_amount ?? 0),
+        outstandingPenaltyAmount: Number(snapshot.outstandingPenaltyAmount ?? 0),
+        penaltyRatePercent: Number(snapshot.ratePercent ?? clientProfile.soa_penalty_rate_percent ?? 0),
+        penaltyGraceDays: Number(snapshot.graceDays ?? clientProfile.soa_penalty_grace_days ?? 0),
+        penaltyStartDate: snapshot.penaltyStartDate || null,
+        penaltyCalculatedThrough: snapshot.penaltyCalculatedThrough || null,
+        penaltyReliefs: snapshot.reliefs || [],
+        activePenaltyExtension: snapshot.activeExtension || null,
+        canGrantPenaltyExtension: Boolean(snapshot.canGrantExtension),
+        canWaivePenalty: Boolean(snapshot.canWaivePenalty),
+        datePaid: plainDate(row.date_paid),
+        amountPaid: Number(row.amount_paid || 0),
+        paidPrincipalAmount: Number(row.paid_principal_amount || 0),
+        paidInterestAmount: Number(row.paid_interest_amount || 0),
+        paidPenaltyAmount: Number(snapshot.paidPenaltyAmount ?? row.paid_penalty_amount ?? 0),
+        referenceId: row.reference_id || '-',
+        status: row.schedule_status || 'Unpaid',
+        endingBalance: Number(row.ending_balance || 0),
+      };
+    });
+
+    return recomputeComputedSoaBalances(storedRows, terms);
+  }
+
+  const computedRows = createComputedSoaRows(terms);
+  const rowsWithPayments = allocatePaymentsToComputedRows(computedRows, payments);
   return recomputeComputedSoaBalances(rowsWithPayments, terms);
 };
 
@@ -1646,8 +2147,6 @@ export const getRequestToken = (req) => {
 };
 
 export const getAuthenticatedUser = async (req) => {
-  if (req?.user?.id) return req.user;
-
   const token = getRequestToken(req);
   if (!token || !process.env.JWT_SECRET) return null;
 
@@ -1659,7 +2158,7 @@ export const getAuthenticatedUser = async (req) => {
 
     const [rows] = await db.query(
       `
-        SELECT id, first_name, middle_name, last_name, email, role, password_hash, status, must_change_password
+        SELECT id, first_name, middle_name, last_name, email, role, password_hash, status
         FROM users
         WHERE id = ?
         LIMIT 1
@@ -1880,95 +2379,10 @@ export const recomputeListingScheduleBalances = async (connection, listing) => {
   }
 };
 
-export const refreshListingSchedulePenalties = async (
-  connection,
-  listing,
-  asOfDate = todayDateOnly(),
-  { lockRows = false } = {}
-) => {
-  if (!(await tableExists(connection, 'lot_project_payment_schedules'))) return;
-  if (!(await columnExists(connection, 'lot_project_client_profiles', 'soa_penalty_rate_percent'))) return;
-  if (!(await columnExists(connection, 'lot_project_client_profiles', 'soa_penalty_grace_days'))) return;
-
-  const [profileRows] = await connection.query(
-    `
-      SELECT soa_penalty_rate_percent, soa_penalty_grace_days
-      FROM lot_project_client_profiles
-      WHERE lot_project_listing_id = ?
-      LIMIT 1
-    `,
-    [listing.lot_project_listing_id]
-  );
-
-  const profile = profileRows[0] || {};
-  const ratePercent = Math.max(Number(profile.soa_penalty_rate_percent || 0), 0);
-  const graceDays = Math.max(Number(profile.soa_penalty_grace_days || 0), 0);
-
-  const [rows] = await connection.query(
-    `
-      SELECT *
-      FROM lot_project_payment_schedules
-      WHERE lot_project_id = ?
-        AND lot_project_listing_id = ?
-      ORDER BY
-        CASE WHEN due_date IS NULL THEN 1 ELSE 0 END,
-        due_date ASC,
-        lot_project_payment_schedule_id ASC
-      ${lockRows ? 'FOR UPDATE' : ''}
-    `,
-    [listing.lot_project_id, listing.lot_project_listing_id]
-  );
-
-  for (const row of rows) {
-    if (!row.due_date || row.schedule_status === 'Cancelled') continue;
-
-    const dueAmount = roundMoneyValue(Number(row.due_amount || 0));
-    const amountPaid = roundMoneyValue(Number(row.amount_paid || 0));
-    const baseDuePaid = amountPaid + 0.009 >= dueAmount;
-    const rowAsOfDate = baseDuePaid && row.date_paid ? row.date_paid : asOfDate;
-    const calculatedPenalty = calculateSchedulePenalty({
-      dueDate: row.due_date,
-      dueAmount,
-      ratePercent,
-      graceDays,
-      asOfDate: rowAsOfDate,
-    });
-    const paidPenalty = roundMoneyValue(Number(row.paid_penalty_amount || 0));
-    const penaltyAmount = roundMoneyValue(Math.max(calculatedPenalty, paidPenalty));
-    const totalDue = roundMoneyValue(dueAmount + penaltyAmount);
-
-    let status = 'Unpaid';
-    if (amountPaid <= 0) {
-      status = row.due_date && normalizeDateInput(row.due_date) < normalizeDateInput(asOfDate)
-        ? 'Overdue'
-        : 'Unpaid';
-    } else if (amountPaid + 0.009 < totalDue) {
-      status = 'Partial';
-    } else {
-      const paidBeforeDue = row.date_paid && normalizeDateInput(row.date_paid) < normalizeDateInput(row.due_date);
-      status = paidBeforeDue ? 'Advance' : 'Paid';
-    }
-
-    await connection.query(
-      `
-        UPDATE lot_project_payment_schedules
-        SET penalty_amount = ?,
-            schedule_status = ?
-        WHERE lot_project_payment_schedule_id = ?
-      `,
-      [penaltyAmount, status, row.lot_project_payment_schedule_id]
-    );
-  }
-
-  await recomputeListingScheduleBalances(connection, listing);
-};
-
 export const applyPaymentToSchedules = async (connection, listing, paymentId, preferredScheduleId, amount, paymentDate, referenceId, paymentType) => {
   if (!(await tableExists(connection, 'lot_project_payment_allocations'))) {
     throw new Error('lot_project_payment_allocations table does not exist. Run the payments SOA migration first.');
   }
-
-  await refreshListingSchedulePenalties(connection, listing, paymentDate || todayDateOnly(), { lockRows: true });
 
   const [clientProfileRows] = await connection.query(
     `
@@ -2125,7 +2539,7 @@ export const reversePaymentAllocations = async (connection, listing, paymentId) 
     [paymentId]
   );
 
-  await refreshListingSchedulePenalties(connection, listing, todayDateOnly(), { lockRows: true });
+  await recomputeListingScheduleBalances(connection, listing);
 };
 
 export const getPaymentById = async (connection, project, listing, paymentId) => {
@@ -2172,3 +2586,8 @@ export const addIfColumnExists = async (connection, tableName, columns, values, 
     values.push(value);
   }
 };
+
+
+
+
+

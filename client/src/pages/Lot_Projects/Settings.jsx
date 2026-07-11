@@ -97,7 +97,7 @@ const Settings = () => {
       <section className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <PageHeader
           title={`${project.name || 'Lot Project'} Settings`}
-          description="Manage release days, late-payment penalties, reservation contact, and company information."
+          description="Manage commission release days, reservation contact, and company information."
           icon={FiSettings}
         />
 
@@ -135,7 +135,7 @@ const Settings = () => {
         <StatusAlert type="info" message="Settings are view-only for this account. Only super admin can edit release days and project contact details." />
       ) : null}
 
-      <section className="grid gap-4 xl:grid-cols-3">
+      <section className="grid gap-4 md:grid-cols-2">
         <SettingCard
           title="Commission Release Days"
           description="Allowed days when Super Admin can release eligible commissions."
@@ -143,16 +143,6 @@ const Settings = () => {
           <div className="grid gap-3 sm:grid-cols-2">
             <InfoItem label="First Release Day" value={daySuffix(settings.releaseDayOne)} />
             <InfoItem label="Second Release Day" value={daySuffix(settings.releaseDayTwo)} />
-          </div>
-        </SettingCard>
-
-        <SettingCard
-          title="Late Payment Penalty"
-          description="Default terms copied to new buyer accounts at reservation."
-        >
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-            <InfoItem label="Monthly Penalty Rate" value={`${Number(settings.defaultPenaltyRatePercent || 0).toFixed(2)}%`} />
-            <InfoItem label="Grace Period" value={`${Number(settings.defaultPenaltyGraceDays || 0)} day(s)`} />
           </div>
         </SettingCard>
 
@@ -200,3 +190,4 @@ const Settings = () => {
 }
 
 export default Settings
+

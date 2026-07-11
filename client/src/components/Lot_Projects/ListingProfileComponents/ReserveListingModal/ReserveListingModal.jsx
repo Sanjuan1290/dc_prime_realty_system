@@ -33,7 +33,6 @@ const ReserveListingModal = ({
   documentLibrary: documentLibraryProp = [],
   projectDefaultDocuments: projectDefaultDocumentsProp = [],
   sellerOptions = [],
-  penaltyTerms = { ratePercent: 0, graceDays: 0 },
   documentTemplates = [],
   templateDocuments = [],
   isLoadingDocuments = false,
@@ -71,19 +70,11 @@ const ReserveListingModal = ({
     monthlyTermsMode: '36',
     customMonthlyTerms: '',
     interestRate: String(listing?.annualInterestRate || '0'),
-    penaltyRatePercent: String(penaltyTerms?.ratePercent ?? 0),
-    penaltyGraceDays: String(penaltyTerms?.graceDays ?? 0),
+    dailyPenaltyRate: '0.1',
+    penaltyGraceDays: '1',
   })
 
   const tcp = useMemo(() => getListingTcp(listing), [listing])
-
-  useEffect(() => {
-    setPaymentForm((current) => ({
-      ...current,
-      penaltyRatePercent: String(penaltyTerms?.ratePercent ?? current.penaltyRatePercent ?? 0),
-      penaltyGraceDays: String(penaltyTerms?.graceDays ?? current.penaltyGraceDays ?? 0),
-    }))
-  }, [penaltyTerms?.ratePercent, penaltyTerms?.graceDays])
 
   const documentLibrary = useMemo(() => {
     const source = documentLibraryProp.length ? documentLibraryProp : fallbackDocumentLibrary
@@ -306,15 +297,15 @@ const ReserveListingModal = ({
       return false
     }
 
-    const penaltyRatePercent = Number(paymentForm.penaltyRatePercent || 0)
-    if (Number.isNaN(penaltyRatePercent) || penaltyRatePercent < 0 || penaltyRatePercent > 100) {
-      setAlert({ type: 'error', message: 'Penalty rate must be between 0 and 100.' })
+    const allowedPenaltyRates = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 2, 3, 4, 5]
+    if (!allowedPenaltyRates.includes(Number(paymentForm.dailyPenaltyRate))) {
+      setAlert({ type: 'error', message: 'Select a valid daily penalty rate.' })
       return false
     }
 
-    const penaltyGraceDays = Number(paymentForm.penaltyGraceDays || 0)
-    if (!Number.isInteger(penaltyGraceDays) || penaltyGraceDays < 0 || penaltyGraceDays > 365) {
-      setAlert({ type: 'error', message: 'Penalty grace days must be a whole number between 0 and 365.' })
+    const graceDays = Number(paymentForm.penaltyGraceDays)
+    if (!Number.isInteger(graceDays) || graceDays < 1 || graceDays > 31) {
+      setAlert({ type: 'error', message: 'Penalty grace period must be between 1 and 31 days.' })
       return false
     }
 
@@ -538,3 +529,4 @@ const ReserveListingModal = ({
 }
 
 export default ReserveListingModal
+

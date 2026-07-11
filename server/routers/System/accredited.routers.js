@@ -4,15 +4,12 @@ import {
   getParentSellers,
   uploadAccreditedSellerProofOfIncome,
 } from '../../controllers/System/accredited.controller.js';
-import { requireAdmin, requireAuth, requirePasswordChanged } from '../../middleware/auth.middleware.js';
-import { sensitiveActionRateLimiter } from '../../middleware/rateLimit.middleware.js';
 
 const router = express.Router();
 
-router.use(requireAuth, requirePasswordChanged, requireAdmin);
-
 router.get('/', getAccredited);
 router.get('/parents', getParentSellers);
-router.post('/:sellerId/proof-of-income', sensitiveActionRateLimiter, uploadAccreditedSellerProofOfIncome);
+router.post('/:sellerId/proof-of-income', uploadAccreditedSellerProofOfIncome);
 
 export default router;
+
