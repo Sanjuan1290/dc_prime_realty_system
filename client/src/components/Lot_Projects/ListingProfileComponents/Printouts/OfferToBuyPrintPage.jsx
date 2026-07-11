@@ -143,10 +143,14 @@ const OfferToBuyPrintPage = () => {
   const downpayment = getRowAmount(rows, 'downpayment') || cleanMoney(getValue(listing, ['downpayment'], 0))
   const balance = cleanMoney(getValue(listing, ['balanceAmount', 'balance'], Math.max(tcp - reservationFee - downpayment, 0)))
   const monthly = cleanMoney(getValue(listing, ['monthlyAmortization'], getMonthlyAmount(rows)))
-  const monthlyTerms = Number(getValue(listing, ['soaMonthlyTerms', 'monthlyTerms'], 0)) || rows.filter((row) => String(row.description || '').toLowerCase().includes('monthly')).length || 36
 
   const buyerType = valueFrom(client, ['buyerType'], 'single')
   const modeOfPayment = valueFrom(listing, ['soaModeOfPayment', 'modeOfPayment'], 'installment').toLowerCase()
+  const isCash = modeOfPayment === 'cash'
+  const isInstallment = !isCash
+  const monthlyTerms = isInstallment
+    ? Number(getValue(listing, ['soaMonthlyTerms', 'monthlyTerms'], 0)) || rows.filter((row) => String(row.description || '').toLowerCase().includes('monthly')).length || 36
+    : 0
   const buyerName = valueFrom(client, ['buyerName'], valueFrom(listing, ['buyer_name'], ''))
   const secondBuyerName = valueFrom(client, ['secondBuyerName'], '')
   const seller = valueFrom(listing, ['mainSeller', 'seller'], valueFrom(client, ['seller', 'salesOfficer'], ''))
@@ -434,47 +438,47 @@ const OfferToBuyPrintPage = () => {
               <tr><th colSpan="12" className="otb-section">OFFER TERMS AND CONDITIONS</th></tr>
               <tr><td colSpan="12" className="otb-note">I/We, hereby offer to purchase the property described above under the following terms and conditions.</td></tr>
               <tr>
-                <td colSpan="6" className="otb-term-title"><SmallCheck label="CASH" checked={modeOfPayment === 'cash'} /></td>
-                <td colSpan="6" className="otb-term-title"><SmallCheck label="INSTALLMENT/In-house Financing" checked={modeOfPayment !== 'cash'} /></td>
+                <td colSpan="6" className="otb-term-title"><SmallCheck label="CASH" checked={isCash} /></td>
+                <td colSpan="6" className="otb-term-title"><SmallCheck label="INSTALLMENT/In-house Financing" checked={isInstallment} /></td>
               </tr>
               <tr>
                 <td colSpan="2" className="otb-term-label">Purchase Price:</td>
-                <td colSpan="4" className="otb-term-value">Php {moneyBlank(tcp)}</td>
+                <td colSpan="4" className="otb-term-value">{isCash ? `Php ${moneyBlank(tcp)}` : ''}</td>
                 <td colSpan="2" className="otb-term-label">Purchase Price:</td>
-                <td colSpan="4" className="otb-term-value">Php {moneyBlank(tcp)}</td>
+                <td colSpan="4" className="otb-term-value">{isInstallment ? `Php ${moneyBlank(tcp)}` : ''}</td>
               </tr>
               <tr>
                 <td colSpan="2" className="otb-term-label">Reservation Fee:</td>
-                <td colSpan="4" className="otb-term-value">{moneyBlank(reservationFee)}</td>
+                <td colSpan="4" className="otb-term-value">{isCash ? moneyBlank(reservationFee) : ''}</td>
                 <td colSpan="2" className="otb-term-label">Reservation Fee:</td>
-                <td colSpan="4" className="otb-term-value">{moneyBlank(reservationFee)}</td>
+                <td colSpan="4" className="otb-term-value">{isInstallment ? moneyBlank(reservationFee) : ''}</td>
               </tr>
               <tr>
                 <td colSpan="2" className="otb-term-label">Balance:</td>
-                <td colSpan="4" className="otb-term-value">{moneyBlank(Math.max(tcp - reservationFee, 0))}</td>
+                <td colSpan="4" className="otb-term-value">{isCash ? moneyBlank(Math.max(tcp - reservationFee, 0)) : ''}</td>
                 <td colSpan="2" className="otb-term-label">Downpayment:</td>
-                <td colSpan="4" className="otb-term-value">{moneyBlank(downpayment)}</td>
+                <td colSpan="4" className="otb-term-value">{isInstallment ? moneyBlank(downpayment) : ''}</td>
               </tr>
               <tr>
                 <td colSpan="2" className="otb-term-label otb-field-tall">Deferred Cash:</td>
                 <td colSpan="4" className="otb-field-tall"></td>
                 <td colSpan="2" className="otb-term-label">Balance:</td>
-                <td colSpan="4" className="otb-term-value">{moneyBlank(balance)}</td>
+                <td colSpan="4" className="otb-term-value">{isInstallment ? moneyBlank(balance) : ''}</td>
               </tr>
               <tr>
                 <td colSpan="6" className="otb-field-tall"></td>
                 <td colSpan="2" className="otb-term-label">Terms (months/years to pay):</td>
-                <td colSpan="4" className="otb-term-value">{monthlyTerms} months</td>
+                <td colSpan="4" className="otb-term-value">{isInstallment && monthlyTerms > 0 ? `${monthlyTerms} months` : ''}</td>
               </tr>
               <tr>
                 <td colSpan="6" className="otb-field-tall"></td>
                 <td colSpan="2" className="otb-term-label">Interest Rate:</td>
-                <td colSpan="4" className="otb-term-value">{valueFrom(listing, ['interestRate'], '0.00%')}</td>
+                <td colSpan="4" className="otb-term-value">{isInstallment ? valueFrom(listing, ['interestRate'], '0.00%') : ''}</td>
               </tr>
               <tr>
                 <td colSpan="6" className="otb-field-tall"></td>
                 <td colSpan="2" className="otb-term-label">Monthly Amortization:</td>
-                <td colSpan="4" className="otb-term-value">{moneyBlank(monthly)}</td>
+                <td colSpan="4" className="otb-term-value">{isInstallment ? moneyBlank(monthly) : ''}</td>
               </tr>
 
               <tr><th colSpan="12" className="otb-section">INDIVIDUAL BUYER/S INFORMATION</th></tr>
@@ -527,5 +531,3 @@ const OfferToBuyPrintPage = () => {
 }
 
 export default OfferToBuyPrintPage
-
-

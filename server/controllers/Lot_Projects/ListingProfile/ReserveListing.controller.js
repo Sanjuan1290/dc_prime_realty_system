@@ -599,16 +599,24 @@ export const reserveLotProjectListing = async (req, res) => {
     }
 
     const modeOfPayment = reservation.modeOfPayment === 'cash' || terms.modeOfPayment === 'cash' ? 'cash' : 'installment';
+    const isCash = modeOfPayment === 'cash';
     const reservationFee = parseMoneyValue(terms.reservationFee || listing.lot_project_listing_reservation_fee || 0);
-    const downpaymentPercentage = Number(
-      terms.downpaymentPercentage ?? normalizeNumberOption(terms.downpaymentPercentageMode, terms.customDownpaymentPercentage, 30)
-    );
-    const downpaymentTerms = Number(
-      terms.downpaymentTerms ?? normalizeNumberOption(terms.downpaymentTermsMode, terms.customDownpaymentTerms, 3)
-    );
-    const monthlyTerms = Number(
-      terms.monthlyTerms ?? normalizeNumberOption(terms.monthlyTermsMode, terms.customMonthlyTerms, 36)
-    );
+    const downpaymentPercentage = isCash
+      ? 0
+      : Number(
+          terms.downpaymentPercentage ?? normalizeNumberOption(terms.downpaymentPercentageMode, terms.customDownpaymentPercentage, 30)
+        );
+    const downpaymentTerms = isCash
+      ? 0
+      : Number(
+          terms.downpaymentTerms ?? normalizeNumberOption(terms.downpaymentTermsMode, terms.customDownpaymentTerms, 3)
+        );
+    const monthlyTerms = isCash
+      ? 0
+      : Number(
+          terms.monthlyTerms ?? normalizeNumberOption(terms.monthlyTermsMode, terms.customMonthlyTerms, 36)
+        );
+    const dpDiscountPercentage = isCash ? 0 : parseMoneyValue(terms.dpDiscountPercentage || 0);
     const legalMiscFeeMode = String(terms.legalMiscFeeMode || terms.legalMiscFee || 'include_in_monthly') === 'separate_soa_row'
       ? 'separate_soa_row'
       : 'include_in_monthly';
@@ -658,9 +666,11 @@ export const reserveLotProjectListing = async (req, res) => {
     }
 
     const tableName = 'lot_project_client_profiles';
-    const selectedInterestRate = parseMoneyValue(terms.interestRate || listing.annual_interest_rate || 0);
     const listingInterestRate = parseMoneyValue(listing.annual_interest_rate || 0);
-    const interestRateOverridden = terms.interestRate !== undefined && terms.interestRate !== null && terms.interestRate !== '' && Math.abs(selectedInterestRate - listingInterestRate) > 0.0001 ? 1 : 0;
+    const selectedInterestRate = isCash
+      ? 0
+      : parseMoneyValue(terms.interestRate || listingInterestRate || 0);
+    const interestRateOverridden = !isCash && terms.interestRate !== undefined && terms.interestRate !== null && terms.interestRate !== '' && Math.abs(selectedInterestRate - listingInterestRate) > 0.0001 ? 1 : 0;
 
     const columns = [
       'lot_project_id',
@@ -775,7 +785,7 @@ export const reserveLotProjectListing = async (req, res) => {
       Number.isNaN(downpaymentTerms) ? 3 : downpaymentTerms,
       Number.isNaN(monthlyTerms) ? 36 : monthlyTerms,
       selectedInterestRate,
-      parseMoneyValue(terms.dpDiscountPercentage || 0),
+      dpDiscountPercentage,
     ];
 
     await addIfColumnExists(connection, tableName, columns, values, 'buyer_residence_phone_number', toNullable(clientProfile.residencePhoneNumber));
@@ -854,7 +864,7 @@ export const reserveLotProjectListing = async (req, res) => {
       downpaymentTerms: Number.isNaN(downpaymentTerms) ? 3 : downpaymentTerms,
       monthlyTerms: Number.isNaN(monthlyTerms) ? 36 : monthlyTerms,
       annualInterestRate: selectedInterestRate,
-      dpDiscountPercentage: parseMoneyValue(terms.dpDiscountPercentage || 0),
+      dpDiscountPercentage,
       legalMiscFeeMode,
       legalMiscFeeAmount,
     });
@@ -905,5 +915,3 @@ export const reserveLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
-
-

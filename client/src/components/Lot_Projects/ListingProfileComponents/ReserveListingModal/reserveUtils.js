@@ -107,20 +107,26 @@ export const getInitialClientForm = (client = {}) => ({
 })
 
 export const getPaymentCalculations = (tcp, paymentForm) => {
-  const downpaymentPercentage =
-    paymentForm.downpaymentPercentageMode === 'custom'
+  const modeOfPayment = String(paymentForm.modeOfPayment || 'installment').toLowerCase()
+  const isCash = modeOfPayment === 'cash'
+
+  const downpaymentPercentage = isCash
+    ? 0
+    : paymentForm.downpaymentPercentageMode === 'custom'
       ? Number(paymentForm.customDownpaymentPercentage || 0)
       : Number(paymentForm.downpaymentPercentageMode || 0)
 
-  const downpaymentTerms =
-    paymentForm.downpaymentTermsMode === 'custom'
+  const downpaymentTerms = isCash
+    ? 0
+    : paymentForm.downpaymentTermsMode === 'custom'
       ? Number(paymentForm.customDownpaymentTerms || 0)
       : paymentForm.downpaymentTermsMode === 'spot_cash'
         ? 0
         : Number(paymentForm.downpaymentTermsMode || 0)
 
-  const monthlyTerms =
-    paymentForm.monthlyTermsMode === 'custom'
+  const monthlyTerms = isCash
+    ? 0
+    : paymentForm.monthlyTermsMode === 'custom'
       ? Number(paymentForm.customMonthlyTerms || 0)
       : Number(paymentForm.monthlyTermsMode || 0)
 
@@ -132,22 +138,25 @@ export const getPaymentCalculations = (tcp, paymentForm) => {
     0
   )
 
-  const dpGross = principalBase * (downpaymentPercentage / 100)
-  const dpDiscountAmount = dpGross * (Number(paymentForm.dpDiscountPercentage || 0) / 100)
+  const dpGross = isCash ? 0 : principalBase * (downpaymentPercentage / 100)
+  const dpDiscountAmount = isCash
+    ? 0
+    : dpGross * (Number(paymentForm.dpDiscountPercentage || 0) / 100)
   const dpNet = Math.max(dpGross - dpDiscountAmount, 0)
 
-  // The discount reduces the cash the buyer pays for the downpayment, but the
-  // full gross downpayment is still credited against the financed balance.
-  // Written explicitly as net payment + discount credit so the preview cannot
-  // accidentally finance the discount amount.
+  // The discount reduces the cash the buyer pays for the downpayment, while the
+  // gross downpayment still reduces the financed balance.
   const downpaymentCredit = dpNet + dpDiscountAmount
   const balance = Math.max(
     principalBase - reservationFee - downpaymentCredit,
     0
   )
-  const monthlyAmortization = monthlyTerms > 0 ? balance / monthlyTerms : 0
+  const monthlyAmortization = !isCash && monthlyTerms > 0 ? balance / monthlyTerms : 0
+  const fullPaymentAmount = isCash ? balance : 0
 
   return {
+    modeOfPayment,
+    isCash,
     downpaymentPercentage,
     downpaymentTerms,
     monthlyTerms,
@@ -162,8 +171,7 @@ export const getPaymentCalculations = (tcp, paymentForm) => {
       downpaymentCredit,
       balance,
       monthlyAmortization,
+      fullPaymentAmount,
     },
   }
 }
-
-

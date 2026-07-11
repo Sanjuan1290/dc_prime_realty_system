@@ -436,6 +436,32 @@ const Dashboard = () => {
         </div>
       </section>
 
+      <section className="grid gap-6 xl:grid-cols-2">
+        <ChartCard title="Inventory Value Comparison" description="Column chart for listed, available, and sold lot value.">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={inventoryChartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="label" tick={{ fontSize: 12 }} />
+              <YAxis tickFormatter={compactMoney} tick={{ fontSize: 11 }} />
+              <Tooltip content={<ChartTooltip />} />
+              <Bar dataKey="value" name="Amount" fill={chartColors.amber} radius={[8, 8, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+
+        <ChartCard title="Unit Status Mix" description="Pie chart showing how units are distributed by current status.">
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Tooltip content={<ChartTooltip />} />
+              <Legend />
+              <Pie data={unitStatusChartData.filter((item) => item.count > 0)} dataKey="count" nameKey="label" innerRadius={55} outerRadius={95} paddingAngle={2}>
+                {unitStatusChartData.filter((item) => item.count > 0).map((entry, index) => <Cell key={entry.label} fill={pieColors[index % pieColors.length]} />)}
+              </Pie>
+            </PieChart>
+          </ResponsiveContainer>
+        </ChartCard>
+      </section>
+
       <section className="grid gap-6 grid-cols-2">
         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
           <SectionHeader title="Seller Performance Details" description="Sales and commission totals by seller." />
@@ -561,32 +587,6 @@ const Dashboard = () => {
               <Tooltip content={<ChartTooltip />} />
               <Bar dataKey="value" name="Amount" fill={chartColors.indigo} radius={[8, 8, 0, 0]} />
             </BarChart>
-          </ResponsiveContainer>
-        </ChartCard>
-      </section>
-
-      <section className="grid gap-6 xl:grid-cols-2">
-        <ChartCard title="Inventory Value Comparison" description="Column chart for listed, available, and sold lot value.">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={inventoryChartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="label" tick={{ fontSize: 12 }} />
-              <YAxis tickFormatter={compactMoney} tick={{ fontSize: 11 }} />
-              <Tooltip content={<ChartTooltip />} />
-              <Bar dataKey="value" name="Amount" fill={chartColors.amber} radius={[8, 8, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartCard>
-
-        <ChartCard title="Unit Status Mix" description="Pie chart showing how units are distributed by current status.">
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Tooltip content={<ChartTooltip />} />
-              <Legend />
-              <Pie data={unitStatusChartData.filter((item) => item.count > 0)} dataKey="count" nameKey="label" innerRadius={55} outerRadius={95} paddingAngle={2}>
-                {unitStatusChartData.filter((item) => item.count > 0).map((entry, index) => <Cell key={entry.label} fill={pieColors[index % pieColors.length]} />)}
-              </Pie>
-            </PieChart>
           </ResponsiveContainer>
         </ChartCard>
       </section>

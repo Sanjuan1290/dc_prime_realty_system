@@ -282,17 +282,29 @@ const ReserveListingModal = ({
       return false
     }
 
-    if (paymentForm.downpaymentPercentageMode === 'custom' && Number(paymentForm.customDownpaymentPercentage || 0) <= 0) {
-      setAlert({ type: 'error', message: 'Custom downpayment percentage is required.' })
-      return false
+    const isCash = String(paymentForm.modeOfPayment || '').toLowerCase() === 'cash'
+
+    if (!isCash && paymentForm.downpaymentPercentageMode === 'custom') {
+      const rawCustomDownpayment = String(paymentForm.customDownpaymentPercentage ?? '').trim()
+      const customDownpaymentPercentage = Number(rawCustomDownpayment)
+
+      if (
+        rawCustomDownpayment === '' ||
+        !Number.isFinite(customDownpaymentPercentage) ||
+        customDownpaymentPercentage < 0 ||
+        customDownpaymentPercentage > 100
+      ) {
+        setAlert({ type: 'error', message: 'Custom downpayment percentage must be between 0 and 100.' })
+        return false
+      }
     }
 
-    if (paymentForm.downpaymentTermsMode === 'custom' && Number(paymentForm.customDownpaymentTerms || 0) <= 0) {
+    if (!isCash && paymentForm.downpaymentTermsMode === 'custom' && Number(paymentForm.customDownpaymentTerms || 0) <= 0) {
       setAlert({ type: 'error', message: 'Custom downpayment terms is required.' })
       return false
     }
 
-    if (paymentForm.monthlyTermsMode === 'custom' && Number(paymentForm.customMonthlyTerms || 0) <= 0) {
+    if (!isCash && paymentForm.monthlyTermsMode === 'custom' && Number(paymentForm.customMonthlyTerms || 0) <= 0) {
       setAlert({ type: 'error', message: 'Custom monthly terms is required.' })
       return false
     }
@@ -529,5 +541,3 @@ const ReserveListingModal = ({
 }
 
 export default ReserveListingModal
-
-
