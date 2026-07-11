@@ -201,6 +201,7 @@ const CreateUserModal = ({ setShowCreateUser, onSaved }) => {
     last_name: "",
     email: "",
     contact_no: "",
+    tin_no: "",
     password: "password",
     role: "agent",
     status: "active",
@@ -492,7 +493,7 @@ const CreateUserModal = ({ setShowCreateUser, onSaved }) => {
                   </label>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-3">
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                   <label className="flex flex-col gap-2">
                     <p className="text-sm font-bold text-slate-700">Email *</p>
                     <input type="email" value={form.email} onChange={(event) => updateForm("email", event.target.value)} placeholder="user@example.com" className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" />
@@ -500,6 +501,10 @@ const CreateUserModal = ({ setShowCreateUser, onSaved }) => {
                   <label className="flex flex-col gap-2">
                     <p className="text-sm font-bold text-slate-700">Contact No.</p>
                     <input type="text" value={form.contact_no} onChange={(event) => updateForm("contact_no", event.target.value)} placeholder="09XXXXXXXXX" className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" />
+                  </label>
+                  <label className="flex flex-col gap-2">
+                    <p className="text-sm font-bold text-slate-700">TIN No.</p>
+                    <input type="text" value={form.tin_no} onChange={(event) => updateForm("tin_no", event.target.value)} placeholder="000-000-000-000" className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" />
                   </label>
                   <label className="flex flex-col gap-2">
                     <p className="text-sm font-bold text-slate-700">Temporary Password *</p>

@@ -550,27 +550,6 @@ const Dashboard = () => {
           ) : <EmptyChart />}
         </ChartCard>
 
-        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-black text-slate-950">Operational Alerts</h2>
-          <p className="mt-1 text-sm font-semibold text-slate-500">Fast checks across project workspaces.</p>
-
-          <div className="mt-4 grid gap-3">
-            <div className="rounded-2xl bg-slate-50 p-4">
-              <p className="text-xs font-black uppercase tracking-wide text-slate-500">Upcoming Unit Dues</p>
-              <p className="mt-1 text-2xl font-black text-blue-700">{summary.upcomingDues}</p>
-              <p className="mt-1 text-sm font-semibold text-slate-500">Due within 7 days.</p>
-            </div>
-            <div className="rounded-2xl bg-slate-50 p-4">
-              <p className="text-xs font-black uppercase tracking-wide text-slate-500">Overdue Unit Dues</p>
-              <p className="mt-1 text-2xl font-black text-red-700">{summary.overdueDues}</p>
-              <p className="mt-1 text-sm font-semibold text-slate-500">Past due unpaid or partial schedules.</p>
-            </div>
-            <div className="rounded-2xl bg-blue-50 p-4">
-              <p className="text-sm font-black text-blue-900">House & Lot module</p>
-              <p className="mt-1 text-sm font-semibold text-blue-800">The dashboard already reserves space for it. It will show data once the module has project records.</p>
-            </div>
-          </div>
-        </div>
       </section>
 
       <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">

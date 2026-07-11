@@ -138,6 +138,7 @@ const OfferToBuyPrintPage = () => {
   const buyerName = valueFrom(client, ['buyerName'], valueFrom(listing, ['buyer_name'], ''))
   const secondBuyerName = valueFrom(client, ['secondBuyerName'], '')
   const seller = valueFrom(listing, ['mainSeller', 'seller'], valueFrom(client, ['seller', 'salesOfficer'], ''))
+  const sellerTinNo = valueFrom(listing, ['sellerTinNo', 'seller_tin_no'], '')
   const dateReceived = formatDate(valueFrom(client, ['dateReceived'], valueFrom(listing, ['client_unit_created'], new Date().toISOString())))
   const monthlyIncome = cleanMoney(getValue(client, ['monthlyIncome'], 0))
   const secondMonthlyIncome = cleanMoney(getValue(client, ['secondBuyerMonthlyIncome'], 0))
@@ -488,7 +489,7 @@ const OfferToBuyPrintPage = () => {
               <tr><th colSpan="12" className="otb-section">SALES AGENT:</th></tr>
               <tr>
                 <td colSpan="4"><Field label="Name:" value={seller} /></td>
-                <td colSpan="3"><Field label="TIN No.:" value="" /></td>
+                <td colSpan="3"><Field label="TIN No.:" value={sellerTinNo} /></td>
                 <td colSpan="5"><Field label="Address:" value="" /></td>
               </tr>
               <tr>

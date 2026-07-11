@@ -152,3 +152,112 @@ test('full payment by the promised date honors the extension and keeps penalty a
   assert.equal(result.penaltyAmount, 0);
   assert.equal(result.unpaidBaseAmount, 0);
 });
+
+test('extension preserves penalty accrued before the grant date', () => {
+  const result = calculateScheduleDailyPenalty({
+    row: schedule,
+    clientProfile: profile,
+    reliefs: [
+      {
+        penalty_relief_id: 20,
+        relief_type: 'penalty_free_extension',
+        promised_payment_date: '2026-07-06',
+        status: 'active',
+        reason: 'Extension granted after penalty started.',
+        created_at: '2026-07-04 09:00:00',
+      },
+    ],
+    asOfDate: '2026-07-05',
+  });
+
+  assert.equal(result.activeExtension.status, 'active');
+  assert.equal(result.calculatedPenaltyAmount, 10);
+  assert.equal(result.penaltyAmount, 10);
+});
+
+test('broken extension can be granted again while the installment remains unpaid', () => {
+  const result = calculateScheduleDailyPenalty({
+    row: schedule,
+    clientProfile: profile,
+    reliefs: [
+      {
+        penalty_relief_id: 21,
+        relief_type: 'penalty_free_extension',
+        promised_payment_date: '2026-07-04',
+        status: 'active',
+        reason: 'First promise.',
+        created_at: '2026-07-02 09:00:00',
+      },
+    ],
+    asOfDate: '2026-07-06',
+  });
+
+  assert.equal(result.activeExtension.status, 'broken');
+  assert.equal(result.canGrantExtension, true);
+});
+
+test('penalty correction resets the current amount and allows later accrual', () => {
+  const onCorrectionDate = calculateScheduleDailyPenalty({
+    row: schedule,
+    clientProfile: profile,
+    reliefs: [
+      {
+        penalty_relief_id: 30,
+        relief_type: 'penalty_correction',
+        relief_amount: 30,
+        status: 'active',
+        reason: 'Payment was entered late.',
+        created_at: '2026-07-05 09:00:00',
+      },
+    ],
+    asOfDate: '2026-07-05',
+  });
+
+  const afterCorrection = calculateScheduleDailyPenalty({
+    row: schedule,
+    clientProfile: profile,
+    reliefs: [
+      {
+        penalty_relief_id: 30,
+        relief_type: 'penalty_correction',
+        relief_amount: 30,
+        status: 'active',
+        reason: 'Payment was entered late.',
+        created_at: '2026-07-05 09:00:00',
+      },
+    ],
+    asOfDate: '2026-07-07',
+  });
+
+  assert.equal(onCorrectionDate.calculatedPenaltyAmount, 0);
+  assert.equal(afterCorrection.calculatedPenaltyAmount, 20);
+});
+
+test('restoring a penalty correction recalculates the full late period', () => {
+  const result = calculateScheduleDailyPenalty({
+    row: schedule,
+    clientProfile: profile,
+    reliefs: [
+      {
+        penalty_relief_id: 30,
+        relief_type: 'penalty_correction',
+        relief_amount: 30,
+        status: 'restored',
+        reason: 'Payment was entered late.',
+        created_at: '2026-07-05 09:00:00',
+      },
+      {
+        penalty_relief_id: 31,
+        relief_type: 'restoration',
+        relief_amount: 30,
+        restores_penalty_relief_id: 30,
+        status: 'active',
+        reason: 'Correction was applied by mistake.',
+        created_at: '2026-07-06 09:00:00',
+      },
+    ],
+    asOfDate: '2026-07-07',
+  });
+
+  assert.equal(result.calculatedPenaltyAmount, 50);
+});

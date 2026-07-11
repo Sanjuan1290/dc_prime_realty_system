@@ -421,12 +421,6 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
         ))[0][0]?.total
       : 0;
 
-    if (Number(paymentCount || 0) > 0) {
-      return res.status(400).json({
-        message: 'SOA terms cannot be changed after payments are recorded. Delete/reverse payments first, then update SOA terms.',
-      });
-    }
-
     const dpDiscountPercentage = Number(req.body.dpDiscountPercentage ?? req.body.soa_dp_discount_percentage ?? listing.soa_dp_discount_percentage ?? 0);
     const downpaymentPercentage = Number(req.body.downpaymentPercentage ?? req.body.soa_downpayment_percentage ?? listing.soa_downpayment_percentage ?? 30);
     const downpaymentTerms = Number(req.body.downpaymentTerms ?? req.body.soa_downpayment_terms ?? listing.soa_downpayment_terms ?? 3);
@@ -434,6 +428,19 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
     const interestRateSource = 'listing';
     const annualInterestRate = Number(listing.annual_interest_rate || 0);
     const firstDueDate = dateOrNull(req.body.firstDueDate || req.body.soa_first_due_date || listing.soa_first_due_date);
+    const dailyPenaltyRate = Number(
+      req.body.dailyPenaltyRate ??
+      req.body.soa_penalty_rate_percent ??
+      listing.soa_penalty_rate_percent ??
+      0
+    );
+    const penaltyGraceDays = Number(
+      req.body.penaltyGraceDays ??
+      req.body.soa_penalty_grace_days ??
+      listing.soa_penalty_grace_days ??
+      1
+    );
+    const allowedDailyPenaltyRates = new Set([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 2, 3, 4, 5]);
 
     if (dpDiscountPercentage < 0 || dpDiscountPercentage > 100) {
       return res.status(400).json({ message: 'DP Discount % must be between 0 and 100.' });
@@ -455,6 +462,33 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
       return res.status(400).json({ message: 'Annual interest rate cannot be negative.' });
     }
 
+    if (!allowedDailyPenaltyRates.has(dailyPenaltyRate)) {
+      return res.status(400).json({ message: 'Daily penalty rate must use one of the allowed values.' });
+    }
+
+    if (!Number.isInteger(penaltyGraceDays) || penaltyGraceDays < 1 || penaltyGraceDays > 31) {
+      return res.status(400).json({ message: 'Penalty-free grace period must be from 1 to 31 days.' });
+    }
+
+    const sameNumber = (left, right) => Math.abs(Number(left || 0) - Number(right || 0)) < 0.000001;
+    const currentFirstDueDate = dateOrNull(listing.soa_first_due_date);
+    const structuralTermsChanged =
+      !sameNumber(dpDiscountPercentage, listing.soa_dp_discount_percentage) ||
+      !sameNumber(downpaymentPercentage, listing.soa_downpayment_percentage) ||
+      Number(downpaymentTerms) !== Number(listing.soa_downpayment_terms ?? 3) ||
+      Number(monthlyTerms) !== Number(listing.soa_monthly_terms ?? 36) ||
+      firstDueDate !== currentFirstDueDate;
+    const penaltyTermsChanged =
+      !sameNumber(dailyPenaltyRate, listing.soa_penalty_rate_percent) ||
+      Number(penaltyGraceDays) !== Number(listing.soa_penalty_grace_days ?? 1) ||
+      String(listing.soa_penalty_calculation_method || 'daily').toLowerCase() !== 'daily';
+
+    if (Number(paymentCount || 0) > 0 && structuralTermsChanged) {
+      return res.status(400).json({
+        message: 'Downpayment and amortization terms cannot be changed after payments are recorded. Penalty rate and grace period can still be updated.',
+      });
+    }
+
     const updateColumns = [];
     const updateParams = [];
 
@@ -472,6 +506,9 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
     await addProfileUpdate('soa_annual_interest_rate', annualInterestRate);
     await addProfileUpdate('soa_interest_rate_overridden', 0);
     await addProfileUpdate('soa_first_due_date', firstDueDate);
+    await addProfileUpdate('soa_penalty_calculation_method', 'daily');
+    await addProfileUpdate('soa_penalty_rate_percent', dailyPenaltyRate);
+    await addProfileUpdate('soa_penalty_grace_days', penaltyGraceDays);
 
     await connection.beginTransaction();
 
@@ -493,7 +530,7 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
       );
     }
 
-    if (await tableExists(connection, 'lot_project_payment_schedules')) {
+    if (structuralTermsChanged && await tableExists(connection, 'lot_project_payment_schedules')) {
       const updatedListing = {
         ...listing,
         soa_dp_discount_percentage: dpDiscountPercentage,
@@ -503,6 +540,9 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
         soa_annual_interest_rate: annualInterestRate,
         soa_interest_rate_overridden: 0,
         soa_first_due_date: firstDueDate,
+        soa_penalty_calculation_method: 'daily',
+        soa_penalty_rate_percent: dailyPenaltyRate,
+        soa_penalty_grace_days: penaltyGraceDays,
       };
       const terms = getComputedSoaTerms(updatedListing, []);
       const computedRows = recomputeComputedSoaBalances(createComputedSoaRows(terms), terms);
@@ -583,6 +623,17 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
       }
     }
 
+    if (await tableExists(connection, 'lot_project_payment_schedules')) {
+      const refreshedListing = {
+        ...listing,
+        soa_penalty_calculation_method: 'daily',
+        soa_penalty_rate_percent: dailyPenaltyRate,
+        soa_penalty_grace_days: penaltyGraceDays,
+      };
+      await refreshListingPenaltyCache(connection, refreshedListing, todayDateOnly());
+      await recomputeListingScheduleBalances(connection, refreshedListing);
+    }
+
     await writeAuditLog(connection, req, {
       action: 'update',
       module: 'Payments',
@@ -599,6 +650,10 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
         monthlyTerms,
         annualInterestRate,
         firstDueDate,
+        dailyPenaltyRate,
+        penaltyGraceDays,
+        structuralTermsChanged,
+        penaltyTermsChanged,
       },
     });
 
@@ -606,7 +661,11 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
 
     return res.json({
       success: true,
-      message: 'SOA terms saved and schedule recomputed successfully.',
+      message: structuralTermsChanged
+        ? 'SOA terms saved and schedule recomputed successfully.'
+        : penaltyTermsChanged
+          ? 'Penalty settings updated successfully.'
+          : 'SOA terms are already up to date.',
       data: {
         dpDiscountPercentage,
         downpaymentPercentage,
@@ -615,6 +674,8 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
         annualInterestRate,
         interestRateSource,
         firstDueDate,
+        dailyPenaltyRate,
+        penaltyGraceDays,
       },
     });
   } catch (error) {
@@ -773,16 +834,12 @@ export const grantPaymentSchedulePenaltyExtension = async (req, res) => {
     if (scheduleDueDate && today < scheduleDueDate) {
       throw createHttpError(400, 'A penalty-free extension can only be granted on or after the SOA due date.');
     }
-    if (snapshot.activeExtension && ['active', 'partially_honored'].includes(snapshot.activeExtension.status)) {
-      throw createHttpError(400, 'This SOA row already has an active penalty-free extension.');
+    if (snapshot.activeExtension?.status === 'active') {
+      throw createHttpError(400, 'This SOA row already has an active penalty-free extension. Edit the current extension instead.');
     }
     if (snapshot.unpaidBaseAmount <= 0.009) {
       throw createHttpError(400, 'This SOA row has no unpaid installment balance.');
     }
-    if (snapshot.calculatedPenaltyAmount > 0.009 || snapshot.outstandingPenaltyAmount > 0.009) {
-      throw createHttpError(400, 'This row already has a penalty. Waive the existing penalty before granting an extension.');
-    }
-
     await connection.beginTransaction();
 
     const [result] = await connection.query(
@@ -838,6 +895,192 @@ export const grantPaymentSchedulePenaltyExtension = async (req, res) => {
       success: true,
       message: `Penalty-free extension granted through ${promisedPaymentDate}.`,
       penalty_relief_id: result.insertId,
+    });
+  } catch (error) {
+    try { await connection.rollback(); } catch {}
+    return res.status(error?.statusCode || 500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
+export const updatePaymentSchedulePenaltyExtension = async (req, res) => {
+  const connection = await db.getConnection();
+
+  try {
+    const user = await requirePenaltyManager(req);
+    const slug = String(req.params.projectSlug || '').trim();
+    const listingLookup = String(req.params.listingId || '').trim();
+    const scheduleId = Number(req.params.scheduleId || 0);
+    const reliefId = Number(req.params.reliefId || 0);
+    const project = await getProjectBySlug(slug);
+    const promisedPaymentDate = dateOrNull(req.body.promisedPaymentDate || req.body.promised_payment_date);
+    const reason = String(req.body.reason || '').trim();
+    const internalNotes = toNullable(req.body.internalNotes || req.body.internal_notes);
+
+    if (!project) throw createHttpError(404, 'Lot project not found.');
+    if (!scheduleId || !reliefId) throw createHttpError(400, 'Active penalty extension is required.');
+    if (!promisedPaymentDate) throw createHttpError(400, 'Promised payment date is required.');
+    if (!reason) throw createHttpError(400, 'Reason is required.');
+
+    const today = todayDateOnly();
+    const maxDate = addDaysToDateOnly(today, 31);
+    if (promisedPaymentDate < today || promisedPaymentDate > maxDate) {
+      throw createHttpError(400, 'Promised payment date must be within the next 31 days.');
+    }
+
+    const listing = await getListingForPayment(connection, project, listingLookup);
+    if (!listing) throw createHttpError(404, 'Listing not found.');
+
+    const { schedule, snapshot } = await getPenaltyReliefContext(
+      connection,
+      project,
+      listing,
+      scheduleId,
+      today
+    );
+    if (snapshot.activeExtension?.status !== 'active' || Number(snapshot.activeExtension.penaltyReliefId) !== reliefId) {
+      throw createHttpError(400, 'Only the current active penalty-free extension can be edited.');
+    }
+
+    await connection.beginTransaction();
+    const [result] = await connection.query(
+      `
+        UPDATE lot_project_penalty_reliefs
+        SET promised_payment_date = ?,
+            reason = ?,
+            internal_notes = ?,
+            status = 'active',
+            updated_at = NOW()
+        WHERE penalty_relief_id = ?
+          AND lot_project_id = ?
+          AND lot_project_listing_id = ?
+          AND lot_project_payment_schedule_id = ?
+          AND relief_type = 'penalty_free_extension'
+          AND status <> 'cancelled'
+      `,
+      [
+        promisedPaymentDate,
+        reason,
+        internalNotes,
+        reliefId,
+        project.lot_project_id,
+        listing.lot_project_listing_id,
+        scheduleId,
+      ]
+    );
+    if (!result.affectedRows) throw createHttpError(404, 'Penalty-free extension was not found.');
+
+    await refreshListingPenaltyCache(connection, listing, today);
+    await recomputeListingScheduleBalances(connection, listing);
+    await writeAuditLog(connection, req, {
+      action: 'update',
+      module: 'Payments',
+      entityType: 'lot_project_penalty_relief',
+      entityId: String(reliefId),
+      entityLabel: `${schedule.description} — ${listing.lot_project_listing_unit_id}`,
+      title: 'Edited penalty-free extension',
+      description: `Updated the penalty-free extension through ${promisedPaymentDate} for ${schedule.description}.`,
+      metadata: { listingId: listing.lot_project_listing_id, scheduleId, reliefId, promisedPaymentDate, reason },
+    });
+
+    await connection.commit();
+    return res.json({ success: true, message: `Penalty-free extension updated through ${promisedPaymentDate}.` });
+  } catch (error) {
+    try { await connection.rollback(); } catch {}
+    return res.status(error?.statusCode || 500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
+export const correctPaymentSchedulePenalty = async (req, res) => {
+  const connection = await db.getConnection();
+
+  try {
+    const user = await requirePenaltyManager(req);
+    if (user.role !== 'super_admin') {
+      throw createHttpError(403, 'Only a super admin can reset a penalty as a correction.');
+    }
+
+    const slug = String(req.params.projectSlug || '').trim();
+    const listingLookup = String(req.params.listingId || '').trim();
+    const scheduleId = Number(req.params.scheduleId || 0);
+    const project = await getProjectBySlug(slug);
+    const reason = String(req.body.reason || '').trim();
+    const internalNotes = toNullable(req.body.internalNotes || req.body.internal_notes);
+
+    if (!project) throw createHttpError(404, 'Lot project not found.');
+    if (!scheduleId) throw createHttpError(400, 'SOA row is required.');
+    if (!reason) throw createHttpError(400, 'Reason is required.');
+
+    const listing = await getListingForPayment(connection, project, listingLookup);
+    if (!listing) throw createHttpError(404, 'Listing not found.');
+
+    const today = todayDateOnly();
+    await refreshListingPenaltyCache(connection, listing, today);
+    const { schedule, snapshot } = await getPenaltyReliefContext(
+      connection,
+      project,
+      listing,
+      scheduleId,
+      today
+    );
+    const correctedAmount = roundMoneyValue(snapshot.calculatedPenaltyAmount || 0);
+
+    await connection.beginTransaction();
+    const [result] = await connection.query(
+      `
+        INSERT INTO lot_project_penalty_reliefs (
+          lot_project_id,
+          lot_project_listing_id,
+          lot_project_client_profile_id,
+          lot_project_payment_schedule_id,
+          relief_type,
+          relief_amount,
+          status,
+          reason,
+          internal_notes,
+          approved_by_user_id
+        ) VALUES (?, ?, ?, ?, 'penalty_correction', ?, 'active', ?, ?, ?)
+      `,
+      [
+        project.lot_project_id,
+        listing.lot_project_listing_id,
+        listing.lot_project_client_profile_id,
+        scheduleId,
+        correctedAmount,
+        reason,
+        internalNotes,
+        user.id,
+      ]
+    );
+
+    await refreshListingPenaltyCache(connection, listing, today);
+    await recomputeListingScheduleBalances(connection, listing);
+    await writeAuditLog(connection, req, {
+      action: 'create',
+      module: 'Payments',
+      entityType: 'lot_project_penalty_relief',
+      entityId: String(result.insertId),
+      entityLabel: `${schedule.description} — ${listing.lot_project_listing_unit_id}`,
+      title: 'Reset penalty as a correction',
+      description: `Reset the calculated penalty to PHP 0.00 for ${schedule.description}.`,
+      metadata: {
+        listingId: listing.lot_project_listing_id,
+        scheduleId,
+        correctedAmount,
+        reason,
+        correctionDate: today,
+      },
+    });
+
+    await connection.commit();
+    return res.status(201).json({
+      success: true,
+      message: 'Penalty reset to PHP 0.00 as a correction.',
+      penalty_relief_id: result.insertId,
+      corrected_amount: correctedAmount,
     });
   } catch (error) {
     try { await connection.rollback(); } catch {}
@@ -990,17 +1233,22 @@ export const restorePaymentSchedulePenaltyWaiver = async (req, res) => {
         WHERE penalty_relief_id = ?
           AND lot_project_id = ?
           AND lot_project_listing_id = ?
-          AND relief_type IN ('full_waiver', 'partial_waiver')
+          AND relief_type IN ('full_waiver', 'partial_waiver', 'penalty_correction')
         LIMIT 1
       `,
       [reliefId, project.lot_project_id, listing.lot_project_listing_id]
     );
     const relief = reliefRows[0];
-    if (!relief) throw createHttpError(404, 'Penalty waiver was not found.');
+    if (!relief) throw createHttpError(404, 'Penalty relief record was not found.');
+
+    const isCorrection = relief.relief_type === 'penalty_correction';
+    if (isCorrection && user.role !== 'super_admin') {
+      throw createHttpError(403, 'Only a super admin can restore a penalty correction.');
+    }
 
     const [restorationRows] = await connection.query(
       `
-        SELECT COALESCE(SUM(relief_amount), 0) AS restored_amount
+        SELECT COUNT(*) AS restoration_count, COALESCE(SUM(relief_amount), 0) AS restored_amount
         FROM lot_project_penalty_reliefs
         WHERE restores_penalty_relief_id = ?
           AND relief_type = 'restoration'
@@ -1008,16 +1256,24 @@ export const restorePaymentSchedulePenaltyWaiver = async (req, res) => {
       `,
       [reliefId]
     );
+    const restorationCount = Number(restorationRows[0]?.restoration_count || 0);
     const alreadyRestored = roundMoneyValue(restorationRows[0]?.restored_amount || 0);
-    const restorableAmount = roundMoneyValue(Math.max(Number(relief.relief_amount || 0) - alreadyRestored, 0));
-    const requestedAmount = req.body.amount === undefined || req.body.amount === null || req.body.amount === ''
+    const restorableAmount = isCorrection
+      ? roundMoneyValue(relief.relief_amount || 0)
+      : roundMoneyValue(Math.max(Number(relief.relief_amount || 0) - alreadyRestored, 0));
+    const requestedAmount = isCorrection
       ? restorableAmount
-      : parseMoneyValue(req.body.amount);
+      : req.body.amount === undefined || req.body.amount === null || req.body.amount === ''
+        ? restorableAmount
+        : parseMoneyValue(req.body.amount);
 
-    if (restorableAmount <= 0.009) {
+    if (isCorrection && (restorationCount > 0 || relief.status === 'restored')) {
+      throw createHttpError(400, 'This penalty correction has already been restored.');
+    }
+    if (!isCorrection && restorableAmount <= 0.009) {
       throw createHttpError(400, 'This penalty waiver has already been fully restored.');
     }
-    if (requestedAmount <= 0 || requestedAmount > restorableAmount + 0.009) {
+    if (!isCorrection && (requestedAmount <= 0 || requestedAmount > restorableAmount + 0.009)) {
       throw createHttpError(400, 'Restore amount must be greater than 0 and cannot exceed the remaining waived amount.');
     }
 
@@ -1053,7 +1309,7 @@ export const restorePaymentSchedulePenaltyWaiver = async (req, res) => {
     );
 
     const totalRestored = roundMoneyValue(alreadyRestored + requestedAmount);
-    if (totalRestored + 0.009 >= Number(relief.relief_amount || 0)) {
+    if (isCorrection || totalRestored + 0.009 >= Number(relief.relief_amount || 0)) {
       await connection.query(
         `UPDATE lot_project_penalty_reliefs SET status = 'restored' WHERE penalty_relief_id = ?`,
         [reliefId]
@@ -1068,9 +1324,11 @@ export const restorePaymentSchedulePenaltyWaiver = async (req, res) => {
       module: 'Payments',
       entityType: 'lot_project_penalty_relief',
       entityId: String(reliefId),
-      entityLabel: `Penalty waiver #${reliefId} — ${listing.lot_project_listing_unit_id}`,
-      title: 'Restored waived penalty',
-      description: `Restored ${money(requestedAmount)} from penalty waiver #${reliefId}.`,
+      entityLabel: `${isCorrection ? 'Penalty correction' : 'Penalty waiver'} #${reliefId} — ${listing.lot_project_listing_unit_id}`,
+      title: isCorrection ? 'Restored penalty correction' : 'Restored waived penalty',
+      description: isCorrection
+        ? `Restored penalty calculation after correction #${reliefId}.`
+        : `Restored ${money(requestedAmount)} from penalty waiver #${reliefId}.`,
       metadata: {
         listingId: listing.lot_project_listing_id,
         scheduleId: relief.lot_project_payment_schedule_id,
@@ -1085,7 +1343,7 @@ export const restorePaymentSchedulePenaltyWaiver = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: 'Waived penalty restored successfully.',
+      message: isCorrection ? 'Penalty correction restored successfully.' : 'Waived penalty restored successfully.',
       penalty_relief_id: result.insertId,
       restored_amount: roundMoneyValue(requestedAmount),
     });

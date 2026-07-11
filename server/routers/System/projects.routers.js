@@ -39,6 +39,8 @@ import {
   deleteLotProjectListingPayment,
   updateLotProjectListingSoaTerms,
   grantPaymentSchedulePenaltyExtension,
+  updatePaymentSchedulePenaltyExtension,
+  correctPaymentSchedulePenalty,
   waivePaymentSchedulePenalty,
   restorePaymentSchedulePenaltyWaiver,
 } from '../../controllers/Lot_Projects/ListingProfile/PaymentsSOA.controller.js';
@@ -84,6 +86,8 @@ router.post('/lot-projects/:projectSlug/listings/:listingId/payments', createLot
 router.put('/lot-projects/:projectSlug/listings/:listingId/payments/:paymentId', updateLotProjectListingPayment);
 router.post('/lot-projects/:projectSlug/listings/:listingId/payments/:paymentId/delete', deleteLotProjectListingPayment);
 router.post('/lot-projects/:projectSlug/listings/:listingId/payment-schedules/:scheduleId/penalty-extension', grantPaymentSchedulePenaltyExtension);
+router.put('/lot-projects/:projectSlug/listings/:listingId/payment-schedules/:scheduleId/penalty-extension/:reliefId', updatePaymentSchedulePenaltyExtension);
+router.post('/lot-projects/:projectSlug/listings/:listingId/payment-schedules/:scheduleId/penalty-correction', correctPaymentSchedulePenalty);
 router.post('/lot-projects/:projectSlug/listings/:listingId/payment-schedules/:scheduleId/penalty-waiver', waivePaymentSchedulePenalty);
 router.post('/lot-projects/:projectSlug/listings/:listingId/penalty-reliefs/:reliefId/restore', restorePaymentSchedulePenaltyWaiver);
 

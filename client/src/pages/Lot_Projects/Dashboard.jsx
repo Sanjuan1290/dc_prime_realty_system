@@ -434,6 +434,100 @@ const Dashboard = () => {
         </div>
       </section>
 
+      <section className="grid gap-6 grid-cols-2">
+        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <SectionHeader title="Seller Performance Details" description="Sales and commission totals by seller." />
+          <div className="mt-4">
+            <PerformanceTable rows={sellerPerformance} type="seller" />
+          </div>
+        </div>
+
+        <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-200 px-5 py-4">
+            <SectionHeader title="Recent Unit Records" description="Latest project activity." />
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-slate-200 text-sm">
+              <thead className="bg-slate-50"><tr>{['Unit','Buyer','TCP','Collection','Status'].map((head) => <th key={head} className="px-5 py-3 text-left text-xs font-black uppercase tracking-wider text-slate-500">{head}</th>)}</tr></thead>
+              <tbody className="divide-y divide-slate-100">
+                {isLoading ? <tr><td colSpan={5} className="px-5 py-8 text-center text-sm font-semibold text-slate-500">Loading recent units...</td></tr> : null}
+                {!isLoading && recentUnits.length === 0 ? <tr><td colSpan={5} className="px-5 py-8 text-center text-sm font-semibold text-slate-500">No recent unit records yet.</td></tr> : null}
+                {!isLoading && recentUnits.map((row) => (
+                  <tr key={row.id || row.unitCode} className="transition hover:bg-slate-50">
+                    <td className="px-5 py-4 font-black text-slate-950">{row.unitCode}</td>
+                    <td className="px-5 py-4 font-semibold text-slate-700">{row.buyer}</td>
+                    <td className="px-5 py-4 font-black text-slate-900">{money(row.tcp)}</td>
+                    <td className="px-5 py-4 font-semibold text-slate-700">{row.progress || '0%'}</td>
+                    <td className="px-5 py-4"><Badge tone={row.status === 'Fully Paid' ? 'green' : row.status?.includes('Pending') ? 'amber' : 'blue'}>{row.status}</Badge></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-2">
+
+
+        <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-200 px-5 py-4">
+            <SectionHeader title="Upcoming Unit Dues" description="Unpaid or partial schedules due within 7 days." />
+          </div>
+          <div className="p-5">
+            <div className="h-56">
+              {upcomingDuesChartData.length ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={upcomingDuesChartData} layout="vertical" margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                    <XAxis type="number" tickFormatter={compactMoney} tick={{ fontSize: 11 }} />
+                    <YAxis type="category" dataKey="unit" tick={{ fontSize: 11 }} width={70} />
+                    <Tooltip content={<ChartTooltip />} />
+                    <Bar dataKey="balanceDue" name="Balance Due" fill={chartColors.red} radius={[0, 8, 8, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : <EmptyChart message="No upcoming dues within 7 days." />}
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-[780px] w-full divide-y divide-slate-200 text-sm">
+              <thead className="bg-slate-50"><tr>{['Unit','Buyer','Due Date','Description','Balance Due'].map((head) => <th key={head} className="px-5 py-3 text-left text-xs font-black uppercase tracking-wider text-slate-500">{head}</th>)}</tr></thead>
+              <tbody className="divide-y divide-slate-100">
+                {upcomingDues.length ? upcomingDues.map((row) => (
+                  <tr key={row.id} className="transition hover:bg-slate-50">
+                    <td className="px-5 py-4 font-black text-blue-700">{row.unit}</td>
+                    <td className="px-5 py-4 font-semibold text-slate-700">{row.buyer}</td>
+                    <td className="px-5 py-4 font-semibold text-slate-600">{row.dueDate}</td>
+                    <td className="px-5 py-4 font-semibold text-slate-600">{row.description}</td>
+                    <td className="px-5 py-4 font-black text-amber-700">{money(row.balanceDue)}</td>
+                  </tr>
+                )) : (
+                  <tr><td colSpan={5} className="px-5 py-8 text-center text-sm font-semibold text-slate-500">No upcoming dues within 7 days.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+
+        <ChartCard title="Group Sales Comparison" description="Column-line chart for sales value and sales count by seller group.">
+          {groupChartData.length ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={groupChartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                <YAxis yAxisId="money" tickFormatter={compactMoney} tick={{ fontSize: 11 }} />
+                <YAxis yAxisId="count" orientation="right" allowDecimals={false} tick={{ fontSize: 11 }} />
+                <Tooltip content={<ChartTooltip />} />
+                <Legend />
+                <Bar yAxisId="money" dataKey="salesAmount" name="Sales Value" fill={chartColors.indigo} radius={[8, 8, 0, 0]} />
+                <Line yAxisId="count" type="monotone" dataKey="salesCount" name="Sales Count" stroke={chartColors.amber} strokeWidth={3} dot />
+              </ComposedChart>
+            </ResponsiveContainer>
+          ) : <EmptyChart message="No group performance data yet." />}
+        </ChartCard>
+      </section>
+
       <section className="grid gap-6 xl:grid-cols-2">
         <ChartCard title="Sales & Collections Trend" description="Area trend for money values with sales count as a line over the selected date range.">
           {salesTrend.length ? (
@@ -492,155 +586,9 @@ const Dashboard = () => {
         </ChartCard>
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-3">
-        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-          <SectionHeader title="Commissions" description="Seller commission liability and payable releases." />
-          <div className="mt-4 grid gap-3">
-            <InfoMetric label="Total Commission" value={money(stats.totalCommission)} helper="Full liability, including future releases." />
-            <InfoMetric label="Eligible Now" value={money(stats.eligibleCommission)} helper="Releases ready for payment." />
-            <InfoMetric label="Released" value={money(stats.releasedCommission)} helper="Amount already released." />
-            <InfoMetric label="Net Remaining" value={money(stats.netRemainingCommission)} helper="Still payable after released amounts." />
-          </div>
-        </div>
 
-        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-          <SectionHeader title="Sales & Collections" description="Booked sales and verified collections." />
-          <div className="mt-4 grid gap-3">
-            <InfoMetric label="Total Sales" value={money(stats.totalSales)} helper="Contract value from booked accounts." />
-            <InfoMetric label="Pending Sales" value={money(stats.pendingSales)} helper="Remaining uncollected balance." />
-            <InfoMetric label="Tracked Collections" value={money(stats.totalCollected)} helper="Verified payments posted." />
-            <InfoMetric label="Collection Progress" value={percent(stats.collectionProgress)} helper="Collected divided by total sales." />
-          </div>
-        </div>
 
-        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-          <SectionHeader title="Inventory" description="Lot value listed, available, and sold." />
-          <div className="mt-4 grid gap-3">
-            <InfoMetric label="Listed Lot Value" value={money(stats.listedLotValue)} helper="Inventory still tracked." />
-            <InfoMetric label="Available Lot Value" value={money(stats.availableLotValue)} helper="Can still be offered or reserved." />
-            <InfoMetric label="Sold Lot Value" value={money(stats.soldLotValue)} helper="Marked as sold." />
-            <InfoMetric label="Unit Upcoming Dues" value={stats.dueSoonCount || 0} helper={`${money(stats.upcomingDueAmount)} due within 7 days.`} />
-            <InfoMetric label="Overdue Units" value={stats.overdueCount || 0} helper="Past-due unpaid or partial rows." />
-          </div>
-        </div>
-      </section>
 
-      <section className="grid gap-6 xl:grid-cols-2">
-        <ChartCard title="Seller Sales Comparison" description="Column-line chart for sales value and sales count by individual seller.">
-          {sellerChartData.length ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={sellerChartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                <YAxis yAxisId="money" tickFormatter={compactMoney} tick={{ fontSize: 11 }} />
-                <YAxis yAxisId="count" orientation="right" allowDecimals={false} tick={{ fontSize: 11 }} />
-                <Tooltip content={<ChartTooltip />} />
-                <Legend />
-                <Bar yAxisId="money" dataKey="salesAmount" name="Sales Value" fill={chartColors.blue} radius={[8, 8, 0, 0]} />
-                <Line yAxisId="count" type="monotone" dataKey="salesCount" name="Sales Count" stroke={chartColors.green} strokeWidth={3} dot />
-              </ComposedChart>
-            </ResponsiveContainer>
-          ) : <EmptyChart message="No seller performance data yet." />}
-        </ChartCard>
-
-        <ChartCard title="Group Sales Comparison" description="Column-line chart for sales value and sales count by seller group.">
-          {groupChartData.length ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={groupChartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                <YAxis yAxisId="money" tickFormatter={compactMoney} tick={{ fontSize: 11 }} />
-                <YAxis yAxisId="count" orientation="right" allowDecimals={false} tick={{ fontSize: 11 }} />
-                <Tooltip content={<ChartTooltip />} />
-                <Legend />
-                <Bar yAxisId="money" dataKey="salesAmount" name="Sales Value" fill={chartColors.indigo} radius={[8, 8, 0, 0]} />
-                <Line yAxisId="count" type="monotone" dataKey="salesCount" name="Sales Count" stroke={chartColors.amber} strokeWidth={3} dot />
-              </ComposedChart>
-            </ResponsiveContainer>
-          ) : <EmptyChart message="No group performance data yet." />}
-        </ChartCard>
-      </section>
-
-      <section className="grid gap-6 xl:grid-cols-2">
-        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-          <SectionHeader title="Seller Performance Details" description="Sales and commission totals by seller." />
-          <div className="mt-4">
-            <PerformanceTable rows={sellerPerformance} type="seller" />
-          </div>
-        </div>
-
-        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-          <SectionHeader title="Group Performance Details" description="Sales and commission totals by seller group." />
-          <div className="mt-4">
-            <PerformanceTable rows={groupPerformance} type="group" />
-          </div>
-        </div>
-      </section>
-
-      <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-        <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-200 px-5 py-4">
-            <SectionHeader title="Upcoming Unit Dues" description="Unpaid or partial schedules due within 7 days." />
-          </div>
-          <div className="p-5">
-            <div className="h-56">
-              {upcomingDuesChartData.length ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={upcomingDuesChartData} layout="vertical" margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                    <XAxis type="number" tickFormatter={compactMoney} tick={{ fontSize: 11 }} />
-                    <YAxis type="category" dataKey="unit" tick={{ fontSize: 11 }} width={70} />
-                    <Tooltip content={<ChartTooltip />} />
-                    <Bar dataKey="balanceDue" name="Balance Due" fill={chartColors.red} radius={[0, 8, 8, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : <EmptyChart message="No upcoming dues within 7 days." />}
-            </div>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-[780px] w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-50"><tr>{['Unit','Buyer','Due Date','Description','Balance Due'].map((head) => <th key={head} className="px-5 py-3 text-left text-xs font-black uppercase tracking-wider text-slate-500">{head}</th>)}</tr></thead>
-              <tbody className="divide-y divide-slate-100">
-                {upcomingDues.length ? upcomingDues.map((row) => (
-                  <tr key={row.id} className="transition hover:bg-slate-50">
-                    <td className="px-5 py-4 font-black text-blue-700">{row.unit}</td>
-                    <td className="px-5 py-4 font-semibold text-slate-700">{row.buyer}</td>
-                    <td className="px-5 py-4 font-semibold text-slate-600">{row.dueDate}</td>
-                    <td className="px-5 py-4 font-semibold text-slate-600">{row.description}</td>
-                    <td className="px-5 py-4 font-black text-amber-700">{money(row.balanceDue)}</td>
-                  </tr>
-                )) : (
-                  <tr><td colSpan={5} className="px-5 py-8 text-center text-sm font-semibold text-slate-500">No upcoming dues within 7 days.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-200 px-5 py-4">
-            <SectionHeader title="Recent Unit Records" description="Latest project activity." />
-          </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-50"><tr>{['Unit','Buyer','TCP','Collection','Status'].map((head) => <th key={head} className="px-5 py-3 text-left text-xs font-black uppercase tracking-wider text-slate-500">{head}</th>)}</tr></thead>
-              <tbody className="divide-y divide-slate-100">
-                {isLoading ? <tr><td colSpan={5} className="px-5 py-8 text-center text-sm font-semibold text-slate-500">Loading recent units...</td></tr> : null}
-                {!isLoading && recentUnits.length === 0 ? <tr><td colSpan={5} className="px-5 py-8 text-center text-sm font-semibold text-slate-500">No recent unit records yet.</td></tr> : null}
-                {!isLoading && recentUnits.map((row) => (
-                  <tr key={row.id || row.unitCode} className="transition hover:bg-slate-50">
-                    <td className="px-5 py-4 font-black text-slate-950">{row.unitCode}</td>
-                    <td className="px-5 py-4 font-semibold text-slate-700">{row.buyer}</td>
-                    <td className="px-5 py-4 font-black text-slate-900">{money(row.tcp)}</td>
-                    <td className="px-5 py-4 font-semibold text-slate-700">{row.progress || '0%'}</td>
-                    <td className="px-5 py-4"><Badge tone={row.status === 'Fully Paid' ? 'green' : row.status?.includes('Pending') ? 'amber' : 'blue'}>{row.status}</Badge></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </section>
 
       <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
         <SectionHeader title="Project Details" description="Basic project data and document setup." />

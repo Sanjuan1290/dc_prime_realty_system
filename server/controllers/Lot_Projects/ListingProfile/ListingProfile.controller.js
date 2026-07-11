@@ -159,6 +159,9 @@ export const getLotProjectListingProfile = async (req, res) => {
     const sellerContactSelect = hasAssignedSellerColumn
       ? `COALESCE(assignedSeller.contact_no, seller.contact_no) AS seller_contact_no,`
       : `seller.contact_no AS seller_contact_no,`;
+    const sellerTinSelect = hasAssignedSellerColumn
+      ? `COALESCE(NULLIF(assignedSeller.tin_no, ''), NULLIF(seller.tin_no, '')) AS seller_tin_no,`
+      : `NULLIF(seller.tin_no, '') AS seller_tin_no,`;
     const sellerGroupSelect = hasAssignedSellerColumn
       ? `COALESCE(assignedSg.seller_group_name, sg.seller_group_name) AS seller_group_name,`
       : `sg.seller_group_name AS seller_group_name,`;
@@ -197,6 +200,7 @@ export const getLotProjectListingProfile = async (req, res) => {
           ${sellerRoleSelect}
           ${sellerEmailSelect}
           ${sellerContactSelect}
+          ${sellerTinSelect}
           ${sellerGroupSelect}
           ${sellerStatusSelect}
           ${sellerAccreditationSelect}

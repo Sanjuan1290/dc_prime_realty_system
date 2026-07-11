@@ -289,6 +289,9 @@ const DeletePaymentModal = ({ payment, password, setPassword, alert, isDeleting,
 }
 
 
+const dailyPenaltyRateOptions = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 2, 3, 4, 5]
+const penaltyGraceDayOptions = Array.from({ length: 31 }, (_, index) => index + 1)
+
 const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, onSave }) => {
   const [form, setForm] = useState(() => ({
     dpDiscountPercentage: String(getListingValue(listing, ['soaDpDiscountPercentage'], 0)),
@@ -296,10 +299,12 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
     downpaymentTerms: String(getListingValue(listing, ['soaDownpaymentTerms'], 3)),
     monthlyTerms: String(getListingValue(listing, ['soaMonthlyTerms'], 36)),
     firstDueDate: getListingValue(listing, ['soaFirstDueDate', 'first_due_date'], ''),
+    dailyPenaltyRate: String(getListingValue(listing, ['soaPenaltyRatePercent'], 0.1)),
+    penaltyGraceDays: String(getListingValue(listing, ['soaPenaltyGraceDays'], 1)),
   }))
   const [modalAlert, setModalAlert] = useState({
     type: 'info',
-    message: 'Changing SOA terms recomputes the schedule. This is allowed only before payments are recorded.',
+    message: 'Payment schedule fields lock after a payment is recorded. Daily penalty rate and grace period stay editable.',
   })
 
   useEffect(() => {
@@ -320,6 +325,8 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
     const downpaymentPercentage = Number(form.downpaymentPercentage || 0)
     const downpaymentTerms = Number(form.downpaymentTerms || 0)
     const monthlyTerms = Number(form.monthlyTerms || 0)
+    const dailyPenaltyRate = Number(form.dailyPenaltyRate || 0)
+    const penaltyGraceDays = Number(form.penaltyGraceDays || 0)
     if (dpDiscountPercentage < 0 || dpDiscountPercentage > 100) {
       setModalAlert({ type: 'error', message: 'DP Discount % must be between 0 and 100.' })
       return
@@ -340,7 +347,17 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
       return
     }
 
-    setModalAlert({ type: 'loading', message: 'Saving SOA terms and recomputing schedule...' })
+    if (!dailyPenaltyRateOptions.includes(dailyPenaltyRate)) {
+      setModalAlert({ type: 'error', message: 'Select a valid daily penalty rate.' })
+      return
+    }
+
+    if (!penaltyGraceDayOptions.includes(penaltyGraceDays)) {
+      setModalAlert({ type: 'error', message: 'Grace period must be from 1 to 31 days.' })
+      return
+    }
+
+    setModalAlert({ type: 'loading', message: 'Saving SOA and penalty settings...' })
     onSave({
       dpDiscountPercentage,
       downpaymentPercentage,
@@ -348,12 +365,15 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
       monthlyTerms,
       interestRateSource: 'listing',
       firstDueDate: form.firstDueDate || null,
+      dailyPenaltyRate,
+      penaltyGraceDays,
     })
   }
 
   const listingInterestRate = Number(getListingValue(listing, ['annualInterestRate'], 0))
+  const hasRecordedPayments = Number(getListingValue(listing, ['payment_count'], 0)) > 0
 
-  const Field = ({ label, value, onChange, type = 'number', placeholder = '', helper }) => (
+  const Field = ({ label, value, onChange, type = 'number', placeholder = '', helper, disabled = false }) => (
     <label className="flex flex-col gap-1.5">
       <span className="text-sm font-black text-slate-700">{label}</span>
       <input
@@ -361,7 +381,7 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
         value={value ?? ''}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        disabled={isSaving}
+        disabled={isSaving || disabled}
         className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
       />
       {helper ? <span className="text-xs font-semibold text-slate-500">{helper}</span> : null}
@@ -384,16 +404,28 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
         <div className="p-5">
           {modalAlert ? <StatusAlert type={modalAlert.type} message={modalAlert.message} onClose={modalAlert.type === 'loading' ? undefined : () => setModalAlert(null)} className="mb-4" /> : null}
           <div className="grid gap-4 md:grid-cols-2">
-            <Field label="DP Discount %" value={form.dpDiscountPercentage} onChange={(value) => updateForm('dpDiscountPercentage', value)} placeholder="Example: 5" helper="Discount applied to the computed downpayment total." />
-            <Field label="Downpayment %" value={form.downpaymentPercentage} onChange={(value) => updateForm('downpaymentPercentage', value)} placeholder="Example: 30" />
-            <Field label="Downpayment Terms" value={form.downpaymentTerms} onChange={(value) => updateForm('downpaymentTerms', value)} placeholder="Example: 3" />
-            <Field label="Monthly Terms" value={form.monthlyTerms} onChange={(value) => updateForm('monthlyTerms', value)} placeholder="Example: 36" />
+            <Field label="DP Discount %" value={form.dpDiscountPercentage} onChange={(value) => updateForm('dpDiscountPercentage', value)} placeholder="Example: 5" helper="Discount applied to the computed downpayment total." disabled={hasRecordedPayments} />
+            <Field label="Downpayment %" value={form.downpaymentPercentage} onChange={(value) => updateForm('downpaymentPercentage', value)} placeholder="Example: 30" disabled={hasRecordedPayments} />
+            <Field label="Downpayment Terms" value={form.downpaymentTerms} onChange={(value) => updateForm('downpaymentTerms', value)} placeholder="Example: 3" disabled={hasRecordedPayments} />
+            <Field label="Monthly Terms" value={form.monthlyTerms} onChange={(value) => updateForm('monthlyTerms', value)} placeholder="Example: 36" disabled={hasRecordedPayments} />
             <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm font-semibold text-blue-900 md:col-span-2">
               <p className="text-xs font-black uppercase tracking-wide text-blue-700">Listing Annual Interest Rate</p>
               <p className="mt-1 text-xl font-black">{listingInterestRate.toFixed(2)}%</p>
               <p className="mt-1 text-xs font-semibold text-blue-700">SOA interest always follows the rate set in Edit Listing. Update it there if it needs to change.</p>
             </div>
-            <Field label="First Due Date" type="date" value={form.firstDueDate && form.firstDueDate !== '-' ? form.firstDueDate : ''} onChange={(value) => updateForm('firstDueDate', value)} />
+            <Field label="First Due Date" type="date" value={form.firstDueDate && form.firstDueDate !== '-' ? form.firstDueDate : ''} onChange={(value) => updateForm('firstDueDate', value)} disabled={hasRecordedPayments} />
+            <label className="flex flex-col gap-1.5">
+              <span className="text-sm font-black text-slate-700">Daily Penalty Rate</span>
+              <select value={form.dailyPenaltyRate} onChange={(event) => updateForm('dailyPenaltyRate', event.target.value)} disabled={isSaving} className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100">
+                {dailyPenaltyRateOptions.map((rate) => <option key={rate} value={rate}>{rate}% per day</option>)}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-sm font-black text-slate-700">Penalty-Free Grace Period</span>
+              <select value={form.penaltyGraceDays} onChange={(event) => updateForm('penaltyGraceDays', event.target.value)} disabled={isSaving} className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100">
+                {penaltyGraceDayOptions.map((days) => <option key={days} value={days}>{days} day{days === 1 ? '' : 's'}</option>)}
+              </select>
+            </label>
           </div>
         </div>
 
@@ -412,7 +444,9 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
   const { projectSlug, listingId } = useParams()
   const queryClient = useQueryClient()
   const { data: currentUserData } = useCurrentUser()
-  const canManagePenaltyRelief = ['admin', 'super_admin'].includes(currentUserData?.user?.role)
+  const currentUserRole = currentUserData?.user?.role
+  const canManagePenaltyRelief = ['admin', 'super_admin'].includes(currentUserRole)
+  const canCorrectPenalty = currentUserRole === 'super_admin'
 
   const rows = useMemo(() => normalizeRows(soaRows), [soaRows])
   const paymentRecords = useMemo(() => normalizePayments(payments, listing), [payments, listing])
@@ -541,6 +575,36 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
       invalidateProfile()
     },
     onError: (error) => setPenaltyReliefAlert({ type: 'error', message: error?.message || 'Failed to save penalty-free extension.' }),
+  })
+
+  const editPenaltyExtensionMutation = useMutation({
+    mutationFn: ({ scheduleId, reliefId, ...payload }) =>
+      useFetchPut(
+        `/projects/lot-projects/${projectSlug}/listings/${listingId}/payment-schedules/${scheduleId}/penalty-extension/${reliefId}`,
+        payload
+      ),
+    onSuccess: (result) => {
+      setPenaltyReliefRow(null)
+      setPenaltyReliefAlert(null)
+      setAlert({ type: 'success', message: result?.message || 'Penalty-free extension updated.' })
+      invalidateProfile()
+    },
+    onError: (error) => setPenaltyReliefAlert({ type: 'error', message: error?.message || 'Failed to update penalty-free extension.' }),
+  })
+
+  const correctPenaltyMutation = useMutation({
+    mutationFn: ({ scheduleId, ...payload }) =>
+      useFetchPost(
+        `/projects/lot-projects/${projectSlug}/listings/${listingId}/payment-schedules/${scheduleId}/penalty-correction`,
+        payload
+      ),
+    onSuccess: (result) => {
+      setPenaltyReliefRow(null)
+      setPenaltyReliefAlert(null)
+      setAlert({ type: 'success', message: result?.message || 'Penalty reset as a correction.' })
+      invalidateProfile()
+    },
+    onError: (error) => setPenaltyReliefAlert({ type: 'error', message: error?.message || 'Failed to reset penalty.' }),
   })
 
   const waivePenaltyMutation = useMutation({
@@ -1164,13 +1228,16 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
           row={penaltyReliefRow}
           alert={penaltyReliefAlert}
           canManage={canManagePenaltyRelief}
-          isSaving={grantPenaltyExtensionMutation.isPending || waivePenaltyMutation.isPending || restorePenaltyMutation.isPending}
+          canCorrect={canCorrectPenalty}
+          isSaving={grantPenaltyExtensionMutation.isPending || editPenaltyExtensionMutation.isPending || correctPenaltyMutation.isPending || waivePenaltyMutation.isPending || restorePenaltyMutation.isPending}
           onClose={() => {
-            if (grantPenaltyExtensionMutation.isPending || waivePenaltyMutation.isPending || restorePenaltyMutation.isPending) return
+            if (grantPenaltyExtensionMutation.isPending || editPenaltyExtensionMutation.isPending || correctPenaltyMutation.isPending || waivePenaltyMutation.isPending || restorePenaltyMutation.isPending) return
             setPenaltyReliefRow(null)
             setPenaltyReliefAlert(null)
           }}
           onGrantExtension={(payload) => grantPenaltyExtensionMutation.mutate({ scheduleId: penaltyReliefRow.scheduleId, ...payload })}
+          onEditExtension={(payload) => editPenaltyExtensionMutation.mutate({ scheduleId: penaltyReliefRow.scheduleId, ...payload })}
+          onCorrect={(payload) => correctPenaltyMutation.mutate({ scheduleId: penaltyReliefRow.scheduleId, ...payload })}
           onWaive={(payload) => waivePenaltyMutation.mutate({ scheduleId: penaltyReliefRow.scheduleId, ...payload })}
           onRestore={(payload) => restorePenaltyMutation.mutate(payload)}
         />

@@ -605,6 +605,8 @@ export const mapProfileListing = (row = {}, project = {}, documents = []) => {
     seller_role: row.seller_role || '-',
     seller_email: row.seller_email || '-',
     seller_contact_no: row.seller_contact_no || '-',
+    seller_tin_no: row.seller_tin_no || '-',
+    sellerTinNo: row.seller_tin_no || '-',
     seller_group: row.seller_group_name || '-',
     seller_status: row.seller_status || '-',
     seller_accreditation_date: row.seller_accreditation_date ? plainDate(row.seller_accreditation_date) : '-',
@@ -952,6 +954,7 @@ const getEffectiveExtensionState = ({ reliefs = [], allocations = [], baseDue = 
   if (!extension?.promised_payment_date) return null;
 
   const promisedDate = plainDate(extension.promised_payment_date);
+  const grantedAt = plainDate(extension.created_at || asOfDate);
   const paidByPromise = roundMoneyValue(
     allocations
       .filter((allocation) => plainDate(allocation.payment_date) <= promisedDate)
@@ -971,12 +974,13 @@ const getEffectiveExtensionState = ({ reliefs = [], allocations = [], baseDue = 
     id: Number(extension.penalty_relief_id),
     penaltyReliefId: Number(extension.penalty_relief_id),
     promisedPaymentDate: promisedDate,
+    grantedAt,
     status,
     reason: extension.reason || '',
     internalNotes: extension.internal_notes || '',
     approvedByName: extension.approved_by_name || '-',
     paidByPromise,
-    suppressPenalty: honored || currentDate <= promisedDate,
+    suppressPenalty: status === 'active' || status === 'honored',
   };
 };
 
@@ -991,67 +995,6 @@ export const calculateScheduleDailyPenalty = ({
   const ratePercent = Number(clientProfile.soa_penalty_rate_percent || 0);
   const graceDays = Math.max(Number(clientProfile.soa_penalty_grace_days || 0), 0);
   const baseDue = getPenaltyBaseDueAmount(row, clientProfile);
-  const mappedReliefs = reliefs.map(mapPenaltyReliefRow);
-
-  if (!getPenaltyEligibleSchedule(row) || baseDue <= 0 || method === 'none' || ratePercent <= 0) {
-    return {
-      scheduleId: Number(row.lot_project_payment_schedule_id || 0),
-      method,
-      ratePercent,
-      graceDays,
-      baseDueAmount: baseDue,
-      unpaidBaseAmount: roundMoneyValue(Math.max(baseDue - Number(row.amount_paid || 0), 0)),
-      calculatedPenaltyAmount: 0,
-      waivedPenaltyAmount: 0,
-      penaltyAmount: 0,
-      paidPenaltyAmount: 0,
-      outstandingPenaltyAmount: 0,
-      penaltyStartDate: row.due_date ? addCalendarDays(row.due_date, graceDays + 1) : null,
-      penaltyCalculatedThrough: plainDate(asOfDate),
-      reliefs: mappedReliefs,
-      activeExtension: null,
-      canGrantExtension: false,
-      canWaivePenalty: false,
-    };
-  }
-
-  if (method !== 'daily') {
-    const calculated = roundMoneyValue(row.calculated_penalty_amount ?? row.penalty_amount ?? 0);
-    const waiverTotal = roundMoneyValue(
-      reliefs
-        .filter((relief) => ['full_waiver', 'partial_waiver'].includes(relief.relief_type) && isPenaltyReliefActive(relief))
-        .reduce((sum, relief) => sum + Number(relief.relief_amount || 0), 0)
-    );
-    const restoredTotal = roundMoneyValue(
-      reliefs
-        .filter((relief) => relief.relief_type === 'restoration' && isPenaltyReliefActive(relief))
-        .reduce((sum, relief) => sum + Number(relief.relief_amount || 0), 0)
-    );
-    const waived = roundMoneyValue(Math.min(Math.max(waiverTotal - restoredTotal, 0), calculated));
-    const penaltyAmount = roundMoneyValue(Math.max(calculated - waived, 0));
-    const paidPenalty = roundMoneyValue(Math.min(Number(row.paid_penalty_amount || 0), penaltyAmount));
-
-    return {
-      scheduleId: Number(row.lot_project_payment_schedule_id || 0),
-      method,
-      ratePercent,
-      graceDays,
-      baseDueAmount: baseDue,
-      unpaidBaseAmount: roundMoneyValue(Math.max(baseDue - Math.max(Number(row.amount_paid || 0) - paidPenalty, 0), 0)),
-      calculatedPenaltyAmount: calculated,
-      waivedPenaltyAmount: waived,
-      penaltyAmount,
-      paidPenaltyAmount: paidPenalty,
-      outstandingPenaltyAmount: roundMoneyValue(Math.max(penaltyAmount - paidPenalty, 0)),
-      penaltyStartDate: row.due_date ? addCalendarDays(row.due_date, graceDays + 1) : null,
-      penaltyCalculatedThrough: plainDate(asOfDate),
-      reliefs: mappedReliefs,
-      activeExtension: null,
-      canGrantExtension: false,
-      canWaivePenalty: penaltyAmount - paidPenalty > 0.009,
-    };
-  }
-
   const cleanAsOfDate = plainDate(asOfDate);
   const penaltyStartDate = row.due_date ? addCalendarDays(row.due_date, graceDays + 1) : null;
   const sortedAllocations = [...allocations]
@@ -1067,9 +1010,31 @@ export const calculateScheduleDailyPenalty = ({
     baseDue,
     asOfDate: cleanAsOfDate,
   });
+  const mappedReliefs = reliefs.map((relief) => {
+    const mapped = mapPenaltyReliefRow(relief);
+    if (relief.relief_type === 'penalty_free_extension') {
+      const extensionState = getEffectiveExtensionState({
+        reliefs: [relief],
+        allocations: sortedAllocations,
+        baseDue,
+        asOfDate: cleanAsOfDate,
+      });
+      if (extensionState) {
+        return {
+          ...mapped,
+          status: extensionState.status,
+          grantedAt: extensionState.grantedAt,
+        };
+      }
+    }
+    return mapped;
+  });
 
-  if (!penaltyStartDate || activeExtension?.suppressPenalty) {
-    const totalApplied = roundMoneyValue(sortedAllocations.reduce((sum, item) => sum + Number(item.applied_amount || 0), 0));
+  const totalApplied = roundMoneyValue(
+    sortedAllocations.reduce((sum, item) => sum + Number(item.applied_amount || 0), 0)
+  );
+
+  if (!getPenaltyEligibleSchedule(row) || baseDue <= 0 || method === 'none' || ratePercent <= 0) {
     return {
       scheduleId: Number(row.lot_project_payment_schedule_id || 0),
       method,
@@ -1091,9 +1056,108 @@ export const calculateScheduleDailyPenalty = ({
     };
   }
 
+  if (method !== 'daily') {
+    const correctionIdsRestored = new Set(
+      reliefs
+        .filter((relief) => relief.relief_type === 'restoration' && isPenaltyReliefActive(relief))
+        .map((relief) => Number(relief.restores_penalty_relief_id || 0))
+        .filter(Boolean)
+    );
+    const hasActiveCorrection = reliefs.some(
+      (relief) => relief.relief_type === 'penalty_correction' &&
+        isPenaltyReliefActive(relief) &&
+        !correctionIdsRestored.has(Number(relief.penalty_relief_id || 0))
+    );
+    const calculated = hasActiveCorrection
+      ? 0
+      : roundMoneyValue(row.calculated_penalty_amount ?? row.penalty_amount ?? 0);
+    const waiverIds = new Set(
+      reliefs
+        .filter((relief) => ['full_waiver', 'partial_waiver'].includes(relief.relief_type))
+        .map((relief) => Number(relief.penalty_relief_id || 0))
+    );
+    const waiverTotal = roundMoneyValue(
+      reliefs
+        .filter((relief) => ['full_waiver', 'partial_waiver'].includes(relief.relief_type) && isPenaltyReliefActive(relief))
+        .reduce((sum, relief) => sum + Number(relief.relief_amount || 0), 0)
+    );
+    const restoredTotal = roundMoneyValue(
+      reliefs
+        .filter((relief) => relief.relief_type === 'restoration' &&
+          isPenaltyReliefActive(relief) &&
+          waiverIds.has(Number(relief.restores_penalty_relief_id || 0)))
+        .reduce((sum, relief) => sum + Number(relief.relief_amount || 0), 0)
+    );
+    const waived = roundMoneyValue(Math.min(Math.max(waiverTotal - restoredTotal, 0), calculated));
+    const penaltyAmount = roundMoneyValue(Math.max(calculated - waived, 0));
+    const paidPenalty = roundMoneyValue(Math.min(Number(row.paid_penalty_amount || 0), penaltyAmount));
+
+    return {
+      scheduleId: Number(row.lot_project_payment_schedule_id || 0),
+      method,
+      ratePercent,
+      graceDays,
+      baseDueAmount: baseDue,
+      unpaidBaseAmount: roundMoneyValue(Math.max(baseDue - Math.max(totalApplied - paidPenalty, 0), 0)),
+      calculatedPenaltyAmount: calculated,
+      waivedPenaltyAmount: waived,
+      penaltyAmount,
+      paidPenaltyAmount: paidPenalty,
+      outstandingPenaltyAmount: roundMoneyValue(Math.max(penaltyAmount - paidPenalty, 0)),
+      penaltyStartDate,
+      penaltyCalculatedThrough: cleanAsOfDate,
+      reliefs: mappedReliefs,
+      activeExtension,
+      canGrantExtension: false,
+      canWaivePenalty: penaltyAmount - paidPenalty > 0.009,
+    };
+  }
+
+  if (!penaltyStartDate) {
+    return {
+      scheduleId: Number(row.lot_project_payment_schedule_id || 0),
+      method,
+      ratePercent,
+      graceDays,
+      baseDueAmount: baseDue,
+      unpaidBaseAmount: roundMoneyValue(Math.max(baseDue - totalApplied, 0)),
+      calculatedPenaltyAmount: 0,
+      waivedPenaltyAmount: 0,
+      penaltyAmount: 0,
+      paidPenaltyAmount: 0,
+      outstandingPenaltyAmount: 0,
+      penaltyStartDate,
+      penaltyCalculatedThrough: cleanAsOfDate,
+      reliefs: mappedReliefs,
+      activeExtension,
+      canGrantExtension: false,
+      canWaivePenalty: false,
+    };
+  }
+
+  const reliefById = new Map(
+    reliefs.map((relief) => [Number(relief.penalty_relief_id || 0), relief])
+  );
+  const restoredCorrectionIds = new Set(
+    reliefs
+      .filter((relief) => relief.relief_type === 'restoration' && isPenaltyReliefActive(relief))
+      .filter((relief) => reliefById.get(Number(relief.restores_penalty_relief_id || 0))?.relief_type === 'penalty_correction')
+      .map((relief) => Number(relief.restores_penalty_relief_id || 0))
+  );
+
   const reliefEvents = reliefs
     .filter(isPenaltyReliefActive)
-    .filter((relief) => ['full_waiver', 'partial_waiver', 'restoration'].includes(relief.relief_type))
+    .filter((relief) => {
+      if (['full_waiver', 'partial_waiver'].includes(relief.relief_type)) return true;
+      if (relief.relief_type === 'penalty_correction') {
+        return !restoredCorrectionIds.has(Number(relief.penalty_relief_id || 0));
+      }
+      if (relief.relief_type === 'restoration') {
+        const target = reliefById.get(Number(relief.restores_penalty_relief_id || 0));
+        return ['full_waiver', 'partial_waiver'].includes(target?.relief_type);
+      }
+      return false;
+    })
     .map((relief) => ({
       kind: 'relief',
       date: plainDate(relief.created_at || cleanAsOfDate),
@@ -1110,7 +1174,8 @@ export const calculateScheduleDailyPenalty = ({
       const dateCompare = a.date.localeCompare(b.date);
       if (dateCompare !== 0) return dateCompare;
       if (a.kind !== b.kind) return a.kind === 'relief' ? -1 : 1;
-      return 0;
+      return Number(a.relief?.penalty_relief_id || a.allocation?.lot_project_payment_id || 0) -
+        Number(b.relief?.penalty_relief_id || b.allocation?.lot_project_payment_id || 0);
     });
 
   let currentBase = baseDue;
@@ -1119,14 +1184,32 @@ export const calculateScheduleDailyPenalty = ({
   let paidPenalty = 0;
   let cursorDate = penaltyStartDate;
   const dailyRate = ratePercent / 100;
+  const suppressionStart = activeExtension?.suppressPenalty
+    ? [penaltyStartDate, activeExtension.grantedAt].sort().at(-1)
+    : null;
+  const suppressionEndExclusive = activeExtension?.suppressPenalty
+    ? addCalendarDays(activeExtension.promisedPaymentDate, 1)
+    : null;
+
+  const countChargeableDays = (fromDate, toDateExclusive) => {
+    const totalDays = calendarDayDiff(fromDate, toDateExclusive);
+    if (!suppressionStart || !suppressionEndExclusive || totalDays <= 0) return totalDays;
+
+    const overlapStart = fromDate > suppressionStart ? fromDate : suppressionStart;
+    const overlapEnd = toDateExclusive < suppressionEndExclusive ? toDateExclusive : suppressionEndExclusive;
+    const suppressedDays = overlapEnd > overlapStart
+      ? calendarDayDiff(overlapStart, overlapEnd)
+      : 0;
+    return Math.max(totalDays - suppressedDays, 0);
+  };
 
   const accrueUntilExclusive = (eventDate) => {
     if (!cursorDate || currentBase <= 0 || eventDate <= cursorDate) return;
-    const days = calendarDayDiff(cursorDate, eventDate);
+    const days = countChargeableDays(cursorDate, eventDate);
     if (days > 0) {
       calculatedPenalty = roundMoneyValue(calculatedPenalty + (currentBase * dailyRate * days));
-      cursorDate = eventDate;
     }
+    cursorDate = eventDate;
   };
 
   for (const event of events) {
@@ -1140,6 +1223,12 @@ export const calculateScheduleDailyPenalty = ({
       const amount = Number(event.relief.relief_amount || 0);
       if (event.relief.relief_type === 'restoration') {
         waiverBalance = roundMoneyValue(Math.max(waiverBalance - amount, 0));
+      } else if (event.relief.relief_type === 'penalty_correction') {
+        currentBase = roundMoneyValue(Math.max(currentBase - paidPenalty, 0));
+        calculatedPenalty = 0;
+        waiverBalance = 0;
+        paidPenalty = 0;
+        cursorDate = addCalendarDays(event.date, 1);
       } else {
         waiverBalance = roundMoneyValue(waiverBalance + amount);
       }
@@ -1157,20 +1246,20 @@ export const calculateScheduleDailyPenalty = ({
 
     if (event.date < penaltyStartDate) {
       cursorDate = penaltyStartDate;
-    } else {
+    } else if (!cursorDate || event.date > cursorDate) {
       cursorDate = event.date;
     }
   }
 
   if (cleanAsOfDate >= penaltyStartDate && currentBase > 0) {
-    const endExclusive = addCalendarDays(cleanAsOfDate, 1);
-    accrueUntilExclusive(endExclusive);
+    accrueUntilExclusive(addCalendarDays(cleanAsOfDate, 1));
   }
 
   const waivedPenalty = roundMoneyValue(Math.min(waiverBalance, calculatedPenalty));
   const penaltyAmount = roundMoneyValue(Math.max(calculatedPenalty - waivedPenalty, 0));
   paidPenalty = roundMoneyValue(Math.min(paidPenalty, penaltyAmount));
   const outstandingPenalty = roundMoneyValue(Math.max(penaltyAmount - paidPenalty, 0));
+  const hasCurrentActiveExtension = activeExtension?.status === 'active';
 
   return {
     scheduleId: Number(row.lot_project_payment_schedule_id || 0),
@@ -1190,8 +1279,7 @@ export const calculateScheduleDailyPenalty = ({
     activeExtension,
     canGrantExtension:
       currentBase > 0.009 &&
-      calculatedPenalty <= 0.009 &&
-      !activeExtension &&
+      !hasCurrentActiveExtension &&
       Boolean(row.due_date) &&
       cleanAsOfDate >= plainDate(row.due_date),
     canWaivePenalty: outstandingPenalty > 0.009,
