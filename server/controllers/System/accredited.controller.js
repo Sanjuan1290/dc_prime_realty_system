@@ -517,6 +517,8 @@ const mapReceiptRows = (receiptRows = [], itemRows = []) => {
     projectLocation: row.lot_project_location,
     unitId: row.lot_project_listing_unit_id,
     buyerName: row.buyer_full_name,
+    commissionRole: row.commission_role,
+    commissionRate: Number(row.commission_rate || 0),
     bankName: row.bank_name,
     accountNumber: row.account_number,
     receiptDate: row.receipt_date,
@@ -641,11 +643,14 @@ const loadSellerReceiptData = async (connection, sellerId) => {
         lp.lot_project_location,
         l.lot_project_listing_unit_id,
         cp.buyer_full_name,
+        c.commission_role,
+        c.commission_rate,
         ${fullNameSql('creator')} AS created_by_name
       FROM lot_project_commission_receipts receipt
       INNER JOIN lot_projects lp ON lp.lot_project_id = receipt.lot_project_id
       INNER JOIN lot_project_listings l ON l.lot_project_listing_id = receipt.lot_project_listing_id
       INNER JOIN lot_project_client_profiles cp ON cp.lot_project_client_profile_id = receipt.lot_project_client_profile_id
+      INNER JOIN lot_project_commissions c ON c.lot_project_commission_id = receipt.lot_project_commission_id
       LEFT JOIN users creator ON creator.id = receipt.created_by_user_id
       WHERE receipt.accredited_seller_id = ?
       ORDER BY receipt.receipt_date DESC, receipt.lot_project_commission_receipt_id DESC
@@ -883,4 +888,3 @@ export const createAccreditedSellerProofOfIncomeReceipt = async (req, res) => {
     connection.release();
   }
 };
-

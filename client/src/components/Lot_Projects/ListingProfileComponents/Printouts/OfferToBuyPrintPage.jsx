@@ -162,7 +162,7 @@ const OfferToBuyPrintPage = () => {
 
   return (
     <PrintPageShell title="Offer To Buy & Buyer&apos;s Profile">
-      <section className="print-page otb-page mx-auto bg-white text-black shadow-lg print:shadow-none">
+      <section className="print-page otb-page mx-auto bg-white text-black shadow-lg print:shadow-none ">
         <style>{`
           .otb-page {
             width: 210mm;
@@ -173,7 +173,7 @@ const OfferToBuyPrintPage = () => {
 
           .otb-form {
             width: 100%;
-            min-height: 273mm;
+            min-height: fit;
             border: 1.4px solid #4b5563;
             font-size: 8.7px;
             line-height: 1.08;
@@ -507,16 +507,17 @@ const OfferToBuyPrintPage = () => {
                 <td colSpan="1"><strong>Name:</strong></td>
                 <td colSpan="3" className="otb-field-line strong">{sellerLastName || (!sellerFirstName && !sellerMiddleName ? seller : '')}</td>
                 <td colSpan="3" className="otb-field-line strong">{sellerFirstName}</td>
-                <td colSpan="3" className="otb-field-line strong">{sellerMiddleName}</td>
-                <td colSpan="2"><Field label="TIN No.:" value={sellerTinNo} /></td>
-              </tr>
+                <td colSpan="2" className="otb-field-line strong">{sellerMiddleName}</td>
+                <td colSpan="3"><Field label="TIN No.:" value={sellerTinNo} /></td>
+              </tr> 
               <tr>
                 <td colSpan="1"></td>
                 <td colSpan="3" className="text-center"><strong>Last Name</strong></td>
                 <td colSpan="3" className="text-center"><strong>First Name</strong></td>
-                <td colSpan="3" className="text-center"><strong>Middle Name</strong></td>
-                <td colSpan="2"><Field label="Address:" value={sellerAddress} /></td>
+                <td colSpan="2" className="text-center"><strong>Middle Name</strong></td>
+                <td colSpan="3"><Field label="Address:" value={sellerAddress} /></td>
               </tr>
+              
             </tbody>
           </table>
         </div>
