@@ -425,6 +425,16 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
     const downpaymentPercentage = Number(req.body.downpaymentPercentage ?? req.body.soa_downpayment_percentage ?? listing.soa_downpayment_percentage ?? 30);
     const downpaymentTerms = Number(req.body.downpaymentTerms ?? req.body.soa_downpayment_terms ?? listing.soa_downpayment_terms ?? 3);
     const monthlyTerms = Number(req.body.monthlyTerms ?? req.body.soa_monthly_terms ?? listing.soa_monthly_terms ?? 36);
+    const reservationFeeAppliedToDownpayment = (
+      req.body.reservationFeeTreatment === 'apply_to_downpayment' ||
+      req.body.reservationFeeAppliedToDownpayment === true ||
+      Number(
+        req.body.reservationFeeAppliedToDownpayment ??
+          req.body.soa_reservation_fee_applied_to_downpayment ??
+          listing.soa_reservation_fee_applied_to_downpayment ??
+          0
+      ) === 1
+    );
     const interestRateSource = 'listing';
     const annualInterestRate = Number(listing.annual_interest_rate || 0);
     const firstDueDate = dateOrNull(req.body.firstDueDate || req.body.soa_first_due_date || listing.soa_first_due_date);
@@ -477,6 +487,7 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
       !sameNumber(downpaymentPercentage, listing.soa_downpayment_percentage) ||
       Number(downpaymentTerms) !== Number(listing.soa_downpayment_terms ?? 3) ||
       Number(monthlyTerms) !== Number(listing.soa_monthly_terms ?? 36) ||
+      Number(reservationFeeAppliedToDownpayment) !== Number(listing.soa_reservation_fee_applied_to_downpayment || 0) ||
       firstDueDate !== currentFirstDueDate;
     const penaltyTermsChanged =
       !sameNumber(dailyPenaltyRate, listing.soa_penalty_rate_percent) ||
@@ -502,6 +513,7 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
     await addProfileUpdate('soa_dp_discount_percentage', dpDiscountPercentage);
     await addProfileUpdate('soa_downpayment_percentage', downpaymentPercentage);
     await addProfileUpdate('soa_downpayment_terms', downpaymentTerms);
+    await addProfileUpdate('soa_reservation_fee_applied_to_downpayment', reservationFeeAppliedToDownpayment ? 1 : 0);
     await addProfileUpdate('soa_monthly_terms', monthlyTerms);
     await addProfileUpdate('soa_annual_interest_rate', annualInterestRate);
     await addProfileUpdate('soa_interest_rate_overridden', 0);
@@ -536,6 +548,7 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
         soa_dp_discount_percentage: dpDiscountPercentage,
         soa_downpayment_percentage: downpaymentPercentage,
         soa_downpayment_terms: downpaymentTerms,
+        soa_reservation_fee_applied_to_downpayment: reservationFeeAppliedToDownpayment ? 1 : 0,
         soa_monthly_terms: monthlyTerms,
         soa_annual_interest_rate: annualInterestRate,
         soa_interest_rate_overridden: 0,

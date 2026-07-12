@@ -92,8 +92,20 @@ const scheduleSummaryJoin = `
   ) schedule_summary ON schedule_summary.lot_project_listing_id = c.lot_project_listing_id
 `;
 
-const downpaymentGrossSql = `
+const downpaymentTargetSql = `
   ROUND(l.lot_project_listing_tcp * (COALESCE(cp.soa_downpayment_percentage, 30) / 100), 2)
+`;
+
+const reservationFeeDownpaymentCreditSql = `
+  CASE
+    WHEN COALESCE(cp.soa_reservation_fee_applied_to_downpayment, 0) = 1
+      THEN LEAST(COALESCE(cp.soa_reservation_fee, l.lot_project_listing_reservation_fee, 0), (${downpaymentTargetSql}))
+    ELSE 0
+  END
+`;
+
+const downpaymentGrossSql = `
+  GREATEST(ROUND((${downpaymentTargetSql}) - (${reservationFeeDownpaymentCreditSql}), 2), 0)
 `;
 
 const downpaymentDiscountTotalSql = `
@@ -1017,4 +1029,3 @@ export const updateLotProjectCommission = async (req, res) => {
     connection.release();
   }
 };
-

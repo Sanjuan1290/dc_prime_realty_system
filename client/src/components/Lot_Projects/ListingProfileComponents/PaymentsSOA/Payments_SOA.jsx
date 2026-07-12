@@ -297,6 +297,8 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
     dpDiscountPercentage: String(getListingValue(listing, ['soaDpDiscountPercentage'], 0)),
     downpaymentPercentage: String(getListingValue(listing, ['soaDownpaymentPercentage'], 30)),
     downpaymentTerms: String(getListingValue(listing, ['soaDownpaymentTerms'], 3)),
+    reservationFeeTreatment: getListingValue(listing, ['reservationFeeTreatment'], '') ||
+      (getListingValue(listing, ['soaReservationFeeAppliedToDownpayment'], false) ? 'apply_to_downpayment' : 'separate'),
     monthlyTerms: String(getListingValue(listing, ['soaMonthlyTerms'], 36)),
     firstDueDate: getListingValue(listing, ['soaFirstDueDate', 'first_due_date'], ''),
     dailyPenaltyRate: String(getListingValue(listing, ['soaPenaltyRatePercent'], 0.1)),
@@ -362,6 +364,8 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
       dpDiscountPercentage,
       downpaymentPercentage,
       downpaymentTerms,
+      reservationFeeAppliedToDownpayment: form.reservationFeeTreatment === 'apply_to_downpayment',
+      reservationFeeTreatment: form.reservationFeeTreatment,
       monthlyTerms,
       interestRateSource: 'listing',
       firstDueDate: form.firstDueDate || null,
@@ -407,6 +411,19 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
             <Field label="DP Discount %" value={form.dpDiscountPercentage} onChange={(value) => updateForm('dpDiscountPercentage', value)} placeholder="Example: 5" helper="Discount applied to the computed downpayment total." disabled={hasRecordedPayments} />
             <Field label="Downpayment %" value={form.downpaymentPercentage} onChange={(value) => updateForm('downpaymentPercentage', value)} placeholder="Example: 30" disabled={hasRecordedPayments} />
             <Field label="Downpayment Terms" value={form.downpaymentTerms} onChange={(value) => updateForm('downpaymentTerms', value)} placeholder="Example: 3" disabled={hasRecordedPayments} />
+            <label className="flex flex-col gap-1.5">
+              <span className="text-sm font-black text-slate-700">Reservation Fee Treatment</span>
+              <select
+                value={form.reservationFeeTreatment}
+                onChange={(event) => updateForm('reservationFeeTreatment', event.target.value)}
+                disabled={isSaving || hasRecordedPayments}
+                className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
+              >
+                <option value="separate">Separate from Downpayment</option>
+                <option value="apply_to_downpayment">Deduct Reservation Fee from Downpayment</option>
+              </select>
+              <span className="text-xs font-semibold text-slate-500">When selected, the reservation fee counts toward the required DP target.</span>
+            </label>
             <Field label="Monthly Terms" value={form.monthlyTerms} onChange={(value) => updateForm('monthlyTerms', value)} placeholder="Example: 36" disabled={hasRecordedPayments} />
             <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm font-semibold text-blue-900 md:col-span-2">
               <p className="text-xs font-black uppercase tracking-wide text-blue-700">Listing Annual Interest Rate</p>
@@ -1261,7 +1278,3 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
 }
 
 export default PaymentsSOA
-
-
-
-

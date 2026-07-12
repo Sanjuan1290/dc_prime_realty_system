@@ -217,6 +217,17 @@ const ReservePaymentTermsModal = ({
                 />
               ) : null}
 
+              <SelectInput
+                label="Reservation Fee Treatment"
+                value={paymentForm.reservationFeeTreatment || 'separate'}
+                onChange={(value) => updatePaymentField('reservationFeeTreatment', value)}
+                helper="Choose if the reservation fee stays separate or counts toward the required downpayment."
+                required
+              >
+                <option value="separate">Separate from Downpayment</option>
+                <option value="apply_to_downpayment">Deduct Reservation Fee from Downpayment</option>
+              </SelectInput>
+
               <TextInput
                 label="DP Discount %"
                 type="number"
@@ -336,11 +347,20 @@ const ReservePaymentTermsModal = ({
             <PreviewCard label="Interest" value="0%" tone="emerald" />
           </div>
         ) : (
-          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-8">
+          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-10">
             <PreviewCard label="TCP" value={money(tcp)} />
             <PreviewCard label="Reservation" value={money(paymentPreview.reservationFee)} />
             <PreviewCard label="LMF Treatment" value={lmfTreatment} />
-            <PreviewCard label="DP Gross" value={money(paymentPreview.dpGross)} />
+            <PreviewCard label="DP Target" value={money(paymentPreview.dpTarget)} />
+            <PreviewCard
+              label="Reservation Applied to DP"
+              value={money(paymentPreview.reservationFeeDownpaymentCredit)}
+              tone={paymentPreview.reservationFeeAppliedToDownpayment ? 'amber' : 'slate'}
+            />
+            <PreviewCard
+              label={paymentPreview.reservationFeeAppliedToDownpayment ? 'DP Less Reservation' : 'DP Gross'}
+              value={money(paymentPreview.dpGross)}
+            />
             <PreviewCard label="DP Discount" value={money(paymentPreview.dpDiscountAmount)} tone="amber" />
             <PreviewCard label="DP Net Payable" value={money(paymentPreview.dpNet)} />
             <PreviewCard label="Balance" value={money(paymentPreview.balance)} tone="blue" />

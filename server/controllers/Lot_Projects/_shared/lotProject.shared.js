@@ -415,41 +415,21 @@ export const getClientCompletionStatus = (profile = {}) => {
   const hasSecondBuyer = buyerType === 'spouses' || buyerType === 'and_account';
 
   const required = [
-    profile.buyer_first_name || profile.buyer_full_name,
-    profile.buyer_last_name || profile.buyer_full_name,
-    profile.buyer_birth_date,
-    profile.buyer_place_of_birth,
-    profile.buyer_citizenship,
-    profile.buyer_gender,
-    profile.buyer_civil_status,
+    profile.buyer_full_name,
     profile.buyer_contact_number,
+    profile.buyer_email,
     profile.buyer_present_address,
-    profile.buyer_present_zip_code,
-    profile.buyer_employment_status,
-    profile.buyer_monthly_income,
   ];
 
   if (hasSecondBuyer) {
     required.push(
-      profile.second_buyer_role,
-      profile.second_buyer_first_name || profile.second_buyer_full_name,
-      profile.second_buyer_last_name || profile.second_buyer_full_name,
-      profile.second_buyer_birth_date,
-      profile.second_buyer_place_of_birth,
-      profile.second_buyer_citizenship,
-      profile.second_buyer_gender,
-      profile.second_buyer_civil_status,
+      profile.second_buyer_full_name,
       profile.second_buyer_contact_number,
-      profile.second_buyer_present_address,
-      profile.second_buyer_present_zip_code,
-      profile.second_buyer_employment_status,
-      profile.second_buyer_monthly_income
+      profile.second_buyer_email
     );
   }
 
-  return required.some((value) => value === undefined || value === null || String(value).trim() === '')
-    ? 'incomplete'
-    : 'complete';
+  return required.some((value) => !String(value || '').trim()) ? 'incomplete' : 'complete';
 };
 
 const legacyNameSuffixes = new Set(['jr', 'jr.', 'sr', 'sr.', 'ii', 'iii', 'iv', 'v']);
@@ -675,6 +655,10 @@ export const mapProfileListing = (row = {}, project = {}, documents = []) => {
     soaModeOfPayment: row.soa_mode_of_payment || 'installment',
     modeOfPayment: row.soa_mode_of_payment || 'installment',
     soaReservationFee: Number(row.soa_reservation_fee || reservationFee || 0),
+    soaReservationFeeAppliedToDownpayment: Number(row.soa_reservation_fee_applied_to_downpayment || 0) === 1,
+    reservationFeeTreatment: Number(row.soa_reservation_fee_applied_to_downpayment || 0) === 1
+      ? 'apply_to_downpayment'
+      : 'separate',
     soaStartingDate: row.soa_starting_date ? plainDate(row.soa_starting_date) : '-',
     soaFirstDueDate: row.soa_first_due_date ? plainDate(row.soa_first_due_date) : '-',
     soaDownpaymentPercentage: Number(row.soa_downpayment_percentage || 0),
@@ -930,7 +914,17 @@ const getExpectedDownpaymentGrossPerRow = (row = {}, clientProfile = {}) => {
 
   if (tcp <= 0 || downpaymentPercentage <= 0) return 0;
 
-  const grossTotal = roundMoneyValue(tcp * (downpaymentPercentage / 100));
+  const targetTotal = roundMoneyValue(tcp * (downpaymentPercentage / 100));
+  const reservationFee = roundMoneyValue(
+    clientProfile.soa_reservation_fee ?? clientProfile.reservationFee ?? clientProfile.lot_project_listing_reservation_fee ?? 0
+  );
+  const reservationApplied = Number(
+    clientProfile.soa_reservation_fee_applied_to_downpayment ??
+      clientProfile.reservationFeeAppliedToDownpayment ??
+      0
+  ) === 1;
+  const reservationCredit = reservationApplied ? Math.min(reservationFee, targetTotal) : 0;
+  const grossTotal = roundMoneyValue(Math.max(targetTotal - reservationCredit, 0));
   const baseGross = roundMoneyValue(grossTotal / downpaymentTerms);
   const rowIndex = Number(row.sequence || row.row_number || 0);
   const isLast = downpaymentTerms === 1 || rowIndex === downpaymentTerms;
@@ -1793,8 +1787,21 @@ export const getComputedSoaTerms = (listingRow = {}, existingScheduleRows = []) 
     (sum, row) => sum + Number(row.due_amount || 0),
     0
   );
-  const computedDownpaymentGrossTotal = roundMoneyValue(principalTcp * (downpaymentPercentage / 100));
-  const downpaymentGrossTotal = roundMoneyValue(computedDownpaymentGrossTotal || inferredDownpaymentGrossTotal);
+  const downpaymentTargetTotal = roundMoneyValue(principalTcp * (downpaymentPercentage / 100));
+  const reservationFeeAppliedToDownpayment = Number(
+    listingRow.soa_reservation_fee_applied_to_downpayment ??
+      listingRow.reservationFeeAppliedToDownpayment ??
+      (listingRow.reservationFeeTreatment === 'apply_to_downpayment' ? 1 : 0)
+  ) === 1;
+  const reservationFeeDownpaymentCredit = reservationFeeAppliedToDownpayment
+    ? roundMoneyValue(Math.min(reservationFee, downpaymentTargetTotal))
+    : 0;
+  const computedDownpaymentGrossTotal = roundMoneyValue(
+    Math.max(downpaymentTargetTotal - reservationFeeDownpaymentCredit, 0)
+  );
+  const downpaymentGrossTotal = roundMoneyValue(
+    existingDownpaymentRows.length ? inferredDownpaymentGrossTotal : computedDownpaymentGrossTotal
+  );
   const downpaymentDiscountTotal = roundMoneyValue(downpaymentGrossTotal * (dpDiscountPercentage / 100));
   const computedDownpaymentTotal = roundMoneyValue(Math.max(downpaymentGrossTotal - downpaymentDiscountTotal, 0));
 
@@ -1847,6 +1854,9 @@ export const getComputedSoaTerms = (listingRow = {}, existingScheduleRows = []) 
     reservationFee,
     downpaymentPercentage,
     dpDiscountPercentage,
+    downpaymentTargetTotal,
+    reservationFeeAppliedToDownpayment,
+    reservationFeeDownpaymentCredit,
     downpaymentGrossTotal,
     downpaymentDiscountTotal,
     downpaymentTotal,
@@ -2782,10 +2792,3 @@ export const addIfColumnExists = async (connection, tableName, columns, values, 
     values.push(value);
   }
 };
-
-
-
-
-
-
-

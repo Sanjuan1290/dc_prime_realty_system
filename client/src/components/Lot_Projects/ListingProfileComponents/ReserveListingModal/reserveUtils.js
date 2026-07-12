@@ -138,14 +138,27 @@ export const getPaymentCalculations = (tcp, paymentForm) => {
     0
   )
 
-  const dpGross = isCash ? 0 : principalBase * (downpaymentPercentage / 100)
+  const reservationFeeTreatment = isCash
+    ? 'separate'
+    : paymentForm.reservationFeeTreatment === 'apply_to_downpayment'
+      ? 'apply_to_downpayment'
+      : 'separate'
+  const reservationFeeAppliedToDownpayment = reservationFeeTreatment === 'apply_to_downpayment'
+
+  // The downpayment target stays based on the selected percentage. When the
+  // reservation fee is applied to it, only the unpaid part becomes a DP schedule.
+  const dpTarget = isCash ? 0 : principalBase * (downpaymentPercentage / 100)
+  const reservationFeeDownpaymentCredit = reservationFeeAppliedToDownpayment
+    ? Math.min(reservationFee, dpTarget)
+    : 0
+  const dpGross = Math.max(dpTarget - reservationFeeDownpaymentCredit, 0)
   const dpDiscountAmount = isCash
     ? 0
     : dpGross * (Number(paymentForm.dpDiscountPercentage || 0) / 100)
   const dpNet = Math.max(dpGross - dpDiscountAmount, 0)
 
-  // The discount reduces the cash the buyer pays for the downpayment, while the
-  // gross downpayment still reduces the financed balance.
+  // The discount reduces the cash the buyer pays for the remaining downpayment.
+  // The gross scheduled DP still reduces the financed balance.
   const downpaymentCredit = dpNet + dpDiscountAmount
   const balance = Math.max(
     principalBase - reservationFee - downpaymentCredit,
@@ -160,8 +173,14 @@ export const getPaymentCalculations = (tcp, paymentForm) => {
     downpaymentPercentage,
     downpaymentTerms,
     monthlyTerms,
+    reservationFeeTreatment,
+    reservationFeeAppliedToDownpayment,
     preview: {
       reservationFee,
+      reservationFeeTreatment,
+      reservationFeeAppliedToDownpayment,
+      reservationFeeDownpaymentCredit,
+      dpTarget,
       legalMiscFeeAmount,
       legalMiscFeeMode,
       principalBase,
