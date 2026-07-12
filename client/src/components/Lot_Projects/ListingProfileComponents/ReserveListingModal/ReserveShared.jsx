@@ -9,9 +9,10 @@ export const TextInput = ({
   helper,
   required = false,
   disabled = false,
+  error = false,
 }) => (
   <label className="flex flex-col gap-1.5">
-    <span className="text-xs font-black text-slate-700">
+    <span className={`text-xs font-black ${error ? 'text-red-700' : 'text-slate-700'}`}>
       {label} {required ? <span className="text-red-500">*</span> : null}
     </span>
 
@@ -22,14 +23,17 @@ export const TextInput = ({
       placeholder={placeholder}
       disabled={disabled}
       required={required}
-      className={`h-10 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-700 outline-none transition placeholder:text-slate-400 ${
+      aria-invalid={error || undefined}
+      className={`h-10 rounded-lg border px-3 text-sm font-semibold text-slate-700 outline-none transition placeholder:text-slate-400 ${
         disabled
-          ? 'cursor-not-allowed bg-slate-100 text-slate-500'
-          : 'bg-white focus:border-blue-400 focus:ring-4 focus:ring-blue-50'
+          ? 'cursor-not-allowed border-slate-300 bg-slate-100 text-slate-500'
+          : error
+            ? 'border-red-500 bg-red-50 ring-2 ring-red-100 focus:border-red-500 focus:ring-4 focus:ring-red-100'
+            : 'border-slate-300 bg-white focus:border-blue-400 focus:ring-4 focus:ring-blue-50'
       }`}
     />
 
-    {helper ? <p className="text-xs font-semibold text-slate-500">{helper}</p> : null}
+    {helper ? <p className={`text-xs font-semibold ${error ? 'text-red-600' : 'text-slate-500'}`}>{helper}</p> : null}
   </label>
 )
 
@@ -41,9 +45,10 @@ export const SelectInput = ({
   helper,
   required = false,
   disabled = false,
+  error = false,
 }) => (
   <label className="flex flex-col gap-1.5">
-    <span className="text-xs font-black text-slate-700">
+    <span className={`text-xs font-black ${error ? 'text-red-700' : 'text-slate-700'}`}>
       {label} {required ? <span className="text-red-500">*</span> : null}
     </span>
 
@@ -52,16 +57,19 @@ export const SelectInput = ({
       onChange={(event) => onChange?.(event.target.value)}
       disabled={disabled}
       required={required}
-      className={`h-10 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-700 outline-none transition ${
+      aria-invalid={error || undefined}
+      className={`h-10 rounded-lg border px-3 text-sm font-semibold text-slate-700 outline-none transition ${
         disabled
-          ? 'cursor-not-allowed bg-slate-100 text-slate-500'
-          : 'bg-white focus:border-blue-400 focus:ring-4 focus:ring-blue-50'
+          ? 'cursor-not-allowed border-slate-300 bg-slate-100 text-slate-500'
+          : error
+            ? 'border-red-500 bg-red-50 ring-2 ring-red-100 focus:border-red-500 focus:ring-4 focus:ring-red-100'
+            : 'border-slate-300 bg-white focus:border-blue-400 focus:ring-4 focus:ring-blue-50'
       }`}
     >
       {children}
     </select>
 
-    {helper ? <p className="text-xs font-semibold text-slate-500">{helper}</p> : null}
+    {helper ? <p className={`text-xs font-semibold ${error ? 'text-red-600' : 'text-slate-500'}`}>{helper}</p> : null}
   </label>
 )
 

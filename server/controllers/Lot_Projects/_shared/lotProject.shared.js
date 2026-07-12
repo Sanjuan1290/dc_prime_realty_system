@@ -415,21 +415,41 @@ export const getClientCompletionStatus = (profile = {}) => {
   const hasSecondBuyer = buyerType === 'spouses' || buyerType === 'and_account';
 
   const required = [
-    profile.buyer_full_name,
+    profile.buyer_first_name || profile.buyer_full_name,
+    profile.buyer_last_name || profile.buyer_full_name,
+    profile.buyer_birth_date,
+    profile.buyer_place_of_birth,
+    profile.buyer_citizenship,
+    profile.buyer_gender,
+    profile.buyer_civil_status,
     profile.buyer_contact_number,
-    profile.buyer_email,
     profile.buyer_present_address,
+    profile.buyer_present_zip_code,
+    profile.buyer_employment_status,
+    profile.buyer_monthly_income,
   ];
 
   if (hasSecondBuyer) {
     required.push(
-      profile.second_buyer_full_name,
+      profile.second_buyer_role,
+      profile.second_buyer_first_name || profile.second_buyer_full_name,
+      profile.second_buyer_last_name || profile.second_buyer_full_name,
+      profile.second_buyer_birth_date,
+      profile.second_buyer_place_of_birth,
+      profile.second_buyer_citizenship,
+      profile.second_buyer_gender,
+      profile.second_buyer_civil_status,
       profile.second_buyer_contact_number,
-      profile.second_buyer_email
+      profile.second_buyer_present_address,
+      profile.second_buyer_present_zip_code,
+      profile.second_buyer_employment_status,
+      profile.second_buyer_monthly_income
     );
   }
 
-  return required.some((value) => !String(value || '').trim()) ? 'incomplete' : 'complete';
+  return required.some((value) => value === undefined || value === null || String(value).trim() === '')
+    ? 'incomplete'
+    : 'complete';
 };
 
 const legacyNameSuffixes = new Set(['jr', 'jr.', 'sr', 'sr.', 'ii', 'iii', 'iv', 'v']);

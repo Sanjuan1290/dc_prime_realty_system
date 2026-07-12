@@ -34,12 +34,49 @@ const getEligibleReleaseAmount = (record = {}) => {
     .reduce((sum, stage) => sum + Number(stage.netAmount ?? stage.net_release_amount ?? stage.grossAmount ?? 0), 0)
 }
 
+const completedMilestoneNames = [
+  '1st release',
+  '2nd release',
+  '3rd release',
+  '4th release',
+  'retention',
+]
+
+const isCommissionCompleted = (record = {}) => {
+  const milestones = Array.isArray(record.releaseMilestones) ? record.releaseMilestones : []
+  const releasedMilestones = milestones.filter(
+    (stage) => String(stage.status || '').trim().toLowerCase() === 'released'
+  )
+  const releasedStageNames = new Set(
+    releasedMilestones.map((stage) => String(stage.stage || '').trim().toLowerCase())
+  )
+
+  if (completedMilestoneNames.every((stageName) => releasedStageNames.has(stageName))) {
+    return true
+  }
+
+  const releasedPercent = releasedMilestones.reduce(
+    (sum, stage) => sum + Number(stage.releasePercent ?? stage.release_percent ?? 0),
+    0
+  )
+
+  if (milestones.length >= completedMilestoneNames.length && releasedPercent >= 99.999) {
+    return milestones.every(
+      (stage) => String(stage.status || '').trim().toLowerCase() === 'released'
+    )
+  }
+
+  const status = String(record.statusLabel || record.status || '').trim().toLowerCase()
+  return status === 'released' || status === 'completed'
+}
+
 const getEligibilityKey = (record = {}) => {
+  if (isCommissionCompleted(record)) return 'completed'
   if (getEligibleReleaseAmount(record) > 0) return 'eligible'
 
   const status = String(record.statusLabel || record.status || '').toLowerCase()
   if (status === 'eligible') return 'eligible'
-  if (status === 'cancelled' || status === 'released' || status === 'completed') return 'other'
+  if (status === 'cancelled') return 'other'
 
   return 'not_eligible'
 }
@@ -206,6 +243,7 @@ const Commission = () => {
           >
             <option value="all">All Eligibility</option>
             <option value="eligible">Eligible</option>
+            <option value="completed">Completed</option>
             <option value="not_eligible">Not Eligible</option>
           </select>
 
@@ -326,4 +364,3 @@ const Commission = () => {
 }
 
 export default Commission
-

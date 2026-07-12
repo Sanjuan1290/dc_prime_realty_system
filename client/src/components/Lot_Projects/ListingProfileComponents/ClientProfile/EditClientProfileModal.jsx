@@ -5,56 +5,32 @@ import StatusAlert from '../../../Shared/StatusAlert'
 const principalRequiredFields = [
   ['buyerLastName', 'Principal buyer last name'],
   ['buyerFirstName', 'Principal buyer first name'],
-  ['buyerMiddleName', 'Principal buyer middle name'],
-  ['buyerSuffix', 'Principal buyer suffix'],
   ['birthDate', 'Principal buyer birth date'],
   ['placeOfBirth', 'Principal buyer place of birth'],
   ['citizenship', 'Principal buyer citizenship'],
   ['gender', 'Principal buyer gender'],
   ['civilStatus', 'Principal buyer civil status'],
   ['contactNo', 'Principal buyer mobile number'],
-  ['residencePhoneNumber', 'Principal buyer residence phone number'],
-  ['email', 'Principal buyer email'],
-  ['tin', 'Principal buyer TIN'],
   ['presentAddress', 'Principal buyer present address'],
   ['presentZipCode', 'Principal buyer present ZIP code'],
-  ['permanentAddress', 'Principal buyer permanent address'],
-  ['permanentZipCode', 'Principal buyer permanent ZIP code'],
   ['employmentStatus', 'Principal buyer employment status'],
-  ['employerBusinessName', 'Principal buyer employer / business name'],
-  ['employerZipCode', 'Principal buyer employer ZIP code'],
-  ['natureOfWorkBusiness', 'Principal buyer nature of work / business'],
-  ['occupationPositionTitle', 'Principal buyer occupation / position / title'],
   ['monthlyIncome', 'Principal buyer monthly income'],
-  ['employerBusinessAddress', 'Principal buyer employer / business address'],
 ]
 
 const secondBuyerRequiredFields = [
   ['secondBuyerRole', 'Spouse / second buyer role'],
   ['secondBuyerLastName', 'Spouse / second buyer last name'],
   ['secondBuyerFirstName', 'Spouse / second buyer first name'],
-  ['secondBuyerMiddleName', 'Spouse / second buyer middle name'],
-  ['secondBuyerSuffix', 'Spouse / second buyer suffix'],
   ['secondBuyerBirthDate', 'Spouse / second buyer birth date'],
   ['secondBuyerPlaceOfBirth', 'Spouse / second buyer place of birth'],
   ['secondBuyerCitizenship', 'Spouse / second buyer citizenship'],
   ['secondBuyerGender', 'Spouse / second buyer gender'],
   ['secondBuyerCivilStatus', 'Spouse / second buyer civil status'],
   ['secondBuyerContactNo', 'Spouse / second buyer mobile number'],
-  ['secondBuyerResidencePhoneNumber', 'Spouse / second buyer residence phone number'],
-  ['secondBuyerEmail', 'Spouse / second buyer email'],
-  ['secondBuyerTin', 'Spouse / second buyer TIN'],
   ['secondBuyerPresentAddress', 'Spouse / second buyer present address'],
   ['secondBuyerPresentZipCode', 'Spouse / second buyer present ZIP code'],
-  ['secondBuyerPermanentAddress', 'Spouse / second buyer permanent address'],
-  ['secondBuyerPermanentZipCode', 'Spouse / second buyer permanent ZIP code'],
   ['secondBuyerEmploymentStatus', 'Spouse / second buyer employment status'],
-  ['secondBuyerEmployerBusinessName', 'Spouse / second buyer employer / business name'],
-  ['secondBuyerEmployerZipCode', 'Spouse / second buyer employer ZIP code'],
-  ['secondBuyerNatureOfWorkBusiness', 'Spouse / second buyer nature of work / business'],
-  ['secondBuyerOccupationPositionTitle', 'Spouse / second buyer occupation / position / title'],
   ['secondBuyerMonthlyIncome', 'Spouse / second buyer monthly income'],
-  ['secondBuyerEmployerBusinessAddress', 'Spouse / second buyer employer / business address'],
 ]
 
 const findMissingRequiredField = (form, fields) =>
@@ -203,7 +179,7 @@ const parseLegacyFullName = (fullName = '') => {
   }
 }
 
-const normalizeClientProfile = (client = {}) => {
+export const normalizeClientProfile = (client = {}) => {
   const buyerFullName = firstFilledValue(client.buyerName, client.buyer_full_name)
   const buyerNameParts = parseLegacyFullName(buyerFullName)
   const secondBuyerFullName = firstFilledValue(client.secondBuyerName, client.second_buyer_full_name)
@@ -406,9 +382,16 @@ const Section = ({ title, children }) => (
 )
 
 const PersonForm = ({ title, form, setForm, second = false }) => {
+  const principalFieldKeys = {
+    firstName: 'buyerFirstName',
+    middleName: 'buyerMiddleName',
+    lastName: 'buyerLastName',
+    suffix: 'buyerSuffix',
+  }
+
   const key = (field) => {
-    if (!second) return field
-    return `secondBuyer${field.charAt(0).toUpperCase()}${field.slice(1)}`
+    if (second) return `secondBuyer${field.charAt(0).toUpperCase()}${field.slice(1)}`
+    return principalFieldKeys[field] || field
   }
 
   const getValue = (field) => form[key(field)]
@@ -442,7 +425,7 @@ const PersonForm = ({ title, form, setForm, second = false }) => {
   return (
     <Section title={title}>
       <p className="mb-4 -mt-2 text-xs font-semibold text-slate-500">
-        All fields are required. Enter N/A when a field does not apply.
+        Fields marked * are required. Leave optional fields blank when they do not apply.
       </p>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -477,20 +460,16 @@ const PersonForm = ({ title, form, setForm, second = false }) => {
 
         <Input
           label="Middle Name"
-          placeholder="Middle name or N/A"
-          helper="Enter N/A when the field does not apply."
+          placeholder="Optional middle name"
           value={getValue('middleName')}
           onChange={(value) => updateValue('middleName', value)}
-          required
         />
 
         <Input
           label="Suffix"
           value={getValue('suffix')}
           onChange={(value) => updateValue('suffix', value)}
-          placeholder="Jr., Sr., III, or N/A"
-          helper="Enter N/A when the field does not apply."
-          required
+          placeholder="Jr., Sr., III (optional)"
         />
 
         <Input
@@ -561,11 +540,9 @@ const PersonForm = ({ title, form, setForm, second = false }) => {
 
         <Input
           label="Residence Phone Number"
-          placeholder="Phone number or N/A"
-          helper="Enter N/A when the field does not apply."
+          placeholder="Optional phone number"
           value={getValue('residencePhoneNumber')}
           onChange={(value) => updateValue('residencePhoneNumber', value)}
-          required
         />
 
         <Input
@@ -578,13 +555,11 @@ const PersonForm = ({ title, form, setForm, second = false }) => {
               [second ? 'secondBuyerEmail' : 'email']: value,
             }))
           }
-          required
         />
 
         <Input
           label="TIN"
-          placeholder="TIN or N/A"
-          helper="Enter N/A when the field does not apply."
+          placeholder="Optional TIN"
           value={second ? form.secondBuyerTin : form.tin}
           onChange={(value) =>
             setForm((current) => ({
@@ -592,7 +567,6 @@ const PersonForm = ({ title, form, setForm, second = false }) => {
               [second ? 'secondBuyerTin' : 'tin']: value,
             }))
           }
-          required
         />
 
         <Input
@@ -613,14 +587,14 @@ const PersonForm = ({ title, form, setForm, second = false }) => {
           label="Permanent Address"
           value={getValue('permanentAddress')}
           onChange={(value) => updateValue('permanentAddress', value)}
-          required
+          placeholder="Optional if same as present address"
         />
 
         <Input
           label="Permanent ZIP Code"
           value={getValue('permanentZipCode')}
           onChange={(value) => updateValue('permanentZipCode', value)}
-          required
+          placeholder="Optional"
         />
       </div>
     </Section>
@@ -648,7 +622,7 @@ const WorkBusinessForm = ({ title, form, setForm, second = false }) => {
     <section className="rounded-xl border border-slate-200 bg-slate-50 p-4">
       <h4 className="text-sm font-black text-slate-800">{title}</h4>
       <p className="mb-4 mt-1 text-xs font-semibold text-slate-500">
-        All fields are required. Enter N/A when a field does not apply.
+        Fields marked * are required. Leave optional fields blank when they do not apply.
       </p>
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -665,34 +639,34 @@ const WorkBusinessForm = ({ title, form, setForm, second = false }) => {
           <option value="Professional">Professional</option>
           <option value="OFW">OFW</option>
           <option value="Other">Other</option>
+          <option value="Unemployed">Unemployed</option>
+          <option value="Retired">Retired</option>
+          <option value="Student">Student</option>
+          <option value="Not Applicable">Not Applicable</option>
         </Select>
 
         <Input
           label="Employer / Business Name"
           value={value('employerBusinessName')}
           onChange={(nextValue) => update('employerBusinessName', nextValue)}
-          required
         />
 
         <Input
           label="Employer ZIP Code"
           value={value('employerZipCode')}
           onChange={(nextValue) => update('employerZipCode', nextValue)}
-          required
         />
 
         <Input
           label="Nature of Work / Business"
           value={value('natureOfWorkBusiness')}
           onChange={(nextValue) => update('natureOfWorkBusiness', nextValue)}
-          required
         />
 
         <Input
           label="Occupation / Position / Title"
           value={value('occupationPositionTitle')}
           onChange={(nextValue) => update('occupationPositionTitle', nextValue)}
-          required
         />
 
         <Input
@@ -709,7 +683,6 @@ const WorkBusinessForm = ({ title, form, setForm, second = false }) => {
             label="Employer / Business Address"
             value={value('employerBusinessAddress')}
             onChange={(nextValue) => update('employerBusinessAddress', nextValue)}
-            required
           />
         </div>
       </div>
