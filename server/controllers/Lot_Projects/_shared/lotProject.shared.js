@@ -432,68 +432,143 @@ export const getClientCompletionStatus = (profile = {}) => {
   return required.some((value) => !String(value || '').trim()) ? 'incomplete' : 'complete';
 };
 
-export const mapClientProfile = (profile = {}, sellerName = '-') => ({
-  id: profile.lot_project_client_profile_id || null,
-  lot_project_client_profile_id: profile.lot_project_client_profile_id || null,
-  profileStatus: getClientCompletionStatus(profile),
-  accountStatus: profile.lot_project_client_profile_status || 'active',
-  buyerType: profile.buyer_type || 'single',
-  buyerRole: 'Principal Buyer',
-  buyerFirstName: profile.buyer_first_name || '',
-  buyerMiddleName: profile.buyer_middle_name || '',
-  buyerLastName: profile.buyer_last_name || '',
-  buyerSuffix: profile.buyer_suffix || '',
-  buyerName: profile.buyer_full_name || [profile.buyer_first_name, profile.buyer_middle_name, profile.buyer_last_name, profile.buyer_suffix].filter(Boolean).join(' '),
-  birthDate: plainDate(profile.buyer_birth_date) === '-' ? '' : plainDate(profile.buyer_birth_date),
-  placeOfBirth: profile.buyer_place_of_birth || '',
-  computedAge: computeAgeFromDate(profile.buyer_birth_date),
-  citizenship: profile.buyer_citizenship || '',
-  gender: profile.buyer_gender || '',
-  civilStatus: profile.buyer_civil_status || '',
-  contactNo: profile.buyer_contact_number || '',
-  residencePhoneNumber: profile.buyer_residence_phone_number || '',
-  email: profile.buyer_email || '',
-  tin: profile.buyer_tin || '',
-  presentAddress: profile.buyer_present_address || '',
-  presentZipCode: profile.buyer_present_zip_code || '',
-  permanentAddress: profile.buyer_permanent_address || '',
-  permanentZipCode: profile.buyer_permanent_zip_code || '',
-  employmentStatus: profile.buyer_employment_status || '',
-  employerBusinessName: profile.buyer_employer_business_name || '',
-  employerZipCode: profile.buyer_employer_zip_code || '',
-  natureOfWorkBusiness: profile.buyer_nature_of_work_business || '',
-  occupationPositionTitle: profile.buyer_occupation_position || '',
-  monthlyIncome: profile.buyer_monthly_income !== undefined && profile.buyer_monthly_income !== null ? String(profile.buyer_monthly_income) : '',
-  employerBusinessAddress: profile.buyer_employer_business_address || '',
-  secondBuyerRole: profile.second_buyer_role || (profile.buyer_type === 'spouses' ? 'spouse' : 'co_owner'),
-  secondBuyerFirstName: profile.second_buyer_first_name || '',
-  secondBuyerMiddleName: profile.second_buyer_middle_name || '',
-  secondBuyerLastName: profile.second_buyer_last_name || '',
-  secondBuyerSuffix: profile.second_buyer_suffix || '',
-  secondBuyerName: profile.second_buyer_full_name || [profile.second_buyer_first_name, profile.second_buyer_middle_name, profile.second_buyer_last_name, profile.second_buyer_suffix].filter(Boolean).join(' '),
-  secondBuyerBirthDate: plainDate(profile.second_buyer_birth_date) === '-' ? '' : plainDate(profile.second_buyer_birth_date),
-  secondBuyerPlaceOfBirth: profile.second_buyer_place_of_birth || '',
-  secondBuyerComputedAge: computeAgeFromDate(profile.second_buyer_birth_date),
-  secondBuyerCitizenship: profile.second_buyer_citizenship || '',
-  secondBuyerGender: profile.second_buyer_gender || '',
-  secondBuyerCivilStatus: profile.second_buyer_civil_status || '',
-  secondBuyerContactNo: profile.second_buyer_contact_number || '',
-  secondBuyerResidencePhoneNumber: profile.second_buyer_residence_phone_number || '',
-  secondBuyerEmail: profile.second_buyer_email || '',
-  secondBuyerTin: profile.second_buyer_tin || '',
-  secondBuyerPresentAddress: profile.second_buyer_present_address || '',
-  secondBuyerPresentZipCode: profile.second_buyer_present_zip_code || '',
-  secondBuyerPermanentAddress: profile.second_buyer_permanent_address || '',
-  secondBuyerPermanentZipCode: profile.second_buyer_permanent_zip_code || '',
-  secondBuyerEmploymentStatus: profile.second_buyer_employment_status || '',
-  secondBuyerEmployerBusinessName: profile.second_buyer_employer_business_name || '',
-  secondBuyerEmployerZipCode: profile.second_buyer_employer_zip_code || '',
-  secondBuyerNatureOfWorkBusiness: profile.second_buyer_nature_of_work_business || '',
-  secondBuyerOccupationPositionTitle: profile.second_buyer_occupation_position || '',
-  secondBuyerMonthlyIncome: profile.second_buyer_monthly_income !== undefined && profile.second_buyer_monthly_income !== null ? String(profile.second_buyer_monthly_income) : '',
-  secondBuyerEmployerBusinessAddress: profile.second_buyer_employer_business_address || '',
-  seller: sellerName || '-',
-});
+const legacyNameSuffixes = new Set(['jr', 'jr.', 'sr', 'sr.', 'ii', 'iii', 'iv', 'v']);
+const legacyCompoundSurnamePrefixes = new Set(['san', 'santa', 'de', 'del', 'dela', 'da', 'dos', 'das', 'la', 'las', 'los', 'van', 'von']);
+
+const parseLegacyBuyerName = (value = '') => {
+  const clean = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!clean) return { firstName: '', middleName: '', lastName: '', suffix: '' };
+
+  if (clean.includes(',')) {
+    const [lastPart, ...remainingParts] = clean.split(',');
+    const remaining = remainingParts.join(' ').trim().split(/\s+/).filter(Boolean);
+    let suffix = '';
+
+    if (remaining.length && legacyNameSuffixes.has(remaining[remaining.length - 1].toLowerCase())) {
+      suffix = remaining.pop();
+    }
+
+    return {
+      lastName: lastPart.trim(),
+      firstName: remaining.shift() || '',
+      middleName: remaining.join(' '),
+      suffix,
+    };
+  }
+
+  const parts = clean.split(' ').filter(Boolean);
+  let suffix = '';
+
+  if (parts.length && legacyNameSuffixes.has(parts[parts.length - 1].toLowerCase())) {
+    suffix = parts.pop();
+  }
+
+  if (parts.length === 1) {
+    return { firstName: parts[0], middleName: '', lastName: '', suffix };
+  }
+
+  const firstName = parts.shift() || '';
+  let surnameTokenCount = 1;
+  const lowerParts = parts.map((part) => part.toLowerCase());
+
+  if (
+    lowerParts.length >= 3 &&
+    lowerParts[lowerParts.length - 3] === 'de' &&
+    ['la', 'las', 'los'].includes(lowerParts[lowerParts.length - 2])
+  ) {
+    surnameTokenCount = 3;
+  } else if (
+    lowerParts.length >= 2 &&
+    legacyCompoundSurnamePrefixes.has(lowerParts[lowerParts.length - 2])
+  ) {
+    surnameTokenCount = 2;
+  }
+
+  const lastName = parts.splice(-surnameTokenCount).join(' ');
+
+  return {
+    firstName,
+    lastName,
+    middleName: parts.join(' '),
+    suffix,
+  };
+};
+
+export const mapClientProfile = (profile = {}, sellerName = '-') => {
+  const buyerNameParts = parseLegacyBuyerName(profile.buyer_full_name);
+  const secondBuyerNameParts = parseLegacyBuyerName(profile.second_buyer_full_name);
+  const buyerFirstName = profile.buyer_first_name || buyerNameParts.firstName;
+  const buyerMiddleName = profile.buyer_middle_name || buyerNameParts.middleName;
+  const buyerLastName = profile.buyer_last_name || buyerNameParts.lastName;
+  const buyerSuffix = profile.buyer_suffix || buyerNameParts.suffix;
+  const secondBuyerFirstName = profile.second_buyer_first_name || secondBuyerNameParts.firstName;
+  const secondBuyerMiddleName = profile.second_buyer_middle_name || secondBuyerNameParts.middleName;
+  const secondBuyerLastName = profile.second_buyer_last_name || secondBuyerNameParts.lastName;
+  const secondBuyerSuffix = profile.second_buyer_suffix || secondBuyerNameParts.suffix;
+
+  return {
+    id: profile.lot_project_client_profile_id || null,
+    lot_project_client_profile_id: profile.lot_project_client_profile_id || null,
+    profileStatus: getClientCompletionStatus(profile),
+    accountStatus: profile.lot_project_client_profile_status || 'active',
+    buyerType: profile.buyer_type || 'single',
+    buyerRole: 'Principal Buyer',
+    buyerFirstName,
+    buyerMiddleName,
+    buyerLastName,
+    buyerSuffix,
+    buyerName: profile.buyer_full_name || [buyerFirstName, buyerMiddleName, buyerLastName, buyerSuffix].filter(Boolean).join(' '),
+    birthDate: plainDate(profile.buyer_birth_date) === '-' ? '' : plainDate(profile.buyer_birth_date),
+    placeOfBirth: profile.buyer_place_of_birth || '',
+    computedAge: computeAgeFromDate(profile.buyer_birth_date),
+    citizenship: profile.buyer_citizenship || '',
+    gender: profile.buyer_gender || '',
+    civilStatus: profile.buyer_civil_status || '',
+    contactNo: profile.buyer_contact_number || '',
+    residencePhoneNumber: profile.buyer_residence_phone_number || '',
+    email: profile.buyer_email || '',
+    tin: profile.buyer_tin || '',
+    presentAddress: profile.buyer_present_address || '',
+    presentZipCode: profile.buyer_present_zip_code || '',
+    permanentAddress: profile.buyer_permanent_address || '',
+    permanentZipCode: profile.buyer_permanent_zip_code || '',
+    employmentStatus: profile.buyer_employment_status || '',
+    employerBusinessName: profile.buyer_employer_business_name || '',
+    employerZipCode: profile.buyer_employer_zip_code || '',
+    natureOfWorkBusiness: profile.buyer_nature_of_work_business || '',
+    occupationPositionTitle: profile.buyer_occupation_position || '',
+    monthlyIncome: profile.buyer_monthly_income !== undefined && profile.buyer_monthly_income !== null ? String(profile.buyer_monthly_income) : '',
+    employerBusinessAddress: profile.buyer_employer_business_address || '',
+    secondBuyerRole: profile.second_buyer_role || (profile.buyer_type === 'spouses' ? 'spouse' : 'co_owner'),
+    secondBuyerFirstName,
+    secondBuyerMiddleName,
+    secondBuyerLastName,
+    secondBuyerSuffix,
+    secondBuyerName: profile.second_buyer_full_name || [secondBuyerFirstName, secondBuyerMiddleName, secondBuyerLastName, secondBuyerSuffix].filter(Boolean).join(' '),
+    secondBuyerBirthDate: plainDate(profile.second_buyer_birth_date) === '-' ? '' : plainDate(profile.second_buyer_birth_date),
+    secondBuyerPlaceOfBirth: profile.second_buyer_place_of_birth || '',
+    secondBuyerComputedAge: computeAgeFromDate(profile.second_buyer_birth_date),
+    secondBuyerCitizenship: profile.second_buyer_citizenship || '',
+    secondBuyerGender: profile.second_buyer_gender || '',
+    secondBuyerCivilStatus: profile.second_buyer_civil_status || '',
+    secondBuyerContactNo: profile.second_buyer_contact_number || '',
+    secondBuyerResidencePhoneNumber: profile.second_buyer_residence_phone_number || '',
+    secondBuyerEmail: profile.second_buyer_email || '',
+    secondBuyerTin: profile.second_buyer_tin || '',
+    secondBuyerPresentAddress: profile.second_buyer_present_address || '',
+    secondBuyerPresentZipCode: profile.second_buyer_present_zip_code || '',
+    secondBuyerPermanentAddress: profile.second_buyer_permanent_address || '',
+    secondBuyerPermanentZipCode: profile.second_buyer_permanent_zip_code || '',
+    secondBuyerEmploymentStatus: profile.second_buyer_employment_status || '',
+    secondBuyerEmployerBusinessName: profile.second_buyer_employer_business_name || '',
+    secondBuyerEmployerZipCode: profile.second_buyer_employer_zip_code || '',
+    secondBuyerNatureOfWorkBusiness: profile.second_buyer_nature_of_work_business || '',
+    secondBuyerOccupationPositionTitle: profile.second_buyer_occupation_position || '',
+    secondBuyerMonthlyIncome: profile.second_buyer_monthly_income !== undefined && profile.second_buyer_monthly_income !== null ? String(profile.second_buyer_monthly_income) : '',
+    secondBuyerEmployerBusinessAddress: profile.second_buyer_employer_business_address || '',
+    seller: sellerName || '-',
+  };
+};
 
 export const canEditBuyerProfileForListing = (status) => {
   const statusKey = String(status || '').trim().toLowerCase();
@@ -2687,6 +2762,7 @@ export const addIfColumnExists = async (connection, tableName, columns, values, 
     values.push(value);
   }
 };
+
 
 
 

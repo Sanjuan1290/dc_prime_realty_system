@@ -17,6 +17,65 @@ import { StepPill } from './ReserveShared'
 
 const todayISO = () => new Date().toISOString().slice(0, 10)
 
+
+const principalRequiredFields = [
+  ['buyerLastName', 'Principal buyer last name'],
+  ['buyerFirstName', 'Principal buyer first name'],
+  ['buyerMiddleName', 'Principal buyer middle name'],
+  ['buyerSuffix', 'Principal buyer suffix'],
+  ['birthDate', 'Principal buyer birth date'],
+  ['placeOfBirth', 'Principal buyer place of birth'],
+  ['citizenship', 'Principal buyer citizenship'],
+  ['gender', 'Principal buyer gender'],
+  ['civilStatus', 'Principal buyer civil status'],
+  ['contactNo', 'Principal buyer mobile number'],
+  ['residencePhoneNumber', 'Principal buyer residence phone number'],
+  ['email', 'Principal buyer email'],
+  ['tin', 'Principal buyer TIN'],
+  ['presentAddress', 'Principal buyer present address'],
+  ['presentZipCode', 'Principal buyer present ZIP code'],
+  ['permanentAddress', 'Principal buyer permanent address'],
+  ['permanentZipCode', 'Principal buyer permanent ZIP code'],
+  ['employmentStatus', 'Principal buyer employment status'],
+  ['employerBusinessName', 'Principal buyer employer / business name'],
+  ['employerZipCode', 'Principal buyer employer ZIP code'],
+  ['natureOfWorkBusiness', 'Principal buyer nature of work / business'],
+  ['occupationPositionTitle', 'Principal buyer occupation / position / title'],
+  ['monthlyIncome', 'Principal buyer monthly income'],
+  ['employerBusinessAddress', 'Principal buyer employer / business address'],
+]
+
+const secondBuyerRequiredFields = [
+  ['secondBuyerRole', 'Spouse / second buyer role'],
+  ['secondBuyerLastName', 'Spouse / second buyer last name'],
+  ['secondBuyerFirstName', 'Spouse / second buyer first name'],
+  ['secondBuyerMiddleName', 'Spouse / second buyer middle name'],
+  ['secondBuyerSuffix', 'Spouse / second buyer suffix'],
+  ['secondBuyerBirthDate', 'Spouse / second buyer birth date'],
+  ['secondBuyerPlaceOfBirth', 'Spouse / second buyer place of birth'],
+  ['secondBuyerCitizenship', 'Spouse / second buyer citizenship'],
+  ['secondBuyerGender', 'Spouse / second buyer gender'],
+  ['secondBuyerCivilStatus', 'Spouse / second buyer civil status'],
+  ['secondBuyerContactNo', 'Spouse / second buyer mobile number'],
+  ['secondBuyerResidencePhoneNumber', 'Spouse / second buyer residence phone number'],
+  ['secondBuyerEmail', 'Spouse / second buyer email'],
+  ['secondBuyerTin', 'Spouse / second buyer TIN'],
+  ['secondBuyerPresentAddress', 'Spouse / second buyer present address'],
+  ['secondBuyerPresentZipCode', 'Spouse / second buyer present ZIP code'],
+  ['secondBuyerPermanentAddress', 'Spouse / second buyer permanent address'],
+  ['secondBuyerPermanentZipCode', 'Spouse / second buyer permanent ZIP code'],
+  ['secondBuyerEmploymentStatus', 'Spouse / second buyer employment status'],
+  ['secondBuyerEmployerBusinessName', 'Spouse / second buyer employer / business name'],
+  ['secondBuyerEmployerZipCode', 'Spouse / second buyer employer ZIP code'],
+  ['secondBuyerNatureOfWorkBusiness', 'Spouse / second buyer nature of work / business'],
+  ['secondBuyerOccupationPositionTitle', 'Spouse / second buyer occupation / position / title'],
+  ['secondBuyerMonthlyIncome', 'Spouse / second buyer monthly income'],
+  ['secondBuyerEmployerBusinessAddress', 'Spouse / second buyer employer / business address'],
+]
+
+const findMissingRequiredField = (form, fields) =>
+  fields.find(([key]) => !String(form?.[key] ?? '').trim())
+
 const normalizeLibraryDocument = (document) => ({
   ...document,
   id: Number(document.document_id || document.id),
@@ -238,29 +297,18 @@ const ReserveListingModal = ({
   }
 
   const validateClientStep = () => {
-    if (!clientForm.buyerFirstName.trim() || !clientForm.buyerLastName.trim()) {
-      setAlert({ type: 'error', message: 'Principal buyer first name and last name are required.' })
+    const missingPrincipalField = findMissingRequiredField(clientForm, principalRequiredFields)
+    if (missingPrincipalField) {
+      setAlert({ type: 'error', message: `${missingPrincipalField[1]} is required.` })
       return false
     }
 
-    if (!clientForm.contactNo.trim()) {
-      setAlert({ type: 'error', message: 'Principal buyer mobile number is required.' })
-      return false
-    }
-
-    if (!clientForm.presentAddress.trim()) {
-      setAlert({ type: 'error', message: 'Principal buyer present address is required.' })
-      return false
-    }
-
-    if (hasSecondBuyer && (!clientForm.secondBuyerFirstName.trim() || !clientForm.secondBuyerLastName.trim())) {
-      setAlert({ type: 'error', message: 'Spouse / second buyer first name and last name are required.' })
-      return false
-    }
-
-    if (hasSecondBuyer && !clientForm.secondBuyerContactNo.trim()) {
-      setAlert({ type: 'error', message: 'Spouse / second buyer mobile number is required.' })
-      return false
+    if (hasSecondBuyer) {
+      const missingSecondBuyerField = findMissingRequiredField(clientForm, secondBuyerRequiredFields)
+      if (missingSecondBuyerField) {
+        setAlert({ type: 'error', message: `${missingSecondBuyerField[1]} is required.` })
+        return false
+      }
     }
 
     return true

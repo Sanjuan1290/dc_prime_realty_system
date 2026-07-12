@@ -71,6 +71,9 @@ import {
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
 
 const cleanNamePart = (value) => String(value || '').trim();
+
+const firstMissingRequiredField = (fields = []) =>
+  fields.find((field) => !String(field.value ?? '').trim());
 const buildBuyerFullName = ({ firstName, middleName, lastName, suffix, fallback = '' } = {}) => {
   const generated = [firstName, middleName, lastName, suffix]
     .map(cleanNamePart)
@@ -141,11 +144,71 @@ export const updateLotProjectClientProfile = async (req, res) => {
       fallback: req.body.secondBuyerName || req.body.second_buyer_full_name,
     });
 
-    if (!buyerFirstName || !buyerLastName) {
-      return res.status(400).json({ message: 'Principal buyer first name and last name are required.' });
+    const principalRequiredFields = [
+      { label: 'Principal buyer first name', value: buyerFirstName },
+      { label: 'Principal buyer middle name', value: buyerMiddleName },
+      { label: 'Principal buyer last name', value: buyerLastName },
+      { label: 'Principal buyer suffix', value: buyerSuffix },
+      { label: 'Principal buyer birth date', value: req.body.birthDate ?? req.body.buyer_birth_date },
+      { label: 'Principal buyer place of birth', value: req.body.placeOfBirth ?? req.body.buyer_place_of_birth },
+      { label: 'Principal buyer citizenship', value: req.body.citizenship ?? req.body.buyer_citizenship },
+      { label: 'Principal buyer gender', value: req.body.gender ?? req.body.buyer_gender },
+      { label: 'Principal buyer civil status', value: req.body.civilStatus ?? req.body.buyer_civil_status },
+      { label: 'Principal buyer mobile number', value: req.body.contactNo ?? req.body.buyer_contact_number },
+      { label: 'Principal buyer residence phone number', value: req.body.residencePhoneNumber ?? req.body.buyer_residence_phone_number },
+      { label: 'Principal buyer email', value: req.body.email ?? req.body.buyer_email },
+      { label: 'Principal buyer TIN', value: req.body.tin ?? req.body.buyer_tin },
+      { label: 'Principal buyer present address', value: req.body.presentAddress ?? req.body.buyer_present_address },
+      { label: 'Principal buyer present ZIP code', value: req.body.presentZipCode ?? req.body.buyer_present_zip_code },
+      { label: 'Principal buyer permanent address', value: req.body.permanentAddress ?? req.body.buyer_permanent_address },
+      { label: 'Principal buyer permanent ZIP code', value: req.body.permanentZipCode ?? req.body.buyer_permanent_zip_code },
+      { label: 'Principal buyer employment status', value: req.body.employmentStatus ?? req.body.buyer_employment_status },
+      { label: 'Principal buyer employer / business name', value: req.body.employerBusinessName ?? req.body.buyer_employer_business_name },
+      { label: 'Principal buyer employer ZIP code', value: req.body.employerZipCode ?? req.body.buyer_employer_zip_code },
+      { label: 'Principal buyer nature of work / business', value: req.body.natureOfWorkBusiness ?? req.body.buyer_nature_of_work_business },
+      { label: 'Principal buyer occupation / position / title', value: req.body.occupationPositionTitle ?? req.body.buyer_occupation_position },
+      { label: 'Principal buyer monthly income', value: req.body.monthlyIncome ?? req.body.buyer_monthly_income },
+      { label: 'Principal buyer employer / business address', value: req.body.employerBusinessAddress ?? req.body.buyer_employer_business_address },
+    ];
+
+    const missingPrincipalField = firstMissingRequiredField(principalRequiredFields);
+    if (missingPrincipalField) {
+      return res.status(400).json({ message: `${missingPrincipalField.label} is required.` });
     }
-    if (hasSecondBuyer && (!secondBuyerFirstName || !secondBuyerLastName)) {
-      return res.status(400).json({ message: 'Second buyer / spouse first name and last name are required.' });
+
+    if (hasSecondBuyer) {
+      const secondBuyerRequiredFields = [
+        { label: 'Spouse / second buyer role', value: req.body.secondBuyerRole ?? req.body.second_buyer_role },
+        { label: 'Spouse / second buyer first name', value: secondBuyerFirstName },
+        { label: 'Spouse / second buyer middle name', value: secondBuyerMiddleName },
+        { label: 'Spouse / second buyer last name', value: secondBuyerLastName },
+        { label: 'Spouse / second buyer suffix', value: secondBuyerSuffix },
+        { label: 'Spouse / second buyer birth date', value: req.body.secondBuyerBirthDate ?? req.body.second_buyer_birth_date },
+        { label: 'Spouse / second buyer place of birth', value: req.body.secondBuyerPlaceOfBirth ?? req.body.second_buyer_place_of_birth },
+        { label: 'Spouse / second buyer citizenship', value: req.body.secondBuyerCitizenship ?? req.body.second_buyer_citizenship },
+        { label: 'Spouse / second buyer gender', value: req.body.secondBuyerGender ?? req.body.second_buyer_gender },
+        { label: 'Spouse / second buyer civil status', value: req.body.secondBuyerCivilStatus ?? req.body.second_buyer_civil_status },
+        { label: 'Spouse / second buyer mobile number', value: req.body.secondBuyerContactNo ?? req.body.second_buyer_contact_number },
+        { label: 'Spouse / second buyer residence phone number', value: req.body.secondBuyerResidencePhoneNumber ?? req.body.second_buyer_residence_phone_number },
+        { label: 'Spouse / second buyer email', value: req.body.secondBuyerEmail ?? req.body.second_buyer_email },
+        { label: 'Spouse / second buyer TIN', value: req.body.secondBuyerTin ?? req.body.second_buyer_tin },
+        { label: 'Spouse / second buyer present address', value: req.body.secondBuyerPresentAddress ?? req.body.second_buyer_present_address },
+        { label: 'Spouse / second buyer present ZIP code', value: req.body.secondBuyerPresentZipCode ?? req.body.second_buyer_present_zip_code },
+        { label: 'Spouse / second buyer permanent address', value: req.body.secondBuyerPermanentAddress ?? req.body.second_buyer_permanent_address },
+        { label: 'Spouse / second buyer permanent ZIP code', value: req.body.secondBuyerPermanentZipCode ?? req.body.second_buyer_permanent_zip_code },
+        { label: 'Spouse / second buyer employment status', value: req.body.secondBuyerEmploymentStatus ?? req.body.second_buyer_employment_status },
+        { label: 'Spouse / second buyer employer / business name', value: req.body.secondBuyerEmployerBusinessName ?? req.body.second_buyer_employer_business_name },
+        { label: 'Spouse / second buyer employer ZIP code', value: req.body.secondBuyerEmployerZipCode ?? req.body.second_buyer_employer_zip_code },
+        { label: 'Spouse / second buyer nature of work / business', value: req.body.secondBuyerNatureOfWorkBusiness ?? req.body.second_buyer_nature_of_work_business },
+        { label: 'Spouse / second buyer occupation / position / title', value: req.body.secondBuyerOccupationPositionTitle ?? req.body.second_buyer_occupation_position },
+        { label: 'Spouse / second buyer monthly income', value: req.body.secondBuyerMonthlyIncome ?? req.body.second_buyer_monthly_income },
+        { label: 'Spouse / second buyer employer / business address', value: req.body.secondBuyerEmployerBusinessAddress ?? req.body.second_buyer_employer_business_address },
+      ];
+
+      const missingSecondBuyerField = firstMissingRequiredField(secondBuyerRequiredFields);
+      if (missingSecondBuyerField) {
+        return res.status(400).json({ message: `${missingSecondBuyerField.label} is required.` });
+      }
     }
 
     const tableName = 'lot_project_client_profiles';
@@ -314,5 +377,3 @@ export const updateLotProjectClientProfile = async (req, res) => {
     connection.release();
   }
 };
-
-

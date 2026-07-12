@@ -186,6 +186,62 @@ const Badge = ({ children, tone = 'blue' }) => {
   return <span className={`inline-flex rounded-full px-3 py-1 text-xs font-black ring-1 ${tones[tone] || tones.blue}`}>{children}</span>
 }
 
+const PendingBalanceCell = ({ row }) => {
+  if (!row.hasClientAccount || row.pendingBalance === null || row.pendingBalance === undefined) {
+    return <Badge tone="slate">N/A</Badge>
+  }
+
+  const pendingBalance = Number(row.pendingBalance || 0)
+
+  return pendingBalance > 0.009
+    ? <span className="font-black text-amber-700">{money(pendingBalance)}</span>
+    : <Badge tone="green">Paid</Badge>
+}
+
+const OverdueCell = ({ row }) => {
+  if (!row.hasClientAccount) return <Badge tone="slate">N/A</Badge>
+
+  const overdueCount = Number(row.overdueCount || 0)
+  const overdueAmount = Number(row.overdueAmount || 0)
+
+  if (overdueCount <= 0) return <Badge tone="green">Current</Badge>
+
+  return (
+    <div className="min-w-[120px]">
+      <Badge tone="red">{overdueCount} overdue</Badge>
+      <p className="mt-1 text-xs font-black text-red-700">{money(overdueAmount)}</p>
+    </div>
+  )
+}
+
+const DocumentsCell = ({ row }) => {
+  if (!row.hasClientAccount || row.documentsComplete === null || row.documentsComplete === undefined) {
+    return <Badge tone="slate">N/A</Badge>
+  }
+
+  const required = Number(row.requiredDocumentCount || 0)
+  const completed = Number(row.completedRequiredDocumentCount || 0)
+  const missing = Number(row.missingRequiredDocumentCount || 0)
+
+  if (required <= 0) return <Badge tone="green">No required docs</Badge>
+
+  if (row.documentsComplete) {
+    return (
+      <div className="min-w-[120px]">
+        <Badge tone="green">Complete</Badge>
+        <p className="mt-1 text-xs font-semibold text-slate-500">{completed}/{required} submitted</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-w-[120px]">
+      <Badge tone="amber">{missing} missing</Badge>
+      <p className="mt-1 text-xs font-semibold text-slate-500">{completed}/{required} submitted</p>
+    </div>
+  )
+}
+
 const MetricCard = ({ label, value, helper, tone = 'slate', icon: Icon }) => {
   const tones = {
     slate: 'bg-white text-slate-950',
@@ -436,32 +492,6 @@ const Dashboard = () => {
         </div>
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-2">
-        <ChartCard title="Inventory Value Comparison" description="Column chart for listed, available, and sold lot value.">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={inventoryChartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="label" tick={{ fontSize: 12 }} />
-              <YAxis tickFormatter={compactMoney} tick={{ fontSize: 11 }} />
-              <Tooltip content={<ChartTooltip />} />
-              <Bar dataKey="value" name="Amount" fill={chartColors.amber} radius={[8, 8, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartCard>
-
-        <ChartCard title="Unit Status Mix" description="Pie chart showing how units are distributed by current status.">
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Tooltip content={<ChartTooltip />} />
-              <Legend />
-              <Pie data={unitStatusChartData.filter((item) => item.count > 0)} dataKey="count" nameKey="label" innerRadius={55} outerRadius={95} paddingAngle={2}>
-                {unitStatusChartData.filter((item) => item.count > 0).map((entry, index) => <Cell key={entry.label} fill={pieColors[index % pieColors.length]} />)}
-              </Pie>
-            </PieChart>
-          </ResponsiveContainer>
-        </ChartCard>
-      </section>
-
       <section className="grid gap-6 grid-cols-2">
         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
           <SectionHeader title="Seller Performance Details" description="Sales and commission totals by seller." />
@@ -472,22 +502,25 @@ const Dashboard = () => {
 
         <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-200 px-5 py-4">
-            <SectionHeader title="Recent Unit Records" description="Latest project activity." />
+            <SectionHeader title="Recent Unit Records" description="Latest project activity with balances, overdue schedules, and document completion." />
           </div>
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-50"><tr>{['Unit','Buyer','TCP','Cash Collected','Discount','Settlement','Status'].map((head) => <th key={head} className="px-5 py-3 text-left text-xs font-black uppercase tracking-wider text-slate-500">{head}</th>)}</tr></thead>
+            <table className="min-w-[1480px] w-full divide-y divide-slate-200 text-sm">
+              <thead className="bg-slate-50"><tr>{['Unit','Buyer','TCP','Cash Collected','Discount','Settlement','Pending Balance','Overdue','Documents','Status'].map((head) => <th key={head} className="px-5 py-3 text-left text-xs font-black uppercase tracking-wider text-slate-500">{head}</th>)}</tr></thead>
               <tbody className="divide-y divide-slate-100">
-                {isLoading ? <tr><td colSpan={7} className="px-5 py-8 text-center text-sm font-semibold text-slate-500">Loading recent units...</td></tr> : null}
-                {!isLoading && recentUnits.length === 0 ? <tr><td colSpan={7} className="px-5 py-8 text-center text-sm font-semibold text-slate-500">No recent unit records yet.</td></tr> : null}
+                {isLoading ? <tr><td colSpan={10} className="px-5 py-8 text-center text-sm font-semibold text-slate-500">Loading recent units...</td></tr> : null}
+                {!isLoading && recentUnits.length === 0 ? <tr><td colSpan={10} className="px-5 py-8 text-center text-sm font-semibold text-slate-500">No recent unit records yet.</td></tr> : null}
                 {!isLoading && recentUnits.map((row) => (
-                  <tr key={row.id || row.unitCode} className="transition hover:bg-slate-50">
+                  <tr key={row.id || row.unitCode} className="align-top transition hover:bg-slate-50">
                     <td className="px-5 py-4 font-black text-slate-950">{row.unitCode}</td>
                     <td className="px-5 py-4 font-semibold text-slate-700">{row.buyer}</td>
                     <td className="px-5 py-4 font-black text-slate-900">{money(row.tcp)}</td>
                     <td className="px-5 py-4 font-semibold text-emerald-700">{money(row.cashCollected ?? row.collected)}</td>
                     <td className="px-5 py-4 font-semibold text-amber-700">{money(row.discountApplied)}</td>
                     <td className="px-5 py-4 font-semibold text-indigo-700">{row.progress || '0%'}</td>
+                    <td className="px-5 py-4"><PendingBalanceCell row={row} /></td>
+                    <td className="px-5 py-4"><OverdueCell row={row} /></td>
+                    <td className="px-5 py-4"><DocumentsCell row={row} /></td>
                     <td className="px-5 py-4"><Badge tone={row.status === 'Fully Paid' ? 'green' : row.status?.includes('Pending') ? 'amber' : 'blue'}>{row.status}</Badge></td>
                   </tr>
                 ))}
@@ -591,6 +624,32 @@ const Dashboard = () => {
         </ChartCard>
       </section>
 
+      <section className="grid gap-6 xl:grid-cols-2">
+        <ChartCard title="Inventory Value Comparison" description="Column chart for listed, available, and sold lot value.">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={inventoryChartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="label" tick={{ fontSize: 12 }} />
+              <YAxis tickFormatter={compactMoney} tick={{ fontSize: 11 }} />
+              <Tooltip content={<ChartTooltip />} />
+              <Bar dataKey="value" name="Amount" fill={chartColors.amber} radius={[8, 8, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+
+        <ChartCard title="Unit Status Mix" description="Pie chart showing how units are distributed by current status.">
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Tooltip content={<ChartTooltip />} />
+              <Legend />
+              <Pie data={unitStatusChartData.filter((item) => item.count > 0)} dataKey="count" nameKey="label" innerRadius={55} outerRadius={95} paddingAngle={2}>
+                {unitStatusChartData.filter((item) => item.count > 0).map((entry, index) => <Cell key={entry.label} fill={pieColors[index % pieColors.length]} />)}
+              </Pie>
+            </PieChart>
+          </ResponsiveContainer>
+        </ChartCard>
+      </section>
+
 
 
 
@@ -614,5 +673,6 @@ const Dashboard = () => {
 }
 
 export default Dashboard
+
 
 

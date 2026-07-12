@@ -21,6 +21,7 @@ export const TextInput = ({
       onChange={(event) => onChange?.(event.target.value)}
       placeholder={placeholder}
       disabled={disabled}
+      required={required}
       className={`h-10 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-700 outline-none transition placeholder:text-slate-400 ${
         disabled
           ? 'cursor-not-allowed bg-slate-100 text-slate-500'
@@ -50,6 +51,7 @@ export const SelectInput = ({
       value={value || ''}
       onChange={(event) => onChange?.(event.target.value)}
       disabled={disabled}
+      required={required}
       className={`h-10 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-700 outline-none transition ${
         disabled
           ? 'cursor-not-allowed bg-slate-100 text-slate-500'
@@ -112,4 +114,3 @@ export const StepPill = ({ step, activeStep, completed }) => {
     </div>
   )
 }
-

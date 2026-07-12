@@ -323,6 +323,7 @@ export const getLotProjectDashboard = async (req, res) => {
     const hasCommissionReleases = await tableExists(connection, 'lot_project_commission_releases');
     const hasClientProfiles = await tableExists(connection, 'lot_project_client_profiles');
     const hasListingDocuments = await tableExists(connection, 'lot_project_listing_documents');
+    const hasClientDocuments = await tableExists(connection, 'lot_project_client_documents');
     const hasListingCadastralLinks = await tableExists(connection, 'lot_project_listing_cadastral_lots');
 
     const paymentSummarySelect = hasPayments
@@ -737,38 +738,84 @@ export const getLotProjectDashboard = async (req, res) => {
 
     const clientJoin = hasClientProfiles
       ? `LEFT JOIN lot_project_client_profiles cp ON cp.lot_project_listing_id = l.lot_project_listing_id`
-      : `LEFT JOIN (SELECT NULL AS lot_project_listing_id, NULL AS buyer_full_name) cp ON 1 = 0`;
+      : `LEFT JOIN (SELECT NULL AS lot_project_listing_id, NULL AS lot_project_client_profile_id, NULL AS buyer_full_name) cp ON 1 = 0`;
 
     const listingDocumentJoin = hasListingDocuments
       ? `
           LEFT JOIN (
-            SELECT lot_project_listing_id, COUNT(*) AS listing_document_count
-            FROM lot_project_listing_documents
-            WHERE lot_project_listing_document_status = 'active'
-            GROUP BY lot_project_listing_id
+            SELECT
+              lpd.lot_project_listing_id,
+              COUNT(DISTINCT lpd.lot_project_listing_document_id) AS listing_document_count,
+              COUNT(DISTINCT CASE
+                WHEN lpd.lot_project_listing_document_is_required = 1
+                  THEN lpd.lot_project_listing_document_id
+                ELSE NULL
+              END) AS required_document_count,
+              COUNT(DISTINCT CASE
+                WHEN lpd.lot_project_listing_document_is_required = 1
+                  AND lcd.lot_project_client_document_status IN ('Submitted', 'Approved')
+                  THEN lpd.lot_project_listing_document_id
+                ELSE NULL
+              END) AS completed_required_document_count
+            FROM lot_project_listing_documents lpd
+            ${hasClientDocuments ? `LEFT JOIN lot_project_client_documents lcd
+              ON lcd.lot_project_listing_id = lpd.lot_project_listing_id
+              AND lcd.document_id = lpd.document_id` : `LEFT JOIN (
+                SELECT NULL AS lot_project_listing_id, NULL AS document_id, NULL AS lot_project_client_document_status
+              ) lcd ON 1 = 0`}
+            WHERE lpd.lot_project_listing_document_status = 'active'
+            GROUP BY lpd.lot_project_listing_id
           ) ldoc ON ldoc.lot_project_listing_id = l.lot_project_listing_id
         `
-      : `LEFT JOIN (SELECT NULL AS lot_project_listing_id, 0 AS listing_document_count) ldoc ON 1 = 0`;
+      : `LEFT JOIN (
+          SELECT
+            NULL AS lot_project_listing_id,
+            0 AS listing_document_count,
+            0 AS required_document_count,
+            0 AS completed_required_document_count
+        ) ldoc ON 1 = 0`;
+
+    const recentScheduleOutstandingExpr = `GREATEST((CASE
+      WHEN (LOWER(s.description) LIKE '%downpayment%' OR LOWER(s.description) LIKE '%down payment%')
+        AND COALESCE(cp2.soa_dp_discount_percentage, 0) > 0
+        THEN CASE
+          WHEN ABS(s.due_amount - ROUND(
+            ((l2.lot_project_listing_tcp * (COALESCE(cp2.soa_downpayment_percentage, 0) / 100)) / GREATEST(COALESCE(cp2.soa_downpayment_terms, 0), 1))
+            - (((l2.lot_project_listing_tcp * (COALESCE(cp2.soa_downpayment_percentage, 0) / 100)) / GREATEST(COALESCE(cp2.soa_downpayment_terms, 0), 1)) * (COALESCE(cp2.soa_dp_discount_percentage, 0) / 100)),
+            2
+          )) <= 0.05
+            THEN s.due_amount + s.penalty_amount
+          ELSE GREATEST(s.due_amount - ROUND(((l2.lot_project_listing_tcp * (COALESCE(cp2.soa_downpayment_percentage, 0) / 100)) / GREATEST(COALESCE(cp2.soa_downpayment_terms, 0), 1)) * (COALESCE(cp2.soa_dp_discount_percentage, 0) / 100), 2), 0) + s.penalty_amount
+        END
+      ELSE s.due_amount + s.penalty_amount
+    END) - s.amount_paid, 0)`;
 
     const scheduleBalanceJoin = hasSchedules
       ? `
           LEFT JOIN (
             SELECT
               s.lot_project_listing_id,
-              COALESCE(SUM(GREATEST((CASE
-                WHEN (LOWER(s.description) LIKE '%downpayment%' OR LOWER(s.description) LIKE '%down payment%')
-                  AND COALESCE(cp2.soa_dp_discount_percentage, 0) > 0
-                  THEN CASE
-                    WHEN ABS(s.due_amount - ROUND(
-                      ((l2.lot_project_listing_tcp * (COALESCE(cp2.soa_downpayment_percentage, 0) / 100)) / GREATEST(COALESCE(cp2.soa_downpayment_terms, 0), 1))
-                      - (((l2.lot_project_listing_tcp * (COALESCE(cp2.soa_downpayment_percentage, 0) / 100)) / GREATEST(COALESCE(cp2.soa_downpayment_terms, 0), 1)) * (COALESCE(cp2.soa_dp_discount_percentage, 0) / 100)),
-                      2
-                    )) <= 0.05
-                      THEN s.due_amount + s.penalty_amount
-                    ELSE GREATEST(s.due_amount - ROUND(((l2.lot_project_listing_tcp * (COALESCE(cp2.soa_downpayment_percentage, 0) / 100)) / GREATEST(COALESCE(cp2.soa_downpayment_terms, 0), 1)) * (COALESCE(cp2.soa_dp_discount_percentage, 0) / 100), 2), 0) + s.penalty_amount
-                  END
-                ELSE s.due_amount + s.penalty_amount
-              END) - s.amount_paid, 0)), 0) AS actual_remaining_balance
+              COALESCE(SUM(${recentScheduleOutstandingExpr}), 0) AS actual_remaining_balance,
+              COALESCE(SUM(CASE
+                WHEN s.due_date < CURDATE()
+                  AND s.schedule_status IN ('Unpaid', 'Partial', 'Overdue')
+                  AND ${recentScheduleOutstandingExpr} > 0
+                  THEN 1
+                ELSE 0
+              END), 0) AS overdue_schedule_count,
+              COALESCE(SUM(CASE
+                WHEN s.due_date < CURDATE()
+                  AND s.schedule_status IN ('Unpaid', 'Partial', 'Overdue')
+                  THEN ${recentScheduleOutstandingExpr}
+                ELSE 0
+              END), 0) AS overdue_amount,
+              MIN(CASE
+                WHEN s.due_date < CURDATE()
+                  AND s.schedule_status IN ('Unpaid', 'Partial', 'Overdue')
+                  AND ${recentScheduleOutstandingExpr} > 0
+                  THEN s.due_date
+                ELSE NULL
+              END) AS oldest_overdue_date
             FROM lot_project_payment_schedules s
             INNER JOIN lot_project_listings l2
               ON l2.lot_project_listing_id = s.lot_project_listing_id
@@ -778,19 +825,32 @@ export const getLotProjectDashboard = async (req, res) => {
             GROUP BY s.lot_project_listing_id
           ) sbalance ON sbalance.lot_project_listing_id = l.lot_project_listing_id
         `
-      : `LEFT JOIN (SELECT NULL AS lot_project_listing_id, NULL AS actual_remaining_balance) sbalance ON 1 = 0`;
+      : `LEFT JOIN (
+          SELECT
+            NULL AS lot_project_listing_id,
+            NULL AS actual_remaining_balance,
+            0 AS overdue_schedule_count,
+            0 AS overdue_amount,
+            NULL AS oldest_overdue_date
+        ) sbalance ON 1 = 0`;
 
     const [recentRows] = await connection.query(
       `
         SELECT
           l.*,
           ${cadastralSelect}
+          cp.lot_project_client_profile_id,
           cp.buyer_full_name,
           ${paymentSummarySelect} AS total_paid,
           ${earnedDiscountExpr} AS discount_applied,
           ${settledValueExpr} AS settled_value,
           sbalance.actual_remaining_balance,
+          COALESCE(sbalance.overdue_schedule_count, 0) AS overdue_schedule_count,
+          COALESCE(sbalance.overdue_amount, 0) AS overdue_amount,
+          sbalance.oldest_overdue_date,
           COALESCE(ldoc.listing_document_count, 0) AS listing_document_count,
+          COALESCE(ldoc.required_document_count, 0) AS required_document_count,
+          COALESCE(ldoc.completed_required_document_count, 0) AS completed_required_document_count,
           COALESCE(pdoc.project_default_document_count, 0) AS project_default_document_count,
           COALESCE(pdoc.project_required_document_count, 0) AS project_required_document_count
         FROM lot_project_listings l
@@ -908,6 +968,18 @@ export const getLotProjectDashboard = async (req, res) => {
             ? Math.max(tcp - unitSettledValue, 0)
             : Math.max(toNumber(row.actual_remaining_balance), 0);
           const isFullyPaid = row.lot_project_listing_sold_substatus === 'fully_paid' || (tcp > 0 && scheduleBalance <= 0.009);
+          const hasClientAccount = Boolean(row.lot_project_client_profile_id);
+          const pendingBalance = hasClientAccount ? (isFullyPaid ? 0 : scheduleBalance) : null;
+          const overdueCount = hasClientAccount && !isFullyPaid ? toNumber(row.overdue_schedule_count) : 0;
+          const overdueAmount = overdueCount > 0 ? toNumber(row.overdue_amount) : 0;
+          const requiredDocumentCount = hasClientAccount ? toNumber(row.required_document_count) : 0;
+          const completedRequiredDocumentCount = hasClientAccount
+            ? Math.min(toNumber(row.completed_required_document_count), requiredDocumentCount)
+            : 0;
+          const missingRequiredDocumentCount = Math.max(requiredDocumentCount - completedRequiredDocumentCount, 0);
+          const documentsComplete = hasClientAccount
+            ? requiredDocumentCount <= 0 || missingRequiredDocumentCount === 0
+            : null;
           const progressPercent = tcp > 0
             ? (isFullyPaid ? 100 : Math.min((unitSettledValue / tcp) * 100, 100))
             : 0;
@@ -920,6 +992,15 @@ export const getLotProjectDashboard = async (req, res) => {
             settledValue: isFullyPaid ? tcp : unitSettledValue,
             balance: isFullyPaid ? 0 : Math.max(tcp - unitSettledValue, 0),
             scheduleBalance,
+            pendingBalance,
+            hasClientAccount,
+            overdueCount,
+            overdueAmount,
+            oldestOverdueDate: overdueCount > 0 ? row.oldest_overdue_date : null,
+            requiredDocumentCount,
+            completedRequiredDocumentCount,
+            missingRequiredDocumentCount,
+            documentsComplete,
             progressValue: progressPercent,
             progress: `${progressPercent.toFixed(1)}%`,
             documents: formatDocumentsLabel(row),
@@ -995,6 +1076,7 @@ export const getLotProjectPriceList = async (req, res) => {
     connection.release();
   }
 };
+
 
 
 
