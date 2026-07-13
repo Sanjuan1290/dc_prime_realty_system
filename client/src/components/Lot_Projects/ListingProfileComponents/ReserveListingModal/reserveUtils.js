@@ -106,6 +106,32 @@ export const getInitialClientForm = (client = {}) => ({
   secondBuyerEmployerBusinessAddress: client.secondBuyerEmployerBusinessAddress || '',
 })
 
+const roundMoney = (value) =>
+  Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100
+
+export const calculateMonthlyAmortization = (
+  financedBalance,
+  annualInterestRate,
+  monthlyTerms
+) => {
+  const principal = roundMoney(financedBalance)
+  const terms = Number(monthlyTerms || 0)
+
+  if (principal <= 0 || terms <= 0) return 0
+
+  const monthlyRate = Number(annualInterestRate || 0) / 100 / 12
+
+  if (monthlyRate <= 0) {
+    return roundMoney(principal / terms)
+  }
+
+  const factor = Math.pow(1 + monthlyRate, terms)
+
+  return roundMoney(
+    principal * ((monthlyRate * factor) / (factor - 1))
+  )
+}
+
 export const getPaymentCalculations = (tcp, paymentForm) => {
   const modeOfPayment = String(paymentForm.modeOfPayment || 'installment').toLowerCase()
   const isCash = modeOfPayment === 'cash'
@@ -164,7 +190,13 @@ export const getPaymentCalculations = (tcp, paymentForm) => {
     principalBase - reservationFee - downpaymentCredit,
     0
   )
-  const monthlyAmortization = !isCash && monthlyTerms > 0 ? balance / monthlyTerms : 0
+  const monthlyAmortization = !isCash
+    ? calculateMonthlyAmortization(
+        balance,
+        paymentForm.interestRate,
+        monthlyTerms
+      )
+    : 0
   const fullPaymentAmount = isCash ? balance : 0
 
   return {
@@ -194,3 +226,4 @@ export const getPaymentCalculations = (tcp, paymentForm) => {
     },
   }
 }
+

@@ -307,7 +307,7 @@ const ReservePaymentTermsModal = ({
               value={money(paymentPreview.monthlyAmortization)}
               onChange={() => null}
               disabled
-              helper="Automatically calculated from balance and monthly terms."
+              helper="Automatically calculated from the balance, annual interest rate, and monthly terms."
             />
           ) : null}
         </div>
@@ -373,3 +373,4 @@ const ReservePaymentTermsModal = ({
 }
 
 export default ReservePaymentTermsModal
+

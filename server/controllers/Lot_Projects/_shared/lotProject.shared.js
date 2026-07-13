@@ -79,8 +79,8 @@ export const todayDateOnly = () =>
     day: '2-digit',
   }).format(new Date());
 
-export const plainDate = (value) => {
-  if (!value) return '-';
+export const plainDate = (value, fallback = '-') => {
+  if (!value) return fallback;
   if (typeof value === 'string') {
     const match = value.match(/^(\d{4}-\d{2}-\d{2})/);
     return match ? match[1] : value.slice(0, 10);
@@ -2080,7 +2080,7 @@ const getPaymentBreakdownForRow = (row = {}, amountPaid = 0) => {
 
 export const recomputeComputedSoaBalances = (rows = [], terms = {}) => {
   const today = todayDateOnly();
-  let runningBalance = roundMoneyValue(terms.tcp || 0);
+  let runningBalance = roundMoneyValue(terms.principalTcp ?? terms.tcp ?? 0);
   let projectedMonthlyBalance = roundMoneyValue(terms.financedBalance || 0);
   const monthlyRate = Number(terms.annualInterestRate || 0) / 100 / 12;
   const sortedRows = sortComputedRows(rows);
@@ -2181,12 +2181,15 @@ export const recomputeComputedSoaBalances = (rows = [], terms = {}) => {
     runningBalance = roundMoneyValue(Math.max(runningBalance - actualPrincipalReduction, 0));
     row.endingBalance = runningBalance;
 
+    const hasDueDate = /^\d{4}-\d{2}-\d{2}$/.test(String(row.dueDate || ''));
+    const hasPaidDate = /^\d{4}-\d{2}-\d{2}$/.test(String(row.datePaid || ''));
+
     if (amountPaid <= 0) {
-      row.status = row.dueDate && row.dueDate < today ? 'Overdue' : 'Unpaid';
+      row.status = hasDueDate && row.dueDate < today ? 'Overdue' : 'Unpaid';
     } else if (amountPaid + 0.009 < totalDue) {
       row.status = 'Partial';
     } else {
-      row.status = row.datePaid !== '-' && row.dueDate && row.datePaid < row.dueDate ? 'Advance' : 'Paid';
+      row.status = hasPaidDate && hasDueDate && row.datePaid < row.dueDate ? 'Advance' : 'Paid';
     }
 
     visibleRows.push({
@@ -2296,7 +2299,7 @@ export const getListingSoaRows = async (connection, lotProjectId, listingId, lis
         lot_project_payment_schedule_id: scheduleId,
         scheduleType: getStoredScheduleType(row),
         sequence: index + 1,
-        dueDate: plainDate(row.due_date),
+        dueDate: plainDate(row.due_date, null),
         description: row.description,
         beginningBalance: Number(row.beginning_balance || 0),
         dueAmount: Number(row.due_amount || 0),
@@ -2540,7 +2543,8 @@ export const recomputeListingScheduleBalances = async (connection, listing) => {
   );
 
   const clientProfile = { ...(listing || {}), ...(clientProfileRows[0] || {}) };
-  let runningBalance = Number(listing.lot_project_listing_tcp || clientProfile.lot_project_listing_tcp || 0);
+  const terms = getComputedSoaTerms(clientProfile, rows);
+  let runningBalance = roundMoneyValue(terms.principalTcp ?? terms.tcp ?? 0);
   const hasPaidColumns = await columnExists(connection, 'lot_project_payment_schedules', 'paid_principal_amount');
 
   for (const row of rows) {
@@ -2792,3 +2796,4 @@ export const addIfColumnExists = async (connection, tableName, columns, values, 
     values.push(value);
   }
 };
+
