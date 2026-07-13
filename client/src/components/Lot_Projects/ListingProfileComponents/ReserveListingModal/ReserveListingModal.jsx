@@ -352,8 +352,8 @@ const ReserveListingModal = ({
     }
 
     const graceDays = Number(paymentForm.penaltyGraceDays)
-    if (!Number.isInteger(graceDays) || graceDays < 1 || graceDays > 31) {
-      setAlert({ type: 'error', message: 'Penalty grace period must be between 1 and 31 days.' })
+    if (!Number.isInteger(graceDays) || graceDays < 0 || graceDays > 31) {
+      setAlert({ type: 'error', message: 'Penalty grace period must be between 0 and 31 days.' })
       return false
     }
 
@@ -581,3 +581,4 @@ const ReserveListingModal = ({
 }
 
 export default ReserveListingModal
+

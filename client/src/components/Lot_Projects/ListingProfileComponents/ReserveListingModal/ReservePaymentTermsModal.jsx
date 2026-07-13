@@ -4,7 +4,7 @@ import { SectionCard, SelectInput, TextInput } from './ReserveShared'
 
 const downpaymentTermOptions = Array.from({ length: 12 }, (_, index) => String(index + 1))
 const dailyPenaltyRateOptions = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 2, 3, 4, 5]
-const penaltyGraceDayOptions = Array.from({ length: 31 }, (_, index) => String(index + 1))
+const penaltyGraceDayOptions = Array.from({ length: 32 }, (_, index) => String(index))
 
 const PreviewCard = ({ label, value, tone = 'slate' }) => {
   const tones = {
@@ -291,12 +291,12 @@ const ReservePaymentTermsModal = ({
             label="Penalty-Free Grace Period"
             value={paymentForm.penaltyGraceDays}
             onChange={(value) => updatePaymentField('penaltyGraceDays', value)}
-            helper="Penalty begins on the next calendar day after this grace period ends."
+            helper="Select No grace period to start the penalty on the calendar day after the due date."
             required
           >
             {penaltyGraceDayOptions.map((value) => (
               <option key={value} value={value}>
-                {value} day{value === '1' ? '' : 's'}
+                {value === '0' ? 'No grace period (0 days)' : `${value} day${value === '1' ? '' : 's'}`}
               </option>
             ))}
           </SelectInput>

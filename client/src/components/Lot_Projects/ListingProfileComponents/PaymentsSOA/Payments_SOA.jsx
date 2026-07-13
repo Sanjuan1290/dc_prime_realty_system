@@ -290,7 +290,7 @@ const DeletePaymentModal = ({ payment, password, setPassword, alert, isDeleting,
 
 
 const dailyPenaltyRateOptions = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 2, 3, 4, 5]
-const penaltyGraceDayOptions = Array.from({ length: 31 }, (_, index) => index + 1)
+const penaltyGraceDayOptions = Array.from({ length: 32 }, (_, index) => index)
 
 const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, onSave }) => {
   const [form, setForm] = useState(() => ({
@@ -355,7 +355,7 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
     }
 
     if (!penaltyGraceDayOptions.includes(penaltyGraceDays)) {
-      setModalAlert({ type: 'error', message: 'Grace period must be from 1 to 31 days.' })
+      setModalAlert({ type: 'error', message: 'Grace period must be from 0 to 31 days.' })
       return
     }
 
@@ -440,7 +440,7 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
             <label className="flex flex-col gap-1.5">
               <span className="text-sm font-black text-slate-700">Penalty-Free Grace Period</span>
               <select value={form.penaltyGraceDays} onChange={(event) => updateForm('penaltyGraceDays', event.target.value)} disabled={isSaving} className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100">
-                {penaltyGraceDayOptions.map((days) => <option key={days} value={days}>{days} day{days === 1 ? '' : 's'}</option>)}
+                {penaltyGraceDayOptions.map((days) => <option key={days} value={days}>{days === 0 ? 'No grace period (0 days)' : `${days} day${days === 1 ? '' : 's'}`}</option>)}
               </select>
             </label>
           </div>
@@ -1278,3 +1278,4 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
 }
 
 export default PaymentsSOA
+

@@ -476,8 +476,8 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
       return res.status(400).json({ message: 'Daily penalty rate must use one of the allowed values.' });
     }
 
-    if (!Number.isInteger(penaltyGraceDays) || penaltyGraceDays < 1 || penaltyGraceDays > 31) {
-      return res.status(400).json({ message: 'Penalty-free grace period must be from 1 to 31 days.' });
+    if (!Number.isInteger(penaltyGraceDays) || penaltyGraceDays < 0 || penaltyGraceDays > 31) {
+      return res.status(400).json({ message: 'Penalty-free grace period must be from 0 to 31 days.' });
     }
 
     const sameNumber = (left, right) => Math.abs(Number(left || 0) - Number(right || 0)) < 0.000001;
@@ -1367,3 +1367,4 @@ export const restorePaymentSchedulePenaltyWaiver = async (req, res) => {
     connection.release();
   }
 };
+

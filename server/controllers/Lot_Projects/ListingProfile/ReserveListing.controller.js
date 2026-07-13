@@ -666,8 +666,8 @@ export const reserveLotProjectListing = async (req, res) => {
     if (!allowedDailyPenaltyRates.has(dailyPenaltyRate)) {
       return res.status(400).json({ message: 'Select a valid daily penalty rate.' });
     }
-    if (!Number.isInteger(penaltyGraceDays) || penaltyGraceDays < 1 || penaltyGraceDays > 31) {
-      return res.status(400).json({ message: 'Penalty grace period must be between 1 and 31 days.' });
+    if (!Number.isInteger(penaltyGraceDays) || penaltyGraceDays < 0 || penaltyGraceDays > 31) {
+      return res.status(400).json({ message: 'Penalty grace period must be between 0 and 31 days.' });
     }
     const assignedSellerId = Number(terms.sellerId || reservation.sellerId || reservation.seller?.id || reservation.seller?.accredited_seller_id || 0) || null;
     const saleChannel = String(reservation.saleChannel || terms.saleChannel || 'distributed') === 'direct_to_developer'
@@ -962,3 +962,4 @@ export const reserveLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
+

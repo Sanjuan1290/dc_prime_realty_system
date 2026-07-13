@@ -30,6 +30,25 @@ test('daily penalty starts after the grace period and includes the statement dat
   assert.equal(result.penaltyAmount, 30);
 });
 
+test('zero grace period starts penalty on the day after the due date', () => {
+  const resultOnDueDate = calculateScheduleDailyPenalty({
+    row: { ...schedule, due_date: '2026-07-13' },
+    clientProfile: { ...profile, soa_penalty_grace_days: 0 },
+    asOfDate: '2026-07-13',
+  });
+
+  const resultNextDay = calculateScheduleDailyPenalty({
+    row: { ...schedule, due_date: '2026-07-13' },
+    clientProfile: { ...profile, soa_penalty_grace_days: 0 },
+    asOfDate: '2026-07-14',
+  });
+
+  assert.equal(resultOnDueDate.penaltyStartDate, '2026-07-14');
+  assert.equal(resultOnDueDate.calculatedPenaltyAmount, 0);
+  assert.equal(resultNextDay.penaltyStartDate, '2026-07-14');
+  assert.equal(resultNextDay.calculatedPenaltyAmount, 10);
+});
+
 test('partial payment reduces the penalty base from its payment date', () => {
   const result = calculateScheduleDailyPenalty({
     row: schedule,
@@ -261,3 +280,4 @@ test('restoring a penalty correction recalculates the full late period', () => {
 
   assert.equal(result.calculatedPenaltyAmount, 50);
 });
+
