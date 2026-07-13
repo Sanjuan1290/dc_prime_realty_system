@@ -1,20 +1,54 @@
-import { FiPrinter, FiX } from 'react-icons/fi'
+import { useRef, useState } from 'react'
+import { FiDownload, FiLoader, FiPrinter, FiX } from 'react-icons/fi'
+import { downloadElementAsPdf, printWithTemporaryBlankTitle, sanitizePdfFileName } from './pdfExportUtils'
 
 const PrintPageShell = ({ title, children }) => {
+  const printContentRef = useRef(null)
+  const [pdfStatus, setPdfStatus] = useState(null)
+
+  const handleDownloadPdf = async () => {
+    if (!printContentRef.current) return
+
+    setPdfStatus({ type: 'loading', message: 'Preparing PDF download...' })
+
+    try {
+      await downloadElementAsPdf(printContentRef.current, {
+        filename: sanitizePdfFileName(title || 'printout'),
+      })
+      setPdfStatus({ type: 'success', message: 'PDF download is ready.' })
+    } catch (error) {
+      setPdfStatus({
+        type: 'error',
+        message: error?.message || 'Failed to download PDF.',
+      })
+    }
+  }
+
+  const isDownloading = pdfStatus?.type === 'loading'
+
   return (
     <main className="min-h-screen bg-slate-100 text-slate-950 print:bg-white">
       <style>{`
         @page {
           size: A4 portrait;
-          margin: 0;
+          margin: 0 !important;
+        }
+
+        html,
+        body,
+        #root {
+          background: #ffffff;
         }
 
         @media print {
           html,
           body,
           #root {
+            width: 100% !important;
+            min-height: 0 !important;
             margin: 0 !important;
             padding: 0 !important;
+            overflow: visible !important;
             background: #ffffff !important;
             -webkit-print-color-adjust: exact;
             print-color-adjust: exact;
@@ -24,32 +58,69 @@ const PrintPageShell = ({ title, children }) => {
             display: none !important;
           }
 
-          .print-page {
+          .print-content {
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #ffffff !important;
+          }
+
+          .print-page,
+          .print-export-page {
+            margin: 0 auto !important;
             box-shadow: none !important;
+            break-after: page;
             page-break-after: always;
           }
 
-          .print-page:last-child {
+          .print-page:last-child,
+          .print-export-page:last-child {
+            break-after: auto;
             page-break-after: auto;
           }
         }
+
+        .pdf-export-root .print-page,
+        .pdf-export-root .print-export-page {
+          margin: 0 auto !important;
+          box-shadow: none !important;
+          break-after: page;
+          page-break-after: always;
+        }
+
+        .pdf-export-root .print-page:last-child,
+        .pdf-export-root .print-export-page:last-child {
+          break-after: auto;
+          page-break-after: auto;
+        }
       `}</style>
 
-      <div className="print-hidden sticky top-0 z-50 flex h-16 items-center justify-between border-b border-slate-200 bg-white px-5 shadow-sm">
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => window.print()}
-            className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 active:scale-[0.98]"
-          >
-            <FiPrinter className="h-4 w-4" />
-            Print
-          </button>
+      <div className="print-hidden sticky top-0 z-50 flex flex-col gap-3 border-b border-slate-200 bg-white px-5 py-3 shadow-sm lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={printWithTemporaryBlankTitle}
+              className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 active:scale-[0.98]"
+            >
+              <FiPrinter className="h-4 w-4" />
+              Print
+            </button>
+
+            <button
+              type="button"
+              onClick={handleDownloadPdf}
+              disabled={isDownloading}
+              className="inline-flex h-10 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-5 text-sm font-black text-blue-700 transition hover:border-blue-300 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98]"
+            >
+              {isDownloading ? <FiLoader className="h-4 w-4 animate-spin" /> : <FiDownload className="h-4 w-4" />}
+              Download PDF
+            </button>
+          </div>
 
           <div>
             <h1 className="text-base font-black text-slate-950">{title}</h1>
             <p className="text-xs font-semibold text-slate-500">
-              For Chrome: More settings → uncheck Headers and footers before printing.
+              Download PDF exports without browser-generated header/footer text.
             </p>
           </div>
         </div>
@@ -57,14 +128,30 @@ const PrintPageShell = ({ title, children }) => {
         <button
           type="button"
           onClick={() => window.close()}
-          className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 transition hover:bg-slate-50 active:scale-[0.98]"
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 transition hover:bg-slate-50 active:scale-[0.98]"
         >
           <FiX className="h-4 w-4" />
           Close
         </button>
       </div>
 
-      <div className="p-6 print:p-0">{children}</div>
+      {pdfStatus ? (
+        <div
+          className={`print-hidden mx-6 mt-4 rounded-2xl border px-4 py-3 text-sm font-bold ${
+            pdfStatus.type === 'error'
+              ? 'border-red-200 bg-red-50 text-red-700'
+              : pdfStatus.type === 'success'
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                : 'border-blue-200 bg-blue-50 text-blue-700'
+          }`}
+        >
+          {pdfStatus.message}
+        </div>
+      ) : null}
+
+      <div ref={printContentRef} className="print-content p-6 print:p-0">
+        {children}
+      </div>
     </main>
   )
 }

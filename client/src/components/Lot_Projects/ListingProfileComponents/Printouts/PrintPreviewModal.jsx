@@ -1,4 +1,7 @@
-import { FiPrinter, FiX } from 'react-icons/fi'
+import { useRef, useState } from 'react'
+import { FiDownload, FiLoader, FiPrinter, FiX } from 'react-icons/fi'
+import StatusAlert from '../../../Shared/StatusAlert'
+import { downloadElementAsPdf, printWithTemporaryBlankTitle, sanitizePdfFileName } from './pdfExportUtils'
 
 const money = (value) =>
   new Intl.NumberFormat('en-PH', {
@@ -92,7 +95,7 @@ const OfferToBuyPreview = ({ listing = {}, client = {} }) => {
   const seller = getValue(client, ['seller', 'salesOfficer'], getValue(listing, ['seller'], '-'))
 
   return (
-    <div className="mx-auto w-[920px] bg-white text-black shadow-lg print:shadow-none">
+    <div className="print-export-page mx-auto w-[920px] bg-white text-black shadow-lg print:shadow-none">
       <div className="border border-black text-[10px]">
         <div className="p-2">
           <h1 className="text-[16px] font-black leading-none">
@@ -512,7 +515,7 @@ const SOAPreview = ({ listing = {}, client = {}, soaRows = [] }) => {
   const latestBalance = cleanMoney(rows[rows.length - 1]?.remainingBalance || 0)
 
   return (
-    <div className="mx-auto w-[920px] bg-white p-5 text-black shadow-lg print:shadow-none">
+    <div className="print-export-page mx-auto w-[920px] bg-white p-5 text-black shadow-lg print:shadow-none">
       <div className="border-2 border-black p-4">
         <div className="grid grid-cols-[1fr_345px] gap-5">
           <div>
@@ -661,7 +664,7 @@ const DocumentsPrintPreview = ({ documents = [] }) => {
           {printableDocuments.map((document, index) => (
             <div
               key={`${document.url}-${index}`}
-              className="flex min-h-[980px] flex-col items-center justify-center border border-slate-300 bg-white p-4 print:min-h-screen print:border-0"
+              className="print-export-page flex min-h-[980px] flex-col items-center justify-center border border-slate-300 bg-white p-4 print:min-h-screen print:border-0"
             >
               <p className="mb-3 text-center text-xs font-black text-slate-700 print:hidden">{document.name}</p>
               <img
@@ -693,18 +696,86 @@ const PrintPreviewModal = ({
   documents = [],
   onClose,
 }) => {
+  const previewContentRef = useRef(null)
+  const [pdfNotice, setPdfNotice] = useState(null)
+
   const handlePrint = () => {
-    window.print()
+    printWithTemporaryBlankTitle()
   }
+
+  const handleDownloadPdf = async () => {
+    if (!previewContentRef.current) return
+
+    setPdfNotice({ type: 'loading', message: 'Preparing PDF download...' })
+
+    try {
+      const unitLabel = getValue(listing, ['unit_id', 'unitCode', 'unitNo'], '')
+      await downloadElementAsPdf(previewContentRef.current, {
+        filename: sanitizePdfFileName(`${title || 'printout'}${unitLabel ? `-${unitLabel}` : ''}`),
+      })
+      setPdfNotice({ type: 'success', message: 'PDF download is ready.' })
+    } catch (error) {
+      setPdfNotice({
+        type: 'error',
+        message: error?.message || 'Failed to download PDF.',
+      })
+    }
+  }
+
+  const isDownloadingPdf = pdfNotice?.type === 'loading'
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/60 p-4">
+      <style>{`
+        @page {
+          size: A4 portrait;
+          margin: 0 !important;
+        }
+
+        @media print {
+          html,
+          body,
+          #root {
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: visible !important;
+            background: #ffffff !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+
+          .print-export-page {
+            margin: 0 auto !important;
+            box-shadow: none !important;
+            break-after: page;
+            page-break-after: always;
+          }
+
+          .print-export-page:last-child {
+            break-after: auto;
+            page-break-after: auto;
+          }
+        }
+
+        .pdf-export-root .print-export-page {
+          margin: 0 auto !important;
+          box-shadow: none !important;
+          break-after: page;
+          page-break-after: always;
+        }
+
+        .pdf-export-root .print-export-page:last-child {
+          break-after: auto;
+          page-break-after: auto;
+        }
+      `}</style>
+
       <div className="flex max-h-[94vh] w-full max-w-7xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
         <div className="flex shrink-0 items-center justify-between border-b px-6 py-4 print:hidden">
           <div>
             <h2 className="text-xl font-black text-slate-950">{title}</h2>
             <p className="text-sm font-semibold text-slate-500">
-              Actual print preview
+              Review the printable page, print it, or download a PDF without browser headers/footers.
             </p>
           </div>
 
@@ -717,21 +788,33 @@ const PrintPreviewModal = ({
           </button>
         </div>
 
+        {pdfNotice ? (
+          <div className="shrink-0 px-6 pt-4 print:hidden">
+            <StatusAlert
+              type={pdfNotice.type}
+              message={pdfNotice.message}
+              onClose={pdfNotice.type === 'loading' ? undefined : () => setPdfNotice(null)}
+            />
+          </div>
+        ) : null}
+
         <div className="min-h-0 flex-1 overflow-y-auto bg-slate-100 p-6 print:bg-white print:p-0">
-          {type === 'offer' ? (
-            <OfferToBuyPreview listing={listing} client={client} />
-          ) : null}
+          <div ref={previewContentRef} className="print-preview-pages bg-white">
+            {type === 'offer' ? (
+              <OfferToBuyPreview listing={listing} client={client} />
+            ) : null}
 
-          {type === 'soa' ? (
-            <SOAPreview listing={listing} client={client} soaRows={soaRows} />
-          ) : null}
+            {type === 'soa' ? (
+              <SOAPreview listing={listing} client={client} soaRows={soaRows} />
+            ) : null}
 
-          {type === 'documents' ? (
-            <DocumentsPrintPreview documents={documents} />
-          ) : null}
+            {type === 'documents' ? (
+              <DocumentsPrintPreview documents={documents} />
+            ) : null}
+          </div>
         </div>
 
-        <div className="flex shrink-0 justify-end gap-2 border-t px-6 py-4 print:hidden">
+        <div className="flex shrink-0 flex-col gap-2 border-t px-6 py-4 print:hidden sm:flex-row sm:justify-end">
           <button
             type="button"
             onClick={onClose}
@@ -742,8 +825,18 @@ const PrintPreviewModal = ({
 
           <button
             type="button"
+            onClick={handleDownloadPdf}
+            disabled={isDownloadingPdf}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-5 text-sm font-black text-blue-700 transition hover:border-blue-300 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isDownloadingPdf ? <FiLoader className="animate-spin" /> : <FiDownload />}
+            Download PDF
+          </button>
+
+          <button
+            type="button"
             onClick={handlePrint}
-            className="inline-flex h-11 items-center gap-2 rounded-2xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700"
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700"
           >
             <FiPrinter />
             Print
