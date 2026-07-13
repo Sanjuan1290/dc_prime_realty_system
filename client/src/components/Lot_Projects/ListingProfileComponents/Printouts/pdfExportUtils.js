@@ -1,7 +1,3 @@
-const HTML2PDF_CDN_URL = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js'
-
-let html2PdfPromise = null
-
 export const sanitizePdfFileName = (value = 'printout') => {
   const cleaned = String(value || 'printout')
     .trim()
@@ -12,7 +8,11 @@ export const sanitizePdfFileName = (value = 'printout') => {
   return cleaned || 'printout'
 }
 
-const waitForNextFrame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+const wait = (milliseconds = 0) => new Promise((resolve) => window.setTimeout(resolve, milliseconds))
+
+const waitForNextFrame = (targetWindow = window) => new Promise((resolve) => {
+  targetWindow.requestAnimationFrame(() => targetWindow.requestAnimationFrame(resolve))
+})
 
 const waitForImages = async (container) => {
   const images = Array.from(container?.querySelectorAll?.('img') || [])
@@ -29,54 +29,124 @@ const waitForImages = async (container) => {
   )
 }
 
-const getPageSettings = (options = {}) => {
-  const orientation = options.orientation || 'portrait'
-  const format = options.format || 'a4'
-  const isLandscape = orientation === 'landscape'
+const waitForWindowReady = async (targetWindow) => {
+  if (!targetWindow) throw new Error('PDF print window could not be opened. Allow pop-ups and try again.')
 
-  if (format === 'legal') {
-    return {
-      format,
-      orientation,
-      widthPx: isLandscape ? 1344 : 816,
-      minHeightPx: isLandscape ? 816 : 1344,
-    }
-  }
-
-  return {
-    format,
-    orientation,
-    widthPx: isLandscape ? 1123 : 794,
-    minHeightPx: isLandscape ? 794 : 1123,
-  }
-}
-
-export const loadHtml2Pdf = () => {
-  if (window.html2pdf) return Promise.resolve(window.html2pdf)
-
-  if (!html2PdfPromise) {
-    html2PdfPromise = new Promise((resolve, reject) => {
-      const existingScript = document.querySelector(`script[src="${HTML2PDF_CDN_URL}"]`)
-
-      if (existingScript) {
-        existingScript.addEventListener('load', () => resolve(window.html2pdf), { once: true })
-        existingScript.addEventListener('error', () => reject(new Error('PDF generator failed to load.')), { once: true })
-        return
-      }
-
-      const script = document.createElement('script')
-      script.src = HTML2PDF_CDN_URL
-      script.async = true
-      script.onload = () => {
-        if (window.html2pdf) resolve(window.html2pdf)
-        else reject(new Error('PDF generator is unavailable.'))
-      }
-      script.onerror = () => reject(new Error('PDF generator failed to load. Check your internet connection.'))
-      document.head.appendChild(script)
+  if (targetWindow.document.readyState !== 'complete') {
+    await new Promise((resolve) => {
+      targetWindow.addEventListener('load', resolve, { once: true })
+      window.setTimeout(resolve, 1200)
     })
   }
 
-  return html2PdfPromise
+  await targetWindow.document.fonts?.ready?.catch?.(() => null)
+  await waitForImages(targetWindow.document)
+  await waitForNextFrame(targetWindow)
+  await wait(250)
+}
+
+const collectCurrentPageStyles = () => {
+  const styleNodes = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'))
+
+  return styleNodes
+    .map((node) => node.outerHTML)
+    .join('\n')
+}
+
+const createPdfPrintStyles = () => `
+  <style>
+    @page {
+      size: A4 portrait;
+      margin: 0 !important;
+    }
+
+    html,
+    body {
+      margin: 0 !important;
+      padding: 0 !important;
+      background: #ffffff !important;
+      overflow: visible !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+
+    .print-hidden,
+    .pdf-window-hidden {
+      display: none !important;
+    }
+
+    .pdf-print-root {
+      width: 100%;
+      min-height: 100vh;
+      margin: 0 !important;
+      padding: 0 !important;
+      background: #ffffff !important;
+    }
+
+    .print-content,
+    .print-preview-pages {
+      margin: 0 !important;
+      padding: 0 !important;
+      background: #ffffff !important;
+    }
+
+    .print-page,
+    .print-export-page {
+      margin: 0 auto !important;
+      box-shadow: none !important;
+      break-after: page;
+      page-break-after: always;
+      background: #ffffff !important;
+    }
+
+    .print-page:last-child,
+    .print-export-page:last-child {
+      break-after: auto;
+      page-break-after: auto;
+    }
+
+    @media print {
+      html,
+      body,
+      .pdf-print-root {
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #ffffff !important;
+        overflow: visible !important;
+      }
+    }
+  </style>
+`
+
+const buildPrintableHtml = (element, options = {}) => {
+  const clonedElement = element.cloneNode(true)
+  clonedElement.classList.add('pdf-print-root')
+
+  // Do not copy action bars, modal chrome, or status banners into the PDF print window.
+  clonedElement.querySelectorAll('.print-hidden, .pdf-window-hidden').forEach((node) => node.remove())
+
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <base href="${window.location.origin}/" />
+    <title>${options.blankTitle === false ? sanitizePdfFileName(options.filename || 'printout') : ' '}</title>
+    ${collectCurrentPageStyles()}
+    ${createPdfPrintStyles()}
+  </head>
+  <body>
+    ${clonedElement.outerHTML}
+  </body>
+</html>`
 }
 
 export const printWithTemporaryBlankTitle = () => {
@@ -95,114 +165,34 @@ export const printWithTemporaryBlankTitle = () => {
   window.setTimeout(restoreTitle, 1500)
 }
 
-const createPdfStage = (element, options = {}) => {
-  const { widthPx, minHeightPx } = getPageSettings(options)
-  const overlay = document.createElement('div')
-  const clone = element.cloneNode(true)
-
-  // html2canvas can produce a blank PDF when the source is off-screen or behind the page.
-  // Keep a temporary visible stage in the viewport while the PDF is rendered, then remove it.
-  overlay.setAttribute('data-pdf-export-stage', 'true')
-  overlay.style.position = 'fixed'
-  overlay.style.inset = '0'
-  overlay.style.zIndex = '2147483647'
-  overlay.style.width = '100vw'
-  overlay.style.height = '100vh'
-  overlay.style.overflow = 'auto'
-  overlay.style.background = '#ffffff'
-  overlay.style.pointerEvents = 'none'
-  overlay.style.display = 'flex'
-  overlay.style.justifyContent = 'center'
-  overlay.style.alignItems = 'flex-start'
-  overlay.style.padding = '0'
-  overlay.style.margin = '0'
-
-  clone.classList.add('pdf-export-root')
-  clone.style.width = `${widthPx}px`
-  clone.style.minHeight = `${minHeightPx}px`
-  clone.style.background = '#ffffff'
-  clone.style.margin = '0 auto'
-  clone.style.padding = '0'
-  clone.style.boxSizing = 'border-box'
-
-  const style = document.createElement('style')
-  style.textContent = `
-    [data-pdf-export-stage] .print-hidden {
-      display: none !important;
-    }
-
-    [data-pdf-export-stage],
-    [data-pdf-export-stage] * {
-      -webkit-print-color-adjust: exact !important;
-      print-color-adjust: exact !important;
-    }
-
-    [data-pdf-export-stage] .print-page,
-    [data-pdf-export-stage] .print-export-page {
-      margin: 0 auto !important;
-      box-shadow: none !important;
-      break-after: page;
-      page-break-after: always;
-    }
-
-    [data-pdf-export-stage] .print-page:last-child,
-    [data-pdf-export-stage] .print-export-page:last-child {
-      break-after: auto;
-      page-break-after: auto;
-    }
-  `
-
-  overlay.appendChild(style)
-  overlay.appendChild(clone)
-
-  return { overlay, clone }
-}
-
-export const downloadElementAsPdf = async (element, options = {}) => {
+export const openElementInPdfPrintWindow = async (element, options = {}) => {
   if (!element) throw new Error('Printable content is not ready yet.')
 
-  const html2pdf = await loadHtml2Pdf()
-  const { overlay, clone } = createPdfStage(element, options)
-  const pageSettings = getPageSettings(options)
+  // Open synchronously from the button click so the browser does not block the print window.
+  const pdfWindow = window.open('', '_blank')
 
-  document.body.appendChild(overlay)
-
-  try {
-    await document.fonts?.ready
-    await waitForImages(clone)
-    await waitForNextFrame()
-
-    const exportTarget = clone.querySelector('.print-page, .print-export-page') ? clone : overlay
-
-    await html2pdf()
-      .set({
-        filename: `${sanitizePdfFileName(options.filename || 'printout')}.pdf`,
-        margin: [0, 0, 0, 0],
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: {
-          scale: 2,
-          useCORS: true,
-          allowTaint: true,
-          backgroundColor: '#ffffff',
-          scrollX: 0,
-          scrollY: 0,
-          width: pageSettings.widthPx,
-          windowWidth: pageSettings.widthPx,
-          windowHeight: Math.max(clone.scrollHeight, pageSettings.minHeightPx),
-        },
-        jsPDF: {
-          unit: 'mm',
-          format: pageSettings.format,
-          orientation: pageSettings.orientation,
-        },
-        pagebreak: {
-          mode: ['css', 'legacy'],
-          avoid: ['.avoid-break'],
-        },
-      })
-      .from(exportTarget)
-      .save()
-  } finally {
-    overlay.remove()
+  if (!pdfWindow) {
+    throw new Error('PDF window was blocked. Allow pop-ups for this site and try again.')
   }
+
+  pdfWindow.document.open()
+  pdfWindow.document.write(`<!doctype html><html><head><title>Preparing PDF</title></head><body style="font-family: Arial, sans-serif; padding: 24px;">Preparing PDF preview...</body></html>`)
+  pdfWindow.document.close()
+
+  await wait(50)
+
+  pdfWindow.document.open()
+  pdfWindow.document.write(buildPrintableHtml(element, options))
+  pdfWindow.document.close()
+
+  await waitForWindowReady(pdfWindow)
+
+  pdfWindow.focus()
+  pdfWindow.print()
+
+  return true
 }
+
+// Kept as the public function used by the print buttons. It opens Chrome's clean Save-as-PDF print flow
+// instead of converting the page through canvas, which was producing blank PDFs for some uploaded images.
+export const downloadElementAsPdf = openElementInPdfPrintWindow

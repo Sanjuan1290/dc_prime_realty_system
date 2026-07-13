@@ -9,17 +9,17 @@ const PrintPageShell = ({ title, children }) => {
   const handleDownloadPdf = async () => {
     if (!printContentRef.current) return
 
-    setPdfStatus({ type: 'loading', message: 'Preparing PDF download...' })
+    setPdfStatus({ type: 'loading', message: 'Opening PDF save window...' })
 
     try {
       await downloadElementAsPdf(printContentRef.current, {
         filename: sanitizePdfFileName(title || 'printout'),
       })
-      setPdfStatus({ type: 'success', message: 'PDF download is ready.' })
+      setPdfStatus({ type: 'success', message: 'PDF window opened. Choose Save as PDF in the print dialog.' })
     } catch (error) {
       setPdfStatus({
         type: 'error',
-        message: error?.message || 'Failed to download PDF.',
+        message: error?.message || 'Failed to open the PDF save window.',
       })
     }
   }
@@ -105,22 +105,12 @@ const PrintPageShell = ({ title, children }) => {
               <FiPrinter className="h-4 w-4" />
               Print
             </button>
-
-            <button
-              type="button"
-              onClick={handleDownloadPdf}
-              disabled={isDownloading}
-              className="inline-flex h-10 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-5 text-sm font-black text-blue-700 transition hover:border-blue-300 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98]"
-            >
-              {isDownloading ? <FiLoader className="h-4 w-4 animate-spin" /> : <FiDownload className="h-4 w-4" />}
-              Download PDF
-            </button>
           </div>
 
           <div>
             <h1 className="text-base font-black text-slate-950">{title}</h1>
             <p className="text-xs font-semibold text-slate-500">
-              Download PDF exports without browser-generated header/footer text.
+              Print or Save as PDF.
             </p>
           </div>
         </div>
@@ -157,3 +147,4 @@ const PrintPageShell = ({ title, children }) => {
 }
 
 export default PrintPageShell
+

@@ -706,18 +706,18 @@ const PrintPreviewModal = ({
   const handleDownloadPdf = async () => {
     if (!previewContentRef.current) return
 
-    setPdfNotice({ type: 'loading', message: 'Preparing PDF download...' })
+    setPdfNotice({ type: 'loading', message: 'Opening PDF save window...' })
 
     try {
       const unitLabel = getValue(listing, ['unit_id', 'unitCode', 'unitNo'], '')
       await downloadElementAsPdf(previewContentRef.current, {
         filename: sanitizePdfFileName(`${title || 'printout'}${unitLabel ? `-${unitLabel}` : ''}`),
       })
-      setPdfNotice({ type: 'success', message: 'PDF download is ready.' })
+      setPdfNotice({ type: 'success', message: 'PDF window opened. Choose Save as PDF in the print dialog.' })
     } catch (error) {
       setPdfNotice({
         type: 'error',
-        message: error?.message || 'Failed to download PDF.',
+        message: error?.message || 'Failed to open the PDF save window.',
       })
     }
   }
@@ -775,7 +775,7 @@ const PrintPreviewModal = ({
           <div>
             <h2 className="text-xl font-black text-slate-950">{title}</h2>
             <p className="text-sm font-semibold text-slate-500">
-              Review the printable page, print it, or download a PDF without browser headers/footers.
+              Review the printable page, print it, or open a clean Save-as-PDF window.
             </p>
           </div>
 
@@ -823,15 +823,6 @@ const PrintPreviewModal = ({
             Cancel
           </button>
 
-          <button
-            type="button"
-            onClick={handleDownloadPdf}
-            disabled={isDownloadingPdf}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-5 text-sm font-black text-blue-700 transition hover:border-blue-300 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {isDownloadingPdf ? <FiLoader className="animate-spin" /> : <FiDownload />}
-            Download PDF
-          </button>
 
           <button
             type="button"
@@ -848,3 +839,4 @@ const PrintPreviewModal = ({
 }
 
 export default PrintPreviewModal
+
