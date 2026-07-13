@@ -12,6 +12,10 @@ export const PERMISSIONS = Object.freeze({
   AUDIT_LOGS_DELETE: 'audit.logs.delete',
   SYSTEM_USERS_VIEW: 'system.users.view',
   SYSTEM_USERS_MANAGE: 'system.users.manage',
+  SYSTEM_USERS_CREATE: 'system.users.create',
+  SYSTEM_USERS_EDIT: 'system.users.edit',
+  SYSTEM_USERS_RESET_PASSWORD: 'system.users.reset_password',
+  SYSTEM_USERS_CHANGE_STATUS: 'system.users.change_status',
   SYSTEM_SETTINGS_VIEW: 'system.settings.view',
   SYSTEM_SETTINGS_MANAGE: 'system.settings.manage',
   EMPLOYEES_VIEW: 'employees.view',
@@ -35,6 +39,21 @@ export const PERMISSIONS = Object.freeze({
   LOT_PENALTY_CORRECT: 'lot_project.penalties.correct',
 });
 
+export const ADMIN_MANAGEABLE_USER_ROLES = Object.freeze([
+  'broker_network_manager',
+  'broker',
+  'manager',
+  'agent',
+]);
+
+const adminManageableUserRoles = new Set(ADMIN_MANAGEABLE_USER_ROLES);
+
+// Super Admin can manage every account. Admin can manage seller accounts only.
+export const canActorManageUserRole = (actorRole, targetRole) => {
+  if (actorRole === 'super_admin') return true;
+  return actorRole === 'admin' && adminManageableUserRoles.has(String(targetRole || ''));
+};
+
 const superAdminPermissions = new Set(Object.values(PERMISSIONS));
 
 const adminPermissions = new Set([
@@ -42,13 +61,20 @@ const adminPermissions = new Set([
   PERMISSIONS.SYSTEM_ACCREDITED_VIEW,
   PERMISSIONS.SYSTEM_DOCUMENTS_VIEW,
   PERMISSIONS.SYSTEM_NOTIFICATIONS_VIEW,
+  PERMISSIONS.SYSTEM_NOTIFICATIONS_MANAGE,
   PERMISSIONS.AUDIT_LOGS_VIEW,
   PERMISSIONS.SYSTEM_USERS_VIEW,
+  PERMISSIONS.SYSTEM_USERS_CREATE,
+  PERMISSIONS.SYSTEM_USERS_EDIT,
+  PERMISSIONS.SYSTEM_USERS_RESET_PASSWORD,
+  PERMISSIONS.SYSTEM_USERS_CHANGE_STATUS,
   PERMISSIONS.SYSTEM_SETTINGS_VIEW,
   PERMISSIONS.EMPLOYEES_VIEW,
+  PERMISSIONS.EMPLOYEES_MANAGE,
   PERMISSIONS.ATTENDANCE_VIEW,
-  PERMISSIONS.EMPLOYEE_CASH_ADVANCES_VIEW,
+  PERMISSIONS.ATTENDANCE_MANAGE,
   PERMISSIONS.PAYROLL_VIEW,
+  PERMISSIONS.PAYROLL_MANAGE,
   PERMISSIONS.LOT_PROJECT_VIEW,
   PERMISSIONS.LOT_LISTINGS_VIEW,
   PERMISSIONS.LOT_LISTINGS_MANAGE,

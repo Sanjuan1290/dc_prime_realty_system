@@ -21,9 +21,9 @@ router.get('/me', getMe);
 router.patch('/change-password', authenticateUser, changePassword);
 
 router.get('/getUsers', authenticateUser, requirePermission(PERMISSIONS.SYSTEM_USERS_VIEW), getUsers);
-router.post('/createUser', authenticateUser, requirePermission(PERMISSIONS.SYSTEM_USERS_MANAGE), createUser);
-router.put('/editUser/:id', authenticateUser, requirePermission(PERMISSIONS.SYSTEM_USERS_MANAGE), editUser);
-router.patch('/toggleUserStatus/:id', authenticateUser, requirePermission(PERMISSIONS.SYSTEM_USERS_MANAGE), toggleUserStatus);
-router.patch('/resetPassword/:id', authenticateUser, requirePermission(PERMISSIONS.SYSTEM_USERS_MANAGE), resetUserPassword);
+router.post('/createUser', authenticateUser, requirePermission(PERMISSIONS.SYSTEM_USERS_CREATE), createUser);
+router.put('/editUser/:id', authenticateUser, requirePermission(PERMISSIONS.SYSTEM_USERS_EDIT), editUser);
+router.patch('/toggleUserStatus/:id', authenticateUser, requirePermission(PERMISSIONS.SYSTEM_USERS_CHANGE_STATUS), toggleUserStatus);
+router.patch('/resetPassword/:id', authenticateUser, requirePermission(PERMISSIONS.SYSTEM_USERS_RESET_PASSWORD), resetUserPassword);
 
 export default router;

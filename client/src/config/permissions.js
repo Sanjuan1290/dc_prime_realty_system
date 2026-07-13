@@ -12,6 +12,10 @@ export const PERMISSIONS = Object.freeze({
   AUDIT_LOGS_DELETE: 'audit.logs.delete',
   SYSTEM_USERS_VIEW: 'system.users.view',
   SYSTEM_USERS_MANAGE: 'system.users.manage',
+  SYSTEM_USERS_CREATE: 'system.users.create',
+  SYSTEM_USERS_EDIT: 'system.users.edit',
+  SYSTEM_USERS_RESET_PASSWORD: 'system.users.reset_password',
+  SYSTEM_USERS_CHANGE_STATUS: 'system.users.change_status',
   SYSTEM_SETTINGS_VIEW: 'system.settings.view',
   SYSTEM_SETTINGS_MANAGE: 'system.settings.manage',
   EMPLOYEES_VIEW: 'employees.view',
@@ -31,19 +35,33 @@ export const PERMISSIONS = Object.freeze({
   LOT_SETTINGS_MANAGE: 'lot_project.settings.manage',
 });
 
+export const ADMIN_MANAGEABLE_USER_ROLES = Object.freeze([
+  'broker_network_manager',
+  'broker',
+  'manager',
+  'agent',
+]);
+
 const allPermissions = new Set(Object.values(PERMISSIONS));
 const adminPermissions = new Set([
   PERMISSIONS.SYSTEM_PROJECTS_VIEW,
   PERMISSIONS.SYSTEM_ACCREDITED_VIEW,
   PERMISSIONS.SYSTEM_DOCUMENTS_VIEW,
   PERMISSIONS.SYSTEM_NOTIFICATIONS_VIEW,
+  PERMISSIONS.SYSTEM_NOTIFICATIONS_MANAGE,
   PERMISSIONS.AUDIT_LOGS_VIEW,
   PERMISSIONS.SYSTEM_USERS_VIEW,
+  PERMISSIONS.SYSTEM_USERS_CREATE,
+  PERMISSIONS.SYSTEM_USERS_EDIT,
+  PERMISSIONS.SYSTEM_USERS_RESET_PASSWORD,
+  PERMISSIONS.SYSTEM_USERS_CHANGE_STATUS,
   PERMISSIONS.SYSTEM_SETTINGS_VIEW,
   PERMISSIONS.EMPLOYEES_VIEW,
+  PERMISSIONS.EMPLOYEES_MANAGE,
   PERMISSIONS.ATTENDANCE_VIEW,
-  PERMISSIONS.EMPLOYEE_CASH_ADVANCES_VIEW,
+  PERMISSIONS.ATTENDANCE_MANAGE,
   PERMISSIONS.PAYROLL_VIEW,
+  PERMISSIONS.PAYROLL_MANAGE,
   PERMISSIONS.LOT_LISTINGS_VIEW,
   PERMISSIONS.LOT_LISTINGS_MANAGE,
   PERMISSIONS.LOT_PAYMENT_LOGS_VIEW,
@@ -51,5 +69,10 @@ const adminPermissions = new Set([
 ]);
 
 const rolePermissions = { super_admin: allPermissions, admin: adminPermissions };
+
 export const hasPermission = (role, permission) => Boolean(rolePermissions[role]?.has(permission));
+export const canManageUserRole = (actorRole, targetRole) => (
+  actorRole === 'super_admin'
+  || (actorRole === 'admin' && ADMIN_MANAGEABLE_USER_ROLES.includes(String(targetRole || '')))
+);
 export const getRoleHome = (role) => role === 'admin' ? '/admin/projects' : role === 'super_admin' ? '/super_admin' : '/';

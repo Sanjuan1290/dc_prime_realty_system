@@ -32,8 +32,15 @@ const normalizePayload = (body = {}) => ({
   employmentType: validEmploymentTypes.has(body.employment_type) ? body.employment_type : 'regular',
   hireDate: dateOnly(body.hire_date),
   monthlySalary: roundMoney(positiveNumber(body.monthly_salary)),
-  payrollDivisor: Math.max(positiveNumber(body.payroll_divisor, 26), 1),
-  graceMinutes: Math.min(Math.max(Math.trunc(positiveNumber(body.attendance_grace_minutes)), 0), 180),
+  // The daily rate now uses the employee's actual scheduled work days for the salary month.
+  // payroll_divisor is retained only for backward-compatible database snapshots.
+  payrollDivisor: Math.max(positiveNumber(body.payroll_divisor, 0), 0),
+  graceMinutes: Math.min(Math.max(Math.trunc(positiveNumber(body.attendance_grace_minutes, 15)), 0), 180),
+  riceAllowance: roundMoney(positiveNumber(body.rice_allowance, 500)),
+  transportationAllowance: roundMoney(positiveNumber(body.transportation_allowance, 500)),
+  attendanceBonusAmount: roundMoney(positiveNumber(body.attendance_bonus_amount, 3000)),
+  overtimeMultiplier: Math.max(positiveNumber(body.overtime_multiplier, 2), 0),
+  nightDifferentialPercent: Math.min(positiveNumber(body.night_differential_percent, 0), 100),
   status: validStatuses.has(body.employee_status) ? body.employee_status : 'active',
   schedules: body.schedules,
   work_days: body.work_days,
@@ -67,8 +74,13 @@ const hydrateSchedules = async (connection, employees) => {
     return {
       ...employee,
       monthly_salary: Number(employee.monthly_salary || 0),
-      payroll_divisor: Number(employee.payroll_divisor || 26),
-      attendance_grace_minutes: Number(employee.attendance_grace_minutes || 0),
+      payroll_divisor: Number(employee.payroll_divisor || 0),
+      attendance_grace_minutes: Number(employee.attendance_grace_minutes ?? 15),
+      rice_allowance: Number(employee.rice_allowance ?? 500),
+      transportation_allowance: Number(employee.transportation_allowance ?? 500),
+      attendance_bonus_amount: Number(employee.attendance_bonus_amount ?? 3000),
+      overtime_multiplier: Number(employee.overtime_multiplier ?? 2),
+      night_differential_percent: Number(employee.night_differential_percent ?? 0),
       schedules: employeeSchedules,
       work_days: employeeSchedules.filter((schedule) => schedule.is_work_day).map((schedule) => Number(schedule.weekday)),
     };
@@ -190,15 +202,18 @@ export const createEmployee = async (req, res) => {
         INSERT INTO employees (
           linked_user_id, employee_code, first_name, middle_name, last_name, email,
           contact_number, address, department, position, employment_type, hire_date,
-          monthly_salary, payroll_divisor, attendance_grace_minutes, employee_status,
-          created_by_user_id, updated_by_user_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          monthly_salary, payroll_divisor, attendance_grace_minutes, rice_allowance,
+          transportation_allowance, attendance_bonus_amount, overtime_multiplier,
+          night_differential_percent, employee_status, created_by_user_id, updated_by_user_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       [
         payload.linkedUserId, payload.employeeCode, payload.firstName, payload.middleName, payload.lastName,
         payload.email, payload.contactNumber, payload.address, payload.department, payload.position,
         payload.employmentType, payload.hireDate, payload.monthlySalary, payload.payrollDivisor,
-        payload.graceMinutes, payload.status, actorId, actorId,
+        payload.graceMinutes, payload.riceAllowance, payload.transportationAllowance,
+        payload.attendanceBonusAmount, payload.overtimeMultiplier, payload.nightDifferentialPercent,
+        payload.status, actorId, actorId,
       ]
     );
     await upsertEmployeeSchedules(connection, result.insertId, payload);
@@ -243,14 +258,18 @@ export const updateEmployee = async (req, res) => {
         UPDATE employees SET
           linked_user_id = ?, employee_code = ?, first_name = ?, middle_name = ?, last_name = ?, email = ?,
           contact_number = ?, address = ?, department = ?, position = ?, employment_type = ?, hire_date = ?,
-          monthly_salary = ?, payroll_divisor = ?, attendance_grace_minutes = ?, employee_status = ?, updated_by_user_id = ?
+          monthly_salary = ?, payroll_divisor = ?, attendance_grace_minutes = ?, rice_allowance = ?,
+          transportation_allowance = ?, attendance_bonus_amount = ?, overtime_multiplier = ?,
+          night_differential_percent = ?, employee_status = ?, updated_by_user_id = ?
         WHERE employee_id = ?
       `,
       [
         payload.linkedUserId, employeeCode, payload.firstName, payload.middleName, payload.lastName,
         payload.email, payload.contactNumber, payload.address, payload.department, payload.position,
         payload.employmentType, payload.hireDate, payload.monthlySalary, payload.payrollDivisor,
-        payload.graceMinutes, payload.status, req.authUser?.id || null, employeeId,
+        payload.graceMinutes, payload.riceAllowance, payload.transportationAllowance,
+        payload.attendanceBonusAmount, payload.overtimeMultiplier, payload.nightDifferentialPercent,
+        payload.status, req.authUser?.id || null, employeeId,
       ]
     );
     await upsertEmployeeSchedules(connection, employeeId, payload);

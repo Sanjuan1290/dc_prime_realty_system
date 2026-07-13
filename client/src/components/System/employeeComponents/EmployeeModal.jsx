@@ -22,8 +22,12 @@ const getInitialForm = (employee) => ({
   employment_type: employee?.employment_type || 'regular',
   hire_date: employee?.hire_date || new Date().toISOString().slice(0, 10),
   monthly_salary: employee?.monthly_salary ?? '',
-  payroll_divisor: employee?.payroll_divisor ?? 26,
-  attendance_grace_minutes: employee?.attendance_grace_minutes ?? 0,
+  attendance_grace_minutes: employee?.attendance_grace_minutes ?? 15,
+  rice_allowance: employee?.rice_allowance ?? 500,
+  transportation_allowance: employee?.transportation_allowance ?? 500,
+  attendance_bonus_amount: employee?.attendance_bonus_amount ?? 3000,
+  overtime_multiplier: employee?.overtime_multiplier ?? 2,
+  night_differential_percent: employee?.night_differential_percent ?? 0,
   employee_status: employee?.employee_status || 'active',
   shift_start: employee?.schedules?.find((item) => item.is_work_day)?.shift_start?.slice(0, 5) || '08:00',
   shift_end: employee?.schedules?.find((item) => item.is_work_day)?.shift_end?.slice(0, 5) || '17:00',
@@ -51,8 +55,12 @@ const EmployeeModal = ({ employee, onClose, onSaved }) => {
   const payload = useMemo(() => ({
     ...form,
     monthly_salary: Number(form.monthly_salary || 0),
-    payroll_divisor: Number(form.payroll_divisor || 26),
     attendance_grace_minutes: Number(form.attendance_grace_minutes || 0),
+    rice_allowance: Number(form.rice_allowance || 0),
+    transportation_allowance: Number(form.transportation_allowance || 0),
+    attendance_bonus_amount: Number(form.attendance_bonus_amount || 0),
+    overtime_multiplier: Number(form.overtime_multiplier || 0),
+    night_differential_percent: Number(form.night_differential_percent || 0),
     break_minutes: Number(form.break_minutes || 0),
     work_days: form.work_days.map(Number),
   }), [form])
@@ -108,9 +116,13 @@ const EmployeeModal = ({ employee, onClose, onSaved }) => {
             <Field label="Position" required><input className={inputClass} value={form.position} onChange={(e) => setValue('position', e.target.value)} placeholder="Office Staff" /></Field>
             <Field label="Employment Type"><select className={inputClass} value={form.employment_type} onChange={(e) => setValue('employment_type', e.target.value)}><option value="regular">Regular</option><option value="probationary">Probationary</option><option value="contractual">Contractual</option><option value="part_time">Part Time</option><option value="intern">Intern</option></select></Field>
             <Field label="Hire Date" required><input type="date" className={inputClass} value={form.hire_date} onChange={(e) => setValue('hire_date', e.target.value)} /></Field>
-            <Field label="Monthly Salary" required helper="Base monthly salary before deductions."><input type="number" min="0" step="0.01" className={inputClass} value={form.monthly_salary} onChange={(e) => setValue('monthly_salary', e.target.value)} placeholder="16000.00" /></Field>
-            <Field label="Payroll Divisor" required helper="Company-approved paid working days per month."><input type="number" min="1" step="0.5" className={inputClass} value={form.payroll_divisor} onChange={(e) => setValue('payroll_divisor', e.target.value)} placeholder="26" /></Field>
-            <Field label="Late Grace Minutes" helper="Use 0 when lateness starts after the scheduled time."><input type="number" min="0" max="180" className={inputClass} value={form.attendance_grace_minutes} onChange={(e) => setValue('attendance_grace_minutes', e.target.value)} placeholder="0" /></Field>
+            <Field label="Monthly Salary" required helper="The daily rate is calculated from the employee's scheduled work days in the salary month."><input type="number" min="0" step="0.01" className={inputClass} value={form.monthly_salary} onChange={(e) => setValue('monthly_salary', e.target.value)} placeholder="15000.00" /></Field>
+            <Field label="Attendance Bonus Grace (minutes)" helper="Late time is still deducted. This grace only controls the ₱3,000 attendance-bonus qualification."><input type="number" min="0" max="180" className={inputClass} value={form.attendance_grace_minutes} onChange={(e) => setValue('attendance_grace_minutes', e.target.value)} placeholder="15" /></Field>
+            <Field label="Rice Allowance per Salary Release" helper="Added to both the 7th and 22nd salary releases."><input type="number" min="0" step="0.01" className={inputClass} value={form.rice_allowance} onChange={(e) => setValue('rice_allowance', e.target.value)} placeholder="500.00" /></Field>
+            <Field label="Transportation Allowance (7th Release Only)" helper="Added only to the salary release dated on the 7th."><input type="number" min="0" step="0.01" className={inputClass} value={form.transportation_allowance} onChange={(e) => setValue('transportation_allowance', e.target.value)} placeholder="500.00" /></Field>
+            <Field label="Attendance Bonus (7th Release)" helper="Paid only when the employee passes the full previous-month attendance check."><input type="number" min="0" step="0.01" className={inputClass} value={form.attendance_bonus_amount} onChange={(e) => setValue('attendance_bonus_amount', e.target.value)} placeholder="3000.00" /></Field>
+            <Field label="Overtime Multiplier"><input type="number" min="0" step="0.01" className={inputClass} value={form.overtime_multiplier} onChange={(e) => setValue('overtime_multiplier', e.target.value)} placeholder="2.00" /></Field>
+            <Field label="Night Differential (%)" helper="Set to 0 when night differential is not used."><input type="number" min="0" max="100" step="0.01" className={inputClass} value={form.night_differential_percent} onChange={(e) => setValue('night_differential_percent', e.target.value)} placeholder="0.00" /></Field>
             <Field label="Status"><select className={inputClass} value={form.employee_status} onChange={(e) => setValue('employee_status', e.target.value)}><option value="active">Active</option><option value="inactive">Inactive</option><option value="archived">Archived</option></select></Field>
             <Field label="Address" className="md:col-span-2 xl:col-span-3"><textarea rows={3} className={`${inputClass} h-auto py-3`} value={form.address} onChange={(e) => setValue('address', e.target.value)} placeholder="Complete home address" /></Field>
           </section>

@@ -13,9 +13,9 @@ import {
 } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
-import ReadOnlyNotice from '../../components/Shared/ReadOnlyNotice'
 import useCurrentUser from '../../utils/useCurrentUser'
 import { useFetch, useFetchPost } from '../../utils/useFetch'
+import { PERMISSIONS, hasPermission } from '../../config/permissions'
 
 const money = (value) =>
   new Intl.NumberFormat('en-PH', {
@@ -87,7 +87,7 @@ const EmptyState = ({ category }) => (
 
 const Notifications = () => {
   const { data: currentUserData } = useCurrentUser()
-  const canManage = currentUserData?.user?.role === 'super_admin'
+  const canManage = hasPermission(currentUserData?.user?.role, PERMISSIONS.SYSTEM_NOTIFICATIONS_MANAGE)
   const [category, setCategory] = useState('all')
   const [search, setSearch] = useState('')
   const [alert, setAlert] = useState(null)
@@ -197,8 +197,6 @@ const Notifications = () => {
           {isFetching ? 'Refreshing...' : 'Refresh'}
         </button>
       </div>
-
-      {!canManage ? <ReadOnlyNotice message="Admin can review due and overdue notices. Only a Super Admin can send reminders or mark buyers as contacted." /> : null}
 
       {alert ? (
         <StatusAlert

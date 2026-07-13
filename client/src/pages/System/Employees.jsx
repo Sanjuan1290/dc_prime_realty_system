@@ -3,10 +3,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FiBriefcase, FiDollarSign, FiEdit2, FiPlus, FiRefreshCw, FiSearch, FiUsers } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
-import ReadOnlyNotice from '../../components/Shared/ReadOnlyNotice'
 import EmployeeModal from '../../components/System/employeeComponents/EmployeeModal'
 import useCurrentUser from '../../utils/useCurrentUser'
 import { useFetch, useFetchPatch } from '../../utils/useFetch'
+import { PERMISSIONS, hasPermission } from '../../config/permissions'
 
 const money = (value) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value || 0))
 const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -17,7 +17,7 @@ const StatCard = ({ label, value, helper, icon: Icon }) => <div className="round
 const Employees = () => {
   const queryClient = useQueryClient()
   const { data: currentUserData } = useCurrentUser()
-  const canManage = currentUserData?.user?.role === 'super_admin'
+  const canManage = hasPermission(currentUserData?.user?.role, PERMISSIONS.EMPLOYEES_MANAGE)
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('all')
   const [department, setDepartment] = useState('all')
@@ -71,7 +71,6 @@ const Employees = () => {
         </div>
       </div>
 
-      {!canManage ? <ReadOnlyNotice message="Admin can review employee profiles and salary information. Only a Super Admin can add or change employee records." /> : null}
       {alert ? <StatusAlert type={alert.type} message={alert.message} onClose={alert.type === 'loading' ? undefined : () => setAlert(null)} /> : null}
       {isLoading ? <StatusAlert type="loading" message="Loading employees..." /> : null}
       {isError ? <StatusAlert type="error" message={error?.message || 'Failed to load employees.'} /> : null}
@@ -96,7 +95,7 @@ const Employees = () => {
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
           <table className="min-w-[1150px] w-full text-sm">
-            <thead className="border-b border-slate-200 bg-slate-50"><tr>{['Employee', 'Position', 'Department', 'Monthly Salary', 'Schedule', 'Grace', 'Type', 'Status', 'Actions'].map((head) => <th key={head} className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">{head}</th>)}</tr></thead>
+            <thead className="border-b border-slate-200 bg-slate-50"><tr>{['Employee', 'Position', 'Department', 'Monthly Salary', 'Schedule', 'Payroll Benefits', 'Type', 'Status', 'Actions'].map((head) => <th key={head} className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">{head}</th>)}</tr></thead>
             <tbody className="divide-y divide-slate-100">
               {!isLoading && employees.length === 0 ? <tr><td colSpan={9} className="px-6 py-14 text-center text-sm font-semibold text-slate-500">No employee records match the selected filters.</td></tr> : null}
               {employees.map((employee) => {
@@ -105,9 +104,9 @@ const Employees = () => {
                   <td className="px-4 py-4"><p className="font-black text-slate-950">{employee.full_name}</p><p className="mt-1 text-xs font-semibold text-blue-600">{employee.employee_code}</p><p className="text-xs text-slate-500">{employee.email || 'No email'}</p></td>
                   <td className="px-4 py-4 font-semibold text-slate-700">{employee.position}</td>
                   <td className="px-4 py-4 text-slate-600">{employee.department || '-'}</td>
-                  <td className="px-4 py-4 font-black text-slate-900">{money(employee.monthly_salary)}<p className="text-xs font-semibold text-slate-500">Divisor: {employee.payroll_divisor}</p></td>
+                  <td className="px-4 py-4 font-black text-slate-900">{money(employee.monthly_salary)}<p className="mt-1 max-w-[190px] text-xs font-semibold text-slate-500">Daily rate uses the scheduled work days in each salary month.</p></td>
                   <td className="px-4 py-4"><p className="font-semibold text-slate-700">{firstSchedule ? `${firstSchedule.shift_start?.slice(0, 5)}–${firstSchedule.shift_end?.slice(0, 5)}` : 'No schedule'}</p><p className="mt-1 text-xs text-slate-500">{(employee.work_days || []).map((day) => dayNames[day]).join(', ') || '-'}</p></td>
-                  <td className="px-4 py-4 text-slate-600">{employee.attendance_grace_minutes} min</td>
+                  <td className="px-4 py-4 text-slate-600"><p className="font-black text-slate-800">{employee.attendance_grace_minutes} min bonus grace</p><p className="mt-1 text-xs">Rice per release: {money(employee.rice_allowance)}</p><p className="text-xs">7th transpo: {money(employee.transportation_allowance)}</p><p className="text-xs">7th bonus: {money(employee.attendance_bonus_amount)}</p></td>
                   <td className="px-4 py-4 capitalize text-slate-600">{String(employee.employment_type || '').replace('_', ' ')}</td>
                   <td className="px-4 py-4"><span className={`inline-flex rounded-full px-3 py-1 text-xs font-black capitalize ring-1 ${statusClass[employee.employee_status] || statusClass.inactive}`}>{employee.employee_status}</span></td>
                   <td className="px-4 py-4"><div className="flex gap-2">{canManage ? <><button type="button" onClick={() => openEdit(employee)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-700 hover:bg-blue-100"><FiEdit2 />Edit</button><button type="button" onClick={() => changeStatus(employee)} disabled={statusMutation.isPending || employee.employee_status === 'archived'} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 hover:bg-slate-50 disabled:opacity-50">{employee.employee_status === 'active' ? 'Deactivate' : 'Activate'}</button></> : <span className="text-xs font-semibold text-slate-400">View only</span>}</div></td>

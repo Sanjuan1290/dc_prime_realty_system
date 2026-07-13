@@ -2,6 +2,9 @@ import { db } from '../../db/connect.js';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import { writeAuditLog } from './auditLogs.controller.js';
+import { canActorManageUserRole } from '../../config/permissions.js';
+
+const userRoles = new Set(['super_admin', 'admin', 'broker_network_manager', 'broker', 'manager', 'agent']);
 
 const sellerRoles = new Set([
   'broker_network_manager',
@@ -40,6 +43,16 @@ const normalizeStatus = (status) => (status === 'inactive' ? 'inactive' : 'activ
 const buildPersonName = (user = {}) => {
   return [user.first_name, user.middle_name, user.last_name].filter(Boolean).join(' ').trim() || user.email || 'User';
 };
+
+const denyUserManagement = (res, message) => res.status(403).json({
+  success: false,
+  message,
+});
+
+const actorCanManageTargetRole = (req, targetRole) =>
+  canActorManageUserRole(req.authUser?.role, targetRole);
+
+const validateRequestedRole = (role) => userRoles.has(String(role || ''));
 
 const getActiveLotProjects = async (connection = db) => {
   const [projects] = await connection.query(`
@@ -601,6 +614,12 @@ export const createUser = async (req, res) => {
     if (!first_name?.trim() || !last_name?.trim() || !email?.trim()) {
       return res.status(400).json({ message: 'First name, last name, and email are required.' });
     }
+    if (!validateRequestedRole(role)) {
+      return res.status(400).json({ message: 'Select a valid user role.' });
+    }
+    if (!actorCanManageTargetRole(req, role)) {
+      return denyUserManagement(res, 'Admin can create seller accounts only. Admin and Super Admin accounts can only be created by a Super Admin.');
+    }
 
     await connection.beginTransaction();
 
@@ -732,6 +751,20 @@ export const editUser = async (req, res) => {
     if (!first_name?.trim() || !last_name?.trim() || !email?.trim()) {
       return res.status(400).json({ message: 'First name, last name, and email are required.' });
     }
+    if (!validateRequestedRole(role)) {
+      return res.status(400).json({ message: 'Select a valid user role.' });
+    }
+
+    const [targetRows] = await connection.query(
+      `SELECT id, role FROM users WHERE id = ? LIMIT 1`,
+      [userId]
+    );
+    const targetUser = targetRows[0];
+    if (!targetUser) return res.status(404).json({ message: 'User not found.' });
+
+    if (!actorCanManageTargetRole(req, targetUser.role) || !actorCanManageTargetRole(req, role)) {
+      return denyUserManagement(res, 'Admin can edit seller accounts only. Admin and Super Admin accounts are protected.');
+    }
 
     await connection.beginTransaction();
 
@@ -849,12 +882,15 @@ export const toggleUserStatus = async (req, res) => {
     if (!userId) return res.status(400).json({ message: 'Invalid user id.' });
 
     const [rows] = await db.query(
-      `SELECT id, first_name, middle_name, last_name, email, status FROM users WHERE id = ? LIMIT 1`,
+      `SELECT id, first_name, middle_name, last_name, email, role, status FROM users WHERE id = ? LIMIT 1`,
       [userId]
     );
     const user = rows[0];
 
     if (!user) return res.status(404).json({ message: 'User not found.' });
+    if (!actorCanManageTargetRole(req, user.role)) {
+      return denyUserManagement(res, 'Admin cannot activate or deactivate Admin or Super Admin accounts.');
+    }
 
     const nextStatus = normalizeStatus(req.body.status || (user.status === 'active' ? 'inactive' : 'active'));
 
@@ -889,12 +925,15 @@ export const resetUserPassword = async (req, res) => {
     if (!userId) return res.status(400).json({ message: 'Invalid user id.' });
 
     const [rows] = await db.query(
-      `SELECT id, first_name, middle_name, last_name, email FROM users WHERE id = ? LIMIT 1`,
+      `SELECT id, first_name, middle_name, last_name, email, role FROM users WHERE id = ? LIMIT 1`,
       [userId]
     );
     const user = rows[0];
 
     if (!user) return res.status(404).json({ message: 'User not found.' });
+    if (!actorCanManageTargetRole(req, user.role)) {
+      return denyUserManagement(res, 'Admin cannot reset passwords for Admin or Super Admin accounts.');
+    }
 
     const passwordHash = await bcrypt.hash(String(newPassword), 10);
 

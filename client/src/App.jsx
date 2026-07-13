@@ -40,6 +40,8 @@ import SOAPrintPage from './components/Lot_Projects/ListingProfileComponents/Pri
 import DocumentsPrintPage from './components/Lot_Projects/ListingProfileComponents/Printouts/DocumentsPrintPage'
 import AccreditedSellerProofOfIncomePrintPage from './components/Lot_Projects/ListingProfileComponents/Printouts/AccreditedSellerProofOfIncomePrintPage'
 import ProjectPriceListPrintPage from './components/Lot_Projects/ListingProfileComponents/Printouts/ProjectPriceListPrintPage'
+import EmployeeSalaryReleasePrintPage from './components/System/employeeComponents/prints/EmployeeSalaryReleasePrintPage'
+import EmployeeLogbookPrintPage from './components/System/employeeComponents/prints/EmployeeLogbookPrintPage'
 
 const protect = (permission, element) => <ProtectedPermissionRoute permission={permission}>{element}</ProtectedPermissionRoute>
 
@@ -77,7 +79,7 @@ const App = () => {
           <Route path="audit-logs" element={<AuditLogs />} />
           <Route path="employees" element={<Employees />} />
           <Route path="attendance" element={<Attendance />} />
-          <Route path="cash-advances" element={<EmployeeCashAdvances />} />
+          <Route path="cash-advances" element={<Navigate to="/admin/employees" replace />} />
           <Route path="settings" element={<Settings />} />
         </Route>
 
@@ -95,6 +97,8 @@ const App = () => {
         <Route path="/super_admin/accredited/proof-of-income/print" element={<AccreditedSellerProofOfIncomePrintPage />} />
         <Route path="/lot-projects/:projectSlug/printouts/documents" element={<DocumentsPrintPage />} />
         <Route path="/lot-projects/:projectSlug/price-list/print" element={<ProjectPriceListPrintPage />} />
+        <Route path="/employee-payroll/release/print" element={protect(PERMISSIONS.PAYROLL_VIEW, <EmployeeSalaryReleasePrintPage />)} />
+        <Route path="/employee-payroll/logbook/print" element={protect(PERMISSIONS.ATTENDANCE_VIEW, <EmployeeLogbookPrintPage />)} />
       </>
     )
   )

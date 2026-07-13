@@ -191,8 +191,10 @@ const SearchableSelect = ({
   );
 };
 
-const CreateUserModal = ({ setShowCreateUser, onSaved }) => {
+const CreateUserModal = ({ setShowCreateUser, onSaved, allowedRoles = Object.keys(roleLabels), actorRole = "super_admin" }) => {
   const queryClient = useQueryClient();
+  const initialRole = allowedRoles.includes("agent") ? "agent" : (allowedRoles[0] || "agent");
+  const availableRoleEntries = useMemo(() => Object.entries(roleLabels).filter(([value]) => allowedRoles.includes(value)), [allowedRoles]);
   const [activeStep, setActiveStep] = useState(1);
   const [warning, setWarning] = useState("");
   const [form, setForm] = useState({
@@ -205,7 +207,7 @@ const CreateUserModal = ({ setShowCreateUser, onSaved }) => {
     prc_no: "",
     address: "",
     password: "password",
-    role: "agent",
+    role: initialRole,
     status: "active",
     seller_group_id: "",
     reports_under_user_id: "",
@@ -333,6 +335,11 @@ const CreateUserModal = ({ setShowCreateUser, onSaved }) => {
 
     if (!form.password.trim()) {
       setWarning("Temporary password is required.");
+      return false;
+    }
+
+    if (!allowedRoles.includes(form.role)) {
+      setWarning("You do not have permission to create this user role.");
       return false;
     }
 
@@ -544,10 +551,11 @@ const CreateUserModal = ({ setShowCreateUser, onSaved }) => {
                       }}
                       className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
                     >
-                      {Object.entries(roleLabels).map(([value, label]) => (
+                      {availableRoleEntries.map(([value, label]) => (
                         <option key={value} value={value}>{label}</option>
                       ))}
                     </select>
+                    {actorRole === "admin" ? <p className="text-xs font-semibold text-slate-500">Admin can create seller accounts only. Admin and Super Admin roles are unavailable.</p> : null}
                   </label>
 
                   <label className="flex flex-col gap-2">
