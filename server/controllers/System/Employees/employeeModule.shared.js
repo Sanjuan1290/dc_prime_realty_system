@@ -8,6 +8,17 @@ export const positiveNumber = (value, fallback = 0) => {
   return Number.isFinite(numberValue) && numberValue >= 0 ? numberValue : fallback;
 };
 
+// Employee cash advances are deducted from the next salary release as one outstanding balance.
+// The deduction is capped so attendance deductions can never push net salary below zero.
+export const calculateCashAdvanceDeduction = ({ advances = [], availableSalary = 0 } = {}) => {
+  const outstandingBalance = advances.reduce(
+    (sum, advance) => sum + positiveNumber(advance?.remaining_balance ?? advance?.remainingBalance),
+    0
+  );
+
+  return roundMoney(Math.min(outstandingBalance, positiveNumber(availableSalary)));
+};
+
 export const dateOnly = (value) => {
   const text = cleanText(value);
   return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : null;
@@ -127,6 +138,7 @@ const cashAdvanceTableSql = `
     reference_number VARCHAR(60) NOT NULL,
     request_date DATE NOT NULL,
     amount DECIMAL(14,2) NOT NULL,
+    -- Legacy compatibility columns. The application now deducts the outstanding balance on the next salary release.
     installment_count SMALLINT UNSIGNED NOT NULL DEFAULT 1,
     deduction_per_payroll DECIMAL(14,2) NOT NULL DEFAULT 0.00,
     start_deduction_date DATE NOT NULL,

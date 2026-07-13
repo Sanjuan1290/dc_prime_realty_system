@@ -3,6 +3,7 @@ import { writeAuditLog } from '../auditLogs.controller.js';
 import {
   buildEmployeeNameSql,
   calculateAttendanceMetrics,
+  calculateCashAdvanceDeduction,
   cleanText,
   countScheduledWorkDays,
   dateOnly,
@@ -111,7 +112,7 @@ const getEligibleAdvancesByEmployee = async (connection, releaseDate) => {
       FROM employee_cash_advances
       WHERE cash_advance_status IN ('approved','active')
         AND remaining_balance > 0
-        AND start_deduction_date <= ?
+        AND COALESCE(DATE(approved_at), request_date) <= ?
       ORDER BY employee_id, request_date, employee_cash_advance_id
     `,
     [releaseDate]
@@ -338,11 +339,10 @@ const buildPayrollItem = ({ employee, schedules, attendanceRows, bonusAttendance
 
   const attendanceDeductions = roundMoney(lateDeduction + undertimeDeduction + absenceDeduction);
   const activeAdvances = advances || [];
-  const suggestedCashAdvanceDeduction = roundMoney(activeAdvances.reduce(
-    (sum, advance) => sum + Math.min(Number(advance.deduction_per_payroll || 0), Number(advance.remaining_balance || 0)),
-    0
-  ));
-  const cashAdvanceDeduction = roundMoney(Math.min(suggestedCashAdvanceDeduction, Math.max(grossPay - attendanceDeductions, 0)));
+  const cashAdvanceDeduction = calculateCashAdvanceDeduction({
+    advances: activeAdvances,
+    availableSalary: Math.max(grossPay - attendanceDeductions, 0),
+  });
   const totalDeductions = roundMoney(attendanceDeductions + cashAdvanceDeduction);
   const netPay = roundMoney(Math.max(grossPay - totalDeductions, 0));
   const hourlyRate = scheduledRegularSeconds > 0 ? roundMoney(baseSalary / (scheduledRegularSeconds / 3600)) : 0;
@@ -394,7 +394,7 @@ const buildPayrollItem = ({ employee, schedules, attendanceRows, bonusAttendance
       id: Number(advance.employee_cash_advance_id),
       referenceNumber: advance.reference_number,
       remainingBalance: Number(advance.remaining_balance || 0),
-      suggestedDeduction: Math.min(Number(advance.deduction_per_payroll || 0), Number(advance.remaining_balance || 0)),
+      suggestedDeduction: Number(advance.remaining_balance || 0),
     })),
     logbook: {
       rows: logbookRows,

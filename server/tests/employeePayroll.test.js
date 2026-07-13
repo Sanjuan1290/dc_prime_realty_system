@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   calculateAttendanceMetrics,
+  calculateCashAdvanceDeduction,
   countScheduledWorkDays,
   getNextPayrollReleaseDate,
   getPayrollAllowances,
@@ -118,4 +119,23 @@ test('rice allowance is included in both releases while transportation is 7th-on
     riceAllowance: 500,
     transportationAllowance: 0,
   });
+});
+
+
+test('approved cash advance deducts the full outstanding balance on the next salary release', () => {
+  const result = calculateCashAdvanceDeduction({
+    advances: [{ remaining_balance: 5000 }],
+    availableSalary: 9000,
+  });
+
+  assert.equal(result, 5000);
+});
+
+test('cash advance deduction is capped by the salary available after attendance deductions', () => {
+  const result = calculateCashAdvanceDeduction({
+    advances: [{ remaining_balance: 5000 }, { remaining_balance: 2500 }],
+    availableSalary: 4200,
+  });
+
+  assert.equal(result, 4200);
 });

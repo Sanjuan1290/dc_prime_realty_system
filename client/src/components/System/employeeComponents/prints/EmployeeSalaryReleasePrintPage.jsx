@@ -57,13 +57,27 @@ const amountToWords = (value) => {
   return `${wholeNumberToWords(pesos)} PESOS${centavos ? ` AND ${wholeNumberToWords(centavos)} CENTAVOS` : ''} ONLY`
 }
 
-const ReceiptRow = ({ label, value, unit = '', bold = false }) => (
-  <div className="grid grid-cols-[215px_1fr_105px] border-b border-slate-400 last:border-b-0">
+// A receipt row follows the printed form's Description, Hours, Unit, and Amount columns.
+// Detail rows, such as Position, can span all value columns without forcing text into the hours column.
+const ReceiptRow = ({ label, hours = '', unit = '', amount = '', detail = '', bold = false }) => (
+  <div className="grid grid-cols-[minmax(0,1fr)_105px_85px_125px] border-b border-slate-400 last:border-b-0">
     <div className={`border-r border-slate-400 px-3 py-2 ${bold ? 'font-black' : 'font-semibold'}`}>{label}</div>
-    <div className={`px-3 py-2 text-right tabular-nums ${bold ? 'font-black' : 'font-semibold'}`}>{value}</div>
-    <div className="border-l border-slate-400 px-3 py-2 font-semibold">{unit}</div>
+
+    {detail ? (
+      <div className={`col-span-3 px-3 py-2 ${bold ? 'font-black' : 'font-semibold'}`}>{detail}</div>
+    ) : (
+      <>
+        <div className={`border-r border-slate-400 px-3 py-2 text-right tabular-nums ${bold ? 'font-black' : 'font-semibold'}`}>{hours}</div>
+        <div className={`border-r border-slate-400 px-3 py-2 ${bold ? 'font-black' : 'font-semibold'}`}>{unit}</div>
+        <div className={`px-3 py-2 text-right tabular-nums ${bold ? 'font-black' : 'font-semibold'}`}>{amount}</div>
+      </>
+    )}
   </div>
 )
+
+// Optional monetary rows are removed when their amount rounds to zero.
+// This keeps the printed receipt close to the supplied salary-release form without changing payroll totals.
+const hasNonZeroAmount = (value) => Math.abs(Number(value || 0)) >= 0.005
 
 const EmployeeSalaryReleasePrintPage = () => {
   const params = useMemo(() => new URLSearchParams(window.location.search), [])
@@ -102,10 +116,12 @@ const EmployeeSalaryReleasePrintPage = () => {
           <h1 className="mb-2 text-[17px] font-black">Acknowledgement Receipt for Fund Release:</h1>
 
           <div className="border border-slate-500">
-            <div className="grid grid-cols-[225px_1fr_110px] bg-slate-200 text-[12px] font-black">
+            <div className="grid grid-cols-[225px_minmax(0,1fr)_105px_85px_125px] bg-slate-200 text-[12px] font-black">
               <div className="border-r border-slate-500 px-3 py-2">PAYEE</div>
               <div className="border-r border-slate-500 px-3 py-2">Description</div>
-              <div className="px-3 py-2"># of Hours</div>
+              <div className="border-r border-slate-500 px-3 py-2 text-center"># of Hours</div>
+              <div className="border-r border-slate-500 px-3 py-2">Unit</div>
+              <div className="px-3 py-2 text-right">Amount</div>
             </div>
 
             <div className="grid grid-cols-[225px_1fr] border-t border-slate-500">
@@ -116,31 +132,52 @@ const EmployeeSalaryReleasePrintPage = () => {
             <div className="grid grid-cols-[225px_1fr] border-t border-slate-500">
               <div className="border-r border-slate-500 px-3 py-3 text-right font-semibold">Summary:</div>
               <div>
-                <ReceiptRow label="Position" value={`${row.position || '-'}${row.employmentType ? ` (${String(row.employmentType).replace('_', ' ')})` : ''}`} unit={row.department || ''} />
-                <ReceiptRow label="Rate" value={number(row.hourlyRate)} unit="Per Hour" />
-                <ReceiptRow label="Total Regular Hours" value={number(regularHours)} unit="Hours" />
-                <ReceiptRow label="Total Regular Hours Attended" value={number(attendedHours)} unit="Hours" />
-                <ReceiptRow label="Paid Time Off" value={number(paidTimeOffHours)} unit="Hours" />
-                <ReceiptRow label="Total Holiday Hours (Regular)" value={number(regularHolidayHours)} unit="Hours" />
-                <ReceiptRow label="Total Holiday Hours (Special Non-Working)" value={number(specialHolidayHours)} unit="Hours" />
-                <ReceiptRow label="Tardiness" value={number(tardinessMinutes)} unit="Minutes" />
-                <ReceiptRow label="Tardiness Deduction" value={money(row.lateDeduction)} />
-                <ReceiptRow label="Undertime Deduction" value={money(row.undertimeDeduction)} />
-                <ReceiptRow label="Absence Deduction" value={money(row.absenceDeduction)} />
-                <ReceiptRow label="Regular Pay Total" value={money(regularTotal)} bold />
-                <ReceiptRow label="Overtime" value={`${number(overtimeHours)} (${money(row.overtimePay)})`} unit="Hours / Pay" />
-                <ReceiptRow label="Night Differential" value={`${number(nightHours)} (${money(row.nightDifferentialPay)})`} unit="Hours / Pay" />
-                <ReceiptRow label="Rice Allowance" value={money(row.riceAllowance)} />
-                <ReceiptRow label="Transportation Allowance (7th Only)" value={money(row.transportationAllowance)} />
-                <ReceiptRow label="Attendance Bonus" value={money(row.attendanceBonus)} />
-                <ReceiptRow label="Cash Advance Deduction" value={`-${money(row.cashAdvanceDeduction)}`} />
-                <ReceiptRow label="Other Adjustments" value={money(row.otherAdjustments)} />
+                <ReceiptRow
+                  label="Position"
+                  detail={`${row.position || '-'}${row.employmentType ? ` (${String(row.employmentType).replace('_', ' ')})` : ''}${row.department ? ` · ${row.department}` : ''}`}
+                />
+                <ReceiptRow label="Rate" hours={number(row.hourlyRate)} unit="Per Hour" />
+                <ReceiptRow label="Total Regular Hours" hours={number(regularHours)} unit="Hours" />
+                <ReceiptRow label="Total Regular Hours Attended" hours={number(attendedHours)} unit="Hours" />
+                <ReceiptRow label="Paid Time Off" hours={number(paidTimeOffHours)} unit="Hours" />
+                <ReceiptRow label="Total Holiday Hours (Regular)" hours={number(regularHolidayHours)} unit="Hours" />
+                <ReceiptRow label="Total Holiday Hours (Special Non-Working)" hours={number(specialHolidayHours)} unit="Hours" />
+                <ReceiptRow label="Tardiness" hours={number(tardinessMinutes)} unit="Minutes" />
+
+                {hasNonZeroAmount(row.lateDeduction) ? (
+                  <ReceiptRow label="Tardiness Deduction" amount={money(row.lateDeduction)} />
+                ) : null}
+                {hasNonZeroAmount(row.undertimeDeduction) ? (
+                  <ReceiptRow label="Undertime Deduction" amount={money(row.undertimeDeduction)} />
+                ) : null}
+                {hasNonZeroAmount(row.absenceDeduction) ? (
+                  <ReceiptRow label="Absence Deduction" amount={money(row.absenceDeduction)} />
+                ) : null}
+
+                <ReceiptRow label="Regular Pay Total" amount={money(regularTotal)} bold />
+                <ReceiptRow label="Overtime" hours={number(overtimeHours)} unit="Hour" amount={money(row.overtimePay)} />
+                <ReceiptRow label="Night Differential" hours={number(nightHours)} unit="Hour" amount={money(row.nightDifferentialPay)} />
+                <ReceiptRow label="Rice Allowance" amount={money(row.riceAllowance)} />
+
+                {hasNonZeroAmount(row.transportationAllowance) ? (
+                  <ReceiptRow label="Transportation Allowance (7th Only)" amount={money(row.transportationAllowance)} />
+                ) : null}
+                {hasNonZeroAmount(row.attendanceBonus) ? (
+                  <ReceiptRow label="Attendance Bonus" amount={money(row.attendanceBonus)} />
+                ) : null}
+                {hasNonZeroAmount(row.cashAdvanceDeduction) ? (
+                  <ReceiptRow label="Cash Advance Deduction" amount={`-${money(row.cashAdvanceDeduction)}`} />
+                ) : null}
+                {hasNonZeroAmount(row.otherAdjustments) ? (
+                  <ReceiptRow label="Other Adjustments" amount={money(row.otherAdjustments)} />
+                ) : null}
               </div>
             </div>
 
-            <div className="grid grid-cols-[225px_1fr] border-t-2 border-slate-600 bg-slate-100 text-[13px] font-black">
+            <div className="grid grid-cols-[225px_minmax(0,1fr)_105px_85px_125px] border-t-2 border-slate-600 bg-slate-100 text-[13px] font-black">
               <div className="border-r border-slate-500 px-3 py-3 underline">TOTAL</div>
-              <div className="px-3 py-3 text-right underline">{money(totalAmount)}</div>
+              <div className="col-span-3 border-r border-slate-500 px-3 py-3" />
+              <div className="px-3 py-3 text-right tabular-nums underline">{money(totalAmount)}</div>
             </div>
           </div>
 
