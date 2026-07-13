@@ -16,6 +16,9 @@ import projectsRouter from './routers/System/projects.routers.js';
 import notificationsRouter from './routers/System/notifications.routers.js';
 import auditLogsRouter from './routers/System/auditLogs.router.js';
 import systemSettingsRouter from './routers/System/systemSettings.routers.js';
+import employeesRouter from './routers/System/employees.routers.js';
+import attendanceRouter from './routers/System/attendance.routers.js';
+import employeeCashAdvancesRouter from './routers/System/employeeCashAdvances.routers.js';
 
 const app = express();
 
@@ -63,6 +66,9 @@ app.use('/api/v1/projects', projectsRouter);
 app.use('/api/v1/notifications', notificationsRouter);
 app.use('/api/v1/audit-logs', auditLogsRouter);
 app.use('/api/v1/system-settings', systemSettingsRouter);
+app.use('/api/v1/employees', employeesRouter);
+app.use('/api/v1/attendance', attendanceRouter);
+app.use('/api/v1/employee-cash-advances', employeeCashAdvancesRouter);
 
 app.use((err, req, res, next) => {
   console.error(err);
@@ -88,5 +94,3 @@ const startServer = async () => {
 };
 
 startServer();
-
-

@@ -12,6 +12,8 @@ import {
 } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
+import ReadOnlyNotice from '../../components/Shared/ReadOnlyNotice'
+import useCurrentUser from '../../utils/useCurrentUser'
 import AddLotProjectModal from '../../components/System/projectComponents/AddLotProjectModal'
 import HouseLotProjectModal from '../../components/System/projectComponents/HouseLotProjectModal'
 import {
@@ -65,6 +67,8 @@ const normalizeProject = (project) => ({
 })
 
 const Projects = () => {
+  const { data: currentUserData } = useCurrentUser()
+  const canManage = currentUserData?.user?.role === 'super_admin'
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
@@ -250,6 +254,8 @@ const Projects = () => {
 
   return (
     <main className="flex flex-col gap-6">
+      {!canManage ? <ReadOnlyNotice message="Admin can open and review projects. Only a Super Admin can add, delete, or change project status." /> : null}
+
       {alert ? (
         <StatusAlert
           type={alert.type}
@@ -290,6 +296,7 @@ const Projects = () => {
           icon={FiMap}
         />
 
+        {canManage ? (
         <div className="flex flex-col gap-2 sm:flex-row">
           <button
             type="button"
@@ -310,6 +317,7 @@ const Projects = () => {
             Add House & Lot Project
           </button>
         </div>
+        ) : null}
       </section>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -435,15 +443,9 @@ const Projects = () => {
                           Details
                         </button>
 
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(project.id)}
-                          disabled={deleteProjectMutation.isPending || changeStatusMutation.isPending}
-                          className="inline-flex h-9 items-center gap-2 rounded-lg bg-red-600 px-3 text-xs font-black text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          <FiTrash2 className="h-3.5 w-3.5" />
-                          {isDeleting ? 'Deleting...' : 'Delete'}
-                        </button>
+                        {canManage ? (
+                          <button type="button" onClick={() => handleDelete(project.id)} disabled={deleteProjectMutation.isPending || changeStatusMutation.isPending} className="inline-flex h-9 items-center gap-2 rounded-lg bg-red-600 px-3 text-xs font-black text-white transition hover:bg-red-700 disabled:opacity-60"><FiTrash2 className="h-3.5 w-3.5" />{isDeleting ? 'Deleting...' : 'Delete'}</button>
+                        ) : <span className="inline-flex h-9 items-center px-3 text-xs font-semibold text-slate-400">View only</span>}
                       </div>
                     </td>
                   </tr>
@@ -494,7 +496,7 @@ const Projects = () => {
         </div>
       </section>
 
-      {showLotModal ? (
+      {showLotModal && canManage ? (
         <AddLotProjectModal
           documents={documents}
           templates={templates}
@@ -505,7 +507,7 @@ const Projects = () => {
         />
       ) : null}
 
-      {showHouseLotModal ? (
+      {showHouseLotModal && canManage ? (
         <HouseLotProjectModal onClose={() => setShowHouseLotModal(false)} />
       ) : null}
     </main>
@@ -513,4 +515,3 @@ const Projects = () => {
 }
 
 export default Projects
-

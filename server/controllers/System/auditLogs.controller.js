@@ -671,4 +671,3 @@ export const confirmAuditLogDeletion = async (req, res) => {
     connection.release();
   }
 };
-

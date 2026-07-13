@@ -138,6 +138,11 @@ const SystemLayout = () => {
         items: [{ label: "Projects", pathname: "projects", icon: FiMap }],
       },
       {
+        title: "HOUSE & LOT PROJECTS",
+        description: "Future house and lot workspaces",
+        items: [{ label: "House & Lot Projects", pathname: "house-lot-projects", icon: FiHome }],
+      },
+      {
         title: "LOT PROJECTS",
         description: isLotProjectsLoading
           ? "Loading lot projects..."
@@ -170,7 +175,7 @@ const SystemLayout = () => {
         items: [
           { label: "Employees", pathname: "employees", icon: FiUsers },
           { label: "Attendance", pathname: "attendance", icon: FiClock },
-          { label: "Cash Advances", pathname: "cash-advance", icon: FiDollarSign },
+          { label: "Cash Advances", pathname: "cash-advances", icon: FiDollarSign },
         ],
       },
       {
@@ -227,6 +232,10 @@ const SystemLayout = () => {
 
   if (user?.must_change_password) {
     return <Navigate to="/change-password" replace />;
+  }
+
+  if (user?.role !== "super_admin") {
+    return <Navigate to={user?.role === "admin" ? "/admin/projects" : "/"} replace />;
   }
 
   return (
@@ -470,4 +479,3 @@ const SystemLayout = () => {
 };
 
 export default SystemLayout;
-

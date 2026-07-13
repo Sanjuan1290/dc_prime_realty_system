@@ -7,6 +7,7 @@ import {
 import { writeAuditLog } from './auditLogs.controller.js';
 
 const adminRoles = new Set(['super_admin', 'admin']);
+const settingsManagerRoles = new Set(['super_admin']);
 
 const cleanText = (value, fallback = '') => String(value ?? fallback).trim();
 const nullableText = (value) => {
@@ -34,6 +35,22 @@ const requireAdmin = async (req) => {
     throw error;
   }
 
+  return user;
+};
+
+
+const requireSettingsManager = async (req) => {
+  const user = await getAuthenticatedUser(req);
+  if (!user) {
+    const error = new Error('You must be logged in to manage system settings.');
+    error.statusCode = 401;
+    throw error;
+  }
+  if (!settingsManagerRoles.has(user.role)) {
+    const error = new Error('Only a Super Admin can edit system settings.');
+    error.statusCode = 403;
+    throw error;
+  }
   return user;
 };
 
@@ -145,7 +162,7 @@ export const updateSystemSettings = async (req, res) => {
   const connection = await db.getConnection();
 
   try {
-    const actor = await requireAdmin(req);
+    const actor = await requireSettingsManager(req);
     await ensureSystemSettingsTable(connection);
 
     const payload = normalizeSettingsPayload(req.body);
@@ -231,4 +248,3 @@ export const updateSystemSettings = async (req, res) => {
     connection.release();
   }
 };
-

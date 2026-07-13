@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FiEdit2, FiRefreshCw, FiSettings } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
+import ReadOnlyNotice from '../../components/Shared/ReadOnlyNotice'
+import useCurrentUser from '../../utils/useCurrentUser'
 import SystemSettingsForm from '../../components/System/settingsComponents/SystemSettingsForm'
 import { formatDateTime } from '../../utils/formatDateTime'
 import { useFetch, useFetchPut } from '../../utils/useFetch'
@@ -38,6 +40,8 @@ const mapSettingsToForm = (settings = {}) => ({
 })
 
 const Settings = () => {
+  const { data: currentUserData } = useCurrentUser()
+  const canManage = currentUserData?.user?.role === 'super_admin'
   const queryClient = useQueryClient()
   const [form, setForm] = useState(defaultForm)
   const [alert, setAlert] = useState(null)
@@ -68,7 +72,7 @@ const Settings = () => {
 
   const handleSubmit = (event) => {
     event.preventDefault()
-    if (!isEditing) return
+    if (!isEditing || !canManage) return
     saveMutation.mutate(form)
   }
 
@@ -98,7 +102,7 @@ const Settings = () => {
             Refresh
           </button>
 
-          {!isEditing ? (
+          {canManage && !isEditing ? (
             <button
               type="button"
               onClick={() => setIsEditing(true)}
@@ -111,6 +115,8 @@ const Settings = () => {
           ) : null}
         </div>
       </div>
+
+      {!canManage ? <ReadOnlyNotice message="Admin can review system settings. Only a Super Admin can edit and save changes." /> : null}
 
       {alert ? (
         <StatusAlert type={alert.type} message={alert.message} onClose={alert.type === 'loading' ? undefined : () => setAlert(null)} />
@@ -136,7 +142,7 @@ const Settings = () => {
         setForm={setForm}
         onSubmit={handleSubmit}
         isSaving={saveMutation.isPending}
-        disabled={!isEditing}
+        disabled={!isEditing || !canManage}
         onCancel={handleCancel}
       />
     </main>
@@ -144,4 +150,3 @@ const Settings = () => {
 }
 
 export default Settings
-

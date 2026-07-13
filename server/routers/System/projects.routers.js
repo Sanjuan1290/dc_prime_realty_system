@@ -1,4 +1,6 @@
 import express from 'express';
+import { authenticateUser, requirePermission } from '../../middleware/auth.middleware.js';
+import { PERMISSIONS } from '../../config/permissions.js';
 
 import {
   getLotProjects,
@@ -55,45 +57,45 @@ import {
 } from '../../controllers/Lot_Projects/Settings/Settings.controller.js';
 
 const router = express.Router();
+router.use(authenticateUser);
 
-router.get('/lot-projects', getLotProjects);
-router.get('/lot-projects/options', getLotProjectOptions);
-router.get('/lot-projects/:projectSlug/dashboard', getLotProjectDashboard);
-router.get('/lot-projects/:projectSlug/price-list', getLotProjectPriceList);
-router.get('/lot-projects/:projectSlug/listings', getLotProjectListings);
-router.get('/lot-projects/:projectSlug/payment-logs', getLotProjectPaymentLogs);
-router.get('/lot-projects/:projectSlug/commissions', getLotProjectCommissions);
-router.patch('/lot-projects/:projectSlug/commissions/:commissionId', updateLotProjectCommission);
-router.get('/lot-projects/:projectSlug/settings', getLotProjectSettings);
-router.put('/lot-projects/:projectSlug/settings', updateLotProjectSettings);
-router.get('/lot-projects/:projectSlug/listings/:listingId', getLotProjectListingProfile);
-router.get('/lot-projects/:projectSlug', getLotProjectBySlug);
+router.get('/lot-projects', requirePermission(PERMISSIONS.SYSTEM_PROJECTS_VIEW), getLotProjects);
+router.get('/lot-projects/options', requirePermission(PERMISSIONS.SYSTEM_PROJECTS_VIEW), getLotProjectOptions);
+router.get('/lot-projects/:projectSlug/dashboard', requirePermission(PERMISSIONS.LOT_DASHBOARD_VIEW), getLotProjectDashboard);
+router.get('/lot-projects/:projectSlug/price-list', requirePermission(PERMISSIONS.LOT_LISTINGS_VIEW), getLotProjectPriceList);
+router.get('/lot-projects/:projectSlug/listings', requirePermission(PERMISSIONS.LOT_LISTINGS_VIEW), getLotProjectListings);
+router.get('/lot-projects/:projectSlug/payment-logs', requirePermission(PERMISSIONS.LOT_PAYMENT_LOGS_VIEW), getLotProjectPaymentLogs);
+router.get('/lot-projects/:projectSlug/commissions', requirePermission(PERMISSIONS.LOT_COMMISSIONS_VIEW), getLotProjectCommissions);
+router.patch('/lot-projects/:projectSlug/commissions/:commissionId', requirePermission(PERMISSIONS.LOT_COMMISSIONS_MANAGE), updateLotProjectCommission);
+router.get('/lot-projects/:projectSlug/settings', requirePermission(PERMISSIONS.LOT_SETTINGS_VIEW), getLotProjectSettings);
+router.put('/lot-projects/:projectSlug/settings', requirePermission(PERMISSIONS.LOT_SETTINGS_MANAGE), updateLotProjectSettings);
+router.get('/lot-projects/:projectSlug/listings/:listingId', requirePermission(PERMISSIONS.LOT_LISTINGS_VIEW), getLotProjectListingProfile);
+router.get('/lot-projects/:projectSlug', requirePermission(PERMISSIONS.LOT_PROJECT_VIEW), getLotProjectBySlug);
 
-router.post('/lot-projects', createLotProject);
-router.post('/lot-projects/:projectSlug/listings', createLotProjectListing);
-router.put('/lot-projects/:projectSlug/listings/:listingId', updateLotProjectListing);
-router.delete('/lot-projects/:projectSlug/listings/:listingId', deleteLotProjectListing);
-router.put('/lot-projects/:projectSlug/listings/:listingId/client-profile', updateLotProjectClientProfile);
-router.post('/lot-projects/:projectSlug/listings/:listingId/reserve', reserveLotProjectListing);
-router.patch('/lot-projects/:projectSlug/listings/:listingId/hold', holdLotProjectListing);
-router.patch('/lot-projects/:projectSlug/listings/:listingId/unhold', unholdLotProjectListing);
-router.put('/lot-projects/:projectSlug/listings/:listingId/document-requirements', updateLotProjectListingDocumentRequirements);
-router.put('/lot-projects/:projectSlug/listings/:listingId/documents/:documentId/upload', uploadLotProjectListingDocument);
-router.patch('/lot-projects/:projectSlug/listings/:listingId/documents/:documentId/approve', approveLotProjectListingDocument);
-router.patch('/lot-projects/:projectSlug/listings/:listingId/documents/:documentId/clear', clearLotProjectListingDocument);
-router.put('/lot-projects/:projectSlug/listings/:listingId/soa-terms', updateLotProjectListingSoaTerms);
-router.post('/lot-projects/:projectSlug/listings/:listingId/payments', createLotProjectListingPayment);
-router.put('/lot-projects/:projectSlug/listings/:listingId/payments/:paymentId', updateLotProjectListingPayment);
-router.post('/lot-projects/:projectSlug/listings/:listingId/payments/:paymentId/delete', deleteLotProjectListingPayment);
-router.post('/lot-projects/:projectSlug/listings/:listingId/payment-schedules/:scheduleId/penalty-extension', grantPaymentSchedulePenaltyExtension);
-router.put('/lot-projects/:projectSlug/listings/:listingId/payment-schedules/:scheduleId/penalty-extension/:reliefId', updatePaymentSchedulePenaltyExtension);
-router.post('/lot-projects/:projectSlug/listings/:listingId/payment-schedules/:scheduleId/penalty-correction', correctPaymentSchedulePenalty);
-router.post('/lot-projects/:projectSlug/listings/:listingId/payment-schedules/:scheduleId/penalty-waiver', waivePaymentSchedulePenalty);
-router.post('/lot-projects/:projectSlug/listings/:listingId/penalty-reliefs/:reliefId/restore', restorePaymentSchedulePenaltyWaiver);
+router.post('/lot-projects', requirePermission(PERMISSIONS.SYSTEM_PROJECTS_MANAGE), createLotProject);
+router.put('/lot-projects/:id', requirePermission(PERMISSIONS.SYSTEM_PROJECTS_MANAGE), updateLotProject);
+router.patch('/lot-projects/:id/status', requirePermission(PERMISSIONS.SYSTEM_PROJECTS_MANAGE), toggleLotProjectStatus);
+router.delete('/lot-projects/:id', requirePermission(PERMISSIONS.SYSTEM_PROJECTS_MANAGE), deleteLotProject);
 
-router.put('/lot-projects/:id', updateLotProject);
-router.patch('/lot-projects/:id/status', toggleLotProjectStatus);
-router.delete('/lot-projects/:id', deleteLotProject);
+router.post('/lot-projects/:projectSlug/listings', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), createLotProjectListing);
+router.put('/lot-projects/:projectSlug/listings/:listingId', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), updateLotProjectListing);
+router.delete('/lot-projects/:projectSlug/listings/:listingId', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), deleteLotProjectListing);
+router.put('/lot-projects/:projectSlug/listings/:listingId/client-profile', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), updateLotProjectClientProfile);
+router.post('/lot-projects/:projectSlug/listings/:listingId/reserve', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), reserveLotProjectListing);
+router.patch('/lot-projects/:projectSlug/listings/:listingId/hold', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), holdLotProjectListing);
+router.patch('/lot-projects/:projectSlug/listings/:listingId/unhold', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), unholdLotProjectListing);
+router.put('/lot-projects/:projectSlug/listings/:listingId/document-requirements', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), updateLotProjectListingDocumentRequirements);
+router.put('/lot-projects/:projectSlug/listings/:listingId/documents/:documentId/upload', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), uploadLotProjectListingDocument);
+router.patch('/lot-projects/:projectSlug/listings/:listingId/documents/:documentId/approve', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), approveLotProjectListingDocument);
+router.patch('/lot-projects/:projectSlug/listings/:listingId/documents/:documentId/clear', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), clearLotProjectListingDocument);
+router.put('/lot-projects/:projectSlug/listings/:listingId/soa-terms', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), updateLotProjectListingSoaTerms);
+router.post('/lot-projects/:projectSlug/listings/:listingId/payments', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), createLotProjectListingPayment);
+router.put('/lot-projects/:projectSlug/listings/:listingId/payments/:paymentId', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), updateLotProjectListingPayment);
+router.post('/lot-projects/:projectSlug/listings/:listingId/payments/:paymentId/delete', requirePermission(PERMISSIONS.LOT_PAYMENT_DELETE), deleteLotProjectListingPayment);
+router.post('/lot-projects/:projectSlug/listings/:listingId/payment-schedules/:scheduleId/penalty-extension', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), grantPaymentSchedulePenaltyExtension);
+router.put('/lot-projects/:projectSlug/listings/:listingId/payment-schedules/:scheduleId/penalty-extension/:reliefId', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), updatePaymentSchedulePenaltyExtension);
+router.post('/lot-projects/:projectSlug/listings/:listingId/payment-schedules/:scheduleId/penalty-correction', requirePermission(PERMISSIONS.LOT_PENALTY_CORRECT), correctPaymentSchedulePenalty);
+router.post('/lot-projects/:projectSlug/listings/:listingId/payment-schedules/:scheduleId/penalty-waiver', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), waivePaymentSchedulePenalty);
+router.post('/lot-projects/:projectSlug/listings/:listingId/penalty-reliefs/:reliefId/restore', requirePermission(PERMISSIONS.LOT_PENALTY_CORRECT), restorePaymentSchedulePenaltyWaiver);
 
 export default router;
-

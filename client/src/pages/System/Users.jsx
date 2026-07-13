@@ -3,6 +3,8 @@ import { NavLink } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import PageHeader from "../../components/Shared/PageHeader";
 import StatusAlert from "../../components/Shared/StatusAlert";
+import ReadOnlyNotice from "../../components/Shared/ReadOnlyNotice";
+import useCurrentUser from "../../utils/useCurrentUser";
 import { FaUserPlus } from "react-icons/fa";
 import {
   FiAlertTriangle,
@@ -83,6 +85,8 @@ const ResetPasswordConfirmModal = ({ user, onClose, onConfirm, isSaving }) => {
 }
 
 const Users = () => {
+  const { data: currentUserData } = useCurrentUser();
+  const canManage = currentUserData?.user?.role === "super_admin";
   const queryClient = useQueryClient();
   const [showEditUser, setShowEditUser] = useState(false);
   const [showCreateUser, setShowCreateUser] = useState(false);
@@ -205,25 +209,10 @@ const Users = () => {
           icon={FaUserPlus}
         />
 
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <NavLink
-            to="seller_group"
-            className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-sm font-bold text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
-          >
-            Seller Group
-          </NavLink>
-
-          <button
-            type="button"
-            onClick={() => setShowCreateUser(true)}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700"
-          >
-            <FiPlus className="h-4 w-4" />
-            Create User
-          </button>
-        </div>
+        {canManage ? <div className="flex flex-col gap-2 sm:flex-row"><NavLink to="seller_group" className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-sm font-bold text-slate-700 shadow-sm hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700">Seller Group</NavLink><button type="button" onClick={() => setShowCreateUser(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-bold text-white shadow-sm hover:bg-blue-700"><FiPlus className="h-4 w-4" />Create User</button></div> : null}
       </div>
 
+      {!canManage ? <ReadOnlyNotice message="Admin can review user accounts. Only a Super Admin can create, edit, reset, activate, or deactivate accounts." /> : null}
       {alert ? <StatusAlert type={alert.type} message={alert.message} onClose={alert.type === "loading" ? undefined : () => setAlert(null)} /> : null}
       {isLoading ? <StatusAlert type="loading" message="Loading users..." /> : null}
       {!isLoading && isFetching ? <StatusAlert type="info" message="Refreshing users..." /> : null}
@@ -343,17 +332,7 @@ const Users = () => {
                     <span className={`w-fit rounded-full border px-3 py-1 text-xs font-bold capitalize ${user.status === "active" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-slate-50 text-slate-500"}`}>
                       {user.status}
                     </span>
-                    <div className="flex justify-end gap-2">
-                      <button type="button" onClick={() => openEditModal(user)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:bg-slate-50">
-                        <FiEdit2 className="h-3.5 w-3.5" /> Edit
-                      </button>
-                      <button type="button" onClick={() => handleResetPassword(user)} disabled={resetPasswordMutation.isPending || toggleStatusMutation.isPending} className="inline-flex h-9 items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 text-xs font-bold text-amber-700 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60">
-                        <FiKey className="h-3.5 w-3.5" /> {activeAction?.type === "reset" && activeAction?.userId === user.id ? "Resetting..." : "Reset"}
-                      </button>
-                      <button type="button" onClick={() => handleToggleStatus(user)} disabled={resetPasswordMutation.isPending || toggleStatusMutation.isPending} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">
-                        {activeAction?.type === "status" && activeAction?.userId === user.id ? "Updating..." : user.status === "active" ? "Deactivate" : "Activate"}
-                      </button>
-                    </div>
+                    <div className="flex justify-end gap-2">{canManage ? <><button type="button" onClick={() => openEditModal(user)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:bg-slate-50"><FiEdit2 className="h-3.5 w-3.5" />Edit</button><button type="button" onClick={() => handleResetPassword(user)} disabled={resetPasswordMutation.isPending || toggleStatusMutation.isPending} className="inline-flex h-9 items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 text-xs font-bold text-amber-700 hover:bg-amber-100 disabled:opacity-60"><FiKey className="h-3.5 w-3.5" />{activeAction?.type === "reset" && activeAction?.userId === user.id ? "Resetting..." : "Reset"}</button><button type="button" onClick={() => handleToggleStatus(user)} disabled={resetPasswordMutation.isPending || toggleStatusMutation.isPending} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60">{activeAction?.type === "status" && activeAction?.userId === user.id ? "Updating..." : user.status === "active" ? "Deactivate" : "Activate"}</button></> : <span className="text-xs font-semibold text-slate-400">View only</span>}</div>
                   </div>
                 ))
               )}
@@ -378,9 +357,9 @@ const Users = () => {
         </div>
       </section>
 
-      {showCreateUser && <CreateUserModal setShowCreateUser={setShowCreateUser} onSaved={handleSaved} />}
-      {showEditUser && selectedUser && <EditUserModal setShowEditUser={setShowEditUser} selectedUser={selectedUser} onSaved={handleSaved} />}
-      <ResetPasswordConfirmModal
+      {showCreateUser && canManage && <CreateUserModal setShowCreateUser={setShowCreateUser} onSaved={handleSaved} />}
+      {showEditUser && selectedUser && canManage && <EditUserModal setShowEditUser={setShowEditUser} selectedUser={selectedUser} onSaved={handleSaved} />}
+      {canManage ? <ResetPasswordConfirmModal
         user={resetTarget}
         onClose={() => {
           setResetTarget(null);
@@ -388,11 +367,9 @@ const Users = () => {
         }}
         onConfirm={confirmResetPassword}
         isSaving={resetPasswordMutation.isPending}
-      />
+      /> : null}
     </main>
   );
 };
 
 export default Users;
-
-

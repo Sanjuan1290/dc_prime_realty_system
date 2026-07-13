@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import PageHeader from "../../components/Shared/PageHeader";
 import StatusAlert from "../../components/Shared/StatusAlert";
+import ReadOnlyNotice from "../../components/Shared/ReadOnlyNotice";
+import useCurrentUser from "../../utils/useCurrentUser";
 import { FaUserPlus } from "react-icons/fa";
 import { FiLoader, FiPrinter, FiRefreshCw, FiSearch, FiUsers, FiX } from "react-icons/fi";
 import { formatDateTime } from "../../utils/formatDateTime";
@@ -303,6 +305,8 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
 };
 
 const Accredited = () => {
+  const { data: currentUserData } = useCurrentUser();
+  const canManage = currentUserData?.user?.role === "super_admin";
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
@@ -351,6 +355,7 @@ const Accredited = () => {
     <main className="flex flex-col gap-6">
       <PageHeader title="Accredited Sellers" description="Seller directory, project rates, and commission release receipts." icon={FaUserPlus} />
 
+      {!canManage ? <ReadOnlyNotice message="Admin can review accredited sellers, reporting chains, and project rates. Proof-of-income receipt creation is restricted to Super Admin." /> : null}
       {alert ? <StatusAlert type={alert.type} message={alert.message} onClose={alert.type === "loading" ? undefined : () => setAlert(null)} /> : null}
       {isLoading ? <StatusAlert type="loading" message="Loading accredited sellers..." /> : null}
       {!isLoading && isFetching ? <StatusAlert type="info" message="Refreshing accredited sellers..." /> : null}
@@ -391,9 +396,7 @@ const Accredited = () => {
                   <p className="text-slate-600">{seller.reports_under_name || "Direct to Developer"}</p>
                   <SellerRatesCell rates={seller.project_rates} />
                   <div><span className={`w-fit rounded-full border px-3 py-1 text-xs font-bold capitalize ${seller.accredited_seller_status === "active" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-slate-50 text-slate-500"}`}>{seller.accredited_seller_status}</span><p className="mt-1 text-xs text-slate-500">{seller.accredited_seller_updated_at ? formatDateTime(seller.accredited_seller_updated_at) : "—"}</p></div>
-                  <div className="flex flex-wrap gap-2">
-                    <button type="button" onClick={() => handlePrintProof(seller)} className="inline-flex min-h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 transition hover:bg-slate-50"><FiPrinter className="h-4 w-4" />Print Proof of Income</button>
-                  </div>
+                  <div className="flex flex-wrap gap-2">{canManage ? <button type="button" onClick={() => handlePrintProof(seller)} className="inline-flex min-h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50"><FiPrinter className="h-4 w-4" />Print Proof of Income</button> : <span className="text-xs font-semibold text-slate-400">View only</span>}</div>
                 </div>
               );
             })}
@@ -403,7 +406,7 @@ const Accredited = () => {
         <div className="flex flex-col gap-3 border-t border-slate-200 p-4 md:flex-row md:items-center md:justify-between"><p className="text-sm font-semibold text-slate-500">Showing page {pagination.page} of {pagination.totalPages} • {pagination.total} records</p><div className="flex items-center gap-2"><select value={limit} onChange={(event) => { setLimit(Number(event.target.value)); setPage(1); }} className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700"><option value={10}>10</option><option value={25}>25</option><option value={50}>50</option></select><button disabled={!pagination.hasPrev} onClick={() => setPage((current) => Math.max(current - 1, 1))} className="h-10 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50">Prev</button><button disabled={!pagination.hasNext} onClick={() => setPage((current) => current + 1)} className="h-10 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50">Next</button></div></div>
       </section>
 
-      {proofSeller ? (
+      {proofSeller && canManage ? (
         <ProofOfIncomeReceiptModal
           seller={proofSeller}
           onClose={() => setProofSeller(null)}

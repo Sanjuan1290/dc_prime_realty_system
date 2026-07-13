@@ -13,6 +13,8 @@ import {
 } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
+import ReadOnlyNotice from '../../components/Shared/ReadOnlyNotice'
+import useCurrentUser from '../../utils/useCurrentUser'
 import { useFetch, useFetchPost } from '../../utils/useFetch'
 
 const money = (value) =>
@@ -84,6 +86,8 @@ const EmptyState = ({ category }) => (
 )
 
 const Notifications = () => {
+  const { data: currentUserData } = useCurrentUser()
+  const canManage = currentUserData?.user?.role === 'super_admin'
   const [category, setCategory] = useState('all')
   const [search, setSearch] = useState('')
   const [alert, setAlert] = useState(null)
@@ -193,6 +197,8 @@ const Notifications = () => {
           {isFetching ? 'Refreshing...' : 'Refresh'}
         </button>
       </div>
+
+      {!canManage ? <ReadOnlyNotice message="Admin can review due and overdue notices. Only a Super Admin can send reminders or mark buyers as contacted." /> : null}
 
       {alert ? (
         <StatusAlert
@@ -324,27 +330,7 @@ const Notifications = () => {
                       </div>
                     </td>
                     <td className="px-4 py-4">
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleSend(item)}
-                          disabled={isBusy || !item.buyerEmail}
-                          className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-4 text-xs font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          {sendMutation.isPending ? <FiLoader className="h-4 w-4 animate-spin" /> : <FiMail className="h-4 w-4" />}
-                          {item.notificationType === 'overdue' ? 'Send Overdue' : 'Send Reminder'}
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => handleContacted(item)}
-                          disabled={isBusy}
-                          className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 transition hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          {contactedMutation.isPending ? <FiLoader className="h-4 w-4 animate-spin" /> : <FiUserCheck className="h-4 w-4" />}
-                          Contacted
-                        </button>
-                      </div>
+                      <div className="flex flex-wrap gap-2">{canManage ? <><button type="button" onClick={() => handleSend(item)} disabled={isBusy || !item.buyerEmail} className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-4 text-xs font-black text-white hover:bg-blue-700 disabled:opacity-50">{sendMutation.isPending ? <FiLoader className="h-4 w-4 animate-spin" /> : <FiMail className="h-4 w-4" />}{item.notificationType === 'overdue' ? 'Send Overdue' : 'Send Reminder'}</button><button type="button" onClick={() => handleContacted(item)} disabled={isBusy} className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 hover:bg-emerald-50 disabled:opacity-50">{contactedMutation.isPending ? <FiLoader className="h-4 w-4 animate-spin" /> : <FiUserCheck className="h-4 w-4" />}Contacted</button></> : <span className="text-xs font-semibold text-slate-400">View only</span>}</div>
                     </td>
                   </tr>
                 ))}
@@ -397,7 +383,3 @@ const Notifications = () => {
 }
 
 export default Notifications
-
-
-
-

@@ -62,16 +62,23 @@ const LotLayout = () => {
   const project = data?.data
   const basePath = `/lot-projects/${projectSlug}`
 
-  const navItems = useMemo(
-    () => [
-      { label: 'Dashboard', path: basePath, icon: FiBarChart2, end: true },
+  const navItems = useMemo(() => {
+    const common = [
       { label: 'Listings / Units', path: `${basePath}/listings`, icon: FiGrid },
       { label: 'Payments Audit', path: `${basePath}/payments-audit`, icon: FiShield },
-      { label: 'Commissions', path: `${basePath}/commissions`, icon: FiDollarSign },
       { label: 'Settings', path: `${basePath}/settings`, icon: FiSettings },
-    ],
-    [basePath]
-  )
+    ]
+
+    if (user?.role === 'admin') return common
+
+    return [
+      { label: 'Dashboard', path: basePath, icon: FiBarChart2, end: true },
+      common[0],
+      common[1],
+      { label: 'Commissions', path: `${basePath}/commissions`, icon: FiDollarSign },
+      common[2],
+    ]
+  }, [basePath, user?.role])
 
   const pageTitle = useMemo(
     () => getPageTitle(location.pathname, project?.lot_project_name),
@@ -94,6 +101,14 @@ const LotLayout = () => {
     return <Navigate to="/change-password" replace />
   }
 
+  if (!['super_admin', 'admin'].includes(user?.role)) {
+    return <Navigate to="/" replace />
+  }
+
+  if (user?.role === 'admin' && location.pathname === basePath) {
+    return <Navigate to={`${basePath}/listings`} replace />
+  }
+
   if (isError) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-100 p-4">
@@ -105,7 +120,7 @@ const LotLayout = () => {
 
           <button
             type="button"
-            onClick={() => navigate('/super_admin/projects')}
+            onClick={() => navigate(user?.role === 'admin' ? '/admin/projects' : '/super_admin/projects')}
             className="mt-4 h-11 rounded-xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700"
           >
             Back to Projects
@@ -202,7 +217,7 @@ const LotLayout = () => {
         <div className="border-t border-slate-200 p-4">
           <button
             type="button"
-            onClick={() => navigate('/super_admin/projects')}
+            onClick={() => navigate(user?.role === 'admin' ? '/admin/projects' : '/super_admin/projects')}
             className="flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 transition hover:bg-slate-50"
           >
             <FiChevronLeft className="h-4 w-4" />
@@ -252,5 +267,3 @@ const LotLayout = () => {
 }
 
 export default LotLayout
-
-

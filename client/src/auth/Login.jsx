@@ -7,8 +7,8 @@ import StatusAlert from "../components/Shared/StatusAlert";
 
 const Login = () => {
 
-  const [email, setEmail] = useState('superadmin@gmail.com')
-  const [password, setPassword] = useState('password')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   
   const queryClient = useQueryClient()
   const navigate = useNavigate()
@@ -207,5 +207,3 @@ const Login = () => {
 };
 
 export default Login;
-
-

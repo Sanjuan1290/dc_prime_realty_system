@@ -70,4 +70,3 @@ const PrintPageShell = ({ title, children }) => {
 }
 
 export default PrintPageShell
-

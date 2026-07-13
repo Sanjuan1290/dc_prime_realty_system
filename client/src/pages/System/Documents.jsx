@@ -3,6 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { FiFileText, FiLayers, FiPlus } from "react-icons/fi";
 import PageHeader from "../../components/Shared/PageHeader";
 import StatusAlert from "../../components/Shared/StatusAlert";
+import ReadOnlyNotice from "../../components/Shared/ReadOnlyNotice";
+import useCurrentUser from "../../utils/useCurrentUser";
 import DocumentTemplates from "../../components/System/documentComponents/DocumentTemplates";
 import Document_Library from "../../components/System/documentComponents/DocumentLibrary";
 import DocumentAddTemplate from "../../components/System/documentComponents/DocumentAddTemplate";
@@ -12,6 +14,8 @@ import EditDocumentTemplate from "../../components/System/documentComponents/Edi
 import { useFetch } from "../../utils/useFetch";
 
 const Document = () => {
+  const { data: currentUserData } = useCurrentUser();
+  const canManage = currentUserData?.user?.role === "super_admin";
   const [showAddTemplateModal, setShowAddTemplateModal] = useState(false);
   const [showAddDocumentModal, setShowAddDocumentModal] = useState(false);
   const [selectedDocument, setSelectedDocument] = useState(null);
@@ -66,29 +70,15 @@ const Document = () => {
           icon={FiFileText}
         />
 
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <button
-            type="button"
-            onClick={() => setShowAddTemplateModal(true)}
-            disabled={isInitialLoading}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-900 hover:text-white active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <FiLayers className="h-4 w-4" />
-            Add Template
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setShowAddDocumentModal(true)}
-            disabled={isInitialLoading}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-600 bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-blue-300"
-          >
-            <FiPlus className="h-4 w-4" />
-            Add Document
-          </button>
-        </div>
+        {canManage ? (
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <button type="button" onClick={() => setShowAddTemplateModal(true)} disabled={isInitialLoading} className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-900 hover:text-white disabled:opacity-60"><FiLayers className="h-4 w-4" />Add Template</button>
+            <button type="button" onClick={() => setShowAddDocumentModal(true)} disabled={isInitialLoading} className="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-600 bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:bg-blue-300"><FiPlus className="h-4 w-4" />Add Document</button>
+          </div>
+        ) : null}
       </div>
 
+      {!canManage ? <ReadOnlyNotice message="Admin can review documents and templates. Only a Super Admin can add, edit, or delete them." /> : null}
       {alert ? <StatusAlert type={alert.type} message={alert.message} onClose={() => setAlert(null)} /> : null}
       {isInitialLoading ? <StatusAlert type="loading" message="Loading document records..." /> : null}
       {isRefreshing ? <StatusAlert type="info" message="Refreshing document records..." /> : null}
@@ -113,15 +103,15 @@ const Document = () => {
         </div>
       </div>
 
-      <DocumentTemplates templates={templates} templateDocuments={templateDocuments} onEditTemplate={setSelectedTemplate} />
-      <Document_Library documents={documents} onEditDocument={setSelectedDocument} />
+      <DocumentTemplates templates={templates} templateDocuments={templateDocuments} onEditTemplate={setSelectedTemplate} canManage={canManage} />
+      <Document_Library documents={documents} onEditDocument={setSelectedDocument} canManage={canManage} />
 
-      {showAddTemplateModal ? (
+      {showAddTemplateModal && canManage ? (
         <DocumentAddTemplate documents={documents} setShowAddTemplateModal={setShowAddTemplateModal} onSaved={handleSaved} />
       ) : null}
-      {showAddDocumentModal ? <AddDocument setShowAddDocumentModal={setShowAddDocumentModal} onSaved={handleSaved} /> : null}
-      {selectedDocument ? <EditDocument document={selectedDocument} onClose={() => setSelectedDocument(null)} onSaved={handleSaved} /> : null}
-      {selectedTemplate ? (
+      {showAddDocumentModal && canManage ? <AddDocument setShowAddDocumentModal={setShowAddDocumentModal} onSaved={handleSaved} /> : null}
+      {selectedDocument && canManage ? <EditDocument document={selectedDocument} onClose={() => setSelectedDocument(null)} onSaved={handleSaved} /> : null}
+      {selectedTemplate && canManage ? (
         <EditDocumentTemplate
           template={selectedTemplate}
           documents={documents}
@@ -135,4 +125,3 @@ const Document = () => {
 };
 
 export default Document;
-

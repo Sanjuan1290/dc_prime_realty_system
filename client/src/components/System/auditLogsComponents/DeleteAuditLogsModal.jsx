@@ -174,4 +174,3 @@ const DeleteAuditLogsModal = ({
 }
 
 export default DeleteAuditLogsModal
-

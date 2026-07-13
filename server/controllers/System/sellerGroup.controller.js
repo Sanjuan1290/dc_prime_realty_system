@@ -646,4 +646,3 @@ export const editUserRate = async (req, res) => {
     connection.release();
   }
 };
-

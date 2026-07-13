@@ -43,4 +43,3 @@ export const formatDateTime = (dateString) => {
 
   return `${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')}`
 }
-

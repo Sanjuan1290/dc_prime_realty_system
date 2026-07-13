@@ -6,7 +6,7 @@ import StatusAlert from "../../Shared/StatusAlert";
 import { formatDateTime } from "../../../utils/formatDateTime";
 import { useFetchDelete } from "../../../utils/useFetch";
 
-const DocumentTemplates = ({ templates = [], templateDocuments = [], onEditTemplate }) => {
+const DocumentTemplates = ({ templates = [], templateDocuments = [], onEditTemplate, canManage = true }) => {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [alert, setAlert] = useState(null);
@@ -93,14 +93,7 @@ const DocumentTemplates = ({ templates = [], templateDocuments = [], onEditTempl
                 </p>
                 <p className="text-gray-600">{formatDateTime(template.template_updated_at || template.template_created_at)}</p>
                 <div className="flex items-center gap-2 md:justify-end">
-                  <button type="button" onClick={() => onEditTemplate(template)} disabled={deleteMutation.isPending} className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60">
-                    <FiEdit2 className="h-4 w-4" />
-                    Edit
-                  </button>
-                  <button type="button" onClick={() => handleDelete(template)} disabled={deleteMutation.isPending} className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 transition hover:bg-red-100 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60">
-                    <FiTrash2 className="h-4 w-4" />
-                    {isDeleting ? "Deleting..." : "Delete"}
-                  </button>
+                  {canManage ? <><button type="button" onClick={() => onEditTemplate(template)} disabled={deleteMutation.isPending} className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"><FiEdit2 className="h-4 w-4" />Edit</button><button type="button" onClick={() => handleDelete(template)} disabled={deleteMutation.isPending} className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-60"><FiTrash2 className="h-4 w-4" />{isDeleting ? "Deleting..." : "Delete"}</button></> : <span className="text-xs font-semibold text-gray-400">View only</span>}
                 </div>
               </div>
             );
@@ -112,4 +105,3 @@ const DocumentTemplates = ({ templates = [], templateDocuments = [], onEditTempl
 };
 
 export default DocumentTemplates;
-
