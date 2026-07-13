@@ -6,11 +6,13 @@ import {
   FiEdit3,
   FiFileText,
   FiHome,
+  FiRefreshCw,
   FiSettings,
   FiUser,
 } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
 import EditUnitStatusModal from './EditUnitStatusModal'
+import RecalculateCommissionModal from './RecalculateCommissionModal'
 
 const fallbackListing = {
   unit_id: '-',
@@ -106,25 +108,38 @@ const StatusPill = ({ status }) => (
   </span>
 )
 
-const SectionBlock = ({ title, description, icon: Icon, children }) => (
+const SectionBlock = ({ title, description, icon: Icon, action = null, children }) => (
   <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-    <div className="flex items-start gap-3 border-b border-slate-200 p-5">
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
-        <Icon className="h-5 w-5" />
-      </span>
+    <div className="flex flex-col gap-3 border-b border-slate-200 p-5 sm:flex-row sm:items-start sm:justify-between">
+      <div className="flex items-start gap-3">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
+          <Icon className="h-5 w-5" />
+        </span>
 
-      <div>
-        <h2 className="text-lg font-black text-slate-950">{title}</h2>
-        {description ? <p className="mt-1 text-sm font-semibold text-slate-500">{description}</p> : null}
+        <div>
+          <h2 className="text-lg font-black text-slate-950">{title}</h2>
+          {description ? <p className="mt-1 text-sm font-semibold text-slate-500">{description}</p> : null}
+        </div>
       </div>
+
+      {action ? <div className="shrink-0">{action}</div> : null}
     </div>
 
     <div className="grid gap-3 p-5 sm:grid-cols-2 xl:grid-cols-4">{children}</div>
   </section>
 )
 
-const UnitStatus = ({ listing = fallbackListing, project = {}, onSave, isSaving = false }) => {
+const UnitStatus = ({
+  listing = fallbackListing,
+  project = {},
+  onSave,
+  canRecalculateCommission = false,
+  onRecalculateCommission,
+  isSaving = false,
+  isRecalculatingCommission = false,
+}) => {
   const [showEditModal, setShowEditModal] = useState(false)
+  const [showRecalculateModal, setShowRecalculateModal] = useState(false)
   const [alert, setAlert] = useState(null)
 
   const unitData = useMemo(() => ({ ...fallbackListing, ...listing }), [listing])
@@ -304,7 +319,22 @@ const UnitStatus = ({ listing = fallbackListing, project = {}, onSave, isSaving 
         <DetailBox label="Latest Payment Amount" value={unitData.latest_payment_amount} />
       </SectionBlock>
 
-      <SectionBlock title="Seller / Commission" description="Seller assignment and commission summary." icon={FiBriefcase}>
+      <SectionBlock
+        title="Seller / Commission"
+        description="Seller assignment and commission summary."
+        icon={FiBriefcase}
+        action={canRecalculateCommission && (unitData.hasClientProfile || unitData.rawStatus === 'sold') ? (
+          <button
+            type="button"
+            onClick={() => setShowRecalculateModal(true)}
+            disabled={isRecalculatingCommission}
+            className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 text-sm font-black text-blue-700 transition hover:border-blue-300 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+          >
+            <FiRefreshCw className={`h-4 w-4 ${isRecalculatingCommission ? 'animate-spin' : ''}`} />
+            {isRecalculatingCommission ? 'Recalculating...' : 'Recalculate Commission'}
+          </button>
+        ) : null}
+      >
         <DetailBox label="Seller" value={unitData.seller} />
         <DetailBox label="Seller Role" value={unitData.seller_role} />
         <DetailBox label="Seller Email" value={unitData.seller_email} />
@@ -344,6 +374,16 @@ const UnitStatus = ({ listing = fallbackListing, project = {}, onSave, isSaving 
           onClose={() => setShowEditModal(false)}
           onSave={handleSave}
           isSaving={isSaving}
+        />
+      ) : null}
+
+      {canRecalculateCommission && showRecalculateModal ? (
+        <RecalculateCommissionModal
+          listing={unitData}
+          commissionState={unitData.commissionRecalculation || {}}
+          isSaving={isRecalculatingCommission}
+          onClose={() => setShowRecalculateModal(false)}
+          onConfirm={onRecalculateCommission}
         />
       ) : null}
     </div>

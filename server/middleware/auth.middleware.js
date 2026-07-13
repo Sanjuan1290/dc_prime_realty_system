@@ -1,3 +1,4 @@
+import bcrypt from 'bcrypt';
 import { getAuthenticatedUser } from '../controllers/Lot_Projects/_shared/lotProject.shared.js';
 import { roleHasPermission } from '../config/permissions.js';
 
@@ -23,5 +24,36 @@ export const requirePermission = (permission) => (req, res, next) => {
   if (!roleHasPermission(req.authUser?.role, permission)) {
     return denied(res, 403, 'You do not have permission to perform this action.');
   }
+  return next();
+};
+
+
+/**
+ * Requires the authenticated user's current password for sensitive actions.
+ * The password is removed from req.body after verification so downstream
+ * controllers and audit metadata cannot accidentally persist it.
+ */
+export const requireCurrentPassword = ({
+  field = 'password',
+  label = 'Current password',
+} = {}) => async (req, res, next) => {
+  const password = typeof req.body?.[field] === 'string' ? req.body[field] : '';
+
+  if (!password) {
+    return denied(res, 400, `${label} is required.`);
+  }
+
+  const passwordHash = req.authUser?.password_hash;
+  const isCorrect = Boolean(passwordHash) && await bcrypt.compare(password, passwordHash);
+
+  if (!isCorrect) {
+    return denied(res, 401, `${label} is incorrect.`);
+  }
+
+  if (req.body && Object.prototype.hasOwnProperty.call(req.body, field)) {
+    req.body = { ...req.body };
+    delete req.body[field];
+  }
+
   return next();
 };

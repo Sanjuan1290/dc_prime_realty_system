@@ -70,6 +70,10 @@ import {
   getReserveSellerOptions,
 } from '../_shared/lotProject.shared.js';
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
+import {
+  hasReleasedCommissionActivity,
+  replaceReservationCommissions,
+} from '../Commissions/commissionHierarchy.service.js';
 
 const getColumnDefinition = async (connection, tableName, columnName) => {
   const [rows] = await connection.query(
@@ -116,6 +120,264 @@ const applyActualPaymentStateToListing = (listing = {}, soaRows = []) => {
 
   return nextListing;
 };
+
+
+const commissionRoleOrder = {
+  agent: 1,
+  manager: 2,
+  broker: 3,
+  broker_network_manager: 4,
+};
+
+const formatCommissionRole = (role = '') =>
+  String(role || '')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+
+/**
+ * Loads all commission evidence for one unit. The lock option is used during
+ * recalculation so another request cannot release a stage while rows are being
+ * rebuilt.
+ */
+const loadListingCommissionSnapshot = async (
+  connection,
+  listingId,
+  { lock = false } = {}
+) => {
+  if (!(await tableExists(connection, 'lot_project_commissions'))) {
+    return { commissionRows: [], releaseRows: [], receiptRows: [] };
+  }
+
+  const [commissionRows] = await connection.query(
+    `
+      SELECT
+        c.*,
+        TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS seller_name,
+        sg.seller_group_name,
+        TRIM(CONCAT_WS(' ', reports.first_name, reports.middle_name, reports.last_name)) AS reports_under
+      FROM lot_project_commissions c
+      LEFT JOIN accredited_sellers acs
+        ON acs.accredited_seller_id = c.accredited_seller_id
+      LEFT JOIN users u
+        ON u.id = acs.user_id
+      LEFT JOIN seller_groups sg
+        ON sg.seller_group_id = acs.seller_group_id
+      LEFT JOIN users reports
+        ON reports.id = acs.accredited_seller_reports_under_user_id
+      WHERE c.lot_project_listing_id = ?
+      ORDER BY
+        FIELD(c.commission_role, 'agent', 'manager', 'broker', 'broker_network_manager'),
+        c.lot_project_commission_id
+      ${lock ? 'FOR UPDATE' : ''}
+    `,
+    [listingId]
+  );
+
+  const commissionIds = commissionRows.map((row) => Number(row.lot_project_commission_id));
+  let releaseRows = [];
+
+  if (
+    commissionIds.length &&
+    (await tableExists(connection, 'lot_project_commission_releases'))
+  ) {
+    const placeholders = commissionIds.map(() => '?').join(',');
+    const [rows] = await connection.query(
+      `
+        SELECT *
+        FROM lot_project_commission_releases
+        WHERE lot_project_commission_id IN (${placeholders})
+        ORDER BY
+          FIELD(release_stage, '1st Release', '2nd Release', '3rd Release', '4th Release', 'Retention'),
+          lot_project_commission_release_id
+        ${lock ? 'FOR UPDATE' : ''}
+      `,
+      commissionIds
+    );
+
+    releaseRows = rows;
+  }
+
+  let receiptRows = [];
+  if (await tableExists(connection, 'lot_project_commission_receipts')) {
+    const [rows] = await connection.query(
+      `
+        SELECT
+          lot_project_commission_receipt_id,
+          receipt_status,
+          total_amount,
+          reference_number,
+          receipt_date
+        FROM lot_project_commission_receipts
+        WHERE lot_project_listing_id = ?
+        ${lock ? 'FOR UPDATE' : ''}
+      `,
+      [listingId]
+    );
+
+    receiptRows = rows;
+  }
+
+  return { commissionRows, releaseRows, receiptRows };
+};
+
+const summarizeCommissionReleaseGuard = (snapshot = {}) => {
+  const commissionRows = snapshot.commissionRows || [];
+  const releaseRows = snapshot.releaseRows || [];
+  const receiptRows = snapshot.receiptRows || [];
+
+  const releasedAmount = roundMoneyValue(
+    commissionRows.reduce(
+      (sum, row) => sum + Number(row.released_commission_amount || 0),
+      0
+    )
+  );
+
+  const releasedCommissionCount = commissionRows.filter(
+    (row) =>
+      Number(row.released_commission_amount || 0) > 0 ||
+      ['Partially Released', 'Released'].includes(row.commission_status)
+  ).length;
+
+  const releasedStageCount = releaseRows.filter(
+    (row) =>
+      row.release_status === 'Released' ||
+      Boolean(row.actual_release_date) ||
+      Boolean(row.released_by_user_id)
+  ).length;
+
+  const receiptCount = receiptRows.length;
+
+  return {
+    commissionCount: commissionRows.length,
+    releasedAmount,
+    releasedCommissionCount,
+    releasedStageCount,
+    receiptCount,
+    hasReleasedActivity: hasReleasedCommissionActivity({
+      releasedAmount,
+      releasedCommissionCount,
+      releasedStageCount,
+      receiptCount,
+    }),
+  };
+};
+
+const buildCommissionRecalculationState = ({
+  listingStatus,
+  clientProfileStatus,
+  assignedSellerId,
+  snapshot,
+} = {}) => {
+  const guard = summarizeCommissionReleaseGuard(snapshot);
+
+  if (String(listingStatus || '').toLowerCase() !== 'sold') {
+    return {
+      ...guard,
+      allowed: false,
+      reason: 'Commission recalculation is available only for a reserved or sold unit.',
+    };
+  }
+
+  if (
+    String(clientProfileStatus || '').toLowerCase() !== 'active' ||
+    !Number(assignedSellerId || 0)
+  ) {
+    return {
+      ...guard,
+      allowed: false,
+      reason: 'The unit does not have an active assigned seller.',
+    };
+  }
+
+  if (guard.hasReleasedActivity) {
+    return {
+      ...guard,
+      allowed: false,
+      reason:
+        'Commission hierarchy is locked because a commission release or release receipt already exists.',
+    };
+  }
+
+  return {
+    ...guard,
+    allowed: true,
+    reason:
+      'No commission has been released. Recalculation can use the seller’s current reporting hierarchy.',
+  };
+};
+
+const buildPreservedReleaseState = (releaseRows = []) => {
+  const byStage = {};
+
+  for (const stage of ['1st Release', '2nd Release', '3rd Release', '4th Release', 'Retention']) {
+    const rows = releaseRows.filter((row) => row.release_stage === stage);
+    if (!rows.length) continue;
+
+    const statuses = rows.map((row) => row.release_status);
+    let status = 'Pending';
+
+    if (statuses.includes('On Hold')) status = 'On Hold';
+    else if (statuses.every((value) => value === 'Cancelled')) status = 'Cancelled';
+    else if (statuses.includes('Eligible')) status = 'Eligible';
+
+    byStage[stage] = {
+      status,
+      scheduledReleaseDate:
+        rows.find((row) => row.scheduled_release_date)?.scheduled_release_date || null,
+    };
+  }
+
+  return byStage;
+};
+
+const getPreservedCommissionStatus = (commissionRows = []) => {
+  const statuses = commissionRows.map((row) => row.commission_status);
+  if (statuses.length && statuses.every((status) => status === 'Cancelled')) return 'Cancelled';
+  if (statuses.includes('Eligible')) return 'Eligible';
+  if (statuses.length && statuses.every((status) => status === 'On Hold')) return 'On Hold';
+  return 'Pending';
+};
+
+const getPreservedPaymentPercent = (snapshot = {}) => {
+  const storedPercent = Math.max(
+    0,
+    ...(snapshot.commissionRows || []).map((row) => Number(row.payment_percent || 0))
+  );
+
+  const eligibleTrigger = Math.max(
+    0,
+    ...(snapshot.releaseRows || [])
+      .filter((row) => row.release_status === 'Eligible')
+      .map((row) => Number(row.release_trigger_percent || 0))
+  );
+
+  return Math.max(storedPercent, eligibleTrigger);
+};
+
+const mapCommissionSnapshotRows = (rows = []) =>
+  [...rows]
+    .sort(
+      (left, right) =>
+        (commissionRoleOrder[left.commission_role] || 99) -
+          (commissionRoleOrder[right.commission_role] || 99) ||
+        Number(left.lot_project_commission_id || 0) -
+          Number(right.lot_project_commission_id || 0)
+    )
+    .map((row) => ({
+      commissionId: Number(row.lot_project_commission_id || row.commissionId || 0),
+      accreditedSellerId: Number(row.accredited_seller_id || row.accreditedSellerId || 0),
+      sellerName: row.seller_name || row.sellerName || '-',
+      role: row.commission_role || row.role || '-',
+      roleLabel: formatCommissionRole(row.commission_role || row.role),
+      sellerGroup: row.seller_group_name || '-',
+      reportsUnder: row.reports_under || '-',
+      rate: Number(row.commission_rate ?? row.rate ?? 0),
+      grossCommission: Number(
+        row.gross_commission_amount ?? row.grossCommission ?? 0
+      ),
+      sellerType: row.commission_seller_type || row.sellerType || '-',
+      saleType: row.commission_sale_type || row.saleType || '-',
+    }));
 
 export const getLotProjectListingProfile = async (req, res) => {
   const connection = await db.getConnection();
@@ -309,6 +571,20 @@ export const getLotProjectListingProfile = async (req, res) => {
     const cadastralLots = await getProjectCadastralLots(project.lot_project_id);
     const defaultDocuments = await getProjectDefaultDocuments(project.lot_project_id);
     const sellerOptions = await getReserveSellerOptions(connection, project.lot_project_id);
+    const commissionSnapshot = await loadListingCommissionSnapshot(
+      connection,
+      row.lot_project_listing_id
+    );
+    const commissionRecalculation = {
+      ...buildCommissionRecalculationState({
+        listingStatus: row.lot_project_listing_status,
+        clientProfileStatus: row.lot_project_client_profile_status,
+        assignedSellerId: row.assigned_accredited_seller_id,
+        snapshot: commissionSnapshot,
+      }),
+      // The modal displays the currently saved snapshot before asking for confirmation.
+      currentHierarchy: mapCommissionSnapshotRows(commissionSnapshot.commissionRows),
+    };
     const sellerName = row.seller_name || '-';
     const canEditBuyerProfile = canEditBuyerProfileForListing(row.lot_project_listing_status);
     const clientProfile = canEditBuyerProfile
@@ -329,7 +605,13 @@ export const getLotProjectListingProfile = async (req, res) => {
           cadastralLots,
           defaultDocuments,
         },
-        listing: applyActualPaymentStateToListing(mapProfileListing(row, project, documents), soaRows),
+        listing: {
+          ...applyActualPaymentStateToListing(
+            mapProfileListing(row, project, documents),
+            soaRows
+          ),
+          commissionRecalculation,
+        },
         client: clientProfile,
         soaRows,
         payments,
@@ -345,6 +627,237 @@ export const getLotProjectListingProfile = async (req, res) => {
     connection.release();
   }
 };
+
+/**
+ * Rebuilds the commission rows for one unit from the assigned seller's current
+ * hierarchy. Existing released commissions are immutable and always block this
+ * operation.
+ */
+export const recalculateLotProjectListingCommission = async (req, res) => {
+  const connection = await db.getConnection();
+
+  try {
+    const slug = String(req.params.projectSlug || '').trim();
+    const listingLookup = String(req.params.listingId || '').trim();
+    const project = await getProjectBySlug(slug);
+
+    if (!project) {
+      return res.status(404).json({ success: false, message: 'Lot project not found.' });
+    }
+
+    if (!listingLookup) {
+      return res.status(400).json({ success: false, message: 'Listing id is required.' });
+    }
+
+    if (
+      !(await tableExists(connection, 'lot_project_commissions')) ||
+      !(await tableExists(connection, 'lot_project_commission_releases'))
+    ) {
+      return res.status(500).json({
+        success: false,
+        message: 'Commission tables are missing. Apply the latest database schema first.',
+      });
+    }
+
+    await connection.beginTransaction();
+
+    const lookup = getListingLookupWhere(listingLookup, 'l');
+    const [listingRows] = await connection.query(
+      `
+        SELECT
+          l.lot_project_listing_id,
+          l.lot_project_listing_unit_id,
+          l.lot_project_listing_status,
+          l.lot_project_listing_sold_substatus,
+          l.lot_project_listing_net_selling_price,
+          l.lot_project_listing_tcp,
+          cp.lot_project_client_profile_id,
+          cp.lot_project_client_profile_status,
+          cp.assigned_accredited_seller_id,
+          cp.sale_channel,
+          assignedAcs.accredited_seller_status AS assigned_seller_status,
+          assignedUser.status AS assigned_user_status,
+          TRIM(CONCAT_WS(
+            ' ',
+            assignedUser.first_name,
+            assignedUser.middle_name,
+            assignedUser.last_name
+          )) AS assigned_seller_name
+        FROM lot_project_listings l
+        LEFT JOIN lot_project_client_profiles cp
+          ON cp.lot_project_listing_id = l.lot_project_listing_id
+        LEFT JOIN accredited_sellers assignedAcs
+          ON assignedAcs.accredited_seller_id = cp.assigned_accredited_seller_id
+        LEFT JOIN users assignedUser
+          ON assignedUser.id = assignedAcs.user_id
+        WHERE l.lot_project_id = ?
+          AND ${lookup.sql}
+        ORDER BY cp.lot_project_client_profile_id DESC
+        LIMIT 1
+        FOR UPDATE
+      `,
+      [project.lot_project_id, ...lookup.params]
+    );
+
+    const listing = listingRows[0];
+    if (!listing) {
+      await connection.rollback();
+      return res.status(404).json({ success: false, message: 'Listing not found.' });
+    }
+
+    if (String(listing.lot_project_listing_status || '').toLowerCase() !== 'sold') {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: 'Only a reserved or sold unit can have its commission recalculated.',
+      });
+    }
+
+    if (
+      !listing.lot_project_client_profile_id ||
+      String(listing.lot_project_client_profile_status || '').toLowerCase() !== 'active'
+    ) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: 'The unit does not have an active buyer profile.',
+      });
+    }
+
+    if (!Number(listing.assigned_accredited_seller_id || 0)) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: 'The unit does not have an assigned seller.',
+      });
+    }
+
+    if (
+      listing.assigned_seller_status !== 'active' ||
+      listing.assigned_user_status !== 'active'
+    ) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: 'The assigned seller account is not active.',
+      });
+    }
+
+    const previousSnapshot = await loadListingCommissionSnapshot(
+      connection,
+      listing.lot_project_listing_id,
+      { lock: true }
+    );
+    const recalculationState = buildCommissionRecalculationState({
+      listingStatus: listing.lot_project_listing_status,
+      clientProfileStatus: listing.lot_project_client_profile_status,
+      assignedSellerId: listing.assigned_accredited_seller_id,
+      snapshot: previousSnapshot,
+    });
+
+    if (!recalculationState.allowed) {
+      await connection.rollback();
+      return res.status(409).json({
+        success: false,
+        message: recalculationState.reason,
+        data: { commissionRecalculation: recalculationState },
+      });
+    }
+
+    const previousRows = mapCommissionSnapshotRows(previousSnapshot.commissionRows);
+    const paymentPercent = getPreservedPaymentPercent(previousSnapshot);
+    const releaseStateByStage = buildPreservedReleaseState(
+      previousSnapshot.releaseRows
+    );
+    const commissionStatus = getPreservedCommissionStatus(
+      previousSnapshot.commissionRows
+    );
+
+    await replaceReservationCommissions(
+      connection,
+      project.lot_project_id,
+      listing,
+      listing.lot_project_client_profile_id,
+      listing.assigned_accredited_seller_id,
+      listing.sale_channel === 'direct_to_developer'
+        ? 'direct_to_developer'
+        : 'distributed',
+      {
+        paymentPercent,
+        releaseStateByStage,
+        commissionStatus,
+      }
+    );
+
+    const updatedSnapshot = await loadListingCommissionSnapshot(
+      connection,
+      listing.lot_project_listing_id,
+      { lock: true }
+    );
+    const updatedRows = mapCommissionSnapshotRows(updatedSnapshot.commissionRows);
+
+    await writeAuditLog(connection, req, {
+      action: 'update',
+      module: 'Commissions',
+      entityType: 'lot_project_listing',
+      entityId: String(listing.lot_project_listing_id),
+      entityLabel: `Unit ${listing.lot_project_listing_unit_id} — ${project.lot_project_name}`,
+      title: 'Recalculated unit commission hierarchy',
+      description: `Recalculated the commission hierarchy for ${listing.lot_project_listing_unit_id} using ${listing.assigned_seller_name || 'the assigned seller'}'s current reporting structure.`,
+      metadata: {
+        assignedAccreditedSellerId: Number(
+          listing.assigned_accredited_seller_id
+        ),
+        assignedSellerName: listing.assigned_seller_name || null,
+        saleChannel: listing.sale_channel,
+        paymentPercent,
+        before: previousRows,
+        after: updatedRows,
+      },
+    });
+
+    await connection.commit();
+
+    return res.json({
+      success: true,
+      message: `Commission hierarchy for ${listing.lot_project_listing_unit_id} was recalculated successfully.`,
+      data: {
+        unitId: listing.lot_project_listing_unit_id,
+        assignedSeller: listing.assigned_seller_name || '-',
+        previousHierarchy: previousRows,
+        updatedHierarchy: updatedRows,
+        commissionRecalculation: {
+          ...buildCommissionRecalculationState({
+            listingStatus: listing.lot_project_listing_status,
+            clientProfileStatus: listing.lot_project_client_profile_status,
+            assignedSellerId: listing.assigned_accredited_seller_id,
+            snapshot: updatedSnapshot,
+          }),
+          currentHierarchy: updatedRows,
+        },
+      },
+    });
+  } catch (error) {
+    try {
+      await connection.rollback();
+    } catch {}
+
+    console.error('Recalculate unit commission failed:', {
+      code: error?.code,
+      message: error?.message,
+      sqlMessage: error?.sqlMessage,
+    });
+
+    const statusCode = Number(error?.statusCode || 0) || 400;
+    return res.status(statusCode).json({
+      success: false,
+      message: getErrorMessage(error),
+    });
+  } finally {
+    connection.release();
+  }
+};
+
 export const holdLotProjectListing = async (req, res) => {
   const connection = await db.getConnection();
 

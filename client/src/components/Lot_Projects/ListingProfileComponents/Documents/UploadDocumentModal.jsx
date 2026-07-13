@@ -17,7 +17,10 @@ const uploadFileToCloudinary = async (selectedFile, { folder = '' } = {}) => {
   formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET)
 
   if (folder) {
+    // `folder` supports legacy fixed-folder environments, while
+    // `asset_folder` keeps the Media Library location correct in dynamic mode.
     formData.append('folder', folder)
+    formData.append('asset_folder', folder)
     formData.append('tags', 'dc_prime,client_unit_document,document_image')
   }
 
@@ -68,6 +71,7 @@ const UploadDocumentModal = ({ document, uploadFolder = '', isSaving = false, on
           cloudinaryPublicId: uploadedFile.public_id || null,
           cloudinaryResourceType: uploadedFile.resource_type || null,
           cloudinaryFolder: uploadFolder || null,
+          cloudinaryAssetFolder: uploadedFile.asset_folder || uploadFolder || null,
         })
       }
 

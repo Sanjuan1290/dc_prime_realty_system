@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import { writeAuditLog } from './auditLogs.controller.js';
 import { canActorManageUserRole } from '../../config/permissions.js';
+import { assertSellerProjectRatesFollowHierarchy } from './sellerRateHierarchy.service.js';
 
 const userRoles = new Set(['super_admin', 'admin', 'broker_network_manager', 'broker', 'manager', 'agent']);
 
@@ -27,6 +28,7 @@ const toNullableNumber = (value) => {
 };
 
 const getErrorMessage = (error) => {
+  if (error?.statusCode && error?.message) return error.message;
   if (error?.code === 'ER_DUP_ENTRY') return 'Email already exists.';
   if (String(error?.code || '').startsWith('ER_') || error?.sqlMessage || error?.sql) return 'Database operation failed. Please try again.';
   return error?.message || 'Something went wrong.';
@@ -684,6 +686,9 @@ export const createUser = async (req, res) => {
       const projects = await getActiveLotProjects(connection);
       const normalizedRates = normalizeProjectRates(project_rates, projects, getRoleDefaultRate(role));
 
+      // New seller rates must already fit the selected reporting hierarchy.
+      // The transaction is rolled back when a child rate exceeds its parent.
+      await assertSellerProjectRatesFollowHierarchy(connection, accreditedSellerId, normalizedRates);
       await upsertAccreditedProjectRates(connection, accreditedSellerId, normalizedRates);
       await syncManagedSellerLink(connection, accreditedSellerId, role === 'broker_network_manager' ? null : toNullableNumber(reports_under_user_id));
     }
@@ -717,7 +722,7 @@ export const createUser = async (req, res) => {
     return res.status(201).json({ message: 'User created successfully.', user_id: userId });
   } catch (error) {
     await connection.rollback();
-    return res.status(500).json({ message: getErrorMessage(error) });
+    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
   } finally {
     connection.release();
   }
@@ -835,6 +840,9 @@ export const editUser = async (req, res) => {
       const projects = await getActiveLotProjects(connection);
       const normalizedRates = normalizeProjectRates(project_rates, projects, getRoleDefaultRate(role));
 
+      // New seller rates must already fit the selected reporting hierarchy.
+      // The transaction is rolled back when a child rate exceeds its parent.
+      await assertSellerProjectRatesFollowHierarchy(connection, accreditedSellerId, normalizedRates);
       await upsertAccreditedProjectRates(connection, accreditedSellerId, normalizedRates);
       await syncManagedSellerLink(connection, accreditedSellerId, role === 'broker_network_manager' ? null : toNullableNumber(reports_under_user_id));
     } else {
@@ -870,7 +878,7 @@ export const editUser = async (req, res) => {
     return res.json({ message: 'User updated successfully.' });
   } catch (error) {
     await connection.rollback();
-    return res.status(500).json({ message: getErrorMessage(error) });
+    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
   } finally {
     connection.release();
   }

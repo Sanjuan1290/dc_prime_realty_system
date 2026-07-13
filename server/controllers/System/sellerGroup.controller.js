@@ -1,5 +1,6 @@
 import { db } from '../../db/connect.js';
 import { writeAuditLog } from './auditLogs.controller.js';
+import { assertSellerProjectRatesFollowHierarchy } from './sellerRateHierarchy.service.js';
 
 const toNullableNumber = (value) => {
   if (value === undefined || value === null || value === '') return null;
@@ -610,6 +611,11 @@ export const editUserRate = async (req, res) => {
     }
 
     await assertSellerRatesWithinGroupPool(connection, groupId, sellerRows[0]?.seller_name, projectRates);
+
+    // Validate the proposed rates against both the parent and direct children
+    // before any rate row is written. This keeps invalid hierarchies out of the
+    // database instead of waiting for commission recalculation to reject them.
+    await assertSellerProjectRatesFollowHierarchy(connection, accreditedSellerId, projectRates);
 
     for (const item of projectRates) {
       const projectId = Number(item.lot_project_id);

@@ -16,10 +16,69 @@ const getRateValue = (rates = [], projectId) => {
   return rate?.accredited_seller_project_rate ?? 0;
 };
 
+const getMemberRateBounds = (member, members, projectRate, group) => {
+  const projectId = Number(projectRate.lot_project_id);
+  const poolRate = Number(projectRate.seller_group_pool_rate || 0);
+  const explicitParent = members.find((candidate) => Number(candidate.user_id) === Number(member.reports_under_user_id));
+  const groupHeadParent = !explicitParent && Number(group?.seller_group_head_user_id) !== Number(member.user_id)
+    ? members.find((candidate) => Number(candidate.user_id) === Number(group?.seller_group_head_user_id))
+    : null;
+  const parent = explicitParent || groupHeadParent;
+  const isGroupHead = Number(group?.seller_group_head_user_id) === Number(member.user_id);
+  const children = members.filter((candidate) => (
+    Number(candidate.reports_under_user_id) === Number(member.user_id)
+    || (
+      isGroupHead
+      && !candidate.reports_under_user_id
+      && Number(candidate.user_id) !== Number(member.user_id)
+    )
+  ));
+  const parentRate = parent ? Number(getRateValue(parent.project_rates, projectId) || 0) : null;
+  const highestChild = children
+    .map((child) => ({ child, rate: Number(getRateValue(child.project_rates, projectId) || 0) }))
+    .sort((left, right) => right.rate - left.rate)[0] || null;
+
+  return {
+    minimum: highestChild?.rate || 0,
+    maximum: Math.min(15, ...(poolRate > 0 ? [poolRate] : []), ...(parentRate !== null ? [parentRate] : [])),
+    parent,
+    parentRate,
+    highestChild,
+    poolRate,
+  };
+};
+
+/**
+ * Mirrors the API validation so users receive an immediate, useful warning
+ * before the request is sent. The server remains the final source of truth.
+ */
+const validateMemberRates = (member, members, projectRates, group) => {
+  for (const projectRate of projectRates) {
+    const projectId = Number(projectRate.lot_project_id);
+    const projectName = projectRate.lot_project_name || projectRate.lot_project_location_code || "Selected project";
+    const sellerRate = Number(getRateValue(member.project_rates, projectId) || 0);
+    const bounds = getMemberRateBounds(member, members, projectRate, group);
+
+    if (bounds.poolRate > 0 && sellerRate > bounds.poolRate) {
+      return `${member.full_name} rate (${sellerRate}%) cannot be higher than the ${projectName} group pool rate (${bounds.poolRate}%).`;
+    }
+
+    if (bounds.parent && sellerRate > bounds.parentRate) {
+      return `${member.full_name} rate (${sellerRate}%) cannot be greater than ${bounds.parent.full_name} rate (${bounds.parentRate}%) for ${projectName}. A seller under another seller cannot have a higher project rate than their parent.`;
+    }
+
+    if (bounds.highestChild && bounds.highestChild.rate > sellerRate) {
+      return `${member.full_name} rate (${sellerRate}%) cannot be lower than ${bounds.highestChild.child.full_name} rate (${bounds.highestChild.rate}%) for ${projectName}. Lower the child rate first or raise this seller rate.`;
+    }
+  }
+
+  return "";
+};
+
 const DetailsModal = ({ setShowDetailsModal, setShowEditGroupModal, selectedGroup, onSaved }) => {
   const queryClient = useQueryClient();
   const [editingMemberId, setEditingMemberId] = useState(null);
-  const [warning, setWarning] = useState("");
+  const [notice, setNotice] = useState(null);
   const [localMembers, setLocalMembers] = useState(null);
   const [memberSearch, setMemberSearch] = useState("");
 
@@ -44,9 +103,10 @@ const DetailsModal = ({ setShowDetailsModal, setShowEditGroupModal, selectedGrou
       useFetchPatch(`/seller-groups/${selectedGroup.seller_group_id}/members/${member.accredited_seller_id}/rates`, {
         project_rates: member.project_rates || [],
       }),
+    onMutate: () => setNotice({ type: "loading", message: "Saving seller project rates..." }),
     onSuccess: (result) => {
       setEditingMemberId(null);
-      setWarning("");
+      setNotice({ type: "success", message: result.message || "Seller rate updated." });
       setLocalMembers(null);
       queryClient.invalidateQueries({ queryKey: ["seller-group-details", selectedGroup.seller_group_id] });
       queryClient.invalidateQueries({ queryKey: ["seller-groups"] });
@@ -54,10 +114,11 @@ const DetailsModal = ({ setShowDetailsModal, setShowEditGroupModal, selectedGrou
       queryClient.invalidateQueries({ queryKey: ["accredited"] });
       onSaved?.(result.message || "Seller rate updated.");
     },
-    onError: (error) => setWarning(error.message),
+    onError: (error) => setNotice({ type: "error", message: error.message || "Failed to save seller rates." }),
   });
 
   const updateMemberRate = (memberId, projectId, value) => {
+    setNotice(null);
     const sourceMembers = localMembers || details.members || [];
     setLocalMembers(
       sourceMembers.map((member) => {
@@ -84,6 +145,29 @@ const DetailsModal = ({ setShowDetailsModal, setShowEditGroupModal, selectedGrou
     );
   };
 
+
+  const startEditing = (memberId) => {
+    setNotice(null);
+    setLocalMembers(null);
+    setEditingMemberId(memberId);
+  };
+
+  const cancelEditing = () => {
+    setNotice({ type: "info", message: "Unsaved seller rate changes were discarded." });
+    setLocalMembers(null);
+    setEditingMemberId(null);
+  };
+
+  const saveMemberRates = (member) => {
+    const validationMessage = validateMemberRates(member, members, projectRates, group);
+    if (validationMessage) {
+      setNotice({ type: "warning", message: validationMessage });
+      return;
+    }
+
+    updateRateMutation.mutate(member);
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
       <div className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
@@ -94,8 +178,7 @@ const DetailsModal = ({ setShowDetailsModal, setShowEditGroupModal, selectedGrou
 
         <div className="overflow-y-auto px-6 py-5">
           <div className="grid gap-5">
-            {updateRateMutation.isPending ? <StatusAlert type="loading" message="Saving seller project rates..." /> : null}
-            {warning ? <StatusAlert type="warning" message={warning} /> : null}
+            {notice ? <StatusAlert type={notice.type} message={notice.message} onClose={notice.type === "loading" ? undefined : () => setNotice(null)} /> : null}
             {isLoading ? <StatusAlert type="loading" message="Loading group details..." /> : null}
             {isError ? <StatusAlert type="error" message={error?.message || "Failed to load group details."} /> : null}
 
@@ -132,7 +215,24 @@ const DetailsModal = ({ setShowDetailsModal, setShowEditGroupModal, selectedGrou
                             return isEditing ? (
                               <label key={projectRate.lot_project_id} className="flex flex-col gap-1">
                                 <span className="text-[11px] font-bold text-slate-500">{projectRate.lot_project_location_code || projectRate.lot_project_name}</span>
-                                <input type="number" min={0} max={15} step="0.01" value={value} onChange={(event) => updateMemberRate(member.accredited_seller_id, projectRate.lot_project_id, event.target.value)} className="h-9 w-24 rounded-xl border border-slate-200 px-3 text-sm font-bold text-blue-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" />
+                                {(() => {
+                                  const bounds = getMemberRateBounds(member, members, projectRate, group);
+                                  return (
+                                    <>
+                                      <input
+                                        type="number"
+                                        min={bounds.minimum}
+                                        max={bounds.maximum}
+                                        step="0.01"
+                                        value={value}
+                                        placeholder={`Allowed ${bounds.minimum}%–${bounds.maximum}%`}
+                                        onChange={(event) => updateMemberRate(member.accredited_seller_id, projectRate.lot_project_id, event.target.value)}
+                                        className="h-9 w-28 rounded-xl border border-slate-200 px-3 text-sm font-bold text-blue-700 outline-none transition placeholder:text-slate-400 focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
+                                      />
+                                      <span className="text-[10px] font-semibold text-slate-500">Allowed: {bounds.minimum}%–{bounds.maximum}%</span>
+                                    </>
+                                  );
+                                })()}
                               </label>
                             ) : (
                               <span key={projectRate.lot_project_id} className="rounded-lg bg-blue-50 px-2 py-1 text-[11px] font-black text-blue-700 ring-1 ring-blue-100">
@@ -142,7 +242,7 @@ const DetailsModal = ({ setShowDetailsModal, setShowEditGroupModal, selectedGrou
                           })}
                         </div>
                         <span className={`w-fit rounded-full border px-3 py-1 text-xs font-bold capitalize ${member.accredited_seller_status === "active" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-slate-50 text-slate-500"}`}>{member.accredited_seller_status}</span>
-                        <div className="flex justify-end">{isEditing ? <button type="button" disabled={updateRateMutation.isPending} onClick={() => updateRateMutation.mutate(member)} className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 text-xs font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"><FiSave className="h-3.5 w-3.5" />{updateRateMutation.isPending ? "Saving..." : "Save Rate"}</button> : <button type="button" onClick={() => setEditingMemberId(member.accredited_seller_id)} className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"><FiEdit2 className="h-3.5 w-3.5" />Edit Rate</button>}</div>
+                        <div className="flex justify-end gap-2">{isEditing ? <><button type="button" disabled={updateRateMutation.isPending} onClick={cancelEditing} className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60">Cancel</button><button type="button" disabled={updateRateMutation.isPending} onClick={() => saveMemberRates(member)} className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 text-xs font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"><FiSave className="h-3.5 w-3.5" />{updateRateMutation.isPending ? "Saving..." : "Save Rate"}</button></> : <button type="button" onClick={() => startEditing(member.accredited_seller_id)} className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"><FiEdit2 className="h-3.5 w-3.5" />Edit Rate</button>}</div>
                       </div>
                     );
                   })}

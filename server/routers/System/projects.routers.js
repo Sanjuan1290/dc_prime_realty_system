@@ -1,5 +1,10 @@
 import express from 'express';
-import { authenticateUser, requirePermission } from '../../middleware/auth.middleware.js';
+import {
+  authenticateUser,
+  requireCurrentPassword,
+  requirePermission,
+  requireRole,
+} from '../../middleware/auth.middleware.js';
 import { PERMISSIONS } from '../../config/permissions.js';
 
 import {
@@ -24,6 +29,7 @@ import {
 } from '../../controllers/Lot_Projects/Listings/Listings.controller.js';
 import {
   getLotProjectListingProfile,
+  recalculateLotProjectListingCommission,
   holdLotProjectListing,
   unholdLotProjectListing,
 } from '../../controllers/Lot_Projects/ListingProfile/ListingProfile.controller.js';
@@ -70,6 +76,13 @@ router.patch('/lot-projects/:projectSlug/commissions/:commissionId', requirePerm
 router.get('/lot-projects/:projectSlug/settings', requirePermission(PERMISSIONS.LOT_SETTINGS_VIEW), getLotProjectSettings);
 router.put('/lot-projects/:projectSlug/settings', requirePermission(PERMISSIONS.LOT_SETTINGS_MANAGE), updateLotProjectSettings);
 router.get('/lot-projects/:projectSlug/listings/:listingId', requirePermission(PERMISSIONS.LOT_LISTINGS_VIEW), getLotProjectListingProfile);
+router.post(
+  '/lot-projects/:projectSlug/listings/:listingId/recalculate-commission',
+  requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE),
+  requireRole('super_admin'),
+  requireCurrentPassword({ field: 'password', label: 'Super Admin password' }),
+  recalculateLotProjectListingCommission
+);
 router.get('/lot-projects/:projectSlug', requirePermission(PERMISSIONS.LOT_PROJECT_VIEW), getLotProjectBySlug);
 
 router.post('/lot-projects', requirePermission(PERMISSIONS.SYSTEM_PROJECTS_MANAGE), createLotProject);

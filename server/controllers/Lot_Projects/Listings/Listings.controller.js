@@ -67,8 +67,17 @@ import {
   cleanBuyerType,
   cleanSecondBuyerRole,
   addIfColumnExists,
+  parseClientDocumentImages,
 } from '../_shared/lotProject.shared.js';
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
+import {
+  applyCloudinaryMoveToEntry,
+  deleteCloudinaryEmptyFolder,
+  buildCloudinaryUnitAssetMove,
+  getCloudinaryFolderCleanupPaths,
+  moveCloudinaryDynamicAssetFolder,
+  renameCloudinaryAsset,
+} from '../../../services/cloudinaryUnitFolder.service.js';
 
 export const getLotProjectListings = async (req, res) => {
   const connection = await db.getConnection();
@@ -440,8 +449,206 @@ const syncListingInterestToUnlockedSoa = async (connection, projectId, listingId
   return { synced, skipped };
 };
 
+
+/**
+ * Keeps every uploaded client document under the listing's current Unit ID.
+ * Cloudinary assets are renamed first, then the stored JSON metadata is updated
+ * inside the listing transaction. The completedMoves array is used as a
+ * compensation log if a later database operation fails.
+ */
+const syncListingDocumentCloudinaryUnitFolder = async (
+  connection,
+  listingId,
+  previousUnitId,
+  targetUnitId,
+  completedMoves
+) => {
+  if (!(await tableExists(connection, 'lot_project_client_documents'))) {
+    return { movedAssets: 0, updatedDocumentRows: 0, repairedMetadata: 0 };
+  }
+
+  const [documentRows] = await connection.query(
+    `
+      SELECT
+        lot_project_client_document_id,
+        lot_project_client_document_file_name,
+        lot_project_client_document_file_url
+      FROM lot_project_client_documents
+      WHERE lot_project_listing_id = ?
+        AND lot_project_client_document_file_url IS NOT NULL
+        AND TRIM(lot_project_client_document_file_url) <> ''
+      FOR UPDATE
+    `,
+    [listingId]
+  );
+
+  let movedAssets = 0;
+  let updatedDocumentRows = 0;
+  let repairedMetadata = 0;
+  const cleanupFolderPaths = new Set();
+
+  for (const documentRow of documentRows) {
+    const entries = parseClientDocumentImages(
+      documentRow.lot_project_client_document_file_url,
+      documentRow.lot_project_client_document_file_name
+    );
+
+    if (!entries.length) continue;
+
+    const nextEntries = [...entries];
+    let rowChanged = false;
+
+    for (let index = 0; index < entries.length; index += 1) {
+      const entry = entries[index];
+      const move = buildCloudinaryUnitAssetMove(entry, targetUnitId, previousUnitId);
+      if (!move) continue;
+
+      if (move.fromFolder && move.toFolder && move.fromFolder !== move.toFolder) {
+        getCloudinaryFolderCleanupPaths(move.fromFolder).forEach((folderPath) => {
+          if (folderPath) cleanupFolderPaths.add(folderPath);
+        });
+      }
+
+      let renameResult = {};
+      let folderResult = null;
+      let completedMove = null;
+
+      if (move.needsRename) {
+        renameResult = await renameCloudinaryAsset({
+          fromPublicId: move.fromPublicId,
+          toPublicId: move.toPublicId,
+          resourceType: move.resourceType,
+          overwrite: false,
+          invalidate: true,
+        });
+
+        completedMove = {
+          ...move,
+          currentPublicId: renameResult.public_id || move.toPublicId,
+          dynamicFolderMoved: false,
+        };
+        completedMoves.push(completedMove);
+        movedAssets += 1;
+      }
+
+      const hasDynamicFolderMetadata = Boolean(
+        renameResult.asset_folder !== undefined
+          || entry.cloudinaryAssetFolder
+          || entry.cloudinary_asset_folder
+          || entry.asset_folder
+          // In dynamic-folder mode the public ID may not contain the folder,
+          // leaving only folder metadata to move for older uploads.
+          || !move.needsRename
+      );
+
+      if (hasDynamicFolderMetadata && move.toFolder && move.toFolder !== move.fromFolder) {
+        folderResult = await moveCloudinaryDynamicAssetFolder({
+          publicId: renameResult.public_id || move.toPublicId,
+          assetFolder: move.toFolder,
+          resourceType: move.resourceType,
+        });
+
+        if (!completedMove) {
+          completedMove = {
+            ...move,
+            currentPublicId: move.toPublicId,
+            dynamicFolderMoved: true,
+          };
+          completedMoves.push(completedMove);
+        } else {
+          completedMove.dynamicFolderMoved = true;
+        }
+      }
+
+      nextEntries[index] = applyCloudinaryMoveToEntry(entry, move, renameResult, folderResult);
+      rowChanged = true;
+      if (!move.needsRename) repairedMetadata += 1;
+    }
+
+    if (!rowChanged) continue;
+
+    await connection.query(
+      `
+        UPDATE lot_project_client_documents
+        SET lot_project_client_document_file_url = ?,
+            lot_project_client_document_updated_at = NOW()
+        WHERE lot_project_client_document_id = ?
+      `,
+      [JSON.stringify(nextEntries), documentRow.lot_project_client_document_id]
+    );
+    updatedDocumentRows += 1;
+  }
+
+  let deletedFolders = 0;
+  const cleanupWarnings = [];
+
+  // Cloudinary folders are separate objects. Remove empty legacy paths from
+  // deepest to shallowest so the old Unit ID folder does not remain visible.
+  const orderedCleanupPaths = [...cleanupFolderPaths]
+    .sort((left, right) => right.split('/').length - left.split('/').length);
+
+  for (const folderPath of orderedCleanupPaths) {
+    try {
+      const cleanupResult = await deleteCloudinaryEmptyFolder({ folder: folderPath, skipBackup: true });
+      if (cleanupResult.deleted) deletedFolders += 1;
+      if (cleanupResult.reason === 'not_empty') {
+        cleanupWarnings.push(`${folderPath} still contains an untracked asset or subfolder.`);
+      }
+    } catch (cleanupError) {
+      cleanupWarnings.push(`${folderPath}: ${cleanupError?.message || 'Folder cleanup failed.'}`);
+    }
+  }
+
+  return {
+    movedAssets,
+    updatedDocumentRows,
+    repairedMetadata,
+    deletedFolders,
+    cleanupWarnings,
+  };
+};
+
+/**
+ * External Cloudinary changes cannot be rolled back by MySQL, so reverse every
+ * completed asset move when the listing transaction fails.
+ */
+const rollbackListingDocumentCloudinaryMoves = async (completedMoves = []) => {
+  const failures = [];
+
+  for (const move of [...completedMoves].reverse()) {
+    try {
+      if (move.needsRename) {
+        await renameCloudinaryAsset({
+          fromPublicId: move.currentPublicId || move.toPublicId,
+          toPublicId: move.fromPublicId,
+          resourceType: move.resourceType,
+          overwrite: false,
+          invalidate: true,
+        });
+      }
+
+      if (move.dynamicFolderMoved && move.fromFolder) {
+        await moveCloudinaryDynamicAssetFolder({
+          publicId: move.needsRename ? move.fromPublicId : move.currentPublicId,
+          assetFolder: move.fromFolder,
+          resourceType: move.resourceType,
+        });
+      }
+    } catch (rollbackError) {
+      failures.push({
+        fromPublicId: move.currentPublicId || move.toPublicId,
+        toPublicId: move.fromPublicId,
+        message: rollbackError?.message || 'Cloudinary rollback failed.',
+      });
+    }
+  }
+
+  return failures;
+};
+
 export const updateLotProjectListing = async (req, res) => {
   const connection = await db.getConnection();
+  const completedCloudinaryMoves = [];
 
   try {
     const slug = String(req.params.projectSlug || '').trim();
@@ -477,7 +684,10 @@ export const updateLotProjectListing = async (req, res) => {
 
     const [existingRows] = await connection.query(
       `
-        SELECT lot_project_listing_id, lot_project_listing_status
+        SELECT
+          lot_project_listing_id,
+          lot_project_listing_status,
+          lot_project_listing_unit_id
         FROM lot_project_listings l
         WHERE l.lot_project_id = ?
           AND ${lookup.sql}
@@ -491,6 +701,31 @@ export const updateLotProjectListing = async (req, res) => {
       await connection.rollback();
       return res.status(404).json({ message: 'Listing not found.' });
     }
+
+    const [duplicateUnitRows] = await connection.query(
+      `
+        SELECT lot_project_listing_id
+        FROM lot_project_listings
+        WHERE lot_project_id = ?
+          AND lot_project_listing_unit_id = ?
+          AND lot_project_listing_id <> ?
+        LIMIT 1
+      `,
+      [project.lot_project_id, unitCode, existingListing.lot_project_listing_id]
+    );
+
+    if (duplicateUnitRows.length) {
+      await connection.rollback();
+      return res.status(409).json({ message: `${unitCode} already exists in ${project.lot_project_name}.` });
+    }
+
+    const cloudinarySyncResult = await syncListingDocumentCloudinaryUnitFolder(
+      connection,
+      existingListing.lot_project_listing_id,
+      existingListing.lot_project_listing_unit_id,
+      unitCode,
+      completedCloudinaryMoves
+    );
 
     const updateColumns = [
       'lot_project_listing_unit_type = ?',
@@ -608,11 +843,13 @@ export const updateLotProjectListing = async (req, res) => {
       description: `Updated ${unitCode} in ${project.lot_project_name}.`,
       metadata: {
         unitCode,
+        previousUnitCode: existingListing.lot_project_listing_unit_id,
         previousStatus: existingListing.lot_project_listing_status,
         nextStatus: listingStatus.status,
         soldSubstatus: listingStatus.soldSubstatus,
         resetToAvailable,
         soaSyncResult,
+        cloudinarySyncResult,
       },
     });
 
@@ -622,17 +859,33 @@ export const updateLotProjectListing = async (req, res) => {
       success: true,
       message: resetToAvailable
         ? `${unitCode} changed to available. Previous buyer, payment, commission, and submitted document data were removed.`
-        : soaSyncResult.synced > 0
-          ? `${unitCode} updated successfully. SOA interest was synced and recomputed for ${soaSyncResult.synced} buyer account(s).`
-          : soaSyncResult.skipped > 0
-            ? `${unitCode} updated successfully. Existing SOA was not changed because it has payments or a custom SOA rate.`
-            : `${unitCode} updated successfully.`,
+        : cloudinarySyncResult.movedAssets > 0
+          ? cloudinarySyncResult.cleanupWarnings?.length
+            ? `${unitCode} updated and ${cloudinarySyncResult.movedAssets} document asset(s) were moved. Some old Cloudinary folders still contain untracked items and were kept.`
+            : `${unitCode} updated successfully. ${cloudinarySyncResult.movedAssets} uploaded document asset(s) were moved into the ${unitCode} folder and the empty old folder was removed.`
+          : soaSyncResult.synced > 0
+            ? `${unitCode} updated successfully. SOA interest was synced and recomputed for ${soaSyncResult.synced} buyer account(s).`
+            : soaSyncResult.skipped > 0
+              ? `${unitCode} updated successfully. Existing SOA was not changed because it has payments or a custom SOA rate.`
+              : `${unitCode} updated successfully.`,
+      cloudinary_folder_sync: cloudinarySyncResult,
       listing_id: existingListing.lot_project_listing_id,
       unit_id: unitCode,
     });
   } catch (error) {
-    await connection.rollback();
-    return res.status(500).json({ message: getErrorMessage(error) });
+    try { await connection.rollback(); } catch {}
+
+    const cloudinaryRollbackFailures = await rollbackListingDocumentCloudinaryMoves(completedCloudinaryMoves);
+    if (cloudinaryRollbackFailures.length) {
+      console.error('Cloudinary unit-folder rollback failed:', cloudinaryRollbackFailures);
+    }
+
+    const baseMessage = getErrorMessage(error);
+    const message = cloudinaryRollbackFailures.length
+      ? `${baseMessage} Some Cloudinary assets could not be restored automatically; check the server logs before retrying.`
+      : baseMessage;
+
+    return res.status(error?.statusCode || 500).json({ message });
   } finally {
     connection.release();
   }
@@ -842,7 +1095,10 @@ export const deleteLotProjectListing = async (req, res) => {
 
     const [existingRows] = await connection.query(
       `
-        SELECT lot_project_listing_id, lot_project_listing_status
+        SELECT
+          lot_project_listing_id,
+          lot_project_listing_status,
+          lot_project_listing_unit_id
         FROM lot_project_listings l
         WHERE l.lot_project_id = ?
           AND ${lookup.sql}

@@ -22,6 +22,7 @@ import Documents from '../../components/Lot_Projects/ListingProfileComponents/Do
 import Printouts from '../../components/Lot_Projects/ListingProfileComponents/Printouts/Printouts'
 import ReserveListingModal from '../../components/Lot_Projects/ListingProfileComponents/ReserveListingModal/ReserveListingModal'
 import { useFetch, useFetchPatch, useFetchPost, useFetchPut } from '../../utils/useFetch'
+import useCurrentUser from '../../utils/useCurrentUser'
 
 const money = (value) =>
   new Intl.NumberFormat('en-PH', {
@@ -101,6 +102,8 @@ const ListingProfile = () => {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { projectSlug, listingId } = useParams()
+  const { data: currentUserData } = useCurrentUser()
+  const canRecalculateCommission = currentUserData?.user?.role === 'super_admin'
 
   const [activeTab, setActiveTab] = useState('unit')
   const [showReserveModal, setShowReserveModal] = useState(false)
@@ -176,6 +179,37 @@ const ListingProfile = () => {
     },
     onError: (error) => {
       setAlert({ type: 'error', message: error?.message || 'Failed to update listing.' })
+    },
+  })
+
+
+  // Rebuilds only unreleased commission rows using the seller's current hierarchy.
+  const recalculateCommissionMutation = useMutation({
+    mutationFn: (payload) =>
+      useFetchPost(
+        `/projects/lot-projects/${projectSlug}/listings/${listingId}/recalculate-commission`,
+        payload
+      ),
+    onMutate: () => {
+      setAlert({
+        type: 'loading',
+        message: `Recalculating the commission hierarchy for ${listing.unit_id || listing.unitCode || 'this unit'}...`,
+      })
+    },
+    onSuccess: (result) => {
+      setAlert({
+        type: 'success',
+        message: result?.message || 'Commission hierarchy recalculated successfully.',
+      })
+      queryClient.invalidateQueries({ queryKey: ['lot-listing-profile', projectSlug, listingId] })
+      queryClient.invalidateQueries({ queryKey: ['lot-commissions', projectSlug] })
+      queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] })
+    },
+    onError: (error) => {
+      setAlert({
+        type: 'error',
+        message: error?.message || 'Failed to recalculate the unit commission.',
+      })
     },
   })
 
@@ -498,7 +532,10 @@ const ListingProfile = () => {
           listing={listing}
           project={project}
           onSave={(payload) => updateListingMutation.mutateAsync(payload)}
+          canRecalculateCommission={canRecalculateCommission}
+          onRecalculateCommission={(payload) => recalculateCommissionMutation.mutateAsync(payload)}
           isSaving={updateListingMutation.isPending}
+          isRecalculatingCommission={recalculateCommissionMutation.isPending}
         />
       ) : null}
 

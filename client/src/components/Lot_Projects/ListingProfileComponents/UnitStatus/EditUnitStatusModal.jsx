@@ -164,11 +164,14 @@ const EditUnitStatusModal = ({ listing, project = {}, onClose, onSave, isSaving 
   })
 
   const [alert, setAlert] = useState(null)
+  const originalUnitCode = String(listing?.unit_id || listing?.unitCode || '').trim().toUpperCase()
 
   const unitCode = useMemo(() => {
     const unitNumber = String(form.unitNumber || '').trim().toUpperCase()
     return unitNumber ? `${locationCode}-${unitNumber}` : `${locationCode}-`
   }, [form.unitNumber, locationCode])
+
+  const unitIdChanged = Boolean(originalUnitCode && unitCode !== originalUnitCode)
 
   const priceBreakdown = useMemo(() => {
     const pricePerSqm = Number(form.pricePerSqm || 0)
@@ -233,7 +236,12 @@ const EditUnitStatusModal = ({ listing, project = {}, onClose, onSave, isSaving 
     }
 
     try {
-      setAlert({ type: 'loading', message: 'Saving unit details to database...' })
+      setAlert({
+        type: 'loading',
+        message: unitIdChanged
+          ? `Saving ${unitCode} and moving existing document assets from the ${originalUnitCode} folder...`
+          : 'Saving unit details to database...',
+      })
       await onSave?.(payload)
     } catch (error) {
       setAlert({ type: 'error', message: error?.message || 'Failed to save unit details.' })
@@ -315,6 +323,12 @@ const EditUnitStatusModal = ({ listing, project = {}, onClose, onSave, isSaving 
               <p className="text-xs font-semibold text-slate-500">
                 Project code is locked. Type only the unit number after the prefix.
               </p>
+
+              {unitIdChanged ? (
+                <p className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold leading-5 text-blue-800">
+                  Existing Cloudinary document assets will be moved from <strong>{originalUnitCode}</strong> to <strong>{unitCode}</strong>. Future uploads will use the renamed unit folder instead of creating a separate folder.
+                </p>
+              ) : null}
             </label>
 
             <Field

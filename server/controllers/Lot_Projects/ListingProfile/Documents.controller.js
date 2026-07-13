@@ -32,6 +32,7 @@ const normalizeUploadedDocumentFiles = (body = {}) => {
         cloudinaryPublicId: file.cloudinaryPublicId || file.cloudinary_public_id || file.public_id || null,
         cloudinaryResourceType: file.cloudinaryResourceType || file.cloudinary_resource_type || file.resource_type || null,
         cloudinaryFolder: file.cloudinaryFolder || file.cloudinary_folder || file.folder || null,
+        cloudinaryAssetFolder: file.cloudinaryAssetFolder || file.cloudinary_asset_folder || file.asset_folder || null,
         uploadedAt: new Date().toISOString(),
       };
     })
@@ -49,6 +50,7 @@ const normalizeUploadedDocumentFiles = (body = {}) => {
       cloudinaryPublicId: body.cloudinaryPublicId || body.cloudinary_public_id || body.public_id || null,
       cloudinaryResourceType: body.cloudinaryResourceType || body.cloudinary_resource_type || body.resource_type || null,
       cloudinaryFolder: body.cloudinaryFolder || body.cloudinary_folder || body.folder || null,
+      cloudinaryAssetFolder: body.cloudinaryAssetFolder || body.cloudinary_asset_folder || body.asset_folder || null,
       uploadedAt: new Date().toISOString(),
     });
   }
