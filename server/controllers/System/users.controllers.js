@@ -2,7 +2,11 @@ import { db } from '../../db/connect.js';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import { writeAuditLog } from './auditLogs.controller.js';
-import { canActorManageUserRole } from '../../config/permissions.js';
+import {
+  canActorChangeUserRole,
+  canActorCreateUserRole,
+  canActorManageUserRole,
+} from '../../config/permissions.js';
 import { assertSellerProjectRatesFollowHierarchy } from './sellerRateHierarchy.service.js';
 
 const userRoles = new Set(['super_admin', 'admin', 'broker_network_manager', 'broker', 'manager', 'agent']);
@@ -53,6 +57,12 @@ const denyUserManagement = (res, message) => res.status(403).json({
 
 const actorCanManageTargetRole = (req, targetRole) =>
   canActorManageUserRole(req.authUser?.role, targetRole);
+
+const actorCanCreateTargetRole = (req, targetRole) =>
+  canActorCreateUserRole(req.authUser?.role, targetRole);
+
+const actorCanChangeTargetRole = (req, currentRole, requestedRole) =>
+  canActorChangeUserRole(req.authUser?.role, currentRole, requestedRole);
 
 const validateRequestedRole = (role) => userRoles.has(String(role || ''));
 
@@ -619,7 +629,7 @@ export const createUser = async (req, res) => {
     if (!validateRequestedRole(role)) {
       return res.status(400).json({ message: 'Select a valid user role.' });
     }
-    if (!actorCanManageTargetRole(req, role)) {
+    if (!actorCanCreateTargetRole(req, role)) {
       return denyUserManagement(res, 'Admin can create seller accounts only. Admin and Super Admin accounts can only be created by a Super Admin.');
     }
 
@@ -767,8 +777,15 @@ export const editUser = async (req, res) => {
     const targetUser = targetRows[0];
     if (!targetUser) return res.status(404).json({ message: 'User not found.' });
 
-    if (!actorCanManageTargetRole(req, targetUser.role) || !actorCanManageTargetRole(req, role)) {
-      return denyUserManagement(res, 'Admin can edit seller accounts only. Admin and Super Admin accounts are protected.');
+    if (!actorCanManageTargetRole(req, targetUser.role)) {
+      return denyUserManagement(res, 'You do not have permission to edit this account.');
+    }
+
+    if (!actorCanChangeTargetRole(req, targetUser.role, role)) {
+      return denyUserManagement(
+        res,
+        'Admin cannot create or assign Admin and Super Admin roles. Existing privileged accounts must keep their current role.'
+      );
     }
 
     await connection.beginTransaction();
@@ -897,7 +914,7 @@ export const toggleUserStatus = async (req, res) => {
 
     if (!user) return res.status(404).json({ message: 'User not found.' });
     if (!actorCanManageTargetRole(req, user.role)) {
-      return denyUserManagement(res, 'Admin cannot activate or deactivate Admin or Super Admin accounts.');
+      return denyUserManagement(res, 'You do not have permission to activate or deactivate this account.');
     }
 
     const nextStatus = normalizeStatus(req.body.status || (user.status === 'active' ? 'inactive' : 'active'));
@@ -940,7 +957,7 @@ export const resetUserPassword = async (req, res) => {
 
     if (!user) return res.status(404).json({ message: 'User not found.' });
     if (!actorCanManageTargetRole(req, user.role)) {
-      return denyUserManagement(res, 'Admin cannot reset passwords for Admin or Super Admin accounts.');
+      return denyUserManagement(res, 'You do not have permission to reset this account password.');
     }
 
     const passwordHash = await bcrypt.hash(String(newPassword), 10);

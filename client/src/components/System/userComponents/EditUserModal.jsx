@@ -229,6 +229,7 @@ const SearchableSelect = ({
 const EditUserModal = ({ setShowEditUser, selectedUser, onSaved, allowedRoles = Object.keys(roleLabels), actorRole = "super_admin" }) => {
   const queryClient = useQueryClient();
   const availableRoleEntries = useMemo(() => Object.entries(roleLabels).filter(([value]) => allowedRoles.includes(value)), [allowedRoles]);
+  const isPrivilegedRoleLocked = actorRole === "admin" && ["admin", "super_admin"].includes(selectedUser?.role);
   const [activeStep, setActiveStep] = useState(1);
   const [warning, setWarning] = useState("");
   const [form, setForm] = useState(() => getInitialForm(selectedUser));
@@ -579,6 +580,7 @@ const EditUserModal = ({ setShowEditUser, selectedUser, onSaved, allowedRoles = 
                     <p className="text-sm font-bold text-slate-700">Role</p>
                     <select
                       value={form.role}
+                      disabled={isPrivilegedRoleLocked}
                       onChange={(event) => {
                         const nextRole = event.target.value;
                         setForm((current) => ({
@@ -592,13 +594,19 @@ const EditUserModal = ({ setShowEditUser, selectedUser, onSaved, allowedRoles = 
                         setActiveStep(1);
                         setWarning("");
                       }}
-                      className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
+                      className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
                     >
                       {availableRoleEntries.map(([value, label]) => (
                         <option key={value} value={value}>{label}</option>
                       ))}
                     </select>
-                    {actorRole === "admin" ? <p className="text-xs font-semibold text-slate-500">Admin can assign seller roles only. Admin and Super Admin accounts remain protected.</p> : null}
+                    {actorRole === "admin" ? (
+                      <p className="text-xs font-semibold text-slate-500">
+                        {isPrivilegedRoleLocked
+                          ? "You can edit this account, but only a Super Admin can change its role."
+                          : "Admin can assign seller roles only. Admin and Super Admin roles are unavailable."}
+                      </p>
+                    ) : null}
                   </label>
 
                   <label className="flex flex-col gap-2">

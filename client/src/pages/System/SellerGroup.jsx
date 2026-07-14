@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import PageHeader from "../../components/Shared/PageHeader";
 import StatusAlert from "../../components/Shared/StatusAlert";
@@ -25,6 +25,8 @@ const ProjectRatesCell = ({ rates = [] }) => {
 };
 
 const SellerGroup = () => {
+  const location = useLocation();
+  const usersPath = location.pathname.startsWith("/admin/") ? "/admin/users" : "/super_admin/users";
   const queryClient = useQueryClient();
   const [showNewGroupModal, setShowNewGroupModal] = useState(false);
   const [showEditGroupModal, setShowEditGroupModal] = useState(false);
@@ -102,7 +104,7 @@ const SellerGroup = () => {
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <PageHeader title="Seller Groups" description="Manage seller groups, hierarchy, pool rates, and member commission rates." icon={FaUserPlus} />
         <div className="flex flex-col gap-2 sm:flex-row">
-          <NavLink to="/super_admin/users" className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-sm font-bold text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700">Back to Users</NavLink>
+          <NavLink to={usersPath} className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-sm font-bold text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700">Back to Users</NavLink>
           <button type="button" onClick={() => setShowNewGroupModal(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700"><FiPlus className="h-4 w-4" />New Group</button>
         </div>
       </div>

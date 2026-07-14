@@ -4,6 +4,8 @@ export const PERMISSIONS = Object.freeze({
   SYSTEM_PROJECTS_MANAGE: 'system.projects.manage',
   SYSTEM_ACCREDITED_VIEW: 'system.accredited.view',
   SYSTEM_ACCREDITED_MANAGE: 'system.accredited.manage',
+  SYSTEM_SELLER_GROUPS_VIEW: 'system.seller_groups.view',
+  SYSTEM_SELLER_GROUPS_MANAGE: 'system.seller_groups.manage',
   SYSTEM_DOCUMENTS_VIEW: 'system.documents.view',
   SYSTEM_DOCUMENTS_MANAGE: 'system.documents.manage',
   SYSTEM_NOTIFICATIONS_VIEW: 'system.notifications.view',
@@ -35,17 +37,32 @@ export const PERMISSIONS = Object.freeze({
   LOT_SETTINGS_MANAGE: 'lot_project.settings.manage',
 });
 
-export const ADMIN_MANAGEABLE_USER_ROLES = Object.freeze([
+export const USER_ROLES = Object.freeze([
+  'super_admin',
+  'admin',
   'broker_network_manager',
   'broker',
   'manager',
   'agent',
 ]);
 
+export const ADMIN_CREATABLE_USER_ROLES = Object.freeze([
+  'broker_network_manager',
+  'broker',
+  'manager',
+  'agent',
+]);
+
+// Kept for compatibility with older imports. Admin can manage every existing account.
+export const ADMIN_MANAGEABLE_USER_ROLES = USER_ROLES;
+
 const allPermissions = new Set(Object.values(PERMISSIONS));
+const knownUserRoles = new Set(USER_ROLES);
 const adminPermissions = new Set([
   PERMISSIONS.SYSTEM_PROJECTS_VIEW,
   PERMISSIONS.SYSTEM_ACCREDITED_VIEW,
+  PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW,
+  PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE,
   PERMISSIONS.SYSTEM_DOCUMENTS_VIEW,
   PERMISSIONS.SYSTEM_NOTIFICATIONS_VIEW,
   PERMISSIONS.SYSTEM_NOTIFICATIONS_MANAGE,
@@ -72,7 +89,7 @@ const rolePermissions = { super_admin: allPermissions, admin: adminPermissions }
 
 export const hasPermission = (role, permission) => Boolean(rolePermissions[role]?.has(permission));
 export const canManageUserRole = (actorRole, targetRole) => (
-  actorRole === 'super_admin'
-  || (actorRole === 'admin' && ADMIN_MANAGEABLE_USER_ROLES.includes(String(targetRole || '')))
+  knownUserRoles.has(String(targetRole || ''))
+  && (actorRole === 'super_admin' || actorRole === 'admin')
 );
 export const getRoleHome = (role) => role === 'admin' ? '/admin/projects' : role === 'super_admin' ? '/super_admin' : '/';

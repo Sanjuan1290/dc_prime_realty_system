@@ -1,31 +1,7 @@
-import { useRef, useState } from 'react'
-import { FiDownload, FiLoader, FiPrinter, FiX } from 'react-icons/fi'
-import { downloadElementAsPdf, printWithTemporaryBlankTitle, sanitizePdfFileName } from './pdfExportUtils'
+import { FiPrinter, FiX } from 'react-icons/fi'
+import { printWithTemporaryBlankTitle } from './pdfExportUtils'
 
-const PrintPageShell = ({ title, children }) => {
-  const printContentRef = useRef(null)
-  const [pdfStatus, setPdfStatus] = useState(null)
-
-  const handleDownloadPdf = async () => {
-    if (!printContentRef.current) return
-
-    setPdfStatus({ type: 'loading', message: 'Opening PDF save window...' })
-
-    try {
-      await downloadElementAsPdf(printContentRef.current, {
-        filename: sanitizePdfFileName(title || 'printout'),
-      })
-      setPdfStatus({ type: 'success', message: 'PDF window opened. Choose Save as PDF in the print dialog.' })
-    } catch (error) {
-      setPdfStatus({
-        type: 'error',
-        message: error?.message || 'Failed to open the PDF save window.',
-      })
-    }
-  }
-
-  const isDownloading = pdfStatus?.type === 'loading'
-
+const PrintPageShell = ({ title, children, printDisabled = false, printDisabledMessage = '' }) => {
   return (
     <main className="min-h-screen bg-slate-100 text-slate-950 print:bg-white">
       <style>{`
@@ -100,7 +76,9 @@ const PrintPageShell = ({ title, children }) => {
             <button
               type="button"
               onClick={printWithTemporaryBlankTitle}
-              className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 active:scale-[0.98]"
+              disabled={printDisabled}
+              title={printDisabled ? printDisabledMessage : 'Print'}
+              className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-blue-300 disabled:hover:bg-blue-300 disabled:active:scale-100"
             >
               <FiPrinter className="h-4 w-4" />
               Print
@@ -110,7 +88,7 @@ const PrintPageShell = ({ title, children }) => {
           <div>
             <h1 className="text-base font-black text-slate-950">{title}</h1>
             <p className="text-xs font-semibold text-slate-500">
-              Print or Save as PDF.
+              {printDisabled ? printDisabledMessage : 'Print or Save as PDF.'}
             </p>
           </div>
         </div>
@@ -125,21 +103,7 @@ const PrintPageShell = ({ title, children }) => {
         </button>
       </div>
 
-      {pdfStatus ? (
-        <div
-          className={`print-hidden mx-6 mt-4 rounded-2xl border px-4 py-3 text-sm font-bold ${
-            pdfStatus.type === 'error'
-              ? 'border-red-200 bg-red-50 text-red-700'
-              : pdfStatus.type === 'success'
-                ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                : 'border-blue-200 bg-blue-50 text-blue-700'
-          }`}
-        >
-          {pdfStatus.message}
-        </div>
-      ) : null}
-
-      <div ref={printContentRef} className="print-content p-6 print:p-0">
+      <div className="print-content p-6 print:p-0">
         {children}
       </div>
     </main>
@@ -147,4 +111,5 @@ const PrintPageShell = ({ title, children }) => {
 }
 
 export default PrintPageShell
+
 

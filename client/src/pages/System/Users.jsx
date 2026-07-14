@@ -20,7 +20,7 @@ import CreateUserModal from "../../components/System/userComponents/CreateUserMo
 import EditUserModal from "../../components/System/userComponents/EditUserModal";
 import { formatDateTime } from "../../utils/formatDateTime";
 import { useFetch, useFetchPatch } from "../../utils/useFetch";
-import { ADMIN_MANAGEABLE_USER_ROLES, PERMISSIONS, canManageUserRole, hasPermission } from "../../config/permissions";
+import { ADMIN_CREATABLE_USER_ROLES, PERMISSIONS, canManageUserRole, hasPermission } from "../../config/permissions";
 
 const roleLabels = {
   super_admin: "Super Admin",
@@ -91,10 +91,15 @@ const Users = () => {
   const canEditUsers = hasPermission(actorRole, PERMISSIONS.SYSTEM_USERS_EDIT);
   const canResetPasswords = hasPermission(actorRole, PERMISSIONS.SYSTEM_USERS_RESET_PASSWORD);
   const canChangeStatus = hasPermission(actorRole, PERMISSIONS.SYSTEM_USERS_CHANGE_STATUS);
-  const canManageSellerGroups = actorRole === "super_admin";
-  const allowedRoles = actorRole === "admin"
-    ? ADMIN_MANAGEABLE_USER_ROLES
+  const canManageSellerGroups = hasPermission(actorRole, PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE);
+  const createAllowedRoles = actorRole === "admin"
+    ? ADMIN_CREATABLE_USER_ROLES
     : Object.keys(roleLabels);
+  const getEditAllowedRoles = (user) => {
+    if (actorRole !== "admin") return Object.keys(roleLabels);
+    if (["admin", "super_admin"].includes(user?.role)) return [user.role];
+    return ADMIN_CREATABLE_USER_ROLES;
+  };
   const canManageAccount = (user) => canManageUserRole(actorRole, user?.role);
   const queryClient = useQueryClient();
   const [showEditUser, setShowEditUser] = useState(false);
@@ -232,7 +237,7 @@ const Users = () => {
         <StatusAlert
           type="info"
           title="Admin account controls"
-          message="You can create, edit, reset, activate, and deactivate seller accounts. Admin and Super Admin accounts are protected."
+          message="You can create seller accounts and manage every existing user account. Admin and Super Admin roles cannot be created or reassigned."
         />
       ) : null}
       {alert ? <StatusAlert type={alert.type} message={alert.message} onClose={alert.type === "loading" ? undefined : () => setAlert(null)} /> : null}
@@ -389,8 +394,8 @@ const Users = () => {
         </div>
       </section>
 
-      {showCreateUser && canCreateUsers ? <CreateUserModal setShowCreateUser={setShowCreateUser} onSaved={handleSaved} allowedRoles={allowedRoles} actorRole={actorRole} /> : null}
-      {showEditUser && selectedUser && canEditUsers && canManageAccount(selectedUser) ? <EditUserModal setShowEditUser={setShowEditUser} selectedUser={selectedUser} onSaved={handleSaved} allowedRoles={allowedRoles} actorRole={actorRole} /> : null}
+      {showCreateUser && canCreateUsers ? <CreateUserModal setShowCreateUser={setShowCreateUser} onSaved={handleSaved} allowedRoles={createAllowedRoles} actorRole={actorRole} /> : null}
+      {showEditUser && selectedUser && canEditUsers && canManageAccount(selectedUser) ? <EditUserModal setShowEditUser={setShowEditUser} selectedUser={selectedUser} onSaved={handleSaved} allowedRoles={getEditAllowedRoles(selectedUser)} actorRole={actorRole} /> : null}
       {canResetPasswords ? <ResetPasswordConfirmModal
         user={resetTarget}
         onClose={() => {
