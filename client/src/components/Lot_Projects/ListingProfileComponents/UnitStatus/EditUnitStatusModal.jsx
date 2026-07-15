@@ -93,7 +93,7 @@ const Field = ({
   </label>
 )
 
-const SelectField = ({ label, value, onChange, children, helper, required = false, multiple = false }) => (
+const SelectField = ({ label, value, onChange, children, helper, required = false, multiple = false, disabled = false }) => (
   <label className="flex flex-col gap-1.5">
     <span className="text-sm font-black text-slate-700">
       {label} {required ? <span className="text-red-500">*</span> : null}
@@ -102,6 +102,7 @@ const SelectField = ({ label, value, onChange, children, helper, required = fals
     <select
       multiple={multiple}
       value={value}
+      disabled={disabled}
       onChange={(event) => {
         if (multiple) {
           onChange(Array.from(event.target.selectedOptions).map((option) => option.value))
@@ -145,6 +146,27 @@ const EditUnitStatusModal = ({ listing, project = {}, onClose, onSave, isSaving 
     return options
   }, [project.cadastralLots, selectedLotNumber])
 
+  const currentStatus = toStatusValue(listing?.listing_status || listing?.status, listing?.rawStatus)
+  const allowedStatusOptions = useMemo(() => {
+    if (currentStatus === 'sold') {
+      return statusOptions.filter((status) =>
+        ['sold', 'pending_for_cancellation'].includes(status.value)
+      )
+    }
+
+    return statusOptions.filter((status) => status.value === currentStatus)
+  }, [currentStatus])
+
+  const statusHelper = currentStatus === 'sold'
+    ? 'A sold unit can only move to Pending for Cancellation here. Complete Settlement before returning it to Available.'
+    : currentStatus === 'pending_for_cancellation'
+      ? 'Status is locked. Use the Settlement button on Unit & Status.'
+      : currentStatus === 'cancelled'
+        ? 'Status is locked. Use Change to Available to receive the deletion warning and remove the previous sale data.'
+        : currentStatus === 'hold'
+          ? 'Status is locked. Use Unhold or complete the pending buyer form review.'
+          : 'Status is locked. Use Hold or Reserve from the Listing Profile actions.'
+
   const [form, setForm] = useState({
     cadastralLotNo: selectedLotNumber,
     unitNumber: getUnitNumber(listing?.unit_id || listing?.unitCode || '', locationCode),
@@ -160,7 +182,7 @@ const EditUnitStatusModal = ({ listing, project = {}, onClose, onSave, isSaving 
     lotAreaSqm: String(listing?.lotAreaSqm || parseMoney(listing?.lot_area_sqm) || 0),
     legalMiscRate: String(listing?.legalMiscRate || parsePercent(listing?.lmf_rate) || 0),
     annualInterestRate: String(listing?.annualInterestRate || parsePercent(listing?.interestRate) || 0),
-    status: toStatusValue(listing?.listing_status || listing?.status, listing?.rawStatus),
+    status: currentStatus,
   })
 
   const [alert, setAlert] = useState(null)
@@ -213,6 +235,15 @@ const EditUnitStatusModal = ({ listing, project = {}, onClose, onSave, isSaving 
 
     if (Number(form.lotAreaSqm || 0) <= 0) {
       setAlert({ type: 'error', message: 'Lot area SQM must be greater than 0.' })
+      return
+    }
+
+    const allowedStatusValues = new Set(allowedStatusOptions.map((status) => status.value))
+    if (!allowedStatusValues.has(form.status)) {
+      setAlert({
+        type: 'error',
+        message: 'This status change is blocked. Follow the cancellation and settlement process instead.',
+      })
       return
     }
 
@@ -400,8 +431,14 @@ const EditUnitStatusModal = ({ listing, project = {}, onClose, onSave, isSaving 
               helper="Used for monthly amortization and SOA interest view."
             />
 
-            <SelectField label="Status" value={form.status} onChange={(value) => updateField('status', value)}>
-              {statusOptions.map((status) => (
+            <SelectField
+              label="Status"
+              value={form.status}
+              onChange={(value) => updateField('status', value)}
+              disabled={allowedStatusOptions.length === 1}
+              helper={statusHelper}
+            >
+              {allowedStatusOptions.map((status) => (
                 <option key={status.value} value={status.value}>
                   {status.label}
                 </option>
@@ -448,3 +485,4 @@ const EditUnitStatusModal = ({ listing, project = {}, onClose, onSave, isSaving 
 }
 
 export default EditUnitStatusModal
+

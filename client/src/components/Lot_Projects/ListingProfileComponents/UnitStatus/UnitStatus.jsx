@@ -171,6 +171,7 @@ const UnitStatus = ({
         .map((item) => item.trim())
         .filter(Boolean),
       status: 'cancelled',
+      statusTransitionAction: 'settle_cancellation',
     })
   }
 
@@ -196,6 +197,8 @@ const UnitStatus = ({
         .map((item) => item.trim())
         .filter(Boolean),
       status: 'available',
+      statusTransitionAction: 'reset_to_available',
+      confirmSaleDataDeletion: true,
     })
   }
 
@@ -391,3 +394,4 @@ const UnitStatus = ({
 }
 
 export default UnitStatus
+

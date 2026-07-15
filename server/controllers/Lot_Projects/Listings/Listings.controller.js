@@ -70,6 +70,7 @@ import {
   parseClientDocumentImages,
 } from '../_shared/lotProject.shared.js';
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
+import { validateListingStatusTransition } from './listingStatusTransitions.js';
 import {
   hasBuyerFormSchema,
   resetBuyerFormsForAvailable,
@@ -701,6 +702,7 @@ export const updateLotProjectListing = async (req, res) => {
         WHERE l.lot_project_id = ?
           AND ${lookup.sql}
         LIMIT 1
+        FOR UPDATE
       `,
       [project.lot_project_id, ...lookup.params]
     );
@@ -710,6 +712,13 @@ export const updateLotProjectListing = async (req, res) => {
       await connection.rollback();
       return res.status(404).json({ message: 'Listing not found.' });
     }
+
+    const statusTransition = validateListingStatusTransition({
+      currentStatus: existingListing.lot_project_listing_status,
+      nextStatus: listingStatus.status,
+      action: req.body.statusTransitionAction,
+      confirmSaleDataDeletion: req.body.confirmSaleDataDeletion === true,
+    });
 
     const [duplicateUnitRows] = await connection.query(
       `
@@ -795,7 +804,7 @@ export const updateLotProjectListing = async (req, res) => {
       return res.status(404).json({ message: 'Listing not found.' });
     }
 
-    const resetToAvailable = listingStatus.status === 'available' && existingListing.lot_project_listing_status !== 'available';
+    const resetToAvailable = statusTransition.resetToAvailable;
     const unitIdChanged = unitCode !== existingListing.lot_project_listing_unit_id;
     const buyerFormSchemaAvailable = await hasBuyerFormSchema(connection);
 
@@ -865,6 +874,7 @@ export const updateLotProjectListing = async (req, res) => {
         previousStatus: existingListing.lot_project_listing_status,
         nextStatus: listingStatus.status,
         soldSubstatus: listingStatus.soldSubstatus,
+        statusTransitionAction: req.body.statusTransitionAction || null,
         resetToAvailable,
         soaSyncResult,
         cloudinarySyncResult,
