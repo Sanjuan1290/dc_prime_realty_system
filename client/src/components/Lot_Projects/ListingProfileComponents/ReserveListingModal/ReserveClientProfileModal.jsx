@@ -150,12 +150,22 @@ const WorkBusinessFields = ({ title, form, setForm, second = false, invalidField
   )
 }
 
-const ReserveClientProfileModal = ({ clientForm, setClientForm, hasSecondBuyer, updateBuyerType, invalidField = '', onFieldChange }) => (
+const ReserveClientProfileModal = ({
+  clientForm,
+  setClientForm,
+  hasSecondBuyer,
+  updateBuyerType,
+  invalidField = '',
+  onFieldChange,
+  title = 'Client Profile',
+  description = 'Input the buyer profile first. This data is used for the Offer to Buy printout.',
+  stepLabel = 'Step 1 of 3',
+}) => (
   <div className="flex flex-col gap-4">
     <SectionCard
-      title="Client Profile"
-      description="Input the buyer profile first. This data is used for the Offer to Buy printout."
-      right={<span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700">Step 1 of 3</span>}
+      title={title}
+      description={description}
+      right={stepLabel ? <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700">{stepLabel}</span> : null}
     >
       <div className="grid gap-4 md:grid-cols-[1fr_auto] md:items-end">
         <SelectInput label="Buyer Type" value={clientForm.buyerType} onChange={updateBuyerType} error={invalidField === 'buyerType'} required>
@@ -208,3 +218,4 @@ const ReserveClientProfileModal = ({ clientForm, setClientForm, hasSecondBuyer, 
 )
 
 export default ReserveClientProfileModal
+

@@ -74,6 +74,12 @@ import {
   hasReleasedCommissionActivity,
   replaceReservationCommissions,
 } from '../Commissions/commissionHierarchy.service.js';
+import { readBuyerFormStateForProfile } from '../BuyerForms/BuyerForms.controller.js';
+import {
+  hasBuyerFormSchema,
+  resetBuyerFormsForAvailable,
+  revokeOpenBuyerFormLinks,
+} from '../BuyerForms/buyerForm.shared.js';
 
 const getColumnDefinition = async (connection, tableName, columnName) => {
   const [rows] = await connection.query(
@@ -571,6 +577,18 @@ export const getLotProjectListingProfile = async (req, res) => {
     const cadastralLots = await getProjectCadastralLots(project.lot_project_id);
     const defaultDocuments = await getProjectDefaultDocuments(project.lot_project_id);
     const sellerOptions = await getReserveSellerOptions(connection, project.lot_project_id);
+    let buyerForm = { currentLink: null, latestSubmission: null, pendingSubmission: null };
+    try {
+      buyerForm = await readBuyerFormStateForProfile(connection, row.lot_project_listing_id);
+    } catch (buyerFormError) {
+      buyerForm = {
+        currentLink: null,
+        latestSubmission: null,
+        pendingSubmission: null,
+        migrationRequired: true,
+        message: buyerFormError?.message || 'Buyer form migration is required.',
+      };
+    }
     const commissionSnapshot = await loadListingCommissionSnapshot(
       connection,
       row.lot_project_listing_id
@@ -619,6 +637,7 @@ export const getLotProjectListingProfile = async (req, res) => {
         reserveOptions: {
           sellers: sellerOptions,
         },
+        buyerForm,
       },
     });
   } catch (error) {
@@ -910,7 +929,7 @@ export const holdLotProjectListing = async (req, res) => {
       'hold_created_at = NOW()',
       'hold_created_by_user_id = ?',
     ];
-    const updateParams = ['hold', clientName, holdNote || null, req.user?.id || null];
+    const updateParams = ['hold', clientName, holdNote || null, req.authUser?.id || null];
 
     if (await columnExists(connection, 'lot_project_listings', 'lot_project_listing_sold_substatus')) {
       updateColumns.splice(1, 0, 'lot_project_listing_sold_substatus = NULL');
@@ -929,6 +948,14 @@ export const holdLotProjectListing = async (req, res) => {
       `,
       updateParams
     );
+
+    if (await hasBuyerFormSchema(connection)) {
+      await revokeOpenBuyerFormLinks(connection, listing.lot_project_listing_id, { status: 'superseded' });
+      await connection.query(
+        `UPDATE lot_project_listings SET buyer_form_generation = buyer_form_generation + 1 WHERE lot_project_listing_id = ?`,
+        [listing.lot_project_listing_id]
+      );
+    }
 
     await writeAuditLog(connection, req, {
       action: 'update',
@@ -1010,6 +1037,13 @@ export const unholdLotProjectListing = async (req, res) => {
       return res.status(400).json({ message: 'Only held listings can be unheld.' });
     }
 
+    const buyerFormSchemaAvailable = await hasBuyerFormSchema(connection);
+    if (buyerFormSchemaAvailable && Number(listing.pending_buyer_form_submission_id || 0) > 0) {
+      return res.status(400).json({
+        message: 'This hold came from a buyer form submission. Reject the submission to return the unit to available.',
+      });
+    }
+
     const updateColumns = [
       'lot_project_listing_status = ?',
     ];
@@ -1039,6 +1073,10 @@ export const unholdLotProjectListing = async (req, res) => {
       `,
       updateParams
     );
+
+    if (buyerFormSchemaAvailable) {
+      await resetBuyerFormsForAvailable(connection, listing.lot_project_listing_id);
+    }
 
     await writeAuditLog(connection, req, {
       action: 'update',
@@ -1071,3 +1109,4 @@ export const unholdLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
+

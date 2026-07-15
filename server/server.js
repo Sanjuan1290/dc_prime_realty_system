@@ -19,6 +19,7 @@ import systemSettingsRouter from './routers/System/systemSettings.routers.js';
 import employeesRouter from './routers/System/employees.routers.js';
 import attendanceRouter from './routers/System/attendance.routers.js';
 import employeeCashAdvancesRouter from './routers/System/employeeCashAdvances.routers.js';
+import publicBuyerFormsRouter from './routers/publicBuyerForms.router.js';
 
 const app = express();
 
@@ -58,6 +59,7 @@ app.get('/api/v1/health', (req, res) => {
 });
 
 // API Routers
+app.use('/api/v1/public/buyer-forms', publicBuyerFormsRouter);
 app.use('/api/v1/user', userRouter);
 app.use('/api/v1/documents', documentsRouter);
 app.use('/api/v1/seller-groups', sellerGroupRouter);
@@ -94,3 +96,4 @@ const startServer = async () => {
 };
 
 startServer();
+

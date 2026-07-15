@@ -8,6 +8,7 @@ import {
 
 import Login from './auth/Login'
 import ChangePassword from './auth/ChangePassword'
+import BuyerForm from './pages/Public/BuyerForm'
 import SystemLayout from './layout/SystemLayout'
 import AdminLayout from './layout/adminLayout'
 import LotLayout from './layout/LotLayout'
@@ -51,6 +52,7 @@ const App = () => {
       <>
         <Route path="/" element={<Login />} />
         <Route path="/change-password" element={<ChangePassword />} />
+        <Route path="/buyer-form/:token" element={<BuyerForm />} />
 
         <Route path="/super_admin" element={<SystemLayout />}>
           <Route index element={<Dashboard />} />
@@ -108,3 +110,4 @@ const App = () => {
 }
 
 export default App
+

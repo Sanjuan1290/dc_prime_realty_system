@@ -5,6 +5,7 @@ import {
   FiCreditCard,
   FiFileText,
   FiHome,
+  FiLink,
   FiPrinter,
   FiPauseCircle,
   FiRefreshCw,
@@ -21,6 +22,8 @@ import PaymentsSOA from '../../components/Lot_Projects/ListingProfileComponents/
 import Documents from '../../components/Lot_Projects/ListingProfileComponents/Documents/Documents'
 import Printouts from '../../components/Lot_Projects/ListingProfileComponents/Printouts/Printouts'
 import ReserveListingModal from '../../components/Lot_Projects/ListingProfileComponents/ReserveListingModal/ReserveListingModal'
+import BuyerFormLinkModal from '../../components/Lot_Projects/ListingProfileComponents/BuyerForm/BuyerFormLinkModal'
+import BuyerFormStatusBanner from '../../components/Lot_Projects/ListingProfileComponents/BuyerForm/BuyerFormStatusBanner'
 import { useFetch, useFetchPatch, useFetchPost, useFetchPut } from '../../utils/useFetch'
 import useCurrentUser from '../../utils/useCurrentUser'
 
@@ -107,6 +110,10 @@ const ListingProfile = () => {
 
   const [activeTab, setActiveTab] = useState('unit')
   const [showReserveModal, setShowReserveModal] = useState(false)
+  const [reserveMode, setReserveMode] = useState('manual')
+  const [showBuyerFormLinkModal, setShowBuyerFormLinkModal] = useState(false)
+  const [generatedBuyerFormUrl, setGeneratedBuyerFormUrl] = useState('')
+  const [buyerFormNotice, setBuyerFormNotice] = useState(null)
   const [showHoldModal, setShowHoldModal] = useState(false)
   const [alert, setAlert] = useState(null)
 
@@ -117,6 +124,14 @@ const ListingProfile = () => {
     retry: false,
   })
 
+  const buyerFormStateQuery = useQuery({
+    queryKey: ['lot-buyer-form-state', projectSlug, listingId],
+    queryFn: () => useFetch(`/projects/lot-projects/${projectSlug}/listings/${listingId}/buyer-form`),
+    enabled: Boolean(projectSlug && listingId),
+    retry: false,
+    refetchOnWindowFocus: true,
+  })
+
   const profile = profileQuery.data?.data || {}
   const project = profile.project || {}
   const listing = profile.listing || emptyListing
@@ -125,6 +140,12 @@ const ListingProfile = () => {
   const payments = profile.payments || []
   const documents = profile.documents || []
   const reserveSellerOptions = profile.reserveOptions?.sellers || []
+  const profileBuyerForm = profile.buyerForm || {}
+  const buyerForm = buyerFormStateQuery.isSuccess
+    ? { ...profileBuyerForm, ...(buyerFormStateQuery.data?.data || {}) }
+    : profileBuyerForm
+  const pendingBuyerFormSubmission = buyerForm.pendingSubmission || null
+  const currentBuyerFormLink = buyerForm.currentLink || null
 
   const reserveDocumentsQuery = useQuery({
     queryKey: ['documents'],
@@ -174,6 +195,7 @@ const ListingProfile = () => {
     onSuccess: (result) => {
       setAlert({ type: 'success', message: result?.message || 'Listing updated successfully.' })
       queryClient.invalidateQueries({ queryKey: ['lot-listing-profile', projectSlug, listingId] })
+      queryClient.invalidateQueries({ queryKey: ['lot-buyer-form-state', projectSlug, listingId] })
       queryClient.invalidateQueries({ queryKey: ['lot-listings', projectSlug] })
       queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] })
     },
@@ -202,6 +224,7 @@ const ListingProfile = () => {
         message: result?.message || 'Commission hierarchy recalculated successfully.',
       })
       queryClient.invalidateQueries({ queryKey: ['lot-listing-profile', projectSlug, listingId] })
+      queryClient.invalidateQueries({ queryKey: ['lot-buyer-form-state', projectSlug, listingId] })
       queryClient.invalidateQueries({ queryKey: ['lot-commissions', projectSlug] })
       queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] })
     },
@@ -223,12 +246,65 @@ const ListingProfile = () => {
       setShowReserveModal(false)
       setAlert({ type: 'success', message: result?.message || 'Reservation saved successfully.' })
       queryClient.invalidateQueries({ queryKey: ['lot-listing-profile', projectSlug, listingId] })
+      queryClient.invalidateQueries({ queryKey: ['lot-buyer-form-state', projectSlug, listingId] })
       queryClient.invalidateQueries({ queryKey: ['lot-listings', projectSlug] })
       queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] })
     },
     onError: (error) => {
       setAlert({ type: 'error', message: error?.message || 'Failed to reserve listing.' })
     },
+  })
+
+  const createBuyerFormLinkMutation = useMutation({
+    mutationFn: (payload) =>
+      useFetchPost(`/projects/lot-projects/${projectSlug}/listings/${listingId}/buyer-form-links`, payload),
+    onMutate: () => {
+      setBuyerFormNotice({ type: 'loading', message: 'Generating a secure buyer form link...' })
+      setGeneratedBuyerFormUrl('')
+    },
+    onSuccess: (result) => {
+      setGeneratedBuyerFormUrl(result?.data?.publicUrl || '')
+      setBuyerFormNotice({ type: 'success', message: result?.message || 'Buyer form link created.' })
+      queryClient.invalidateQueries({ queryKey: ['lot-listing-profile', projectSlug, listingId] })
+      queryClient.invalidateQueries({ queryKey: ['lot-buyer-form-state', projectSlug, listingId] })
+      queryClient.invalidateQueries({ queryKey: ['lot-listings', projectSlug] })
+    },
+    onError: (error) => {
+      setBuyerFormNotice({ type: 'error', message: error?.message || 'Failed to generate buyer form link.' })
+    },
+  })
+
+  const revokeBuyerFormLinkMutation = useMutation({
+    mutationFn: (link) =>
+      useFetchPost(
+        `/projects/lot-projects/${projectSlug}/listings/${listingId}/buyer-form-links/${link.id}/revoke`,
+        {}
+      ),
+    onMutate: () => setBuyerFormNotice({ type: 'loading', message: 'Revoking buyer form link...' }),
+    onSuccess: (result) => {
+      setGeneratedBuyerFormUrl('')
+      setBuyerFormNotice({ type: 'success', message: result?.message || 'Buyer form link revoked.' })
+      queryClient.invalidateQueries({ queryKey: ['lot-listing-profile', projectSlug, listingId] })
+      queryClient.invalidateQueries({ queryKey: ['lot-buyer-form-state', projectSlug, listingId] })
+    },
+    onError: (error) => setBuyerFormNotice({ type: 'error', message: error?.message || 'Failed to revoke buyer form link.' }),
+  })
+
+  const rejectBuyerFormSubmissionMutation = useMutation({
+    mutationFn: ({ submission, reason }) =>
+      useFetchPost(
+        `/projects/lot-projects/${projectSlug}/listings/${listingId}/buyer-form-submissions/${submission.id}/reject`,
+        { reason }
+      ),
+    onMutate: () => setAlert({ type: 'loading', message: 'Rejecting buyer form submission...' }),
+    onSuccess: (result) => {
+      setAlert({ type: 'success', message: result?.message || 'Buyer form submission rejected.' })
+      queryClient.invalidateQueries({ queryKey: ['lot-listing-profile', projectSlug, listingId] })
+      queryClient.invalidateQueries({ queryKey: ['lot-buyer-form-state', projectSlug, listingId] })
+      queryClient.invalidateQueries({ queryKey: ['lot-listings', projectSlug] })
+      queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] })
+    },
+    onError: (error) => setAlert({ type: 'error', message: error?.message || 'Failed to reject buyer form submission.' }),
   })
 
   const holdListingMutation = useMutation({
@@ -241,6 +317,7 @@ const ListingProfile = () => {
       setShowHoldModal(false)
       setAlert({ type: 'success', message: result?.message || 'Listing held successfully.' })
       queryClient.invalidateQueries({ queryKey: ['lot-listing-profile', projectSlug, listingId] })
+      queryClient.invalidateQueries({ queryKey: ['lot-buyer-form-state', projectSlug, listingId] })
       queryClient.invalidateQueries({ queryKey: ['lot-listings', projectSlug] })
       queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] })
     },
@@ -258,6 +335,7 @@ const ListingProfile = () => {
     onSuccess: (result) => {
       setAlert({ type: 'success', message: result?.message || 'Listing returned to available.' })
       queryClient.invalidateQueries({ queryKey: ['lot-listing-profile', projectSlug, listingId] })
+      queryClient.invalidateQueries({ queryKey: ['lot-buyer-form-state', projectSlug, listingId] })
       queryClient.invalidateQueries({ queryKey: ['lot-listings', projectSlug] })
       queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] })
     },
@@ -278,6 +356,7 @@ const ListingProfile = () => {
     onSuccess: (result) => {
       setAlert({ type: 'success', message: result?.message || 'Document uploaded successfully.' })
       queryClient.invalidateQueries({ queryKey: ['lot-listing-profile', projectSlug, listingId] })
+      queryClient.invalidateQueries({ queryKey: ['lot-buyer-form-state', projectSlug, listingId] })
     },
     onError: (error) => {
       setAlert({ type: 'error', message: error?.message || 'Failed to upload document.' })
@@ -296,6 +375,7 @@ const ListingProfile = () => {
     onSuccess: (result) => {
       setAlert({ type: 'success', message: result?.message || 'Document approved successfully.' })
       queryClient.invalidateQueries({ queryKey: ['lot-listing-profile', projectSlug, listingId] })
+      queryClient.invalidateQueries({ queryKey: ['lot-buyer-form-state', projectSlug, listingId] })
     },
     onError: (error) => {
       setAlert({ type: 'error', message: error?.message || 'Failed to approve document.' })
@@ -314,6 +394,7 @@ const ListingProfile = () => {
     onSuccess: (result) => {
       setAlert({ type: 'warning', message: result?.message || 'Document cleared successfully.' })
       queryClient.invalidateQueries({ queryKey: ['lot-listing-profile', projectSlug, listingId] })
+      queryClient.invalidateQueries({ queryKey: ['lot-buyer-form-state', projectSlug, listingId] })
     },
     onError: (error) => {
       setAlert({ type: 'error', message: error?.message || 'Failed to clear document.' })
@@ -332,6 +413,7 @@ const ListingProfile = () => {
     onSuccess: (result) => {
       setAlert({ type: 'success', message: result?.message || 'Document requirements updated successfully.' })
       queryClient.invalidateQueries({ queryKey: ['lot-listing-profile', projectSlug, listingId] })
+      queryClient.invalidateQueries({ queryKey: ['lot-buyer-form-state', projectSlug, listingId] })
       queryClient.invalidateQueries({ queryKey: ['lot-listings', projectSlug] })
       queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] })
     },
@@ -349,6 +431,7 @@ const ListingProfile = () => {
     onSuccess: (result) => {
       setAlert({ type: 'success', message: result?.message || 'Buyer profile updated successfully.' })
       queryClient.invalidateQueries({ queryKey: ['lot-listing-profile', projectSlug, listingId] })
+      queryClient.invalidateQueries({ queryKey: ['lot-buyer-form-state', projectSlug, listingId] })
       queryClient.invalidateQueries({ queryKey: ['lot-listings', projectSlug] })
     },
     onError: (error) => {
@@ -358,13 +441,35 @@ const ListingProfile = () => {
 
   const handleReserveListing = (reservationPayload) => reserveListingMutation.mutateAsync(reservationPayload)
 
+  const openManualReservation = () => {
+    setReserveMode('manual')
+    setShowReserveModal(true)
+  }
+
+  const reviewBuyerFormSubmission = () => {
+    if (!pendingBuyerFormSubmission) return
+    setReserveMode('submission-review')
+    setShowReserveModal(true)
+  }
+
+  const rejectBuyerFormSubmission = (submission) => {
+    const reason = window.prompt('Reason for rejecting this buyer form submission:', 'Buyer information requires correction.')
+    if (reason === null) return
+    if (!window.confirm(`Reject ${submission?.buyerName || 'this buyer'} and return the unit to available?`)) return
+    rejectBuyerFormSubmissionMutation.mutate({ submission, reason: reason.trim() })
+  }
+
   const handleRefresh = () => {
     profileQuery.refetch()
+    buyerFormStateQuery.refetch()
   }
 
   const isHeld = listing.rawStatus === 'hold' || listing.listing_status === 'Hold'
   const canHold = listing.rawStatus === 'available' || listing.listing_status === 'Available'
   const canReserve = listing.rawStatus === 'available' || listing.listing_status === 'Available'
+  const isBuyerFormHold = Boolean(isHeld && pendingBuyerFormSubmission)
+  const canManageBuyerForm = Boolean(canReserve && !buyerForm.migrationRequired)
+  const hasActiveBuyerFormLink = ['active', 'opened'].includes(String(currentBuyerFormLink?.status || '').toLowerCase())
   const canManageDocuments = Boolean(listing.hasClientProfile && listing.canEditBuyerProfile)
 
   return (
@@ -382,6 +487,17 @@ const ListingProfile = () => {
       {profileQuery.isError ? (
         <StatusAlert type="error" message={profileQuery.error?.message || 'Failed to load listing profile.'} />
       ) : null}
+
+      {buyerForm.migrationRequired ? (
+        <StatusAlert type="warning" message={buyerForm.message || 'Run the buyer form database migration before using form links.'} />
+      ) : null}
+
+      <BuyerFormStatusBanner
+        submission={pendingBuyerFormSubmission}
+        onReview={reviewBuyerFormSubmission}
+        onReject={rejectBuyerFormSubmission}
+        isSaving={rejectBuyerFormSubmissionMutation.isPending}
+      />
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
@@ -426,7 +542,7 @@ const ListingProfile = () => {
             </div>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-6">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-7">
             <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
               <p className="text-xs font-black uppercase text-slate-500">TCP</p>
               <p className="mt-1 text-sm font-black text-slate-950">
@@ -464,6 +580,7 @@ const ListingProfile = () => {
             <button
               type="button"
               onClick={() => {
+                if (isBuyerFormHold) return
                 if (isHeld) {
                   if (window.confirm('Unhold this listing and return it to available?')) {
                     unholdListingMutation.mutate()
@@ -477,7 +594,8 @@ const ListingProfile = () => {
                 profileQuery.isLoading ||
                 holdListingMutation.isPending ||
                 unholdListingMutation.isPending ||
-                (!canHold && !isHeld)
+                (!canHold && !isHeld) ||
+                isBuyerFormHold
               }
               className={`inline-flex min-h-[68px] items-center justify-center gap-2 rounded-xl px-4 text-sm font-black text-white shadow-sm transition disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98] ${
                 isHeld
@@ -486,17 +604,31 @@ const ListingProfile = () => {
               }`}
             >
               {isHeld ? <FiUnlock className="h-4 w-4" /> : <FiPauseCircle className="h-4 w-4" />}
-              {isHeld ? 'Unhold' : 'Hold'}
+              {isBuyerFormHold ? 'Buyer Form Hold' : isHeld ? 'Unhold' : 'Hold'}
             </button>
 
             <button
               type="button"
-              onClick={() => setShowReserveModal(true)}
-              disabled={!canReserve || profileQuery.isLoading}
+              onClick={() => {
+                setGeneratedBuyerFormUrl('')
+                setBuyerFormNotice(null)
+                setShowBuyerFormLinkModal(true)
+              }}
+              disabled={!canManageBuyerForm || profileQuery.isLoading}
+              className="inline-flex min-h-[68px] items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 text-sm font-black text-blue-700 shadow-sm transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98]"
+            >
+              <FiLink className="h-4 w-4" />
+              {hasActiveBuyerFormLink ? 'Manage Form Link' : 'Send Buyer Form'}
+            </button>
+
+            <button
+              type="button"
+              onClick={isBuyerFormHold ? reviewBuyerFormSubmission : openManualReservation}
+              disabled={(!canReserve && !isBuyerFormHold) || profileQuery.isLoading}
               className="inline-flex min-h-[68px] items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98]"
             >
               <FiUserCheck className="h-4 w-4" />
-              Reserve
+              {isBuyerFormHold ? 'Review Form' : 'Reserve'}
             </button>
           </div>
         </div>
@@ -592,8 +724,14 @@ const ListingProfile = () => {
       {showReserveModal ? (
         <ReserveListingModal
           listing={listing}
-          client={client}
-          onClose={() => setShowReserveModal(false)}
+          client={reserveMode === 'submission-review' ? pendingBuyerFormSubmission?.submittedPayload || {} : client}
+          mode={reserveMode}
+          buyerFormSubmissionId={reserveMode === 'submission-review' ? pendingBuyerFormSubmission?.id : null}
+          submissionMeta={reserveMode === 'submission-review' ? pendingBuyerFormSubmission : null}
+          onClose={() => {
+            setShowReserveModal(false)
+            setReserveMode('manual')
+          }}
           project={project}
           documentLibrary={documentLibrary}
           projectDefaultDocuments={project.defaultDocuments || []}
@@ -604,8 +742,32 @@ const ListingProfile = () => {
           onReserve={handleReserveListing}
         />
       ) : null}
+
+
+      {showBuyerFormLinkModal ? (
+        <BuyerFormLinkModal
+          listing={listing}
+          currentLink={currentBuyerFormLink}
+          generatedUrl={generatedBuyerFormUrl}
+          notice={buyerFormNotice}
+          isSaving={createBuyerFormLinkMutation.isPending || revokeBuyerFormLinkMutation.isPending}
+          onGenerate={(payload) => createBuyerFormLinkMutation.mutate(payload)}
+          onRevoke={(link) => {
+            if (window.confirm('Revoke this buyer form link? The buyer will no longer be able to submit it.')) {
+              revokeBuyerFormLinkMutation.mutate(link)
+            }
+          }}
+          onClearNotice={() => setBuyerFormNotice(null)}
+          onClose={() => {
+            setShowBuyerFormLinkModal(false)
+            setBuyerFormNotice(null)
+            setGeneratedBuyerFormUrl('')
+          }}
+        />
+      ) : null}
     </main>
   )
 }
 
 export default ListingProfile
+

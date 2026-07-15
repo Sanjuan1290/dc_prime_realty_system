@@ -71,6 +71,11 @@ import {
 } from '../_shared/lotProject.shared.js';
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
 import {
+  hasBuyerFormSchema,
+  resetBuyerFormsForAvailable,
+  revokeOpenBuyerFormLinks,
+} from '../BuyerForms/buyerForm.shared.js';
+import {
   applyCloudinaryMoveToEntry,
   deleteCloudinaryEmptyFolder,
   buildCloudinaryUnitAssetMove,
@@ -370,6 +375,10 @@ const clearListingSaleDataForAvailable = async (connection, listingId) => {
       `DELETE FROM lot_project_client_profiles WHERE lot_project_listing_id = ?`,
       [listingId]
     );
+  }
+
+  if (await hasBuyerFormSchema(connection)) {
+    await resetBuyerFormsForAvailable(connection, listingId);
   }
 };
 
@@ -787,8 +796,17 @@ export const updateLotProjectListing = async (req, res) => {
     }
 
     const resetToAvailable = listingStatus.status === 'available' && existingListing.lot_project_listing_status !== 'available';
+    const unitIdChanged = unitCode !== existingListing.lot_project_listing_unit_id;
+    const buyerFormSchemaAvailable = await hasBuyerFormSchema(connection);
+
     if (resetToAvailable) {
       await clearListingSaleDataForAvailable(connection, existingListing.lot_project_listing_id);
+    } else if (buyerFormSchemaAvailable && (unitIdChanged || listingStatus.status !== 'available')) {
+      await revokeOpenBuyerFormLinks(connection, existingListing.lot_project_listing_id, { status: 'superseded' });
+      await connection.query(
+        `UPDATE lot_project_listings SET buyer_form_generation = buyer_form_generation + 1 WHERE lot_project_listing_id = ?`,
+        [existingListing.lot_project_listing_id]
+      );
     }
 
     if (hasListingCadastralLinks) {
@@ -1186,3 +1204,4 @@ export const deleteLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
+

@@ -18,6 +18,10 @@ import {
 } from '../_shared/lotProject.shared.js';
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
 import { replaceReservationCommissions } from '../Commissions/commissionHierarchy.service.js';
+import {
+  assertBuyerFormSchema,
+  revokeOpenBuyerFormLinks,
+} from '../BuyerForms/buyerForm.shared.js';
 
 const cleanNamePart = (value) => String(value || '').trim();
 
@@ -293,6 +297,9 @@ export const reserveLotProjectListing = async (req, res) => {
       return res.status(400).json({ message: 'Only available or hold listings can be reserved.' });
     }
 
+    const buyerFormSubmissionId = Number(
+      req.body.buyerFormSubmissionId || req.body.submissionId || 0
+    ) || null;
     const clientProfile = req.body.clientProfile || req.body.client || {};
     const reservation = req.body.reservation || {};
     const terms = reservation.paymentTerms || req.body.paymentTerms || {};
@@ -587,7 +594,86 @@ export const reserveLotProjectListing = async (req, res) => {
       .filter((column) => !['lot_project_id', 'lot_project_listing_id'].includes(column))
       .map((column) => `${column} = VALUES(${column})`);
 
+    const buyerFormSchemaAvailable =
+      (await tableExists(connection, 'lot_project_buyer_form_links')) &&
+      (await tableExists(connection, 'lot_project_buyer_form_submissions')) &&
+      (await columnExists(connection, 'lot_project_listings', 'pending_buyer_form_submission_id')) &&
+      (await columnExists(connection, 'lot_project_listings', 'buyer_form_generation'));
+
+    if (buyerFormSubmissionId && !buyerFormSchemaAvailable) {
+      await assertBuyerFormSchema(connection);
+    }
+
     await connection.beginTransaction();
+
+    const pendingSubmissionSelect = buyerFormSchemaAvailable
+      ? 'pending_buyer_form_submission_id'
+      : 'NULL AS pending_buyer_form_submission_id';
+    const [lockedListingRows] = await connection.query(
+      `
+        SELECT
+          lot_project_listing_id,
+          lot_project_listing_status,
+          ${pendingSubmissionSelect}
+        FROM lot_project_listings
+        WHERE lot_project_id = ?
+          AND lot_project_listing_id = ?
+        LIMIT 1
+        FOR UPDATE
+      `,
+      [project.lot_project_id, listing.lot_project_listing_id]
+    );
+
+    const lockedListing = lockedListingRows[0];
+    if (!lockedListing) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Listing not found.' });
+    }
+
+    const lockedStatus = String(lockedListing.lot_project_listing_status || '').toLowerCase();
+    if (!['available', 'hold'].includes(lockedStatus)) {
+      await connection.rollback();
+      return res.status(409).json({ message: 'This unit is no longer available for reservation.' });
+    }
+
+    let buyerFormSubmission = null;
+    if (buyerFormSubmissionId) {
+      const [submissionRows] = await connection.query(
+        `
+          SELECT
+            submission.*,
+            link.link_status
+          FROM lot_project_buyer_form_submissions submission
+          INNER JOIN lot_project_buyer_form_links link
+            ON link.lot_project_buyer_form_link_id = submission.lot_project_buyer_form_link_id
+          WHERE submission.lot_project_buyer_form_submission_id = ?
+            AND submission.lot_project_id = ?
+            AND submission.lot_project_listing_id = ?
+          LIMIT 1
+          FOR UPDATE
+        `,
+        [buyerFormSubmissionId, project.lot_project_id, listing.lot_project_listing_id]
+      );
+      buyerFormSubmission = submissionRows[0] || null;
+
+      if (!buyerFormSubmission || !['submitted', 'pending_review'].includes(buyerFormSubmission.submission_status)) {
+        await connection.rollback();
+        return res.status(400).json({ message: 'The buyer form submission is no longer pending review.' });
+      }
+
+      if (Number(lockedListing.pending_buyer_form_submission_id || 0) !== buyerFormSubmissionId) {
+        await connection.rollback();
+        return res.status(409).json({ message: 'This submission is not the active buyer form submission for the unit.' });
+      }
+    } else if (buyerFormSchemaAvailable) {
+      if (Number(lockedListing.pending_buyer_form_submission_id || 0) > 0) {
+        await connection.rollback();
+        return res.status(409).json({ message: 'Review the pending buyer form submission before reserving this unit.' });
+      }
+      await revokeOpenBuyerFormLinks(connection, listing.lot_project_listing_id, { status: 'superseded' });
+    }
+
+    listing.lot_project_listing_status = lockedStatus;
 
     await connection.query(
       `
@@ -611,12 +697,21 @@ export const reserveLotProjectListing = async (req, res) => {
     const clientProfileId = profileRows[0]?.lot_project_client_profile_id;
     if (!clientProfileId) throw new Error('Buyer profile was not created.');
 
+    const listingReservationUpdates = [
+      "lot_project_listing_status = 'sold'",
+      "lot_project_listing_sold_substatus = 'active'",
+      'lot_project_listing_cancellation_type = NULL',
+      'hold_client_name = NULL',
+      'hold_note = NULL',
+      'hold_created_at = NULL',
+      'hold_created_by_user_id = NULL',
+    ];
+    if (buyerFormSchemaAvailable) listingReservationUpdates.push('pending_buyer_form_submission_id = NULL');
+
     await connection.query(
       `
         UPDATE lot_project_listings
-        SET lot_project_listing_status = 'sold',
-            lot_project_listing_sold_substatus = 'active',
-            lot_project_listing_cancellation_type = NULL
+        SET ${listingReservationUpdates.join(',\n            ')}
         WHERE lot_project_id = ?
           AND lot_project_listing_id = ?
       `,
@@ -656,6 +751,33 @@ export const reserveLotProjectListing = async (req, res) => {
       saleChannel
     );
 
+    if (buyerFormSubmission) {
+      await connection.query(
+        `
+          UPDATE lot_project_buyer_form_submissions
+          SET submission_status = 'approved',
+              approved_payload_json = ?,
+              reviewed_by_user_id = ?,
+              reviewed_at = NOW(),
+              approved_at = NOW(),
+              updated_at = NOW()
+          WHERE lot_project_buyer_form_submission_id = ?
+        `,
+        [JSON.stringify(clientProfile), req.authUser?.id || null, buyerFormSubmissionId]
+      );
+
+      await connection.query(
+        `
+          UPDATE lot_project_buyer_form_links
+          SET link_status = 'consumed',
+              consumed_at = NOW(),
+              updated_at = NOW()
+          WHERE lot_project_buyer_form_link_id = ?
+        `,
+        [buyerFormSubmission.lot_project_buyer_form_link_id]
+      );
+    }
+
     await writeAuditLog(connection, req, {
       action: 'create',
       module: 'Reservations',
@@ -675,6 +797,7 @@ export const reserveLotProjectListing = async (req, res) => {
         dailyPenaltyRate,
         penaltyGraceDays,
         penaltyCalculationMethod: 'daily',
+        buyerFormSubmissionId,
       },
     });
 
@@ -686,11 +809,13 @@ export const reserveLotProjectListing = async (req, res) => {
       listing_id: listing.lot_project_listing_id,
       client_profile_id: clientProfileId,
       unit_id: listing.lot_project_listing_unit_id,
+      buyer_form_submission_id: buyerFormSubmissionId,
     });
   } catch (error) {
-    await connection.rollback();
-    return res.status(500).json({ message: getErrorMessage(error) });
+    try { await connection.rollback(); } catch {}
+    return res.status(error?.statusCode || 500).json({ message: getErrorMessage(error) });
   } finally {
     connection.release();
   }
 };
+

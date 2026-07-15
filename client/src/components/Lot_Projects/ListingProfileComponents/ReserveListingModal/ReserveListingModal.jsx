@@ -14,43 +14,10 @@ import ReservePaymentTermsModal from './ReservePaymentTermsModal'
 import { documentLibrary as fallbackDocumentLibrary, projectDefaultDocuments as fallbackProjectDefaultDocuments, reserveSteps } from './reserveData'
 import { getInitialClientForm, getListingTcp, getPaymentCalculations } from './reserveUtils'
 import { StepPill } from './ReserveShared'
+import { getBuyerProfileValidationError } from '../../../../utils/buyerProfileValidation'
 
 const todayISO = () => new Date().toISOString().slice(0, 10)
 
-
-const principalRequiredFields = [
-  ['buyerLastName', 'Principal buyer last name'],
-  ['buyerFirstName', 'Principal buyer first name'],
-  ['birthDate', 'Principal buyer birth date'],
-  ['placeOfBirth', 'Principal buyer place of birth'],
-  ['citizenship', 'Principal buyer citizenship'],
-  ['gender', 'Principal buyer gender'],
-  ['civilStatus', 'Principal buyer civil status'],
-  ['contactNo', 'Principal buyer mobile number'],
-  ['presentAddress', 'Principal buyer present address'],
-  ['presentZipCode', 'Principal buyer present ZIP code'],
-  ['employmentStatus', 'Principal buyer employment status'],
-  ['monthlyIncome', 'Principal buyer monthly income'],
-]
-
-const secondBuyerRequiredFields = [
-  ['secondBuyerRole', 'Spouse / second buyer role'],
-  ['secondBuyerLastName', 'Spouse / second buyer last name'],
-  ['secondBuyerFirstName', 'Spouse / second buyer first name'],
-  ['secondBuyerBirthDate', 'Spouse / second buyer birth date'],
-  ['secondBuyerPlaceOfBirth', 'Spouse / second buyer place of birth'],
-  ['secondBuyerCitizenship', 'Spouse / second buyer citizenship'],
-  ['secondBuyerGender', 'Spouse / second buyer gender'],
-  ['secondBuyerCivilStatus', 'Spouse / second buyer civil status'],
-  ['secondBuyerContactNo', 'Spouse / second buyer mobile number'],
-  ['secondBuyerPresentAddress', 'Spouse / second buyer present address'],
-  ['secondBuyerPresentZipCode', 'Spouse / second buyer present ZIP code'],
-  ['secondBuyerEmploymentStatus', 'Spouse / second buyer employment status'],
-  ['secondBuyerMonthlyIncome', 'Spouse / second buyer monthly income'],
-]
-
-const findMissingRequiredField = (form, fields) =>
-  fields.find(([key]) => !String(form?.[key] ?? '').trim())
 
 const normalizeLibraryDocument = (document) => ({
   ...document,
@@ -71,6 +38,9 @@ const ReserveListingModal = ({
   documentTemplates = [],
   templateDocuments = [],
   isLoadingDocuments = false,
+  mode = 'manual',
+  buyerFormSubmissionId = null,
+  submissionMeta = null,
   onClose,
   onReserve,
 }) => {
@@ -282,20 +252,11 @@ const ReserveListingModal = ({
   }
 
   const validateClientStep = () => {
-    const missingPrincipalField = findMissingRequiredField(clientForm, principalRequiredFields)
-    if (missingPrincipalField) {
-      setInvalidClientField(missingPrincipalField[0])
-      setAlert({ type: 'error', message: `${missingPrincipalField[1]} is required.` })
+    const validationError = getBuyerProfileValidationError(clientForm)
+    if (validationError) {
+      setInvalidClientField(validationError.field)
+      setAlert({ type: 'error', message: validationError.message })
       return false
-    }
-
-    if (hasSecondBuyer) {
-      const missingSecondBuyerField = findMissingRequiredField(clientForm, secondBuyerRequiredFields)
-      if (missingSecondBuyerField) {
-        setInvalidClientField(missingSecondBuyerField[0])
-        setAlert({ type: 'error', message: `${missingSecondBuyerField[1]} is required.` })
-        return false
-      }
     }
 
     setInvalidClientField('')
@@ -391,6 +352,7 @@ const ReserveListingModal = ({
 
     const payload = {
       listing,
+      buyerFormSubmissionId: buyerFormSubmissionId || undefined,
       clientProfile: {
         ...clientForm,
         profileStatus: 'complete',
@@ -418,7 +380,7 @@ const ReserveListingModal = ({
     }
 
     setIsSaving(true)
-    setAlert({ type: 'loading', message: 'Saving reservation to database...' })
+    setAlert({ type: 'loading', message: mode === 'submission-review' ? 'Approving buyer form and creating reservation...' : 'Saving reservation to database...' })
 
     try {
       await onReserve?.({
@@ -440,7 +402,7 @@ const ReserveListingModal = ({
       <div className="flex h-[94vh] w-full max-w-7xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
         <div className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 px-5">
           <div>
-            <h2 className="text-lg font-black text-slate-950">Reserve Listing</h2>
+            <h2 className="text-lg font-black text-slate-950">{mode === 'submission-review' ? 'Review Buyer Form & Reserve' : 'Reserve Listing'}</h2>
             <p className="text-xs font-semibold text-slate-500">
               {listing?.unit_id || listing?.unitCode || 'Selected Unit'} · {listing?.project_name || listing?.projectName || 'Bailen Project'}
             </p>
@@ -480,6 +442,13 @@ const ReserveListingModal = ({
             />
           ) : null}
 
+          {mode === 'submission-review' && submissionMeta ? (
+            <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-900">
+              <p className="font-black">Buyer-submitted information is prefilled below.</p>
+              <p className="mt-1 text-xs">Review and correct the profile, then complete the document checklist and payment terms before approval.</p>
+            </div>
+          ) : null}
+
           {activeStep === 1 ? (
             <ReserveClientProfileModal
               clientForm={clientForm}
@@ -488,6 +457,8 @@ const ReserveListingModal = ({
               updateBuyerType={updateBuyerType}
               invalidField={invalidClientField}
               onFieldChange={handleClientFieldChange}
+              title={mode === 'submission-review' ? 'Submitted Buyer Profile' : 'Client Profile'}
+              description={mode === 'submission-review' ? 'Review the information submitted by the buyer. Admin corrections will be saved with the final reservation.' : undefined}
             />
           ) : null}
 
@@ -570,7 +541,7 @@ const ReserveListingModal = ({
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {isSaving ? <FiLoader className="h-4 w-4 animate-spin" /> : <FiUserCheck className="h-4 w-4" />}
-                {isSaving ? 'Reserving...' : 'Reserve Listing'}
+                {isSaving ? (mode === 'submission-review' ? 'Approving...' : 'Reserving...') : (mode === 'submission-review' ? 'Approve & Reserve Unit' : 'Reserve Listing')}
               </button>
             )}
           </div>
@@ -581,3 +552,4 @@ const ReserveListingModal = ({
 }
 
 export default ReserveListingModal
+

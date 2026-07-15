@@ -36,6 +36,12 @@ import {
 import { updateLotProjectClientProfile } from '../../controllers/Lot_Projects/ListingProfile/ClientProfile.controller.js';
 import { reserveLotProjectListing } from '../../controllers/Lot_Projects/ListingProfile/ReserveListing.controller.js';
 import {
+  createBuyerFormLink,
+  getBuyerFormState,
+  rejectBuyerFormSubmission,
+  revokeBuyerFormLink,
+} from '../../controllers/Lot_Projects/BuyerForms/BuyerForms.controller.js';
+import {
   updateLotProjectListingDocumentRequirements,
   uploadLotProjectListingDocument,
   approveLotProjectListingDocument,
@@ -95,6 +101,10 @@ router.put('/lot-projects/:projectSlug/listings/:listingId', requirePermission(P
 router.delete('/lot-projects/:projectSlug/listings/:listingId', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), deleteLotProjectListing);
 router.put('/lot-projects/:projectSlug/listings/:listingId/client-profile', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), updateLotProjectClientProfile);
 router.post('/lot-projects/:projectSlug/listings/:listingId/reserve', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), reserveLotProjectListing);
+router.get('/lot-projects/:projectSlug/listings/:listingId/buyer-form', requirePermission(PERMISSIONS.LOT_LISTINGS_VIEW), getBuyerFormState);
+router.post('/lot-projects/:projectSlug/listings/:listingId/buyer-form-links', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), createBuyerFormLink);
+router.post('/lot-projects/:projectSlug/listings/:listingId/buyer-form-links/:linkId/revoke', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), revokeBuyerFormLink);
+router.post('/lot-projects/:projectSlug/listings/:listingId/buyer-form-submissions/:submissionId/reject', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), rejectBuyerFormSubmission);
 router.patch('/lot-projects/:projectSlug/listings/:listingId/hold', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), holdLotProjectListing);
 router.patch('/lot-projects/:projectSlug/listings/:listingId/unhold', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), unholdLotProjectListing);
 router.put('/lot-projects/:projectSlug/listings/:listingId/document-requirements', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), updateLotProjectListingDocumentRequirements);
@@ -112,3 +122,4 @@ router.post('/lot-projects/:projectSlug/listings/:listingId/payment-schedules/:s
 router.post('/lot-projects/:projectSlug/listings/:listingId/penalty-reliefs/:reliefId/restore', requirePermission(PERMISSIONS.LOT_PENALTY_CORRECT), restorePaymentSchedulePenaltyWaiver);
 
 export default router;
+
