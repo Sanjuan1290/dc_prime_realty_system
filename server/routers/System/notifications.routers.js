@@ -15,3 +15,4 @@ router.post('/payment-dues/:scheduleId/send', requirePermission(PERMISSIONS.SYST
 router.post('/payment-dues/:scheduleId/contacted', requirePermission(PERMISSIONS.SYSTEM_NOTIFICATIONS_MANAGE), markPaymentDueContacted);
 
 export default router;
+

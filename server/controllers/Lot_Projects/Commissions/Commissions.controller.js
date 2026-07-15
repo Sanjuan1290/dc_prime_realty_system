@@ -1029,3 +1029,4 @@ export const updateLotProjectCommission = async (req, res) => {
     connection.release();
   }
 };
+

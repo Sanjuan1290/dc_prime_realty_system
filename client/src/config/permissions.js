@@ -11,7 +11,7 @@ export const PERMISSIONS = Object.freeze({
   SYSTEM_NOTIFICATIONS_VIEW: 'system.notifications.view',
   SYSTEM_NOTIFICATIONS_MANAGE: 'system.notifications.manage',
   AUDIT_LOGS_VIEW: 'audit.logs.view',
-  AUDIT_LOGS_DELETE: 'audit.logs.delete',
+  AUDIT_LOGS_ARCHIVE: 'audit.logs.archive',
   SYSTEM_USERS_VIEW: 'system.users.view',
   SYSTEM_USERS_MANAGE: 'system.users.manage',
   SYSTEM_USERS_CREATE: 'system.users.create',
@@ -93,3 +93,4 @@ export const canManageUserRole = (actorRole, targetRole) => (
   && (actorRole === 'super_admin' || actorRole === 'admin')
 );
 export const getRoleHome = (role) => role === 'admin' ? '/admin/projects' : role === 'super_admin' ? '/super_admin' : '/';
+

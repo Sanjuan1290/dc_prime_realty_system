@@ -46,6 +46,26 @@ test('Settlement may change pending cancellation to cancelled', () => {
   assert.equal(result.resetToAvailable, false);
 });
 
+test('Cancel Cancellation may return pending cancellation to sold active', () => {
+  const result = validateListingStatusTransition({
+    currentStatus: 'pending_for_cancellation',
+    nextStatus: 'sold',
+    action: LISTING_STATUS_ACTIONS.CANCEL_CANCELLATION,
+  });
+  assert.equal(result.nextStatus, 'sold');
+  assert.equal(result.resetToAvailable, false);
+});
+
+test('pending cancellation cannot return to sold without the Cancel Cancellation action', () => {
+  assert.throws(
+    () => validateListingStatusTransition({
+      currentStatus: 'pending_for_cancellation',
+      nextStatus: 'sold',
+    }),
+    /cannot be changed directly/i
+  );
+});
+
 test('cancelled cannot reset without the dedicated action and deletion confirmation', () => {
   assert.throws(
     () => validateListingStatusTransition({
@@ -85,3 +105,4 @@ test('available, hold, pending, and cancelled operational transitions are blocke
     );
   }
 });
+

@@ -259,3 +259,4 @@ const DetailsModal = ({ setShowDetailsModal, setShowEditGroupModal, selectedGrou
 };
 
 export default DetailsModal;
+

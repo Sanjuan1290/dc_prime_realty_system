@@ -216,3 +216,4 @@ export const updateLotProjectSettings = async (req, res) => {
     connection.release();
   }
 };
+

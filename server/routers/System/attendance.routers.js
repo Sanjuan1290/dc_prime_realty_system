@@ -27,3 +27,4 @@ router.put('/:attendanceId', requirePermission(PERMISSIONS.ATTENDANCE_MANAGE), u
 router.delete('/:attendanceId', requirePermission(PERMISSIONS.ATTENDANCE_MANAGE), deleteAttendanceRecord);
 
 export default router;
+

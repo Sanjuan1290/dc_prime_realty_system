@@ -7,3 +7,4 @@ const PermissionGate = ({ permission, children, fallback = null }) => {
 }
 
 export default PermissionGate
+

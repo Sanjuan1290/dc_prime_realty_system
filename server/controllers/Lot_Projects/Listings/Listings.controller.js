@@ -70,7 +70,7 @@ import {
   parseClientDocumentImages,
 } from '../_shared/lotProject.shared.js';
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
-import { validateListingStatusTransition } from './listingStatusTransitions.js';
+import { LISTING_STATUS_ACTIONS, validateListingStatusTransition } from './listingStatusTransitions.js';
 import {
   hasBuyerFormSchema,
   resetBuyerFormsForAvailable,
@@ -688,6 +688,7 @@ export const updateLotProjectListing = async (req, res) => {
     const lmfAmount = netSellingPrice * (legalMiscRate / 100);
     const tcp = netSellingPrice + lmfAmount;
     const hasAnnualInterestRate = await columnExists(connection, 'lot_project_listings', 'annual_interest_rate');
+    const hasCancellationType = await columnExists(connection, 'lot_project_listings', 'lot_project_listing_cancellation_type');
     const hasListingCadastralLinks = await tableExists(connection, 'lot_project_listing_cadastral_lots');
 
     await connection.beginTransaction();
@@ -780,6 +781,13 @@ export const updateLotProjectListing = async (req, res) => {
       updateParams.push(annualInterestRate);
     }
 
+    if (
+      hasCancellationType
+      && req.body.statusTransitionAction === LISTING_STATUS_ACTIONS.CANCEL_CANCELLATION
+    ) {
+      updateColumns.push('lot_project_listing_cancellation_type = NULL');
+    }
+
     if (listingStatus.status !== 'hold') {
       const holdColumns = ['hold_client_name', 'hold_note', 'hold_created_at', 'hold_created_by_user_id'];
       for (const column of holdColumns) {
@@ -860,21 +868,33 @@ export const updateLotProjectListing = async (req, res) => {
       ? await syncListingInterestToUnlockedSoa(connection, project.lot_project_id, existingListing.lot_project_listing_id, annualInterestRate)
       : { synced: 0, skipped: 0 };
 
+    const statusTransitionAction = req.body.statusTransitionAction || null;
+    const auditTitle = statusTransitionAction === LISTING_STATUS_ACTIONS.CANCEL_CANCELLATION
+      ? 'Cancelled pending cancellation'
+      : statusTransitionAction === LISTING_STATUS_ACTIONS.SETTLE_CANCELLATION
+        ? 'Settled listing cancellation'
+        : 'Updated listing details';
+    const auditDescription = statusTransitionAction === LISTING_STATUS_ACTIONS.CANCEL_CANCELLATION
+      ? `Returned ${unitCode} to Sold / Active without removing sale records.`
+      : statusTransitionAction === LISTING_STATUS_ACTIONS.SETTLE_CANCELLATION
+        ? `Completed cancellation settlement for ${unitCode}.`
+        : `Updated ${unitCode} in ${project.lot_project_name}.`;
+
     await writeAuditLog(connection, req, {
       action: 'update',
       module: 'Listings',
       entityType: 'lot_project_listing',
       entityId: String(existingListing.lot_project_listing_id),
       entityLabel: `Unit ${unitCode} — ${project.lot_project_name}`,
-      title: 'Updated listing details',
-      description: `Updated ${unitCode} in ${project.lot_project_name}.`,
+      title: auditTitle,
+      description: auditDescription,
       metadata: {
         unitCode,
         previousUnitCode: existingListing.lot_project_listing_unit_id,
         previousStatus: existingListing.lot_project_listing_status,
         nextStatus: listingStatus.status,
         soldSubstatus: listingStatus.soldSubstatus,
-        statusTransitionAction: req.body.statusTransitionAction || null,
+        statusTransitionAction,
         resetToAvailable,
         soaSyncResult,
         cloudinarySyncResult,
@@ -887,7 +907,11 @@ export const updateLotProjectListing = async (req, res) => {
       success: true,
       message: resetToAvailable
         ? `${unitCode} changed to available. Previous buyer, payment, commission, and submitted document data were removed.`
-        : cloudinarySyncResult.movedAssets > 0
+        : statusTransitionAction === LISTING_STATUS_ACTIONS.CANCEL_CANCELLATION
+          ? `${unitCode} returned to Sold / Active. Existing buyer, payment, SOA, document, and commission records were kept.`
+          : statusTransitionAction === LISTING_STATUS_ACTIONS.SETTLE_CANCELLATION
+            ? `${unitCode} cancellation settlement completed.`
+            : cloudinarySyncResult.movedAssets > 0
           ? cloudinarySyncResult.cleanupWarnings?.length
             ? `${unitCode} updated and ${cloudinarySyncResult.movedAssets} document asset(s) were moved. Some old Cloudinary folders still contain untracked items and were kept.`
             : `${unitCode} updated successfully. ${cloudinarySyncResult.movedAssets} uploaded document asset(s) were moved into the ${unitCode} folder and the empty old folder was removed.`
@@ -1214,4 +1238,5 @@ export const deleteLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
+
 

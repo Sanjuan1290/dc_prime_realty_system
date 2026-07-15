@@ -139,3 +139,4 @@ test('cash advance deduction is capped by the salary available after attendance 
 
   assert.equal(result, 4200);
 });
+

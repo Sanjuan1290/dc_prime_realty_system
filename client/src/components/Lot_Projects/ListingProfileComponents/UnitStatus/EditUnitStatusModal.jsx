@@ -160,7 +160,7 @@ const EditUnitStatusModal = ({ listing, project = {}, onClose, onSave, isSaving 
   const statusHelper = currentStatus === 'sold'
     ? 'A sold unit can only move to Pending for Cancellation here. Complete Settlement before returning it to Available.'
     : currentStatus === 'pending_for_cancellation'
-      ? 'Status is locked. Use the Settlement button on Unit & Status.'
+      ? 'Status is locked here. Use Settlement or Cancel Cancellation on Unit & Status.'
       : currentStatus === 'cancelled'
         ? 'Status is locked. Use Change to Available to receive the deletion warning and remove the previous sale data.'
         : currentStatus === 'hold'
@@ -485,4 +485,5 @@ const EditUnitStatusModal = ({ listing, project = {}, onClose, onSave, isSaving 
 }
 
 export default EditUnitStatusModal
+
 

@@ -130,3 +130,4 @@ const EditGroupModal = ({ setShowEditGroupModal, selectedGroup, onSaved }) => {
 };
 
 export default EditGroupModal;
+

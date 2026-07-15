@@ -692,3 +692,4 @@ export const markPaymentDueContacted = async (req, res) => {
     connection.release();
   }
 };
+

@@ -1,12 +1,20 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { FiActivity, FiClock, FiDatabase, FiPlus, FiRefreshCw, FiTrash2 } from 'react-icons/fi'
+import {
+  FiActivity,
+  FiArchive,
+  FiClock,
+  FiDatabase,
+  FiPlus,
+  FiRefreshCw,
+  FiTrash2,
+} from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
+import ArchiveAuditLogsModal from '../../components/System/auditLogsComponents/ArchiveAuditLogsModal'
 import AuditLogDetailsModal from '../../components/System/auditLogsComponents/AuditLogDetailsModal'
 import AuditLogFilters from '../../components/System/auditLogsComponents/AuditLogFilters'
 import AuditLogTable from '../../components/System/auditLogsComponents/AuditLogTable'
-import DeleteAuditLogsModal from '../../components/System/auditLogsComponents/DeleteAuditLogsModal'
 import { useFetch, useFetchPost } from '../../utils/useFetch'
 import useCurrentUser from '../../utils/useCurrentUser'
 
@@ -17,6 +25,7 @@ const StatCard = ({ label, value, helper, icon: Icon, tone = 'slate' }) => {
     emerald: 'border-emerald-100 bg-emerald-50 text-emerald-950',
     amber: 'border-amber-100 bg-amber-50 text-amber-950',
     red: 'border-red-100 bg-red-50 text-red-950',
+    violet: 'border-violet-100 bg-violet-50 text-violet-950',
   }
 
   return (
@@ -35,6 +44,31 @@ const StatCard = ({ label, value, helper, icon: Icon, tone = 'slate' }) => {
   )
 }
 
+const downloadArchiveExport = async (exportUrl, fallbackFilename) => {
+  const response = await fetch(`${import.meta.env.VITE_API_URL}${exportUrl}`, {
+    credentials: 'include',
+  })
+
+  if (!response.ok) {
+    const contentType = response.headers.get('content-type') || ''
+    const payload = contentType.includes('application/json') ? await response.json() : null
+    throw new Error(payload?.message || 'Failed to download the audit archive export.')
+  }
+
+  const blob = await response.blob()
+  const disposition = response.headers.get('content-disposition') || ''
+  const filenameMatch = disposition.match(/filename="?([^";]+)"?/i)
+  const filename = filenameMatch?.[1] || fallbackFilename || 'audit-logs-archive.csv'
+  const objectUrl = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = objectUrl
+  anchor.download = filename
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  URL.revokeObjectURL(objectUrl)
+}
+
 const AuditLogs = () => {
   const queryClient = useQueryClient()
   const { data: currentUserData } = useCurrentUser()
@@ -47,9 +81,9 @@ const AuditLogs = () => {
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(10)
   const [selectedLog, setSelectedLog] = useState(null)
-  const [showDeleteModal, setShowDeleteModal] = useState(false)
-  const [deleteRequest, setDeleteRequest] = useState(null)
-  const [deleteError, setDeleteError] = useState('')
+  const [showArchiveModal, setShowArchiveModal] = useState(false)
+  const [archiveRequest, setArchiveRequest] = useState(null)
+  const [archiveError, setArchiveError] = useState('')
 
   const isSuperAdmin = currentUserData?.user?.role === 'super_admin'
 
@@ -69,38 +103,55 @@ const AuditLogs = () => {
     keepPreviousData: true,
   })
 
-  const requestDeleteMutation = useMutation({
-    mutationFn: (password) => useFetchPost('/audit-logs/delete-all/request', { password }),
-    onMutate: () => setDeleteError(''),
+  const requestArchiveMutation = useMutation({
+    mutationFn: (payload) => useFetchPost('/audit-logs/archive/request', payload),
+    onMutate: () => setArchiveError(''),
     onSuccess: (result) => {
-      setDeleteRequest(result?.data || null)
-      setDeleteError('')
+      setArchiveRequest(result?.data || null)
+      setArchiveError('')
     },
     onError: (mutationError) => {
-      setDeleteError(mutationError?.message || 'Failed to send the verification code.')
+      setArchiveError(mutationError?.message || 'Failed to send the verification code.')
     },
   })
 
-  const confirmDeleteMutation = useMutation({
-    mutationFn: (code) => useFetchPost('/audit-logs/delete-all/confirm', {
-      verificationId: deleteRequest?.verificationId,
+  const confirmArchiveMutation = useMutation({
+    mutationFn: (code) => useFetchPost('/audit-logs/archive/confirm', {
+      verificationId: archiveRequest?.verificationId,
       code,
     }),
-    onMutate: () => setDeleteError(''),
-    onSuccess: (result) => {
-      setShowDeleteModal(false)
-      setDeleteRequest(null)
-      setDeleteError('')
+    onMutate: () => setArchiveError(''),
+    onSuccess: async (result) => {
+      setShowArchiveModal(false)
+      setArchiveRequest(null)
+      setArchiveError('')
       setPage(1)
-      setAlert({ type: 'success', message: result?.message || 'Audit logs deleted.' })
       queryClient.invalidateQueries({ queryKey: ['audit-logs'] })
+
+      try {
+        await downloadArchiveExport(result?.data?.exportUrl, result?.data?.exportFilename)
+        setAlert({ type: 'success', message: result?.message || 'Old audit logs were exported and archived.' })
+      } catch (downloadError) {
+        setAlert({
+          type: 'warning',
+          message: `${result?.message || 'Old audit logs were archived.'} ${downloadError?.message || 'The export download did not start.'}`,
+        })
+      }
     },
     onError: (mutationError) => {
-      setDeleteError(mutationError?.message || 'Failed to delete audit logs.')
+      setArchiveError(mutationError?.message || 'Failed to archive audit logs.')
     },
   })
 
   const summary = data?.summary || { total: 0, created: 0, updated: 0, deleted: 0, last24Hours: 0 }
+  const archivePolicy = data?.archivePolicy || {
+    retentionDays: 365,
+    minRetentionDays: 90,
+    maxRetentionDays: 3650,
+    archivedTotal: 0,
+    eligibleTotal: 0,
+    lastArchivedAt: null,
+  }
   const modules = data?.modules || []
   const logs = data?.data || []
   const pagination = data?.pagination || { page, limit, total: 0, totalPages: 1 }
@@ -114,21 +165,21 @@ const AuditLogs = () => {
     setPage(1)
   }
 
-  const openDeleteModal = () => {
-    setDeleteRequest(null)
-    setDeleteError('')
-    requestDeleteMutation.reset()
-    confirmDeleteMutation.reset()
-    setShowDeleteModal(true)
+  const openArchiveModal = () => {
+    setArchiveRequest(null)
+    setArchiveError('')
+    requestArchiveMutation.reset()
+    confirmArchiveMutation.reset()
+    setShowArchiveModal(true)
   }
 
-  const closeDeleteModal = () => {
-    if (requestDeleteMutation.isPending || confirmDeleteMutation.isPending) return
-    setShowDeleteModal(false)
-    setDeleteRequest(null)
-    setDeleteError('')
-    requestDeleteMutation.reset()
-    confirmDeleteMutation.reset()
+  const closeArchiveModal = () => {
+    if (requestArchiveMutation.isPending || confirmArchiveMutation.isPending) return
+    setShowArchiveModal(false)
+    setArchiveRequest(null)
+    setArchiveError('')
+    requestArchiveMutation.reset()
+    confirmArchiveMutation.reset()
   }
 
   return (
@@ -154,11 +205,11 @@ const AuditLogs = () => {
           {isSuperAdmin ? (
             <button
               type="button"
-              onClick={openDeleteModal}
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-red-600 px-5 text-sm font-black text-white shadow-sm transition hover:bg-red-700"
+              onClick={openArchiveModal}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 text-sm font-black text-white shadow-sm transition hover:bg-blue-700"
             >
-              <FiTrash2 className="h-4 w-4" />
-              Delete Audit Logs
+              <FiArchive className="h-4 w-4" />
+              Archive Old Logs
             </button>
           ) : null}
         </div>
@@ -176,12 +227,18 @@ const AuditLogs = () => {
         <StatusAlert type="error" message={error?.message || 'Failed to load audit logs.'} />
       ) : null}
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <StatCard label="Total Logs" value={summary.total} helper="All audit entries" icon={FiDatabase} />
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+        <StatCard label="Active Logs" value={summary.total} helper="Current searchable entries" icon={FiDatabase} />
+        <StatCard label="Archived" value={archivePolicy.archivedTotal} helper={`${archivePolicy.eligibleTotal} ready to archive`} icon={FiArchive} tone="violet" />
         <StatCard label="Created" value={summary.created} helper="Create actions" icon={FiPlus} tone="emerald" />
         <StatCard label="Updated" value={summary.updated} helper="Save/edit actions" icon={FiActivity} tone="blue" />
-        <StatCard label="Deleted" value={summary.deleted} helper="Delete actions" icon={FiTrash2} tone="red" />
+        <StatCard label="Delete Actions" value={summary.deleted} helper="Recorded delete events" icon={FiTrash2} tone="red" />
         <StatCard label="Last 24 Hours" value={summary.last24Hours} helper="Recent activity" icon={FiClock} tone="amber" />
+      </section>
+
+      <section className="rounded-2xl border border-blue-100 bg-blue-50 px-5 py-4 text-sm font-semibold text-blue-900">
+        <p className="font-black">Audit retention: {archivePolicy.retentionDays} days</p>
+        <p className="mt-1">Permanent delete-all is disabled. Only a Super Admin can export and archive records older than the retention period.</p>
       </section>
 
       <AuditLogFilters
@@ -216,15 +273,19 @@ const AuditLogs = () => {
         <AuditLogDetailsModal log={selectedLog} onClose={() => setSelectedLog(null)} />
       ) : null}
 
-      {showDeleteModal ? (
-        <DeleteAuditLogsModal
-          onClose={closeDeleteModal}
-          onRequestCode={(password) => requestDeleteMutation.mutate(password)}
-          onConfirmCode={(code) => confirmDeleteMutation.mutate(code)}
-          requestData={deleteRequest}
-          errorMessage={deleteError}
-          isRequesting={requestDeleteMutation.isPending}
-          isDeleting={confirmDeleteMutation.isPending}
+      {showArchiveModal ? (
+        <ArchiveAuditLogsModal
+          onClose={closeArchiveModal}
+          onRequestCode={(payload) => requestArchiveMutation.mutate(payload)}
+          onConfirmCode={(code) => confirmArchiveMutation.mutate(code)}
+          requestData={archiveRequest}
+          errorMessage={archiveError}
+          isRequesting={requestArchiveMutation.isPending}
+          isArchiving={confirmArchiveMutation.isPending}
+          defaultRetentionDays={archivePolicy.retentionDays}
+          minRetentionDays={archivePolicy.minRetentionDays}
+          maxRetentionDays={archivePolicy.maxRetentionDays}
+          eligibleCount={archivePolicy.eligibleTotal}
         />
       ) : null}
     </main>

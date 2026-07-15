@@ -65,7 +65,7 @@ test('Admin cannot assign privileged roles through user editing', () => {
 test('Admin still cannot perform restricted project, audit, commission, or settings writes', () => {
   assert.equal(roleHasPermission('admin', PERMISSIONS.SYSTEM_PROJECTS_MANAGE), false);
   assert.equal(roleHasPermission('admin', PERMISSIONS.SYSTEM_SETTINGS_MANAGE), false);
-  assert.equal(roleHasPermission('admin', PERMISSIONS.AUDIT_LOGS_DELETE), false);
+  assert.equal(roleHasPermission('admin', PERMISSIONS.AUDIT_LOGS_ARCHIVE), false);
   assert.equal(roleHasPermission('admin', PERMISSIONS.LOT_COMMISSIONS_VIEW), false);
 });
 
@@ -80,3 +80,4 @@ test('Super Admin retains every declared permission and can manage every user ro
     assert.equal(canActorChangeUserRole('super_admin', role, role), true, role);
   }
 });
+

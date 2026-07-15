@@ -7,6 +7,7 @@ import {
   FiFileText,
   FiHome,
   FiRefreshCw,
+  FiRotateCcw,
   FiSettings,
   FiUser,
 } from 'react-icons/fi'
@@ -175,6 +176,32 @@ const UnitStatus = ({
     })
   }
 
+  const handleCancelCancellation = async () => {
+    const confirmed = window.confirm(
+      'Cancel the pending cancellation and return this account to Sold / Active? Buyer, payment, SOA, document, and commission records will stay unchanged.'
+    )
+
+    if (!confirmed) return
+
+    await handleSave({
+      ...unitData,
+      unitCode: unitData.unit_id || unitData.unitCode,
+      lotType: unitData.lot_type,
+      pricePerSqm: unitData.pricePerSqm,
+      lotAreaSqm: unitData.lotAreaSqm,
+      legalMiscRate: unitData.legalMiscRate,
+      annualInterestRate: unitData.annualInterestRate,
+      reservationFee: unitData.reservationFee,
+      oldUnitIds: unitData.old_unit_ids === '-' ? '' : unitData.old_unit_ids,
+      cadastralLots: String(unitData.cadastral_lot_no || '')
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean),
+      status: 'sold',
+      statusTransitionAction: 'cancel_cancellation',
+    })
+  }
+
   const handleMakeAvailable = async () => {
     const confirmed = window.confirm(
       'Changing this listing back to available will permanently remove the previous buyer profile, payment records, SOA schedules, submitted buyer documents, and commission records for this unit. Continue?'
@@ -253,6 +280,18 @@ const UnitStatus = ({
                 className="inline-flex h-10 items-center justify-center rounded-xl bg-orange-600 px-4 text-sm font-black text-white transition hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98]"
               >
                 Settlement
+              </button>
+            ) : null}
+
+            {showSettlementButton ? (
+              <button
+                type="button"
+                onClick={handleCancelCancellation}
+                disabled={isSaving}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98]"
+              >
+                <FiRotateCcw className="h-4 w-4" />
+                Cancel Cancellation
               </button>
             ) : null}
 
@@ -394,4 +433,5 @@ const UnitStatus = ({
 }
 
 export default UnitStatus
+
 

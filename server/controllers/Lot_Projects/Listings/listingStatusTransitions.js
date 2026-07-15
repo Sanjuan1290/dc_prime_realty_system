@@ -16,6 +16,7 @@ const transitionError = (message) => {
 
 export const LISTING_STATUS_ACTIONS = Object.freeze({
   SETTLE_CANCELLATION: 'settle_cancellation',
+  CANCEL_CANCELLATION: 'cancel_cancellation',
   RESET_TO_AVAILABLE: 'reset_to_available',
 });
 
@@ -51,6 +52,16 @@ export const validateListingStatusTransition = ({
     return { currentStatus: current, nextStatus: next, resetToAvailable: false };
   }
 
+  // A mistaken or withdrawn cancellation request may be reversed without
+  // removing any buyer, payment, document, SOA, or commission records.
+  if (
+    current === 'pending_for_cancellation' &&
+    next === 'sold' &&
+    transitionAction === LISTING_STATUS_ACTIONS.CANCEL_CANCELLATION
+  ) {
+    return { currentStatus: current, nextStatus: next, resetToAvailable: false };
+  }
+
   // Sale data may only be deleted after cancellation has been settled and the
   // dedicated Change to Available action sends an explicit confirmation flag.
   if (current === 'cancelled' && next === 'available') {
@@ -76,3 +87,4 @@ export const validateListingStatusTransition = ({
     `Listing status cannot be changed directly from ${current.replaceAll('_', ' ')} to ${next.replaceAll('_', ' ')}.`
   );
 };
+
