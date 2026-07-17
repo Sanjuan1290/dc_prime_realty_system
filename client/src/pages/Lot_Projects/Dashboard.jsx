@@ -46,9 +46,8 @@ const chartColors = {
   red: '#dc2626',
   indigo: '#4f46e5',
   slate: '#475569',
+  violet: '#7c3aed',
 }
-
-const pieColors = [chartColors.blue, chartColors.green, chartColors.amber, chartColors.red, chartColors.indigo, chartColors.slate]
 
 const dateRangeOptions = [
   { value: 'this_month', label: 'This Month' },
@@ -57,18 +56,29 @@ const dateRangeOptions = [
   { value: '3_months', label: '3 Months' },
   { value: '6_months', label: '6 Months' },
   { value: '12_months', label: '12 Months' },
-  { value: 'all', label: 'All' },
   { value: 'custom', label: 'Custom' },
 ]
 
-const todayDate = () => new Date().toISOString().slice(0, 10)
+const padDatePart = (value) => String(value).padStart(2, '0')
+const toDateInput = (date) => `${date.getFullYear()}-${padDatePart(date.getMonth() + 1)}-${padDatePart(date.getDate())}`
 
-const getDefaultFromDate = () => {
-  const date = new Date()
-  date.setMonth(date.getMonth() - 3)
-  date.setDate(date.getDate() + 1)
-  return date.toISOString().slice(0, 10)
+const resolvePresetDateRange = (range, today = new Date()) => {
+  let start
+  let end
+
+  if (range === 'last_month') {
+    start = new Date(today.getFullYear(), today.getMonth() - 1, 1)
+    end = new Date(today.getFullYear(), today.getMonth(), 0)
+  } else {
+    const monthCount = Number.parseInt(String(range).match(/^(\d+)_months$/)?.[1] || '1', 10)
+    start = new Date(today.getFullYear(), today.getMonth() - Math.max(monthCount - 1, 0), 1)
+    end = new Date(today.getFullYear(), today.getMonth() + 1, 0)
+  }
+
+  return { from: toDateInput(start), to: toDateInput(end) }
 }
+
+const defaultDateRange = () => resolvePresetDateRange('3_months')
 
 const shortLabel = (value = '', max = 18) => {
   const text = String(value || '-')
@@ -93,13 +103,15 @@ const ChartTooltip = ({ active, payload, label }) => {
   return (
     <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs shadow-lg">
       {title ? <p className="font-black text-slate-900">{title}</p> : null}
-      <div className="mt-1 grid gap-1">
-        {payload.map((item) => {
+      <div className="mt-2 grid gap-1.5">
+        {payload.map((item, index) => {
           const isPeso = isMoneyChartKey(item.dataKey)
+          const markerColor = item.color || item.fill || item.stroke || item.payload?.color || item.payload?.fill || item.payload?.payload?.color || '#94a3b8'
           return (
-            <p key={item.dataKey} className="font-semibold text-slate-600">
-              {item.name}: <span className="font-black text-slate-950">{isPeso ? money(item.value) : number(item.value)}</span>
-            </p>
+            <div key={`${item.dataKey}-${index}`} className="flex items-center gap-2 font-semibold text-slate-600">
+              <span aria-hidden="true" className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ backgroundColor: markerColor }} />
+              <span>{item.name}: <span className="font-black text-slate-950">{isPeso ? money(item.value) : number(item.value)}</span></span>
+            </div>
           )
         })}
       </div>
@@ -124,55 +136,43 @@ const EmptyChart = ({ message = 'No chart data yet.' }) => (
   </div>
 )
 
-const DateRangeFilter = ({ range, setRange, dateFrom, setDateFrom, dateTo, setDateTo, isFetching }) => (
-  <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-    <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
-      <div>
-        <p className="text-sm font-black text-slate-950">Graph Date Filter</p>
-        <p className="mt-1 text-sm font-semibold text-slate-500">
-          Use this for line graphs. Snapshot cards still show the current project state.
-        </p>
+const DateRangeFilter = ({ range, onRangeChange, dateFrom, setDateFrom, dateTo, setDateTo, isFetching }) => {
+  const isCustom = range === 'custom'
+
+  return (
+    <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+        <div>
+          <p className="text-sm font-black text-slate-950">Graph Date Filter</p>
+          <p className="mt-1 text-sm font-semibold text-slate-500">
+            Presets cover complete calendar months. Custom accepts exact dates. Financial cards and trend charts use the selected range.
+          </p>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-3 xl:min-w-[620px]">
+          <label className="grid gap-1">
+            <span className="text-xs font-black uppercase tracking-wide text-slate-500">Range</span>
+            <select value={range} onChange={(event) => onRangeChange(event.target.value)} className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50">
+              {dateRangeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </label>
+
+          <label className="grid gap-1">
+            <span className="text-xs font-black uppercase tracking-wide text-slate-500">From date</span>
+            <input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} disabled={!isCustom} className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500" />
+          </label>
+
+          <label className="grid gap-1">
+            <span className="text-xs font-black uppercase tracking-wide text-slate-500">To date</span>
+            <input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} disabled={!isCustom} className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500" />
+          </label>
+        </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3 xl:min-w-[620px]">
-        <label className="grid gap-1">
-          <span className="text-xs font-black uppercase tracking-wide text-slate-500">Range</span>
-          <select
-            value={range}
-            onChange={(event) => setRange(event.target.value)}
-            className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
-          >
-            {dateRangeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-          </select>
-        </label>
-
-        <label className="grid gap-1">
-          <span className="text-xs font-black uppercase tracking-wide text-slate-500">From</span>
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={(event) => setDateFrom(event.target.value)}
-            disabled={range !== 'custom'}
-            className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100 disabled:text-slate-400"
-          />
-        </label>
-
-        <label className="grid gap-1">
-          <span className="text-xs font-black uppercase tracking-wide text-slate-500">To</span>
-          <input
-            type="date"
-            value={dateTo}
-            onChange={(event) => setDateTo(event.target.value)}
-            disabled={range !== 'custom'}
-            className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100 disabled:text-slate-400"
-          />
-        </label>
-      </div>
-    </div>
-
-    {isFetching ? <p className="mt-3 text-xs font-black text-blue-700">Updating graph data...</p> : null}
-  </section>
-)
+      {isFetching ? <p className="mt-3 text-xs font-black text-blue-700">Updating dashboard data...</p> : null}
+    </section>
+  )
+}
 
 const Badge = ({ children, tone = 'blue' }) => {
   const tones = {
@@ -315,6 +315,28 @@ const PerformanceTable = ({ rows = [], type = 'seller' }) => (
   </div>
 )
 
+
+const PaginationControls = ({ page, pageSize, totalItems, onPageChange, onPageSizeChange }) => {
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize))
+  const currentPage = Math.min(page, totalPages)
+  const start = totalItems ? ((currentPage - 1) * pageSize) + 1 : 0
+  const end = Math.min(currentPage * pageSize, totalItems)
+
+  return (
+    <div className="flex flex-col gap-3 border-t border-slate-200 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+      <p className="text-sm font-semibold text-slate-600">Showing {start}-{end} of {totalItems} records</p>
+      <div className="flex flex-wrap items-center gap-2">
+        <select value={pageSize} onChange={(event) => onPageSizeChange(Number(event.target.value))} className="h-9 rounded-lg border border-slate-300 bg-white px-3 text-sm font-black text-slate-700">
+          {[5, 10, 20, 50].map((size) => <option key={size} value={size}>{size}</option>)}
+        </select>
+        <button type="button" onClick={() => onPageChange(currentPage - 1)} disabled={currentPage <= 1} className="h-9 rounded-lg border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 disabled:cursor-not-allowed disabled:text-slate-300">Previous</button>
+        <span className="h-9 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-black text-slate-700">Page {currentPage} of {totalPages}</span>
+        <button type="button" onClick={() => onPageChange(currentPage + 1)} disabled={currentPage >= totalPages} className="h-9 rounded-lg border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 disabled:cursor-not-allowed disabled:text-slate-300">Next</button>
+      </div>
+    </div>
+  )
+}
+
 const toProjectView = (project = {}) => ({
   ...project,
   project_bailen_id: project.lot_project_id || project.id,
@@ -356,15 +378,24 @@ const Dashboard = () => {
   const [showEdit, setShowEdit] = useState(false)
   const [alert, setAlert] = useState(null)
   const [dateRange, setDateRange] = useState('3_months')
-  const [dateFrom, setDateFrom] = useState(getDefaultFromDate())
-  const [dateTo, setDateTo] = useState(todayDate())
+  const [dateFrom, setDateFrom] = useState(() => defaultDateRange().from)
+  const [dateTo, setDateTo] = useState(() => defaultDateRange().to)
+  const [sellerPage, setSellerPage] = useState(1)
+  const [sellerPageSize, setSellerPageSize] = useState(10)
+  const [recentUnitPage, setRecentUnitPage] = useState(1)
+  const [recentUnitPageSize, setRecentUnitPageSize] = useState(10)
+
+  const handleRangeChange = (value) => {
+    setDateRange(value)
+    if (value !== 'custom') {
+      const nextRange = resolvePresetDateRange(value)
+      setDateFrom(nextRange.from)
+      setDateTo(nextRange.to)
+    }
+  }
 
   const dashboardQuery = useMemo(() => {
-    const params = new URLSearchParams({ range: dateRange })
-    if (dateRange === 'custom') {
-      if (dateFrom) params.set('from', dateFrom)
-      if (dateTo) params.set('to', dateTo)
-    }
+    const params = new URLSearchParams({ range: dateRange, from: dateFrom, to: dateTo })
     return params.toString()
   }, [dateRange, dateFrom, dateTo])
 
@@ -427,25 +458,25 @@ const Dashboard = () => {
   ]
 
   const commissionChartData = [
-    { label: 'Total', value: Number(stats.totalCommission || 0) },
-    { label: 'Eligible', value: Number(stats.eligibleCommission || 0) },
-    { label: 'Released', value: Number(stats.releasedCommission || 0) },
-    { label: 'Remaining', value: Number(stats.netRemainingCommission || 0) },
+    { label: 'Total', value: Number(stats.totalCommission || 0), color: chartColors.blue },
+    { label: 'Eligible', value: Number(stats.eligibleCommission || 0), color: chartColors.amber },
+    { label: 'Released', value: Number(stats.releasedCommission || 0), color: chartColors.green },
+    { label: 'Remaining', value: Number(stats.netRemainingCommission || 0), color: chartColors.red },
   ]
 
   const inventoryChartData = [
-    { label: 'Listed', value: Number(stats.listedLotValue || 0) },
-    { label: 'Available', value: Number(stats.availableLotValue || 0) },
-    { label: 'Sold', value: Number(stats.soldLotValue || 0) },
+    { label: 'Listed', value: Number(stats.listedLotValue || 0), color: chartColors.slate },
+    { label: 'Available', value: Number(stats.availableLotValue || 0), color: chartColors.green },
+    { label: 'Sold', value: Number(stats.soldLotValue || 0), color: chartColors.indigo },
   ]
 
   const unitStatusChartData = [
-    { label: 'Available', count: Number(stats.available || 0) },
-    { label: 'Hold', count: Number(stats.hold || 0) },
-    { label: 'Sold Active', count: Number(stats.soldActive || 0) },
-    { label: 'Fully Paid', count: Number(stats.fullyPaid || 0) },
-    { label: 'Pending Cancel', count: Number(stats.pendingCancellation || 0) },
-    { label: 'Cancelled', count: Number(stats.cancelled || 0) },
+    { label: 'Available', count: Number(stats.available || 0), color: chartColors.green },
+    { label: 'Hold', count: Number(stats.hold || 0), color: chartColors.amber },
+    { label: 'Sold Active', count: Number(stats.soldActive || 0), color: chartColors.blue },
+    { label: 'Fully Paid', count: Number(stats.fullyPaid || 0), color: chartColors.indigo },
+    { label: 'Pending Cancel', count: Number(stats.pendingCancellation || 0), color: chartColors.violet },
+    { label: 'Cancelled', count: Number(stats.cancelled || 0), color: chartColors.red },
   ]
 
   const sellerChartData = buildBreakdownChartData(sellerPerformance, 'seller')
@@ -454,6 +485,13 @@ const Dashboard = () => {
     unit: row.unit || '-',
     balanceDue: Number(row.balanceDue || 0),
   }))
+
+  const sellerTotalPages = Math.max(1, Math.ceil(sellerPerformance.length / sellerPageSize))
+  const sellerCurrentPage = Math.min(sellerPage, sellerTotalPages)
+  const paginatedSellerPerformance = sellerPerformance.slice((sellerCurrentPage - 1) * sellerPageSize, sellerCurrentPage * sellerPageSize)
+  const recentUnitTotalPages = Math.max(1, Math.ceil(recentUnits.length / recentUnitPageSize))
+  const recentUnitCurrentPage = Math.min(recentUnitPage, recentUnitTotalPages)
+  const paginatedRecentUnits = recentUnits.slice((recentUnitCurrentPage - 1) * recentUnitPageSize, recentUnitCurrentPage * recentUnitPageSize)
 
   return (
     <main className="flex flex-col gap-6">
@@ -473,7 +511,7 @@ const Dashboard = () => {
 
       <DateRangeFilter
         range={dateRange}
-        setRange={setDateRange}
+        onRangeChange={handleRangeChange}
         dateFrom={dateFrom}
         setDateFrom={setDateFrom}
         dateTo={dateTo}
@@ -496,8 +534,15 @@ const Dashboard = () => {
         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
           <SectionHeader title="Seller Performance Details" description="Sales and commission totals by seller." />
           <div className="mt-4">
-            <PerformanceTable rows={sellerPerformance} type="seller" />
+            <PerformanceTable rows={paginatedSellerPerformance} type="seller" />
           </div>
+          <PaginationControls
+            page={sellerCurrentPage}
+            pageSize={sellerPageSize}
+            totalItems={sellerPerformance.length}
+            onPageChange={setSellerPage}
+            onPageSizeChange={(size) => { setSellerPageSize(size); setSellerPage(1) }}
+          />
         </div>
 
         <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
@@ -510,7 +555,7 @@ const Dashboard = () => {
               <tbody className="divide-y divide-slate-100">
                 {isLoading ? <tr><td colSpan={10} className="px-5 py-8 text-center text-sm font-semibold text-slate-500">Loading recent units...</td></tr> : null}
                 {!isLoading && recentUnits.length === 0 ? <tr><td colSpan={10} className="px-5 py-8 text-center text-sm font-semibold text-slate-500">No recent unit records yet.</td></tr> : null}
-                {!isLoading && recentUnits.map((row) => (
+                {!isLoading && paginatedRecentUnits.map((row) => (
                   <tr key={row.id || row.unitCode} className="align-top transition hover:bg-slate-50">
                     <td className="px-5 py-4 font-black text-slate-950">{row.unitCode}</td>
                     <td className="px-5 py-4 font-semibold text-slate-700">{row.buyer}</td>
@@ -527,6 +572,13 @@ const Dashboard = () => {
               </tbody>
             </table>
           </div>
+          <PaginationControls
+            page={recentUnitCurrentPage}
+            pageSize={recentUnitPageSize}
+            totalItems={recentUnits.length}
+            onPageChange={setRecentUnitPage}
+            onPageSizeChange={(size) => { setRecentUnitPageSize(size); setRecentUnitPage(1) }}
+          />
         </div>
       </section>
 
@@ -592,20 +644,21 @@ const Dashboard = () => {
       </section>
 
       <section className="grid gap-6 xl:grid-cols-2">
-        <ChartCard title="Sales, Cash, and Discount Trend" description="Actual cash and earned discount are plotted separately over the selected date range.">
+        <ChartCard title="Sales and Settlement Trend" description="Uses the same Total Sales, Cash Collected, Discount Applied, Settled Value, Outstanding Value, and Payable Commission definitions as the Business Snapshot.">
           {salesTrend.length ? (
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={salesTrend} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="label" tick={{ fontSize: 11 }} minTickGap={18} />
                 <YAxis yAxisId="money" tickFormatter={compactMoney} tick={{ fontSize: 11 }} />
-                <YAxis yAxisId="count" orientation="right" allowDecimals={false} tick={{ fontSize: 11 }} />
                 <Tooltip content={<ChartTooltip />} />
                 <Legend />
                 <Area yAxisId="money" type="monotone" dataKey="totalSales" name="Total Sales" stroke={chartColors.blue} fill={chartColors.blue} fillOpacity={0.12} strokeWidth={3} />
-                <Area yAxisId="money" type="monotone" dataKey="collected" name="Cash Collected" stroke={chartColors.green} fill={chartColors.green} fillOpacity={0.12} strokeWidth={3} />
+                <Line yAxisId="money" type="monotone" dataKey="collected" name="Cash Collected" stroke={chartColors.green} strokeWidth={3} dot={false} />
                 <Line yAxisId="money" type="monotone" dataKey="discountApplied" name="Discount Applied" stroke={chartColors.amber} strokeWidth={3} dot={false} />
-                <Line yAxisId="count" type="monotone" dataKey="saleCount" name="Sales Count" stroke={chartColors.indigo} strokeWidth={3} dot />
+                <Line yAxisId="money" type="monotone" dataKey="settledValue" name="Settled Value" stroke={chartColors.indigo} strokeWidth={3} dot={false} />
+                <Line yAxisId="money" type="monotone" dataKey="outstandingValue" name="Outstanding Value" stroke={chartColors.red} strokeWidth={3} dot={false} />
+                <Line yAxisId="money" type="monotone" dataKey="payableCommission" name="Payable Commission" stroke={chartColors.violet} strokeWidth={3} dot={false} />
               </ComposedChart>
             </ResponsiveContainer>
           ) : <EmptyChart />}
@@ -618,7 +671,9 @@ const Dashboard = () => {
               <XAxis dataKey="label" tick={{ fontSize: 12 }} />
               <YAxis tickFormatter={compactMoney} tick={{ fontSize: 11 }} />
               <Tooltip content={<ChartTooltip />} />
-              <Bar dataKey="value" name="Amount" fill={chartColors.indigo} radius={[8, 8, 0, 0]} />
+              <Bar dataKey="value" name="Amount" radius={[8, 8, 0, 0]}>
+                {commissionChartData.map((item) => <Cell key={item.label} fill={item.color} />)}
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -632,7 +687,9 @@ const Dashboard = () => {
               <XAxis dataKey="label" tick={{ fontSize: 12 }} />
               <YAxis tickFormatter={compactMoney} tick={{ fontSize: 11 }} />
               <Tooltip content={<ChartTooltip />} />
-              <Bar dataKey="value" name="Amount" fill={chartColors.amber} radius={[8, 8, 0, 0]} />
+              <Bar dataKey="value" name="Amount" radius={[8, 8, 0, 0]}>
+                {inventoryChartData.map((item) => <Cell key={item.label} fill={item.color} />)}
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
@@ -643,7 +700,7 @@ const Dashboard = () => {
               <Tooltip content={<ChartTooltip />} />
               <Legend />
               <Pie data={unitStatusChartData.filter((item) => item.count > 0)} dataKey="count" nameKey="label" innerRadius={55} outerRadius={95} paddingAngle={2}>
-                {unitStatusChartData.filter((item) => item.count > 0).map((entry, index) => <Cell key={entry.label} fill={pieColors[index % pieColors.length]} />)}
+                {unitStatusChartData.filter((item) => item.count > 0).map((entry) => <Cell key={entry.label} fill={entry.color} />)}
               </Pie>
             </PieChart>
           </ResponsiveContainer>
@@ -673,3 +730,4 @@ const Dashboard = () => {
 }
 
 export default Dashboard
+

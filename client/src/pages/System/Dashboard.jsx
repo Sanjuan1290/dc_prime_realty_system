@@ -63,6 +63,20 @@ const dateRangeOptions = [
   { value: 'custom', label: 'Custom' },
 ]
 
+
+const projectScopeOptions = [
+  { value: 'all', label: 'All Projects' },
+  { value: 'lot', label: 'Lot Only Projects' },
+  { value: 'house_lot', label: 'House & Lot Projects' },
+]
+
+const getProjectType = (project = {}, fallback = 'lot') => {
+  const type = String(project.project_type || project.type || fallback).toLowerCase()
+  return type === 'house_lot' || type === 'house-and-lot' || type === 'house_and_lot'
+    ? 'house_lot'
+    : 'lot'
+}
+
 const padDatePart = (value) => String(value).padStart(2, '0')
 const toDateInput = (date) => `${date.getFullYear()}-${padDatePart(date.getMonth() + 1)}-${padDatePart(date.getDate())}`
 
@@ -257,11 +271,13 @@ const mergeCompanyTrend = (projectReports = []) => {
         totalGrossSales: 0,
         cashCollected: 0,
         netCashCollectibles: 0,
+        totalNetSales: 0,
       }
       current.reservations += Number(item.saleCount || 0)
       current.totalGrossSales += Number(item.totalSales || 0)
       current.cashCollected += Number(item.collected || 0)
       current.netCashCollectibles += Number(item.netCashCollectibles || 0)
+      current.totalNetSales += Number(item.totalNetSales ?? item.netSales ?? 0)
       byPeriod.set(item.period, current)
     })
   })
@@ -291,10 +307,17 @@ const Dashboard = () => {
   const [fromDate, setFromDate] = useState(() => defaultDateRange().from)
   const [toDate, setToDate] = useState(() => defaultDateRange().to)
   const [approvedLongRangeKey, setApprovedLongRangeKey] = useState('')
+  const [projectScope, setProjectScope] = useState('all')
   const { data: currentUserData } = useCurrentUser()
   const role = currentUserData?.user?.role || 'super_admin'
   const isAdmin = role === 'admin'
-  const projectsPath = isAdmin ? '/admin/projects' : '/super_admin/projects'
+  const roleBasePath = isAdmin ? '/admin' : '/super_admin'
+  const houseLotEnabled = import.meta.env.VITE_FEATURE_HOUSE_LOT === 'true'
+  const projectsPath = projectScope === 'lot'
+    ? `${roleBasePath}/lot-projects`
+    : projectScope === 'house_lot'
+      ? `${roleBasePath}/house-lot-projects`
+      : `${roleBasePath}/projects`
   const selectedDaySpan = inclusiveDaySpan(fromDate, toDate)
   const hasInvalidOrder = selectedDaySpan <= 0
   const isLongerThanTwelveMonths = exceedsTwelveMonths(fromDate, toDate)
@@ -325,27 +348,77 @@ const Dashboard = () => {
     return params.toString()
   }, [dateRange, fromDate, toDate])
 
-  const { data: projectsData, isLoading: isProjectsLoading, isError: isProjectsError, error: projectsError } = useQuery({
+  const shouldLoadLotProjects = projectScope !== 'house_lot'
+  const shouldLoadHouseLotProjects = projectScope !== 'lot' && houseLotEnabled
+
+  const lotProjectsQuery = useQuery({
     queryKey: ['system-dashboard-lot-projects'],
     queryFn: () => useFetch('/projects/lot-projects'),
-  })
-  const lotProjects = useMemo(() => projectsData?.data || [], [projectsData])
-  const { data: dashboardList = [], isLoading: isDashboardsLoading, isFetching: isDashboardsFetching, isError: isDashboardsError, error: dashboardsError, refetch } = useQuery({
-    queryKey: ['system-dashboard-lot-stats', lotProjects.map((project) => project.slug || project.lot_project_slug).join('|'), dashboardQuery],
-    queryFn: () => Promise.all(lotProjects.map((project) => useFetch(`/projects/lot-projects/${project.slug || project.lot_project_slug}/dashboard?${dashboardQuery}`))),
-    enabled: lotProjects.length > 0 && canLoadRange,
+    enabled: shouldLoadLotProjects,
   })
 
-  const projectReports = useMemo(() => lotProjects.map((project, index) => {
+  const houseLotProjectsQuery = useQuery({
+    queryKey: ['system-dashboard-house-lot-projects'],
+    queryFn: () => useFetch('/projects/house-lot-projects'),
+    enabled: shouldLoadHouseLotProjects,
+  })
+
+  const selectedProjects = useMemo(() => {
+    const lotProjects = shouldLoadLotProjects
+      ? (lotProjectsQuery.data?.data || []).map((project) => ({
+          ...project,
+          projectType: getProjectType(project, 'lot'),
+          dashboardBasePath: '/projects/lot-projects',
+        }))
+      : []
+
+    const houseLotProjects = shouldLoadHouseLotProjects
+      ? (houseLotProjectsQuery.data?.data || []).map((project) => ({
+          ...project,
+          projectType: getProjectType(project, 'house_lot'),
+          dashboardBasePath: '/projects/house-lot-projects',
+        }))
+      : []
+
+    return [...lotProjects, ...houseLotProjects]
+  }, [
+    houseLotProjectsQuery.data,
+    lotProjectsQuery.data,
+    shouldLoadHouseLotProjects,
+    shouldLoadLotProjects,
+  ])
+
+  const projectKeys = selectedProjects
+    .map((project) => `${project.projectType}:${project.slug || project.lot_project_slug || project.house_lot_project_slug}`)
+    .join('|')
+
+  const {
+    data: dashboardList = [],
+    isLoading: isDashboardsLoading,
+    isFetching: isDashboardsFetching,
+    isError: isDashboardsError,
+    error: dashboardsError,
+    refetch,
+  } = useQuery({
+    queryKey: ['system-dashboard-project-stats', projectScope, projectKeys, dashboardQuery],
+    queryFn: () => Promise.all(selectedProjects.map((project) => {
+      const slug = project.slug || project.lot_project_slug || project.house_lot_project_slug
+      return useFetch(`${project.dashboardBasePath}/${slug}/dashboard?${dashboardQuery}`)
+    })),
+    enabled: selectedProjects.length > 0 && canLoadRange,
+  })
+
+  const projectReports = useMemo(() => selectedProjects.map((project, index) => {
     const dashboard = dashboardList[index]?.data || {}
     const payload = dashboard.project || project
     return {
-      name: payload.name || payload.lot_project_name || project.name || project.lot_project_name || 'Lot Project',
+      name: payload.name || payload.lot_project_name || payload.house_lot_project_name || project.name || project.lot_project_name || project.house_lot_project_name || 'Project',
+      projectType: project.projectType,
       stats: dashboard.stats || {},
       salesTrend: dashboard.salesTrend || [],
       cancellationTrend: dashboard.cancellationTrend || [],
     }
-  }), [dashboardList, lotProjects])
+  }), [dashboardList, selectedProjects])
 
   const summary = useMemo(() => projectReports.reduce((total, report) => {
     const stats = report.stats || {}
@@ -409,20 +482,39 @@ const Dashboard = () => {
     dueSoon: Number(report.stats?.dueSoonCount || 0),
     overdue: Number(report.stats?.overdueCount || 0),
   }))
+  const isProjectsLoading = (shouldLoadLotProjects && lotProjectsQuery.isLoading)
+    || (shouldLoadHouseLotProjects && houseLotProjectsQuery.isLoading)
+  const isProjectsError = (shouldLoadLotProjects && lotProjectsQuery.isError)
+    || (shouldLoadHouseLotProjects && houseLotProjectsQuery.isError)
+  const projectsError = lotProjectsQuery.error || houseLotProjectsQuery.error
   const isLoading = isProjectsLoading || (canLoadRange && isDashboardsLoading)
+  const selectedScopeLabel = projectScopeOptions.find((option) => option.value === projectScope)?.label || 'All Projects'
 
   return (
     <main className="flex flex-col gap-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <PageHeader title="System Dashboard" description="Company sales, reservations, cancellations, inventory, and collection reporting." icon={FiLayers} />
-        <button type="button" onClick={() => refetch()} disabled={!canLoadRange || isDashboardsFetching} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50">
-          <FiRefreshCw className={isDashboardsFetching ? 'animate-spin' : ''} /> Refresh
-        </button>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+          <label className="grid gap-1 sm:min-w-56">
+            <span className="text-xs font-black uppercase tracking-wide text-slate-500">Project type</span>
+            <select
+              value={projectScope}
+              onChange={(event) => setProjectScope(event.target.value)}
+              className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-black text-slate-700 shadow-sm outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
+            >
+              {projectScopeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </label>
+          <button type="button" onClick={() => refetch()} disabled={!canLoadRange || isDashboardsFetching || selectedProjects.length === 0} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50">
+            <FiRefreshCw className={isDashboardsFetching ? 'animate-spin' : ''} /> Refresh
+          </button>
+        </div>
       </div>
 
       {isProjectsLoading ? <StatusAlert type="loading" message="Loading system dashboard..." /> : null}
       {isProjectsError ? <StatusAlert type="error" message={projectsError?.message || 'Failed to load system dashboard.'} /> : null}
-      {isDashboardsError && canLoadRange ? <StatusAlert type="error" message={dashboardsError?.message || 'Failed to load lot project dashboard totals.'} /> : null}
+      {projectScope === 'house_lot' && !houseLotEnabled ? <StatusAlert type="info" message="House & Lot project reporting is not active yet." /> : null}
+      {isDashboardsError && canLoadRange ? <StatusAlert type="error" message={dashboardsError?.message || 'Failed to load project dashboard totals.'} /> : null}
 
       <DateRangeFilter
         range={dateRange}
@@ -465,7 +557,7 @@ const Dashboard = () => {
 
       <section className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex items-start justify-between gap-4"><div><p className="text-sm font-black text-slate-950">Lot Only Projects</p><p className="mt-2 text-3xl font-black">{number(projectReports.length)}</p><p className="mt-1 text-sm font-semibold text-slate-500">Created lot project workspaces.</p></div><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-700"><FiMapPin className="h-6 w-6" /></div></div>
+          <div className="flex items-start justify-between gap-4"><div><p className="text-sm font-black text-slate-950">{selectedScopeLabel}</p><p className="mt-2 text-3xl font-black">{number(projectReports.length)}</p><p className="mt-1 text-sm font-semibold text-slate-500">Project workspaces included in this dashboard view.</p></div><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-700"><FiMapPin className="h-6 w-6" /></div></div>
           <div className="mt-5 grid gap-3 sm:grid-cols-3">
             <div className="rounded-2xl bg-slate-50 p-4"><p className="text-xs font-black uppercase text-slate-500">Listed Inventory</p><p className="mt-1 font-black">{money(summary.listedInventory)}</p></div>
             <div className="rounded-2xl bg-emerald-50 p-4"><p className="text-xs font-black uppercase text-emerald-700">Available Inventory</p><p className="mt-1 font-black text-emerald-950">{money(summary.availableInventory)}</p></div>
@@ -481,8 +573,8 @@ const Dashboard = () => {
       </section>
 
       <section className="grid gap-6 xl:grid-cols-2">
-        <ChartCard title="Company Sales Trend" description="Gross sales, collected cash, net collectibles, and reservations across the selected dates.">
-          {companySalesTrend.length ? <ResponsiveContainer width="100%" height="100%"><ComposedChart data={companySalesTrend} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="label" tick={{ fontSize: 11 }} minTickGap={18} /><YAxis yAxisId="money" tickFormatter={compactMoney} tick={{ fontSize: 11 }} /><YAxis yAxisId="count" orientation="right" allowDecimals={false} tick={{ fontSize: 11 }} /><Tooltip content={<ChartTooltip />} /><Legend /><Area yAxisId="money" type="monotone" dataKey="totalGrossSales" name="Gross Sales" stroke={chartColors.blue} fill={chartColors.blue} fillOpacity={0.12} strokeWidth={3} /><Line yAxisId="money" type="monotone" dataKey="cashCollected" name="Cash Collected" stroke={chartColors.green} strokeWidth={3} dot={false} /><Line yAxisId="money" type="monotone" dataKey="netCashCollectibles" name="Net Collectibles" stroke={chartColors.amber} strokeWidth={3} dot={false} /><Line yAxisId="count" type="monotone" dataKey="reservations" name="Reservations" stroke={chartColors.violet} strokeWidth={3} dot /></ComposedChart></ResponsiveContainer> : <EmptyChart />}
+        <ChartCard title="Company Sales Trend" description="The chart uses the same gross sales, cash, net collectibles, reservations, and net sales definitions as the summary cards.">
+          {companySalesTrend.length ? <ResponsiveContainer width="100%" height="100%"><ComposedChart data={companySalesTrend} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="label" tick={{ fontSize: 11 }} minTickGap={18} /><YAxis yAxisId="money" tickFormatter={compactMoney} tick={{ fontSize: 11 }} /><YAxis yAxisId="count" orientation="right" allowDecimals={false} tick={{ fontSize: 11 }} /><Tooltip content={<ChartTooltip />} /><Legend /><Area yAxisId="money" type="monotone" dataKey="totalGrossSales" name="Gross Sales" stroke={chartColors.blue} fill={chartColors.blue} fillOpacity={0.12} strokeWidth={3} /><Line yAxisId="money" type="monotone" dataKey="cashCollected" name="Cash Collected" stroke={chartColors.green} strokeWidth={3} dot={false} /><Line yAxisId="money" type="monotone" dataKey="netCashCollectibles" name="Cash Collectibles − Discount" stroke={chartColors.amber} strokeWidth={3} dot={false} /><Line yAxisId="money" type="monotone" dataKey="totalNetSales" name="Total Net Sales" stroke={chartColors.indigo} strokeWidth={3} dot={false} /><Line yAxisId="count" type="monotone" dataKey="reservations" name="Total Number of Reservations" stroke={chartColors.violet} strokeWidth={3} dot /></ComposedChart></ResponsiveContainer> : <EmptyChart />}
         </ChartCard>
         <ChartCard title="Sales Summary per Project" description="Gross sales, cash collected, discount, and remaining net collectibles by project.">
           {projectSalesChart.length ? <ResponsiveContainer width="100%" height="100%"><BarChart data={projectSalesChart} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="project" tick={{ fontSize: 11 }} /><YAxis tickFormatter={compactMoney} tick={{ fontSize: 11 }} /><Tooltip content={<ChartTooltip />} /><Legend /><Bar dataKey="totalGrossSales" name="Gross Sales" fill={chartColors.blue} radius={[8, 8, 0, 0]} /><Bar dataKey="cashCollected" name="Cash Collected" fill={chartColors.green} radius={[8, 8, 0, 0]} /><Bar dataKey="discountApplied" name="Discount Applied" fill={chartColors.amber} radius={[8, 8, 0, 0]} /><Bar dataKey="netCashCollectibles" name="Net Collectibles" fill={chartColors.slate} radius={[8, 8, 0, 0]} /></BarChart></ResponsiveContainer> : <EmptyChart />}

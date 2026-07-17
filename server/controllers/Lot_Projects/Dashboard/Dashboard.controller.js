@@ -166,7 +166,7 @@ const makeEmptyTrendBuckets = (dateRange) => {
   return buckets;
 };
 
-const mergeTrendRows = (dateRange, salesRows = [], collectionRows = [], discountRows = []) => {
+const mergeTrendRows = (dateRange, salesRows = [], collectionRows = [], discountRows = [], commissionRows = []) => {
   const baseBuckets = shouldBackfillTrendBuckets(dateRange) ? makeEmptyTrendBuckets(dateRange) : [];
 
   const makeBucket = (period, label = formatPeriodLabel(period, dateRange.groupBy)) => ({
@@ -180,6 +180,7 @@ const mergeTrendRows = (dateRange, salesRows = [], collectionRows = [], discount
     cashCollectibles: 0,
     netCashCollectibles: 0,
     netSales: 0,
+    payableCommission: 0,
   });
 
   const byPeriod = new Map(
@@ -209,6 +210,13 @@ const mergeTrendRows = (dateRange, salesRows = [], collectionRows = [], discount
     byPeriod.set(period, current);
   }
 
+  for (const row of commissionRows) {
+    const period = String(row.period || '');
+    const current = byPeriod.get(period) || makeBucket(period);
+    current.payableCommission += toNumber(row.payable_commission ?? row.payableCommission);
+    byPeriod.set(period, current);
+  }
+
   return [...byPeriod.values()]
     .sort((a, b) => String(a.period).localeCompare(String(b.period)))
     .map((item) => ({
@@ -220,6 +228,8 @@ const mergeTrendRows = (dateRange, salesRows = [], collectionRows = [], discount
       netCashCollectibles: roundMoney(Math.max(item.totalSales - item.collected - item.discountApplied, 0)),
       netSales: roundMoney(Math.max(item.totalSales - item.discountApplied, 0)),
       settledValue: roundMoney(item.collected + item.discountApplied),
+      outstandingValue: roundMoney(Math.max(item.totalSales - item.collected - item.discountApplied, 0)),
+      payableCommission: roundMoney(item.payableCommission),
     }));
 };
 
@@ -763,6 +773,23 @@ export const getLotProjectDashboard = async (req, res) => {
       : [[]];
     const discountTrendRows = buildEarnedDiscountTrendRows(discountPaymentRows, dateRange);
 
+    const [commissionTrendRows] = hasCommissions
+      ? await connection.query(
+          `
+            SELECT
+              ${getPeriodSql('DATE(c.created_at)', dateRange.groupBy)} AS period,
+              COALESCE(SUM(${releaseEligibleExpr}), 0) AS payable_commission
+            FROM lot_project_commissions c
+            ${releaseSummaryJoin}
+            WHERE c.lot_project_id = ?
+              AND DATE(c.created_at) BETWEEN ? AND ?
+            GROUP BY period
+            ORDER BY period ASC
+          `,
+          [project.lot_project_id, dateRange.from, dateRange.to]
+        )
+      : [[]];
+
     const [reservationSummaryRows] = hasReservationHistory
       ? await connection.query(
           `
@@ -852,7 +879,6 @@ export const getLotProjectDashboard = async (req, res) => {
         WHERE c.lot_project_id = ?
         GROUP BY acs.accredited_seller_id, sg.seller_group_id, u.first_name, u.middle_name, u.last_name, u.role, sg.seller_group_name
         ORDER BY sales_amount DESC, gross_commission DESC, seller_name ASC
-        LIMIT 8
       `
       : '';
 
@@ -1104,7 +1130,6 @@ export const getLotProjectDashboard = async (req, res) => {
         ) pdoc ON pdoc.lot_project_id = l.lot_project_id
         WHERE l.lot_project_id = ?
         ORDER BY l.lot_project_listing_updated_at DESC, l.lot_project_listing_id DESC
-        LIMIT 8
       `,
       [project.lot_project_id]
     );
@@ -1131,7 +1156,7 @@ export const getLotProjectDashboard = async (req, res) => {
       data: {
         project: projectPayload,
         dateRange,
-        salesTrend: mergeTrendRows(dateRange, salesTrendRows, collectionTrendRows, discountTrendRows),
+        salesTrend: mergeTrendRows(dateRange, salesTrendRows, collectionTrendRows, discountTrendRows, commissionTrendRows),
         cancellationTrend: mergeCancellationTrendRows(dateRange, cancellationTrendRows),
         sellerSalesTrend: mapBreakdownTrend(sellerTrendRows, 'seller'),
         groupSalesTrend: mapBreakdownTrend(groupTrendRows, 'group'),
@@ -1333,3 +1358,4 @@ export const getLotProjectPriceList = async (req, res) => {
     connection.release();
   }
 };
+

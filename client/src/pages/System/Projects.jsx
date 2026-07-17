@@ -101,6 +101,8 @@ const Projects = () => {
   const [alert, setAlert] = useState(null)
   const [deletingProjectId, setDeletingProjectId] = useState(null)
   const [selectedDocumentProjectId, setSelectedDocumentProjectId] = useState('')
+  const [documentPage, setDocumentPage] = useState(1)
+  const [documentPageSize, setDocumentPageSize] = useState(10)
 
   const {
     data: projectsResponse,
@@ -167,18 +169,30 @@ const Projects = () => {
   const activeDocumentProjectId = selectedDocumentProjectId || String(projects[0]?.id || '')
 
   const selectedDocumentUnits = useMemo(
-    () => complianceUnits.filter((unit) => String(unit.projectId) === String(activeDocumentProjectId)),
+    () => complianceUnits.filter((unit) => {
+      if (String(unit.projectId) !== String(activeDocumentProjectId)) return false
+      const total = Number(unit.totalDocuments || 0)
+      const approved = Number(unit.approvedDocuments || 0)
+      return total > 0 && approved < total
+    }),
     [activeDocumentProjectId, complianceUnits]
   )
 
+  const documentTotalPages = Math.max(1, Math.ceil(selectedDocumentUnits.length / documentPageSize))
+  const documentCurrentPage = Math.min(documentPage, documentTotalPages)
+  const paginatedDocumentUnits = useMemo(
+    () => selectedDocumentUnits.slice((documentCurrentPage - 1) * documentPageSize, documentCurrentPage * documentPageSize),
+    [documentCurrentPage, documentPageSize, selectedDocumentUnits]
+  )
+
   const selectedDocumentChartRows = useMemo(
-    () => selectedDocumentUnits.slice(0, 20).map((unit) => ({
+    () => paginatedDocumentUnits.map((unit) => ({
       unit: unit.unitId,
       approved: Number(unit.approvedDocuments || 0),
       awaitingApproval: Number(unit.awaitingApprovalDocuments || 0),
       pendingRequired: Number(unit.pendingRequiredDocuments || 0),
     })),
-    [selectedDocumentUnits]
+    [paginatedDocumentUnits]
   )
 
   const documents = documentsResponse?.documents || []
@@ -574,11 +588,11 @@ const Projects = () => {
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <h2 className="text-lg font-black text-slate-950">Unit Document Compliance</h2>
-            <p className="mt-1 text-sm font-semibold text-slate-500">Approved, submitted for approval, and pending required documents for active client units. Finalized cancelled units are excluded.</p>
+            <p className="mt-1 text-sm font-semibold text-slate-500">Only incomplete document submissions are shown. Fully approved units and finalized cancelled units are excluded.</p>
           </div>
           <label className="grid gap-1 lg:w-72">
             <span className="text-xs font-black uppercase tracking-wide text-slate-500">Project</span>
-            <select value={activeDocumentProjectId} onChange={(event) => setSelectedDocumentProjectId(event.target.value)} className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-700 outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50">
+            <select value={activeDocumentProjectId} onChange={(event) => { setSelectedDocumentProjectId(event.target.value); setDocumentPage(1) }} className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-700 outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50">
               {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
             </select>
           </label>
@@ -601,7 +615,7 @@ const Projects = () => {
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-slate-200 text-sm font-bold text-slate-500">No active client units with assigned documents.</div>
+            <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-slate-200 text-sm font-bold text-slate-500">No incomplete document submissions for this project.</div>
           )}
         </div>
 
@@ -609,7 +623,7 @@ const Projects = () => {
           <table className="min-w-[1050px] w-full divide-y divide-slate-200 text-sm">
             <thead className="bg-slate-50"><tr>{['Unit', 'Buyer', 'Status', 'Submitted / Total', 'Approved', 'Awaiting Approval', 'Pending Required', 'Progress', 'Action'].map((head) => <th key={head} className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">{head}</th>)}</tr></thead>
             <tbody className="divide-y divide-slate-100">
-              {selectedDocumentUnits.length ? selectedDocumentUnits.map((unit) => (
+              {paginatedDocumentUnits.length ? paginatedDocumentUnits.map((unit) => (
                 <tr key={unit.listingId} className="hover:bg-slate-50">
                   <td className="px-4 py-4 font-black text-slate-950">{unit.unitId}</td>
                   <td className="px-4 py-4 font-semibold text-slate-600">{unit.buyerName}</td>
@@ -621,9 +635,23 @@ const Projects = () => {
                   <td className="px-4 py-4"><div className="flex items-center gap-2"><div className="h-2 w-24 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-blue-600" style={{ width: `${Math.min(Number(unit.completionPercentage || 0), 100)}%` }} /></div><span className="text-xs font-black text-slate-600">{Number(unit.completionPercentage || 0).toFixed(0)}%</span></div></td>
                   <td className="px-4 py-4"><button type="button" onClick={() => navigate(`/lot-projects/${unit.projectSlug}/listings/${unit.listingId}`)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 hover:bg-slate-50"><FiEye /> Open</button></td>
                 </tr>
-              )) : <tr><td colSpan={9} className="px-4 py-10 text-center font-semibold text-slate-500">No unit document records for this project.</td></tr>}
+              )) : <tr><td colSpan={9} className="px-4 py-10 text-center font-semibold text-slate-500">No incomplete unit document records for this project.</td></tr>}
             </tbody>
           </table>
+        </div>
+
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm font-semibold text-slate-600">
+            Showing {selectedDocumentUnits.length ? ((documentCurrentPage - 1) * documentPageSize) + 1 : 0}-{Math.min(documentCurrentPage * documentPageSize, selectedDocumentUnits.length)} of {selectedDocumentUnits.length} incomplete records
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <select value={documentPageSize} onChange={(event) => { setDocumentPageSize(Number(event.target.value)); setDocumentPage(1) }} className="h-9 rounded-lg border border-slate-300 bg-white px-3 text-sm font-black text-slate-700">
+              {[5, 10, 20, 50].map((size) => <option key={size} value={size}>{size}</option>)}
+            </select>
+            <button type="button" onClick={() => setDocumentPage(documentCurrentPage - 1)} disabled={documentCurrentPage <= 1} className="h-9 rounded-lg border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 disabled:cursor-not-allowed disabled:text-slate-300">Previous</button>
+            <span className="h-9 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-black text-slate-700">Page {documentCurrentPage} of {documentTotalPages}</span>
+            <button type="button" onClick={() => setDocumentPage(documentCurrentPage + 1)} disabled={documentCurrentPage >= documentTotalPages} className="h-9 rounded-lg border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 disabled:cursor-not-allowed disabled:text-slate-300">Next</button>
+          </div>
         </div>
       </section>
 
@@ -646,3 +674,4 @@ const Projects = () => {
 }
 
 export default Projects
+
