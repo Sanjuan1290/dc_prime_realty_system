@@ -417,7 +417,6 @@ const Dashboard = () => {
 
   const project = useMemo(() => toProjectView(data?.data?.project || {}), [data])
   const recentUnits = data?.data?.recentUnits || []
-  const upcomingDues = data?.data?.upcomingDues || []
   const sellerPerformance = data?.data?.sellerPerformance || []
   const groupPerformance = data?.data?.groupPerformance || []
   const salesTrend = data?.data?.salesTrend || []
@@ -481,11 +480,6 @@ const Dashboard = () => {
 
   const sellerChartData = buildBreakdownChartData(sellerPerformance, 'seller')
   const groupChartData = buildBreakdownChartData(groupPerformance, 'group')
-  const upcomingDuesChartData = upcomingDues.slice(0, 8).map((row) => ({
-    unit: row.unit || '-',
-    balanceDue: Number(row.balanceDue || 0),
-  }))
-
   const sellerTotalPages = Math.max(1, Math.ceil(sellerPerformance.length / sellerPageSize))
   const sellerCurrentPage = Math.min(sellerPage, sellerTotalPages)
   const paginatedSellerPerformance = sellerPerformance.slice((sellerCurrentPage - 1) * sellerPageSize, sellerCurrentPage * sellerPageSize)
@@ -532,7 +526,7 @@ const Dashboard = () => {
 
       <section className="grid gap-6 grid-cols-1">
         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-          <SectionHeader title="Seller Performance Details" description="Sales and commission totals by seller." />
+          <SectionHeader title="Seller Performance Details" description="Sales and commission totals by seller for the selected date range." />
           <div className="mt-4">
             <PerformanceTable rows={paginatedSellerPerformance} type="seller" />
           </div>
@@ -582,49 +576,7 @@ const Dashboard = () => {
         </div>
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-2">
-
-
-        <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-200 px-5 py-4">
-            <SectionHeader title="Upcoming Unit Dues" description="Unpaid or partial schedules due within 7 days." />
-          </div>
-          <div className="p-5">
-            <div className="h-56">
-              {upcomingDuesChartData.length ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={upcomingDuesChartData} layout="vertical" margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                    <XAxis type="number" tickFormatter={compactMoney} tick={{ fontSize: 11 }} />
-                    <YAxis type="category" dataKey="unit" tick={{ fontSize: 11 }} width={70} />
-                    <Tooltip content={<ChartTooltip />} />
-                    <Bar dataKey="balanceDue" name="Balance Due" fill={chartColors.red} radius={[0, 8, 8, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : <EmptyChart message="No upcoming dues within 7 days." />}
-            </div>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-[780px] w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-50"><tr>{['Unit','Buyer','Due Date','Description','Balance Due'].map((head) => <th key={head} className="px-5 py-3 text-left text-xs font-black uppercase tracking-wider text-slate-500">{head}</th>)}</tr></thead>
-              <tbody className="divide-y divide-slate-100">
-                {upcomingDues.length ? upcomingDues.map((row) => (
-                  <tr key={row.id} className="transition hover:bg-slate-50">
-                    <td className="px-5 py-4 font-black text-blue-700">{row.unit}</td>
-                    <td className="px-5 py-4 font-semibold text-slate-700">{row.buyer}</td>
-                    <td className="px-5 py-4 font-semibold text-slate-600">{row.dueDate}</td>
-                    <td className="px-5 py-4 font-semibold text-slate-600">{row.description}</td>
-                    <td className="px-5 py-4 font-black text-amber-700">{money(row.balanceDue)}</td>
-                  </tr>
-                )) : (
-                  <tr><td colSpan={5} className="px-5 py-8 text-center text-sm font-semibold text-slate-500">No upcoming dues within 7 days.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-
+      <section className="grid gap-6 grid-cols-1">
         <ChartCard title="Group Sales Comparison" description="Column-line chart for sales value and sales count by seller group.">
           {groupChartData.length ? (
             <ResponsiveContainer width="100%" height="100%">
@@ -730,4 +682,3 @@ const Dashboard = () => {
 }
 
 export default Dashboard
-

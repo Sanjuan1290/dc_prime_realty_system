@@ -877,6 +877,7 @@ export const getLotProjectDashboard = async (req, res) => {
           ON sg.seller_group_id = acs.seller_group_id
         ${releaseSummaryJoin}
         WHERE c.lot_project_id = ?
+          AND DATE(c.created_at) BETWEEN ? AND ?
         GROUP BY acs.accredited_seller_id, sg.seller_group_id, u.first_name, u.middle_name, u.last_name, u.role, sg.seller_group_name
         ORDER BY sales_amount DESC, gross_commission DESC, seller_name ASC
       `
@@ -921,7 +922,10 @@ export const getLotProjectDashboard = async (req, res) => {
       : '';
 
     const [sellerRows] = hasCommissions
-      ? await connection.query(sellerPerformanceQuery, [project.lot_project_id])
+      ? await connection.query(
+          sellerPerformanceQuery,
+          [project.lot_project_id, dateRange.from, dateRange.to]
+        )
       : [[]];
 
     const [groupRows] = hasCommissions
