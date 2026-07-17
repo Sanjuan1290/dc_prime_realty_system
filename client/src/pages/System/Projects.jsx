@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import {
   FiEye,
   FiFileText,
@@ -29,6 +30,24 @@ const StatCard = ({ label, value }) => (
     <p className="mt-3 text-2xl font-black text-slate-950">{value}</p>
   </div>
 )
+
+const DocumentChartTooltip = ({ active, payload, label }) => {
+  if (!active || !payload?.length) return null
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs shadow-lg">
+      <p className="font-black text-slate-950">{label}</p>
+      <div className="mt-2 grid gap-1.5">
+        {payload.map((item, index) => (
+          <div key={`${item.dataKey}-${index}`} className="flex items-center gap-2 font-semibold text-slate-600">
+            <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: item.color || item.fill || '#94a3b8' }} />
+            <span>{item.name}: <strong className="text-slate-950">{Number(item.value || 0).toLocaleString('en-PH')}</strong></span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 const StatusPill = ({ status }) => {
   const isActive = status === 'active'
@@ -60,6 +79,9 @@ const normalizeProject = (project) => ({
   cadastralLots: project.cadastralLots || [],
   defaultDocs: Number(project.defaultDocs || project.default_documents_count || 0),
   requiredDocs: Number(project.requiredDocs || project.required_documents_count || 0),
+  totalDocuments: Number(project.totalDocuments || 0),
+  submittedDocuments: Number(project.submittedDocuments || 0),
+  pendingRequiredDocuments: Number(project.pendingRequiredDocuments || 0),
   status: project.status || project.lot_project_status,
   routePath:
     project.routePath ||
@@ -78,6 +100,7 @@ const Projects = () => {
   const [showHouseLotModal, setShowHouseLotModal] = useState(false)
   const [alert, setAlert] = useState(null)
   const [deletingProjectId, setDeletingProjectId] = useState(null)
+  const [selectedDocumentProjectId, setSelectedDocumentProjectId] = useState('')
 
   const {
     data: projectsResponse,
@@ -87,6 +110,16 @@ const Projects = () => {
   } = useQuery({
     queryKey: ['lot-projects'],
     queryFn: () => useFetch('/projects/lot-projects'),
+  })
+
+  const {
+    data: complianceResponse,
+    isLoading: isComplianceLoading,
+    isError: isComplianceError,
+    error: complianceError,
+  } = useQuery({
+    queryKey: ['lot-project-document-compliance'],
+    queryFn: () => useFetch('/projects/lot-projects/document-compliance'),
   })
 
   const {
@@ -109,9 +142,43 @@ const Projects = () => {
     queryFn: () => useFetch('/documents/getTemplates'),
   })
 
+  const complianceByProjectId = useMemo(() => new Map(
+    (complianceResponse?.data?.projects || []).map((item) => [String(item.projectId), item])
+  ), [complianceResponse])
+
   const projects = useMemo(
-    () => (projectsResponse?.data || []).map(normalizeProject),
-    [projectsResponse]
+    () => (projectsResponse?.data || []).map((rawProject) => {
+      const project = normalizeProject(rawProject)
+      const compliance = complianceByProjectId.get(String(project.id)) || {}
+      return {
+        ...project,
+        totalDocuments: Number(compliance.totalDocuments || 0),
+        submittedDocuments: Number(compliance.submittedDocuments || 0),
+        pendingRequiredDocuments: Number(compliance.pendingRequiredDocuments || 0),
+      }
+    }),
+    [complianceByProjectId, projectsResponse]
+  )
+
+  const complianceUnits = useMemo(
+    () => complianceResponse?.data?.units || [],
+    [complianceResponse]
+  )
+  const activeDocumentProjectId = selectedDocumentProjectId || String(projects[0]?.id || '')
+
+  const selectedDocumentUnits = useMemo(
+    () => complianceUnits.filter((unit) => String(unit.projectId) === String(activeDocumentProjectId)),
+    [activeDocumentProjectId, complianceUnits]
+  )
+
+  const selectedDocumentChartRows = useMemo(
+    () => selectedDocumentUnits.slice(0, 20).map((unit) => ({
+      unit: unit.unitId,
+      approved: Number(unit.approvedDocuments || 0),
+      awaitingApproval: Number(unit.awaitingApprovalDocuments || 0),
+      pendingRequired: Number(unit.pendingRequiredDocuments || 0),
+    })),
+    [selectedDocumentUnits]
   )
 
   const documents = documentsResponse?.documents || []
@@ -200,8 +267,8 @@ const Projects = () => {
   const stats = useMemo(() => {
     const active = projects.filter((project) => project.status === 'active').length
     const inactive = projects.filter((project) => project.status === 'inactive').length
-    const requiredDocs = projects.reduce(
-      (sum, project) => sum + Number(project.requiredDocs || 0),
+    const pendingDocuments = projects.reduce(
+      (sum, project) => sum + Number(project.pendingRequiredDocuments || 0),
       0
     )
 
@@ -209,7 +276,7 @@ const Projects = () => {
       total: projects.length,
       active,
       inactive,
-      requiredDocs,
+      pendingDocuments,
     }
   }, [projects])
 
@@ -289,6 +356,13 @@ const Projects = () => {
         />
       ) : null}
 
+      {isComplianceError ? (
+        <StatusAlert
+          type="warning"
+          message={complianceError?.message || 'Failed to load project document compliance.'}
+        />
+      ) : null}
+
       <section className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <PageHeader
           title="Projects"
@@ -324,7 +398,7 @@ const Projects = () => {
         <StatCard label="Total Projects" value={stats.total} />
         <StatCard label="Active" value={stats.active} />
         <StatCard label="Inactive" value={stats.inactive} />
-        <StatCard label="Required Docs" value={stats.requiredDocs} />
+        <StatCard label="Pending Documents" value={isComplianceLoading ? '...' : stats.pendingDocuments} />
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -371,7 +445,7 @@ const Projects = () => {
                   'Location',
                   'Location Code',
                   'Cadastral Lots',
-                  'Default Docs',
+                  'Docs Submitted',
                   'Status',
                   'Actions',
                 ].map((head) => (
@@ -425,7 +499,7 @@ const Projects = () => {
                     </td>
 
                     <td className="px-4 py-4 font-semibold text-slate-600">
-                      {project.defaultDocs} docs / {project.requiredDocs} required
+                      {project.submittedDocuments} / {project.totalDocuments}
                     </td>
 
                     <td className="px-4 py-4">
@@ -496,6 +570,63 @@ const Projects = () => {
         </div>
       </section>
 
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h2 className="text-lg font-black text-slate-950">Unit Document Compliance</h2>
+            <p className="mt-1 text-sm font-semibold text-slate-500">Approved, submitted for approval, and pending required documents for active client units. Finalized cancelled units are excluded.</p>
+          </div>
+          <label className="grid gap-1 lg:w-72">
+            <span className="text-xs font-black uppercase tracking-wide text-slate-500">Project</span>
+            <select value={activeDocumentProjectId} onChange={(event) => setSelectedDocumentProjectId(event.target.value)} className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-700 outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50">
+              {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+            </select>
+          </label>
+        </div>
+
+        <div className="mt-5 h-[360px] rounded-2xl border border-slate-100 bg-slate-50 p-3">
+          {isComplianceLoading ? (
+            <div className="flex h-full items-center justify-center text-sm font-bold text-slate-500">Loading document compliance...</div>
+          ) : selectedDocumentChartRows.length ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={selectedDocumentChartRows} layout="vertical" margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                <XAxis type="number" allowDecimals={false} />
+                <YAxis type="category" dataKey="unit" width={82} tick={{ fontSize: 11 }} />
+                <Tooltip content={<DocumentChartTooltip />} />
+                <Legend />
+                <Bar dataKey="approved" name="Approved" stackId="documents" fill="#059669" />
+                <Bar dataKey="awaitingApproval" name="Awaiting Approval" stackId="documents" fill="#d97706" />
+                <Bar dataKey="pendingRequired" name="Pending Required" stackId="documents" fill="#dc2626" radius={[0, 6, 6, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-slate-200 text-sm font-bold text-slate-500">No active client units with assigned documents.</div>
+          )}
+        </div>
+
+        <div className="mt-5 overflow-x-auto rounded-2xl border border-slate-200">
+          <table className="min-w-[1050px] w-full divide-y divide-slate-200 text-sm">
+            <thead className="bg-slate-50"><tr>{['Unit', 'Buyer', 'Status', 'Submitted / Total', 'Approved', 'Awaiting Approval', 'Pending Required', 'Progress', 'Action'].map((head) => <th key={head} className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">{head}</th>)}</tr></thead>
+            <tbody className="divide-y divide-slate-100">
+              {selectedDocumentUnits.length ? selectedDocumentUnits.map((unit) => (
+                <tr key={unit.listingId} className="hover:bg-slate-50">
+                  <td className="px-4 py-4 font-black text-slate-950">{unit.unitId}</td>
+                  <td className="px-4 py-4 font-semibold text-slate-600">{unit.buyerName}</td>
+                  <td className="px-4 py-4 font-semibold text-slate-600">{unit.listingStatus === 'pending_for_cancellation' ? 'Pending Cancellation' : unit.soldSubstatus === 'fully_paid' ? 'Fully Paid' : 'Sold / Active'}</td>
+                  <td className="px-4 py-4 font-black text-blue-700">{unit.submittedDocuments} / {unit.totalDocuments}</td>
+                  <td className="px-4 py-4 font-semibold text-emerald-700">{unit.approvedDocuments}</td>
+                  <td className="px-4 py-4 font-semibold text-amber-700">{unit.awaitingApprovalDocuments}</td>
+                  <td className="px-4 py-4 font-semibold text-red-700">{unit.pendingRequiredDocuments}</td>
+                  <td className="px-4 py-4"><div className="flex items-center gap-2"><div className="h-2 w-24 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-blue-600" style={{ width: `${Math.min(Number(unit.completionPercentage || 0), 100)}%` }} /></div><span className="text-xs font-black text-slate-600">{Number(unit.completionPercentage || 0).toFixed(0)}%</span></div></td>
+                  <td className="px-4 py-4"><button type="button" onClick={() => navigate(`/lot-projects/${unit.projectSlug}/listings/${unit.listingId}`)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 hover:bg-slate-50"><FiEye /> Open</button></td>
+                </tr>
+              )) : <tr><td colSpan={9} className="px-4 py-10 text-center font-semibold text-slate-500">No unit document records for this project.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       {showLotModal && canManage ? (
         <AddLotProjectModal
           documents={documents}
@@ -515,4 +646,3 @@ const Projects = () => {
 }
 
 export default Projects
-

@@ -26,4 +26,3 @@ router.delete('/deleteDocument/:id', deleteDocument);
 router.delete('/deleteTemplate/:id', deleteTemplate);
 
 export default router;
-

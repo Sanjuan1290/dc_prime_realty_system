@@ -57,4 +57,3 @@ export const requireCurrentPassword = ({
 
   return next();
 };
-

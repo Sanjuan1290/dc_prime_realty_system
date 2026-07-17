@@ -718,6 +718,44 @@ export const reserveLotProjectListing = async (req, res) => {
       [project.lot_project_id, listing.lot_project_listing_id]
     );
 
+    if (await tableExists(connection, 'lot_project_reservation_history')) {
+      const tcpSnapshot = Number(listing.lot_project_listing_tcp || 0);
+      const discountPercentageSnapshot = Number(dpDiscountPercentage || 0);
+      const discountAppliedSnapshot = Math.max(
+        tcpSnapshot * (discountPercentageSnapshot / 100),
+        0
+      );
+
+      await connection.query(
+        `
+          INSERT INTO lot_project_reservation_history (
+            lot_project_id,
+            lot_project_listing_id,
+            lot_project_client_profile_id,
+            unit_id_snapshot,
+            buyer_name_snapshot,
+            reservation_status,
+            reserved_at,
+            tcp_snapshot,
+            discount_percentage_snapshot,
+            discount_applied_snapshot,
+            created_by_user_id
+          ) VALUES (?, ?, ?, ?, ?, 'active', NOW(), ?, ?, ?, ?)
+        `,
+        [
+          project.lot_project_id,
+          listing.lot_project_listing_id,
+          clientProfileId,
+          listing.lot_project_listing_unit_id,
+          buyerName,
+          tcpSnapshot,
+          discountPercentageSnapshot,
+          discountAppliedSnapshot,
+          req.authUser?.id || null,
+        ]
+      );
+    }
+
     await insertReservationDocuments(
       connection,
       project.lot_project_id,
@@ -818,5 +856,3 @@ export const reserveLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
-
-

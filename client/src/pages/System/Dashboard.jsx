@@ -16,22 +16,31 @@ import {
 } from 'recharts'
 import {
   FiActivity,
+  FiAlertTriangle,
   FiArrowRight,
+  FiCalendar,
   FiGrid,
-  FiHome,
   FiLayers,
   FiMapPin,
   FiRefreshCw,
+  FiTrendingDown,
   FiTrendingUp,
   FiUsers,
 } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
 import { useFetch } from '../../utils/useFetch'
+import useCurrentUser from '../../utils/useCurrentUser'
 
-const money = (value) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 2 }).format(Number(value || 0))
-const compactMoney = (value) => new Intl.NumberFormat('en-PH', { notation: 'compact', maximumFractionDigits: 1 }).format(Number(value || 0))
-const percent = (value) => `${Number(value || 0).toFixed(2)}%`
+const money = (value) => new Intl.NumberFormat('en-PH', {
+  style: 'currency',
+  currency: 'PHP',
+  minimumFractionDigits: 2,
+}).format(Number(value || 0))
+const compactMoney = (value) => new Intl.NumberFormat('en-PH', {
+  notation: 'compact',
+  maximumFractionDigits: 1,
+}).format(Number(value || 0))
 const number = (value) => new Intl.NumberFormat('en-PH').format(Number(value || 0))
 
 const chartColors = {
@@ -41,6 +50,7 @@ const chartColors = {
   red: '#dc2626',
   indigo: '#4f46e5',
   slate: '#475569',
+  violet: '#7c3aed',
 }
 
 const dateRangeOptions = [
@@ -50,19 +60,66 @@ const dateRangeOptions = [
   { value: '3_months', label: '3 Months' },
   { value: '6_months', label: '6 Months' },
   { value: '12_months', label: '12 Months' },
-  { value: 'all', label: 'All' },
   { value: 'custom', label: 'Custom' },
 ]
 
-const todayDate = () => new Date().toISOString().slice(0, 10)
+const padDatePart = (value) => String(value).padStart(2, '0')
+const toDateInput = (date) => `${date.getFullYear()}-${padDatePart(date.getMonth() + 1)}-${padDatePart(date.getDate())}`
 
-const getDefaultFromDate = () => {
-  const date = new Date()
-  date.setMonth(date.getMonth() - 3)
-  date.setDate(date.getDate() + 1)
-  return date.toISOString().slice(0, 10)
+const parseDateInput = (value) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))) return null
+  const [year, month, day] = value.split('-').map(Number)
+  const date = new Date(year, month - 1, day)
+
+  if (
+    date.getFullYear() !== year
+    || date.getMonth() !== month - 1
+    || date.getDate() !== day
+  ) return null
+
+  return date
 }
 
+const resolvePresetDateRange = (range, today = new Date()) => {
+  let start
+  let end
+
+  if (range === 'last_month') {
+    start = new Date(today.getFullYear(), today.getMonth() - 1, 1)
+    end = new Date(today.getFullYear(), today.getMonth(), 0)
+  } else {
+    const monthCount = Number.parseInt(String(range).match(/^(\d+)_months$/)?.[1] || '1', 10)
+    start = new Date(today.getFullYear(), today.getMonth() - Math.max(monthCount - 1, 0), 1)
+    end = new Date(today.getFullYear(), today.getMonth() + 1, 0)
+  }
+
+  return {
+    from: toDateInput(start),
+    to: toDateInput(end),
+  }
+}
+
+const defaultDateRange = () => resolvePresetDateRange('3_months')
+
+const inclusiveDaySpan = (fromDate, toDate) => {
+  const from = parseDateInput(fromDate)
+  const to = parseDateInput(toDate)
+  if (!from || !to || from > to) return 0
+
+  const fromUtc = Date.UTC(from.getFullYear(), from.getMonth(), from.getDate())
+  const toUtc = Date.UTC(to.getFullYear(), to.getMonth(), to.getDate())
+  return Math.floor((toUtc - fromUtc) / 86400000) + 1
+}
+
+const exceedsTwelveMonths = (fromDate, toDate) => {
+  const from = parseDateInput(fromDate)
+  const to = parseDateInput(toDate)
+  if (!from || !to || from > to) return false
+
+  const maximumEnd = new Date(from.getFullYear() + 1, from.getMonth(), from.getDate())
+  maximumEnd.setDate(maximumEnd.getDate() - 1)
+  return to > maximumEnd
+}
 const shortLabel = (value = '', max = 18) => {
   const text = String(value || '-')
   return text.length > max ? `${text.slice(0, max - 1)}…` : text
@@ -70,29 +127,31 @@ const shortLabel = (value = '', max = 18) => {
 
 const isMoneyChartKey = (dataKey = '') => {
   const key = String(dataKey || '')
-
-  if (/count|entries|units|clients|projects|listings|collections/i.test(key)) {
-    return false
-  }
-
-  return /totalSales|pendingSales|salesAmount|collected|discount|settled|inventory|commission|released|eligible|remaining|value|amount|gross|net/i.test(key)
+  if (/count|entries|units|clients|projects|listings|collections|reservations/i.test(key)) return false
+  return /sales|collected|collectibles|discount|inventory|commission|released|eligible|remaining|value|amount|gross|net/i.test(key)
 }
 
 const ChartTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null
-
-  const title = label || payload[0]?.name || ''
+  const title = label || payload[0]?.payload?.project || payload[0]?.name || ''
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs shadow-lg">
+    <div className="min-w-[185px] rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs shadow-lg">
       {title ? <p className="font-black text-slate-900">{title}</p> : null}
-      <div className="mt-1 grid gap-1">
-        {payload.map((item) => {
-          const isPeso = isMoneyChartKey(item.dataKey)
+      <div className="mt-2 grid gap-1.5">
+        {payload.map((item, index) => {
+          const markerColor = item.color || item.fill || item.stroke || item.payload?.fill || '#94a3b8'
           return (
-            <p key={item.dataKey} className="font-semibold text-slate-600">
-              {item.name}: <span className="font-black text-slate-950">{isPeso ? money(item.value) : number(item.value)}</span>
-            </p>
+            <div key={`${item.dataKey}-${index}`} className="flex items-center gap-2 font-semibold text-slate-600">
+              <span
+                aria-hidden="true"
+                className="h-2.5 w-2.5 shrink-0 rounded-sm"
+                style={{ backgroundColor: markerColor }}
+              />
+              <span>
+                {item.name}: <span className="font-black text-slate-950">{isMoneyChartKey(item.dataKey) ? money(item.value) : number(item.value)}</span>
+              </span>
+            </div>
           )
         })}
       </div>
@@ -102,71 +161,19 @@ const ChartTooltip = ({ active, payload, label }) => {
 
 const ChartCard = ({ title, description, children }) => (
   <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-    <div>
-      <h2 className="text-lg font-black text-slate-950">{title}</h2>
-      {description ? <p className="mt-1 text-sm font-semibold text-slate-500">{description}</p> : null}
-    </div>
+    <h2 className="text-lg font-black text-slate-950">{title}</h2>
+    {description ? <p className="mt-1 text-sm font-semibold text-slate-500">{description}</p> : null}
     <div className="mt-5 h-72">{children}</div>
   </div>
 )
 
-const EmptyChart = ({ message = 'No chart data yet.' }) => (
-  <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 text-sm font-semibold text-slate-500">
+const EmptyChart = ({ message = 'No chart data for this date range.' }) => (
+  <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 text-center text-sm font-semibold text-slate-500">
     {message}
   </div>
 )
 
-const DateRangeFilter = ({ range, setRange, dateFrom, setDateFrom, dateTo, setDateTo, isFetching }) => (
-  <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-    <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
-      <div>
-        <p className="text-sm font-black text-slate-950">Graph Date Filter</p>
-        <p className="mt-1 text-sm font-semibold text-slate-500">
-          Applies to company and per-project line graphs.
-        </p>
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-3 xl:min-w-[620px]">
-        <label className="grid gap-1">
-          <span className="text-xs font-black uppercase tracking-wide text-slate-500">Range</span>
-          <select
-            value={range}
-            onChange={(event) => setRange(event.target.value)}
-            className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
-          >
-            {dateRangeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-          </select>
-        </label>
-
-        <label className="grid gap-1">
-          <span className="text-xs font-black uppercase tracking-wide text-slate-500">From</span>
-          <input
-            type="date"
-            value={dateFrom}
-            onChange={(event) => setDateFrom(event.target.value)}
-            disabled={range !== 'custom'}
-            className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100 disabled:text-slate-400"
-          />
-        </label>
-
-        <label className="grid gap-1">
-          <span className="text-xs font-black uppercase tracking-wide text-slate-500">To</span>
-          <input
-            type="date"
-            value={dateTo}
-            onChange={(event) => setDateTo(event.target.value)}
-            disabled={range !== 'custom'}
-            className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100 disabled:text-slate-400"
-          />
-        </label>
-      </div>
-    </div>
-
-    {isFetching ? <p className="mt-3 text-xs font-black text-blue-700">Updating graph data...</p> : null}
-  </section>
-)
-
-const MetricCard = ({ label, value, helper, icon: Icon, tone = 'blue' }) => {
+const MetricCard = ({ label, value, formula, helper, icon: Icon, tone = 'blue' }) => {
   const tones = {
     blue: 'bg-blue-50 text-blue-700 border-blue-100',
     green: 'bg-emerald-50 text-emerald-700 border-emerald-100',
@@ -178,479 +185,327 @@ const MetricCard = ({ label, value, helper, icon: Icon, tone = 'blue' }) => {
   return (
     <div className={`rounded-3xl border p-5 shadow-sm ${tones[tone] || tones.blue}`}>
       <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">{label}</p>
-          <p className="mt-3 text-2xl font-black">{value}</p>
-          {helper ? <p className="mt-1 text-sm font-semibold text-slate-500">{helper}</p> : null}
+        <div className="min-w-0">
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
+          <p className="mt-3 break-words text-2xl font-black">{value}</p>
+          {formula ? <p className="mt-2 text-xs font-black text-slate-700">Formula: {formula}</p> : null}
+          {helper ? <p className="mt-1 text-xs font-semibold text-slate-500">{helper}</p> : null}
         </div>
-        {Icon ? <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/75 text-current shadow-sm"><Icon className="h-5 w-5" /></div> : null}
+        {Icon ? <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/80 shadow-sm"><Icon className="h-5 w-5" /></div> : null}
       </div>
     </div>
   )
 }
 
-const ProjectTypeCard = ({ title, count, value, helper, icon: Icon, to, disabled = false }) => (
-  <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-    <div className="flex items-start justify-between gap-4">
-      <div>
-        <p className="text-sm font-black text-slate-950">{title}</p>
-        <p className="mt-2 text-3xl font-black text-slate-950">{count}</p>
-        <p className="mt-1 text-sm font-semibold text-slate-500">{helper}</p>
-      </div>
-      <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-700">
-        <Icon className="h-6 w-6" />
-      </div>
-    </div>
-
-    <div className="mt-5 rounded-2xl bg-slate-50 p-4">
-      <p className="text-xs font-black uppercase tracking-wide text-slate-500">Tracked Value</p>
-      <p className="mt-1 text-lg font-black text-slate-950">{money(value)}</p>
-    </div>
-
-    {disabled ? (
-      <span className="mt-4 inline-flex h-10 items-center rounded-xl border border-slate-200 px-4 text-sm font-black text-slate-400">No data yet</span>
-    ) : (
-      <Link to={to} className="mt-4 inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-black text-white transition hover:bg-blue-700">
-        Open
-        <FiArrowRight className="h-4 w-4" />
-      </Link>
-    )}
-  </div>
-)
-
-const ProjectReportCard = ({ report }) => {
-  const stats = report.stats || {}
-  const cashProgress = Number(stats.cashCollectionProgress ?? stats.collectionProgress ?? 0)
-  const settlementProgress = Number(stats.settlementProgress ?? 0)
-  const saleCount = report.salesTrend.reduce((sum, item) => sum + Number(item.saleCount || 0), 0)
+const DateRangeFilter = ({
+  range,
+  onRangeChange,
+  fromDate,
+  onFromDateChange,
+  toDate,
+  onToDateChange,
+  isFetching,
+  role,
+  daySpan,
+}) => {
+  const isCustom = range === 'custom'
 
   return (
-    <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
         <div>
-          <h3 className="text-lg font-black text-slate-950">{report.name}</h3>
-          <p className="mt-1 text-sm font-semibold text-slate-500">{report.location || 'No location set'}</p>
+          <p className="flex items-center gap-2 text-sm font-black text-slate-950"><FiCalendar /> Dashboard Date Filter</p>
+          <p className="mt-1 text-sm font-semibold text-slate-500">
+            Preset ranges cover complete calendar months. Custom lets you choose exact start and end dates.
+          </p>
         </div>
-        <Link to={`/lot-projects/${report.slug}`} className="inline-flex h-9 w-fit items-center gap-2 rounded-xl border border-slate-200 px-3 text-xs font-black text-slate-700 transition hover:bg-slate-50">
-          Open
-          <FiArrowRight className="h-3.5 w-3.5" />
-        </Link>
-      </div>
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <div className="rounded-2xl bg-blue-50 p-3"><p className="text-[10px] font-black uppercase tracking-wide text-blue-700">Total Sales</p><p className="mt-1 font-black text-blue-900">{money(stats.totalSales)}</p></div>
-        <div className="rounded-2xl bg-emerald-50 p-3"><p className="text-[10px] font-black uppercase tracking-wide text-emerald-700">Cash Collected</p><p className="mt-1 font-black text-emerald-900">{money(stats.totalCashCollected ?? stats.totalCollected)}</p></div>
-        <div className="rounded-2xl bg-amber-50 p-3"><p className="text-[10px] font-black uppercase tracking-wide text-amber-700">Discount Applied</p><p className="mt-1 font-black text-amber-900">{money(stats.discountApplied)}</p></div>
-        <div className="rounded-2xl bg-indigo-50 p-3"><p className="text-[10px] font-black uppercase tracking-wide text-indigo-700">Settled Value</p><p className="mt-1 font-black text-indigo-900">{money(stats.settledValue)}</p></div>
-        <div className="rounded-2xl bg-slate-100 p-3"><p className="text-[10px] font-black uppercase tracking-wide text-slate-600">Sales Count</p><p className="mt-1 font-black text-slate-900">{number(saleCount)}</p></div>
-        <div className="rounded-2xl bg-violet-50 p-3"><p className="text-[10px] font-black uppercase tracking-wide text-violet-700">Payable Commission</p><p className="mt-1 font-black text-violet-900">{money(stats.eligibleCommission)}</p></div>
-      </div>
-
-      <div className="mt-4 h-44 rounded-2xl border border-slate-100 bg-slate-50 p-3">
-        {report.salesTrend.length ? (
-          <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={report.salesTrend} margin={{ top: 5, right: 8, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="label" tick={{ fontSize: 11 }} minTickGap={16} />
-              <YAxis yAxisId="money" tickFormatter={compactMoney} tick={{ fontSize: 11 }} width={44} />
-              <YAxis yAxisId="count" orientation="right" allowDecimals={false} tick={{ fontSize: 11 }} width={28} />
-              <Tooltip content={<ChartTooltip />} />
-              <Area yAxisId="money" type="monotone" dataKey="totalSales" name="Sales" stroke={chartColors.blue} fill={chartColors.blue} fillOpacity={0.12} strokeWidth={2} />
-              <Area yAxisId="money" type="monotone" dataKey="collected" name="Cash Collected" stroke={chartColors.green} fill={chartColors.green} fillOpacity={0.12} strokeWidth={2} />
-              <Line yAxisId="money" type="monotone" dataKey="discountApplied" name="Discount Applied" stroke={chartColors.amber} strokeWidth={2} dot={false} />
-              <Line yAxisId="count" type="monotone" dataKey="saleCount" name="Sales Count" stroke={chartColors.indigo} strokeWidth={2} dot />
-            </ComposedChart>
-          </ResponsiveContainer>
-        ) : <EmptyChart />}
-      </div>
-
-      <div className="mt-4 grid gap-3">
-        <div>
-          <div className="flex items-center justify-between text-xs font-black text-slate-500">
-            <span>Cash Collection Progress</span>
-            <span>{percent(cashProgress)}</span>
-          </div>
-          <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-slate-100">
-            <div className="h-full rounded-full bg-emerald-500" style={{ width: `${Math.min(cashProgress, 100)}%` }} />
-          </div>
-        </div>
-        <div>
-          <div className="flex items-center justify-between text-xs font-black text-slate-500">
-            <span>Account Settlement Progress</span>
-            <span>{percent(settlementProgress)}</span>
-          </div>
-          <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-slate-100">
-            <div className="h-full rounded-full bg-indigo-500" style={{ width: `${Math.min(settlementProgress, 100)}%` }} />
-          </div>
+        <div className="grid gap-3 sm:grid-cols-3 xl:min-w-[620px]">
+          <label className="grid gap-1">
+            <span className="text-xs font-black uppercase tracking-wide text-slate-500">Range</span>
+            <select value={range} onChange={(event) => onRangeChange(event.target.value)} className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-700 outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50">
+              {dateRangeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </label>
+          <label className="grid gap-1">
+            <span className="text-xs font-black uppercase tracking-wide text-slate-500">From date</span>
+            <input type="date" value={fromDate} onChange={(event) => onFromDateChange(event.target.value)} disabled={!isCustom} className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-700 outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500" />
+          </label>
+          <label className="grid gap-1">
+            <span className="text-xs font-black uppercase tracking-wide text-slate-500">To date</span>
+            <input type="date" value={toDate} onChange={(event) => onToDateChange(event.target.value)} disabled={!isCustom} className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-700 outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500" />
+          </label>
         </div>
       </div>
-    </div>
+      <div className="mt-3 flex flex-wrap items-center gap-3 text-xs font-bold text-slate-500">
+        <span>{role === 'admin' ? 'Admin limit: up to 12 months.' : 'Super Admin may load longer custom ranges after confirmation.'}</span>
+        {daySpan > 0 ? <span className="rounded-full bg-slate-100 px-2.5 py-1">Selected: {number(daySpan)} day{daySpan === 1 ? '' : 's'}</span> : null}
+        {isFetching ? <span className="text-blue-700">Updating dashboard data...</span> : null}
+      </div>
+    </section>
   )
 }
 
 const mergeCompanyTrend = (projectReports = []) => {
   const byPeriod = new Map()
-
   projectReports.forEach((project) => {
     ;(project.salesTrend || []).forEach((item) => {
       const current = byPeriod.get(item.period) || {
         period: item.period,
         label: item.label,
-        saleCount: 0,
-        totalSales: 0,
-        collected: 0,
-        discountApplied: 0,
-        settledValue: 0,
-        collectionCount: 0,
+        reservations: 0,
+        totalGrossSales: 0,
+        cashCollected: 0,
+        netCashCollectibles: 0,
       }
-
-      current.saleCount += Number(item.saleCount || 0)
-      current.totalSales += Number(item.totalSales || 0)
-      current.collected += Number(item.collected || 0)
-      current.discountApplied += Number(item.discountApplied || 0)
-      current.settledValue += Number(item.settledValue ?? (Number(item.collected || 0) + Number(item.discountApplied || 0)))
-      current.collectionCount += Number(item.collectionCount || 0)
-
+      current.reservations += Number(item.saleCount || 0)
+      current.totalGrossSales += Number(item.totalSales || 0)
+      current.cashCollected += Number(item.collected || 0)
+      current.netCashCollectibles += Number(item.netCashCollectibles || 0)
       byPeriod.set(item.period, current)
     })
   })
+  return [...byPeriod.values()].sort((a, b) => String(a.period).localeCompare(String(b.period)))
+}
 
+const mergeCancellationTrend = (projectReports = []) => {
+  const byPeriod = new Map()
+  projectReports.forEach((project) => {
+    ;(project.cancellationTrend || []).forEach((item) => {
+      const current = byPeriod.get(item.period) || {
+        period: item.period,
+        label: item.label,
+        cancellationCount: 0,
+        cancellationAmount: 0,
+      }
+      current.cancellationCount += Number(item.cancellationCount || 0)
+      current.cancellationAmount += Number(item.cancellationAmount || 0)
+      byPeriod.set(item.period, current)
+    })
+  })
   return [...byPeriod.values()].sort((a, b) => String(a.period).localeCompare(String(b.period)))
 }
 
 const Dashboard = () => {
   const [dateRange, setDateRange] = useState('3_months')
-  const [dateFrom, setDateFrom] = useState(getDefaultFromDate())
-  const [dateTo, setDateTo] = useState(todayDate())
+  const [fromDate, setFromDate] = useState(() => defaultDateRange().from)
+  const [toDate, setToDate] = useState(() => defaultDateRange().to)
+  const [approvedLongRangeKey, setApprovedLongRangeKey] = useState('')
+  const { data: currentUserData } = useCurrentUser()
+  const role = currentUserData?.user?.role || 'super_admin'
+  const isAdmin = role === 'admin'
+  const projectsPath = isAdmin ? '/admin/projects' : '/super_admin/projects'
+  const selectedDaySpan = inclusiveDaySpan(fromDate, toDate)
+  const hasInvalidOrder = selectedDaySpan <= 0
+  const isLongerThanTwelveMonths = exceedsTwelveMonths(fromDate, toDate)
+  const adminRangeBlocked = isAdmin && isLongerThanTwelveMonths
+  const longRangeKey = `${fromDate}:${toDate}`
+  const superAdminNeedsConfirmation = !isAdmin && dateRange === 'custom' && isLongerThanTwelveMonths && approvedLongRangeKey !== longRangeKey
+  const canLoadRange = !hasInvalidOrder && !adminRangeBlocked && !superAdminNeedsConfirmation
+
+  const resetApproval = () => setApprovedLongRangeKey('')
+
+  const handleRangeChange = (value) => {
+    setDateRange(value)
+    resetApproval()
+
+    if (value !== 'custom') {
+      const nextRange = resolvePresetDateRange(value)
+      setFromDate(nextRange.from)
+      setToDate(nextRange.to)
+    }
+  }
 
   const dashboardQuery = useMemo(() => {
-    const params = new URLSearchParams({ range: dateRange })
-    if (dateRange === 'custom') {
-      if (dateFrom) params.set('from', dateFrom)
-      if (dateTo) params.set('to', dateTo)
-    }
+    const params = new URLSearchParams({
+      range: dateRange,
+      from: fromDate,
+      to: toDate,
+    })
     return params.toString()
-  }, [dateRange, dateFrom, dateTo])
+  }, [dateRange, fromDate, toDate])
 
   const { data: projectsData, isLoading: isProjectsLoading, isError: isProjectsError, error: projectsError } = useQuery({
     queryKey: ['system-dashboard-lot-projects'],
     queryFn: () => useFetch('/projects/lot-projects'),
   })
-
-  const lotProjects = projectsData?.data || []
-
-  const { data: dashboardList = [], isLoading: isDashboardsLoading, isFetching: isDashboardsFetching, isError: isDashboardsError, error: dashboardsError } = useQuery({
+  const lotProjects = useMemo(() => projectsData?.data || [], [projectsData])
+  const { data: dashboardList = [], isLoading: isDashboardsLoading, isFetching: isDashboardsFetching, isError: isDashboardsError, error: dashboardsError, refetch } = useQuery({
     queryKey: ['system-dashboard-lot-stats', lotProjects.map((project) => project.slug || project.lot_project_slug).join('|'), dashboardQuery],
-    queryFn: async () => {
-      const results = await Promise.all(
-        lotProjects.map((project) => {
-          const slug = project.slug || project.lot_project_slug
-          return useFetch(`/projects/lot-projects/${slug}/dashboard?${dashboardQuery}`)
-        })
-      )
-
-      return results
-    },
-    enabled: lotProjects.length > 0,
+    queryFn: () => Promise.all(lotProjects.map((project) => useFetch(`/projects/lot-projects/${project.slug || project.lot_project_slug}/dashboard?${dashboardQuery}`))),
+    enabled: lotProjects.length > 0 && canLoadRange,
   })
 
-  const projectReports = useMemo(
-    () => lotProjects.map((project, index) => {
-      const dashboard = dashboardList[index]?.data || {}
-      const payload = dashboard.project || project
-      const slug = payload.slug || payload.lot_project_slug || project.slug || project.lot_project_slug
+  const projectReports = useMemo(() => lotProjects.map((project, index) => {
+    const dashboard = dashboardList[index]?.data || {}
+    const payload = dashboard.project || project
+    return {
+      name: payload.name || payload.lot_project_name || project.name || project.lot_project_name || 'Lot Project',
+      stats: dashboard.stats || {},
+      salesTrend: dashboard.salesTrend || [],
+      cancellationTrend: dashboard.cancellationTrend || [],
+    }
+  }), [dashboardList, lotProjects])
 
-      return {
-        id: payload.id || payload.lot_project_id || project.id || project.lot_project_id,
-        slug,
-        name: payload.name || payload.lot_project_name || project.name || project.lot_project_name || 'Lot Project',
-        location: payload.location || payload.lot_project_location || project.location || project.lot_project_location || '-',
-        status: payload.status || payload.lot_project_status || project.status || project.lot_project_status || 'active',
-        documents: project.defaultDocumentsCount || project.default_documents_count || 0,
-        stats: dashboard.stats || {},
-        salesTrend: dashboard.salesTrend || [],
-      }
-    }),
-    [dashboardList, lotProjects]
-  )
+  const summary = useMemo(() => projectReports.reduce((total, report) => {
+    const stats = report.stats || {}
+    total.totalGrossSales += Number(stats.totalGrossSales ?? stats.totalSales ?? 0)
+    total.cashCollected += Number(stats.totalCashCollected ?? stats.totalCollected ?? 0)
+    total.grossCashCollectibles += Number(stats.grossCashCollectibles ?? stats.cashCollectibles ?? 0)
+    total.discountApplied += Number(stats.discountApplied || 0)
+    total.netCashCollectibles += Number(stats.netCashCollectibles || 0)
+    total.reservationCount += Number(stats.reservationCount || 0)
+    total.totalNetSales += Number(stats.totalNetSales || 0)
+    total.cancelledCount += Number(stats.cancelledCount || 0)
+    total.cancelledValue += Number(stats.cancelledValue || 0)
+    total.listedInventory += Number(stats.listedLotValue || 0)
+    total.availableInventory += Number(stats.availableLotValue || 0)
+    total.soldInventory += Number(stats.soldLotValue || 0)
+    total.pendingCancellationValue += Number(stats.pendingCancellationValue || 0)
+    total.pendingCancellationCount += Number(stats.pendingCancellation || 0)
+    return total
+  }, {
+    totalGrossSales: 0,
+    cashCollected: 0,
+    grossCashCollectibles: 0,
+    discountApplied: 0,
+    netCashCollectibles: 0,
+    reservationCount: 0,
+    totalNetSales: 0,
+    cancelledCount: 0,
+    cancelledValue: 0,
+    listedInventory: 0,
+    availableInventory: 0,
+    soldInventory: 0,
+    pendingCancellationValue: 0,
+    pendingCancellationCount: 0,
+  }), [projectReports])
 
-  const summary = useMemo(() => {
-    return projectReports.reduce(
-      (total, item) => {
-        const stats = item.stats || {}
-        total.totalSales += Number(stats.totalSales || 0)
-        total.cashCollected += Number(stats.totalCashCollected ?? stats.totalCollected ?? 0)
-        total.discountApplied += Number(stats.discountApplied || 0)
-        total.settledValue += Number(stats.settledValue ?? ((stats.totalCashCollected ?? stats.totalCollected ?? 0) + Number(stats.discountApplied || 0)))
-        total.pendingSales += Number(stats.pendingSales || 0)
-        total.availableInventory += Number(stats.availableLotValue || 0)
-        total.listedInventory += Number(stats.listedLotValue || 0)
-        total.payableCommission += Number(stats.eligibleCommission || 0)
-        total.releasedCommission += Number(stats.releasedCommission || 0)
-        total.upcomingDues += Number(stats.dueSoonCount || 0)
-        total.overdueDues += Number(stats.overdueCount || 0)
-        return total
-      },
-      {
-        totalSales: 0,
-        cashCollected: 0,
-        discountApplied: 0,
-        settledValue: 0,
-        pendingSales: 0,
-        availableInventory: 0,
-        listedInventory: 0,
-        payableCommission: 0,
-        releasedCommission: 0,
-        upcomingDues: 0,
-        overdueDues: 0,
-      }
-    )
-  }, [projectReports])
-
-  const cashCollectionProgress = summary.totalSales > 0 ? Math.min((summary.cashCollected / summary.totalSales) * 100, 100) : 0
-  const settlementProgress = summary.totalSales > 0 ? Math.min((summary.settledValue / summary.totalSales) * 100, 100) : 0
-  const isLoading = isProjectsLoading || isDashboardsLoading
   const companySalesTrend = useMemo(() => mergeCompanyTrend(projectReports), [projectReports])
-
+  const cancellationTrend = useMemo(() => mergeCancellationTrend(projectReports), [projectReports])
   const projectSalesChart = projectReports.map((report) => ({
     project: shortLabel(report.name),
-    totalSales: Number(report.stats?.totalSales || 0),
-    cashCollected: Number(report.stats?.totalCashCollected ?? report.stats?.totalCollected ?? 0),
+    totalGrossSales: Number(report.stats?.totalGrossSales ?? report.stats?.totalSales ?? 0),
+    cashCollected: Number(report.stats?.totalCashCollected || 0),
     discountApplied: Number(report.stats?.discountApplied || 0),
-    settledValue: Number(report.stats?.settledValue || 0),
-    pendingSales: Number(report.stats?.pendingSales || 0),
+    netCashCollectibles: Number(report.stats?.netCashCollectibles || 0),
   }))
-
-  const projectSalesCountChart = projectReports.map((report) => ({
+  const projectReservationChart = projectReports.map((report) => ({
     project: shortLabel(report.name),
-    salesCount: report.salesTrend.reduce((sum, item) => sum + Number(item.saleCount || 0), 0),
-    collections: report.salesTrend.reduce((sum, item) => sum + Number(item.collectionCount || 0), 0),
+    reservations: Number(report.stats?.reservationCount || 0),
+    cancellations: Number(report.stats?.cancelledCount || 0),
+    paymentEntries: report.salesTrend.reduce((sum, item) => sum + Number(item.collectionCount || 0), 0),
   }))
-
   const projectInventoryChart = projectReports.map((report) => ({
     project: shortLabel(report.name),
     listedInventory: Number(report.stats?.listedLotValue || 0),
     availableInventory: Number(report.stats?.availableLotValue || 0),
     soldInventory: Number(report.stats?.soldLotValue || 0),
+    pendingCancellationValue: Number(report.stats?.pendingCancellationValue || 0),
+    cancelledInventoryValue: Number(report.stats?.cancelledInventoryValue || 0),
   }))
-
   const projectDueChart = projectReports.map((report) => ({
     project: shortLabel(report.name),
-    upcoming: Number(report.stats?.dueSoonCount || 0),
+    dueSoon: Number(report.stats?.dueSoonCount || 0),
     overdue: Number(report.stats?.overdueCount || 0),
   }))
+  const isLoading = isProjectsLoading || (canLoadRange && isDashboardsLoading)
 
   return (
     <main className="flex flex-col gap-6">
-      <section className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-        <PageHeader title="System Dashboard" description="Company view across lot projects and the future house & lot module." icon={FiLayers} />
-      </section>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <PageHeader title="System Dashboard" description="Company sales, reservations, cancellations, inventory, and collection reporting." icon={FiLayers} />
+        <button type="button" onClick={() => refetch()} disabled={!canLoadRange || isDashboardsFetching} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 shadow-sm hover:bg-slate-50 disabled:opacity-50">
+          <FiRefreshCw className={isDashboardsFetching ? 'animate-spin' : ''} /> Refresh
+        </button>
+      </div>
 
       {isProjectsLoading ? <StatusAlert type="loading" message="Loading system dashboard..." /> : null}
       {isProjectsError ? <StatusAlert type="error" message={projectsError?.message || 'Failed to load system dashboard.'} /> : null}
-      {isDashboardsError ? <StatusAlert type="error" message={dashboardsError?.message || 'Failed to load lot project dashboard totals.'} /> : null}
+      {isDashboardsError && canLoadRange ? <StatusAlert type="error" message={dashboardsError?.message || 'Failed to load lot project dashboard totals.'} /> : null}
 
       <DateRangeFilter
         range={dateRange}
-        setRange={setDateRange}
-        dateFrom={dateFrom}
-        setDateFrom={setDateFrom}
-        dateTo={dateTo}
-        setDateTo={setDateTo}
+        onRangeChange={handleRangeChange}
+        fromDate={fromDate}
+        onFromDateChange={(value) => { setFromDate(value); resetApproval() }}
+        toDate={toDate}
+        onToDateChange={(value) => { setToDate(value); resetApproval() }}
         isFetching={isDashboardsFetching}
+        role={role}
+        daySpan={selectedDaySpan}
       />
 
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <MetricCard label="Total Sales" value={isLoading ? '...' : money(summary.totalSales)} helper="Booked contract value." icon={FiTrendingUp} tone="blue" />
-        <MetricCard label="Cash Collected" value={isLoading ? '...' : money(summary.cashCollected)} helper={`${percent(cashCollectionProgress)} cash collection progress.`} icon={FiActivity} tone="green" />
-        <MetricCard label="Discount Applied" value={isLoading ? '...' : money(summary.discountApplied)} helper="Earned downpayment discount. Not cash." icon={FiGrid} tone="amber" />
-        <MetricCard label="Settled Value" value={isLoading ? '...' : money(summary.settledValue)} helper={`${percent(settlementProgress)} of sales satisfied.`} icon={FiLayers} tone="indigo" />
-        <MetricCard label="Payable Commission" value={isLoading ? '...' : money(summary.payableCommission)} helper="Eligible releases ready for payout." icon={FiUsers} tone="slate" />
-      </section>
-
-      <section className="grid gap-6 xl:grid-cols-2">
-        <ProjectTypeCard
-          title="Lot Projects"
-          count={lotProjects.length}
-          value={summary.listedInventory}
-          helper="Active lot project workspaces and inventory."
-          icon={FiMapPin}
-          to="/super_admin/projects"
-        />
-
-        <ProjectTypeCard
-          title="House & Lot Projects"
-          count={0}
-          value={0}
-          helper="Reserved for the house & lot module. No records yet."
-          icon={FiHome}
-          disabled
-        />
-      </section>
-
-      <section className="grid gap-6 xl:grid-cols-2">
-        <ChartCard title="Company Sales Trend" description="Sales, actual cash collections, and earned discount across all lot projects.">
-          {companySalesTrend.length ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={companySalesTrend} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="label" tick={{ fontSize: 11 }} minTickGap={18} />
-                <YAxis yAxisId="money" tickFormatter={compactMoney} tick={{ fontSize: 11 }} />
-                <YAxis yAxisId="count" orientation="right" allowDecimals={false} tick={{ fontSize: 11 }} />
-                <Tooltip content={<ChartTooltip />} />
-                <Legend />
-                <Area yAxisId="money" type="monotone" dataKey="totalSales" name="Total Sales" stroke={chartColors.blue} fill={chartColors.blue} fillOpacity={0.12} strokeWidth={3} />
-                <Area yAxisId="money" type="monotone" dataKey="collected" name="Cash Collected" stroke={chartColors.green} fill={chartColors.green} fillOpacity={0.12} strokeWidth={3} />
-                <Line yAxisId="money" type="monotone" dataKey="discountApplied" name="Discount Applied" stroke={chartColors.amber} strokeWidth={3} dot={false} />
-                <Line yAxisId="count" type="monotone" dataKey="saleCount" name="Sales Count" stroke={chartColors.indigo} strokeWidth={3} dot />
-              </ComposedChart>
-            </ResponsiveContainer>
-          ) : <EmptyChart />}
-        </ChartCard>
-
-        <ChartCard title="Sales and Settlement per Project" description="Actual cash and earned discount are shown separately.">
-          {projectSalesChart.length ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={projectSalesChart} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="project" tick={{ fontSize: 11 }} />
-                <YAxis tickFormatter={compactMoney} tick={{ fontSize: 11 }} />
-                <Tooltip content={<ChartTooltip />} />
-                <Legend />
-                <Bar dataKey="totalSales" name="Total Sales" fill={chartColors.blue} radius={[8, 8, 0, 0]} />
-                <Bar dataKey="cashCollected" name="Cash Collected" fill={chartColors.green} radius={[8, 8, 0, 0]} />
-                <Bar dataKey="discountApplied" name="Discount Applied" fill={chartColors.amber} radius={[8, 8, 0, 0]} />
-                <Bar dataKey="pendingSales" name="Outstanding" fill={chartColors.slate} radius={[8, 8, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : <EmptyChart />}
-        </ChartCard>
-      </section>
-
-      <section className="grid gap-6 xl:grid-cols-2">
-        <ChartCard title="Sales Count per Project" description="Column chart for number of sales and collection entries per project in the selected graph range.">
-          {projectSalesCountChart.length ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={projectSalesCountChart} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="project" tick={{ fontSize: 11 }} />
-                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-                <Tooltip content={<ChartTooltip />} />
-                <Legend />
-                <Bar dataKey="salesCount" name="Sales Count" fill={chartColors.blue} radius={[8, 8, 0, 0]} />
-                <Bar dataKey="collections" name="Payment Entries" fill={chartColors.green} radius={[8, 8, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : <EmptyChart />}
-        </ChartCard>
-
-        <ChartCard title="Inventory by Project" description="Column chart for listed, available, and sold lot value per project.">
-          {projectInventoryChart.length ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={projectInventoryChart} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="project" tick={{ fontSize: 11 }} />
-                <YAxis tickFormatter={compactMoney} tick={{ fontSize: 11 }} />
-                <Tooltip content={<ChartTooltip />} />
-                <Legend />
-                <Bar dataKey="listedInventory" name="Listed" fill={chartColors.slate} radius={[8, 8, 0, 0]} />
-                <Bar dataKey="availableInventory" name="Available" fill={chartColors.amber} radius={[8, 8, 0, 0]} />
-                <Bar dataKey="soldInventory" name="Sold" fill={chartColors.indigo} radius={[8, 8, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : <EmptyChart />}
-        </ChartCard>
-      </section>
-
-      <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-        <ChartCard title="Unit Dues by Project" description="Column chart for due-soon and overdue unit schedules.">
-          {projectDueChart.length ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={projectDueChart} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="project" tick={{ fontSize: 11 }} />
-                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-                <Tooltip content={<ChartTooltip />} />
-                <Legend />
-                <Bar dataKey="upcoming" name="Due Soon" fill={chartColors.blue} radius={[8, 8, 0, 0]} />
-                <Bar dataKey="overdue" name="Overdue" fill={chartColors.red} radius={[8, 8, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : <EmptyChart />}
-        </ChartCard>
-
-      </section>
-
-      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div>
-          <h2 className="text-lg font-black text-slate-950">Project Reports</h2>
-          <p className="mt-1 text-sm font-semibold text-slate-500">Separate report card and compact trend chart for every created lot project.</p>
-        </div>
-
-        <div className="mt-5 grid gap-5 xl:grid-cols-2">
-          {projectReports.length ? projectReports.map((report) => (
-            <ProjectReportCard key={report.id || report.slug} report={report} />
-          )) : (
-            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-10 text-center text-sm font-semibold text-slate-500 xl:col-span-2">
-              No lot projects yet.
+      {hasInvalidOrder ? <StatusAlert type="error" message="The From date must be earlier than or equal to the To date." /> : null}
+      {adminRangeBlocked ? <StatusAlert type="error" message="Admin dashboard reports are limited to 12 months. Select a shorter custom date range." /> : null}
+      {superAdminNeedsConfirmation ? (
+        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-950 shadow-sm">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <FiAlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+              <div><p className="font-black">Large date range</p><p className="mt-1 text-sm font-semibold">This report covers {number(selectedDaySpan)} days and may take longer to load.</p></div>
             </div>
-          )}
-        </div>
+            <button type="button" onClick={() => setApprovedLongRangeKey(longRangeKey)} className="h-10 rounded-xl bg-amber-600 px-4 text-sm font-black text-white hover:bg-amber-700">Continue and load</button>
+          </div>
+        </section>
+      ) : null}
+
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <MetricCard label="Total Gross Sales" value={isLoading ? '...' : money(summary.totalGrossSales)} formula="Cash Collected + Gross Cash Collectibles" helper="Active and pending-cancellation reservation contracts in the selected range." icon={FiTrendingUp} tone="blue" />
+        <MetricCard label="Cash Collected" value={isLoading ? '...' : money(summary.cashCollected)} formula="Sum of verified payments" helper="Verified cash received for the selected reservation group." icon={FiActivity} tone="green" />
+        <MetricCard label="Cash Collectibles − Discount" value={isLoading ? '...' : money(summary.netCashCollectibles)} formula="Gross Cash Collectibles − Discount Applied" helper={`${money(summary.grossCashCollectibles)} gross collectibles less ${money(summary.discountApplied)} discount.`} icon={FiGrid} tone="amber" />
+        <MetricCard label="Total Number of Reservations" value={isLoading ? '...' : number(summary.reservationCount)} formula="Reservation-history records created in range" helper="Includes active, pending, and later-cancelled reservation events." icon={FiUsers} tone="indigo" />
+        <MetricCard label="Total Net Sales" value={isLoading ? '...' : money(summary.totalNetSales)} formula="Total Gross Sales − Discount Applied" helper="Finalized cancellations are reported separately." icon={FiLayers} tone="slate" />
       </section>
 
-      <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-200 px-5 py-4">
-          <h2 className="text-lg font-black text-slate-950">Lot Project Overview</h2>
-          <p className="mt-1 text-sm font-semibold text-slate-500">Project status and setup details.</p>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="min-w-[920px] w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50">
-              <tr>
-                {['Project', 'Location', 'Sales', 'Sales Count', 'Cash Collected', 'Discount', 'Settled', 'Status', 'Action'].map((head) => (
-                  <th key={head} className="px-5 py-3 text-left text-xs font-black uppercase tracking-wider text-slate-500">{head}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {projectReports.length ? projectReports.map((project) => {
-                const saleCount = project.salesTrend.reduce((sum, item) => sum + Number(item.saleCount || 0), 0)
-
-                return (
-                  <tr key={project.id || project.slug} className="transition hover:bg-slate-50">
-                    <td className="px-5 py-4 font-black text-slate-950">{project.name}</td>
-                    <td className="px-5 py-4 font-semibold text-slate-600">{project.location || '-'}</td>
-                    <td className="px-5 py-4 font-black text-blue-700">{money(project.stats?.totalSales)}</td>
-                    <td className="px-5 py-4 font-black text-slate-900">{number(saleCount)}</td>
-                    <td className="px-5 py-4 font-semibold text-emerald-700">{money(project.stats?.totalCashCollected ?? project.stats?.totalCollected)}</td>
-                    <td className="px-5 py-4 font-semibold text-amber-700">{money(project.stats?.discountApplied)}</td>
-                    <td className="px-5 py-4 font-semibold text-indigo-700">{money(project.stats?.settledValue)}</td>
-                    <td className="px-5 py-4">
-                      <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700 ring-1 ring-emerald-100">
-                        {project.status || 'active'}
-                      </span>
-                    </td>
-                    <td className="px-5 py-4">
-                      <Link to={`/lot-projects/${project.slug}`} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 transition hover:bg-slate-50">
-                        Open
-                        <FiArrowRight className="h-3.5 w-3.5" />
-                      </Link>
-                    </td>
-                  </tr>
-                )
-              }) : (
-                <tr>
-                  <td colSpan={9} className="px-5 py-10 text-center font-semibold text-slate-500">No lot projects yet.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+      <section className="grid gap-4 sm:grid-cols-2">
+        <MetricCard label="Pending Cancellations" value={isLoading ? '...' : `${number(summary.pendingCancellationCount)} · ${money(summary.pendingCancellationValue)}`} formula="Current pending-cancellation units and TCP" helper="Operational cases still awaiting a final cancellation decision." icon={FiAlertTriangle} tone="amber" />
+        <MetricCard label="Finalized Cancellations" value={isLoading ? '...' : `${number(summary.cancelledCount)} · ${money(summary.cancelledValue)}`} formula="Cancellation events and value in the selected range" helper="Historical cancellation activity, separate from current inventory status." icon={FiTrendingDown} tone="slate" />
       </section>
+
+      <section className="grid gap-4 lg:grid-cols-2">
+        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-start justify-between gap-4"><div><p className="text-sm font-black text-slate-950">Lot Only Projects</p><p className="mt-2 text-3xl font-black">{number(projectReports.length)}</p><p className="mt-1 text-sm font-semibold text-slate-500">Created lot project workspaces.</p></div><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-700"><FiMapPin className="h-6 w-6" /></div></div>
+          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-2xl bg-slate-50 p-4"><p className="text-xs font-black uppercase text-slate-500">Listed Inventory</p><p className="mt-1 font-black">{money(summary.listedInventory)}</p></div>
+            <div className="rounded-2xl bg-emerald-50 p-4"><p className="text-xs font-black uppercase text-emerald-700">Available Inventory</p><p className="mt-1 font-black text-emerald-950">{money(summary.availableInventory)}</p></div>
+            <div className="rounded-2xl bg-indigo-50 p-4"><p className="text-xs font-black uppercase text-indigo-700">Sold / Active Inventory</p><p className="mt-1 font-black text-indigo-950">{money(summary.soldInventory)}</p></div>
+          </div>
+          <Link to={projectsPath} className="mt-4 inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-black text-white hover:bg-blue-700">Open Projects <FiArrowRight /></Link>
+        </div>
+
+
+        <ChartCard title="Reservations per Project" description="Reservation events, cancellations, and verified payment entries in the selected range.">
+          {projectReservationChart.length ? <ResponsiveContainer width="100%" height="100%"><BarChart data={projectReservationChart} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="project" tick={{ fontSize: 11 }} /><YAxis allowDecimals={false} tick={{ fontSize: 11 }} /><Tooltip content={<ChartTooltip />} /><Legend /><Bar dataKey="reservations" name="Reservations" fill={chartColors.blue} radius={[8, 8, 0, 0]} /><Bar dataKey="cancellations" name="Cancellations" fill={chartColors.red} radius={[8, 8, 0, 0]} /><Bar dataKey="paymentEntries" name="Payment Entries" fill={chartColors.green} radius={[8, 8, 0, 0]} /></BarChart></ResponsiveContainer> : <EmptyChart />}
+        </ChartCard>
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-2">
+        <ChartCard title="Company Sales Trend" description="Gross sales, collected cash, net collectibles, and reservations across the selected dates.">
+          {companySalesTrend.length ? <ResponsiveContainer width="100%" height="100%"><ComposedChart data={companySalesTrend} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="label" tick={{ fontSize: 11 }} minTickGap={18} /><YAxis yAxisId="money" tickFormatter={compactMoney} tick={{ fontSize: 11 }} /><YAxis yAxisId="count" orientation="right" allowDecimals={false} tick={{ fontSize: 11 }} /><Tooltip content={<ChartTooltip />} /><Legend /><Area yAxisId="money" type="monotone" dataKey="totalGrossSales" name="Gross Sales" stroke={chartColors.blue} fill={chartColors.blue} fillOpacity={0.12} strokeWidth={3} /><Line yAxisId="money" type="monotone" dataKey="cashCollected" name="Cash Collected" stroke={chartColors.green} strokeWidth={3} dot={false} /><Line yAxisId="money" type="monotone" dataKey="netCashCollectibles" name="Net Collectibles" stroke={chartColors.amber} strokeWidth={3} dot={false} /><Line yAxisId="count" type="monotone" dataKey="reservations" name="Reservations" stroke={chartColors.violet} strokeWidth={3} dot /></ComposedChart></ResponsiveContainer> : <EmptyChart />}
+        </ChartCard>
+        <ChartCard title="Sales Summary per Project" description="Gross sales, cash collected, discount, and remaining net collectibles by project.">
+          {projectSalesChart.length ? <ResponsiveContainer width="100%" height="100%"><BarChart data={projectSalesChart} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="project" tick={{ fontSize: 11 }} /><YAxis tickFormatter={compactMoney} tick={{ fontSize: 11 }} /><Tooltip content={<ChartTooltip />} /><Legend /><Bar dataKey="totalGrossSales" name="Gross Sales" fill={chartColors.blue} radius={[8, 8, 0, 0]} /><Bar dataKey="cashCollected" name="Cash Collected" fill={chartColors.green} radius={[8, 8, 0, 0]} /><Bar dataKey="discountApplied" name="Discount Applied" fill={chartColors.amber} radius={[8, 8, 0, 0]} /><Bar dataKey="netCashCollectibles" name="Net Collectibles" fill={chartColors.slate} radius={[8, 8, 0, 0]} /></BarChart></ResponsiveContainer> : <EmptyChart />}
+        </ChartCard>
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-2">
+        <ChartCard title="Cancellation Trend" description="Finalized cancellation events and their recorded value across the selected dates.">
+          {cancellationTrend.length ? <ResponsiveContainer width="100%" height="100%"><ComposedChart data={cancellationTrend} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="label" tick={{ fontSize: 11 }} minTickGap={18} /><YAxis yAxisId="money" tickFormatter={compactMoney} tick={{ fontSize: 11 }} /><YAxis yAxisId="count" orientation="right" allowDecimals={false} tick={{ fontSize: 11 }} /><Tooltip content={<ChartTooltip />} /><Legend /><Bar yAxisId="count" dataKey="cancellationCount" name="Cancellations" fill={chartColors.red} radius={[8, 8, 0, 0]} /><Line yAxisId="money" type="monotone" dataKey="cancellationAmount" name="Cancelled Value" stroke={chartColors.slate} strokeWidth={3} dot /></ComposedChart></ResponsiveContainer> : <EmptyChart message="No finalized cancellations in this date range." />}
+        </ChartCard>
+        <ChartCard title="Unit Dues per Project" description="Current due-soon and overdue unit schedules.">
+          {projectDueChart.length ? <ResponsiveContainer width="100%" height="100%"><BarChart data={projectDueChart} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="project" tick={{ fontSize: 11 }} /><YAxis allowDecimals={false} tick={{ fontSize: 11 }} /><Tooltip content={<ChartTooltip />} /><Legend /><Bar dataKey="dueSoon" name="Due Soon" fill={chartColors.blue} radius={[8, 8, 0, 0]} /><Bar dataKey="overdue" name="Overdue" fill={chartColors.red} radius={[8, 8, 0, 0]} /></BarChart></ResponsiveContainer> : <EmptyChart />}
+        </ChartCard>
+      </section>
+
+      <section className="grid gap-6">
+        <ChartCard title="Inventory by Project" description="Current listed, available, sold, pending-cancellation, and cancelled values by project.">
+          {projectInventoryChart.length ? <ResponsiveContainer width="100%" height="100%"><BarChart data={projectInventoryChart} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="project" tick={{ fontSize: 11 }} /><YAxis tickFormatter={compactMoney} tick={{ fontSize: 11 }} /><Tooltip content={<ChartTooltip />} /><Legend /><Bar dataKey="listedInventory" name="Listed" fill={chartColors.slate} radius={[8, 8, 0, 0]} /><Bar dataKey="availableInventory" name="Available" fill={chartColors.amber} radius={[8, 8, 0, 0]} /><Bar dataKey="soldInventory" name="Sold / Active" fill={chartColors.indigo} radius={[8, 8, 0, 0]} /><Bar dataKey="pendingCancellationValue" name="Pending Cancellation" fill={chartColors.violet} radius={[8, 8, 0, 0]} /><Bar dataKey="cancelledInventoryValue" name="Cancelled" fill={chartColors.red} radius={[8, 8, 0, 0]} /></BarChart></ResponsiveContainer> : <EmptyChart />}
+        </ChartCard>
+      </section>
+
     </main>
   )
 }
 
 export default Dashboard
-

@@ -679,4 +679,3 @@ const CreateUserModal = ({ setShowCreateUser, onSaved, allowedRoles = Object.key
 };
 
 export default CreateUserModal;
-

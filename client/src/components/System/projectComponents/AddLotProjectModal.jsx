@@ -817,4 +817,3 @@ const AddLotProjectModal = ({
 }
 
 export default AddLotProjectModal
-

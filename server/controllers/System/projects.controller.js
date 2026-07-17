@@ -483,3 +483,154 @@ export const deleteLotProject = async (req, res) => {
   }
 };
 
+export const getLotProjectDocumentCompliance = async (req, res) => {
+  const connection = await db.getConnection();
+
+  try {
+    const requiredTables = [
+      'lot_projects',
+      'lot_project_listings',
+      'lot_project_listing_documents',
+      'lot_project_client_profiles',
+      'lot_project_client_documents',
+    ];
+
+    for (const tableName of requiredTables) {
+      if (!(await tableExists(connection, tableName))) {
+        return res.json({ success: true, data: { projects: [], units: [] } });
+      }
+    }
+
+    const baseFromSql = `
+      FROM lot_project_listings l
+      INNER JOIN lot_projects lp
+        ON lp.lot_project_id = l.lot_project_id
+      INNER JOIN lot_project_client_profiles cp
+        ON cp.lot_project_listing_id = l.lot_project_listing_id
+      INNER JOIN lot_project_listing_documents ld
+        ON ld.lot_project_listing_id = l.lot_project_listing_id
+       AND ld.lot_project_listing_document_status = 'active'
+      LEFT JOIN lot_project_client_documents cd
+        ON cd.lot_project_listing_id = l.lot_project_listing_id
+       AND cd.lot_project_client_profile_id = cp.lot_project_client_profile_id
+       AND cd.document_id = ld.document_id
+      WHERE l.lot_project_listing_status IN ('sold', 'pending_for_cancellation')
+        AND cp.lot_project_client_profile_status IN ('active', 'closed')
+    `;
+
+    const [projectRows] = await connection.query(
+      `
+        SELECT
+          lp.lot_project_id,
+          lp.lot_project_name,
+          lp.lot_project_slug,
+          COUNT(ld.lot_project_listing_document_id) AS total_documents,
+          COALESCE(SUM(COALESCE(cd.lot_project_client_document_status, 'Missing') IN ('Submitted', 'Approved')), 0) AS submitted_documents,
+          COALESCE(SUM(COALESCE(cd.lot_project_client_document_status, 'Missing') = 'Approved'), 0) AS approved_documents,
+          COALESCE(SUM(COALESCE(cd.lot_project_client_document_status, 'Missing') = 'Submitted'), 0) AS awaiting_approval_documents,
+          COALESCE(SUM(
+            ld.lot_project_listing_document_is_required = 1
+            AND COALESCE(cd.lot_project_client_document_status, 'Missing') IN ('Missing', 'Rejected')
+          ), 0) AS pending_required_documents,
+          COALESCE(SUM(
+            ld.lot_project_listing_document_is_required = 1
+            AND COALESCE(cd.lot_project_client_document_status, 'Missing') = 'Missing'
+          ), 0) AS missing_required_documents,
+          COALESCE(SUM(
+            ld.lot_project_listing_document_is_required = 1
+            AND COALESCE(cd.lot_project_client_document_status, 'Missing') = 'Rejected'
+          ), 0) AS rejected_required_documents
+        ${baseFromSql}
+        GROUP BY lp.lot_project_id, lp.lot_project_name, lp.lot_project_slug
+        ORDER BY lp.lot_project_name ASC
+      `
+    );
+
+    const [unitRows] = await connection.query(
+      `
+        SELECT
+          lp.lot_project_id,
+          lp.lot_project_name,
+          lp.lot_project_slug,
+          l.lot_project_listing_id,
+          l.lot_project_listing_unit_id,
+          l.lot_project_listing_status,
+          l.lot_project_listing_sold_substatus,
+          cp.lot_project_client_profile_id,
+          cp.buyer_full_name,
+          COUNT(ld.lot_project_listing_document_id) AS total_documents,
+          COALESCE(SUM(COALESCE(cd.lot_project_client_document_status, 'Missing') IN ('Submitted', 'Approved')), 0) AS submitted_documents,
+          COALESCE(SUM(COALESCE(cd.lot_project_client_document_status, 'Missing') = 'Approved'), 0) AS approved_documents,
+          COALESCE(SUM(COALESCE(cd.lot_project_client_document_status, 'Missing') = 'Submitted'), 0) AS awaiting_approval_documents,
+          COALESCE(SUM(
+            ld.lot_project_listing_document_is_required = 1
+            AND COALESCE(cd.lot_project_client_document_status, 'Missing') IN ('Missing', 'Rejected')
+          ), 0) AS pending_required_documents,
+          COALESCE(SUM(
+            ld.lot_project_listing_document_is_required = 1
+            AND COALESCE(cd.lot_project_client_document_status, 'Missing') = 'Missing'
+          ), 0) AS missing_required_documents,
+          COALESCE(SUM(
+            ld.lot_project_listing_document_is_required = 1
+            AND COALESCE(cd.lot_project_client_document_status, 'Missing') = 'Rejected'
+          ), 0) AS rejected_required_documents
+        ${baseFromSql}
+        GROUP BY
+          lp.lot_project_id,
+          lp.lot_project_name,
+          lp.lot_project_slug,
+          l.lot_project_listing_id,
+          l.lot_project_listing_unit_id,
+          l.lot_project_listing_status,
+          l.lot_project_listing_sold_substatus,
+          cp.lot_project_client_profile_id,
+          cp.buyer_full_name
+        ORDER BY pending_required_documents DESC, lp.lot_project_name ASC, l.lot_project_listing_unit_id ASC
+      `
+    );
+
+    const mapCounts = (row) => ({
+      totalDocuments: Number(row.total_documents || 0),
+      submittedDocuments: Number(row.submitted_documents || 0),
+      approvedDocuments: Number(row.approved_documents || 0),
+      awaitingApprovalDocuments: Number(row.awaiting_approval_documents || 0),
+      pendingRequiredDocuments: Number(row.pending_required_documents || 0),
+      missingRequiredDocuments: Number(row.missing_required_documents || 0),
+      rejectedRequiredDocuments: Number(row.rejected_required_documents || 0),
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        projects: projectRows.map((row) => ({
+          projectId: row.lot_project_id,
+          projectName: row.lot_project_name,
+          projectSlug: row.lot_project_slug,
+          ...mapCounts(row),
+        })),
+        units: unitRows.map((row) => {
+          const counts = mapCounts(row);
+          return {
+            projectId: row.lot_project_id,
+            projectName: row.lot_project_name,
+            projectSlug: row.lot_project_slug,
+            listingId: row.lot_project_listing_id,
+            unitId: row.lot_project_listing_unit_id,
+            listingStatus: row.lot_project_listing_status,
+            soldSubstatus: row.lot_project_listing_sold_substatus,
+            clientProfileId: row.lot_project_client_profile_id,
+            buyerName: row.buyer_full_name || '-',
+            ...counts,
+            completionPercentage: counts.totalDocuments > 0
+              ? Math.round((counts.submittedDocuments / counts.totalDocuments) * 10000) / 100
+              : 0,
+          };
+        }),
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};

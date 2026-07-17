@@ -60,6 +60,7 @@ const AdminLayout = () => {
   })), [lotProjectsData])
 
   const groups = useMemo(() => [
+    { title: 'OVERVIEW', items: [{ label: 'Dashboard', pathname: '/admin/dashboard', icon: FiHome, absolute: true }] },
     { title: 'PROJECTS', items: [{ label: 'Projects', pathname: '/admin/projects', icon: FiMap, absolute: true }] },
     {
       title: 'LOT PROJECTS',
@@ -171,4 +172,3 @@ const AdminLayout = () => {
 }
 
 export default AdminLayout
-

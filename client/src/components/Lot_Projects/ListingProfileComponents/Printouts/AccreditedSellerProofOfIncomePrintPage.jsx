@@ -208,4 +208,3 @@ const AccreditedSellerProofOfIncomePrintPage = () => {
 }
 
 export default AccreditedSellerProofOfIncomePrintPage
-

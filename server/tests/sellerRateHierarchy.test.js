@@ -68,4 +68,3 @@ test('allows equal parent and child ceiling rates', () => {
     true
   );
 });
-

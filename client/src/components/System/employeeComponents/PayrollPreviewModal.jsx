@@ -158,4 +158,3 @@ const PayrollPreviewModal = ({ releaseDate, canFinalize, onClose, onFinalized })
 }
 
 export default PayrollPreviewModal
-

@@ -11,6 +11,11 @@ import {
 const sellerRoles = ['broker_network_manager', 'broker', 'manager', 'agent'];
 const allUserRoles = ['super_admin', 'admin', ...sellerRoles];
 
+test('Admin receives System Dashboard access', () => {
+  assert.equal(roleHasPermission('admin', PERMISSIONS.SYSTEM_DASHBOARD_VIEW), true);
+  assert.equal(roleHasPermission('admin', PERMISSIONS.LOT_DASHBOARD_VIEW), true);
+});
+
 test('Admin receives operational access to notifications, employees, attendance, and payroll', () => {
   assert.equal(roleHasPermission('admin', PERMISSIONS.SYSTEM_NOTIFICATIONS_VIEW), true);
   assert.equal(roleHasPermission('admin', PERMISSIONS.SYSTEM_NOTIFICATIONS_MANAGE), true);
@@ -80,4 +85,3 @@ test('Super Admin retains every declared permission and can manage every user ro
     assert.equal(canActorChangeUserRole('super_admin', role, role), true, role);
   }
 });
-

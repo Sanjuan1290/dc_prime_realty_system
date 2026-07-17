@@ -23,4 +23,3 @@ router.patch('/toggle-status/:id', requirePermission(PERMISSIONS.SYSTEM_SELLER_G
 router.patch('/:groupId/members/:accreditedSellerId/rates', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE), editUserRate);
 
 export default router;
-

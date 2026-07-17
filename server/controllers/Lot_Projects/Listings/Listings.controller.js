@@ -690,6 +690,7 @@ export const updateLotProjectListing = async (req, res) => {
     const hasAnnualInterestRate = await columnExists(connection, 'lot_project_listings', 'annual_interest_rate');
     const hasCancellationType = await columnExists(connection, 'lot_project_listings', 'lot_project_listing_cancellation_type');
     const hasListingCadastralLinks = await tableExists(connection, 'lot_project_listing_cadastral_lots');
+    const hasReservationHistory = await tableExists(connection, 'lot_project_reservation_history');
 
     await connection.beginTransaction();
 
@@ -698,7 +699,9 @@ export const updateLotProjectListing = async (req, res) => {
         SELECT
           lot_project_listing_id,
           lot_project_listing_status,
-          lot_project_listing_unit_id
+          lot_project_listing_unit_id,
+          lot_project_listing_tcp,
+          lot_project_listing_cancellation_type
         FROM lot_project_listings l
         WHERE l.lot_project_id = ?
           AND ${lookup.sql}
@@ -781,11 +784,22 @@ export const updateLotProjectListing = async (req, res) => {
       updateParams.push(annualInterestRate);
     }
 
-    if (
-      hasCancellationType
-      && req.body.statusTransitionAction === LISTING_STATUS_ACTIONS.CANCEL_CANCELLATION
-    ) {
-      updateColumns.push('lot_project_listing_cancellation_type = NULL');
+    const requestedCancellationType = ['refunded', 'discontinued'].includes(
+      String(req.body.cancellationType || req.body.cancellation_type || '').trim().toLowerCase()
+    )
+      ? String(req.body.cancellationType || req.body.cancellation_type).trim().toLowerCase()
+      : (existingListing.lot_project_listing_cancellation_type || 'discontinued');
+
+    if (hasCancellationType) {
+      if (req.body.statusTransitionAction === LISTING_STATUS_ACTIONS.CANCEL_CANCELLATION) {
+        updateColumns.push('lot_project_listing_cancellation_type = NULL');
+      } else if (
+        listingStatus.status === 'pending_for_cancellation'
+        || req.body.statusTransitionAction === LISTING_STATUS_ACTIONS.SETTLE_CANCELLATION
+      ) {
+        updateColumns.push('lot_project_listing_cancellation_type = ?');
+        updateParams.push(requestedCancellationType);
+      }
     }
 
     if (listingStatus.status !== 'hold') {
@@ -815,6 +829,144 @@ export const updateLotProjectListing = async (req, res) => {
     const resetToAvailable = statusTransition.resetToAvailable;
     const unitIdChanged = unitCode !== existingListing.lot_project_listing_unit_id;
     const buyerFormSchemaAvailable = await hasBuyerFormSchema(connection);
+    const statusTransitionAction = req.body.statusTransitionAction || null;
+
+    if (hasReservationHistory) {
+      if (
+        existingListing.lot_project_listing_status === 'sold'
+        && listingStatus.status === 'pending_for_cancellation'
+      ) {
+        await connection.query(
+          `
+            UPDATE lot_project_reservation_history
+            SET reservation_status = 'pending_for_cancellation',
+                cancellation_type = ?,
+                cancellation_reason = ?,
+                updated_at = NOW()
+            WHERE lot_project_listing_id = ?
+              AND reservation_status = 'active'
+            ORDER BY lot_project_reservation_history_id DESC
+            LIMIT 1
+          `,
+          [
+            requestedCancellationType,
+            toNullable(req.body.cancellationReason || req.body.cancellation_reason),
+            existingListing.lot_project_listing_id,
+          ]
+        );
+      } else if (statusTransitionAction === LISTING_STATUS_ACTIONS.CANCEL_CANCELLATION) {
+        await connection.query(
+          `
+            UPDATE lot_project_reservation_history
+            SET reservation_status = 'active',
+                cancelled_at = NULL,
+                cancellation_type = NULL,
+                cancellation_reason = NULL,
+                cancelled_value = 0,
+                cash_collected_at_cancellation = 0,
+                cancelled_by_user_id = NULL,
+                updated_at = NOW()
+            WHERE lot_project_listing_id = ?
+              AND reservation_status = 'pending_for_cancellation'
+            ORDER BY lot_project_reservation_history_id DESC
+            LIMIT 1
+          `,
+          [existingListing.lot_project_listing_id]
+        );
+      } else if (statusTransitionAction === LISTING_STATUS_ACTIONS.SETTLE_CANCELLATION) {
+        const [cashRows] = await connection.query(
+          `
+            SELECT COALESCE(SUM(lot_project_payment_amount), 0) AS cash_collected
+            FROM lot_project_payments
+            WHERE lot_project_listing_id = ?
+              AND lot_project_payment_status = 'Verified'
+          `,
+          [existingListing.lot_project_listing_id]
+        );
+
+        const cancelledValue = Math.max(Number(existingListing.lot_project_listing_tcp || tcp || 0), 0);
+        const cashCollectedAtCancellation = Math.max(Number(cashRows[0]?.cash_collected || 0), 0);
+        const cancellationReason = toNullable(req.body.cancellationReason || req.body.cancellation_reason);
+
+        const [historyResult] = await connection.query(
+          `
+            UPDATE lot_project_reservation_history
+            SET reservation_status = 'cancelled',
+                cancelled_at = NOW(),
+                cancellation_type = ?,
+                cancellation_reason = ?,
+                cancelled_value = ?,
+                cash_collected_at_cancellation = ?,
+                cancelled_by_user_id = ?,
+                updated_at = NOW()
+            WHERE lot_project_listing_id = ?
+              AND reservation_status IN ('pending_for_cancellation', 'active')
+            ORDER BY lot_project_reservation_history_id DESC
+            LIMIT 1
+          `,
+          [
+            requestedCancellationType,
+            cancellationReason,
+            cancelledValue,
+            cashCollectedAtCancellation,
+            req.authUser?.id || null,
+            existingListing.lot_project_listing_id,
+          ]
+        );
+
+        if (historyResult.affectedRows === 0) {
+          const [profileRows] = await connection.query(
+            `
+              SELECT lot_project_client_profile_id, buyer_full_name, soa_dp_discount_percentage
+              FROM lot_project_client_profiles
+              WHERE lot_project_listing_id = ?
+              LIMIT 1
+            `,
+            [existingListing.lot_project_listing_id]
+          );
+          const profile = profileRows[0] || {};
+          const discountPercentage = Number(profile.soa_dp_discount_percentage || 0);
+
+          await connection.query(
+            `
+              INSERT INTO lot_project_reservation_history (
+                lot_project_id,
+                lot_project_listing_id,
+                lot_project_client_profile_id,
+                unit_id_snapshot,
+                buyer_name_snapshot,
+                reservation_status,
+                reserved_at,
+                tcp_snapshot,
+                discount_percentage_snapshot,
+                discount_applied_snapshot,
+                cancelled_at,
+                cancellation_type,
+                cancellation_reason,
+                cancelled_value,
+                cash_collected_at_cancellation,
+                cancelled_by_user_id
+              ) VALUES (?, ?, ?, ?, ?, 'cancelled', NOW(), ?, ?, ?, NOW(), ?, ?, ?, ?, ?)
+            `,
+            [
+              project.lot_project_id,
+              existingListing.lot_project_listing_id,
+              profile.lot_project_client_profile_id || null,
+              existingListing.lot_project_listing_unit_id,
+              profile.buyer_full_name || null,
+              cancelledValue,
+              discountPercentage,
+              Math.max(cancelledValue * (discountPercentage / 100), 0),
+              requestedCancellationType,
+              cancellationReason,
+              cancelledValue,
+              cashCollectedAtCancellation,
+              req.authUser?.id || null,
+            ]
+          );
+        }
+      }
+    }
 
     if (resetToAvailable) {
       await clearListingSaleDataForAvailable(connection, existingListing.lot_project_listing_id);
@@ -868,7 +1020,6 @@ export const updateLotProjectListing = async (req, res) => {
       ? await syncListingInterestToUnlockedSoa(connection, project.lot_project_id, existingListing.lot_project_listing_id, annualInterestRate)
       : { synced: 0, skipped: 0 };
 
-    const statusTransitionAction = req.body.statusTransitionAction || null;
     const auditTitle = statusTransitionAction === LISTING_STATUS_ACTIONS.CANCEL_CANCELLATION
       ? 'Cancelled pending cancellation'
       : statusTransitionAction === LISTING_STATUS_ACTIONS.SETTLE_CANCELLATION
@@ -1238,5 +1389,3 @@ export const deleteLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
-
-

@@ -1,5 +1,6 @@
 // Permission names mirror the API rules so the interface never advertises blocked actions.
 export const PERMISSIONS = Object.freeze({
+  SYSTEM_DASHBOARD_VIEW: 'system.dashboard.view',
   SYSTEM_PROJECTS_VIEW: 'system.projects.view',
   SYSTEM_PROJECTS_MANAGE: 'system.projects.manage',
   SYSTEM_ACCREDITED_VIEW: 'system.accredited.view',
@@ -59,6 +60,7 @@ export const ADMIN_MANAGEABLE_USER_ROLES = USER_ROLES;
 const allPermissions = new Set(Object.values(PERMISSIONS));
 const knownUserRoles = new Set(USER_ROLES);
 const adminPermissions = new Set([
+  PERMISSIONS.SYSTEM_DASHBOARD_VIEW,
   PERMISSIONS.SYSTEM_PROJECTS_VIEW,
   PERMISSIONS.SYSTEM_ACCREDITED_VIEW,
   PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW,
@@ -79,6 +81,7 @@ const adminPermissions = new Set([
   PERMISSIONS.ATTENDANCE_MANAGE,
   PERMISSIONS.PAYROLL_VIEW,
   PERMISSIONS.PAYROLL_MANAGE,
+  PERMISSIONS.LOT_DASHBOARD_VIEW,
   PERMISSIONS.LOT_LISTINGS_VIEW,
   PERMISSIONS.LOT_LISTINGS_MANAGE,
   PERMISSIONS.LOT_PAYMENT_LOGS_VIEW,
@@ -92,5 +95,4 @@ export const canManageUserRole = (actorRole, targetRole) => (
   knownUserRoles.has(String(targetRole || ''))
   && (actorRole === 'super_admin' || actorRole === 'admin')
 );
-export const getRoleHome = (role) => role === 'admin' ? '/admin/projects' : role === 'super_admin' ? '/super_admin' : '/';
-
+export const getRoleHome = (role) => role === 'admin' ? '/admin/dashboard' : role === 'super_admin' ? '/super_admin' : '/';

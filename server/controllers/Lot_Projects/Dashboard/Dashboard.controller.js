@@ -50,8 +50,6 @@ const addMonths = (date, months) => new Date(date.getFullYear(), date.getMonth()
 const addDays = (date, days) => new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
 
 const shouldBackfillTrendBuckets = (dateRange = {}) => {
-  if (dateRange.preset === 'all') return false;
-
   const fromDate = parseDateOnly(dateRange.from);
   const toDate = parseDateOnly(dateRange.to);
   if (!fromDate || !toDate) return false;
@@ -66,41 +64,65 @@ const getDayDiff = (fromDate, toDate) => {
   return Math.max(Math.ceil(ms / (1000 * 60 * 60 * 24)), 0);
 };
 
-const resolveDashboardDateRange = (query = {}) => {
+const getInclusiveMonthSpan = (fromDate, toDate) =>
+  ((toDate.getFullYear() - fromDate.getFullYear()) * 12)
+  + (toDate.getMonth() - fromDate.getMonth())
+  + 1;
+
+export const resolveDashboardDateRange = (query = {}, role = '') => {
   const today = new Date();
-  const preset = String(query.range || query.dateRange || '3_months').toLowerCase();
+  const requestedPreset = String(query.range || query.dateRange || '3_months').toLowerCase();
+  const allowedPresets = new Set([
+    'this_month',
+    'last_month',
+    '2_months',
+    '3_months',
+    '6_months',
+    '12_months',
+    'custom',
+  ]);
+  const preset = allowedPresets.has(requestedPreset) ? requestedPreset : '3_months';
 
   let fromDate;
-  let toDate = today;
+  let toDate;
 
   if (preset === 'custom') {
-    fromDate = parseDateOnly(query.from || query.dateFrom) || startOfMonth(today);
-    toDate = parseDateOnly(query.to || query.dateTo) || today;
-    if (fromDate > toDate) [fromDate, toDate] = [toDate, fromDate];
-  } else if (preset === 'this_month') {
-    fromDate = startOfMonth(today);
-    toDate = today;
+    const requestedFrom = parseDateOnly(query.from || query.dateFrom) || startOfMonth(today);
+    const requestedTo = parseDateOnly(query.to || query.dateTo) || endOfMonth(today);
+    fromDate = startOfMonth(requestedFrom);
+    toDate = endOfMonth(requestedTo);
+    if (fromDate > toDate) [fromDate, toDate] = [startOfMonth(requestedTo), endOfMonth(requestedFrom)];
   } else if (preset === 'last_month') {
     const lastMonth = addMonths(today, -1);
     fromDate = startOfMonth(lastMonth);
     toDate = endOfMonth(lastMonth);
-  } else if (preset === '2_months') {
-    fromDate = addDays(addMonths(today, -2), 1);
-  } else if (preset === '6_months') {
-    fromDate = addDays(addMonths(today, -6), 1);
-  } else if (preset === '12_months') {
-    fromDate = addDays(addMonths(today, -12), 1);
-  } else if (preset === 'all') {
-    fromDate = new Date(2000, 0, 1);
   } else {
-    fromDate = addDays(addMonths(today, -3), 1);
+    const presetMonths = {
+      this_month: 1,
+      '2_months': 2,
+      '3_months': 3,
+      '6_months': 6,
+      '12_months': 12,
+    };
+    const months = presetMonths[preset] || 3;
+    fromDate = startOfMonth(addMonths(today, -(months - 1)));
+    toDate = endOfMonth(today);
+  }
+
+  const spanMonths = getInclusiveMonthSpan(fromDate, toDate);
+  if (String(role || '') === 'admin' && spanMonths > 12) {
+    const error = new Error('Admin dashboard reports are limited to 12 calendar months.');
+    error.statusCode = 400;
+    throw error;
   }
 
   const dayDiff = getDayDiff(fromDate, toDate);
   return {
-    preset: preset === 'custom' ? 'custom' : (['this_month', 'last_month', '2_months', '3_months', '6_months', '12_months', 'all'].includes(preset) ? preset : '3_months'),
+    preset,
     from: toDateOnly(fromDate),
     to: toDateOnly(toDate),
+    spanMonths,
+    longRangeWarning: String(role || '') === 'super_admin' && spanMonths > 12,
     groupBy: dayDiff > 45 ? 'month' : 'day',
   };
 };
@@ -155,6 +177,9 @@ const mergeTrendRows = (dateRange, salesRows = [], collectionRows = [], discount
     collectionCount: 0,
     collected: 0,
     discountApplied: 0,
+    cashCollectibles: 0,
+    netCashCollectibles: 0,
+    netSales: 0,
   });
 
   const byPeriod = new Map(
@@ -191,7 +216,39 @@ const mergeTrendRows = (dateRange, salesRows = [], collectionRows = [], discount
       totalSales: roundMoney(item.totalSales),
       collected: roundMoney(item.collected),
       discountApplied: roundMoney(item.discountApplied),
+      cashCollectibles: roundMoney(Math.max(item.totalSales - item.collected, 0)),
+      netCashCollectibles: roundMoney(Math.max(item.totalSales - item.collected - item.discountApplied, 0)),
+      netSales: roundMoney(Math.max(item.totalSales - item.discountApplied, 0)),
       settledValue: roundMoney(item.collected + item.discountApplied),
+    }));
+};
+
+const mergeCancellationTrendRows = (dateRange, rows = []) => {
+  const baseBuckets = shouldBackfillTrendBuckets(dateRange) ? makeEmptyTrendBuckets(dateRange) : [];
+  const byPeriod = new Map(baseBuckets.map((bucket) => [bucket.period, {
+    ...bucket,
+    cancellationCount: 0,
+    cancellationAmount: 0,
+  }]));
+
+  for (const row of rows) {
+    const period = String(row.period || '');
+    const current = byPeriod.get(period) || {
+      period,
+      label: formatPeriodLabel(period, dateRange.groupBy),
+      cancellationCount: 0,
+      cancellationAmount: 0,
+    };
+    current.cancellationCount += toNumber(row.cancellation_count ?? row.cancellationCount);
+    current.cancellationAmount += toNumber(row.cancellation_amount ?? row.cancellationAmount);
+    byPeriod.set(period, current);
+  }
+
+  return [...byPeriod.values()]
+    .sort((a, b) => String(a.period).localeCompare(String(b.period)))
+    .map((item) => ({
+      ...item,
+      cancellationAmount: roundMoney(item.cancellationAmount),
     }));
 };
 
@@ -271,7 +328,7 @@ export const getLotProjectDashboard = async (req, res) => {
 
     const projectPayload = await buildProjectPayload(project);
     const hasListings = await tableExists(connection, 'lot_project_listings');
-    const dateRange = resolveDashboardDateRange(req.query);
+    const dateRange = resolveDashboardDateRange(req.query, req.authUser?.role);
 
     const emptyStats = {
       totalUnits: 0,
@@ -283,10 +340,20 @@ export const getLotProjectDashboard = async (req, res) => {
       cancelled: 0,
       totalContractPrice: 0,
       totalSales: 0,
+      totalGrossSales: 0,
       totalCollected: 0,
       totalCashCollected: 0,
       discountApplied: 0,
       settledValue: 0,
+      cashCollectibles: 0,
+      grossCashCollectibles: 0,
+      netCashCollectibles: 0,
+      totalNetSales: 0,
+      reservationCount: 0,
+      cancelledCount: 0,
+      cancelledValue: 0,
+      pendingCancellationValue: 0,
+      cancelledInventoryValue: 0,
       pendingSales: 0,
       outstandingBalance: 0,
       collectionProgress: 0,
@@ -314,6 +381,7 @@ export const getLotProjectDashboard = async (req, res) => {
           stats: emptyStats,
           dateRange,
           salesTrend: mergeTrendRows(dateRange),
+          cancellationTrend: mergeCancellationTrendRows(dateRange),
           sellerSalesTrend: [],
           groupSalesTrend: [],
           upcomingDues: [],
@@ -332,6 +400,7 @@ export const getLotProjectDashboard = async (req, res) => {
     const hasListingDocuments = await tableExists(connection, 'lot_project_listing_documents');
     const hasClientDocuments = await tableExists(connection, 'lot_project_client_documents');
     const hasListingCadastralLinks = await tableExists(connection, 'lot_project_listing_cadastral_lots');
+    const hasReservationHistory = await tableExists(connection, 'lot_project_reservation_history');
 
     const paymentSummarySelect = hasPayments
       ? `COALESCE((
@@ -380,6 +449,50 @@ export const getLotProjectDashboard = async (req, res) => {
         END`
       : '0';
     const settledValueExpr = `LEAST(${paymentSummarySelect} + (${earnedDiscountExpr}), l.lot_project_listing_tcp)`;
+    const escapedRangeFrom = connection.escape(dateRange.from);
+    const escapedRangeTo = connection.escape(dateRange.to);
+    const rangePaymentSummarySelect = hasPayments
+      ? `COALESCE((
+          SELECT SUM(p.lot_project_payment_amount)
+          FROM lot_project_payments p
+          WHERE p.lot_project_id = l.lot_project_id
+            AND p.lot_project_listing_id = l.lot_project_listing_id
+            AND p.lot_project_payment_status = 'Verified'
+            AND DATE(p.lot_project_payment_date) BETWEEN ${escapedRangeFrom} AND ${escapedRangeTo}
+        ), 0)`
+      : '0';
+    const rangeDownpaymentPaidSelect = hasPayments
+      ? `COALESCE((
+          SELECT SUM(p.lot_project_payment_amount)
+          FROM lot_project_payments p
+          WHERE p.lot_project_id = l.lot_project_id
+            AND p.lot_project_listing_id = l.lot_project_listing_id
+            AND p.lot_project_payment_status = 'Verified'
+            AND p.lot_project_payment_type IN ('downpayment', 'down_payment')
+            AND DATE(p.lot_project_payment_date) BETWEEN ${escapedRangeFrom} AND ${escapedRangeTo}
+        ), 0)`
+      : '0';
+    const rangeEarnedDiscountExpr = hasClientProfiles
+      ? `CASE
+          WHEN (${totalDiscountExpr}) <= 0 THEN 0
+          WHEN (${netDownpaymentExpr}) <= 0 THEN (${totalDiscountExpr})
+          ELSE LEAST(
+            (${totalDiscountExpr}),
+            ROUND((${totalDiscountExpr}) * (${rangeDownpaymentPaidSelect}) / NULLIF((${netDownpaymentExpr}), 0), 2)
+          )
+        END`
+      : '0';
+    const rangeSettledValueExpr = `LEAST(${rangePaymentSummarySelect} + (${rangeEarnedDiscountExpr}), l.lot_project_listing_tcp)`;
+    const reservationRangeScope = hasReservationHistory
+      ? `EXISTS (
+          SELECT 1
+          FROM lot_project_reservation_history rh_scope
+          WHERE rh_scope.lot_project_listing_id = l.lot_project_listing_id
+            AND rh_scope.lot_project_id = l.lot_project_id
+            AND rh_scope.reservation_status IN ('active', 'pending_for_cancellation')
+            AND DATE(rh_scope.reserved_at) BETWEEN ${escapedRangeFrom} AND ${escapedRangeTo}
+        )`
+      : `${hasClientProfiles ? 'DATE(COALESCE(cp.lot_project_client_profile_created_at, l.lot_project_listing_updated_at))' : 'DATE(l.lot_project_listing_updated_at)'} BETWEEN ${escapedRangeFrom} AND ${escapedRangeTo}`;
 
     const releaseSummaryJoin = hasCommissionReleases
       ? `
@@ -416,7 +529,9 @@ export const getLotProjectDashboard = async (req, res) => {
           COALESCE(SUM(lot_project_listing_tcp), 0) AS totalContractPrice,
           COALESCE(SUM(CASE WHEN lot_project_listing_status <> 'cancelled' THEN lot_project_listing_tcp ELSE 0 END), 0) AS listedLotValue,
           COALESCE(SUM(CASE WHEN lot_project_listing_status IN ('available', 'hold') THEN lot_project_listing_tcp ELSE 0 END), 0) AS availableLotValue,
-          COALESCE(SUM(CASE WHEN lot_project_listing_status = 'sold' THEN lot_project_listing_tcp ELSE 0 END), 0) AS soldLotValue
+          COALESCE(SUM(CASE WHEN lot_project_listing_status = 'sold' THEN lot_project_listing_tcp ELSE 0 END), 0) AS soldLotValue,
+          COALESCE(SUM(CASE WHEN lot_project_listing_status = 'pending_for_cancellation' THEN lot_project_listing_tcp ELSE 0 END), 0) AS pendingCancellationValue,
+          COALESCE(SUM(CASE WHEN lot_project_listing_status = 'cancelled' THEN lot_project_listing_tcp ELSE 0 END), 0) AS cancelledInventoryValue
         FROM lot_project_listings
         WHERE lot_project_id = ?
       `,
@@ -427,14 +542,18 @@ export const getLotProjectDashboard = async (req, res) => {
       `
         SELECT
           COALESCE(SUM(l.lot_project_listing_tcp), 0) AS totalSales,
-          COALESCE(SUM(${paymentSummarySelect}), 0) AS totalCashCollected,
-          COALESCE(SUM(${earnedDiscountExpr}), 0) AS discountApplied,
-          COALESCE(SUM(${settledValueExpr}), 0) AS settledValue,
-          COALESCE(SUM(GREATEST(l.lot_project_listing_tcp - ${settledValueExpr}, 0)), 0) AS pendingSales
+          COALESCE(SUM(${rangePaymentSummarySelect}), 0) AS totalCashCollected,
+          COALESCE(SUM(${rangeEarnedDiscountExpr}), 0) AS discountApplied,
+          COALESCE(SUM(${rangeSettledValueExpr}), 0) AS settledValue,
+          COALESCE(SUM(GREATEST(l.lot_project_listing_tcp - ${rangePaymentSummarySelect}, 0)), 0) AS cashCollectibles,
+          COALESCE(SUM(GREATEST(l.lot_project_listing_tcp - ${rangePaymentSummarySelect} - (${rangeEarnedDiscountExpr}), 0)), 0) AS netCashCollectibles,
+          COALESCE(SUM(GREATEST(l.lot_project_listing_tcp - (${rangeEarnedDiscountExpr}), 0)), 0) AS totalNetSales,
+          COALESCE(SUM(GREATEST(l.lot_project_listing_tcp - ${rangePaymentSummarySelect} - (${rangeEarnedDiscountExpr}), 0)), 0) AS pendingSales
         FROM lot_project_listings l
         ${hasClientProfiles ? 'LEFT JOIN lot_project_client_profiles cp ON cp.lot_project_listing_id = l.lot_project_listing_id' : ''}
         WHERE l.lot_project_id = ?
-          AND l.lot_project_listing_status IN ('sold', 'pending_for_cancellation', 'cancelled')
+          AND l.lot_project_listing_status IN ('sold', 'pending_for_cancellation')
+          AND ${reservationRangeScope}
       `,
       [project.lot_project_id]
     );
@@ -550,40 +669,61 @@ export const getLotProjectDashboard = async (req, res) => {
       ? 'LEFT JOIN lot_project_client_profiles cp ON cp.lot_project_listing_id = l.lot_project_listing_id'
       : '';
 
-    const [salesTrendRows] = await connection.query(
-      `
-        SELECT
-          ${getPeriodSql('sale_date', dateRange.groupBy)} AS period,
-          COUNT(*) AS sale_count,
-          COALESCE(SUM(tcp), 0) AS total_sales
-        FROM (
-          SELECT
-            l.lot_project_listing_id,
-            l.lot_project_listing_tcp AS tcp,
-            ${saleDateSelect} AS sale_date
-          FROM lot_project_listings l
-          ${saleClientJoin}
-          WHERE l.lot_project_id = ?
-            AND l.lot_project_listing_status IN ('sold', 'pending_for_cancellation', 'cancelled')
-        ) sales_data
-        WHERE sale_date BETWEEN ? AND ?
-        GROUP BY period
-        ORDER BY period ASC
-      `,
-      [project.lot_project_id, dateRange.from, dateRange.to]
-    );
+    const [salesTrendRows] = hasReservationHistory
+      ? await connection.query(
+          `
+            SELECT
+              ${getPeriodSql('DATE(reserved_at)', dateRange.groupBy)} AS period,
+              COUNT(*) AS sale_count,
+              COALESCE(SUM(tcp_snapshot), 0) AS total_sales
+            FROM lot_project_reservation_history
+            WHERE lot_project_id = ?
+              AND reservation_status IN ('active', 'pending_for_cancellation')
+              AND DATE(reserved_at) BETWEEN ? AND ?
+            GROUP BY period
+            ORDER BY period ASC
+          `,
+          [project.lot_project_id, dateRange.from, dateRange.to]
+        )
+      : await connection.query(
+          `
+            SELECT
+              ${getPeriodSql('sale_date', dateRange.groupBy)} AS period,
+              COUNT(*) AS sale_count,
+              COALESCE(SUM(tcp), 0) AS total_sales
+            FROM (
+              SELECT
+                l.lot_project_listing_id,
+                l.lot_project_listing_tcp AS tcp,
+                ${saleDateSelect} AS sale_date
+              FROM lot_project_listings l
+              ${saleClientJoin}
+              WHERE l.lot_project_id = ?
+                AND l.lot_project_listing_status IN ('sold', 'pending_for_cancellation')
+            ) sales_data
+            WHERE sale_date BETWEEN ? AND ?
+            GROUP BY period
+            ORDER BY period ASC
+          `,
+          [project.lot_project_id, dateRange.from, dateRange.to]
+        );
 
     const [collectionTrendRows] = hasPayments
       ? await connection.query(
           `
             SELECT
-              ${getPeriodSql('lot_project_payment_date', dateRange.groupBy)} AS period,
+              ${getPeriodSql('p.lot_project_payment_date', dateRange.groupBy)} AS period,
               COUNT(*) AS collection_count,
-              COALESCE(SUM(lot_project_payment_amount), 0) AS collected_amount
-            FROM lot_project_payments
-            WHERE lot_project_id = ?
-              AND lot_project_payment_status = 'Verified'
-              AND lot_project_payment_date BETWEEN ? AND ?
+              COALESCE(SUM(p.lot_project_payment_amount), 0) AS collected_amount
+            FROM lot_project_payments p
+            INNER JOIN lot_project_listings l
+              ON l.lot_project_listing_id = p.lot_project_listing_id
+            ${hasClientProfiles ? 'LEFT JOIN lot_project_client_profiles cp ON cp.lot_project_listing_id = l.lot_project_listing_id' : ''}
+            WHERE p.lot_project_id = ?
+              AND p.lot_project_payment_status = 'Verified'
+              AND DATE(p.lot_project_payment_date) BETWEEN ? AND ?
+              AND l.lot_project_listing_status IN ('sold', 'pending_for_cancellation')
+              AND ${reservationRangeScope}
             GROUP BY period
             ORDER BY period ASC
           `,
@@ -613,13 +753,78 @@ export const getLotProjectDashboard = async (req, res) => {
             WHERE p.lot_project_id = ?
               AND p.lot_project_payment_status = 'Verified'
               AND p.lot_project_payment_type IN ('downpayment', 'down_payment')
-              AND p.lot_project_payment_date <= ?
+              AND DATE(p.lot_project_payment_date) BETWEEN ? AND ?
+              AND l.lot_project_listing_status IN ('sold', 'pending_for_cancellation')
+              AND ${reservationRangeScope}
             ORDER BY p.lot_project_listing_id ASC, p.lot_project_payment_date ASC, p.lot_project_payment_id ASC
           `,
-          [project.lot_project_id, dateRange.to]
+          [project.lot_project_id, dateRange.from, dateRange.to]
         )
       : [[]];
     const discountTrendRows = buildEarnedDiscountTrendRows(discountPaymentRows, dateRange);
+
+    const [reservationSummaryRows] = hasReservationHistory
+      ? await connection.query(
+          `
+            SELECT
+              COALESCE(SUM(DATE(reserved_at) BETWEEN ? AND ?), 0) AS reservationCount,
+              COALESCE(SUM(reservation_status = 'cancelled' AND DATE(cancelled_at) BETWEEN ? AND ?), 0) AS cancelledCount,
+              COALESCE(SUM(CASE
+                WHEN reservation_status = 'cancelled' AND DATE(cancelled_at) BETWEEN ? AND ?
+                  THEN cancelled_value
+                ELSE 0
+              END), 0) AS cancelledValue
+            FROM lot_project_reservation_history
+            WHERE lot_project_id = ?
+          `,
+          [
+            dateRange.from,
+            dateRange.to,
+            dateRange.from,
+            dateRange.to,
+            dateRange.from,
+            dateRange.to,
+            project.lot_project_id,
+          ]
+        )
+      : [[{
+          reservationCount: null,
+          cancelledCount: toNumber(summaryRows[0]?.cancelled),
+          cancelledValue: toNumber(summaryRows[0]?.cancelledInventoryValue),
+        }]];
+
+    const [cancellationTrendRows] = hasReservationHistory
+      ? await connection.query(
+          `
+            SELECT
+              ${getPeriodSql('DATE(cancelled_at)', dateRange.groupBy)} AS period,
+              COUNT(*) AS cancellation_count,
+              COALESCE(SUM(cancelled_value), 0) AS cancellation_amount
+            FROM lot_project_reservation_history
+            WHERE lot_project_id = ?
+              AND reservation_status = 'cancelled'
+              AND cancelled_at IS NOT NULL
+              AND DATE(cancelled_at) BETWEEN ? AND ?
+            GROUP BY period
+            ORDER BY period ASC
+          `,
+          [project.lot_project_id, dateRange.from, dateRange.to]
+        )
+      : await connection.query(
+          `
+            SELECT
+              ${getPeriodSql('DATE(lot_project_listing_updated_at)', dateRange.groupBy)} AS period,
+              COUNT(*) AS cancellation_count,
+              COALESCE(SUM(lot_project_listing_tcp), 0) AS cancellation_amount
+            FROM lot_project_listings
+            WHERE lot_project_id = ?
+              AND lot_project_listing_status = 'cancelled'
+              AND DATE(lot_project_listing_updated_at) BETWEEN ? AND ?
+            GROUP BY period
+            ORDER BY period ASC
+          `,
+          [project.lot_project_id, dateRange.from, dateRange.to]
+        );
 
     const sellerPerformanceQuery = hasCommissions
       ? `
@@ -912,6 +1117,14 @@ export const getLotProjectDashboard = async (req, res) => {
     const totalCashCollected = toNumber(moneySummary.totalCashCollected);
     const discountApplied = toNumber(moneySummary.discountApplied);
     const settledValue = toNumber(moneySummary.settledValue);
+    const cashCollectibles = Math.max(toNumber(moneySummary.cashCollectibles), 0);
+    const netCashCollectibles = Math.max(toNumber(moneySummary.netCashCollectibles), 0);
+    const totalNetSales = Math.max(toNumber(moneySummary.totalNetSales), 0);
+    const reservationSummary = reservationSummaryRows[0] || {};
+    const fallbackReservationCount = toNumber(summary.soldActive)
+      + toNumber(summary.fullyPaid)
+      + toNumber(summary.pendingCancellation)
+      + toNumber(summary.cancelled);
 
     return res.json({
       success: true,
@@ -919,6 +1132,7 @@ export const getLotProjectDashboard = async (req, res) => {
         project: projectPayload,
         dateRange,
         salesTrend: mergeTrendRows(dateRange, salesTrendRows, collectionTrendRows, discountTrendRows),
+        cancellationTrend: mergeCancellationTrendRows(dateRange, cancellationTrendRows),
         sellerSalesTrend: mapBreakdownTrend(sellerTrendRows, 'seller'),
         groupSalesTrend: mapBreakdownTrend(groupTrendRows, 'group'),
         stats: {
@@ -932,10 +1146,22 @@ export const getLotProjectDashboard = async (req, res) => {
           cancelled: toNumber(summary.cancelled),
           totalContractPrice: toNumber(summary.totalContractPrice),
           totalSales,
+          totalGrossSales: totalSales,
           totalCollected: totalCashCollected,
           totalCashCollected,
           discountApplied,
           settledValue,
+          cashCollectibles,
+          grossCashCollectibles: cashCollectibles,
+          netCashCollectibles,
+          totalNetSales,
+          reservationCount: reservationSummary.reservationCount === null || reservationSummary.reservationCount === undefined
+            ? fallbackReservationCount
+            : toNumber(reservationSummary.reservationCount),
+          cancelledCount: toNumber(reservationSummary.cancelledCount),
+          cancelledValue: toNumber(reservationSummary.cancelledValue),
+          pendingCancellationValue: toNumber(summary.pendingCancellationValue),
+          cancelledInventoryValue: toNumber(summary.cancelledInventoryValue),
           pendingSales: Math.max(toNumber(moneySummary.pendingSales), 0),
           outstandingBalance: Math.max(toNumber(moneySummary.pendingSales), 0),
           collectionProgress: totalSales > 0 ? Math.min((totalCashCollected / totalSales) * 100, 100) : 0,
@@ -1041,7 +1267,7 @@ export const getLotProjectDashboard = async (req, res) => {
     });
   } catch (error) {
     console.error('Lot project dashboard error:', error);
-    return res.status(500).json({ success: false, message: getErrorMessage(error) });
+    return res.status(error?.statusCode || 500).json({ success: false, message: getErrorMessage(error) });
   } finally {
     connection.release();
   }
@@ -1107,4 +1333,3 @@ export const getLotProjectPriceList = async (req, res) => {
     connection.release();
   }
 };
-

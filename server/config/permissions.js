@@ -1,5 +1,6 @@
 // Central permission names keep route rules consistent across the API.
 export const PERMISSIONS = Object.freeze({
+  SYSTEM_DASHBOARD_VIEW: 'system.dashboard.view',
   SYSTEM_PROJECTS_VIEW: 'system.projects.view',
   SYSTEM_PROJECTS_MANAGE: 'system.projects.manage',
   SYSTEM_ACCREDITED_VIEW: 'system.accredited.view',
@@ -93,6 +94,7 @@ export const canActorChangeUserRole = (actorRole, currentRole, requestedRole) =>
 const superAdminPermissions = new Set(Object.values(PERMISSIONS));
 
 const adminPermissions = new Set([
+  PERMISSIONS.SYSTEM_DASHBOARD_VIEW,
   PERMISSIONS.SYSTEM_PROJECTS_VIEW,
   PERMISSIONS.SYSTEM_ACCREDITED_VIEW,
   PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW,
@@ -114,6 +116,7 @@ const adminPermissions = new Set([
   PERMISSIONS.PAYROLL_VIEW,
   PERMISSIONS.PAYROLL_MANAGE,
   PERMISSIONS.LOT_PROJECT_VIEW,
+  PERMISSIONS.LOT_DASHBOARD_VIEW,
   PERMISSIONS.LOT_LISTINGS_VIEW,
   PERMISSIONS.LOT_LISTINGS_MANAGE,
   PERMISSIONS.LOT_PAYMENT_LOGS_VIEW,
@@ -127,4 +130,3 @@ export const ROLE_PERMISSIONS = Object.freeze({
 
 export const roleHasPermission = (role, permission) =>
   Boolean(permission && ROLE_PERMISSIONS[String(role || '')]?.has(permission));
-

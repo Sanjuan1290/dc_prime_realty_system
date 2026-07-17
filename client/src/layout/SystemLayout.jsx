@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Navigate, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { FaCircle } from "react-icons/fa6";
 import {
   FiActivity,
@@ -19,7 +19,6 @@ import {
   FiX,
 } from "react-icons/fi";
 import useCurrentUser from "../utils/useCurrentUser";
-import { useFetch } from "../utils/useFetch";
 import StatusAlert from "../components/Shared/StatusAlert";
 
 const getFullName = (user) => {
@@ -57,17 +56,6 @@ const SystemLayout = () => {
     isLoading: isCurrentUserLoading,
     isError: isCurrentUserError,
   } = useCurrentUser();
-
-  const {
-    data: lotProjectsData,
-    isLoading: isLotProjectsLoading,
-    isFetching: isLotProjectsFetching,
-    isError: isLotProjectsError,
-    error: lotProjectsError,
-  } = useQuery({
-    queryKey: ["lot-project-options"],
-    queryFn: () => useFetch("/projects/lot-projects/options"),
-  });
 
   const logoutMutation = useMutation({
     mutationFn: async () => {
@@ -112,18 +100,9 @@ const SystemLayout = () => {
 
   const user = currentUser?.user;
 
-  const lotProjectItems = useMemo(() => {
-    const projects = lotProjectsData?.data || [];
 
-    return projects.map((project) => ({
-      label: project.lot_project_name || project.label || "Lot Project",
-      pathname:
-        project.routePath ||
-        `/lot-projects/${project.lot_project_slug || project.slug}`,
-      icon: FiMap,
-      isAbsolute: true,
-    }));
-  }, [lotProjectsData]);
+
+  const roleBasePath = `/${user?.role || "super_admin"}`;
 
   const navGroups = useMemo(
     () => [
@@ -138,20 +117,16 @@ const SystemLayout = () => {
         items: [{ label: "Projects", pathname: "projects", icon: FiMap }],
       },
       {
-        title: "HOUSE & LOT PROJECTS",
-        description: "Future house and lot workspaces",
-        items: [{ label: "House & Lot Projects", pathname: "house-lot-projects", icon: FiHome }],
-      },
-      {
-        title: "LOT PROJECTS",
-        description: isLotProjectsLoading
-          ? "Loading lot projects..."
-          : "Dynamic lot project workspaces",
-        items: lotProjectItems,
-        isLoading: isLotProjectsLoading,
-        isError: isLotProjectsError,
-        errorMessage:
-          lotProjectsError?.message || "Failed to load lot projects.",
+        title: "PROJECT WORKSPACES",
+        description: "Choose a project type, then open a specific workspace",
+        items: [
+          { label: "Lot Projects", pathname: "lot-projects", icon: FiMap },
+          {
+            label: "House & Lot Projects",
+            pathname: "house-lot-projects",
+            icon: FiHome,
+          },
+        ],
       },
       {
         title: "MANAGEMENT",
@@ -175,7 +150,11 @@ const SystemLayout = () => {
         items: [
           { label: "Employees", pathname: "employees", icon: FiUsers },
           { label: "Attendance", pathname: "attendance", icon: FiClock },
-          { label: "Cash Advances", pathname: "cash-advances", icon: FiDollarSign },
+          {
+            label: "Cash Advances",
+            pathname: "cash-advances",
+            icon: FiDollarSign,
+          },
         ],
       },
       {
@@ -187,12 +166,7 @@ const SystemLayout = () => {
         ],
       },
     ],
-    [
-      isLotProjectsLoading,
-      isLotProjectsError,
-      lotProjectsError?.message,
-      lotProjectItems,
-    ]
+    []
   );
 
   const activeItem = useMemo(() => {
@@ -200,23 +174,22 @@ const SystemLayout = () => {
 
     for (const group of navGroups) {
       for (const item of group.items) {
-        if (!item.pathname) {
-          if (pathname === "/super_admin") return item;
-          continue;
-        }
+        const itemPath = item.pathname
+          ? `${roleBasePath}/${item.pathname}`.replace(/\/+/g, "/")
+          : roleBasePath;
 
-        if (item.isAbsolute && pathname.startsWith(item.pathname)) {
+        if (!item.pathname && pathname === roleBasePath) {
           return item;
         }
 
-        if (!item.isAbsolute && pathname.includes(`/super_admin/${item.pathname}`)) {
+        if (item.pathname && pathname.startsWith(itemPath)) {
           return item;
         }
       }
     }
 
     return { label: "Dashboard" };
-  }, [location.pathname, navGroups]);
+  }, [location.pathname, navGroups, roleBasePath]);
 
   if (isCurrentUserLoading) {
     return (
@@ -294,12 +267,6 @@ const SystemLayout = () => {
               </h3>
             </div>
 
-            {isLotProjectsFetching ? (
-              <div className="mt-2 flex items-center gap-2 text-xs font-semibold text-slate-500">
-                <FiLoader className="h-3.5 w-3.5 animate-spin" />
-                Refreshing lot projects
-              </div>
-            ) : null}
           </div>
         </div>
 
@@ -329,31 +296,6 @@ const SystemLayout = () => {
                   <p className="text-xs text-slate-400">{nav.description}</p>
                 ) : null}
               </div>
-
-              {nav.isLoading ? (
-                <div className="mx-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-600">
-                    <FiLoader className="h-4 w-4 animate-spin" />
-                    Loading projects...
-                  </div>
-                </div>
-              ) : null}
-
-              {nav.isError ? (
-                <div className="mx-2 rounded-xl border border-red-200 bg-red-50 px-3 py-3">
-                  <p className="text-xs font-bold text-red-700">
-                    {nav.errorMessage}
-                  </p>
-                </div>
-              ) : null}
-
-              {!nav.isLoading && !nav.isError && nav.items.length === 0 ? (
-                <div className="mx-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
-                  <p className="text-xs font-semibold text-slate-500">
-                    No records available.
-                  </p>
-                </div>
-              ) : null}
 
               <div className="space-y-1">
                 {nav.items.map((item) => {
@@ -450,9 +392,15 @@ const SystemLayout = () => {
             </div>
 
             <p className="truncate text-xs text-gray-600 sm:text-sm">
-              {location.pathname.startsWith("/lot-projects")
+              {location.pathname.startsWith("/lot-projects/")
                 ? "Lot project workspace"
-                : "System workspace"}
+                : location.pathname.startsWith("/house-lot-projects/")
+                  ? "House and lot project workspace"
+                  : location.pathname.startsWith(`${roleBasePath}/lot-projects`)
+                    ? "Lot project list"
+                    : location.pathname.startsWith(`${roleBasePath}/house-lot-projects`)
+                      ? "House and lot project list"
+                      : "System workspace"}
             </p>
           </div>
         </div>
@@ -479,4 +427,3 @@ const SystemLayout = () => {
 };
 
 export default SystemLayout;
-

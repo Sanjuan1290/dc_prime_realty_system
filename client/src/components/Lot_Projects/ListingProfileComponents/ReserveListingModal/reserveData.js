@@ -21,4 +21,3 @@ export const reserveSteps = [
     description: 'Reservation, downpayment, monthly terms, and commission preview.',
   },
 ]
-

@@ -111,4 +111,3 @@ const EditDocument = ({ document, onClose, onSaved }) => {
 };
 
 export default EditDocument;
-

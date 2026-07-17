@@ -733,4 +733,3 @@ const EditUserModal = ({ setShowEditUser, selectedUser, onSaved, allowedRoles = 
 };
 
 export default EditUserModal;
-

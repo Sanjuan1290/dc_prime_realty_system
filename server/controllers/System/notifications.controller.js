@@ -693,3 +693,157 @@ export const markPaymentDueContacted = async (req, res) => {
   }
 };
 
+export const getDocumentNotifications = async (req, res) => {
+  const connection = await db.getConnection();
+
+  try {
+    const requiredTables = [
+      'lot_projects',
+      'lot_project_listings',
+      'lot_project_listing_documents',
+      'lot_project_client_profiles',
+      'lot_project_client_documents',
+    ];
+
+    for (const tableName of requiredTables) {
+      if (!(await tableExists(connection, tableName))) {
+        return res.json({
+          success: true,
+          data: {
+            notifications: [],
+            summary: { totalUnits: 0, pendingRequired: 0, missingRequired: 0, rejectedRequired: 0, awaitingApproval: 0 },
+          },
+        });
+      }
+    }
+
+    const search = String(req.query.search || '').trim();
+    const category = String(req.query.category || 'all').trim().toLowerCase();
+    const params = [];
+    const filters = [];
+
+    if (search) {
+      const keyword = `%${search}%`;
+      filters.push(`(
+        lp.lot_project_name LIKE ?
+        OR l.lot_project_listing_unit_id LIKE ?
+        OR cp.buyer_full_name LIKE ?
+        OR cp.buyer_email LIKE ?
+      )`);
+      params.push(keyword, keyword, keyword, keyword);
+    }
+
+    const havingClauses = {
+      missing: 'missing_required_documents > 0',
+      rejected: 'rejected_required_documents > 0',
+      awaiting: 'awaiting_approval_documents > 0',
+      pending: 'pending_required_documents > 0',
+    };
+    const havingSql = havingClauses[category] ? `HAVING ${havingClauses[category]}` : '';
+
+    const [rows] = await connection.query(
+      `
+        SELECT
+          lp.lot_project_id,
+          lp.lot_project_name,
+          lp.lot_project_slug,
+          l.lot_project_listing_id,
+          l.lot_project_listing_unit_id,
+          l.lot_project_listing_status,
+          l.lot_project_listing_sold_substatus,
+          cp.lot_project_client_profile_id,
+          cp.buyer_full_name,
+          cp.buyer_email,
+          cp.buyer_contact_number,
+          COUNT(ld.lot_project_listing_document_id) AS total_documents,
+          COALESCE(SUM(COALESCE(cd.lot_project_client_document_status, 'Missing') IN ('Submitted', 'Approved')), 0) AS submitted_documents,
+          COALESCE(SUM(COALESCE(cd.lot_project_client_document_status, 'Missing') = 'Approved'), 0) AS approved_documents,
+          COALESCE(SUM(COALESCE(cd.lot_project_client_document_status, 'Missing') = 'Submitted'), 0) AS awaiting_approval_documents,
+          COALESCE(SUM(
+            ld.lot_project_listing_document_is_required = 1
+            AND COALESCE(cd.lot_project_client_document_status, 'Missing') IN ('Missing', 'Rejected')
+          ), 0) AS pending_required_documents,
+          COALESCE(SUM(
+            ld.lot_project_listing_document_is_required = 1
+            AND COALESCE(cd.lot_project_client_document_status, 'Missing') = 'Missing'
+          ), 0) AS missing_required_documents,
+          COALESCE(SUM(
+            ld.lot_project_listing_document_is_required = 1
+            AND COALESCE(cd.lot_project_client_document_status, 'Missing') = 'Rejected'
+          ), 0) AS rejected_required_documents
+        FROM lot_project_listings l
+        INNER JOIN lot_projects lp
+          ON lp.lot_project_id = l.lot_project_id
+        INNER JOIN lot_project_client_profiles cp
+          ON cp.lot_project_listing_id = l.lot_project_listing_id
+        INNER JOIN lot_project_listing_documents ld
+          ON ld.lot_project_listing_id = l.lot_project_listing_id
+         AND ld.lot_project_listing_document_status = 'active'
+        LEFT JOIN lot_project_client_documents cd
+          ON cd.lot_project_listing_id = l.lot_project_listing_id
+         AND cd.lot_project_client_profile_id = cp.lot_project_client_profile_id
+         AND cd.document_id = ld.document_id
+        WHERE l.lot_project_listing_status IN ('sold', 'pending_for_cancellation')
+          AND cp.lot_project_client_profile_status IN ('active', 'closed')
+          ${filters.length ? `AND ${filters.join(' AND ')}` : ''}
+        GROUP BY
+          lp.lot_project_id,
+          lp.lot_project_name,
+          lp.lot_project_slug,
+          l.lot_project_listing_id,
+          l.lot_project_listing_unit_id,
+          l.lot_project_listing_status,
+          l.lot_project_listing_sold_substatus,
+          cp.lot_project_client_profile_id,
+          cp.buyer_full_name,
+          cp.buyer_email,
+          cp.buyer_contact_number
+        ${havingSql}
+        ORDER BY pending_required_documents DESC, awaiting_approval_documents DESC, lp.lot_project_name ASC, l.lot_project_listing_unit_id ASC
+      `,
+      params
+    );
+
+    const notifications = rows.map((row) => ({
+      projectId: row.lot_project_id,
+      projectName: row.lot_project_name,
+      projectSlug: row.lot_project_slug,
+      listingId: row.lot_project_listing_id,
+      unitId: row.lot_project_listing_unit_id,
+      listingStatus: row.lot_project_listing_status,
+      soldSubstatus: row.lot_project_listing_sold_substatus,
+      clientProfileId: row.lot_project_client_profile_id,
+      buyerName: row.buyer_full_name || '-',
+      buyerEmail: row.buyer_email || '',
+      buyerContactNumber: row.buyer_contact_number || '',
+      totalDocuments: Number(row.total_documents || 0),
+      submittedDocuments: Number(row.submitted_documents || 0),
+      approvedDocuments: Number(row.approved_documents || 0),
+      awaitingApprovalDocuments: Number(row.awaiting_approval_documents || 0),
+      pendingRequiredDocuments: Number(row.pending_required_documents || 0),
+      missingRequiredDocuments: Number(row.missing_required_documents || 0),
+      rejectedRequiredDocuments: Number(row.rejected_required_documents || 0),
+      listingPath: `/lot-projects/${row.lot_project_slug}/listings/${row.lot_project_listing_id}`,
+    }));
+
+    const summary = notifications.reduce((totals, item) => {
+      totals.pendingRequired += item.pendingRequiredDocuments;
+      totals.missingRequired += item.missingRequiredDocuments;
+      totals.rejectedRequired += item.rejectedRequiredDocuments;
+      totals.awaitingApproval += item.awaitingApprovalDocuments;
+      return totals;
+    }, {
+      totalUnits: notifications.length,
+      pendingRequired: 0,
+      missingRequired: 0,
+      rejectedRequired: 0,
+      awaitingApproval: 0,
+    });
+
+    return res.json({ success: true, data: { notifications, summary } });
+  } catch (error) {
+    return res.status(500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};

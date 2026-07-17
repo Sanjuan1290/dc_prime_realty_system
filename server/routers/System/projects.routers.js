@@ -10,6 +10,7 @@ import { PERMISSIONS } from '../../config/permissions.js';
 import {
   getLotProjects,
   getLotProjectOptions,
+  getLotProjectDocumentCompliance,
   getLotProjectBySlug,
   createLotProject,
   updateLotProject,
@@ -73,6 +74,7 @@ router.use(authenticateUser);
 
 router.get('/lot-projects', requirePermission(PERMISSIONS.SYSTEM_PROJECTS_VIEW), getLotProjects);
 router.get('/lot-projects/options', requirePermission(PERMISSIONS.SYSTEM_PROJECTS_VIEW), getLotProjectOptions);
+router.get('/lot-projects/document-compliance', requirePermission(PERMISSIONS.SYSTEM_PROJECTS_VIEW), getLotProjectDocumentCompliance);
 router.get('/lot-projects/:projectSlug/dashboard', requirePermission(PERMISSIONS.LOT_DASHBOARD_VIEW), getLotProjectDashboard);
 router.get('/lot-projects/:projectSlug/price-list', requirePermission(PERMISSIONS.LOT_LISTINGS_VIEW), getLotProjectPriceList);
 router.get('/lot-projects/:projectSlug/listings', requirePermission(PERMISSIONS.LOT_LISTINGS_VIEW), getLotProjectListings);
@@ -122,5 +124,3 @@ router.post('/lot-projects/:projectSlug/listings/:listingId/payment-schedules/:s
 router.post('/lot-projects/:projectSlug/listings/:listingId/penalty-reliefs/:reliefId/restore', requirePermission(PERMISSIONS.LOT_PENALTY_CORRECT), restorePaymentSchedulePenaltyWaiver);
 
 export default router;
-
-
