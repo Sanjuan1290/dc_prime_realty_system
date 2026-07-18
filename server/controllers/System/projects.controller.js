@@ -524,6 +524,16 @@ export const getLotProjectDocumentCompliance = async (req, res) => {
           lp.lot_project_id,
           lp.lot_project_name,
           lp.lot_project_slug,
+          COUNT(DISTINCT cp.lot_project_client_profile_id) AS total_accounts,
+          COUNT(DISTINCT CASE
+            WHEN COALESCE(cd.lot_project_client_document_status, 'Missing') IN ('Submitted', 'Approved')
+            THEN cp.lot_project_client_profile_id
+          END) AS accounts_with_submitted_documents,
+          COUNT(DISTINCT CASE
+            WHEN ld.lot_project_listing_document_is_required = 1
+              AND COALESCE(cd.lot_project_client_document_status, 'Missing') IN ('Missing', 'Rejected')
+            THEN cp.lot_project_client_profile_id
+          END) AS accounts_with_pending_documents,
           COUNT(ld.lot_project_listing_document_id) AS total_documents,
           COALESCE(SUM(COALESCE(cd.lot_project_client_document_status, 'Missing') IN ('Submitted', 'Approved')), 0) AS submitted_documents,
           COALESCE(SUM(COALESCE(cd.lot_project_client_document_status, 'Missing') = 'Approved'), 0) AS approved_documents,
@@ -606,6 +616,9 @@ export const getLotProjectDocumentCompliance = async (req, res) => {
           projectId: row.lot_project_id,
           projectName: row.lot_project_name,
           projectSlug: row.lot_project_slug,
+          totalAccounts: Number(row.total_accounts || 0),
+          accountsWithSubmittedDocuments: Number(row.accounts_with_submitted_documents || 0),
+          accountsWithPendingDocuments: Number(row.accounts_with_pending_documents || 0),
           ...mapCounts(row),
         })),
         units: unitRows.map((row) => {

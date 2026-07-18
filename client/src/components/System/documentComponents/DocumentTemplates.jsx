@@ -9,6 +9,8 @@ import { useFetchDelete } from "../../../utils/useFetch";
 const DocumentTemplates = ({ templates = [], templateDocuments = [], onEditTemplate, canManage = true }) => {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [alert, setAlert] = useState(null);
   const [deletingTemplateId, setDeletingTemplateId] = useState(null);
 
@@ -38,6 +40,13 @@ const DocumentTemplates = ({ templates = [], templateDocuments = [], onEditTempl
     );
   }, [templates, search]);
 
+  const totalPages = Math.max(1, Math.ceil(filteredTemplates.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const paginatedTemplates = useMemo(
+    () => filteredTemplates.slice((currentPage - 1) * pageSize, currentPage * pageSize),
+    [currentPage, filteredTemplates, pageSize]
+  );
+
   const handleDelete = (template) => {
     const confirmed = window.confirm(`Delete "${template.template_name}"? This cannot be undone.`);
     if (!confirmed) return;
@@ -56,9 +65,9 @@ const DocumentTemplates = ({ templates = [], templateDocuments = [], onEditTempl
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative w-full sm:max-w-md">
           <FiSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input type="text" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search templates..." className="w-full rounded-xl border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-4 text-sm text-gray-900 outline-none transition focus:border-gray-400 focus:bg-white focus:ring-2 focus:ring-gray-100" />
+          <input type="text" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Search templates..." className="w-full rounded-xl border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-4 text-sm text-gray-900 outline-none transition focus:border-gray-400 focus:bg-white focus:ring-2 focus:ring-gray-100" />
         </div>
-        <button type="button" onClick={() => setSearch("")} className="rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50 active:scale-[0.98]">
+        <button type="button" onClick={() => { setSearch(""); setPage(1); }} className="rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50 active:scale-[0.98]">
           Reset
         </button>
       </div>
@@ -75,7 +84,7 @@ const DocumentTemplates = ({ templates = [], templateDocuments = [], onEditTempl
         {filteredTemplates.length === 0 ? (
           <div className="px-5 py-6 text-sm text-gray-500">No templates found.</div>
         ) : (
-          filteredTemplates.map((template) => {
+          paginatedTemplates.map((template) => {
             const docs = templateDocuments.filter((item) => item.template_id === template.template_id);
             const requiredCount = docs.filter((item) => Boolean(item.document_is_required)).length;
             const isDeleting = deleteMutation.isPending && deletingTemplateId === template.template_id;
@@ -99,6 +108,43 @@ const DocumentTemplates = ({ templates = [], templateDocuments = [], onEditTempl
             );
           })
         )}
+      </div>
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm font-medium text-gray-600">
+          Showing {filteredTemplates.length ? ((currentPage - 1) * pageSize) + 1 : 0}-{Math.min(currentPage * pageSize, filteredTemplates.length)} of {filteredTemplates.length} templates
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={pageSize}
+            onChange={(event) => {
+              setPageSize(Number(event.target.value));
+              setPage(1);
+            }}
+            className="h-9 rounded-lg border border-gray-200 bg-white px-3 text-sm font-bold text-gray-700"
+          >
+            {[5, 10, 20, 50].map((size) => <option key={size} value={size}>{size}</option>)}
+          </select>
+          <button
+            type="button"
+            onClick={() => setPage(currentPage - 1)}
+            disabled={currentPage <= 1}
+            className="h-9 rounded-lg border border-gray-200 bg-white px-4 text-sm font-bold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-300"
+          >
+            Previous
+          </button>
+          <span className="h-9 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-bold text-gray-700">
+            Page {currentPage} of {totalPages}
+          </span>
+          <button
+            type="button"
+            onClick={() => setPage(currentPage + 1)}
+            disabled={currentPage >= totalPages}
+            className="h-9 rounded-lg border border-gray-200 bg-white px-4 text-sm font-bold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-300"
+          >
+            Next
+          </button>
+        </div>
       </div>
     </div>
   );

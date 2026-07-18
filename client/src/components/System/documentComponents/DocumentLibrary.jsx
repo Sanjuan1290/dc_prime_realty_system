@@ -9,6 +9,8 @@ import { useFetchDelete } from "../../../utils/useFetch";
 const Document_Library = ({ documents = [], onEditDocument, canManage = true }) => {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [alert, setAlert] = useState(null);
   const [deletingDocumentId, setDeletingDocumentId] = useState(null);
 
@@ -39,6 +41,13 @@ const Document_Library = ({ documents = [], onEditDocument, canManage = true }) 
     );
   }, [documents, search]);
 
+  const totalPages = Math.max(1, Math.ceil(filteredDocuments.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const paginatedDocuments = useMemo(
+    () => filteredDocuments.slice((currentPage - 1) * pageSize, currentPage * pageSize),
+    [currentPage, filteredDocuments, pageSize]
+  );
+
   const handleDelete = (document) => {
     const confirmed = window.confirm(`Delete "${document.document_name}"? This cannot be undone.`);
     if (!confirmed) return;
@@ -60,12 +69,15 @@ const Document_Library = ({ documents = [], onEditDocument, canManage = true }) 
           <input
             type="text"
             value={search}
-            onChange={(event) => setSearch(event.target.value)}
+            onChange={(event) => {
+              setSearch(event.target.value);
+              setPage(1);
+            }}
             placeholder="Search document name or description..."
             className="w-full rounded-xl border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-4 text-sm text-gray-900 outline-none transition focus:border-gray-400 focus:bg-white focus:ring-2 focus:ring-gray-100"
           />
         </div>
-        <button type="button" onClick={() => setSearch("")} className="rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50 active:scale-[0.98]">
+        <button type="button" onClick={() => { setSearch(""); setPage(1); }} className="rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50 active:scale-[0.98]">
           Reset
         </button>
       </div>
@@ -82,7 +94,7 @@ const Document_Library = ({ documents = [], onEditDocument, canManage = true }) 
         {filteredDocuments.length === 0 ? (
           <div className="px-5 py-6 text-sm text-gray-500">No documents found.</div>
         ) : (
-          filteredDocuments.map((document) => {
+          paginatedDocuments.map((document) => {
             const isDeleting = deleteMutation.isPending && deletingDocumentId === document.document_id;
 
             return (
@@ -104,6 +116,43 @@ const Document_Library = ({ documents = [], onEditDocument, canManage = true }) 
             );
           })
         )}
+      </div>
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm font-medium text-gray-600">
+          Showing {filteredDocuments.length ? ((currentPage - 1) * pageSize) + 1 : 0}-{Math.min(currentPage * pageSize, filteredDocuments.length)} of {filteredDocuments.length} documents
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={pageSize}
+            onChange={(event) => {
+              setPageSize(Number(event.target.value));
+              setPage(1);
+            }}
+            className="h-9 rounded-lg border border-gray-200 bg-white px-3 text-sm font-bold text-gray-700"
+          >
+            {[5, 10, 20, 50].map((size) => <option key={size} value={size}>{size}</option>)}
+          </select>
+          <button
+            type="button"
+            onClick={() => setPage(currentPage - 1)}
+            disabled={currentPage <= 1}
+            className="h-9 rounded-lg border border-gray-200 bg-white px-4 text-sm font-bold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-300"
+          >
+            Previous
+          </button>
+          <span className="h-9 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-bold text-gray-700">
+            Page {currentPage} of {totalPages}
+          </span>
+          <button
+            type="button"
+            onClick={() => setPage(currentPage + 1)}
+            disabled={currentPage >= totalPages}
+            className="h-9 rounded-lg border border-gray-200 bg-white px-4 text-sm font-bold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-300"
+          >
+            Next
+          </button>
+        </div>
       </div>
     </div>
   );

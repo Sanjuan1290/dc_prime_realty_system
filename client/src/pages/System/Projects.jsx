@@ -79,6 +79,9 @@ const normalizeProject = (project) => ({
   cadastralLots: project.cadastralLots || [],
   defaultDocs: Number(project.defaultDocs || project.default_documents_count || 0),
   requiredDocs: Number(project.requiredDocs || project.required_documents_count || 0),
+  totalAccounts: Number(project.totalAccounts || 0),
+  accountsWithSubmittedDocuments: Number(project.accountsWithSubmittedDocuments || 0),
+  accountsWithPendingDocuments: Number(project.accountsWithPendingDocuments || 0),
   totalDocuments: Number(project.totalDocuments || 0),
   submittedDocuments: Number(project.submittedDocuments || 0),
   pendingRequiredDocuments: Number(project.pendingRequiredDocuments || 0),
@@ -154,6 +157,9 @@ const Projects = () => {
       const compliance = complianceByProjectId.get(String(project.id)) || {}
       return {
         ...project,
+        totalAccounts: Number(compliance.totalAccounts || 0),
+        accountsWithSubmittedDocuments: Number(compliance.accountsWithSubmittedDocuments || 0),
+        accountsWithPendingDocuments: Number(compliance.accountsWithPendingDocuments || 0),
         totalDocuments: Number(compliance.totalDocuments || 0),
         submittedDocuments: Number(compliance.submittedDocuments || 0),
         pendingRequiredDocuments: Number(compliance.pendingRequiredDocuments || 0),
@@ -281,8 +287,8 @@ const Projects = () => {
   const stats = useMemo(() => {
     const active = projects.filter((project) => project.status === 'active').length
     const inactive = projects.filter((project) => project.status === 'inactive').length
-    const pendingDocuments = projects.reduce(
-      (sum, project) => sum + Number(project.pendingRequiredDocuments || 0),
+    const pendingDocumentAccounts = projects.reduce(
+      (sum, project) => sum + Number(project.accountsWithPendingDocuments || 0),
       0
     )
 
@@ -290,7 +296,7 @@ const Projects = () => {
       total: projects.length,
       active,
       inactive,
-      pendingDocuments,
+      pendingDocumentAccounts,
     }
   }, [projects])
 
@@ -412,7 +418,7 @@ const Projects = () => {
         <StatCard label="Total Projects" value={stats.total} />
         <StatCard label="Active" value={stats.active} />
         <StatCard label="Inactive" value={stats.inactive} />
-        <StatCard label="Pending Documents" value={isComplianceLoading ? '...' : stats.pendingDocuments} />
+        <StatCard label="No. of Incomplete Documents (per account)" value={isComplianceLoading ? '...' : stats.pendingDocumentAccounts} />
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -459,7 +465,7 @@ const Projects = () => {
                   'Location',
                   'Location Code',
                   'Cadastral Lots',
-                  'Docs Submitted',
+                  'Docs Completed/No. of Account',
                   'Status',
                   'Actions',
                 ].map((head) => (
@@ -513,7 +519,7 @@ const Projects = () => {
                     </td>
 
                     <td className="px-4 py-4 font-semibold text-slate-600">
-                      {project.submittedDocuments} / {project.totalDocuments}
+                      {project.accountsWithSubmittedDocuments} / {project.totalAccounts} accounts
                     </td>
 
                     <td className="px-4 py-4">
@@ -674,4 +680,3 @@ const Projects = () => {
 }
 
 export default Projects
-
