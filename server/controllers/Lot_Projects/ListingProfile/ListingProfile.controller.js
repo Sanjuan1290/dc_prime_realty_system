@@ -67,7 +67,6 @@ import {
   cleanBuyerType,
   cleanSecondBuyerRole,
   addIfColumnExists,
-  getReserveSellerOptions,
 } from '../_shared/lotProject.shared.js';
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
 import {
@@ -576,7 +575,6 @@ export const getLotProjectListingProfile = async (req, res) => {
     const soaRows = await getListingSoaRows(connection, project.lot_project_id, row.lot_project_listing_id, row, payments);
     const cadastralLots = await getProjectCadastralLots(project.lot_project_id);
     const defaultDocuments = await getProjectDefaultDocuments(project.lot_project_id);
-    const sellerOptions = await getReserveSellerOptions(connection, project.lot_project_id);
     let buyerForm = { currentLink: null, latestSubmission: null, pendingSubmission: null };
     try {
       buyerForm = await readBuyerFormStateForProfile(connection, row.lot_project_listing_id);
@@ -634,9 +632,6 @@ export const getLotProjectListingProfile = async (req, res) => {
         soaRows,
         payments,
         documents,
-        reserveOptions: {
-          sellers: sellerOptions,
-        },
         buyerForm,
       },
     });

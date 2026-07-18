@@ -1,9 +1,5 @@
-export const documentLibrary = []
-
-export const projectDefaultDocuments = []
-
-export const sellers = []
-
+// Step metadata is UI configuration. Reservation records, documents, agents,
+// rates, and hierarchy previews are loaded from the API.
 export const reserveSteps = [
   {
     id: 1,

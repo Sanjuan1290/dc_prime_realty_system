@@ -1645,30 +1645,50 @@ export const sortComputedRows = (rows = []) =>
   });
 
 
-export const getReserveSellerOptions = async (connection, lotProjectId) => {
+export const getReserveSellerOptions = async (
+  connection,
+  lotProjectId,
+  { search = '', limit = 100 } = {}
+) => {
   if (!(await tableExists(connection, 'accredited_sellers'))) return [];
 
-  const hasSellerRates = await tableExists(connection, 'accredited_seller_lot_project_rates');
-  const hasGroupRates = await tableExists(connection, 'seller_group_lot_project_rates');
-  const sellerRateJoin = hasSellerRates
-    ? `LEFT JOIN accredited_seller_lot_project_rates asr
-         ON asr.accredited_seller_id = acs.accredited_seller_id
-        AND asr.lot_project_id = ?
-        AND asr.accredited_seller_lot_project_rate_status = 'active'`
-    : '';
-  const groupRateJoin = hasGroupRates
-    ? `LEFT JOIN seller_group_lot_project_rates sgr
-         ON sgr.seller_group_id = acs.seller_group_id
-        AND sgr.lot_project_id = ?
-        AND sgr.seller_group_lot_project_rate_status = 'active'`
-    : '';
+  const hasDirectRates = await tableExists(connection, 'agent_lot_project_direct_rates');
+  const hasLegacySellerRates = await tableExists(connection, 'accredited_seller_lot_project_rates');
+  const hasDummyColumns = await columnExists(connection, 'accredited_sellers', 'is_system_dummy');
+  const hasSystemUserColumns = await columnExists(connection, 'users', 'is_system_account');
 
-  const sellerRateSelect = hasSellerRates ? 'asr.accredited_seller_project_rate' : 'NULL';
-  const groupRateSelect = hasGroupRates ? 'sgr.seller_group_pool_rate' : 'NULL';
+  const rateJoin = hasDirectRates
+    ? `INNER JOIN agent_lot_project_direct_rates direct_rate
+         ON direct_rate.accredited_seller_id = acs.accredited_seller_id
+        AND direct_rate.lot_project_id = ?
+        AND direct_rate.direct_rate_status = 'active'`
+    : hasLegacySellerRates
+      ? `INNER JOIN accredited_seller_lot_project_rates direct_rate
+           ON direct_rate.accredited_seller_id = acs.accredited_seller_id
+          AND direct_rate.lot_project_id = ?
+          AND direct_rate.accredited_seller_lot_project_rate_status = 'active'`
+      : '';
+  const rateSelect = hasDirectRates
+    ? 'direct_rate.direct_rate'
+    : hasLegacySellerRates
+      ? 'direct_rate.accredited_seller_project_rate'
+      : '0';
 
-  const params = [];
-  if (hasSellerRates) params.push(lotProjectId);
-  if (hasGroupRates) params.push(lotProjectId);
+  const keyword = String(search || '').trim();
+  const searchSql = keyword
+    ? `AND (
+         TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) LIKE ?
+         OR IFNULL(sg.seller_group_name, '') LIKE ?
+         OR TRIM(CONCAT_WS(' ', parent_user.first_name, parent_user.middle_name, parent_user.last_name)) LIKE ?
+         OR TRIM(CONCAT_WS(' ', owner_user.first_name, owner_user.middle_name, owner_user.last_name)) LIKE ?
+       )`
+    : '';
+  const params = rateJoin ? [lotProjectId] : [];
+  if (keyword) {
+    const like = `%${keyword}%`;
+    params.push(like, like, like, like);
+  }
+  params.push(Math.min(Math.max(Number(limit) || 100, 1), 200));
 
   const [rows] = await connection.query(
     `
@@ -1678,45 +1698,75 @@ export const getReserveSellerOptions = async (connection, lotProjectId) => {
         acs.user_id,
         TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS name,
         u.role,
-        COALESCE(${sellerRateSelect}, ${groupRateSelect}, 0) AS rate,
+        ${rateSelect} AS rate,
+        sg.seller_group_id,
         sg.seller_group_name,
-        ru.id AS reports_under_user_id,
-        TRIM(CONCAT_WS(' ', ru.first_name, ru.middle_name, ru.last_name)) AS reports_under_name
+        parent_acs.accredited_seller_id AS reports_under_accredited_seller_id,
+        parent_user.id AS reports_under_user_id,
+        TRIM(CONCAT_WS(' ', parent_user.first_name, parent_user.middle_name, parent_user.last_name)) AS reports_under_name,
+        ${hasDummyColumns ? 'acs.is_system_dummy' : '0'} AS is_system_dummy,
+        ${hasDummyColumns ? 'acs.dummy_owner_accredited_seller_id' : 'NULL'} AS dummy_owner_accredited_seller_id,
+        TRIM(CONCAT_WS(' ', owner_user.first_name, owner_user.middle_name, owner_user.last_name)) AS owner_name,
+        owner_user.role AS owner_role,
+        ${hasSystemUserColumns ? 'u.is_system_account' : '0'} AS is_system_account
       FROM accredited_sellers acs
       INNER JOIN users u ON u.id = acs.user_id
-      LEFT JOIN seller_groups sg ON sg.seller_group_id = acs.seller_group_id
-      ${sellerRateJoin}
-      ${groupRateJoin}
-      LEFT JOIN users ru ON ru.id = acs.accredited_seller_reports_under_user_id
+      INNER JOIN seller_groups sg
+        ON sg.seller_group_id = acs.seller_group_id
+       AND sg.seller_group_status = 'active'
+      ${rateJoin}
+      LEFT JOIN accredited_sellers parent_acs
+        ON parent_acs.user_id = acs.accredited_seller_reports_under_user_id
+      LEFT JOIN users parent_user ON parent_user.id = parent_acs.user_id
+      LEFT JOIN accredited_sellers owner_acs
+        ON owner_acs.accredited_seller_id = ${hasDummyColumns ? 'acs.dummy_owner_accredited_seller_id' : 'NULL'}
+      LEFT JOIN users owner_user ON owner_user.id = owner_acs.user_id
       WHERE acs.accredited_seller_status = 'active'
         AND u.status = 'active'
-      ORDER BY FIELD(u.role, 'broker_network_manager', 'broker', 'manager', 'agent'), name ASC
+        AND u.role = 'agent'
+        AND ${rateSelect} > 0
+        ${searchSql}
+      ORDER BY
+        ${hasDummyColumns ? 'acs.is_system_dummy' : '0'} ASC,
+        name ASC
+      LIMIT ?
     `,
     params
   );
 
-  const roleLabels = {
-    broker_network_manager: 'Broker Network Manager',
-    broker: 'Broker',
-    manager: 'Manager',
-    agent: 'Agent',
-  };
+  return rows.map((row) => {
+    const isSystemDummy = Number(row.is_system_dummy || row.is_system_account || 0) === 1;
+    const displayName = isSystemDummy && row.owner_name
+      ? `${row.owner_name} — Direct Sales Agent`
+      : row.name || 'Unnamed Agent';
 
-  return rows.map((row) => ({
-    id: row.id,
-    accredited_seller_id: row.accredited_seller_id,
-    user_id: row.user_id,
-    name: row.name || 'Unnamed Seller',
-    role: roleLabels[row.role] || row.role || 'Seller',
-    roleValue: row.role,
-    rate: `${Number(row.rate || 0)}%`,
-    rateValue: Number(row.rate || 0),
-    groupName: row.seller_group_name || '-',
-    reportsUnderName: row.reports_under_name || '-',
-    allocation: row.reports_under_name
-      ? `${roleLabels[row.role] || row.role} under ${row.reports_under_name}`
-      : `${roleLabels[row.role] || row.role} direct assignment`,
-  }));
+    return {
+      id: Number(row.id),
+      accredited_seller_id: Number(row.accredited_seller_id),
+      user_id: Number(row.user_id),
+      name: displayName,
+      role: 'Agent',
+      roleValue: 'agent',
+      rate: `${Number(row.rate || 0).toFixed(2)}%`,
+      rateValue: Number(row.rate || 0),
+      directRate: Number(row.rate || 0),
+      groupId: Number(row.seller_group_id),
+      groupName: row.seller_group_name || '-',
+      reportsUnderId: row.reports_under_accredited_seller_id
+        ? Number(row.reports_under_accredited_seller_id)
+        : null,
+      reportsUnderName: row.reports_under_name || '-',
+      isSystemDummy,
+      ownerId: row.dummy_owner_accredited_seller_id
+        ? Number(row.dummy_owner_accredited_seller_id)
+        : null,
+      ownerName: row.owner_name || null,
+      ownerRole: row.owner_role || null,
+      allocation: row.reports_under_name
+        ? `Agent under ${row.reports_under_name}`
+        : 'Agent direct to group head',
+    };
+  });
 };
 
 const normalizeInterestCalculationType = () => 'amortized';

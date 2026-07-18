@@ -164,7 +164,9 @@ export const getAccredited = async (req, res) => {
     const role = String(req.query.role || 'all');
     const status = String(req.query.status || 'all');
 
-    const where = [];
+    // System direct-sales agents stay inside Seller Group configuration and
+    // are hidden from the normal accreditation directory.
+    const where = ['COALESCE(a.is_system_dummy, 0) = 0'];
     const params = [];
 
     if (search) {
@@ -252,6 +254,7 @@ export const getAccredited = async (req, res) => {
         SUM(u.role = 'agent') AS agent
       FROM accredited_sellers a
       INNER JOIN users u ON u.id = a.user_id
+      WHERE COALESCE(a.is_system_dummy, 0) = 0
     `);
 
     return res.json({

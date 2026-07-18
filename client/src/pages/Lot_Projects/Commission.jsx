@@ -86,7 +86,7 @@ const Commission = () => {
   const queryClient = useQueryClient()
   const [selected, setSelected] = useState(null)
   const [search, setSearch] = useState('')
-  const [saleTypeFilter, setSaleTypeFilter] = useState('all')
+  const [commissionTypeFilter, setCommissionTypeFilter] = useState('all')
   const [eligibilityFilter, setEligibilityFilter] = useState('all')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
@@ -96,9 +96,8 @@ const Commission = () => {
   const queryString = useMemo(() => {
     return new URLSearchParams({
       ...(search.trim() ? { search: search.trim() } : {}),
-      ...(saleTypeFilter !== 'all' ? { saleType: saleTypeFilter.toLowerCase() } : {}),
     }).toString()
-  }, [search, saleTypeFilter])
+  }, [search])
 
   const { data, isLoading, isFetching, isError, error, refetch } = useQuery({
     queryKey: ['lot-commissions', projectSlug, queryString],
@@ -132,10 +131,13 @@ const Commission = () => {
 
   const records = data?.data || []
   const project = data?.project || {}
-  const filteredRecords = useMemo(() => {
-    if (eligibilityFilter === 'all') return records
-    return records.filter((record) => getEligibilityKey(record) === eligibilityFilter)
-  }, [records, eligibilityFilter])
+  const filteredRecords = useMemo(() => records.filter((record) => {
+    const matchesType = commissionTypeFilter === 'all'
+      || String(record.commissionType || '').toLowerCase() === commissionTypeFilter
+    const matchesEligibility = eligibilityFilter === 'all'
+      || getEligibilityKey(record) === eligibilityFilter
+    return matchesType && matchesEligibility
+  }), [records, commissionTypeFilter, eligibilityFilter])
 
   const displayStats = useMemo(
     () => filteredRecords.reduce(
@@ -160,7 +162,7 @@ const Commission = () => {
 
   const resetFilters = () => {
     setSearch('')
-    setSaleTypeFilter('all')
+    setCommissionTypeFilter('all')
     setEligibilityFilter('all')
     setPage(1)
     setAlert({ type: 'info', message: 'Commission filters reset.' })
@@ -206,7 +208,7 @@ const Commission = () => {
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="grid gap-3 xl:grid-cols-[1fr_220px_220px_auto]">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1fr_220px_220px_auto]">
           <label className="relative">
             <FiSearch className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
@@ -221,16 +223,17 @@ const Commission = () => {
           </label>
 
           <select
-            value={saleTypeFilter}
+            value={commissionTypeFilter}
             onChange={(event) => {
-              setSaleTypeFilter(event.target.value)
+              setCommissionTypeFilter(event.target.value)
               setPage(1)
             }}
             className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
+            aria-label="Filter by commission type"
           >
-            <option value="all">All Sale Types</option>
-            <option value="Distributed">Distributed</option>
-            <option value="Direct">Direct</option>
+            <option value="all">All Commission Types</option>
+            <option value="direct">Direct</option>
+            <option value="override">Override</option>
           </select>
 
           <select
@@ -258,27 +261,26 @@ const Commission = () => {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-[1420px] w-full divide-y divide-slate-200 text-sm">
+          <table className="min-w-[1260px] w-full divide-y divide-slate-200 text-sm">
             <thead className="bg-slate-50">
               <tr>
-                {['Unit', 'Client', 'Main Seller', 'Commission Seller', 'Role', 'Level', 'Sale Type', 'Commission Base', 'Rate', 'Gross', 'Released', 'Net Remaining', 'Payment %', 'Actions'].map((head) => (
+                {['Unit', 'Client', 'Seller Name', 'Group Name', 'Role', 'Commission Type', 'Commission Base', 'Rate', 'Gross', 'Released', 'Net Remaining', 'Payment %', 'Actions'].map((head) => (
                   <th key={head} className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">{head}</th>
                 ))}
               </tr>
             </thead>
 
             <tbody className="divide-y divide-slate-100">
-              {isLoading ? <tr><td colSpan={14} className="px-4 py-10 text-center text-sm font-semibold text-slate-500">Loading commissions...</td></tr> : null}
+              {isLoading ? <tr><td colSpan={13} className="px-4 py-10 text-center text-sm font-semibold text-slate-500">Loading commissions...</td></tr> : null}
 
               {!isLoading && paginatedRecords.map((record) => (
                 <tr key={record.id} className="transition hover:bg-slate-50">
                   <td className="px-4 py-4 font-black text-blue-700">{record.unit}</td>
                   <td className="px-4 py-4 font-black text-slate-950">{record.client}</td>
-                  <td className="px-4 py-4 font-black text-slate-800">{record.mainSeller || '-'}</td>
-                  <td className="px-4 py-4 font-semibold text-slate-700">{record.seller}</td>
+                  <td className="px-4 py-4 font-black text-slate-800">{record.seller || '-'}</td>
+                  <td className="px-4 py-4 font-semibold text-slate-600">{record.sellerGroup || '-'}</td>
                   <td className="px-4 py-4 font-semibold text-slate-600">{record.role}</td>
-                  <td className="px-4 py-4"><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">{record.hierarchyLevel}</span></td>
-                  <td className="px-4 py-4 font-semibold text-slate-600">{record.saleType}</td>
+                  <td className="px-4 py-4"><span className={`rounded-full px-3 py-1 text-xs font-black ${String(record.commissionType).toLowerCase() === 'direct' ? 'bg-blue-50 text-blue-700' : 'bg-violet-50 text-violet-700'}`}>{record.commissionType || 'Override'}</span></td>
                   <td className="px-4 py-4 font-black text-slate-950">{money(record.commissionBase)}</td>
                   <td className="px-4 py-4 font-semibold text-slate-600">{record.rate}%</td>
                   <td className="px-4 py-4 font-black text-slate-950">{money(record.grossCommission)}</td>
@@ -296,7 +298,7 @@ const Commission = () => {
 
               {!isLoading && !filteredRecords.length ? (
                 <tr>
-                  <td colSpan={14} className="px-4 py-10 text-center">
+                  <td colSpan={13} className="px-4 py-10 text-center">
                     <FiDollarSign className="mx-auto h-8 w-8 text-slate-300" />
                     <p className="mt-3 text-sm font-black text-slate-700">No commission records found</p>
                     <p className="mt-1 text-sm font-semibold text-slate-500">Try changing your search or filters.</p>

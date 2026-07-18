@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import {
   FiAlertCircle,
   FiChevronLeft,
@@ -11,13 +12,13 @@ import StatusAlert from '../../../Shared/StatusAlert'
 import ReserveClientProfileModal from './ReserveClientProfileModal'
 import ReserveDocumentChecklistModal from './ReserveDocumentChecklistModal'
 import ReservePaymentTermsModal from './ReservePaymentTermsModal'
-import { documentLibrary as fallbackDocumentLibrary, projectDefaultDocuments as fallbackProjectDefaultDocuments, reserveSteps } from './reserveData'
+import { reserveSteps } from './reserveData'
 import { getInitialClientForm, getListingTcp, getPaymentCalculations } from './reserveUtils'
 import { StepPill } from './ReserveShared'
 import { getBuyerProfileValidationError } from '../../../../utils/buyerProfileValidation'
+import { useFetch } from '../../../../utils/useFetch'
 
 const todayISO = () => new Date().toISOString().slice(0, 10)
-
 
 const normalizeLibraryDocument = (document) => ({
   ...document,
@@ -25,16 +26,31 @@ const normalizeLibraryDocument = (document) => ({
   document_id: Number(document.document_id || document.id),
   name: document.name || document.document_name,
   description: document.description || document.document_description || 'No description',
-  requirement: document.requirement || (document.document_is_required ? 'required' : 'required'),
+  requirement: document.requirement || (document.document_is_required ? 'required' : 'optional'),
   status: document.status || document.document_status || 'active',
+})
+
+const normalizeAgent = (agent = {}) => ({
+  ...agent,
+  id: Number(agent.accreditedSellerId || agent.accredited_seller_id || agent.id),
+  accredited_seller_id: Number(agent.accreditedSellerId || agent.accredited_seller_id || agent.id),
+  name: agent.name || 'Unnamed sales agent',
+  role: agent.role || 'Agent',
+  roleValue: agent.roleValue || agent.role_value || 'agent',
+  directRate: Number(agent.directRate ?? agent.rateValue ?? agent.rate ?? 0),
+  rateValue: Number(agent.directRate ?? agent.rateValue ?? agent.rate ?? 0),
+  groupName: agent.groupName || agent.group_name || '-',
+  reportsUnderName: agent.reportsUnderName || agent.reports_under_name || '-',
+  isSystemDummy: Boolean(agent.isSystemDummy ?? agent.is_system_dummy),
+  ownerName: agent.ownerName || agent.owner_name || null,
 })
 
 const ReserveListingModal = ({
   listing,
+  project,
   client,
   documentLibrary: documentLibraryProp = [],
   projectDefaultDocuments: projectDefaultDocumentsProp = [],
-  sellerOptions = [],
   documentTemplates = [],
   templateDocuments = [],
   isLoadingDocuments = false,
@@ -49,31 +65,28 @@ const ReserveListingModal = ({
   const [selectedDocuments, setSelectedDocuments] = useState([])
   const [searchDocument, setSearchDocument] = useState('')
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
+  const [agentSearch, setAgentSearch] = useState('')
+  const [debouncedAgentSearch, setDebouncedAgentSearch] = useState('')
+  const [selectedAgentSnapshot, setSelectedAgentSnapshot] = useState(null)
   const [alert, setAlert] = useState(null)
   const [invalidClientField, setInvalidClientField] = useState('')
-  const [isLoadingDefaults, setIsLoadingDefaults] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
-  const [deletingDocId, setDeletingDocId] = useState(null)
 
   const [paymentForm, setPaymentForm] = useState({
     sellerId: '',
     modeOfPayment: 'installment',
-    saleChannel: 'distributed',
-
     reservationFee: String(listing?.reservationFee || '50000'),
     startingDate: todayISO(),
     firstDueDate: todayISO(),
     legalMiscFee: 'include_in_monthly',
     legalMiscFeeMode: 'include_in_monthly',
     legalMiscFeeAmount: String(listing?.lmfAmount || listing?.legalMiscFeeAmount || 0),
-
     downpaymentPercentageMode: '30',
     customDownpaymentPercentage: '',
     downpaymentTermsMode: 'spot_cash',
     customDownpaymentTerms: '',
     reservationFeeTreatment: 'separate',
     dpDiscountPercentage: '0',
-
     monthlyTermsMode: '36',
     customMonthlyTerms: '',
     interestRate: String(listing?.annualInterestRate || '0'),
@@ -82,62 +95,88 @@ const ReserveListingModal = ({
   })
 
   const tcp = useMemo(() => getListingTcp(listing), [listing])
+  const projectSlug = project?.slug || project?.lot_project_slug || listing?.project_slug || ''
+  const listingLookup = listing?.id || listing?.listing_id || listing?.lot_project_listing_id || listing?.unit_id || listing?.unitCode || ''
 
-  const documentLibrary = useMemo(() => {
-    const source = documentLibraryProp.length ? documentLibraryProp : fallbackDocumentLibrary
-    return source.map(normalizeLibraryDocument).filter((document) => document.id)
-  }, [documentLibraryProp])
+  const documentLibrary = useMemo(
+    () => documentLibraryProp.map(normalizeLibraryDocument).filter((document) => document.id),
+    [documentLibraryProp]
+  )
 
-  const projectDefaultDocuments = useMemo(() => {
-    const source = projectDefaultDocumentsProp.length ? projectDefaultDocumentsProp : fallbackProjectDefaultDocuments
-    return source.map(normalizeLibraryDocument).filter((document) => document.id)
-  }, [projectDefaultDocumentsProp])
+  const projectDefaultDocuments = useMemo(
+    () => projectDefaultDocumentsProp.map(normalizeLibraryDocument).filter((document) => document.id),
+    [projectDefaultDocumentsProp]
+  )
 
-  const activeDocumentTemplates = useMemo(() => {
-    return (documentTemplates || []).filter((template) => template.template_status !== 'inactive')
-  }, [documentTemplates])
+  const activeDocumentTemplates = useMemo(
+    () => (documentTemplates || []).filter((template) => template.template_status !== 'inactive'),
+    [documentTemplates]
+  )
 
-  const availableSellers = useMemo(() => {
-    return (sellerOptions || [])
-      .map((seller) => ({
-        ...seller,
-        id: Number(seller.accredited_seller_id || seller.id),
-        name: seller.name || 'Unnamed Seller',
-        role: seller.role || 'Seller',
-        rate: seller.rate || `${Number(seller.rateValue || 0)}%`,
-        rateValue: Number(seller.rateValue ?? String(seller.rate || '0').replace('%', '')) || 0,
-        allocation: seller.allocation || 'Saved seller assignment',
-      }))
-      .filter((seller) => seller.id)
-  }, [sellerOptions])
+  // Delay agent searches slightly so typing does not issue one request per key.
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => setDebouncedAgentSearch(agentSearch.trim()), 300)
+    return () => window.clearTimeout(timeoutId)
+  }, [agentSearch])
+
+  const agentsQuery = useQuery({
+    queryKey: ['reservation-agents', projectSlug, debouncedAgentSearch],
+    queryFn: () => {
+      const params = new URLSearchParams({ limit: '50' })
+      if (debouncedAgentSearch) params.set('search', debouncedAgentSearch)
+      return useFetch(`/projects/lot-projects/${projectSlug}/reservation-agents?${params.toString()}`)
+    },
+    enabled: Boolean(projectSlug && activeStep === 3),
+    staleTime: 30_000,
+  })
+
+  const fetchedAgents = useMemo(
+    () => (agentsQuery.data?.data || []).map(normalizeAgent).filter((agent) => agent.id),
+    [agentsQuery.data]
+  )
+
+  const selectedAgent = useMemo(() => (
+    fetchedAgents.find((agent) => String(agent.id) === String(paymentForm.sellerId))
+    || selectedAgentSnapshot
+    || null
+  ), [fetchedAgents, paymentForm.sellerId, selectedAgentSnapshot])
 
   useEffect(() => {
-    if (!paymentForm.sellerId && availableSellers.length) {
-      setPaymentForm((current) => ({ ...current, sellerId: String(availableSellers[0].id) }))
-    }
-  }, [availableSellers, paymentForm.sellerId])
+    if (!paymentForm.sellerId) return
+    const selected = fetchedAgents.find((agent) => String(agent.id) === String(paymentForm.sellerId))
+    if (selected) setSelectedAgentSnapshot(selected)
+  }, [fetchedAgents, paymentForm.sellerId])
 
+  const previewQuery = useQuery({
+    queryKey: ['commission-preview', projectSlug, String(listingLookup), String(paymentForm.sellerId)],
+    queryFn: () => {
+      const params = new URLSearchParams({
+        listingId: String(listingLookup),
+        agentId: String(paymentForm.sellerId),
+      })
+      return useFetch(`/projects/lot-projects/${projectSlug}/commission-preview?${params.toString()}`)
+    },
+    enabled: Boolean(projectSlug && listingLookup && paymentForm.sellerId && activeStep === 3),
+    retry: false,
+  })
+
+  const commissionPreview = previewQuery.data?.data || null
   const hasSecondBuyer = clientForm.buyerType === 'spouses' || clientForm.buyerType === 'and_account'
 
   const filteredDocuments = useMemo(() => {
     const keyword = searchDocument.trim().toLowerCase()
-
     if (!keyword) return documentLibrary
-
-    return documentLibrary.filter((document) =>
-      String(document.name || '').toLowerCase().includes(keyword)
-    )
+    return documentLibrary.filter((document) => String(document.name || '').toLowerCase().includes(keyword))
   }, [documentLibrary, searchDocument])
 
   const updatePaymentField = (key, value) => {
-    setPaymentForm((current) => ({
-      ...current,
-      [key]: value,
-    }))
-
-    if (alert?.type === 'error') {
-      setAlert(null)
+    // Clear the old hierarchy immediately when another agent is selected.
+    if (key === 'sellerId' && String(value) !== String(paymentForm.sellerId)) {
+      setSelectedAgentSnapshot(fetchedAgents.find((agent) => String(agent.id) === String(value)) || null)
     }
+
+    setPaymentForm((current) => ({ ...current, [key]: value }))
+    if (alert?.type === 'error') setAlert(null)
   }
 
   const updateBuyerType = (buyerType) => {
@@ -147,47 +186,37 @@ const ReserveListingModal = ({
       buyerType,
       secondBuyerRole: buyerType === 'spouses' ? 'spouse' : 'co_owner',
     }))
-
     setAlert({
       type: 'info',
-      message:
-        buyerType === 'single'
-          ? 'Single buyer selected. Second buyer form hidden.'
-          : 'Second buyer form shown for the Offer to Buy printout.',
+      message: buyerType === 'single'
+        ? 'Single buyer selected. Second buyer form hidden.'
+        : 'Second buyer form shown for the Offer to Buy printout.',
     })
   }
 
   const handleClientFieldChange = (fieldKey) => {
-    if (invalidClientField === fieldKey) {
-      setInvalidClientField('')
-    }
+    if (invalidClientField === fieldKey) setInvalidClientField('')
   }
 
-  const isDocumentAdded = (documentId) => selectedDocuments.some((item) => Number(item.document_id || item.id) === Number(documentId))
+  const isDocumentAdded = (documentId) => selectedDocuments.some(
+    (item) => Number(item.document_id || item.id) === Number(documentId)
+  )
 
   const addDocument = (document) => {
     const documentId = Number(document.document_id || document.id)
-
     if (isDocumentAdded(documentId)) {
       setAlert({ type: 'info', message: 'Document is already added.' })
       return
     }
 
-    setSelectedDocuments((current) => [
-      ...current,
-      {
-        ...document,
-        id: documentId,
-        document_id: documentId,
-        requirement: document.requirement || 'required',
-        status: 'active',
-      },
-    ])
-
-    setAlert({
-      type: 'success',
-      message: `${document.name} added to reservation checklist.`,
-    })
+    setSelectedDocuments((current) => [...current, {
+      ...document,
+      id: documentId,
+      document_id: documentId,
+      requirement: document.requirement || 'required',
+      status: 'active',
+    }])
+    setAlert({ type: 'success', message: `${document.name} added to the reservation checklist.` })
   }
 
   const mergeSelectedDocuments = (documents = []) => {
@@ -196,15 +225,16 @@ const ReserveListingModal = ({
       const additions = documents
         .map(normalizeLibraryDocument)
         .filter((document) => document.id && !existingIds.has(Number(document.id)))
-
       return [...current, ...additions]
     })
   }
 
   const loadSelectedTemplate = () => {
-    const template = activeDocumentTemplates.find((item) => String(item.template_id) === String(selectedTemplateId))
+    const template = activeDocumentTemplates.find(
+      (item) => String(item.template_id) === String(selectedTemplateId)
+    )
     if (!template) {
-      setAlert({ type: 'error', message: 'Select a template first.' })
+      setAlert({ type: 'error', message: 'Select a document template first.' })
       return
     }
 
@@ -221,7 +251,7 @@ const ReserveListingModal = ({
       }))
 
     if (!documents.length) {
-      setAlert({ type: 'warning', message: 'Selected template has no documents.' })
+      setAlert({ type: 'warning', message: 'The selected template has no active documents.' })
       return
     }
 
@@ -230,25 +260,24 @@ const ReserveListingModal = ({
   }
 
   const removeDocument = (documentId) => {
-    setDeletingDocId(documentId)
-    setAlert({ type: 'loading', message: 'Removing document from checklist...' })
-
-    window.setTimeout(() => {
-      setSelectedDocuments((current) => current.filter((document) => Number(document.document_id || document.id) !== Number(documentId)))
-      setDeletingDocId(null)
-      setAlert({ type: 'warning', message: 'Document removed from reservation checklist.' })
-    }, 350)
+    setSelectedDocuments((current) => current.filter(
+      (document) => Number(document.document_id || document.id) !== Number(documentId)
+    ))
+    setAlert({ type: 'warning', message: 'Document removed from the reservation checklist.' })
   }
 
   const loadProjectDefaults = () => {
-    setIsLoadingDefaults(true)
-    setAlert({ type: 'loading', message: 'Loading project default documents...' })
+    if (isLoadingDocuments) {
+      setAlert({ type: 'loading', message: 'Loading project default documents...' })
+      return
+    }
+    if (!projectDefaultDocuments.length) {
+      setAlert({ type: 'warning', message: 'This project has no default documents configured.' })
+      return
+    }
 
-    window.setTimeout(() => {
-      mergeSelectedDocuments(projectDefaultDocuments)
-      setIsLoadingDefaults(false)
-      setAlert({ type: 'success', message: 'Project default documents loaded.' })
-    }, 600)
+    mergeSelectedDocuments(projectDefaultDocuments)
+    setAlert({ type: 'success', message: 'Project default documents loaded.' })
   }
 
   const validateClientStep = () => {
@@ -258,51 +287,55 @@ const ReserveListingModal = ({
       setAlert({ type: 'error', message: validationError.message })
       return false
     }
-
     setInvalidClientField('')
     return true
   }
 
   const validatePaymentStep = () => {
-    if (!availableSellers.length) {
-      setAlert({ type: 'error', message: 'No active accredited sellers found for this project.' })
+    if (!paymentForm.sellerId || !selectedAgent) {
+      setAlert({ type: 'error', message: 'Select an active sales agent for this reservation.' })
       return false
     }
-
-    if (!paymentForm.sellerId) {
-      setAlert({ type: 'error', message: 'Assigned seller / unit manager is required.' })
+    if (String(selectedAgent.roleValue).toLowerCase() !== 'agent') {
+      setAlert({ type: 'error', message: 'Only active sales agents can be assigned to a reservation.' })
       return false
     }
-
+    if (Number(selectedAgent.directRate || 0) <= 0) {
+      setAlert({ type: 'error', message: 'The selected agent does not have an active direct rate for this project.' })
+      return false
+    }
+    if (previewQuery.isLoading || previewQuery.isFetching) {
+      setAlert({ type: 'loading', message: 'Calculating the commission hierarchy...' })
+      return false
+    }
+    if (previewQuery.isError || !commissionPreview) {
+      setAlert({ type: 'error', message: previewQuery.error?.message || 'The commission hierarchy could not be loaded.' })
+      return false
+    }
+    if (!commissionPreview.isValid) {
+      setAlert({ type: 'error', message: 'The selected agent hierarchy has an invalid commission allocation.' })
+      return false
+    }
     if (!paymentForm.reservationFee || Number(paymentForm.reservationFee) <= 0) {
       setAlert({ type: 'error', message: 'Reservation fee is required.' })
       return false
     }
 
     const isCash = String(paymentForm.modeOfPayment || '').toLowerCase() === 'cash'
-
     if (!isCash && paymentForm.downpaymentPercentageMode === 'custom') {
-      const rawCustomDownpayment = String(paymentForm.customDownpaymentPercentage ?? '').trim()
-      const customDownpaymentPercentage = Number(rawCustomDownpayment)
-
-      if (
-        rawCustomDownpayment === '' ||
-        !Number.isFinite(customDownpaymentPercentage) ||
-        customDownpaymentPercentage < 0 ||
-        customDownpaymentPercentage > 100
-      ) {
+      const rawValue = String(paymentForm.customDownpaymentPercentage ?? '').trim()
+      const value = Number(rawValue)
+      if (rawValue === '' || !Number.isFinite(value) || value < 0 || value > 100) {
         setAlert({ type: 'error', message: 'Custom downpayment percentage must be between 0 and 100.' })
         return false
       }
     }
-
     if (!isCash && paymentForm.downpaymentTermsMode === 'custom' && Number(paymentForm.customDownpaymentTerms || 0) <= 0) {
-      setAlert({ type: 'error', message: 'Custom downpayment terms is required.' })
+      setAlert({ type: 'error', message: 'Custom downpayment terms are required.' })
       return false
     }
-
     if (!isCash && paymentForm.monthlyTermsMode === 'custom' && Number(paymentForm.customMonthlyTerms || 0) <= 0) {
-      setAlert({ type: 'error', message: 'Custom monthly terms is required.' })
+      setAlert({ type: 'error', message: 'Custom monthly terms are required.' })
       return false
     }
 
@@ -311,24 +344,18 @@ const ReserveListingModal = ({
       setAlert({ type: 'error', message: 'Select a valid daily penalty rate.' })
       return false
     }
-
     const graceDays = Number(paymentForm.penaltyGraceDays)
     if (!Number.isInteger(graceDays) || graceDays < 0 || graceDays > 31) {
       setAlert({ type: 'error', message: 'Penalty grace period must be between 0 and 31 days.' })
       return false
     }
-
     return true
   }
 
   const goNext = () => {
     if (activeStep === 1 && !validateClientStep()) return
-
     setActiveStep((current) => Math.min(current + 1, 3))
-    setAlert({
-      type: 'success',
-      message: `${reserveSteps[activeStep - 1].title} saved in draft. Continue to the next step.`,
-    })
+    setAlert({ type: 'success', message: `${reserveSteps[activeStep - 1].title} saved in this reservation draft.` })
   }
 
   const goBack = () => {
@@ -341,31 +368,27 @@ const ReserveListingModal = ({
       setActiveStep(1)
       return
     }
-
     if (!validatePaymentStep()) {
       setActiveStep(3)
       return
     }
 
-    const selectedSeller = availableSellers.find((seller) => String(seller.id) === String(paymentForm.sellerId)) || availableSellers[0] || null
     const paymentCalculations = getPaymentCalculations(tcp, paymentForm)
 
+    // New reservations always use distributed commission generation. A
+    // non-agent direct sale is represented by that seller's system agent.
     const payload = {
       listing,
       buyerFormSubmissionId: buyerFormSubmissionId || undefined,
-      clientProfile: {
-        ...clientForm,
-        profileStatus: 'complete',
-      },
+      clientProfile: { ...clientForm, profileStatus: 'complete' },
       documents: selectedDocuments,
       reservation: {
         status: 'reserved',
-        seller: selectedSeller,
+        seller: selectedAgent,
         modeOfPayment: paymentForm.modeOfPayment,
-        saleChannel: paymentForm.saleChannel,
         paymentTerms: {
           ...paymentForm,
-          sellerId: selectedSeller?.id || paymentForm.sellerId,
+          sellerId: selectedAgent.id,
           legalMiscFeeMode: paymentForm.legalMiscFeeMode || paymentForm.legalMiscFee,
           legalMiscFeeAmount: paymentForm.legalMiscFeeAmount,
           tcp,
@@ -380,170 +403,64 @@ const ReserveListingModal = ({
     }
 
     setIsSaving(true)
-    setAlert({ type: 'loading', message: mode === 'submission-review' ? 'Approving buyer form and creating reservation...' : 'Saving reservation to database...' })
+    setAlert({
+      type: 'loading',
+      message: mode === 'submission-review'
+        ? 'Approving the buyer form and creating the reservation...'
+        : 'Saving the reservation and commission records...',
+    })
 
     try {
       await onReserve?.({
-        listing: {
-          unitId: listing?.unit_id || listing?.unitCode || 'LA-0000',
-        },
+        listing: { unitId: listing?.unit_id || listing?.unitCode || 'Selected Unit' },
         ...payload,
       })
-      setAlert({ type: 'success', message: 'Reservation saved successfully.' })
+      setAlert({ type: 'success', message: 'Reservation created successfully.' })
     } catch (error) {
-      setAlert({ type: 'error', message: error?.message || 'Failed to reserve listing.' })
+      setAlert({ type: 'error', message: error?.message || 'Failed to reserve the listing.' })
     } finally {
       setIsSaving(false)
     }
   }
 
+  const reservationBlocked = isSaving || previewQuery.isLoading || previewQuery.isFetching || !commissionPreview?.isValid
+
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/50 p-4">
-      <div className="flex h-[94vh] w-full max-w-7xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
-        <div className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 px-5">
-          <div>
-            <h2 className="text-lg font-black text-slate-950">{mode === 'submission-review' ? 'Review Buyer Form & Reserve' : 'Reserve Listing'}</h2>
-            <p className="text-xs font-semibold text-slate-500">
-              {listing?.unit_id || listing?.unitCode || 'Selected Unit'} · {listing?.project_name || listing?.projectName || 'Bailen Project'}
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/50 p-0 sm:p-4">
+      <div
+        className="flex h-dvh w-full max-w-7xl flex-col overflow-hidden rounded-none border border-slate-200 bg-white shadow-2xl sm:h-[94vh] sm:rounded-xl"
+        aria-busy={isSaving || agentsQuery.isFetching || previewQuery.isFetching}
+      >
+        <div className="flex min-h-16 shrink-0 items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 sm:px-5">
+          <div className="min-w-0">
+            <h2 className="truncate text-lg font-black text-slate-950">{mode === 'submission-review' ? 'Review Buyer Form & Reserve' : 'Reserve Listing'}</h2>
+            <p className="truncate text-xs font-semibold text-slate-500">
+              {listing?.unit_id || listing?.unitCode || 'Selected Unit'} · {project?.name || listing?.project_name || listing?.projectName || 'Selected Project'}
             </p>
           </div>
-
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isSaving}
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
-            aria-label="Close reserve listing modal"
-          >
-            <FiX className="h-4 w-4" />
-          </button>
+          <button type="button" onClick={onClose} disabled={isSaving} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60" aria-label="Close reserve listing modal"><FiX className="h-5 w-5" /></button>
         </div>
 
-        <div className="shrink-0 border-b border-slate-200 bg-slate-50 p-4">
-          <div className="flex gap-3 overflow-x-auto">
-            {reserveSteps.map((step) => (
-              <StepPill
-                key={step.id}
-                step={step}
-                activeStep={activeStep}
-                completed={activeStep > step.id}
-              />
-            ))}
-          </div>
+        <div className="shrink-0 border-b border-slate-200 bg-slate-50 p-4"><div className="flex gap-3 overflow-x-auto">{reserveSteps.map((step) => <StepPill key={step.id} step={step} activeStep={activeStep} completed={activeStep > step.id} />)}</div></div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-4 sm:p-5">
+          {alert ? <StatusAlert type={alert.type} message={alert.message} onClose={alert.type === 'loading' ? undefined : () => setAlert(null)} className="mb-4" /> : null}
+
+          {mode === 'submission-review' && submissionMeta ? <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-900"><p className="font-black">Buyer-submitted information is prefilled below.</p><p className="mt-1 text-xs">Review and correct the profile, then complete the document checklist and payment terms before approval.</p></div> : null}
+
+          {activeStep === 1 ? <ReserveClientProfileModal clientForm={clientForm} setClientForm={setClientForm} hasSecondBuyer={hasSecondBuyer} updateBuyerType={updateBuyerType} invalidField={invalidClientField} onFieldChange={handleClientFieldChange} title={mode === 'submission-review' ? 'Submitted Buyer Profile' : 'Client Profile'} description={mode === 'submission-review' ? 'Review the information submitted by the buyer. Admin corrections will be saved with the final reservation.' : undefined} /> : null}
+
+          {activeStep === 2 ? <ReserveDocumentChecklistModal filteredDocuments={filteredDocuments} searchDocument={searchDocument} setSearchDocument={setSearchDocument} selectedDocuments={selectedDocuments} isSaving={isSaving} isLoadingDefaults={isLoadingDocuments} deletingDocId={null} isDocumentAdded={isDocumentAdded} addDocument={addDocument} removeDocument={removeDocument} loadProjectDefaults={loadProjectDefaults} documentTemplates={activeDocumentTemplates} selectedTemplateId={selectedTemplateId} setSelectedTemplateId={setSelectedTemplateId} loadSelectedTemplate={loadSelectedTemplate} /> : null}
+
+          {activeStep === 3 ? <ReservePaymentTermsModal listing={listing} project={project} tcp={tcp} paymentForm={paymentForm} updatePaymentField={updatePaymentField} agents={fetchedAgents} selectedAgent={selectedAgent} agentSearch={agentSearch} setAgentSearch={setAgentSearch} isLoadingAgents={agentsQuery.isLoading || agentsQuery.isFetching} agentsError={!projectSlug ? 'Project information is missing.' : agentsQuery.isError ? agentsQuery.error?.message || 'Failed to load sales agents.' : null} commissionPreview={commissionPreview} isLoadingPreview={previewQuery.isLoading || previewQuery.isFetching} previewError={previewQuery.isError ? previewQuery.error?.message || 'Failed to load the commission hierarchy.' : null} /> : null}
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-5">
-          {alert ? (
-            <StatusAlert
-              type={alert.type}
-              message={alert.message}
-              onClose={alert.type === 'loading' ? undefined : () => setAlert(null)}
-              className="mb-4"
-            />
-          ) : null}
-
-          {mode === 'submission-review' && submissionMeta ? (
-            <div className="mb-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-900">
-              <p className="font-black">Buyer-submitted information is prefilled below.</p>
-              <p className="mt-1 text-xs">Review and correct the profile, then complete the document checklist and payment terms before approval.</p>
-            </div>
-          ) : null}
-
-          {activeStep === 1 ? (
-            <ReserveClientProfileModal
-              clientForm={clientForm}
-              setClientForm={setClientForm}
-              hasSecondBuyer={hasSecondBuyer}
-              updateBuyerType={updateBuyerType}
-              invalidField={invalidClientField}
-              onFieldChange={handleClientFieldChange}
-              title={mode === 'submission-review' ? 'Submitted Buyer Profile' : 'Client Profile'}
-              description={mode === 'submission-review' ? 'Review the information submitted by the buyer. Admin corrections will be saved with the final reservation.' : undefined}
-            />
-          ) : null}
-
-          {activeStep === 2 ? (
-            <ReserveDocumentChecklistModal
-              filteredDocuments={filteredDocuments}
-              searchDocument={searchDocument}
-              setSearchDocument={setSearchDocument}
-              selectedDocuments={selectedDocuments}
-              isSaving={isSaving}
-              isLoadingDefaults={isLoadingDefaults || isLoadingDocuments}
-              deletingDocId={deletingDocId}
-              isDocumentAdded={isDocumentAdded}
-              addDocument={addDocument}
-              removeDocument={removeDocument}
-              loadProjectDefaults={loadProjectDefaults}
-              documentTemplates={activeDocumentTemplates}
-              selectedTemplateId={selectedTemplateId}
-              setSelectedTemplateId={setSelectedTemplateId}
-              loadSelectedTemplate={loadSelectedTemplate}
-            />
-          ) : null}
-
-          {activeStep === 3 ? (
-            <ReservePaymentTermsModal
-              listing={listing}
-              tcp={tcp}
-              paymentForm={paymentForm}
-              updatePaymentField={updatePaymentField}
-              sellerOptions={availableSellers}
-            />
-          ) : null}
-        </div>
-
-        <div className="flex shrink-0 flex-col gap-2 border-t border-slate-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2 text-sm font-semibold text-slate-500">
-            <FiAlertCircle className="h-4 w-4" />
-            <span>
-              Step {activeStep} of {reserveSteps.length}
-            </span>
-          </div>
-
-          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isSaving}
-              className="h-10 rounded-lg border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              Cancel
-            </button>
-
-            {activeStep > 1 ? (
-              <button
-                type="button"
-                onClick={goBack}
-                disabled={isSaving}
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <FiChevronLeft className="h-4 w-4" />
-                Back
-              </button>
-            ) : null}
-
-            {activeStep < 3 ? (
-              <button
-                type="button"
-                onClick={goNext}
-                disabled={isSaving}
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Next
-                <FiChevronRight className="h-4 w-4" />
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={handleReserve}
-                disabled={isSaving}
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {isSaving ? <FiLoader className="h-4 w-4 animate-spin" /> : <FiUserCheck className="h-4 w-4" />}
-                {isSaving ? (mode === 'submission-review' ? 'Approving...' : 'Reserving...') : (mode === 'submission-review' ? 'Approve & Reserve Unit' : 'Reserve Listing')}
-              </button>
-            )}
+        <div className="flex shrink-0 flex-col gap-3 border-t border-slate-200 bg-white px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+          <div className="flex items-center gap-2 text-sm font-semibold text-slate-500"><FiAlertCircle className="h-4 w-4" /><span>Step {activeStep} of {reserveSteps.length}</span></div>
+          <div className="grid gap-2 sm:flex sm:justify-end">
+            <button type="button" onClick={onClose} disabled={isSaving} className="h-11 rounded-lg border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">Cancel</button>
+            {activeStep > 1 ? <button type="button" onClick={goBack} disabled={isSaving} className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"><FiChevronLeft className="h-4 w-4" />Back</button> : null}
+            {activeStep < 3 ? <button type="button" onClick={goNext} disabled={isSaving} className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">Next<FiChevronRight className="h-4 w-4" /></button> : <button type="button" onClick={handleReserve} disabled={reservationBlocked} className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300">{isSaving ? <FiLoader className="h-4 w-4 animate-spin" /> : <FiUserCheck className="h-4 w-4" />}{isSaving ? (mode === 'submission-review' ? 'Approving...' : 'Reserving...') : previewQuery.isFetching ? 'Calculating...' : (mode === 'submission-review' ? 'Approve & Reserve Unit' : 'Reserve Listing')}</button>}
           </div>
         </div>
       </div>

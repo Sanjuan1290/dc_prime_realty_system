@@ -409,12 +409,12 @@ export const reserveLotProjectListing = async (req, res) => {
       return res.status(400).json({ message: 'Penalty grace period must be between 0 and 31 days.' });
     }
     const assignedSellerId = Number(terms.sellerId || reservation.sellerId || reservation.seller?.id || reservation.seller?.accredited_seller_id || 0) || null;
-    const saleChannel = String(reservation.saleChannel || terms.saleChannel || 'distributed') === 'direct_to_developer'
-      ? 'direct_to_developer'
-      : 'distributed';
+    // New reservations always use distributed commission generation. A non-agent
+    // sale is represented by a system-owned agent created from the Seller Group page.
+    const saleChannel = 'distributed';
 
     if (!assignedSellerId) {
-      return res.status(400).json({ message: 'Assigned seller / unit manager is required.' });
+      return res.status(400).json({ message: 'Assigned sales agent is required.' });
     }
 
     if (await tableExists(connection, 'accredited_sellers')) {
@@ -439,7 +439,13 @@ export const reserveLotProjectListing = async (req, res) => {
 
       const assignedSeller = sellerRows[0];
       if (!assignedSeller || assignedSeller.accredited_seller_status !== 'active' || assignedSeller.user_status !== 'active') {
-        return res.status(400).json({ message: 'Assigned seller / unit manager is not active.' });
+        return res.status(400).json({ message: 'Assigned sales agent is not active.' });
+      }
+      if (assignedSeller.role !== 'agent') {
+        return res.status(400).json({ message: 'Only active sales agents can be assigned to a reservation.' });
+      }
+      if (assignedSeller.seller_group_status !== 'active') {
+        return res.status(400).json({ message: 'The selected sales agent belongs to an inactive seller group.' });
       }
     }
 

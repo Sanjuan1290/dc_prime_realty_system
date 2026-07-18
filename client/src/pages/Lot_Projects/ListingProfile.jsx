@@ -139,7 +139,6 @@ const ListingProfile = () => {
   const soaRows = profile.soaRows || []
   const payments = profile.payments || []
   const documents = profile.documents || []
-  const reserveSellerOptions = profile.reserveOptions?.sellers || []
   const profileBuyerForm = profile.buyerForm || {}
   const buyerForm = buyerFormStateQuery.isSuccess
     ? { ...profileBuyerForm, ...(buyerFormStateQuery.data?.data || {}) }
@@ -735,7 +734,6 @@ const ListingProfile = () => {
           project={project}
           documentLibrary={documentLibrary}
           projectDefaultDocuments={project.defaultDocuments || []}
-          sellerOptions={reserveSellerOptions}
           documentTemplates={documentTemplates}
           templateDocuments={templateDocuments}
           isLoadingDocuments={reserveDocumentsQuery.isLoading || reserveTemplatesQuery.isLoading}

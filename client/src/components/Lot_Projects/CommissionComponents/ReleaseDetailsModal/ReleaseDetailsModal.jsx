@@ -169,8 +169,8 @@ const ReleaseDetailsModal = ({ commission, onClose, onAction, isSaving = false, 
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/55 p-4">
-      <div className="my-2 flex w-full max-w-[1120px] flex-col overflow-hidden rounded-md border border-slate-200 bg-white shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/55 p-0 sm:p-4">
+      <div className="flex min-h-dvh w-full max-w-[1120px] flex-col overflow-hidden rounded-none border border-slate-200 bg-white shadow-2xl sm:my-2 sm:min-h-0 sm:rounded-xl">
         <div className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 px-3">
           <h2 className="text-base font-black text-slate-950">Commission Details</h2>
           <button type="button" onClick={onClose} disabled={isSaving} className="flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60" aria-label="Close commission details">
@@ -187,8 +187,7 @@ const ReleaseDetailsModal = ({ commission, onClose, onAction, isSaving = false, 
               <InfoCard label="Seller Email" value={commission.sellerEmail || '-'} />
               <InfoCard label="Seller Contact No." value={commission.sellerContactNo || '-'} />
               <InfoCard label="Role" value={commission.role || '-'} />
-              <InfoCard label="Seller Type" value={commission.sellerType || '-'} />
-              <InfoCard label="Sale Type" value={commission.saleType || '-'} />
+              <InfoCard label="Commission Type" value={commission.commissionType || commission.sellerType || '-'} />
               <InfoCard label="Commission Base" value={money(commission.commissionBase)} />
               <InfoCard label="Rate" value={`${commission.rate || 0}%`} />
               <InfoCard label="Gross Commission" value={money(grossCommission)} />

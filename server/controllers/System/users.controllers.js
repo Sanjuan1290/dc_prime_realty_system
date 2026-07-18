@@ -169,6 +169,8 @@ const getUserSelectSql = () => `
     u.role,
     u.status,
     u.must_change_password,
+    u.can_login,
+    u.is_system_account,
     u.last_login,
     u.created_at,
     u.updated_at,
@@ -247,6 +249,8 @@ export const login = async (req, res) => {
         role,
         status,
         must_change_password,
+        can_login,
+        is_system_account,
         last_login,
         created_at,
         updated_at
@@ -261,6 +265,9 @@ export const login = async (req, res) => {
 
   if (!user) return res.status(401).json({ message: 'Email does not exist!' });
   if (user.status !== 'active') return res.status(403).json({ message: 'Account is not active' });
+  if (Number(user.can_login ?? 1) !== 1 || Number(user.is_system_account || 0) === 1) {
+    return res.status(403).json({ message: 'This system account cannot sign in.' });
+  }
 
   const isPasswordCorrect = await bcrypt.compare(password, user.password_hash);
 
@@ -515,7 +522,8 @@ export const getUsers = async (req, res) => {
     const role = String(req.query.role || 'all');
     const status = String(req.query.status || 'all');
 
-    const where = [];
+    // System-owned direct-sales agents are operational identities, not user accounts.
+    const where = ['COALESCE(u.is_system_account, 0) = 0'];
     const params = [];
 
     if (search) {
@@ -577,6 +585,7 @@ export const getUsers = async (req, res) => {
         SUM(status = 'inactive') AS inactive,
         SUM(must_change_password = 1) AS mustChangePassword
       FROM users
+      WHERE COALESCE(is_system_account, 0) = 0
     `);
 
     return res.json({

@@ -7,6 +7,7 @@ import {
 } from '../middleware/auth.middleware.js';
 import {
   buildCommissionDistribution,
+  buildDirectOverrideDistribution,
   hasReleasedCommissionActivity,
 } from '../controllers/Lot_Projects/Commissions/commissionHierarchy.service.js';
 import { getListingLookupWhere } from '../controllers/Lot_Projects/_shared/lotProject.shared.js';
@@ -82,6 +83,65 @@ test('current hierarchy adds the manager share after the agent reports to a mana
     ['broker', 2],
     ['broker_network_manager', 1],
   ]);
+});
+
+
+
+test('direct-agent commission uses explicit relationship overrides', () => {
+  const chain = [
+    seller(1, 'agent', 'Agent One'),
+    seller(2, 'manager', 'Manager One'),
+    seller(3, 'broker', 'Broker One'),
+    seller(4, 'broker_network_manager', 'BNM One'),
+  ];
+  const overrideRateMap = new Map([
+    ['1:2', 1],
+    ['2:3', 2],
+    ['3:4', 1],
+  ]);
+
+  const rows = buildDirectOverrideDistribution({
+    chain,
+    directRate: 4,
+    overrideRateMap,
+    groupPoolRate: 8,
+  });
+
+  assert.deepEqual(rows.map((row) => [row.seller.role, row.rateType, row.rate]), [
+    ['agent', 'direct', 4],
+    ['manager', 'override', 1],
+    ['broker', 'override', 2],
+    ['broker_network_manager', 'override', 1],
+  ]);
+});
+
+test('direct-agent commission rejects a non-agent assignment', () => {
+  assert.throws(
+    () => buildDirectOverrideDistribution({
+      chain: [seller(2, 'manager', 'Manager One')],
+      directRate: 4,
+      overrideRateMap: new Map(),
+      groupPoolRate: 8,
+    }),
+    /only active sales agents can be assigned/i
+  );
+});
+
+test('direct and override allocation cannot exceed the group project pool', () => {
+  const chain = [
+    seller(1, 'agent', 'Agent One'),
+    seller(2, 'manager', 'Manager One'),
+  ];
+
+  assert.throws(
+    () => buildDirectOverrideDistribution({
+      chain,
+      directRate: 7,
+      overrideRateMap: new Map([['1:2', 2]]),
+      groupPoolRate: 8,
+    }),
+    /exceeds the group project pool/i
+  );
 });
 
 test('invalid parent ceilings are rejected before commission rows are replaced', () => {

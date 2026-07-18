@@ -19,6 +19,7 @@ import { PERMISSIONS } from './config/permissions'
 const Dashboard = lazy(() => import('./pages/System/Dashboard'))
 const Documents = lazy(() => import('./pages/System/Documents'))
 const SellerGroup = lazy(() => import('./pages/System/SellerGroup'))
+const SellerGroupDetails = lazy(() => import('./pages/System/SellerGroupDetails'))
 const Users = lazy(() => import('./pages/System/Users'))
 const Accredited = lazy(() => import('./pages/System/Accredited'))
 const Projects = lazy(() => import('./pages/System/Projects'))
@@ -79,6 +80,7 @@ const App = () => {
           <Route path="users" element={<Users />} />
           <Route path="accredited" element={<Accredited />} />
           <Route path="users/seller_group" element={<SellerGroup />} />
+          <Route path="users/seller_group/:groupId" element={<SellerGroupDetails />} />
           <Route path="notifications" element={<Notifications />} />
           <Route path="audit-logs" element={<AuditLogs />} />
           <Route path="employees" element={<Employees />} />
@@ -106,6 +108,7 @@ const App = () => {
           <Route path="documents" element={<Documents />} />
           <Route path="users" element={<Users />} />
           <Route path="users/seller_group" element={<SellerGroup />} />
+          <Route path="users/seller_group/:groupId" element={<SellerGroupDetails />} />
           <Route path="accredited" element={<Accredited />} />
           <Route path="notifications" element={<Notifications />} />
           <Route path="audit-logs" element={<AuditLogs />} />

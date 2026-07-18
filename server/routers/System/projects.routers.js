@@ -65,6 +65,10 @@ import {
   updateLotProjectCommission,
 } from '../../controllers/Lot_Projects/Commissions/Commissions.controller.js';
 import {
+  getReservationAgents,
+  getReservationCommissionPreviewController,
+} from '../../controllers/Lot_Projects/Commissions/CommissionConfiguration.controller.js';
+import {
   getLotProjectSettings,
   updateLotProjectSettings,
 } from '../../controllers/Lot_Projects/Settings/Settings.controller.js';
@@ -80,6 +84,8 @@ router.get('/lot-projects/:projectSlug/price-list', requirePermission(PERMISSION
 router.get('/lot-projects/:projectSlug/listings', requirePermission(PERMISSIONS.LOT_LISTINGS_VIEW), getLotProjectListings);
 router.get('/lot-projects/:projectSlug/payment-logs', requirePermission(PERMISSIONS.LOT_PAYMENT_LOGS_VIEW), getLotProjectPaymentLogs);
 router.get('/lot-projects/:projectSlug/commissions', requirePermission(PERMISSIONS.LOT_COMMISSIONS_VIEW), getLotProjectCommissions);
+router.get('/lot-projects/:projectSlug/reservation-agents', requirePermission(PERMISSIONS.LOT_LISTINGS_VIEW), getReservationAgents);
+router.get('/lot-projects/:projectSlug/commission-preview', requirePermission(PERMISSIONS.LOT_LISTINGS_VIEW), getReservationCommissionPreviewController);
 router.patch('/lot-projects/:projectSlug/commissions/:commissionId', requirePermission(PERMISSIONS.LOT_COMMISSIONS_MANAGE), updateLotProjectCommission);
 router.get('/lot-projects/:projectSlug/settings', requirePermission(PERMISSIONS.LOT_SETTINGS_VIEW), getLotProjectSettings);
 router.put('/lot-projects/:projectSlug/settings', requirePermission(PERMISSIONS.LOT_SETTINGS_MANAGE), updateLotProjectSettings);

@@ -1,4 +1,4 @@
-import { tableExists } from '../_shared/lotProject.shared.js';
+import { columnExists, tableExists } from '../_shared/lotProject.shared.js';
 
 /**
  * Commission release stages are shared by reservation creation and manual
@@ -15,20 +15,33 @@ export const COMMISSION_RELEASE_STAGES = Object.freeze([
 export const roundCommissionMoney = (value) =>
   Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
 
+const sellerSelectSql = ({ hasDummyColumns = false } = {}) => `
+  SELECT
+    acs.accredited_seller_id,
+    acs.user_id,
+    acs.seller_group_id,
+    acs.accredited_seller_reports_under_user_id,
+    acs.accredited_seller_status,
+    ${hasDummyColumns ? 'acs.is_system_dummy' : '0'} AS is_system_dummy,
+    ${hasDummyColumns ? 'acs.dummy_owner_accredited_seller_id' : 'NULL'} AS dummy_owner_accredited_seller_id,
+    u.role,
+    u.status AS user_status,
+    TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS full_name,
+    owner_user.role AS owner_role,
+    TRIM(CONCAT_WS(' ', owner_user.first_name, owner_user.middle_name, owner_user.last_name)) AS owner_name,
+    sg.seller_group_name
+  FROM accredited_sellers acs
+  INNER JOIN users u ON u.id = acs.user_id
+  LEFT JOIN accredited_sellers owner_acs
+    ON owner_acs.accredited_seller_id = ${hasDummyColumns ? 'acs.dummy_owner_accredited_seller_id' : 'NULL'}
+  LEFT JOIN users owner_user ON owner_user.id = owner_acs.user_id
+  LEFT JOIN seller_groups sg ON sg.seller_group_id = acs.seller_group_id
+`;
+
 const loadSellerById = async (connection, accreditedSellerId) => {
+  const hasDummyColumns = await columnExists(connection, 'accredited_sellers', 'is_system_dummy');
   const [rows] = await connection.query(
-    `
-      SELECT
-        acs.accredited_seller_id,
-        acs.user_id,
-        acs.seller_group_id,
-        acs.accredited_seller_reports_under_user_id,
-        acs.accredited_seller_status,
-        u.role,
-        u.status AS user_status,
-        TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS full_name
-      FROM accredited_sellers acs
-      INNER JOIN users u ON u.id = acs.user_id
+    `${sellerSelectSql({ hasDummyColumns })}
       WHERE acs.accredited_seller_id = ?
       LIMIT 1
     `,
@@ -39,19 +52,9 @@ const loadSellerById = async (connection, accreditedSellerId) => {
 };
 
 const loadSellerByUserId = async (connection, userId) => {
+  const hasDummyColumns = await columnExists(connection, 'accredited_sellers', 'is_system_dummy');
   const [rows] = await connection.query(
-    `
-      SELECT
-        acs.accredited_seller_id,
-        acs.user_id,
-        acs.seller_group_id,
-        acs.accredited_seller_reports_under_user_id,
-        acs.accredited_seller_status,
-        u.role,
-        u.status AS user_status,
-        TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS full_name
-      FROM accredited_sellers acs
-      INNER JOIN users u ON u.id = acs.user_id
+    `${sellerSelectSql({ hasDummyColumns })}
       WHERE acs.user_id = ?
       LIMIT 1
     `,
@@ -86,8 +89,9 @@ const loadGroupHeadSeller = async (connection, sellerGroupId) => {
 };
 
 /**
- * Loads the current reporting chain. This intentionally reads the live seller
- * hierarchy instead of the hierarchy that existed when the unit was reserved.
+ * Loads the current reporting chain. The first entry is always the assigned
+ * agent. Parent sellers follow in reporting order and the group head is added
+ * when they are not already part of the explicit reporting chain.
  */
 export const loadCurrentSellerChain = async (connection, accreditedSellerId) => {
   const chain = [];
@@ -165,10 +169,89 @@ const loadGroupPoolRate = async (
   return Number(rows[0]?.seller_group_pool_rate || fallbackRate || 0);
 };
 
+const overrideKey = (childId, parentId) => `${Number(childId)}:${Number(parentId)}`;
+
+const loadAgentDirectRate = async (connection, lotProjectId, agentId, legacyRateMap) => {
+  if (await tableExists(connection, 'agent_lot_project_direct_rates')) {
+    const [rows] = await connection.query(
+      `
+        SELECT direct_rate
+        FROM agent_lot_project_direct_rates
+        WHERE accredited_seller_id = ?
+          AND lot_project_id = ?
+          AND direct_rate_status = 'active'
+        LIMIT 1
+      `,
+      [agentId, lotProjectId]
+    );
+
+    return Number(rows[0]?.direct_rate || 0);
+  }
+
+  return Number(legacyRateMap.get(Number(agentId)) || 0);
+};
+
+const loadOverrideRateMap = async (
+  connection,
+  lotProjectId,
+  chain,
+  legacyRateMap,
+  groupPoolRate
+) => {
+  const rateMap = new Map();
+
+  if (await tableExists(connection, 'seller_hierarchy_lot_project_overrides')) {
+    const sellerIds = chain.map((seller) => Number(seller.accredited_seller_id));
+    if (!sellerIds.length) return rateMap;
+
+    const [rows] = await connection.query(
+      `
+        SELECT
+          child_accredited_seller_id,
+          parent_accredited_seller_id,
+          override_rate
+        FROM seller_hierarchy_lot_project_overrides
+        WHERE lot_project_id = ?
+          AND override_rate_status = 'active'
+          AND child_accredited_seller_id IN (${sellerIds.map(() => '?').join(',')})
+          AND parent_accredited_seller_id IN (${sellerIds.map(() => '?').join(',')})
+      `,
+      [lotProjectId, ...sellerIds, ...sellerIds]
+    );
+
+    rows.forEach((row) => {
+      rateMap.set(
+        overrideKey(row.child_accredited_seller_id, row.parent_accredited_seller_id),
+        Number(row.override_rate || 0)
+      );
+    });
+
+    return rateMap;
+  }
+
+  // Legacy fallback: old seller rates were cumulative ceilings. Convert each
+  // parent-child edge to an incremental override without changing old data.
+  for (let index = 1; index < chain.length; index += 1) {
+    const child = chain[index - 1];
+    const parent = chain[index];
+    const childCeiling = Number(legacyRateMap.get(Number(child.accredited_seller_id)) || 0);
+    const parentCeiling = parent.role === 'broker_network_manager'
+      ? Number(groupPoolRate || legacyRateMap.get(Number(parent.accredited_seller_id)) || 0)
+      : Number(legacyRateMap.get(Number(parent.accredited_seller_id)) || 0);
+
+    rateMap.set(
+      overrideKey(child.accredited_seller_id, parent.accredited_seller_id),
+      Math.max(roundCommissionMoney(parentCeiling - childCeiling), 0)
+    );
+  }
+
+  return rateMap;
+};
+
 /**
- * Pure distribution calculation used by both the API and unit tests.
- * Rates in the database represent each seller's ceiling. The amount earned by
- * each level is the difference between its ceiling and the lower level.
+ * Legacy pure calculation retained for old records and regression tests.
+ * Existing seller rates are cumulative ceilings, so each seller receives the
+ * difference between their ceiling and the seller below them.
  */
 export const buildCommissionDistribution = ({
   chain = [],
@@ -252,6 +335,165 @@ export const buildCommissionDistribution = ({
   return commissionRows;
 };
 
+/**
+ * New direct-agent model. Agents receive a direct rate. Every parent receives
+ * an explicit override for the relationship to the seller directly below them.
+ */
+export const buildDirectOverrideDistribution = ({
+  chain = [],
+  directRate = 0,
+  overrideRateMap = new Map(),
+  groupPoolRate = 0,
+  includeZeroRates = true,
+} = {}) => {
+  if (!chain.length) throw new Error('Assigned seller hierarchy could not be loaded.');
+  if (chain[0]?.role !== 'agent') throw new Error('Only active sales agents can be assigned to a reservation.');
+
+  const normalizedDirectRate = roundCommissionMoney(directRate);
+  if (normalizedDirectRate <= 0) {
+    throw new Error('The assigned sales agent does not have an active direct rate for this project.');
+  }
+
+  const rows = [{
+    seller: chain[0],
+    childSeller: null,
+    rate: normalizedDirectRate,
+    rateType: 'direct',
+    sellerType: 'selling_agent',
+    saleType: 'distributed',
+  }];
+
+  for (let index = 1; index < chain.length; index += 1) {
+    const childSeller = chain[index - 1];
+    const parentSeller = chain[index];
+    const rate = roundCommissionMoney(
+      overrideRateMap.get(overrideKey(childSeller.accredited_seller_id, parentSeller.accredited_seller_id)) || 0
+    );
+
+    if (rate > 0 || includeZeroRates) {
+      rows.push({
+        seller: parentSeller,
+        childSeller,
+        rate,
+        rateType: 'override',
+        sellerType: 'hierarchy_seller',
+        saleType: 'distributed',
+      });
+    }
+  }
+
+  const allocatedRate = roundCommissionMoney(rows.reduce((sum, row) => sum + Number(row.rate || 0), 0));
+  if (groupPoolRate > 0 && allocatedRate > Number(groupPoolRate) + 0.0001) {
+    throw new Error(
+      `Commission allocation (${allocatedRate}%) exceeds the group project pool (${Number(groupPoolRate)}%).`
+    );
+  }
+
+  return rows;
+};
+
+/**
+ * Loads the same hierarchy and rates used by reservation saving. The client
+ * preview therefore cannot drift from the commission rows created later.
+ */
+export const getReservationCommissionPreview = async (
+  connection,
+  projectId,
+  listing,
+  assignedSellerId
+) => {
+  const baseAmount = roundCommissionMoney(
+    listing?.lot_project_listing_net_selling_price ||
+      listing?.lot_project_listing_tcp ||
+      listing?.commissionBase ||
+      0
+  );
+
+  if (baseAmount <= 0) throw new Error('The listing does not have a valid commission base amount.');
+
+  const chain = await loadCurrentSellerChain(connection, assignedSellerId);
+  if (!chain.length) throw new Error('Assigned seller hierarchy could not be loaded.');
+
+  const assignedSeller = chain[0];
+  if (
+    assignedSeller.role !== 'agent' ||
+    assignedSeller.accredited_seller_status !== 'active' ||
+    assignedSeller.user_status !== 'active'
+  ) {
+    throw new Error('Only active sales agents can be assigned to a reservation.');
+  }
+
+  const sellerIds = chain.map((seller) => Number(seller.accredited_seller_id));
+  const legacyRateMap = await loadSellerRateMap(connection, projectId, sellerIds);
+  const directRate = await loadAgentDirectRate(
+    connection,
+    projectId,
+    assignedSeller.accredited_seller_id,
+    legacyRateMap
+  );
+  const groupPoolRate = await loadGroupPoolRate(
+    connection,
+    projectId,
+    assignedSeller.seller_group_id,
+    directRate
+  );
+  const overrideRateMap = await loadOverrideRateMap(
+    connection,
+    projectId,
+    chain,
+    legacyRateMap,
+    groupPoolRate
+  );
+
+  const hierarchyRows = buildDirectOverrideDistribution({
+    chain,
+    directRate,
+    overrideRateMap,
+    groupPoolRate,
+    includeZeroRates: true,
+  });
+
+  const allocatedRate = roundCommissionMoney(
+    hierarchyRows.reduce((sum, row) => sum + Number(row.rate || 0), 0)
+  );
+  const unallocatedRate = roundCommissionMoney(Math.max(Number(groupPoolRate || 0) - allocatedRate, 0));
+
+  return {
+    commissionBase: baseAmount,
+    poolRate: Number(groupPoolRate || 0),
+    allocatedRate,
+    unallocatedRate,
+    estimatedTotal: roundCommissionMoney(baseAmount * (allocatedRate / 100)),
+    isValid: allocatedRate > 0 && (!groupPoolRate || allocatedRate <= groupPoolRate + 0.0001),
+    warnings: hierarchyRows
+      .filter((row) => row.rateType === 'override' && Number(row.rate || 0) <= 0)
+      .map((row) => `${row.seller.full_name || 'Parent seller'} has no active override for this reporting relationship.`),
+    assignedSeller,
+    hierarchy: hierarchyRows.map((row, index) => {
+      const isDummy = Number(row.seller.is_system_dummy || 0) === 1;
+      const displayName = isDummy && row.seller.owner_name
+        ? `${row.seller.owner_name} — Direct Sales Agent`
+        : row.seller.full_name || 'Unnamed seller';
+
+      return {
+        order: index + 1,
+        accreditedSellerId: Number(row.seller.accredited_seller_id),
+        sellerName: displayName,
+        role: row.seller.role,
+        commissionType: row.rateType,
+        rate: Number(row.rate || 0),
+        estimatedAmount: roundCommissionMoney(baseAmount * (Number(row.rate || 0) / 100)),
+        childSellerId: row.childSeller ? Number(row.childSeller.accredited_seller_id) : null,
+        childSellerName: row.childSeller?.full_name || null,
+        isSystemDummy: isDummy,
+        beneficiaryName: isDummy ? row.seller.owner_name || null : null,
+        groupName: row.seller.seller_group_name || assignedSeller.seller_group_name || '-',
+      };
+    }),
+    rows: hierarchyRows,
+  };
+};
+
 const normalizePreservedReleaseState = (stage, paymentPercent, releaseStateByStage = {}) => {
   const preserved = releaseStateByStage?.[stage.stage] || null;
   const allowedPreservedStatuses = new Set(['Pending', 'Eligible', 'On Hold', 'Cancelled']);
@@ -326,9 +568,9 @@ const insertCommissionReleaseRows = async (
 };
 
 /**
- * Replaces every commission row for one unit using the currently configured
- * seller hierarchy. Callers must check release locks before using this for an
- * existing sale.
+ * Replaces every commission row for one unit using the current direct-agent
+ * rate and relationship overrides. Historical released rows remain protected
+ * by the caller's recalculation lock.
  */
 export const replaceReservationCommissions = async (
   connection,
@@ -336,7 +578,7 @@ export const replaceReservationCommissions = async (
   listing,
   clientProfileId,
   assignedSellerId,
-  saleChannel,
+  _saleChannel = 'distributed',
   {
     paymentPercent = 0,
     releaseStateByStage = {},
@@ -346,87 +588,96 @@ export const replaceReservationCommissions = async (
   if (!(await tableExists(connection, 'lot_project_commissions'))) return [];
   if (!(await tableExists(connection, 'accredited_sellers'))) return [];
 
-  const baseAmount = roundCommissionMoney(
-    listing.lot_project_listing_net_selling_price ||
-      listing.lot_project_listing_tcp ||
-      0
-  );
-
-  if (baseAmount <= 0) {
-    throw new Error('The listing does not have a valid commission base amount.');
-  }
-
-  const chain = await loadCurrentSellerChain(connection, assignedSellerId);
-  if (!chain.length) {
-    throw new Error('Assigned seller hierarchy could not be loaded.');
-  }
-
-  const sellerIds = chain.map((seller) => Number(seller.accredited_seller_id));
-  const rateMap = await loadSellerRateMap(connection, projectId, sellerIds);
-  const assignedSeller = chain[0];
-  const fallbackRate = Number(
-    rateMap.get(Number(assignedSeller.accredited_seller_id)) || 0
-  );
-  const groupPoolRate = await loadGroupPoolRate(
+  const preview = await getReservationCommissionPreview(
     connection,
     projectId,
-    assignedSeller.seller_group_id,
-    fallbackRate
+    listing,
+    assignedSellerId
   );
-
-  const commissionRows = buildCommissionDistribution({
-    chain,
-    rateMap,
-    groupPoolRate,
-    saleChannel,
-  });
+  const commissionRows = preview.rows.filter((row) => Number(row.rate || 0) > 0);
 
   await connection.query(
     `DELETE FROM lot_project_commissions WHERE lot_project_listing_id = ?`,
     [listing.lot_project_listing_id]
   );
 
+  const hasRateType = await columnExists(connection, 'lot_project_commissions', 'commission_rate_type');
+  const hasSaleOrigin = await columnExists(connection, 'lot_project_commissions', 'sale_origin_accredited_seller_id');
+  const hasSaleOwner = await columnExists(connection, 'lot_project_commissions', 'sale_owner_accredited_seller_id');
+  const hasSellerSnapshot = await columnExists(connection, 'lot_project_commissions', 'seller_display_name_snapshot');
+  const hasGroupSnapshot = await columnExists(connection, 'lot_project_commissions', 'seller_group_name_snapshot');
+
   const insertedRows = [];
+  const assignedSeller = preview.assignedSeller;
+  const saleOwnerId = Number(assignedSeller.dummy_owner_accredited_seller_id || assignedSeller.accredited_seller_id);
 
   for (const item of commissionRows) {
     const gross = roundCommissionMoney(
-      baseAmount * (Number(item.rate || 0) / 100)
+      preview.commissionBase * (Number(item.rate || 0) / 100)
+    );
+
+    const columns = [
+      'lot_project_id',
+      'lot_project_listing_id',
+      'lot_project_client_profile_id',
+      'accredited_seller_id',
+      'commission_role',
+      'commission_seller_type',
+      'commission_sale_type',
+    ];
+    const values = [
+      projectId,
+      listing.lot_project_listing_id,
+      clientProfileId,
+      item.seller.accredited_seller_id,
+      item.seller.role,
+      item.sellerType,
+      'distributed',
+    ];
+
+    if (hasRateType) {
+      columns.push('commission_rate_type');
+      values.push(item.rateType);
+    }
+    if (hasSaleOrigin) {
+      columns.push('sale_origin_accredited_seller_id');
+      values.push(assignedSeller.accredited_seller_id);
+    }
+    if (hasSaleOwner) {
+      columns.push('sale_owner_accredited_seller_id');
+      values.push(saleOwnerId);
+    }
+    if (hasSellerSnapshot) {
+      columns.push('seller_display_name_snapshot');
+      values.push(item.seller.full_name || null);
+    }
+    if (hasGroupSnapshot) {
+      columns.push('seller_group_name_snapshot');
+      values.push(item.seller.seller_group_name || assignedSeller.seller_group_name || null);
+    }
+
+    columns.push(
+      'commission_base_amount',
+      'commission_rate',
+      'gross_commission_amount',
+      'released_commission_amount',
+      'net_remaining_commission_amount',
+      'payment_percent',
+      'commission_status'
+    );
+    values.push(
+      preview.commissionBase,
+      item.rate,
+      gross,
+      0,
+      gross,
+      Number(paymentPercent || 0),
+      commissionStatus
     );
 
     const [result] = await connection.query(
-      `
-        INSERT INTO lot_project_commissions (
-          lot_project_id,
-          lot_project_listing_id,
-          lot_project_client_profile_id,
-          accredited_seller_id,
-          commission_role,
-          commission_seller_type,
-          commission_sale_type,
-          commission_base_amount,
-          commission_rate,
-          gross_commission_amount,
-          released_commission_amount,
-          net_remaining_commission_amount,
-          payment_percent,
-          commission_status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
-      `,
-      [
-        projectId,
-        listing.lot_project_listing_id,
-        clientProfileId,
-        item.seller.accredited_seller_id,
-        item.seller.role,
-        item.sellerType,
-        item.saleType,
-        baseAmount,
-        item.rate,
-        gross,
-        gross,
-        Number(paymentPercent || 0),
-        commissionStatus,
-      ]
+      `INSERT INTO lot_project_commissions (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`,
+      values
     );
 
     await insertCommissionReleaseRows(connection, result.insertId, gross, {
@@ -440,9 +691,10 @@ export const replaceReservationCommissions = async (
       sellerName: item.seller.full_name || '-',
       role: item.seller.role,
       rate: Number(item.rate || 0),
+      rateType: item.rateType,
       grossCommission: gross,
       sellerType: item.sellerType,
-      saleType: item.saleType,
+      saleType: 'distributed',
     });
   }
 

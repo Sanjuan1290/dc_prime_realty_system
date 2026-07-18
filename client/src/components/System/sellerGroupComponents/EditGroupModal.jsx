@@ -1,132 +1,73 @@
-import { useEffect, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FiUsers, FiX } from "react-icons/fi";
-import StatusAlert from "../../Shared/StatusAlert";
-import { useFetch, useFetchPut } from "../../../utils/useFetch";
-
-const rateOptions = [6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
-
-const normalizeRateValue = (value, fallback = 8) => {
-  const numericValue = Number(value);
-  return String(rateOptions.includes(numericValue) ? numericValue : fallback);
-};
-
-const normalizeProjectRates = (projects = [], currentRates = []) => {
-  const rateMap = new Map((currentRates || []).map((rate) => [Number(rate.lot_project_id), rate]));
-
-  return projects.map((project) => {
-    const projectId = Number(project.lot_project_id || project.id);
-    const savedRate = rateMap.get(projectId)?.seller_group_pool_rate;
-
-    return {
-      lot_project_id: projectId,
-      lot_project_name: project.lot_project_name || project.label,
-      lot_project_location_code: project.lot_project_location_code,
-      seller_group_pool_rate: normalizeRateValue(savedRate),
-    };
-  });
-};
+import { useEffect, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { FiLoader, FiUsers, FiX } from 'react-icons/fi'
+import StatusAlert from '../../Shared/StatusAlert'
+import { useFetch, useFetchPut } from '../../../utils/useFetch'
 
 const EditGroupModal = ({ setShowEditGroupModal, selectedGroup, onSaved }) => {
-  const queryClient = useQueryClient();
-  const [warning, setWarning] = useState("");
-  const [projectRates, setProjectRates] = useState(selectedGroup?.project_rates || []);
+  const queryClient = useQueryClient()
+  const [notice, setNotice] = useState(null)
   const [form, setForm] = useState({
-    seller_group_name: selectedGroup?.seller_group_name || "",
-    seller_group_head_user_id: selectedGroup?.seller_group_head_user_id ? String(selectedGroup.seller_group_head_user_id) : "",
-    seller_group_description: selectedGroup?.seller_group_description || "",
-    seller_group_status: selectedGroup?.seller_group_status || "active",
-  });
-
-  const { data: parentData, isLoading: isParentsLoading, isError: isParentsError, error: parentsError } = useQuery({
-    queryKey: ["parent-sellers"],
-    queryFn: () => useFetch("/accredited/parents"),
-  });
-
-  const { data: projectData, isLoading: isProjectsLoading, isError: isProjectsError, error: projectsError } = useQuery({
-    queryKey: ["lot-project-options"],
-    queryFn: () => useFetch("/projects/lot-projects/options"),
-  });
-
-  const parentSellers = parentData?.data || [];
-  const lotProjects = projectData?.data || [];
+    seller_group_name: '',
+    seller_group_head_user_id: '',
+    seller_group_description: '',
+    seller_group_status: 'active',
+  })
 
   useEffect(() => {
-    if (!lotProjects.length) return;
-    setProjectRates(normalizeProjectRates(lotProjects, selectedGroup?.project_rates || []));
-  }, [lotProjects.length, selectedGroup?.seller_group_id]);
+    setForm({
+      seller_group_name: selectedGroup?.seller_group_name || '',
+      seller_group_head_user_id: selectedGroup?.seller_group_head_user_id ? String(selectedGroup.seller_group_head_user_id) : '',
+      seller_group_description: selectedGroup?.seller_group_description || '',
+      seller_group_status: selectedGroup?.seller_group_status || 'active',
+    })
+    setNotice(null)
+  }, [selectedGroup?.seller_group_id])
 
-  const createMutation = useMutation({
-    mutationFn: () => useFetchPut(`/seller-groups/edit/${selectedGroup.seller_group_id}`, { ...form, project_rates: projectRates }),
+  const parentsQuery = useQuery({
+    queryKey: ['parent-sellers'],
+    queryFn: () => useFetch('/accredited/parents'),
+  })
+  const parentSellers = parentsQuery.data?.data || []
+
+  const mutation = useMutation({
+    // Project rates are intentionally omitted. They are managed per project on
+    // the routed Seller Group page and must not be overwritten by this modal.
+    mutationFn: () => useFetchPut(`/seller-groups/edit/${selectedGroup.seller_group_id}`, form),
+    onMutate: () => setNotice({ type: 'loading', message: 'Saving seller group...' }),
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["seller-groups"] });
-      queryClient.invalidateQueries({ queryKey: ["seller-group-options"] });
-      setShowEditGroupModal(false);
-      onSaved?.(data.message || "Seller group updated successfully.");
+      queryClient.invalidateQueries({ queryKey: ['seller-groups'] })
+      queryClient.invalidateQueries({ queryKey: ['seller-group-options'] })
+      queryClient.invalidateQueries({ queryKey: ['seller-group-project-configuration', Number(selectedGroup.seller_group_id)] })
+      setShowEditGroupModal(false)
+      onSaved?.(data?.message || 'Seller group updated successfully.')
     },
-    onError: (error) => setWarning(error.message),
-  });
+    onError: (error) => setNotice({ type: 'error', message: error?.message || 'Failed to save seller group.' }),
+  })
 
-  const updateForm = (field, value) => {
-    setWarning("");
-    setForm((currentForm) => ({ ...currentForm, [field]: value }));
-  };
+  const update = (field, value) => {
+    setNotice(null)
+    setForm((current) => ({ ...current, [field]: value }))
+  }
 
-  const updateProjectRate = (projectId, value) => {
-    setProjectRates((current) => current.map((rate) => Number(rate.lot_project_id) === Number(projectId) ? { ...rate, seller_group_pool_rate: value } : rate));
-  };
-
-  const handleSubmit = () => {
-    setWarning("");
+  const submit = (event) => {
+    event.preventDefault()
     if (!form.seller_group_name.trim()) {
-      setWarning("Seller group name is required.");
-      return;
+      setNotice({ type: 'error', message: 'Seller group name is required.' })
+      return
     }
-    createMutation.mutate();
-  };
+    mutation.mutate()
+  }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
-      <div className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
-          <div>
-            <h3 className="text-xl font-bold text-slate-950">Edit Seller Group</h3>
-            <p className="text-sm text-slate-500">Add a group, assign head, and set project pool rates.</p>
-          </div>
-          <button type="button" onClick={() => setShowEditGroupModal(false)} disabled={createMutation.isPending} className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"><FiX className="h-5 w-5" /></button>
-        </div>
-
-        <div className="overflow-y-auto px-6 py-5">
-          <div className="grid gap-5">
-            {createMutation.isPending ? <StatusAlert type="loading" message="Saving seller group and project rates..." /> : null}
-            {isParentsLoading || isProjectsLoading ? <StatusAlert type="loading" message="Loading parent sellers and lot projects..." /> : null}
-            {isParentsError ? <StatusAlert type="error" message={parentsError?.message || "Failed to load parent sellers."} /> : null}
-            {isProjectsError ? <StatusAlert type="error" message={projectsError?.message || "Failed to load lot projects."} /> : null}
-            {warning ? <StatusAlert type="warning" message={warning} /> : null}
-            <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
-              <div className="flex items-center gap-3"><FiUsers className="h-5 w-5 text-blue-700" /><div><h4 className="font-bold text-slate-950">Group Information</h4><p className="text-sm text-slate-500">Pool rate must be between 6% and 15%.</p></div></div>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="flex flex-col gap-2"><p className="text-sm font-bold text-slate-700">Group Name</p><input type="text" value={form.seller_group_name} onChange={(event) => updateForm("seller_group_name", event.target.value)} placeholder="Example: Prime External Realty" className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" /></label>
-              <label className="flex flex-col gap-2"><p className="text-sm font-bold text-slate-700">Group Head</p><select value={form.seller_group_head_user_id} onChange={(event) => updateForm("seller_group_head_user_id", event.target.value)} className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"><option value="">No head assigned</option>{parentSellers.map((seller) => <option key={seller.user_id} value={seller.user_id}>{seller.full_name}</option>)}</select></label>
-            </div>
-
-            <label className="flex flex-col gap-2"><p className="text-sm font-bold text-slate-700">Description</p><textarea rows={4} value={form.seller_group_description} onChange={(event) => updateForm("seller_group_description", event.target.value)} placeholder="Describe this seller group..." className="resize-none rounded-xl border border-slate-200 px-3 py-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" /></label>
-
-            <div className="grid gap-4 md:grid-cols-4">
-              {projectRates.map((rate) => (
-                <label key={rate.lot_project_id} className="flex flex-col gap-2"><p className="text-sm font-bold text-slate-700">{rate.lot_project_name} Pool</p><select value={rate.seller_group_pool_rate} onChange={(event) => updateProjectRate(rate.lot_project_id, event.target.value)} className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50">{rateOptions.map((option) => <option key={option} value={option}>{option}%</option>)}</select></label>
-              ))}
-              <label className="flex flex-col gap-2"><p className="text-sm font-bold text-slate-700">Status</p><select value={form.seller_group_status} onChange={(event) => updateForm("seller_group_status", event.target.value)} className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"><option value="active">Active</option><option value="inactive">Inactive</option></select></label>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50 px-6 py-4 sm:flex-row sm:justify-end"><button type="button" onClick={() => setShowEditGroupModal(false)} disabled={createMutation.isPending} className="h-11 rounded-xl border border-slate-200 bg-white px-5 text-sm font-bold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60">Cancel</button><button type="button" disabled={createMutation.isPending} onClick={handleSubmit} className="h-11 rounded-xl bg-blue-600 px-5 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300">{createMutation.isPending ? "Saving..." : "Save Changes"}</button></div>
-      </div>
+    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/55 p-3 backdrop-blur-sm sm:p-5">
+      <form onSubmit={submit} aria-busy={mutation.isPending} className="flex max-h-[94vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+        <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4"><div className="flex items-start gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-blue-700"><FiUsers /></span><div><h2 className="text-xl font-black text-slate-950">Edit Seller Group</h2><p className="mt-1 text-sm font-semibold text-slate-500">Update group information. Project rates remain unchanged.</p></div></div><button type="button" onClick={() => setShowEditGroupModal(false)} disabled={mutation.isPending} className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 disabled:opacity-50" aria-label="Close"><FiX /></button></header>
+        <div className="overflow-y-auto p-5"><div className="grid gap-5">{notice ? <StatusAlert type={notice.type} message={notice.message} onClose={notice.type === 'loading' ? undefined : () => setNotice(null)} /> : null}{parentsQuery.isLoading ? <StatusAlert type="loading" message="Loading available group heads..." /> : null}{parentsQuery.isError ? <StatusAlert type="error" message={parentsQuery.error?.message || 'Failed to load group heads.'} /> : null}<div className="grid gap-4 md:grid-cols-2"><label className="flex flex-col gap-1.5"><span className="text-xs font-black text-slate-700">Group Name <span className="text-red-500">*</span></span><input autoFocus value={form.seller_group_name} onChange={(event) => update('seller_group_name', event.target.value)} placeholder="Enter seller group name" disabled={mutation.isPending} className="h-11 rounded-xl border border-slate-300 px-4 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100" /></label><label className="flex flex-col gap-1.5"><span className="text-xs font-black text-slate-700">Group Head</span><select value={form.seller_group_head_user_id} onChange={(event) => update('seller_group_head_user_id', event.target.value)} disabled={mutation.isPending || parentsQuery.isLoading} className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100"><option value="">No head assigned</option>{parentSellers.map((seller) => <option key={seller.user_id} value={seller.user_id}>{seller.full_name} · {String(seller.role || '').replaceAll('_', ' ')}</option>)}</select></label></div><label className="flex flex-col gap-1.5"><span className="text-xs font-black text-slate-700">Description</span><textarea rows={4} value={form.seller_group_description} onChange={(event) => update('seller_group_description', event.target.value)} placeholder="Describe the seller group..." disabled={mutation.isPending} className="resize-none rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100" /></label><label className="flex flex-col gap-1.5 md:max-w-xs"><span className="text-xs font-black text-slate-700">Status</span><select value={form.seller_group_status} onChange={(event) => update('seller_group_status', event.target.value)} disabled={mutation.isPending} className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100"><option value="active">Active</option><option value="inactive">Inactive</option></select></label></div></div>
+        <footer className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4 sm:flex-row sm:justify-end"><button type="button" onClick={() => setShowEditGroupModal(false)} disabled={mutation.isPending} className="h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 hover:bg-slate-100 disabled:opacity-50">Cancel</button><button type="submit" disabled={mutation.isPending || parentsQuery.isLoading} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white hover:bg-blue-700 disabled:bg-blue-300">{mutation.isPending ? <FiLoader className="animate-spin" /> : null}{mutation.isPending ? 'Saving...' : 'Save Group'}</button></footer>
+      </form>
     </div>
-  );
-};
+  )
+}
 
-export default EditGroupModal;
+export default EditGroupModal
