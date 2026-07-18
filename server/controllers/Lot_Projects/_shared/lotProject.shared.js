@@ -994,6 +994,17 @@ export const getStoredRowDiscountAmount = (row = {}, clientProfile = {}) =>
 export const getStoredRowTotalDue = (row = {}, clientProfile = {}) =>
   getStoredRowDiscountInfo(row, clientProfile).cashDueAmount;
 
+// Full Payment must clear every unpaid SOA row after the penalty cache has
+// been refreshed for the selected payment date.
+export const getRemainingUnpaidScheduleBalance = (rows = [], clientProfile = {}) =>
+  roundMoneyValue(
+    rows.reduce((sum, row) => {
+      const totalDue = getStoredRowTotalDue(row, clientProfile);
+      const amountPaid = Number(row.amount_paid ?? row.amountPaid ?? 0);
+      return sum + Math.max(totalDue - amountPaid, 0);
+    }, 0)
+  );
+
 
 const dateOnlyToUtcMs = (value) => {
   const clean = plainDate(value);

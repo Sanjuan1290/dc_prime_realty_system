@@ -43,6 +43,7 @@ import OfferToBuyPrintPage from './components/Lot_Projects/ListingProfileCompone
 import SOAPrintPage from './components/Lot_Projects/ListingProfileComponents/Printouts/SOAPrintPage'
 import DocumentsPrintPage from './components/Lot_Projects/ListingProfileComponents/Printouts/DocumentsPrintPage'
 import AccreditedSellerProofOfIncomePrintPage from './components/Lot_Projects/ListingProfileComponents/Printouts/AccreditedSellerProofOfIncomePrintPage'
+import AccreditedSellerIncomeRangePrintPage from './components/Lot_Projects/ListingProfileComponents/Printouts/AccreditedSellerIncomeRangePrintPage'
 import ProjectPriceListPrintPage from './components/Lot_Projects/ListingProfileComponents/Printouts/ProjectPriceListPrintPage'
 import EmployeeSalaryReleasePrintPage from './components/System/employeeComponents/prints/EmployeeSalaryReleasePrintPage'
 import EmployeeLogbookPrintPage from './components/System/employeeComponents/prints/EmployeeLogbookPrintPage'
@@ -177,6 +178,10 @@ const App = () => {
         <Route
           path="/super_admin/accredited/proof-of-income/print"
           element={<AccreditedSellerProofOfIncomePrintPage />}
+        />
+        <Route
+          path="/super_admin/accredited/proof-of-income/range/print"
+          element={<AccreditedSellerIncomeRangePrintPage />}
         />
         <Route
           path="/lot-projects/:projectSlug/printouts/documents"

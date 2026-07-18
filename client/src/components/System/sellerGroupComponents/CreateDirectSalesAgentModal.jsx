@@ -7,7 +7,6 @@ import StatusAlert from '../../Shared/StatusAlert'
  * generated agent name are read-only because the API controls those mappings.
  */
 const CreateDirectSalesAgentModal = ({
-  open,
   owner,
   project,
   isPending = false,
@@ -20,13 +19,9 @@ const CreateDirectSalesAgentModal = ({
   const inputRef = useRef(null)
 
   useEffect(() => {
-    if (!open) return
-    setDirectRate('')
-    setError('')
-    window.setTimeout(() => inputRef.current?.focus(), 0)
-  }, [open, owner?.accredited_seller_id, project?.id])
-
-  if (!open) return null
+    const focusTimer = window.setTimeout(() => inputRef.current?.focus(), 0)
+    return () => window.clearTimeout(focusTimer)
+  }, [])
 
   const submit = (event) => {
     event.preventDefault()

@@ -1,13 +1,19 @@
 import { useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { FiDollarSign, FiEye, FiRefreshCw, FiSearch } from 'react-icons/fi'
+import { FiDollarSign, FiEye, FiRefreshCw, FiSearch, FiUsers } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
 import ReleaseDetailsModal from '../../components/Lot_Projects/CommissionComponents/ReleaseDetailsModal/ReleaseDetailsModal'
-import { useFetch, useFetchPatch } from '../../utils/useFetch'
+import { groupCommissionRecords } from '../../utils/commissionRecords'
+import { useFetch as fetchJson, useFetchPatch as patchJson } from '../../utils/useFetch'
 
-const money = (value) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 2 }).format(Number(value || 0))
+const money = (value) => new Intl.NumberFormat('en-PH', {
+  style: 'currency',
+  currency: 'PHP',
+  minimumFractionDigits: 2,
+}).format(Number(value || 0))
+
 const pageSizeOptions = [10, 25, 50]
 
 const StatCard = ({ label, value, tone = 'slate', isMoney = true }) => {
@@ -34,13 +40,7 @@ const getEligibleReleaseAmount = (record = {}) => {
     .reduce((sum, stage) => sum + Number(stage.netAmount ?? stage.net_release_amount ?? stage.grossAmount ?? 0), 0)
 }
 
-const completedMilestoneNames = [
-  '1st release',
-  '2nd release',
-  '3rd release',
-  '4th release',
-  'retention',
-]
+const completedMilestoneNames = ['1st release', '2nd release', '3rd release', '4th release', 'retention']
 
 const isCommissionCompleted = (record = {}) => {
   const milestones = Array.isArray(record.releaseMilestones) ? record.releaseMilestones : []
@@ -51,9 +51,7 @@ const isCommissionCompleted = (record = {}) => {
     releasedMilestones.map((stage) => String(stage.stage || '').trim().toLowerCase())
   )
 
-  if (completedMilestoneNames.every((stageName) => releasedStageNames.has(stageName))) {
-    return true
-  }
+  if (completedMilestoneNames.every((stageName) => releasedStageNames.has(stageName))) return true
 
   const releasedPercent = releasedMilestones.reduce(
     (sum, stage) => sum + Number(stage.releasePercent ?? stage.release_percent ?? 0),
@@ -77,8 +75,17 @@ const getEligibilityKey = (record = {}) => {
   const status = String(record.statusLabel || record.status || '').toLowerCase()
   if (status === 'eligible') return 'eligible'
   if (status === 'cancelled') return 'other'
-
   return 'not_eligible'
+}
+
+const matchesGroupFilters = (group, commissionTypeFilter, eligibilityFilter) => {
+  const sellers = Array.isArray(group.sellers) ? group.sellers : []
+  const matchesType = commissionTypeFilter === 'all'
+    || sellers.some((seller) => String(seller.commissionType || '').toLowerCase() === commissionTypeFilter)
+  const matchesEligibility = eligibilityFilter === 'all'
+    || sellers.some((seller) => getEligibilityKey(seller) === eligibilityFilter)
+
+  return matchesType && matchesEligibility
 }
 
 const Commission = () => {
@@ -93,51 +100,74 @@ const Commission = () => {
   const [alert, setAlert] = useState(null)
   const [modalNotice, setModalNotice] = useState(null)
 
-  const queryString = useMemo(() => {
-    return new URLSearchParams({
-      ...(search.trim() ? { search: search.trim() } : {}),
-    }).toString()
-  }, [search])
+  const queryString = useMemo(() => new URLSearchParams({
+    ...(search.trim() ? { search: search.trim() } : {}),
+  }).toString(), [search])
 
   const { data, isLoading, isFetching, isError, error, refetch } = useQuery({
     queryKey: ['lot-commissions', projectSlug, queryString],
-    queryFn: () => useFetch(`/projects/lot-projects/${projectSlug}/commissions${queryString ? `?${queryString}` : ''}`),
+    queryFn: () => fetchJson(`/projects/lot-projects/${projectSlug}/commissions${queryString ? `?${queryString}` : ''}`),
     enabled: Boolean(projectSlug),
     keepPreviousData: true,
   })
 
   const updateCommissionMutation = useMutation({
-    mutationFn: ({ commissionId, payload }) => useFetchPatch(`/projects/lot-projects/${projectSlug}/commissions/${commissionId}`, payload),
+    mutationFn: ({ commissionId, payload }) => patchJson(
+      `/projects/lot-projects/${projectSlug}/commissions/${commissionId}`,
+      payload
+    ),
     onMutate: ({ payload }) => {
-      const actionLabel = String(payload?.action || '').includes('release') ? 'Saving commission release...' : 'Updating commission status...'
+      const actionLabel = String(payload?.action || '').includes('release')
+        ? 'Saving commission release...'
+        : 'Updating commission status...'
       const notice = { type: 'loading', title: 'Saving', message: actionLabel }
       if (selected) setModalNotice(notice)
       else setAlert(notice)
     },
     onSuccess: (result) => {
-      const notice = { type: 'success', title: 'Commission updated', message: result?.message || 'Commission updated successfully.' }
+      const updatedCommission = result?.data || {}
+      const updatedCommissionId = Number(updatedCommission.commissionId || updatedCommission.id || 0)
+      const notice = {
+        type: 'success',
+        title: 'Commission updated',
+        message: result?.message || 'Commission updated successfully.',
+      }
+
       if (selected) setModalNotice(notice)
       else setAlert(notice)
+
       queryClient.invalidateQueries({ queryKey: ['lot-commissions', projectSlug] })
       queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] })
-      setSelected((current) => current ? { ...current, ...(result?.data || {}) } : current)
+
+      // Keep the open account modal in sync while the background query reloads.
+      setSelected((current) => {
+        if (!current || !updatedCommissionId) return current
+        const nextSellers = (current.sellers || []).map((seller) => (
+          Number(seller.commissionId || seller.id) === updatedCommissionId
+            ? { ...seller, ...updatedCommission }
+            : seller
+        ))
+        return groupCommissionRecords(nextSellers)[0] || current
+      })
     },
     onError: (mutationError) => {
-      const notice = { type: 'error', title: 'Commission error', message: mutationError?.message || 'Failed to update commission.' }
+      const notice = {
+        type: 'error',
+        title: 'Commission error',
+        message: mutationError?.message || 'Failed to update commission.',
+      }
       if (selected) setModalNotice(notice)
       else setAlert(notice)
     },
   })
 
-  const records = data?.data || []
+  const records = useMemo(() => data?.data || [], [data?.data])
   const project = data?.project || {}
-  const filteredRecords = useMemo(() => records.filter((record) => {
-    const matchesType = commissionTypeFilter === 'all'
-      || String(record.commissionType || '').toLowerCase() === commissionTypeFilter
-    const matchesEligibility = eligibilityFilter === 'all'
-      || getEligibilityKey(record) === eligibilityFilter
-    return matchesType && matchesEligibility
-  }), [records, commissionTypeFilter, eligibilityFilter])
+  const groupedRecords = useMemo(() => groupCommissionRecords(records), [records])
+  const filteredRecords = useMemo(
+    () => groupedRecords.filter((group) => matchesGroupFilters(group, commissionTypeFilter, eligibilityFilter)),
+    [groupedRecords, commissionTypeFilter, eligibilityFilter]
+  )
 
   const displayStats = useMemo(
     () => filteredRecords.reduce(
@@ -145,7 +175,7 @@ const Commission = () => {
         summary.total += 1
         summary.gross += Number(item.grossCommission || 0)
         summary.released += Number(item.released || 0)
-        summary.eligible += Number(item.eligibleToRelease ?? getEligibleReleaseAmount(item))
+        summary.eligible += Number(item.eligibleToRelease || 0)
         summary.remaining += Number(item.netRemaining || 0)
         return summary
       },
@@ -174,18 +204,25 @@ const Commission = () => {
   }
 
   const handleCommissionAction = (commission, payload) => {
-    updateCommissionMutation.mutate({ commissionId: commission.id || commission.commissionId, payload })
+    updateCommissionMutation.mutate({
+      commissionId: commission.id || commission.commissionId,
+      payload,
+    })
   }
 
   return (
     <main className="flex flex-col gap-6">
       {alert ? <StatusAlert type={alert.type} message={alert.message} onClose={alert.type === 'loading' ? undefined : () => setAlert(null)} /> : null}
-      {isLoading ? <StatusAlert type="loading" message="Loading commission records..." /> : null}
-      {!isLoading && isFetching ? <StatusAlert type="info" message="Refreshing commission records..." /> : null}
+      {isLoading ? <StatusAlert type="loading" message="Loading commission accounts and seller recipients..." /> : null}
+      {!isLoading && isFetching ? <StatusAlert type="info" message="Refreshing commission accounts..." /> : null}
       {isError ? <StatusAlert type="error" message={error?.message || 'Failed to load commissions.'} /> : null}
 
       <section className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-        <PageHeader title={`${project.name || 'Lot Project'} Commissions`} description="Database-connected commission records generated per unit and seller hierarchy." icon={FiDollarSign} />
+        <PageHeader
+          title={`${project.name || 'Lot Project'} Commissions`}
+          description="One record per unit and buyer, with every commission recipient available inside Details."
+          icon={FiDollarSign}
+        />
 
         <div className="flex flex-col gap-2 sm:flex-row">
           <button type="button" onClick={refreshRecords} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 active:scale-[0.98]">
@@ -200,7 +237,7 @@ const Commission = () => {
       </section>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <StatCard label="Commission Records" value={isLoading ? '...' : displayStats.total || 0} isMoney={false} />
+        <StatCard label="Commission Accounts" value={isLoading ? '...' : displayStats.total || 0} isMoney={false} />
         <StatCard label="Gross Commission" value={displayStats.gross || 0} tone="blue" />
         <StatCard label="Eligible to Release" value={displayStats.eligible || 0} tone="indigo" />
         <StatCard label="Released" value={displayStats.released || 0} tone="emerald" />
@@ -217,7 +254,7 @@ const Commission = () => {
                 setSearch(event.target.value)
                 setPage(1)
               }}
-              placeholder="Search client, unit, seller, role..."
+              placeholder="Search unit, client, seller, group, role, or type..."
               className="h-11 w-full rounded-xl border border-slate-300 bg-white pl-11 pr-3 text-sm font-semibold text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
             />
           </label>
@@ -229,11 +266,11 @@ const Commission = () => {
               setPage(1)
             }}
             className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
-            aria-label="Filter by commission type"
+            aria-label="Filter accounts by commission type"
           >
             <option value="all">All Commission Types</option>
-            <option value="direct">Direct</option>
-            <option value="override">Override</option>
+            <option value="direct">Contains Direct</option>
+            <option value="override">Contains Override</option>
           </select>
 
           <select
@@ -243,46 +280,51 @@ const Commission = () => {
               setPage(1)
             }}
             className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
+            aria-label="Filter accounts by seller eligibility"
           >
             <option value="all">All Eligibility</option>
-            <option value="eligible">Eligible</option>
-            <option value="completed">Completed</option>
-            <option value="not_eligible">Not Eligible</option>
+            <option value="eligible">Has Eligible Seller</option>
+            <option value="completed">Has Completed Seller</option>
+            <option value="not_eligible">Has Not Eligible Seller</option>
           </select>
 
-          <button type="button" onClick={resetFilters} className="h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50">Reset Filters</button>
+          <button type="button" onClick={resetFilters} className="h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50">
+            Reset Filters
+          </button>
         </div>
       </section>
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 bg-white px-5 py-4">
           <h2 className="text-lg font-black text-slate-950">Commission Records</h2>
-          <p className="mt-1 text-sm font-semibold text-slate-500">One unit can appear multiple times because every qualified seller receives a separate commission line.</p>
+          <p className="mt-1 text-sm font-semibold text-slate-500">One row per unit and buyer. Open Details, then select a seller to view or manage that recipient’s commission.</p>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="min-w-[1260px] w-full divide-y divide-slate-200 text-sm">
+        <div className="hidden overflow-x-auto lg:block">
+          <table className="min-w-[1080px] w-full divide-y divide-slate-200 text-sm">
             <thead className="bg-slate-50">
               <tr>
-                {['Unit', 'Client', 'Seller Name', 'Group Name', 'Role', 'Commission Type', 'Commission Base', 'Rate', 'Gross', 'Released', 'Net Remaining', 'Payment %', 'Actions'].map((head) => (
+                {['Unit', 'Client', 'Sellers', 'Group Name', 'Commission Base', 'Total Gross', 'Released', 'Net Remaining', 'Payment %', 'Actions'].map((head) => (
                   <th key={head} className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">{head}</th>
                 ))}
               </tr>
             </thead>
 
             <tbody className="divide-y divide-slate-100">
-              {isLoading ? <tr><td colSpan={13} className="px-4 py-10 text-center text-sm font-semibold text-slate-500">Loading commissions...</td></tr> : null}
+              {isLoading ? <tr><td colSpan={10} className="px-4 py-10 text-center text-sm font-semibold text-slate-500">Loading commission accounts...</td></tr> : null}
 
               {!isLoading && paginatedRecords.map((record) => (
                 <tr key={record.id} className="transition hover:bg-slate-50">
                   <td className="px-4 py-4 font-black text-blue-700">{record.unit}</td>
                   <td className="px-4 py-4 font-black text-slate-950">{record.client}</td>
-                  <td className="px-4 py-4 font-black text-slate-800">{record.seller || '-'}</td>
-                  <td className="px-4 py-4 font-semibold text-slate-600">{record.sellerGroup || '-'}</td>
-                  <td className="px-4 py-4 font-semibold text-slate-600">{record.role}</td>
-                  <td className="px-4 py-4"><span className={`rounded-full px-3 py-1 text-xs font-black ${String(record.commissionType).toLowerCase() === 'direct' ? 'bg-blue-50 text-blue-700' : 'bg-violet-50 text-violet-700'}`}>{record.commissionType || 'Override'}</span></td>
+                  <td className="px-4 py-4">
+                    <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-700">
+                      <FiUsers className="h-3.5 w-3.5" />
+                      {record.sellerCount} recipient{record.sellerCount === 1 ? '' : 's'}
+                    </div>
+                  </td>
+                  <td className="px-4 py-4 font-semibold text-slate-600">{record.sellerGroupLabel}</td>
                   <td className="px-4 py-4 font-black text-slate-950">{money(record.commissionBase)}</td>
-                  <td className="px-4 py-4 font-semibold text-slate-600">{record.rate}%</td>
                   <td className="px-4 py-4 font-black text-slate-950">{money(record.grossCommission)}</td>
                   <td className="px-4 py-4 font-semibold text-emerald-700">{money(record.released)}</td>
                   <td className="px-4 py-4 font-black text-blue-700">{money(record.netRemaining)}</td>
@@ -298,7 +340,7 @@ const Commission = () => {
 
               {!isLoading && !filteredRecords.length ? (
                 <tr>
-                  <td colSpan={13} className="px-4 py-10 text-center">
+                  <td colSpan={10} className="px-4 py-10 text-center">
                     <FiDollarSign className="mx-auto h-8 w-8 text-slate-300" />
                     <p className="mt-3 text-sm font-black text-slate-700">No commission records found</p>
                     <p className="mt-1 text-sm font-semibold text-slate-500">Try changing your search or filters.</p>
@@ -309,9 +351,38 @@ const Commission = () => {
           </table>
         </div>
 
+        <div className="grid gap-3 p-4 lg:hidden">
+          {isLoading ? <p className="rounded-xl border border-dashed border-slate-300 px-4 py-10 text-center text-sm font-semibold text-slate-500">Loading commission accounts...</p> : null}
+          {!isLoading && paginatedRecords.map((record) => (
+            <article key={record.id} className="rounded-2xl border border-slate-200 p-4 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-black text-blue-700">{record.unit}</p>
+                  <p className="mt-1 text-base font-black text-slate-950">{record.client}</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-500">{record.sellerCount} commission recipient{record.sellerCount === 1 ? '' : 's'} · {record.sellerGroupLabel}</p>
+                </div>
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-700">{Number(record.paymentPercent || 0).toFixed(2)}%</span>
+              </div>
+
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <div className="rounded-xl bg-slate-50 p-3"><p className="text-[10px] font-black uppercase text-slate-400">Commission Base</p><p className="mt-1 text-sm font-black text-slate-900">{money(record.commissionBase)}</p></div>
+                <div className="rounded-xl bg-slate-50 p-3"><p className="text-[10px] font-black uppercase text-slate-400">Total Gross</p><p className="mt-1 text-sm font-black text-slate-900">{money(record.grossCommission)}</p></div>
+                <div className="rounded-xl bg-emerald-50 p-3"><p className="text-[10px] font-black uppercase text-emerald-600">Released</p><p className="mt-1 text-sm font-black text-emerald-700">{money(record.released)}</p></div>
+                <div className="rounded-xl bg-blue-50 p-3"><p className="text-[10px] font-black uppercase text-blue-600">Net Remaining</p><p className="mt-1 text-sm font-black text-blue-700">{money(record.netRemaining)}</p></div>
+              </div>
+
+              <button type="button" onClick={() => { setSelected(record); setModalNotice(null) }} className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white text-sm font-black text-slate-700 transition hover:bg-slate-50">
+                <FiEye className="h-4 w-4" />
+                View Seller Commissions
+              </button>
+            </article>
+          ))}
+          {!isLoading && !filteredRecords.length ? <p className="rounded-xl border border-dashed border-slate-300 px-4 py-10 text-center text-sm font-semibold text-slate-500">No commission records match the current filters.</p> : null}
+        </div>
+
         <div className="flex flex-col gap-3 border-t border-slate-200 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm font-semibold text-slate-600">
-            Showing {filteredRecords.length ? `${startIndex + 1}-${endIndex}` : '0'} of {filteredRecords.length} records
+            Showing {filteredRecords.length ? `${startIndex + 1}-${endIndex}` : '0'} of {filteredRecords.length} accounts
           </p>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -322,35 +393,20 @@ const Commission = () => {
                 setPage(1)
               }}
               className="h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-700 outline-none"
+              aria-label="Commission accounts per page"
             >
               {pageSizeOptions.map((size) => <option key={size} value={size}>{size}</option>)}
             </select>
-            <button
-              type="button"
-              onClick={() => setPage((current) => Math.max(current - 1, 1))}
-              disabled={currentPage <= 1}
-              className="h-10 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Previous
-            </button>
-            <span className="inline-flex h-10 items-center rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-700">
-              Page {currentPage} of {totalPages}
-            </span>
-            <button
-              type="button"
-              onClick={() => setPage((current) => Math.min(current + 1, totalPages))}
-              disabled={currentPage >= totalPages}
-              className="h-10 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Next
-            </button>
+            <button type="button" onClick={() => setPage((current) => Math.max(current - 1, 1))} disabled={currentPage <= 1} className="h-10 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">Previous</button>
+            <span className="inline-flex h-10 items-center rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-700">Page {currentPage} of {totalPages}</span>
+            <button type="button" onClick={() => setPage((current) => Math.min(current + 1, totalPages))} disabled={currentPage >= totalPages} className="h-10 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50">Next</button>
           </div>
         </div>
       </section>
 
       {selected ? (
         <ReleaseDetailsModal
-          commission={selected}
+          commissionGroup={selected}
           isSaving={updateCommissionMutation.isPending}
           onClose={() => {
             setSelected(null)

@@ -2,22 +2,33 @@ import { useEffect, useMemo, useState } from 'react'
 import { NavLink, useLocation, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  Bar,
+  CartesianGrid,
+  ComposedChart,
+  Legend,
+  Line,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts'
+import {
   FiArrowLeft,
+  FiCalendar,
+  FiDollarSign,
   FiEdit2,
-  FiPercent,
   FiRefreshCw,
   FiSearch,
-  FiTrash2,
-  FiUserPlus,
+  FiShoppingBag,
+  FiTrendingUp,
   FiUsers,
 } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
-import ConfirmActionModal from '../../components/Shared/ConfirmActionModal'
-import CommissionRateModal from '../../components/System/sellerGroupComponents/CommissionRateModal'
+import MemberRatesModal from '../../components/System/sellerGroupComponents/MemberRatesModal'
 import CreateDirectSalesAgentModal from '../../components/System/sellerGroupComponents/CreateDirectSalesAgentModal'
 import EditGroupModal from '../../components/System/sellerGroupComponents/EditGroupModal'
-import { useFetch, useFetchPatch, useFetchPost } from '../../utils/useFetch'
+import { useFetch as fetchJson, useFetchPatch as patchJson, useFetchPost as postJson } from '../../utils/useFetch'
 
 const roleLabel = (role = '') => ({
   broker_network_manager: 'Broker Network Manager',
@@ -26,31 +37,109 @@ const roleLabel = (role = '') => ({
   agent: 'Agent',
 }[role] || String(role || 'Seller').replaceAll('_', ' '))
 
-const RateBadge = ({ type, rate, status = 'active' }) => (
-  <span className={`inline-flex rounded-lg px-2.5 py-1 text-xs font-black ring-1 ${
-    status === 'active'
-      ? type === 'direct'
-        ? 'bg-blue-50 text-blue-700 ring-blue-100'
-        : 'bg-violet-50 text-violet-700 ring-violet-100'
-      : 'bg-slate-100 text-slate-500 ring-slate-200'
-  }`}>
-    {type === 'direct' ? 'Direct' : 'Override'}: {Number(rate || 0).toFixed(2)}%
-  </span>
+const formatCurrency = (value) => new Intl.NumberFormat('en-PH', {
+  style: 'currency',
+  currency: 'PHP',
+  maximumFractionDigits: 2,
+}).format(Number(value || 0))
+
+const compactCurrency = (value) => new Intl.NumberFormat('en-PH', {
+  notation: 'compact',
+  maximumFractionDigits: 1,
+}).format(Number(value || 0))
+
+const toDateInput = (date) => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const getLastTwelveMonthsRange = () => {
+  const today = new Date()
+  const from = new Date(today.getFullYear(), today.getMonth() - 11, 1)
+  return { from: toDateInput(from), to: toDateInput(today) }
+}
+
+const getPresetRange = (preset) => {
+  const today = new Date()
+  if (preset === '30_days') {
+    const from = new Date(today)
+    from.setDate(from.getDate() - 29)
+    return { from: toDateInput(from), to: toDateInput(today) }
+  }
+  if (preset === 'this_year') {
+    return { from: `${today.getFullYear()}-01-01`, to: toDateInput(today) }
+  }
+  return getLastTwelveMonthsRange()
+}
+
+const formatPeriodLabel = (period = '') => {
+  const parts = String(period).split('-').map(Number)
+  if (parts.length < 2 || !parts[0] || !parts[1]) return period
+  const date = new Date(parts[0], parts[1] - 1, parts[2] || 1)
+  return date.toLocaleDateString('en-PH', parts[2]
+    ? { month: 'short', day: 'numeric' }
+    : { month: 'short', year: '2-digit' })
+}
+
+const SummaryCard = ({ icon: Icon, label, value, helper }) => (
+  <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="flex items-start justify-between gap-3">
+      <div>
+        <p className="text-xs font-black uppercase tracking-wide text-slate-500">{label}</p>
+        <p className="mt-2 text-2xl font-black text-slate-950">{value}</p>
+        <p className="mt-1 text-xs font-semibold text-slate-500">{helper}</p>
+      </div>
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700"><Icon /></span>
+    </div>
+  </article>
 )
 
-const SummaryCard = ({ label, value, helper, tone = 'slate' }) => {
-  const tones = {
-    slate: 'bg-white text-slate-950',
-    blue: 'bg-blue-50 text-blue-800',
-    emerald: 'bg-emerald-50 text-emerald-800',
-    amber: 'bg-amber-50 text-amber-800',
-    red: 'bg-red-50 text-red-800',
-  }
+const RateBadge = ({ label, rate, status = 'inactive', tone = 'blue' }) => {
+  const active = status === 'active'
+  const toneClass = tone === 'violet'
+    ? 'bg-violet-50 text-violet-700 ring-violet-100'
+    : 'bg-blue-50 text-blue-700 ring-blue-100'
   return (
-    <div className={`rounded-2xl border border-slate-200 p-4 shadow-sm ${tones[tone] || tones.slate}`}>
-      <p className="text-xs font-black uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-2 text-2xl font-black">{value}</p>
-      <p className="mt-1 text-xs font-semibold text-slate-500">{helper}</p>
+    <span className={`inline-flex rounded-lg px-2.5 py-1 text-xs font-black ring-1 ${active ? toneClass : 'bg-slate-100 text-slate-500 ring-slate-200'}`}>
+      {label}: {active ? `${Number(rate || 0).toFixed(2)}%` : 'Inactive'}
+    </span>
+  )
+}
+
+const RatesCell = ({ member, directSeller, parent, savedOverride, isGroupHead }) => (
+  <div className="flex max-w-md flex-wrap gap-2">
+    {member.role === 'agent' ? (
+      <RateBadge label="Direct" rate={member.direct_rate} status={member.direct_rate_status} />
+    ) : directSeller ? (
+      <RateBadge label="Direct-sales agent" rate={directSeller.direct_rate} status={directSeller.direct_rate_status} />
+    ) : (
+      <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-black text-slate-500 ring-1 ring-slate-200">Direct sales: Not enabled</span>
+    )}
+    {!isGroupHead ? (
+      savedOverride ? (
+        <RateBadge label={`Parent gets`} rate={savedOverride.override_rate} status={savedOverride.override_rate_status} tone="violet" />
+      ) : (
+        <span className="rounded-lg bg-amber-50 px-2.5 py-1 text-xs font-black text-amber-700 ring-1 ring-amber-100">Parent override: Not set</span>
+      )
+    ) : null}
+    {!isGroupHead && parent ? <span className="w-full text-[11px] font-semibold text-slate-500">Paid to {parent.display_name}</span> : null}
+  </div>
+)
+
+const AnalyticsTooltip = ({ active, payload, label }) => {
+  if (!active || !payload?.length) return null
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-3 text-xs shadow-xl">
+      <p className="font-black text-slate-950">{formatPeriodLabel(label)}</p>
+      <div className="mt-2 grid gap-1.5">
+        {payload.map((item) => (
+          <p key={item.dataKey} className="font-semibold text-slate-600">
+            {item.name}: <span className="font-black text-slate-950">{item.dataKey === 'salesCount' ? Number(item.value || 0) : formatCurrency(item.value)}</span>
+          </p>
+        ))}
+      </div>
     </div>
   )
 }
@@ -62,120 +151,138 @@ const SellerGroupDetails = () => {
   const queryClient = useQueryClient()
   const isAdmin = location.pathname.startsWith('/admin/')
   const groupsPath = isAdmin ? '/admin/users/seller_group' : '/super_admin/users/seller_group'
+
+  const initialRange = useMemo(() => getLastTwelveMonthsRange(), [])
   const [alert, setAlert] = useState(null)
   const [memberSearch, setMemberSearch] = useState('')
-  const [rateModal, setRateModal] = useState(null)
+  const [rateEditor, setRateEditor] = useState(null)
   const [dummyOwner, setDummyOwner] = useState(null)
-  const [confirmAction, setConfirmAction] = useState(null)
   const [showEditGroupModal, setShowEditGroupModal] = useState(false)
   const [modalNotice, setModalNotice] = useState(null)
+  const [draftRange, setDraftRange] = useState(initialRange)
+  const [appliedRange, setAppliedRange] = useState(initialRange)
 
-  const projectsQuery = useQuery({
-    queryKey: ['lot-project-options'],
-    queryFn: () => useFetch('/projects/lot-projects/options'),
-  })
-  const projects = useMemo(() => projectsQuery.data?.data || [], [projectsQuery.data])
   const selectedProjectId = Number(searchParams.get('project') || 0)
 
-  // Keep project selection in the URL so refresh and browser navigation preserve it.
+  const projectOptionsQuery = useQuery({
+    queryKey: ['seller-group-project-options', Number(groupId)],
+    queryFn: () => fetchJson(`/seller-groups/${groupId}/projects`),
+    enabled: Boolean(groupId),
+  })
+  const accreditedProjects = useMemo(() => projectOptionsQuery.data?.data || [], [projectOptionsQuery.data])
+  const groupOption = projectOptionsQuery.data?.group || {}
+
+  // The URL can only point to a project currently accredited to this group.
   useEffect(() => {
-    if (!projects.length) return
-    const exists = projects.some((project) => Number(project.lot_project_id || project.id) === selectedProjectId)
+    if (!accreditedProjects.length) return
+    const exists = accreditedProjects.some((project) => Number(project.lot_project_id) === selectedProjectId)
     if (!exists) {
-      const firstProjectId = Number(projects[0].lot_project_id || projects[0].id)
-      setSearchParams({ project: String(firstProjectId) }, { replace: true })
+      setSearchParams({ project: String(accreditedProjects[0].lot_project_id) }, { replace: true })
     }
-  }, [projects, selectedProjectId, setSearchParams])
+  }, [accreditedProjects, selectedProjectId, setSearchParams])
 
   const configurationQuery = useQuery({
     queryKey: ['seller-group-project-configuration', Number(groupId), selectedProjectId],
-    queryFn: () => useFetch(`/seller-groups/${groupId}/projects/${selectedProjectId}`),
+    queryFn: () => fetchJson(`/seller-groups/${groupId}/projects/${selectedProjectId}`),
     enabled: Boolean(groupId && selectedProjectId),
-    keepPreviousData: true,
+    placeholderData: (previousData) => previousData,
+  })
+
+  const analyticsQueryString = new URLSearchParams(appliedRange).toString()
+  const analyticsQuery = useQuery({
+    queryKey: ['seller-group-project-analytics', Number(groupId), selectedProjectId, appliedRange.from, appliedRange.to],
+    queryFn: () => fetchJson(`/seller-groups/${groupId}/projects/${selectedProjectId}/analytics?${analyticsQueryString}`),
+    enabled: Boolean(groupId && selectedProjectId && appliedRange.from && appliedRange.to),
+    placeholderData: (previousData) => previousData,
   })
 
   const configuration = configurationQuery.data?.data || null
-  const group = configuration?.group || {}
-  const project = configuration?.project || {}
+  const group = configuration?.group || {
+    id: Number(groupId),
+    name: groupOption.name || 'Seller Group',
+    status: groupOption.status,
+    projectRates: accreditedProjects,
+  }
+  const project = configuration?.project || accreditedProjects.find((item) => Number(item.lot_project_id) === selectedProjectId) || {}
   const members = useMemo(() => configuration?.members || [], [configuration])
   const overrides = useMemo(() => configuration?.overrides || [], [configuration])
-  const validation = configuration?.validation || { paths: [], errorCount: 0 }
-  const summary = configuration?.summary || {}
+  const analytics = analyticsQuery.data?.data || null
+  const analyticsSummary = analytics?.summary || {}
+  const timeline = useMemo(() => (analytics?.timeline || []).map((row) => ({
+    ...row,
+    label: formatPeriodLabel(row.period),
+  })), [analytics])
 
-  const memberById = useMemo(
-    () => new Map(members.map((member) => [Number(member.accredited_seller_id), member])),
-    [members]
-  )
-  const overrideByRelationship = useMemo(
-    () => new Map(overrides.map((item) => [
-      `${Number(item.child_accredited_seller_id)}:${Number(item.parent_accredited_seller_id)}`,
-      item,
-    ])),
-    [overrides]
-  )
-  const dummyOwnerIds = useMemo(
-    () => new Set(members.filter((member) => member.is_system_dummy).map((member) => Number(member.dummy_owner_accredited_seller_id))),
-    [members]
-  )
+  const realMembers = useMemo(() => members.filter((member) => !member.is_system_dummy), [members])
+  const memberById = useMemo(() => new Map(members.map((member) => [Number(member.accredited_seller_id), member])), [members])
+  const dummyByOwner = useMemo(() => new Map(
+    members
+      .filter((member) => member.is_system_dummy && member.dummy_owner_accredited_seller_id)
+      .map((member) => [Number(member.dummy_owner_accredited_seller_id), member])
+  ), [members])
+  const overrideByRelationship = useMemo(() => new Map(overrides.map((item) => [
+    `${Number(item.child_accredited_seller_id)}:${Number(item.parent_accredited_seller_id)}`,
+    item,
+  ])), [overrides])
+
+  const getMemberContext = (member) => {
+    const isGroupHead = Number(member.user_id) === Number(group.headUserId)
+    const parent = member.parent_accredited_seller_id
+      ? memberById.get(Number(member.parent_accredited_seller_id))
+      : !isGroupHead
+        ? realMembers.find((candidate) => Number(candidate.user_id) === Number(group.headUserId))
+        : null
+    const savedOverride = parent
+      ? overrideByRelationship.get(`${Number(member.accredited_seller_id)}:${Number(parent.accredited_seller_id)}`)
+      : null
+    return {
+      isGroupHead,
+      parent,
+      savedOverride,
+      directSeller: member.role === 'agent' ? member : dummyByOwner.get(Number(member.accredited_seller_id)) || null,
+    }
+  }
+
   const filteredMembers = useMemo(() => {
     const keyword = memberSearch.trim().toLowerCase()
-    if (!keyword) return members
-    return members.filter((member) => [
-      member.display_name,
-      member.full_name,
-      member.owner_name,
-      member.reports_under_name,
-      member.role,
-    ].some((value) => String(value || '').toLowerCase().includes(keyword)))
-  }, [members, memberSearch])
+    if (!keyword) return realMembers
+    return realMembers.filter((member) => {
+      const context = getMemberContext(member)
+      return [
+        member.display_name,
+        member.full_name,
+        member.role,
+        context.parent?.display_name,
+        context.directSeller?.display_name,
+      ].some((value) => String(value || '').toLowerCase().includes(keyword))
+    })
+  // getMemberContext is derived entirely from these memoized collections.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [realMembers, memberSearch, memberById, dummyByOwner, overrideByRelationship, group.headUserId])
 
   const refreshConnectedQueries = () => {
+    queryClient.invalidateQueries({ queryKey: ['seller-group-project-options', Number(groupId)] })
     queryClient.invalidateQueries({ queryKey: ['seller-group-project-configuration', Number(groupId)] })
+    queryClient.invalidateQueries({ queryKey: ['seller-group-project-analytics', Number(groupId)] })
     queryClient.invalidateQueries({ queryKey: ['seller-groups'] })
     queryClient.invalidateQueries({ queryKey: ['reservation-agents'] })
     queryClient.invalidateQueries({ queryKey: ['commission-preview'] })
   }
 
-  const poolMutation = useMutation({
-    mutationFn: ({ rate, status }) => useFetchPatch(`/seller-groups/${groupId}/projects/${selectedProjectId}/pool`, { poolRate: rate, status }),
-    onMutate: () => setModalNotice({ type: 'loading', message: 'Saving project commission pool...' }),
+  const memberRatesMutation = useMutation({
+    mutationFn: ({ memberId, payload }) => patchJson(`/seller-groups/${groupId}/projects/${selectedProjectId}/members/${memberId}/rates`, payload),
+    onMutate: () => setModalNotice({ type: 'loading', message: 'Saving seller rates...' }),
     onSuccess: (result) => {
-      setRateModal(null)
+      setRateEditor(null)
       setModalNotice(null)
-      setAlert({ type: 'success', message: result?.message || 'Project commission pool saved.' })
+      setAlert({ type: 'success', message: result?.message || 'Seller rates saved.' })
       refreshConnectedQueries()
     },
-    onError: (error) => setModalNotice({ type: 'error', message: error?.message || 'Failed to save project commission pool.' }),
-  })
-
-  const directRateMutation = useMutation({
-    mutationFn: ({ agentId, rate, status }) => useFetchPatch(`/seller-groups/${groupId}/projects/${selectedProjectId}/agents/${agentId}/direct-rate`, { directRate: rate, status }),
-    onMutate: ({ status }) => setModalNotice({ type: 'loading', message: status === 'inactive' ? 'Removing agent direct rate...' : 'Saving agent direct rate...' }),
-    onSuccess: (result) => {
-      setRateModal(null)
-      setConfirmAction(null)
-      setModalNotice(null)
-      setAlert({ type: 'success', message: result?.message || 'Agent direct rate saved.' })
-      refreshConnectedQueries()
-    },
-    onError: (error) => setModalNotice({ type: 'error', message: error?.message || 'Failed to save agent direct rate.' }),
-  })
-
-  const overrideMutation = useMutation({
-    mutationFn: ({ childId, parentId, rate, status }) => useFetchPatch(`/seller-groups/${groupId}/projects/${selectedProjectId}/children/${childId}/override`, { parentId, overrideRate: rate, status }),
-    onMutate: ({ status }) => setModalNotice({ type: 'loading', message: status === 'inactive' ? 'Removing hierarchy override...' : 'Saving hierarchy override...' }),
-    onSuccess: (result) => {
-      setRateModal(null)
-      setConfirmAction(null)
-      setModalNotice(null)
-      setAlert({ type: 'success', message: result?.message || 'Hierarchy override saved.' })
-      refreshConnectedQueries()
-    },
-    onError: (error) => setModalNotice({ type: 'error', message: error?.message || 'Failed to save hierarchy override.' }),
+    onError: (error) => setModalNotice({ type: 'error', message: error?.message || 'Failed to save seller rates.' }),
   })
 
   const createDummyMutation = useMutation({
-    mutationFn: ({ ownerId, directRate }) => useFetchPost(`/seller-groups/${groupId}/direct-sales-agents/${ownerId}`, { projectId: selectedProjectId, directRate }),
+    mutationFn: ({ ownerId, directRate }) => postJson(`/seller-groups/${groupId}/direct-sales-agents/${ownerId}`, { projectId: selectedProjectId, directRate }),
     onMutate: () => setModalNotice({ type: 'loading', message: 'Creating direct-sales agent...' }),
     onSuccess: (result) => {
       setDummyOwner(null)
@@ -186,232 +293,194 @@ const SellerGroupDetails = () => {
     onError: (error) => setModalNotice({ type: 'error', message: error?.message || 'Failed to create direct-sales agent.' }),
   })
 
-  const dummyStatusMutation = useMutation({
-    mutationFn: ({ dummyId, status }) => useFetchPatch(`/seller-groups/${groupId}/direct-sales-agents/${dummyId}/status`, { status }),
-    onMutate: ({ status }) => setModalNotice({ type: 'loading', message: `${status === 'active' ? 'Activating' : 'Deactivating'} direct-sales agent...` }),
-    onSuccess: (result) => {
-      setConfirmAction(null)
-      setModalNotice(null)
-      setAlert({ type: 'success', message: result?.message || 'Direct-sales agent status updated.' })
-      refreshConnectedQueries()
-    },
-    onError: (error) => setModalNotice({ type: 'error', message: error?.message || 'Failed to update direct-sales agent.' }),
-  })
-
-  const openDirectRate = (member) => {
-    setModalNotice(null)
-    setRateModal({
-      kind: 'direct',
-      member,
-      initialRate: member.direct_rate || 0,
-      initialStatus: member.direct_rate_status || 'inactive',
-    })
-  }
-
-  const openOverride = (child) => {
-    const parent = child.parent_accredited_seller_id
-      ? memberById.get(Number(child.parent_accredited_seller_id))
-      : members.find((member) => Number(member.user_id) === Number(group.headUserId))
-    if (!parent) {
-      setAlert({ type: 'warning', message: `${child.display_name} has no parent seller. Set the reporting hierarchy first.` })
+  const applyRange = () => {
+    if (!draftRange.from || !draftRange.to) {
+      setAlert({ type: 'error', message: 'Select both From Date and To Date.' })
       return
     }
-    const saved = overrideByRelationship.get(
-      `${Number(child.accredited_seller_id)}:${Number(parent.accredited_seller_id)}`
-    )
-    setModalNotice(null)
-    setRateModal({
-      kind: 'override',
-      child,
-      parent,
-      initialRate: saved?.override_rate || 0,
-      initialStatus: saved?.override_rate_status || 'inactive',
-    })
+    if (draftRange.from > draftRange.to) {
+      setAlert({ type: 'error', message: 'From Date cannot be after To Date.' })
+      return
+    }
+    setAlert(null)
+    setAppliedRange(draftRange)
   }
 
-  const isAnyMutationPending = poolMutation.isPending || directRateMutation.isPending || overrideMutation.isPending || createDummyMutation.isPending || dummyStatusMutation.isPending
+  const setPreset = (preset) => {
+    const range = getPresetRange(preset)
+    setDraftRange(range)
+    setAppliedRange(range)
+    setAlert(null)
+  }
+
+  const openRateEditor = (member) => {
+    setModalNotice(null)
+    setRateEditor({ member, ...getMemberContext(member) })
+  }
+
+  const isInitialLoading = projectOptionsQuery.isLoading || (selectedProjectId && configurationQuery.isLoading)
+  const pageTitle = group.name || groupOption.name || 'Seller Group'
 
   return (
     <main className="flex flex-col gap-6">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <PageHeader
-          title={group.name || 'Seller Group'}
-          description="Manage project commission pools, agent direct rates, relationship overrides, and direct-sales agents."
+          title={pageTitle}
+          description="Manage accredited projects, member rates, and project sales performance."
           icon={FiUsers}
         />
         <div className="grid gap-2 sm:grid-cols-3 xl:flex">
           <NavLink to={groupsPath} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 transition hover:bg-slate-50"><FiArrowLeft />Back to Seller Groups</NavLink>
-          <button type="button" onClick={() => configurationQuery.refetch()} disabled={configurationQuery.isFetching} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"><FiRefreshCw className={configurationQuery.isFetching ? 'animate-spin' : ''} />Refresh</button>
+          <button type="button" onClick={() => { projectOptionsQuery.refetch(); configurationQuery.refetch(); analyticsQuery.refetch() }} disabled={projectOptionsQuery.isFetching || configurationQuery.isFetching || analyticsQuery.isFetching} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"><FiRefreshCw className={projectOptionsQuery.isFetching || configurationQuery.isFetching || analyticsQuery.isFetching ? 'animate-spin' : ''} />Refresh</button>
           <button type="button" onClick={() => setShowEditGroupModal(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-black text-white transition hover:bg-blue-700"><FiEdit2 />Edit Group</button>
         </div>
       </div>
 
       {alert ? <StatusAlert type={alert.type} title={alert.title} message={alert.message} onClose={alert.type === 'loading' ? undefined : () => setAlert(null)} /> : null}
-      {projectsQuery.isLoading ? <StatusAlert type="loading" message="Loading active projects..." /> : null}
-      {configurationQuery.isLoading ? <StatusAlert type="loading" message="Loading seller group and project rates..." /> : null}
-      {!configurationQuery.isLoading && configurationQuery.isFetching ? <StatusAlert type="info" message={`Refreshing ${project.name || 'project'} commission configuration...`} /> : null}
-      {configurationQuery.isError ? <StatusAlert type="error" message={configurationQuery.error?.message || 'Failed to load seller group configuration.'} /> : null}
+      {isInitialLoading ? <StatusAlert type="loading" message="Loading seller group and accredited projects..." /> : null}
+      {projectOptionsQuery.isError ? <StatusAlert type="error" message={projectOptionsQuery.error?.message || 'Failed to load accredited projects.'} /> : null}
+      {configurationQuery.isError ? <StatusAlert type="error" message={configurationQuery.error?.message || 'Failed to load seller group rates.'} /> : null}
+      {!configurationQuery.isLoading && configurationQuery.isFetching ? <StatusAlert type="info" message={`Refreshing ${project.name || 'selected project'} rates...`} /> : null}
 
       <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-end">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-end">
           <div>
             <p className="text-xs font-black uppercase tracking-wide text-slate-500">Group Head</p>
             <p className="mt-1 text-lg font-black text-slate-950">{group.headName || 'No group head assigned'}</p>
             <p className="mt-1 text-sm font-semibold text-slate-500">{group.description || 'No group description.'}</p>
           </div>
           <label className="flex flex-col gap-1.5">
-            <span className="text-xs font-black text-slate-700">Project <span className="text-red-500">*</span></span>
+            <span className="text-xs font-black text-slate-700">Accredited Project <span className="text-red-500">*</span></span>
             <select
               value={selectedProjectId || ''}
               onChange={(event) => {
                 setSearchParams({ project: event.target.value })
                 setMemberSearch('')
-                setRateModal(null)
-                setAlert({ type: 'info', message: 'Loading selected project rates...' })
+                setRateEditor(null)
+                setAlert(null)
               }}
-              disabled={projectsQuery.isLoading || !projects.length}
+              disabled={projectOptionsQuery.isLoading || !accreditedProjects.length}
               className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100"
             >
-              {!projects.length ? <option value="">No active lot projects</option> : null}
-              {projects.map((item) => <option key={item.lot_project_id || item.id} value={item.lot_project_id || item.id}>{item.lot_project_name || item.label}</option>)}
+              {!accreditedProjects.length ? <option value="">No accredited projects</option> : null}
+              {accreditedProjects.map((item) => <option key={item.lot_project_id} value={item.lot_project_id}>{item.lot_project_name}</option>)}
             </select>
           </label>
         </div>
       </section>
 
+      {!projectOptionsQuery.isLoading && !accreditedProjects.length ? (
+        <StatusAlert type="warning" title="No accredited projects" message="Edit this seller group and select at least one project before setting rates or viewing sales performance." />
+      ) : null}
+
       {configuration ? (
         <>
-          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-            <SummaryCard label="Group Commission Pool" value={`${Number(configuration.poolRate || 0).toFixed(2)}%`} helper={project.name || 'Selected project'} tone="blue" />
-            <SummaryCard label="Active Members" value={summary.activeMembers || 0} helper="Real and system sellers" />
-            <SummaryCard label="Active Sales Agents" value={summary.activeAgents || 0} helper="Available after direct-rate setup" tone="emerald" />
-            <SummaryCard label="Direct-Sales Agents" value={summary.directSalesAgents || 0} helper="Non-login system agents" tone="amber" />
-            <SummaryCard label="Paths With Errors" value={summary.invalidPaths || 0} helper="Must be fixed before reservation" tone={summary.invalidPaths ? 'red' : 'emerald'} />
-          </section>
-
           <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="flex flex-col gap-3 border-b border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between">
-              <div><h2 className="text-lg font-black text-slate-950">Project Commission Pool</h2><p className="text-sm font-semibold text-slate-500">Maximum total direct and override allocation for {project.name}.</p></div>
-              <button type="button" onClick={() => { setModalNotice(null); setRateModal({ kind: 'pool', initialRate: configuration.poolRate, initialStatus: configuration.poolRateStatus }) }} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 text-sm font-black text-blue-700 transition hover:bg-blue-100"><FiPercent />Edit Pool</button>
+            <div className="flex flex-col gap-4 border-b border-slate-200 p-4 xl:flex-row xl:items-end xl:justify-between">
+              <div>
+                <h2 className="text-lg font-black text-slate-950">Sales and Commission Performance</h2>
+                <p className="mt-1 text-sm font-semibold text-slate-500">Live totals for {project.name} based on reservation dates within the selected range.</p>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-[150px_150px_auto_auto]">
+                <label className="flex flex-col gap-1"><span className="text-[11px] font-black uppercase text-slate-500">From Date</span><input type="date" value={draftRange.from} onChange={(event) => setDraftRange((current) => ({ ...current, from: event.target.value }))} className="h-10 rounded-xl border border-slate-300 px-3 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50" /></label>
+                <label className="flex flex-col gap-1"><span className="text-[11px] font-black uppercase text-slate-500">To Date</span><input type="date" value={draftRange.to} onChange={(event) => setDraftRange((current) => ({ ...current, to: event.target.value }))} className="h-10 rounded-xl border border-slate-300 px-3 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50" /></label>
+                <button type="button" onClick={applyRange} className="mt-auto inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-black text-white hover:bg-blue-700"><FiCalendar />Apply Range</button>
+                <select aria-label="Date range preset" defaultValue="last_12_months" onChange={(event) => setPreset(event.target.value)} className="mt-auto h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-700 outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50"><option value="30_days">Last 30 Days</option><option value="this_year">This Year</option><option value="last_12_months">Last 12 Months</option></select>
+              </div>
             </div>
-            <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
-              {validation.paths.length ? validation.paths.map((path) => (
-                <div key={path.agentId} className={`rounded-xl border p-4 ${path.hasErrors ? 'border-red-200 bg-red-50' : 'border-emerald-200 bg-emerald-50'}`}>
-                  <div className="flex items-start justify-between gap-3"><div><p className="font-black text-slate-950">{path.agentName}</p><p className="text-xs font-semibold text-slate-500">{path.chain.length} commission recipient(s)</p></div><span className={`rounded-full px-2.5 py-1 text-xs font-black ${path.hasErrors ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>{path.hasErrors ? 'Needs setup' : 'Valid'}</span></div>
-                  <div className="mt-3 grid grid-cols-2 gap-2 text-sm"><div><p className="text-xs font-bold text-slate-500">Allocated</p><p className="font-black text-slate-950">{path.allocatedRate.toFixed(2)}%</p></div><div><p className="text-xs font-bold text-slate-500">Unallocated</p><p className="font-black text-slate-950">{path.unallocatedRate.toFixed(2)}%</p></div></div>
-                  {path.errors.map((message) => <p key={message} className="mt-2 text-xs font-bold text-red-700">{message}</p>)}
+
+            <div className="grid gap-4 p-4 sm:grid-cols-2 xl:grid-cols-6">
+              <SummaryCard icon={FiUsers} label="Active Members" value={configuration.summary?.activeMembers || 0} helper="Real seller accounts" />
+              <SummaryCard icon={FiShoppingBag} label="Sales" value={analyticsSummary.salesCount || 0} helper="Reserved accounts" />
+              <SummaryCard icon={FiDollarSign} label="Sales Value" value={formatCurrency(analyticsSummary.salesAmount)} helper="Total contract price" />
+              <SummaryCard icon={FiTrendingUp} label="Gross Commission" value={formatCurrency(analyticsSummary.grossCommission)} helper="Accumulated commission" />
+              <SummaryCard icon={FiDollarSign} label="Released" value={formatCurrency(analyticsSummary.releasedCommission)} helper="Commission already paid" />
+              <SummaryCard icon={FiDollarSign} label="Remaining" value={formatCurrency(analyticsSummary.remainingCommission)} helper="Commission not yet released" />
+            </div>
+
+            <div className="px-4 pb-4">
+              {analyticsQuery.isLoading ? <StatusAlert type="loading" message="Loading group sales and commission analytics..." /> : null}
+              {!analyticsQuery.isLoading && analyticsQuery.isFetching ? <StatusAlert type="info" message="Refreshing analytics for the selected date range..." /> : null}
+              {analyticsQuery.isError ? <StatusAlert type="error" message={analyticsQuery.error?.message || 'Failed to load group analytics.'} /> : null}
+
+              {!analyticsQuery.isLoading && !analyticsQuery.isError ? (
+                <div className="grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,0.8fr)]">
+                  <div className="rounded-2xl border border-slate-200 p-4">
+                    <div className="mb-4"><h3 className="font-black text-slate-950">Sales and Commission Trend</h3><p className="text-xs font-semibold text-slate-500">Sales value, group commission, released commission, and sales count.</p></div>
+                    {timeline.length ? (
+                      <div className="h-[340px] w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <ComposedChart data={timeline} margin={{ top: 10, right: 12, left: 8, bottom: 10 }} accessibilityLayer>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="period" tickFormatter={formatPeriodLabel} minTickGap={24} />
+                            <YAxis yAxisId="money" tickFormatter={compactCurrency} width={72} />
+                            <YAxis yAxisId="count" orientation="right" allowDecimals={false} width={42} />
+                            <Tooltip content={<AnalyticsTooltip />} />
+                            <Legend />
+                            <Bar yAxisId="money" dataKey="salesAmount" name="Sales Value" fill="#2563eb" radius={[5, 5, 0, 0]} />
+                            <Line yAxisId="money" type="monotone" dataKey="grossCommission" name="Gross Commission" stroke="#7c3aed" strokeWidth={3} dot={false} />
+                            <Line yAxisId="money" type="monotone" dataKey="releasedCommission" name="Released Commission" stroke="#059669" strokeWidth={3} dot={false} />
+                            <Line yAxisId="count" type="monotone" dataKey="salesCount" name="Sales Count" stroke="#ea580c" strokeWidth={2} />
+                          </ComposedChart>
+                        </ResponsiveContainer>
+                      </div>
+                    ) : <p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-16 text-center text-sm font-semibold text-slate-500">No sales or commission records fall within this date range.</p>}
+                  </div>
+
+                  <div className="rounded-2xl border border-slate-200 p-4">
+                    <div><h3 className="font-black text-slate-950">Sales by Agent</h3><p className="text-xs font-semibold text-slate-500">Top sellers for the selected project and range.</p></div>
+                    <div className="mt-4 grid gap-3">
+                      {(analytics?.sellers || []).map((seller, index) => (
+                        <div key={`${seller.sellerId}-${seller.sellerName}`} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                          <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-black text-blue-700">#{index + 1}</p><p className="font-black text-slate-950">{seller.sellerName}</p></div><span className="rounded-full bg-white px-2.5 py-1 text-xs font-black text-slate-700 ring-1 ring-slate-200">{seller.salesCount} sale{seller.salesCount === 1 ? '' : 's'}</span></div>
+                          <p className="mt-2 text-sm font-black text-slate-800">{formatCurrency(seller.salesAmount)}</p>
+                        </div>
+                      ))}
+                      {!(analytics?.sellers || []).length ? <p className="rounded-xl border border-dashed border-slate-300 px-4 py-10 text-center text-sm font-semibold text-slate-500">No agent sales found.</p> : null}
+                    </div>
+                  </div>
                 </div>
-              )) : <p className="text-sm font-semibold text-slate-500">No active agent paths are configured for this project.</p>}
+              ) : null}
             </div>
           </section>
 
           <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="flex flex-col gap-4 border-b border-slate-200 p-4 lg:flex-row lg:items-center lg:justify-between">
-              <div><h2 className="text-lg font-black text-slate-950">Hierarchy, Direct Rates, and Overrides</h2><p className="text-sm font-semibold text-slate-500">Agents receive direct rates. Managers, brokers, and BNM receive relationship overrides.</p></div>
-              <label className="relative block w-full lg:max-w-md"><FiSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={memberSearch} onChange={(event) => setMemberSearch(event.target.value)} placeholder="Search member, owner, role, or reports under..." className="h-11 w-full rounded-xl border border-slate-300 pl-10 pr-4 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50" /></label>
+              <div><h2 className="text-lg font-black text-slate-950">Member Rates</h2><p className="text-sm font-semibold text-slate-500">Review and edit the saved rate setup for {project.name}.</p></div>
+              <label className="relative block w-full lg:max-w-md"><FiSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={memberSearch} onChange={(event) => setMemberSearch(event.target.value)} placeholder="Search seller, role, parent, or direct-sales agent..." className="h-11 w-full rounded-xl border border-slate-300 pl-10 pr-4 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50" /></label>
             </div>
 
             <div className="hidden overflow-x-auto lg:block">
-              <table className="min-w-[1320px] w-full divide-y divide-slate-200 text-sm">
-                <thead className="bg-slate-50">
-                  <tr>
-                    {['Seller', 'Role', 'Reports Under', 'Direct Rate', 'Parent Override', 'Status', 'Actions'].map((head) => (
-                      <th key={head} className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">{head}</th>
-                    ))}
-                  </tr>
-                </thead>
+              <table className="min-w-[1080px] w-full divide-y divide-slate-200 text-sm">
+                <thead className="bg-slate-50"><tr>{['Seller', 'Role', 'Reports Under', 'Rates', 'Status', 'Actions'].map((head) => <th key={head} className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">{head}</th>)}</tr></thead>
                 <tbody className="divide-y divide-slate-100">
                   {filteredMembers.map((member) => {
-                    const isGroupHead = Number(member.user_id) === Number(group.headUserId)
-                    const parent = member.parent_accredited_seller_id
-                      ? memberById.get(Number(member.parent_accredited_seller_id))
-                      : !isGroupHead
-                        ? members.find((candidate) => Number(candidate.user_id) === Number(group.headUserId))
-                        : null
-                    const savedOverride = parent
-                      ? overrideByRelationship.get(`${Number(member.accredited_seller_id)}:${Number(parent.accredited_seller_id)}`)
-                      : null
-                    const canCreateDummy = member.role !== 'agent'
-                      && !member.is_system_dummy
-                      && !dummyOwnerIds.has(Number(member.accredited_seller_id))
-
+                    const context = getMemberContext(member)
                     return (
                       <tr key={member.accredited_seller_id} className="align-top hover:bg-slate-50">
-                        <td className="px-4 py-4">
-                          <p className="font-black text-slate-950">{member.display_name}</p>
-                          {member.is_system_dummy ? <p className="mt-1 text-xs font-bold text-blue-600">System agent · Owner: {member.owner_name}</p> : null}
-                        </td>
-                        <td className="px-4 py-4 font-semibold text-slate-700">{member.is_system_dummy ? 'System Agent' : roleLabel(member.role)}</td>
-                        <td className="px-4 py-4">
-                          <p className="font-semibold text-slate-700">{parent?.display_name || member.reports_under_name || (isGroupHead ? 'Developer' : group.headName || 'Not assigned')}</p>
-                          <p className="text-xs text-slate-500">{isGroupHead ? 'Top of seller hierarchy' : parent ? 'Direct parent relationship' : 'Reporting parent required'}</p>
-                        </td>
-                        <td className="px-4 py-4">
-                          {member.role === 'agent'
-                            ? <RateBadge type="direct" rate={member.direct_rate} status={member.direct_rate_status || 'inactive'} />
-                            : <span className="text-xs font-bold text-slate-400">Agents only</span>}
-                        </td>
-                        <td className="px-4 py-4">
-                          {isGroupHead
-                            ? <span className="text-xs font-bold text-slate-400">No parent override</span>
-                            : savedOverride
-                              ? <div><RateBadge type="override" rate={savedOverride.override_rate} status={savedOverride.override_rate_status} /><p className="mt-1 text-[11px] font-semibold text-slate-500">Paid to {parent?.display_name || savedOverride.parent_name}</p></div>
-                              : <div><span className="text-xs font-bold text-amber-700">Not configured</span><p className="mt-1 text-[11px] font-semibold text-slate-500">Paid to {parent?.display_name || 'direct parent'}</p></div>}
-                        </td>
+                        <td className="px-4 py-4"><p className="font-black text-slate-950">{member.display_name}</p>{context.directSeller && member.role !== 'agent' ? <p className="mt-1 text-xs font-semibold text-blue-600">System direct-sales agent connected</p> : null}</td>
+                        <td className="px-4 py-4 font-semibold text-slate-700">{roleLabel(member.role)}</td>
+                        <td className="px-4 py-4"><p className="font-semibold text-slate-700">{context.parent?.display_name || (context.isGroupHead ? 'Developer' : 'Not assigned')}</p><p className="text-xs text-slate-500">{context.isGroupHead ? 'Top of hierarchy' : 'Direct parent'}</p></td>
+                        <td className="px-4 py-4"><RatesCell member={member} {...context} /></td>
                         <td className="px-4 py-4"><span className={`rounded-full px-3 py-1 text-xs font-black capitalize ${member.accredited_seller_status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{member.accredited_seller_status}</span></td>
-                        <td className="px-4 py-4">
-                          <div className="flex flex-wrap gap-2">
-                            {member.role === 'agent' ? <button type="button" onClick={() => openDirectRate(member)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-700 hover:bg-blue-100"><FiEdit2 />Direct Rate</button> : null}
-                            {member.role === 'agent' && member.direct_rate_status === 'active' ? <button type="button" onClick={() => { setModalNotice(null); setConfirmAction({ type: 'remove-direct', member }) }} className="inline-flex h-9 items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 text-xs font-black text-red-700 hover:bg-red-100"><FiTrash2 />Remove Direct</button> : null}
-                            {!isGroupHead ? <button type="button" onClick={() => openOverride(member)} disabled={!parent} className="inline-flex h-9 items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 text-xs font-black text-violet-700 hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-40"><FiEdit2 />Parent Override</button> : null}
-                            {!isGroupHead && savedOverride?.override_rate_status === 'active' ? <button type="button" onClick={() => { setModalNotice(null); setConfirmAction({ type: 'remove-override', member, parent, override: savedOverride }) }} className="inline-flex h-9 items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 text-xs font-black text-red-700 hover:bg-red-100"><FiTrash2 />Remove Override</button> : null}
-                            {canCreateDummy ? <button type="button" onClick={() => { setModalNotice(null); setDummyOwner(member) }} className="inline-flex h-9 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-700 hover:bg-blue-100"><FiUserPlus />Create Sales Agent</button> : null}
-                            {member.is_system_dummy ? <button type="button" onClick={() => { setModalNotice(null); setConfirmAction({ type: 'dummy-status', member, status: member.accredited_seller_status === 'active' ? 'inactive' : 'active' }) }} className="inline-flex h-9 items-center rounded-lg border border-slate-300 bg-white px-3 text-xs font-black text-slate-700 hover:bg-slate-100">{member.accredited_seller_status === 'active' ? 'Deactivate' : 'Activate'}</button> : null}
-                          </div>
-                        </td>
+                        <td className="px-4 py-4"><button type="button" onClick={() => openRateEditor(member)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-700 hover:bg-blue-100"><FiEdit2 />Edit Rate</button></td>
                       </tr>
                     )
                   })}
-                  {!filteredMembers.length ? <tr><td colSpan={7} className="px-4 py-12 text-center text-sm font-semibold text-slate-500">No members match your search.</td></tr> : null}
+                  {!filteredMembers.length ? <tr><td colSpan={6} className="px-4 py-12 text-center text-sm font-semibold text-slate-500">No members match your search.</td></tr> : null}
                 </tbody>
               </table>
             </div>
 
             <div className="grid gap-3 p-4 lg:hidden">
               {filteredMembers.map((member) => {
-                const isGroupHead = Number(member.user_id) === Number(group.headUserId)
-                const parent = member.parent_accredited_seller_id
-                  ? memberById.get(Number(member.parent_accredited_seller_id))
-                  : !isGroupHead
-                    ? members.find((candidate) => Number(candidate.user_id) === Number(group.headUserId))
-                    : null
-                const savedOverride = parent
-                  ? overrideByRelationship.get(`${Number(member.accredited_seller_id)}:${Number(parent.accredited_seller_id)}`)
-                  : null
-                const canCreateDummy = member.role !== 'agent'
-                  && !member.is_system_dummy
-                  && !dummyOwnerIds.has(Number(member.accredited_seller_id))
-
+                const context = getMemberContext(member)
                 return (
                   <article key={member.accredited_seller_id} className="rounded-2xl border border-slate-200 p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div><p className="font-black text-slate-950">{member.display_name}</p><p className="text-xs font-semibold text-slate-500">{member.is_system_dummy ? `System Agent · Owner: ${member.owner_name}` : roleLabel(member.role)}</p></div>
-                      <span className={`rounded-full px-2.5 py-1 text-xs font-black capitalize ${member.accredited_seller_status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{member.accredited_seller_status}</span>
-                    </div>
-                    <p className="mt-3 text-xs font-bold text-slate-500">Reports under</p>
-                    <p className="font-semibold text-slate-800">{parent?.display_name || member.reports_under_name || (isGroupHead ? 'Developer' : group.headName || 'Not assigned')}</p>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {member.role === 'agent' ? <RateBadge type="direct" rate={member.direct_rate} status={member.direct_rate_status || 'inactive'} /> : null}
-                      {!isGroupHead && savedOverride ? <RateBadge type="override" rate={savedOverride.override_rate} status={savedOverride.override_rate_status} /> : null}
-                      {!isGroupHead && !savedOverride ? <span className="rounded-lg bg-amber-50 px-2.5 py-1 text-xs font-black text-amber-700 ring-1 ring-amber-100">Parent override not configured</span> : null}
-                    </div>
-                    <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                      {member.role === 'agent' ? <button type="button" onClick={() => openDirectRate(member)} className="h-10 rounded-xl border border-blue-200 bg-blue-50 text-sm font-black text-blue-700">Edit Direct Rate</button> : null}
-                      {!isGroupHead ? <button type="button" onClick={() => openOverride(member)} disabled={!parent} className="h-10 rounded-xl border border-violet-200 bg-violet-50 text-sm font-black text-violet-700 disabled:opacity-40">Edit Parent Override</button> : null}
-                      {!isGroupHead && savedOverride?.override_rate_status === 'active' ? <button type="button" onClick={() => { setModalNotice(null); setConfirmAction({ type: 'remove-override', member, parent, override: savedOverride }) }} className="h-10 rounded-xl border border-red-200 bg-red-50 text-sm font-black text-red-700">Remove Override</button> : null}
-                      {canCreateDummy ? <button type="button" onClick={() => { setModalNotice(null); setDummyOwner(member) }} className="h-10 rounded-xl bg-blue-600 text-sm font-black text-white">Create Direct-Sales Agent</button> : null}
-                      {member.is_system_dummy ? <button type="button" onClick={() => { setModalNotice(null); setConfirmAction({ type: 'dummy-status', member, status: member.accredited_seller_status === 'active' ? 'inactive' : 'active' }) }} className="h-10 rounded-xl border border-slate-300 bg-white text-sm font-black text-slate-700">{member.accredited_seller_status === 'active' ? 'Deactivate' : 'Activate'}</button> : null}
-                    </div>
+                    <div className="flex items-start justify-between gap-3"><div><p className="font-black text-slate-950">{member.display_name}</p><p className="text-xs font-semibold text-slate-500">{roleLabel(member.role)}</p></div><span className={`rounded-full px-2.5 py-1 text-xs font-black capitalize ${member.accredited_seller_status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{member.accredited_seller_status}</span></div>
+                    <p className="mt-3 text-xs font-bold text-slate-500">Reports under</p><p className="font-semibold text-slate-800">{context.parent?.display_name || (context.isGroupHead ? 'Developer' : 'Not assigned')}</p>
+                    <div className="mt-3"><RatesCell member={member} {...context} /></div>
+                    <button type="button" onClick={() => openRateEditor(member)} className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 text-sm font-black text-white"><FiEdit2 />Edit Rate</button>
                   </article>
                 )
               })}
@@ -421,44 +490,50 @@ const SellerGroupDetails = () => {
         </>
       ) : null}
 
-      <CommissionRateModal
-        open={Boolean(rateModal)}
-        kind={rateModal?.kind}
-        projectName={project.name}
-        sellerName={rateModal?.member?.display_name}
-        parentName={rateModal?.parent?.display_name}
-        childName={rateModal?.child?.display_name}
-        initialRate={rateModal?.initialRate}
-        isPending={isAnyMutationPending}
-        notice={modalNotice}
-        onClose={() => { if (!isAnyMutationPending) { setRateModal(null); setModalNotice(null) } }}
-        onSubmit={({ rate, status }) => {
-          if (rateModal?.kind === 'pool') poolMutation.mutate({ rate, status: 'active' })
-          if (rateModal?.kind === 'direct') directRateMutation.mutate({ agentId: rateModal.member.accredited_seller_id, rate, status })
-          if (rateModal?.kind === 'override') overrideMutation.mutate({ childId: rateModal.child.accredited_seller_id, parentId: rateModal.parent.accredited_seller_id, rate, status })
-        }}
-      />
+      {rateEditor ? (
+        <MemberRatesModal
+          key={`${rateEditor.member.accredited_seller_id}-${selectedProjectId}`}
+          member={rateEditor.member}
+          parent={rateEditor.parent}
+          directSeller={rateEditor.directSeller}
+          savedOverride={rateEditor.savedOverride}
+          project={project}
+          isGroupHead={rateEditor.isGroupHead}
+          isPending={memberRatesMutation.isPending}
+          notice={modalNotice}
+          onClose={() => { if (!memberRatesMutation.isPending) { setRateEditor(null); setModalNotice(null) } }}
+          onCreateDirectSalesAgent={() => {
+            const owner = rateEditor.member
+            setRateEditor(null)
+            setModalNotice(null)
+            setDummyOwner(owner)
+          }}
+          onSubmit={(payload) => memberRatesMutation.mutate({ memberId: rateEditor.member.accredited_seller_id, payload })}
+        />
+      ) : null}
 
-      <CreateDirectSalesAgentModal
-        open={Boolean(dummyOwner)}
-        owner={dummyOwner}
-        project={project}
-        isPending={createDummyMutation.isPending}
-        notice={modalNotice}
-        onClose={() => { if (!createDummyMutation.isPending) { setDummyOwner(null); setModalNotice(null) } }}
-        onSubmit={({ directRate }) => createDummyMutation.mutate({ ownerId: dummyOwner.accredited_seller_id, directRate })}
-      />
+      {dummyOwner ? (
+        <CreateDirectSalesAgentModal
+          key={`${dummyOwner.accredited_seller_id}-${selectedProjectId}`}
+          owner={dummyOwner}
+          project={project}
+          isPending={createDummyMutation.isPending}
+          notice={modalNotice}
+          onClose={() => { if (!createDummyMutation.isPending) { setDummyOwner(null); setModalNotice(null) } }}
+          onSubmit={({ directRate }) => createDummyMutation.mutate({ ownerId: dummyOwner.accredited_seller_id, directRate })}
+        />
+      ) : null}
 
-
-      {showEditGroupModal && configuration ? (
+      {showEditGroupModal ? (
         <EditGroupModal
           setShowEditGroupModal={setShowEditGroupModal}
           selectedGroup={{
-            seller_group_id: group.id,
-            seller_group_name: group.name,
+            seller_group_id: group.id || Number(groupId),
+            seller_group_name: group.name || groupOption.name,
             seller_group_head_user_id: group.headUserId,
             seller_group_description: group.description,
-            seller_group_status: group.status,
+            seller_group_status: group.status || groupOption.status,
+            project_rates: group.projectRates || accreditedProjects,
           }}
           onSaved={(message) => {
             setAlert({ type: 'success', message })
@@ -466,26 +541,6 @@ const SellerGroupDetails = () => {
           }}
         />
       ) : null}
-
-      <ConfirmActionModal
-        open={Boolean(confirmAction)}
-        title={confirmAction?.type === 'remove-direct' ? 'Remove Direct Rate?' : confirmAction?.type === 'remove-override' ? 'Remove Parent Override?' : `${confirmAction?.status === 'active' ? 'Activate' : 'Deactivate'} Direct-Sales Agent?`}
-        message={confirmAction?.type === 'remove-direct'
-          ? `${confirmAction?.member?.display_name} will no longer appear in the ${project.name} reservation agent selector. Existing commission records will not change.`
-          : confirmAction?.type === 'remove-override'
-            ? `${confirmAction?.parent?.display_name || 'The parent seller'} will stop receiving an override from ${confirmAction?.member?.display_name} for ${project.name}. Existing commission records will not change.`
-            : `${confirmAction?.member?.display_name} will ${confirmAction?.status === 'active' ? 'be available' : 'no longer be selectable'} for new reservations. Existing records will remain available.`}
-        confirmLabel={confirmAction?.type === 'remove-direct' ? 'Remove Rate' : confirmAction?.type === 'remove-override' ? 'Remove Override' : confirmAction?.status === 'active' ? 'Activate' : 'Deactivate'}
-        tone={confirmAction?.type === 'remove-direct' || confirmAction?.type === 'remove-override' || confirmAction?.status === 'inactive' ? 'danger' : 'primary'}
-        isPending={directRateMutation.isPending || overrideMutation.isPending || dummyStatusMutation.isPending}
-        notice={modalNotice}
-        onClose={() => { if (!isAnyMutationPending) { setConfirmAction(null); setModalNotice(null) } }}
-        onConfirm={() => {
-          if (confirmAction?.type === 'remove-direct') directRateMutation.mutate({ agentId: confirmAction.member.accredited_seller_id, rate: Number(confirmAction.member.direct_rate || 0), status: 'inactive' })
-          if (confirmAction?.type === 'remove-override') overrideMutation.mutate({ childId: confirmAction.member.accredited_seller_id, parentId: confirmAction.parent.accredited_seller_id, rate: Number(confirmAction.override?.override_rate || 0), status: 'inactive' })
-          if (confirmAction?.type === 'dummy-status') dummyStatusMutation.mutate({ dummyId: confirmAction.member.accredited_seller_id, status: confirmAction.status })
-        }}
-      />
     </main>
   )
 }

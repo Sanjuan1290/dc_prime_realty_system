@@ -491,6 +491,184 @@ const requireReceiptManager = async (req, res) => {
 
 const roundMoney = (value) => Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
 
+const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const MAX_INCOME_RANGE_DAYS = 3660;
+
+const parseIsoDateOnly = (value) => {
+  const text = String(value || '').trim();
+  if (!ISO_DATE_PATTERN.test(text)) return null;
+
+  const [year, month, day] = text.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  return date;
+};
+
+// Income reports use the commission stage's actual release date because that is
+// the date the seller received the income, not the reservation or receipt date.
+export const normalizeSellerIncomeRange = (startDateValue, endDateValue) => {
+  const startDate = String(startDateValue || '').trim();
+  const endDate = String(endDateValue || '').trim();
+  const start = parseIsoDateOnly(startDate);
+  const end = parseIsoDateOnly(endDate);
+
+  if (!start || !end) {
+    throw Object.assign(new Error('Enter valid start and end dates.'), { statusCode: 400 });
+  }
+
+  if (start.getTime() > end.getTime()) {
+    throw Object.assign(new Error('Start date cannot be after end date.'), { statusCode: 400 });
+  }
+
+  const dayCount = Math.floor((end.getTime() - start.getTime()) / 86400000) + 1;
+  if (dayCount > MAX_INCOME_RANGE_DAYS) {
+    throw Object.assign(new Error('Income report date range cannot exceed 10 years.'), { statusCode: 400 });
+  }
+
+  return { startDate, endDate, dayCount };
+};
+
+export const mapSellerIncomeRangeRow = (row = {}) => ({
+  releaseId: Number(row.lot_project_commission_release_id || 0),
+  commissionId: Number(row.lot_project_commission_id || 0),
+  recipientAccreditedSellerId: Number(row.accredited_seller_id || 0),
+  saleOwnerAccreditedSellerId: Number(row.sale_owner_accredited_seller_id || row.accredited_seller_id || 0),
+  projectId: Number(row.lot_project_id || 0),
+  listingId: Number(row.lot_project_listing_id || 0),
+  clientProfileId: Number(row.lot_project_client_profile_id || 0),
+  projectName: row.lot_project_name,
+  projectLocation: row.lot_project_location,
+  unitId: row.lot_project_listing_unit_id,
+  buyerName: row.buyer_full_name,
+  commissionRole: row.commission_role,
+  commissionRateType: row.commission_rate_type || (row.commission_seller_type === 'selling_agent' ? 'direct' : 'override'),
+  commissionRate: Number(row.commission_rate || 0),
+  releaseStage: row.release_stage,
+  releasePercent: Number(row.release_percent || 0),
+  releaseDate: row.actual_release_date,
+  grossAmount: roundMoney(row.gross_release_amount),
+  deductionAmount: roundMoney(row.deduction_amount),
+  netAmount: roundMoney(row.net_release_amount),
+  receiptId: row.lot_project_commission_receipt_id ? Number(row.lot_project_commission_receipt_id) : null,
+  receiptDate: row.receipt_date || null,
+  receiptReference: row.reference_number || null,
+});
+
+export const summarizeSellerIncomeRangeRows = (entries = []) => {
+  const commissionIds = new Set();
+  const listingIds = new Set();
+  const monthMap = new Map();
+
+  const summary = entries.reduce((totals, entry) => {
+    commissionIds.add(Number(entry.commissionId || 0));
+    listingIds.add(Number(entry.listingId || 0));
+
+    totals.grossIncome = roundMoney(totals.grossIncome + Number(entry.grossAmount || 0));
+    totals.deductions = roundMoney(totals.deductions + Number(entry.deductionAmount || 0));
+    totals.netIncome = roundMoney(totals.netIncome + Number(entry.netAmount || 0));
+
+    if (entry.commissionRateType === 'direct') {
+      totals.directIncome = roundMoney(totals.directIncome + Number(entry.netAmount || 0));
+    } else {
+      totals.overrideIncome = roundMoney(totals.overrideIncome + Number(entry.netAmount || 0));
+    }
+
+    if (entry.receiptId) totals.receiptedReleaseCount += 1;
+
+    const month = String(entry.releaseDate || '').slice(0, 7);
+    if (/^\d{4}-\d{2}$/.test(month)) {
+      const current = monthMap.get(month) || { month, releaseCount: 0, grossIncome: 0, deductions: 0, netIncome: 0 };
+      current.releaseCount += 1;
+      current.grossIncome = roundMoney(current.grossIncome + Number(entry.grossAmount || 0));
+      current.deductions = roundMoney(current.deductions + Number(entry.deductionAmount || 0));
+      current.netIncome = roundMoney(current.netIncome + Number(entry.netAmount || 0));
+      monthMap.set(month, current);
+    }
+
+    return totals;
+  }, {
+    releaseCount: entries.length,
+    commissionCount: 0,
+    propertyCount: 0,
+    receiptedReleaseCount: 0,
+    grossIncome: 0,
+    deductions: 0,
+    netIncome: 0,
+    directIncome: 0,
+    overrideIncome: 0,
+    monthlyTotals: [],
+  });
+
+  summary.commissionCount = [...commissionIds].filter(Boolean).length;
+  summary.propertyCount = [...listingIds].filter(Boolean).length;
+  summary.monthlyTotals = [...monthMap.values()].sort((a, b) => a.month.localeCompare(b.month));
+  return summary;
+};
+
+export const SELLER_INCOME_RANGE_QUERY = `
+  SELECT
+    r.lot_project_commission_release_id,
+    c.lot_project_commission_id,
+    c.lot_project_id,
+    c.lot_project_listing_id,
+    c.lot_project_client_profile_id,
+    c.accredited_seller_id,
+    c.sale_owner_accredited_seller_id,
+    c.commission_role,
+    c.commission_seller_type,
+    c.commission_rate_type,
+    c.commission_rate,
+    lp.lot_project_name,
+    lp.lot_project_location,
+    l.lot_project_listing_unit_id,
+    cp.buyer_full_name,
+    r.release_stage,
+    r.release_percent,
+    r.gross_release_amount,
+    r.deduction_amount,
+    r.net_release_amount,
+    r.actual_release_date,
+    receipt.lot_project_commission_receipt_id,
+    receipt.receipt_date,
+    receipt.reference_number
+  FROM lot_project_commission_releases r
+  INNER JOIN lot_project_commissions c
+    ON c.lot_project_commission_id = r.lot_project_commission_id
+  INNER JOIN lot_projects lp
+    ON lp.lot_project_id = c.lot_project_id
+  INNER JOIN lot_project_listings l
+    ON l.lot_project_listing_id = c.lot_project_listing_id
+  INNER JOIN lot_project_client_profiles cp
+    ON cp.lot_project_client_profile_id = c.lot_project_client_profile_id
+  LEFT JOIN lot_project_commission_receipt_items receipt_item
+    ON receipt_item.lot_project_commission_release_id = r.lot_project_commission_release_id
+  LEFT JOIN lot_project_commission_receipts receipt
+    ON receipt.lot_project_commission_receipt_id = receipt_item.lot_project_commission_receipt_id
+   AND receipt.receipt_status = 'active'
+  WHERE (
+      c.accredited_seller_id = ?
+      OR (
+        c.commission_rate_type = 'direct'
+        AND c.sale_owner_accredited_seller_id = ?
+      )
+    )
+    AND r.release_status = 'Released'
+    AND r.actual_release_date BETWEEN ? AND ?
+  ORDER BY r.actual_release_date ASC,
+    lp.lot_project_name ASC,
+    l.lot_project_listing_unit_id ASC,
+    FIELD(r.release_stage, '1st Release', '2nd Release', '3rd Release', '4th Release', 'Retention') ASC,
+    r.lot_project_commission_release_id ASC
+`;
+
 const mapReleaseForReceipt = (row = {}) => ({
   releaseId: Number(row.lot_project_commission_release_id || row.release_id || 0),
   stage: row.release_stage,
@@ -577,6 +755,8 @@ const loadSellerReceiptData = async (connection, sellerId) => {
         c.lot_project_listing_id,
         c.lot_project_client_profile_id,
         c.accredited_seller_id,
+        c.sale_owner_accredited_seller_id,
+        c.commission_rate_type,
         c.commission_role,
         c.commission_rate,
         lp.lot_project_name,
@@ -601,14 +781,20 @@ const loadSellerReceiptData = async (connection, sellerId) => {
         ON cp.lot_project_client_profile_id = c.lot_project_client_profile_id
       LEFT JOIN lot_project_commission_receipt_items receipt_item
         ON receipt_item.lot_project_commission_release_id = r.lot_project_commission_release_id
-      WHERE c.accredited_seller_id = ?
+      WHERE (
+          c.accredited_seller_id = ?
+          OR (
+            c.commission_rate_type = 'direct'
+            AND c.sale_owner_accredited_seller_id = ?
+          )
+        )
         AND r.release_status = 'Released'
         AND receipt_item.lot_project_commission_receipt_item_id IS NULL
       ORDER BY r.actual_release_date ASC,
         FIELD(r.release_stage, '1st Release', '2nd Release', '3rd Release', '4th Release', 'Retention') ASC,
         r.lot_project_commission_release_id ASC
     `,
-    [sellerId]
+    [sellerId, sellerId]
   );
 
   const groupMap = new Map();
@@ -620,7 +806,10 @@ const loadSellerReceiptData = async (connection, sellerId) => {
         projectId: Number(row.lot_project_id),
         listingId: Number(row.lot_project_listing_id),
         clientProfileId: Number(row.lot_project_client_profile_id),
-        accreditedSellerId: Number(row.accredited_seller_id),
+        accreditedSellerId: sellerId,
+        recipientAccreditedSellerId: Number(row.accredited_seller_id),
+        saleOwnerAccreditedSellerId: Number(row.sale_owner_accredited_seller_id || row.accredited_seller_id),
+        commissionRateType: row.commission_rate_type,
         commissionRole: row.commission_role,
         commissionRate: Number(row.commission_rate || 0),
         projectName: row.lot_project_name,
@@ -715,6 +904,47 @@ export const getAccreditedSellerProofOfIncomeData = async (req, res) => {
   }
 };
 
+export const getAccreditedSellerIncomeRangeReport = async (req, res) => {
+  const connection = await db.getConnection();
+
+  try {
+    const user = await requireReceiptManager(req, res);
+    if (!user) return;
+
+    const sellerId = Number(req.params.sellerId || 0);
+    if (!sellerId) return res.status(400).json({ message: 'Seller id is required.' });
+
+    const range = normalizeSellerIncomeRange(req.query.startDate, req.query.endDate);
+
+    await ensureCommissionReceiptTables(connection);
+    const seller = await getSellerReceiptIdentity(connection, sellerId);
+    if (!seller) return res.status(404).json({ message: 'Accredited seller not found.' });
+
+    const [rows] = await connection.query(
+      SELLER_INCOME_RANGE_QUERY,
+      [sellerId, sellerId, range.startDate, range.endDate]
+    );
+
+    const entries = rows.map(mapSellerIncomeRangeRow);
+    const summary = summarizeSellerIncomeRangeRows(entries);
+
+    return res.json({
+      success: true,
+      data: {
+        seller,
+        range,
+        summary,
+        entries,
+        generatedAt: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    return res.status(error?.statusCode || 500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
 export const createAccreditedSellerProofOfIncomeReceipt = async (req, res) => {
   const connection = await db.getConnection();
 
@@ -755,6 +985,8 @@ export const createAccreditedSellerProofOfIncomeReceipt = async (req, res) => {
           c.lot_project_listing_id,
           c.lot_project_client_profile_id,
           c.accredited_seller_id,
+          c.sale_owner_accredited_seller_id,
+          c.commission_rate_type,
           c.commission_role,
           lp.lot_project_name,
           lp.lot_project_location,
@@ -790,12 +1022,21 @@ export const createAccreditedSellerProofOfIncomeReceipt = async (req, res) => {
       throw Object.assign(new Error('One or more selected commission releases no longer exist.'), { statusCode: 400 });
     }
 
-    const invalidRow = releaseRows.find((row) =>
-      Number(row.accredited_seller_id) !== sellerId ||
-      Number(row.lot_project_commission_id) !== commissionId ||
-      row.release_status !== 'Released' ||
-      row.lot_project_commission_receipt_item_id
-    );
+    const invalidRow = releaseRows.find((row) => {
+      const belongsToSeller =
+        Number(row.accredited_seller_id) === sellerId ||
+        (
+          row.commission_rate_type === 'direct' &&
+          Number(row.sale_owner_accredited_seller_id) === sellerId
+        );
+
+      return (
+        !belongsToSeller ||
+        Number(row.lot_project_commission_id) !== commissionId ||
+        row.release_status !== 'Released' ||
+        row.lot_project_commission_receipt_item_id
+      );
+    });
 
     if (invalidRow) {
       throw Object.assign(new Error('Selected releases must be released, belong to the same seller and listing, and not be included in another receipt.'), { statusCode: 409 });

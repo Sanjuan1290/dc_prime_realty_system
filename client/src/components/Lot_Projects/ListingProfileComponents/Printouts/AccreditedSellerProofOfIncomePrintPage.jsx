@@ -81,7 +81,7 @@ const amountInWords = (value) => {
   return `${integerToWords(pesos).toUpperCase()} PESOS${centavoWords} ONLY`
 }
 
-const CommissionReceiptPrint = ({ seller = {}, receipt = {} }) => {
+export const CommissionReceiptPrint = ({ seller = {}, receipt = {} }) => {
   const totalAmount = Number(receipt.totalAmount || 0)
   const releases = Array.isArray(receipt.releases) ? receipt.releases : []
   const releasePercent = releases.reduce(

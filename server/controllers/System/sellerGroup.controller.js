@@ -26,7 +26,7 @@ const createValidationError = (message) => {
 const validatePoolRate = (value, label = 'Pool rate') => {
   const numberValue = Number(value);
   if (Number.isNaN(numberValue) || numberValue < 6 || numberValue > 15) {
-    throw new Error(`${label} must be between 6 and 15.`);
+    throw createValidationError(`${label} must be between 6 and 15.`);
   }
   return numberValue;
 };
@@ -34,7 +34,7 @@ const validatePoolRate = (value, label = 'Pool rate') => {
 const validateSellerRate = (value, label = 'Seller rate') => {
   const numberValue = Number(value);
   if (Number.isNaN(numberValue) || numberValue < 0 || numberValue > 15) {
-    throw new Error(`${label} must be between 0 and 15.`);
+    throw createValidationError(`${label} must be between 0 and 15.`);
   }
   return numberValue;
 };
@@ -49,6 +49,7 @@ const getActiveLotProjects = async (connection = db) => {
       lot_project_id,
       lot_project_name,
       lot_project_slug,
+      lot_project_location,
       lot_project_location_code
     FROM lot_projects
     WHERE lot_project_status = 'active'
@@ -58,61 +59,38 @@ const getActiveLotProjects = async (connection = db) => {
   return projects;
 };
 
-const normalizeGroupProjectRates = (projectRates = [], projects = []) => {
-  const rateMap = new Map(
-    Array.isArray(projectRates)
-      ? projectRates
-          .map((item) => [Number(item.lot_project_id), Number(item.seller_group_pool_rate ?? item.rate ?? 8)])
-          .filter(([projectId, rate]) => projectId && !Number.isNaN(rate))
-      : []
-  );
-
-  return projects.map((project) => ({
-    lot_project_id: Number(project.lot_project_id),
-    seller_group_pool_rate: validatePoolRate(
-      rateMap.has(Number(project.lot_project_id)) ? rateMap.get(Number(project.lot_project_id)) : 8,
-      `${project.lot_project_name} pool rate`
-    ),
-  }));
-};
-
-
-const assertPoolRatesCanCoverMemberRates = async (connection, groupId, projectRates = []) => {
-  if (!groupId || !projectRates.length) return;
-
-  for (const projectRate of projectRates) {
-    const projectId = Number(projectRate.lot_project_id);
-    const poolRate = Number(projectRate.seller_group_pool_rate || 0);
-    if (!projectId) continue;
-
-    const [rows] = await connection.query(
-      `
-        SELECT
-          asr.accredited_seller_project_rate AS highest_member_rate,
-          lp.lot_project_name,
-          TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS seller_name
-        FROM accredited_sellers acs
-        INNER JOIN accredited_seller_lot_project_rates asr
-          ON asr.accredited_seller_id = acs.accredited_seller_id
-         AND asr.lot_project_id = ?
-         AND asr.accredited_seller_lot_project_rate_status = 'active'
-        INNER JOIN users u ON u.id = acs.user_id
-        INNER JOIN lot_projects lp ON lp.lot_project_id = asr.lot_project_id
-        WHERE acs.seller_group_id = ?
-          AND acs.accredited_seller_status = 'active'
-        ORDER BY asr.accredited_seller_project_rate DESC, seller_name ASC
-        LIMIT 1
-      `,
-      [projectId, groupId]
-    );
-
-    const highest = rows[0];
-    const highestRate = Number(highest?.highest_member_rate || 0);
-    if (highestRate > poolRate) {
-      throw createValidationError(`${highest.lot_project_name} pool rate cannot be ${poolRate}%. Highest assigned member rate is ${highestRate}% for ${highest.seller_name}. Lower member rates first or set the pool rate to at least ${highestRate}%.`);
-    }
+export const normalizeGroupProjectRates = (projectRates = [], projects = []) => {
+  if (!Array.isArray(projectRates) || projectRates.length === 0) {
+    throw createValidationError('Select at least one accredited project for this seller group.');
   }
+
+  const projectMap = new Map(
+    projects.map((project) => [Number(project.lot_project_id), project])
+  );
+  const selectedProjectIds = new Set();
+
+  return projectRates.map((item) => {
+    const projectId = Number(item?.lot_project_id);
+    const project = projectMap.get(projectId);
+
+    if (!project) {
+      throw createValidationError('One or more selected projects are unavailable or inactive. Refresh the form and try again.');
+    }
+    if (selectedProjectIds.has(projectId)) {
+      throw createValidationError(`${project.lot_project_name} was selected more than once.`);
+    }
+    selectedProjectIds.add(projectId);
+
+    return {
+      lot_project_id: projectId,
+      seller_group_pool_rate: validatePoolRate(
+        item?.seller_group_pool_rate ?? item?.rate,
+        `${project.lot_project_name} pool rate`
+      ),
+    };
+  });
 };
+
 
 const upsertGroupProjectRates = async (connection, groupId, projectRates) => {
   if (!projectRates.length) return;
@@ -137,6 +115,49 @@ const upsertGroupProjectRates = async (connection, groupId, projectRates) => {
   );
 };
 
+const syncGroupProjectAccreditations = async (connection, groupId, projectRates) => {
+  await upsertGroupProjectRates(connection, groupId, projectRates);
+
+  const selectedIds = projectRates.map((rate) => Number(rate.lot_project_id));
+  const placeholders = selectedIds.map(() => '?').join(', ');
+
+  // Removing a project accreditation only disables future configuration. Historical
+  // reservations and commission snapshots stay intact for reporting and audits.
+  await connection.query(
+    `
+      UPDATE seller_group_lot_project_rates
+      SET seller_group_lot_project_rate_status = 'inactive'
+      WHERE seller_group_id = ?
+        AND lot_project_id NOT IN (${placeholders})
+    `,
+    [groupId, ...selectedIds]
+  );
+
+  await connection.query(
+    `
+      UPDATE agent_lot_project_direct_rates direct_rate
+      INNER JOIN accredited_sellers seller
+        ON seller.accredited_seller_id = direct_rate.accredited_seller_id
+      SET direct_rate.direct_rate_status = 'inactive'
+      WHERE seller.seller_group_id = ?
+        AND direct_rate.lot_project_id NOT IN (${placeholders})
+    `,
+    [groupId, ...selectedIds]
+  );
+
+  await connection.query(
+    `
+      UPDATE seller_hierarchy_lot_project_overrides override_row
+      INNER JOIN accredited_sellers child
+        ON child.accredited_seller_id = override_row.child_accredited_seller_id
+      SET override_row.override_rate_status = 'inactive'
+      WHERE child.seller_group_id = ?
+        AND override_row.lot_project_id NOT IN (${placeholders})
+    `,
+    [groupId, ...selectedIds]
+  );
+};
+
 const hydrateGroupRates = async (groups) => {
   const groupIds = groups.map((group) => group.seller_group_id).filter(Boolean);
   if (!groupIds.length) return groups.map((group) => ({ ...group, project_rates: [] }));
@@ -155,6 +176,7 @@ const hydrateGroupRates = async (groups) => {
       FROM seller_group_lot_project_rates sgr
       INNER JOIN lot_projects lp ON lp.lot_project_id = sgr.lot_project_id
       WHERE sgr.seller_group_id IN (${placeholders})
+        AND sgr.seller_group_lot_project_rate_status = 'active'
       ORDER BY lp.lot_project_name ASC
     `,
     groupIds
@@ -243,12 +265,11 @@ export const createGroup = async (req, res) => {
     );
 
     const groupId = result.insertId;
-    // New groups receive an 8% pool for every active project unless the form
-    // supplied a project-specific value. Project editing happens on the group page.
+    // A group is accredited only to projects explicitly selected in the form.
     const projects = await getActiveLotProjects(connection);
     const normalizedRates = normalizeGroupProjectRates(project_rates, projects);
-    await assertPoolRatesCanCoverMemberRates(connection, groupId, normalizedRates);
-    await upsertGroupProjectRates(connection, groupId, normalizedRates);
+    await syncGroupProjectAccreditations(connection, groupId, normalizedRates);
+    await assertConfiguredPathsWithinPools(connection, groupId, normalizedRates);
 
     await writeAuditLog(connection, req, {
       action: 'create',
@@ -321,8 +342,8 @@ export const getGroups = async (req, res) => {
         SELECT
           sg.*,
           ${fullNameSql('head_user')} AS group_head_name,
-          COUNT(a.accredited_seller_id) AS member_count,
-          SUM(a.accredited_seller_status = 'active') AS active_member_count
+          COUNT(CASE WHEN COALESCE(a.is_system_dummy, 0) = 0 THEN 1 END) AS member_count,
+          SUM(COALESCE(a.is_system_dummy, 0) = 0 AND a.accredited_seller_status = 'active') AS active_member_count
         FROM seller_groups sg
         LEFT JOIN users head_user ON head_user.id = sg.seller_group_head_user_id
         LEFT JOIN accredited_sellers a ON a.seller_group_id = sg.seller_group_id
@@ -346,8 +367,8 @@ export const getGroups = async (req, res) => {
       SELECT
         (SELECT COUNT(*) FROM seller_groups WHERE seller_group_status = 'active') AS active,
         (SELECT COUNT(*) FROM seller_groups WHERE seller_group_status = 'inactive') AS inactive,
-        COALESCE((SELECT COUNT(*) FROM accredited_sellers), 0) AS totalMembers,
-        COALESCE((SELECT AVG(seller_group_pool_rate) FROM seller_group_lot_project_rates WHERE seller_group_lot_project_rate_status = 'active'), 0) AS averagePool
+        COALESCE((SELECT COUNT(*) FROM accredited_sellers WHERE COALESCE(is_system_dummy, 0) = 0), 0) AS totalMembers,
+        COALESCE((SELECT COUNT(*) FROM seller_group_lot_project_rates WHERE seller_group_lot_project_rate_status = 'active'), 0) AS accreditedProjects
     `);
 
     return res.json({
@@ -364,7 +385,7 @@ export const getGroups = async (req, res) => {
         active: Number(metaRows[0]?.active || 0),
         inactive: Number(metaRows[0]?.inactive || 0),
         totalMembers: Number(metaRows[0]?.totalMembers || 0),
-        averagePool: Number(metaRows[0]?.averagePool || 0),
+        accreditedProjects: Number(metaRows[0]?.accreditedProjects || 0),
       },
     });
   } catch (error) {
@@ -427,13 +448,10 @@ export const editGroup = async (req, res) => {
       ]
     );
 
-    let normalizedRates = [];
-    if (Array.isArray(project_rates) && project_rates.length) {
-      const projects = await getActiveLotProjects(connection);
-      normalizedRates = normalizeGroupProjectRates(project_rates, projects);
-      await assertPoolRatesCanCoverMemberRates(connection, groupId, normalizedRates);
-      await upsertGroupProjectRates(connection, groupId, normalizedRates);
-    }
+    const projects = await getActiveLotProjects(connection);
+    const normalizedRates = normalizeGroupProjectRates(project_rates, projects);
+    await syncGroupProjectAccreditations(connection, groupId, normalizedRates);
+    await assertConfiguredPathsWithinPools(connection, groupId, normalizedRates);
 
     await writeAuditLog(connection, req, {
       action: 'update',
@@ -580,14 +598,17 @@ const getGroupAndProject = async (connection, groupId, projectId) => {
         lp.lot_project_slug,
         lp.lot_project_location_code,
         lp.lot_project_status,
-        COALESCE(sgr.seller_group_pool_rate, 8) AS seller_group_pool_rate,
-        COALESCE(sgr.seller_group_lot_project_rate_status, 'active') AS pool_rate_status
+        sgr.seller_group_pool_rate,
+        sgr.seller_group_lot_project_rate_status AS pool_rate_status
       FROM seller_groups sg
-      INNER JOIN lot_projects lp ON lp.lot_project_id = ?
-      LEFT JOIN users head_user ON head_user.id = sg.seller_group_head_user_id
-      LEFT JOIN seller_group_lot_project_rates sgr
+      INNER JOIN seller_group_lot_project_rates sgr
         ON sgr.seller_group_id = sg.seller_group_id
-       AND sgr.lot_project_id = lp.lot_project_id
+       AND sgr.lot_project_id = ?
+       AND sgr.seller_group_lot_project_rate_status = 'active'
+      INNER JOIN lot_projects lp
+        ON lp.lot_project_id = sgr.lot_project_id
+       AND lp.lot_project_status = 'active'
+      LEFT JOIN users head_user ON head_user.id = sg.seller_group_head_user_id
       WHERE sg.seller_group_id = ?
       LIMIT 1
     `,
@@ -774,6 +795,299 @@ const buildConfigurationValidation = (group, members, overrides) => {
   };
 };
 
+/**
+ * Pool-rate edits are validated against the current direct-rate and override
+ * model. Legacy cumulative seller-rate rows are intentionally ignored.
+ */
+async function assertConfiguredPathsWithinPools(connection, groupId, projectRates = []) {
+  for (const projectRate of projectRates) {
+    const projectId = Number(projectRate.lot_project_id || 0);
+    if (!projectId) continue;
+
+    const group = await getGroupAndProject(connection, groupId, projectId);
+    if (!group) continue;
+    const members = await loadGroupProjectMembers(connection, groupId, projectId);
+    const overrides = await loadGroupProjectOverrides(connection, groupId, projectId);
+    const validation = buildConfigurationValidation(
+      { ...group, seller_group_pool_rate: Number(projectRate.seller_group_pool_rate || 0) },
+      members,
+      overrides
+    );
+    const overAllocated = validation.paths.find((path) =>
+      path.errors.some((message) => message.includes('exceeds the'))
+    );
+    if (overAllocated) {
+      throw createValidationError(
+        `${group.lot_project_name} pool rate is lower than the configured ${overAllocated.allocatedRate.toFixed(2)}% commission path for ${overAllocated.agentName}. Edit member rates first or use a higher pool rate.`
+      );
+    }
+  }
+}
+
+export const normalizeGroupAnalyticsRange = (fromValue, toValue) => {
+  const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+  if (!datePattern.test(String(fromValue || '')) || !datePattern.test(String(toValue || ''))) {
+    throw createValidationError('A valid From Date and To Date are required.');
+  }
+
+  const from = new Date(`${fromValue}T00:00:00Z`);
+  const to = new Date(`${toValue}T00:00:00Z`);
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+    throw createValidationError('The selected analytics date range is invalid.');
+  }
+  if (from > to) throw createValidationError('From Date cannot be after To Date.');
+
+  const dayCount = Math.floor((to.getTime() - from.getTime()) / 86400000) + 1;
+  if (dayCount > 3660) throw createValidationError('The analytics date range cannot exceed 10 years.');
+
+  return { fromDate: String(fromValue), toDate: String(toValue), dayCount };
+};
+
+export const mergeGroupAnalyticsTimeline = (salesRows = [], commissionRows = []) => {
+  const periods = new Map();
+  const getPeriod = (row) => String(row.period_start || row.period || '').slice(0, 10);
+
+  salesRows.forEach((row) => {
+    const period = getPeriod(row);
+    if (!period) return;
+    periods.set(period, {
+      period,
+      salesCount: Number(row.sales_count || 0),
+      salesAmount: Number(row.sales_amount || 0),
+      grossCommission: 0,
+      releasedCommission: 0,
+    });
+  });
+
+  commissionRows.forEach((row) => {
+    const period = getPeriod(row);
+    if (!period) return;
+    const current = periods.get(period) || {
+      period,
+      salesCount: 0,
+      salesAmount: 0,
+      grossCommission: 0,
+      releasedCommission: 0,
+    };
+    current.grossCommission = Number(row.gross_commission || 0);
+    current.releasedCommission = Number(row.released_commission || 0);
+    periods.set(period, current);
+  });
+
+  return [...periods.values()].sort((a, b) => a.period.localeCompare(b.period));
+};
+
+const getGroupAccreditedProjects = async (connection, groupId) => {
+  const [rows] = await connection.query(
+    `
+      SELECT
+        rate.lot_project_id,
+        project.lot_project_name,
+        project.lot_project_slug,
+        project.lot_project_location,
+        project.lot_project_location_code,
+        rate.seller_group_pool_rate,
+        rate.seller_group_lot_project_rate_status
+      FROM seller_group_lot_project_rates rate
+      INNER JOIN lot_projects project
+        ON project.lot_project_id = rate.lot_project_id
+       AND project.lot_project_status = 'active'
+      WHERE rate.seller_group_id = ?
+        AND rate.seller_group_lot_project_rate_status = 'active'
+      ORDER BY project.lot_project_name ASC
+    `,
+    [groupId]
+  );
+
+  return rows.map((row) => ({
+    ...row,
+    lot_project_id: Number(row.lot_project_id),
+    seller_group_pool_rate: Number(row.seller_group_pool_rate || 0),
+  }));
+};
+
+export const getGroupProjectOptions = async (req, res) => {
+  try {
+    const groupId = Number(req.params.groupId || 0);
+    if (!groupId) return res.status(400).json({ message: 'Invalid seller group id.' });
+
+    const [groupRows] = await db.query(
+      `SELECT seller_group_id, seller_group_name, seller_group_status FROM seller_groups WHERE seller_group_id = ? LIMIT 1`,
+      [groupId]
+    );
+    if (!groupRows[0]) return res.status(404).json({ message: 'Seller group not found.' });
+
+    const projects = await getGroupAccreditedProjects(db, groupId);
+    return res.json({
+      success: true,
+      data: projects,
+      group: {
+        id: Number(groupRows[0].seller_group_id),
+        name: groupRows[0].seller_group_name,
+        status: groupRows[0].seller_group_status,
+      },
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
+  }
+};
+
+export const getGroupProjectAnalytics = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    const groupId = Number(req.params.groupId || 0);
+    const projectId = Number(req.params.projectId || 0);
+    const range = normalizeGroupAnalyticsRange(req.query.from, req.query.to);
+    if (!groupId || !projectId) throw createValidationError('Seller group and project are required.');
+
+    const group = await getGroupAndProject(connection, groupId, projectId);
+    if (!group) throw createValidationError('This seller group is not accredited to the selected project.');
+
+    const dateFormat = range.dayCount <= 93 ? '%Y-%m-%d' : '%Y-%m';
+    const [salesSummaryRows] = await connection.query(
+      `
+        SELECT
+          COUNT(DISTINCT profile.lot_project_client_profile_id) AS sales_count,
+          COALESCE(SUM(listing.lot_project_listing_tcp), 0) AS sales_amount,
+          COALESCE(AVG(listing.lot_project_listing_tcp), 0) AS average_sale_amount
+        FROM lot_project_client_profiles profile
+        INNER JOIN lot_project_listings listing
+          ON listing.lot_project_listing_id = profile.lot_project_listing_id
+        INNER JOIN accredited_sellers assigned_seller
+          ON assigned_seller.accredited_seller_id = profile.assigned_accredited_seller_id
+        WHERE profile.lot_project_id = ?
+          AND assigned_seller.seller_group_id = ?
+          AND profile.lot_project_client_profile_status <> 'cancelled'
+          AND DATE(profile.lot_project_client_profile_created_at) BETWEEN ? AND ?
+      `,
+      [projectId, groupId, range.fromDate, range.toDate]
+    );
+
+    const [commissionSummaryRows] = await connection.query(
+      `
+        SELECT
+          COALESCE(SUM(commission.gross_commission_amount), 0) AS gross_commission,
+          COALESCE(SUM(commission.released_commission_amount), 0) AS released_commission,
+          COALESCE(SUM(commission.net_remaining_commission_amount), 0) AS remaining_commission
+        FROM lot_project_commissions commission
+        INNER JOIN lot_project_client_profiles profile
+          ON profile.lot_project_client_profile_id = commission.lot_project_client_profile_id
+        INNER JOIN accredited_sellers recipient
+          ON recipient.accredited_seller_id = commission.accredited_seller_id
+        WHERE commission.lot_project_id = ?
+          AND recipient.seller_group_id = ?
+          AND commission.commission_status <> 'Cancelled'
+          AND DATE(profile.lot_project_client_profile_created_at) BETWEEN ? AND ?
+      `,
+      [projectId, groupId, range.fromDate, range.toDate]
+    );
+
+    const [salesTimelineRows] = await connection.query(
+      `
+        SELECT
+          DATE_FORMAT(profile.lot_project_client_profile_created_at, ?) AS period_start,
+          COUNT(DISTINCT profile.lot_project_client_profile_id) AS sales_count,
+          COALESCE(SUM(listing.lot_project_listing_tcp), 0) AS sales_amount
+        FROM lot_project_client_profiles profile
+        INNER JOIN lot_project_listings listing
+          ON listing.lot_project_listing_id = profile.lot_project_listing_id
+        INNER JOIN accredited_sellers assigned_seller
+          ON assigned_seller.accredited_seller_id = profile.assigned_accredited_seller_id
+        WHERE profile.lot_project_id = ?
+          AND assigned_seller.seller_group_id = ?
+          AND profile.lot_project_client_profile_status <> 'cancelled'
+          AND DATE(profile.lot_project_client_profile_created_at) BETWEEN ? AND ?
+        GROUP BY period_start
+        ORDER BY period_start ASC
+      `,
+      [dateFormat, projectId, groupId, range.fromDate, range.toDate]
+    );
+
+    const [commissionTimelineRows] = await connection.query(
+      `
+        SELECT
+          DATE_FORMAT(profile.lot_project_client_profile_created_at, ?) AS period_start,
+          COALESCE(SUM(commission.gross_commission_amount), 0) AS gross_commission,
+          COALESCE(SUM(commission.released_commission_amount), 0) AS released_commission
+        FROM lot_project_commissions commission
+        INNER JOIN lot_project_client_profiles profile
+          ON profile.lot_project_client_profile_id = commission.lot_project_client_profile_id
+        INNER JOIN accredited_sellers recipient
+          ON recipient.accredited_seller_id = commission.accredited_seller_id
+        WHERE commission.lot_project_id = ?
+          AND recipient.seller_group_id = ?
+          AND commission.commission_status <> 'Cancelled'
+          AND DATE(profile.lot_project_client_profile_created_at) BETWEEN ? AND ?
+        GROUP BY period_start
+        ORDER BY period_start ASC
+      `,
+      [dateFormat, projectId, groupId, range.fromDate, range.toDate]
+    );
+
+    const [sellerRows] = await connection.query(
+      `
+        SELECT
+          COALESCE(owner.accredited_seller_id, assigned.accredited_seller_id) AS seller_id,
+          CASE
+            WHEN assigned.is_system_dummy = 1 THEN ${fullNameSql('owner_user')}
+            ELSE ${fullNameSql('assigned_user')}
+          END AS seller_name,
+          COUNT(DISTINCT profile.lot_project_client_profile_id) AS sales_count,
+          COALESCE(SUM(listing.lot_project_listing_tcp), 0) AS sales_amount
+        FROM lot_project_client_profiles profile
+        INNER JOIN lot_project_listings listing
+          ON listing.lot_project_listing_id = profile.lot_project_listing_id
+        INNER JOIN accredited_sellers assigned
+          ON assigned.accredited_seller_id = profile.assigned_accredited_seller_id
+        INNER JOIN users assigned_user ON assigned_user.id = assigned.user_id
+        LEFT JOIN accredited_sellers owner
+          ON owner.accredited_seller_id = assigned.dummy_owner_accredited_seller_id
+        LEFT JOIN users owner_user ON owner_user.id = owner.user_id
+        WHERE profile.lot_project_id = ?
+          AND assigned.seller_group_id = ?
+          AND profile.lot_project_client_profile_status <> 'cancelled'
+          AND DATE(profile.lot_project_client_profile_created_at) BETWEEN ? AND ?
+        GROUP BY seller_id, seller_name
+        ORDER BY sales_amount DESC, sales_count DESC, seller_name ASC
+        LIMIT 10
+      `,
+      [projectId, groupId, range.fromDate, range.toDate]
+    );
+
+    const salesSummary = salesSummaryRows[0] || {};
+    const commissionSummary = commissionSummaryRows[0] || {};
+    return res.json({
+      success: true,
+      data: {
+        range,
+        project: {
+          id: Number(group.lot_project_id),
+          name: group.lot_project_name,
+        },
+        summary: {
+          salesCount: Number(salesSummary.sales_count || 0),
+          salesAmount: Number(salesSummary.sales_amount || 0),
+          averageSaleAmount: Number(salesSummary.average_sale_amount || 0),
+          grossCommission: Number(commissionSummary.gross_commission || 0),
+          releasedCommission: Number(commissionSummary.released_commission || 0),
+          remainingCommission: Number(commissionSummary.remaining_commission || 0),
+        },
+        timeline: mergeGroupAnalyticsTimeline(salesTimelineRows, commissionTimelineRows),
+        sellers: sellerRows.map((row) => ({
+          sellerId: Number(row.seller_id || 0),
+          sellerName: row.seller_name || 'Unassigned seller',
+          salesCount: Number(row.sales_count || 0),
+          salesAmount: Number(row.sales_amount || 0),
+        })),
+      },
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
 export const getGroupProjectConfiguration = async (req, res) => {
   const connection = await db.getConnection();
 
@@ -791,6 +1105,7 @@ export const getGroupProjectConfiguration = async (req, res) => {
     const members = await loadGroupProjectMembers(connection, groupId, projectId);
     const overrides = await loadGroupProjectOverrides(connection, groupId, projectId);
     const validation = buildConfigurationValidation(group, members, overrides);
+    const accreditedProjects = await getGroupAccreditedProjects(connection, groupId);
 
     return res.json({
       success: true,
@@ -804,6 +1119,7 @@ export const getGroupProjectConfiguration = async (req, res) => {
           headName: group.group_head_name || null,
           description: group.seller_group_description,
           status: group.seller_group_status,
+          projectRates: accreditedProjects,
         },
         project: {
           id: Number(group.lot_project_id),
@@ -827,11 +1143,10 @@ export const getGroupProjectConfiguration = async (req, res) => {
           })),
         overrides,
         validation,
+        accreditedProjects,
         summary: {
-          activeMembers: members.filter((member) => member.accredited_seller_status === 'active').length,
-          activeAgents: members.filter((member) => member.role === 'agent' && member.accredited_seller_status === 'active').length,
-          directSalesAgents: members.filter((member) => member.is_system_dummy).length,
-          invalidPaths: validation.errorCount,
+          activeMembers: members.filter((member) => !member.is_system_dummy && member.accredited_seller_status === 'active').length,
+          accreditedProjects: accreditedProjects.length,
         },
       },
     });
@@ -1074,6 +1389,145 @@ export const upsertHierarchyOverride = async (req, res) => {
     return res.json({
       message: status === 'inactive' ? 'Hierarchy override removed.' : 'Hierarchy override saved.',
       data: { childId, parentId, overrideRate, status },
+    });
+  } catch (error) {
+    await connection.rollback();
+    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
+export const updateMemberProjectRates = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    const groupId = Number(req.params.groupId || 0);
+    const projectId = Number(req.params.projectId || 0);
+    const memberId = Number(req.params.memberId || 0);
+    if (!groupId || !projectId || !memberId) {
+      throw createValidationError('Seller group, project, and member are required.');
+    }
+
+    await requireCommissionConfigurationSchema(connection);
+    await connection.beginTransaction();
+
+    const group = await getGroupAndProject(connection, groupId, projectId);
+    if (!group) throw createValidationError('This seller group is not accredited to the selected project.');
+    let members = await loadGroupProjectMembers(connection, groupId, projectId);
+    const member = members.find((row) => Number(row.accredited_seller_id) === memberId && !row.is_system_dummy);
+    if (!member) throw createValidationError('Seller group member was not found.');
+
+    const groupHead = members.find((row) => Number(row.user_id) === Number(group.seller_group_head_user_id));
+    const isGroupHead = Number(member.user_id) === Number(group.seller_group_head_user_id);
+    const parent = member.parent_accredited_seller_id
+      ? members.find((row) => Number(row.accredited_seller_id) === Number(member.parent_accredited_seller_id))
+      : !isGroupHead
+        ? groupHead
+        : null;
+
+    const directSeller = member.role === 'agent'
+      ? member
+      : members.find((row) => row.is_system_dummy && Number(row.dummy_owner_accredited_seller_id) === memberId);
+
+    const directStatus = normalizeStatus(req.body.directStatus);
+    const overrideStatus = normalizeStatus(req.body.overrideStatus);
+    let directRate = null;
+    let overrideRate = null;
+
+    if (directSeller) {
+      directRate = validateSellerRate(req.body.directRate, 'Direct commission rate');
+      if (directStatus === 'active' && directRate <= 0) {
+        throw createValidationError('An active direct commission rate must be greater than 0%.');
+      }
+      await connection.query(
+        `
+          INSERT INTO agent_lot_project_direct_rates (
+            accredited_seller_id, lot_project_id, direct_rate, direct_rate_status
+          ) VALUES (?, ?, ?, ?)
+          ON DUPLICATE KEY UPDATE
+            direct_rate = VALUES(direct_rate),
+            direct_rate_status = VALUES(direct_rate_status)
+        `,
+        [directSeller.accredited_seller_id, projectId, directRate, directStatus]
+      );
+    } else if (req.body.directStatus === 'active') {
+      throw createValidationError('Create a direct-sales agent for this seller before enabling a direct rate.');
+    }
+
+    if (!isGroupHead) {
+      if (!parent) throw createValidationError('Set this seller’s reporting parent before saving an override.');
+      if (parent.role === 'agent') throw createValidationError('Agents cannot receive parent overrides.');
+      overrideRate = validateSellerRate(req.body.overrideRate, 'Parent override rate');
+      if (overrideStatus === 'active' && overrideRate <= 0) {
+        throw createValidationError('An active parent override rate must be greater than 0%.');
+      }
+      await connection.query(
+        `
+          INSERT INTO seller_hierarchy_lot_project_overrides (
+            child_accredited_seller_id,
+            parent_accredited_seller_id,
+            lot_project_id,
+            override_rate,
+            override_rate_status
+          ) VALUES (?, ?, ?, ?, ?)
+          ON DUPLICATE KEY UPDATE
+            override_rate = VALUES(override_rate),
+            override_rate_status = VALUES(override_rate_status)
+        `,
+        [memberId, parent.accredited_seller_id, projectId, overrideRate, overrideStatus]
+      );
+    }
+
+    members = await loadGroupProjectMembers(connection, groupId, projectId);
+    const overrides = await loadGroupProjectOverrides(connection, groupId, projectId);
+    const validation = buildConfigurationValidation(group, members, overrides);
+    const affectedSellerIds = new Set([
+      memberId,
+      directSeller?.accredited_seller_id,
+    ].filter(Boolean).map(Number));
+    const invalidPath = validation.paths.find((path) =>
+      path.chain.some((row) => affectedSellerIds.has(Number(row.sellerId)) || affectedSellerIds.has(Number(row.childSellerId)))
+      && path.errors.some((message) => !message.includes('no active direct rate'))
+    );
+    if (invalidPath) {
+      throw createValidationError(
+        invalidPath.errors.find((message) => !message.includes('no active direct rate'))
+      );
+    }
+
+    await writeAuditLog(connection, req, {
+      action: 'update',
+      module: 'Seller Groups',
+      entityType: 'seller_project_rates',
+      entityId: `${memberId}:${projectId}`,
+      entityLabel: member.display_name,
+      title: 'Updated seller project rates',
+      description: `Updated ${member.display_name}'s rates for ${group.lot_project_name}.`,
+      metadata: {
+        groupId,
+        projectId,
+        memberId,
+        directSellerId: directSeller?.accredited_seller_id || null,
+        directRate,
+        directStatus: directSeller ? directStatus : null,
+        parentId: parent?.accredited_seller_id || null,
+        overrideRate,
+        overrideStatus: isGroupHead ? null : overrideStatus,
+      },
+    });
+
+    await connection.commit();
+    return res.json({
+      message: 'Seller rates saved.',
+      data: {
+        memberId,
+        directSellerId: directSeller?.accredited_seller_id || null,
+        directRate,
+        directStatus: directSeller ? directStatus : null,
+        parentId: parent?.accredited_seller_id || null,
+        overrideRate,
+        overrideStatus: isGroupHead ? null : overrideStatus,
+      },
     });
   } catch (error) {
     await connection.rollback();

@@ -115,7 +115,10 @@ const ConfirmDialog = ({ action, stage, isSaving, onCancel, onConfirm }) => {
   )
 }
 
-const ReleaseDetailsModal = ({ commission, onClose, onAction, isSaving = false, serverNotice = null, onClearServerNotice }) => {
+const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, isSaving = false, serverNotice = null, onClearServerNotice }) => {
+  const sellers = Array.isArray(commissionGroup?.sellers) ? commissionGroup.sellers : []
+  const [selectedCommissionId, setSelectedCommissionId] = useState(() => String(sellers[0]?.commissionId || sellers[0]?.id || ''))
+  const commission = sellers.find((seller) => String(seller.commissionId || seller.id) === selectedCommissionId) || sellers[0] || {}
   const grossCommission = Number(commission.grossCommission || commission.gross || 0)
   const released = Number(commission.released || 0)
   const netRemaining = Math.max(Number(commission.netRemaining ?? grossCommission - released), 0)
@@ -127,6 +130,14 @@ const ReleaseDetailsModal = ({ commission, onClose, onAction, isSaving = false, 
   const [selectedStage, setSelectedStage] = useState(null)
   const [notice, setNotice] = useState(null)
   const activeNotice = notice || serverNotice
+
+  const changeSeller = (event) => {
+    setSelectedCommissionId(event.target.value)
+    setConfirmAction(null)
+    setSelectedStage(null)
+    setNotice(null)
+    onClearServerNotice?.()
+  }
 
   const openConfirm = (action, stage) => {
     if (!stage?.releaseId) {
@@ -171,16 +182,41 @@ const ReleaseDetailsModal = ({ commission, onClose, onAction, isSaving = false, 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/55 p-0 sm:p-4">
       <div className="flex min-h-dvh w-full max-w-[1120px] flex-col overflow-hidden rounded-none border border-slate-200 bg-white shadow-2xl sm:my-2 sm:min-h-0 sm:rounded-xl">
-        <div className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 px-3">
-          <h2 className="text-base font-black text-slate-950">Commission Details</h2>
-          <button type="button" onClick={onClose} disabled={isSaving} className="flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60" aria-label="Close commission details">
-            <FiX className="h-4 w-4" />
-          </button>
+        <div className="flex shrink-0 flex-col gap-3 border-b border-slate-200 px-4 py-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2 className="text-base font-black text-slate-950">Commission Details</h2>
+            <p className="mt-1 text-xs font-semibold text-slate-500">
+              {commissionGroup?.unit || '-'} · {commissionGroup?.client || '-'} · {sellers.length} recipient{sellers.length === 1 ? '' : 's'}
+            </p>
+          </div>
+
+          <div className="flex w-full items-end gap-2 md:w-auto">
+            <label className="min-w-0 flex-1 md:w-[360px] md:flex-none">
+              <span className="mb-1 block text-[10px] font-black uppercase tracking-wide text-slate-500">Commission Seller</span>
+              <select
+                value={selectedCommissionId}
+                onChange={changeSeller}
+                disabled={isSaving || sellers.length <= 1}
+                className="h-10 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-800 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100 disabled:text-slate-500"
+                aria-label="Select commission seller"
+              >
+                {sellers.map((seller) => (
+                  <option key={seller.commissionId || seller.id} value={String(seller.commissionId || seller.id)}>
+                    {seller.seller || 'Unnamed seller'} · {seller.role || '-'} · {seller.commissionType || '-'}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <button type="button" onClick={onClose} disabled={isSaving} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60" aria-label="Close commission details">
+              <FiX className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         <div className="p-3">
           <section>
-            <h3 className="text-sm font-black text-slate-950">Commission Information</h3>
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between"><h3 className="text-sm font-black text-slate-950">Commission Information</h3><p className="text-xs font-semibold text-slate-500">Showing {commission.seller || 'selected seller'}</p></div>
 
             <div className="mt-3 grid gap-2 md:grid-cols-4">
               <InfoCard label="Seller" value={commission.seller || '-'} />

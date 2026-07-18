@@ -1,13 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import PageHeader from "../../components/Shared/PageHeader";
 import StatusAlert from "../../components/Shared/StatusAlert";
 import ReadOnlyNotice from "../../components/Shared/ReadOnlyNotice";
 import useCurrentUser from "../../utils/useCurrentUser";
 import { FaUserPlus } from "react-icons/fa";
-import { FiLoader, FiPrinter, FiRefreshCw, FiSearch, FiUsers, FiX } from "react-icons/fi";
+import { FiCalendar, FiFileText, FiLoader, FiPrinter, FiRefreshCw, FiSearch, FiUsers, FiX } from "react-icons/fi";
 import { formatDateTime } from "../../utils/formatDateTime";
-import { useFetch, useFetchPost } from "../../utils/useFetch";
+import { useFetch as fetchApi, useFetchPost as postApi } from "../../utils/useFetch";
 
 const EMPTY_LIST = [];
 
@@ -47,6 +47,289 @@ const todayISO = () =>
     day: "2-digit",
   }).format(new Date());
 
+const shiftIsoDateYears = (isoDate, yearOffset) => {
+  const [year, month, day] = String(isoDate).split("-").map(Number);
+  const date = new Date(Date.UTC(year + yearOffset, month - 1, day));
+
+  // Clamp leap-day changes to the last valid day of the target month.
+  if (date.getUTCMonth() !== month - 1) {
+    date.setUTCDate(0);
+  }
+
+  return date.toISOString().slice(0, 10);
+};
+
+const getIncomeRangePreset = (preset) => {
+  const endDate = todayISO();
+  const [year, month] = endDate.split("-");
+
+  if (preset === "month") return { startDate: `${year}-${month}-01`, endDate };
+  if (preset === "year") return { startDate: `${year}-01-01`, endDate };
+  return { startDate: shiftIsoDateYears(endDate, -1), endDate };
+};
+
+const titleCase = (value) =>
+  String(value || "-")
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+
+const IncomeRangeReportPanel = ({ seller, sellerId, receipts = EMPTY_LIST, receiptsLoading = false, receiptsError = null }) => {
+  const defaultRange = useMemo(() => getIncomeRangePreset("last12"), []);
+  const [rangeForm, setRangeForm] = useState(defaultRange);
+  const [appliedRange, setAppliedRange] = useState(defaultRange);
+  const [rangeAlert, setRangeAlert] = useState(null);
+
+  const rangeQuery = useQuery({
+    queryKey: ["seller-income-range", sellerId, appliedRange.startDate, appliedRange.endDate],
+    queryFn: () => {
+      const query = new URLSearchParams(appliedRange).toString();
+      return fetchApi(`/accredited/${sellerId}/income-range?${query}`);
+    },
+    enabled: sellerId > 0,
+  });
+
+  const report = rangeQuery.data?.data || null;
+  const entries = report?.entries || EMPTY_LIST;
+  const summary = report?.summary || {
+    releaseCount: 0,
+    propertyCount: 0,
+    grossIncome: 0,
+    deductions: 0,
+    netIncome: 0,
+  };
+  const reportSeller = report?.seller || seller || {};
+  const matchingReceiptIds = useMemo(
+    () => new Set(entries.filter((entry) => entry.receiptId).map((entry) => Number(entry.receiptId))),
+    [entries]
+  );
+  const receiptsInRange = useMemo(
+    () => receipts.filter((receipt) =>
+      receipt?.status !== "void" && matchingReceiptIds.has(Number(receipt.receiptId))
+    ),
+    [matchingReceiptIds, receipts]
+  );
+  const unreceiptedReleaseCount = Math.max(
+    Number(summary.releaseCount || 0) - Number(summary.receiptedReleaseCount || 0),
+    0
+  );
+
+  const updateRange = (key, value) => {
+    setRangeForm((current) => ({ ...current, [key]: value }));
+    if (rangeAlert?.type === "error") setRangeAlert(null);
+  };
+
+  const loadRange = () => {
+    if (!rangeForm.startDate || !rangeForm.endDate) {
+      setRangeAlert({ type: "error", message: "Select both a start date and an end date." });
+      return;
+    }
+
+    if (rangeForm.startDate > rangeForm.endDate) {
+      setRangeAlert({ type: "error", message: "Start date cannot be after end date." });
+      return;
+    }
+
+    setRangeAlert(null);
+    const unchanged =
+      appliedRange.startDate === rangeForm.startDate &&
+      appliedRange.endDate === rangeForm.endDate;
+
+    if (unchanged) rangeQuery.refetch();
+    else setAppliedRange({ ...rangeForm });
+  };
+
+  const applyPreset = (preset) => {
+    const nextRange = getIncomeRangePreset(preset);
+    setRangeForm(nextRange);
+    setRangeAlert(null);
+
+    const unchanged =
+      appliedRange.startDate === nextRange.startDate &&
+      appliedRange.endDate === nextRange.endDate;
+
+    if (unchanged) rangeQuery.refetch();
+    else setAppliedRange(nextRange);
+  };
+
+  const printRangeReport = () => {
+    if (!report || !entries.length) {
+      setRangeAlert({ type: "warning", message: "There are no released income entries in this date range." });
+      return;
+    }
+
+    if (!receiptsInRange.length) {
+      setRangeAlert({
+        type: "warning",
+        message: "No generated acknowledgement receipts are available in this date range. Generate the receipts first, then use Print All.",
+      });
+      return;
+    }
+
+    // Print All reuses the exact single-receipt layout. Every generated receipt
+    // starts on its own A4 page, so one print job can be saved as one PDF.
+    localStorage.setItem(
+      "accredited_seller_income_range_payload",
+      JSON.stringify({
+        seller: reportSeller,
+        range: report.range || appliedRange,
+        receipts: receiptsInRange,
+        generatedAt: report.generatedAt,
+      })
+    );
+    window.open("/super_admin/accredited/proof-of-income/range/print", "_blank");
+  };
+
+  return (
+    <section aria-busy={rangeQuery.isFetching}>
+      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+          <div>
+            <h3 className="text-base font-black text-slate-950">Income date range</h3>
+            <p className="mt-1 text-sm font-semibold text-slate-500">
+              Income is based on each commission stage’s actual release date. Print All repeats the generated acknowledgement receipt layout for matching receipts.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => applyPreset("month")} className="min-h-10 rounded-xl border border-slate-300 bg-white px-3 text-xs font-black text-slate-700 transition hover:bg-slate-100">This Month</button>
+            <button type="button" onClick={() => applyPreset("year")} className="min-h-10 rounded-xl border border-slate-300 bg-white px-3 text-xs font-black text-slate-700 transition hover:bg-slate-100">This Year</button>
+            <button type="button" onClick={() => applyPreset("last12")} className="min-h-10 rounded-xl border border-slate-300 bg-white px-3 text-xs font-black text-slate-700 transition hover:bg-slate-100">Last 12 Months</button>
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
+          <label className="grid gap-1.5">
+            <span className="text-xs font-black uppercase tracking-wide text-slate-500">From Date</span>
+            <input type="date" max={todayISO()} value={rangeForm.startDate} onChange={(event) => updateRange("startDate", event.target.value)} className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50" />
+          </label>
+          <label className="grid gap-1.5">
+            <span className="text-xs font-black uppercase tracking-wide text-slate-500">To Date</span>
+            <input type="date" max={todayISO()} value={rangeForm.endDate} onChange={(event) => updateRange("endDate", event.target.value)} className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50" />
+          </label>
+          <button type="button" onClick={loadRange} disabled={rangeQuery.isFetching} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300">
+            {rangeQuery.isFetching ? <FiLoader className="h-4 w-4 animate-spin" /> : <FiSearch className="h-4 w-4" />}
+            {rangeQuery.isFetching ? "Loading..." : "Load Income"}
+          </button>
+        </div>
+      </div>
+
+      {rangeAlert ? <StatusAlert type={rangeAlert.type} message={rangeAlert.message} onClose={() => setRangeAlert(null)} className="mt-4" /> : null}
+      {rangeQuery.isLoading ? <StatusAlert type="loading" message="Loading released income for the selected date range..." className="mt-4" /> : null}
+      {rangeQuery.isError ? <StatusAlert type="error" message={rangeQuery.error?.message || "Failed to load the income range report."} className="mt-4" /> : null}
+      {rangeQuery.isFetching && !rangeQuery.isLoading ? <StatusAlert type="loading" message="Refreshing income entries..." className="mt-4" /> : null}
+      {receiptsLoading ? <StatusAlert type="loading" message="Loading generated acknowledgement receipts for Print All..." className="mt-4" /> : null}
+      {receiptsError ? <StatusAlert type="error" message={receiptsError?.message || "Failed to load generated acknowledgement receipts."} className="mt-4" /> : null}
+      {!receiptsLoading && !receiptsError && report && unreceiptedReleaseCount > 0 ? (
+        <StatusAlert
+          type="warning"
+          message={`${unreceiptedReleaseCount} released income entr${unreceiptedReleaseCount === 1 ? "y has" : "ies have"} no generated acknowledgement receipt and will not be included in Print All.`}
+          className="mt-4"
+        />
+      ) : null}
+
+      {!rangeQuery.isLoading && !rangeQuery.isError && report ? (
+        <>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+            {[
+              ["Released Entries", summary.releaseCount],
+              ["Generated Receipts", receiptsInRange.length],
+              ["Properties", summary.propertyCount],
+              ["Gross Income", money(summary.grossIncome)],
+              ["Deductions", money(summary.deductions)],
+              ["Net Income", money(summary.netIncome)],
+            ].map(([label, value]) => (
+              <div key={label} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <p className="text-xs font-black uppercase tracking-wide text-slate-500">{label}</p>
+                <p className={`mt-2 text-xl font-black ${label === "Net Income" ? "text-emerald-700" : "text-slate-950"}`}>{value}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="text-base font-black text-slate-950">Released income entries</h3>
+              <p className="mt-1 text-sm font-semibold text-slate-500">
+                {reportSeller.full_name || seller?.full_name || "Seller"} · {appliedRange.startDate} to {appliedRange.endDate}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={printRangeReport}
+              disabled={!entries.length || !receiptsInRange.length || receiptsLoading}
+              title={!receiptsInRange.length ? "Generate acknowledgement receipts before printing them together." : "Print all matching acknowledgement receipts in one PDF."}
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 text-sm font-black text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
+            >
+              {receiptsLoading ? <FiLoader className="h-4 w-4 animate-spin" /> : <FiPrinter className="h-4 w-4" />}
+              {receiptsLoading ? "Loading Receipts..." : `Print All Receipts (${receiptsInRange.length})`}
+            </button>
+          </div>
+
+          {entries.length ? (
+            <>
+              <div className="mt-4 hidden overflow-x-auto rounded-2xl border border-slate-200 lg:block">
+                <table className="min-w-[1050px] w-full border-collapse text-sm">
+                  <thead className="bg-slate-50 text-left text-xs font-black uppercase tracking-wide text-slate-500">
+                    <tr>
+                      <th className="px-4 py-3">Release Date</th>
+                      <th className="px-4 py-3">Property</th>
+                      <th className="px-4 py-3">Buyer</th>
+                      <th className="px-4 py-3">Income Type</th>
+                      <th className="px-4 py-3">Release</th>
+                      <th className="px-4 py-3 text-right">Gross</th>
+                      <th className="px-4 py-3 text-right">Deductions</th>
+                      <th className="px-4 py-3 text-right">Net Income</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {entries.map((entry) => (
+                      <tr key={entry.releaseId} className="align-top">
+                        <td className="px-4 py-3 font-black text-slate-900">{entry.releaseDate || "-"}</td>
+                        <td className="px-4 py-3"><p className="font-black text-slate-800">{entry.projectName} · {entry.unitId}</p><p className="text-xs font-semibold text-slate-500">{entry.projectLocation || "-"}</p></td>
+                        <td className="px-4 py-3 font-semibold text-slate-700">{entry.buyerName || "-"}</td>
+                        <td className="px-4 py-3"><p className="font-black text-slate-800">{titleCase(entry.commissionRateType)}</p><p className="text-xs font-semibold text-slate-500">{roleLabels[entry.commissionRole] || titleCase(entry.commissionRole)} · {Number(entry.commissionRate || 0).toFixed(2)}%</p></td>
+                        <td className="px-4 py-3"><p className="font-black text-slate-800">{entry.releaseStage}</p><p className="text-xs font-semibold text-slate-500">{Number(entry.releasePercent || 0).toFixed(2)}%{entry.receiptReference ? ` · Receipt ${entry.receiptReference}` : ""}</p></td>
+                        <td className="px-4 py-3 text-right font-black text-slate-800">{money(entry.grossAmount)}</td>
+                        <td className="px-4 py-3 text-right font-black text-rose-600">{money(entry.deductionAmount)}</td>
+                        <td className="px-4 py-3 text-right font-black text-emerald-700">{money(entry.netAmount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="mt-4 grid gap-3 lg:hidden">
+                {entries.map((entry) => (
+                  <article key={entry.releaseId} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-black text-slate-950">{entry.projectName} · {entry.unitId}</p>
+                        <p className="mt-1 text-xs font-semibold text-slate-500">Released {entry.releaseDate || "-"}</p>
+                      </div>
+                      <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700">{money(entry.netAmount)}</span>
+                    </div>
+                    <dl className="mt-4 grid grid-cols-2 gap-3 text-xs">
+                      <div><dt className="font-black uppercase tracking-wide text-slate-400">Buyer</dt><dd className="mt-1 font-semibold text-slate-700">{entry.buyerName || "-"}</dd></div>
+                      <div><dt className="font-black uppercase tracking-wide text-slate-400">Income</dt><dd className="mt-1 font-semibold text-slate-700">{titleCase(entry.commissionRateType)} · {Number(entry.commissionRate || 0).toFixed(2)}%</dd></div>
+                      <div><dt className="font-black uppercase tracking-wide text-slate-400">Release</dt><dd className="mt-1 font-semibold text-slate-700">{entry.releaseStage}</dd></div>
+                      <div><dt className="font-black uppercase tracking-wide text-slate-400">Deductions</dt><dd className="mt-1 font-semibold text-rose-600">{money(entry.deductionAmount)}</dd></div>
+                    </dl>
+                  </article>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="mt-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-12 text-center">
+              <FiFileText className="mx-auto h-10 w-10 text-slate-300" />
+              <p className="mt-3 font-black text-slate-700">No released income in this date range</p>
+              <p className="mt-1 text-sm font-semibold text-slate-500">Choose another date range and load the report again.</p>
+            </div>
+          )}
+        </>
+      ) : null}
+    </section>
+  );
+};
+
 const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
   const queryClient = useQueryClient();
   const sellerId = Number(seller?.accredited_seller_id || 0);
@@ -60,10 +343,11 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
     witnessName: "",
   });
   const [localAlert, setLocalAlert] = useState(null);
+  const [activeMode, setActiveMode] = useState("receipt");
 
   const receiptQuery = useQuery({
     queryKey: ["seller-proof-of-income-receipts", sellerId],
-    queryFn: () => useFetch(`/accredited/${sellerId}/proof-of-income-receipts`),
+    queryFn: () => fetchApi(`/accredited/${sellerId}/proof-of-income-receipts`),
     enabled: sellerId > 0,
   });
 
@@ -72,31 +356,25 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
   const receipts = payload.receipts || EMPTY_LIST;
   const receiptSeller = payload.seller || seller || {};
 
-  const selectedGroup = useMemo(
+  const explicitlySelectedGroup = useMemo(
     () => availableGroups.find((group) => String(group.commissionId) === String(selectedCommissionId)) || null,
     [availableGroups, selectedCommissionId]
   );
-
-  useEffect(() => {
-    if (!availableGroups.length) {
-      setSelectedCommissionId("");
-      setSelectedReleaseIds([]);
-      return;
-    }
-
-    const current = availableGroups.find((group) => String(group.commissionId) === String(selectedCommissionId));
-    const next = current || availableGroups[0];
-    setSelectedCommissionId(String(next.commissionId));
-    setSelectedReleaseIds(next.releases.map((release) => Number(release.releaseId)));
-  }, [availableGroups, selectedCommissionId]);
+  const selectedGroup = explicitlySelectedGroup || availableGroups[0] || null;
+  const effectiveReleaseIds = useMemo(
+    () => explicitlySelectedGroup
+      ? selectedReleaseIds
+      : (selectedGroup?.releases || []).map((release) => Number(release.releaseId)),
+    [explicitlySelectedGroup, selectedGroup, selectedReleaseIds]
+  );
 
   const selectedAmount = useMemo(() => {
     if (!selectedGroup) return 0;
-    const ids = new Set(selectedReleaseIds.map(Number));
+    const ids = new Set(effectiveReleaseIds.map(Number));
     return selectedGroup.releases
       .filter((release) => ids.has(Number(release.releaseId)))
       .reduce((sum, release) => sum + Number(release.amount || 0), 0);
-  }, [selectedGroup, selectedReleaseIds]);
+  }, [effectiveReleaseIds, selectedGroup]);
 
   const printReceipt = (receipt) => {
     localStorage.setItem(
@@ -108,7 +386,7 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
 
 
   const createReceiptMutation = useMutation({
-    mutationFn: (body) => useFetchPost(`/accredited/${sellerId}/proof-of-income-receipts`, body),
+    mutationFn: (body) => postApi(`/accredited/${sellerId}/proof-of-income-receipts`, body),
     onMutate: () => setLocalAlert({ type: "loading", message: "Generating proof of income receipt..." }),
     onSuccess: (result) => {
       setLocalAlert({ type: "success", message: result?.message || "Proof of income receipt generated." });
@@ -135,9 +413,13 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
   };
 
   const toggleRelease = (releaseId) => {
+    if (!selectedGroup) return;
+
     const id = Number(releaseId);
-    setSelectedReleaseIds((current) =>
-      current.includes(id) ? current.filter((item) => item !== id) : [...current, id]
+    const currentIds = effectiveReleaseIds.map(Number);
+    setSelectedCommissionId(String(selectedGroup.commissionId));
+    setSelectedReleaseIds(
+      currentIds.includes(id) ? currentIds.filter((item) => item !== id) : [...currentIds, id]
     );
   };
 
@@ -146,14 +428,14 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
       setLocalAlert({ type: "warning", message: "No released commission is available for a new receipt." });
       return;
     }
-    if (!selectedReleaseIds.length) {
+    if (!effectiveReleaseIds.length) {
       setLocalAlert({ type: "error", message: "Select at least one released commission stage." });
       return;
     }
 
     createReceiptMutation.mutate({
       commissionId: Number(selectedGroup.commissionId),
-      releaseIds: selectedReleaseIds,
+      releaseIds: effectiveReleaseIds,
       ...form,
     });
   };
@@ -165,7 +447,7 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
           <div>
             <h2 className="text-xl font-black text-slate-950">Print Proof of Income</h2>
             <p className="mt-1 text-sm font-semibold text-slate-500">
-              {receiptSeller.full_name || seller.full_name} · Combine released stages from one property into one receipt.
+              {receiptSeller.full_name || seller.full_name} · {activeMode === "range" ? "Review released income and print matching acknowledgement receipts in one PDF." : "Combine released stages from one property into one receipt."}
             </p>
           </div>
           <button type="button" onClick={onClose} disabled={createReceiptMutation.isPending} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:opacity-50" aria-label="Close proof of income modal">
@@ -174,6 +456,25 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-6">
+          <div className="mb-6 grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1.5">
+            <button type="button" onClick={() => { setActiveMode("receipt"); setLocalAlert(null); }} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 text-sm font-black transition ${activeMode === "receipt" ? "bg-white text-blue-700 shadow-sm" : "text-slate-600 hover:bg-white/70"}`}>
+              <FiFileText className="h-4 w-4" /> Single Receipt
+            </button>
+            <button type="button" onClick={() => { setActiveMode("range"); setLocalAlert(null); }} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-3 text-sm font-black transition ${activeMode === "range" ? "bg-white text-blue-700 shadow-sm" : "text-slate-600 hover:bg-white/70"}`}>
+              <FiCalendar className="h-4 w-4" /> Income Range Report
+            </button>
+          </div>
+
+          {activeMode === "range" ? (
+            <IncomeRangeReportPanel
+              seller={receiptSeller}
+              sellerId={sellerId}
+              receipts={receipts}
+              receiptsLoading={receiptQuery.isLoading}
+              receiptsError={receiptQuery.isError ? receiptQuery.error : null}
+            />
+          ) : (
+            <>
           {receiptQuery.isLoading ? <StatusAlert type="loading" message="Loading released commissions and receipt history..." /> : null}
           {receiptQuery.isError ? <StatusAlert type="error" message={receiptQuery.error?.message || "Failed to load proof of income records."} /> : null}
           {localAlert ? <StatusAlert type={localAlert.type} message={localAlert.message} onClose={localAlert.type === "loading" ? undefined : () => setLocalAlert(null)} className="mb-4" /> : null}
@@ -224,7 +525,7 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
                       {selectedGroup.releases.map((release) => (
                         <label key={release.releaseId} className="flex cursor-pointer items-center justify-between gap-4 px-4 py-3 hover:bg-slate-50">
                           <span className="flex min-w-0 items-center gap-3">
-                            <input type="checkbox" checked={selectedReleaseIds.includes(Number(release.releaseId))} onChange={() => toggleRelease(release.releaseId)} className="h-4 w-4 rounded border-slate-300 text-blue-600" />
+                            <input type="checkbox" checked={effectiveReleaseIds.includes(Number(release.releaseId))} onChange={() => toggleRelease(release.releaseId)} className="h-4 w-4 rounded border-slate-300 text-blue-600" />
                             <span>
                               <span className="block font-black text-slate-800">{release.stage}</span>
                               <span className="block text-xs font-semibold text-slate-500">Released {release.actualReleaseDate || "-"}</span>
@@ -255,7 +556,7 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
                     <label className="grid gap-1.5 sm:col-span-2 xl:col-span-1"><span className="text-xs font-black uppercase tracking-wide text-slate-500">Witness Name</span><input value={form.witnessName} onChange={(event) => updateForm("witnessName", event.target.value)} className="h-11 rounded-xl border border-slate-300 px-3 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50" placeholder="Printed witness name" /></label>
                   </div>
 
-                  <button type="button" onClick={handleGenerate} disabled={!selectedGroup || !selectedReleaseIds.length || createReceiptMutation.isPending} className="mt-5 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300">
+                  <button type="button" onClick={handleGenerate} disabled={!selectedGroup || !effectiveReleaseIds.length || createReceiptMutation.isPending} className="mt-5 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300">
                     {createReceiptMutation.isPending ? <FiLoader className="h-4 w-4 animate-spin" /> : <FiPrinter className="h-4 w-4" />}
                     {createReceiptMutation.isPending ? "Generating..." : `Generate & Print ${money(selectedAmount)}`}
                   </button>
@@ -294,6 +595,8 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
               </div>
             </section>
           ) : null}
+            </>
+          )}
         </div>
 
         <div className="flex shrink-0 justify-end border-t border-slate-200 px-6 py-4">
@@ -326,7 +629,7 @@ const Accredited = () => {
 
   const { data, isLoading, isFetching, isError, error } = useQuery({
     queryKey: ["accredited", queryString],
-    queryFn: () => useFetch(`/accredited?${queryString}`),
+    queryFn: () => fetchApi(`/accredited?${queryString}`),
     keepPreviousData: true,
   });
 

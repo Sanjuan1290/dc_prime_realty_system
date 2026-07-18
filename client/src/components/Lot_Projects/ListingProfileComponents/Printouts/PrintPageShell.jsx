@@ -1,12 +1,12 @@
 import { FiPrinter, FiX } from 'react-icons/fi'
 import { printWithTemporaryBlankTitle } from './pdfExportUtils'
 
-const PrintPageShell = ({ title, children, printDisabled = false, printDisabledMessage = '' }) => {
+const PrintPageShell = ({ title, children, printDisabled = false, printDisabledMessage = '', pageOrientation = 'portrait' }) => {
   return (
     <main className="min-h-screen bg-slate-100 text-slate-950 print:bg-white">
       <style>{`
         @page {
-          size: A4 portrait;
+          size: A4 ${pageOrientation === 'landscape' ? 'landscape' : 'portrait'};
           margin: 0 !important;
         }
 

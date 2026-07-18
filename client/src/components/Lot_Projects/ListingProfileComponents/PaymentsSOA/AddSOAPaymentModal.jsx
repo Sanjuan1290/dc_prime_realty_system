@@ -1,6 +1,13 @@
 import { useMemo, useState } from 'react'
 import { FiAlertCircle, FiCreditCard, FiX } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
+import {
+  cleanPaymentNumber,
+  formatPaymentAmountInput,
+  getFullPaymentAmount,
+  getRowTotalDue,
+  getRowUnpaidAmount,
+} from './paymentAmountUtils'
 
 const money = (value) =>
   new Intl.NumberFormat('en-PH', {
@@ -69,9 +76,6 @@ const getRowMatchesPaymentType = (row = {}, paymentType = '') => {
   return rowType === type
 }
 
-const getRowUnpaidAmount = (row = {}) =>
-  Math.max(getRowTotalDue(row) - Number(row.amountPaid || 0), 0)
-
 const getSuggestedRowForPaymentType = (rows = [], paymentType = '') => {
   const matchingRows = rows.filter((row) => getRowMatchesPaymentType(row, paymentType))
 
@@ -95,15 +99,6 @@ const formatDate = (value) => {
   if (!value || value === '-') return todayISO()
   return String(value).slice(0, 10)
 }
-
-const cleanNumber = (value) => Number(String(value || '').replace(/[^0-9.-]/g, '')) || 0
-
-const getRowTotalDue = (row = {}) => {
-  const explicitTotal = Number(row.totalDue || 0)
-  if (explicitTotal > 0) return explicitTotal
-  return Math.max(Number(row.dueAmount || 0) - Number(row.discountAmount || 0), 0) + Number(row.interest || 0) + Number(row.penalty || 0)
-}
-
 
 const Field = ({
   label,
@@ -166,7 +161,7 @@ const AddSOAPaymentModal = ({
   onClose,
   onSave,
 }) => {
-  const isEdit = mode === 'edit' && initialPayment
+  const isEdit = Boolean(mode === 'edit' && initialPayment)
   const suggestedRow = isEdit
     ? rows.find((row) => String(row.id) === String(initialPayment.soaRowId)) || getSuggestedRow(rows)
     : getSuggestedRow(rows)
@@ -195,29 +190,57 @@ const AddSOAPaymentModal = ({
   const [amountManuallyEdited, setAmountManuallyEdited] = useState(Boolean(isEdit && initialPayment?.amount))
 
   const isBalloonPayment = form.paymentType === 'Balloon'
+  const isFullPayment = form.paymentType === 'Full Payment'
+  const requiresSoaRow = !isBalloonPayment && !isFullPayment
 
   const selectedRow = useMemo(
     () => rows.find((row) => String(row.id) === String(form.soaRowId)),
     [rows, form.soaRowId]
   )
 
+  const fullPaymentAmount = useMemo(
+    () => getFullPaymentAmount(rows, isEdit ? initialPayment?.amount : 0),
+    [rows, isEdit, initialPayment?.amount]
+  )
+
   const suggestedAmount = useMemo(() => {
+    if (isFullPayment) return fullPaymentAmount
     if (isBalloonPayment || !selectedRow) return 0
+    return getRowUnpaidAmount(selectedRow)
+  }, [fullPaymentAmount, isBalloonPayment, isFullPayment, selectedRow])
 
-    return (
-      getRowTotalDue(selectedRow) -
-      Number(selectedRow.amountPaid || 0)
-    )
-  }, [isBalloonPayment, selectedRow])
+  const automaticInterest = isFullPayment
+    ? rows.reduce(
+        (sum, row) =>
+          sum + Math.max(Number(row.interest || 0) - Number(row.paidInterestAmount || 0), 0),
+        0
+      )
+    : Number(selectedRow?.interest || 0)
+  const automaticPenalty = isFullPayment
+    ? rows.reduce(
+        (sum, row) =>
+          sum + Math.max(Number(row.penalty || 0) - Number(row.paidPenaltyAmount || 0), 0),
+        0
+      )
+    : Number(selectedRow?.penalty || 0)
 
-  const automaticInterest = Number(selectedRow?.interest || 0)
-  const automaticPenalty = Number(selectedRow?.penalty || 0)
+  // Full Payment uses a derived amount so refreshed SOA rows are reflected
+  // immediately without copying server data into another state value.
+  const displayedAmount = isFullPayment
+    ? formatPaymentAmountInput(fullPaymentAmount)
+    : form.amount
 
   const updateField = (key, value) => {
+    if (key === 'amount' && isFullPayment) return
+
     const shouldPreserveManualAmount = amountManuallyEdited || isEdit
 
     if (key === 'amount') {
       setAmountManuallyEdited(true)
+    }
+
+    if (key === 'paymentType' && normalizePaymentType(value) === 'Full Payment') {
+      setAmountManuallyEdited(false)
     }
 
     setForm((current) => {
@@ -232,6 +255,9 @@ const AddSOAPaymentModal = ({
 
         if (nextType === 'Balloon') {
           next.soaRowId = ''
+        } else if (nextType === 'Full Payment') {
+          next.soaRowId = ''
+          next.amount = formatPaymentAmountInput(fullPaymentAmount)
         } else {
           const nextRow = getSuggestedRowForPaymentType(rows, nextType)
 
@@ -239,7 +265,7 @@ const AddSOAPaymentModal = ({
             next.soaRowId = String(nextRow.id || '')
 
             if (!shouldPreserveManualAmount) {
-              next.amount = String(getRowUnpaidAmount(nextRow))
+              next.amount = formatPaymentAmountInput(getRowUnpaidAmount(nextRow))
             }
           }
         }
@@ -248,11 +274,11 @@ const AddSOAPaymentModal = ({
       if (key === 'soaRowId') {
         const nextRow = rows.find((row) => String(row.id) === String(value))
 
-        if (nextRow && next.paymentType !== 'Balloon') {
+        if (nextRow && next.paymentType !== 'Balloon' && next.paymentType !== 'Full Payment') {
           next.paymentType = getPaymentTypeFromDescription(nextRow.description)
 
           if (!shouldPreserveManualAmount) {
-            next.amount = String(getRowUnpaidAmount(nextRow))
+            next.amount = formatPaymentAmountInput(getRowUnpaidAmount(nextRow))
           }
         }
       }
@@ -266,13 +292,25 @@ const AddSOAPaymentModal = ({
   const handleSubmit = async (event) => {
     event.preventDefault()
 
-    if (!isBalloonPayment && !form.soaRowId) {
+    const paymentAmount = isFullPayment
+      ? fullPaymentAmount
+      : cleanPaymentNumber(form.amount)
+
+    if (requiresSoaRow && !form.soaRowId) {
       setAlert({ type: 'error', message: 'Select an SOA row for this payment.' })
       return
     }
 
-    if (!form.amount || cleanNumber(form.amount) <= 0) {
+    if (paymentAmount <= 0) {
       setAlert({ type: 'error', message: 'Payment amount is required.' })
+      return
+    }
+
+    if (isFullPayment && Math.abs(paymentAmount - fullPaymentAmount) > 0.009) {
+      setAlert({
+        type: 'error',
+        message: `Full Payment must equal the current unpaid SOA total of ${money(fullPaymentAmount)}.`,
+      })
       return
     }
 
@@ -294,12 +332,12 @@ const AddSOAPaymentModal = ({
 
       await onSave({
         paymentId: initialPayment?.paymentId || initialPayment?.id,
-        soaRowId: isBalloonPayment ? null : form.soaRowId,
+        soaRowId: isBalloonPayment || isFullPayment ? null : form.soaRowId,
         paymentType:
           form.paymentType === 'Other' && selectedRow && /legal|misc|lmf/i.test(String(selectedRow.description || ''))
             ? 'legal_misc'
             : form.paymentType,
-        amount: cleanNumber(form.amount),
+        amount: paymentAmount,
         paymentDate: form.paymentDate,
         method: form.method,
         referenceId: form.method === 'Cash' ? form.referenceId : form.referenceId.trim(),
@@ -359,6 +397,11 @@ const AddSOAPaymentModal = ({
                   <p className="mt-1 text-xs font-semibold text-blue-700">
                     Balloon payment applies directly to principal and shortens the remaining monthly rows.
                   </p>
+                ) : isFullPayment ? (
+                  <p className="mt-1 text-xs font-semibold text-blue-700">
+                    Full Payment covers every unpaid SOA row. The Amount field is locked to{' '}
+                    <span className="font-black">{money(fullPaymentAmount)}</span>.
+                  </p>
                 ) : selectedRow ? (
                   <p className="mt-1 text-xs font-semibold text-blue-700">
                     Payment applies to{' '}
@@ -376,9 +419,9 @@ const AddSOAPaymentModal = ({
 
           <div className="mb-5 grid gap-3 md:grid-cols-3">
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-xs font-black uppercase text-slate-500">Due Amount</p>
+              <p className="text-xs font-black uppercase text-slate-500">{isFullPayment ? 'Full Remaining Amount' : 'Due Amount'}</p>
               <p className="mt-1 text-lg font-black text-slate-950">
-                {money(getRowTotalDue(selectedRow))}
+                {money(isFullPayment ? fullPaymentAmount : getRowTotalDue(selectedRow))}
               </p>
             </div>
 
@@ -398,14 +441,18 @@ const AddSOAPaymentModal = ({
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
-            {isBalloonPayment ? (
+            {isBalloonPayment || isFullPayment ? (
               <div className="flex flex-col gap-1.5">
                 <span className="text-sm font-black text-slate-700">Apply To SOA Row</span>
                 <div className="flex min-h-11 items-center rounded-xl border border-slate-200 bg-slate-100 px-3 text-sm font-semibold text-slate-600">
-                  Not required. Balloon payments go directly to principal.
+                  {isFullPayment
+                    ? 'Not required. Full Payment is applied across every unpaid SOA row.'
+                    : 'Not required. Balloon payments go directly to principal.'}
                 </div>
                 <p className="text-xs font-semibold text-slate-500">
-                  This will reduce the principal balance and shorten the remaining monthly schedule.
+                  {isFullPayment
+                    ? 'The system starts with the oldest unpaid row and continues until the account balance is cleared.'
+                    : 'This will reduce the principal balance and shorten the remaining monthly schedule.'}
                 </p>
               </div>
             ) : (
@@ -439,14 +486,17 @@ const AddSOAPaymentModal = ({
             <Field
               label="Amount"
               type="number"
-              value={form.amount}
+              value={displayedAmount}
               onChange={(value) => updateField('amount', value)}
               placeholder="0.00"
               helper={
-                isBalloonPayment
-                  ? 'Balloon amount will be deducted from principal, not from a scheduled monthly row.'
-                  : `Suggested unpaid amount: ${money(suggestedAmount)}`
+                isFullPayment
+                  ? `Auto-filled from the complete unpaid SOA balance: ${money(fullPaymentAmount)}.`
+                  : isBalloonPayment
+                    ? 'Balloon amount will be deducted from principal, not from a scheduled monthly row.'
+                    : `Suggested unpaid amount: ${money(suggestedAmount)}`
               }
+              disabled={isFullPayment}
               required
             />
 

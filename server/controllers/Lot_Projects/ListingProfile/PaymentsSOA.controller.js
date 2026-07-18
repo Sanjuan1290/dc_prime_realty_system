@@ -55,6 +55,7 @@ import {
   getListingForPayment,
   normalizePaymentType,
   getPaymentTypeLabel,
+  getRemainingUnpaidScheduleBalance,
   normalizePaymentMethod,
   getNextCashReference,
   mapPaymentRow,
@@ -80,6 +81,53 @@ const createHttpError = (statusCode, message) => {
   const error = new Error(message);
   error.statusCode = statusCode;
   return error;
+};
+
+const getExactFullPaymentAmount = async (connection, listing) => {
+  const [scheduleRows] = await connection.query(
+    `
+      SELECT *
+      FROM lot_project_payment_schedules
+      WHERE lot_project_id = ?
+        AND lot_project_listing_id = ?
+      ORDER BY
+        CASE WHEN due_date IS NULL THEN 1 ELSE 0 END,
+        due_date ASC,
+        lot_project_payment_schedule_id ASC
+    `,
+    [listing.lot_project_id, listing.lot_project_listing_id]
+  );
+
+  const [profileRows] = await connection.query(
+    `
+      SELECT *
+      FROM lot_project_client_profiles
+      WHERE lot_project_client_profile_id = ?
+      LIMIT 1
+    `,
+    [listing.lot_project_client_profile_id]
+  );
+
+  return getRemainingUnpaidScheduleBalance(
+    scheduleRows,
+    { ...(listing || {}), ...(profileRows[0] || {}) }
+  );
+};
+
+const validateFullPaymentAmount = async (connection, listing, paymentType, amount) => {
+  if (paymentType !== 'full_payment') return;
+
+  const exactAmount = await getExactFullPaymentAmount(connection, listing);
+  if (exactAmount <= 0.009) {
+    throw createHttpError(400, 'This account has no remaining unpaid SOA balance.');
+  }
+
+  if (Math.abs(Number(amount || 0) - exactAmount) > 0.009) {
+    throw createHttpError(
+      400,
+      `Full Payment amount must equal the current unpaid SOA balance of ${money(exactAmount)}.`
+    );
+  }
 };
 
 const requirePenaltyManager = async (req) => {
@@ -164,7 +212,10 @@ export const createLotProjectListingPayment = async (req, res) => {
     const paymentDate = dateOrNull(req.body.paymentDate || req.body.payment_date) || new Date().toISOString().slice(0, 10);
     const paymentType = normalizePaymentType(req.body.paymentType || req.body.payment_type);
     const paymentMethod = normalizePaymentMethod(req.body.method || req.body.paymentMethod || req.body.payment_method);
-    const scheduleId = toNullableNumber(req.body.soaRowId || req.body.paymentScheduleId || req.body.lot_project_payment_schedule_id);
+    const requestedScheduleId = req.body.soaRowId ?? req.body.paymentScheduleId ?? req.body.lot_project_payment_schedule_id;
+    const scheduleId = paymentType === 'full_payment' || paymentType === 'balloon'
+      ? null
+      : toNullableNumber(requestedScheduleId);
 
     if (amount <= 0) return res.status(400).json({ message: 'Payment amount must be greater than 0.' });
 
@@ -180,6 +231,7 @@ export const createLotProjectListingPayment = async (req, res) => {
 
     if (await tableExists(connection, 'lot_project_payment_schedules')) {
       await refreshListingPenaltyCache(connection, listing, paymentDate);
+      await validateFullPaymentAmount(connection, listing, paymentType, amount);
     }
 
     const [paymentResult] = await connection.query(
@@ -264,7 +316,7 @@ export const createLotProjectListingPayment = async (req, res) => {
     });
   } catch (error) {
     await connection.rollback();
-    return res.status(500).json({ message: getErrorMessage(error) });
+    return res.status(error?.statusCode || 500).json({ message: getErrorMessage(error) });
   } finally {
     connection.release();
   }
@@ -293,7 +345,10 @@ export const updateLotProjectListingPayment = async (req, res) => {
     const paymentDate = dateOrNull(req.body.paymentDate || req.body.payment_date) || plainDate(existingPayment.lot_project_payment_date);
     const paymentType = normalizePaymentType(req.body.paymentType || req.body.payment_type || existingPayment.lot_project_payment_type);
     const paymentMethod = normalizePaymentMethod(req.body.method || req.body.paymentMethod || req.body.payment_method || existingPayment.lot_project_payment_method);
-    const scheduleId = toNullableNumber(req.body.soaRowId || req.body.paymentScheduleId || req.body.lot_project_payment_schedule_id || existingPayment.lot_project_payment_schedule_id);
+    const requestedScheduleId = req.body.soaRowId ?? req.body.paymentScheduleId ?? req.body.lot_project_payment_schedule_id;
+    const scheduleId = paymentType === 'full_payment' || paymentType === 'balloon'
+      ? null
+      : toNullableNumber(requestedScheduleId ?? existingPayment.lot_project_payment_schedule_id);
 
     if (amount <= 0) return res.status(400).json({ message: 'Payment amount must be greater than 0.' });
 
@@ -310,6 +365,7 @@ export const updateLotProjectListingPayment = async (req, res) => {
     await reversePaymentAllocations(connection, listing, paymentId);
     if (await tableExists(connection, 'lot_project_payment_schedules')) {
       await refreshListingPenaltyCache(connection, listing, paymentDate);
+      await validateFullPaymentAmount(connection, listing, paymentType, amount);
     }
 
     await connection.query(
@@ -370,7 +426,7 @@ export const updateLotProjectListingPayment = async (req, res) => {
     });
   } catch (error) {
     await connection.rollback();
-    return res.status(500).json({ message: getErrorMessage(error) });
+    return res.status(error?.statusCode || 500).json({ message: getErrorMessage(error) });
   } finally {
     connection.release();
   }

@@ -8,11 +8,11 @@ import StatusAlert from '../../components/Shared/StatusAlert'
 import ConfirmActionModal from '../../components/Shared/ConfirmActionModal'
 import NewGroupModal from '../../components/System/sellerGroupComponents/NewGroupModal'
 import EditGroupModal from '../../components/System/sellerGroupComponents/EditGroupModal'
-import { useFetch, useFetchPatch } from '../../utils/useFetch'
+import { useFetch as fetchJson, useFetchPatch as patchJson } from '../../utils/useFetch'
 
 const ProjectRatesCell = ({ rates = [] }) => {
-  if (!rates.length) return <p className="text-xs font-semibold text-slate-500">No project pools</p>
-  return <div className="flex flex-wrap gap-1.5">{rates.map((rate) => <span key={rate.lot_project_id} className="rounded-lg bg-blue-50 px-2 py-1 text-[11px] font-black text-blue-700 ring-1 ring-blue-100">{rate.lot_project_location_code || rate.lot_project_name}: {Number(rate.seller_group_pool_rate || 0).toFixed(2)}%</span>)}</div>
+  if (!rates.length) return <p className="text-xs font-semibold text-slate-500">No accredited projects</p>
+  return <div className="flex flex-wrap gap-1.5">{rates.map((rate) => <span key={rate.lot_project_id} className="rounded-lg bg-blue-50 px-2 py-1 text-[11px] font-black text-blue-700 ring-1 ring-blue-100">{rate.lot_project_location_code || rate.lot_project_name}</span>)}</div>
 }
 
 const SellerGroup = () => {
@@ -42,16 +42,16 @@ const SellerGroup = () => {
 
   const groupsQuery = useQuery({
     queryKey: ['seller-groups', queryString],
-    queryFn: () => useFetch(`/seller-groups?${queryString}`),
+    queryFn: () => fetchJson(`/seller-groups?${queryString}`),
     keepPreviousData: true,
   })
 
   const sellerGroups = groupsQuery.data?.data || []
   const pagination = groupsQuery.data?.pagination || { page, total: 0, totalPages: 1, hasNext: false, hasPrev: false }
-  const meta = groupsQuery.data?.meta || { active: 0, totalMembers: 0, averagePool: 0 }
+  const meta = groupsQuery.data?.meta || { active: 0, totalMembers: 0, accreditedProjects: 0 }
 
   const toggleMutation = useMutation({
-    mutationFn: (group) => useFetchPatch(`/seller-groups/toggle-status/${group.seller_group_id}`, {
+    mutationFn: (group) => patchJson(`/seller-groups/toggle-status/${group.seller_group_id}`, {
       status: group.seller_group_status === 'active' ? 'inactive' : 'active',
     }),
     onMutate: (group) => setModalNotice({
@@ -84,7 +84,7 @@ const SellerGroup = () => {
   return (
     <main className="flex flex-col gap-6">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-        <PageHeader title="Seller Groups" description="Manage seller groups, project pools, agent direct rates, and hierarchy overrides." icon={FaUserPlus} />
+        <PageHeader title="Seller Groups" description="Manage seller groups, accredited projects, pool rates, and member commission rates." icon={FaUserPlus} />
         <div className="flex flex-col gap-2 sm:flex-row">
           <NavLink to={usersPath} className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-50">Back to Users</NavLink>
           <button type="button" onClick={() => setShowNewGroupModal(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700"><FiPlus />New Group</button>
@@ -100,12 +100,12 @@ const SellerGroup = () => {
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><p className="text-sm font-semibold text-slate-500">Total Groups</p><h3 className="mt-2 text-3xl font-bold text-slate-950">{pagination.total}</h3><p className="mt-2 text-sm text-slate-500">All seller groups</p></div>
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><p className="text-sm font-semibold text-slate-500">Active Groups</p><h3 className="mt-2 text-3xl font-bold text-slate-950">{meta.active}</h3><p className="mt-2 text-sm text-slate-500">Available for assignments</p></div>
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><p className="text-sm font-semibold text-slate-500">Total Members</p><h3 className="mt-2 text-3xl font-bold text-slate-950">{meta.totalMembers}</h3><p className="mt-2 text-sm text-slate-500">Members across groups</p></div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><p className="text-sm font-semibold text-slate-500">Average Pool</p><h3 className="mt-2 text-3xl font-bold text-slate-950">{Number(meta.averagePool || 0).toFixed(1)}%</h3><p className="mt-2 text-sm text-slate-500">Active project pools</p></div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><p className="text-sm font-semibold text-slate-500">Project Accreditations</p><h3 className="mt-2 text-3xl font-bold text-slate-950">{meta.accreditedProjects}</h3><p className="mt-2 text-sm text-slate-500">Active group-project assignments</p></div>
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-4 border-b border-slate-200 p-4 xl:flex-row xl:items-center xl:justify-between">
-          <div><h2 className="text-lg font-bold text-slate-950">Seller Group Records</h2><p className="text-sm text-slate-500">Open a group to choose a project and manage its rates.</p></div>
+          <div><h2 className="text-lg font-bold text-slate-950">Seller Group Records</h2><p className="text-sm text-slate-500">Open a group to review project performance and manage member rates.</p></div>
           <div className="grid gap-3 md:grid-cols-[minmax(240px,1fr)_auto_auto]">
             <label className="relative block"><FiSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} placeholder="Search group, head, or description..." className="h-11 w-full rounded-xl border border-slate-200 pl-10 pr-4 text-sm outline-none focus:border-blue-300 focus:ring-4 focus:ring-blue-50" /></label>
             <select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1) }} className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-300 focus:ring-4 focus:ring-blue-50"><option value="all">All Status</option><option value="active">Active</option><option value="inactive">Inactive</option></select>
@@ -115,7 +115,7 @@ const SellerGroup = () => {
 
         <div className="hidden overflow-x-auto lg:block">
           <table className="min-w-[1050px] w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50"><tr>{['Group', 'Head', 'Members', 'Project Pools', 'Status', 'Actions'].map((head) => <th key={head} className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">{head}</th>)}</tr></thead>
+            <thead className="bg-slate-50"><tr>{['Group', 'Head', 'Members', 'Accredited Projects', 'Status', 'Actions'].map((head) => <th key={head} className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">{head}</th>)}</tr></thead>
             <tbody className="divide-y divide-slate-100">
               {sellerGroups.map((group) => (
                 <tr key={group.seller_group_id} className="hover:bg-slate-50">

@@ -327,6 +327,9 @@ const mapCommissionRow = (row = {}, releases = [], releaseDateInfo = {}) => {
   return {
     id: row.lot_project_commission_id,
     commissionId: row.lot_project_commission_id,
+    listingId: row.lot_project_listing_id,
+    clientProfileId: row.lot_project_client_profile_id,
+    accreditedSellerId: row.accredited_seller_id,
     client: row.buyer_full_name || 'No buyer name',
     unit: row.lot_project_listing_unit_id || '-',
     project: row.lot_project_name || '-',
@@ -581,16 +584,36 @@ export const getLotProjectCommissions = async (req, res) => {
     }
 
     if (search) {
+      // Match the account first, then return every commission recipient for the
+      // matched unit. This keeps the seller dropdown complete after searching.
       where.push(`(
         l.lot_project_listing_unit_id LIKE ?
         OR cp.buyer_full_name LIKE ?
-        OR CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name) LIKE ?
-        OR u.email LIKE ?
-        OR sg.seller_group_name LIKE ?
-        OR CONCAT_WS(' ', mainSellerUser.first_name, mainSellerUser.middle_name, mainSellerUser.last_name) LIKE ?
+        OR EXISTS (
+          SELECT 1
+          FROM lot_project_commissions searchCommission
+          LEFT JOIN accredited_sellers searchSeller
+            ON searchSeller.accredited_seller_id = searchCommission.accredited_seller_id
+          LEFT JOIN users searchUser
+            ON searchUser.id = searchSeller.user_id
+          LEFT JOIN seller_groups searchGroup
+            ON searchGroup.seller_group_id = searchSeller.seller_group_id
+          WHERE searchCommission.lot_project_listing_id = c.lot_project_listing_id
+            AND searchCommission.lot_project_id = c.lot_project_id
+            AND (
+              COALESCE(
+                searchCommission.seller_display_name_snapshot,
+                NULLIF(TRIM(CONCAT_WS(' ', searchUser.first_name, searchUser.middle_name, searchUser.last_name)), '')
+              ) LIKE ?
+              OR searchUser.email LIKE ?
+              OR COALESCE(searchCommission.seller_group_name_snapshot, searchGroup.seller_group_name) LIKE ?
+              OR searchCommission.commission_role LIKE ?
+              OR searchCommission.commission_rate_type LIKE ?
+            )
+        )
       )`);
       const keyword = `%${search}%`;
-      params.push(keyword, keyword, keyword, keyword, keyword, keyword);
+      params.push(keyword, keyword, keyword, keyword, keyword, keyword, keyword);
     }
 
     const [rows] = await connection.query(
