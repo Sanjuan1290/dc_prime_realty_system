@@ -661,20 +661,6 @@ const Dashboard = () => {
 
 
 
-
-
-      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-        <SectionHeader title="Project Details" description="Basic project data and document setup." />
-        <div className="mt-4 grid gap-3 md:grid-cols-3">
-          <InfoMetric label="Project Name" value={project.project_bailen_name || '-'} />
-          <InfoMetric label="Location" value={project.project_bailen_location || '-'} />
-          <InfoMetric label="Location Code" value={project.project_bailen_location_code || '-'} />
-          <InfoMetric label="Cadastral Lots" value={`${project.cadastral_lots?.filter((lot) => lot.status === 'active').length || 0} active`} />
-          <InfoMetric label="Default Documents" value={project.project_bailen_default_documents || 0} />
-          <InfoMetric label="Required Documents" value={project.project_bailen_required_documents || 0} />
-        </div>
-      </section>
-
       {showDetails ? <ProjectDetailsModal project={project} onClose={() => setShowDetails(false)} onEdit={() => { setShowDetails(false); setShowEdit(true) }} /> : null}
       {showEdit ? <EditProjectModal project={project} documents={documentsData?.documents || []} templates={templatesData?.templates || []} templateDocuments={templatesData?.template_documents || []} onClose={() => setShowEdit(false)} onSave={handleSaveProject} isSaving={updateProjectMutation.isPending} /> : null}
     </main>
