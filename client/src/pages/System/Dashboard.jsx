@@ -339,6 +339,16 @@ const Dashboard = () => {
     }
   }
 
+  const handleCancelLongRange = () => {
+    const fallbackRange = '3_months'
+    const fallbackDates = resolvePresetDateRange(fallbackRange)
+
+    setDateRange(fallbackRange)
+    setFromDate(fallbackDates.from)
+    setToDate(fallbackDates.to)
+    resetApproval()
+  }
+
   const dashboardQuery = useMemo(() => {
     const params = new URLSearchParams({
       range: dateRange,
@@ -537,7 +547,22 @@ const Dashboard = () => {
               <FiAlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
               <div><p className="font-black">Large date range</p><p className="mt-1 text-sm font-semibold">This report covers {number(selectedDaySpan)} days and may take longer to load.</p></div>
             </div>
-            <button type="button" onClick={() => setApprovedLongRangeKey(longRangeKey)} className="h-10 rounded-xl bg-amber-600 px-4 text-sm font-black text-white hover:bg-amber-700">Continue and load</button>
+            <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+              <button
+                type="button"
+                onClick={handleCancelLongRange}
+                className="h-10 rounded-xl border border-amber-300 bg-white px-4 text-sm font-black text-amber-900 hover:bg-amber-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => setApprovedLongRangeKey(longRangeKey)}
+                className="h-10 rounded-xl bg-amber-600 px-4 text-sm font-black text-white hover:bg-amber-700"
+              >
+                Continue and load
+              </button>
+            </div>
           </div>
         </section>
       ) : null}
@@ -601,3 +626,4 @@ const Dashboard = () => {
 }
 
 export default Dashboard
+
