@@ -102,30 +102,39 @@ export const getLotProjects = async (req, res) => {
   }
 };
 
+// Keep the workspace option query and response mapper together so every
+// project card receives the same location fields used by the full project API.
+export const LOT_PROJECT_OPTIONS_QUERY = `
+  SELECT
+    lot_project_id,
+    lot_project_name,
+    lot_project_slug,
+    lot_project_location,
+    lot_project_location_code,
+    lot_project_status
+  FROM lot_projects
+  WHERE lot_project_status = 'active'
+  ORDER BY lot_project_name ASC
+`;
+
+export const mapLotProjectOption = (project = {}) => ({
+  ...project,
+  id: project.lot_project_id,
+  label: project.lot_project_name,
+  value: project.lot_project_id,
+  slug: project.lot_project_slug,
+  location: project.lot_project_location,
+  locationCode: project.lot_project_location_code,
+  routePath: `/lot-projects/${project.lot_project_slug}`,
+});
+
 export const getLotProjectOptions = async (req, res) => {
   try {
-    const [rows] = await db.query(`
-      SELECT
-        lot_project_id,
-        lot_project_name,
-        lot_project_slug,
-        lot_project_location_code,
-        lot_project_status
-      FROM lot_projects
-      WHERE lot_project_status = 'active'
-      ORDER BY lot_project_name ASC
-    `);
+    const [rows] = await db.query(LOT_PROJECT_OPTIONS_QUERY);
 
     return res.json({
       success: true,
-      data: rows.map((project) => ({
-        ...project,
-        id: project.lot_project_id,
-        label: project.lot_project_name,
-        value: project.lot_project_id,
-        slug: project.lot_project_slug,
-        routePath: `/lot-projects/${project.lot_project_slug}`,
-      })),
+      data: rows.map(mapLotProjectOption),
     });
   } catch (error) {
     return res.status(500).json({ message: getErrorMessage(error) });

@@ -9,7 +9,13 @@ import {
 } from "react-icons/fi";
 import PageHeader from "../../components/Shared/PageHeader";
 import StatusAlert from "../../components/Shared/StatusAlert";
-import { useFetch } from "../../utils/useFetch";
+import { useFetch as fetchApi } from "../../utils/useFetch";
+
+// Accept raw database names and normalized API aliases without showing blank locations.
+const firstNonEmptyText = (...values) => {
+  const match = values.find((value) => String(value ?? "").trim());
+  return match === undefined ? "" : String(match).trim();
+};
 
 const PROJECT_TYPES = {
   lot: {
@@ -30,10 +36,12 @@ const PROJECT_TYPES = {
       project.project_slug ||
       project.slug,
     getLocation: (project) =>
-      project.lot_project_location ||
-      project.project_location ||
-      project.location ||
-      "No location set",
+      firstNonEmptyText(
+        project.lot_project_location,
+        project.project_location,
+        project.projectLocation,
+        project.location,
+      ) || "No location set",
     getStatus: (project) =>
       project.lot_project_status ||
       project.project_status ||
@@ -58,10 +66,12 @@ const PROJECT_TYPES = {
       project.project_slug ||
       project.slug,
     getLocation: (project) =>
-      project.house_lot_project_location ||
-      project.project_location ||
-      project.location ||
-      "No location set",
+      firstNonEmptyText(
+        project.house_lot_project_location,
+        project.project_location,
+        project.projectLocation,
+        project.location,
+      ) || "No location set",
     getStatus: (project) =>
       project.house_lot_project_status ||
       project.project_status ||
@@ -90,7 +100,7 @@ const ProjectWorkspaceList = ({ type = "lot" }) => {
     error,
   } = useQuery({
     queryKey: [config.queryKey],
-    queryFn: () => useFetch(config.endpoint),
+    queryFn: () => fetchApi(config.endpoint),
     enabled: isFeatureEnabled,
   });
 
