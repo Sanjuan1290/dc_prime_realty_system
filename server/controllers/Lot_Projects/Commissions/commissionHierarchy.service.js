@@ -456,18 +456,29 @@ export const getReservationCommissionPreview = async (
   const allocatedRate = roundCommissionMoney(
     hierarchyRows.reduce((sum, row) => sum + Number(row.rate || 0), 0)
   );
-  const unallocatedRate = roundCommissionMoney(Math.max(Number(groupPoolRate || 0) - allocatedRate, 0));
+  const normalizedPoolRate = Number(groupPoolRate || 0);
+  const unallocatedRate = roundCommissionMoney(Math.max(normalizedPoolRate - allocatedRate, 0));
+  const allocationDifference = roundCommissionMoney(Math.abs(normalizedPoolRate - allocatedRate));
+  const allocationWarnings = hierarchyRows
+    .filter((row) => row.rateType === 'override' && Number(row.rate || 0) <= 0)
+    .map((row) => `${row.seller.full_name || 'Parent seller'} has no active override for this reporting relationship.`);
+
+  if (normalizedPoolRate > 0 && allocationDifference > 0.0001) {
+    allocationWarnings.push(
+      allocatedRate < normalizedPoolRate
+        ? `${unallocatedRate.toFixed(2)}% of the group pool is still unallocated.`
+        : `The hierarchy exceeds the group pool by ${roundCommissionMoney(allocatedRate - normalizedPoolRate).toFixed(2)}%.`
+    );
+  }
 
   return {
     commissionBase: baseAmount,
-    poolRate: Number(groupPoolRate || 0),
+    poolRate: normalizedPoolRate,
     allocatedRate,
     unallocatedRate,
     estimatedTotal: roundCommissionMoney(baseAmount * (allocatedRate / 100)),
-    isValid: allocatedRate > 0 && (!groupPoolRate || allocatedRate <= groupPoolRate + 0.0001),
-    warnings: hierarchyRows
-      .filter((row) => row.rateType === 'override' && Number(row.rate || 0) <= 0)
-      .map((row) => `${row.seller.full_name || 'Parent seller'} has no active override for this reporting relationship.`),
+    isValid: allocatedRate > 0 && (!normalizedPoolRate || allocationDifference <= 0.0001),
+    warnings: allocationWarnings,
     assignedSeller,
     hierarchy: hierarchyRows.map((row, index) => {
       const isDummy = Number(row.seller.is_system_dummy || 0) === 1;

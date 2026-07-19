@@ -3,6 +3,7 @@ import { FiMapPin, FiSearch } from 'react-icons/fi'
 
 const getProjectId = (project) => Number(project.lot_project_id || project.id)
 const getProjectName = (project) => project.lot_project_name || project.label || 'Unnamed project'
+const POOL_RATE_OPTIONS = Array.from({ length: 10 }, (_, index) => index + 6)
 
 /**
  * Project accreditation is explicit. A checked project is available to this
@@ -126,21 +127,22 @@ const ProjectAccreditationFields = ({
               {checked ? (
                 <label className="mt-4 flex flex-col gap-1.5">
                   <span className="text-xs font-black text-slate-700">Group Pool Rate</span>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      min="6"
-                      max="15"
-                      step="0.01"
-                      value={selectedRate.seller_group_pool_rate}
-                      onChange={(event) => updatePoolRate(projectId, event.target.value)}
-                      placeholder="Enter pool rate"
-                      disabled={disabled}
-                      className="h-11 w-full rounded-xl border border-slate-300 bg-white px-4 pr-10 text-sm font-black outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100"
-                    />
-                    <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-sm font-black text-slate-500">%</span>
-                  </div>
-                  <span className="text-[11px] font-semibold text-slate-500">Allowed range: 6% to 15%.</span>
+                  <select
+                    value={String(selectedRate.seller_group_pool_rate)}
+                    onChange={(event) => updatePoolRate(projectId, event.target.value)}
+                    disabled={disabled}
+                    className="h-11 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm font-black outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100"
+                  >
+                    {!POOL_RATE_OPTIONS.includes(Number(selectedRate.seller_group_pool_rate)) ? (
+                      <option value={selectedRate.seller_group_pool_rate}>
+                        {Number(selectedRate.seller_group_pool_rate || 0).toFixed(2)}% (Current)
+                      </option>
+                    ) : null}
+                    {POOL_RATE_OPTIONS.map((rate) => (
+                      <option key={rate} value={rate}>{rate.toFixed(2)}%</option>
+                    ))}
+                  </select>
+                  <span className="text-[11px] font-semibold text-slate-500">Choose a pool rate from 6% to 15%.</span>
                 </label>
               ) : null}
             </article>

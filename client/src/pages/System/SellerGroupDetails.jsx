@@ -2,17 +2,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { NavLink, useLocation, useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  Bar,
-  CartesianGrid,
-  ComposedChart,
-  Legend,
-  Line,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts'
-import {
   FiArrowLeft,
   FiCalendar,
   FiDollarSign,
@@ -43,11 +32,6 @@ const formatCurrency = (value) => new Intl.NumberFormat('en-PH', {
   maximumFractionDigits: 2,
 }).format(Number(value || 0))
 
-const compactCurrency = (value) => new Intl.NumberFormat('en-PH', {
-  notation: 'compact',
-  maximumFractionDigits: 1,
-}).format(Number(value || 0))
-
 const toDateInput = (date) => {
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0')
@@ -74,15 +58,6 @@ const getPresetRange = (preset) => {
   return getLastTwelveMonthsRange()
 }
 
-const formatPeriodLabel = (period = '') => {
-  const parts = String(period).split('-').map(Number)
-  if (parts.length < 2 || !parts[0] || !parts[1]) return period
-  const date = new Date(parts[0], parts[1] - 1, parts[2] || 1)
-  return date.toLocaleDateString('en-PH', parts[2]
-    ? { month: 'short', day: 'numeric' }
-    : { month: 'short', year: '2-digit' })
-}
-
 const SummaryCard = ({ icon: Icon, label, value, helper }) => (
   <article className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
     <div className="flex items-start justify-between gap-3">
@@ -96,53 +71,17 @@ const SummaryCard = ({ icon: Icon, label, value, helper }) => (
   </article>
 )
 
-const RateBadge = ({ label, rate, status = 'inactive', tone = 'blue' }) => {
-  const active = status === 'active'
-  const toneClass = tone === 'violet'
-    ? 'bg-violet-50 text-violet-700 ring-violet-100'
-    : 'bg-blue-50 text-blue-700 ring-blue-100'
-  return (
-    <span className={`inline-flex rounded-lg px-2.5 py-1 text-xs font-black ring-1 ${active ? toneClass : 'bg-slate-100 text-slate-500 ring-slate-200'}`}>
-      {label}: {active ? `${Number(rate || 0).toFixed(2)}%` : 'Inactive'}
-    </span>
-  )
-}
-
-const RatesCell = ({ member, directSeller, parent, savedOverride, isGroupHead }) => (
-  <div className="flex max-w-md flex-wrap gap-2">
-    {member.role === 'agent' ? (
-      <RateBadge label="Direct" rate={member.direct_rate} status={member.direct_rate_status} />
-    ) : directSeller ? (
-      <RateBadge label="Direct-sales agent" rate={directSeller.direct_rate} status={directSeller.direct_rate_status} />
-    ) : (
-      <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-black text-slate-500 ring-1 ring-slate-200">Direct sales: Not enabled</span>
-    )}
-    {!isGroupHead ? (
-      savedOverride ? (
-        <RateBadge label={`Parent gets`} rate={savedOverride.override_rate} status={savedOverride.override_rate_status} tone="violet" />
-      ) : (
-        <span className="rounded-lg bg-amber-50 px-2.5 py-1 text-xs font-black text-amber-700 ring-1 ring-amber-100">Parent override: Not set</span>
-      )
-    ) : null}
-    {!isGroupHead && parent ? <span className="w-full text-[11px] font-semibold text-slate-500">Paid to {parent.display_name}</span> : null}
-  </div>
+const RateBadge = ({ rate }) => (
+  <span className="inline-flex rounded-lg bg-blue-50 px-2.5 py-1 text-xs font-black text-blue-700 ring-1 ring-blue-100">
+    {Number(rate || 0).toFixed(2)}%
+  </span>
 )
 
-const AnalyticsTooltip = ({ active, payload, label }) => {
-  if (!active || !payload?.length) return null
-  return (
-    <div className="rounded-xl border border-slate-200 bg-white p-3 text-xs shadow-xl">
-      <p className="font-black text-slate-950">{formatPeriodLabel(label)}</p>
-      <div className="mt-2 grid gap-1.5">
-        {payload.map((item) => (
-          <p key={item.dataKey} className="font-semibold text-slate-600">
-            {item.name}: <span className="font-black text-slate-950">{item.dataKey === 'salesCount' ? Number(item.value || 0) : formatCurrency(item.value)}</span>
-          </p>
-        ))}
-      </div>
-    </div>
-  )
-}
+const RatesCell = ({ rates = [] }) => (
+  <div className="flex max-w-md flex-wrap gap-2">
+    {rates.length ? rates.map((rate) => <RateBadge key={rate} rate={rate} />) : <span className="text-sm font-semibold text-slate-400">—</span>}
+  </div>
+)
 
 const SellerGroupDetails = () => {
   const { groupId } = useParams()
@@ -155,6 +94,8 @@ const SellerGroupDetails = () => {
   const initialRange = useMemo(() => getLastTwelveMonthsRange(), [])
   const [alert, setAlert] = useState(null)
   const [memberSearch, setMemberSearch] = useState('')
+  const [memberPage, setMemberPage] = useState(1)
+  const [memberLimit, setMemberLimit] = useState(10)
   const [rateEditor, setRateEditor] = useState(null)
   const [dummyOwner, setDummyOwner] = useState(null)
   const [showEditGroupModal, setShowEditGroupModal] = useState(false)
@@ -208,10 +149,6 @@ const SellerGroupDetails = () => {
   const overrides = useMemo(() => configuration?.overrides || [], [configuration])
   const analytics = analyticsQuery.data?.data || null
   const analyticsSummary = analytics?.summary || {}
-  const timeline = useMemo(() => (analytics?.timeline || []).map((row) => ({
-    ...row,
-    label: formatPeriodLabel(row.period),
-  })), [analytics])
 
   const realMembers = useMemo(() => members.filter((member) => !member.is_system_dummy), [members])
   const memberById = useMemo(() => new Map(members.map((member) => [Number(member.accredited_seller_id), member])), [members])
@@ -243,6 +180,33 @@ const SellerGroupDetails = () => {
     }
   }
 
+  const memberRatesById = useMemo(() => {
+    const rateMap = new Map()
+    const addRate = (memberId, rate) => {
+      const numericRate = Number(rate || 0)
+      if (!memberId || numericRate <= 0) return
+      const current = rateMap.get(Number(memberId)) || []
+      const normalized = Number(numericRate.toFixed(2))
+      if (!current.includes(normalized)) current.push(normalized)
+      rateMap.set(Number(memberId), current.sort((left, right) => right - left))
+    }
+
+    members.forEach((member) => {
+      if (member.role !== 'agent' || member.direct_rate_status !== 'active') return
+      const recipientId = member.is_system_dummy
+        ? Number(member.dummy_owner_accredited_seller_id || 0)
+        : Number(member.accredited_seller_id)
+      addRate(recipientId, member.direct_rate)
+    })
+
+    overrides.forEach((override) => {
+      if (override.override_rate_status !== 'active') return
+      addRate(override.parent_accredited_seller_id, override.override_rate)
+    })
+
+    return rateMap
+  }, [members, overrides])
+
   const filteredMembers = useMemo(() => {
     const keyword = memberSearch.trim().toLowerCase()
     if (!keyword) return realMembers
@@ -259,6 +223,19 @@ const SellerGroupDetails = () => {
   // getMemberContext is derived entirely from these memoized collections.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [realMembers, memberSearch, memberById, dummyByOwner, overrideByRelationship, group.headUserId])
+
+  const memberTotalPages = Math.max(Math.ceil(filteredMembers.length / memberLimit), 1)
+  const currentMemberPage = Math.min(memberPage, memberTotalPages)
+  const paginatedMembers = useMemo(() => {
+    const start = (currentMemberPage - 1) * memberLimit
+    return filteredMembers.slice(start, start + memberLimit)
+  }, [filteredMembers, memberLimit, currentMemberPage])
+  const allocationPaths = configuration?.validation?.paths || []
+  const incompleteAllocationPaths = allocationPaths.filter((path) => (
+    Number(path.poolRate || 0) > 0
+    && Math.abs(Number(path.allocatedRate || 0) - Number(path.poolRate || 0)) > 0.0001
+  ))
+
 
   const refreshConnectedQueries = () => {
     queryClient.invalidateQueries({ queryKey: ['seller-group-project-options', Number(groupId)] })
@@ -356,6 +333,7 @@ const SellerGroupDetails = () => {
               onChange={(event) => {
                 setSearchParams({ project: event.target.value })
                 setMemberSearch('')
+                setMemberPage(1)
                 setRateEditor(null)
                 setAlert(null)
               }}
@@ -399,69 +377,38 @@ const SellerGroupDetails = () => {
             </div>
 
             <div className="px-4 pb-4">
-              {analyticsQuery.isLoading ? <StatusAlert type="loading" message="Loading group sales and commission analytics..." /> : null}
-              {!analyticsQuery.isLoading && analyticsQuery.isFetching ? <StatusAlert type="info" message="Refreshing analytics for the selected date range..." /> : null}
+              {analyticsQuery.isLoading ? <StatusAlert type="loading" message="Loading group sales and commission totals..." /> : null}
+              {!analyticsQuery.isLoading && analyticsQuery.isFetching ? <StatusAlert type="info" message="Refreshing totals for the selected date range..." /> : null}
               {analyticsQuery.isError ? <StatusAlert type="error" message={analyticsQuery.error?.message || 'Failed to load group analytics.'} /> : null}
-
-              {!analyticsQuery.isLoading && !analyticsQuery.isError ? (
-                <div className="grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(320px,0.8fr)]">
-                  <div className="rounded-2xl border border-slate-200 p-4">
-                    <div className="mb-4"><h3 className="font-black text-slate-950">Sales and Commission Trend</h3><p className="text-xs font-semibold text-slate-500">Sales value, group commission, released commission, and sales count.</p></div>
-                    {timeline.length ? (
-                      <div className="h-[340px] w-full">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <ComposedChart data={timeline} margin={{ top: 10, right: 12, left: 8, bottom: 10 }} accessibilityLayer>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="period" tickFormatter={formatPeriodLabel} minTickGap={24} />
-                            <YAxis yAxisId="money" tickFormatter={compactCurrency} width={72} />
-                            <YAxis yAxisId="count" orientation="right" allowDecimals={false} width={42} />
-                            <Tooltip content={<AnalyticsTooltip />} />
-                            <Legend />
-                            <Bar yAxisId="money" dataKey="salesAmount" name="Sales Value" fill="#2563eb" radius={[5, 5, 0, 0]} />
-                            <Line yAxisId="money" type="monotone" dataKey="grossCommission" name="Gross Commission" stroke="#7c3aed" strokeWidth={3} dot={false} />
-                            <Line yAxisId="money" type="monotone" dataKey="releasedCommission" name="Released Commission" stroke="#059669" strokeWidth={3} dot={false} />
-                            <Line yAxisId="count" type="monotone" dataKey="salesCount" name="Sales Count" stroke="#ea580c" strokeWidth={2} />
-                          </ComposedChart>
-                        </ResponsiveContainer>
-                      </div>
-                    ) : <p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-16 text-center text-sm font-semibold text-slate-500">No sales or commission records fall within this date range.</p>}
-                  </div>
-
-                  <div className="rounded-2xl border border-slate-200 p-4">
-                    <div><h3 className="font-black text-slate-950">Sales by Agent</h3><p className="text-xs font-semibold text-slate-500">Top sellers for the selected project and range.</p></div>
-                    <div className="mt-4 grid gap-3">
-                      {(analytics?.sellers || []).map((seller, index) => (
-                        <div key={`${seller.sellerId}-${seller.sellerName}`} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                          <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-black text-blue-700">#{index + 1}</p><p className="font-black text-slate-950">{seller.sellerName}</p></div><span className="rounded-full bg-white px-2.5 py-1 text-xs font-black text-slate-700 ring-1 ring-slate-200">{seller.salesCount} sale{seller.salesCount === 1 ? '' : 's'}</span></div>
-                          <p className="mt-2 text-sm font-black text-slate-800">{formatCurrency(seller.salesAmount)}</p>
-                        </div>
-                      ))}
-                      {!(analytics?.sellers || []).length ? <p className="rounded-xl border border-dashed border-slate-300 px-4 py-10 text-center text-sm font-semibold text-slate-500">No agent sales found.</p> : null}
-                    </div>
-                  </div>
-                </div>
-              ) : null}
             </div>
           </section>
 
           <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="flex flex-col gap-4 border-b border-slate-200 p-4 lg:flex-row lg:items-center lg:justify-between">
-              <div><h2 className="text-lg font-black text-slate-950">Member Rates</h2><p className="text-sm font-semibold text-slate-500">Review and edit the saved rate setup for {project.name}.</p></div>
-              <label className="relative block w-full lg:max-w-md"><FiSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={memberSearch} onChange={(event) => setMemberSearch(event.target.value)} placeholder="Search seller, role, parent, or direct-sales agent..." className="h-11 w-full rounded-xl border border-slate-300 pl-10 pr-4 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50" /></label>
+              <div><h2 className="text-lg font-black text-slate-950">Member Rates</h2><p className="text-sm font-semibold text-slate-500">Each complete sales path must total the {Number(configuration.poolRate || 0).toFixed(2)}% group pool for {project.name}.</p></div>
+              <label className="relative block w-full lg:max-w-md"><FiSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={memberSearch} onChange={(event) => { setMemberSearch(event.target.value); setMemberPage(1) }} placeholder="Search seller, role, or reporting parent..." className="h-11 w-full rounded-xl border border-slate-300 pl-10 pr-4 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50" /></label>
             </div>
+
+            {allocationPaths.length ? (
+              <div className={`mx-4 mt-4 rounded-xl border px-4 py-3 text-sm font-black ${incompleteAllocationPaths.length ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>
+                {incompleteAllocationPaths.length
+                  ? `${incompleteAllocationPaths.length} of ${allocationPaths.length} commission path(s) do not total the ${Number(configuration.poolRate || 0).toFixed(2)}% group pool.`
+                  : `All ${allocationPaths.length} commission path(s) total the ${Number(configuration.poolRate || 0).toFixed(2)}% group pool.`}
+              </div>
+            ) : null}
 
             <div className="hidden overflow-x-auto lg:block">
               <table className="min-w-[1080px] w-full divide-y divide-slate-200 text-sm">
                 <thead className="bg-slate-50"><tr>{['Seller', 'Role', 'Reports Under', 'Rates', 'Status', 'Actions'].map((head) => <th key={head} className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">{head}</th>)}</tr></thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filteredMembers.map((member) => {
+                  {paginatedMembers.map((member) => {
                     const context = getMemberContext(member)
                     return (
                       <tr key={member.accredited_seller_id} className="align-top hover:bg-slate-50">
                         <td className="px-4 py-4"><p className="font-black text-slate-950">{member.display_name}</p>{context.directSeller && member.role !== 'agent' ? <p className="mt-1 text-xs font-semibold text-blue-600">System direct-sales agent connected</p> : null}</td>
                         <td className="px-4 py-4 font-semibold text-slate-700">{roleLabel(member.role)}</td>
                         <td className="px-4 py-4"><p className="font-semibold text-slate-700">{context.parent?.display_name || (context.isGroupHead ? 'Developer' : 'Not assigned')}</p><p className="text-xs text-slate-500">{context.isGroupHead ? 'Top of hierarchy' : 'Direct parent'}</p></td>
-                        <td className="px-4 py-4"><RatesCell member={member} {...context} /></td>
+                        <td className="px-4 py-4"><RatesCell rates={memberRatesById.get(Number(member.accredited_seller_id)) || []} /></td>
                         <td className="px-4 py-4"><span className={`rounded-full px-3 py-1 text-xs font-black capitalize ${member.accredited_seller_status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{member.accredited_seller_status}</span></td>
                         <td className="px-4 py-4"><button type="button" onClick={() => openRateEditor(member)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-700 hover:bg-blue-100"><FiEdit2 />Edit Rate</button></td>
                       </tr>
@@ -473,18 +420,31 @@ const SellerGroupDetails = () => {
             </div>
 
             <div className="grid gap-3 p-4 lg:hidden">
-              {filteredMembers.map((member) => {
+              {paginatedMembers.map((member) => {
                 const context = getMemberContext(member)
                 return (
                   <article key={member.accredited_seller_id} className="rounded-2xl border border-slate-200 p-4">
                     <div className="flex items-start justify-between gap-3"><div><p className="font-black text-slate-950">{member.display_name}</p><p className="text-xs font-semibold text-slate-500">{roleLabel(member.role)}</p></div><span className={`rounded-full px-2.5 py-1 text-xs font-black capitalize ${member.accredited_seller_status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{member.accredited_seller_status}</span></div>
                     <p className="mt-3 text-xs font-bold text-slate-500">Reports under</p><p className="font-semibold text-slate-800">{context.parent?.display_name || (context.isGroupHead ? 'Developer' : 'Not assigned')}</p>
-                    <div className="mt-3"><RatesCell member={member} {...context} /></div>
+                    <div className="mt-3"><RatesCell rates={memberRatesById.get(Number(member.accredited_seller_id)) || []} /></div>
                     <button type="button" onClick={() => openRateEditor(member)} className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 text-sm font-black text-white"><FiEdit2 />Edit Rate</button>
                   </article>
                 )
               })}
               {!filteredMembers.length ? <p className="py-8 text-center text-sm font-semibold text-slate-500">No members match your search.</p> : null}
+            </div>
+
+            <div className="flex flex-col gap-3 border-t border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm font-semibold text-slate-500">Page {currentMemberPage} of {memberTotalPages} · {filteredMembers.length} member(s)</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <select value={memberLimit} onChange={(event) => { setMemberLimit(Number(event.target.value)); setMemberPage(1) }} className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold">
+                  <option value={10}>10 rows</option>
+                  <option value={25}>25 rows</option>
+                  <option value={50}>50 rows</option>
+                </select>
+                <button type="button" disabled={currentMemberPage <= 1} onClick={() => setMemberPage(Math.max(currentMemberPage - 1, 1))} className="h-10 rounded-xl border border-slate-200 px-4 text-sm font-bold disabled:opacity-40">Previous</button>
+                <button type="button" disabled={currentMemberPage >= memberTotalPages} onClick={() => setMemberPage(Math.min(currentMemberPage + 1, memberTotalPages))} className="h-10 rounded-xl border border-slate-200 px-4 text-sm font-bold disabled:opacity-40">Next</button>
+              </div>
             </div>
           </section>
         </>
