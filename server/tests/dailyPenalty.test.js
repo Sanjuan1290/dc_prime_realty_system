@@ -280,3 +280,4 @@ test('restoring a penalty correction recalculates the full late period', () => {
 
   assert.equal(result.calculatedPenaltyAmount, 50);
 });
+

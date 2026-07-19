@@ -17,6 +17,7 @@ import {
   recomputeComputedSoaBalances,
 } from '../_shared/lotProject.shared.js';
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
+import { getListingPricingForMode } from '../_shared/listingPricing.js';
 import { replaceReservationCommissions } from '../Commissions/commissionHierarchy.service.js';
 import {
   assertBuyerFormSchema,
@@ -70,6 +71,28 @@ const getMissingDailyPenaltySchemaItems = async (connection) => {
     }
   }
 
+  return missing;
+};
+
+const getMissingDualPricingSchemaItems = async (connection) => {
+  const requiredColumns = [
+    ['lot_project_listings', 'lot_project_listing_installment_price_per_sqm'],
+    ['lot_project_listings', 'lot_project_listing_cash_price_per_sqm'],
+    ['lot_project_client_profiles', 'soa_selected_price_per_sqm'],
+    ['lot_project_client_profiles', 'soa_selected_base_selling_price'],
+    ['lot_project_client_profiles', 'soa_sale_discount_percentage'],
+    ['lot_project_client_profiles', 'soa_sale_discount_amount'],
+    ['lot_project_client_profiles', 'soa_selected_net_selling_price'],
+    ['lot_project_client_profiles', 'soa_selected_lmf_amount'],
+    ['lot_project_client_profiles', 'soa_selected_tcp'],
+  ];
+
+  const missing = [];
+  for (const [tableName, columnName] of requiredColumns) {
+    if (!(await columnExists(connection, tableName, columnName))) {
+      missing.push(`${tableName}.${columnName}`);
+    }
+  }
   return missing;
 };
 
@@ -267,6 +290,13 @@ export const reserveLotProjectListing = async (req, res) => {
         missing_schema_items: missingDailyPenaltySchema,
       });
     }
+    const missingDualPricingSchema = await getMissingDualPricingSchemaItems(connection);
+    if (missingDualPricingSchema.length) {
+      return res.status(500).json({
+        message: `Dual listing pricing migration is incomplete. Missing: ${missingDualPricingSchema.join(', ')}. Run server/migrations/20260719_dual_listing_pricing_and_contract_snapshots.sql.`,
+        missing_schema_items: missingDualPricingSchema,
+      });
+    }
 
     const lookup = getListingLookupWhere(listingLookup, '');
     const hasAnnualInterestRate = await columnExists(connection, 'lot_project_listings', 'annual_interest_rate');
@@ -278,6 +308,11 @@ export const reserveLotProjectListing = async (req, res) => {
           lot_project_listing_id,
           lot_project_listing_unit_id,
           lot_project_listing_status,
+          lot_project_listing_area_sqm,
+          lot_project_listing_price_per_sqm,
+          lot_project_listing_installment_price_per_sqm,
+          lot_project_listing_cash_price_per_sqm,
+          lot_project_listing_lmf_rate,
           lot_project_listing_tcp,
           lot_project_listing_net_selling_price,
           lot_project_listing_lmf_amount,
@@ -373,6 +408,23 @@ export const reserveLotProjectListing = async (req, res) => {
 
     const modeOfPayment = reservation.modeOfPayment === 'cash' || terms.modeOfPayment === 'cash' ? 'cash' : 'installment';
     const isCash = modeOfPayment === 'cash';
+    const saleDiscountPercentage = parseMoneyValue(terms.saleDiscountPercentage || terms.soa_sale_discount_percentage || 0);
+    if (saleDiscountPercentage < 0 || saleDiscountPercentage > 100) {
+      return res.status(400).json({ message: 'Sale discount percentage must be between 0 and 100.' });
+    }
+    const contractPricing = getListingPricingForMode(listing, modeOfPayment, saleDiscountPercentage);
+    if (contractPricing.pricePerSqm <= 0 || contractPricing.baseSellingPrice <= 0) {
+      return res.status(400).json({ message: `The listing does not have a valid ${modeOfPayment} price per SQM.` });
+    }
+
+    // Downstream SOA and commission services already read these listing fields.
+    // Replace them in-memory with the immutable contract calculation selected by
+    // this reservation. The public listing row itself remains unchanged.
+    listing.lot_project_listing_price_per_sqm = contractPricing.pricePerSqm;
+    listing.lot_project_listing_net_selling_price = contractPricing.netSellingPrice;
+    listing.lot_project_listing_lmf_amount = contractPricing.lmfAmount;
+    listing.lot_project_listing_tcp = contractPricing.tcp;
+
     const reservationFee = parseMoneyValue(terms.reservationFee || listing.lot_project_listing_reservation_fee || 0);
     const downpaymentPercentage = isCash
       ? 0
@@ -390,6 +442,9 @@ export const reserveLotProjectListing = async (req, res) => {
           terms.monthlyTerms ?? normalizeNumberOption(terms.monthlyTermsMode, terms.customMonthlyTerms, 36)
         );
     const dpDiscountPercentage = isCash ? 0 : parseMoneyValue(terms.dpDiscountPercentage || 0);
+    if (dpDiscountPercentage < 0 || dpDiscountPercentage > 100) {
+      return res.status(400).json({ message: 'Downpayment discount percentage must be between 0 and 100.' });
+    }
     const reservationFeeAppliedToDownpayment = !isCash && (
       terms.reservationFeeTreatment === 'apply_to_downpayment' ||
       terms.reservationFeeAppliedToDownpayment === true ||
@@ -398,7 +453,7 @@ export const reserveLotProjectListing = async (req, res) => {
     const legalMiscFeeMode = String(terms.legalMiscFeeMode || terms.legalMiscFee || 'include_in_monthly') === 'separate_soa_row'
       ? 'separate_soa_row'
       : 'include_in_monthly';
-    const legalMiscFeeAmount = parseMoneyValue(terms.legalMiscFeeAmount || listing.lot_project_listing_lmf_amount || 0);
+    const legalMiscFeeAmount = contractPricing.lmfAmount;
     const allowedDailyPenaltyRates = new Set([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 2, 3, 4, 5]);
     const dailyPenaltyRate = Number(terms.dailyPenaltyRate ?? terms.penaltyRatePercent ?? 0.1);
     const penaltyGraceDays = Number(terms.penaltyGraceDays ?? 1);
@@ -588,6 +643,13 @@ export const reserveLotProjectListing = async (req, res) => {
     await addIfColumnExists(connection, tableName, columns, values, 'second_buyer_employer_zip_code', hasSecondBuyer ? toNullable(clientProfile.secondBuyerEmployerZipCode) : null);
     await addIfColumnExists(connection, tableName, columns, values, 'assigned_accredited_seller_id', assignedSellerId);
     await addIfColumnExists(connection, tableName, columns, values, 'sale_channel', saleChannel);
+    await addIfColumnExists(connection, tableName, columns, values, 'soa_selected_price_per_sqm', contractPricing.pricePerSqm);
+    await addIfColumnExists(connection, tableName, columns, values, 'soa_selected_base_selling_price', contractPricing.baseSellingPrice);
+    await addIfColumnExists(connection, tableName, columns, values, 'soa_sale_discount_percentage', contractPricing.saleDiscountPercentage);
+    await addIfColumnExists(connection, tableName, columns, values, 'soa_sale_discount_amount', contractPricing.saleDiscountAmount);
+    await addIfColumnExists(connection, tableName, columns, values, 'soa_selected_net_selling_price', contractPricing.netSellingPrice);
+    await addIfColumnExists(connection, tableName, columns, values, 'soa_selected_lmf_amount', contractPricing.lmfAmount);
+    await addIfColumnExists(connection, tableName, columns, values, 'soa_selected_tcp', contractPricing.tcp);
     await addIfColumnExists(connection, tableName, columns, values, 'soa_reservation_fee_applied_to_downpayment', reservationFeeAppliedToDownpayment ? 1 : 0);
     await addIfColumnExists(connection, tableName, columns, values, 'soa_legal_misc_fee_mode', legalMiscFeeMode);
     await addIfColumnExists(connection, tableName, columns, values, 'soa_legal_misc_fee_amount', legalMiscFeeAmount);
@@ -725,40 +787,62 @@ export const reserveLotProjectListing = async (req, res) => {
     );
 
     if (await tableExists(connection, 'lot_project_reservation_history')) {
-      const tcpSnapshot = Number(listing.lot_project_listing_tcp || 0);
-      const discountPercentageSnapshot = Number(dpDiscountPercentage || 0);
-      const discountAppliedSnapshot = Math.max(
-        tcpSnapshot * (discountPercentageSnapshot / 100),
-        0
-      );
+      const historyTerms = getComputedSoaTerms({
+        ...listing,
+        soa_mode_of_payment: modeOfPayment,
+        soa_reservation_fee: reservationFee,
+        soa_reservation_fee_applied_to_downpayment: reservationFeeAppliedToDownpayment ? 1 : 0,
+        soa_downpayment_percentage: Number.isNaN(downpaymentPercentage) ? 30 : downpaymentPercentage,
+        soa_downpayment_terms: Number.isNaN(downpaymentTerms) ? 3 : downpaymentTerms,
+        soa_monthly_terms: Number.isNaN(monthlyTerms) ? 36 : monthlyTerms,
+        soa_annual_interest_rate: selectedInterestRate,
+        soa_dp_discount_percentage: dpDiscountPercentage,
+        soa_legal_misc_fee_mode: legalMiscFeeMode,
+        soa_legal_misc_fee_amount: legalMiscFeeAmount,
+        soa_selected_tcp: contractPricing.tcp,
+        soa_selected_lmf_amount: contractPricing.lmfAmount,
+      }, []);
+
+      const historyColumns = [
+        'lot_project_id',
+        'lot_project_listing_id',
+        'lot_project_client_profile_id',
+        'unit_id_snapshot',
+        'buyer_name_snapshot',
+        'reservation_status',
+        'reserved_at',
+        'tcp_snapshot',
+        'discount_percentage_snapshot',
+        'discount_applied_snapshot',
+        'created_by_user_id',
+      ];
+      const historyValues = [
+        project.lot_project_id,
+        listing.lot_project_listing_id,
+        clientProfileId,
+        listing.lot_project_listing_unit_id,
+        buyerName,
+        'active',
+        new Date(),
+        contractPricing.tcp,
+        contractPricing.saleDiscountPercentage,
+        contractPricing.saleDiscountAmount,
+        req.authUser?.id || null,
+      ];
+
+      await addIfColumnExists(connection, 'lot_project_reservation_history', historyColumns, historyValues, 'pricing_mode_snapshot', modeOfPayment);
+      await addIfColumnExists(connection, 'lot_project_reservation_history', historyColumns, historyValues, 'price_per_sqm_snapshot', contractPricing.pricePerSqm);
+      await addIfColumnExists(connection, 'lot_project_reservation_history', historyColumns, historyValues, 'base_selling_price_snapshot', contractPricing.baseSellingPrice);
+      await addIfColumnExists(connection, 'lot_project_reservation_history', historyColumns, historyValues, 'net_selling_price_snapshot', contractPricing.netSellingPrice);
+      await addIfColumnExists(connection, 'lot_project_reservation_history', historyColumns, historyValues, 'lmf_amount_snapshot', contractPricing.lmfAmount);
+      await addIfColumnExists(connection, 'lot_project_reservation_history', historyColumns, historyValues, 'sale_discount_percentage_snapshot', contractPricing.saleDiscountPercentage);
+      await addIfColumnExists(connection, 'lot_project_reservation_history', historyColumns, historyValues, 'sale_discount_amount_snapshot', contractPricing.saleDiscountAmount);
+      await addIfColumnExists(connection, 'lot_project_reservation_history', historyColumns, historyValues, 'dp_discount_percentage_snapshot', dpDiscountPercentage);
+      await addIfColumnExists(connection, 'lot_project_reservation_history', historyColumns, historyValues, 'dp_discount_amount_snapshot', historyTerms.downpaymentDiscountTotal);
 
       await connection.query(
-        `
-          INSERT INTO lot_project_reservation_history (
-            lot_project_id,
-            lot_project_listing_id,
-            lot_project_client_profile_id,
-            unit_id_snapshot,
-            buyer_name_snapshot,
-            reservation_status,
-            reserved_at,
-            tcp_snapshot,
-            discount_percentage_snapshot,
-            discount_applied_snapshot,
-            created_by_user_id
-          ) VALUES (?, ?, ?, ?, ?, 'active', NOW(), ?, ?, ?, ?)
-        `,
-        [
-          project.lot_project_id,
-          listing.lot_project_listing_id,
-          clientProfileId,
-          listing.lot_project_listing_unit_id,
-          buyerName,
-          tcpSnapshot,
-          discountPercentageSnapshot,
-          discountAppliedSnapshot,
-          req.authUser?.id || null,
-        ]
+        `INSERT INTO lot_project_reservation_history (${historyColumns.join(', ')}) VALUES (${historyColumns.map(() => '?').join(', ')})`,
+        historyValues
       );
     }
 
@@ -862,3 +946,4 @@ export const reserveLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
+

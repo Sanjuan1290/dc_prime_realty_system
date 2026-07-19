@@ -120,3 +120,4 @@ test('group analytics rejects ranges longer than ten years', () => {
     /cannot exceed 10 years/i
   );
 });
+

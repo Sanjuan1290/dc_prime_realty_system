@@ -79,3 +79,4 @@ The active/inactive field on `seller_group_lot_project_rates` now acts as the pr
 - Client production build: passed.
 - Changed server controller and router: syntax checks passed.
 - No live browser-to-MySQL test was run inside the build container.
+

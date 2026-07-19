@@ -23,3 +23,4 @@ router.patch('/:advanceId/reject', requirePermission(PERMISSIONS.EMPLOYEE_CASH_A
 router.patch('/:advanceId/cancel', requirePermission(PERMISSIONS.EMPLOYEE_CASH_ADVANCES_MANAGE), cancelEmployeeCashAdvance);
 router.post('/:advanceId/deductions', requirePermission(PERMISSIONS.EMPLOYEE_CASH_ADVANCES_MANAGE), recordEmployeeCashAdvanceDeduction);
 export default router;
+

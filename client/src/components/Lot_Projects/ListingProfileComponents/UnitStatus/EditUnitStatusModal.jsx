@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { FiSave, FiX } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
+import { calculateContractPricing } from '../../../../utils/listingPricing.js'
 
 const statusOptions = [
   { value: 'available', label: 'Available' },
@@ -178,7 +179,8 @@ const EditUnitStatusModal = ({ listing, project = {}, onClose, onSave, isSaving 
       return 'inner'
     })(),
     reservationFee: String(listing?.reservationFee || 0),
-    pricePerSqm: String(listing?.pricePerSqm || parseMoney(listing?.price_per_sqm) || 0),
+    installmentPricePerSqm: String(listing?.installmentPricePerSqm || listing?.pricePerSqm || parseMoney(listing?.price_per_sqm) || 0),
+    cashPricePerSqm: String(listing?.cashPricePerSqm || listing?.installmentPricePerSqm || listing?.pricePerSqm || parseMoney(listing?.price_per_sqm) || 0),
     lotAreaSqm: String(listing?.lotAreaSqm || parseMoney(listing?.lot_area_sqm) || 0),
     legalMiscRate: String(listing?.legalMiscRate || parsePercent(listing?.lmf_rate) || 0),
     annualInterestRate: String(listing?.annualInterestRate || parsePercent(listing?.interestRate) || 0),
@@ -196,22 +198,22 @@ const EditUnitStatusModal = ({ listing, project = {}, onClose, onSave, isSaving 
   const unitIdChanged = Boolean(originalUnitCode && unitCode !== originalUnitCode)
 
   const priceBreakdown = useMemo(() => {
-    const pricePerSqm = Number(form.pricePerSqm || 0)
-    const lotAreaSqm = Number(form.lotAreaSqm || 0)
-    const legalMiscRate = Number(form.legalMiscRate || 0)
-    const reservationFee = Number(form.reservationFee || 0)
-    const annualInterestRate = Number(form.annualInterestRate || 0)
-
-    const netSellingPrice = pricePerSqm * lotAreaSqm
-    const lmfAmount = netSellingPrice * (legalMiscRate / 100)
-    const tcp = netSellingPrice + lmfAmount
+    const shared = {
+      lotAreaSqm: Number(form.lotAreaSqm || 0),
+      legalMiscRate: Number(form.legalMiscRate || 0),
+    }
 
     return {
-      netSellingPrice,
-      lmfAmount,
-      tcp,
-      reservationFee,
-      annualInterestRate,
+      installment: calculateContractPricing({
+        ...shared,
+        pricePerSqm: Number(form.installmentPricePerSqm || 0),
+      }),
+      cash: calculateContractPricing({
+        ...shared,
+        pricePerSqm: Number(form.cashPricePerSqm || 0),
+      }),
+      reservationFee: Number(form.reservationFee || 0),
+      annualInterestRate: Number(form.annualInterestRate || 0),
     }
   }, [form])
 
@@ -228,8 +230,13 @@ const EditUnitStatusModal = ({ listing, project = {}, onClose, onSave, isSaving 
       return
     }
 
-    if (Number(form.pricePerSqm || 0) <= 0) {
-      setAlert({ type: 'error', message: 'Price per SQM must be greater than 0.' })
+    if (Number(form.installmentPricePerSqm || 0) <= 0) {
+      setAlert({ type: 'error', message: 'Installment price per SQM must be greater than 0.' })
+      return
+    }
+
+    if (Number(form.cashPricePerSqm || 0) <= 0) {
+      setAlert({ type: 'error', message: 'Cash price per SQM must be greater than 0.' })
       return
     }
 
@@ -260,7 +267,9 @@ const EditUnitStatusModal = ({ listing, project = {}, onClose, onSave, isSaving 
       lot_type: lotTypeLabel,
       status: form.status,
       lotAreaSqm: Number(form.lotAreaSqm || 0),
-      pricePerSqm: Number(form.pricePerSqm || 0),
+      pricePerSqm: Number(form.installmentPricePerSqm || 0),
+      installmentPricePerSqm: Number(form.installmentPricePerSqm || 0),
+      cashPricePerSqm: Number(form.cashPricePerSqm || 0),
       legalMiscRate: Number(form.legalMiscRate || 0),
       annualInterestRate: Number(form.annualInterestRate || 0),
       reservationFee: Number(form.reservationFee || 0),
@@ -388,13 +397,26 @@ const EditUnitStatusModal = ({ listing, project = {}, onClose, onSave, isSaving 
             />
 
             <Field
-              label="Price / SQM"
+              label="Price / SQM — Installment"
               type="number"
               min="0"
               step="0.01"
-              value={form.pricePerSqm}
-              onChange={(value) => updateField('pricePerSqm', value)}
+              value={form.installmentPricePerSqm}
+              onChange={(value) => updateField('installmentPricePerSqm', value)}
               placeholder="0"
+              helper="Used when the reservation mode is Installment."
+              required
+            />
+
+            <Field
+              label="Price / SQM — Cash"
+              type="number"
+              min="0"
+              step="0.01"
+              value={form.cashPricePerSqm}
+              onChange={(value) => updateField('cashPricePerSqm', value)}
+              placeholder="0"
+              helper="Used when the reservation mode is Cash."
               required
             />
 
@@ -449,10 +471,20 @@ const EditUnitStatusModal = ({ listing, project = {}, onClose, onSave, isSaving 
           <section className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
             <h3 className="text-sm font-black text-slate-950">Live Price Breakdown</h3>
 
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <BreakdownCard label="Net Selling Price" value={formatMoney(priceBreakdown.netSellingPrice)} />
-              <BreakdownCard label="LMF Amount" value={formatMoney(priceBreakdown.lmfAmount)} />
-              <BreakdownCard label="TCP" value={formatMoney(priceBreakdown.tcp)} highlight />
+            <div className="mt-4 grid gap-4 lg:grid-cols-2">
+              {[['Installment', priceBreakdown.installment], ['Cash', priceBreakdown.cash]].map(([label, pricing]) => (
+                <div key={label} className="rounded-xl border border-slate-200 bg-white p-4">
+                  <p className="text-xs font-black uppercase tracking-wide text-blue-700">{label} Pricing</p>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                    <BreakdownCard label="Base Selling Price" value={formatMoney(pricing.baseSellingPrice)} />
+                    <BreakdownCard label="LMF Amount" value={formatMoney(pricing.lmfAmount)} />
+                    <BreakdownCard label="TCP" value={formatMoney(pricing.tcp)} highlight />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
               <BreakdownCard label="Reservation Fee" value={formatMoney(priceBreakdown.reservationFee)} />
               <BreakdownCard label="Annual Interest Rate" value={`${Number(priceBreakdown.annualInterestRate || 0)}%`} />
               <BreakdownCard label="Preview Unit Code" value={unitCode} highlight />
@@ -485,3 +517,4 @@ const EditUnitStatusModal = ({ listing, project = {}, onClose, onSave, isSaving 
 }
 
 export default EditUnitStatusModal
+

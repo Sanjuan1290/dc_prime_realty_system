@@ -165,6 +165,20 @@ const getScheduleDiscountExpression = async (connection, alias = 's', clientAlia
     : downpaymentDiscountFallback;
 };
 
+const getContractSnapshotExpressions = async (connection, listingAlias = 'l', clientAlias = 'cp') => {
+  const hasSelectedTcp = await columnExists(connection, 'lot_project_client_profiles', 'soa_selected_tcp');
+  const hasSelectedLmf = await columnExists(connection, 'lot_project_client_profiles', 'soa_selected_lmf_amount');
+
+  return {
+    tcp: hasSelectedTcp
+      ? `COALESCE(${clientAlias}.soa_selected_tcp, ${listingAlias}.lot_project_listing_tcp)`
+      : `${listingAlias}.lot_project_listing_tcp`,
+    lmf: hasSelectedLmf
+      ? `COALESCE(${clientAlias}.soa_selected_lmf_amount, ${listingAlias}.lot_project_listing_lmf_amount)`
+      : `${listingAlias}.lot_project_listing_lmf_amount`,
+  };
+};
+
 const getScheduleSortSql = (alias = 's') => `
   CASE
     WHEN LOWER(${alias}.description) LIKE '%reservation%' THEN 0
@@ -177,6 +191,7 @@ const getScheduleSortSql = (alias = 's') => `
 
 const getScheduleNotificationRow = async (connection, scheduleId) => {
   const discountExpr = await getScheduleDiscountExpression(connection, 's');
+  const contractSnapshot = await getContractSnapshotExpressions(connection);
 
   const [rows] = await connection.query(
     `
@@ -186,8 +201,8 @@ const getScheduleNotificationRow = async (connection, scheduleId) => {
         p.lot_project_name,
         p.lot_project_slug,
         l.lot_project_listing_unit_id,
-        l.lot_project_listing_tcp,
-        l.lot_project_listing_lmf_amount,
+        ${contractSnapshot.tcp} AS lot_project_listing_tcp,
+        ${contractSnapshot.lmf} AS lot_project_listing_lmf_amount,
         st.company_name,
         st.company_email,
         st.company_contact_number,
@@ -397,6 +412,7 @@ export const getPaymentDueNotifications = async (req, res) => {
     const search = String(req.query.search || '').trim();
     const projectSlug = String(req.query.projectSlug || '').trim();
     const discountExpr = await getScheduleDiscountExpression(connection, 's');
+    const contractSnapshot = await getContractSnapshotExpressions(connection);
     const unpaidBalanceExpr = `GREATEST((s.due_amount + s.penalty_amount - ${discountExpr}) - s.amount_paid, 0)`;
 
     const where = [
@@ -443,8 +459,8 @@ export const getPaymentDueNotifications = async (req, res) => {
           p.lot_project_name,
           p.lot_project_slug,
           l.lot_project_listing_unit_id,
-          l.lot_project_listing_tcp,
-          l.lot_project_listing_lmf_amount,
+          ${contractSnapshot.tcp} AS lot_project_listing_tcp,
+          ${contractSnapshot.lmf} AS lot_project_listing_lmf_amount,
           st.company_name,
           st.company_email,
           st.company_contact_number,
@@ -847,3 +863,4 @@ export const getDocumentNotifications = async (req, res) => {
     connection.release();
   }
 };
+

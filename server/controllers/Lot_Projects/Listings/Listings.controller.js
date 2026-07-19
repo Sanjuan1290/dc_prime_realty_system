@@ -71,6 +71,7 @@ import {
 } from '../_shared/lotProject.shared.js';
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
 import { LISTING_STATUS_ACTIONS, validateListingStatusTransition } from './listingStatusTransitions.js';
+import { calculateContractPricing } from '../_shared/listingPricing.js';
 import {
   hasBuyerFormSchema,
   resetBuyerFormsForAvailable,
@@ -669,7 +670,17 @@ export const updateLotProjectListing = async (req, res) => {
     if (!listingLookup) return res.status(400).json({ message: 'Listing id is required.' });
 
     const unitCode = String(req.body.unitCode || req.body.unit_id || '').trim().toUpperCase();
-    const pricePerSqm = Number(req.body.pricePerSqm ?? req.body.price_per_sqm ?? 0);
+    const legacyPricePerSqm = Number(req.body.pricePerSqm ?? req.body.price_per_sqm ?? 0);
+    const installmentPricePerSqm = Number(
+      req.body.installmentPricePerSqm ??
+        req.body.installment_price_per_sqm ??
+        legacyPricePerSqm
+    );
+    const cashPricePerSqm = Number(
+      req.body.cashPricePerSqm ??
+        req.body.cash_price_per_sqm ??
+        installmentPricePerSqm
+    );
     const lotAreaSqm = Number(req.body.lotAreaSqm ?? req.body.area ?? 0);
     const legalMiscRate = Number(req.body.legalMiscRate ?? req.body.lmfRate ?? 0);
     const reservationFee = Number(req.body.reservationFee ?? 0);
@@ -680,13 +691,31 @@ export const updateLotProjectListing = async (req, res) => {
     if (!unitCode.startsWith(`${project.lot_project_location_code}-`)) {
       return res.status(400).json({ message: `Unit ID must start with ${project.lot_project_location_code}-.` });
     }
-    if (pricePerSqm <= 0) return res.status(400).json({ message: 'Price per SQM must be greater than 0.' });
+    if (installmentPricePerSqm <= 0) return res.status(400).json({ message: 'Installment price per SQM must be greater than 0.' });
+    if (cashPricePerSqm <= 0) return res.status(400).json({ message: 'Cash price per SQM must be greater than 0.' });
     if (lotAreaSqm <= 0) return res.status(400).json({ message: 'Lot area SQM must be greater than 0.' });
 
     const lookup = getListingLookupWhere(listingLookup);
-    const netSellingPrice = pricePerSqm * lotAreaSqm;
-    const lmfAmount = netSellingPrice * (legalMiscRate / 100);
-    const tcp = netSellingPrice + lmfAmount;
+    const installmentPricing = calculateContractPricing({
+      lotAreaSqm,
+      pricePerSqm: installmentPricePerSqm,
+      legalMiscRate,
+    });
+    const hasInstallmentPriceColumn = await columnExists(
+      connection,
+      'lot_project_listings',
+      'lot_project_listing_installment_price_per_sqm'
+    );
+    const hasCashPriceColumn = await columnExists(
+      connection,
+      'lot_project_listings',
+      'lot_project_listing_cash_price_per_sqm'
+    );
+    if (!hasInstallmentPriceColumn || !hasCashPriceColumn) {
+      return res.status(500).json({
+        message: 'Dual listing pricing migration is missing. Run server/migrations/20260719_dual_listing_pricing_and_contract_snapshots.sql.',
+      });
+    }
     const hasAnnualInterestRate = await columnExists(connection, 'lot_project_listings', 'annual_interest_rate');
     const hasCancellationType = await columnExists(connection, 'lot_project_listings', 'lot_project_listing_cancellation_type');
     const hasListingCadastralLinks = await tableExists(connection, 'lot_project_listing_cadastral_lots');
@@ -701,6 +730,12 @@ export const updateLotProjectListing = async (req, res) => {
           lot_project_listing_status,
           lot_project_listing_unit_id,
           lot_project_listing_tcp,
+          (
+            SELECT cp.soa_selected_tcp
+            FROM lot_project_client_profiles cp
+            WHERE cp.lot_project_listing_id = l.lot_project_listing_id
+            LIMIT 1
+          ) AS contract_tcp,
           lot_project_listing_cancellation_type
         FROM lot_project_listings l
         WHERE l.lot_project_id = ?
@@ -755,6 +790,8 @@ export const updateLotProjectListing = async (req, res) => {
       'lot_project_listing_old_unit_ids = ?',
       'lot_project_listing_area_sqm = ?',
       'lot_project_listing_price_per_sqm = ?',
+      'lot_project_listing_installment_price_per_sqm = ?',
+      'lot_project_listing_cash_price_per_sqm = ?',
       'lot_project_listing_net_selling_price = ?',
       'lot_project_listing_lmf_rate = ?',
       'lot_project_listing_lmf_amount = ?',
@@ -769,11 +806,13 @@ export const updateLotProjectListing = async (req, res) => {
       unitCode,
       toNullable(req.body.oldUnitIds || req.body.old_unit_ids),
       lotAreaSqm,
-      pricePerSqm,
-      netSellingPrice,
+      installmentPricePerSqm,
+      installmentPricePerSqm,
+      cashPricePerSqm,
+      installmentPricing.netSellingPrice,
       legalMiscRate,
-      lmfAmount,
-      tcp,
+      installmentPricing.lmfAmount,
+      installmentPricing.tcp,
       reservationFee,
       listingStatus.status,
       listingStatus.soldSubstatus,
@@ -884,7 +923,7 @@ export const updateLotProjectListing = async (req, res) => {
           [existingListing.lot_project_listing_id]
         );
 
-        const cancelledValue = Math.max(Number(existingListing.lot_project_listing_tcp || tcp || 0), 0);
+        const cancelledValue = Math.max(Number(existingListing.contract_tcp || existingListing.lot_project_listing_tcp || installmentPricing.tcp || 0), 0);
         const cashCollectedAtCancellation = Math.max(Number(cashRows[0]?.cash_collected || 0), 0);
         const cancellationReason = toNullable(req.body.cancellationReason || req.body.cancellation_reason);
 
@@ -917,7 +956,18 @@ export const updateLotProjectListing = async (req, res) => {
         if (historyResult.affectedRows === 0) {
           const [profileRows] = await connection.query(
             `
-              SELECT lot_project_client_profile_id, buyer_full_name, soa_dp_discount_percentage
+              SELECT
+                lot_project_client_profile_id,
+                buyer_full_name,
+                soa_mode_of_payment,
+                soa_selected_price_per_sqm,
+                soa_selected_base_selling_price,
+                soa_selected_net_selling_price,
+                soa_selected_lmf_amount,
+                soa_selected_tcp,
+                soa_sale_discount_percentage,
+                soa_sale_discount_amount,
+                soa_dp_discount_percentage
               FROM lot_project_client_profiles
               WHERE lot_project_listing_id = ?
               LIMIT 1
@@ -925,7 +975,9 @@ export const updateLotProjectListing = async (req, res) => {
             [existingListing.lot_project_listing_id]
           );
           const profile = profileRows[0] || {};
-          const discountPercentage = Number(profile.soa_dp_discount_percentage || 0);
+          const discountPercentage = Number(profile.soa_sale_discount_percentage || 0);
+          const discountAmount = Number(profile.soa_sale_discount_amount || 0);
+          const effectiveTcp = Number(profile.soa_selected_tcp || cancelledValue || 0);
 
           await connection.query(
             `
@@ -937,6 +989,14 @@ export const updateLotProjectListing = async (req, res) => {
                 buyer_name_snapshot,
                 reservation_status,
                 reserved_at,
+                pricing_mode_snapshot,
+                price_per_sqm_snapshot,
+                base_selling_price_snapshot,
+                net_selling_price_snapshot,
+                lmf_amount_snapshot,
+                sale_discount_percentage_snapshot,
+                sale_discount_amount_snapshot,
+                dp_discount_percentage_snapshot,
                 tcp_snapshot,
                 discount_percentage_snapshot,
                 discount_applied_snapshot,
@@ -946,7 +1006,7 @@ export const updateLotProjectListing = async (req, res) => {
                 cancelled_value,
                 cash_collected_at_cancellation,
                 cancelled_by_user_id
-              ) VALUES (?, ?, ?, ?, ?, 'cancelled', NOW(), ?, ?, ?, NOW(), ?, ?, ?, ?, ?)
+              ) VALUES (?, ?, ?, ?, ?, 'cancelled', NOW(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?)
             `,
             [
               project.lot_project_id,
@@ -954,9 +1014,17 @@ export const updateLotProjectListing = async (req, res) => {
               profile.lot_project_client_profile_id || null,
               existingListing.lot_project_listing_unit_id,
               profile.buyer_full_name || null,
-              cancelledValue,
+              profile.soa_mode_of_payment || 'installment',
+              Number(profile.soa_selected_price_per_sqm || 0),
+              Number(profile.soa_selected_base_selling_price || 0),
+              Number(profile.soa_selected_net_selling_price || 0),
+              Number(profile.soa_selected_lmf_amount || 0),
               discountPercentage,
-              Math.max(cancelledValue * (discountPercentage / 100), 0),
+              discountAmount,
+              Number(profile.soa_dp_discount_percentage || 0),
+              effectiveTcp,
+              discountPercentage,
+              discountAmount,
               requestedCancellationType,
               cancellationReason,
               cancelledValue,
@@ -1115,7 +1183,17 @@ export const createLotProjectListing = async (req, res) => {
 
     const unitNumber = String(req.body.unitNumber || '').trim();
     const unitCode = String(req.body.unitCode || `${project.lot_project_location_code}-${unitNumber}`).trim().toUpperCase();
-    const pricePerSqm = Number(req.body.pricePerSqm || 0);
+    const legacyPricePerSqm = Number(req.body.pricePerSqm || 0);
+    const installmentPricePerSqm = Number(
+      req.body.installmentPricePerSqm ??
+        req.body.installment_price_per_sqm ??
+        legacyPricePerSqm
+    );
+    const cashPricePerSqm = Number(
+      req.body.cashPricePerSqm ??
+        req.body.cash_price_per_sqm ??
+        installmentPricePerSqm
+    );
     const lotAreaSqm = Number(req.body.lotAreaSqm || req.body.area || 0);
     const legalMiscRate = Number(req.body.legalMiscRate || req.body.lmfRate || 0);
     const reservationFee = Number(req.body.reservationFee || 0);
@@ -1126,17 +1204,38 @@ export const createLotProjectListing = async (req, res) => {
       return res.status(400).json({ message: 'Unit number is required.' });
     }
 
-    if (pricePerSqm <= 0) {
-      return res.status(400).json({ message: 'Price per SQM must be greater than 0.' });
+    if (installmentPricePerSqm <= 0) {
+      return res.status(400).json({ message: 'Installment price per SQM must be greater than 0.' });
+    }
+
+    if (cashPricePerSqm <= 0) {
+      return res.status(400).json({ message: 'Cash price per SQM must be greater than 0.' });
     }
 
     if (lotAreaSqm <= 0) {
       return res.status(400).json({ message: 'Lot area SQM must be greater than 0.' });
     }
 
-    const netSellingPrice = pricePerSqm * lotAreaSqm;
-    const lmfAmount = netSellingPrice * (legalMiscRate / 100);
-    const tcp = netSellingPrice + lmfAmount;
+    const installmentPricing = calculateContractPricing({
+      lotAreaSqm,
+      pricePerSqm: installmentPricePerSqm,
+      legalMiscRate,
+    });
+    const hasInstallmentPriceColumn = await columnExists(
+      connection,
+      'lot_project_listings',
+      'lot_project_listing_installment_price_per_sqm'
+    );
+    const hasCashPriceColumn = await columnExists(
+      connection,
+      'lot_project_listings',
+      'lot_project_listing_cash_price_per_sqm'
+    );
+    if (!hasInstallmentPriceColumn || !hasCashPriceColumn) {
+      return res.status(500).json({
+        message: 'Dual listing pricing migration is missing. Run server/migrations/20260719_dual_listing_pricing_and_contract_snapshots.sql.',
+      });
+    }
     const hasAnnualInterestRate = await columnExists(connection, 'lot_project_listings', 'annual_interest_rate');
 
     const insertColumns = [
@@ -1146,6 +1245,8 @@ export const createLotProjectListing = async (req, res) => {
       'lot_project_listing_old_unit_ids',
       'lot_project_listing_area_sqm',
       'lot_project_listing_price_per_sqm',
+      'lot_project_listing_installment_price_per_sqm',
+      'lot_project_listing_cash_price_per_sqm',
       'lot_project_listing_net_selling_price',
       'lot_project_listing_lmf_rate',
       'lot_project_listing_lmf_amount',
@@ -1161,11 +1262,13 @@ export const createLotProjectListing = async (req, res) => {
       unitCode,
       toNullable(req.body.oldUnitIds),
       lotAreaSqm,
-      pricePerSqm,
-      netSellingPrice,
+      installmentPricePerSqm,
+      installmentPricePerSqm,
+      cashPricePerSqm,
+      installmentPricing.netSellingPrice,
       legalMiscRate,
-      lmfAmount,
-      tcp,
+      installmentPricing.lmfAmount,
+      installmentPricing.tcp,
       reservationFee,
       listingStatus.status,
       listingStatus.soldSubstatus,
@@ -1389,3 +1492,4 @@ export const deleteLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
+

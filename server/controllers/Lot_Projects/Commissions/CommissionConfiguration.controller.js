@@ -7,16 +7,13 @@ import {
   tableExists,
 } from '../_shared/lotProject.shared.js';
 import { getReservationCommissionPreview } from './commissionHierarchy.service.js';
+import { getListingPricingForMode } from '../_shared/listingPricing.js';
 
 const getListingForPreview = async (connection, projectId, listingLookup) => {
   const lookup = getListingLookupWhere(listingLookup, 'l');
   const [rows] = await connection.query(
     `
-      SELECT
-        l.lot_project_listing_id,
-        l.lot_project_listing_unit_id,
-        l.lot_project_listing_net_selling_price,
-        l.lot_project_listing_tcp
+      SELECT l.*
       FROM lot_project_listings l
       WHERE l.lot_project_id = ?
         AND ${lookup.sql}
@@ -85,6 +82,15 @@ export const getReservationCommissionPreviewController = async (req, res) => {
     const listing = await getListingForPreview(connection, project.lot_project_id, listingLookup);
     if (!listing) return res.status(404).json({ message: 'Listing not found.' });
 
+    const modeOfPayment = String(req.query.modeOfPayment || '').toLowerCase() === 'cash' ? 'cash' : 'installment';
+    const saleDiscountPercentage = Number(req.query.saleDiscountPercentage || 0);
+    if (!Number.isFinite(saleDiscountPercentage) || saleDiscountPercentage < 0 || saleDiscountPercentage > 100) {
+      return res.status(400).json({ message: 'Sale discount percentage must be between 0 and 100.' });
+    }
+    const contractPricing = getListingPricingForMode(listing, modeOfPayment, saleDiscountPercentage);
+    listing.lot_project_listing_net_selling_price = contractPricing.netSellingPrice;
+    listing.lot_project_listing_tcp = contractPricing.tcp;
+
     const preview = await getReservationCommissionPreview(
       connection,
       project.lot_project_id,
@@ -107,6 +113,7 @@ export const getReservationCommissionPreviewController = async (req, res) => {
           id: Number(listing.lot_project_listing_id),
           unitId: listing.lot_project_listing_unit_id,
         },
+        pricing: contractPricing,
       },
     });
   } catch (error) {
@@ -116,3 +123,4 @@ export const getReservationCommissionPreviewController = async (req, res) => {
     connection.release();
   }
 };
+

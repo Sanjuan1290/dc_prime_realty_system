@@ -683,8 +683,8 @@ export const recalculateLotProjectListingCommission = async (req, res) => {
           l.lot_project_listing_unit_id,
           l.lot_project_listing_status,
           l.lot_project_listing_sold_substatus,
-          l.lot_project_listing_net_selling_price,
-          l.lot_project_listing_tcp,
+          COALESCE(cp.soa_selected_net_selling_price, l.lot_project_listing_net_selling_price) AS lot_project_listing_net_selling_price,
+          COALESCE(cp.soa_selected_tcp, l.lot_project_listing_tcp) AS lot_project_listing_tcp,
           cp.lot_project_client_profile_id,
           cp.lot_project_client_profile_status,
           cp.assigned_accredited_seller_id,
@@ -1104,3 +1104,4 @@ export const unholdLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
+

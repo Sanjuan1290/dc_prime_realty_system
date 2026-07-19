@@ -108,3 +108,4 @@ test('income range query filters released stages by actual release date', () => 
   assert.match(SELLER_INCOME_RANGE_QUERY, /c\.commission_rate_type = 'direct'/);
   assert.match(SELLER_INCOME_RANGE_QUERY, /commission_rate_type/);
 });
+

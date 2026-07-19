@@ -25,3 +25,4 @@ No database migration is required.
 - Client production build passed.
 - Server regression suite passed: 90 tests.
 - Static wiring checks confirmed the range page imports and repeats the single-receipt layout.
+

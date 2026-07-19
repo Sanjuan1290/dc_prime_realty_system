@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { FiFileText, FiSave, FiX } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
 import EditListingDocumentsModal from '../EditListingDocumentsModal/EditListingDocumentsModal'
+import { calculateContractPricing } from '../../../../utils/listingPricing.js'
 
 const Field = ({ label, value, onChange, placeholder, type = 'text', helper, required = false }) => (
   <label className="flex flex-col gap-1.5">
@@ -71,7 +72,8 @@ const AddListingModal = ({ project = {}, projectDefaultDocuments = [], libraryDo
     oldUnitIds: '',
     lotType: 'inner',
     reservationFee: '50000',
-    pricePerSqm: '0',
+    installmentPricePerSqm: '0',
+    cashPricePerSqm: '0',
     lotAreaSqm: '0',
     legalMiscRate: '10',
     annualInterestRate: '0',
@@ -95,17 +97,23 @@ const AddListingModal = ({ project = {}, projectDefaultDocuments = [], libraryDo
   }, [form.unitNumber, selectedProject.locationCode])
 
   const priceBreakdown = useMemo(() => {
-    const pricePerSqm = Number(form.pricePerSqm || 0)
-    const lotAreaSqm = Number(form.lotAreaSqm || 0)
-    const legalMiscRate = Number(form.legalMiscRate || 0)
-    const reservationFee = Number(form.reservationFee || 0)
-    const annualInterestRate = Number(form.annualInterestRate || 0)
+    const shared = {
+      lotAreaSqm: Number(form.lotAreaSqm || 0),
+      legalMiscRate: Number(form.legalMiscRate || 0),
+    }
 
-    const netSellingPrice = pricePerSqm * lotAreaSqm
-    const lmfAmount = netSellingPrice * (legalMiscRate / 100)
-    const tcp = netSellingPrice + lmfAmount
-
-    return { netSellingPrice, lmfAmount, tcp, reservationFee, annualInterestRate }
+    return {
+      installment: calculateContractPricing({
+        ...shared,
+        pricePerSqm: Number(form.installmentPricePerSqm || 0),
+      }),
+      cash: calculateContractPricing({
+        ...shared,
+        pricePerSqm: Number(form.cashPricePerSqm || 0),
+      }),
+      reservationFee: Number(form.reservationFee || 0),
+      annualInterestRate: Number(form.annualInterestRate || 0),
+    }
   }, [form])
 
   const requiredCount = useMemo(
@@ -134,8 +142,13 @@ const AddListingModal = ({ project = {}, projectDefaultDocuments = [], libraryDo
       return
     }
 
-    if (Number(form.pricePerSqm || 0) <= 0) {
-      setAlert({ type: 'error', message: 'Price per SQM must be greater than 0.' })
+    if (Number(form.installmentPricePerSqm || 0) <= 0) {
+      setAlert({ type: 'error', message: 'Installment price per SQM must be greater than 0.' })
+      return
+    }
+
+    if (Number(form.cashPricePerSqm || 0) <= 0) {
+      setAlert({ type: 'error', message: 'Cash price per SQM must be greater than 0.' })
       return
     }
 
@@ -146,6 +159,7 @@ const AddListingModal = ({ project = {}, projectDefaultDocuments = [], libraryDo
 
     const payload = {
       ...form,
+      pricePerSqm: Number(form.installmentPricePerSqm || 0),
       projectId: selectedProject.id,
       projectName: selectedProject.name,
       locationCode: selectedProject.locationCode,
@@ -238,7 +252,8 @@ const AddListingModal = ({ project = {}, projectDefaultDocuments = [], libraryDo
             </SelectField>
 
             <Field label="Reservation Fee" type="number" value={form.reservationFee} onChange={(value) => updateField('reservationFee', value)} placeholder="50000" />
-            <Field label="Price / SQM" type="number" value={form.pricePerSqm} onChange={(value) => updateField('pricePerSqm', value)} placeholder="0" required />
+            <Field label="Price / SQM — Installment" type="number" value={form.installmentPricePerSqm} onChange={(value) => updateField('installmentPricePerSqm', value)} placeholder="0" helper="Used when the reservation mode is Installment." required />
+            <Field label="Price / SQM — Cash" type="number" value={form.cashPricePerSqm} onChange={(value) => updateField('cashPricePerSqm', value)} placeholder="0" helper="Used when the reservation mode is Cash." required />
             <Field label="Lot Area SQM" type="number" value={form.lotAreaSqm} onChange={(value) => updateField('lotAreaSqm', value)} placeholder="0" required />
             <Field label="Legal / Misc Rate (%)" type="number" value={form.legalMiscRate} onChange={(value) => updateField('legalMiscRate', value)} placeholder="10" helper="Enter percentage only. Example: 10 means 10%." />
             <Field label="Annual Interest Rate (%)" type="number" value={form.annualInterestRate} onChange={(value) => updateField('annualInterestRate', value)} placeholder="0" helper="Used for monthly amortization and SOA interest view." />
@@ -273,10 +288,19 @@ const AddListingModal = ({ project = {}, projectDefaultDocuments = [], libraryDo
 
           <section className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
             <h3 className="text-sm font-black text-slate-950">Live Price Breakdown</h3>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <div className="rounded-xl border border-slate-200 bg-white p-4"><p className="text-xs font-black uppercase text-slate-500">Net Selling Price</p><p className="mt-2 text-lg font-black text-slate-950">{money(priceBreakdown.netSellingPrice)}</p></div>
-              <div className="rounded-xl border border-slate-200 bg-white p-4"><p className="text-xs font-black uppercase text-slate-500">LMF Amount</p><p className="mt-2 text-lg font-black text-slate-950">{money(priceBreakdown.lmfAmount)}</p></div>
-              <div className="rounded-xl border border-slate-200 bg-white p-4"><p className="text-xs font-black uppercase text-slate-500">TCP</p><p className="mt-2 text-lg font-black text-slate-950">{money(priceBreakdown.tcp)}</p></div>
+            <div className="mt-4 grid gap-4 lg:grid-cols-2">
+              {[['Installment', priceBreakdown.installment], ['Cash', priceBreakdown.cash]].map(([label, pricing]) => (
+                <div key={label} className="rounded-xl border border-slate-200 bg-white p-4">
+                  <p className="text-xs font-black uppercase tracking-wide text-blue-700">{label} Pricing</p>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                    <div><p className="text-xs font-bold text-slate-500">Base Selling Price</p><p className="mt-1 font-black text-slate-950">{money(pricing.baseSellingPrice)}</p></div>
+                    <div><p className="text-xs font-bold text-slate-500">LMF Amount</p><p className="mt-1 font-black text-slate-950">{money(pricing.lmfAmount)}</p></div>
+                    <div><p className="text-xs font-bold text-slate-500">TCP</p><p className="mt-1 font-black text-blue-700">{money(pricing.tcp)}</p></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
               <div className="rounded-xl border border-slate-200 bg-white p-4"><p className="text-xs font-black uppercase text-slate-500">Reservation Fee</p><p className="mt-2 text-lg font-black text-slate-950">{money(priceBreakdown.reservationFee)}</p></div>
               <div className="rounded-xl border border-slate-200 bg-white p-4"><p className="text-xs font-black uppercase text-slate-500">Annual Interest Rate</p><p className="mt-2 text-lg font-black text-slate-950">{Number(priceBreakdown.annualInterestRate || 0)}%</p></div>
               <div className="rounded-xl border border-slate-200 bg-white p-4"><p className="text-xs font-black uppercase text-slate-500">Preview Unit Code</p><p className="mt-2 text-lg font-black text-blue-700">{unitCode}</p></div>
@@ -304,3 +328,4 @@ const AddListingModal = ({ project = {}, projectDefaultDocuments = [], libraryDo
 }
 
 export default AddListingModal
+

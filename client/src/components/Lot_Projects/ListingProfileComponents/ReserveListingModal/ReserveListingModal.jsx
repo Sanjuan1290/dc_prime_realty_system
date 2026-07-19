@@ -13,7 +13,8 @@ import ReserveClientProfileModal from './ReserveClientProfileModal'
 import ReserveDocumentChecklistModal from './ReserveDocumentChecklistModal'
 import ReservePaymentTermsModal from './ReservePaymentTermsModal'
 import { reserveSteps } from './reserveData'
-import { getInitialClientForm, getListingTcp, getPaymentCalculations } from './reserveUtils'
+import { getInitialClientForm, getPaymentCalculations } from './reserveUtils'
+import { getListingPricingForMode } from '../../../../utils/listingPricing.js'
 import { StepPill } from './ReserveShared'
 import { getBuyerProfileValidationError } from '../../../../utils/buyerProfileValidation'
 import { useFetch } from '../../../../utils/useFetch'
@@ -86,6 +87,7 @@ const ReserveListingModal = ({
     downpaymentTermsMode: 'spot_cash',
     customDownpaymentTerms: '',
     reservationFeeTreatment: 'separate',
+    saleDiscountPercentage: '0',
     dpDiscountPercentage: '0',
     monthlyTermsMode: '36',
     customMonthlyTerms: '',
@@ -94,7 +96,15 @@ const ReserveListingModal = ({
     penaltyGraceDays: '1',
   })
 
-  const tcp = useMemo(() => getListingTcp(listing), [listing])
+  const contractPricing = useMemo(
+    () => getListingPricingForMode(
+      listing,
+      paymentForm.modeOfPayment,
+      Number(paymentForm.saleDiscountPercentage || 0)
+    ),
+    [listing, paymentForm.modeOfPayment, paymentForm.saleDiscountPercentage]
+  )
+  const tcp = contractPricing.tcp
   const projectSlug = project?.slug || project?.lot_project_slug || listing?.project_slug || ''
   const listingLookup = listing?.id || listing?.listing_id || listing?.lot_project_listing_id || listing?.unit_id || listing?.unitCode || ''
 
@@ -147,12 +157,19 @@ const ReserveListingModal = ({
     if (selected) setSelectedAgentSnapshot(selected)
   }, [fetchedAgents, paymentForm.sellerId])
 
+  const effectivePaymentForm = useMemo(
+    () => ({ ...paymentForm, legalMiscFeeAmount: String(contractPricing.lmfAmount || 0) }),
+    [paymentForm, contractPricing.lmfAmount]
+  )
+
   const previewQuery = useQuery({
-    queryKey: ['commission-preview', projectSlug, String(listingLookup), String(paymentForm.sellerId)],
+    queryKey: ['commission-preview', projectSlug, String(listingLookup), String(paymentForm.sellerId), paymentForm.modeOfPayment, paymentForm.saleDiscountPercentage],
     queryFn: () => {
       const params = new URLSearchParams({
         listingId: String(listingLookup),
         agentId: String(paymentForm.sellerId),
+        modeOfPayment: paymentForm.modeOfPayment,
+        saleDiscountPercentage: String(paymentForm.saleDiscountPercentage || 0),
       })
       return useFetch(`/projects/lot-projects/${projectSlug}/commission-preview?${params.toString()}`)
     },
@@ -322,6 +339,16 @@ const ReserveListingModal = ({
     }
 
     const isCash = String(paymentForm.modeOfPayment || '').toLowerCase() === 'cash'
+    const saleDiscountPercentage = Number(paymentForm.saleDiscountPercentage || 0)
+    if (!Number.isFinite(saleDiscountPercentage) || saleDiscountPercentage < 0 || saleDiscountPercentage > 100) {
+      setAlert({ type: 'error', message: 'Sale discount percentage must be between 0 and 100.' })
+      return false
+    }
+    const dpDiscountPercentage = Number(paymentForm.dpDiscountPercentage || 0)
+    if (!Number.isFinite(dpDiscountPercentage) || dpDiscountPercentage < 0 || dpDiscountPercentage > 100) {
+      setAlert({ type: 'error', message: 'Downpayment discount percentage must be between 0 and 100.' })
+      return false
+    }
     if (!isCash && paymentForm.downpaymentPercentageMode === 'custom') {
       const rawValue = String(paymentForm.customDownpaymentPercentage ?? '').trim()
       const value = Number(rawValue)
@@ -373,7 +400,7 @@ const ReserveListingModal = ({
       return
     }
 
-    const paymentCalculations = getPaymentCalculations(tcp, paymentForm)
+    const paymentCalculations = getPaymentCalculations(tcp, effectivePaymentForm)
 
     // New reservations always use distributed commission generation. A
     // non-agent direct sale is represented by that seller's system agent.
@@ -387,11 +414,13 @@ const ReserveListingModal = ({
         seller: selectedAgent,
         modeOfPayment: paymentForm.modeOfPayment,
         paymentTerms: {
-          ...paymentForm,
+          ...effectivePaymentForm,
           sellerId: selectedAgent.id,
-          legalMiscFeeMode: paymentForm.legalMiscFeeMode || paymentForm.legalMiscFee,
-          legalMiscFeeAmount: paymentForm.legalMiscFeeAmount,
+          legalMiscFeeMode: effectivePaymentForm.legalMiscFeeMode || effectivePaymentForm.legalMiscFee,
+          legalMiscFeeAmount: effectivePaymentForm.legalMiscFeeAmount,
           tcp,
+          selectedPricing: contractPricing,
+          saleDiscountPercentage: Number(paymentForm.saleDiscountPercentage || 0),
           downpaymentPercentage: paymentCalculations.downpaymentPercentage,
           downpaymentTerms: paymentCalculations.downpaymentTerms,
           monthlyTerms: paymentCalculations.monthlyTerms,
@@ -452,7 +481,7 @@ const ReserveListingModal = ({
 
           {activeStep === 2 ? <ReserveDocumentChecklistModal filteredDocuments={filteredDocuments} searchDocument={searchDocument} setSearchDocument={setSearchDocument} selectedDocuments={selectedDocuments} isSaving={isSaving} isLoadingDefaults={isLoadingDocuments} deletingDocId={null} isDocumentAdded={isDocumentAdded} addDocument={addDocument} removeDocument={removeDocument} loadProjectDefaults={loadProjectDefaults} documentTemplates={activeDocumentTemplates} selectedTemplateId={selectedTemplateId} setSelectedTemplateId={setSelectedTemplateId} loadSelectedTemplate={loadSelectedTemplate} /> : null}
 
-          {activeStep === 3 ? <ReservePaymentTermsModal listing={listing} project={project} tcp={tcp} paymentForm={paymentForm} updatePaymentField={updatePaymentField} agents={fetchedAgents} selectedAgent={selectedAgent} agentSearch={agentSearch} setAgentSearch={setAgentSearch} isLoadingAgents={agentsQuery.isLoading || agentsQuery.isFetching} agentsError={!projectSlug ? 'Project information is missing.' : agentsQuery.isError ? agentsQuery.error?.message || 'Failed to load sales agents.' : null} commissionPreview={commissionPreview} isLoadingPreview={previewQuery.isLoading || previewQuery.isFetching} previewError={previewQuery.isError ? previewQuery.error?.message || 'Failed to load the commission hierarchy.' : null} /> : null}
+          {activeStep === 3 ? <ReservePaymentTermsModal listing={listing} project={project} tcp={tcp} contractPricing={contractPricing} paymentForm={effectivePaymentForm} updatePaymentField={updatePaymentField} agents={fetchedAgents} selectedAgent={selectedAgent} agentSearch={agentSearch} setAgentSearch={setAgentSearch} isLoadingAgents={agentsQuery.isLoading || agentsQuery.isFetching} agentsError={!projectSlug ? 'Project information is missing.' : agentsQuery.isError ? agentsQuery.error?.message || 'Failed to load sales agents.' : null} commissionPreview={commissionPreview} isLoadingPreview={previewQuery.isLoading || previewQuery.isFetching} previewError={previewQuery.isError ? previewQuery.error?.message || 'Failed to load the commission hierarchy.' : null} /> : null}
         </div>
 
         <div className="flex shrink-0 flex-col gap-3 border-t border-slate-200 bg-white px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
@@ -469,3 +498,4 @@ const ReserveListingModal = ({
 }
 
 export default ReserveListingModal
+

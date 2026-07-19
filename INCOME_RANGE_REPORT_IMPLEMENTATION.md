@@ -58,3 +58,4 @@ No database migration is required. The current schema already contains the relea
 - Changed client files passed ESLint.
 - Vite production build passed.
 - The current database dump contains every table and column used by the report.
+

@@ -92,8 +92,10 @@ const scheduleSummaryJoin = `
   ) schedule_summary ON schedule_summary.lot_project_listing_id = c.lot_project_listing_id
 `;
 
+const effectiveTcpSql = `COALESCE(cp.soa_selected_tcp, l.lot_project_listing_tcp)`;
+
 const downpaymentTargetSql = `
-  ROUND(l.lot_project_listing_tcp * (COALESCE(cp.soa_downpayment_percentage, 30) / 100), 2)
+  ROUND((${effectiveTcpSql}) * (COALESCE(cp.soa_downpayment_percentage, 30) / 100), 2)
 `;
 
 const reservationFeeDownpaymentCreditSql = `
@@ -132,15 +134,15 @@ const paidValueWithDiscountSql = `
 `;
 
 const actualRemainingBalanceSql = `
-  GREATEST(ROUND(l.lot_project_listing_tcp - (${paidValueWithDiscountSql}), 2), 0)
+  GREATEST(ROUND((${effectiveTcpSql}) - (${paidValueWithDiscountSql}), 2), 0)
 `;
 
 const unpaidScheduledDueSql = actualRemainingBalanceSql;
 
 const computedPaymentPercentSql = `
   CASE
-    WHEN l.lot_project_listing_tcp <= 0 THEN 0
-    ELSE LEAST(100, ROUND(((${paidValueWithDiscountSql}) / NULLIF(l.lot_project_listing_tcp, 0)) * 100, 2))
+    WHEN (${effectiveTcpSql}) <= 0 THEN 0
+    ELSE LEAST(100, ROUND(((${paidValueWithDiscountSql}) / NULLIF((${effectiveTcpSql}), 0)) * 100, 2))
   END
 `;
 
@@ -465,7 +467,7 @@ const recomputeCommissionFromReleases = async (connection, commissionId, lotProj
     `
       SELECT
         c.*,
-        l.lot_project_listing_tcp,
+        ${effectiveTcpSql} AS lot_project_listing_tcp,
         COALESCE(payment_summary.total_paid, 0) AS total_paid,
         ${actualRemainingBalanceSql} AS actual_remaining_balance,
         ${unpaidScheduledDueSql} AS unpaid_scheduled_due,
@@ -622,7 +624,7 @@ export const getLotProjectCommissions = async (req, res) => {
           c.*,
           lp.lot_project_name,
           l.lot_project_listing_unit_id,
-          l.lot_project_listing_tcp,
+          ${effectiveTcpSql} AS lot_project_listing_tcp,
           cp.buyer_full_name,
           COALESCE(payment_summary.total_paid, 0) AS total_paid,
           ${actualRemainingBalanceSql} AS actual_remaining_balance,
@@ -1053,3 +1055,4 @@ export const updateLotProjectCommission = async (req, res) => {
     connection.release();
   }
 };
+

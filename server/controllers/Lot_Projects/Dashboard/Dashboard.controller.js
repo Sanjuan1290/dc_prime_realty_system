@@ -2,6 +2,7 @@ import {
   db,
   getErrorMessage,
   tableExists,
+  columnExists,
   getProjectBySlug,
   getProjectDefaultDocuments,
   getProjectCadastralLots,
@@ -411,6 +412,11 @@ export const getLotProjectDashboard = async (req, res) => {
     const hasClientDocuments = await tableExists(connection, 'lot_project_client_documents');
     const hasListingCadastralLinks = await tableExists(connection, 'lot_project_listing_cadastral_lots');
     const hasReservationHistory = await tableExists(connection, 'lot_project_reservation_history');
+    const hasSelectedContractTcp = hasClientProfiles
+      && await columnExists(connection, 'lot_project_client_profiles', 'soa_selected_tcp');
+    const effectiveTcpExpr = hasSelectedContractTcp
+      ? 'COALESCE(cp.soa_selected_tcp, l.lot_project_listing_tcp)'
+      : 'l.lot_project_listing_tcp';
 
     const paymentSummarySelect = hasPayments
       ? `COALESCE((
@@ -434,7 +440,7 @@ export const getLotProjectDashboard = async (req, res) => {
       : '0';
 
     const downpaymentTargetExpr = hasClientProfiles
-      ? `(l.lot_project_listing_tcp * (COALESCE(cp.soa_downpayment_percentage, 0) / 100))`
+      ? `((${effectiveTcpExpr}) * (COALESCE(cp.soa_downpayment_percentage, 0) / 100))`
       : '0';
     const reservationFeeDownpaymentCreditExpr = hasClientProfiles
       ? `CASE
@@ -458,7 +464,7 @@ export const getLotProjectDashboard = async (req, res) => {
           )
         END`
       : '0';
-    const settledValueExpr = `LEAST(${paymentSummarySelect} + (${earnedDiscountExpr}), l.lot_project_listing_tcp)`;
+    const settledValueExpr = `LEAST(${paymentSummarySelect} + (${earnedDiscountExpr}), ${effectiveTcpExpr})`;
     const escapedRangeFrom = connection.escape(dateRange.from);
     const escapedRangeTo = connection.escape(dateRange.to);
     const rangePaymentSummarySelect = hasPayments
@@ -492,7 +498,7 @@ export const getLotProjectDashboard = async (req, res) => {
           )
         END`
       : '0';
-    const rangeSettledValueExpr = `LEAST(${rangePaymentSummarySelect} + (${rangeEarnedDiscountExpr}), l.lot_project_listing_tcp)`;
+    const rangeSettledValueExpr = `LEAST(${rangePaymentSummarySelect} + (${rangeEarnedDiscountExpr}), ${effectiveTcpExpr})`;
     const reservationRangeScope = hasReservationHistory
       ? `EXISTS (
           SELECT 1
@@ -526,24 +532,33 @@ export const getLotProjectDashboard = async (req, res) => {
       : 'c.released_commission_amount';
     const releaseDeductionExpr = '0';
 
+    const inventoryTcpExpr = hasSelectedContractTcp
+      ? `CASE
+          WHEN l.lot_project_listing_status IN ('sold', 'pending_for_cancellation', 'cancelled')
+            THEN COALESCE(cp.soa_selected_tcp, l.lot_project_listing_tcp)
+          ELSE l.lot_project_listing_tcp
+        END`
+      : 'l.lot_project_listing_tcp';
+
     const [summaryRows] = await connection.query(
       `
         SELECT
           COUNT(*) AS totalUnits,
-          SUM(lot_project_listing_status = 'available') AS available,
-          SUM(lot_project_listing_status = 'hold') AS hold,
-          SUM(lot_project_listing_status = 'sold' AND COALESCE(lot_project_listing_sold_substatus, 'active') = 'active') AS soldActive,
-          SUM(lot_project_listing_status = 'sold' AND lot_project_listing_sold_substatus = 'fully_paid') AS fullyPaid,
-          SUM(lot_project_listing_status = 'pending_for_cancellation') AS pendingCancellation,
-          SUM(lot_project_listing_status = 'cancelled') AS cancelled,
-          COALESCE(SUM(lot_project_listing_tcp), 0) AS totalContractPrice,
-          COALESCE(SUM(CASE WHEN lot_project_listing_status <> 'cancelled' THEN lot_project_listing_tcp ELSE 0 END), 0) AS listedLotValue,
-          COALESCE(SUM(CASE WHEN lot_project_listing_status IN ('available', 'hold') THEN lot_project_listing_tcp ELSE 0 END), 0) AS availableLotValue,
-          COALESCE(SUM(CASE WHEN lot_project_listing_status = 'sold' THEN lot_project_listing_tcp ELSE 0 END), 0) AS soldLotValue,
-          COALESCE(SUM(CASE WHEN lot_project_listing_status = 'pending_for_cancellation' THEN lot_project_listing_tcp ELSE 0 END), 0) AS pendingCancellationValue,
-          COALESCE(SUM(CASE WHEN lot_project_listing_status = 'cancelled' THEN lot_project_listing_tcp ELSE 0 END), 0) AS cancelledInventoryValue
-        FROM lot_project_listings
-        WHERE lot_project_id = ?
+          SUM(l.lot_project_listing_status = 'available') AS available,
+          SUM(l.lot_project_listing_status = 'hold') AS hold,
+          SUM(l.lot_project_listing_status = 'sold' AND COALESCE(l.lot_project_listing_sold_substatus, 'active') = 'active') AS soldActive,
+          SUM(l.lot_project_listing_status = 'sold' AND l.lot_project_listing_sold_substatus = 'fully_paid') AS fullyPaid,
+          SUM(l.lot_project_listing_status = 'pending_for_cancellation') AS pendingCancellation,
+          SUM(l.lot_project_listing_status = 'cancelled') AS cancelled,
+          COALESCE(SUM(${inventoryTcpExpr}), 0) AS totalContractPrice,
+          COALESCE(SUM(CASE WHEN l.lot_project_listing_status <> 'cancelled' THEN ${inventoryTcpExpr} ELSE 0 END), 0) AS listedLotValue,
+          COALESCE(SUM(CASE WHEN l.lot_project_listing_status IN ('available', 'hold') THEN ${inventoryTcpExpr} ELSE 0 END), 0) AS availableLotValue,
+          COALESCE(SUM(CASE WHEN l.lot_project_listing_status = 'sold' THEN ${inventoryTcpExpr} ELSE 0 END), 0) AS soldLotValue,
+          COALESCE(SUM(CASE WHEN l.lot_project_listing_status = 'pending_for_cancellation' THEN ${inventoryTcpExpr} ELSE 0 END), 0) AS pendingCancellationValue,
+          COALESCE(SUM(CASE WHEN l.lot_project_listing_status = 'cancelled' THEN ${inventoryTcpExpr} ELSE 0 END), 0) AS cancelledInventoryValue
+        FROM lot_project_listings l
+        ${hasClientProfiles ? 'LEFT JOIN lot_project_client_profiles cp ON cp.lot_project_listing_id = l.lot_project_listing_id' : ''}
+        WHERE l.lot_project_id = ?
       `,
       [project.lot_project_id]
     );
@@ -551,14 +566,14 @@ export const getLotProjectDashboard = async (req, res) => {
     const [moneyRows] = await connection.query(
       `
         SELECT
-          COALESCE(SUM(l.lot_project_listing_tcp), 0) AS totalSales,
+          COALESCE(SUM(${effectiveTcpExpr}), 0) AS totalSales,
           COALESCE(SUM(${rangePaymentSummarySelect}), 0) AS totalCashCollected,
           COALESCE(SUM(${rangeEarnedDiscountExpr}), 0) AS discountApplied,
           COALESCE(SUM(${rangeSettledValueExpr}), 0) AS settledValue,
-          COALESCE(SUM(GREATEST(l.lot_project_listing_tcp - ${rangePaymentSummarySelect}, 0)), 0) AS cashCollectibles,
-          COALESCE(SUM(GREATEST(l.lot_project_listing_tcp - ${rangePaymentSummarySelect} - (${rangeEarnedDiscountExpr}), 0)), 0) AS netCashCollectibles,
-          COALESCE(SUM(GREATEST(l.lot_project_listing_tcp - (${rangeEarnedDiscountExpr}), 0)), 0) AS totalNetSales,
-          COALESCE(SUM(GREATEST(l.lot_project_listing_tcp - ${rangePaymentSummarySelect} - (${rangeEarnedDiscountExpr}), 0)), 0) AS pendingSales
+          COALESCE(SUM(GREATEST(${effectiveTcpExpr} - ${rangePaymentSummarySelect}, 0)), 0) AS cashCollectibles,
+          COALESCE(SUM(GREATEST(${effectiveTcpExpr} - ${rangePaymentSummarySelect} - (${rangeEarnedDiscountExpr}), 0)), 0) AS netCashCollectibles,
+          COALESCE(SUM(GREATEST(${effectiveTcpExpr} - (${rangeEarnedDiscountExpr}), 0)), 0) AS totalNetSales,
+          COALESCE(SUM(GREATEST(${effectiveTcpExpr} - ${rangePaymentSummarySelect} - (${rangeEarnedDiscountExpr}), 0)), 0) AS pendingSales
         FROM lot_project_listings l
         ${hasClientProfiles ? 'LEFT JOIN lot_project_client_profiles cp ON cp.lot_project_listing_id = l.lot_project_listing_id' : ''}
         WHERE l.lot_project_id = ?
@@ -592,7 +607,7 @@ export const getLotProjectDashboard = async (req, res) => {
         }]];
 
     const downpaymentRowSql = `(LOWER(s.description) LIKE '%downpayment%' OR LOWER(s.description) LIKE '%down payment%')`;
-    const expectedDownpaymentTargetSql = `ROUND(l.lot_project_listing_tcp * (COALESCE(cp.soa_downpayment_percentage, 0) / 100), 2)`;
+    const expectedDownpaymentTargetSql = `ROUND((${effectiveTcpExpr}) * (COALESCE(cp.soa_downpayment_percentage, 0) / 100), 2)`;
     const expectedReservationDpCreditSql = `CASE
       WHEN COALESCE(cp.soa_reservation_fee_applied_to_downpayment, 0) = 1
         THEN LEAST(COALESCE(cp.soa_reservation_fee, l.lot_project_listing_reservation_fee, 0), ${expectedDownpaymentTargetSql})
@@ -704,7 +719,7 @@ export const getLotProjectDashboard = async (req, res) => {
             FROM (
               SELECT
                 l.lot_project_listing_id,
-                l.lot_project_listing_tcp AS tcp,
+                ${effectiveTcpExpr} AS tcp,
                 ${saleDateSelect} AS sale_date
               FROM lot_project_listings l
               ${saleClientJoin}
@@ -749,7 +764,7 @@ export const getLotProjectDashboard = async (req, res) => {
               p.lot_project_listing_id,
               p.lot_project_payment_date,
               p.lot_project_payment_amount,
-              l.lot_project_listing_tcp,
+              ${effectiveTcpExpr} AS lot_project_listing_tcp,
               l.lot_project_listing_reservation_fee,
               cp.soa_reservation_fee,
               cp.soa_reservation_fee_applied_to_downpayment,
@@ -1034,7 +1049,10 @@ export const getLotProjectDashboard = async (req, res) => {
             0 AS completed_required_document_count
         ) ldoc ON 1 = 0`;
 
-    const recentDpTargetExpr = `ROUND(l2.lot_project_listing_tcp * (COALESCE(cp2.soa_downpayment_percentage, 0) / 100), 2)`;
+    const recentListingTcpExpr = hasSelectedContractTcp
+      ? 'COALESCE(cp2.soa_selected_tcp, l2.lot_project_listing_tcp)'
+      : 'l2.lot_project_listing_tcp';
+    const recentDpTargetExpr = `ROUND((${recentListingTcpExpr}) * (COALESCE(cp2.soa_downpayment_percentage, 0) / 100), 2)`;
     const recentReservationDpCreditExpr = `CASE
       WHEN COALESCE(cp2.soa_reservation_fee_applied_to_downpayment, 0) = 1
         THEN LEAST(COALESCE(cp2.soa_reservation_fee, l2.lot_project_listing_reservation_fee, 0), ${recentDpTargetExpr})
@@ -1104,6 +1122,7 @@ export const getLotProjectDashboard = async (req, res) => {
       `
         SELECT
           l.*,
+          ${effectiveTcpExpr} AS lot_project_listing_tcp,
           ${cadastralSelect}
           cp.lot_project_client_profile_id,
           cp.buyer_full_name,
@@ -1336,6 +1355,7 @@ export const getLotProjectPriceList = async (req, res) => {
       `
         SELECT
           l.*,
+          ${effectiveTcpExpr} AS lot_project_listing_tcp,
           ${cadastralSelect}
           NULL AS buyer_full_name,
           0 AS listing_document_count,
@@ -1362,3 +1382,4 @@ export const getLotProjectPriceList = async (req, res) => {
     connection.release();
   }
 };
+

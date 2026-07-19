@@ -353,3 +353,4 @@ export const updateLotProjectClientProfile = async (req, res) => {
     connection.release();
   }
 };
+

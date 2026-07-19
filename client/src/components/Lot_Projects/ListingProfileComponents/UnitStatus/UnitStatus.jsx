@@ -69,6 +69,12 @@ const fallbackListing = {
   client_unit_updated: '-',
 }
 
+const money = (value) => new Intl.NumberFormat('en-PH', {
+  style: 'currency',
+  currency: 'PHP',
+  minimumFractionDigits: 2,
+}).format(Number(value || 0))
+
 const statusStyles = {
   Available: 'border-emerald-200 bg-emerald-50 text-emerald-700',
   Hold: 'border-amber-200 bg-amber-50 text-amber-700',
@@ -161,7 +167,9 @@ const UnitStatus = ({
       ...unitData,
       unitCode: unitData.unit_id || unitData.unitCode,
       lotType: unitData.lot_type,
-      pricePerSqm: unitData.pricePerSqm,
+      pricePerSqm: unitData.installmentPricePerSqm ?? unitData.pricePerSqm,
+      installmentPricePerSqm: unitData.installmentPricePerSqm ?? unitData.pricePerSqm,
+      cashPricePerSqm: unitData.cashPricePerSqm ?? unitData.pricePerSqm,
       lotAreaSqm: unitData.lotAreaSqm,
       legalMiscRate: unitData.legalMiscRate,
       annualInterestRate: unitData.annualInterestRate,
@@ -187,7 +195,9 @@ const UnitStatus = ({
       ...unitData,
       unitCode: unitData.unit_id || unitData.unitCode,
       lotType: unitData.lot_type,
-      pricePerSqm: unitData.pricePerSqm,
+      pricePerSqm: unitData.installmentPricePerSqm ?? unitData.pricePerSqm,
+      installmentPricePerSqm: unitData.installmentPricePerSqm ?? unitData.pricePerSqm,
+      cashPricePerSqm: unitData.cashPricePerSqm ?? unitData.pricePerSqm,
       lotAreaSqm: unitData.lotAreaSqm,
       legalMiscRate: unitData.legalMiscRate,
       annualInterestRate: unitData.annualInterestRate,
@@ -213,7 +223,9 @@ const UnitStatus = ({
       ...unitData,
       unitCode: unitData.unit_id || unitData.unitCode,
       lotType: unitData.lot_type,
-      pricePerSqm: unitData.pricePerSqm,
+      pricePerSqm: unitData.installmentPricePerSqm ?? unitData.pricePerSqm,
+      installmentPricePerSqm: unitData.installmentPricePerSqm ?? unitData.pricePerSqm,
+      cashPricePerSqm: unitData.cashPricePerSqm ?? unitData.pricePerSqm,
       lotAreaSqm: unitData.lotAreaSqm,
       legalMiscRate: unitData.legalMiscRate,
       annualInterestRate: unitData.annualInterestRate,
@@ -326,15 +338,20 @@ const UnitStatus = ({
 
       <SectionBlock
         title="Lot Pricing"
-        description="Price per SQM, lot area, LMF, TCP, reservation fee, and interest rate."
+        description="Installment and cash pricing, lot area, LMF, selected contract price, reservation fee, and interest rate."
         icon={FiDollarSign}
       >
         <DetailBox label="Lot Area SQM" value={unitData.lot_area_sqm} />
-        <DetailBox label="Price / SQM" value={unitData.price_per_sqm} />
-        <DetailBox label="Net Selling Price" value={unitData.net_selling_price} />
+        <DetailBox label="Installment Price / SQM" value={money(unitData.installmentPricePerSqm ?? unitData.pricePerSqm)} />
+        <DetailBox label="Cash Price / SQM" value={money(unitData.cashPricePerSqm ?? unitData.pricePerSqm)} />
+        <DetailBox label="Installment TCP" value={money(unitData.installmentTcp ?? unitData.tcpAmount)} />
+        <DetailBox label="Cash TCP" value={money(unitData.cashTcp ?? unitData.tcpAmount)} />
         <DetailBox label="LMF Rate" value={unitData.lmf_rate} />
-        <DetailBox label="LMF Amount" value={unitData.lmf_amount} />
-        <DetailBox label="TCP" value={unitData.tcp} highlight />
+        {unitData.hasClientProfile ? <DetailBox label="Selected Pricing" value={String(unitData.selectedPricingMode || unitData.modeOfPayment || 'installment').toUpperCase()} highlight /> : null}
+        {unitData.hasClientProfile ? <DetailBox label="Sale Discount" value={`${Number(unitData.saleDiscountPercentage || 0)}% (${money(unitData.saleDiscountAmount)})`} /> : null}
+        <DetailBox label={unitData.hasClientProfile ? "Contract Net Selling Price" : "Installment Net Selling Price"} value={unitData.net_selling_price} />
+        <DetailBox label={unitData.hasClientProfile ? "Contract LMF Amount" : "Installment LMF Amount"} value={unitData.lmf_amount} />
+        <DetailBox label={unitData.hasClientProfile ? "Contract TCP" : "Installment TCP"} value={unitData.tcp} highlight />
         <DetailBox
           label="Reservation Fee"
           value={typeof unitData.reservationFee === 'number' ? `₱${unitData.reservationFee.toLocaleString('en-PH')}.00` : unitData.reservationFee || '₱0.00'}
@@ -433,3 +450,4 @@ const UnitStatus = ({
 }
 
 export default UnitStatus
+

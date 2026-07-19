@@ -1,6 +1,7 @@
 import { db } from '../../../db/connect.js';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
+import { calculateContractPricing, getListingPricingForMode } from './listingPricing.js';
 
 export { db, jwt, bcrypt };
 
@@ -206,33 +207,46 @@ export const formatDocumentsLabel = (row = {}) => {
   return 'No checklist';
 };
 
-export const mapListingRow = (row = {}) => ({
-  ...row,
-  id: row.lot_project_listing_id,
-  unitCode: row.lot_project_listing_unit_id,
-  oldUnitIds: row.lot_project_listing_old_unit_ids || '-',
-  lotType: lotTypeLabel(row.lot_project_listing_unit_type),
-  cadastralLots: row.cadastral_lots
-    ? String(row.cadastral_lots).split(',').map((item) => item.trim()).filter(Boolean)
-    : [],
-  area: Number(row.lot_project_listing_area_sqm || 0),
-  pricePerSqm: Number(row.lot_project_listing_price_per_sqm || 0),
-  netSellingPrice: Number(row.lot_project_listing_net_selling_price || 0),
-  lmfRate: Number(row.lot_project_listing_lmf_rate || 0),
-  lmfAmount: Number(row.lot_project_listing_lmf_amount || 0),
-  tcp: Number(row.lot_project_listing_tcp || 0),
-  reservationFee: Number(row.lot_project_listing_reservation_fee || 0),
-  annualInterestRate: Number(row.annual_interest_rate || 0),
-  buyer: row.buyer_full_name || row.buyer_name || 'No buyer yet',
-  documentStatus: row.document_status || formatDocumentsLabel(row),
-  status: getListingStatusLabel(row.lot_project_listing_status, row.lot_project_listing_sold_substatus),
-  heldForName: row.hold_client_name || '',
-  holdNote: row.hold_note || '',
-  holdCreatedAt: row.hold_created_at ? plainDate(row.hold_created_at) : '',
-  rawStatus: row.lot_project_listing_status,
-  soldSubstatus: row.lot_project_listing_sold_substatus,
-  routeId: row.lot_project_listing_id || row.lot_project_listing_unit_id,
-});
+export const mapListingRow = (row = {}) => {
+  const installmentPricing = getListingPricingForMode(row, 'installment', 0);
+  const cashPricing = getListingPricingForMode(row, 'cash', 0);
+
+  return {
+    ...row,
+    id: row.lot_project_listing_id,
+    unitCode: row.lot_project_listing_unit_id,
+    oldUnitIds: row.lot_project_listing_old_unit_ids || '-',
+    lotType: lotTypeLabel(row.lot_project_listing_unit_type),
+    cadastralLots: row.cadastral_lots
+      ? String(row.cadastral_lots).split(',').map((item) => item.trim()).filter(Boolean)
+      : [],
+    area: Number(row.lot_project_listing_area_sqm || 0),
+    pricePerSqm: installmentPricing.pricePerSqm,
+    installmentPricePerSqm: installmentPricing.pricePerSqm,
+    cashPricePerSqm: cashPricing.pricePerSqm,
+    netSellingPrice: Number(row.lot_project_listing_net_selling_price || installmentPricing.netSellingPrice),
+    installmentNetSellingPrice: installmentPricing.netSellingPrice,
+    cashNetSellingPrice: cashPricing.netSellingPrice,
+    lmfRate: Number(row.lot_project_listing_lmf_rate || 0),
+    lmfAmount: Number(row.lot_project_listing_lmf_amount || installmentPricing.lmfAmount),
+    installmentLmfAmount: installmentPricing.lmfAmount,
+    cashLmfAmount: cashPricing.lmfAmount,
+    tcp: Number(row.lot_project_listing_tcp || installmentPricing.tcp),
+    installmentTcp: installmentPricing.tcp,
+    cashTcp: cashPricing.tcp,
+    reservationFee: Number(row.lot_project_listing_reservation_fee || 0),
+    annualInterestRate: Number(row.annual_interest_rate || 0),
+    buyer: row.buyer_full_name || row.buyer_name || 'No buyer yet',
+    documentStatus: row.document_status || formatDocumentsLabel(row),
+    status: getListingStatusLabel(row.lot_project_listing_status, row.lot_project_listing_sold_substatus),
+    heldForName: row.hold_client_name || '',
+    holdNote: row.hold_note || '',
+    holdCreatedAt: row.hold_created_at ? plainDate(row.hold_created_at) : '',
+    rawStatus: row.lot_project_listing_status,
+    soldSubstatus: row.lot_project_listing_sold_substatus,
+    routeId: row.lot_project_listing_id || row.lot_project_listing_unit_id,
+  };
+};
 
 export const mapProjectRows = (projects = [], cadastralRows = []) => {
   const cadastralMap = new Map();
@@ -590,11 +604,28 @@ export const getCommissionStatusLabel = (status = '') => {
 
 export const mapProfileListing = (row = {}, project = {}, documents = []) => {
   const area = Number(row.lot_project_listing_area_sqm || 0);
-  const pricePerSqm = Number(row.lot_project_listing_price_per_sqm || 0);
-  const netSellingPrice = Number(row.lot_project_listing_net_selling_price || 0);
+  const installmentPricing = getListingPricingForMode(row, 'installment', 0);
+  const cashPricing = getListingPricingForMode(row, 'cash', 0);
+  const contractMode = row.soa_mode_of_payment || 'installment';
+  const selectedListingPricing = getListingPricingForMode(
+    row,
+    contractMode,
+    Number(row.soa_sale_discount_percentage || 0)
+  );
+  const hasContractSnapshot = Number(row.soa_selected_tcp || 0) > 0;
+  const pricePerSqm = hasContractSnapshot
+    ? Number(row.soa_selected_price_per_sqm || selectedListingPricing.pricePerSqm)
+    : installmentPricing.pricePerSqm;
+  const netSellingPrice = hasContractSnapshot
+    ? Number(row.soa_selected_net_selling_price || selectedListingPricing.netSellingPrice)
+    : Number(row.lot_project_listing_net_selling_price || installmentPricing.netSellingPrice);
   const lmfRate = Number(row.lot_project_listing_lmf_rate || 0);
-  const lmfAmount = Number(row.lot_project_listing_lmf_amount || 0);
-  const tcp = Number(row.lot_project_listing_tcp || 0);
+  const lmfAmount = hasContractSnapshot
+    ? Number(row.soa_selected_lmf_amount || selectedListingPricing.lmfAmount)
+    : Number(row.lot_project_listing_lmf_amount || installmentPricing.lmfAmount);
+  const tcp = hasContractSnapshot
+    ? Number(row.soa_selected_tcp || selectedListingPricing.tcp)
+    : Number(row.lot_project_listing_tcp || installmentPricing.tcp);
   const reservationFee = Number(row.lot_project_listing_reservation_fee || 0);
   const annualInterestRate = Number(row.annual_interest_rate || 0);
   const totalPaid = Number(row.total_paid || 0);
@@ -640,6 +671,18 @@ export const mapProfileListing = (row = {}, project = {}, documents = []) => {
     area,
     price_per_sqm: money(pricePerSqm),
     pricePerSqm,
+    installmentPricePerSqm: installmentPricing.pricePerSqm,
+    cashPricePerSqm: cashPricing.pricePerSqm,
+    installmentNetSellingPrice: installmentPricing.netSellingPrice,
+    cashNetSellingPrice: cashPricing.netSellingPrice,
+    installmentLmfAmount: installmentPricing.lmfAmount,
+    cashLmfAmount: cashPricing.lmfAmount,
+    installmentTcp: installmentPricing.tcp,
+    cashTcp: cashPricing.tcp,
+    selectedPricingMode: contractMode,
+    saleDiscountPercentage: Number(row.soa_sale_discount_percentage || 0),
+    saleDiscountAmount: Number(row.soa_sale_discount_amount || 0),
+    baseSellingPrice: Number(row.soa_selected_base_selling_price || selectedListingPricing.baseSellingPrice),
     net_selling_price: money(netSellingPrice),
     netSellingPrice,
     lmf_rate: `${lmfRate}%`,
@@ -904,7 +947,9 @@ const getDownpaymentDiscountRate = (clientProfile = {}) => Number(clientProfile.
 
 const getExpectedDownpaymentGrossPerRow = (row = {}, clientProfile = {}) => {
   const tcp = Number(
-    clientProfile.lot_project_listing_tcp ||
+    clientProfile.soa_selected_tcp ||
+      clientProfile.selectedTcp ||
+      clientProfile.lot_project_listing_tcp ||
       clientProfile.tcp ||
       clientProfile.total_contract_price ||
       0
@@ -1799,14 +1844,25 @@ const getMonthlyAmortizationAmount = (financedBalance, annualInterestRate, month
 };
 
 export const getComputedSoaTerms = (listingRow = {}, existingScheduleRows = []) => {
-  const tcp = roundMoneyValue(listingRow.lot_project_listing_tcp || listingRow.tcp || 0);
+  const tcp = roundMoneyValue(
+    listingRow.soa_selected_tcp ||
+      listingRow.selectedTcp ||
+      listingRow.lot_project_listing_tcp ||
+      listingRow.tcp ||
+      0
+  );
   const legalMiscFeeMode = String(
     listingRow.soa_legal_misc_fee_mode || listingRow.legalMiscFeeMode || listingRow.legalMiscFee || 'include_in_monthly'
   ) === 'separate_soa_row'
     ? 'separate_soa_row'
     : 'include_in_monthly';
   const legalMiscFeeAmount = roundMoneyValue(
-    listingRow.soa_legal_misc_fee_amount ?? listingRow.legalMiscFeeAmount ?? listingRow.lot_project_listing_lmf_amount ?? 0
+    listingRow.soa_selected_lmf_amount ??
+      listingRow.selectedLmfAmount ??
+      listingRow.soa_legal_misc_fee_amount ??
+      listingRow.legalMiscFeeAmount ??
+      listingRow.lot_project_listing_lmf_amount ??
+      0
   );
   const principalTcp = roundMoneyValue(
     legalMiscFeeMode === 'separate_soa_row'
@@ -2857,3 +2913,4 @@ export const addIfColumnExists = async (connection, tableName, columns, values, 
     values.push(value);
   }
 };
+

@@ -1,3 +1,5 @@
+import { getListingPricingForMode } from '../../../../utils/listingPricing.js'
+
 export const money = (value) =>
   new Intl.NumberFormat('en-PH', {
     style: 'currency',
@@ -5,11 +7,11 @@ export const money = (value) =>
     minimumFractionDigits: 2,
   }).format(Number(value || 0))
 
-export const getListingTcp = (listing) => {
-  if (typeof listing?.tcpAmount === 'number') return listing.tcpAmount
-  if (typeof listing?.tcp === 'number') return listing.tcp
-  return Number(String(listing?.tcp || '').replace(/[₱,\s]/g, '')) || 0
-}
+export const getListingTcp = (
+  listing,
+  modeOfPayment = 'installment',
+  saleDiscountPercentage = 0
+) => getListingPricingForMode(listing, modeOfPayment, saleDiscountPercentage).tcp
 
 export const buildDisplayName = ({ firstName = '', middleName = '', lastName = '', suffix = '' } = {}) =>
   [firstName, middleName, lastName, suffix]
@@ -226,3 +228,4 @@ export const getPaymentCalculations = (tcp, paymentForm) => {
     },
   }
 }
+

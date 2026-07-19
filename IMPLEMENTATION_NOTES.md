@@ -93,3 +93,4 @@ server/migrations/20260717_dashboard_reservation_history.sql
 server/tests/adminPermissions.test.js
 server/tests/dashboardDateRange.test.js
 ```
+

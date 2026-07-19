@@ -78,10 +78,11 @@ const ProjectPriceListPrintPage = () => {
                 <th className="border border-black px-1 py-1">Unit ID</th>
                 <th className="border border-black px-1 py-1">Type</th>
                 <th className="border border-black px-1 py-1 text-right">Area SQM</th>
-                <th className="border border-black px-1 py-1 text-right">Price / SQM</th>
-                <th className="border border-black px-1 py-1 text-right">Net Selling Price</th>
-                <th className="border border-black px-1 py-1 text-right">LMF</th>
-                <th className="border border-black px-1 py-1 text-right">TCP</th>
+                <th className="border border-black px-1 py-1 text-right">Installment / SQM</th>
+                <th className="border border-black px-1 py-1 text-right">Cash / SQM</th>
+                <th className="border border-black px-1 py-1 text-right">Installment TCP</th>
+                <th className="border border-black px-1 py-1 text-right">Cash TCP</th>
+                <th className="border border-black px-1 py-1 text-right">LMF Rate</th>
                 <th className="border border-black px-1 py-1 text-right">Reservation</th>
                 <th className="border border-black px-1 py-1">Status</th>
               </tr>
@@ -93,16 +94,17 @@ const ProjectPriceListPrintPage = () => {
                   <td className="border border-black px-1 py-1 font-black">{listing.unitCode || '-'}</td>
                   <td className="border border-black px-1 py-1">{listing.lotType || '-'}</td>
                   <td className="border border-black px-1 py-1 text-right">{numberValue(listing.area)}</td>
-                  <td className="border border-black px-1 py-1 text-right">{money(listing.pricePerSqm)}</td>
-                  <td className="border border-black px-1 py-1 text-right">{money(listing.netSellingPrice)}</td>
-                  <td className="border border-black px-1 py-1 text-right">{money(listing.lmfAmount)}</td>
-                  <td className="border border-black px-1 py-1 text-right font-black">{money(listing.tcp)}</td>
+                  <td className="border border-black px-1 py-1 text-right">{money(listing.installmentPricePerSqm ?? listing.pricePerSqm)}</td>
+                  <td className="border border-black px-1 py-1 text-right">{money(listing.cashPricePerSqm ?? listing.pricePerSqm)}</td>
+                  <td className="border border-black px-1 py-1 text-right font-black">{money(listing.installmentTcp ?? listing.tcp)}</td>
+                  <td className="border border-black px-1 py-1 text-right font-black">{money(listing.cashTcp ?? listing.tcp)}</td>
+                  <td className="border border-black px-1 py-1 text-right">{Number(listing.lmfRate || 0)}%</td>
                   <td className="border border-black px-1 py-1 text-right">{money(listing.reservationFee)}</td>
                   <td className={`border border-black px-1 py-1 font-black ${statusTone(listing.status)}`}>{listing.status || '-'}</td>
                 </tr>
               )) : (
                 <tr>
-                  <td colSpan={10} className="border border-black px-2 py-8 text-center text-sm font-bold">No listings found.</td>
+                  <td colSpan={11} className="border border-black px-2 py-8 text-center text-sm font-bold">No listings found.</td>
                 </tr>
               )}
             </tbody>
@@ -114,3 +116,4 @@ const ProjectPriceListPrintPage = () => {
 }
 
 export default ProjectPriceListPrintPage
+

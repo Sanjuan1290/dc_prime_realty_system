@@ -506,3 +506,4 @@ const SellerGroupDetails = () => {
 }
 
 export default SellerGroupDetails
+

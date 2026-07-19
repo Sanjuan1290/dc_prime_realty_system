@@ -944,12 +944,16 @@ export const getGroupProjectAnalytics = async (req, res) => {
     if (!group) throw createValidationError('This seller group is not accredited to the selected project.');
 
     const dateFormat = range.dayCount <= 93 ? '%Y-%m-%d' : '%Y-%m';
+    const hasSelectedContractTcp = await columnExists(connection, 'lot_project_client_profiles', 'soa_selected_tcp');
+    const contractTcpExpr = hasSelectedContractTcp
+      ? 'COALESCE(profile.soa_selected_tcp, listing.lot_project_listing_tcp)'
+      : 'listing.lot_project_listing_tcp';
     const [salesSummaryRows] = await connection.query(
       `
         SELECT
           COUNT(DISTINCT profile.lot_project_client_profile_id) AS sales_count,
-          COALESCE(SUM(listing.lot_project_listing_tcp), 0) AS sales_amount,
-          COALESCE(AVG(listing.lot_project_listing_tcp), 0) AS average_sale_amount
+          COALESCE(SUM(${contractTcpExpr}), 0) AS sales_amount,
+          COALESCE(AVG(${contractTcpExpr}), 0) AS average_sale_amount
         FROM lot_project_client_profiles profile
         INNER JOIN lot_project_listings listing
           ON listing.lot_project_listing_id = profile.lot_project_listing_id
@@ -987,7 +991,7 @@ export const getGroupProjectAnalytics = async (req, res) => {
         SELECT
           DATE_FORMAT(profile.lot_project_client_profile_created_at, ?) AS period_start,
           COUNT(DISTINCT profile.lot_project_client_profile_id) AS sales_count,
-          COALESCE(SUM(listing.lot_project_listing_tcp), 0) AS sales_amount
+          COALESCE(SUM(${contractTcpExpr}), 0) AS sales_amount
         FROM lot_project_client_profiles profile
         INNER JOIN lot_project_listings listing
           ON listing.lot_project_listing_id = profile.lot_project_listing_id
@@ -1033,7 +1037,7 @@ export const getGroupProjectAnalytics = async (req, res) => {
             ELSE ${fullNameSql('assigned_user')}
           END AS seller_name,
           COUNT(DISTINCT profile.lot_project_client_profile_id) AS sales_count,
-          COALESCE(SUM(listing.lot_project_listing_tcp), 0) AS sales_amount
+          COALESCE(SUM(${contractTcpExpr}), 0) AS sales_amount
         FROM lot_project_client_profiles profile
         INNER JOIN lot_project_listings listing
           ON listing.lot_project_listing_id = profile.lot_project_listing_id
@@ -1781,3 +1785,4 @@ export const toggleDirectSalesAgentStatus = async (req, res) => {
     connection.release();
   }
 };
+

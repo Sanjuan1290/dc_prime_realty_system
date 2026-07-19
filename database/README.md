@@ -10,3 +10,4 @@ The dump keeps all 48 table structures and seeds only:
 - template-to-document assignments
 
 All projects, seller groups, sellers, clients, listings, payments, commissions, employees, notifications, audit records, and other operational rows are empty. Auto-increment counters restart from the remaining seeded rows.
+

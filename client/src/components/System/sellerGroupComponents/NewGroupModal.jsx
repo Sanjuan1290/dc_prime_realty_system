@@ -140,3 +140,4 @@ const NewGroupModal = ({ setShowNewGroupModal, onSaved }) => {
 }
 
 export default NewGroupModal
+

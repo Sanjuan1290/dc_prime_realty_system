@@ -10,3 +10,4 @@ export const db = mysql.createPool({
   database: process.env.DB_NAME,
   dateStrings: true
 })
+

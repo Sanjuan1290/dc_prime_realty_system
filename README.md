@@ -85,3 +85,4 @@ A second-approver rule for all destructive financial actions was not activated i
 ## Public images
 
 The uploaded source export contained remote references rather than the original PNG bytes. Valid placeholders are included in `client/public` so the app builds. Replace them with the company’s original assets when available.
+

@@ -124,6 +124,7 @@ const ReservePaymentTermsModal = ({
   listing,
   project,
   tcp,
+  contractPricing,
   paymentForm,
   updatePaymentField,
   agents = [],
@@ -143,8 +144,17 @@ const ReservePaymentTermsModal = ({
 
   return (
     <div className="flex flex-col gap-4">
-      <SectionCard title="Selected Listing" description="This reservation is for the current listing profile." right={<span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700">Auto status: Reserved</span>}>
-        <div className="grid gap-3 md:grid-cols-4"><PreviewCard label="Unit" value={listing?.unit_id || listing?.unitCode || '-'} /><PreviewCard label="Project" value={project?.name || listing?.project_name || listing?.projectName || '-'} /><PreviewCard label="Lot Type" value={listing?.lot_type || '-'} /><PreviewCard label="TCP" value={money(tcp)} tone="blue" /></div>
+      <SectionCard title="Selected Listing" description="The selected payment mode chooses the matching price per SQM." right={<span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700">Auto status: Reserved</span>}>
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+          <PreviewCard label="Unit" value={listing?.unit_id || listing?.unitCode || '-'} />
+          <PreviewCard label="Project" value={project?.name || listing?.project_name || listing?.projectName || '-'} />
+          <PreviewCard label="Pricing Mode" value={isCash ? 'Cash' : 'Installment'} tone="blue" />
+          <PreviewCard label="Selected Price / SQM" value={money(contractPricing?.pricePerSqm)} tone="blue" />
+          <PreviewCard label="Base Selling Price" value={money(contractPricing?.baseSellingPrice)} />
+          <PreviewCard label="Sale Discount" value={money(contractPricing?.saleDiscountAmount)} tone="amber" />
+          <PreviewCard label="Net Selling Price" value={money(contractPricing?.netSellingPrice)} />
+          <PreviewCard label="TCP" value={money(tcp)} tone="blue" />
+        </div>
       </SectionCard>
 
       <SectionCard title="Reservation Setup" description="All new reservations use distributed commission generation.">
@@ -162,6 +172,7 @@ const ReservePaymentTermsModal = ({
           <TextInput label="Starting Date" type="date" value={paymentForm.startingDate} onChange={(value) => updatePaymentField('startingDate', value)} />
           <TextInput label={isCash ? 'Full Payment Due Date' : 'First Due Date'} type="date" value={paymentForm.firstDueDate} onChange={(value) => updatePaymentField('firstDueDate', value)} />
           <SelectInput label="Legal / Misc Fee" value={paymentForm.legalMiscFeeMode || paymentForm.legalMiscFee} onChange={(value) => { updatePaymentField('legalMiscFee', value); updatePaymentField('legalMiscFeeMode', value) }} helper={`LMF amount: ${money(paymentForm.legalMiscFeeAmount || 0)}. Pay later creates a separate SOA row.`}><option value="include_in_monthly">{isCash ? 'Include in cash balance' : 'Include in monthly'}</option><option value="separate_soa_row">Pay later as separate SOA row</option></SelectInput>
+          <TextInput label="Sale Discount %" type="number" value={paymentForm.saleDiscountPercentage} onChange={(value) => updatePaymentField('saleDiscountPercentage', value)} placeholder="0" helper="Applied to the selected base selling price. LMF remains based on the original base selling price." />
 
           {!isCash ? <>
             <SelectInput label="Downpayment Percentage" value={paymentForm.downpaymentPercentageMode} onChange={(value) => updatePaymentField('downpaymentPercentageMode', value)} helper="Choose 15%, 30%, or custom percentage. Custom may be 0%." required><option value="15">15%</option><option value="30">30%</option><option value="custom">Custom</option></SelectInput>
@@ -169,7 +180,7 @@ const ReservePaymentTermsModal = ({
             <SelectInput label="Downpayment Terms" value={paymentForm.downpaymentTermsMode} onChange={(value) => updatePaymentField('downpaymentTermsMode', value)} helper="Choose spot cash, 1–12 months, or custom." required><option value="spot_cash">Spot Cash</option>{downpaymentTermOptions.map((value) => <option key={value} value={value}>{value} month{value === '1' ? '' : 's'}</option>)}<option value="custom">Custom</option></SelectInput>
             {paymentForm.downpaymentTermsMode === 'custom' ? <TextInput label="Custom Downpayment Terms" type="number" value={paymentForm.customDownpaymentTerms} onChange={(value) => updatePaymentField('customDownpaymentTerms', value)} placeholder="Number of months" required /> : null}
             <SelectInput label="Reservation Fee Treatment" value={paymentForm.reservationFeeTreatment || 'separate'} onChange={(value) => updatePaymentField('reservationFeeTreatment', value)} helper="Choose if the reservation fee stays separate or counts toward the required downpayment." required><option value="separate">Separate from Downpayment</option><option value="apply_to_downpayment">Deduct Reservation Fee from Downpayment</option></SelectInput>
-            <TextInput label="DP Discount %" type="number" value={paymentForm.dpDiscountPercentage} onChange={(value) => updatePaymentField('dpDiscountPercentage', value)} placeholder="0" helper="Use 0 when there is no discount." />
+            <TextInput label="Downpayment Discount %" type="number" value={paymentForm.dpDiscountPercentage} onChange={(value) => updatePaymentField('dpDiscountPercentage', value)} placeholder="0" helper="Applied only to the gross downpayment. It does not change the property TCP." />
             <SelectInput label="Monthly Terms" value={paymentForm.monthlyTermsMode} onChange={(value) => updatePaymentField('monthlyTermsMode', value)} helper="Choose 12, 24, 36, 48, 60 months, or custom." required><option value="12">12 months</option><option value="24">24 months</option><option value="36">36 months</option><option value="48">48 months</option><option value="60">60 months</option><option value="custom">Custom</option></SelectInput>
             {paymentForm.monthlyTermsMode === 'custom' ? <TextInput label="Custom Monthly Terms" type="number" value={paymentForm.customMonthlyTerms} onChange={(value) => updatePaymentField('customMonthlyTerms', value)} placeholder="Number of months" required /> : null}
             <TextInput label="Interest Rate" value={`${paymentForm.interestRate}%`} onChange={() => null} disabled helper="Set from the selected listing." />
@@ -186,10 +197,18 @@ const ReservePaymentTermsModal = ({
       </SectionCard>
 
       <SectionCard title="Payment Preview">
-        {isCash ? <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6"><PreviewCard label="TCP" value={money(tcp)} /><PreviewCard label="Reservation" value={money(paymentPreview.reservationFee)} /><PreviewCard label="LMF Treatment" value={lmfTreatment} /><PreviewCard label="Full Payment Balance" value={money(paymentPreview.fullPaymentAmount)} tone="blue" /><PreviewCard label="Full Payment Due" value={paymentForm.firstDueDate || '-'} tone="emerald" /><PreviewCard label="Interest" value="0%" tone="emerald" /></div> : <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-10"><PreviewCard label="TCP" value={money(tcp)} /><PreviewCard label="Reservation" value={money(paymentPreview.reservationFee)} /><PreviewCard label="LMF Treatment" value={lmfTreatment} /><PreviewCard label="DP Target" value={money(paymentPreview.dpTarget)} /><PreviewCard label="Reservation Applied to DP" value={money(paymentPreview.reservationFeeDownpaymentCredit)} tone={paymentPreview.reservationFeeAppliedToDownpayment ? 'amber' : 'slate'} /><PreviewCard label={paymentPreview.reservationFeeAppliedToDownpayment ? 'DP Less Reservation' : 'DP Gross'} value={money(paymentPreview.dpGross)} /><PreviewCard label="DP Discount" value={money(paymentPreview.dpDiscountAmount)} tone="amber" /><PreviewCard label="DP Net Payable" value={money(paymentPreview.dpNet)} /><PreviewCard label="Balance" value={money(paymentPreview.balance)} tone="blue" /><PreviewCard label="Monthly" value={money(paymentPreview.monthlyAmortization)} tone="emerald" /></div>}
+        <div className="mb-3 grid gap-3 md:grid-cols-2 lg:grid-cols-5">
+          <PreviewCard label="Base Selling Price" value={money(contractPricing?.baseSellingPrice)} />
+          <PreviewCard label={`Sale Discount (${Number(paymentForm.saleDiscountPercentage || 0)}%)`} value={money(contractPricing?.saleDiscountAmount)} tone="amber" />
+          <PreviewCard label="Net Selling Price" value={money(contractPricing?.netSellingPrice)} />
+          <PreviewCard label="LMF" value={money(contractPricing?.lmfAmount)} />
+          <PreviewCard label="Final TCP" value={money(tcp)} tone="blue" />
+        </div>
+        {isCash ? <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6"><PreviewCard label="Reservation" value={money(paymentPreview.reservationFee)} /><PreviewCard label="LMF Treatment" value={lmfTreatment} /><PreviewCard label="Full Payment Balance" value={money(paymentPreview.fullPaymentAmount)} tone="blue" /><PreviewCard label="Full Payment Due" value={paymentForm.firstDueDate || '-'} tone="emerald" /><PreviewCard label="Interest" value="0%" tone="emerald" /></div> : <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-9"><PreviewCard label="Reservation" value={money(paymentPreview.reservationFee)} /><PreviewCard label="LMF Treatment" value={lmfTreatment} /><PreviewCard label="DP Target" value={money(paymentPreview.dpTarget)} /><PreviewCard label="Reservation Applied to DP" value={money(paymentPreview.reservationFeeDownpaymentCredit)} tone={paymentPreview.reservationFeeAppliedToDownpayment ? 'amber' : 'slate'} /><PreviewCard label={paymentPreview.reservationFeeAppliedToDownpayment ? 'DP Less Reservation' : 'DP Gross'} value={money(paymentPreview.dpGross)} /><PreviewCard label="Downpayment Discount" value={money(paymentPreview.dpDiscountAmount)} tone="amber" /><PreviewCard label="DP Net Payable" value={money(paymentPreview.dpNet)} /><PreviewCard label="Balance" value={money(paymentPreview.balance)} tone="blue" /><PreviewCard label="Monthly" value={money(paymentPreview.monthlyAmortization)} tone="emerald" /></div>}
       </SectionCard>
     </div>
   )
 }
 
 export default ReservePaymentTermsModal
+
