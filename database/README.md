@@ -1,13 +1,25 @@
-# Database seed
+# Database setup
 
-Import `Dump20260718_clean.sql` into an empty MySQL database.
+## Fresh database
 
-The dump keeps all 48 table structures and seeds only:
+Import the current clean dump first. It keeps the table structures and the configured seed records.
 
-- one `super_admin` account
-- the document library
-- document templates
-- template-to-document assignments
+## Existing database migrations
 
-All projects, seller groups, sellers, clients, listings, payments, commissions, employees, notifications, audit records, and other operational rows are empty. Auto-increment counters restart from the remaining seeded rows.
+Run migrations in this order when they have not already been applied:
 
+```text
+server/migrations/20260715_audit_log_archival.sql
+server/migrations/20260717_dashboard_reservation_history.sql
+server/migrations/20260718_direct_agent_overrides.sql
+server/migrations/20260718_direct_agent_overrides_repair.sql
+server/migrations/20260719_dual_listing_pricing_and_contract_snapshots.sql
+server/migrations/20260719_role_based_seller_rates.sql
+```
+
+`20260719_role_based_seller_rates.sql` changes the meaning of seller project rates:
+
+- Agent: sales commission rate
+- Manager, Broker, and Broker Network Manager: override commission rate
+
+The migration does not delete historical reservations or commission records. Review the diagnostic query returned at the end and correct any old reporting relationships that do not follow BNM → Broker → Manager → Agent.

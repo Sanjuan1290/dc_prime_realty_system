@@ -1044,6 +1044,7 @@ export const getStoredRowTotalDue = (row = {}, clientProfile = {}) =>
 export const getRemainingUnpaidScheduleBalance = (rows = [], clientProfile = {}) =>
   roundMoneyValue(
     rows.reduce((sum, row) => {
+      if (String(row.schedule_status || row.status || '').toLowerCase() === 'cancelled') return sum;
       const totalDue = getStoredRowTotalDue(row, clientProfile);
       const amountPaid = Number(row.amount_paid ?? row.amountPaid ?? 0);
       return sum + Math.max(totalDue - amountPaid, 0);
@@ -1616,7 +1617,8 @@ export const paymentTypeToStoredScheduleType = (paymentType) => {
   if (cleanType === 'reservation') return 'reservation';
   if (cleanType === 'downpayment') return 'downpayment';
   if (cleanType === 'legal_misc') return 'legal_misc';
-  if (['monthly_amortization', 'advance_payment', 'balloon'].includes(cleanType)) return 'monthly';
+  if (['monthly_amortization', 'advance_payment'].includes(cleanType)) return 'monthly';
+  if (cleanType === 'balloon') return null;
   return null;
 };
 
@@ -1780,6 +1782,7 @@ export const getReserveSellerOptions = async (
       WHERE acs.accredited_seller_status = 'active'
         AND u.status = 'active'
         AND u.role = 'agent'
+        ${hasDummyColumns ? 'AND COALESCE(acs.is_system_dummy, 0) = 0' : ''}
         AND ${rateSelect} > 0
         ${searchSql}
       ORDER BY
@@ -2228,8 +2231,41 @@ export const recomputeComputedSoaBalances = (rows = [], terms = {}) => {
       row.endingBalance = runningBalance;
       row.status = principalPaid > 0 ? 'Paid' : 'Unpaid';
 
-      // Balloon is a principal-reduction payment, not a fake scheduled SOA due row.
-      // It remains visible in payment logs, while future monthly rows stay locked and shorten from the back.
+      visibleRows.push({
+        id: row.id,
+        scheduleId: row.scheduleId || row.id,
+        scheduleType: 'balloon',
+        dueDate: row.dueDate,
+        description: row.description,
+        beginningBalance: row.beginningBalance,
+        dueAmount: principalPaid,
+        monthlyAmortizationAmount: principalPaid,
+        principalAmount: principalPaid,
+        interest: 0,
+        discountAmount: 0,
+        penalty: 0,
+        calculatedPenaltyAmount: 0,
+        waivedPenaltyAmount: 0,
+        outstandingPenaltyAmount: 0,
+        penaltyRatePercent: 0,
+        penaltyGraceDays: 0,
+        penaltyStartDate: null,
+        penaltyCalculatedThrough: null,
+        penaltyReliefs: [],
+        activePenaltyExtension: null,
+        canGrantPenaltyExtension: false,
+        canWaivePenalty: false,
+        datePaid: row.datePaid || row.dueDate || '-',
+        amountPaid: principalPaid,
+        paidPrincipalAmount: principalPaid,
+        paidInterestAmount: 0,
+        paidPenaltyAmount: 0,
+        referenceId: row.referenceId || '-',
+        status: row.status,
+        endingBalance: row.endingBalance,
+        totalDue: principalPaid,
+      });
+
       if (runningBalance <= 0) break;
       continue;
     }
@@ -2393,7 +2429,23 @@ export const canGenerateListingSoa = (listingRow = {}) => {
 export const getListingSoaRows = async (connection, lotProjectId, listingId, listingRow = {}, payments = []) => {
   if (!canGenerateListingSoa(listingRow)) return [];
 
-  const existingScheduleRows = await getExistingSoaScheduleRows(connection, lotProjectId, listingId);
+  let existingScheduleRows = await getExistingSoaScheduleRows(connection, lotProjectId, listingId);
+
+  if (
+    existingScheduleRows.length &&
+    await hasLegacyBalloonAllocations(connection, {
+      lot_project_id: lotProjectId,
+      lot_project_listing_id: listingId,
+    })
+  ) {
+    await recomputeListingScheduleBalances(connection, {
+      ...(listingRow || {}),
+      lot_project_id: lotProjectId,
+      lot_project_listing_id: listingId,
+    });
+    existingScheduleRows = await getExistingSoaScheduleRows(connection, lotProjectId, listingId);
+  }
+
   const terms = getComputedSoaTerms(listingRow, existingScheduleRows);
 
   if (existingScheduleRows.length) {
@@ -2407,7 +2459,10 @@ export const getListingSoaRows = async (connection, lotProjectId, listingId, lis
       todayDateOnly()
     );
 
-    const storedRows = existingScheduleRows.map((row, index) => {
+    const activeScheduleRows = existingScheduleRows.filter(
+      (row) => String(row.schedule_status || '').toLowerCase() !== 'cancelled'
+    );
+    const storedRows = activeScheduleRows.map((row, index) => {
       const scheduleId = Number(row.lot_project_payment_schedule_id || 0);
       const snapshot = snapshots.get(scheduleId) || {};
       return {
@@ -2447,7 +2502,18 @@ export const getListingSoaRows = async (connection, lotProjectId, listingId, lis
       };
     });
 
-    return recomputeComputedSoaBalances(storedRows, terms);
+    const balloonPayments = await getVerifiedBalloonPayments(connection, {
+      lot_project_id: lotProjectId,
+      lot_project_listing_id: listingId,
+    });
+    const balloonRows = balloonPayments.map((payment, index) =>
+      createBalloonPrincipalRow(payment, index + 1)
+    );
+
+    return recomputeComputedSoaBalances(
+      sortComputedRows([...storedRows, ...balloonRows]),
+      terms
+    );
   }
 
   const computedRows = createComputedSoaRows(terms);
@@ -2634,7 +2700,335 @@ export const getListingPayments = async (connection, lotProjectId, listingId) =>
   return rows.map(mapPaymentRow);
 };
 
+
+const getScheduleAmountPaid = (row = {}) => roundMoneyValue(row.amount_paid ?? row.amountPaid ?? 0);
+
+const getSchedulePaidPrincipal = (row = {}) => {
+  const amountPaid = getScheduleAmountPaid(row);
+  if (amountPaid <= 0.009) return 0;
+
+  const explicit = Number(row.paid_principal_amount ?? row.paidPrincipalAmount ?? 0);
+  if (explicit > 0 && explicit <= amountPaid + 0.009) return roundMoneyValue(explicit);
+
+  const penalty = Number(row.penalty_amount ?? row.penalty ?? 0);
+  const interest = Number(row.interest_amount ?? row.interest ?? 0);
+  const principalDue = Number(row.principal_amount ?? row.principalAmount ?? row.due_amount ?? row.dueAmount ?? 0);
+  return roundMoneyValue(Math.min(Math.max(amountPaid - penalty - interest, 0), Math.max(principalDue, 0)));
+};
+
+/**
+ * Keeps the original monthly amount, applies balloon payments to the financed
+ * principal, and removes unused monthly rows from the end of the schedule.
+ * Rows that already have a payment remain historical and are not rewritten
+ * into balloon allocations.
+ */
+export const buildBalloonAdjustedMonthlyRows = (
+  monthlyRows = [],
+  terms = {},
+  balloonPrincipal = 0
+) => {
+  const rows = [...monthlyRows];
+  const fixedMonthlyAmount = roundMoneyValue(
+    terms.monthlyAmortization ||
+      rows.find((row) => Number(row.monthly_amortization_amount || row.monthlyAmortizationAmount || row.due_amount || row.dueAmount || 0) > 0)
+        ?.monthly_amortization_amount ||
+      rows.find((row) => Number(row.due_amount || row.dueAmount || 0) > 0)?.due_amount ||
+      0
+  );
+  const monthlyRate = Number(terms.annualInterestRate || 0) / 100 / 12;
+  const lastHistoricalIndex = rows.reduce(
+    (lastIndex, row, index) => (getScheduleAmountPaid(row) > 0 ? index : lastIndex),
+    -1
+  );
+
+  let projectedBalance = roundMoneyValue(Math.max(Number(terms.financedBalance || 0), 0));
+  let balloonApplied = false;
+  let activeTerms = 0;
+
+  const adjustedRows = rows.map((row, index) => {
+    const amountPaid = getScheduleAmountPaid(row);
+
+    if (!balloonApplied && index === lastHistoricalIndex + 1) {
+      projectedBalance = roundMoneyValue(
+        Math.max(projectedBalance - Number(balloonPrincipal || 0), 0)
+      );
+      balloonApplied = true;
+    }
+
+    if (index <= lastHistoricalIndex) {
+      const interest = roundMoneyValue(Number(row.interest_amount ?? row.interest ?? 0));
+      const dueAmount = roundMoneyValue(
+        Number(row.due_amount ?? row.dueAmount ?? fixedMonthlyAmount ?? 0)
+      );
+      const storedPrincipal = Number(row.principal_amount ?? row.principalAmount);
+      const principalAmount = roundMoneyValue(
+        Math.min(
+          Number.isFinite(storedPrincipal) && storedPrincipal > 0
+            ? storedPrincipal
+            : Math.max(dueAmount - interest, 0),
+          projectedBalance
+        )
+      );
+
+      projectedBalance = roundMoneyValue(Math.max(projectedBalance - principalAmount, 0));
+      activeTerms += 1;
+
+      return {
+        ...row,
+        dueAmount,
+        interest,
+        principalAmount,
+        monthlyAmortizationAmount: dueAmount,
+        cancelled: false,
+      };
+    }
+
+    if (projectedBalance <= 0.009) {
+      return {
+        ...row,
+        dueAmount: 0,
+        interest: 0,
+        principalAmount: 0,
+        monthlyAmortizationAmount: 0,
+        cancelled: true,
+      };
+    }
+
+    const interest = roundMoneyValue(projectedBalance * monthlyRate);
+    const normalPrincipal = roundMoneyValue(Math.max(fixedMonthlyAmount - interest, 0));
+    const isFinalRow = index === rows.length - 1 || normalPrincipal + 0.009 >= projectedBalance;
+    const principalAmount = roundMoneyValue(
+      isFinalRow ? projectedBalance : Math.min(normalPrincipal, projectedBalance)
+    );
+    const dueAmount = roundMoneyValue(
+      isFinalRow ? principalAmount + interest : fixedMonthlyAmount
+    );
+
+    projectedBalance = roundMoneyValue(Math.max(projectedBalance - principalAmount, 0));
+    activeTerms += 1;
+
+    return {
+      ...row,
+      dueAmount,
+      interest,
+      principalAmount,
+      monthlyAmortizationAmount: dueAmount,
+      cancelled: false,
+    };
+  });
+
+  if (!balloonApplied) {
+    projectedBalance = roundMoneyValue(
+      Math.max(projectedBalance - Number(balloonPrincipal || 0), 0)
+    );
+  }
+
+  return {
+    rows: adjustedRows,
+    activeTerms,
+    cancelledTerms: Math.max(rows.length - activeTerms, 0),
+    lastHistoricalIndex,
+    balloonApplyIndex: Math.min(lastHistoricalIndex + 1, rows.length),
+    remainingProjectedBalance: projectedBalance,
+    fixedMonthlyAmount,
+  };
+};
+
+export const getVerifiedBalloonPayments = async (
+  connection,
+  listing,
+  { excludePaymentId = 0 } = {}
+) => {
+  if (!(await tableExists(connection, 'lot_project_payments'))) return [];
+
+  const [rows] = await connection.query(
+    `
+      SELECT
+        lot_project_payment_id,
+        lot_project_payment_amount,
+        lot_project_payment_date,
+        lot_project_payment_reference_id
+      FROM lot_project_payments
+      WHERE lot_project_id = ?
+        AND lot_project_listing_id = ?
+        AND lot_project_payment_type = 'balloon'
+        AND lot_project_payment_status = 'Verified'
+        AND (? = 0 OR lot_project_payment_id <> ?)
+      ORDER BY lot_project_payment_date ASC, lot_project_payment_id ASC
+    `,
+    [
+      listing.lot_project_id,
+      listing.lot_project_listing_id,
+      Number(excludePaymentId || 0),
+      Number(excludePaymentId || 0),
+    ]
+  );
+
+  return rows;
+};
+
+export const hasLegacyBalloonAllocations = async (connection, listing) => {
+  if (
+    !(await tableExists(connection, 'lot_project_payment_allocations')) ||
+    !(await tableExists(connection, 'lot_project_payments'))
+  ) {
+    return false;
+  }
+
+  const [rows] = await connection.query(
+    `
+      SELECT 1
+      FROM lot_project_payment_allocations allocation
+      INNER JOIN lot_project_payments payment
+        ON payment.lot_project_payment_id = allocation.lot_project_payment_id
+      WHERE payment.lot_project_id = ?
+        AND payment.lot_project_listing_id = ?
+        AND payment.lot_project_payment_type = 'balloon'
+      LIMIT 1
+    `,
+    [listing.lot_project_id, listing.lot_project_listing_id]
+  );
+
+  return rows.length > 0;
+};
+
+const removeLegacyBalloonAllocations = async (connection, listing) => {
+  if (!(await hasLegacyBalloonAllocations(connection, listing))) return false;
+
+  const [affectedRows] = await connection.query(
+    `
+      SELECT DISTINCT allocation.lot_project_payment_schedule_id
+      FROM lot_project_payment_allocations allocation
+      INNER JOIN lot_project_payments payment
+        ON payment.lot_project_payment_id = allocation.lot_project_payment_id
+      WHERE payment.lot_project_id = ?
+        AND payment.lot_project_listing_id = ?
+        AND payment.lot_project_payment_type = 'balloon'
+    `,
+    [listing.lot_project_id, listing.lot_project_listing_id]
+  );
+
+  await connection.query(
+    `
+      DELETE allocation
+      FROM lot_project_payment_allocations allocation
+      INNER JOIN lot_project_payments payment
+        ON payment.lot_project_payment_id = allocation.lot_project_payment_id
+      WHERE payment.lot_project_id = ?
+        AND payment.lot_project_listing_id = ?
+        AND payment.lot_project_payment_type = 'balloon'
+    `,
+    [listing.lot_project_id, listing.lot_project_listing_id]
+  );
+
+  for (const affected of affectedRows) {
+    const scheduleId = Number(affected.lot_project_payment_schedule_id || 0);
+    if (!scheduleId) continue;
+
+    const [remainingAllocations] = await connection.query(
+      `
+        SELECT
+          allocation.applied_amount,
+          payment.lot_project_payment_date,
+          payment.lot_project_payment_reference_id,
+          payment.lot_project_payment_id
+        FROM lot_project_payment_allocations allocation
+        INNER JOIN lot_project_payments payment
+          ON payment.lot_project_payment_id = allocation.lot_project_payment_id
+        WHERE allocation.lot_project_payment_schedule_id = ?
+          AND payment.lot_project_payment_status = 'Verified'
+          AND payment.lot_project_payment_type <> 'balloon'
+        ORDER BY payment.lot_project_payment_date ASC, payment.lot_project_payment_id ASC
+      `,
+      [scheduleId]
+    );
+
+    const restoredPaid = roundMoneyValue(
+      remainingAllocations.reduce(
+        (sum, allocation) => sum + Number(allocation.applied_amount || 0),
+        0
+      )
+    );
+    const latest = remainingAllocations[remainingAllocations.length - 1];
+
+    await connection.query(
+      `
+        UPDATE lot_project_payment_schedules
+        SET amount_paid = ?,
+            date_paid = ?,
+            reference_id = ?,
+            schedule_status = ?
+        WHERE lot_project_payment_schedule_id = ?
+      `,
+      [
+        restoredPaid,
+        restoredPaid > 0 ? latest?.lot_project_payment_date || null : null,
+        restoredPaid > 0 ? latest?.lot_project_payment_reference_id || null : null,
+        restoredPaid > 0 ? 'Partial' : 'Unpaid',
+        scheduleId,
+      ]
+    );
+  }
+
+  return true;
+};
+
+export const getBalloonPrincipalCapacity = async (
+  connection,
+  listing,
+  { excludePaymentId = 0 } = {}
+) => {
+  await removeLegacyBalloonAllocations(connection, listing);
+
+  const [scheduleRows] = await connection.query(
+    `
+      SELECT *
+      FROM lot_project_payment_schedules
+      WHERE lot_project_id = ?
+        AND lot_project_listing_id = ?
+      ORDER BY due_date ASC, lot_project_payment_schedule_id ASC
+    `,
+    [listing.lot_project_id, listing.lot_project_listing_id]
+  );
+
+  const [profileRows] = await connection.query(
+    `
+      SELECT *
+      FROM lot_project_client_profiles
+      WHERE lot_project_listing_id = ?
+      LIMIT 1
+    `,
+    [listing.lot_project_listing_id]
+  );
+
+  const clientProfile = { ...(listing || {}), ...(profileRows[0] || {}) };
+  const terms = getComputedSoaTerms(clientProfile, scheduleRows);
+  const paidMonthlyPrincipal = roundMoneyValue(
+    scheduleRows
+      .filter((row) => getStoredScheduleType(row) === 'monthly')
+      .reduce((sum, row) => sum + getSchedulePaidPrincipal(row), 0)
+  );
+  const balloonRows = await getVerifiedBalloonPayments(connection, listing, {
+    excludePaymentId,
+  });
+  const existingBalloonPrincipal = roundMoneyValue(
+    balloonRows.reduce(
+      (sum, payment) => sum + Number(payment.lot_project_payment_amount || 0),
+      0
+    )
+  );
+
+  return roundMoneyValue(
+    Math.max(
+      Number(terms.financedBalance || 0) - paidMonthlyPrincipal - existingBalloonPrincipal,
+      0
+    )
+  );
+};
+
 export const recomputeListingScheduleBalances = async (connection, listing) => {
+  await removeLegacyBalloonAllocations(connection, listing);
+
   const [rows] = await connection.query(
     `
       SELECT *
@@ -2661,16 +3055,136 @@ export const recomputeListingScheduleBalances = async (connection, listing) => {
 
   const clientProfile = { ...(listing || {}), ...(clientProfileRows[0] || {}) };
   const terms = getComputedSoaTerms(clientProfile, rows);
+  const balloonPayments = await getVerifiedBalloonPayments(connection, listing);
+  const balloonPrincipal = roundMoneyValue(
+    balloonPayments.reduce(
+      (sum, payment) => sum + Number(payment.lot_project_payment_amount || 0),
+      0
+    )
+  );
+  const monthlyRows = rows.filter((row) => getStoredScheduleType(row) === 'monthly');
+  const adjustedMonthly = buildBalloonAdjustedMonthlyRows(
+    monthlyRows,
+    terms,
+    balloonPrincipal
+  );
+  const monthlyAdjustments = new Map(
+    adjustedMonthly.rows.map((row) => [
+      Number(row.lot_project_payment_schedule_id || row.scheduleId || row.id || 0),
+      row,
+    ])
+  );
+
   let runningBalance = roundMoneyValue(terms.principalTcp ?? terms.tcp ?? 0);
-  const hasPaidColumns = await columnExists(connection, 'lot_project_payment_schedules', 'paid_principal_amount');
+  let monthlyIndex = 0;
+  let balloonApplied = false;
+  const today = todayDateOnly();
+  const hasPaidColumns = await columnExists(
+    connection,
+    'lot_project_payment_schedules',
+    'paid_principal_amount'
+  );
+  const hasInterestColumn = await columnExists(
+    connection,
+    'lot_project_payment_schedules',
+    'interest_amount'
+  );
+  const hasPrincipalColumn = await columnExists(
+    connection,
+    'lot_project_payment_schedules',
+    'principal_amount'
+  );
+  const hasMonthlyAmountColumn = await columnExists(
+    connection,
+    'lot_project_payment_schedules',
+    'monthly_amortization_amount'
+  );
+  const hasCalculatedPenaltyColumn = await columnExists(
+    connection,
+    'lot_project_payment_schedules',
+    'calculated_penalty_amount'
+  );
 
   for (const row of rows) {
+    const scheduleType = getStoredScheduleType(row);
+    const scheduleId = Number(row.lot_project_payment_schedule_id || 0);
+
+    if (
+      scheduleType === 'monthly' &&
+      !balloonApplied &&
+      monthlyIndex === adjustedMonthly.balloonApplyIndex
+    ) {
+      runningBalance = roundMoneyValue(
+        Math.max(runningBalance - balloonPrincipal, 0)
+      );
+      balloonApplied = true;
+    }
+
     const beginningBalance = runningBalance;
-    const paidAmount = Number(row.amount_paid || 0);
-    const penaltyDue = Number(row.penalty_amount || 0);
-    const interestDue = Number(row.interest_amount || 0);
-    const principalDue = Number(row.principal_amount ?? row.due_amount ?? 0);
-    const discountInfo = getStoredRowDiscountInfo(row, clientProfile);
+    const adjustment = scheduleType === 'monthly'
+      ? monthlyAdjustments.get(scheduleId)
+      : null;
+
+    if (scheduleType === 'monthly' && adjustment?.cancelled) {
+      const setColumns = [
+        'beginning_balance = ?',
+        'ending_balance = ?',
+        'due_amount = 0',
+        'penalty_amount = 0',
+        'amount_paid = 0',
+        'date_paid = NULL',
+        'reference_id = NULL',
+        "schedule_status = 'Cancelled'",
+      ];
+      const values = [beginningBalance, beginningBalance];
+
+      if (hasInterestColumn) setColumns.push('interest_amount = 0');
+      if (hasPrincipalColumn) setColumns.push('principal_amount = 0');
+      if (hasMonthlyAmountColumn) setColumns.push('monthly_amortization_amount = 0');
+      if (hasCalculatedPenaltyColumn) setColumns.push('calculated_penalty_amount = 0');
+      if (hasPaidColumns) {
+        setColumns.push(
+          'paid_penalty_amount = 0',
+          'paid_interest_amount = 0',
+          'paid_principal_amount = 0'
+        );
+      }
+
+      await connection.query(
+        `
+          UPDATE lot_project_payment_schedules
+          SET ${setColumns.join(',\n              ')}
+          WHERE lot_project_payment_schedule_id = ?
+        `,
+        [...values, scheduleId]
+      );
+
+      monthlyIndex += 1;
+      continue;
+    }
+
+    const dueAmount = scheduleType === 'monthly'
+      ? roundMoneyValue(adjustment?.dueAmount || 0)
+      : roundMoneyValue(row.due_amount || 0);
+    const interestDue = scheduleType === 'monthly'
+      ? roundMoneyValue(adjustment?.interest || 0)
+      : roundMoneyValue(row.interest_amount || 0);
+    const principalDue = scheduleType === 'monthly'
+      ? roundMoneyValue(adjustment?.principalAmount || 0)
+      : roundMoneyValue(row.principal_amount ?? row.due_amount ?? 0);
+    const monthlyAmount = scheduleType === 'monthly'
+      ? roundMoneyValue(adjustment?.monthlyAmortizationAmount || dueAmount)
+      : roundMoneyValue(row.monthly_amortization_amount ?? row.due_amount ?? 0);
+    const paidAmount = roundMoneyValue(row.amount_paid || 0);
+    const penaltyDue = roundMoneyValue(row.penalty_amount || 0);
+    const calculationRow = {
+      ...row,
+      due_amount: dueAmount,
+      interest_amount: interestDue,
+      principal_amount: principalDue,
+      monthly_amortization_amount: monthlyAmount,
+    };
+    const discountInfo = getStoredRowDiscountInfo(calculationRow, clientProfile);
 
     let remainingPaid = paidAmount;
     const paidPenalty = roundMoneyValue(Math.min(remainingPaid, penaltyDue));
@@ -2679,19 +3193,66 @@ export const recomputeListingScheduleBalances = async (connection, listing) => {
     const paidInterest = roundMoneyValue(Math.min(remainingPaid, interestDue));
     remainingPaid = roundMoneyValue(Math.max(remainingPaid - paidInterest, 0));
 
-    const paidPrincipal = roundMoneyValue(Math.min(remainingPaid, principalDue, runningBalance));
-    const principalCashDue = roundMoneyValue(Math.max(discountInfo.cashDueAmount - penaltyDue - interestDue, 0));
+    const paidPrincipal = roundMoneyValue(
+      Math.min(remainingPaid, principalDue, runningBalance)
+    );
+    const principalCashDue = roundMoneyValue(
+      Math.max(discountInfo.cashDueAmount - penaltyDue - interestDue, 0)
+    );
     const discountCredit = discountInfo.discountAmount > 0 && paidPrincipal > 0
-      ? roundMoneyValue(Math.min(discountInfo.discountAmount, discountInfo.discountAmount * Math.min(paidPrincipal / Math.max(principalCashDue, 1), 1)))
+      ? roundMoneyValue(
+          Math.min(
+            discountInfo.discountAmount,
+            discountInfo.discountAmount *
+              Math.min(paidPrincipal / Math.max(principalCashDue, 1), 1)
+          )
+        )
       : 0;
-    const principalReduction = roundMoneyValue(Math.min(paidPrincipal + discountCredit, runningBalance));
-    runningBalance = roundMoneyValue(Math.max(runningBalance - principalReduction, 0));
+    const principalReduction = roundMoneyValue(
+      Math.min(paidPrincipal + discountCredit, runningBalance)
+    );
+    runningBalance = roundMoneyValue(
+      Math.max(runningBalance - principalReduction, 0)
+    );
 
-    const setColumns = ['beginning_balance = ?', 'ending_balance = ?'];
-    const values = [beginningBalance, runningBalance];
+    const totalDue = roundMoneyValue(discountInfo.cashDueAmount);
+    const dueDate = plainDate(row.due_date, null);
+    const paymentDate = plainDate(row.date_paid, null);
+    const paidBeforeDue = Boolean(
+      paymentDate && dueDate && paymentDate < dueDate
+    );
+    const nextStatus = paidAmount <= 0.009
+      ? (dueDate && dueDate < today ? 'Overdue' : 'Unpaid')
+      : paidAmount + 0.009 >= totalDue
+        ? (paidBeforeDue ? 'Advance' : 'Paid')
+        : 'Partial';
 
+    const setColumns = [
+      'beginning_balance = ?',
+      'ending_balance = ?',
+      'due_amount = ?',
+      'schedule_status = ?',
+    ];
+    const values = [beginningBalance, runningBalance, dueAmount, nextStatus];
+
+    if (hasInterestColumn) {
+      setColumns.push('interest_amount = ?');
+      values.push(interestDue);
+    }
+    if (hasPrincipalColumn) {
+      setColumns.push('principal_amount = ?');
+      values.push(principalDue);
+    }
+    if (hasMonthlyAmountColumn) {
+      setColumns.push('monthly_amortization_amount = ?');
+      values.push(monthlyAmount);
+    }
     if (hasPaidColumns) {
-      setColumns.push('paid_penalty_amount = ?', 'paid_interest_amount = ?', 'paid_principal_amount = ?');
+      setColumns.push(
+        'paid_penalty_amount = ?',
+        'paid_interest_amount = ?',
+        'paid_principal_amount = ?'
+      );
       values.push(paidPenalty, paidInterest, paidPrincipal);
     }
 
@@ -2701,14 +3262,29 @@ export const recomputeListingScheduleBalances = async (connection, listing) => {
         SET ${setColumns.join(',\n            ')}
         WHERE lot_project_payment_schedule_id = ?
       `,
-      [...values, row.lot_project_payment_schedule_id]
+      [...values, scheduleId]
     );
+
+    if (scheduleType === 'monthly') monthlyIndex += 1;
   }
+
+  return {
+    balloonPrincipal,
+    activeMonthlyTerms: adjustedMonthly.activeTerms,
+    cancelledMonthlyTerms: adjustedMonthly.cancelledTerms,
+  };
 };
 
 export const applyPaymentToSchedules = async (connection, listing, paymentId, preferredScheduleId, amount, paymentDate, referenceId, paymentType) => {
   if (!(await tableExists(connection, 'lot_project_payment_allocations'))) {
     throw new Error('lot_project_payment_allocations table does not exist. Run the payments SOA migration first.');
+  }
+
+  if (String(paymentType || '').toLowerCase() === 'balloon') {
+    // Balloon payments are principal reductions. They must never be spread over
+    // monthly SOA rows or mark future installments as paid/advance.
+    await recomputeListingScheduleBalances(connection, listing);
+    return;
   }
 
   const [clientProfileRows] = await connection.query(
@@ -2728,6 +3304,7 @@ export const applyPaymentToSchedules = async (connection, listing, paymentId, pr
       FROM lot_project_payment_schedules
       WHERE lot_project_id = ?
         AND lot_project_listing_id = ?
+        AND schedule_status <> 'Cancelled'
       ORDER BY
         CASE WHEN lot_project_payment_schedule_id = ? THEN 0 ELSE 1 END,
         CASE WHEN due_date IS NULL THEN 1 ELSE 0 END,

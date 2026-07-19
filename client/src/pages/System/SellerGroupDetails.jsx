@@ -10,14 +10,15 @@ import {
   FiSearch,
   FiShoppingBag,
   FiTrendingUp,
+  FiUserPlus,
   FiUsers,
 } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
 import MemberRatesModal from '../../components/System/sellerGroupComponents/MemberRatesModal'
-import CreateDirectSalesAgentModal from '../../components/System/sellerGroupComponents/CreateDirectSalesAgentModal'
 import EditGroupModal from '../../components/System/sellerGroupComponents/EditGroupModal'
-import { useFetch as fetchJson, useFetchPatch as patchJson, useFetchPost as postJson } from '../../utils/useFetch'
+import CreateUserModal from '../../components/System/userComponents/CreateUserModal'
+import { useFetch as fetchJson, useFetchPatch as patchJson } from '../../utils/useFetch'
 
 const roleLabel = (role = '') => ({
   broker_network_manager: 'Broker Network Manager',
@@ -71,15 +72,15 @@ const SummaryCard = ({ icon: Icon, label, value, helper }) => (
   </article>
 )
 
-const RateBadge = ({ rate }) => (
+const RateBadge = ({ rate, role }) => (
   <span className="inline-flex rounded-lg bg-blue-50 px-2.5 py-1 text-xs font-black text-blue-700 ring-1 ring-blue-100">
-    {Number(rate || 0).toFixed(2)}%
+    {role === 'agent' ? 'Sales' : 'Override'}: {Number(rate || 0).toFixed(2)}%
   </span>
 )
 
-const RatesCell = ({ rates = [] }) => (
+const RatesCell = ({ rates = [], role = '' }) => (
   <div className="flex max-w-md flex-wrap gap-2">
-    {rates.length ? rates.map((rate) => <RateBadge key={rate} rate={rate} />) : <span className="text-sm font-semibold text-slate-400">—</span>}
+    {rates.length ? rates.map((rate) => <RateBadge key={rate} rate={rate} role={role} />) : <span className="text-sm font-semibold text-slate-400">—</span>}
   </div>
 )
 
@@ -97,7 +98,7 @@ const SellerGroupDetails = () => {
   const [memberPage, setMemberPage] = useState(1)
   const [memberLimit, setMemberLimit] = useState(10)
   const [rateEditor, setRateEditor] = useState(null)
-  const [dummyOwner, setDummyOwner] = useState(null)
+  const [showCreateUser, setShowCreateUser] = useState(false)
   const [showEditGroupModal, setShowEditGroupModal] = useState(false)
   const [modalNotice, setModalNotice] = useState(null)
   const [draftRange, setDraftRange] = useState(initialRange)
@@ -146,22 +147,11 @@ const SellerGroupDetails = () => {
   }
   const project = configuration?.project || accreditedProjects.find((item) => Number(item.lot_project_id) === selectedProjectId) || {}
   const members = useMemo(() => configuration?.members || [], [configuration])
-  const overrides = useMemo(() => configuration?.overrides || [], [configuration])
   const analytics = analyticsQuery.data?.data || null
   const analyticsSummary = analytics?.summary || {}
 
   const realMembers = useMemo(() => members.filter((member) => !member.is_system_dummy), [members])
   const memberById = useMemo(() => new Map(members.map((member) => [Number(member.accredited_seller_id), member])), [members])
-  const dummyByOwner = useMemo(() => new Map(
-    members
-      .filter((member) => member.is_system_dummy && member.dummy_owner_accredited_seller_id)
-      .map((member) => [Number(member.dummy_owner_accredited_seller_id), member])
-  ), [members])
-  const overrideByRelationship = useMemo(() => new Map(overrides.map((item) => [
-    `${Number(item.child_accredited_seller_id)}:${Number(item.parent_accredited_seller_id)}`,
-    item,
-  ])), [overrides])
-
   const getMemberContext = (member) => {
     const isGroupHead = Number(member.user_id) === Number(group.headUserId)
     const parent = member.parent_accredited_seller_id
@@ -169,14 +159,9 @@ const SellerGroupDetails = () => {
       : !isGroupHead
         ? realMembers.find((candidate) => Number(candidate.user_id) === Number(group.headUserId))
         : null
-    const savedOverride = parent
-      ? overrideByRelationship.get(`${Number(member.accredited_seller_id)}:${Number(parent.accredited_seller_id)}`)
-      : null
     return {
       isGroupHead,
       parent,
-      savedOverride,
-      directSeller: member.role === 'agent' ? member : dummyByOwner.get(Number(member.accredited_seller_id)) || null,
     }
   }
 
@@ -191,21 +176,16 @@ const SellerGroupDetails = () => {
       rateMap.set(Number(memberId), current.sort((left, right) => right - left))
     }
 
-    members.forEach((member) => {
-      if (member.role !== 'agent' || member.direct_rate_status !== 'active') return
-      const recipientId = member.is_system_dummy
-        ? Number(member.dummy_owner_accredited_seller_id || 0)
-        : Number(member.accredited_seller_id)
-      addRate(recipientId, member.direct_rate)
-    })
-
-    overrides.forEach((override) => {
-      if (override.override_rate_status !== 'active') return
-      addRate(override.parent_accredited_seller_id, override.override_rate)
+    realMembers.forEach((member) => {
+      if (member.role === 'agent') {
+        if (member.direct_rate_status === 'active') addRate(member.accredited_seller_id, member.direct_rate)
+        return
+      }
+      if (member.project_rate_status === 'active') addRate(member.accredited_seller_id, member.project_rate)
     })
 
     return rateMap
-  }, [members, overrides])
+  }, [realMembers])
 
   const filteredMembers = useMemo(() => {
     const keyword = memberSearch.trim().toLowerCase()
@@ -217,12 +197,11 @@ const SellerGroupDetails = () => {
         member.full_name,
         member.role,
         context.parent?.display_name,
-        context.directSeller?.display_name,
       ].some((value) => String(value || '').toLowerCase().includes(keyword))
     })
   // getMemberContext is derived entirely from these memoized collections.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [realMembers, memberSearch, memberById, dummyByOwner, overrideByRelationship, group.headUserId])
+  }, [realMembers, memberSearch, memberById, group.headUserId])
 
   const memberTotalPages = Math.max(Math.ceil(filteredMembers.length / memberLimit), 1)
   const currentMemberPage = Math.min(memberPage, memberTotalPages)
@@ -256,18 +235,6 @@ const SellerGroupDetails = () => {
       refreshConnectedQueries()
     },
     onError: (error) => setModalNotice({ type: 'error', message: error?.message || 'Failed to save seller rates.' }),
-  })
-
-  const createDummyMutation = useMutation({
-    mutationFn: ({ ownerId, directRate }) => postJson(`/seller-groups/${groupId}/direct-sales-agents/${ownerId}`, { projectId: selectedProjectId, directRate }),
-    onMutate: () => setModalNotice({ type: 'loading', message: 'Creating direct-sales agent...' }),
-    onSuccess: (result) => {
-      setDummyOwner(null)
-      setModalNotice(null)
-      setAlert({ type: 'success', message: result?.message || 'Direct-sales agent created.' })
-      refreshConnectedQueries()
-    },
-    onError: (error) => setModalNotice({ type: 'error', message: error?.message || 'Failed to create direct-sales agent.' }),
   })
 
   const applyRange = () => {
@@ -306,9 +273,10 @@ const SellerGroupDetails = () => {
           description="Manage accredited projects, member rates, and project sales performance."
           icon={FiUsers}
         />
-        <div className="grid gap-2 sm:grid-cols-3 xl:flex">
+        <div className="grid gap-2 sm:grid-cols-2 xl:flex">
           <NavLink to={groupsPath} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 transition hover:bg-slate-50"><FiArrowLeft />Back to Seller Groups</NavLink>
           <button type="button" onClick={() => { projectOptionsQuery.refetch(); configurationQuery.refetch(); analyticsQuery.refetch() }} disabled={projectOptionsQuery.isFetching || configurationQuery.isFetching || analyticsQuery.isFetching} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"><FiRefreshCw className={projectOptionsQuery.isFetching || configurationQuery.isFetching || analyticsQuery.isFetching ? 'animate-spin' : ''} />Refresh</button>
+          <button type="button" onClick={() => setShowCreateUser(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 text-sm font-black text-blue-700 transition hover:bg-blue-100"><FiUserPlus />Add User</button>
           <button type="button" onClick={() => setShowEditGroupModal(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-black text-white transition hover:bg-blue-700"><FiEdit2 />Edit Group</button>
         </div>
       </div>
@@ -405,10 +373,10 @@ const SellerGroupDetails = () => {
                     const context = getMemberContext(member)
                     return (
                       <tr key={member.accredited_seller_id} className="align-top hover:bg-slate-50">
-                        <td className="px-4 py-4"><p className="font-black text-slate-950">{member.display_name}</p>{context.directSeller && member.role !== 'agent' ? <p className="mt-1 text-xs font-semibold text-blue-600">System direct-sales agent connected</p> : null}</td>
+                        <td className="px-4 py-4"><p className="font-black text-slate-950">{member.display_name}</p></td>
                         <td className="px-4 py-4 font-semibold text-slate-700">{roleLabel(member.role)}</td>
                         <td className="px-4 py-4"><p className="font-semibold text-slate-700">{context.parent?.display_name || (context.isGroupHead ? 'Developer' : 'Not assigned')}</p><p className="text-xs text-slate-500">{context.isGroupHead ? 'Top of hierarchy' : 'Direct parent'}</p></td>
-                        <td className="px-4 py-4"><RatesCell rates={memberRatesById.get(Number(member.accredited_seller_id)) || []} /></td>
+                        <td className="px-4 py-4"><RatesCell rates={memberRatesById.get(Number(member.accredited_seller_id)) || []} role={member.role} /></td>
                         <td className="px-4 py-4"><span className={`rounded-full px-3 py-1 text-xs font-black capitalize ${member.accredited_seller_status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{member.accredited_seller_status}</span></td>
                         <td className="px-4 py-4"><button type="button" onClick={() => openRateEditor(member)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-700 hover:bg-blue-100"><FiEdit2 />Edit Rate</button></td>
                       </tr>
@@ -426,7 +394,7 @@ const SellerGroupDetails = () => {
                   <article key={member.accredited_seller_id} className="rounded-2xl border border-slate-200 p-4">
                     <div className="flex items-start justify-between gap-3"><div><p className="font-black text-slate-950">{member.display_name}</p><p className="text-xs font-semibold text-slate-500">{roleLabel(member.role)}</p></div><span className={`rounded-full px-2.5 py-1 text-xs font-black capitalize ${member.accredited_seller_status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{member.accredited_seller_status}</span></div>
                     <p className="mt-3 text-xs font-bold text-slate-500">Reports under</p><p className="font-semibold text-slate-800">{context.parent?.display_name || (context.isGroupHead ? 'Developer' : 'Not assigned')}</p>
-                    <div className="mt-3"><RatesCell rates={memberRatesById.get(Number(member.accredited_seller_id)) || []} /></div>
+                    <div className="mt-3"><RatesCell rates={memberRatesById.get(Number(member.accredited_seller_id)) || []} role={member.role} /></div>
                     <button type="button" onClick={() => openRateEditor(member)} className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 text-sm font-black text-white"><FiEdit2 />Edit Rate</button>
                   </article>
                 )
@@ -454,33 +422,26 @@ const SellerGroupDetails = () => {
         <MemberRatesModal
           key={`${rateEditor.member.accredited_seller_id}-${selectedProjectId}`}
           member={rateEditor.member}
-          parent={rateEditor.parent}
-          directSeller={rateEditor.directSeller}
-          savedOverride={rateEditor.savedOverride}
           project={project}
-          isGroupHead={rateEditor.isGroupHead}
           isPending={memberRatesMutation.isPending}
           notice={modalNotice}
           onClose={() => { if (!memberRatesMutation.isPending) { setRateEditor(null); setModalNotice(null) } }}
-          onCreateDirectSalesAgent={() => {
-            const owner = rateEditor.member
-            setRateEditor(null)
-            setModalNotice(null)
-            setDummyOwner(owner)
-          }}
           onSubmit={(payload) => memberRatesMutation.mutate({ memberId: rateEditor.member.accredited_seller_id, payload })}
         />
       ) : null}
 
-      {dummyOwner ? (
-        <CreateDirectSalesAgentModal
-          key={`${dummyOwner.accredited_seller_id}-${selectedProjectId}`}
-          owner={dummyOwner}
-          project={project}
-          isPending={createDummyMutation.isPending}
-          notice={modalNotice}
-          onClose={() => { if (!createDummyMutation.isPending) { setDummyOwner(null); setModalNotice(null) } }}
-          onSubmit={({ directRate }) => createDummyMutation.mutate({ ownerId: dummyOwner.accredited_seller_id, directRate })}
+      {showCreateUser ? (
+        <CreateUserModal
+          setShowCreateUser={setShowCreateUser}
+          allowedRoles={['broker_network_manager', 'broker', 'manager', 'agent']}
+          actorRole={isAdmin ? 'admin' : 'super_admin'}
+          initialSellerGroupId={String(group.id || groupId)}
+          lockSellerGroup
+          title={`Add User to ${pageTitle}`}
+          onSaved={(message) => {
+            setAlert({ type: 'success', message })
+            refreshConnectedQueries()
+          }}
         />
       ) : null}
 

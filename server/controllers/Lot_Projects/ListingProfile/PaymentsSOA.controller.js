@@ -56,6 +56,7 @@ import {
   normalizePaymentType,
   getPaymentTypeLabel,
   getRemainingUnpaidScheduleBalance,
+  getBalloonPrincipalCapacity,
   normalizePaymentMethod,
   getNextCashReference,
   mapPaymentRow,
@@ -126,6 +127,31 @@ const validateFullPaymentAmount = async (connection, listing, paymentType, amoun
     throw createHttpError(
       400,
       `Full Payment amount must equal the current unpaid SOA balance of ${money(exactAmount)}.`
+    );
+  }
+};
+
+const validateBalloonPaymentAmount = async (
+  connection,
+  listing,
+  paymentType,
+  amount,
+  excludePaymentId = 0
+) => {
+  if (paymentType !== 'balloon') return;
+
+  const availablePrincipal = await getBalloonPrincipalCapacity(connection, listing, {
+    excludePaymentId,
+  });
+
+  if (availablePrincipal <= 0.009) {
+    throw createHttpError(400, 'There is no remaining financed principal available for a balloon payment.');
+  }
+
+  if (Number(amount || 0) - availablePrincipal > 0.009) {
+    throw createHttpError(
+      400,
+      `Balloon Payment cannot exceed the remaining financed principal of ${money(availablePrincipal)}.`
     );
   }
 };
@@ -230,8 +256,11 @@ export const createLotProjectListingPayment = async (req, res) => {
     await connection.beginTransaction();
 
     if (await tableExists(connection, 'lot_project_payment_schedules')) {
+      await recomputeListingScheduleBalances(connection, listing);
       await refreshListingPenaltyCache(connection, listing, paymentDate);
+      await recomputeListingScheduleBalances(connection, listing);
       await validateFullPaymentAmount(connection, listing, paymentType, amount);
+      await validateBalloonPaymentAmount(connection, listing, paymentType, amount);
     }
 
     const [paymentResult] = await connection.query(
@@ -366,6 +395,7 @@ export const updateLotProjectListingPayment = async (req, res) => {
     if (await tableExists(connection, 'lot_project_payment_schedules')) {
       await refreshListingPenaltyCache(connection, listing, paymentDate);
       await validateFullPaymentAmount(connection, listing, paymentType, amount);
+      await validateBalloonPaymentAmount(connection, listing, paymentType, amount, paymentId);
     }
 
     await connection.query(
@@ -411,6 +441,7 @@ export const updateLotProjectListingPayment = async (req, res) => {
     );
 
     if (await tableExists(connection, 'lot_project_payment_schedules')) {
+      await recomputeListingScheduleBalances(connection, listing);
       await applyPaymentToSchedules(connection, listing, paymentId, scheduleId, amount, paymentDate, referenceId, paymentType);
       await refreshListingPenaltyCache(connection, listing, paymentDate);
       await recomputeListingScheduleBalances(connection, listing);
@@ -813,10 +844,6 @@ export const deleteLotProjectListingPayment = async (req, res) => {
     await connection.beginTransaction();
 
     await reversePaymentAllocations(connection, listing, paymentId);
-    if (await tableExists(connection, 'lot_project_payment_schedules')) {
-      await refreshListingPenaltyCache(connection, listing, todayDateOnly());
-      await recomputeListingScheduleBalances(connection, listing);
-    }
 
     await connection.query(
       `
@@ -829,6 +856,12 @@ export const deleteLotProjectListingPayment = async (req, res) => {
       `,
       [paymentId, project.lot_project_id, listing.lot_project_listing_id]
     );
+
+    if (await tableExists(connection, 'lot_project_payment_schedules')) {
+      await recomputeListingScheduleBalances(connection, listing);
+      await refreshListingPenaltyCache(connection, listing, todayDateOnly());
+      await recomputeListingScheduleBalances(connection, listing);
+    }
 
     await connection.query(
       `

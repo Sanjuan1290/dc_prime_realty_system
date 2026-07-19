@@ -26,8 +26,8 @@ const getListingForPreview = async (connection, projectId, listingLookup) => {
 };
 
 /**
- * Returns only active real or system-owned agents that have a direct rate for
- * the selected project. Managers, brokers, and BNMs never appear directly.
+ * Returns only active real agents that have a sales commission rate for the
+ * selected project. Managers, brokers, and BNMs never appear directly.
  */
 export const getReservationAgents = async (req, res) => {
   const connection = await db.getConnection();

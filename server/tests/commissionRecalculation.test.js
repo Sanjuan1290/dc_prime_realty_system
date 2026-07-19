@@ -30,7 +30,7 @@ test('any released amount, released stage, or receipt locks recalculation', () =
   assert.equal(hasReleasedCommissionActivity({ receiptCount: 1 }), true);
 });
 
-test('agent reporting directly to broker produces agent, broker, and BNM shares', () => {
+test('legacy cumulative distribution can read a historical agent-to-broker chain', () => {
   const chain = [
     seller(1, 'agent', 'Agent One'),
     seller(3, 'broker', 'Broker One'),
@@ -113,6 +113,23 @@ test('direct-agent commission uses explicit relationship overrides', () => {
     ['broker', 'override', 2],
     ['broker_network_manager', 'override', 1],
   ]);
+});
+
+test('current direct-override commission rejects an Agent reporting directly to a Broker', () => {
+  const chain = [
+    seller(1, 'agent', 'Agent One'),
+    seller(3, 'broker', 'Broker One'),
+  ];
+
+  assert.throws(
+    () => buildDirectOverrideDistribution({
+      chain,
+      directRate: 3,
+      overrideRateMap: new Map([['1:3', 2]]),
+      groupPoolRate: 5,
+    }),
+    /can only report under a Manager/i
+  );
 });
 
 test('direct-agent commission rejects a non-agent assignment', () => {

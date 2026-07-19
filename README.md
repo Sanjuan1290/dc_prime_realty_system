@@ -24,6 +24,18 @@ React, Node.js, Express, and MySQL source code for the D&C Prime Realty administ
 - It keeps buyer, payment, SOA, document, and commission records.
 - The backend rejects this transition unless the dedicated action is used.
 
+
+### Seller hierarchy and reservation documents
+
+- Template selection filters the reservation document library instead of adding the full template.
+- Seller Group Details can create a user inside the current group.
+- Reporting follows BNM → Broker → Manager → Agent.
+- Only BNM or Broker accounts can be group heads.
+- Agent project rates are sales rates. Manager, Broker, and BNM project rates are override rates.
+- New reservations require a complete role-valid path from Agent to the group head.
+
+See `ROLE_BASED_SELLER_HIERARCHY_UPDATE.md` for the migration order and behavior.
+
 ## Database setup
 
 ### Fresh database
@@ -75,7 +87,7 @@ npm run dev
 
 Validated for this package:
 
-- Server: 75 tests passed.
+- Server: 119 tests passed.
 - Client: Vite production build completed.
 
 ## Scope note

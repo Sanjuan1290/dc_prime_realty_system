@@ -35,6 +35,9 @@ const NewGroupModal = ({ setShowNewGroupModal, onSaved }) => {
   })
 
   const parentSellers = parentsQuery.data?.data || []
+  const eligibleGroupHeads = parentSellers.filter(
+    (seller) => ['broker_network_manager', 'broker'].includes(seller.role) && !seller.seller_group_id
+  )
   const projects = projectsQuery.data?.data || []
 
   const mutation = useMutation({
@@ -100,7 +103,7 @@ const NewGroupModal = ({ setShowNewGroupModal, onSaved }) => {
                 <span className="text-xs font-black text-slate-700">Group Head</span>
                 <select value={form.seller_group_head_user_id} onChange={(event) => updateForm('seller_group_head_user_id', event.target.value)} disabled={mutation.isPending || parentsQuery.isLoading} className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100">
                   <option value="">No head assigned</option>
-                  {parentSellers.map((seller) => <option key={seller.user_id} value={seller.user_id}>{seller.full_name} · {String(seller.role || '').replaceAll('_', ' ')}</option>)}
+                  {eligibleGroupHeads.map((seller) => <option key={seller.user_id} value={seller.user_id}>{seller.full_name} · {String(seller.role || '').replaceAll('_', ' ')}</option>)}
                 </select>
               </label>
             </div>

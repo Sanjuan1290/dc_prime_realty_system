@@ -17,7 +17,7 @@ import { getInitialClientForm, getPaymentCalculations } from './reserveUtils'
 import { getListingPricingForMode } from '../../../../utils/listingPricing.js'
 import { StepPill } from './ReserveShared'
 import { getBuyerProfileValidationError } from '../../../../utils/buyerProfileValidation'
-import { useFetch } from '../../../../utils/useFetch'
+import { useFetch as fetchApi } from '../../../../utils/useFetch'
 
 const todayISO = () => new Date().toISOString().slice(0, 10)
 
@@ -134,7 +134,7 @@ const ReserveListingModal = ({
     queryFn: () => {
       const params = new URLSearchParams({ limit: '50' })
       if (debouncedAgentSearch) params.set('search', debouncedAgentSearch)
-      return useFetch(`/projects/lot-projects/${projectSlug}/reservation-agents?${params.toString()}`)
+      return fetchApi(`/projects/lot-projects/${projectSlug}/reservation-agents?${params.toString()}`)
     },
     enabled: Boolean(projectSlug && activeStep === 3),
     staleTime: 30_000,
@@ -151,11 +151,6 @@ const ReserveListingModal = ({
     || null
   ), [fetchedAgents, paymentForm.sellerId, selectedAgentSnapshot])
 
-  useEffect(() => {
-    if (!paymentForm.sellerId) return
-    const selected = fetchedAgents.find((agent) => String(agent.id) === String(paymentForm.sellerId))
-    if (selected) setSelectedAgentSnapshot(selected)
-  }, [fetchedAgents, paymentForm.sellerId])
 
   const effectivePaymentForm = useMemo(
     () => ({ ...paymentForm, legalMiscFeeAmount: String(contractPricing.lmfAmount || 0) }),
@@ -171,7 +166,7 @@ const ReserveListingModal = ({
         modeOfPayment: paymentForm.modeOfPayment,
         saleDiscountPercentage: String(paymentForm.saleDiscountPercentage || 0),
       })
-      return useFetch(`/projects/lot-projects/${projectSlug}/commission-preview?${params.toString()}`)
+      return fetchApi(`/projects/lot-projects/${projectSlug}/commission-preview?${params.toString()}`)
     },
     enabled: Boolean(projectSlug && listingLookup && paymentForm.sellerId && activeStep === 3),
     retry: false,
@@ -182,9 +177,24 @@ const ReserveListingModal = ({
 
   const filteredDocuments = useMemo(() => {
     const keyword = searchDocument.trim().toLowerCase()
-    if (!keyword) return documentLibrary
-    return documentLibrary.filter((document) => String(document.name || '').toLowerCase().includes(keyword))
-  }, [documentLibrary, searchDocument])
+    const selectedTemplateDocumentIds = selectedTemplateId
+      ? new Set(
+          templateDocuments
+            .filter((document) => String(document.template_id) === String(selectedTemplateId))
+            .map((document) => Number(document.document_id))
+        )
+      : null
+
+    return documentLibrary.filter((document) => {
+      const documentId = Number(document.document_id || document.id)
+      if (selectedTemplateDocumentIds && !selectedTemplateDocumentIds.has(documentId)) return false
+      if (!keyword) return true
+
+      return `${document.name || ''} ${document.description || ''}`
+        .toLowerCase()
+        .includes(keyword)
+    })
+  }, [documentLibrary, searchDocument, selectedTemplateId, templateDocuments])
 
   const updatePaymentField = (key, value) => {
     // Clear the old hierarchy immediately when another agent is selected.
@@ -246,36 +256,6 @@ const ReserveListingModal = ({
     })
   }
 
-  const loadSelectedTemplate = () => {
-    const template = activeDocumentTemplates.find(
-      (item) => String(item.template_id) === String(selectedTemplateId)
-    )
-    if (!template) {
-      setAlert({ type: 'error', message: 'Select a document template first.' })
-      return
-    }
-
-    const documents = templateDocuments
-      .filter((document) => String(document.template_id) === String(selectedTemplateId))
-      .map((document) => ({
-        ...document,
-        id: document.document_id,
-        document_id: document.document_id,
-        name: document.document_name,
-        description: document.document_description || 'No description',
-        requirement: document.document_is_required ? 'required' : 'optional',
-        status: document.document_status || 'active',
-      }))
-
-    if (!documents.length) {
-      setAlert({ type: 'warning', message: 'The selected template has no active documents.' })
-      return
-    }
-
-    mergeSelectedDocuments(documents)
-    setAlert({ type: 'success', message: `${template.template_name} documents loaded.` })
-  }
-
   const removeDocument = (documentId) => {
     setSelectedDocuments((current) => current.filter(
       (document) => Number(document.document_id || document.id) !== Number(documentId)
@@ -318,7 +298,7 @@ const ReserveListingModal = ({
       return false
     }
     if (Number(selectedAgent.directRate || 0) <= 0) {
-      setAlert({ type: 'error', message: 'The selected agent does not have an active direct rate for this project.' })
+      setAlert({ type: 'error', message: 'The selected agent does not have an active sales commission rate for this project.' })
       return false
     }
     if (previewQuery.isLoading || previewQuery.isFetching) {
@@ -479,7 +459,7 @@ const ReserveListingModal = ({
 
           {activeStep === 1 ? <ReserveClientProfileModal clientForm={clientForm} setClientForm={setClientForm} hasSecondBuyer={hasSecondBuyer} updateBuyerType={updateBuyerType} invalidField={invalidClientField} onFieldChange={handleClientFieldChange} title={mode === 'submission-review' ? 'Submitted Buyer Profile' : 'Client Profile'} description={mode === 'submission-review' ? 'Review the information submitted by the buyer. Admin corrections will be saved with the final reservation.' : undefined} /> : null}
 
-          {activeStep === 2 ? <ReserveDocumentChecklistModal filteredDocuments={filteredDocuments} searchDocument={searchDocument} setSearchDocument={setSearchDocument} selectedDocuments={selectedDocuments} isSaving={isSaving} isLoadingDefaults={isLoadingDocuments} deletingDocId={null} isDocumentAdded={isDocumentAdded} addDocument={addDocument} removeDocument={removeDocument} loadProjectDefaults={loadProjectDefaults} documentTemplates={activeDocumentTemplates} selectedTemplateId={selectedTemplateId} setSelectedTemplateId={setSelectedTemplateId} loadSelectedTemplate={loadSelectedTemplate} /> : null}
+          {activeStep === 2 ? <ReserveDocumentChecklistModal filteredDocuments={filteredDocuments} searchDocument={searchDocument} setSearchDocument={setSearchDocument} selectedDocuments={selectedDocuments} isSaving={isSaving} isLoadingDefaults={isLoadingDocuments} deletingDocId={null} isDocumentAdded={isDocumentAdded} addDocument={addDocument} removeDocument={removeDocument} loadProjectDefaults={loadProjectDefaults} documentTemplates={activeDocumentTemplates} selectedTemplateId={selectedTemplateId} setSelectedTemplateId={setSelectedTemplateId} /> : null}
 
           {activeStep === 3 ? <ReservePaymentTermsModal listing={listing} project={project} tcp={tcp} contractPricing={contractPricing} paymentForm={effectivePaymentForm} updatePaymentField={updatePaymentField} agents={fetchedAgents} selectedAgent={selectedAgent} agentSearch={agentSearch} setAgentSearch={setAgentSearch} isLoadingAgents={agentsQuery.isLoading || agentsQuery.isFetching} agentsError={!projectSlug ? 'Project information is missing.' : agentsQuery.isError ? agentsQuery.error?.message || 'Failed to load sales agents.' : null} commissionPreview={commissionPreview} isLoadingPreview={previewQuery.isLoading || previewQuery.isFetching} previewError={previewQuery.isError ? previewQuery.error?.message || 'Failed to load the commission hierarchy.' : null} /> : null}
         </div>

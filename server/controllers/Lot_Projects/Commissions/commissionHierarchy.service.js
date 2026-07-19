@@ -1,4 +1,5 @@
 import { columnExists, tableExists } from '../_shared/lotProject.shared.js';
+import { validateSellerReportingChain } from '../../System/sellerHierarchyRules.js';
 
 /**
  * Commission release stages are shared by reservation creation and manual
@@ -113,8 +114,16 @@ export const loadCurrentSellerChain = async (connection, accreditedSellerId) => 
     terminalSeller?.seller_group_id || chain[0]?.seller_group_id
   );
 
-  if (headSeller && !seen.has(Number(headSeller.accredited_seller_id))) {
-    chain.push(headSeller);
+  if (headSeller) {
+    const existingHeadIndex = chain.findIndex(
+      (seller) => Number(seller.accredited_seller_id) === Number(headSeller.accredited_seller_id)
+    );
+
+    if (existingHeadIndex >= 0) {
+      chain[existingHeadIndex] = { ...chain[existingHeadIndex], is_group_head: true };
+    } else {
+      chain.push(headSeller);
+    }
   }
 
   return chain;
@@ -336,7 +345,7 @@ export const buildCommissionDistribution = ({
 };
 
 /**
- * New direct-agent model. Agents receive a direct rate. Every parent receives
+ * Role-based commission model. Agents receive a sales commission rate. Every parent receives
  * an explicit override for the relationship to the seller directly below them.
  */
 export const buildDirectOverrideDistribution = ({
@@ -345,13 +354,13 @@ export const buildDirectOverrideDistribution = ({
   overrideRateMap = new Map(),
   groupPoolRate = 0,
   includeZeroRates = true,
+  requireGroupHead = false,
 } = {}) => {
-  if (!chain.length) throw new Error('Assigned seller hierarchy could not be loaded.');
-  if (chain[0]?.role !== 'agent') throw new Error('Only active sales agents can be assigned to a reservation.');
+  validateSellerReportingChain(chain, { requireGroupHead });
 
   const normalizedDirectRate = roundCommissionMoney(directRate);
   if (normalizedDirectRate <= 0) {
-    throw new Error('The assigned sales agent does not have an active direct rate for this project.');
+    throw new Error('The assigned sales agent does not have an active sales commission rate for this project.');
   }
 
   const rows = [{
@@ -451,6 +460,7 @@ export const getReservationCommissionPreview = async (
     overrideRateMap,
     groupPoolRate,
     includeZeroRates: true,
+    requireGroupHead: true,
   });
 
   const allocatedRate = roundCommissionMoney(

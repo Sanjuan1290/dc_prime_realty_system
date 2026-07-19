@@ -8,7 +8,6 @@ import {
   FiCreditCard,
   FiEdit2,
   FiPlus,
-  FiSearch,
   FiSettings,
   FiTrash2,
   FiX,
@@ -64,6 +63,7 @@ const normalizeRows = (rows = []) => {
     scheduleId: Number(row.scheduleId || row.lot_project_payment_schedule_id || row.id || 0),
     dueDate: row.dueDate || row.due_date || '',
     description: row.description || row.payment_description || '',
+    scheduleType: row.scheduleType || row.schedule_type || '',
     beginningBalance: cleanMoney(row.beginningBalance ?? row.beginning_balance),
     dueAmount: cleanMoney(row.dueAmount ?? row.due_amount),
     monthlyAmortizationAmount: cleanMoney(row.monthlyAmortizationAmount ?? row.monthly_amortization_amount ?? row.dueAmount ?? row.due_amount),
@@ -511,7 +511,6 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
   const [deleteAlert, setDeleteAlert] = useState(null)
   const [penaltyReliefRow, setPenaltyReliefRow] = useState(null)
   const [penaltyReliefAlert, setPenaltyReliefAlert] = useState(null)
-  const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
 
@@ -658,22 +657,13 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
     updateSoaTermsMutation.mutate(payload)
   }
 
-  const filteredPayments = useMemo(() => {
-    const keyword = search.trim().toLowerCase()
-
-    return paymentRecords.filter((payment) => {
-      const matchesSearch =
-        !keyword ||
-        `${payment.client} ${payment.unit} ${payment.project} ${payment.type} ${payment.referenceId}`
-          .toLowerCase()
-          .includes(keyword)
-
+  const filteredPayments = useMemo(() => (
+    paymentRecords.filter((payment) => {
       const matchesType = typeFilter === 'all' || payment.type === typeFilter
       const matchesStatus = statusFilter === 'all' || payment.status === statusFilter
-
-      return matchesSearch && matchesType && matchesStatus
+      return matchesType && matchesStatus
     })
-  }, [paymentRecords, search, typeFilter, statusFilter])
+  ), [paymentRecords, typeFilter, statusFilter])
 
   const totalDue = useMemo(
     () => rows.reduce((sum, row) => {
@@ -684,19 +674,24 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
     [rows]
   )
 
-  const totalInterest = useMemo(
-    () => rows.reduce((sum, row) => sum + Number(row.interest || 0), 0),
-    [rows]
-  )
-
-  const totalPenalty = useMemo(
-    () => rows.reduce((sum, row) => sum + Number(row.penalty || 0), 0),
-    [rows]
-  )
-
   const totalPaid = useMemo(
     () => paymentRecords.reduce((sum, payment) => sum + Number(payment.amount || 0), 0),
     [paymentRecords]
+  )
+
+  const balloonPrincipalReduction = useMemo(
+    () => paymentRecords
+      .filter((payment) => String(payment.paymentType || payment.type || '').toLowerCase() === 'balloon')
+      .reduce((sum, payment) => sum + Number(payment.amount || 0), 0),
+    [paymentRecords]
+  )
+
+  const remainingMonthlyTerms = useMemo(
+    () => rows.filter((row) => {
+      const description = String(row.description || '').toLowerCase()
+      return description.includes('monthly') && String(row.status || '').toLowerCase() !== 'cancelled'
+    }).length,
+    [rows]
   )
 
   const remainingBalance = useMemo(() => {
@@ -705,7 +700,6 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
   }, [rows, listing])
 
   const resetFilters = () => {
-    setSearch('')
     setTypeFilter('all')
     setStatusFilter('all')
   }
@@ -842,24 +836,16 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
         </div>
       </div>
 
-      <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
         <SummaryCard label="Payment Records" value={paymentRecords.length} isMoney={false} />
         <SummaryCard label="Verified Collections" value={totalPaid} tone="emerald" />
+        <SummaryCard label="Balloon Principal Reduction" value={balloonPrincipalReduction} tone="blue" />
+        <SummaryCard label="Remaining Monthly Terms" value={remainingMonthlyTerms} isMoney={false} />
         <SummaryCard label="Unpaid Scheduled Due" value={totalDue} tone="blue" />
         <SummaryCard label="Remaining Principal Balance" value={remainingBalance} tone="amber" />
       </div>
 
-      <div className="mt-6 grid gap-3 xl:grid-cols-[1fr_220px_220px_auto]">
-        <label className="relative">
-          <FiSearch className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search client, unit, project, reference..."
-            className="h-11 w-full rounded-xl border border-slate-300 bg-white pl-11 pr-3 text-sm font-semibold text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
-          />
-        </label>
-
+      <div className="mt-6 flex flex-wrap justify-end gap-3">
         <select
           value={typeFilter}
           onChange={(event) => setTypeFilter(event.target.value)}
@@ -1164,21 +1150,25 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
                   </td>
 
                   <td className="px-4 py-3">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPenaltyReliefRow(row)
-                        setPenaltyReliefAlert(null)
-                      }}
-                      disabled={
-                        !row.scheduleId ||
-                        (!row.penaltyReliefs?.length && (!canManagePenaltyRelief || (!row.canGrantPenaltyExtension && !row.canWaivePenalty)))
-                      }
-                      className="inline-flex h-9 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400"
-                    >
-                      <FiClock className="h-3.5 w-3.5" />
-                      {canManagePenaltyRelief ? 'Penalty Relief' : 'Relief History'}
-                    </button>
+                    {row.scheduleType === 'balloon' ? (
+                      <span className="text-xs font-semibold text-slate-400">Not applicable</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPenaltyReliefRow(row)
+                          setPenaltyReliefAlert(null)
+                        }}
+                        disabled={
+                          !row.scheduleId ||
+                          (!row.penaltyReliefs?.length && (!canManagePenaltyRelief || (!row.canGrantPenaltyExtension && !row.canWaivePenalty)))
+                        }
+                        className="inline-flex h-9 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400"
+                      >
+                        <FiClock className="h-3.5 w-3.5" />
+                        {canManagePenaltyRelief ? 'Penalty Relief' : 'Relief History'}
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}

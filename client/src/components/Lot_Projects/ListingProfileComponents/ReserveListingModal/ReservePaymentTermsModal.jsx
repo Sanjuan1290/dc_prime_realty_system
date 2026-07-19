@@ -52,7 +52,7 @@ const AgentPicker = ({
           className="h-11 w-full rounded-xl border border-slate-300 bg-white pl-10 pr-4 text-sm font-semibold text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
         />
       </div>
-      <p className="text-xs font-semibold text-slate-500">Only active agents with a direct rate for this project are available.</p>
+      <p className="text-xs font-semibold text-slate-500">Only active agents with a sales commission rate for this project are available.</p>
 
       {selectedAgent ? (
         <div className="mt-2 flex flex-col gap-2 rounded-xl border border-blue-200 bg-blue-50 p-3 sm:flex-row sm:items-center sm:justify-between">
@@ -65,7 +65,7 @@ const AgentPicker = ({
         <div className="absolute left-0 right-0 top-[74px] z-30 max-h-72 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl">
           {isLoading ? <div className="flex items-center gap-2 px-3 py-4 text-sm font-semibold text-slate-500"><FiLoader className="animate-spin" />Loading available sales agents...</div> : null}
           {error ? <div className="px-3 py-4 text-sm font-semibold text-red-700">{error}</div> : null}
-          {!isLoading && !error && agents.length === 0 ? <div className="px-3 py-5 text-center"><p className="font-black text-slate-700">No active sales agents found.</p><p className="mt-1 text-xs font-semibold text-slate-500">Configure an agent direct rate or create a direct-sales agent from the Seller Group page.</p></div> : null}
+          {!isLoading && !error && agents.length === 0 ? <div className="px-3 py-5 text-center"><p className="font-black text-slate-700">No active sales agents found.</p><p className="mt-1 text-xs font-semibold text-slate-500">Configure the agent’s sales commission rate from the Seller Group page.</p></div> : null}
           {!isLoading && agents.map((agent) => (
             <button
               key={agent.id}

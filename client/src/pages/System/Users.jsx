@@ -19,7 +19,7 @@ import {
 import CreateUserModal from "../../components/System/userComponents/CreateUserModal";
 import EditUserModal from "../../components/System/userComponents/EditUserModal";
 import { formatDateTime } from "../../utils/formatDateTime";
-import { useFetch, useFetchPatch } from "../../utils/useFetch";
+import { useFetch as fetchApi, useFetchPatch as patchApi } from "../../utils/useFetch";
 import { ADMIN_CREATABLE_USER_ROLES, PERMISSIONS, canManageUserRole, hasPermission } from "../../config/permissions";
 
 const roleLabels = {
@@ -125,7 +125,7 @@ const Users = () => {
 
   const { data, isLoading, isFetching, isError, error } = useQuery({
     queryKey: ["users", queryString],
-    queryFn: () => useFetch(`/user/getUsers?${queryString}`),
+    queryFn: () => fetchApi(`/user/getUsers?${queryString}`),
     keepPreviousData: true,
   });
 
@@ -146,7 +146,7 @@ const Users = () => {
   };
 
   const toggleStatusMutation = useMutation({
-    mutationFn: (user) => useFetchPatch(`/user/toggleUserStatus/${user.id}`),
+    mutationFn: (user) => patchApi(`/user/toggleUserStatus/${user.id}`),
     onMutate: (user) => {
       setActiveAction({ type: "status", userId: user.id });
       setAlert({ type: "loading", message: `${user.status === "active" ? "Deactivating" : "Activating"} user...` });
@@ -163,7 +163,7 @@ const Users = () => {
   });
 
   const resetPasswordMutation = useMutation({
-    mutationFn: (user) => useFetchPatch(`/user/resetPassword/${user.id}`, { password: "password" }),
+    mutationFn: (user) => patchApi(`/user/resetPassword/${user.id}`, { password: "password" }),
     onMutate: (user) => {
       setActiveAction({ type: "reset", userId: user.id });
       setAlert({ type: "loading", message: "Resetting password..." });
@@ -395,7 +395,7 @@ const Users = () => {
       </section>
 
       {showCreateUser && canCreateUsers ? <CreateUserModal setShowCreateUser={setShowCreateUser} onSaved={handleSaved} allowedRoles={createAllowedRoles} actorRole={actorRole} /> : null}
-      {showEditUser && selectedUser && canEditUsers && canManageAccount(selectedUser) ? <EditUserModal setShowEditUser={setShowEditUser} selectedUser={selectedUser} onSaved={handleSaved} allowedRoles={getEditAllowedRoles(selectedUser)} actorRole={actorRole} /> : null}
+      {showEditUser && selectedUser && canEditUsers && canManageAccount(selectedUser) ? <EditUserModal key={selectedUser.id} setShowEditUser={setShowEditUser} selectedUser={selectedUser} onSaved={handleSaved} allowedRoles={getEditAllowedRoles(selectedUser)} actorRole={actorRole} /> : null}
       {canResetPasswords ? <ResetPasswordConfirmModal
         user={resetTarget}
         onClose={() => {

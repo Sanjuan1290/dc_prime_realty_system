@@ -14,6 +14,7 @@ import {
 import StatusAlert from '../../../Shared/StatusAlert'
 import EditUnitStatusModal from './EditUnitStatusModal'
 import RecalculateCommissionModal from './RecalculateCommissionModal'
+import CommissionDistribution from './CommissionDistribution'
 
 const fallbackListing = {
   unit_id: '-',
@@ -150,6 +151,12 @@ const UnitStatus = ({
   const [alert, setAlert] = useState(null)
 
   const unitData = useMemo(() => ({ ...fallbackListing, ...listing }), [listing])
+  const commissionRows = useMemo(
+    () => (Array.isArray(unitData.commissionRecalculation?.currentHierarchy)
+      ? unitData.commissionRecalculation.currentHierarchy
+      : []),
+    [unitData.commissionRecalculation]
+  )
 
   const handleSave = async (payload) => {
     try {
@@ -380,7 +387,7 @@ const UnitStatus = ({
 
       <SectionBlock
         title="Seller / Commission"
-        description="Seller assignment and commission summary."
+        description="Assigned seller details and the saved commission distribution for this sale."
         icon={FiBriefcase}
         action={canRecalculateCommission && (unitData.hasClientProfile || unitData.rawStatus === 'sold') ? (
           <button
@@ -394,20 +401,18 @@ const UnitStatus = ({
           </button>
         ) : null}
       >
-        <DetailBox label="Seller" value={unitData.seller} />
+        <DetailBox label="Assigned Seller" value={unitData.seller} />
         <DetailBox label="Seller Role" value={unitData.seller_role} />
+        <DetailBox label="Seller Group" value={unitData.seller_group} />
+        <DetailBox label="Sale Channel" value={unitData.sale_channel} />
         <DetailBox label="Seller Email" value={unitData.seller_email} />
         <DetailBox label="Seller Contact No." value={unitData.seller_contact_no} />
-        <DetailBox label="Seller Group" value={unitData.seller_group} />
-        <DetailBox label="Reports Under" value={unitData.reports_under} />
         <DetailBox label="Seller Status" value={unitData.seller_status} />
         <DetailBox label="Accreditation Date" value={unitData.seller_accreditation_date} />
-        <DetailBox label="Sale Channel" value={unitData.sale_channel} />
-        <DetailBox label="Total Commission Rate" value={unitData.commission_rate} />
-        <DetailBox label="Total Commission" value={unitData.commission_amount} highlight />
-        <DetailBox label="Released Amount" value={unitData.released_amount} />
-        <DetailBox label="Remaining Commission" value={unitData.remaining_commission} />
-        <DetailBox label="Commission Status" value={unitData.commission_status} />
+
+        <div className="sm:col-span-2 xl:col-span-4">
+          <CommissionDistribution rows={commissionRows} />
+        </div>
       </SectionBlock>
 
       <SectionBlock title="Documents" description="Document checklist progress." icon={FiFileText}>

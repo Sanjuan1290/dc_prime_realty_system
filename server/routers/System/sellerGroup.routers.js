@@ -13,8 +13,6 @@ import {
   upsertAgentDirectRate,
   upsertHierarchyOverride,
   updateMemberProjectRates,
-  createDirectSalesAgent,
-  toggleDirectSalesAgentStatus,
 } from '../../controllers/System/sellerGroup.controller.js';
 import { authenticateUser, requirePermission } from '../../middleware/auth.middleware.js';
 import { PERMISSIONS } from '../../config/permissions.js';
@@ -32,8 +30,6 @@ router.patch('/:groupId/projects/:projectId/pool', requirePermission(PERMISSIONS
 router.patch('/:groupId/projects/:projectId/agents/:agentId/direct-rate', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE), upsertAgentDirectRate);
 router.patch('/:groupId/projects/:projectId/children/:childId/override', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE), upsertHierarchyOverride);
 router.patch('/:groupId/projects/:projectId/members/:memberId/rates', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE), updateMemberProjectRates);
-router.post('/:groupId/direct-sales-agents/:ownerId', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE), createDirectSalesAgent);
-router.patch('/:groupId/direct-sales-agents/:dummyId/status', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE), toggleDirectSalesAgentStatus);
 router.get('/:id', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW), viewGroup);
 router.post('/create', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE), createGroup);
 router.put('/edit/:id', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE), editGroup);

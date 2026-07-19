@@ -359,8 +359,29 @@ const getPreservedPaymentPercent = (snapshot = {}) => {
   return Math.max(storedPercent, eligibleTrigger);
 };
 
-const mapCommissionSnapshotRows = (rows = []) =>
-  [...rows]
+const getSnapshotCommissionStatus = (row = {}, releases = []) => {
+  const gross = Number(row.gross_commission_amount || row.grossCommission || 0);
+  const released = releases
+    .filter((release) => release.release_status === 'Released')
+    .reduce((sum, release) => sum + Number(release.net_release_amount || 0), 0);
+
+  if (row.commission_status === 'Cancelled') return 'Cancelled';
+  if (gross > 0 && released >= gross) return 'Released';
+  if (releases.some((release) => release.release_status === 'On Hold')) return 'On Hold';
+  if (releases.some((release) => release.release_status === 'Eligible')) return 'Eligible';
+  if (released > 0) return 'Partially Released';
+  return row.commission_status || 'Pending';
+};
+
+const mapCommissionSnapshotRows = (rows = [], releaseRows = []) => {
+  const releasesByCommission = releaseRows.reduce((map, release) => {
+    const commissionId = Number(release.lot_project_commission_id || 0);
+    if (!map.has(commissionId)) map.set(commissionId, []);
+    map.get(commissionId).push(release);
+    return map;
+  }, new Map());
+
+  return [...rows]
     .sort(
       (left, right) =>
         (commissionRoleOrder[left.commission_role] || 99) -
@@ -368,21 +389,55 @@ const mapCommissionSnapshotRows = (rows = []) =>
         Number(left.lot_project_commission_id || 0) -
           Number(right.lot_project_commission_id || 0)
     )
-    .map((row) => ({
-      commissionId: Number(row.lot_project_commission_id || row.commissionId || 0),
-      accreditedSellerId: Number(row.accredited_seller_id || row.accreditedSellerId || 0),
-      sellerName: row.seller_name || row.sellerName || '-',
-      role: row.commission_role || row.role || '-',
-      roleLabel: formatCommissionRole(row.commission_role || row.role),
-      sellerGroup: row.seller_group_name || '-',
-      reportsUnder: row.reports_under || '-',
-      rate: Number(row.commission_rate ?? row.rate ?? 0),
-      grossCommission: Number(
-        row.gross_commission_amount ?? row.grossCommission ?? 0
-      ),
-      sellerType: row.commission_seller_type || row.sellerType || '-',
-      saleType: row.commission_sale_type || row.saleType || '-',
-    }));
+    .map((row) => {
+      const commissionId = Number(row.lot_project_commission_id || row.commissionId || 0);
+      const releases = releasesByCommission.get(commissionId) || [];
+      const grossCommission = Number(row.gross_commission_amount ?? row.grossCommission ?? 0);
+      const releasedFromMilestones = releases
+        .filter((release) => release.release_status === 'Released')
+        .reduce((sum, release) => sum + Number(release.net_release_amount || 0), 0);
+      const releasedAmount = releases.length
+        ? releasedFromMilestones
+        : Number(row.released_commission_amount ?? row.releasedAmount ?? 0);
+      const eligibleAmount = releases
+        .filter((release) => release.release_status === 'Eligible')
+        .reduce((sum, release) => sum + Number(release.net_release_amount || 0), 0);
+      const cashAdvanceDeduction = releases.reduce(
+        (sum, release) => sum + Number(release.deduction_amount || 0),
+        0
+      );
+      const remainingAmount = Math.max(
+        grossCommission - releasedAmount - cashAdvanceDeduction,
+        0
+      );
+
+      return {
+        commissionId,
+        accreditedSellerId: Number(row.accredited_seller_id || row.accreditedSellerId || 0),
+        sellerName:
+          row.seller_display_name_snapshot || row.seller_name || row.sellerName || '-',
+        role: row.commission_role || row.role || '-',
+        roleLabel: formatCommissionRole(row.commission_role || row.role),
+        sellerGroup:
+          row.seller_group_name_snapshot || row.seller_group_name || row.sellerGroup || '-',
+        reportsUnder: row.reports_under || row.reportsUnder || '-',
+        commissionBase: Number(row.commission_base_amount ?? row.commissionBase ?? 0),
+        rate: Number(row.commission_rate ?? row.rate ?? 0),
+        commissionType:
+          row.commission_rate_type === 'direct' || row.commission_seller_type === 'selling_agent'
+            ? 'Direct'
+            : 'Override',
+        grossCommission,
+        releasedAmount,
+        eligibleAmount,
+        cashAdvanceDeduction,
+        remainingAmount,
+        status: getSnapshotCommissionStatus(row, releases),
+        sellerType: row.commission_seller_type || row.sellerType || '-',
+        saleType: row.commission_sale_type || row.saleType || '-',
+      };
+    });
+};
 
 export const getLotProjectListingProfile = async (req, res) => {
   const connection = await db.getConnection();
@@ -599,7 +654,10 @@ export const getLotProjectListingProfile = async (req, res) => {
         snapshot: commissionSnapshot,
       }),
       // The modal displays the currently saved snapshot before asking for confirmation.
-      currentHierarchy: mapCommissionSnapshotRows(commissionSnapshot.commissionRows),
+      currentHierarchy: mapCommissionSnapshotRows(
+        commissionSnapshot.commissionRows,
+        commissionSnapshot.releaseRows
+      ),
     };
     const sellerName = row.seller_name || '-';
     const canEditBuyerProfile = canEditBuyerProfileForListing(row.lot_project_listing_status);
@@ -808,7 +866,10 @@ export const recalculateLotProjectListingCommission = async (req, res) => {
       listing.lot_project_listing_id,
       { lock: true }
     );
-    const updatedRows = mapCommissionSnapshotRows(updatedSnapshot.commissionRows);
+    const updatedRows = mapCommissionSnapshotRows(
+      updatedSnapshot.commissionRows,
+      updatedSnapshot.releaseRows
+    );
 
     await writeAuditLog(connection, req, {
       action: 'update',

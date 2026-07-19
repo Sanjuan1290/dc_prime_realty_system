@@ -7,7 +7,21 @@ import {
   canActorCreateUserRole,
   canActorManageUserRole,
 } from '../../config/permissions.js';
-import { assertSellerProjectRatesFollowHierarchy } from './sellerRateHierarchy.service.js';
+import {
+  syncChildOverrideFromCurrentParent,
+  syncSellerRoleProjectRates,
+} from './sellerCommissionRates.service.js';
+import {
+  assignTopLevelSellerAsGroupHead,
+  assertGroupCurrentPathsWithinPools,
+  assertSellerGroupRoleHierarchy,
+} from './sellerGroup.controller.js';
+import {
+  getRequiredParentRole,
+  isGroupHeadRole,
+  isSellerRole,
+  SELLER_ROLE_LABELS,
+} from './sellerHierarchyRules.js';
 
 const userRoles = new Set(['super_admin', 'admin', 'broker_network_manager', 'broker', 'manager', 'agent']);
 
@@ -19,9 +33,9 @@ const sellerRoles = new Set([
 ]);
 
 const roleDefaultRates = {
-  broker_network_manager: 8,
-  broker: 7,
-  manager: 5,
+  broker_network_manager: 1,
+  broker: 2,
+  manager: 2,
   agent: 3,
 };
 
@@ -66,6 +80,203 @@ const actorCanChangeTargetRole = (req, currentRole, requestedRole) =>
 
 const validateRequestedRole = (role) => userRoles.has(String(role || ''));
 
+const createValidationError = (message) => {
+  const error = new Error(message);
+  error.statusCode = 400;
+  return error;
+};
+
+const getSellerDependencyState = async (connection, userId) => {
+  if (!userId) return { seller: null, headedGroup: null, directReports: [] };
+
+  const [[sellerRows], [headedRows], [directReports]] = await Promise.all([
+    connection.query(
+      `
+        SELECT
+          seller.accredited_seller_id,
+          seller.seller_group_id,
+          user.role
+        FROM accredited_sellers seller
+        INNER JOIN users user ON user.id = seller.user_id
+        WHERE seller.user_id = ?
+          AND COALESCE(seller.is_system_dummy, 0) = 0
+        LIMIT 1
+      `,
+      [userId]
+    ),
+    connection.query(
+      `SELECT seller_group_id FROM seller_groups WHERE seller_group_head_user_id = ? LIMIT 1`,
+      [userId]
+    ),
+    connection.query(
+      `
+        SELECT
+          child.accredited_seller_id,
+          child.seller_group_id,
+          child_user.role,
+          ${buildFullNameSql('child_user')} AS full_name
+        FROM accredited_sellers child
+        INNER JOIN users child_user ON child_user.id = child.user_id
+        WHERE child.accredited_seller_reports_under_user_id = ?
+          AND COALESCE(child.is_system_dummy, 0) = 0
+      `,
+      [userId]
+    ),
+  ]);
+
+  return {
+    seller: sellerRows[0] || null,
+    headedGroup: headedRows[0] || null,
+    directReports,
+  };
+};
+
+const validateSellerRemovalOrRoleChange = async (connection, userId, requestedRole) => {
+  const dependencies = await getSellerDependencyState(connection, userId);
+  if (!dependencies.seller) return dependencies;
+
+  if (!isSellerRole(requestedRole)) {
+    if (dependencies.headedGroup) {
+      throw createValidationError('Change the seller group head before removing this user from the seller hierarchy.');
+    }
+    if (dependencies.directReports.length) {
+      throw createValidationError('Reassign this seller’s direct reports before changing the account to a non-seller role.');
+    }
+  }
+
+  return dependencies;
+};
+
+const validateSellerHierarchyAssignment = async (
+  connection,
+  {
+    role,
+    sellerGroupId,
+    reportsUnderUserId,
+    userId = null,
+    dependencyState = null,
+  }
+) => {
+  const groupId = toNullableNumber(sellerGroupId);
+  const parentUserId = toNullableNumber(reportsUnderUserId);
+
+  if (!groupId) throw createValidationError('Select a seller group.');
+
+  const [groupRows] = await connection.query(
+    `
+      SELECT
+        group_row.seller_group_id,
+        group_row.seller_group_head_user_id,
+        group_row.seller_group_status,
+        head_user.role AS seller_group_head_role
+      FROM seller_groups group_row
+      LEFT JOIN users head_user ON head_user.id = group_row.seller_group_head_user_id
+      WHERE group_row.seller_group_id = ?
+      LIMIT 1
+    `,
+    [groupId]
+  );
+  const group = groupRows[0];
+  if (!group) throw createValidationError('The selected seller group was not found.');
+  if (group.seller_group_status !== 'active') {
+    throw createValidationError('The selected seller group is inactive.');
+  }
+
+  const dependencies = dependencyState || await getSellerDependencyState(connection, userId);
+  const currentSeller = dependencies.seller;
+  const headedGroup = dependencies.headedGroup;
+
+  if (headedGroup && !isGroupHeadRole(role)) {
+    throw createValidationError('Only a Broker Network Manager or Broker can be the head of a seller group. Change the group head first.');
+  }
+  if (headedGroup && Number(headedGroup.seller_group_id) !== groupId) {
+    throw createValidationError('A group head cannot be moved to another seller group. Change the group head first.');
+  }
+
+  if (
+    currentSeller
+    && Number(currentSeller.seller_group_id || 0) !== groupId
+    && dependencies.directReports.length
+  ) {
+    throw createValidationError('Reassign this seller’s direct reports before moving the seller to another group.');
+  }
+
+  const invalidDirectReport = dependencies.directReports.find(
+    (child) => getRequiredParentRole(child.role) !== role
+  );
+  if (invalidDirectReport) {
+    throw createValidationError(
+      `${invalidDirectReport.full_name || 'A direct report'} is a ${SELLER_ROLE_LABELS[invalidDirectReport.role] || invalidDirectReport.role} and cannot report under a ${SELLER_ROLE_LABELS[role] || role}. Reassign direct reports before changing this role.`
+    );
+  }
+
+  const isCurrentGroupHead = Boolean(userId && Number(group.seller_group_head_user_id) === Number(userId));
+
+  if (role === 'broker_network_manager') {
+    if (parentUserId) throw createValidationError('A Broker Network Manager reports directly to the developer.');
+    const canReplaceBrokerHead = group.seller_group_head_user_id
+      && group.seller_group_head_role === 'broker'
+      && !isCurrentGroupHead;
+    if (group.seller_group_head_user_id && !isCurrentGroupHead && !canReplaceBrokerHead) {
+      throw createValidationError('This group already has a Broker Network Manager as its head.');
+    }
+    return null;
+  }
+
+  if (!parentUserId) {
+    const canBeUnassignedBroker = role === 'broker'
+      && (!group.seller_group_head_user_id || isCurrentGroupHead);
+    if (canBeUnassignedBroker) return null;
+
+    throw createValidationError(
+      `${SELLER_ROLE_LABELS[role] || 'This seller'} must report under a ${SELLER_ROLE_LABELS[getRequiredParentRole(role)] || 'valid parent seller'}.`
+    );
+  }
+
+  if (userId && Number(parentUserId) === Number(userId)) {
+    throw createValidationError('A seller cannot report under themselves.');
+  }
+  if (isCurrentGroupHead) {
+    throw createValidationError('The seller group head reports directly to the developer and cannot have a reporting parent.');
+  }
+
+  const [parentRows] = await connection.query(
+    `
+      SELECT
+        parent_user.id AS user_id,
+        parent_user.role,
+        parent_seller.seller_group_id,
+        parent_user.status AS user_status,
+        parent_seller.accredited_seller_status,
+        COALESCE(parent_seller.is_system_dummy, 0) AS is_system_dummy
+      FROM users parent_user
+      INNER JOIN accredited_sellers parent_seller ON parent_seller.user_id = parent_user.id
+      WHERE parent_user.id = ?
+      LIMIT 1
+    `,
+    [parentUserId]
+  );
+  const parent = parentRows[0];
+  if (!parent || Number(parent.is_system_dummy || 0) === 1) {
+    throw createValidationError('The selected reporting parent was not found.');
+  }
+  if (parent.user_status !== 'active' || parent.accredited_seller_status !== 'active') {
+    throw createValidationError('The selected reporting parent must be active.');
+  }
+  if (Number(parent.seller_group_id) !== groupId) {
+    throw createValidationError('The seller and reporting parent must belong to the same seller group.');
+  }
+
+  const expectedRole = getRequiredParentRole(role);
+  if (parent.role !== expectedRole) {
+    throw createValidationError(
+      `${SELLER_ROLE_LABELS[role] || 'This seller'} can only report under a ${SELLER_ROLE_LABELS[expectedRole] || 'valid parent seller'}.`
+    );
+  }
+
+  return parentUserId;
+};
+
 const getActiveLotProjects = async (connection = db) => {
   const [projects] = await connection.query(`
     SELECT
@@ -85,17 +296,25 @@ const normalizeProjectRates = (projectRates = [], projects = [], defaultRate = 0
   const rateMap = new Map(
     Array.isArray(projectRates)
       ? projectRates
-          .map((item) => [Number(item.lot_project_id), Number(item.accredited_seller_project_rate ?? item.rate ?? item.seller_rate ?? defaultRate)])
-          .filter(([projectId, rate]) => projectId && !Number.isNaN(rate))
+          .map((item) => [
+            Number(item.lot_project_id),
+            {
+              rate: Number(item.accredited_seller_project_rate ?? item.rate ?? item.seller_rate ?? defaultRate),
+              status: item.accredited_seller_lot_project_rate_status === 'inactive' ? 'inactive' : 'active',
+            },
+          ])
+          .filter(([projectId, entry]) => projectId && !Number.isNaN(entry.rate))
       : []
   );
 
-  return projects.map((project) => ({
-    lot_project_id: Number(project.lot_project_id),
-    accredited_seller_project_rate: rateMap.has(Number(project.lot_project_id))
-      ? Number(rateMap.get(Number(project.lot_project_id)))
-      : defaultRate,
-  }));
+  return projects.map((project) => {
+    const current = rateMap.get(Number(project.lot_project_id));
+    return {
+      lot_project_id: Number(project.lot_project_id),
+      accredited_seller_project_rate: current ? Number(current.rate) : defaultRate,
+      accredited_seller_lot_project_rate_status: current?.status || 'active',
+    };
+  });
 };
 
 const upsertAccreditedProjectRates = async (connection, accreditedSellerId, projectRates) => {
@@ -108,15 +327,16 @@ const upsertAccreditedProjectRates = async (connection, accreditedSellerId, proj
         lot_project_id,
         accredited_seller_project_rate,
         accredited_seller_lot_project_rate_status
-      ) VALUES ${projectRates.map(() => '(?, ?, ?, "active")').join(', ')}
+      ) VALUES ${projectRates.map(() => '(?, ?, ?, ?)').join(', ')}
       ON DUPLICATE KEY UPDATE
         accredited_seller_project_rate = VALUES(accredited_seller_project_rate),
-        accredited_seller_lot_project_rate_status = 'active'
+        accredited_seller_lot_project_rate_status = VALUES(accredited_seller_lot_project_rate_status)
     `,
     projectRates.flatMap((rate) => [
       accreditedSellerId,
       rate.lot_project_id,
       Number(rate.accredited_seller_project_rate || 0),
+      rate.accredited_seller_lot_project_rate_status === 'inactive' ? 'inactive' : 'active',
     ])
   );
 };
@@ -642,6 +862,14 @@ export const createUser = async (req, res) => {
       return denyUserManagement(res, 'Admin can create seller accounts only. Admin and Super Admin accounts can only be created by a Super Admin.');
     }
 
+    const normalizedReportsUnderUserId = sellerRoles.has(role)
+      ? await validateSellerHierarchyAssignment(connection, {
+          role,
+          sellerGroupId: seller_group_id,
+          reportsUnderUserId: reports_under_user_id,
+        })
+      : null;
+
     await connection.beginTransaction();
 
     const passwordHash = await bcrypt.hash(String(password), 10);
@@ -695,7 +923,7 @@ export const createUser = async (req, res) => {
         [
           userId,
           toNullableNumber(seller_group_id),
-          role === 'broker_network_manager' ? null : toNullableNumber(reports_under_user_id),
+          normalizedReportsUnderUserId,
           accreditation_date || new Date().toISOString().slice(0, 10),
           normalizeStatus(status),
         ]
@@ -705,11 +933,15 @@ export const createUser = async (req, res) => {
       const projects = await getActiveLotProjects(connection);
       const normalizedRates = normalizeProjectRates(project_rates, projects, getRoleDefaultRate(role));
 
-      // New seller rates must already fit the selected reporting hierarchy.
-      // The transaction is rolled back when a child rate exceeds its parent.
-      await assertSellerProjectRatesFollowHierarchy(connection, accreditedSellerId, normalizedRates);
       await upsertAccreditedProjectRates(connection, accreditedSellerId, normalizedRates);
-      await syncManagedSellerLink(connection, accreditedSellerId, role === 'broker_network_manager' ? null : toNullableNumber(reports_under_user_id));
+      if (isGroupHeadRole(role) && !normalizedReportsUnderUserId) {
+        await assignTopLevelSellerAsGroupHead(connection, Number(seller_group_id), userId);
+      }
+      await syncSellerRoleProjectRates(connection, accreditedSellerId, role, normalizedRates);
+      await syncChildOverrideFromCurrentParent(connection, accreditedSellerId);
+      await syncManagedSellerLink(connection, accreditedSellerId, normalizedReportsUnderUserId);
+      await assertSellerGroupRoleHierarchy(connection, Number(seller_group_id));
+      await assertGroupCurrentPathsWithinPools(connection, Number(seller_group_id));
     }
 
     await writeAuditLog(connection, req, {
@@ -720,7 +952,7 @@ export const createUser = async (req, res) => {
       entityLabel: `${first_name.trim()} ${last_name.trim()}`,
       title: 'Created user account',
       description: `Created account for ${first_name.trim()} ${last_name.trim()} (${email.trim()}).`,
-      metadata: { role, status: normalizeStatus(status), seller_group_id, reports_under_user_id },
+      metadata: { role, status: normalizeStatus(status), seller_group_id, reports_under_user_id: normalizedReportsUnderUserId },
     });
 
     if (accreditedSellerId) {
@@ -732,7 +964,7 @@ export const createUser = async (req, res) => {
         entityLabel: `${first_name.trim()} ${last_name.trim()}`,
         title: 'Accredited seller',
         description: `Accredited ${first_name.trim()} ${last_name.trim()} as ${role}.`,
-        metadata: { role, status: normalizeStatus(status), seller_group_id, reports_under_user_id },
+        metadata: { role, status: normalizeStatus(status), seller_group_id, reports_under_user_id: normalizedReportsUnderUserId },
       });
     }
 
@@ -797,6 +1029,18 @@ export const editUser = async (req, res) => {
       );
     }
 
+    const dependencyState = await validateSellerRemovalOrRoleChange(connection, userId, role);
+    const normalizedReportsUnderUserId = sellerRoles.has(role)
+      ? await validateSellerHierarchyAssignment(connection, {
+          role,
+          sellerGroupId: seller_group_id,
+          reportsUnderUserId: reports_under_user_id,
+          userId,
+          dependencyState,
+        })
+      : null;
+    const previousSellerGroupId = Number(dependencyState.seller?.seller_group_id || 0);
+
     await connection.beginTransaction();
 
     await connection.query(
@@ -851,7 +1095,7 @@ export const editUser = async (req, res) => {
         [
           userId,
           toNullableNumber(seller_group_id),
-          role === 'broker_network_manager' ? null : toNullableNumber(reports_under_user_id),
+          normalizedReportsUnderUserId,
           accreditation_date || new Date().toISOString().slice(0, 10),
           normalizeStatus(status),
         ]
@@ -866,13 +1110,22 @@ export const editUser = async (req, res) => {
       const projects = await getActiveLotProjects(connection);
       const normalizedRates = normalizeProjectRates(project_rates, projects, getRoleDefaultRate(role));
 
-      // New seller rates must already fit the selected reporting hierarchy.
-      // The transaction is rolled back when a child rate exceeds its parent.
-      await assertSellerProjectRatesFollowHierarchy(connection, accreditedSellerId, normalizedRates);
       await upsertAccreditedProjectRates(connection, accreditedSellerId, normalizedRates);
-      await syncManagedSellerLink(connection, accreditedSellerId, role === 'broker_network_manager' ? null : toNullableNumber(reports_under_user_id));
+      if (isGroupHeadRole(role) && !normalizedReportsUnderUserId) {
+        await assignTopLevelSellerAsGroupHead(connection, Number(seller_group_id), userId);
+      }
+      await syncSellerRoleProjectRates(connection, accreditedSellerId, role, normalizedRates);
+      await syncChildOverrideFromCurrentParent(connection, accreditedSellerId);
+      await syncManagedSellerLink(connection, accreditedSellerId, normalizedReportsUnderUserId);
+      await assertSellerGroupRoleHierarchy(connection, Number(seller_group_id));
+      await assertGroupCurrentPathsWithinPools(connection, Number(seller_group_id));
     } else {
       await connection.query(`DELETE FROM accredited_sellers WHERE user_id = ?`, [userId]);
+    }
+
+    if (previousSellerGroupId && previousSellerGroupId !== Number(seller_group_id || 0)) {
+      await assertSellerGroupRoleHierarchy(connection, previousSellerGroupId);
+      await assertGroupCurrentPathsWithinPools(connection, previousSellerGroupId);
     }
 
     await writeAuditLog(connection, req, {
@@ -883,7 +1136,7 @@ export const editUser = async (req, res) => {
       entityLabel: `${first_name.trim()} ${last_name.trim()}`,
       title: 'Updated user account',
       description: `Updated account for ${first_name.trim()} ${last_name.trim()} (${email.trim()}).`,
-      metadata: { role, status: normalizeStatus(status), seller_group_id, reports_under_user_id },
+      metadata: { role, status: normalizeStatus(status), seller_group_id, reports_under_user_id: normalizedReportsUnderUserId },
     });
 
     if (accreditedSellerId) {
@@ -895,7 +1148,7 @@ export const editUser = async (req, res) => {
         entityLabel: `${first_name.trim()} ${last_name.trim()}`,
         title: 'Updated accreditation',
         description: `Updated accreditation for ${first_name.trim()} ${last_name.trim()}.`,
-        metadata: { role, status: normalizeStatus(status), seller_group_id, reports_under_user_id },
+        metadata: { role, status: normalizeStatus(status), seller_group_id, reports_under_user_id: normalizedReportsUnderUserId },
       });
     }
 

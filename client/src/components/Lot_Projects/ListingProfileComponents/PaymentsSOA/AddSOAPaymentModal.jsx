@@ -203,6 +203,26 @@ const AddSOAPaymentModal = ({
     [rows, isEdit, initialPayment?.amount]
   )
 
+  const balloonPrincipalCapacity = useMemo(() => {
+    const remainingMonthlyPrincipal = rows.reduce((sum, row) => {
+      const description = String(row.description || '').toLowerCase()
+      const status = String(row.status || '').toLowerCase()
+      if (!description.includes('monthly') || status === 'cancelled') return sum
+
+      const principal = Number(row.principalAmount || row.principal_amount || 0)
+      const principalPaid = Number(row.paidPrincipalAmount || row.paid_principal_amount || 0)
+      return sum + Math.max(principal - principalPaid, 0)
+    }, 0)
+
+    const editingBalloonAmount = isEdit && normalizePaymentType(
+      initialPayment?.paymentType || initialPayment?.type
+    ) === 'Balloon'
+      ? Number(initialPayment?.amount || 0)
+      : 0
+
+    return Math.max(remainingMonthlyPrincipal + editingBalloonAmount, 0)
+  }, [initialPayment, isEdit, rows])
+
   const suggestedAmount = useMemo(() => {
     if (isFullPayment) return fullPaymentAmount
     if (isBalloonPayment || !selectedRow) return 0
@@ -314,6 +334,14 @@ const AddSOAPaymentModal = ({
       return
     }
 
+    if (isBalloonPayment && paymentAmount - balloonPrincipalCapacity > 0.009) {
+      setAlert({
+        type: 'error',
+        message: `Balloon Payment cannot exceed the remaining financed principal of ${money(balloonPrincipalCapacity)}.`,
+      })
+      return
+    }
+
     if (form.paymentDate > todayISO()) {
       setAlert({ type: 'error', message: 'Future payment dates are blocked.' })
       return
@@ -419,9 +447,11 @@ const AddSOAPaymentModal = ({
 
           <div className="mb-5 grid gap-3 md:grid-cols-3">
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-xs font-black uppercase text-slate-500">{isFullPayment ? 'Full Remaining Amount' : 'Due Amount'}</p>
+              <p className="text-xs font-black uppercase text-slate-500">
+                {isFullPayment ? 'Full Remaining Amount' : isBalloonPayment ? 'Available Monthly Principal' : 'Due Amount'}
+              </p>
               <p className="mt-1 text-lg font-black text-slate-950">
-                {money(isFullPayment ? fullPaymentAmount : getRowTotalDue(selectedRow))}
+                {money(isFullPayment ? fullPaymentAmount : isBalloonPayment ? balloonPrincipalCapacity : getRowTotalDue(selectedRow))}
               </p>
             </div>
 
@@ -493,7 +523,7 @@ const AddSOAPaymentModal = ({
                 isFullPayment
                   ? `Auto-filled from the complete unpaid SOA balance: ${money(fullPaymentAmount)}.`
                   : isBalloonPayment
-                    ? 'Balloon amount will be deducted from principal, not from a scheduled monthly row.'
+                    ? `Direct principal reduction. Maximum available: ${money(balloonPrincipalCapacity)}. The regular monthly amount stays the same while the final monthly rows are removed.`
                     : `Suggested unpaid amount: ${money(suggestedAmount)}`
               }
               disabled={isFullPayment}

@@ -6,22 +6,10 @@ import {
   FiEyeOff,
   FiLock,
   FiRefreshCw,
-  FiUsers,
   FiX,
 } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
-
-const money = (value) =>
-  new Intl.NumberFormat('en-PH', {
-    style: 'currency',
-    currency: 'PHP',
-    minimumFractionDigits: 2,
-  }).format(Number(value || 0))
-
-const roleLabel = (value) =>
-  String(value || '-')
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, (character) => character.toUpperCase())
+import CommissionDistribution from './CommissionDistribution'
 
 /**
  * Confirms rebuilding the unit commission from the assigned seller's current
@@ -136,7 +124,7 @@ const RecalculateCommissionModal = ({
             message={commissionState.reason || 'Commission release status could not be verified.'}
           />
 
-          <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <section className="grid gap-3 sm:grid-cols-3">
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">Unit</p>
               <p className="mt-1 text-sm font-black text-slate-950">{unitId}</p>
@@ -148,71 +136,18 @@ const RecalculateCommissionModal = ({
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">Current Rows</p>
+              <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">Saved Recipients</p>
               <p className="mt-1 text-sm font-black text-slate-950">
                 {Number(commissionState.commissionCount || currentHierarchy.length || 0)}
               </p>
             </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">Released Amount</p>
-              <p className="mt-1 text-sm font-black text-slate-950">
-                {money(commissionState.releasedAmount)}
-              </p>
-            </div>
           </section>
 
-          <section className="overflow-hidden rounded-2xl border border-slate-200">
-            <div className="flex items-center gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3">
-              <FiUsers className="h-4 w-4 text-blue-700" />
-              <div>
-                <h3 className="text-sm font-black text-slate-950">Current Saved Hierarchy</h3>
-                <p className="text-xs font-semibold text-slate-500">
-                  These unreleased rows will be replaced by the current seller hierarchy.
-                </p>
-              </div>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="min-w-[760px] w-full text-sm">
-                <thead className="border-b border-slate-200 bg-white">
-                  <tr>
-                    {['Seller', 'Role', 'Reports Under', 'Rate', 'Commission'].map((heading) => (
-                      <th
-                        key={heading}
-                        className="px-4 py-3 text-left text-[10px] font-black uppercase tracking-wide text-slate-500"
-                      >
-                        {heading}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-
-                <tbody className="divide-y divide-slate-100">
-                  {currentHierarchy.length ? (
-                    currentHierarchy.map((row) => (
-                      <tr key={row.commissionId || `${row.accreditedSellerId}-${row.role}`} className="hover:bg-slate-50">
-                        <td className="px-4 py-3">
-                          <p className="font-black text-slate-950">{row.sellerName || '-'}</p>
-                          <p className="mt-0.5 text-xs font-semibold text-slate-500">{row.sellerGroup || 'No group'}</p>
-                        </td>
-                        <td className="px-4 py-3 font-semibold text-slate-700">{row.roleLabel || roleLabel(row.role)}</td>
-                        <td className="px-4 py-3 font-semibold text-slate-600">{row.reportsUnder || '-'}</td>
-                        <td className="px-4 py-3 font-black text-blue-700">{Number(row.rate || 0).toFixed(2)}%</td>
-                        <td className="px-4 py-3 font-black text-slate-950">{money(row.grossCommission)}</td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan={5} className="px-5 py-10 text-center text-sm font-semibold text-slate-500">
-                        No saved commission hierarchy exists for this unit yet.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </section>
+          <CommissionDistribution
+            rows={currentHierarchy}
+            title="Current Saved Commission Distribution"
+            description="These unreleased commission rows will be replaced using the seller's current reporting hierarchy."
+          />
 
           <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
             <div className="flex items-start gap-3">

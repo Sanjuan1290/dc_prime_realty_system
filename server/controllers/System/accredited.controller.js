@@ -297,6 +297,7 @@ export const getParentSellers = async (req, res) => {
       INNER JOIN users u ON u.id = a.user_id
       WHERE u.status = 'active'
         AND a.accredited_seller_status = 'active'
+        AND COALESCE(a.is_system_dummy, 0) = 0
         AND u.role IN ('broker_network_manager', 'broker', 'manager')
       ORDER BY FIELD(u.role, 'broker_network_manager', 'broker', 'manager'), full_name ASC
     `);

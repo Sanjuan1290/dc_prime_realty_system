@@ -25,12 +25,21 @@ const roleLabels = {
 };
 
 const getRoleDefaultRate = (role) => {
-  if (role === "broker_network_manager") return 8;
-  if (role === "broker") return 7;
-  if (role === "manager") return 5;
+  if (role === "broker_network_manager") return 1;
+  if (role === "broker") return 2;
+  if (role === "manager") return 2;
   if (role === "agent") return 3;
   return 0;
 };
+
+const getProjectRateLabel = (role) =>
+  role === "agent" ? "Sales Commission Rate" : "Override Commission Rate";
+
+const getRequiredParentRole = (role) => ({
+  broker: "broker_network_manager",
+  manager: "broker",
+  agent: "manager",
+}[role] || "");
 
 const normalizeProjectRates = (
   projects = [],
@@ -50,6 +59,8 @@ const normalizeProjectRates = (
       lot_project_name: project.lot_project_name || project.label,
       lot_project_location_code: project.lot_project_location_code,
       [valueKey]: String(current?.[valueKey] ?? current?.rate ?? defaultRate),
+      accredited_seller_lot_project_rate_status:
+        current?.accredited_seller_lot_project_rate_status || current?.rate_status || current?.status || "active",
     };
   });
 };
@@ -78,6 +89,14 @@ const getInitialProjectRateValues = (user = {}) =>
     (user.project_rates || []).map((rate) => [
       Number(rate.lot_project_id),
       String(rate.accredited_seller_project_rate ?? rate.rate ?? ""),
+    ])
+  );
+
+const getInitialProjectRateStatuses = (user = {}) =>
+  Object.fromEntries(
+    (user.project_rates || []).map((rate) => [
+      Number(rate.lot_project_id),
+      rate.accredited_seller_lot_project_rate_status || rate.rate_status || "active",
     ])
   );
 
@@ -236,13 +255,10 @@ const EditUserModal = ({ setShowEditUser, selectedUser, onSaved, allowedRoles = 
   const [projectRateValues, setProjectRateValues] = useState(() =>
     getInitialProjectRateValues(selectedUser)
   );
+  const [projectRateStatuses] = useState(() =>
+    getInitialProjectRateStatuses(selectedUser)
+  );
 
-  useEffect(() => {
-    setForm(getInitialForm(selectedUser));
-    setProjectRateValues(getInitialProjectRateValues(selectedUser));
-    setActiveStep(1);
-    setWarning("");
-  }, [selectedUser]);
 
   const {
     data: groupData,
@@ -279,6 +295,10 @@ const EditUserModal = ({ setShowEditUser, selectedUser, onSaved, allowedRoles = 
   const lotProjects = useMemo(() => projectData?.data || [], [projectData?.data]);
   const isSellerRole = sellerRoles.includes(form.role);
   const totalSteps = isSellerRole ? 2 : 1;
+  const selectedGroup = useMemo(
+    () => sellerGroups.find((group) => Number(group.seller_group_id) === Number(form.seller_group_id)) || null,
+    [sellerGroups, form.seller_group_id]
+  );
 
   const projectRates = useMemo(() => {
     if (!isSellerRole) return [];
@@ -286,6 +306,7 @@ const EditUserModal = ({ setShowEditUser, selectedUser, onSaved, allowedRoles = 
     const existingRates = Object.entries(projectRateValues).map(([projectId, rate]) => ({
       lot_project_id: Number(projectId),
       accredited_seller_project_rate: rate,
+      accredited_seller_lot_project_rate_status: projectRateStatuses[Number(projectId)] || "active",
     }));
 
     return normalizeProjectRates(
@@ -293,7 +314,7 @@ const EditUserModal = ({ setShowEditUser, selectedUser, onSaved, allowedRoles = 
       existingRates,
       getRoleDefaultRate(form.role)
     );
-  }, [form.role, isSellerRole, lotProjects, projectRateValues]);
+  }, [form.role, isSellerRole, lotProjects, projectRateStatuses, projectRateValues]);
 
   const allowedParents = useMemo(() => {
     if (!isSellerRole || form.role === "broker_network_manager") return [];
@@ -301,22 +322,27 @@ const EditUserModal = ({ setShowEditUser, selectedUser, onSaved, allowedRoles = 
     return parentSellers.filter((seller) => {
       if (Number(seller.user_id) === Number(selectedUser?.id)) return false;
 
-      if (
-        form.seller_group_id &&
-        seller.seller_group_id &&
-        Number(seller.seller_group_id) !== Number(form.seller_group_id)
-      ) {
+      if (!form.seller_group_id || Number(seller.seller_group_id) !== Number(form.seller_group_id)) {
         return false;
       }
 
-      if (form.role === "broker") return seller.role === "broker_network_manager";
-      if (form.role === "manager") {
-        return seller.role === "broker" || seller.role === "broker_network_manager";
-      }
-
-      return ["manager", "broker", "broker_network_manager"].includes(seller.role);
+      return seller.role === getRequiredParentRole(form.role);
     });
   }, [form.role, form.seller_group_id, isSellerRole, parentSellers, selectedUser?.id]);
+
+  const isSelectedUserGroupHead = Number(selectedGroup?.seller_group_head_user_id || 0) === Number(selectedUser?.id || 0);
+  const groupHasHead = Boolean(selectedGroup?.seller_group_head_user_id);
+  const groupHeadRole = selectedGroup?.seller_group_head_role || '';
+  const canReplaceBrokerHead = form.role === "broker_network_manager"
+    && groupHeadRole === "broker"
+    && !isSelectedUserGroupHead;
+  const roleConflictsWithGroupHead = form.role === "broker_network_manager"
+    && groupHasHead
+    && !isSelectedUserGroupHead
+    && !canReplaceBrokerHead;
+  const canLeaveParentEmpty = (form.role === "broker_network_manager" && (!groupHasHead || isSelectedUserGroupHead || canReplaceBrokerHead))
+    || (form.role === "broker" && (isSelectedUserGroupHead || !groupHasHead));
+  const parentIsRequired = isSellerRole && !canLeaveParentEmpty;
 
   const groupOptions = useMemo(
     () =>
@@ -395,8 +421,13 @@ const EditUserModal = ({ setShowEditUser, selectedUser, onSaved, allowedRoles = 
       return false;
     }
 
-    if (form.role === "agent" && !form.reports_under_user_id) {
-      setWarning("Select who this agent reports under.");
+    if (roleConflictsWithGroupHead) {
+      setWarning("This group already has a Broker Network Manager as its head.");
+      return false;
+    }
+
+    if (parentIsRequired && !form.reports_under_user_id) {
+      setWarning(`${roleLabels[form.role]} must report under a ${roleLabels[getRequiredParentRole(form.role)]}.`);
       return false;
     }
 
@@ -659,16 +690,16 @@ const EditUserModal = ({ setShowEditUser, selectedUser, onSaved, allowedRoles = 
                     value={form.reports_under_user_id}
                     options={parentOptions}
                     onChange={(value) => updateForm("reports_under_user_id", value)}
-                    placeholder={form.role === "broker_network_manager" ? "Not applicable" : "Select parent seller"}
+                    placeholder={form.role === "broker_network_manager" ? "Direct to Developer" : `Select ${roleLabels[getRequiredParentRole(form.role)] || "parent seller"}`}
                     searchPlaceholder="Search name or role..."
-                    emptyOptionLabel={form.role === "agent" ? undefined : "Direct to Developer / None"}
+                    emptyOptionLabel={canLeaveParentEmpty && form.role !== "broker_network_manager" ? "Direct to Developer / None" : undefined}
                     emptyText={
                       form.seller_group_id
                         ? "No eligible parent seller matches your search."
                         : "Select a seller group first."
                     }
                     disabled={!form.seller_group_id || form.role === "broker_network_manager"}
-                    required={form.role === "agent"}
+                    required={parentIsRequired}
                   />
 
                   <label className="flex flex-col gap-2">
@@ -680,13 +711,17 @@ const EditUserModal = ({ setShowEditUser, selectedUser, onSaved, allowedRoles = 
                 <div className="mt-5 border-t border-blue-100 pt-5">
                   <div className="mb-3">
                     <h5 className="text-sm font-black text-slate-900">Project Commission Rates</h5>
-                    <p className="text-xs font-semibold text-slate-500">Set the seller rate for each active lot project.</p>
+                    <p className="text-xs font-semibold text-slate-500">
+                      {form.role === "agent"
+                        ? "Set the sales commission paid directly to this agent for each project."
+                        : "Set the override commission paid to this seller when they appear in the hierarchy."}
+                    </p>
                   </div>
 
                   <div className="grid gap-4 md:grid-cols-3">
                     {projectRates.map((rate) => (
                       <label key={rate.lot_project_id} className="flex flex-col gap-2">
-                        <p className="text-sm font-bold text-slate-700">{rate.lot_project_name} Rate</p>
+                        <p className="text-sm font-bold text-slate-700">{rate.lot_project_name} {getProjectRateLabel(form.role)}</p>
                         <div className="relative">
                           <input type="number" min="0" max="15" step="0.01" value={rate.accredited_seller_project_rate} onChange={(event) => updateProjectRate(rate.lot_project_id, event.target.value)} placeholder="Example: 3" className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 pr-9 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" />
                           <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500">%</span>
