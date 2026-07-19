@@ -93,17 +93,21 @@ const PaymentLogs = () => {
         </button>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-3">
+      <section className="grid gap-4 md:grid-cols-4">
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <p className="text-sm font-black text-slate-500">Total Log Entries</p>
           <p className="mt-3 text-2xl font-black text-slate-950">{isLoading ? '...' : stats.total || 0}</p>
         </div>
-        <div className="rounded-2xl border border-slate-200 bg-blue-50 p-5 text-blue-700 shadow-sm">
-          <p className="text-sm font-black text-slate-500">Logged Payment Amount</p>
-          <p className="mt-3 text-2xl font-black">{isLoading ? '...' : money(stats.amount || 0)}</p>
+        <div className="rounded-2xl border border-slate-200 bg-green-50 p-5 text-amber-700 shadow-sm">
+          <p className="text-sm font-black text-green-800">Created Logs</p>
+          <p className="mt-3 text-2xl font-black">{isLoading ? '...' : Number(stats.created || 0)}</p>
         </div>
-        <div className="rounded-2xl border border-slate-200 bg-amber-50 p-5 text-amber-700 shadow-sm">
-          <p className="text-sm font-black text-slate-500">Deleted Logs</p>
+        <div className="rounded-2xl border border-slate-200 bg-blue-50 p-5 text-amber-700 shadow-sm">
+          <p className="text-sm font-black text-blue-500">Updated Logs</p>
+          <p className="mt-3 text-2xl font-black">{isLoading ? '...' : Number(stats.updated || 0)}</p>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-red-50 p-5 text-amber-700 shadow-sm">
+          <p className="text-sm font-black text-red-500">Deleted Logs</p>
           <p className="mt-3 text-2xl font-black">{isLoading ? '...' : Number(stats.deleted || 0)}</p>
         </div>
       </section>
