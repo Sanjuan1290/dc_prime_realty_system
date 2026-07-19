@@ -1355,7 +1355,6 @@ export const getLotProjectPriceList = async (req, res) => {
       `
         SELECT
           l.*,
-          ${effectiveTcpExpr} AS lot_project_listing_tcp,
           ${cadastralSelect}
           NULL AS buyer_full_name,
           0 AS listing_document_count,

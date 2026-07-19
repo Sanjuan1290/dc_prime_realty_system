@@ -3,14 +3,15 @@ import { useQuery } from '@tanstack/react-query'
 import { useParams } from 'react-router-dom'
 import PrintPageShell from './PrintPageShell'
 import { money, formatDate } from './printUtils'
-import { useFetch } from '../../../../utils/useFetch'
+import { useFetch as fetchJson } from '../../../../utils/useFetch'
+
+const STRAIGHT_PAYMENT_MONTHS = 20
 
 const numberValue = (value) =>
   new Intl.NumberFormat('en-PH', {
     maximumFractionDigits: 2,
     minimumFractionDigits: 0,
   }).format(Number(value || 0))
-
 
 const todayDateOnly = () =>
   new Intl.DateTimeFormat('en-CA', {
@@ -24,8 +25,42 @@ const statusTone = (status = '') => {
   const value = String(status || '').toLowerCase()
   if (value.includes('available')) return 'text-emerald-700'
   if (value.includes('hold')) return 'text-amber-700'
+  if (value.includes('pending')) return 'text-orange-700'
   if (value.includes('cancel')) return 'text-red-700'
-  return 'text-blue-700'
+  if (value.includes('fully paid')) return 'text-violet-700'
+  if (value.includes('sold')) return 'text-blue-700'
+  return 'text-slate-700'
+}
+
+const getPriceListValues = (listing = {}) => {
+  const area = Number(listing.area || 0)
+  const cashPricePerSqm = Number(listing.cashPricePerSqm ?? listing.pricePerSqm ?? 0)
+  const installmentPricePerSqm = Number(
+    listing.installmentPricePerSqm ?? listing.pricePerSqm ?? 0
+  )
+  const cashSellingPrice = Number(
+    listing.cashNetSellingPrice ?? area * cashPricePerSqm
+  )
+  const installmentSellingPrice = Number(
+    listing.installmentNetSellingPrice ?? area * installmentPricePerSqm
+  )
+  const reservationFee = Number(listing.reservationFee || 0)
+  const netAfterReservation = Math.max(installmentSellingPrice - reservationFee, 0)
+  const straightPaymentMonthly =
+    STRAIGHT_PAYMENT_MONTHS > 0
+      ? netAfterReservation / STRAIGHT_PAYMENT_MONTHS
+      : 0
+
+  return {
+    area,
+    cashPricePerSqm,
+    cashSellingPrice,
+    installmentPricePerSqm,
+    installmentSellingPrice,
+    reservationFee,
+    netAfterReservation,
+    straightPaymentMonthly,
+  }
 }
 
 const ProjectPriceListPrintPage = () => {
@@ -33,87 +68,128 @@ const ProjectPriceListPrintPage = () => {
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['lot-project-price-list', projectSlug],
-    queryFn: () => useFetch(`/projects/lot-projects/${projectSlug}/price-list`),
+    queryFn: () => fetchJson(`/projects/lot-projects/${projectSlug}/price-list`),
     enabled: Boolean(projectSlug),
   })
 
   const payload = data?.data || {}
   const project = payload.project || {}
   const listings = payload.listings || []
+  const priceListDate = payload.printedAt || todayDateOnly()
 
   useEffect(() => {
-    if (project?.name) document.title = `${project.name} Price List`
+    if (project?.name) document.title = `${project.name} Price Inventory`
   }, [project?.name])
 
   if (isLoading) {
-    return <PrintPageShell title="Project Price List"><div className="p-6 text-sm font-semibold text-slate-600">Loading price list...</div></PrintPageShell>
+    return <PrintPageShell title="Project Unit Price List" pageOrientation="landscape"><div className="p-6 text-sm font-semibold text-slate-600">Loading price list...</div></PrintPageShell>
   }
 
   if (isError) {
-    return <PrintPageShell title="Project Price List"><div className="p-6 text-sm font-semibold text-red-700">{error?.message || 'Failed to load price list.'}</div></PrintPageShell>
+    return <PrintPageShell title="Project Unit Price List" pageOrientation="landscape"><div className="p-6 text-sm font-semibold text-red-700">{error?.message || 'Failed to load price list.'}</div></PrintPageShell>
   }
 
   return (
-    <PrintPageShell title="Project Unit Price List">
-      <section className="print-page mx-auto min-h-[297mm] w-[210mm] bg-white p-[10mm] text-black shadow-lg print:shadow-none">
-        <div className="flex items-center justify-between border-b-2 border-black pb-3">
-          <div>
-            <p className="text-[11px] font-black uppercase tracking-[0.24em]">D&amp;C Prime Realty</p>
-            <h1 className="mt-1 text-2xl font-black uppercase">Project Unit Price List</h1>
-            <p className="mt-1 text-sm font-bold">{project.name || 'Lot Project'}</p>
-            <p className="text-xs font-semibold">{project.location || '-'}</p>
-          </div>
-          <div className="text-right text-xs font-semibold">
-            <p>Printed: {formatDate(payload.printedAt || todayDateOnly())}</p>
-            <p>Project Code: {project.locationCode || '-'}</p>
-            <p>Total Units: {listings.length}</p>
-          </div>
+    <PrintPageShell title="Project Unit Price List" pageOrientation="landscape">
+      <style>{`
+        @media print {
+          .project-price-list-table thead {
+            display: table-header-group;
+          }
+
+          .project-price-list-table tr {
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+        }
+      `}</style>
+
+      <section className="print-page mx-auto min-h-[210mm] w-[297mm] bg-white p-[8mm] text-black shadow-lg print:shadow-none">
+        <div className="border-b-2 border-black pb-3 text-center">
+          <p className="text-[10px] font-black uppercase tracking-[0.22em]">D&amp;C Prime Realty</p>
+          <h1 className="mt-1 text-xl font-black uppercase">
+            {project.name || 'Lot Project'} Price Inventory
+          </h1>
+          <p className="mt-1 text-xs font-bold">
+            As of {formatDate(priceListDate)}
+          </p>
+          <p className="text-[10px] font-semibold">
+            {project.location || '-'} · Project Code: {project.locationCode || '-'} · Total Units: {listings.length}
+          </p>
         </div>
 
         <div className="mt-4 overflow-hidden border border-black">
-          <table className="w-full border-collapse text-[8px]">
+          <table className="project-price-list-table w-full table-fixed border-collapse text-[7px] leading-tight">
+            <colgroup>
+              <col className="w-[3%]" />
+              <col className="w-[7%]" />
+              <col className="w-[6%]" />
+              <col className="w-[5%]" />
+              <col className="w-[8%]" />
+              <col className="w-[10%]" />
+              <col className="w-[8%]" />
+              <col className="w-[11%]" />
+              <col className="w-[8%]" />
+              <col className="w-[9%]" />
+              <col className="w-[7%]" />
+              <col className="w-[8%]" />
+              <col className="w-[10%]" />
+            </colgroup>
             <thead>
-              <tr className="bg-slate-200 text-left font-black uppercase">
-                <th className="border border-black px-1 py-1 text-center">#</th>
-                <th className="border border-black px-1 py-1">Unit ID</th>
-                <th className="border border-black px-1 py-1">Type</th>
-                <th className="border border-black px-1 py-1 text-right">Area SQM</th>
-                <th className="border border-black px-1 py-1 text-right">Installment / SQM</th>
-                <th className="border border-black px-1 py-1 text-right">Cash / SQM</th>
-                <th className="border border-black px-1 py-1 text-right">Installment TCP</th>
-                <th className="border border-black px-1 py-1 text-right">Cash TCP</th>
-                <th className="border border-black px-1 py-1 text-right">LMF Rate</th>
-                <th className="border border-black px-1 py-1 text-right">Reservation</th>
-                <th className="border border-black px-1 py-1">Status</th>
+              <tr className="bg-slate-200 text-center font-black uppercase">
+                <th className="border border-black px-1 py-1">No.</th>
+                <th className="border border-black px-1 py-1">ID</th>
+                <th className="border border-black px-1 py-1">Orientation</th>
+                <th className="border border-black px-1 py-1">Lot Area</th>
+                <th className="border border-black px-1 py-1">Cash Price per SQM</th>
+                <th className="border border-black px-1 py-1">Cash Selling Price (w/o LMF)</th>
+                <th className="border border-black px-1 py-1">Installment Price per SQM</th>
+                <th className="border border-black px-1 py-1">Installment Selling Price (w/o LMF)</th>
+                <th className="border border-black px-1 py-1">Reservation Fee</th>
+                <th className="border border-black px-1 py-1">Net After Reservation</th>
+                <th className="border border-black px-1 py-1">Straight Payment (Months)</th>
+                <th className="border border-black px-1 py-1">Straight Payment (Monthly)</th>
+                <th className="border border-black px-1 py-1">Listing Status</th>
               </tr>
             </thead>
             <tbody>
-              {listings.length ? listings.map((listing, index) => (
-                <tr key={listing.id || listing.unitCode}>
-                  <td className="border border-black px-1 py-1 text-center font-bold">{index + 1}</td>
-                  <td className="border border-black px-1 py-1 font-black">{listing.unitCode || '-'}</td>
-                  <td className="border border-black px-1 py-1">{listing.lotType || '-'}</td>
-                  <td className="border border-black px-1 py-1 text-right">{numberValue(listing.area)}</td>
-                  <td className="border border-black px-1 py-1 text-right">{money(listing.installmentPricePerSqm ?? listing.pricePerSqm)}</td>
-                  <td className="border border-black px-1 py-1 text-right">{money(listing.cashPricePerSqm ?? listing.pricePerSqm)}</td>
-                  <td className="border border-black px-1 py-1 text-right font-black">{money(listing.installmentTcp ?? listing.tcp)}</td>
-                  <td className="border border-black px-1 py-1 text-right font-black">{money(listing.cashTcp ?? listing.tcp)}</td>
-                  <td className="border border-black px-1 py-1 text-right">{Number(listing.lmfRate || 0)}%</td>
-                  <td className="border border-black px-1 py-1 text-right">{money(listing.reservationFee)}</td>
-                  <td className={`border border-black px-1 py-1 font-black ${statusTone(listing.status)}`}>{listing.status || '-'}</td>
-                </tr>
-              )) : (
+              {listings.length ? listings.map((listing, index) => {
+                const values = getPriceListValues(listing)
+
+                return (
+                  <tr key={listing.id || listing.unitCode}>
+                    <td className="border border-black px-1 py-1 text-center font-bold">{index + 1}</td>
+                    <td className="border border-black px-1 py-1 text-center font-black">{listing.unitCode || '-'}</td>
+                    <td className="border border-black px-1 py-1 text-center uppercase">{listing.lotType || '-'}</td>
+                    <td className="border border-black px-1 py-1 text-right">{numberValue(values.area)}</td>
+                    <td className="border border-black px-1 py-1 text-right font-bold">{money(values.cashPricePerSqm)}</td>
+                    <td className="border border-black px-1 py-1 text-right">{money(values.cashSellingPrice)}</td>
+                    <td className="border border-black px-1 py-1 text-right font-bold">{money(values.installmentPricePerSqm)}</td>
+                    <td className="border border-black px-1 py-1 text-right">{money(values.installmentSellingPrice)}</td>
+                    <td className="border border-black px-1 py-1 text-right font-bold">{money(values.reservationFee)}</td>
+                    <td className="border border-black px-1 py-1 text-right">{money(values.netAfterReservation)}</td>
+                    <td className="border border-black px-1 py-1 text-center">{STRAIGHT_PAYMENT_MONTHS}</td>
+                    <td className="border border-black px-1 py-1 text-right font-black">{money(values.straightPaymentMonthly)}</td>
+                    <td className={`border border-black px-1 py-1 text-center font-black uppercase ${statusTone(listing.status)}`}>
+                      {listing.status || '-'}
+                    </td>
+                  </tr>
+                )
+              }) : (
                 <tr>
-                  <td colSpan={11} className="border border-black px-2 py-8 text-center text-sm font-bold">No listings found.</td>
+                  <td colSpan={13} className="border border-black px-2 py-8 text-center text-sm font-bold">No listings found.</td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
+
+        <p className="mt-2 text-[9px] font-semibold italic">
+          Note: Prices are subject to change without prior notice. Straight-payment figures use the installment selling price without LMF, less the reservation fee, divided into {STRAIGHT_PAYMENT_MONTHS} months.
+        </p>
       </section>
     </PrintPageShell>
   )
 }
 
 export default ProjectPriceListPrintPage
-
