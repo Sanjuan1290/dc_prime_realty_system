@@ -78,6 +78,11 @@ import {
   revokeOpenBuyerFormLinks,
 } from '../BuyerForms/buyerForm.shared.js';
 import {
+  closeCancelledAccountAndReleaseListing,
+  getCurrentLotProjectAccount,
+  settleCancellationCommissionStages,
+} from '../../../services/lotProjectAccount.service.js';
+import {
   applyCloudinaryMoveToEntry,
   deleteCloudinaryEmptyFolder,
   buildCloudinaryUnitAssetMove,
@@ -181,7 +186,7 @@ export const getLotProjectListings = async (req, res) => {
           COALESCE(pdoc.project_required_document_count, 0) AS project_required_document_count
         FROM lot_project_listings l
         LEFT JOIN lot_project_client_profiles cp
-          ON cp.lot_project_listing_id = l.lot_project_listing_id
+          ON cp.lot_project_listing_id = l.lot_project_listing_id AND cp.lot_project_client_profile_status = 'active'
         ${listingDocumentJoin}
         LEFT JOIN (
           SELECT
@@ -408,18 +413,25 @@ const archiveListingSaleDataForAvailable = async (
     );
   }
 
+  const currentAccount = await getCurrentLotProjectAccount(connection, listingId, { forUpdate: true });
+  const clientProfileId = Number(currentAccount?.lot_project_client_profile_id || 0);
+  if (!clientProfileId) {
+    throw Object.assign(new Error('The cancelled buyer account could not be loaded.'), { statusCode: 400 });
+  }
+
   const [historyRows] = await connection.query(
     `
       SELECT *
       FROM lot_project_reservation_history
       WHERE lot_project_id = ?
         AND lot_project_listing_id = ?
+        AND lot_project_client_profile_id = ?
         AND reservation_status = 'cancelled'
       ORDER BY COALESCE(cancelled_at, updated_at) DESC, lot_project_reservation_history_id DESC
       LIMIT 1
       FOR UPDATE
     `,
-    [projectId, listingId]
+    [projectId, listingId, clientProfileId]
   );
   const history = historyRows[0];
 
@@ -433,20 +445,20 @@ const archiveListingSaleDataForAvailable = async (
   const buyerProfiles = await queryRowsIfTableExists(
     connection,
     'lot_project_client_profiles',
-    'SELECT * FROM lot_project_client_profiles WHERE lot_project_listing_id = ?',
-    [listingId]
+    'SELECT * FROM lot_project_client_profiles WHERE lot_project_client_profile_id = ?',
+    [clientProfileId]
   );
   const payments = await queryRowsIfTableExists(
     connection,
     'lot_project_payments',
-    'SELECT * FROM lot_project_payments WHERE lot_project_listing_id = ? ORDER BY lot_project_payment_id',
-    [listingId]
+    'SELECT * FROM lot_project_payments WHERE lot_project_client_profile_id = ? ORDER BY lot_project_payment_id',
+    [clientProfileId]
   );
   const paymentSchedules = await queryRowsIfTableExists(
     connection,
     'lot_project_payment_schedules',
-    'SELECT * FROM lot_project_payment_schedules WHERE lot_project_listing_id = ? ORDER BY lot_project_payment_schedule_id',
-    [listingId]
+    'SELECT * FROM lot_project_payment_schedules WHERE lot_project_client_profile_id = ? ORDER BY lot_project_payment_schedule_id',
+    [clientProfileId]
   );
   const paymentAllocations = await queryRowsIfTableExists(
     connection,
@@ -458,10 +470,10 @@ const archiveListingSaleDataForAvailable = async (
         ON p.lot_project_payment_id = pa.lot_project_payment_id
       LEFT JOIN lot_project_payment_schedules ps
         ON ps.lot_project_payment_schedule_id = pa.lot_project_payment_schedule_id
-      WHERE p.lot_project_listing_id = ? OR ps.lot_project_listing_id = ?
+      WHERE p.lot_project_client_profile_id = ? OR ps.lot_project_client_profile_id = ?
       ORDER BY pa.lot_project_payment_allocation_id
     `,
-    [listingId, listingId]
+    [clientProfileId, clientProfileId]
   );
   const paymentLogs = await queryRowsIfTableExists(
     connection,
@@ -471,28 +483,28 @@ const archiveListingSaleDataForAvailable = async (
       FROM lot_project_payment_logs pl
       INNER JOIN lot_project_payments p
         ON p.lot_project_payment_id = pl.lot_project_payment_id
-      WHERE p.lot_project_listing_id = ?
+      WHERE p.lot_project_client_profile_id = ?
       ORDER BY pl.lot_project_payment_log_id
     `,
-    [listingId]
+    [clientProfileId]
   );
   const penaltyReliefs = await queryRowsIfTableExists(
     connection,
     'lot_project_penalty_reliefs',
-    'SELECT * FROM lot_project_penalty_reliefs WHERE lot_project_listing_id = ? ORDER BY penalty_relief_id',
-    [listingId]
+    'SELECT * FROM lot_project_penalty_reliefs WHERE lot_project_client_profile_id = ? ORDER BY penalty_relief_id',
+    [clientProfileId]
   );
   const clientDocuments = await queryRowsIfTableExists(
     connection,
     'lot_project_client_documents',
-    'SELECT * FROM lot_project_client_documents WHERE lot_project_listing_id = ? ORDER BY lot_project_client_document_id',
-    [listingId]
+    'SELECT * FROM lot_project_client_documents WHERE lot_project_client_profile_id = ? ORDER BY lot_project_client_document_id',
+    [clientProfileId]
   );
   const commissions = await queryRowsIfTableExists(
     connection,
     'lot_project_commissions',
-    'SELECT * FROM lot_project_commissions WHERE lot_project_listing_id = ? ORDER BY lot_project_commission_id',
-    [listingId]
+    'SELECT * FROM lot_project_commissions WHERE lot_project_client_profile_id = ? ORDER BY lot_project_commission_id',
+    [clientProfileId]
   );
   const commissionReleases = await queryRowsIfTableExists(
     connection,
@@ -502,16 +514,16 @@ const archiveListingSaleDataForAvailable = async (
       FROM lot_project_commission_releases cr
       INNER JOIN lot_project_commissions c
         ON c.lot_project_commission_id = cr.lot_project_commission_id
-      WHERE c.lot_project_listing_id = ?
+      WHERE c.lot_project_client_profile_id = ?
       ORDER BY cr.lot_project_commission_release_id
     `,
-    [listingId]
+    [clientProfileId]
   );
   const commissionReceipts = await queryRowsIfTableExists(
     connection,
     'lot_project_commission_receipts',
-    'SELECT * FROM lot_project_commission_receipts WHERE lot_project_listing_id = ? ORDER BY lot_project_commission_receipt_id',
-    [listingId]
+    'SELECT * FROM lot_project_commission_receipts WHERE lot_project_client_profile_id = ? ORDER BY lot_project_commission_receipt_id',
+    [clientProfileId]
   );
   const commissionReceiptItems = await queryRowsIfTableExists(
     connection,
@@ -521,10 +533,10 @@ const archiveListingSaleDataForAvailable = async (
       FROM lot_project_commission_receipt_items item
       INNER JOIN lot_project_commission_receipts receipt
         ON receipt.lot_project_commission_receipt_id = item.lot_project_commission_receipt_id
-      WHERE receipt.lot_project_listing_id = ?
+      WHERE receipt.lot_project_client_profile_id = ?
       ORDER BY item.lot_project_commission_receipt_item_id
     `,
-    [listingId]
+    [clientProfileId]
   );
 
   const releasedCommissionAmount = commissionReleases
@@ -695,11 +707,11 @@ const archiveListingSaleDataForAvailable = async (
           ON receipt.lot_project_commission_receipt_id = item.lot_project_commission_receipt_id
         LEFT JOIN users creator
           ON creator.id = receipt.created_by_user_id
-        WHERE c.lot_project_listing_id = ?
+        WHERE c.lot_project_client_profile_id = ?
           AND r.release_status = 'Released'
           AND r.actual_release_date IS NOT NULL
       `,
-      [archiveId, history.lot_project_reservation_history_id, listingId]
+      [archiveId, history.lot_project_reservation_history_id, clientProfileId]
     );
   }
 
@@ -730,104 +742,29 @@ const clearListingSaleDataForAvailable = async (
     archivedByUserId = null,
   }
 ) => {
+  // Keep the immutable financial snapshot for reporting compatibility, but do
+  // not delete any buyer, payment, document, commission, receipt, or log row.
   const archive = await archiveListingSaleDataForAvailable(connection, {
     projectId,
     listingId,
     archivedByUserId,
   });
 
-  // Receipt items restrict release deletion, so archive first and delete in child-to-parent order.
-  if (await tableExists(connection, 'lot_project_commission_receipt_items')) {
-    await connection.query(
-      `
-        DELETE item
-        FROM lot_project_commission_receipt_items item
-        INNER JOIN lot_project_commission_receipts receipt
-          ON receipt.lot_project_commission_receipt_id = item.lot_project_commission_receipt_id
-        WHERE receipt.lot_project_listing_id = ?
-      `,
-      [listingId]
-    );
-  }
-
-  if (await tableExists(connection, 'lot_project_commission_receipts')) {
-    await connection.query(
-      'DELETE FROM lot_project_commission_receipts WHERE lot_project_listing_id = ?',
-      [listingId]
-    );
-  }
-
-  if (
-    (await tableExists(connection, 'lot_project_commission_releases')) &&
-    (await tableExists(connection, 'lot_project_commissions'))
-  ) {
-    await connection.query(
-      `
-        DELETE cr
-        FROM lot_project_commission_releases cr
-        INNER JOIN lot_project_commissions c
-          ON c.lot_project_commission_id = cr.lot_project_commission_id
-        WHERE c.lot_project_listing_id = ?
-      `,
-      [listingId]
-    );
-  }
-
-  if (await tableExists(connection, 'lot_project_commissions')) {
-    await connection.query('DELETE FROM lot_project_commissions WHERE lot_project_listing_id = ?', [listingId]);
-  }
-
-  if (await tableExists(connection, 'lot_project_payment_allocations')) {
-    await connection.query(
-      `
-        DELETE pa
-        FROM lot_project_payment_allocations pa
-        LEFT JOIN lot_project_payments p
-          ON p.lot_project_payment_id = pa.lot_project_payment_id
-        LEFT JOIN lot_project_payment_schedules ps
-          ON ps.lot_project_payment_schedule_id = pa.lot_project_payment_schedule_id
-        WHERE p.lot_project_listing_id = ? OR ps.lot_project_listing_id = ?
-      `,
-      [listingId, listingId]
-    );
-  }
-
-  if (await tableExists(connection, 'lot_project_payment_logs')) {
-    await connection.query(
-      `
-        DELETE pl
-        FROM lot_project_payment_logs pl
-        INNER JOIN lot_project_payments p
-          ON p.lot_project_payment_id = pl.lot_project_payment_id
-        WHERE p.lot_project_listing_id = ?
-      `,
-      [listingId]
-    );
-  }
-
-  if (await tableExists(connection, 'lot_project_penalty_reliefs')) {
-    await connection.query('DELETE FROM lot_project_penalty_reliefs WHERE lot_project_listing_id = ?', [listingId]);
-  }
-
-  for (const tableName of [
-    'lot_project_payments',
-    'lot_project_payment_schedules',
-    'lot_project_client_documents',
-  ]) {
-    if (await tableExists(connection, tableName)) {
-      await connection.query(`DELETE FROM ${tableName} WHERE lot_project_listing_id = ?`, [listingId]);
-    }
-  }
-
-  if (await tableExists(connection, 'lot_project_client_profiles')) {
-    await connection.query('DELETE FROM lot_project_client_profiles WHERE lot_project_listing_id = ?', [listingId]);
-  }
+  const closedAccount = await closeCancelledAccountAndReleaseListing(connection, {
+    projectId,
+    listingId,
+    closedByUserId: archivedByUserId,
+  });
 
   if (await hasBuyerFormSchema(connection)) {
-    await resetBuyerFormsForAvailable(connection, listingId);
+    await revokeOpenBuyerFormLinks(connection, listingId, { status: 'superseded' });
   }
 
-  return archive;
+  return {
+    ...archive,
+    ...closedAccount,
+    recordsRetained: true,
+  };
 };
 
 const syncListingInterestToUnlockedSoa = async (connection, projectId, listingId, annualInterestRate) => {
@@ -840,6 +777,7 @@ const syncListingInterestToUnlockedSoa = async (connection, projectId, listingId
       FROM lot_project_listings l
       INNER JOIN lot_project_client_profiles cp
         ON cp.lot_project_listing_id = l.lot_project_listing_id
+       AND cp.lot_project_client_profile_status = 'active'
       WHERE l.lot_project_id = ?
         AND l.lot_project_listing_id = ?
     `,
@@ -862,9 +800,10 @@ const syncListingInterestToUnlockedSoa = async (connection, projectId, listingId
             FROM lot_project_payments
             WHERE lot_project_id = ?
               AND lot_project_listing_id = ?
+              AND lot_project_client_profile_id = ?
               AND lot_project_payment_status <> 'Cancelled'
           `,
-          [projectId, listingId]
+          [projectId, listingId, profile.lot_project_client_profile_id]
         ))[0][0]?.total
       : 0;
 
@@ -930,9 +869,20 @@ const syncListingDocumentCloudinaryUnitFolder = async (
         lot_project_client_document_id,
         lot_project_client_document_file_name,
         lot_project_client_document_file_url
-      FROM lot_project_client_documents
-      WHERE lot_project_listing_id = ?
-        AND lot_project_client_document_file_url IS NOT NULL
+      FROM lot_project_client_documents document_row
+      INNER JOIN lot_project_listings listing
+        ON listing.lot_project_listing_id = document_row.lot_project_listing_id
+      WHERE document_row.lot_project_listing_id = ?
+        AND (
+          listing.current_account_id IS NULL
+          OR document_row.lot_project_client_profile_id = (
+            SELECT account.lot_project_client_profile_id
+            FROM lot_project_accounts account
+            WHERE account.lot_project_account_id = listing.current_account_id
+            LIMIT 1
+          )
+        )
+        AND document_row.lot_project_client_document_file_url IS NOT NULL
         AND TRIM(lot_project_client_document_file_url) <> ''
       FOR UPDATE
     `,
@@ -957,6 +907,8 @@ const syncListingDocumentCloudinaryUnitFolder = async (
 
     for (let index = 0; index < entries.length; index += 1) {
       const entry = entries[index];
+      // Authenticated account-scoped files keep their immutable account folder.
+      if (entry.protected || entry.fileId || entry.accessPath) continue;
       const move = buildCloudinaryUnitAssetMove(entry, targetUnitId, previousUnitId);
       if (!move) continue;
 
@@ -1182,6 +1134,8 @@ export const updateLotProjectListing = async (req, res) => {
             SELECT cp.soa_selected_tcp
             FROM lot_project_client_profiles cp
             WHERE cp.lot_project_listing_id = l.lot_project_listing_id
+              AND cp.lot_project_client_profile_status = 'active'
+            ORDER BY cp.lot_project_client_profile_id DESC
             LIMIT 1
           ) AS contract_tcp,
           lot_project_listing_cancellation_type
@@ -1199,6 +1153,13 @@ export const updateLotProjectListing = async (req, res) => {
       await connection.rollback();
       return res.status(404).json({ message: 'Listing not found.' });
     }
+
+    const currentAccount = await getCurrentLotProjectAccount(
+      connection,
+      existingListing.lot_project_listing_id,
+      { forUpdate: true }
+    );
+    const currentClientProfileId = Number(currentAccount?.lot_project_client_profile_id || 0);
 
     const statusTransitionAction = req.body.statusTransitionAction || null;
     const statusTransition = validateListingStatusTransition({
@@ -1221,10 +1182,10 @@ export const updateLotProjectListing = async (req, res) => {
         `
           SELECT COALESCE(SUM(lot_project_payment_amount), 0) AS cash_collected
           FROM lot_project_payments
-          WHERE lot_project_listing_id = ?
+          WHERE lot_project_client_profile_id = ?
             AND lot_project_payment_status = 'Verified'
         `,
-        [existingListing.lot_project_listing_id]
+        [currentClientProfileId]
       );
 
       cancellationSettlement = calculateCancellationSettlement({
@@ -1358,7 +1319,7 @@ export const updateLotProjectListing = async (req, res) => {
                 cancellation_type = ?,
                 cancellation_reason = ?,
                 updated_at = NOW()
-            WHERE lot_project_listing_id = ?
+            WHERE lot_project_client_profile_id = ?
               AND reservation_status = 'active'
             ORDER BY lot_project_reservation_history_id DESC
             LIMIT 1
@@ -1366,9 +1327,15 @@ export const updateLotProjectListing = async (req, res) => {
           [
             requestedCancellationType,
             toNullable(req.body.cancellationReason || req.body.cancellation_reason),
-            existingListing.lot_project_listing_id,
+            currentClientProfileId,
           ]
         );
+        if (currentAccount?.lot_project_account_id) {
+          await connection.query(
+            `UPDATE lot_project_accounts SET account_status = 'pending_cancellation', cancellation_reason = ?, updated_at = NOW() WHERE lot_project_account_id = ?`,
+            [toNullable(req.body.cancellationReason || req.body.cancellation_reason), currentAccount.lot_project_account_id]
+          );
+        }
       } else if (statusTransitionAction === LISTING_STATUS_ACTIONS.CANCEL_CANCELLATION) {
         const settlementResetSql = hasCancellationSettlementFields
           ? `,
@@ -1394,13 +1361,19 @@ export const updateLotProjectListing = async (req, res) => {
                 cancelled_by_user_id = NULL
                 ${settlementResetSql},
                 updated_at = NOW()
-            WHERE lot_project_listing_id = ?
+            WHERE lot_project_client_profile_id = ?
               AND reservation_status = 'pending_for_cancellation'
             ORDER BY lot_project_reservation_history_id DESC
             LIMIT 1
           `,
-          [existingListing.lot_project_listing_id]
+          [currentClientProfileId]
         );
+        if (currentAccount?.lot_project_account_id) {
+          await connection.query(
+            `UPDATE lot_project_accounts SET account_status = 'active', cancellation_date = NULL, closed_at = NULL, cash_collected_at_cancellation = 0, refund_amount = 0, discontinued_amount = 0, commissionable_retained_amount = 0, commissionable_retained_percent = 0, cancellation_reason = NULL, settlement_notes = NULL, updated_at = NOW() WHERE lot_project_account_id = ?`,
+            [currentAccount.lot_project_account_id]
+          );
+        }
       } else if (statusTransitionAction === LISTING_STATUS_ACTIONS.SETTLE_CANCELLATION) {
         if (!cancellationSettlement || !hasCancellationSettlementFields) {
           throw Object.assign(
@@ -1424,10 +1397,10 @@ export const updateLotProjectListing = async (req, res) => {
             FROM lot_project_commission_releases r
             INNER JOIN lot_project_commissions c
               ON c.lot_project_commission_id = r.lot_project_commission_id
-            WHERE c.lot_project_listing_id = ?
+            WHERE c.lot_project_client_profile_id = ?
               AND r.release_status = 'Released'
           `,
-          [existingListing.lot_project_listing_id]
+          [currentClientProfileId]
         );
         const releasedCommissionAmount = roundMoneyValue(
           releasedCommissionRows[0]?.released_commission || 0
@@ -1451,7 +1424,7 @@ export const updateLotProjectListing = async (req, res) => {
                 released_commission_amount_at_cancellation = ?,
                 cancelled_by_user_id = ?,
                 updated_at = NOW()
-            WHERE lot_project_listing_id = ?
+            WHERE lot_project_client_profile_id = ?
               AND reservation_status IN ('pending_for_cancellation', 'active')
             ORDER BY lot_project_reservation_history_id DESC
             LIMIT 1
@@ -1469,7 +1442,7 @@ export const updateLotProjectListing = async (req, res) => {
             cancellationSettlement.settlementNotes,
             releasedCommissionAmount,
             req.authUser?.id || null,
-            existingListing.lot_project_listing_id,
+            currentClientProfileId,
           ]
         );
 
@@ -1489,10 +1462,10 @@ export const updateLotProjectListing = async (req, res) => {
                 soa_sale_discount_amount,
                 soa_dp_discount_percentage
               FROM lot_project_client_profiles
-              WHERE lot_project_listing_id = ?
+              WHERE lot_project_client_profile_id = ?
               LIMIT 1
             `,
-            [existingListing.lot_project_listing_id]
+            [currentClientProfileId]
           );
           const profile = profileRows[0] || {};
           const discountPercentage = Number(profile.soa_sale_discount_percentage || 0);
@@ -1568,36 +1541,38 @@ export const updateLotProjectListing = async (req, res) => {
           );
         }
 
-        if (
-          (await tableExists(connection, 'lot_project_commission_releases')) &&
-          (await tableExists(connection, 'lot_project_commissions'))
-        ) {
-          await connection.query(
-            `
-              UPDATE lot_project_commission_releases r
-              INNER JOIN lot_project_commissions c
-                ON c.lot_project_commission_id = r.lot_project_commission_id
-              SET r.release_status = 'Cancelled',
-                  r.scheduled_release_date = NULL,
-                  r.updated_at = NOW()
-              WHERE c.lot_project_listing_id = ?
-                AND r.release_status <> 'Released'
-            `,
-            [existingListing.lot_project_listing_id]
-          );
+        const commissionSettlement = await settleCancellationCommissionStages(connection, {
+          listingId: existingListing.lot_project_listing_id,
+          clientProfileId: currentClientProfileId,
+          retainedAmount: cancellationSettlement.discontinuedAmount,
+        });
 
+        if (currentAccount?.lot_project_account_id) {
           await connection.query(
             `
-              UPDATE lot_project_commissions
-              SET commission_status = CASE
-                    WHEN released_commission_amount > 0 THEN 'Partially Released'
-                    ELSE 'Cancelled'
-                  END,
-                  net_remaining_commission_amount = 0,
+              UPDATE lot_project_accounts
+              SET account_status = 'cancelled',
+                  cancellation_date = NOW(),
+                  cash_collected_at_cancellation = ?,
+                  refund_amount = ?,
+                  discontinued_amount = ?,
+                  commissionable_retained_amount = ?,
+                  commissionable_retained_percent = ?,
+                  cancellation_reason = ?,
+                  settlement_notes = ?,
                   updated_at = NOW()
-              WHERE lot_project_listing_id = ?
+              WHERE lot_project_account_id = ?
             `,
-            [existingListing.lot_project_listing_id]
+            [
+              cashCollectedAtCancellation,
+              cancellationSettlement.refundAmount,
+              cancellationSettlement.discontinuedAmount,
+              cancellationSettlement.discontinuedAmount,
+              commissionSettlement.retainedPercent,
+              cancellationReason,
+              cancellationSettlement.settlementNotes,
+              currentAccount.lot_project_account_id,
+            ]
           );
         }
       }
@@ -1698,7 +1673,7 @@ export const updateLotProjectListing = async (req, res) => {
     return res.json({
       success: true,
       message: resetToAvailable
-        ? `${unitCode} changed to available. The previous cancelled sale, payments, released commissions, and receipts were archived before the active records were cleared.`
+        ? `${unitCode} changed to Available. The cancelled buyer account and all payment, SOA, document, commission, receipt, and audit records were retained in Account History.`
         : statusTransitionAction === LISTING_STATUS_ACTIONS.CANCEL_CANCELLATION
           ? `${unitCode} returned to Sold / Active. Existing buyer, payment, SOA, document, and commission records were kept.`
           : statusTransitionAction === LISTING_STATUS_ACTIONS.SETTLE_CANCELLATION
@@ -1992,18 +1967,26 @@ export const deleteLotProjectListing = async (req, res) => {
       return res.status(404).json({ message: 'Listing not found.' });
     }
 
-    const paymentCountRows = await tableExists(connection, 'lot_project_payments')
-      ? (await connection.query(
-          `SELECT COUNT(*) AS payment_count FROM lot_project_payments WHERE lot_project_listing_id = ?`,
-          [existingListing.lot_project_listing_id]
-        ))[0]
-      : [{ payment_count: 0 }];
-
-    if (Number(paymentCountRows[0]?.payment_count || 0) > 0) {
-      await connection.rollback();
-      return res.status(400).json({
-        message: 'This listing has recorded payments and cannot be deleted. Cancel the listing instead.',
-      });
+    // A listing can only be removed when it has never been assigned to a buyer.
+    // Closed buyer accounts are purged through the password + email-code workflow.
+    const protectedHistoryTables = [
+      'lot_project_accounts',
+      'lot_project_client_profiles',
+      'lot_project_reservation_history',
+      'lot_project_payments',
+    ];
+    for (const tableName of protectedHistoryTables) {
+      if (!(await tableExists(connection, tableName))) continue;
+      const [historyRows] = await connection.query(
+        `SELECT COUNT(*) AS total FROM ${tableName} WHERE lot_project_listing_id = ?`,
+        [existingListing.lot_project_listing_id]
+      );
+      if (Number(historyRows[0]?.total || 0) > 0) {
+        await connection.rollback();
+        return res.status(409).json({
+          message: 'This listing has buyer-account history and cannot be deleted. Close the account first, then use Permanently Delete Account Records from Account History if removal is required.',
+        });
+      }
     }
 
     if (
@@ -2065,4 +2048,5 @@ export const deleteLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
+
 

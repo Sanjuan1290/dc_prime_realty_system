@@ -515,7 +515,7 @@ export const getLotProjectDocumentCompliance = async (req, res) => {
       INNER JOIN lot_projects lp
         ON lp.lot_project_id = l.lot_project_id
       INNER JOIN lot_project_client_profiles cp
-        ON cp.lot_project_listing_id = l.lot_project_listing_id
+        ON cp.lot_project_listing_id = l.lot_project_listing_id AND cp.lot_project_client_profile_status = 'active'
       INNER JOIN lot_project_listing_documents ld
         ON ld.lot_project_listing_id = l.lot_project_listing_id
        AND ld.lot_project_listing_document_status = 'active'
@@ -668,3 +668,4 @@ export const getLotProjectDocumentCompliance = async (req, res) => {
     connection.release();
   }
 };
+

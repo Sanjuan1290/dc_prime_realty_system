@@ -47,49 +47,6 @@ const RequirementPill = ({ value }) => (
   </span>
 )
 
-const sanitizeCloudinaryPathPart = (value, fallback = 'item') => {
-  const clean = String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-
-  return clean || fallback
-}
-
-const getDocumentImageUrl = (image) => {
-  if (!image) return ''
-  if (typeof image === 'string') return image
-  return image.url || image.secure_url || image.fileUrl || image.file_url || ''
-}
-
-const buildClientUnitDocumentFolder = ({ projectSlug, project, listing, document }) => {
-  const projectPart = sanitizeCloudinaryPathPart(
-    project?.name ||
-      project?.lot_project_name ||
-      listing?.project_name ||
-      listing?.projectName ||
-      projectSlug ||
-      listing?.projectSlug ||
-      listing?.project_slug,
-    'project'
-  )
-  const unitPart = sanitizeCloudinaryPathPart(
-    listing?.unit_id ||
-      listing?.unitCode ||
-      listing?.lot_project_listing_unit_id ||
-      listing?.routeId ||
-      listing?.id,
-    'unit'
-  )
-  const documentPart = sanitizeCloudinaryPathPart(
-    document?.name || document?.document_name || document?.documentName || document?.document_id || document?.documentId || document?.id,
-    'document'
-  )
-
-  return `dc_prime/${projectPart}/${unitPart}/${documentPart}/documentimages`
-}
-
 const Documents = ({
   documents = [],
   canManage = false,
@@ -98,6 +55,7 @@ const Documents = ({
   project = {},
   listing = {},
   client = {},
+  listingId = '',
   libraryDocuments = [],
   projectDefaultDocuments = [],
   onUploadDocument,
@@ -311,7 +269,9 @@ const Documents = ({
           <tbody className="divide-y divide-slate-100">
             {rows.map((row) => {
               const isActive = activeDocumentId === row.id || isSaving
-              const imageSrc = row.fileUrl || getDocumentImageUrl(row.images?.[0]) || ''
+              const firstImage = row.imageEntries?.[0] || row.images?.[0]
+              const imageSrc = row.fileUrl || getDocumentImageUrl(firstImage) || ''
+              const isProtected = Boolean(firstImage?.protected || firstImage?.accessPath || firstImage?.fileId)
 
               return (
                 <tr key={row.id} className="transition hover:bg-slate-50">
@@ -333,7 +293,7 @@ const Documents = ({
                   <td className="px-4 py-4">
                     <div className="flex items-center gap-3">
                       <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
-                        {row.fileName && row.fileName !== '-' && imageSrc ? (
+                        {row.fileName && row.fileName !== '-' && imageSrc && !isProtected ? (
                           <img
                             src={imageSrc}
                             alt={row.name}
@@ -421,7 +381,7 @@ const Documents = ({
       {uploadDoc ? (
         <UploadDocumentModal
           document={uploadDoc}
-          uploadFolder={buildClientUnitDocumentFolder({ projectSlug, project, listing, client, document: uploadDoc })}
+          signaturePath={`/projects/lot-projects/${projectSlug}/listings/${listingId || listing?.routeId || listing?.id || listing?.lot_project_listing_id}/documents/${uploadDoc.id}/upload-signature`}
           isSaving={activeDocumentId === uploadDoc.id || isSaving}
           onClose={() => {
             setUploadDoc(null)
@@ -456,4 +416,5 @@ const Documents = ({
 }
 
 export default Documents
+
 

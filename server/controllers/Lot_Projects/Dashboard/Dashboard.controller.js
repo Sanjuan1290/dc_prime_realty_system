@@ -562,7 +562,7 @@ export const getLotProjectDashboard = async (req, res) => {
           COALESCE(SUM(CASE WHEN l.lot_project_listing_status = 'pending_for_cancellation' THEN ${inventoryTcpExpr} ELSE 0 END), 0) AS pendingCancellationValue,
           COALESCE(SUM(CASE WHEN l.lot_project_listing_status = 'cancelled' THEN ${inventoryTcpExpr} ELSE 0 END), 0) AS cancelledInventoryValue
         FROM lot_project_listings l
-        ${hasClientProfiles ? 'LEFT JOIN lot_project_client_profiles cp ON cp.lot_project_listing_id = l.lot_project_listing_id' : ''}
+        ${hasClientProfiles ? "LEFT JOIN lot_project_client_profiles cp ON cp.lot_project_listing_id = l.lot_project_listing_id AND cp.lot_project_client_profile_status = 'active'" : ''}
         WHERE l.lot_project_id = ?
       `,
       [project.lot_project_id]
@@ -580,7 +580,7 @@ export const getLotProjectDashboard = async (req, res) => {
           COALESCE(SUM(GREATEST(${effectiveTcpExpr} - (${rangeEarnedDiscountExpr}), 0)), 0) AS totalNetSales,
           COALESCE(SUM(GREATEST(${effectiveTcpExpr} - ${rangePaymentSummarySelect} - (${rangeEarnedDiscountExpr}), 0)), 0) AS pendingSales
         FROM lot_project_listings l
-        ${hasClientProfiles ? 'LEFT JOIN lot_project_client_profiles cp ON cp.lot_project_listing_id = l.lot_project_listing_id' : ''}
+        ${hasClientProfiles ? "LEFT JOIN lot_project_client_profiles cp ON cp.lot_project_listing_id = l.lot_project_listing_id AND cp.lot_project_client_profile_status = 'active'" : ''}
         WHERE l.lot_project_id = ?
           AND l.lot_project_listing_status IN ('sold', 'pending_for_cancellation')
           AND ${reservationRangeScope}
@@ -696,7 +696,7 @@ export const getLotProjectDashboard = async (req, res) => {
       ? 'DATE(COALESCE(cp.lot_project_client_profile_created_at, l.lot_project_listing_updated_at))'
       : 'DATE(l.lot_project_listing_updated_at)';
     const saleClientJoin = hasClientProfiles
-      ? 'LEFT JOIN lot_project_client_profiles cp ON cp.lot_project_listing_id = l.lot_project_listing_id'
+      ? "LEFT JOIN lot_project_client_profiles cp ON cp.lot_project_listing_id = l.lot_project_listing_id AND cp.lot_project_client_profile_status = 'active'"
       : '';
 
     const [salesTrendRows] = hasReservationHistory
@@ -748,7 +748,7 @@ export const getLotProjectDashboard = async (req, res) => {
             FROM lot_project_payments p
             INNER JOIN lot_project_listings l
               ON l.lot_project_listing_id = p.lot_project_listing_id
-            ${hasClientProfiles ? 'LEFT JOIN lot_project_client_profiles cp ON cp.lot_project_listing_id = l.lot_project_listing_id' : ''}
+            ${hasClientProfiles ? "LEFT JOIN lot_project_client_profiles cp ON cp.lot_project_listing_id = l.lot_project_listing_id AND cp.lot_project_client_profile_status = 'active'" : ''}
             WHERE p.lot_project_id = ?
               AND p.lot_project_payment_status = 'Verified'
               AND DATE(p.lot_project_payment_date) BETWEEN ? AND ?
@@ -1046,7 +1046,7 @@ export const getLotProjectDashboard = async (req, res) => {
       : `NULL AS cadastral_lots,`;
 
     const clientJoin = hasClientProfiles
-      ? `LEFT JOIN lot_project_client_profiles cp ON cp.lot_project_listing_id = l.lot_project_listing_id`
+      ? `LEFT JOIN lot_project_client_profiles cp ON cp.lot_project_listing_id = l.lot_project_listing_id AND cp.lot_project_client_profile_status = 'active'`
       : `LEFT JOIN (SELECT NULL AS lot_project_listing_id, NULL AS lot_project_client_profile_id, NULL AS buyer_full_name) cp ON 1 = 0`;
 
     const listingDocumentJoin = hasListingDocuments
@@ -1419,3 +1419,4 @@ export const getLotProjectPriceList = async (req, res) => {
     connection.release();
   }
 };
+

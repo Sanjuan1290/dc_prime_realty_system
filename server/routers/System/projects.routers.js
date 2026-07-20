@@ -44,7 +44,9 @@ import {
 } from '../../controllers/Lot_Projects/BuyerForms/BuyerForms.controller.js';
 import {
   updateLotProjectListingDocumentRequirements,
+  createLotProjectDocumentUploadSignature,
   uploadLotProjectListingDocument,
+  getLotProjectDocumentFileAccessUrl,
   approveLotProjectListingDocument,
   clearLotProjectListingDocument,
 } from '../../controllers/Lot_Projects/ListingProfile/Documents.controller.js';
@@ -72,6 +74,12 @@ import {
   getLotProjectSettings,
   updateLotProjectSettings,
 } from '../../controllers/Lot_Projects/Settings/Settings.controller.js';
+import {
+  getLotProjectListingAccountHistory,
+  getLotProjectAccountPurgePreview,
+  requestLotProjectAccountPurgeCode,
+  purgeLotProjectAccount,
+} from '../../controllers/Lot_Projects/Accounts/Accounts.controller.js';
 
 const router = express.Router();
 router.use(authenticateUser);
@@ -90,6 +98,11 @@ router.patch('/lot-projects/:projectSlug/commissions/:commissionId', requirePerm
 router.get('/lot-projects/:projectSlug/settings', requirePermission(PERMISSIONS.LOT_SETTINGS_VIEW), getLotProjectSettings);
 router.put('/lot-projects/:projectSlug/settings', requirePermission(PERMISSIONS.LOT_SETTINGS_MANAGE), updateLotProjectSettings);
 router.get('/lot-projects/:projectSlug/listings/:listingId', requirePermission(PERMISSIONS.LOT_LISTINGS_VIEW), getLotProjectListingProfile);
+router.get('/lot-projects/:projectSlug/listings/:listingId/accounts', requirePermission(PERMISSIONS.LOT_LISTINGS_VIEW), getLotProjectListingAccountHistory);
+router.get('/lot-projects/:projectSlug/accounts/:accountId/purge-preview', requirePermission(PERMISSIONS.LOT_LISTINGS_VIEW), requireRole('super_admin'), getLotProjectAccountPurgePreview);
+router.post('/lot-projects/:projectSlug/accounts/:accountId/purge-code', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), requireRole('super_admin'), requireCurrentPassword({ field: 'password', label: 'Super Admin password' }), requestLotProjectAccountPurgeCode);
+router.post('/lot-projects/:projectSlug/accounts/:accountId/purge', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), requireRole('super_admin'), purgeLotProjectAccount);
+router.get('/lot-projects/:projectSlug/document-files/:fileId/access-url', requirePermission(PERMISSIONS.LOT_LISTINGS_VIEW), getLotProjectDocumentFileAccessUrl);
 router.post(
   '/lot-projects/:projectSlug/listings/:listingId/recalculate-commission',
   requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE),
@@ -116,6 +129,7 @@ router.post('/lot-projects/:projectSlug/listings/:listingId/buyer-form-submissio
 router.patch('/lot-projects/:projectSlug/listings/:listingId/hold', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), holdLotProjectListing);
 router.patch('/lot-projects/:projectSlug/listings/:listingId/unhold', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), unholdLotProjectListing);
 router.put('/lot-projects/:projectSlug/listings/:listingId/document-requirements', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), updateLotProjectListingDocumentRequirements);
+router.post('/lot-projects/:projectSlug/listings/:listingId/documents/:documentId/upload-signature', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), createLotProjectDocumentUploadSignature);
 router.put('/lot-projects/:projectSlug/listings/:listingId/documents/:documentId/upload', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), uploadLotProjectListingDocument);
 router.patch('/lot-projects/:projectSlug/listings/:listingId/documents/:documentId/approve', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), approveLotProjectListingDocument);
 router.patch('/lot-projects/:projectSlug/listings/:listingId/documents/:documentId/clear', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), clearLotProjectListingDocument);
@@ -130,4 +144,5 @@ router.post('/lot-projects/:projectSlug/listings/:listingId/payment-schedules/:s
 router.post('/lot-projects/:projectSlug/listings/:listingId/penalty-reliefs/:reliefId/restore', requirePermission(PERMISSIONS.LOT_PENALTY_CORRECT), restorePaymentSchedulePenaltyWaiver);
 
 export default router;
+
 

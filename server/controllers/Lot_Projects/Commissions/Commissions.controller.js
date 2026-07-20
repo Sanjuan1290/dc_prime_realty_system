@@ -84,12 +84,12 @@ const getCompletedRequiredDocumentCountSql = (listingAlias = 'l', commissionAlia
 const scheduleSummaryJoin = `
   LEFT JOIN (
     SELECT
-      lot_project_listing_id,
+      lot_project_client_profile_id,
       COUNT(*) AS schedule_count
     FROM lot_project_payment_schedules
     WHERE schedule_status <> 'Cancelled'
-    GROUP BY lot_project_listing_id
-  ) schedule_summary ON schedule_summary.lot_project_listing_id = c.lot_project_listing_id
+    GROUP BY lot_project_client_profile_id
+  ) schedule_summary ON schedule_summary.lot_project_client_profile_id = c.lot_project_client_profile_id
 `;
 
 const effectiveTcpSql = `COALESCE(cp.soa_selected_tcp, l.lot_project_listing_tcp)`;
@@ -180,7 +180,7 @@ const normalizeReleaseStatus = (release = {}, paymentPercent = 0, eligibility = 
   const finalRelease = isFinalRelease(release.release_stage);
   const retentionReady = Boolean(eligibility.retentionReady);
 
-  if (['Released', 'Cancelled'].includes(current)) return current;
+  if (['Released', 'Cancelled', 'Earned on Cancellation', 'Forfeited on Cancellation'].includes(current)) return current;
 
   if (current === 'On Hold') return 'On Hold';
 
@@ -241,10 +241,10 @@ const mapReleaseRow = (row = {}, paymentPercent = 0, releaseDateInfo = {}, commi
       ? 'Release Now'
       : `Release on ${releaseDateInfo.nextReleaseDate}`,
     isReleaseDate: releaseDateInfo.isReleaseDate,
-    canRelease: status === 'Eligible',
-    canHold: !['Released', 'On Hold', 'Cancelled'].includes(status),
+    canRelease: ['Eligible', 'Earned on Cancellation'].includes(status),
+    canHold: !['Released', 'On Hold', 'Cancelled', 'Earned on Cancellation', 'Forfeited on Cancellation'].includes(status),
     canUnhold: status === 'On Hold' && (!isFinalRelease(row.release_stage) || retentionReady),
-    canCancel: status !== 'Released' && status !== 'Cancelled',
+    canCancel: !['Released', 'Cancelled', 'Forfeited on Cancellation'].includes(status),
     retentionReady,
     paymentComplete: isPaymentComplete(commission),
     documentsComplete: areDocumentsComplete(commission),
@@ -288,9 +288,9 @@ const buildFallbackMilestones = (commission = {}, releaseDateInfo = {}) => {
       releaseButtonLabel: releaseDateInfo.isReleaseDate ? 'Release Now' : `Release on ${releaseDateInfo.nextReleaseDate}`,
       isReleaseDate: releaseDateInfo.isReleaseDate,
       canRelease: status === 'Eligible',
-      canHold: !['Released', 'On Hold', 'Cancelled'].includes(status),
+      canHold: !['Released', 'On Hold', 'Cancelled', 'Earned on Cancellation', 'Forfeited on Cancellation'].includes(status),
       canUnhold: status === 'On Hold' && (!isFinalRelease(stage.stage) || retentionReady),
-      canCancel: status !== 'Released' && status !== 'Cancelled',
+      canCancel: !['Released', 'Cancelled', 'Forfeited on Cancellation'].includes(status),
       retentionReady,
       paymentComplete: isPaymentComplete(commission),
       documentsComplete: areDocumentsComplete(commission),
@@ -307,7 +307,11 @@ const getAggregateStatus = (commission = {}, releases = []) => {
   if (commission.commission_status === 'Cancelled') return 'Cancelled';
   if (gross > 0 && released >= gross) return 'Released';
   if (releases.some((release) => release.status === 'On Hold' && !isFinalRelease(release.stage))) return 'On Hold';
+  if (releases.some((release) => release.status === 'Earned on Cancellation')) return released > 0 ? 'Partially Released' : 'Eligible';
   if (releases.some((release) => release.status === 'Eligible')) return 'Eligible';
+  if (releases.length && releases.every((release) => ['Released', 'Cancelled', 'Forfeited on Cancellation'].includes(release.status))) {
+    return released > 0 ? 'Partially Released' : 'Cancelled';
+  }
   if (released > 0) return 'Partially Released';
   return 'Pending';
 };
@@ -318,18 +322,26 @@ const mapCommissionRow = (row = {}, releases = [], releaseDateInfo = {}) => {
     .filter((release) => release.status === 'Released')
     .reduce((sum, release) => sum + toNumber(release.netAmount), 0);
   const eligibleToRelease = releases
-    .filter((release) => release.status === 'Eligible')
+    .filter((release) => ['Eligible', 'Earned on Cancellation'].includes(release.status))
     .reduce((sum, release) => sum + toNumber(release.netAmount), 0);
   const cashAdvanceDeduction = releases
     .reduce((sum, release) => sum + toNumber(release.deductionAmount), 0);
   const released = releases.length ? releasedFromMilestones : toNumber(row.released_commission_amount);
-  const remaining = Math.max(gross - released - cashAdvanceDeduction, 0);
+  const cancellationSettled = releases.some((release) =>
+    ['Earned on Cancellation', 'Forfeited on Cancellation'].includes(release.status)
+  );
+  const remaining = cancellationSettled
+    ? releases
+        .filter((release) => release.status === 'Earned on Cancellation')
+        .reduce((sum, release) => sum + toNumber(release.netAmount), 0)
+    : Math.max(gross - released - cashAdvanceDeduction, 0);
   const status = releases.length ? getAggregateStatus(row, releases) : row.commission_status || 'Pending';
 
   return {
     id: row.lot_project_commission_id,
     commissionId: row.lot_project_commission_id,
     listingId: row.lot_project_listing_id,
+    accountId: row.lot_project_account_id,
     clientProfileId: row.lot_project_client_profile_id,
     accreditedSellerId: row.accredited_seller_id,
     client: row.buyer_full_name || 'No buyer name',
@@ -401,7 +413,7 @@ const syncReleaseStatuses = async (connection, commissionRows = []) => {
       `
         UPDATE lot_project_commission_releases
         SET release_status = CASE
-          WHEN release_status IN ('Released', 'Cancelled') THEN release_status
+          WHEN release_status IN ('Released', 'Cancelled', 'Earned on Cancellation', 'Forfeited on Cancellation') THEN release_status
           WHEN release_status = 'On Hold' THEN release_status
           WHEN release_stage = 'Retention' AND ? = 0 THEN 'On Hold'
           WHEN ? >= release_trigger_percent THEN 'Eligible'
@@ -481,13 +493,13 @@ const recomputeCommissionFromReleases = async (connection, commissionId, lotProj
         ON cp.lot_project_client_profile_id = c.lot_project_client_profile_id
       LEFT JOIN (
         SELECT
-          lot_project_listing_id,
+          lot_project_client_profile_id,
           SUM(lot_project_payment_amount) AS total_paid,
           SUM(CASE WHEN lot_project_payment_type IN ('downpayment', 'down_payment') THEN lot_project_payment_amount ELSE 0 END) AS downpayment_paid
         FROM lot_project_payments
         WHERE lot_project_payment_status = 'Verified'
-        GROUP BY lot_project_listing_id
-      ) payment_summary ON payment_summary.lot_project_listing_id = c.lot_project_listing_id
+        GROUP BY lot_project_client_profile_id
+      ) payment_summary ON payment_summary.lot_project_client_profile_id = c.lot_project_client_profile_id
       ${scheduleSummaryJoin}
       WHERE c.lot_project_commission_id = ?
         AND c.lot_project_id = ?
@@ -518,7 +530,16 @@ const recomputeCommissionFromReleases = async (connection, commissionId, lotProj
       .reduce((sum, release) => sum + toNumber(release.netAmount), 0)
   );
   const gross = toNumber(commission.gross_commission_amount);
-  const remaining = Math.max(gross - released, 0);
+  const cancellationSettled = releases.some((release) =>
+    ['Earned on Cancellation', 'Forfeited on Cancellation'].includes(release.status)
+  );
+  const remaining = cancellationSettled
+    ? roundMoney(
+        releases
+          .filter((release) => release.status === 'Earned on Cancellation')
+          .reduce((sum, release) => sum + toNumber(release.netAmount), 0)
+      )
+    : Math.max(gross - released, 0);
   const nextStatus = getAggregateStatus(commission, releases);
 
   await connection.query(
@@ -666,13 +687,13 @@ export const getLotProjectCommissions = async (req, res) => {
           ON sg.seller_group_id = acs.seller_group_id
         LEFT JOIN (
           SELECT
-            lot_project_listing_id,
+            lot_project_client_profile_id,
             SUM(lot_project_payment_amount) AS total_paid,
             SUM(CASE WHEN lot_project_payment_type IN ('downpayment', 'down_payment') THEN lot_project_payment_amount ELSE 0 END) AS downpayment_paid
           FROM lot_project_payments
           WHERE lot_project_payment_status = 'Verified'
-          GROUP BY lot_project_listing_id
-        ) payment_summary ON payment_summary.lot_project_listing_id = c.lot_project_listing_id
+          GROUP BY lot_project_client_profile_id
+        ) payment_summary ON payment_summary.lot_project_client_profile_id = c.lot_project_client_profile_id
         ${scheduleSummaryJoin}
         WHERE ${where.join(' AND ')}
         ORDER BY l.lot_project_listing_unit_id ASC, FIELD(c.commission_role, 'broker_network_manager', 'broker', 'manager', 'agent'), c.lot_project_commission_id ASC
@@ -772,13 +793,13 @@ export const updateLotProjectCommission = async (req, res) => {
             ON cp.lot_project_client_profile_id = c.lot_project_client_profile_id
           LEFT JOIN (
             SELECT
-              lot_project_listing_id,
+              lot_project_client_profile_id,
               SUM(lot_project_payment_amount) AS total_paid,
               SUM(CASE WHEN lot_project_payment_type IN ('downpayment', 'down_payment') THEN lot_project_payment_amount ELSE 0 END) AS downpayment_paid
             FROM lot_project_payments
             WHERE lot_project_payment_status = 'Verified'
-            GROUP BY lot_project_listing_id
-          ) payment_summary ON payment_summary.lot_project_listing_id = c.lot_project_listing_id
+            GROUP BY lot_project_client_profile_id
+          ) payment_summary ON payment_summary.lot_project_client_profile_id = c.lot_project_client_profile_id
           ${scheduleSummaryJoin}
           WHERE r.lot_project_commission_release_id = ?
             AND r.lot_project_commission_id = ?
@@ -809,7 +830,7 @@ export const updateLotProjectCommission = async (req, res) => {
           return res.status(400).json({ success: false, message: `Commission releases are only allowed every ${releaseDateInfo.releaseDays.join(' and ')} of the month. Next release date: ${releaseDateInfo.nextReleaseDate}.` });
         }
 
-        if (computedStatus !== 'Eligible') {
+        if (!['Eligible', 'Earned on Cancellation'].includes(computedStatus)) {
           await connection.rollback();
           return res.status(400).json({ success: false, message: `${release.release_stage} is not eligible for release yet.` });
         }
@@ -1055,4 +1076,5 @@ export const updateLotProjectCommission = async (req, res) => {
     connection.release();
   }
 };
+
 

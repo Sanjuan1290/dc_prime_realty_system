@@ -20,6 +20,10 @@ import { writeAuditLog } from '../../System/auditLogs.controller.js';
 import { getListingPricingForMode } from '../_shared/listingPricing.js';
 import { replaceReservationCommissions } from '../Commissions/commissionHierarchy.service.js';
 import {
+  attachAccountToProfileRecords,
+  createLotProjectAccount,
+} from '../../../services/lotProjectAccount.service.js';
+import {
   assertBuyerFormSchema,
   revokeOpenBuyerFormLinks,
 } from '../BuyerForms/buyerForm.shared.js';
@@ -137,8 +141,8 @@ const replaceReservationSchedules = async (connection, projectId, listing, clien
   const scheduleRows = recomputeComputedSoaBalances(computedRows, computedTerms);
 
   await connection.query(
-    `DELETE FROM lot_project_payment_schedules WHERE lot_project_listing_id = ?`,
-    [listing.lot_project_listing_id]
+    `DELETE FROM lot_project_payment_schedules WHERE lot_project_client_profile_id = ?`,
+    [clientProfileId]
   );
 
   if (!scheduleRows.length) return;
@@ -743,26 +747,15 @@ export const reserveLotProjectListing = async (req, res) => {
 
     listing.lot_project_listing_status = lockedStatus;
 
-    await connection.query(
+    const [profileResult] = await connection.query(
       `
         INSERT INTO lot_project_client_profiles (${columns.join(', ')})
         VALUES (${columns.map(() => '?').join(', ')})
-        ON DUPLICATE KEY UPDATE ${updateAssignments.join(', ')}
       `,
       values
     );
 
-    const [profileRows] = await connection.query(
-      `
-        SELECT lot_project_client_profile_id
-        FROM lot_project_client_profiles
-        WHERE lot_project_listing_id = ?
-        LIMIT 1
-      `,
-      [listing.lot_project_listing_id]
-    );
-
-    const clientProfileId = profileRows[0]?.lot_project_client_profile_id;
+    const clientProfileId = Number(profileResult.insertId || 0);
     if (!clientProfileId) throw new Error('Buyer profile was not created.');
 
     const listingReservationUpdates = [
@@ -786,6 +779,7 @@ export const reserveLotProjectListing = async (req, res) => {
       [project.lot_project_id, listing.lot_project_listing_id]
     );
 
+    let reservationHistoryId = null;
     if (await tableExists(connection, 'lot_project_reservation_history')) {
       const historyTerms = getComputedSoaTerms({
         ...listing,
@@ -840,11 +834,22 @@ export const reserveLotProjectListing = async (req, res) => {
       await addIfColumnExists(connection, 'lot_project_reservation_history', historyColumns, historyValues, 'dp_discount_percentage_snapshot', dpDiscountPercentage);
       await addIfColumnExists(connection, 'lot_project_reservation_history', historyColumns, historyValues, 'dp_discount_amount_snapshot', historyTerms.downpaymentDiscountTotal);
 
-      await connection.query(
+      const [historyResult] = await connection.query(
         `INSERT INTO lot_project_reservation_history (${historyColumns.join(', ')}) VALUES (${historyColumns.map(() => '?').join(', ')})`,
         historyValues
       );
+      reservationHistoryId = Number(historyResult.insertId || 0) || null;
     }
+
+    const account = await createLotProjectAccount(connection, {
+      projectId: project.lot_project_id,
+      listingId: listing.lot_project_listing_id,
+      clientProfileId,
+      reservationHistoryId,
+      buyerName,
+      unitId: listing.lot_project_listing_unit_id,
+      reservedAt: new Date(),
+    });
 
     await insertReservationDocuments(
       connection,
@@ -879,6 +884,14 @@ export const reserveLotProjectListing = async (req, res) => {
       saleChannel
     );
 
+    if (account?.accountId) {
+      await attachAccountToProfileRecords(connection, {
+        accountId: account.accountId,
+        clientProfileId,
+        reservationHistoryId,
+      });
+    }
+
     if (buyerFormSubmission) {
       await connection.query(
         `
@@ -904,6 +917,22 @@ export const reserveLotProjectListing = async (req, res) => {
         `,
         [buyerFormSubmission.lot_project_buyer_form_link_id]
       );
+
+
+      if (account?.accountId) {
+        if (await columnExists(connection, 'lot_project_buyer_form_submissions', 'lot_project_account_id')) {
+          await connection.query(
+            `UPDATE lot_project_buyer_form_submissions SET lot_project_account_id = ? WHERE lot_project_buyer_form_submission_id = ?`,
+            [account.accountId, buyerFormSubmissionId]
+          );
+        }
+        if (await columnExists(connection, 'lot_project_buyer_form_links', 'lot_project_account_id')) {
+          await connection.query(
+            `UPDATE lot_project_buyer_form_links SET lot_project_account_id = ? WHERE lot_project_buyer_form_link_id = ?`,
+            [account.accountId, buyerFormSubmission.lot_project_buyer_form_link_id]
+          );
+        }
+      }
     }
 
     await writeAuditLog(connection, req, {
@@ -916,6 +945,8 @@ export const reserveLotProjectListing = async (req, res) => {
       description: `Reserved ${listing.lot_project_listing_unit_id} for ${buyerName}.`,
       metadata: {
         clientProfileId,
+        accountId: account?.accountId || null,
+        accountReference: account?.accountReference || null,
         buyerName,
         buyerType,
         modeOfPayment,
@@ -936,6 +967,8 @@ export const reserveLotProjectListing = async (req, res) => {
       message: `${buyerName} reservation saved successfully.`,
       listing_id: listing.lot_project_listing_id,
       client_profile_id: clientProfileId,
+      account_id: account?.accountId || null,
+      account_reference: account?.accountReference || null,
       unit_id: listing.lot_project_listing_unit_id,
       buyer_form_submission_id: buyerFormSubmissionId,
     });
@@ -946,4 +979,5 @@ export const reserveLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
+
 

@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FiEye, FiFileText, FiGrid, FiPlus, FiSearch, FiTrash2 } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
+import ConfirmActionModal from '../../components/Shared/ConfirmActionModal'
 import AddListingModal from '../../components/Lot_Projects/ListingComponents/AddListingModal/AddListingModal'
 import { useFetch, useFetchDelete, useFetchPost } from '../../utils/useFetch'
 
@@ -23,6 +24,7 @@ const Listings = () => {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [showAddModal, setShowAddModal] = useState(false)
+  const [listingToDelete, setListingToDelete] = useState(null)
   const [alert, setAlert] = useState(null)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
@@ -66,6 +68,7 @@ const Listings = () => {
       setAlert({ type: 'loading', message: 'Deleting listing...' })
     },
     onSuccess: (result) => {
+      setListingToDelete(null)
       setAlert({ type: 'success', message: result?.message || 'Listing deleted.' })
       queryClient.invalidateQueries({ queryKey: ['lot-listings', projectSlug] })
       queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] })
@@ -109,9 +112,7 @@ const Listings = () => {
       return
     }
 
-    if (!window.confirm(`Delete ${unitLabel}? This cannot be undone.`)) return
-
-    deleteListingMutation.mutate(listingKey)
+    setListingToDelete({ ...listing, listingKey, unitLabel })
   }
 
   return (
@@ -169,9 +170,23 @@ const Listings = () => {
       </section>
 
       {showAddModal ? <AddListingModal project={project} projectDefaultDocuments={project.defaultDocuments || []} libraryDocuments={documentsData?.documents || []} isLoadingDefaults={isDocumentsLoading} onClose={() => setShowAddModal(false)} onSave={handleAddListing} isSaving={addListingMutation.isPending} /> : null}
+      <ConfirmActionModal
+        open={Boolean(listingToDelete)}
+        title={`Delete ${listingToDelete?.unitLabel || 'listing'}?`}
+        message="Only a listing that has never had a buyer account can be deleted. Buyer, payment, document, and commission history must be removed through the verified account purge instead."
+        confirmLabel="Delete Empty Listing"
+        isPending={deleteListingMutation.isPending}
+        onClose={() => {
+          if (!deleteListingMutation.isPending) setListingToDelete(null)
+        }}
+        onConfirm={() => {
+          if (listingToDelete?.listingKey) deleteListingMutation.mutate(listingToDelete.listingKey)
+        }}
+      />
     </main>
   )
 }
 
 export default Listings
+
 

@@ -147,7 +147,7 @@ const formatCommissionRole = (role = '') =>
 const loadListingCommissionSnapshot = async (
   connection,
   listingId,
-  { lock = false } = {}
+  { lock = false, clientProfileId = 0 } = {}
 ) => {
   if (!(await tableExists(connection, 'lot_project_commissions'))) {
     return { commissionRows: [], releaseRows: [], receiptRows: [] };
@@ -170,12 +170,13 @@ const loadListingCommissionSnapshot = async (
       LEFT JOIN users reports
         ON reports.id = acs.accredited_seller_reports_under_user_id
       WHERE c.lot_project_listing_id = ?
+        AND (? = 0 OR c.lot_project_client_profile_id = ?)
       ORDER BY
         FIELD(c.commission_role, 'agent', 'manager', 'broker', 'broker_network_manager'),
         c.lot_project_commission_id
       ${lock ? 'FOR UPDATE' : ''}
     `,
-    [listingId]
+    [listingId, Number(clientProfileId || 0), Number(clientProfileId || 0)]
   );
 
   const commissionIds = commissionRows.map((row) => Number(row.lot_project_commission_id));
@@ -214,9 +215,10 @@ const loadListingCommissionSnapshot = async (
           receipt_date
         FROM lot_project_commission_receipts
         WHERE lot_project_listing_id = ?
+          AND (? = 0 OR lot_project_client_profile_id = ?)
         ${lock ? 'FOR UPDATE' : ''}
       `,
-      [listingId]
+      [listingId, Number(clientProfileId || 0), Number(clientProfileId || 0)]
     );
 
     receiptRows = rows;
@@ -534,6 +536,9 @@ export const getLotProjectListingProfile = async (req, res) => {
           ${annualInterestSelect}
           ${cadastralSelect}
           cp.*,
+          current_account.lot_project_account_id,
+          current_account.account_reference,
+          current_account.account_status,
           payment_summary.total_paid,
           payment_summary.payment_count,
           payment_summary.latest_payment_date,
@@ -570,22 +575,24 @@ export const getLotProjectListingProfile = async (req, res) => {
           commission.commission_status,
           ${assignedUserSelect}
         FROM lot_project_listings l
+        LEFT JOIN lot_project_accounts current_account
+          ON current_account.lot_project_account_id = l.current_account_id
         LEFT JOIN lot_project_client_profiles cp
-          ON cp.lot_project_listing_id = l.lot_project_listing_id
+          ON cp.lot_project_client_profile_id = current_account.lot_project_client_profile_id
         LEFT JOIN (
           SELECT
-            lot_project_listing_id,
+            lot_project_client_profile_id,
             COALESCE(SUM(lot_project_payment_amount), 0) AS total_paid,
             COUNT(*) AS payment_count,
             MAX(lot_project_payment_date) AS latest_payment_date,
             SUBSTRING_INDEX(GROUP_CONCAT(lot_project_payment_amount ORDER BY lot_project_payment_date DESC, lot_project_payment_id DESC), ',', 1) AS latest_payment_amount
           FROM lot_project_payments
           WHERE lot_project_payment_status = 'Verified'
-          GROUP BY lot_project_listing_id
-        ) payment_summary ON payment_summary.lot_project_listing_id = l.lot_project_listing_id
+          GROUP BY lot_project_client_profile_id
+        ) payment_summary ON payment_summary.lot_project_client_profile_id = cp.lot_project_client_profile_id
         LEFT JOIN (
           SELECT
-            lot_project_listing_id,
+            lot_project_client_profile_id,
             COALESCE(
               MIN(CASE WHEN schedule_status IN ('Unpaid', 'Partial') AND LOWER(description) NOT LIKE '%reservation%' THEN due_date END),
               MIN(CASE WHEN LOWER(description) LIKE '%downpayment%' THEN due_date END),
@@ -593,8 +600,8 @@ export const getLotProjectListingProfile = async (req, res) => {
               MIN(due_date)
             ) AS first_due_date
           FROM lot_project_payment_schedules
-          GROUP BY lot_project_listing_id
-        ) schedule_summary ON schedule_summary.lot_project_listing_id = l.lot_project_listing_id
+          GROUP BY lot_project_client_profile_id
+        ) schedule_summary ON schedule_summary.lot_project_client_profile_id = cp.lot_project_client_profile_id
         LEFT JOIN (
           SELECT rh.*
           FROM lot_project_reservation_history rh
@@ -609,7 +616,7 @@ export const getLotProjectListingProfile = async (req, res) => {
           ON cancellation_history.lot_project_listing_id = l.lot_project_listing_id
         LEFT JOIN (
           SELECT
-            lot_project_listing_id,
+            lot_project_client_profile_id,
             CAST(SUBSTRING_INDEX(
               GROUP_CONCAT(
                 accredited_seller_id
@@ -631,8 +638,8 @@ export const getLotProjectListingProfile = async (req, res) => {
               ELSE 'Pending'
             END AS commission_status
           FROM lot_project_commissions
-          GROUP BY lot_project_listing_id
-        ) commission ON commission.lot_project_listing_id = l.lot_project_listing_id
+          GROUP BY lot_project_client_profile_id
+        ) commission ON commission.lot_project_client_profile_id = cp.lot_project_client_profile_id
         ${assignedSellerJoin}
         LEFT JOIN accredited_sellers acs ON acs.accredited_seller_id = commission.accredited_seller_id
         LEFT JOIN users seller ON seller.id = acs.user_id
@@ -649,13 +656,13 @@ export const getLotProjectListingProfile = async (req, res) => {
     if (!row) return res.status(404).json({ message: 'Listing not found.' });
 
     const documents = await getListingDocuments(connection, project.lot_project_id, row.lot_project_listing_id, row.lot_project_client_profile_id);
-    const payments = await getListingPayments(connection, project.lot_project_id, row.lot_project_listing_id);
+    const payments = await getListingPayments(connection, project.lot_project_id, row.lot_project_listing_id, row.lot_project_client_profile_id);
     const soaRows = await getListingSoaRows(connection, project.lot_project_id, row.lot_project_listing_id, row, payments);
     const cadastralLots = await getProjectCadastralLots(project.lot_project_id);
     const defaultDocuments = await getProjectDefaultDocuments(project.lot_project_id);
     let buyerForm = { currentLink: null, latestSubmission: null, pendingSubmission: null };
     try {
-      buyerForm = await readBuyerFormStateForProfile(connection, row.lot_project_listing_id);
+      buyerForm = await readBuyerFormStateForProfile(connection, row.lot_project_listing_id, row.lot_project_account_id);
     } catch (buyerFormError) {
       buyerForm = {
         currentLink: null,
@@ -667,7 +674,8 @@ export const getLotProjectListingProfile = async (req, res) => {
     }
     const commissionSnapshot = await loadListingCommissionSnapshot(
       connection,
-      row.lot_project_listing_id
+      row.lot_project_listing_id,
+      { clientProfileId: row.lot_project_client_profile_id }
     );
     const commissionRecalculation = {
       ...buildCommissionRecalculationState({
@@ -780,7 +788,7 @@ export const recalculateLotProjectListingCommission = async (req, res) => {
           )) AS assigned_seller_name
         FROM lot_project_listings l
         LEFT JOIN lot_project_client_profiles cp
-          ON cp.lot_project_listing_id = l.lot_project_listing_id
+          ON cp.lot_project_listing_id = l.lot_project_listing_id AND cp.lot_project_client_profile_status = 'active'
         LEFT JOIN accredited_sellers assignedAcs
           ON assignedAcs.accredited_seller_id = cp.assigned_accredited_seller_id
         LEFT JOIN users assignedUser
@@ -841,7 +849,7 @@ export const recalculateLotProjectListingCommission = async (req, res) => {
     const previousSnapshot = await loadListingCommissionSnapshot(
       connection,
       listing.lot_project_listing_id,
-      { lock: true }
+      { lock: true, clientProfileId: listing.lot_project_client_profile_id }
     );
     const recalculationState = buildCommissionRecalculationState({
       listingStatus: listing.lot_project_listing_status,
@@ -887,7 +895,7 @@ export const recalculateLotProjectListingCommission = async (req, res) => {
     const updatedSnapshot = await loadListingCommissionSnapshot(
       connection,
       listing.lot_project_listing_id,
-      { lock: true }
+      { lock: true, clientProfileId: listing.lot_project_client_profile_id }
     );
     const updatedRows = mapCommissionSnapshotRows(
       updatedSnapshot.commissionRows,
@@ -1188,4 +1196,5 @@ export const unholdLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
+
 

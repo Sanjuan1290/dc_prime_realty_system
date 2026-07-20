@@ -78,12 +78,13 @@ export const getLotProjectPaymentLogs = async (req, res) => {
       where.push(`(
         l.lot_project_listing_unit_id LIKE ?
         OR cp.buyer_full_name LIKE ?
+        OR account.account_reference LIKE ?
         OR p.lot_project_payment_reference_id LIKE ?
         OR pl.action_description LIKE ?
         OR CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name) LIKE ?
       )`);
       const keyword = `%${search}%`;
-      params.push(keyword, keyword, keyword, keyword, keyword);
+      params.push(keyword, keyword, keyword, keyword, keyword, keyword);
     }
 
     const [rows] = await connection.query(
@@ -102,6 +103,8 @@ export const getLotProjectPaymentLogs = async (req, res) => {
           p.lot_project_payment_status,
           l.lot_project_listing_unit_id,
           cp.buyer_full_name,
+          account.account_reference,
+          account.account_status,
           lp.lot_project_name,
           u.first_name,
           u.middle_name,
@@ -116,6 +119,8 @@ export const getLotProjectPaymentLogs = async (req, res) => {
           ON lp.lot_project_id = p.lot_project_id
         LEFT JOIN lot_project_client_profiles cp
           ON cp.lot_project_client_profile_id = p.lot_project_client_profile_id
+        LEFT JOIN lot_project_accounts account
+          ON account.lot_project_account_id = p.lot_project_account_id
         LEFT JOIN users u
           ON u.id = pl.action_by_user_id
         WHERE ${where.join(' AND ')}
@@ -136,6 +141,8 @@ export const getLotProjectPaymentLogs = async (req, res) => {
       project: row.lot_project_name || project.lot_project_name,
       unit: row.lot_project_listing_unit_id || '-',
       buyer: row.buyer_full_name || 'No buyer name',
+      accountReference: row.account_reference || '-',
+      accountStatus: row.account_status || '-',
       amount: toNumber(row.lot_project_payment_amount),
       paymentType: titleCase(row.lot_project_payment_type),
       paymentMethod: row.lot_project_payment_method || '-',
@@ -172,4 +179,5 @@ export const getLotProjectPaymentLogs = async (req, res) => {
     connection.release();
   }
 };
+
 

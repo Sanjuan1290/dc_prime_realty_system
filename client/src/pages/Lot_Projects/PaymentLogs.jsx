@@ -122,7 +122,7 @@ const PaymentLogs = () => {
                 setSearch(event.target.value)
                 setPage(1)
               }}
-              placeholder="Search unit, buyer, reference, encoded by..."
+              placeholder="Search account, unit, buyer, reference, encoded by..."
               className="h-11 w-full rounded-xl border border-slate-300 bg-white pl-11 pr-3 text-sm font-semibold text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
             />
           </label>
@@ -195,7 +195,7 @@ const PaymentLogs = () => {
           <table className="min-w-[1250px] w-full divide-y divide-slate-200 text-sm">
             <thead className="bg-slate-50">
               <tr>
-                {['Action Date', 'Project', 'Unit', 'Buyer', 'Amount', 'Type', 'Method', 'Reference ID', 'Action', 'Encoded By', 'Description'].map((head) => (
+                {['Action Date', 'Project', 'Account', 'Account Status', 'Unit', 'Buyer', 'Amount', 'Type', 'Method', 'Reference ID', 'Action', 'Encoded By', 'Description'].map((head) => (
                   <th key={head} className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">
                     {head}
                   </th>
@@ -206,7 +206,7 @@ const PaymentLogs = () => {
             <tbody className="divide-y divide-slate-100">
               {isLoading ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-10 text-center text-sm font-semibold text-slate-500">Loading payment logs...</td>
+                  <td colSpan={13} className="px-4 py-10 text-center text-sm font-semibold text-slate-500">Loading payment logs...</td>
                 </tr>
               ) : null}
 
@@ -214,6 +214,8 @@ const PaymentLogs = () => {
                 <tr key={log.id} className="transition hover:bg-slate-50">
                   <td className="px-4 py-4 font-semibold text-slate-700">{log.actionAtText}</td>
                   <td className="px-4 py-4 font-semibold text-slate-700">{log.project}</td>
+                  <td className="px-4 py-4 font-mono font-black text-slate-900">{log.accountReference}</td>
+                  <td className="px-4 py-4 font-semibold capitalize text-slate-700">{String(log.accountStatus || '-').replaceAll('_', ' ')}</td>
                   <td className="px-4 py-4 font-black text-blue-700">{log.unit}</td>
                   <td className="px-4 py-4 font-black text-slate-950">{log.buyer}</td>
                   <td className="px-4 py-4 font-black text-slate-950">{money(log.amount)}</td>
@@ -228,7 +230,7 @@ const PaymentLogs = () => {
 
               {!isLoading && !logs.length ? (
                 <tr>
-                  <td colSpan={11} className="px-4 py-12 text-center">
+                  <td colSpan={13} className="px-4 py-12 text-center">
                     <FiActivity className="mx-auto h-8 w-8 text-slate-300" />
                     <p className="mt-3 text-sm font-black text-slate-700">No payment logs found</p>
                     <p className="mt-1 text-sm font-semibold text-slate-500">Try changing your search or filters.</p>
@@ -282,4 +284,5 @@ const PaymentLogs = () => {
 }
 
 export default PaymentLogs
+
 

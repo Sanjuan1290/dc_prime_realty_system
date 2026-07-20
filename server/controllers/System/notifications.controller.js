@@ -73,6 +73,7 @@ const notificationLogTableSql = `
     lot_project_id INT UNSIGNED NULL,
     lot_project_listing_id INT UNSIGNED NULL,
     lot_project_client_profile_id INT UNSIGNED NULL,
+    lot_project_account_id BIGINT UNSIGNED NULL,
     lot_project_payment_schedule_id INT UNSIGNED NULL,
     notification_type ENUM('due_soon','overdue') NOT NULL,
     recipient_email VARCHAR(150) NOT NULL,
@@ -88,6 +89,7 @@ const notificationLogTableSql = `
     KEY idx_notification_project (lot_project_id),
     KEY idx_notification_listing (lot_project_listing_id),
     KEY idx_notification_client (lot_project_client_profile_id),
+    KEY idx_notification_account (lot_project_account_id),
     KEY idx_notification_sender (sent_by_user_id),
     CONSTRAINT fk_notification_project
       FOREIGN KEY (lot_project_id) REFERENCES lot_projects (lot_project_id)
@@ -118,6 +120,7 @@ const soaStatementTableSql = `
     lot_project_id INT UNSIGNED NOT NULL,
     lot_project_listing_id INT UNSIGNED NOT NULL,
     lot_project_client_profile_id INT UNSIGNED NOT NULL,
+    lot_project_account_id BIGINT UNSIGNED NULL,
     lot_project_payment_schedule_id INT UNSIGNED NOT NULL,
     statement_date DATE NOT NULL,
     due_date DATE NULL,
@@ -145,6 +148,7 @@ const soaStatementTableSql = `
     KEY idx_soa_project (lot_project_id),
     KEY idx_soa_listing (lot_project_listing_id),
     KEY idx_soa_client (lot_project_client_profile_id),
+    KEY idx_soa_account (lot_project_account_id),
     KEY idx_soa_created_by (created_by_user_id),
     KEY idx_soa_last_sent_by (last_sent_by_user_id),
     CONSTRAINT fk_soa_project
@@ -197,6 +201,7 @@ const mapNotificationRow = (row = {}) => {
     listingId: row.lot_project_listing_id,
     unitId: row.lot_project_listing_unit_id,
     clientProfileId: row.lot_project_client_profile_id,
+    accountId: row.lot_project_account_id ? Number(row.lot_project_account_id) : null,
     totalContractPrice: toMoneyNumber(row.lot_project_listing_tcp),
     legalMiscFee: toMoneyNumber(row.lot_project_listing_lmf_amount),
     companyName: row.company_name || 'D&C Prime Realty',
@@ -318,6 +323,7 @@ const prepareSoaStatement = async (connection, notification, userId) => {
     listingId: notification.listingId,
     unitId: notification.unitId,
     clientProfileId: notification.clientProfileId,
+    accountId: notification.accountId,
     buyerName: notification.buyerName,
     buyerEmail: notification.buyerEmail,
     dueDate: notification.dueDate,
@@ -340,6 +346,7 @@ const prepareSoaStatement = async (connection, notification, userId) => {
           lot_project_id,
           lot_project_listing_id,
           lot_project_client_profile_id,
+          lot_project_account_id,
           lot_project_payment_schedule_id,
           statement_date,
           due_date,
@@ -354,8 +361,9 @@ const prepareSoaStatement = async (connection, notification, userId) => {
           recipient_email,
           snapshot_json,
           created_by_user_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
+          lot_project_account_id = COALESCE(VALUES(lot_project_account_id), lot_project_account_id),
           statement_date = VALUES(statement_date),
           due_date = VALUES(due_date),
           description = VALUES(description),
@@ -374,6 +382,7 @@ const prepareSoaStatement = async (connection, notification, userId) => {
         notification.projectId,
         notification.listingId,
         notification.clientProfileId,
+        notification.accountId,
         notification.scheduleId,
         statementDate,
         notification.dueDate === '-' ? null : notification.dueDate,
@@ -745,6 +754,7 @@ export const sendPaymentDueNotification = async (req, res) => {
             lot_project_id,
             lot_project_listing_id,
             lot_project_client_profile_id,
+            lot_project_account_id,
             lot_project_payment_schedule_id,
             notification_type,
             recipient_email,
@@ -753,12 +763,13 @@ export const sendPaymentDueNotification = async (req, res) => {
             sent_by_user_id,
             sent_at,
             send_status
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 'sent')
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 'sent')
         `,
         [
           row.lot_project_id,
           row.lot_project_listing_id,
           row.lot_project_client_profile_id,
+          row.lot_project_account_id || null,
           row.lot_project_payment_schedule_id,
           notification.notificationType,
           notification.buyerEmail,
@@ -783,6 +794,7 @@ export const sendPaymentDueNotification = async (req, res) => {
             lot_project_id,
             lot_project_listing_id,
             lot_project_client_profile_id,
+            lot_project_account_id,
             lot_project_payment_schedule_id,
             notification_type,
             recipient_email,
@@ -792,12 +804,13 @@ export const sendPaymentDueNotification = async (req, res) => {
             sent_at,
             send_status,
             error_message
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 'failed', ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 'failed', ?)
         `,
         [
           row.lot_project_id,
           row.lot_project_listing_id,
           row.lot_project_client_profile_id,
+          row.lot_project_account_id || null,
           row.lot_project_payment_schedule_id,
           notification.notificationType,
           notification.buyerEmail,
@@ -843,6 +856,7 @@ export const markPaymentDueContacted = async (req, res) => {
           lot_project_id,
           lot_project_listing_id,
           lot_project_client_profile_id,
+          lot_project_account_id,
           lot_project_payment_schedule_id,
           notification_type,
           recipient_email,
@@ -851,12 +865,13 @@ export const markPaymentDueContacted = async (req, res) => {
           sent_by_user_id,
           sent_at,
           send_status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 'contacted')
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 'contacted')
       `,
       [
         row.lot_project_id,
         row.lot_project_listing_id,
         row.lot_project_client_profile_id,
+        row.lot_project_account_id || null,
         row.lot_project_payment_schedule_id,
         notification.notificationType,
         notification.buyerEmail || 'no-email-on-file',
@@ -959,7 +974,7 @@ export const getDocumentNotifications = async (req, res) => {
         INNER JOIN lot_projects lp
           ON lp.lot_project_id = l.lot_project_id
         INNER JOIN lot_project_client_profiles cp
-          ON cp.lot_project_listing_id = l.lot_project_listing_id
+          ON cp.lot_project_listing_id = l.lot_project_listing_id AND cp.lot_project_client_profile_status = 'active'
         INNER JOIN lot_project_listing_documents ld
           ON ld.lot_project_listing_id = l.lot_project_listing_id
          AND ld.lot_project_listing_document_status = 'active'
@@ -1031,3 +1046,4 @@ export const getDocumentNotifications = async (req, res) => {
     connection.release();
   }
 };
+

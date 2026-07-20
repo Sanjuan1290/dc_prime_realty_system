@@ -68,18 +68,26 @@ test('migration stores settlement amounts and immutable cancelled-sale archives'
   assert.match(migration, /UNIQUE KEY uq_archived_commission_source_release/i);
 });
 
-test('Change to Available archives financial data before clearing active sale rows', () => {
+test('Change to Available retains buyer, payment, document, and commission rows', () => {
   const controller = read('server/controllers/Lot_Projects/Listings/Listings.controller.js');
-  const archiveIndex = controller.indexOf('archiveListingSaleDataForAvailable(connection');
-  const deleteReceiptIndex = controller.indexOf('DELETE item\n        FROM lot_project_commission_receipt_items');
-  const deleteReleaseIndex = controller.indexOf('DELETE cr\n        FROM lot_project_commission_releases');
+  const accountService = read('server/services/lotProjectAccount.service.js');
 
-  assert.ok(archiveIndex >= 0);
-  assert.ok(deleteReceiptIndex > archiveIndex);
-  assert.ok(deleteReleaseIndex > deleteReceiptIndex);
-  assert.match(controller, /INSERT IGNORE INTO lot_project_archived_commission_releases/i);
-  assert.match(controller, /AND r\.release_status = 'Released'/i);
-  assert.match(controller, /r\.release_status <> 'Released'/i);
+  assert.match(controller, /recordsRetained: true/);
+  assert.match(controller, /closeCancelledAccountAndReleaseListing/);
+  assert.doesNotMatch(
+    controller.slice(controller.indexOf('const clearListingSaleDataForAvailable'), controller.indexOf('const syncListingInterestToUnlockedSoa')),
+    /DELETE FROM lot_project_(payments|payment_schedules|client_documents|client_profiles|commissions)/i
+  );
+  assert.match(accountService, /SET current_account_id = NULL/);
+  assert.match(accountService, /lot_project_client_profile_status = 'cancelled'/);
+});
+
+test('cancelled commission settlement preserves released stages and earns reached milestones', () => {
+  const accountService = read('server/services/lotProjectAccount.service.js');
+  assert.match(accountService, /if \(release\.release_status === 'Released'\) continue/);
+  assert.match(accountService, /Earned on Cancellation/);
+  assert.match(accountService, /Forfeited on Cancellation/);
+  assert.match(accountService, /release_trigger_percent/);
 });
 
 test('Lot Project Business Snapshot exposes refunded and discontinued totals', () => {
@@ -100,3 +108,4 @@ test('seller income and receipt reports include archived released commissions', 
   assert.match(accreditedController, /UNION ALL/i);
   assert.match(accreditedController, /isArchived/i);
 });
+

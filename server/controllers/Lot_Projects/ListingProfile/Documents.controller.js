@@ -9,6 +9,13 @@ import {
   toNullable,
 } from '../_shared/lotProject.shared.js';
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
+import {
+  buildBuyerDocumentFolder,
+  createAuthenticatedAccessUrl,
+  createAuthenticatedUploadSignature,
+  validateDocumentUploadRequest,
+  verifyAuthenticatedCloudinaryAsset,
+} from '../../../services/secureCloudinary.service.js';
 
 
 const normalizeUploadedDocumentFiles = (body = {}) => {
@@ -33,6 +40,10 @@ const normalizeUploadedDocumentFiles = (body = {}) => {
         cloudinaryResourceType: file.cloudinaryResourceType || file.cloudinary_resource_type || file.resource_type || null,
         cloudinaryFolder: file.cloudinaryFolder || file.cloudinary_folder || file.folder || null,
         cloudinaryAssetFolder: file.cloudinaryAssetFolder || file.cloudinary_asset_folder || file.asset_folder || null,
+        cloudinaryAssetId: file.cloudinaryAssetId || file.cloudinary_asset_id || file.asset_id || null,
+        cloudinaryDeliveryType: file.cloudinaryDeliveryType || file.cloudinary_delivery_type || file.type || null,
+        cloudinaryVersion: Number(file.cloudinaryVersion || file.cloudinary_version || file.version || 0) || null,
+        cloudinaryFormat: file.cloudinaryFormat || file.cloudinary_format || file.format || null,
         uploadedAt: new Date().toISOString(),
       };
     })
@@ -51,6 +62,10 @@ const normalizeUploadedDocumentFiles = (body = {}) => {
       cloudinaryResourceType: body.cloudinaryResourceType || body.cloudinary_resource_type || body.resource_type || null,
       cloudinaryFolder: body.cloudinaryFolder || body.cloudinary_folder || body.folder || null,
       cloudinaryAssetFolder: body.cloudinaryAssetFolder || body.cloudinary_asset_folder || body.asset_folder || null,
+      cloudinaryAssetId: body.cloudinaryAssetId || body.cloudinary_asset_id || body.asset_id || null,
+      cloudinaryDeliveryType: body.cloudinaryDeliveryType || body.cloudinary_delivery_type || body.type || null,
+      cloudinaryVersion: Number(body.cloudinaryVersion || body.cloudinary_version || body.version || 0) || null,
+      cloudinaryFormat: body.cloudinaryFormat || body.cloudinary_format || body.format || null,
       uploadedAt: new Date().toISOString(),
     });
   }
@@ -87,18 +102,35 @@ const getDocumentContext = async (connection, req) => {
     }
   }
 
+  const hasAccounts = await tableExists(connection, 'lot_project_accounts');
   const lookup = getListingLookupWhere(listingLookup);
+  const profileJoin = hasAccounts
+    ? `
+        LEFT JOIN lot_project_accounts account
+          ON account.lot_project_account_id = l.current_account_id
+        LEFT JOIN lot_project_client_profiles cp
+          ON cp.lot_project_client_profile_id = account.lot_project_client_profile_id
+      `
+    : `
+        LEFT JOIN lot_project_client_profiles cp
+          ON cp.lot_project_listing_id = l.lot_project_listing_id
+         AND cp.lot_project_client_profile_status = 'active'
+      `;
+  const accountSelect = hasAccounts
+    ? `account.lot_project_account_id, account.account_reference, account.account_status,`
+    : `NULL AS lot_project_account_id, NULL AS account_reference, NULL AS account_status,`;
+
   const [listingRows] = await connection.query(
     `
       SELECT
         l.lot_project_listing_id,
         l.lot_project_listing_unit_id,
         l.lot_project_listing_status,
+        ${accountSelect}
         cp.lot_project_client_profile_id,
         cp.buyer_full_name
       FROM lot_project_listings l
-      LEFT JOIN lot_project_client_profiles cp
-        ON cp.lot_project_listing_id = l.lot_project_listing_id
+      ${profileJoin}
       WHERE l.lot_project_id = ?
         AND ${lookup.sql}
       LIMIT 1
@@ -110,6 +142,9 @@ const getDocumentContext = async (connection, req) => {
   if (!listing) return { errorStatus: 404, errorMessage: 'Listing not found.' };
   if (!listing.lot_project_client_profile_id) {
     return { errorStatus: 400, errorMessage: 'Reserve this unit first before managing documents.' };
+  }
+  if (hasAccounts && listing.account_status !== 'active') {
+    return { errorStatus: 409, errorMessage: 'Cancelled buyer documents are read-only.' };
   }
 
   const [documentRows] = await connection.query(
@@ -134,7 +169,6 @@ const getDocumentContext = async (connection, req) => {
 
   return { project, listing, document };
 };
-
 
 export const updateLotProjectListingDocumentRequirements = async (req, res) => {
   const connection = await db.getConnection();
@@ -252,6 +286,39 @@ export const updateLotProjectListingDocumentRequirements = async (req, res) => {
   }
 };
 
+export const createLotProjectDocumentUploadSignature = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    const context = await getDocumentContext(connection, req);
+    if (context.errorStatus) return res.status(context.errorStatus).json({ message: context.errorMessage });
+    if (!context.listing.lot_project_account_id || !context.listing.account_reference) {
+      return res.status(500).json({ message: 'Run the buyer account retention migration before using signed uploads.' });
+    }
+
+    const file = validateDocumentUploadRequest(req.body || {});
+    const folder = buildBuyerDocumentFolder({
+      projectSlug: context.project.lot_project_slug || req.params.projectSlug,
+      listingId: context.listing.lot_project_listing_id,
+      unitId: context.listing.lot_project_listing_unit_id,
+      accountReference: context.listing.account_reference,
+      buyerName: context.listing.buyer_full_name,
+      documentName: context.document.document_name,
+    });
+    const signature = createAuthenticatedUploadSignature({
+      folder,
+      accountId: context.listing.lot_project_account_id,
+      documentId: context.document.document_id,
+      fileName: file.fileName,
+    });
+
+    return res.json({ success: true, data: { ...signature, maxFileBytes: 15 * 1024 * 1024 } });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
 export const uploadLotProjectListingDocument = async (req, res) => {
   const connection = await db.getConnection();
 
@@ -261,12 +328,48 @@ export const uploadLotProjectListingDocument = async (req, res) => {
 
     const user = await getAuthenticatedUser(req);
     const uploadedFiles = normalizeUploadedDocumentFiles(req.body);
+    if (!uploadedFiles.length) return res.status(400).json({ message: 'Choose at least one PDF, JPG, or PNG file before saving.' });
+    if (!context.listing.lot_project_account_id) {
+      return res.status(500).json({ message: 'Run the buyer account retention migration before saving protected documents.' });
+    }
 
-    if (!uploadedFiles.length) return res.status(400).json({ message: 'Please choose at least one image before saving.' });
+    const expectedFolder = buildBuyerDocumentFolder({
+      projectSlug: context.project.lot_project_slug || req.params.projectSlug,
+      listingId: context.listing.lot_project_listing_id,
+      unitId: context.listing.lot_project_listing_unit_id,
+      accountReference: context.listing.account_reference,
+      buyerName: context.listing.buyer_full_name,
+      documentName: context.document.document_name,
+    });
+
+    const verifiedFiles = [];
+    for (const file of uploadedFiles) {
+      validateDocumentUploadRequest({ fileName: file.fileName, fileType: file.fileType, fileSize: file.fileSize });
+      if (!file.cloudinaryPublicId) throw Object.assign(new Error('Cloudinary public ID is missing.'), { statusCode: 400 });
+      const asset = await verifyAuthenticatedCloudinaryAsset({
+        publicId: file.cloudinaryPublicId,
+        resourceType: file.cloudinaryResourceType || 'image',
+        expectedFolder,
+      });
+      verifiedFiles.push({
+        ...file,
+        url: '',
+        protected: true,
+        cloudinaryAssetId: asset.asset_id || file.cloudinaryAssetId || null,
+        cloudinaryPublicId: asset.public_id,
+        cloudinaryResourceType: asset.resource_type || file.cloudinaryResourceType || 'image',
+        cloudinaryDeliveryType: asset.type || 'authenticated',
+        cloudinaryVersion: Number(asset.version || file.cloudinaryVersion || 0) || null,
+        cloudinaryAssetFolder: asset.asset_folder || expectedFolder,
+        cloudinaryFolder: asset.asset_folder || expectedFolder,
+        cloudinaryFormat: asset.format || file.cloudinaryFormat || null,
+        fileSize: Number(asset.bytes || file.fileSize || 0),
+      });
+    }
 
     const [existingRows] = await connection.query(
       `
-        SELECT lot_project_client_document_file_name, lot_project_client_document_file_url
+        SELECT lot_project_client_document_id, lot_project_client_document_file_name, lot_project_client_document_file_url
         FROM lot_project_client_documents
         WHERE lot_project_client_profile_id = ?
           AND document_id = ?
@@ -274,98 +377,199 @@ export const uploadLotProjectListingDocument = async (req, res) => {
       `,
       [context.listing.lot_project_client_profile_id, context.document.document_id]
     );
-
-    const existingImages = parseClientDocumentImages(
-      existingRows[0]?.lot_project_client_document_file_url,
-      existingRows[0]?.lot_project_client_document_file_name
-    );
-    const combinedImages = [...existingImages, ...uploadedFiles];
-    const storedFileName = getStoredDocumentFileName(combinedImages);
-    const storedFileUrl = JSON.stringify(combinedImages);
+    const existingImages = parseClientDocumentImages(existingRows[0]?.lot_project_client_document_file_url, existingRows[0]?.lot_project_client_document_file_name);
 
     await connection.beginTransaction();
-
+    const hasAccountColumn = await columnExists(connection, 'lot_project_client_documents', 'lot_project_account_id');
+    const insertColumns = [
+      'lot_project_id',
+      'lot_project_listing_id',
+      'lot_project_client_profile_id',
+      ...(hasAccountColumn ? ['lot_project_account_id'] : []),
+      'document_id',
+      'lot_project_client_document_status',
+      'lot_project_client_document_uploaded_at',
+      'lot_project_client_document_approved_at',
+      'lot_project_client_document_approved_by_user_id',
+    ];
+    const insertValues = [
+      context.project.lot_project_id,
+      context.listing.lot_project_listing_id,
+      context.listing.lot_project_client_profile_id,
+      ...(hasAccountColumn ? [context.listing.lot_project_account_id] : []),
+      context.document.document_id,
+      'Submitted',
+      new Date(),
+      null,
+      null,
+    ];
     await connection.query(
       `
-        INSERT INTO lot_project_client_documents (
-          lot_project_id,
-          lot_project_listing_id,
-          lot_project_client_profile_id,
-          document_id,
-          lot_project_client_document_file_name,
-          lot_project_client_document_file_url,
-          lot_project_client_document_status,
-          lot_project_client_document_uploaded_at,
-          lot_project_client_document_approved_at,
-          lot_project_client_document_approved_by_user_id
-        ) VALUES (?, ?, ?, ?, ?, ?, 'Submitted', NOW(), NULL, NULL)
+        INSERT INTO lot_project_client_documents (${insertColumns.join(', ')})
+        VALUES (${insertColumns.map(() => '?').join(', ')})
         ON DUPLICATE KEY UPDATE
-          lot_project_client_document_file_name = VALUES(lot_project_client_document_file_name),
-          lot_project_client_document_file_url = VALUES(lot_project_client_document_file_url),
+          ${hasAccountColumn ? 'lot_project_account_id = VALUES(lot_project_account_id),' : ''}
           lot_project_client_document_status = 'Submitted',
           lot_project_client_document_uploaded_at = NOW(),
           lot_project_client_document_approved_at = NULL,
           lot_project_client_document_approved_by_user_id = NULL
       `,
-      [
-        context.project.lot_project_id,
-        context.listing.lot_project_listing_id,
-        context.listing.lot_project_client_profile_id,
-        context.document.document_id,
-        storedFileName,
-        storedFileUrl,
-      ]
+      insertValues
     );
 
     const [clientDocumentRows] = await connection.query(
-      `
-        SELECT lot_project_client_document_id
-        FROM lot_project_client_documents
-        WHERE lot_project_client_profile_id = ?
-          AND document_id = ?
-        LIMIT 1
-      `,
+      `SELECT lot_project_client_document_id FROM lot_project_client_documents WHERE lot_project_client_profile_id = ? AND document_id = ? LIMIT 1 FOR UPDATE`,
       [context.listing.lot_project_client_profile_id, context.document.document_id]
     );
+    const clientDocumentId = Number(clientDocumentRows[0]?.lot_project_client_document_id || 0);
+    if (!clientDocumentId) throw new Error('Client document row was not created.');
 
-    const clientDocumentId = clientDocumentRows[0]?.lot_project_client_document_id;
+    const storedNewEntries = [];
+    for (const file of verifiedFiles) {
+      const [fileResult] = await connection.query(
+        `
+          INSERT INTO lot_project_client_document_files (
+            lot_project_account_id,
+            lot_project_client_document_id,
+            cloudinary_asset_id,
+            cloudinary_public_id,
+            cloudinary_resource_type,
+            cloudinary_delivery_type,
+            cloudinary_version,
+            cloudinary_asset_folder,
+            original_file_name,
+            stored_file_name,
+            file_format,
+            file_mime_type,
+            file_size_bytes,
+            file_status,
+            uploaded_by_user_id
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)
+          ON DUPLICATE KEY UPDATE
+            lot_project_client_document_id = VALUES(lot_project_client_document_id),
+            file_status = 'active',
+            removed_at = NULL,
+            removal_reason = NULL,
+            uploaded_by_user_id = VALUES(uploaded_by_user_id)
+        `,
+        [
+          context.listing.lot_project_account_id,
+          clientDocumentId,
+          file.cloudinaryAssetId,
+          file.cloudinaryPublicId,
+          file.cloudinaryResourceType,
+          file.cloudinaryDeliveryType || 'authenticated',
+          file.cloudinaryVersion,
+          file.cloudinaryAssetFolder,
+          file.fileName,
+          file.fileName,
+          file.cloudinaryFormat,
+          file.fileType,
+          file.fileSize,
+          user?.id || null,
+        ]
+      );
+      let fileId = Number(fileResult.insertId || 0);
+      if (!fileId && file.cloudinaryAssetId) {
+        const [fileRows] = await connection.query(`SELECT lot_project_client_document_file_id FROM lot_project_client_document_files WHERE cloudinary_asset_id = ? LIMIT 1`, [file.cloudinaryAssetId]);
+        fileId = Number(fileRows[0]?.lot_project_client_document_file_id || 0);
+      }
+      storedNewEntries.push({
+        ...file,
+        fileId,
+        accessPath: `/projects/lot-projects/${req.params.projectSlug}/document-files/${fileId}/access-url`,
+      });
+    }
+
+    const combinedImages = [...existingImages, ...storedNewEntries];
+    const storedFileName = getStoredDocumentFileName(combinedImages);
+    await connection.query(
+      `
+        UPDATE lot_project_client_documents
+        SET lot_project_client_document_file_name = ?,
+            lot_project_client_document_file_url = ?,
+            lot_project_client_document_status = 'Submitted',
+            lot_project_client_document_uploaded_at = NOW(),
+            lot_project_client_document_approved_at = NULL,
+            lot_project_client_document_approved_by_user_id = NULL
+        WHERE lot_project_client_document_id = ?
+      `,
+      [storedFileName, JSON.stringify(combinedImages), clientDocumentId]
+    );
+
     const clientName = context.listing.buyer_full_name || context.listing.lot_project_listing_unit_id;
-
     await writeAuditLog(connection, req, {
       action: existingImages.length ? 'update' : 'create',
       module: 'Documents',
       entityType: 'lot_project_client_document',
-      entityId: clientDocumentId ? String(clientDocumentId) : String(context.document.document_id),
+      entityId: String(clientDocumentId),
       entityLabel: `${context.document.document_name} — ${clientName}`,
-      title: 'Uploaded client document',
-      description: `Uploaded ${uploadedFiles.length} image(s) for ${context.document.document_name} of ${clientName}.`,
+      title: 'Uploaded protected client document',
+      description: `Uploaded ${storedNewEntries.length} authenticated file(s) for ${context.document.document_name} of ${clientName}.`,
       metadata: {
+        accountId: context.listing.lot_project_account_id,
+        accountReference: context.listing.account_reference,
         listingId: context.listing.lot_project_listing_id,
         unitId: context.listing.lot_project_listing_unit_id,
         clientProfileId: context.listing.lot_project_client_profile_id,
         documentId: context.document.document_id,
         documentName: context.document.document_name,
-        uploadedCount: uploadedFiles.length,
+        uploadedCount: storedNewEntries.length,
         totalImages: combinedImages.length,
       },
     });
 
     await connection.commit();
-
     return res.json({
       success: true,
-      message: `${uploadedFiles.length} image(s) added to ${context.document.document_name}.`,
+      message: `${storedNewEntries.length} protected file(s) added to ${context.document.document_name}.`,
       fileName: storedFileName,
-      fileUrl: combinedImages[0]?.url || '',
-      images: combinedImages.map((image) => image.url).filter(Boolean),
       imageEntries: combinedImages,
-      uploadedCount: uploadedFiles.length,
+      uploadedCount: storedNewEntries.length,
       totalImages: combinedImages.length,
       verified_by_user_id: user?.id || null,
     });
   } catch (error) {
     try { await connection.rollback(); } catch {}
-    return res.status(500).json({ message: getErrorMessage(error) });
+    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
+export const getLotProjectDocumentFileAccessUrl = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    const project = await getProjectBySlug(String(req.params.projectSlug || '').trim());
+    if (!project) return res.status(404).json({ message: 'Lot project not found.' });
+    const fileId = Number(req.params.fileId || 0);
+    if (!fileId) return res.status(400).json({ message: 'Document file id is required.' });
+
+    const [rows] = await connection.query(
+      `
+        SELECT file_row.*, account.account_status
+        FROM lot_project_client_document_files file_row
+        INNER JOIN lot_project_accounts account
+          ON account.lot_project_account_id = file_row.lot_project_account_id
+        WHERE file_row.lot_project_client_document_file_id = ?
+          AND account.lot_project_id = ?
+          AND file_row.file_status = 'active'
+        LIMIT 1
+      `,
+      [fileId, project.lot_project_id]
+    );
+    const file = rows[0];
+    if (!file) return res.status(404).json({ message: 'Document file not found.' });
+
+    const url = createAuthenticatedAccessUrl({
+      publicId: file.cloudinary_public_id,
+      format: file.file_format,
+      resourceType: file.cloudinary_resource_type,
+      expiresInSeconds: 600,
+    });
+    return res.json({ success: true, data: { url, expiresInSeconds: 600, accountStatus: file.account_status } });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
   } finally {
     connection.release();
   }
@@ -424,6 +628,23 @@ export const clearLotProjectListingDocument = async (req, res) => {
     const context = await getDocumentContext(connection, req);
     if (context.errorStatus) return res.status(context.errorStatus).json({ message: context.errorMessage });
 
+    if (await tableExists(connection, 'lot_project_client_document_files')) {
+      await connection.query(
+        `
+          UPDATE lot_project_client_document_files file_row
+          INNER JOIN lot_project_client_documents document_row
+            ON document_row.lot_project_client_document_id = file_row.lot_project_client_document_id
+          SET file_row.file_status = 'removed',
+              file_row.removed_at = NOW(),
+              file_row.removal_reason = 'Cleared from the active document checklist'
+          WHERE document_row.lot_project_client_profile_id = ?
+            AND document_row.document_id = ?
+            AND file_row.file_status = 'active'
+        `,
+        [context.listing.lot_project_client_profile_id, context.document.document_id]
+      );
+    }
+
     await connection.query(
       `
         INSERT INTO lot_project_client_documents (
@@ -459,4 +680,5 @@ export const clearLotProjectListingDocument = async (req, res) => {
     connection.release();
   }
 };
+
 

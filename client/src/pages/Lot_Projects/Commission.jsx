@@ -36,7 +36,7 @@ const StatCard = ({ label, value, tone = 'slate', isMoney = true }) => {
 const getEligibleReleaseAmount = (record = {}) => {
   const milestones = Array.isArray(record.releaseMilestones) ? record.releaseMilestones : []
   return milestones
-    .filter((stage) => String(stage.status || '').toLowerCase() === 'eligible')
+    .filter((stage) => ['eligible', 'earned on cancellation'].includes(String(stage.status || '').toLowerCase()))
     .reduce((sum, stage) => sum + Number(stage.netAmount ?? stage.net_release_amount ?? stage.grossAmount ?? 0), 0)
 }
 
@@ -73,7 +73,7 @@ const getEligibilityKey = (record = {}) => {
   if (getEligibleReleaseAmount(record) > 0) return 'eligible'
 
   const status = String(record.statusLabel || record.status || '').toLowerCase()
-  if (status === 'eligible') return 'eligible'
+  if (['eligible', 'earned on cancellation'].includes(status)) return 'eligible'
   if (status === 'cancelled') return 'other'
   return 'not_eligible'
 }
@@ -422,4 +422,5 @@ const Commission = () => {
 }
 
 export default Commission
+
 

@@ -1554,14 +1554,19 @@ export const refreshListingPenaltyCache = async (
   if (!(await tableExists(connection, 'lot_project_payment_schedules'))) return new Map();
 
   const [profileRows] = await connection.query(
-    `SELECT * FROM lot_project_client_profiles WHERE lot_project_listing_id = ? LIMIT 1`,
-    [listing.lot_project_listing_id]
+    `SELECT * FROM lot_project_client_profiles
+      WHERE lot_project_listing_id = ?
+        AND (? = 0 OR lot_project_client_profile_id = ?)
+      ORDER BY (lot_project_client_profile_status = 'active') DESC, lot_project_client_profile_id DESC
+      LIMIT 1`,
+    [listing.lot_project_listing_id, Number(listing.lot_project_client_profile_id || 0), Number(listing.lot_project_client_profile_id || 0)]
   );
   const clientProfile = { ...(listing || {}), ...(profileRows[0] || {}) };
   const scheduleRows = await getExistingSoaScheduleRows(
     connection,
     listing.lot_project_id,
-    listing.lot_project_listing_id
+    listing.lot_project_listing_id,
+    Number(clientProfile.lot_project_client_profile_id || 0)
   );
   const snapshots = await getListingPenaltySnapshots(
     connection,
@@ -2401,7 +2406,7 @@ export const recomputeComputedSoaBalances = (rows = [], terms = {}) => {
   return visibleRows;
 };
 
-export const getExistingSoaScheduleRows = async (connection, lotProjectId, listingId) => {
+export const getExistingSoaScheduleRows = async (connection, lotProjectId, listingId, clientProfileId = 0) => {
   if (!(await tableExists(connection, 'lot_project_payment_schedules'))) return [];
 
   const [rows] = await connection.query(
@@ -2410,12 +2415,13 @@ export const getExistingSoaScheduleRows = async (connection, lotProjectId, listi
       FROM lot_project_payment_schedules
       WHERE lot_project_id = ?
         AND lot_project_listing_id = ?
+        AND (? = 0 OR lot_project_client_profile_id = ?)
       ORDER BY
         CASE WHEN due_date IS NULL THEN 1 ELSE 0 END,
         due_date ASC,
         lot_project_payment_schedule_id ASC
     `,
-    [lotProjectId, listingId]
+    [lotProjectId, listingId, Number(clientProfileId || 0), Number(clientProfileId || 0)]
   );
 
   return rows;
@@ -2445,13 +2451,15 @@ export const canGenerateListingSoa = (listingRow = {}) => {
 export const getListingSoaRows = async (connection, lotProjectId, listingId, listingRow = {}, payments = []) => {
   if (!canGenerateListingSoa(listingRow)) return [];
 
-  let existingScheduleRows = await getExistingSoaScheduleRows(connection, lotProjectId, listingId);
+  const clientProfileId = Number(listingRow.lot_project_client_profile_id || listingRow.clientProfileId || 0);
+  let existingScheduleRows = await getExistingSoaScheduleRows(connection, lotProjectId, listingId, clientProfileId);
 
   if (
     existingScheduleRows.length &&
     await hasLegacyBalloonAllocations(connection, {
       lot_project_id: lotProjectId,
       lot_project_listing_id: listingId,
+      lot_project_client_profile_id: clientProfileId,
     })
   ) {
     await recomputeListingScheduleBalances(connection, {
@@ -2459,7 +2467,7 @@ export const getListingSoaRows = async (connection, lotProjectId, listingId, lis
       lot_project_id: lotProjectId,
       lot_project_listing_id: listingId,
     });
-    existingScheduleRows = await getExistingSoaScheduleRows(connection, lotProjectId, listingId);
+    existingScheduleRows = await getExistingSoaScheduleRows(connection, lotProjectId, listingId, clientProfileId);
   }
 
   const terms = getComputedSoaTerms(listingRow, existingScheduleRows);
@@ -2603,11 +2611,16 @@ export const getListingForPayment = async (connection, project, listingLookup) =
         l.lot_project_id,
         l.lot_project_listing_unit_id,
         l.lot_project_listing_tcp,
+        account.lot_project_account_id,
+        account.account_reference,
+        account.account_status,
         cp.lot_project_client_profile_id,
         cp.buyer_full_name
       FROM lot_project_listings l
+      LEFT JOIN lot_project_accounts account
+        ON account.lot_project_account_id = l.current_account_id
       LEFT JOIN lot_project_client_profiles cp
-        ON cp.lot_project_listing_id = l.lot_project_listing_id
+        ON cp.lot_project_client_profile_id = account.lot_project_client_profile_id
       WHERE l.lot_project_id = ?
         AND ${lookup.sql}
       LIMIT 1
@@ -2693,7 +2706,7 @@ export const mapPaymentRow = (row = {}) => ({
   updatedAt: formatDateTime(row.lot_project_payment_updated_at),
 });
 
-export const getListingPayments = async (connection, lotProjectId, listingId) => {
+export const getListingPayments = async (connection, lotProjectId, listingId, clientProfileId = 0) => {
   if (!(await tableExists(connection, 'lot_project_payments'))) return [];
 
   const [rows] = await connection.query(
@@ -2709,10 +2722,11 @@ export const getListingPayments = async (connection, lotProjectId, listingId) =>
         ON u.id = p.lot_project_payment_verified_by_user_id
       WHERE p.lot_project_id = ?
         AND p.lot_project_listing_id = ?
+        AND (? = 0 OR p.lot_project_client_profile_id = ?)
         AND p.lot_project_payment_status = 'Verified'
       ORDER BY p.lot_project_payment_date DESC, p.lot_project_payment_id DESC
     `,
-    [lotProjectId, listingId]
+    [lotProjectId, listingId, Number(clientProfileId || 0), Number(clientProfileId || 0)]
   );
 
   return rows.map(mapPaymentRow);
@@ -2869,6 +2883,7 @@ export const getVerifiedBalloonPayments = async (
       FROM lot_project_payments
       WHERE lot_project_id = ?
         AND lot_project_listing_id = ?
+        AND (? = 0 OR lot_project_client_profile_id = ?)
         AND lot_project_payment_type = 'balloon'
         AND lot_project_payment_status = 'Verified'
         AND (? = 0 OR lot_project_payment_id <> ?)
@@ -2877,6 +2892,8 @@ export const getVerifiedBalloonPayments = async (
     [
       listing.lot_project_id,
       listing.lot_project_listing_id,
+      Number(listing.lot_project_client_profile_id || 0),
+      Number(listing.lot_project_client_profile_id || 0),
       Number(excludePaymentId || 0),
       Number(excludePaymentId || 0),
     ]
@@ -2901,10 +2918,11 @@ export const hasLegacyBalloonAllocations = async (connection, listing) => {
         ON payment.lot_project_payment_id = allocation.lot_project_payment_id
       WHERE payment.lot_project_id = ?
         AND payment.lot_project_listing_id = ?
+        AND (? = 0 OR payment.lot_project_client_profile_id = ?)
         AND payment.lot_project_payment_type = 'balloon'
       LIMIT 1
     `,
-    [listing.lot_project_id, listing.lot_project_listing_id]
+    [listing.lot_project_id, listing.lot_project_listing_id, Number(listing.lot_project_client_profile_id || 0), Number(listing.lot_project_client_profile_id || 0)]
   );
 
   return rows.length > 0;
@@ -2921,9 +2939,10 @@ const removeLegacyBalloonAllocations = async (connection, listing) => {
         ON payment.lot_project_payment_id = allocation.lot_project_payment_id
       WHERE payment.lot_project_id = ?
         AND payment.lot_project_listing_id = ?
+        AND (? = 0 OR payment.lot_project_client_profile_id = ?)
         AND payment.lot_project_payment_type = 'balloon'
     `,
-    [listing.lot_project_id, listing.lot_project_listing_id]
+    [listing.lot_project_id, listing.lot_project_listing_id, Number(listing.lot_project_client_profile_id || 0), Number(listing.lot_project_client_profile_id || 0)]
   );
 
   await connection.query(
@@ -2934,9 +2953,10 @@ const removeLegacyBalloonAllocations = async (connection, listing) => {
         ON payment.lot_project_payment_id = allocation.lot_project_payment_id
       WHERE payment.lot_project_id = ?
         AND payment.lot_project_listing_id = ?
+        AND (? = 0 OR payment.lot_project_client_profile_id = ?)
         AND payment.lot_project_payment_type = 'balloon'
     `,
-    [listing.lot_project_id, listing.lot_project_listing_id]
+    [listing.lot_project_id, listing.lot_project_listing_id, Number(listing.lot_project_client_profile_id || 0), Number(listing.lot_project_client_profile_id || 0)]
   );
 
   for (const affected of affectedRows) {
@@ -3004,9 +3024,10 @@ export const getBalloonPrincipalCapacity = async (
       FROM lot_project_payment_schedules
       WHERE lot_project_id = ?
         AND lot_project_listing_id = ?
+        AND (? = 0 OR lot_project_client_profile_id = ?)
       ORDER BY due_date ASC, lot_project_payment_schedule_id ASC
     `,
-    [listing.lot_project_id, listing.lot_project_listing_id]
+    [listing.lot_project_id, listing.lot_project_listing_id, Number(listing.lot_project_client_profile_id || 0), Number(listing.lot_project_client_profile_id || 0)]
   );
 
   const [profileRows] = await connection.query(
@@ -3014,9 +3035,11 @@ export const getBalloonPrincipalCapacity = async (
       SELECT *
       FROM lot_project_client_profiles
       WHERE lot_project_listing_id = ?
+        AND (? = 0 OR lot_project_client_profile_id = ?)
+      ORDER BY (lot_project_client_profile_status = 'active') DESC, lot_project_client_profile_id DESC
       LIMIT 1
     `,
-    [listing.lot_project_listing_id]
+    [listing.lot_project_listing_id, Number(listing.lot_project_client_profile_id || 0), Number(listing.lot_project_client_profile_id || 0)]
   );
 
   const clientProfile = { ...(listing || {}), ...(profileRows[0] || {}) };
@@ -3053,12 +3076,13 @@ export const recomputeListingScheduleBalances = async (connection, listing) => {
       FROM lot_project_payment_schedules
       WHERE lot_project_id = ?
         AND lot_project_listing_id = ?
+        AND (? = 0 OR lot_project_client_profile_id = ?)
       ORDER BY
         CASE WHEN due_date IS NULL THEN 1 ELSE 0 END,
         due_date ASC,
         lot_project_payment_schedule_id ASC
     `,
-    [listing.lot_project_id, listing.lot_project_listing_id]
+    [listing.lot_project_id, listing.lot_project_listing_id, Number(listing.lot_project_client_profile_id || 0), Number(listing.lot_project_client_profile_id || 0)]
   );
 
   const [clientProfileRows] = await connection.query(
@@ -3066,9 +3090,11 @@ export const recomputeListingScheduleBalances = async (connection, listing) => {
       SELECT *
       FROM lot_project_client_profiles
       WHERE lot_project_listing_id = ?
+        AND (? = 0 OR lot_project_client_profile_id = ?)
+      ORDER BY (lot_project_client_profile_status = 'active') DESC, lot_project_client_profile_id DESC
       LIMIT 1
     `,
-    [listing.lot_project_listing_id]
+    [listing.lot_project_listing_id, Number(listing.lot_project_client_profile_id || 0), Number(listing.lot_project_client_profile_id || 0)]
   );
 
   const clientProfile = { ...(listing || {}), ...(clientProfileRows[0] || {}) };
@@ -3322,6 +3348,7 @@ export const applyPaymentToSchedules = async (connection, listing, paymentId, pr
       FROM lot_project_payment_schedules
       WHERE lot_project_id = ?
         AND lot_project_listing_id = ?
+        AND (? = 0 OR lot_project_client_profile_id = ?)
         AND schedule_status <> 'Cancelled'
       ORDER BY
         CASE WHEN lot_project_payment_schedule_id = ? THEN 0 ELSE 1 END,
@@ -3329,7 +3356,7 @@ export const applyPaymentToSchedules = async (connection, listing, paymentId, pr
         due_date ASC,
         lot_project_payment_schedule_id ASC
     `,
-    [listing.lot_project_id, listing.lot_project_listing_id, preferredScheduleId || 0]
+    [listing.lot_project_id, listing.lot_project_listing_id, Number(listing.lot_project_client_profile_id || 0), Number(listing.lot_project_client_profile_id || 0), preferredScheduleId || 0]
   );
 
   if (!scheduleRows.length) {
@@ -3472,9 +3499,10 @@ export const getPaymentById = async (connection, project, listing, paymentId) =>
       WHERE lot_project_payment_id = ?
         AND lot_project_id = ?
         AND lot_project_listing_id = ?
+        AND (? = 0 OR lot_project_client_profile_id = ?)
       LIMIT 1
     `,
-    [paymentId, project.lot_project_id, listing.lot_project_listing_id]
+    [paymentId, project.lot_project_id, listing.lot_project_listing_id, Number(listing.lot_project_client_profile_id || 0), Number(listing.lot_project_client_profile_id || 0)]
   );
 
   return rows[0] || null;
@@ -3508,3 +3536,4 @@ export const addIfColumnExists = async (connection, tableName, columns, values, 
     values.push(value);
   }
 };
+

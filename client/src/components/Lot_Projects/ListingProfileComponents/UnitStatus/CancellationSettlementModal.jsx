@@ -20,6 +20,7 @@ const CancellationSettlementModal = ({
   unitId,
   buyerName,
   cashCollected = 0,
+  commissionBase = 0,
   onClose,
   onConfirm,
   isSaving = false,
@@ -40,6 +41,14 @@ const CancellationSettlementModal = ({
     return Math.max(Number(refundAmount || 0), 0)
   }, [collected, refundAmount, refundType])
   const discontinued = Math.max(collected - effectiveRefund, 0)
+  const retainedPercent = Number(commissionBase || 0) > 0 ? Math.min(100, (discontinued / Number(commissionBase)) * 100) : 0
+  const commissionStages = [
+    { label: '1st Release', trigger: 20 },
+    { label: '2nd Release', trigger: 40 },
+    { label: '3rd Release', trigger: 60 },
+    { label: '4th Release', trigger: 75 },
+    { label: 'Retention', trigger: 100 },
+  ]
 
   const submit = async (event) => {
     event.preventDefault()
@@ -162,9 +171,20 @@ const CancellationSettlementModal = ({
           <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
             <div className="flex items-start gap-3">
               <FiAlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
-              <div>
-                <p className="font-black">Commission records</p>
-                <p className="mt-1 font-semibold">Released commissions and receipts remain historical records. Unreleased stages will be cancelled. Returning the unit to Available archives the cancelled sale before clearing the active account.</p>
+              <div className="w-full">
+                <p className="font-black">Cancellation commission preview</p>
+                <p className="mt-1 font-semibold">The retained commissionable amount is {money(discontinued)}, equal to {retainedPercent.toFixed(2)}% of the saved commission base. Reached milestones remain payable. Unreached milestones become forfeited. Released commissions remain unchanged.</p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-5">
+                  {commissionStages.map((stage) => {
+                    const earned = retainedPercent >= stage.trigger
+                    return (
+                      <div key={stage.label} className={`rounded-xl border px-3 py-2 ${earned ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-white text-slate-600'}`}>
+                        <p className="text-xs font-black">{stage.label}</p>
+                        <p className="mt-1 text-[11px] font-semibold">{stage.trigger}% · {earned ? 'Earned' : 'Forfeited'}</p>
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
             </div>
           </div>
@@ -190,3 +210,4 @@ const CancellationSettlementModal = ({
 }
 
 export default CancellationSettlementModal
+

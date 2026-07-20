@@ -260,3 +260,4 @@ export const syncGroupHeadFallbackOverrides = async (connection, sellerGroupId) 
     await syncChildOverrideFromCurrentParent(connection, child.accredited_seller_id);
   }
 };
+

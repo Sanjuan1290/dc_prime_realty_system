@@ -163,7 +163,7 @@ const EditUnitStatusModal = ({ listing, project = {}, onClose, onSave, isSaving 
     : currentStatus === 'pending_for_cancellation'
       ? 'Status is locked here. Use Settlement or Cancel Cancellation on Unit & Status.'
       : currentStatus === 'cancelled'
-        ? 'Status is locked. Use Change to Available to archive the cancelled sale and clear only the active account.'
+        ? 'Status is locked. Use Close Account & Make Available to retain the cancelled buyer history and release the unit for a new account.'
         : currentStatus === 'hold'
           ? 'Status is locked. Use Unhold or complete the pending buyer form review.'
           : 'Status is locked. Use Hold or Reserve from the Listing Profile actions.'
@@ -517,4 +517,5 @@ const EditUnitStatusModal = ({ listing, project = {}, onClose, onSave, isSaving 
 }
 
 export default EditUnitStatusModal
+
 

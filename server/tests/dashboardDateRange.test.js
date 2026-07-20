@@ -32,3 +32,4 @@ test('preset ranges resolve to complete calendar months', () => {
   assert.equal(nextDay.getDate(), 1);
 });
 
+

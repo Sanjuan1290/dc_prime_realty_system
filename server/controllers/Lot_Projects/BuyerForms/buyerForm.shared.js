@@ -340,7 +340,7 @@ export const resetBuyerFormsForAvailable = async (connection, listingId) => {
   );
 };
 
-export const getBuyerFormAdminState = async (connection, listingId) => {
+export const getBuyerFormAdminState = async (connection, listingId, accountId = 0) => {
   await assertBuyerFormSchema(connection);
   await expireBuyerFormLinks(connection, listingId);
 
@@ -359,10 +359,11 @@ export const getBuyerFormAdminState = async (connection, listingId) => {
         recipient_mobile_number AS recipientMobileNumber
       FROM lot_project_buyer_form_links
       WHERE lot_project_listing_id = ?
+        AND (? = 0 OR lot_project_account_id = ?)
       ORDER BY lot_project_buyer_form_link_id DESC
       LIMIT 1
     `,
-    [listingId]
+    [listingId, Number(accountId || 0), Number(accountId || 0)]
   );
 
   const [submissionRows] = await connection.query(
@@ -384,10 +385,11 @@ export const getBuyerFormAdminState = async (connection, listingId) => {
         rejection_reason AS rejectionReason
       FROM lot_project_buyer_form_submissions
       WHERE lot_project_listing_id = ?
+        AND (? = 0 OR lot_project_account_id = ?)
       ORDER BY lot_project_buyer_form_submission_id DESC
       LIMIT 1
     `,
-    [listingId]
+    [listingId, Number(accountId || 0), Number(accountId || 0)]
   );
 
   const submission = submissionRows[0]
@@ -417,4 +419,5 @@ export const getPublicBuyerFormUrl = (req, token) => {
   const origin = String(req?.headers?.origin || corsOrigin || 'http://localhost:5174').replace(/\/$/, '');
   return `${origin}/buyer-form/${token}`;
 };
+
 

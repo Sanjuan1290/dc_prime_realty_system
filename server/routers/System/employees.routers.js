@@ -18,3 +18,4 @@ router.put('/:employeeId', requirePermission(PERMISSIONS.EMPLOYEES_MANAGE), upda
 router.patch('/:employeeId/status', requirePermission(PERMISSIONS.EMPLOYEES_MANAGE), updateEmployeeStatus);
 export default router;
 
+

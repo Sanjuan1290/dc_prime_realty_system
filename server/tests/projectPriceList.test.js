@@ -64,3 +64,4 @@ test('project unit price list matches the inventory sheet columns and straight-p
   assert.match(printSource, /listing\.status/);
   assert.match(printSource, /colSpan=\{13\}/);
 });
+

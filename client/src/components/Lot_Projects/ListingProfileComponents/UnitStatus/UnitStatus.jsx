@@ -16,6 +16,7 @@ import EditUnitStatusModal from './EditUnitStatusModal'
 import RecalculateCommissionModal from './RecalculateCommissionModal'
 import CommissionDistribution from './CommissionDistribution'
 import CancellationSettlementModal from './CancellationSettlementModal'
+import ConfirmActionModal from '../../../Shared/ConfirmActionModal'
 
 const fallbackListing = {
   unit_id: '-',
@@ -150,6 +151,7 @@ const UnitStatus = ({
   const [showEditModal, setShowEditModal] = useState(false)
   const [showRecalculateModal, setShowRecalculateModal] = useState(false)
   const [showSettlementModal, setShowSettlementModal] = useState(false)
+  const [confirmAction, setConfirmAction] = useState(null)
   const [alert, setAlert] = useState(null)
 
   const unitData = useMemo(() => ({ ...fallbackListing, ...listing }), [listing])
@@ -195,61 +197,49 @@ const UnitStatus = ({
     setShowSettlementModal(false)
   }
 
-  const handleCancelCancellation = async () => {
-    const confirmed = window.confirm(
-      'Cancel the pending cancellation and return this account to Sold / Active? Buyer, payment, SOA, document, and commission records will stay unchanged.'
-    )
-
-    if (!confirmed) return
-
-    await handleSave({
-      ...unitData,
-      unitCode: unitData.unit_id || unitData.unitCode,
-      lotType: unitData.lot_type,
-      pricePerSqm: unitData.installmentPricePerSqm ?? unitData.pricePerSqm,
-      installmentPricePerSqm: unitData.installmentPricePerSqm ?? unitData.pricePerSqm,
-      cashPricePerSqm: unitData.cashPricePerSqm ?? unitData.pricePerSqm,
-      lotAreaSqm: unitData.lotAreaSqm,
-      legalMiscRate: unitData.legalMiscRate,
-      annualInterestRate: unitData.annualInterestRate,
-      reservationFee: unitData.reservationFee,
-      oldUnitIds: unitData.old_unit_ids === '-' ? '' : unitData.old_unit_ids,
-      cadastralLots: String(unitData.cadastral_lot_no || '')
-        .split(',')
-        .map((item) => item.trim())
-        .filter(Boolean),
-      status: 'sold',
-      statusTransitionAction: 'cancel_cancellation',
-    })
+  const submitCancelCancellation = async () => {
+    try {
+      setAlert({ type: 'loading', message: 'Returning the buyer account to Sold / Active...' })
+      await handleSave({
+        ...unitData,
+        unitCode: unitData.unit_id || unitData.unitCode,
+        lotType: unitData.lot_type,
+        installmentPricePerSqm: unitData.installmentPricePerSqm ?? unitData.pricePerSqm,
+        cashPricePerSqm: unitData.cashPricePerSqm ?? unitData.pricePerSqm,
+        lotAreaSqm: unitData.lotAreaSqm,
+        legalMiscRate: unitData.legalMiscRate,
+        annualInterestRate: unitData.annualInterestRate,
+        reservationFee: unitData.reservationFee,
+        oldUnitIds: unitData.old_unit_ids === '-' ? '' : unitData.old_unit_ids,
+        cadastralLots: String(unitData.cadastral_lot_no || '').split(',').map((item) => item.trim()).filter(Boolean),
+        status: 'sold',
+        statusTransitionAction: 'cancel_cancellation',
+      })
+      setConfirmAction(null)
+    } catch {}
   }
 
-  const handleMakeAvailable = async () => {
-    const confirmed = window.confirm(
-      'Changing this listing back to available will archive the cancelled sale, verified payments, released commissions, and receipts. The active buyer account and working SOA will then be cleared so the unit can be reserved again. Continue?'
-    )
-
-    if (!confirmed) return
-
-    await handleSave({
-      ...unitData,
-      unitCode: unitData.unit_id || unitData.unitCode,
-      lotType: unitData.lot_type,
-      pricePerSqm: unitData.installmentPricePerSqm ?? unitData.pricePerSqm,
-      installmentPricePerSqm: unitData.installmentPricePerSqm ?? unitData.pricePerSqm,
-      cashPricePerSqm: unitData.cashPricePerSqm ?? unitData.pricePerSqm,
-      lotAreaSqm: unitData.lotAreaSqm,
-      legalMiscRate: unitData.legalMiscRate,
-      annualInterestRate: unitData.annualInterestRate,
-      reservationFee: unitData.reservationFee,
-      oldUnitIds: unitData.old_unit_ids === '-' ? '' : unitData.old_unit_ids,
-      cadastralLots: String(unitData.cadastral_lot_no || '')
-        .split(',')
-        .map((item) => item.trim())
-        .filter(Boolean),
-      status: 'available',
-      statusTransitionAction: 'reset_to_available',
-      confirmSaleDataDeletion: true,
-    })
+  const submitMakeAvailable = async () => {
+    try {
+      setAlert({ type: 'loading', message: 'Closing the cancelled buyer account and returning the unit to Available...' })
+      await handleSave({
+        ...unitData,
+        unitCode: unitData.unit_id || unitData.unitCode,
+        lotType: unitData.lot_type,
+        installmentPricePerSqm: unitData.installmentPricePerSqm ?? unitData.pricePerSqm,
+        cashPricePerSqm: unitData.cashPricePerSqm ?? unitData.pricePerSqm,
+        lotAreaSqm: unitData.lotAreaSqm,
+        legalMiscRate: unitData.legalMiscRate,
+        annualInterestRate: unitData.annualInterestRate,
+        reservationFee: unitData.reservationFee,
+        oldUnitIds: unitData.old_unit_ids === '-' ? '' : unitData.old_unit_ids,
+        cadastralLots: String(unitData.cadastral_lot_no || '').split(',').map((item) => item.trim()).filter(Boolean),
+        status: 'available',
+        statusTransitionAction: 'reset_to_available',
+        confirmSaleDataDeletion: true,
+      })
+      setConfirmAction(null)
+    } catch {}
   }
 
   const showSettlementButton =
@@ -309,7 +299,7 @@ const UnitStatus = ({
             {showSettlementButton ? (
               <button
                 type="button"
-                onClick={handleCancelCancellation}
+                onClick={() => setConfirmAction('cancel-cancellation')}
                 disabled={isSaving}
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98]"
               >
@@ -321,11 +311,11 @@ const UnitStatus = ({
             {showAvailableButton ? (
               <button
                 type="button"
-                onClick={handleMakeAvailable}
+                onClick={() => setConfirmAction('make-available')}
                 disabled={isSaving}
                 className="inline-flex h-10 items-center justify-center rounded-xl bg-emerald-600 px-4 text-sm font-black text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98]"
               >
-                Change to Available
+                Close Account & Make Available
               </button>
             ) : null}
           </div>
@@ -401,7 +391,7 @@ const UnitStatus = ({
           <DetailBox label="Cancelled At" value={unitData.cancelledAt} />
           <DetailBox label="Cancellation Reason" value={unitData.cancellationReason} long />
           <DetailBox label="Settlement Notes" value={unitData.cancellationSettlementNotes} long />
-          <DetailBox label="Financial Archive" value={unitData.saleDataArchivedAt === '-' ? 'Pending Change to Available' : `Archived ${unitData.saleDataArchivedAt}`} long />
+          <DetailBox label="Account History" value={unitData.saleDataArchivedAt === '-' ? 'Will remain after returning the unit to Available' : `Retained since ${unitData.saleDataArchivedAt}`} long />
         </SectionBlock>
       ) : null}
 
@@ -451,11 +441,34 @@ const UnitStatus = ({
         <DetailBox label="Client Unit Updated" value={unitData.client_unit_updated} />
       </SectionBlock>
 
+      <ConfirmActionModal
+        open={confirmAction === 'cancel-cancellation'}
+        title="Cancel Pending Cancellation?"
+        message="The buyer account returns to Sold / Active. Buyer, payment, SOA, document, and commission records remain unchanged."
+        confirmLabel="Return to Sold / Active"
+        tone="primary"
+        isPending={isSaving}
+        onClose={() => setConfirmAction(null)}
+        onConfirm={submitCancelCancellation}
+      />
+
+      <ConfirmActionModal
+        open={confirmAction === 'make-available'}
+        title="Close Account and Return Unit to Available?"
+        message="The cancelled buyer account remains in Account History with its payments, logs, SOA, documents, commissions, receipts, and uploaded files. A future buyer will receive a separate account."
+        confirmLabel="Close Account & Make Available"
+        tone="primary"
+        isPending={isSaving}
+        onClose={() => setConfirmAction(null)}
+        onConfirm={submitMakeAvailable}
+      />
+
       {showSettlementModal ? (
         <CancellationSettlementModal
           unitId={unitData.unit_id || unitData.unitCode}
           buyerName={unitData.buyer_name}
           cashCollected={unitData.totalPaid}
+          commissionBase={unitData.commissionRecalculation?.commissionBase || unitData.netSellingPriceAmount || unitData.tcpAmount}
           onClose={() => setShowSettlementModal(false)}
           onConfirm={handleSettleCancellation}
           isSaving={isSaving}
@@ -486,4 +499,5 @@ const UnitStatus = ({
 }
 
 export default UnitStatus
+
 

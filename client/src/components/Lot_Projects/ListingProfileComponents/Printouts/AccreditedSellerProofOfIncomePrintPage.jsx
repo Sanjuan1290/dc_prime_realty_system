@@ -154,7 +154,7 @@ export const CommissionReceiptPrint = ({ seller = {}, receipt = {} }) => {
                   <p>{receipt.buyerName || '-'}</p>
                   {releaseStages ? <p>{releaseStages}</p> : null}
                   {tranchePercent > 0 ? (
-                    <p>{formatPercent(tranchePercent)}% RELEASE</p>
+                    <p>{formatPercent(tranchePercent)}% TRANCHE RELEASE</p>
                   ) : null}
                   {cumulativeTargetPercent > 0 ? (
                     <p>({formatPercent(cumulativeTargetPercent)}% CUMULATIVE OF 100%)</p>
@@ -225,4 +225,3 @@ const AccreditedSellerProofOfIncomePrintPage = () => {
 }
 
 export default AccreditedSellerProofOfIncomePrintPage
-

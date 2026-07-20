@@ -95,3 +95,4 @@ test('top-level BNM or Broker accounts become the group head and reservation pre
   assert.match(commissionSource, /validateSellerReportingChain/);
   assert.match(createUserSource, /canReplaceBrokerHead/);
 });
+

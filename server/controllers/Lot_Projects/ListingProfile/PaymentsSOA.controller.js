@@ -91,12 +91,14 @@ const getExactFullPaymentAmount = async (connection, listing) => {
       FROM lot_project_payment_schedules
       WHERE lot_project_id = ?
         AND lot_project_listing_id = ?
+        AND lot_project_client_profile_id = ?
+        AND schedule_status <> 'Cancelled'
       ORDER BY
         CASE WHEN due_date IS NULL THEN 1 ELSE 0 END,
         due_date ASC,
         lot_project_payment_schedule_id ASC
     `,
-    [listing.lot_project_id, listing.lot_project_listing_id]
+    [listing.lot_project_id, listing.lot_project_listing_id, listing.lot_project_client_profile_id]
   );
 
   const [profileRows] = await connection.query(
@@ -269,6 +271,7 @@ export const createLotProjectListingPayment = async (req, res) => {
           lot_project_id,
           lot_project_listing_id,
           lot_project_client_profile_id,
+          lot_project_account_id,
           lot_project_payment_schedule_id,
           lot_project_payment_type,
           lot_project_payment_method,
@@ -278,12 +281,13 @@ export const createLotProjectListingPayment = async (req, res) => {
           lot_project_payment_status,
           lot_project_payment_verified_by_user_id,
           lot_project_payment_verified_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Verified', ?, NOW())
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Verified', ?, NOW())
       `,
       [
         project.lot_project_id,
         listing.lot_project_listing_id,
         listing.lot_project_client_profile_id,
+        listing.lot_project_account_id,
         scheduleId,
         paymentType,
         paymentMethod,
@@ -413,6 +417,8 @@ export const updateLotProjectListingPayment = async (req, res) => {
         WHERE lot_project_payment_id = ?
           AND lot_project_id = ?
           AND lot_project_listing_id = ?
+          AND lot_project_client_profile_id = ?
+          AND lot_project_account_id = ?
       `,
       [
         scheduleId,
@@ -425,6 +431,8 @@ export const updateLotProjectListingPayment = async (req, res) => {
         paymentId,
         project.lot_project_id,
         listing.lot_project_listing_id,
+        listing.lot_project_client_profile_id,
+        listing.lot_project_account_id,
       ]
     );
 
@@ -481,10 +489,12 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
 
     const [listingRows] = await connection.query(
       `
-        SELECT l.*, cp.*
+        SELECT l.*, account.lot_project_account_id, account.account_reference, account.account_status, cp.*
         FROM lot_project_listings l
+        INNER JOIN lot_project_accounts account
+          ON account.lot_project_account_id = l.current_account_id
         INNER JOIN lot_project_client_profiles cp
-          ON cp.lot_project_listing_id = l.lot_project_listing_id
+          ON cp.lot_project_client_profile_id = account.lot_project_client_profile_id
         WHERE l.lot_project_id = ?
           AND ${lookup.sql}
         LIMIT 1
@@ -502,9 +512,10 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
             FROM lot_project_payments
             WHERE lot_project_id = ?
               AND lot_project_listing_id = ?
+              AND lot_project_client_profile_id = ?
               AND lot_project_payment_status <> 'Cancelled'
           `,
-          [project.lot_project_id, listing.lot_project_listing_id]
+          [project.lot_project_id, listing.lot_project_listing_id, listing.lot_project_client_profile_id]
         ))[0][0]?.total
       : 0;
 
@@ -647,9 +658,18 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
       const terms = getComputedSoaTerms(updatedListing, []);
       const computedRows = recomputeComputedSoaBalances(createComputedSoaRows(terms), terms);
 
+      // Keep the previous zero-payment schedule as account history instead of deleting it.
       await connection.query(
-        `DELETE FROM lot_project_payment_schedules WHERE lot_project_listing_id = ?`,
-        [listing.lot_project_listing_id]
+        `
+          UPDATE lot_project_payment_schedules
+          SET schedule_status = 'Cancelled',
+              updated_at = NOW()
+          WHERE lot_project_id = ?
+            AND lot_project_listing_id = ?
+            AND lot_project_client_profile_id = ?
+            AND schedule_status <> 'Cancelled'
+        `,
+        [project.lot_project_id, listing.lot_project_listing_id, listing.lot_project_client_profile_id]
       );
 
       if (computedRows.length > 0) {
@@ -657,6 +677,7 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
           'lot_project_id',
           'lot_project_listing_id',
           'lot_project_client_profile_id',
+          'lot_project_account_id',
           'due_date',
           'description',
           'beginning_balance',
@@ -687,6 +708,7 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
             project.lot_project_id,
             listing.lot_project_listing_id,
             listing.lot_project_client_profile_id,
+            listing.lot_project_account_id,
             row.dueDate,
             row.description,
             roundMoneyValue(row.beginningBalance || 0),
@@ -853,8 +875,16 @@ export const deleteLotProjectListingPayment = async (req, res) => {
         WHERE lot_project_payment_id = ?
           AND lot_project_id = ?
           AND lot_project_listing_id = ?
+          AND lot_project_client_profile_id = ?
+          AND lot_project_account_id = ?
       `,
-      [paymentId, project.lot_project_id, listing.lot_project_listing_id]
+      [
+        paymentId,
+        project.lot_project_id,
+        listing.lot_project_listing_id,
+        listing.lot_project_client_profile_id,
+        listing.lot_project_account_id,
+      ]
     );
 
     if (await tableExists(connection, 'lot_project_payment_schedules')) {
@@ -950,6 +980,7 @@ export const grantPaymentSchedulePenaltyExtension = async (req, res) => {
           lot_project_id,
           lot_project_listing_id,
           lot_project_client_profile_id,
+          lot_project_account_id,
           lot_project_payment_schedule_id,
           relief_type,
           promised_payment_date,
@@ -958,12 +989,13 @@ export const grantPaymentSchedulePenaltyExtension = async (req, res) => {
           reason,
           internal_notes,
           approved_by_user_id
-        ) VALUES (?, ?, ?, ?, 'penalty_free_extension', ?, 0, 'active', ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, 'penalty_free_extension', ?, 0, 'active', ?, ?, ?)
       `,
       [
         project.lot_project_id,
         listing.lot_project_listing_id,
         listing.lot_project_client_profile_id,
+        listing.lot_project_account_id,
         scheduleId,
         promisedPaymentDate,
         reason,
@@ -1057,6 +1089,8 @@ export const updatePaymentSchedulePenaltyExtension = async (req, res) => {
         WHERE penalty_relief_id = ?
           AND lot_project_id = ?
           AND lot_project_listing_id = ?
+          AND lot_project_client_profile_id = ?
+          AND lot_project_account_id = ?
           AND lot_project_payment_schedule_id = ?
           AND relief_type = 'penalty_free_extension'
           AND status <> 'cancelled'
@@ -1068,6 +1102,8 @@ export const updatePaymentSchedulePenaltyExtension = async (req, res) => {
         reliefId,
         project.lot_project_id,
         listing.lot_project_listing_id,
+        listing.lot_project_client_profile_id,
+        listing.lot_project_account_id,
         scheduleId,
       ]
     );
@@ -1137,6 +1173,7 @@ export const correctPaymentSchedulePenalty = async (req, res) => {
           lot_project_id,
           lot_project_listing_id,
           lot_project_client_profile_id,
+          lot_project_account_id,
           lot_project_payment_schedule_id,
           relief_type,
           relief_amount,
@@ -1144,12 +1181,13 @@ export const correctPaymentSchedulePenalty = async (req, res) => {
           reason,
           internal_notes,
           approved_by_user_id
-        ) VALUES (?, ?, ?, ?, 'penalty_correction', ?, 'active', ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, 'penalty_correction', ?, 'active', ?, ?, ?)
       `,
       [
         project.lot_project_id,
         listing.lot_project_listing_id,
         listing.lot_project_client_profile_id,
+        listing.lot_project_account_id,
         scheduleId,
         correctedAmount,
         reason,
@@ -1248,6 +1286,7 @@ export const waivePaymentSchedulePenalty = async (req, res) => {
           lot_project_id,
           lot_project_listing_id,
           lot_project_client_profile_id,
+          lot_project_account_id,
           lot_project_payment_schedule_id,
           relief_type,
           relief_amount,
@@ -1255,12 +1294,13 @@ export const waivePaymentSchedulePenalty = async (req, res) => {
           reason,
           internal_notes,
           approved_by_user_id
-        ) VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)
       `,
       [
         project.lot_project_id,
         listing.lot_project_listing_id,
         listing.lot_project_client_profile_id,
+        listing.lot_project_account_id,
         scheduleId,
         waiverType === 'full' ? 'full_waiver' : 'partial_waiver',
         roundMoneyValue(requestedAmount),
@@ -1335,10 +1375,18 @@ export const restorePaymentSchedulePenaltyWaiver = async (req, res) => {
         WHERE penalty_relief_id = ?
           AND lot_project_id = ?
           AND lot_project_listing_id = ?
+          AND lot_project_client_profile_id = ?
+          AND lot_project_account_id = ?
           AND relief_type IN ('full_waiver', 'partial_waiver', 'penalty_correction')
         LIMIT 1
       `,
-      [reliefId, project.lot_project_id, listing.lot_project_listing_id]
+      [
+        reliefId,
+        project.lot_project_id,
+        listing.lot_project_listing_id,
+        listing.lot_project_client_profile_id,
+        listing.lot_project_account_id,
+      ]
     );
     const relief = reliefRows[0];
     if (!relief) throw createHttpError(404, 'Penalty relief record was not found.');
@@ -1387,6 +1435,7 @@ export const restorePaymentSchedulePenaltyWaiver = async (req, res) => {
           lot_project_id,
           lot_project_listing_id,
           lot_project_client_profile_id,
+          lot_project_account_id,
           lot_project_payment_schedule_id,
           relief_type,
           relief_amount,
@@ -1395,12 +1444,13 @@ export const restorePaymentSchedulePenaltyWaiver = async (req, res) => {
           reason,
           internal_notes,
           approved_by_user_id
-        ) VALUES (?, ?, ?, ?, 'restoration', ?, ?, 'active', ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, 'restoration', ?, ?, 'active', ?, ?, ?)
       `,
       [
         project.lot_project_id,
         listing.lot_project_listing_id,
         listing.lot_project_client_profile_id,
+        listing.lot_project_account_id,
         relief.lot_project_payment_schedule_id,
         roundMoneyValue(requestedAmount),
         reliefId,
@@ -1456,4 +1506,5 @@ export const restorePaymentSchedulePenaltyWaiver = async (req, res) => {
     connection.release();
   }
 };
+
 

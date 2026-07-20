@@ -53,3 +53,4 @@ test('income report and receipt show tranche and cumulative values separately', 
   assert.match(controllerSource, /release_trigger_percent/);
   assert.match(controllerSource, /cumulativeGrossTarget/);
 });
+

@@ -618,8 +618,8 @@ export const replaceReservationCommissions = async (
   const commissionRows = preview.rows.filter((row) => Number(row.rate || 0) > 0);
 
   await connection.query(
-    `DELETE FROM lot_project_commissions WHERE lot_project_listing_id = ?`,
-    [listing.lot_project_listing_id]
+    `DELETE FROM lot_project_commissions WHERE lot_project_client_profile_id = ?`,
+    [clientProfileId]
   );
 
   const hasRateType = await columnExists(connection, 'lot_project_commissions', 'commission_rate_type');
@@ -737,4 +737,5 @@ export const hasReleasedCommissionActivity = ({
   Number(releasedCommissionCount || 0) > 0 ||
   Number(releasedStageCount || 0) > 0 ||
   Number(receiptCount || 0) > 0;
+
 

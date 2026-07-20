@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   FiArrowLeft,
   FiCreditCard,
+  FiClock,
   FiFileText,
   FiHome,
   FiLink,
@@ -21,6 +22,7 @@ import ClientProfile from '../../components/Lot_Projects/ListingProfileComponent
 import PaymentsSOA from '../../components/Lot_Projects/ListingProfileComponents/PaymentsSOA/Payments_SOA'
 import Documents from '../../components/Lot_Projects/ListingProfileComponents/Documents/Documents'
 import Printouts from '../../components/Lot_Projects/ListingProfileComponents/Printouts/Printouts'
+import AccountHistoryPanel from '../../components/Lot_Projects/ListingProfileComponents/AccountHistory/AccountHistoryPanel'
 import ReserveListingModal from '../../components/Lot_Projects/ListingProfileComponents/ReserveListingModal/ReserveListingModal'
 import BuyerFormLinkModal from '../../components/Lot_Projects/ListingProfileComponents/BuyerForm/BuyerFormLinkModal'
 import BuyerFormStatusBanner from '../../components/Lot_Projects/ListingProfileComponents/BuyerForm/BuyerFormStatusBanner'
@@ -39,6 +41,7 @@ const tabs = [
   { key: 'client', label: 'Client Profile', icon: FiUser },
   { key: 'payments', label: 'Payments / SOA', icon: FiCreditCard },
   { key: 'documents', label: 'Documents', icon: FiFileText },
+  { key: 'accounts', label: 'Account History', icon: FiClock },
   { key: 'printouts', label: 'Printouts', icon: FiPrinter },
 ]
 
@@ -689,6 +692,7 @@ const ListingProfile = () => {
           canManage={canManageDocuments}
           canEditRequirements={Boolean(listing.id || listing.routeId || listingId)}
           projectSlug={projectSlug}
+          listingId={listingId}
           project={project}
           listing={listing}
           client={client}
@@ -704,6 +708,14 @@ const ListingProfile = () => {
             clearDocumentMutation.isPending
           }
           isSavingRequirements={updateDocumentRequirementsMutation.isPending}
+        />
+      ) : null}
+
+      {!profileQuery.isLoading && !profileQuery.isError && activeTab === 'accounts' ? (
+        <AccountHistoryPanel
+          projectSlug={projectSlug}
+          listingId={listingId}
+          isSuperAdmin={currentUserData?.user?.role === 'super_admin'}
         />
       ) : null}
 
@@ -768,4 +780,5 @@ const ListingProfile = () => {
 }
 
 export default ListingProfile
+
 

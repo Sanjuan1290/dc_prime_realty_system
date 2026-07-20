@@ -1,182 +1,172 @@
-import { useState } from 'react'
-import { FiFileText, FiLoader, FiUploadCloud, FiX } from 'react-icons/fi'
+import { useMemo, useState } from 'react'
+import { FiFileText, FiLoader, FiShield, FiUploadCloud, FiX } from 'react-icons/fi'
+import StatusAlert from '../../../Shared/StatusAlert'
+import { useFetchPost } from '../../../../utils/useFetch'
 
-const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME
-const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET
-const CLOUDINARY_UPLOAD_URL = CLOUDINARY_CLOUD_NAME
-  ? `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/auto/upload`
-  : ''
+const MAX_FILE_BYTES = 15 * 1024 * 1024
+const allowedTypes = new Set(['image/jpeg', 'image/png', 'application/pdf'])
 
-const uploadFileToCloudinary = async (selectedFile, { folder = '' } = {}) => {
-  if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_UPLOAD_PRESET) {
-    throw new Error('Cloudinary is not configured. Add VITE_CLOUDINARY_CLOUD_NAME and VITE_CLOUDINARY_UPLOAD_PRESET in client/.env.')
-  }
-
-  const formData = new FormData()
-  formData.append('file', selectedFile)
-  formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET)
-
-  if (folder) {
-    // `folder` supports legacy fixed-folder environments, while
-    // `asset_folder` keeps the Media Library location correct in dynamic mode.
-    formData.append('folder', folder)
-    formData.append('asset_folder', folder)
-    formData.append('tags', 'dc_prime,client_unit_document,document_image')
-  }
-
-  const response = await fetch(CLOUDINARY_UPLOAD_URL, {
-    method: 'POST',
-    body: formData,
-  })
-
-  const data = await response.json().catch(() => null)
-
-  if (!response.ok) {
-    throw new Error(data?.error?.message || 'Cloudinary upload failed.')
-  }
-
-  if (!data?.secure_url) {
-    throw new Error('Cloudinary did not return a secure file URL.')
-  }
-
-  return data
+const formatBytes = (bytes = 0) => {
+  const value = Number(bytes || 0)
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`
 }
 
-const UploadDocumentModal = ({ document, uploadFolder = '', isSaving = false, onClose, onSave }) => {
+const UploadDocumentModal = ({ document, signaturePath, isSaving = false, onClose, onSave }) => {
   const [files, setFiles] = useState([])
   const [isUploading, setIsUploading] = useState(false)
-  const [error, setError] = useState('')
+  const [notice, setNotice] = useState(null)
+  const [progress, setProgress] = useState({ current: 0, total: 0 })
 
   const isBusy = isSaving || isUploading
+  const invalidFiles = useMemo(
+    () => files.filter((file) => !allowedTypes.has(file.type) || file.size <= 0 || file.size > MAX_FILE_BYTES),
+    [files]
+  )
+
+  const uploadOne = async (file) => {
+    const signatureResponse = await useFetchPost(signaturePath, {
+      fileName: file.name,
+      fileType: file.type,
+      fileSize: file.size,
+    })
+    const signed = signatureResponse?.data || {}
+    if (!signed.uploadUrl || !signed.signature || !signed.apiKey) {
+      throw new Error('The server did not return a valid protected upload signature.')
+    }
+
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('api_key', signed.apiKey)
+    formData.append('timestamp', String(signed.timestamp))
+    formData.append('signature', signed.signature)
+    formData.append('public_id', signed.publicId)
+    formData.append('asset_folder', signed.folder)
+    formData.append('type', signed.type || 'authenticated')
+    formData.append('tags', signed.tags || 'dc_prime,buyer_document,authenticated')
+    formData.append('context', signed.context || '')
+
+    const response = await fetch(signed.uploadUrl, { method: 'POST', body: formData })
+    const result = await response.json().catch(() => null)
+    if (!response.ok) throw new Error(result?.error?.message || `Cloudinary upload failed for ${file.name}.`)
+
+    return {
+      fileName: file.name,
+      fileUrl: result?.secure_url || '',
+      fileSize: Number(result?.bytes || file.size),
+      fileType: file.type,
+      cloudinaryAssetId: result?.asset_id || null,
+      cloudinaryPublicId: result?.public_id || null,
+      cloudinaryResourceType: result?.resource_type || (file.type === 'application/pdf' ? 'raw' : 'image'),
+      cloudinaryDeliveryType: result?.type || 'authenticated',
+      cloudinaryVersion: Number(result?.version || 0) || null,
+      cloudinaryFolder: result?.asset_folder || signed.folder,
+      cloudinaryAssetFolder: result?.asset_folder || signed.folder,
+      cloudinaryFormat: result?.format || null,
+    }
+  }
 
   const handleSave = async () => {
     if (!files.length || isBusy) return
+    if (!signaturePath) {
+      setNotice({ type: 'error', message: 'The secure upload route is missing.' })
+      return
+    }
+    if (invalidFiles.length) {
+      setNotice({ type: 'error', message: 'Only PDF, JPG, and PNG files up to 15 MB are accepted.' })
+      return
+    }
 
-    setError('')
     setIsUploading(true)
+    setProgress({ current: 0, total: files.length })
+    setNotice({ type: 'loading', message: 'Preparing protected uploads...' })
 
     try {
       const uploadedFiles = []
-
-      for (const file of files) {
-        const uploadedFile = await uploadFileToCloudinary(file, { folder: uploadFolder })
-
-        uploadedFiles.push({
-          fileName: file.name,
-          fileUrl: uploadedFile.secure_url,
-          fileSize: uploadedFile.bytes || file.size,
-          fileType: uploadedFile.resource_type === 'image'
-            ? file.type || uploadedFile.format || 'image/*'
-            : file.type || 'application/octet-stream',
-          cloudinaryPublicId: uploadedFile.public_id || null,
-          cloudinaryResourceType: uploadedFile.resource_type || null,
-          cloudinaryFolder: uploadFolder || null,
-          cloudinaryAssetFolder: uploadedFile.asset_folder || uploadFolder || null,
-        })
+      for (let index = 0; index < files.length; index += 1) {
+        setProgress({ current: index + 1, total: files.length })
+        setNotice({ type: 'loading', message: `Uploading ${index + 1} of ${files.length}: ${files[index].name}` })
+        uploadedFiles.push(await uploadOne(files[index]))
       }
 
-      onSave?.({
-        files: uploadedFiles,
-        fileName: uploadedFiles.length === 1 ? uploadedFiles[0].fileName : `${uploadedFiles.length} document image(s)`,
-        fileUrl: uploadedFiles[0]?.fileUrl || '',
-        fileSize: uploadedFiles.reduce((sum, file) => sum + Number(file.fileSize || 0), 0),
-        fileType: uploadedFiles.length === 1 ? uploadedFiles[0].fileType : 'multiple/images',
-        cloudinaryFolder: uploadFolder || null,
-      })
-    } catch (uploadError) {
-      setError(uploadError?.message || 'Failed to upload file to Cloudinary.')
+      setNotice({ type: 'loading', message: 'Verifying uploaded files and saving document records...' })
+      await onSave?.({ files: uploadedFiles })
+    } catch (error) {
+      setNotice({ type: 'error', message: error?.message || 'Protected upload failed.' })
     } finally {
       setIsUploading(false)
     }
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/60 p-4">
-      <div className="w-full max-w-xl rounded-3xl bg-white shadow-2xl">
-        <div className="flex justify-between border-b border-slate-200 px-6 py-5">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/65 p-4">
+      <div className="flex max-h-[94vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+        <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
           <div>
-            <h2 className="text-xl font-black text-slate-950">Upload Document Images</h2>
-            <p className="text-sm font-semibold text-slate-500">{document.name}</p>
+            <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-blue-700">
+              <FiShield /> Protected upload
+            </div>
+            <h2 className="mt-1 text-xl font-black text-slate-950">Upload Document Files</h2>
+            <p className="mt-1 text-sm font-semibold text-slate-500">{document?.name || 'Buyer document'}</p>
           </div>
-
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isBusy}
-            className="h-10 w-10 rounded-2xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
-            aria-label="Close upload document modal"
-          >
-            <FiX className="mx-auto" />
+          <button type="button" onClick={onClose} disabled={isBusy} className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 disabled:opacity-50" aria-label="Close upload modal">
+            <FiX className="h-5 w-5" />
           </button>
-        </div>
+        </header>
 
-        <div className="p-6">
+        <div className="min-h-0 flex-1 overflow-y-auto p-6">
+          {notice ? <StatusAlert type={notice.type} message={notice.message} onClose={notice.type === 'loading' ? undefined : () => setNotice(null)} className="mb-4" /> : null}
+
           <label className="flex cursor-pointer flex-col items-center justify-center rounded-3xl border-2 border-dashed border-blue-200 bg-blue-50 p-8 text-center transition hover:bg-blue-100/60">
             <FiUploadCloud className="h-10 w-10 text-blue-600" />
-            <span className="mt-3 text-sm font-black text-blue-800">Choose one or more images</span>
-            <span className="mt-1 text-xs font-semibold text-blue-700">Each selected image is added to this document's image gallery</span>
+            <span className="mt-3 text-sm font-black text-blue-900">Choose PDF, JPG, or PNG files</span>
+            <span className="mt-1 text-xs font-semibold text-blue-700">Maximum 15 MB per file</span>
             <input
               type="file"
-              className="hidden"
-              accept="image/*,.pdf"
+              accept="image/jpeg,image/png,application/pdf,.jpg,.jpeg,.png,.pdf"
               multiple
               disabled={isBusy}
+              className="hidden"
               onChange={(event) => {
-                setError('')
+                setNotice(null)
                 setFiles(Array.from(event.target.files || []))
               }}
             />
           </label>
 
           {files.length ? (
-            <div className="mt-3 space-y-2">
-              {files.map((file, index) => (
-                <div key={`${file.name}-${file.size}-${index}`} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">
-                  <FiFileText className="h-5 w-5 shrink-0 text-blue-600" />
-                  <div className="min-w-0">
-                    <p className="truncate font-black text-slate-900">{file.name}</p>
-                    <p className="text-xs text-slate-500">{file.type || 'Unknown type'} · {(file.size / 1024).toFixed(1)} KB</p>
+            <div className="mt-4 space-y-2">
+              {files.map((file, index) => {
+                const invalid = !allowedTypes.has(file.type) || file.size <= 0 || file.size > MAX_FILE_BYTES
+                return (
+                  <div key={`${file.name}-${file.size}-${index}`} className={`flex items-center gap-3 rounded-xl border px-4 py-3 ${invalid ? 'border-red-200 bg-red-50' : 'border-slate-200 bg-slate-50'}`}>
+                    <FiFileText className={`h-5 w-5 shrink-0 ${invalid ? 'text-red-600' : 'text-blue-600'}`} />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-black text-slate-900">{file.name}</p>
+                      <p className="text-xs font-semibold text-slate-500">{file.type || 'Unknown file type'} · {formatBytes(file.size)}</p>
+                    </div>
+                    {isUploading && progress.current === index + 1 ? <FiLoader className="h-4 w-4 animate-spin text-blue-600" /> : null}
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           ) : null}
 
-          {error ? (
-            <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-black text-red-700">
-              {error}
-            </p>
-          ) : null}
-
-          <p className="mt-3 text-xs font-semibold text-slate-500">
-            Files are uploaded to Cloudinary under: <span className="font-black text-slate-700">{uploadFolder || 'dc_prime/projectName/unitId/documentName/documentimages'}</span>. Existing images for this document are kept, so one requirement can have multiple uploaded images.
-          </p>
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-xs font-semibold leading-5 text-slate-600">
+            The server assigns the buyer account folder and signs each upload. Files use authenticated Cloudinary delivery and open through short-lived access links.
+          </div>
         </div>
 
-        <div className="flex justify-end gap-2 border-t px-6 py-4">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isBusy}
-            className="h-11 rounded-2xl border px-5 text-sm font-black disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            Cancel
+        <footer className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50 px-6 py-4 sm:flex-row sm:justify-end">
+          <button type="button" onClick={onClose} disabled={isBusy} className="h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 disabled:opacity-50">Cancel</button>
+          <button type="button" onClick={handleSave} disabled={!files.length || Boolean(invalidFiles.length) || isBusy} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300">
+            {isBusy ? <FiLoader className="h-4 w-4 animate-spin" /> : <FiShield className="h-4 w-4" />}
+            {isUploading ? `Uploading ${progress.current}/${progress.total}` : isSaving ? 'Saving...' : 'Upload Securely'}
           </button>
-
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={!files.length || isBusy}
-            className="inline-flex h-11 items-center gap-2 rounded-2xl bg-blue-600 px-5 text-sm font-black text-white disabled:cursor-not-allowed disabled:bg-blue-300"
-          >
-            {isBusy ? <FiLoader className="h-4 w-4 animate-spin" /> : null}
-            {isUploading ? 'Uploading...' : isSaving ? 'Saving...' : 'Save Upload'}
-          </button>
-        </div>
+        </footer>
       </div>
     </div>
   )
 }
 
 export default UploadDocumentModal
-

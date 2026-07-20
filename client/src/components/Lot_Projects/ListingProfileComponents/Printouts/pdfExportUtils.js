@@ -197,3 +197,4 @@ export const openElementInPdfPrintWindow = async (element, options = {}) => {
 // instead of converting the page through canvas, which was producing blank PDFs for some uploaded images.
 export const downloadElementAsPdf = openElementInPdfPrintWindow
 
+

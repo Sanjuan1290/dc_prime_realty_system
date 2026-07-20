@@ -6,6 +6,8 @@ const money = (value) => new Intl.NumberFormat('en-PH', { style: 'currency', cur
 const statusLabel = (status) => ({
   Pending: 'Not Eligible',
   Eligible: 'Eligible',
+  'Earned on Cancellation': 'Earned on Cancellation',
+  'Forfeited on Cancellation': 'Forfeited on Cancellation',
   'Partially Released': 'Partial',
   Released: 'Completed',
   'On Hold': 'On Hold',
@@ -22,6 +24,8 @@ const InfoCard = ({ label, value }) => (
 const StatusPill = ({ status }) => {
   const styles = {
     Eligible: 'border-blue-200 bg-blue-50 text-blue-700',
+    'Earned on Cancellation': 'border-violet-200 bg-violet-50 text-violet-700',
+    'Forfeited on Cancellation': 'border-slate-300 bg-slate-100 text-slate-600',
     Pending: 'border-amber-200 bg-amber-50 text-amber-700',
     Released: 'border-emerald-200 bg-emerald-50 text-emerald-700',
     'Partially Released': 'border-indigo-200 bg-indigo-50 text-indigo-700',
@@ -154,7 +158,7 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, isSaving = fa
       return
     }
 
-    if (action === 'release_stage' && stage.status !== 'Eligible') {
+    if (action === 'release_stage' && !['Eligible', 'Earned on Cancellation'].includes(stage.status)) {
       setNotice({ type: 'error', title: 'Not eligible', message: `${stage.stage} is not eligible for release yet.` })
       return
     }
@@ -264,6 +268,8 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, isSaving = fa
                     const isReleased = stage.status === 'Released'
                     const isOnHold = stage.status === 'On Hold'
                     const isCancelled = stage.status === 'Cancelled'
+                    const isEarnedOnCancellation = stage.status === 'Earned on Cancellation'
+                    const isForfeitedOnCancellation = stage.status === 'Forfeited on Cancellation'
 
                     return (
                       <tr key={stage.id || stage.stage} className="align-top">
@@ -275,14 +281,14 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, isSaving = fa
                         <td className="px-4 py-3"><StatusPill status={stage.status} /></td>
                         <td className="px-4 py-3">
                           <div className="flex flex-wrap gap-2">
-                            {stage.status === 'Eligible' ? (
+                            {['Eligible', 'Earned on Cancellation'].includes(stage.status) ? (
                               <button type="button" onClick={() => openConfirm('release_stage', stage)} disabled={isSaving} title={!stage.isReleaseDate ? 'Release is locked until the next allowed release date.' : undefined} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-blue-600 px-3 text-[11px] font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">
                                 {isSaving ? <FiLoader className="h-3.5 w-3.5 animate-spin" /> : <FiSave className="h-3.5 w-3.5" />}
                                 {stage.releaseButtonLabel || 'Release'}
                               </button>
                             ) : null}
 
-                            {!isReleased && !isOnHold && !isCancelled ? (
+                            {!isReleased && !isOnHold && !isCancelled && !isEarnedOnCancellation && !isForfeitedOnCancellation ? (
                               <button type="button" onClick={() => openConfirm('hold_stage', stage)} disabled={isSaving} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-[11px] font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">
                                 <FiPauseCircle className="h-3.5 w-3.5" />
                                 Hold
@@ -296,7 +302,7 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, isSaving = fa
                               </button>
                             ) : null}
 
-                            {!isReleased && !isCancelled ? (
+                            {!isReleased && !isCancelled && !isForfeitedOnCancellation ? (
                               <button type="button" onClick={() => openConfirm('cancel_stage', stage)} disabled={isSaving} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-red-600 px-3 text-[11px] font-black text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60">
                                 Cancel
                               </button>
@@ -347,4 +353,5 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, isSaving = fa
 }
 
 export default ReleaseDetailsModal
+
 

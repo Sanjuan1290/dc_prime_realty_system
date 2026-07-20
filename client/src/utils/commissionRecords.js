@@ -19,23 +19,32 @@ const sellerSortValue = (seller = {}) => {
 const uniqueLabels = (values = []) => [...new Set(values.filter(Boolean).map((value) => String(value).trim()).filter(Boolean))]
 
 /**
- * Groups database commission lines into one account record per listing.
- * Seller-specific values stay inside `sellers` so the details modal can switch
- * recipients without duplicating the unit in the main records table.
+ * Groups database commission lines into one record per buyer account.
+ * A unit can be sold to several buyers over time, so client profile/account IDs
+ * take priority over the listing ID when building the grouping key.
  */
 export const groupCommissionRecords = (records = []) => {
   const grouped = new Map()
 
   records.forEach((record) => {
     const listingId = Number(record.listingId || record.lotProjectListingId || 0)
+    const clientProfileId = Number(record.clientProfileId || record.lotProjectClientProfileId || 0)
+    const accountId = Number(record.accountId || record.lotProjectAccountId || 0)
     const fallbackKey = `${record.project || ''}|${record.unit || ''}|${record.client || ''}`
-    const key = listingId ? `listing-${listingId}` : fallbackKey
+    const key = accountId
+      ? `account-${accountId}`
+      : clientProfileId
+        ? `profile-${clientProfileId}`
+        : listingId
+          ? `listing-${listingId}`
+          : fallbackKey
 
     if (!grouped.has(key)) {
       grouped.set(key, {
         id: key,
         listingId,
-        clientProfileId: Number(record.clientProfileId || 0),
+        accountId,
+        clientProfileId,
         unit: record.unit || '-',
         client: record.client || 'No buyer name',
         project: record.project || '-',
@@ -86,4 +95,5 @@ export const groupCommissionRecords = (records = []) => {
     }
   })
 }
+
 

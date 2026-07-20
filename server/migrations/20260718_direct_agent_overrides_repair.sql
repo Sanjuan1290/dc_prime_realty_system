@@ -358,3 +358,4 @@ SELECT
   (SELECT COUNT(*) FROM lot_project_commissions WHERE commission_rate_type = 'direct') AS direct_commission_rows,
   (SELECT COUNT(*) FROM lot_project_commissions WHERE commission_rate_type = 'override') AS override_commission_rows;
 
+

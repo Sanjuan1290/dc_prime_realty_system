@@ -149,3 +149,4 @@ const MemberRatesModal = ({
 }
 
 export default MemberRatesModal
+

@@ -1786,3 +1786,4 @@ export const updateMemberProjectRates = async (req, res) => {
     connection.release();
   }
 };
+

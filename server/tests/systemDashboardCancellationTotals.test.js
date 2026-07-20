@@ -16,3 +16,4 @@ test('System Dashboard combines refunded and discontinued amounts from every loa
   assert.match(dashboard, /label="Refunded Amount"[\s\S]*summary\.totalRefundedAmount/)
   assert.match(dashboard, /label="Discontinued Amount"[\s\S]*summary\.totalDiscontinuedAmount/)
 })
+
