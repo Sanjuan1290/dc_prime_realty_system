@@ -5,7 +5,14 @@ import PrintPageShell from './PrintPageShell'
 import { money, formatDate } from './printUtils'
 import { useFetch as fetchJson } from '../../../../utils/useFetch'
 
-const STRAIGHT_PAYMENT_MONTHS = 20
+const DEFAULT_STRAIGHT_PAYMENT_MONTHS = 20
+
+const normalizeStraightPaymentMonths = (value) => {
+  const months = Number(value || DEFAULT_STRAIGHT_PAYMENT_MONTHS)
+  return Number.isInteger(months) && months >= 1 && months <= 120
+    ? months
+    : DEFAULT_STRAIGHT_PAYMENT_MONTHS
+}
 
 const numberValue = (value) =>
   new Intl.NumberFormat('en-PH', {
@@ -32,7 +39,7 @@ const statusTone = (status = '') => {
   return 'text-slate-700'
 }
 
-const getPriceListValues = (listing = {}) => {
+const getPriceListValues = (listing = {}, straightPaymentMonths = DEFAULT_STRAIGHT_PAYMENT_MONTHS) => {
   const area = Number(listing.area || 0)
   const cashPricePerSqm = Number(listing.cashPricePerSqm ?? listing.pricePerSqm ?? 0)
   const installmentPricePerSqm = Number(
@@ -47,8 +54,8 @@ const getPriceListValues = (listing = {}) => {
   const reservationFee = Number(listing.reservationFee || 0)
   const netAfterReservation = Math.max(installmentSellingPrice - reservationFee, 0)
   const straightPaymentMonthly =
-    STRAIGHT_PAYMENT_MONTHS > 0
-      ? netAfterReservation / STRAIGHT_PAYMENT_MONTHS
+    straightPaymentMonths > 0
+      ? netAfterReservation / straightPaymentMonths
       : 0
 
   return {
@@ -76,6 +83,9 @@ const ProjectPriceListPrintPage = () => {
   const project = payload.project || {}
   const listings = payload.listings || []
   const priceListDate = payload.printedAt || todayDateOnly()
+  const straightPaymentMonths = normalizeStraightPaymentMonths(
+    new URLSearchParams(window.location.search).get('straightPaymentMonths')
+  )
 
   useEffect(() => {
     if (project?.name) document.title = `${project.name} Price Inventory`
@@ -154,7 +164,7 @@ const ProjectPriceListPrintPage = () => {
             </thead>
             <tbody>
               {listings.length ? listings.map((listing, index) => {
-                const values = getPriceListValues(listing)
+                const values = getPriceListValues(listing, straightPaymentMonths)
 
                 return (
                   <tr key={listing.id || listing.unitCode}>
@@ -168,7 +178,7 @@ const ProjectPriceListPrintPage = () => {
                     <td className="border border-black px-1 py-1 text-right">{money(values.installmentSellingPrice)}</td>
                     <td className="border border-black px-1 py-1 text-right font-bold">{money(values.reservationFee)}</td>
                     <td className="border border-black px-1 py-1 text-right">{money(values.netAfterReservation)}</td>
-                    <td className="border border-black px-1 py-1 text-center">{STRAIGHT_PAYMENT_MONTHS}</td>
+                    <td className="border border-black px-1 py-1 text-center">{straightPaymentMonths}</td>
                     <td className="border border-black px-1 py-1 text-right font-black">{money(values.straightPaymentMonthly)}</td>
                     <td className={`border border-black px-1 py-1 text-center font-black uppercase ${statusTone(listing.status)}`}>
                       {listing.status || '-'}
@@ -185,7 +195,7 @@ const ProjectPriceListPrintPage = () => {
         </div>
 
         <p className="mt-2 text-[9px] font-semibold italic">
-          Note: Prices are subject to change without prior notice. Straight-payment figures use the installment selling price without LMF, less the reservation fee, divided into {STRAIGHT_PAYMENT_MONTHS} months.
+          Note: Prices are subject to change without prior notice. Straight-payment figures use the installment selling price without LMF, less the reservation fee, divided into {straightPaymentMonths} months.
         </p>
       </section>
     </PrintPageShell>

@@ -52,9 +52,11 @@ test('project unit price list matches the inventory sheet columns and straight-p
     assert.match(printSource, new RegExp(heading.replace(/[()]/g, '\\$&')));
   }
 
-  assert.match(printSource, /const STRAIGHT_PAYMENT_MONTHS = 20/);
+  assert.match(printSource, /const DEFAULT_STRAIGHT_PAYMENT_MONTHS = 20/);
   assert.match(printSource, /installmentSellingPrice - reservationFee/);
-  assert.match(printSource, /netAfterReservation \/ STRAIGHT_PAYMENT_MONTHS/);
+  assert.match(printSource, /new URLSearchParams\(window\.location\.search\)\.get\('straightPaymentMonths'\)/);
+  assert.match(printSource, /getPriceListValues\(listing, straightPaymentMonths\)/);
+  assert.match(printSource, /netAfterReservation \/ straightPaymentMonths/);
   assert.match(printSource, /pageOrientation="landscape"/);
   assert.doesNotMatch(printSource, />Installment TCP</);
   assert.doesNotMatch(printSource, />Cash TCP</);

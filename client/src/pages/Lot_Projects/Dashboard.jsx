@@ -27,6 +27,7 @@ import {
   FiRefreshCw,
   FiTrendingUp,
   FiUsers,
+  FiX,
 } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
@@ -316,6 +317,64 @@ const PerformanceTable = ({ rows = [], type = 'seller' }) => (
 )
 
 
+const DEFAULT_STRAIGHT_PAYMENT_MONTHS = 20
+
+const PriceListPrintModal = ({ projectName, onClose, onPrint }) => {
+  const [months, setMonths] = useState(String(DEFAULT_STRAIGHT_PAYMENT_MONTHS))
+  const [errorMessage, setErrorMessage] = useState('')
+
+  const handleSubmit = (event) => {
+    event.preventDefault()
+    const parsedMonths = Number(months)
+
+    if (!Number.isInteger(parsedMonths) || parsedMonths < 1 || parsedMonths > 120) {
+      setErrorMessage('Straight Payment (Months) must be a whole number from 1 to 120.')
+      return
+    }
+
+    onPrint(parsedMonths)
+  }
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
+      <form onSubmit={handleSubmit} className="w-full max-w-lg overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+        <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+          <div>
+            <h2 className="text-xl font-black text-slate-950">Print Price List</h2>
+            <p className="mt-1 text-sm font-semibold text-slate-500">Set the straight-payment term for {projectName || 'this project'}.</p>
+          </div>
+          <button type="button" onClick={onClose} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100" aria-label="Close price list settings">
+            <FiX className="h-5 w-5" />
+          </button>
+        </header>
+
+        <div className="p-5">
+          <label className="grid gap-2">
+            <span className="text-xs font-black uppercase tracking-wide text-slate-600">Straight Payment (Months)</span>
+            <input
+              type="number"
+              min="1"
+              max="120"
+              step="1"
+              value={months}
+              onChange={(event) => { setMonths(event.target.value); setErrorMessage('') }}
+              className="h-12 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-800 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+            />
+            <span className="text-xs font-semibold text-slate-500">The printed monthly amount uses the installment selling price without LMF, less the reservation fee, divided by this month count.</span>
+          </label>
+
+          {errorMessage ? <StatusAlert type="error" message={errorMessage} className="mt-4" /> : null}
+        </div>
+
+        <footer className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4 sm:flex-row sm:justify-end">
+          <button type="button" onClick={onClose} className="h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 hover:bg-slate-100">Cancel</button>
+          <button type="submit" className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white hover:bg-blue-700"><FiPrinter /> Print Price List</button>
+        </footer>
+      </form>
+    </div>
+  )
+}
+
 const PaginationControls = ({ page, pageSize, totalItems, onPageChange, onPageSizeChange }) => {
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize))
   const currentPage = Math.min(page, totalPages)
@@ -376,6 +435,7 @@ const Dashboard = () => {
   const queryClient = useQueryClient()
   const [showDetails, setShowDetails] = useState(false)
   const [showEdit, setShowEdit] = useState(false)
+  const [showPriceListModal, setShowPriceListModal] = useState(false)
   const [alert, setAlert] = useState(null)
   const [dateRange, setDateRange] = useState('3_months')
   const [dateFrom, setDateFrom] = useState(() => defaultDateRange().from)
@@ -445,7 +505,11 @@ const Dashboard = () => {
     queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] })
   }
 
-  const handlePrintPriceList = () => window.open(`/lot-projects/${projectSlug}/price-list/print`, '_blank')
+  const handlePrintPriceList = (straightPaymentMonths) => {
+    const params = new URLSearchParams({ straightPaymentMonths: String(straightPaymentMonths) })
+    window.open(`/lot-projects/${projectSlug}/price-list/print?${params.toString()}`, '_blank')
+    setShowPriceListModal(false)
+  }
 
   const topStats = [
     { label: 'Total Sales', value: isLoading ? '...' : money(stats.totalSales), helper: 'Booked contract value.', tone: 'slate', icon: FiCreditCard },
@@ -496,7 +560,7 @@ const Dashboard = () => {
         <div className="flex flex-col gap-2 sm:flex-row">
           <button type="button" onClick={() => setShowDetails(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-50"><FiEye className="h-4 w-4" />View Details</button>
           <button type="button" onClick={() => setShowEdit(true)} disabled={isDocumentsLoading || isTemplatesLoading} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"><FiEdit3 className="h-4 w-4" />Edit Project</button>
-          <button type="button" onClick={handlePrintPriceList} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-50"><FiPrinter className="h-4 w-4" />Price List</button>
+          <button type="button" onClick={() => setShowPriceListModal(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-50"><FiPrinter className="h-4 w-4" />Price List</button>
         </div>
       </section>
 
@@ -663,6 +727,7 @@ const Dashboard = () => {
 
 
 
+      {showPriceListModal ? <PriceListPrintModal projectName={project.project_bailen_name} onClose={() => setShowPriceListModal(false)} onPrint={handlePrintPriceList} /> : null}
       {showDetails ? <ProjectDetailsModal project={project} onClose={() => setShowDetails(false)} onEdit={() => { setShowDetails(false); setShowEdit(true) }} /> : null}
       {showEdit ? <EditProjectModal project={project} documents={documentsData?.documents || []} templates={templatesData?.templates || []} templateDocuments={templatesData?.template_documents || []} onClose={() => setShowEdit(false)} onSave={handleSaveProject} isSaving={updateProjectMutation.isPending} /> : null}
     </main>
@@ -670,4 +735,3 @@ const Dashboard = () => {
 }
 
 export default Dashboard
-

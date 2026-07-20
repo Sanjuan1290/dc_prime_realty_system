@@ -535,10 +535,6 @@ export const getLotProjectDocumentCompliance = async (req, res) => {
           lp.lot_project_slug,
           COUNT(DISTINCT cp.lot_project_client_profile_id) AS total_accounts,
           COUNT(DISTINCT CASE
-            WHEN COALESCE(cd.lot_project_client_document_status, 'Missing') IN ('Submitted', 'Approved')
-            THEN cp.lot_project_client_profile_id
-          END) AS accounts_with_submitted_documents,
-          COUNT(DISTINCT CASE
             WHEN ld.lot_project_listing_document_is_required = 1
               AND COALESCE(cd.lot_project_client_document_status, 'Missing') IN ('Missing', 'Rejected')
             THEN cp.lot_project_client_profile_id
@@ -618,6 +614,22 @@ export const getLotProjectDocumentCompliance = async (req, res) => {
       rejectedRequiredDocuments: Number(row.rejected_required_documents || 0),
     });
 
+    const completedAccountsByProject = new Map();
+
+    unitRows.forEach((row) => {
+      const counts = mapCounts(row);
+      const isDocumentComplete = counts.totalDocuments > 0
+        && counts.submittedDocuments === counts.totalDocuments;
+
+      if (!isDocumentComplete) return;
+
+      const projectId = Number(row.lot_project_id || 0);
+      completedAccountsByProject.set(
+        projectId,
+        Number(completedAccountsByProject.get(projectId) || 0) + 1
+      );
+    });
+
     return res.json({
       success: true,
       data: {
@@ -626,7 +638,7 @@ export const getLotProjectDocumentCompliance = async (req, res) => {
           projectName: row.lot_project_name,
           projectSlug: row.lot_project_slug,
           totalAccounts: Number(row.total_accounts || 0),
-          accountsWithSubmittedDocuments: Number(row.accounts_with_submitted_documents || 0),
+          accountsWithCompletedDocuments: Number(completedAccountsByProject.get(Number(row.lot_project_id)) || 0),
           accountsWithPendingDocuments: Number(row.accounts_with_pending_documents || 0),
           ...mapCounts(row),
         })),
@@ -656,4 +668,3 @@ export const getLotProjectDocumentCompliance = async (req, res) => {
     connection.release();
   }
 };
-

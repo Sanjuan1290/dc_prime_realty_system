@@ -80,7 +80,7 @@ const normalizeProject = (project) => ({
   defaultDocs: Number(project.defaultDocs || project.default_documents_count || 0),
   requiredDocs: Number(project.requiredDocs || project.required_documents_count || 0),
   totalAccounts: Number(project.totalAccounts || 0),
-  accountsWithSubmittedDocuments: Number(project.accountsWithSubmittedDocuments || 0),
+  accountsWithCompletedDocuments: Number(project.accountsWithCompletedDocuments || 0),
   accountsWithPendingDocuments: Number(project.accountsWithPendingDocuments || 0),
   totalDocuments: Number(project.totalDocuments || 0),
   submittedDocuments: Number(project.submittedDocuments || 0),
@@ -103,7 +103,7 @@ const Projects = () => {
   const [showHouseLotModal, setShowHouseLotModal] = useState(false)
   const [alert, setAlert] = useState(null)
   const [deletingProjectId, setDeletingProjectId] = useState(null)
-  const [selectedDocumentProjectId, setSelectedDocumentProjectId] = useState('')
+  const [selectedDocumentProjectId, setSelectedDocumentProjectId] = useState('all')
   const [documentPage, setDocumentPage] = useState(1)
   const [documentPageSize, setDocumentPageSize] = useState(10)
 
@@ -158,7 +158,7 @@ const Projects = () => {
       return {
         ...project,
         totalAccounts: Number(compliance.totalAccounts || 0),
-        accountsWithSubmittedDocuments: Number(compliance.accountsWithSubmittedDocuments || 0),
+        accountsWithCompletedDocuments: Number(compliance.accountsWithCompletedDocuments || 0),
         accountsWithPendingDocuments: Number(compliance.accountsWithPendingDocuments || 0),
         totalDocuments: Number(compliance.totalDocuments || 0),
         submittedDocuments: Number(compliance.submittedDocuments || 0),
@@ -172,11 +172,11 @@ const Projects = () => {
     () => complianceResponse?.data?.units || [],
     [complianceResponse]
   )
-  const activeDocumentProjectId = selectedDocumentProjectId || String(projects[0]?.id || '')
+  const activeDocumentProjectId = selectedDocumentProjectId || 'all'
 
   const selectedDocumentUnits = useMemo(
     () => complianceUnits.filter((unit) => {
-      if (String(unit.projectId) !== String(activeDocumentProjectId)) return false
+      if (activeDocumentProjectId !== 'all' && String(unit.projectId) !== String(activeDocumentProjectId)) return false
       const total = Number(unit.totalDocuments || 0)
       const approved = Number(unit.approvedDocuments || 0)
       return total > 0 && approved < total
@@ -193,12 +193,12 @@ const Projects = () => {
 
   const selectedDocumentChartRows = useMemo(
     () => paginatedDocumentUnits.map((unit) => ({
-      unit: unit.unitId,
+      unit: activeDocumentProjectId === 'all' ? `${unit.projectName} · ${unit.unitId}` : unit.unitId,
       approved: Number(unit.approvedDocuments || 0),
       awaitingApproval: Number(unit.awaitingApprovalDocuments || 0),
       pendingRequired: Number(unit.pendingRequiredDocuments || 0),
     })),
-    [paginatedDocumentUnits]
+    [activeDocumentProjectId, paginatedDocumentUnits]
   )
 
   const documents = documentsResponse?.documents || []
@@ -465,7 +465,7 @@ const Projects = () => {
                   'Location',
                   'Location Code',
                   'Cadastral Lots',
-                  'Docs Completed/No. of Account',
+                  'No. of Accounts Docs Completed / No. of Accounts',
                   'Status',
                   'Actions',
                 ].map((head) => (
@@ -519,7 +519,7 @@ const Projects = () => {
                     </td>
 
                     <td className="px-4 py-4 font-semibold text-slate-600">
-                      {project.accountsWithSubmittedDocuments} / {project.totalAccounts} accounts
+                      {project.accountsWithCompletedDocuments} / {project.totalAccounts} accounts
                     </td>
 
                     <td className="px-4 py-4">
@@ -599,6 +599,7 @@ const Projects = () => {
           <label className="grid gap-1 lg:w-72">
             <span className="text-xs font-black uppercase tracking-wide text-slate-500">Project</span>
             <select value={activeDocumentProjectId} onChange={(event) => { setSelectedDocumentProjectId(event.target.value); setDocumentPage(1) }} className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-700 outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50">
+              <option value="all">All Projects</option>
               {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
             </select>
           </label>
@@ -612,7 +613,7 @@ const Projects = () => {
               <BarChart data={selectedDocumentChartRows} layout="vertical" margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                 <XAxis type="number" allowDecimals={false} />
-                <YAxis type="category" dataKey="unit" width={82} tick={{ fontSize: 11 }} />
+                <YAxis type="category" dataKey="unit" width={activeDocumentProjectId === 'all' ? 180 : 82} tick={{ fontSize: 11 }} />
                 <Tooltip content={<DocumentChartTooltip />} />
                 <Legend />
                 <Bar dataKey="approved" name="Approved" stackId="documents" fill="#059669" />
@@ -621,16 +622,17 @@ const Projects = () => {
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-slate-200 text-sm font-bold text-slate-500">No incomplete document submissions for this project.</div>
+            <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-slate-200 text-sm font-bold text-slate-500">No incomplete document submissions for the selected project scope.</div>
           )}
         </div>
 
         <div className="mt-5 overflow-x-auto rounded-2xl border border-slate-200">
-          <table className="min-w-[1050px] w-full divide-y divide-slate-200 text-sm">
-            <thead className="bg-slate-50"><tr>{['Unit', 'Buyer', 'Status', 'Submitted / Total', 'Approved', 'Awaiting Approval', 'Pending Required', 'Progress', 'Action'].map((head) => <th key={head} className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">{head}</th>)}</tr></thead>
+          <table className="min-w-[1180px] w-full divide-y divide-slate-200 text-sm">
+            <thead className="bg-slate-50"><tr>{['Project', 'Unit', 'Buyer', 'Status', 'Submitted / Total', 'Approved', 'Awaiting Approval', 'Pending Required', 'Progress', 'Action'].map((head) => <th key={head} className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">{head}</th>)}</tr></thead>
             <tbody className="divide-y divide-slate-100">
               {paginatedDocumentUnits.length ? paginatedDocumentUnits.map((unit) => (
-                <tr key={unit.listingId} className="hover:bg-slate-50">
+                <tr key={`${unit.projectId}-${unit.listingId}`} className="hover:bg-slate-50">
+                  <td className="px-4 py-4 font-semibold text-slate-600">{unit.projectName}</td>
                   <td className="px-4 py-4 font-black text-slate-950">{unit.unitId}</td>
                   <td className="px-4 py-4 font-semibold text-slate-600">{unit.buyerName}</td>
                   <td className="px-4 py-4 font-semibold text-slate-600">{unit.listingStatus === 'pending_for_cancellation' ? 'Pending Cancellation' : unit.soldSubstatus === 'fully_paid' ? 'Fully Paid' : 'Sold / Active'}</td>
@@ -641,7 +643,7 @@ const Projects = () => {
                   <td className="px-4 py-4"><div className="flex items-center gap-2"><div className="h-2 w-24 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-blue-600" style={{ width: `${Math.min(Number(unit.completionPercentage || 0), 100)}%` }} /></div><span className="text-xs font-black text-slate-600">{Number(unit.completionPercentage || 0).toFixed(0)}%</span></div></td>
                   <td className="px-4 py-4"><button type="button" onClick={() => navigate(`/lot-projects/${unit.projectSlug}/listings/${unit.listingId}`)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 hover:bg-slate-50"><FiEye /> Open</button></td>
                 </tr>
-              )) : <tr><td colSpan={9} className="px-4 py-10 text-center font-semibold text-slate-500">No incomplete unit document records for this project.</td></tr>}
+              )) : <tr><td colSpan={10} className="px-4 py-10 text-center font-semibold text-slate-500">No incomplete unit document records for the selected project scope.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -680,4 +682,3 @@ const Projects = () => {
 }
 
 export default Projects
-
