@@ -535,6 +535,7 @@ export const getGroups = async (req, res) => {
     const offset = (page - 1) * limit;
     const search = String(req.query.search || '').trim();
     const status = String(req.query.status || 'all');
+    const projectId = Math.max(Number(req.query.project) || 0, 0);
 
     const where = [];
     const params = [];
@@ -552,6 +553,17 @@ export const getGroups = async (req, res) => {
     if (status !== 'all') {
       where.push('sg.seller_group_status = ?');
       params.push(status);
+    }
+
+    if (projectId) {
+      where.push(`EXISTS (
+        SELECT 1
+        FROM seller_group_lot_project_rates project_filter
+        WHERE project_filter.seller_group_id = sg.seller_group_id
+          AND project_filter.lot_project_id = ?
+          AND project_filter.seller_group_lot_project_rate_status = 'active'
+      )`);
+      params.push(projectId);
     }
 
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';

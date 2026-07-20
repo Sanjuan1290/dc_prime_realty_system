@@ -1,5 +1,7 @@
-import { useMemo, useState } from 'react'
-import { FiCheckCircle, FiMapPin, FiSearch } from 'react-icons/fi'
+import { useEffect, useMemo, useState } from 'react'
+import { FiCheckCircle, FiChevronLeft, FiChevronRight, FiMapPin, FiSearch } from 'react-icons/fi'
+
+const PROJECTS_PER_PAGE = 5
 
 const getProjectId = (project) => Number(project.lot_project_id || project.id)
 const getProjectName = (project) => project.lot_project_name || project.label || 'Unnamed project'
@@ -36,6 +38,7 @@ const ProjectAccreditationFields = ({
   disabled = false,
 }) => {
   const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
 
   const selectedMap = useMemo(
     () => new Map(projectRates.map((rate) => [Number(rate.lot_project_id), rate])),
@@ -52,6 +55,14 @@ const ProjectAccreditationFields = ({
       project.lot_project_location_code,
     ].some((value) => String(value || '').toLowerCase().includes(keyword)))
   }, [projects, search])
+
+  const totalPages = Math.max(Math.ceil(filteredProjects.length / PROJECTS_PER_PAGE), 1)
+  const pageStart = (page - 1) * PROJECTS_PER_PAGE
+  const paginatedProjects = filteredProjects.slice(pageStart, pageStart + PROJECTS_PER_PAGE)
+
+  useEffect(() => {
+    setPage((current) => Math.min(Math.max(current, 1), totalPages))
+  }, [totalPages])
 
   const toggleProject = (project) => {
     const projectId = getProjectId(project)
@@ -99,7 +110,10 @@ const ProjectAccreditationFields = ({
         <FiSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
         <input
           value={search}
-          onChange={(event) => setSearch(event.target.value)}
+          onChange={(event) => {
+            setSearch(event.target.value)
+            setPage(1)
+          }}
           placeholder="Search project, location, or code..."
           disabled={disabled}
           className="h-11 w-full rounded-xl border border-slate-300 bg-white pl-10 pr-4 text-sm font-semibold outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100"
@@ -107,7 +121,7 @@ const ProjectAccreditationFields = ({
       </label>
 
       <div className="mt-4 grid gap-4">
-        {filteredProjects.map((project) => {
+        {paginatedProjects.map((project) => {
           const projectId = getProjectId(project)
           const selectedRate = selectedMap.get(projectId)
           const checked = Boolean(selectedRate)
@@ -214,7 +228,34 @@ const ProjectAccreditationFields = ({
         <p className="mt-4 rounded-xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm font-semibold text-slate-500">
           No projects match your search.
         </p>
-      ) : null}
+      ) : (
+        <div className="mt-4 flex flex-col gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs font-bold text-slate-500">
+            Showing {pageStart + 1}–{Math.min(pageStart + PROJECTS_PER_PAGE, filteredProjects.length)} of {filteredProjects.length} project(s)
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setPage((current) => Math.max(current - 1, 1))}
+              disabled={disabled || page <= 1}
+              className="inline-flex h-9 items-center justify-center gap-1 rounded-lg border border-slate-200 px-3 text-xs font-black text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <FiChevronLeft /> Previous
+            </button>
+            <span className="min-w-[86px] text-center text-xs font-black text-slate-600">
+              Page {page} of {totalPages}
+            </span>
+            <button
+              type="button"
+              onClick={() => setPage((current) => Math.min(current + 1, totalPages))}
+              disabled={disabled || page >= totalPages}
+              className="inline-flex h-9 items-center justify-center gap-1 rounded-lg border border-slate-200 px-3 text-xs font-black text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Next <FiChevronRight />
+            </button>
+          </div>
+        </div>
+      )}
     </section>
   )
 }
