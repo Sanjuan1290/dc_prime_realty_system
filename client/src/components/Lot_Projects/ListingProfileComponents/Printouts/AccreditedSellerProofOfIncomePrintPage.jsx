@@ -84,10 +84,23 @@ const amountInWords = (value) => {
 export const CommissionReceiptPrint = ({ seller = {}, receipt = {} }) => {
   const totalAmount = Number(receipt.totalAmount || 0)
   const releases = Array.isArray(receipt.releases) ? receipt.releases : []
-  const releasePercent = releases.reduce(
+  const tranchePercent = Number(receipt.releasePercent ?? releases.reduce(
     (sum, release) => sum + Number(release.releasePercent || 0),
     0
+  ))
+  const cumulativeTargetPercent = Number(
+    receipt.cumulativeTargetPercent ??
+      Math.max(0, ...releases.map((release) => Number(release.triggerPercent || 0)))
   )
+  const grossCommission = Number(receipt.grossCommission || 0)
+  const cumulativeGrossTarget = Number(
+    receipt.cumulativeGrossTarget ||
+      (grossCommission * (cumulativeTargetPercent / 100))
+  )
+  const releaseStages = releases
+    .map((release) => release.stage)
+    .filter(Boolean)
+    .join(', ')
   const commissionRate = Number(receipt.commissionRate || 0)
   const role = receipt.commissionRole || seller.role
   const amountText = amountNumber(totalAmount)
@@ -131,22 +144,26 @@ export const CommissionReceiptPrint = ({ seller = {}, receipt = {} }) => {
               </td>
 
               <td className="border border-[#8a8a8a] px-2 py-3">
-                <p className="text-[13px] font-bold underline">TOTAL:</p>
+                <p className="text-[13px] font-bold underline">TOT
+                  AL:</p>
                 <p className="text-[13px] font-bold">{amountText}</p>
 
                 <div className="mt-7 text-[13px] font-bold uppercase leading-[1.25]">
                   <p>PHP {amountText}</p>
                   <p>{receipt.unitId || '-'}</p>
-                  <p>
-                    {receipt.buyerName || '-'}{releasePercent > 0 ? ` ${formatPercent(releasePercent)}%` : ''}
-                  </p>
-                  {releasePercent > 0 ? (
-                    <p>({formatPercent(releasePercent)}% OF 100%)</p>
+                  <p>{receipt.buyerName || '-'}</p>
+                  {releaseStages ? <p>{releaseStages}</p> : null}
+                  {tranchePercent > 0 ? (
+                    <p>{formatPercent(tranchePercent)}% RELEASE</p>
+                  ) : null}
+                  {cumulativeTargetPercent > 0 ? (
+                    <p>({formatPercent(cumulativeTargetPercent)}% CUMULATIVE OF 100%)</p>
+                  ) : null}
+                  {cumulativeGrossTarget > 0 ? (
+                    <p className="mt-1 text-[10px]">CUMULATIVE GROSS TARGET: PHP {amountNumber(cumulativeGrossTarget)}</p>
                   ) : null}
                   <p>{roleLabels[role] || String(role || '-').replaceAll('_', ' ').toUpperCase()}</p>
-                  {commissionRate > 0 ? (
-                    <p className="mt-1 text-[10px]">COMMISSION RATE: {formatPercent(commissionRate)}%</p>
-                  ) : null}
+
                 </div>
               </td>
 

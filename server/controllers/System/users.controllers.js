@@ -22,6 +22,24 @@ import {
   isSellerRole,
   SELLER_ROLE_LABELS,
 } from './sellerHierarchyRules.js';
+import {
+  PASSWORD_RESET_CODE_EXPIRY_MINUTES,
+  PASSWORD_RESET_MAX_ATTEMPTS,
+  PASSWORD_RESET_RESEND_SECONDS,
+  assertPasswordResetEmailConfigured,
+  createPasswordResetToken,
+  ensurePasswordResetSchema,
+  generatePasswordResetCode,
+  getLoginSessionConfig,
+  getRequestIpAddress,
+  hashPasswordResetCode,
+  isValidResetEmail,
+  normalizeResetEmail,
+  passwordResetCodeMatches,
+  sendPasswordResetCodeEmail,
+  validatePasswordResetValue,
+  verifyPasswordResetToken,
+} from './authentication.service.js';
 
 const userRoles = new Set(['super_admin', 'admin', 'broker_network_manager', 'broker', 'manager', 'agent']);
 
@@ -447,7 +465,7 @@ const hydrateUserProjectRates = async (users) => {
 };
 
 export const login = async (req, res) => {
-  const { email, password } = req.body;
+  const { email, password, rememberMe } = req.body;
 
   if (!email || !password) {
     return res.status(400).json({ message: 'Email and password are required' });
@@ -469,6 +487,7 @@ export const login = async (req, res) => {
         role,
         status,
         must_change_password,
+        COALESCE(auth_version, 0) AS auth_version,
         can_login,
         is_system_account,
         last_login,
@@ -493,18 +512,21 @@ export const login = async (req, res) => {
 
   if (!isPasswordCorrect) return res.status(401).json({ message: 'Wrong password' });
 
+  const session = getLoginSessionConfig(rememberMe);
   const token = jwt.sign(
-    { id: user.id, role: user.role },
+    { id: user.id, role: user.role, authVersion: Number(user.auth_version || 0) },
     process.env.JWT_SECRET,
-    { expiresIn: '1d' }
+    { expiresIn: session.expiresInSeconds }
   );
 
-  res.cookie('token', token, {
+  const cookieOptions = {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
-    maxAge: 1000 * 60 * 60 * 24,
-  });
+    path: '/',
+  };
+  if (session.cookieMaxAge) cookieOptions.maxAge = session.cookieMaxAge;
+  res.cookie('token', token, cookieOptions);
 
   await db.query(`UPDATE users SET last_login = NOW() WHERE id = ?`, [user.id]);
 
@@ -540,7 +562,393 @@ export const login = async (req, res) => {
       created_at: user.created_at,
       updated_at: user.updated_at,
     },
+    session: {
+      remembered: session.rememberMe,
+      expiresInSeconds: session.expiresInSeconds,
+    },
   });
+};
+
+const passwordResetRequestMessage = 'If an active account matches that email, a 6-digit verification code has been sent.';
+
+export const requestForgotPasswordCode = async (req, res) => {
+  const connection = await db.getConnection();
+  let resetCodeId = null;
+
+  try {
+    const email = normalizeResetEmail(req.body?.email);
+    if (!isValidResetEmail(email)) {
+      return res.status(400).json({ message: 'Enter a valid email address.' });
+    }
+
+    assertPasswordResetEmailConfigured();
+    await ensurePasswordResetSchema(connection);
+
+    const [userRows] = await connection.query(
+      `
+        SELECT
+          id,
+          first_name,
+          middle_name,
+          last_name,
+          email,
+          role,
+          status,
+          can_login,
+          is_system_account,
+          COALESCE(auth_version, 0) AS auth_version
+        FROM users
+        WHERE LOWER(email) = LOWER(?)
+        LIMIT 1
+      `,
+      [email]
+    );
+    const user = userRows[0];
+
+    if (
+      !user
+      || user.status !== 'active'
+      || Number(user.can_login ?? 1) !== 1
+      || Number(user.is_system_account || 0) === 1
+    ) {
+      return res.json({
+        message: passwordResetRequestMessage,
+        expiresInMinutes: PASSWORD_RESET_CODE_EXPIRY_MINUTES,
+        resendAfterSeconds: PASSWORD_RESET_RESEND_SECONDS,
+      });
+    }
+
+    const [recentRows] = await connection.query(
+      `
+        SELECT user_password_reset_code_id
+        FROM user_password_reset_codes
+        WHERE user_id = ?
+          AND created_at >= DATE_SUB(NOW(), INTERVAL ? SECOND)
+        ORDER BY user_password_reset_code_id DESC
+        LIMIT 1
+      `,
+      [user.id, PASSWORD_RESET_RESEND_SECONDS]
+    );
+
+    if (recentRows.length) {
+      return res.json({
+        message: passwordResetRequestMessage,
+        expiresInMinutes: PASSWORD_RESET_CODE_EXPIRY_MINUTES,
+        resendAfterSeconds: PASSWORD_RESET_RESEND_SECONDS,
+      });
+    }
+
+    const code = generatePasswordResetCode();
+    const codeHash = hashPasswordResetCode({ userId: user.id, code });
+    const requestIp = getRequestIpAddress(req);
+    const userAgent = String(req.headers?.['user-agent'] || '').slice(0, 255) || null;
+
+    await connection.beginTransaction();
+    await connection.query(
+      `
+        UPDATE user_password_reset_codes
+        SET status = CASE WHEN status = 'verified' THEN 'used' ELSE 'expired' END,
+            used_at = CASE WHEN status = 'verified' THEN NOW() ELSE used_at END,
+            updated_at = NOW()
+        WHERE user_id = ?
+          AND status IN ('pending', 'verified')
+      `,
+      [user.id]
+    );
+    const [insertResult] = await connection.query(
+      `
+        INSERT INTO user_password_reset_codes (
+          user_id,
+          code_hash,
+          status,
+          attempt_count,
+          max_attempts,
+          expires_at,
+          request_ip,
+          user_agent
+        ) VALUES (?, ?, 'pending', 0, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE), ?, ?)
+      `,
+      [
+        user.id,
+        codeHash,
+        PASSWORD_RESET_MAX_ATTEMPTS,
+        PASSWORD_RESET_CODE_EXPIRY_MINUTES,
+        requestIp,
+        userAgent,
+      ]
+    );
+    resetCodeId = insertResult.insertId;
+    await connection.commit();
+
+    try {
+      await sendPasswordResetCodeEmail({
+        to: user.email,
+        name: buildPersonName(user),
+        code,
+      });
+    } catch (emailError) {
+      await connection.query(
+        `UPDATE user_password_reset_codes SET status = 'expired', updated_at = NOW() WHERE user_password_reset_code_id = ?`,
+        [resetCodeId]
+      );
+      throw emailError;
+    }
+
+    return res.json({
+      message: passwordResetRequestMessage,
+      expiresInMinutes: PASSWORD_RESET_CODE_EXPIRY_MINUTES,
+      resendAfterSeconds: PASSWORD_RESET_RESEND_SECONDS,
+    });
+  } catch (error) {
+    try { await connection.rollback(); } catch {}
+    return res.status(error?.statusCode || 500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
+export const verifyForgotPasswordCode = async (req, res) => {
+  const connection = await db.getConnection();
+
+  try {
+    const email = normalizeResetEmail(req.body?.email);
+    const code = String(req.body?.code || '').replace(/\D/g, '').slice(0, 6);
+    if (!isValidResetEmail(email) || !/^\d{6}$/.test(code)) {
+      return res.status(400).json({ message: 'Enter your email and the 6-digit verification code.' });
+    }
+
+    await ensurePasswordResetSchema(connection);
+    await connection.beginTransaction();
+
+    const [rows] = await connection.query(
+      `
+        SELECT
+          reset.user_password_reset_code_id,
+          reset.user_id,
+          reset.code_hash,
+          reset.status AS reset_status,
+          reset.attempt_count,
+          reset.max_attempts,
+          reset.expires_at,
+          user.first_name,
+          user.middle_name,
+          user.last_name,
+          user.email,
+          user.role,
+          user.status,
+          user.can_login,
+          user.is_system_account,
+          COALESCE(user.auth_version, 0) AS auth_version
+        FROM user_password_reset_codes reset
+        INNER JOIN users user ON user.id = reset.user_id
+        WHERE LOWER(user.email) = LOWER(?)
+          AND reset.status = 'pending'
+        ORDER BY reset.user_password_reset_code_id DESC
+        LIMIT 1
+        FOR UPDATE
+      `,
+      [email]
+    );
+    const row = rows[0];
+
+    if (!row) {
+      await connection.commit();
+      return res.status(400).json({ message: 'The verification code is invalid or has expired.' });
+    }
+
+    if (
+      row.status !== 'active'
+      || Number(row.can_login ?? 1) !== 1
+      || Number(row.is_system_account || 0) === 1
+    ) {
+      await connection.query(
+        `UPDATE user_password_reset_codes SET status = 'locked', updated_at = NOW() WHERE user_password_reset_code_id = ?`,
+        [row.user_password_reset_code_id]
+      );
+      await connection.commit();
+      return res.status(400).json({ message: 'The verification code is invalid or has expired.' });
+    }
+
+    if (new Date(row.expires_at).getTime() <= Date.now()) {
+      await connection.query(
+        `UPDATE user_password_reset_codes SET status = 'expired', updated_at = NOW() WHERE user_password_reset_code_id = ?`,
+        [row.user_password_reset_code_id]
+      );
+      await connection.commit();
+      return res.status(400).json({ message: 'The verification code has expired. Request a new code.' });
+    }
+
+    const matches = passwordResetCodeMatches({
+      userId: row.user_id,
+      code,
+      expectedHash: row.code_hash,
+    });
+
+    if (!matches) {
+      const nextAttempts = Number(row.attempt_count || 0) + 1;
+      const locked = nextAttempts >= Number(row.max_attempts || PASSWORD_RESET_MAX_ATTEMPTS);
+      await connection.query(
+        `
+          UPDATE user_password_reset_codes
+          SET attempt_count = ?, status = ?, updated_at = NOW()
+          WHERE user_password_reset_code_id = ?
+        `,
+        [nextAttempts, locked ? 'locked' : 'pending', row.user_password_reset_code_id]
+      );
+      await connection.commit();
+      return res.status(400).json({
+        message: locked
+          ? 'Too many incorrect attempts. Request a new verification code.'
+          : 'The verification code is incorrect.',
+      });
+    }
+
+    await connection.query(
+      `
+        UPDATE user_password_reset_codes
+        SET status = 'verified', verified_at = NOW(), updated_at = NOW()
+        WHERE user_password_reset_code_id = ?
+      `,
+      [row.user_password_reset_code_id]
+    );
+    await connection.commit();
+
+    return res.json({
+      message: 'Verification code accepted. You can now set a new password.',
+      resetToken: createPasswordResetToken({
+        userId: row.user_id,
+        resetCodeId: row.user_password_reset_code_id,
+        authVersion: row.auth_version,
+      }),
+      expiresInMinutes: PASSWORD_RESET_CODE_EXPIRY_MINUTES,
+    });
+  } catch (error) {
+    try { await connection.rollback(); } catch {}
+    return res.status(error?.statusCode || 500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
+export const resetForgottenPassword = async (req, res) => {
+  const connection = await db.getConnection();
+
+  try {
+    const password = validatePasswordResetValue({
+      newPassword: req.body?.newPassword ?? req.body?.new_password,
+      confirmPassword: req.body?.confirmPassword ?? req.body?.confirm_password,
+    });
+    let decoded;
+    try {
+      decoded = verifyPasswordResetToken(req.body?.resetToken ?? req.body?.reset_token);
+    } catch {
+      return res.status(400).json({ message: 'Your password reset session is invalid or expired. Request a new code.' });
+    }
+
+    await ensurePasswordResetSchema(connection);
+    await connection.beginTransaction();
+
+    const [rows] = await connection.query(
+      `
+        SELECT
+          reset.user_password_reset_code_id,
+          reset.user_id,
+          reset.status AS reset_status,
+          reset.expires_at,
+          reset.used_at,
+          user.first_name,
+          user.middle_name,
+          user.last_name,
+          user.email,
+          user.role,
+          user.status,
+          user.can_login,
+          user.is_system_account,
+          COALESCE(user.auth_version, 0) AS auth_version
+        FROM user_password_reset_codes reset
+        INNER JOIN users user ON user.id = reset.user_id
+        WHERE reset.user_password_reset_code_id = ?
+          AND reset.user_id = ?
+        LIMIT 1
+        FOR UPDATE
+      `,
+      [decoded.resetCodeId, decoded.userId]
+    );
+    const row = rows[0];
+
+    if (
+      !row
+      || row.reset_status !== 'verified'
+      || row.used_at
+      || new Date(row.expires_at).getTime() <= Date.now()
+      || row.status !== 'active'
+      || Number(row.can_login ?? 1) !== 1
+      || Number(row.is_system_account || 0) === 1
+      || Number(decoded.authVersion || 0) !== Number(row.auth_version || 0)
+    ) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Your password reset session is invalid or expired. Request a new code.' });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    await connection.query(
+      `
+        UPDATE users
+        SET password_hash = ?,
+            must_change_password = 0,
+            auth_version = COALESCE(auth_version, 0) + 1,
+            updated_at = NOW()
+        WHERE id = ?
+      `,
+      [passwordHash, row.user_id]
+    );
+    await connection.query(
+      `
+        UPDATE user_password_reset_codes
+        SET status = 'used', used_at = NOW(), updated_at = NOW()
+        WHERE user_password_reset_code_id = ?
+      `,
+      [row.user_password_reset_code_id]
+    );
+    await connection.query(
+      `
+        UPDATE user_password_reset_codes
+        SET status = CASE WHEN status = 'verified' THEN 'used' ELSE 'expired' END,
+            used_at = CASE WHEN status = 'verified' THEN COALESCE(used_at, NOW()) ELSE used_at END,
+            updated_at = NOW()
+        WHERE user_id = ?
+          AND user_password_reset_code_id <> ?
+          AND status IN ('pending', 'verified')
+      `,
+      [row.user_id, row.user_password_reset_code_id]
+    );
+
+    await writeAuditLog(connection, req, {
+      actor: row,
+      action: 'update',
+      module: 'Authentication',
+      entityType: 'user',
+      entityId: String(row.user_id),
+      entityLabel: buildPersonName(row),
+      title: 'Password reset completed',
+      description: 'User reset their password using an email verification code.',
+    });
+
+    await connection.commit();
+    res.clearCookie('token', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+    });
+
+    return res.json({ message: 'Password reset successfully. Sign in with your new password.' });
+  } catch (error) {
+    try { await connection.rollback(); } catch {}
+    return res.status(error?.statusCode || 500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
 };
 
 export const logout = async (req, res) => {
@@ -588,6 +996,7 @@ export const getMe = async (req, res) => {
           role,
           status,
           must_change_password,
+          COALESCE(auth_version, 0) AS auth_version,
           last_login,
           created_at,
           updated_at
@@ -601,6 +1010,9 @@ export const getMe = async (req, res) => {
     const user = rows[0];
 
     if (!user) return res.status(404).json({ message: 'User not found' });
+    if (Number(decoded.authVersion ?? 0) !== Number(user.auth_version || 0)) {
+      return res.status(401).json({ message: 'Invalid or expired token' });
+    }
 
     return res.json({ user, message: 'Successfully getMe :3' });
   } catch {

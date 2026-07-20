@@ -538,6 +538,17 @@ export const getLotProjectListingProfile = async (req, res) => {
           payment_summary.payment_count,
           payment_summary.latest_payment_date,
           payment_summary.latest_payment_amount,
+          cancellation_history.cancellation_refund_type,
+          cancellation_history.cancellation_reason,
+          cancellation_history.cash_collected_at_cancellation,
+          cancellation_history.refund_amount,
+          cancellation_history.discontinued_amount,
+          cancellation_history.refund_date,
+          cancellation_history.refund_reference,
+          cancellation_history.cancellation_settlement_notes,
+          cancellation_history.released_commission_amount_at_cancellation,
+          cancellation_history.cancelled_at,
+          cancellation_history.sale_data_archived_at,
           COALESCE(cp.soa_first_due_date, schedule_summary.first_due_date) AS first_due_date,
           ${sellerNameSelect}
           ${sellerRoleSelect}
@@ -584,6 +595,18 @@ export const getLotProjectListingProfile = async (req, res) => {
           FROM lot_project_payment_schedules
           GROUP BY lot_project_listing_id
         ) schedule_summary ON schedule_summary.lot_project_listing_id = l.lot_project_listing_id
+        LEFT JOIN (
+          SELECT rh.*
+          FROM lot_project_reservation_history rh
+          INNER JOIN (
+            SELECT lot_project_listing_id, MAX(lot_project_reservation_history_id) AS latest_history_id
+            FROM lot_project_reservation_history
+            WHERE reservation_status = 'cancelled'
+            GROUP BY lot_project_listing_id
+          ) latest_cancellation
+            ON latest_cancellation.latest_history_id = rh.lot_project_reservation_history_id
+        ) cancellation_history
+          ON cancellation_history.lot_project_listing_id = l.lot_project_listing_id
         LEFT JOIN (
           SELECT
             lot_project_listing_id,

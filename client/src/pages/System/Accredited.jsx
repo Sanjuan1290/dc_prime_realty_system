@@ -75,6 +75,17 @@ const titleCase = (value) =>
     .replaceAll("_", " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 
+const releaseMilestoneLabel = (release = {}) => {
+  const tranchePercent = Number(release.releasePercent || 0);
+  const cumulativePercent = Number(release.triggerPercent || 0);
+
+  if (cumulativePercent > 0) {
+    return `${tranchePercent.toFixed(2)}% tranche · ${cumulativePercent.toFixed(2)}% cumulative`;
+  }
+
+  return `${tranchePercent.toFixed(2)}% tranche`;
+};
+
 const IncomeRangeReportPanel = ({ seller, sellerId, receipts = EMPTY_LIST, receiptsLoading = false, receiptsError = null }) => {
   const defaultRange = useMemo(() => getIncomeRangePreset("last12"), []);
   const [rangeForm, setRangeForm] = useState(defaultRange);
@@ -269,7 +280,7 @@ const IncomeRangeReportPanel = ({ seller, sellerId, receipts = EMPTY_LIST, recei
           {entries.length ? (
             <>
               <div className="mt-4 hidden overflow-x-auto rounded-2xl border border-slate-200 lg:block">
-                <table className="min-w-[1050px] w-full border-collapse text-sm">
+                <table className="min-w-[1200px] w-full border-collapse text-sm">
                   <thead className="bg-slate-50 text-left text-xs font-black uppercase tracking-wide text-slate-500">
                     <tr>
                       <th className="px-4 py-3">Release Date</th>
@@ -277,7 +288,8 @@ const IncomeRangeReportPanel = ({ seller, sellerId, receipts = EMPTY_LIST, recei
                       <th className="px-4 py-3">Buyer</th>
                       <th className="px-4 py-3">Income Type</th>
                       <th className="px-4 py-3">Release</th>
-                      <th className="px-4 py-3 text-right">Gross</th>
+                      <th className="px-4 py-3 text-right">This Release</th>
+                      <th className="px-4 py-3 text-right">Cumulative Gross</th>
                       <th className="px-4 py-3 text-right">Deductions</th>
                       <th className="px-4 py-3 text-right">Net Income</th>
                     </tr>
@@ -286,11 +298,12 @@ const IncomeRangeReportPanel = ({ seller, sellerId, receipts = EMPTY_LIST, recei
                     {entries.map((entry) => (
                       <tr key={entry.releaseId} className="align-top">
                         <td className="px-4 py-3 font-black text-slate-900">{entry.releaseDate || "-"}</td>
-                        <td className="px-4 py-3"><p className="font-black text-slate-800">{entry.projectName} · {entry.unitId}</p><p className="text-xs font-semibold text-slate-500">{entry.projectLocation || "-"}</p></td>
+                        <td className="px-4 py-3"><p className="font-black text-slate-800">{entry.projectName} · {entry.unitId}</p><p className="text-xs font-semibold text-slate-500">{entry.projectLocation || "-"}</p>{entry.isArchived ? <span className="mt-1 inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-slate-600">Archived cancelled sale</span> : null}</td>
                         <td className="px-4 py-3 font-semibold text-slate-700">{entry.buyerName || "-"}</td>
                         <td className="px-4 py-3"><p className="font-black text-slate-800">{titleCase(entry.commissionRateType)}</p><p className="text-xs font-semibold text-slate-500">{roleLabels[entry.commissionRole] || titleCase(entry.commissionRole)} · {Number(entry.commissionRate || 0).toFixed(2)}%</p></td>
-                        <td className="px-4 py-3"><p className="font-black text-slate-800">{entry.releaseStage}</p><p className="text-xs font-semibold text-slate-500">{Number(entry.releasePercent || 0).toFixed(2)}%{entry.receiptReference ? ` · Receipt ${entry.receiptReference}` : ""}</p></td>
+                        <td className="px-4 py-3"><p className="font-black text-slate-800">{entry.releaseStage}</p><p className="text-xs font-semibold text-slate-500">{releaseMilestoneLabel(entry)}{entry.receiptReference ? ` · Receipt ${entry.receiptReference}` : ""}</p></td>
                         <td className="px-4 py-3 text-right font-black text-slate-800">{money(entry.grossAmount)}</td>
+                        <td className="px-4 py-3 text-right"><p className="font-black text-blue-700">{money(entry.cumulativeGrossTarget)}</p><p className="text-xs font-semibold text-slate-500">{Number(entry.triggerPercent || 0).toFixed(2)}% target</p></td>
                         <td className="px-4 py-3 text-right font-black text-rose-600">{money(entry.deductionAmount)}</td>
                         <td className="px-4 py-3 text-right font-black text-emerald-700">{money(entry.netAmount)}</td>
                       </tr>
@@ -306,13 +319,15 @@ const IncomeRangeReportPanel = ({ seller, sellerId, receipts = EMPTY_LIST, recei
                       <div>
                         <p className="font-black text-slate-950">{entry.projectName} · {entry.unitId}</p>
                         <p className="mt-1 text-xs font-semibold text-slate-500">Released {entry.releaseDate || "-"}</p>
+                        {entry.isArchived ? <span className="mt-1 inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-slate-600">Archived cancelled sale</span> : null}
                       </div>
                       <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700">{money(entry.netAmount)}</span>
                     </div>
                     <dl className="mt-4 grid grid-cols-2 gap-3 text-xs">
                       <div><dt className="font-black uppercase tracking-wide text-slate-400">Buyer</dt><dd className="mt-1 font-semibold text-slate-700">{entry.buyerName || "-"}</dd></div>
                       <div><dt className="font-black uppercase tracking-wide text-slate-400">Income</dt><dd className="mt-1 font-semibold text-slate-700">{titleCase(entry.commissionRateType)} · {Number(entry.commissionRate || 0).toFixed(2)}%</dd></div>
-                      <div><dt className="font-black uppercase tracking-wide text-slate-400">Release</dt><dd className="mt-1 font-semibold text-slate-700">{entry.releaseStage}</dd></div>
+                      <div><dt className="font-black uppercase tracking-wide text-slate-400">Release</dt><dd className="mt-1 font-semibold text-slate-700">{entry.releaseStage}<span className="block text-slate-500">{releaseMilestoneLabel(entry)}</span></dd></div>
+                      <div><dt className="font-black uppercase tracking-wide text-slate-400">Cumulative Gross</dt><dd className="mt-1 font-semibold text-blue-700">{money(entry.cumulativeGrossTarget)}</dd></div>
                       <div><dt className="font-black uppercase tracking-wide text-slate-400">Deductions</dt><dd className="mt-1 font-semibold text-rose-600">{money(entry.deductionAmount)}</dd></div>
                     </dl>
                   </article>
@@ -530,7 +545,8 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
                             <input type="checkbox" checked={effectiveReleaseIds.includes(Number(release.releaseId))} onChange={() => toggleRelease(release.releaseId)} className="h-4 w-4 rounded border-slate-300 text-blue-600" />
                             <span>
                               <span className="block font-black text-slate-800">{release.stage}</span>
-                              <span className="block text-xs font-semibold text-slate-500">Released {release.actualReleaseDate || "-"}</span>
+                              <span className="block text-xs font-semibold text-slate-500">{releaseMilestoneLabel(release)}</span>
+                              <span className="block text-xs font-semibold text-slate-400">Released {release.actualReleaseDate || "-"} · Cumulative gross {money(release.cumulativeGrossTarget)}</span>
                             </span>
                           </span>
                           <span className="shrink-0 font-black text-slate-950">{money(release.amount)}</span>
@@ -586,8 +602,8 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
                     {receipts.length ? receipts.map((receipt) => (
                       <tr key={receipt.receiptId}>
                         <td className="px-4 py-3"><p className="font-black text-slate-900">{receipt.receiptDate}</p><p className="text-xs font-semibold text-slate-500">{receipt.referenceNumber}</p></td>
-                        <td className="px-4 py-3"><p className="font-black text-slate-800">{receipt.projectName} · {receipt.unitId}</p><p className="text-xs font-semibold text-slate-500">{receipt.buyerName || "-"}</p></td>
-                        <td className="px-4 py-3"><div className="flex flex-wrap gap-1">{(receipt.releases || []).map((release) => <span key={release.releaseId} className="rounded-lg bg-blue-50 px-2 py-1 text-[11px] font-black text-blue-700">{release.stage}</span>)}</div></td>
+                        <td className="px-4 py-3"><p className="font-black text-slate-800">{receipt.projectName} · {receipt.unitId}</p><p className="text-xs font-semibold text-slate-500">{receipt.buyerName || "-"}</p>{receipt.isArchived ? <span className="mt-1 inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-slate-600">Archived cancelled sale</span> : null}</td>
+                        <td className="px-4 py-3"><div className="flex flex-wrap gap-1">{(receipt.releases || []).map((release) => <span key={release.releaseId} className="rounded-lg bg-blue-50 px-2 py-1 text-[11px] font-black text-blue-700">{release.stage} · {Number(release.triggerPercent || 0).toFixed(0)}% cumulative</span>)}</div></td>
                         <td className="px-4 py-3 text-right font-black text-emerald-700">{money(receipt.totalAmount)}</td>
                         <td className="px-4 py-3 text-right"><button type="button" onClick={() => printReceipt(receipt)} className="inline-flex h-9 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-700 transition hover:bg-blue-100"><FiPrinter className="h-4 w-4" />Print</button></td>
                       </tr>

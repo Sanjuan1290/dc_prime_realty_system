@@ -731,6 +731,22 @@ export const mapProfileListing = (row = {}, project = {}, documents = []) => {
     payment_count: String(paymentCount),
     latest_payment_date: row.latest_payment_date ? plainDate(row.latest_payment_date) : '-',
     latest_payment_amount: money(row.latest_payment_amount || 0),
+    cancellationRefundType: row.cancellation_refund_type || null,
+    cancellationReason: row.cancellation_reason || null,
+    cancellationCashCollected: Number(row.cash_collected_at_cancellation || 0),
+    cancellationCashCollectedLabel: money(row.cash_collected_at_cancellation || 0),
+    refundAmount: Number(row.refund_amount || 0),
+    refundAmountLabel: money(row.refund_amount || 0),
+    discontinuedAmount: Number(row.discontinued_amount || 0),
+    discontinuedAmountLabel: money(row.discontinued_amount || 0),
+    refundDate: row.refund_date ? plainDate(row.refund_date) : '-',
+    refundReference: row.refund_reference || '-',
+    cancellationSettlementNotes: row.cancellation_settlement_notes || '-',
+    releasedCommissionAtCancellation: Number(row.released_commission_amount_at_cancellation || 0),
+    releasedCommissionAtCancellationLabel: money(row.released_commission_amount_at_cancellation || 0),
+    cancelledAt: row.cancelled_at ? formatDateTime(row.cancelled_at) : '-',
+    saleDataArchivedAt: row.sale_data_archived_at ? formatDateTime(row.sale_data_archived_at) : '-',
+    hasCancellationSettlement: Boolean(row.cancelled_at),
     seller: row.seller_name || '-',
     seller_role: row.seller_role || '-',
     seller_email: row.seller_email || '-',
@@ -2550,7 +2566,8 @@ export const getAuthenticatedUser = async (req) => {
 
     const [rows] = await db.query(
       `
-        SELECT id, first_name, middle_name, last_name, email, role, password_hash, status
+        SELECT id, first_name, middle_name, last_name, email, role, password_hash, status,
+          COALESCE(auth_version, 0) AS auth_version
         FROM users
         WHERE id = ?
         LIMIT 1
@@ -2560,6 +2577,7 @@ export const getAuthenticatedUser = async (req) => {
 
     const user = rows[0];
     if (!user || user.status !== 'active') return null;
+    if (Number(decoded.authVersion ?? 0) !== Number(user.auth_version || 0)) return null;
     return user;
   } catch {
     return null;

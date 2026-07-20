@@ -15,6 +15,7 @@ import StatusAlert from '../../../Shared/StatusAlert'
 import EditUnitStatusModal from './EditUnitStatusModal'
 import RecalculateCommissionModal from './RecalculateCommissionModal'
 import CommissionDistribution from './CommissionDistribution'
+import CancellationSettlementModal from './CancellationSettlementModal'
 
 const fallbackListing = {
   unit_id: '-',
@@ -148,6 +149,7 @@ const UnitStatus = ({
 }) => {
   const [showEditModal, setShowEditModal] = useState(false)
   const [showRecalculateModal, setShowRecalculateModal] = useState(false)
+  const [showSettlementModal, setShowSettlementModal] = useState(false)
   const [alert, setAlert] = useState(null)
 
   const unitData = useMemo(() => ({ ...fallbackListing, ...listing }), [listing])
@@ -169,9 +171,10 @@ const UnitStatus = ({
     }
   }
 
-  const handleSettleCancellation = async () => {
+  const handleSettleCancellation = async (settlement) => {
     await handleSave({
       ...unitData,
+      ...settlement,
       unitCode: unitData.unit_id || unitData.unitCode,
       lotType: unitData.lot_type,
       pricePerSqm: unitData.installmentPricePerSqm ?? unitData.pricePerSqm,
@@ -189,6 +192,7 @@ const UnitStatus = ({
       status: 'cancelled',
       statusTransitionAction: 'settle_cancellation',
     })
+    setShowSettlementModal(false)
   }
 
   const handleCancelCancellation = async () => {
@@ -221,7 +225,7 @@ const UnitStatus = ({
 
   const handleMakeAvailable = async () => {
     const confirmed = window.confirm(
-      'Changing this listing back to available will permanently remove the previous buyer profile, payment records, SOA schedules, submitted buyer documents, and commission records for this unit. Continue?'
+      'Changing this listing back to available will archive the cancelled sale, verified payments, released commissions, and receipts. The active buyer account and working SOA will then be cleared so the unit can be reserved again. Continue?'
     )
 
     if (!confirmed) return
@@ -294,7 +298,7 @@ const UnitStatus = ({
             {showSettlementButton ? (
               <button
                 type="button"
-                onClick={handleSettleCancellation}
+                onClick={() => setShowSettlementModal(true)}
                 disabled={isSaving}
                 className="inline-flex h-10 items-center justify-center rounded-xl bg-orange-600 px-4 text-sm font-black text-white transition hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98]"
               >
@@ -385,6 +389,22 @@ const UnitStatus = ({
         <DetailBox label="Latest Payment Amount" value={unitData.latest_payment_amount} />
       </SectionBlock>
 
+      {unitData.hasCancellationSettlement && ['Cancelled', 'Available'].includes(unitData.listing_status) ? (
+        <SectionBlock title="Cancellation Settlement" description="Saved refund, retained amount, and commission history for the cancelled sale." icon={FiDollarSign}>
+          <DetailBox label="Refund Type" value={String(unitData.cancellationRefundType || '-').replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())} />
+          <DetailBox label="Cash Collected at Cancellation" value={unitData.cancellationCashCollectedLabel} />
+          <DetailBox label="Refunded Amount" value={unitData.refundAmountLabel} highlight />
+          <DetailBox label="Discontinued Amount" value={unitData.discontinuedAmountLabel} />
+          <DetailBox label="Released Commission" value={unitData.releasedCommissionAtCancellationLabel} />
+          <DetailBox label="Refund Date" value={unitData.refundDate} />
+          <DetailBox label="Refund Reference" value={unitData.refundReference} />
+          <DetailBox label="Cancelled At" value={unitData.cancelledAt} />
+          <DetailBox label="Cancellation Reason" value={unitData.cancellationReason} long />
+          <DetailBox label="Settlement Notes" value={unitData.cancellationSettlementNotes} long />
+          <DetailBox label="Financial Archive" value={unitData.saleDataArchivedAt === '-' ? 'Pending Change to Available' : `Archived ${unitData.saleDataArchivedAt}`} long />
+        </SectionBlock>
+      ) : null}
+
       <SectionBlock
         title="Seller / Commission"
         description="Assigned seller details and the saved commission distribution for this sale."
@@ -430,6 +450,17 @@ const UnitStatus = ({
         <DetailBox label="Client Unit Created" value={unitData.client_unit_created} />
         <DetailBox label="Client Unit Updated" value={unitData.client_unit_updated} />
       </SectionBlock>
+
+      {showSettlementModal ? (
+        <CancellationSettlementModal
+          unitId={unitData.unit_id || unitData.unitCode}
+          buyerName={unitData.buyer_name}
+          cashCollected={unitData.totalPaid}
+          onClose={() => setShowSettlementModal(false)}
+          onConfirm={handleSettleCancellation}
+          isSaving={isSaving}
+        />
+      ) : null}
 
       {showEditModal ? (
         <EditUnitStatusModal

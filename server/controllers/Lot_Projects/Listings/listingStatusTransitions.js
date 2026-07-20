@@ -62,15 +62,15 @@ export const validateListingStatusTransition = ({
     return { currentStatus: current, nextStatus: next, resetToAvailable: false };
   }
 
-  // Sale data may only be deleted after cancellation has been settled and the
-  // dedicated Change to Available action sends an explicit confirmation flag.
+  // Active sale data may only be archived and cleared after cancellation has been
+  // settled and the dedicated Change to Available action confirms the reset.
   if (current === 'cancelled' && next === 'available') {
     if (
       transitionAction !== LISTING_STATUS_ACTIONS.RESET_TO_AVAILABLE ||
       confirmSaleDataDeletion !== true
     ) {
       throw transitionError(
-        'Use the Change to Available button after Settlement and confirm the permanent removal of the previous sale data.'
+        'Use the Change to Available button after Settlement and confirm the archival of the previous sale before clearing the active account.'
       );
     }
 

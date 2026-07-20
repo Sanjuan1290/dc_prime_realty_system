@@ -363,6 +363,9 @@ export const getLotProjectDashboard = async (req, res) => {
       reservationCount: 0,
       cancelledCount: 0,
       cancelledValue: 0,
+      totalRefundedAmount: 0,
+      totalDiscontinuedAmount: 0,
+      cancellationCashCollected: 0,
       pendingCancellationValue: 0,
       cancelledInventoryValue: 0,
       pendingSales: 0,
@@ -412,6 +415,8 @@ export const getLotProjectDashboard = async (req, res) => {
     const hasClientDocuments = await tableExists(connection, 'lot_project_client_documents');
     const hasListingCadastralLinks = await tableExists(connection, 'lot_project_listing_cadastral_lots');
     const hasReservationHistory = await tableExists(connection, 'lot_project_reservation_history');
+    const hasCancellationSettlementFields = hasReservationHistory
+      && await columnExists(connection, 'lot_project_reservation_history', 'refund_amount');
     const hasSelectedContractTcp = hasClientProfiles
       && await columnExists(connection, 'lot_project_client_profiles', 'soa_selected_tcp');
     const effectiveTcpExpr = hasSelectedContractTcp
@@ -815,7 +820,26 @@ export const getLotProjectDashboard = async (req, res) => {
                 WHEN reservation_status = 'cancelled' AND DATE(cancelled_at) BETWEEN ? AND ?
                   THEN cancelled_value
                 ELSE 0
-              END), 0) AS cancelledValue
+              END), 0) AS cancelledValue,
+              ${hasCancellationSettlementFields
+                ? `COALESCE(SUM(CASE
+                    WHEN reservation_status = 'cancelled' AND DATE(cancelled_at) BETWEEN ? AND ?
+                      THEN refund_amount
+                    ELSE 0
+                  END), 0)`
+                : '0'} AS totalRefundedAmount,
+              ${hasCancellationSettlementFields
+                ? `COALESCE(SUM(CASE
+                    WHEN reservation_status = 'cancelled' AND DATE(cancelled_at) BETWEEN ? AND ?
+                      THEN discontinued_amount
+                    ELSE 0
+                  END), 0)`
+                : '0'} AS totalDiscontinuedAmount,
+              COALESCE(SUM(CASE
+                WHEN reservation_status = 'cancelled' AND DATE(cancelled_at) BETWEEN ? AND ?
+                  THEN cash_collected_at_cancellation
+                ELSE 0
+              END), 0) AS cancellationCashCollected
             FROM lot_project_reservation_history
             WHERE lot_project_id = ?
           `,
@@ -826,6 +850,14 @@ export const getLotProjectDashboard = async (req, res) => {
             dateRange.to,
             dateRange.from,
             dateRange.to,
+            ...(hasCancellationSettlementFields ? [
+              dateRange.from,
+              dateRange.to,
+              dateRange.from,
+              dateRange.to,
+            ] : []),
+            dateRange.from,
+            dateRange.to,
             project.lot_project_id,
           ]
         )
@@ -833,6 +865,9 @@ export const getLotProjectDashboard = async (req, res) => {
           reservationCount: null,
           cancelledCount: toNumber(summaryRows[0]?.cancelled),
           cancelledValue: toNumber(summaryRows[0]?.cancelledInventoryValue),
+          totalRefundedAmount: 0,
+          totalDiscontinuedAmount: 0,
+          cancellationCashCollected: 0,
         }]];
 
     const [cancellationTrendRows] = hasReservationHistory
@@ -1208,6 +1243,9 @@ export const getLotProjectDashboard = async (req, res) => {
             : toNumber(reservationSummary.reservationCount),
           cancelledCount: toNumber(reservationSummary.cancelledCount),
           cancelledValue: toNumber(reservationSummary.cancelledValue),
+          totalRefundedAmount: toNumber(reservationSummary.totalRefundedAmount),
+          totalDiscontinuedAmount: toNumber(reservationSummary.totalDiscontinuedAmount),
+          cancellationCashCollected: toNumber(reservationSummary.cancellationCashCollected),
           pendingCancellationValue: toNumber(summary.pendingCancellationValue),
           cancelledInventoryValue: toNumber(summary.cancelledInventoryValue),
           pendingSales: Math.max(toNumber(moneySummary.pendingSales), 0),

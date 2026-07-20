@@ -323,20 +323,437 @@ const replaceListingSchedulesForProfile = async (connection, projectId, listingR
 };
 
 
-const clearListingSaleDataForAvailable = async (connection, listingId) => {
-  if (await tableExists(connection, 'lot_project_payment_allocations')) {
+export const normalizeCancellationRefundType = (value) => {
+  const normalized = String(value || '').trim().toLowerCase();
+  return ['no_refund', 'partial_refund', 'full_refund'].includes(normalized)
+    ? normalized
+    : null;
+};
+
+export const calculateCancellationSettlement = ({ cashCollected = 0, body = {} } = {}) => {
+  const collected = roundMoneyValue(Math.max(Number(cashCollected || 0), 0));
+  const refundType = normalizeCancellationRefundType(
+    body.cancellationRefundType ?? body.cancellation_refund_type ?? body.refundType ?? body.refund_type
+  );
+
+  if (!refundType) {
+    throw Object.assign(
+      new Error('Select No Refund, Partial Refund, or Full Refund.'),
+      { statusCode: 400 }
+    );
+  }
+
+  const requestedRefund = roundMoneyValue(
+    Number(body.refundAmount ?? body.refund_amount ?? 0)
+  );
+
+  if (!Number.isFinite(requestedRefund) || requestedRefund < 0) {
+    throw Object.assign(new Error('Refund amount cannot be negative.'), { statusCode: 400 });
+  }
+
+  let refundAmount = requestedRefund;
+  if (refundType === 'no_refund') refundAmount = 0;
+  if (refundType === 'full_refund') refundAmount = collected;
+
+  if (refundAmount > collected) {
+    throw Object.assign(
+      new Error('Refund amount cannot exceed verified payments.'),
+      { statusCode: 400 }
+    );
+  }
+
+  if (refundType === 'partial_refund' && (refundAmount <= 0 || refundAmount >= collected)) {
+    throw Object.assign(
+      new Error('Partial refund must be greater than zero and less than verified payments.'),
+      { statusCode: 400 }
+    );
+  }
+
+  const discontinuedAmount = roundMoneyValue(Math.max(collected - refundAmount, 0));
+  const legacyCancellationType = refundAmount >= collected && collected > 0
+    ? 'refunded'
+    : 'discontinued';
+
+  return {
+    refundType,
+    refundAmount,
+    discontinuedAmount,
+    legacyCancellationType,
+    refundDate: dateOrNull(body.refundDate ?? body.refund_date),
+    refundReference: toNullable(body.refundReference ?? body.refund_reference),
+    settlementNotes: toNullable(
+      body.cancellationSettlementNotes ?? body.cancellation_settlement_notes ?? body.settlementNotes
+    ),
+  };
+};
+
+const queryRowsIfTableExists = async (connection, tableName, sql, params = []) => {
+  if (!(await tableExists(connection, tableName))) return [];
+  const [rows] = await connection.query(sql, params);
+  return rows;
+};
+
+const archiveListingSaleDataForAvailable = async (
+  connection,
+  {
+    projectId,
+    listingId,
+    archivedByUserId = null,
+  }
+) => {
+  if (!(await tableExists(connection, 'lot_project_cancelled_sale_archives'))) {
+    throw Object.assign(
+      new Error('Cancellation financial archive migration is missing. Run 20260719_cancellation_settlement_financial_archive.sql first.'),
+      { statusCode: 500 }
+    );
+  }
+
+  const [historyRows] = await connection.query(
+    `
+      SELECT *
+      FROM lot_project_reservation_history
+      WHERE lot_project_id = ?
+        AND lot_project_listing_id = ?
+        AND reservation_status = 'cancelled'
+      ORDER BY COALESCE(cancelled_at, updated_at) DESC, lot_project_reservation_history_id DESC
+      LIMIT 1
+      FOR UPDATE
+    `,
+    [projectId, listingId]
+  );
+  const history = historyRows[0];
+
+  if (!history) {
+    throw Object.assign(
+      new Error('Complete the cancellation settlement before changing this unit to Available.'),
+      { statusCode: 400 }
+    );
+  }
+
+  const buyerProfiles = await queryRowsIfTableExists(
+    connection,
+    'lot_project_client_profiles',
+    'SELECT * FROM lot_project_client_profiles WHERE lot_project_listing_id = ?',
+    [listingId]
+  );
+  const payments = await queryRowsIfTableExists(
+    connection,
+    'lot_project_payments',
+    'SELECT * FROM lot_project_payments WHERE lot_project_listing_id = ? ORDER BY lot_project_payment_id',
+    [listingId]
+  );
+  const paymentSchedules = await queryRowsIfTableExists(
+    connection,
+    'lot_project_payment_schedules',
+    'SELECT * FROM lot_project_payment_schedules WHERE lot_project_listing_id = ? ORDER BY lot_project_payment_schedule_id',
+    [listingId]
+  );
+  const paymentAllocations = await queryRowsIfTableExists(
+    connection,
+    'lot_project_payment_allocations',
+    `
+      SELECT pa.*
+      FROM lot_project_payment_allocations pa
+      LEFT JOIN lot_project_payments p
+        ON p.lot_project_payment_id = pa.lot_project_payment_id
+      LEFT JOIN lot_project_payment_schedules ps
+        ON ps.lot_project_payment_schedule_id = pa.lot_project_payment_schedule_id
+      WHERE p.lot_project_listing_id = ? OR ps.lot_project_listing_id = ?
+      ORDER BY pa.lot_project_payment_allocation_id
+    `,
+    [listingId, listingId]
+  );
+  const paymentLogs = await queryRowsIfTableExists(
+    connection,
+    'lot_project_payment_logs',
+    `
+      SELECT pl.*
+      FROM lot_project_payment_logs pl
+      INNER JOIN lot_project_payments p
+        ON p.lot_project_payment_id = pl.lot_project_payment_id
+      WHERE p.lot_project_listing_id = ?
+      ORDER BY pl.lot_project_payment_log_id
+    `,
+    [listingId]
+  );
+  const penaltyReliefs = await queryRowsIfTableExists(
+    connection,
+    'lot_project_penalty_reliefs',
+    'SELECT * FROM lot_project_penalty_reliefs WHERE lot_project_listing_id = ? ORDER BY penalty_relief_id',
+    [listingId]
+  );
+  const clientDocuments = await queryRowsIfTableExists(
+    connection,
+    'lot_project_client_documents',
+    'SELECT * FROM lot_project_client_documents WHERE lot_project_listing_id = ? ORDER BY lot_project_client_document_id',
+    [listingId]
+  );
+  const commissions = await queryRowsIfTableExists(
+    connection,
+    'lot_project_commissions',
+    'SELECT * FROM lot_project_commissions WHERE lot_project_listing_id = ? ORDER BY lot_project_commission_id',
+    [listingId]
+  );
+  const commissionReleases = await queryRowsIfTableExists(
+    connection,
+    'lot_project_commission_releases',
+    `
+      SELECT cr.*
+      FROM lot_project_commission_releases cr
+      INNER JOIN lot_project_commissions c
+        ON c.lot_project_commission_id = cr.lot_project_commission_id
+      WHERE c.lot_project_listing_id = ?
+      ORDER BY cr.lot_project_commission_release_id
+    `,
+    [listingId]
+  );
+  const commissionReceipts = await queryRowsIfTableExists(
+    connection,
+    'lot_project_commission_receipts',
+    'SELECT * FROM lot_project_commission_receipts WHERE lot_project_listing_id = ? ORDER BY lot_project_commission_receipt_id',
+    [listingId]
+  );
+  const commissionReceiptItems = await queryRowsIfTableExists(
+    connection,
+    'lot_project_commission_receipt_items',
+    `
+      SELECT item.*
+      FROM lot_project_commission_receipt_items item
+      INNER JOIN lot_project_commission_receipts receipt
+        ON receipt.lot_project_commission_receipt_id = item.lot_project_commission_receipt_id
+      WHERE receipt.lot_project_listing_id = ?
+      ORDER BY item.lot_project_commission_receipt_item_id
+    `,
+    [listingId]
+  );
+
+  const releasedCommissionAmount = commissionReleases
+    .filter((row) => String(row.release_status || '').toLowerCase() === 'released')
+    .reduce((sum, row) => sum + Number(row.net_release_amount || 0), 0);
+
+  const [archiveResult] = await connection.query(
+    `
+      INSERT INTO lot_project_cancelled_sale_archives (
+        lot_project_reservation_history_id,
+        lot_project_id,
+        lot_project_listing_id,
+        unit_id_snapshot,
+        buyer_name_snapshot,
+        cash_collected_at_cancellation,
+        refund_amount,
+        discontinued_amount,
+        released_commission_amount,
+        buyer_profile_snapshot,
+        payment_snapshot,
+        payment_schedule_snapshot,
+        payment_allocation_snapshot,
+        payment_log_snapshot,
+        penalty_relief_snapshot,
+        client_document_snapshot,
+        commission_snapshot,
+        commission_release_snapshot,
+        commission_receipt_snapshot,
+        commission_receipt_item_snapshot,
+        archived_by_user_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        refund_amount = VALUES(refund_amount),
+        discontinued_amount = VALUES(discontinued_amount),
+        released_commission_amount = VALUES(released_commission_amount),
+        buyer_profile_snapshot = VALUES(buyer_profile_snapshot),
+        payment_snapshot = VALUES(payment_snapshot),
+        payment_schedule_snapshot = VALUES(payment_schedule_snapshot),
+        payment_allocation_snapshot = VALUES(payment_allocation_snapshot),
+        payment_log_snapshot = VALUES(payment_log_snapshot),
+        penalty_relief_snapshot = VALUES(penalty_relief_snapshot),
+        client_document_snapshot = VALUES(client_document_snapshot),
+        commission_snapshot = VALUES(commission_snapshot),
+        commission_release_snapshot = VALUES(commission_release_snapshot),
+        commission_receipt_snapshot = VALUES(commission_receipt_snapshot),
+        commission_receipt_item_snapshot = VALUES(commission_receipt_item_snapshot),
+        archived_by_user_id = VALUES(archived_by_user_id),
+        archived_at = NOW(),
+        lot_project_cancelled_sale_archive_id = LAST_INSERT_ID(lot_project_cancelled_sale_archive_id)
+    `,
+    [
+      history.lot_project_reservation_history_id,
+      projectId,
+      listingId,
+      history.unit_id_snapshot,
+      history.buyer_name_snapshot,
+      Number(history.cash_collected_at_cancellation || 0),
+      Number(history.refund_amount || 0),
+      Number(history.discontinued_amount || 0),
+      roundMoneyValue(releasedCommissionAmount),
+      JSON.stringify(buyerProfiles),
+      JSON.stringify(payments),
+      JSON.stringify(paymentSchedules),
+      JSON.stringify(paymentAllocations),
+      JSON.stringify(paymentLogs),
+      JSON.stringify(penaltyReliefs),
+      JSON.stringify(clientDocuments),
+      JSON.stringify(commissions),
+      JSON.stringify(commissionReleases),
+      JSON.stringify(commissionReceipts),
+      JSON.stringify(commissionReceiptItems),
+      archivedByUserId,
+    ]
+  );
+  const archiveId = Number(archiveResult.insertId || 0);
+
+  if (
+    archiveId > 0 &&
+    (await tableExists(connection, 'lot_project_archived_commission_releases')) &&
+    (await tableExists(connection, 'lot_project_commission_releases')) &&
+    (await tableExists(connection, 'lot_project_commissions'))
+  ) {
     await connection.query(
       `
-        DELETE pa
-        FROM lot_project_payment_allocations pa
-        LEFT JOIN lot_project_payments p
-          ON p.lot_project_payment_id = pa.lot_project_payment_id
-        LEFT JOIN lot_project_payment_schedules ps
-          ON ps.lot_project_payment_schedule_id = pa.lot_project_payment_schedule_id
-        WHERE p.lot_project_listing_id = ?
-           OR ps.lot_project_listing_id = ?
+        INSERT IGNORE INTO lot_project_archived_commission_releases (
+          lot_project_cancelled_sale_archive_id,
+          lot_project_reservation_history_id,
+          source_commission_release_id,
+          source_commission_id,
+          source_commission_receipt_id,
+          lot_project_id,
+          lot_project_listing_id,
+          lot_project_client_profile_id,
+          accredited_seller_id,
+          sale_owner_accredited_seller_id,
+          project_name_snapshot,
+          project_location_snapshot,
+          unit_id_snapshot,
+          buyer_name_snapshot,
+          commission_role,
+          commission_seller_type,
+          commission_rate_type,
+          commission_rate,
+          gross_commission_amount,
+          release_stage,
+          release_trigger_percent,
+          release_percent,
+          gross_release_amount,
+          deduction_amount,
+          net_release_amount,
+          actual_release_date,
+          receipt_date,
+          receipt_reference_number,
+          receipt_bank_name,
+          receipt_account_number,
+          receipt_witness_name,
+          receipt_total_amount,
+          receipt_status,
+          receipt_created_by_name
+        )
+        SELECT
+          ?,
+          ?,
+          r.lot_project_commission_release_id,
+          c.lot_project_commission_id,
+          receipt.lot_project_commission_receipt_id,
+          c.lot_project_id,
+          c.lot_project_listing_id,
+          c.lot_project_client_profile_id,
+          c.accredited_seller_id,
+          c.sale_owner_accredited_seller_id,
+          p.lot_project_name,
+          p.lot_project_location,
+          l.lot_project_listing_unit_id,
+          cp.buyer_full_name,
+          c.commission_role,
+          c.commission_seller_type,
+          c.commission_rate_type,
+          c.commission_rate,
+          c.gross_commission_amount,
+          r.release_stage,
+          r.release_trigger_percent,
+          r.release_percent,
+          r.gross_release_amount,
+          r.deduction_amount,
+          r.net_release_amount,
+          r.actual_release_date,
+          receipt.receipt_date,
+          receipt.reference_number,
+          receipt.bank_name,
+          receipt.account_number,
+          receipt.witness_name,
+          receipt.total_amount,
+          receipt.receipt_status,
+          NULLIF(TRIM(CONCAT_WS(' ', creator.first_name, creator.middle_name, creator.last_name)), '')
+        FROM lot_project_commission_releases r
+        INNER JOIN lot_project_commissions c
+          ON c.lot_project_commission_id = r.lot_project_commission_id
+        INNER JOIN lot_projects p
+          ON p.lot_project_id = c.lot_project_id
+        INNER JOIN lot_project_listings l
+          ON l.lot_project_listing_id = c.lot_project_listing_id
+        LEFT JOIN lot_project_client_profiles cp
+          ON cp.lot_project_client_profile_id = c.lot_project_client_profile_id
+        LEFT JOIN lot_project_commission_receipt_items item
+          ON item.lot_project_commission_release_id = r.lot_project_commission_release_id
+        LEFT JOIN lot_project_commission_receipts receipt
+          ON receipt.lot_project_commission_receipt_id = item.lot_project_commission_receipt_id
+        LEFT JOIN users creator
+          ON creator.id = receipt.created_by_user_id
+        WHERE c.lot_project_listing_id = ?
+          AND r.release_status = 'Released'
+          AND r.actual_release_date IS NOT NULL
       `,
-      [listingId, listingId]
+      [archiveId, history.lot_project_reservation_history_id, listingId]
+    );
+  }
+
+  if (await columnExists(connection, 'lot_project_reservation_history', 'sale_data_archived_at')) {
+    await connection.query(
+      `
+        UPDATE lot_project_reservation_history
+        SET sale_data_archived_at = NOW(),
+            released_commission_amount_at_cancellation = ?
+        WHERE lot_project_reservation_history_id = ?
+      `,
+      [roundMoneyValue(releasedCommissionAmount), history.lot_project_reservation_history_id]
+    );
+  }
+
+  return {
+    archiveId,
+    historyId: Number(history.lot_project_reservation_history_id),
+    releasedCommissionAmount: roundMoneyValue(releasedCommissionAmount),
+  };
+};
+
+const clearListingSaleDataForAvailable = async (
+  connection,
+  {
+    projectId,
+    listingId,
+    archivedByUserId = null,
+  }
+) => {
+  const archive = await archiveListingSaleDataForAvailable(connection, {
+    projectId,
+    listingId,
+    archivedByUserId,
+  });
+
+  // Receipt items restrict release deletion, so archive first and delete in child-to-parent order.
+  if (await tableExists(connection, 'lot_project_commission_receipt_items')) {
+    await connection.query(
+      `
+        DELETE item
+        FROM lot_project_commission_receipt_items item
+        INNER JOIN lot_project_commission_receipts receipt
+          ON receipt.lot_project_commission_receipt_id = item.lot_project_commission_receipt_id
+        WHERE receipt.lot_project_listing_id = ?
+      `,
+      [listingId]
+    );
+  }
+
+  if (await tableExists(connection, 'lot_project_commission_receipts')) {
+    await connection.query(
+      'DELETE FROM lot_project_commission_receipts WHERE lot_project_listing_id = ?',
+      [listingId]
     );
   }
 
@@ -356,32 +773,61 @@ const clearListingSaleDataForAvailable = async (connection, listingId) => {
     );
   }
 
-  const childTables = [
-    'lot_project_commissions',
+  if (await tableExists(connection, 'lot_project_commissions')) {
+    await connection.query('DELETE FROM lot_project_commissions WHERE lot_project_listing_id = ?', [listingId]);
+  }
+
+  if (await tableExists(connection, 'lot_project_payment_allocations')) {
+    await connection.query(
+      `
+        DELETE pa
+        FROM lot_project_payment_allocations pa
+        LEFT JOIN lot_project_payments p
+          ON p.lot_project_payment_id = pa.lot_project_payment_id
+        LEFT JOIN lot_project_payment_schedules ps
+          ON ps.lot_project_payment_schedule_id = pa.lot_project_payment_schedule_id
+        WHERE p.lot_project_listing_id = ? OR ps.lot_project_listing_id = ?
+      `,
+      [listingId, listingId]
+    );
+  }
+
+  if (await tableExists(connection, 'lot_project_payment_logs')) {
+    await connection.query(
+      `
+        DELETE pl
+        FROM lot_project_payment_logs pl
+        INNER JOIN lot_project_payments p
+          ON p.lot_project_payment_id = pl.lot_project_payment_id
+        WHERE p.lot_project_listing_id = ?
+      `,
+      [listingId]
+    );
+  }
+
+  if (await tableExists(connection, 'lot_project_penalty_reliefs')) {
+    await connection.query('DELETE FROM lot_project_penalty_reliefs WHERE lot_project_listing_id = ?', [listingId]);
+  }
+
+  for (const tableName of [
     'lot_project_payments',
     'lot_project_payment_schedules',
     'lot_project_client_documents',
-  ];
-
-  for (const tableName of childTables) {
+  ]) {
     if (await tableExists(connection, tableName)) {
-      await connection.query(
-        `DELETE FROM ${tableName} WHERE lot_project_listing_id = ?`,
-        [listingId]
-      );
+      await connection.query(`DELETE FROM ${tableName} WHERE lot_project_listing_id = ?`, [listingId]);
     }
   }
 
   if (await tableExists(connection, 'lot_project_client_profiles')) {
-    await connection.query(
-      `DELETE FROM lot_project_client_profiles WHERE lot_project_listing_id = ?`,
-      [listingId]
-    );
+    await connection.query('DELETE FROM lot_project_client_profiles WHERE lot_project_listing_id = ?', [listingId]);
   }
 
   if (await hasBuyerFormSchema(connection)) {
     await resetBuyerFormsForAvailable(connection, listingId);
   }
+
+  return archive;
 };
 
 const syncListingInterestToUnlockedSoa = async (connection, projectId, listingId, annualInterestRate) => {
@@ -720,6 +1166,8 @@ export const updateLotProjectListing = async (req, res) => {
     const hasCancellationType = await columnExists(connection, 'lot_project_listings', 'lot_project_listing_cancellation_type');
     const hasListingCadastralLinks = await tableExists(connection, 'lot_project_listing_cadastral_lots');
     const hasReservationHistory = await tableExists(connection, 'lot_project_reservation_history');
+    const hasCancellationSettlementFields = hasReservationHistory
+      && await columnExists(connection, 'lot_project_reservation_history', 'refund_amount');
 
     await connection.beginTransaction();
 
@@ -752,12 +1200,38 @@ export const updateLotProjectListing = async (req, res) => {
       return res.status(404).json({ message: 'Listing not found.' });
     }
 
+    const statusTransitionAction = req.body.statusTransitionAction || null;
     const statusTransition = validateListingStatusTransition({
       currentStatus: existingListing.lot_project_listing_status,
       nextStatus: listingStatus.status,
-      action: req.body.statusTransitionAction,
+      action: statusTransitionAction,
       confirmSaleDataDeletion: req.body.confirmSaleDataDeletion === true,
     });
+
+    let cancellationSettlement = null;
+    if (statusTransitionAction === LISTING_STATUS_ACTIONS.SETTLE_CANCELLATION) {
+      if (!(await columnExists(connection, 'lot_project_reservation_history', 'refund_amount'))) {
+        throw Object.assign(
+          new Error('Cancellation settlement migration is missing. Run 20260719_cancellation_settlement_financial_archive.sql first.'),
+          { statusCode: 500 }
+        );
+      }
+
+      const [cashRows] = await connection.query(
+        `
+          SELECT COALESCE(SUM(lot_project_payment_amount), 0) AS cash_collected
+          FROM lot_project_payments
+          WHERE lot_project_listing_id = ?
+            AND lot_project_payment_status = 'Verified'
+        `,
+        [existingListing.lot_project_listing_id]
+      );
+
+      cancellationSettlement = calculateCancellationSettlement({
+        cashCollected: cashRows[0]?.cash_collected || 0,
+        body: req.body,
+      });
+    }
 
     const [duplicateUnitRows] = await connection.query(
       `
@@ -823,11 +1297,13 @@ export const updateLotProjectListing = async (req, res) => {
       updateParams.push(annualInterestRate);
     }
 
-    const requestedCancellationType = ['refunded', 'discontinued'].includes(
-      String(req.body.cancellationType || req.body.cancellation_type || '').trim().toLowerCase()
-    )
-      ? String(req.body.cancellationType || req.body.cancellation_type).trim().toLowerCase()
-      : (existingListing.lot_project_listing_cancellation_type || 'discontinued');
+    const requestedCancellationType = cancellationSettlement?.legacyCancellationType || (
+      ['refunded', 'discontinued'].includes(
+        String(req.body.cancellationType || req.body.cancellation_type || '').trim().toLowerCase()
+      )
+        ? String(req.body.cancellationType || req.body.cancellation_type).trim().toLowerCase()
+        : (existingListing.lot_project_listing_cancellation_type || 'discontinued')
+    );
 
     if (hasCancellationType) {
       if (req.body.statusTransitionAction === LISTING_STATUS_ACTIONS.CANCEL_CANCELLATION) {
@@ -868,7 +1344,7 @@ export const updateLotProjectListing = async (req, res) => {
     const resetToAvailable = statusTransition.resetToAvailable;
     const unitIdChanged = unitCode !== existingListing.lot_project_listing_unit_id;
     const buyerFormSchemaAvailable = await hasBuyerFormSchema(connection);
-    const statusTransitionAction = req.body.statusTransitionAction || null;
+    let saleArchiveResult = null;
 
     if (hasReservationHistory) {
       if (
@@ -894,6 +1370,18 @@ export const updateLotProjectListing = async (req, res) => {
           ]
         );
       } else if (statusTransitionAction === LISTING_STATUS_ACTIONS.CANCEL_CANCELLATION) {
+        const settlementResetSql = hasCancellationSettlementFields
+          ? `,
+                cancellation_refund_type = NULL,
+                refund_amount = 0,
+                discontinued_amount = 0,
+                refund_date = NULL,
+                refund_reference = NULL,
+                cancellation_settlement_notes = NULL,
+                released_commission_amount_at_cancellation = 0,
+                sale_data_archived_at = NULL`
+          : '';
+
         await connection.query(
           `
             UPDATE lot_project_reservation_history
@@ -903,7 +1391,8 @@ export const updateLotProjectListing = async (req, res) => {
                 cancellation_reason = NULL,
                 cancelled_value = 0,
                 cash_collected_at_cancellation = 0,
-                cancelled_by_user_id = NULL,
+                cancelled_by_user_id = NULL
+                ${settlementResetSql},
                 updated_at = NOW()
             WHERE lot_project_listing_id = ?
               AND reservation_status = 'pending_for_cancellation'
@@ -913,19 +1402,36 @@ export const updateLotProjectListing = async (req, res) => {
           [existingListing.lot_project_listing_id]
         );
       } else if (statusTransitionAction === LISTING_STATUS_ACTIONS.SETTLE_CANCELLATION) {
-        const [cashRows] = await connection.query(
+        if (!cancellationSettlement || !hasCancellationSettlementFields) {
+          throw Object.assign(
+            new Error('Cancellation settlement migration is missing or the settlement values are invalid.'),
+            { statusCode: 500 }
+          );
+        }
+
+        const cancelledValue = Math.max(
+          Number(existingListing.contract_tcp || existingListing.lot_project_listing_tcp || installmentPricing.tcp || 0),
+          0
+        );
+        const cashCollectedAtCancellation = roundMoneyValue(
+          cancellationSettlement.refundAmount + cancellationSettlement.discontinuedAmount
+        );
+        const cancellationReason = toNullable(req.body.cancellationReason || req.body.cancellation_reason);
+
+        const [releasedCommissionRows] = await connection.query(
           `
-            SELECT COALESCE(SUM(lot_project_payment_amount), 0) AS cash_collected
-            FROM lot_project_payments
-            WHERE lot_project_listing_id = ?
-              AND lot_project_payment_status = 'Verified'
+            SELECT COALESCE(SUM(r.net_release_amount), 0) AS released_commission
+            FROM lot_project_commission_releases r
+            INNER JOIN lot_project_commissions c
+              ON c.lot_project_commission_id = r.lot_project_commission_id
+            WHERE c.lot_project_listing_id = ?
+              AND r.release_status = 'Released'
           `,
           [existingListing.lot_project_listing_id]
         );
-
-        const cancelledValue = Math.max(Number(existingListing.contract_tcp || existingListing.lot_project_listing_tcp || installmentPricing.tcp || 0), 0);
-        const cashCollectedAtCancellation = Math.max(Number(cashRows[0]?.cash_collected || 0), 0);
-        const cancellationReason = toNullable(req.body.cancellationReason || req.body.cancellation_reason);
+        const releasedCommissionAmount = roundMoneyValue(
+          releasedCommissionRows[0]?.released_commission || 0
+        );
 
         const [historyResult] = await connection.query(
           `
@@ -933,9 +1439,16 @@ export const updateLotProjectListing = async (req, res) => {
             SET reservation_status = 'cancelled',
                 cancelled_at = NOW(),
                 cancellation_type = ?,
+                cancellation_refund_type = ?,
                 cancellation_reason = ?,
                 cancelled_value = ?,
                 cash_collected_at_cancellation = ?,
+                refund_amount = ?,
+                discontinued_amount = ?,
+                refund_date = ?,
+                refund_reference = ?,
+                cancellation_settlement_notes = ?,
+                released_commission_amount_at_cancellation = ?,
                 cancelled_by_user_id = ?,
                 updated_at = NOW()
             WHERE lot_project_listing_id = ?
@@ -944,10 +1457,17 @@ export const updateLotProjectListing = async (req, res) => {
             LIMIT 1
           `,
           [
-            requestedCancellationType,
+            cancellationSettlement.legacyCancellationType,
+            cancellationSettlement.refundType,
             cancellationReason,
             cancelledValue,
             cashCollectedAtCancellation,
+            cancellationSettlement.refundAmount,
+            cancellationSettlement.discontinuedAmount,
+            cancellationSettlement.refundDate,
+            cancellationSettlement.refundReference,
+            cancellationSettlement.settlementNotes,
+            releasedCommissionAmount,
             req.authUser?.id || null,
             existingListing.lot_project_listing_id,
           ]
@@ -1002,11 +1522,18 @@ export const updateLotProjectListing = async (req, res) => {
                 discount_applied_snapshot,
                 cancelled_at,
                 cancellation_type,
+                cancellation_refund_type,
                 cancellation_reason,
                 cancelled_value,
                 cash_collected_at_cancellation,
+                refund_amount,
+                discontinued_amount,
+                refund_date,
+                refund_reference,
+                cancellation_settlement_notes,
+                released_commission_amount_at_cancellation,
                 cancelled_by_user_id
-              ) VALUES (?, ?, ?, ?, ?, 'cancelled', NOW(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?)
+              ) VALUES (?, ?, ?, ?, ?, 'cancelled', NOW(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `,
             [
               project.lot_project_id,
@@ -1025,19 +1552,63 @@ export const updateLotProjectListing = async (req, res) => {
               effectiveTcp,
               discountPercentage,
               discountAmount,
-              requestedCancellationType,
+              cancellationSettlement.legacyCancellationType,
+              cancellationSettlement.refundType,
               cancellationReason,
               cancelledValue,
               cashCollectedAtCancellation,
+              cancellationSettlement.refundAmount,
+              cancellationSettlement.discontinuedAmount,
+              cancellationSettlement.refundDate,
+              cancellationSettlement.refundReference,
+              cancellationSettlement.settlementNotes,
+              releasedCommissionAmount,
               req.authUser?.id || null,
             ]
+          );
+        }
+
+        if (
+          (await tableExists(connection, 'lot_project_commission_releases')) &&
+          (await tableExists(connection, 'lot_project_commissions'))
+        ) {
+          await connection.query(
+            `
+              UPDATE lot_project_commission_releases r
+              INNER JOIN lot_project_commissions c
+                ON c.lot_project_commission_id = r.lot_project_commission_id
+              SET r.release_status = 'Cancelled',
+                  r.scheduled_release_date = NULL,
+                  r.updated_at = NOW()
+              WHERE c.lot_project_listing_id = ?
+                AND r.release_status <> 'Released'
+            `,
+            [existingListing.lot_project_listing_id]
+          );
+
+          await connection.query(
+            `
+              UPDATE lot_project_commissions
+              SET commission_status = CASE
+                    WHEN released_commission_amount > 0 THEN 'Partially Released'
+                    ELSE 'Cancelled'
+                  END,
+                  net_remaining_commission_amount = 0,
+                  updated_at = NOW()
+              WHERE lot_project_listing_id = ?
+            `,
+            [existingListing.lot_project_listing_id]
           );
         }
       }
     }
 
     if (resetToAvailable) {
-      await clearListingSaleDataForAvailable(connection, existingListing.lot_project_listing_id);
+      saleArchiveResult = await clearListingSaleDataForAvailable(connection, {
+        projectId: project.lot_project_id,
+        listingId: existingListing.lot_project_listing_id,
+        archivedByUserId: req.authUser?.id || null,
+      });
     } else if (buyerFormSchemaAvailable && (unitIdChanged || listingStatus.status !== 'available')) {
       await revokeOpenBuyerFormLinks(connection, existingListing.lot_project_listing_id, { status: 'superseded' });
       await connection.query(
@@ -1115,6 +1686,8 @@ export const updateLotProjectListing = async (req, res) => {
         soldSubstatus: listingStatus.soldSubstatus,
         statusTransitionAction,
         resetToAvailable,
+        saleArchiveResult,
+        cancellationSettlement,
         soaSyncResult,
         cloudinarySyncResult,
       },
@@ -1125,7 +1698,7 @@ export const updateLotProjectListing = async (req, res) => {
     return res.json({
       success: true,
       message: resetToAvailable
-        ? `${unitCode} changed to available. Previous buyer, payment, commission, and submitted document data were removed.`
+        ? `${unitCode} changed to available. The previous cancelled sale, payments, released commissions, and receipts were archived before the active records were cleared.`
         : statusTransitionAction === LISTING_STATUS_ACTIONS.CANCEL_CANCELLATION
           ? `${unitCode} returned to Sold / Active. Existing buyer, payment, SOA, document, and commission records were kept.`
           : statusTransitionAction === LISTING_STATUS_ACTIONS.SETTLE_CANCELLATION

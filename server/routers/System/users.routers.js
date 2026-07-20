@@ -9,6 +9,9 @@ import {
   editUser,
   toggleUserStatus,
   resetUserPassword,
+  requestForgotPasswordCode,
+  verifyForgotPasswordCode,
+  resetForgottenPassword,
 } from '../../controllers/System/users.controllers.js';
 import { authenticateUser, requirePermission } from '../../middleware/auth.middleware.js';
 import { PERMISSIONS } from '../../config/permissions.js';
@@ -16,6 +19,9 @@ import { PERMISSIONS } from '../../config/permissions.js';
 const router = express.Router();
 
 router.post('/login', login);
+router.post('/forgot-password/request', requestForgotPasswordCode);
+router.post('/forgot-password/verify', verifyForgotPasswordCode);
+router.post('/forgot-password/reset', resetForgottenPassword);
 router.post('/logout', logout);
 router.get('/me', getMe);
 router.patch('/change-password', authenticateUser, changePassword);

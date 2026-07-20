@@ -454,6 +454,8 @@ const Dashboard = () => {
     { label: 'Settled Value', value: isLoading ? '...' : money(stats.settledValue), helper: `${percent(stats.settlementProgress)} of sales satisfied.`, tone: 'blue', icon: FiTrendingUp },
     { label: 'Outstanding Value', value: isLoading ? '...' : money(stats.pendingSales), helper: 'Contract value still unsettled.', tone: 'red', icon: FiCreditCard },
     { label: 'Payable Commission', value: isLoading ? '...' : money(stats.eligibleCommission), helper: 'Eligible releases ready for payout.', tone: 'indigo', icon: FiUsers },
+    { label: 'Refunded Amount', value: isLoading ? '...' : money(stats.totalRefundedAmount), helper: 'Cash returned to cancelled buyers in the selected range.', tone: 'blue', icon: FiCreditCard },
+    { label: 'Discontinued Amount', value: isLoading ? '...' : money(stats.totalDiscontinuedAmount), helper: 'Cancelled-buyer cash retained by the company in the selected range.', tone: 'amber', icon: FiActivity },
   ]
 
   const commissionChartData = [
@@ -519,7 +521,7 @@ const Dashboard = () => {
           <button type="button" onClick={handleRefresh} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-black text-slate-700 transition hover:bg-slate-50"><FiRefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />Refresh</button>
         </div>
 
-        <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {topStats.map((item) => <MetricCard key={item.label} {...item} />)}
         </div>
       </section>
