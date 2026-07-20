@@ -2,6 +2,7 @@ import {
   db,
   getErrorMessage,
   tableExists,
+  columnExists,
   getProjectBySlug,
   getListingLookupWhere,
   getAuthenticatedUser,
