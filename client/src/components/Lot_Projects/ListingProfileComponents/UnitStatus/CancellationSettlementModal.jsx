@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
-import { FiAlertTriangle, FiDollarSign, FiX } from 'react-icons/fi'
+import { FiAlertTriangle, FiX } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
+import { LuPhilippinePeso } from "react-icons/lu";
 
 const money = (value) => new Intl.NumberFormat('en-PH', {
   style: 'currency',
@@ -123,7 +124,7 @@ const CancellationSettlementModal = ({
             <label className="grid gap-1.5">
               <span className="text-xs font-black uppercase tracking-wide text-slate-500">Refund Amount</span>
               <div className="relative">
-                <FiDollarSign className="absolute left-3 top-3.5 h-4 w-4 text-slate-400" />
+                <LuPhilippinePeso  className="absolute left-3 top-3.5 h-4 w-4 text-slate-400" />
                 <input
                   type="number"
                   min="0"
