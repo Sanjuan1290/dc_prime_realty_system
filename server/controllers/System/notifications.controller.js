@@ -5,6 +5,12 @@ import {
   tableExists,
   columnExists,
 } from '../Lot_Projects/_shared/lotProject.shared.js';
+import {
+  buildSoaPdfBuffer,
+  formatSoaReference,
+  getManilaDateOnly,
+  sanitizeAttachmentFileName,
+} from '../../services/paymentSoaPdf.service.js';
 
 const toDateOnly = (value) => {
   if (!value) return '-';
@@ -103,6 +109,72 @@ const notificationLogTableSql = `
 
 const ensureNotificationTable = async (connection) => {
   await connection.query(notificationLogTableSql);
+};
+
+const soaStatementTableSql = `
+  CREATE TABLE IF NOT EXISTS lot_project_soa_statements (
+    soa_statement_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    soa_reference VARCHAR(32) NULL,
+    lot_project_id INT UNSIGNED NOT NULL,
+    lot_project_listing_id INT UNSIGNED NOT NULL,
+    lot_project_client_profile_id INT UNSIGNED NOT NULL,
+    lot_project_payment_schedule_id INT UNSIGNED NOT NULL,
+    statement_date DATE NOT NULL,
+    due_date DATE NULL,
+    description VARCHAR(150) NOT NULL,
+    total_contract_price DECIMAL(14,2) NOT NULL DEFAULT 0.00,
+    legal_misc_fee DECIMAL(14,2) NOT NULL DEFAULT 0.00,
+    due_amount DECIMAL(14,2) NOT NULL DEFAULT 0.00,
+    discount_amount DECIMAL(14,2) NOT NULL DEFAULT 0.00,
+    penalty_amount DECIMAL(14,2) NOT NULL DEFAULT 0.00,
+    amount_paid DECIMAL(14,2) NOT NULL DEFAULT 0.00,
+    payment_due DECIMAL(14,2) NOT NULL DEFAULT 0.00,
+    recipient_email VARCHAR(150) NOT NULL,
+    pdf_filename VARCHAR(255) NULL,
+    snapshot_json JSON NULL,
+    created_by_user_id INT UNSIGNED NULL,
+    last_sent_by_user_id INT UNSIGNED NULL,
+    first_sent_at DATETIME NULL,
+    last_sent_at DATETIME NULL,
+    sent_count INT UNSIGNED NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (soa_statement_id),
+    UNIQUE KEY uq_soa_reference (soa_reference),
+    UNIQUE KEY uq_soa_schedule (lot_project_payment_schedule_id),
+    KEY idx_soa_project (lot_project_id),
+    KEY idx_soa_listing (lot_project_listing_id),
+    KEY idx_soa_client (lot_project_client_profile_id),
+    KEY idx_soa_created_by (created_by_user_id),
+    KEY idx_soa_last_sent_by (last_sent_by_user_id),
+    CONSTRAINT fk_soa_project
+      FOREIGN KEY (lot_project_id) REFERENCES lot_projects (lot_project_id)
+      ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_soa_listing
+      FOREIGN KEY (lot_project_listing_id) REFERENCES lot_project_listings (lot_project_listing_id)
+      ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_soa_client
+      FOREIGN KEY (lot_project_client_profile_id) REFERENCES lot_project_client_profiles (lot_project_client_profile_id)
+      ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_soa_schedule
+      FOREIGN KEY (lot_project_payment_schedule_id) REFERENCES lot_project_payment_schedules (lot_project_payment_schedule_id)
+      ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_soa_created_by
+      FOREIGN KEY (created_by_user_id) REFERENCES users (id)
+      ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT fk_soa_last_sent_by
+      FOREIGN KEY (last_sent_by_user_id) REFERENCES users (id)
+      ON DELETE SET NULL ON UPDATE CASCADE
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+`;
+
+const ensureSoaStatementTable = async (connection) => {
+  await connection.query(soaStatementTableSql);
+};
+
+const ensureNotificationTables = async (connection) => {
+  await ensureNotificationTable(connection);
+  await ensureSoaStatementTable(connection);
 };
 
 const mapNotificationRow = (row = {}) => {
@@ -236,123 +308,183 @@ const getScheduleNotificationRow = async (connection, scheduleId) => {
   return rows[0] || null;
 };
 
-const buildNotificationMessage = (row = {}) => {
-  const notification = mapNotificationRow(row);
+const prepareSoaStatement = async (connection, notification, userId) => {
+  const statementDate = getManilaDateOnly();
+  const snapshot = {
+    statementDate,
+    scheduleId: notification.scheduleId,
+    projectId: notification.projectId,
+    projectName: notification.projectName,
+    listingId: notification.listingId,
+    unitId: notification.unitId,
+    clientProfileId: notification.clientProfileId,
+    buyerName: notification.buyerName,
+    buyerEmail: notification.buyerEmail,
+    dueDate: notification.dueDate,
+    description: notification.description,
+    totalContractPrice: notification.totalContractPrice,
+    legalMiscFee: notification.legalMiscFee,
+    dueAmount: notification.dueAmount,
+    discountAmount: notification.discountAmount,
+    penaltyAmount: notification.penaltyAmount,
+    amountPaid: notification.amountPaid,
+    paymentDue: notification.paymentDue,
+    notificationType: notification.notificationType,
+  };
+
+  await connection.beginTransaction();
+  try {
+    await connection.query(
+      `
+        INSERT INTO lot_project_soa_statements (
+          lot_project_id,
+          lot_project_listing_id,
+          lot_project_client_profile_id,
+          lot_project_payment_schedule_id,
+          statement_date,
+          due_date,
+          description,
+          total_contract_price,
+          legal_misc_fee,
+          due_amount,
+          discount_amount,
+          penalty_amount,
+          amount_paid,
+          payment_due,
+          recipient_email,
+          snapshot_json,
+          created_by_user_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+          statement_date = VALUES(statement_date),
+          due_date = VALUES(due_date),
+          description = VALUES(description),
+          total_contract_price = VALUES(total_contract_price),
+          legal_misc_fee = VALUES(legal_misc_fee),
+          due_amount = VALUES(due_amount),
+          discount_amount = VALUES(discount_amount),
+          penalty_amount = VALUES(penalty_amount),
+          amount_paid = VALUES(amount_paid),
+          payment_due = VALUES(payment_due),
+          recipient_email = VALUES(recipient_email),
+          snapshot_json = VALUES(snapshot_json),
+          created_by_user_id = COALESCE(created_by_user_id, VALUES(created_by_user_id))
+      `,
+      [
+        notification.projectId,
+        notification.listingId,
+        notification.clientProfileId,
+        notification.scheduleId,
+        statementDate,
+        notification.dueDate === '-' ? null : notification.dueDate,
+        notification.description,
+        notification.totalContractPrice,
+        notification.legalMiscFee,
+        notification.dueAmount,
+        notification.discountAmount,
+        notification.penaltyAmount,
+        notification.amountPaid,
+        notification.paymentDue,
+        notification.buyerEmail,
+        JSON.stringify(snapshot),
+        userId,
+      ]
+    );
+
+    const [rows] = await connection.query(
+      `
+        SELECT soa_statement_id, soa_reference
+        FROM lot_project_soa_statements
+        WHERE lot_project_payment_schedule_id = ?
+        FOR UPDATE
+      `,
+      [notification.scheduleId]
+    );
+
+    const statement = rows[0];
+    if (!statement) throw new Error('Unable to create Statement of Account record.');
+
+    const soaReference = statement.soa_reference || formatSoaReference(statement.soa_statement_id, statementDate);
+    const pdfFilename = sanitizeAttachmentFileName(
+      `${soaReference}-${notification.projectName}-${notification.unitId}`
+    );
+    const finalSnapshot = JSON.stringify({ ...snapshot, soaReference, pdfFilename });
+
+    await connection.query(
+      `
+        UPDATE lot_project_soa_statements
+        SET soa_reference = ?, pdf_filename = ?, snapshot_json = ?
+        WHERE soa_statement_id = ?
+      `,
+      [soaReference, pdfFilename, finalSnapshot, statement.soa_statement_id]
+    );
+
+    await connection.commit();
+    return {
+      statementId: Number(statement.soa_statement_id),
+      soaReference,
+      statementDate,
+      pdfFilename,
+    };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  }
+};
+
+const markSoaStatementSent = async (connection, statementId, userId, recipientEmail, pdfFilename) => {
+  await connection.query(
+    `
+      UPDATE lot_project_soa_statements
+      SET
+        recipient_email = ?,
+        pdf_filename = ?,
+        last_sent_by_user_id = ?,
+        first_sent_at = COALESCE(first_sent_at, NOW()),
+        last_sent_at = NOW(),
+        sent_count = sent_count + 1
+      WHERE soa_statement_id = ?
+    `,
+    [recipientEmail, pdfFilename, userId, statementId]
+  );
+};
+
+const buildNotificationMessage = (notification, statement) => {
   const isOverdue = notification.notificationType === 'overdue';
-  const statementAsOf = longDate(notification.dueDate);
-  const dueLabel = `${notification.description} Due on ${statementAsOf}`;
-  const amountDueImmediately = isOverdue ? notification.paymentDue : 0;
-  const companyName = escapeHtml(notification.companyName || 'D&C Prime Realty');
-  const companyEmail = escapeHtml(notification.companyEmail || 'dcprimegold@gmail.com');
-  const companyContactNumber = escapeHtml(notification.companyContactNumber || '(046) 866 0616');
-  const logoUrl = String(process.env.EMAIL_LOGO_URL || '').trim();
+  const dueDateLabel = longDate(notification.dueDate);
+  const companyName = notification.companyName || 'D&C Prime Realty';
+  const companyEmail = notification.companyEmail || 'dcprimerealty@gmail.com';
+  const companyContactNumber = notification.companyContactNumber || '(046) 866-0616';
   const subject = isOverdue
-    ? `Statement of Account - Overdue - ${notification.projectName} ${notification.unitId}`
-    : `Statement of Account - Payment Reminder - ${notification.projectName} ${notification.unitId}`;
+    ? `Statement of Account - Overdue - ${notification.projectName} ${notification.unitId} - ${statement.soaReference}`
+    : `Statement of Account - Payment Reminder - ${notification.projectName} ${notification.unitId} - ${statement.soaReference}`;
+  const opening = isOverdue
+    ? `Our records show that your ${notification.description} amounting to ${money(notification.paymentDue)} was due on ${dueDateLabel}.`
+    : `This is a reminder that your ${notification.description} amounting to ${money(notification.paymentDue)} is due on ${dueDateLabel}.`;
 
   const textMessage = [
-    'STATEMENT OF ACCOUNT',
+    `Dear ${notification.buyerName},`,
     '',
-    'Unit D, Mia\'s Building, Purok 1,',
-    'Mataas na Lupa, Indang, Cavite,',
-    '4122 Philippines',
+    opening,
     '',
-    `Statement Date: As of ${statementAsOf}`,
-    `SOA Number: SOA-${notification.scheduleId}`,
-    `Project: ${notification.projectName}`,
-    `Unit No.: ${notification.unitId}`,
+    `Your Statement of Account (${statement.soaReference}) is attached as a PDF.`,
+    'If you have already made the payment, please disregard this message.',
     '',
-    'AMOUNT DETAILS',
-    `Total Contract Price: ${amountOnly(notification.totalContractPrice)}`,
-    `Legal/Miscellaneous: ${amountOnly(notification.legalMiscFee)}`,
-    `Total Amount: PHP ${amountOnly(notification.totalContractPrice)}`,
+    `For questions, contact ${companyName} at ${companyContactNumber} or ${companyEmail}.`,
     '',
-    `This is to bill the total amount of ${amountOnly(notification.paymentDue)}`,
-    `Amortization: ${isOverdue ? amountOnly(notification.paymentDue) : amountOnly(0)}`,
-    `Penalty: ${amountOnly(notification.penaltyAmount)}`,
-    'Miscellaneous Fees & Adjustments: 0.00',
-    `Amount Due Immediately: ${amountOnly(amountDueImmediately)}`,
-    '',
-    `${notification.description} Due on ${statementAsOf}: ${amountOnly(notification.paymentDue)}`,
-    '',
-    `NOTE: All transactions after ${statementAsOf} are not reflected in this Statement of Account (SOA).`,
-    '',
-    'Please pay on or before the due date to avoid penalties.',
-    'Payments made after the statement date are not yet reflected.',
-    'If payments have been made, kindly disregard this statement.',
-    `For inquiries, please call ${notification.companyContactNumber || '(046) 866 0616'} or email ${notification.companyEmail || 'dcprimegold@gmail.com'}.`,
-    '',
-    'PAYMENT REMINDERS',
-    "Always provide buyer's full name and CIN when making payments.",
-    'All check payments should be made payable to the order of D&C PRIME REALTY.',
+    'Thank you,',
+    companyName,
   ].join('\n');
 
   const htmlMessage = `
-    <div style="margin:0;background:#ffffff;color:#000000;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.35">
-      <div style="max-width:760px;margin:0 auto;padding:18px 16px 24px;background:#ffffff">
-        <div style="display:flex;justify-content:space-between;gap:24px;align-items:flex-start">
-          <div style="width:46%;min-width:260px">
-            ${logoUrl ? `<img src="${escapeHtml(logoUrl)}" alt="${companyName}" style="display:block;width:62px;height:auto;margin-bottom:28px" />` : `<div style="font-size:11px;font-weight:bold;color:#f59e0b;margin-bottom:28px">${companyName}</div>`}
-            <div style="white-space:pre-line">Unit D, Mia's Building, Purok 1,\nMataas na Lupa, Indang, Cavite,\n4122 Philippines</div>
-          </div>
-
-          <div style="width:39%;min-width:260px">
-            <h2 style="margin:16px 0 10px;text-align:center;font-size:16px;line-height:1.1;font-weight:700">STATEMENT OF ACCOUNT</h2>
-            <table cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;font-size:11px">
-              <tr><td style="border:1px solid #000;padding:2px 5px;width:40%">Statement Date</td><td style="border:1px solid #000;padding:2px 5px;text-align:center">As of ${escapeHtml(statementAsOf)}</td></tr>
-              <tr><td style="border:1px solid #000;padding:2px 5px">SOA Number</td><td style="border:1px solid #000;padding:2px 5px;text-align:center">SOA-${notification.scheduleId}</td></tr>
-              <tr><td style="border:1px solid #000;padding:2px 5px">Project</td><td style="border:1px solid #000;padding:2px 5px;text-align:center">${escapeHtml(notification.projectName)}</td></tr>
-              <tr><td style="border:1px solid #000;padding:2px 5px">Unit No.</td><td style="border:1px solid #000;padding:2px 5px;text-align:center">${escapeHtml(notification.unitId)}</td></tr>
-            </table>
-
-            <h3 style="margin:14px 0 8px;text-align:center;font-size:15px;font-weight:700">AMOUNT DETAILS</h3>
-            <table cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;font-size:11px">
-              <tr><td style="border:1px solid #000;padding:2px 5px">Total Contract Price</td><td style="border:1px solid #000;padding:2px 5px;text-align:right">${amountOnly(notification.totalContractPrice)}</td></tr>
-              <tr><td style="border:1px solid #000;padding:2px 5px">Legal/Miscellaneous</td><td style="border:1px solid #000;padding:2px 5px;text-align:right">${amountOnly(notification.legalMiscFee)}</td></tr>
-              <tr><td style="border:1px solid #000;padding:2px 5px;font-weight:700">Total Amount</td><td style="border:1px solid #000;padding:2px 5px;text-align:right;font-weight:700">PHP ${amountOnly(notification.totalContractPrice)}</td></tr>
-            </table>
-          </div>
-        </div>
-
-        <div style="border-top:1px dashed #000;margin:22px 0 20px"></div>
-
-        <table cellpadding="0" cellspacing="0" style="width:82%;margin-left:68px;border-collapse:collapse;font-size:12px">
-          <tr>
-            <td style="border:2px solid #000;padding:2px 5px;font-weight:700">This is to bill the total amount of</td>
-            <td style="border:2px solid #000;padding:2px 5px;text-align:right;font-weight:700;width:160px">${amountOnly(notification.paymentDue)}</td>
-          </tr>
-        </table>
-
-        <table cellpadding="0" cellspacing="0" style="width:76%;margin-left:72px;margin-top:3px;border-collapse:collapse;font-size:12px">
-          <tr><td style="padding:1px 0">${isOverdue ? 'Overdue Amount' : 'Amortization'}</td><td style="padding:1px 0;text-align:right">${isOverdue ? amountOnly(notification.paymentDue) : amountOnly(0)}</td></tr>
-          <tr><td style="padding:1px 0">Penalty</td><td style="padding:1px 0;text-align:right">${amountOnly(notification.penaltyAmount)}</td></tr>
-          <tr><td style="padding:1px 0">Miscellaneous Fees &amp; Adjustments</td><td style="padding:1px 0;text-align:right">0.00</td></tr>
-          <tr><td style="padding:1px 0;font-weight:700">Amount Due Immediately</td><td style="padding:1px 0;text-align:right;font-weight:700">${amountOnly(amountDueImmediately)}</td></tr>
-        </table>
-
-        <table cellpadding="0" cellspacing="0" style="width:76%;margin-left:72px;margin-top:16px;border-collapse:collapse;font-size:14px;font-weight:700">
-          <tr><td>${escapeHtml(dueLabel)}</td><td style="text-align:right;width:180px">${amountOnly(notification.paymentDue)}</td></tr>
-        </table>
-
-        <p style="margin:28px 0 12px 72px;font-size:11px;font-weight:700">NOTE: All transactions after ${escapeHtml(statementAsOf)} are not reflected in this Statement of Account (SOA).</p>
-
-        <div style="border-top:1px dashed #000;margin:0 0 8px"></div>
-
-        <div style="margin-left:72px;font-size:12px">
-          <div>&bull;Please pay on or before the due date to avoid penalties.</div>
-          <div>&bull;Payments made after the statement date are not yet reflected.</div>
-          <div>&bull;If payments have been made, kindly disregard this statement.</div>
-          <div>&bull;For inquiries, please call ${companyContactNumber} or email to ${companyEmail}</div>
-        </div>
-
-        <div style="margin-top:12px;text-align:center;font-size:12px;font-weight:700">PAYMENT REMINDERS</div>
-        <div style="margin:10px 0 20px 72px;font-size:12px">
-          <div>&bull;ALWAYS PROVIDE BUYER'S FULL NAME AND CIN WHEN MAKING PAYMENTS.</div>
-          <div>&bull;All check payments should be made payable to the order of D&amp;C PRIME REALTY.</div>
-        </div>
-
-        <div style="border-top:1px dashed #000;margin:0 0 28px"></div>
-        <div style="border-top:3px solid #000"></div>
+    <div style="margin:0;background:#f8fafc;padding:24px;font-family:Arial,Helvetica,sans-serif;color:#0f172a;line-height:1.6">
+      <div style="max-width:640px;margin:0 auto;border:1px solid #e2e8f0;border-radius:12px;background:#ffffff;padding:28px">
+        <p style="margin:0 0 16px">Dear ${escapeHtml(notification.buyerName)},</p>
+        <p style="margin:0 0 16px">${escapeHtml(opening)}</p>
+        <p style="margin:0 0 16px">Your Statement of Account <strong>${escapeHtml(statement.soaReference)}</strong> is attached as a PDF.</p>
+        <p style="margin:0 0 16px">If you have already made the payment, please disregard this message.</p>
+        <p style="margin:0 0 20px">For questions, contact ${escapeHtml(companyName)} at ${escapeHtml(companyContactNumber)} or ${escapeHtml(companyEmail)}.</p>
+        <p style="margin:0">Thank you,<br><strong>${escapeHtml(companyName)}</strong></p>
       </div>
     </div>
   `;
@@ -360,7 +492,7 @@ const buildNotificationMessage = (row = {}) => {
   return { subject, textMessage, htmlMessage };
 };
 
-const sendEmail = async ({ to, subject, text, html }) => {
+const sendEmail = async ({ to, subject, text, html, attachments = [] }) => {
   const requiredEnv = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS'];
   const missing = requiredEnv.filter((key) => !String(process.env[key] || '').trim());
 
@@ -391,6 +523,7 @@ const sendEmail = async ({ to, subject, text, html }) => {
     subject,
     text,
     html,
+    attachments,
   });
 };
 
@@ -548,7 +681,7 @@ export const sendPaymentDueNotification = async (req, res) => {
     if (!user) return res.status(401).json({ message: 'Please login before sending a notification.' });
     if (!canManageNotifications(user)) return res.status(403).json({ message: 'Admin access only.' });
 
-    await ensureNotificationTable(connection);
+    await ensureNotificationTables(connection);
 
     const scheduleId = Number(req.params.scheduleId || 0);
     if (!scheduleId) return res.status(400).json({ message: 'Payment schedule id is required.' });
@@ -561,11 +694,26 @@ export const sendPaymentDueNotification = async (req, res) => {
       return res.status(400).json({ message: 'Buyer email is missing. Add buyer email before sending notification.' });
     }
 
+    if (!['Unpaid', 'Partial', 'Overdue'].includes(notification.scheduleStatus)) {
+      return res.status(400).json({ message: 'Only unpaid, partial, or overdue schedules can receive payment notifications.' });
+    }
+
+    if (notification.paymentDue <= 0) {
+      return res.status(400).json({ message: 'This payment schedule has no remaining amount due.' });
+    }
+
     if (!['due_soon', 'overdue'].includes(notification.notificationType)) {
       return res.status(400).json({ message: 'This schedule is not due within 7 days or overdue.' });
     }
 
-    const { subject, textMessage, htmlMessage } = buildNotificationMessage(row);
+    const statement = await prepareSoaStatement(connection, notification, user.id);
+    const { subject, textMessage, htmlMessage } = buildNotificationMessage(notification, statement);
+    const pdfBuffer = buildSoaPdfBuffer({
+      notification,
+      soaReference: statement.soaReference,
+      statementDate: statement.statementDate,
+    });
+    const logMessage = `${textMessage}\n\nAttachment: ${statement.pdfFilename}`;
 
     try {
       await sendEmail({
@@ -573,7 +721,23 @@ export const sendPaymentDueNotification = async (req, res) => {
         subject,
         text: textMessage,
         html: htmlMessage,
+        attachments: [
+          {
+            filename: statement.pdfFilename,
+            content: pdfBuffer,
+            contentType: 'application/pdf',
+            contentDisposition: 'attachment',
+          },
+        ],
       });
+
+      await markSoaStatementSent(
+        connection,
+        statement.statementId,
+        user.id,
+        notification.buyerEmail,
+        statement.pdfFilename
+      );
 
       await connection.query(
         `
@@ -599,14 +763,18 @@ export const sendPaymentDueNotification = async (req, res) => {
           notification.notificationType,
           notification.buyerEmail,
           subject,
-          textMessage,
+          logMessage,
           user.id,
         ]
       );
 
       return res.json({
         success: true,
-        message: `${notification.statusLabel} email sent to ${notification.buyerEmail}.`,
+        message: `${notification.statusLabel} email sent to ${notification.buyerEmail} with ${statement.pdfFilename} attached.`,
+        data: {
+          soaReference: statement.soaReference,
+          attachmentFilename: statement.pdfFilename,
+        },
       });
     } catch (emailError) {
       await connection.query(
@@ -634,7 +802,7 @@ export const sendPaymentDueNotification = async (req, res) => {
           notification.notificationType,
           notification.buyerEmail,
           subject,
-          textMessage,
+          logMessage,
           user.id,
           emailError?.message || 'Failed to send email.',
         ]
@@ -863,4 +1031,3 @@ export const getDocumentNotifications = async (req, res) => {
     connection.release();
   }
 };
-

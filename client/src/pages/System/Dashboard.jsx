@@ -441,6 +441,8 @@ const Dashboard = () => {
     total.totalNetSales += Number(stats.totalNetSales || 0)
     total.cancelledCount += Number(stats.cancelledCount || 0)
     total.cancelledValue += Number(stats.cancelledValue || 0)
+    total.totalRefundedAmount += Number(stats.totalRefundedAmount || 0)
+    total.totalDiscontinuedAmount += Number(stats.totalDiscontinuedAmount || 0)
     total.listedInventory += Number(stats.listedLotValue || 0)
     total.availableInventory += Number(stats.availableLotValue || 0)
     total.soldInventory += Number(stats.soldLotValue || 0)
@@ -457,6 +459,8 @@ const Dashboard = () => {
     totalNetSales: 0,
     cancelledCount: 0,
     cancelledValue: 0,
+    totalRefundedAmount: 0,
+    totalDiscontinuedAmount: 0,
     listedInventory: 0,
     availableInventory: 0,
     soldInventory: 0,
@@ -575,9 +579,11 @@ const Dashboard = () => {
         <MetricCard label="Total Net Sales" value={isLoading ? '...' : money(summary.totalNetSales)} formula="Total Gross Sales − Discount Applied" helper="Finalized cancellations are reported separately." icon={FiLayers} tone="slate" />
       </section>
 
-      <section className="grid gap-4 sm:grid-cols-2">
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Pending Cancellations" value={isLoading ? '...' : `${number(summary.pendingCancellationCount)} · ${money(summary.pendingCancellationValue)}`} formula="Current pending-cancellation units and TCP" helper="Operational cases still awaiting a final cancellation decision." icon={FiAlertTriangle} tone="amber" />
         <MetricCard label="Finalized Cancellations" value={isLoading ? '...' : `${number(summary.cancelledCount)} · ${money(summary.cancelledValue)}`} formula="Cancellation events and value in the selected range" helper="Historical cancellation activity, separate from current inventory status." icon={FiTrendingDown} tone="slate" />
+        <MetricCard label="Refunded Amount" value={isLoading ? '...' : money(summary.totalRefundedAmount)} formula="Sum of refunded cancellation settlements" helper="Cash returned to cancelled buyers across the included projects in the selected range." icon={FiTrendingDown} tone="blue" />
+        <MetricCard label="Discontinued Amount" value={isLoading ? '...' : money(summary.totalDiscontinuedAmount)} formula="Cancellation cash collected − refunded amount" helper="Cancelled-buyer cash retained by the company across the included projects in the selected range." icon={FiActivity} tone="amber" />
       </section>
 
       <section className="grid gap-4 lg:grid-cols-2">
@@ -626,4 +632,3 @@ const Dashboard = () => {
 }
 
 export default Dashboard
-
