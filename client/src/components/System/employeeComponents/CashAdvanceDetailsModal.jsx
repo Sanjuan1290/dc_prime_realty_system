@@ -48,5 +48,3 @@ const CashAdvanceDetailsModal = ({ advanceId, canManage, onClose, onUpdated }) =
 }
 
 export default CashAdvanceDetailsModal
-
-

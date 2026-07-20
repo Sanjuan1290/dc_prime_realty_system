@@ -10,10 +10,6 @@ import {
   getGroupProjectAnalytics,
   getGroupProjectConfiguration,
   updateGroupProjectPool,
-  upsertAgentDirectRate,
-  upsertHierarchyOverride,
-  updateAgentCommissionPath,
-  updateMemberProjectRates,
 } from '../../controllers/System/sellerGroup.controller.js';
 import { authenticateUser, requirePermission } from '../../middleware/auth.middleware.js';
 import { PERMISSIONS } from '../../config/permissions.js';
@@ -28,10 +24,6 @@ router.get('/:groupId/projects', requirePermission(PERMISSIONS.SYSTEM_SELLER_GRO
 router.get('/:groupId/projects/:projectId/analytics', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW), getGroupProjectAnalytics);
 router.get('/:groupId/projects/:projectId', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW), getGroupProjectConfiguration);
 router.patch('/:groupId/projects/:projectId/pool', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE), updateGroupProjectPool);
-router.patch('/:groupId/projects/:projectId/agents/:agentId/direct-rate', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE), upsertAgentDirectRate);
-router.patch('/:groupId/projects/:projectId/agents/:agentId/path', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE), updateAgentCommissionPath);
-router.patch('/:groupId/projects/:projectId/children/:childId/override', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE), upsertHierarchyOverride);
-router.patch('/:groupId/projects/:projectId/members/:memberId/rates', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE), updateMemberProjectRates);
 router.get('/:id', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW), viewGroup);
 router.post('/create', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE), createGroup);
 router.put('/edit/:id', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE), editGroup);

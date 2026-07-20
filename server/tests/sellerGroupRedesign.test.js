@@ -15,9 +15,25 @@ test('seller group accreditation keeps only explicitly selected projects', () =>
 
   assert.deepEqual(
     normalizeGroupProjectRates([
-      { lot_project_id: 2, seller_group_pool_rate: 9 },
+      {
+        lot_project_id: 2,
+        seller_group_pool_rate: 9,
+        bnm_override_rate: 1,
+        broker_override_rate: 1,
+        manager_override_rate: 1,
+        agent_rate: 6,
+      },
     ], projects),
-    [{ lot_project_id: 2, seller_group_pool_rate: 9 }]
+    [{
+      lot_project_id: 2,
+      seller_group_pool_rate: 9,
+      bnm_override_rate: 1,
+      broker_override_rate: 1,
+      manager_override_rate: 1,
+      agent_rate: 6,
+      allocated_rate: 9,
+      remaining_rate: 0,
+    }]
   );
 });
 
@@ -29,15 +45,60 @@ test('seller group accreditation requires a project and validates pool rates', (
     /select at least one accredited project/i
   );
   assert.throws(
-    () => normalizeGroupProjectRates([{ lot_project_id: 1, seller_group_pool_rate: 5 }], projects),
-    /between 6 and 15/i
+    () => normalizeGroupProjectRates([{ lot_project_id: 1, seller_group_pool_rate: 5, bnm_override_rate: 1, broker_override_rate: 1, manager_override_rate: 1, agent_rate: 2 }], projects),
+    /between 6%? and 15%?/i
   );
   assert.throws(
-    () => normalizeGroupProjectRates([{ lot_project_id: 99, seller_group_pool_rate: 8 }], projects),
+    () => normalizeGroupProjectRates([{ lot_project_id: 99, seller_group_pool_rate: 8, bnm_override_rate: 1, broker_override_rate: 1, manager_override_rate: 1, agent_rate: 5 }], projects),
     /unavailable or inactive/i
   );
 });
 
+
+
+test('fixed Realty project rates must equal the project pool', () => {
+  const projects = [{ lot_project_id: 1, lot_project_name: 'Bailen Project' }];
+
+  assert.throws(
+    () => normalizeGroupProjectRates([{
+      lot_project_id: 1,
+      seller_group_pool_rate: 8,
+      bnm_override_rate: 1,
+      broker_override_rate: 1,
+      manager_override_rate: 1,
+      agent_rate: 4,
+    }], projects),
+    /under the 8\.00% pool/i
+  );
+
+  assert.throws(
+    () => normalizeGroupProjectRates([{
+      lot_project_id: 1,
+      seller_group_pool_rate: 8,
+      bnm_override_rate: 1,
+      broker_override_rate: 2,
+      manager_override_rate: 2,
+      agent_rate: 4,
+    }], projects),
+    /over the 8\.00% pool/i
+  );
+});
+
+test('Broker-headed Realty requires a zero BNM override', () => {
+  const projects = [{ lot_project_id: 1, lot_project_name: 'Bailen Project' }];
+
+  assert.throws(
+    () => normalizeGroupProjectRates([{
+      lot_project_id: 1,
+      seller_group_pool_rate: 8,
+      bnm_override_rate: 1,
+      broker_override_rate: 2,
+      manager_override_rate: 1,
+      agent_rate: 4,
+    }], projects, { groupHeadRole: 'broker' }),
+    /BNM override must be 0%/i
+  );
+});
 test('group analytics validates inclusive date ranges', () => {
   assert.deepEqual(
     normalizeGroupAnalyticsRange('2026-01-01', '2026-01-31'),
@@ -107,8 +168,8 @@ test('seller group project selection rejects duplicate accreditations', () => {
   const projects = [{ lot_project_id: 1, lot_project_name: 'Bailen Project' }];
   assert.throws(
     () => normalizeGroupProjectRates([
-      { lot_project_id: 1, seller_group_pool_rate: 8 },
-      { lot_project_id: 1, seller_group_pool_rate: 9 },
+      { lot_project_id: 1, seller_group_pool_rate: 8, bnm_override_rate: 1, broker_override_rate: 1, manager_override_rate: 1, agent_rate: 5 },
+      { lot_project_id: 1, seller_group_pool_rate: 9, bnm_override_rate: 1, broker_override_rate: 1, manager_override_rate: 1, agent_rate: 6 },
     ], projects),
     /selected more than once/i
   );
@@ -120,5 +181,3 @@ test('group analytics rejects ranges longer than ten years', () => {
     /cannot exceed 10 years/i
   );
 });
-
-

@@ -39,4 +39,3 @@ test('print page uses the month count supplied by the Price List modal', async (
   assert.match(printPage, /netAfterReservation \/ straightPaymentMonths/);
   assert.match(printPage, /\{straightPaymentMonths\}<\/td>/);
 });
-

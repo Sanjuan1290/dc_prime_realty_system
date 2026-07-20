@@ -267,5 +267,3 @@ const LotLayout = () => {
 }
 
 export default LotLayout
-
-

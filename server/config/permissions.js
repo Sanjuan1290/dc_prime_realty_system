@@ -130,5 +130,3 @@ export const ROLE_PERMISSIONS = Object.freeze({
 
 export const roleHasPermission = (role, permission) =>
   Boolean(permission && ROLE_PERMISSIONS[String(role || '')]?.has(permission));
-
-

@@ -82,5 +82,3 @@ const Printouts = ({ projectSlug, listing, client, soaRows = [], documents = [] 
 }
 
 export default Printouts
-
-

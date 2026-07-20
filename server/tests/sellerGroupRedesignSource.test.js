@@ -4,26 +4,23 @@ import { readFile } from 'node:fs/promises';
 
 const readSource = async (path) => readFile(new URL(path, import.meta.url), 'utf8');
 
-test('seller group details shows recipient rates, pool totals, and member pagination', async () => {
+test('seller group details shows one fixed project structure and scalable member pagination', async () => {
   const source = await readSource('../../client/src/pages/System/SellerGroupDetails.jsx');
 
   assert.match(source, /Sales and Commission Performance/);
-  assert.match(source, /\['Seller', 'Role', 'Reports Under', 'Rates', 'Status', 'Actions'\]/);
-  assert.match(source, /Commission Paths/);
-  assert.match(source, />Edit Path</);
-  assert.match(source, />Edit Sales Rate</);
-  assert.match(source, /memberRatesById/);
+  assert.match(source, /Fixed Project Commission Structure/);
+  assert.match(source, /BNM Override/);
+  assert.match(source, /Broker Override/);
+  assert.match(source, /Manager Override/);
+  assert.match(source, /Agent Sales Rate/);
+  assert.match(source, /\['Seller', 'Role', 'Reports Under', 'Status'\]/);
   assert.match(source, /memberTotalPages/);
-  assert.match(source, /All \${allocationPaths\.length} path\(s\) ready/);
-  assert.doesNotMatch(source, /Direct sales: Not enabled/);
-  assert.doesNotMatch(source, /Parent gets/);
-  assert.doesNotMatch(source, /Sales and Commission Trend/);
-  assert.doesNotMatch(source, /Sales by Agent/);
-  assert.doesNotMatch(source, /Project Commission Pool/);
-  assert.doesNotMatch(source, /Paths With Errors/);
+  assert.doesNotMatch(source, /Commission Paths/);
+  assert.doesNotMatch(source, /Edit Sales Rate/);
+  assert.doesNotMatch(source, /memberRatesById/);
 });
 
-test('new and edit group forms use explicit project accreditation and pool-rate dropdowns', async () => {
+test('new and edit Realty forms configure fixed role rates for every selected project', async () => {
   const [newGroupSource, editGroupSource, projectFieldsSource] = await Promise.all([
     readSource('../../client/src/components/System/sellerGroupComponents/NewGroupModal.jsx'),
     readSource('../../client/src/components/System/sellerGroupComponents/EditGroupModal.jsx'),
@@ -34,23 +31,34 @@ test('new and edit group forms use explicit project accreditation and pool-rate 
   assert.match(newGroupSource, /ProjectAccreditationFields/);
   assert.match(editGroupSource, /ProjectAccreditationFields/);
   assert.match(editGroupSource, /Remove Project Accreditation\?/);
-  assert.match(projectFieldsSource, /POOL_RATE_OPTIONS/);
-  assert.match(projectFieldsSource, /<select/);
-  assert.doesNotMatch(projectFieldsSource, /type="number"/);
+  assert.match(projectFieldsSource, /seller_group_pool_rate/);
+  assert.match(projectFieldsSource, /bnm_override_rate/);
+  assert.match(projectFieldsSource, /broker_override_rate/);
+  assert.match(projectFieldsSource, /manager_override_rate/);
+  assert.match(projectFieldsSource, /agent_rate/);
+  assert.match(projectFieldsSource, /Allocated \{moneyRate\(allocated\)\}% of/);
 });
 
-test('reservation hierarchy requires allocated rates to equal the group pool', async () => {
+test('reservation hierarchy uses fixed Realty rates and requires an exact pool allocation', async () => {
   const source = await readSource('../controllers/Lot_Projects/Commissions/commissionHierarchy.service.js');
 
-  assert.match(source, /allocationDifference/);
-  assert.match(source, /allocationDifference <= 0\.0001/);
-  assert.match(source, /group pool is still unallocated/);
+  assert.match(source, /loadGroupFixedCommissionRates/);
+  assert.match(source, /buildGroupFixedRateDistribution/);
+  assert.match(source, /Math\.abs\(allocatedRate - poolRate\) > 0\.0001/);
+  assert.match(source, /Fixed group rates total/);
 });
 
-test('seller group router exposes analytics, member-rate, and relationship-specific path APIs', async () => {
-  const source = await readSource('../routers/System/sellerGroup.routers.js');
+test('seller group router exposes group project rate editing and removes individual rate endpoints', async () => {
+  const [router, controller] = await Promise.all([
+    readSource('../routers/System/sellerGroup.routers.js'),
+    readSource('../controllers/System/sellerGroup.controller.js'),
+  ]);
 
-  assert.match(source, /\/:groupId\/projects\/:projectId\/analytics/);
-  assert.match(source, /\/:groupId\/projects\/:projectId\/members\/:memberId\/rates/);
-  assert.match(source, /\/:groupId\/projects\/:projectId\/agents\/:agentId\/path/);
+  assert.match(router, /\/:groupId\/projects\/:projectId\/analytics/);
+  assert.match(router, /\/:groupId\/projects\/:projectId\/pool/);
+  assert.doesNotMatch(router, /agents\/:agentId\/direct-rate/);
+  assert.doesNotMatch(router, /agents\/:agentId\/path/);
+  assert.doesNotMatch(router, /children\/:childId\/override/);
+  assert.doesNotMatch(router, /members\/:memberId\/rates/);
+  assert.doesNotMatch(controller, /upsertAgentDirectRate/);
 });

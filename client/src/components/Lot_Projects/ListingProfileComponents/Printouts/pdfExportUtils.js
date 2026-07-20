@@ -196,5 +196,3 @@ export const openElementInPdfPrintWindow = async (element, options = {}) => {
 // Kept as the public function used by the print buttons. It opens Chrome's clean Save-as-PDF print flow
 // instead of converting the page through canvas, which was producing blank PDFs for some uploaded images.
 export const downloadElementAsPdf = openElementInPdfPrintWindow
-
-

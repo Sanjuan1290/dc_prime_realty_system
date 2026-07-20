@@ -5,13 +5,29 @@ import StatusAlert from '../../Shared/StatusAlert'
 import ProjectAccreditationFields from './ProjectAccreditationFields'
 import { useFetch as fetchJson, useFetchPost as postJson } from '../../../utils/useFetch'
 
-const validateProjectRates = (projectRates) => {
+const validateProjectRates = (projectRates, groupHeadRole = 'broker_network_manager') => {
   if (!projectRates.length) return 'Select at least one accredited project.'
-  const invalidRate = projectRates.find((rate) => {
-    const value = Number(rate.seller_group_pool_rate)
-    return !Number.isFinite(value) || value < 6 || value > 15
-  })
-  return invalidRate ? 'Each selected project pool rate must be between 6% and 15%.' : ''
+
+  for (const rate of projectRates) {
+    const pool = Number(rate.seller_group_pool_rate)
+    const bnm = Number(rate.bnm_override_rate || 0)
+    const broker = Number(rate.broker_override_rate || 0)
+    const manager = Number(rate.manager_override_rate || 0)
+    const agent = Number(rate.agent_rate || 0)
+    const values = [pool, bnm, broker, manager, agent]
+    if (values.some((value) => !Number.isFinite(value))) return 'Every project rate must be a valid number.'
+    if (pool < 6 || pool > 15) return 'Each selected project pool rate must be between 6% and 15%.'
+    if ([bnm, broker, manager, agent].some((value) => value < 0 || value > 15)) return 'Role rates must be between 0% and 15%.'
+    if (broker <= 0) return 'Broker override rate must be greater than 0%.'
+    if (manager <= 0) return 'Manager override rate must be greater than 0%.'
+    if (agent <= 0) return 'Agent sales rate must be greater than 0%.'
+    if (groupHeadRole === 'broker' && bnm !== 0) return 'BNM override must be 0% when the Realty head is a Broker.'
+    if (groupHeadRole !== 'broker' && bnm <= 0) return 'BNM override rate must be greater than 0%.'
+    const allocated = Number((bnm + broker + manager + agent).toFixed(2))
+    if (Math.abs(allocated - pool) > 0.001) return `The fixed role rates must total the ${pool.toFixed(2)}% project pool exactly.`
+  }
+
+  return ''
 }
 
 const NewGroupModal = ({ setShowNewGroupModal, onSaved }) => {
@@ -39,17 +55,21 @@ const NewGroupModal = ({ setShowNewGroupModal, onSaved }) => {
     (seller) => ['broker_network_manager', 'broker'].includes(seller.role) && !seller.seller_group_id
   )
   const projects = projectsQuery.data?.data || []
+  const selectedGroupHead = eligibleGroupHeads.find(
+    (seller) => String(seller.user_id) === String(form.seller_group_head_user_id)
+  )
+  const groupHeadRole = selectedGroupHead?.role || 'broker_network_manager'
 
   const mutation = useMutation({
     mutationFn: () => postJson('/seller-groups/create', form),
-    onMutate: () => setNotice({ type: 'loading', message: 'Creating seller group and project accreditations...' }),
+    onMutate: () => setNotice({ type: 'loading', message: 'Creating Realty and fixed project commission rates...' }),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['seller-groups'] })
       queryClient.invalidateQueries({ queryKey: ['seller-group-options'] })
       setShowNewGroupModal(false)
       onSaved?.(data?.message || 'Seller group created successfully.')
     },
-    onError: (error) => setNotice({ type: 'error', message: error?.message || 'Failed to create seller group.' }),
+    onError: (error) => setNotice({ type: 'error', message: error?.message || 'Failed to create Realty.' }),
   })
 
   const updateForm = (field, value) => {
@@ -60,10 +80,10 @@ const NewGroupModal = ({ setShowNewGroupModal, onSaved }) => {
   const submit = (event) => {
     event.preventDefault()
     if (!form.seller_group_name.trim()) {
-      setNotice({ type: 'error', message: 'Seller group name is required.' })
+      setNotice({ type: 'error', message: 'Realty name is required.' })
       return
     }
-    const projectError = validateProjectRates(form.project_rates)
+    const projectError = validateProjectRates(form.project_rates, groupHeadRole)
     if (projectError) {
       setNotice({ type: 'error', message: projectError })
       return
@@ -81,27 +101,47 @@ const NewGroupModal = ({ setShowNewGroupModal, onSaved }) => {
           <div className="flex items-start gap-3">
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-700"><FiUsers /></span>
             <div>
-              <h2 className="text-xl font-black text-slate-950">New Seller Group</h2>
-              <p className="mt-1 text-sm font-semibold text-slate-500">Create the group and choose the projects it is accredited to sell.</p>
+              <h2 className="text-xl font-black text-slate-950">New Realty</h2>
+              <p className="mt-1 text-sm font-semibold text-slate-500">Create the Realty, select its projects, and set the fixed role rates for each project.</p>
             </div>
           </div>
-          <button type="button" onClick={() => setShowNewGroupModal(false)} disabled={mutation.isPending} className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 disabled:opacity-50" aria-label="Close new seller group modal"><FiX /></button>
+          <button type="button" onClick={() => setShowNewGroupModal(false)} disabled={mutation.isPending} className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 disabled:opacity-50" aria-label="Close new Realty modal"><FiX /></button>
         </header>
 
         <div className="overflow-y-auto p-5">
           <div className="grid gap-5">
             {notice ? <StatusAlert type={notice.type} message={notice.message} onClose={notice.type === 'loading' ? undefined : () => setNotice(null)} /> : null}
             {isLoadingOptions ? <StatusAlert type="loading" message="Loading group heads and active projects..." /> : null}
-            {hasOptionError ? <StatusAlert type="error" message={parentsQuery.error?.message || projectsQuery.error?.message || 'Failed to load seller group options.'} /> : null}
+            {hasOptionError ? <StatusAlert type="error" message={parentsQuery.error?.message || projectsQuery.error?.message || 'Failed to load Realty options.'} /> : null}
 
             <div className="grid gap-4 md:grid-cols-2">
               <label className="flex flex-col gap-1.5">
-                <span className="text-xs font-black text-slate-700">Group Name <span className="text-red-500">*</span></span>
+                <span className="text-xs font-black text-slate-700">Realty Name <span className="text-red-500">*</span></span>
                 <input autoFocus value={form.seller_group_name} onChange={(event) => updateForm('seller_group_name', event.target.value)} placeholder="Example: North Star Group" disabled={mutation.isPending} className="h-11 rounded-xl border border-slate-300 px-4 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100" />
               </label>
               <label className="flex flex-col gap-1.5">
-                <span className="text-xs font-black text-slate-700">Group Head</span>
-                <select value={form.seller_group_head_user_id} onChange={(event) => updateForm('seller_group_head_user_id', event.target.value)} disabled={mutation.isPending || parentsQuery.isLoading} className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100">
+                <span className="text-xs font-black text-slate-700">Realty Head</span>
+                <select value={form.seller_group_head_user_id} onChange={(event) => {
+                  const nextHeadId = event.target.value
+                  const nextHead = eligibleGroupHeads.find((seller) => String(seller.user_id) === String(nextHeadId))
+                  const nextRole = nextHead?.role || 'broker_network_manager'
+                  setNotice(null)
+                  setForm((current) => ({
+                    ...current,
+                    seller_group_head_user_id: nextHeadId,
+                    project_rates: current.project_rates.map((rate) => {
+                      const bnm = nextRole === 'broker' ? 0 : Number(rate.bnm_override_rate || 1)
+                      const broker = Number(rate.broker_override_rate || 0)
+                      const manager = Number(rate.manager_override_rate || 0)
+                      const pool = Number(rate.seller_group_pool_rate || 0)
+                      return {
+                        ...rate,
+                        bnm_override_rate: bnm,
+                        agent_rate: Math.max(pool - bnm - broker - manager, 0).toFixed(2),
+                      }
+                    }),
+                  }))
+                }} disabled={mutation.isPending || parentsQuery.isLoading} className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100">
                   <option value="">No head assigned</option>
                   {eligibleGroupHeads.map((seller) => <option key={seller.user_id} value={seller.user_id}>{seller.full_name} · {String(seller.role || '').replaceAll('_', ' ')}</option>)}
                 </select>
@@ -125,6 +165,7 @@ const NewGroupModal = ({ setShowNewGroupModal, onSaved }) => {
               projects={projects}
               projectRates={form.project_rates}
               onChange={(value) => updateForm('project_rates', value)}
+              groupHeadRole={groupHeadRole}
               disabled={mutation.isPending || projectsQuery.isLoading}
             />
           </div>
@@ -143,5 +184,3 @@ const NewGroupModal = ({ setShowNewGroupModal, onSaved }) => {
 }
 
 export default NewGroupModal
-
-

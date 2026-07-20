@@ -295,4 +295,3 @@ export const buildSoaPdfBuffer = ({ notification = {}, soaReference, statementDa
     author: companyName,
   });
 };
-

@@ -1,11 +1,7 @@
 import { db } from '../../db/connect.js';
 import { writeAuditLog } from './auditLogs.controller.js';
 import { columnExists, tableExists } from '../Lot_Projects/_shared/lotProject.shared.js';
-import {
-  syncChildOverrideFromCurrentParent,
-  syncGroupHeadFallbackOverrides,
-  syncSellerRoleProjectRates,
-} from './sellerCommissionRates.service.js';
+import { validateGroupFixedRateStructure } from './groupFixedCommissionRates.service.js';
 import {
   getRequiredParentRole,
   isGroupHeadRole,
@@ -29,22 +25,6 @@ const createValidationError = (message) => {
   const error = new Error(message);
   error.statusCode = 400;
   return error;
-};
-
-const validatePoolRate = (value, label = 'Pool rate') => {
-  const numberValue = Number(value);
-  if (Number.isNaN(numberValue) || numberValue < 6 || numberValue > 15) {
-    throw createValidationError(`${label} must be between 6 and 15.`);
-  }
-  return numberValue;
-};
-
-const validateSellerRate = (value, label = 'Seller rate') => {
-  const numberValue = Number(value);
-  if (Number.isNaN(numberValue) || numberValue < 0 || numberValue > 15) {
-    throw createValidationError(`${label} must be between 0 and 15.`);
-  }
-  return numberValue;
 };
 
 const fullNameSql = (alias) => `TRIM(CONCAT_WS(' ', ${alias}.first_name, ${alias}.middle_name, ${alias}.last_name))`;
@@ -125,10 +105,7 @@ const validateGroupHeadTransition = (previousHead, nextHead) => {
 const attachAndSyncGroupHead = async (connection, groupId, head, previousHead = null) => {
   validateGroupHeadTransition(previousHead, head);
 
-  if (!head) {
-    await syncGroupHeadFallbackOverrides(connection, groupId);
-    return;
-  }
+  if (!head) return;
 
   await connection.query(
     `
@@ -176,22 +153,7 @@ const attachAndSyncGroupHead = async (connection, groupId, head, previousHead = 
         [head.accredited_seller_id, previousHead.accredited_seller_id]
       );
     }
-    await syncChildOverrideFromCurrentParent(connection, previousHead.accredited_seller_id);
   }
-
-  const [rates] = await connection.query(
-    `
-      SELECT
-        lot_project_id,
-        accredited_seller_project_rate,
-        accredited_seller_lot_project_rate_status
-      FROM accredited_seller_lot_project_rates
-      WHERE accredited_seller_id = ?
-    `,
-    [head.accredited_seller_id]
-  );
-  await syncSellerRoleProjectRates(connection, head.accredited_seller_id, head.role, rates);
-  await syncGroupHeadFallbackOverrides(connection, groupId);
 };
 
 /**
@@ -306,7 +268,11 @@ const getActiveLotProjects = async (connection = db) => {
   return projects;
 };
 
-export const normalizeGroupProjectRates = (projectRates = [], projects = []) => {
+export const normalizeGroupProjectRates = (
+  projectRates = [],
+  projects = [],
+  { groupHeadRole = 'broker_network_manager' } = {}
+) => {
   if (!Array.isArray(projectRates) || projectRates.length === 0) {
     throw createValidationError('Select at least one accredited project for this seller group.');
   }
@@ -328,16 +294,17 @@ export const normalizeGroupProjectRates = (projectRates = [], projects = []) => 
     }
     selectedProjectIds.add(projectId);
 
+    const rates = validateGroupFixedRateStructure(item, {
+      groupHeadRole,
+      projectName: project.lot_project_name,
+    });
+
     return {
       lot_project_id: projectId,
-      seller_group_pool_rate: validatePoolRate(
-        item?.seller_group_pool_rate ?? item?.rate,
-        `${project.lot_project_name} pool rate`
-      ),
+      ...rates,
     };
   });
 };
-
 
 const upsertGroupProjectRates = async (connection, groupId, projectRates) => {
   if (!projectRates.length) return;
@@ -348,18 +315,69 @@ const upsertGroupProjectRates = async (connection, groupId, projectRates) => {
         seller_group_id,
         lot_project_id,
         seller_group_pool_rate,
+        bnm_override_rate,
+        broker_override_rate,
+        manager_override_rate,
+        agent_rate,
         seller_group_lot_project_rate_status
-      ) VALUES ${projectRates.map(() => '(?, ?, ?, "active")').join(', ')}
+      ) VALUES ${projectRates.map(() => '(?, ?, ?, ?, ?, ?, ?, "active")').join(', ')}
       ON DUPLICATE KEY UPDATE
         seller_group_pool_rate = VALUES(seller_group_pool_rate),
+        bnm_override_rate = VALUES(bnm_override_rate),
+        broker_override_rate = VALUES(broker_override_rate),
+        manager_override_rate = VALUES(manager_override_rate),
+        agent_rate = VALUES(agent_rate),
         seller_group_lot_project_rate_status = 'active'
     `,
     projectRates.flatMap((rate) => [
       groupId,
       rate.lot_project_id,
       rate.seller_group_pool_rate,
+      rate.bnm_override_rate,
+      rate.broker_override_rate,
+      rate.manager_override_rate,
+      rate.agent_rate,
     ])
   );
+};
+
+const deactivateLegacyIndividualRates = async (connection, groupId) => {
+  if (await tableExists(connection, 'accredited_seller_lot_project_rates')) {
+    await connection.query(
+      `
+        UPDATE accredited_seller_lot_project_rates role_rate
+        INNER JOIN accredited_sellers seller
+          ON seller.accredited_seller_id = role_rate.accredited_seller_id
+        SET role_rate.accredited_seller_lot_project_rate_status = 'inactive'
+        WHERE seller.seller_group_id = ?
+      `,
+      [groupId]
+    );
+  }
+  if (await tableExists(connection, 'agent_lot_project_direct_rates')) {
+    await connection.query(
+      `
+        UPDATE agent_lot_project_direct_rates direct_rate
+        INNER JOIN accredited_sellers seller
+          ON seller.accredited_seller_id = direct_rate.accredited_seller_id
+        SET direct_rate.direct_rate_status = 'inactive'
+        WHERE seller.seller_group_id = ?
+      `,
+      [groupId]
+    );
+  }
+  if (await tableExists(connection, 'seller_hierarchy_lot_project_overrides')) {
+    await connection.query(
+      `
+        UPDATE seller_hierarchy_lot_project_overrides override_row
+        INNER JOIN accredited_sellers child
+          ON child.accredited_seller_id = override_row.child_accredited_seller_id
+        SET override_row.override_rate_status = 'inactive'
+        WHERE child.seller_group_id = ?
+      `,
+      [groupId]
+    );
+  }
 };
 
 const syncGroupProjectAccreditations = async (connection, groupId, projectRates) => {
@@ -368,8 +386,6 @@ const syncGroupProjectAccreditations = async (connection, groupId, projectRates)
   const selectedIds = projectRates.map((rate) => Number(rate.lot_project_id));
   const placeholders = selectedIds.map(() => '?').join(', ');
 
-  // Removing a project accreditation only disables future configuration. Historical
-  // reservations and commission snapshots stay intact for reporting and audits.
   await connection.query(
     `
       UPDATE seller_group_lot_project_rates
@@ -380,29 +396,7 @@ const syncGroupProjectAccreditations = async (connection, groupId, projectRates)
     [groupId, ...selectedIds]
   );
 
-  await connection.query(
-    `
-      UPDATE agent_lot_project_direct_rates direct_rate
-      INNER JOIN accredited_sellers seller
-        ON seller.accredited_seller_id = direct_rate.accredited_seller_id
-      SET direct_rate.direct_rate_status = 'inactive'
-      WHERE seller.seller_group_id = ?
-        AND direct_rate.lot_project_id NOT IN (${placeholders})
-    `,
-    [groupId, ...selectedIds]
-  );
-
-  await connection.query(
-    `
-      UPDATE seller_hierarchy_lot_project_overrides override_row
-      INNER JOIN accredited_sellers child
-        ON child.accredited_seller_id = override_row.child_accredited_seller_id
-      SET override_row.override_rate_status = 'inactive'
-      WHERE child.seller_group_id = ?
-        AND override_row.lot_project_id NOT IN (${placeholders})
-    `,
-    [groupId, ...selectedIds]
-  );
+  await deactivateLegacyIndividualRates(connection, groupId);
 };
 
 const hydrateGroupRates = async (groups) => {
@@ -419,6 +413,17 @@ const hydrateGroupRates = async (groups) => {
         lp.lot_project_slug,
         lp.lot_project_location_code,
         sgr.seller_group_pool_rate,
+        sgr.bnm_override_rate,
+        sgr.broker_override_rate,
+        sgr.manager_override_rate,
+        sgr.agent_rate,
+        ROUND(
+          sgr.bnm_override_rate
+          + sgr.broker_override_rate
+          + sgr.manager_override_rate
+          + sgr.agent_rate,
+          2
+        ) AS allocated_rate,
         sgr.seller_group_lot_project_rate_status
       FROM seller_group_lot_project_rates sgr
       INNER JOIN lot_projects lp ON lp.lot_project_id = sgr.lot_project_id
@@ -432,7 +437,15 @@ const hydrateGroupRates = async (groups) => {
   const rateMap = new Map();
   rateRows.forEach((rate) => {
     if (!rateMap.has(rate.seller_group_id)) rateMap.set(rate.seller_group_id, []);
-    rateMap.get(rate.seller_group_id).push(rate);
+    rateMap.get(rate.seller_group_id).push({
+      ...rate,
+      seller_group_pool_rate: Number(rate.seller_group_pool_rate || 0),
+      bnm_override_rate: Number(rate.bnm_override_rate || 0),
+      broker_override_rate: Number(rate.broker_override_rate || 0),
+      manager_override_rate: Number(rate.manager_override_rate || 0),
+      agent_rate: Number(rate.agent_rate || 0),
+      allocated_rate: Number(rate.allocated_rate || 0),
+    });
   });
 
   return groups.map((group) => ({
@@ -441,40 +454,10 @@ const hydrateGroupRates = async (groups) => {
   }));
 };
 
-const hydrateMemberRates = async (members) => {
-  const sellerIds = members.map((member) => member.accredited_seller_id).filter(Boolean);
-  if (!sellerIds.length) return members.map((member) => ({ ...member, project_rates: [] }));
-
-  const placeholders = sellerIds.map(() => '?').join(', ');
-  const [rateRows] = await db.query(
-    `
-      SELECT
-        asr.accredited_seller_id,
-        asr.lot_project_id,
-        lp.lot_project_name,
-        lp.lot_project_slug,
-        lp.lot_project_location_code,
-        asr.accredited_seller_project_rate,
-        asr.accredited_seller_lot_project_rate_status
-      FROM accredited_seller_lot_project_rates asr
-      INNER JOIN lot_projects lp ON lp.lot_project_id = asr.lot_project_id
-      WHERE asr.accredited_seller_id IN (${placeholders})
-      ORDER BY lp.lot_project_name ASC
-    `,
-    sellerIds
-  );
-
-  const rateMap = new Map();
-  rateRows.forEach((rate) => {
-    if (!rateMap.has(rate.accredited_seller_id)) rateMap.set(rate.accredited_seller_id, []);
-    rateMap.get(rate.accredited_seller_id).push(rate);
-  });
-
-  return members.map((member) => ({
-    ...member,
-    project_rates: rateMap.get(member.accredited_seller_id) || [],
-  }));
-};
+const hydrateMemberRates = async (members) => members.map((member) => ({
+  ...member,
+  project_rates: [],
+}));
 
 export const createGroup = async (req, res) => {
   const connection = await db.getConnection();
@@ -517,9 +500,8 @@ export const createGroup = async (req, res) => {
     await assertSellerGroupRoleHierarchy(connection, groupId);
     // A group is accredited only to projects explicitly selected in the form.
     const projects = await getActiveLotProjects(connection);
-    const normalizedRates = normalizeGroupProjectRates(project_rates, projects);
+    const normalizedRates = normalizeGroupProjectRates(project_rates, projects, { groupHeadRole: groupHead?.role });
     await syncGroupProjectAccreditations(connection, groupId, normalizedRates);
-    await assertConfiguredPathsWithinPools(connection, groupId, normalizedRates);
 
     await writeAuditLog(connection, req, {
       action: 'create',
@@ -711,9 +693,8 @@ export const editGroup = async (req, res) => {
     await assertSellerGroupRoleHierarchy(connection, groupId);
 
     const projects = await getActiveLotProjects(connection);
-    const normalizedRates = normalizeGroupProjectRates(project_rates, projects);
+    const normalizedRates = normalizeGroupProjectRates(project_rates, projects, { groupHeadRole: groupHead?.role });
     await syncGroupProjectAccreditations(connection, groupId, normalizedRates);
-    await assertConfiguredPathsWithinPools(connection, groupId, normalizedRates);
 
     await writeAuditLog(connection, req, {
       action: 'update',
@@ -831,15 +812,17 @@ export const viewGroup = async (req, res) => {
 };
 
 const requireCommissionConfigurationSchema = async (connection) => {
-  const requiredTables = [
-    'agent_lot_project_direct_rates',
-    'seller_hierarchy_lot_project_overrides',
+  const requiredColumns = [
+    'bnm_override_rate',
+    'broker_override_rate',
+    'manager_override_rate',
+    'agent_rate',
   ];
 
-  for (const tableName of requiredTables) {
-    if (!(await tableExists(connection, tableName))) {
+  for (const columnName of requiredColumns) {
+    if (!(await columnExists(connection, 'seller_group_lot_project_rates', columnName))) {
       throw createValidationError(
-        'Commission configuration needs the 20260718 direct-agent override migration.'
+        'Group fixed commission rates need the 20260720 group-fixed-rate migration.'
       );
     }
   }
@@ -861,6 +844,10 @@ const getGroupAndProject = async (connection, groupId, projectId) => {
         lp.lot_project_location_code,
         lp.lot_project_status,
         sgr.seller_group_pool_rate,
+        sgr.bnm_override_rate,
+        sgr.broker_override_rate,
+        sgr.manager_override_rate,
+        sgr.agent_rate,
         sgr.seller_group_lot_project_rate_status AS pool_rate_status
       FROM seller_groups sg
       INNER JOIN seller_group_lot_project_rates sgr
@@ -880,7 +867,7 @@ const getGroupAndProject = async (connection, groupId, projectId) => {
   return rows[0] || null;
 };
 
-const loadGroupProjectMembers = async (connection, groupId, projectId) => {
+const loadGroupProjectMembers = async (connection, groupId) => {
   const [rows] = await connection.query(
     `
       SELECT
@@ -897,11 +884,7 @@ const loadGroupProjectMembers = async (connection, groupId, projectId) => {
         parent_acs.accredited_seller_id AS parent_accredited_seller_id,
         ${fullNameSql('parent_user')} AS reports_under_name,
         owner_user.role AS owner_role,
-        ${fullNameSql('owner_user')} AS owner_name,
-        role_rate.accredited_seller_project_rate AS project_rate,
-        role_rate.accredited_seller_lot_project_rate_status AS project_rate_status,
-        direct_rate.direct_rate,
-        direct_rate.direct_rate_status
+        ${fullNameSql('owner_user')} AS owner_name
       FROM accredited_sellers acs
       INNER JOIN users u ON u.id = acs.user_id
       LEFT JOIN accredited_sellers parent_acs
@@ -910,19 +893,13 @@ const loadGroupProjectMembers = async (connection, groupId, projectId) => {
       LEFT JOIN accredited_sellers owner_acs
         ON owner_acs.accredited_seller_id = acs.dummy_owner_accredited_seller_id
       LEFT JOIN users owner_user ON owner_user.id = owner_acs.user_id
-      LEFT JOIN agent_lot_project_direct_rates direct_rate
-        ON direct_rate.accredited_seller_id = acs.accredited_seller_id
-       AND direct_rate.lot_project_id = ?
-      LEFT JOIN accredited_seller_lot_project_rates role_rate
-        ON role_rate.accredited_seller_id = acs.accredited_seller_id
-       AND role_rate.lot_project_id = ?
       WHERE acs.seller_group_id = ?
       ORDER BY
         FIELD(u.role, 'broker_network_manager', 'broker', 'manager', 'agent'),
         COALESCE(acs.is_system_dummy, 0),
         full_name ASC
     `,
-    [projectId, projectId, groupId]
+    [groupId]
   );
 
   return rows.map((row) => ({
@@ -936,197 +913,38 @@ const loadGroupProjectMembers = async (connection, groupId, projectId) => {
     dummy_owner_accredited_seller_id: row.dummy_owner_accredited_seller_id
       ? Number(row.dummy_owner_accredited_seller_id)
       : null,
-    direct_rate: row.direct_rate === null ? null : Number(row.direct_rate),
-    project_rate: row.project_rate === null ? null : Number(row.project_rate),
     display_name: Number(row.is_system_dummy || 0) === 1 && row.owner_name
       ? `${row.owner_name} — Direct Sales Agent`
       : row.full_name,
   }));
 };
 
-const loadGroupProjectOverrides = async (connection, groupId, projectId) => {
-  const [rows] = await connection.query(
-    `
-      SELECT
-        override_row.seller_hierarchy_lot_project_override_id,
-        override_row.child_accredited_seller_id,
-        override_row.parent_accredited_seller_id,
-        override_row.override_rate,
-        override_row.override_rate_status,
-        ${fullNameSql('child_user')} AS child_name,
-        child_user.role AS child_role,
-        ${fullNameSql('parent_user')} AS parent_name,
-        parent_user.role AS parent_role
-      FROM seller_hierarchy_lot_project_overrides override_row
-      INNER JOIN accredited_sellers child_acs
-        ON child_acs.accredited_seller_id = override_row.child_accredited_seller_id
-      INNER JOIN users child_user ON child_user.id = child_acs.user_id
-      INNER JOIN accredited_sellers parent_acs
-        ON parent_acs.accredited_seller_id = override_row.parent_accredited_seller_id
-      INNER JOIN users parent_user ON parent_user.id = parent_acs.user_id
-      WHERE override_row.lot_project_id = ?
-        AND child_acs.seller_group_id = ?
-        AND parent_acs.seller_group_id = ?
-      ORDER BY parent_name ASC, child_name ASC
-    `,
-    [projectId, groupId, groupId]
-  );
-
-  return rows.map((row) => ({
-    ...row,
-    seller_hierarchy_lot_project_override_id: Number(row.seller_hierarchy_lot_project_override_id),
-    child_accredited_seller_id: Number(row.child_accredited_seller_id),
-    parent_accredited_seller_id: Number(row.parent_accredited_seller_id),
-    override_rate: Number(row.override_rate || 0),
-  }));
-};
-
-const buildConfigurationValidation = (group, members, overrides) => {
-  const memberMap = new Map(members.map((member) => [Number(member.accredited_seller_id), member]));
-  const userSellerMap = new Map(members.map((member) => [Number(member.user_id), member]));
-  const overrideMap = new Map(
-    overrides.map((row) => [
-      `${Number(row.child_accredited_seller_id)}:${Number(row.parent_accredited_seller_id)}`,
-      row,
-    ])
-  );
-  const head = userSellerMap.get(Number(group.seller_group_head_user_id));
-  const poolRate = Number(group.seller_group_pool_rate || 0);
-  const paths = [];
-
-  members
-    .filter((member) => member.role === 'agent' && member.accredited_seller_status === 'active')
-    .forEach((agent) => {
-      const chain = [];
-      const seen = new Set();
-      let current = agent;
-      const directStatus = agent.direct_rate_status || 'inactive';
-      const directRate = Number(directStatus === 'active' ? agent.direct_rate || 0 : 0);
-      let total = directRate;
-
-      chain.push({
-        sellerId: agent.accredited_seller_id,
-        sellerName: agent.display_name,
-        role: agent.role,
-        type: 'direct',
-        rate: directRate,
-        status: directStatus,
-      });
-      seen.add(agent.accredited_seller_id);
-
-      while (current) {
-        let parent = current.parent_accredited_seller_id
-          ? memberMap.get(Number(current.parent_accredited_seller_id))
-          : null;
-        if (!parent && head && !seen.has(Number(head.accredited_seller_id))) parent = head;
-        if (!parent || seen.has(Number(parent.accredited_seller_id))) break;
-
-        const edgeKey = `${Number(current.accredited_seller_id)}:${Number(parent.accredited_seller_id)}`;
-        const override = overrideMap.get(edgeKey) || null;
-        const status = override?.override_rate_status || 'inactive';
-        const rate = Number(status === 'active' ? override?.override_rate || 0 : 0);
-        total += rate;
-        chain.push({
-          sellerId: parent.accredited_seller_id,
-          sellerName: parent.display_name,
-          role: parent.role,
-          type: 'override',
-          childSellerId: current.accredited_seller_id,
-          childSellerName: current.display_name,
-          rate,
-          status,
-          overrideId: override?.seller_hierarchy_lot_project_override_id || null,
-        });
-        seen.add(parent.accredited_seller_id);
-        current = parent;
-      }
-
-      const normalizedTotal = Number(total.toFixed(2));
-      const difference = Number(Math.abs(poolRate - normalizedTotal).toFixed(2));
-      const errors = [];
-      const warnings = [];
-
-      if (Number(agent.direct_rate || 0) <= 0 || directStatus !== 'active') {
-        errors.push(`${agent.display_name} has no active sales commission rate.`);
-      }
-      chain
-        .filter((row) => row.type === 'override' && (row.status !== 'active' || Number(row.rate || 0) <= 0))
-        .forEach((row) => warnings.push(`${row.sellerName} has no active override from ${row.childSellerName}.`));
-      if (poolRate > 0 && normalizedTotal > poolRate + 0.0001) {
-        errors.push(`Allocated ${normalizedTotal.toFixed(2)}% exceeds the ${poolRate.toFixed(2)}% pool.`);
-      } else if (poolRate > 0 && normalizedTotal < poolRate - 0.0001) {
-        warnings.push(`${Number(poolRate - normalizedTotal).toFixed(2)}% of the group pool is still unallocated.`);
-      }
-
-      const isComplete = normalizedTotal > 0
-        && errors.length === 0
-        && (!poolRate || difference <= 0.0001);
-
-      paths.push({
-        agentId: agent.accredited_seller_id,
-        agentName: agent.display_name,
-        allocatedRate: normalizedTotal,
-        poolRate,
-        unallocatedRate: Number(Math.max(poolRate - normalizedTotal, 0).toFixed(2)),
-        overAllocatedRate: Number(Math.max(normalizedTotal - poolRate, 0).toFixed(2)),
-        isComplete,
-        status: errors.length ? 'invalid' : isComplete ? 'complete' : 'incomplete',
-        hasErrors: errors.length > 0,
-        errors,
-        warnings,
-        chain,
-      });
-    });
-
-  return {
-    pathCount: paths.length,
-    errorCount: paths.filter((path) => path.hasErrors).length,
-    incompleteCount: paths.filter((path) => !path.isComplete).length,
-    paths,
-  };
-};
-
-/**
- * Pool-rate edits are validated against the current direct-rate and override
- * model. Legacy cumulative seller-rate rows are intentionally ignored.
- */
-async function assertConfiguredPathsWithinPools(connection, groupId, projectRates = []) {
-  for (const projectRate of projectRates) {
-    const projectId = Number(projectRate.lot_project_id || 0);
-    if (!projectId) continue;
-
-    const group = await getGroupAndProject(connection, groupId, projectId);
-    if (!group) continue;
-    const members = await loadGroupProjectMembers(connection, groupId, projectId);
-    const overrides = await loadGroupProjectOverrides(connection, groupId, projectId);
-    const validation = buildConfigurationValidation(
-      { ...group, seller_group_pool_rate: Number(projectRate.seller_group_pool_rate || 0) },
-      members,
-      overrides
-    );
-    const overAllocated = validation.paths.find((path) =>
-      path.errors.some((message) => message.includes('exceeds the'))
-    );
-    if (overAllocated) {
-      throw createValidationError(
-        `${group.lot_project_name} pool rate is lower than the configured ${overAllocated.allocatedRate.toFixed(2)}% commission path for ${overAllocated.agentName}. Edit member rates first or use a higher pool rate.`
-      );
-    }
-  }
-}
-
 export const assertGroupCurrentPathsWithinPools = async (connection, groupId) => {
   if (!groupId) return;
+  await requireCommissionConfigurationSchema(connection);
   const [projectRates] = await connection.query(
     `
-      SELECT lot_project_id, seller_group_pool_rate
-      FROM seller_group_lot_project_rates
-      WHERE seller_group_id = ?
-        AND seller_group_lot_project_rate_status = 'active'
+      SELECT
+        rate.*,
+        project.lot_project_name,
+        head_user.role AS group_head_role
+      FROM seller_group_lot_project_rates rate
+      INNER JOIN seller_groups group_row
+        ON group_row.seller_group_id = rate.seller_group_id
+      INNER JOIN lot_projects project
+        ON project.lot_project_id = rate.lot_project_id
+      LEFT JOIN users head_user
+        ON head_user.id = group_row.seller_group_head_user_id
+      WHERE rate.seller_group_id = ?
+        AND rate.seller_group_lot_project_rate_status = 'active'
     `,
     [groupId]
   );
-  await assertConfiguredPathsWithinPools(connection, groupId, projectRates);
+
+  projectRates.forEach((rate) => validateGroupFixedRateStructure(rate, {
+    groupHeadRole: rate.group_head_role || 'broker_network_manager',
+    projectName: rate.lot_project_name || 'Project',
+  }));
 };
 
 export const normalizeGroupAnalyticsRange = (fromValue, toValue) => {
@@ -1192,6 +1010,10 @@ const getGroupAccreditedProjects = async (connection, groupId) => {
         project.lot_project_location,
         project.lot_project_location_code,
         rate.seller_group_pool_rate,
+        rate.bnm_override_rate,
+        rate.broker_override_rate,
+        rate.manager_override_rate,
+        rate.agent_rate,
         rate.seller_group_lot_project_rate_status
       FROM seller_group_lot_project_rates rate
       INNER JOIN lot_projects project
@@ -1208,6 +1030,10 @@ const getGroupAccreditedProjects = async (connection, groupId) => {
     ...row,
     lot_project_id: Number(row.lot_project_id),
     seller_group_pool_rate: Number(row.seller_group_pool_rate || 0),
+    bnm_override_rate: Number(row.bnm_override_rate || 0),
+    broker_override_rate: Number(row.broker_override_rate || 0),
+    manager_override_rate: Number(row.manager_override_rate || 0),
+    agent_rate: Number(row.agent_rate || 0),
   }));
 };
 
@@ -1411,10 +1237,12 @@ export const getGroupProjectConfiguration = async (req, res) => {
     const group = await getGroupAndProject(connection, groupId, projectId);
     if (!group) return res.status(404).json({ message: 'Seller group or project not found.' });
 
-    const members = await loadGroupProjectMembers(connection, groupId, projectId);
-    const overrides = await loadGroupProjectOverrides(connection, groupId, projectId);
-    const validation = buildConfigurationValidation(group, members, overrides);
+    const members = await loadGroupProjectMembers(connection, groupId);
     const accreditedProjects = await getGroupAccreditedProjects(connection, groupId);
+    const fixedRates = validateGroupFixedRateStructure(group, {
+      groupHeadRole: members.find((member) => Number(member.user_id) === Number(group.seller_group_head_user_id))?.role || 'broker_network_manager',
+      projectName: group.lot_project_name,
+    });
 
     return res.json({
       success: true,
@@ -1437,21 +1265,18 @@ export const getGroupProjectConfiguration = async (req, res) => {
           locationCode: group.lot_project_location_code,
           status: group.lot_project_status,
         },
-        poolRate: Number(group.seller_group_pool_rate || 0),
+        poolRate: fixedRates.seller_group_pool_rate,
         poolRateStatus: group.pool_rate_status,
+        fixedRates: {
+          poolRate: fixedRates.seller_group_pool_rate,
+          bnmOverrideRate: fixedRates.bnm_override_rate,
+          brokerOverrideRate: fixedRates.broker_override_rate,
+          managerOverrideRate: fixedRates.manager_override_rate,
+          agentRate: fixedRates.agent_rate,
+          allocatedRate: fixedRates.allocated_rate,
+          remainingRate: fixedRates.remaining_rate,
+        },
         members,
-        directRates: members
-          .filter((member) => member.role === 'agent')
-          .map((member) => ({
-            accreditedSellerId: member.accredited_seller_id,
-            sellerName: member.display_name,
-            isSystemDummy: member.is_system_dummy,
-            ownerName: member.owner_name || null,
-            directRate: member.direct_rate,
-            status: member.direct_rate_status || 'inactive',
-          })),
-        overrides,
-        validation,
         accreditedProjects,
         summary: {
           activeMembers: members.filter((member) => !member.is_system_dummy && member.accredited_seller_status === 'active').length,
@@ -1472,8 +1297,6 @@ export const updateGroupProjectPool = async (req, res) => {
   try {
     const groupId = Number(req.params.groupId || 0);
     const projectId = Number(req.params.projectId || 0);
-    const poolRate = validatePoolRate(req.body.poolRate, 'Group commission pool');
-    const status = normalizeStatus(req.body.status);
     if (!groupId || !projectId) throw createValidationError('Seller group and project are required.');
 
     await requireCommissionConfigurationSchema(connection);
@@ -1481,499 +1304,63 @@ export const updateGroupProjectPool = async (req, res) => {
 
     const group = await getGroupAndProject(connection, groupId, projectId);
     if (!group) throw createValidationError('Seller group or project not found.');
+    const [headRows] = await connection.query(
+      `SELECT role FROM users WHERE id = ? LIMIT 1`,
+      [group.seller_group_head_user_id || 0]
+    );
+    const rates = validateGroupFixedRateStructure({
+      seller_group_pool_rate: req.body.poolRate ?? req.body.seller_group_pool_rate,
+      bnm_override_rate: req.body.bnmOverrideRate ?? req.body.bnm_override_rate,
+      broker_override_rate: req.body.brokerOverrideRate ?? req.body.broker_override_rate,
+      manager_override_rate: req.body.managerOverrideRate ?? req.body.manager_override_rate,
+      agent_rate: req.body.agentRate ?? req.body.agent_rate,
+    }, {
+      groupHeadRole: headRows[0]?.role || 'broker_network_manager',
+      projectName: group.lot_project_name,
+    });
+    const status = normalizeStatus(req.body.status);
 
     await connection.query(
       `
-        INSERT INTO seller_group_lot_project_rates (
-          seller_group_id,
-          lot_project_id,
-          seller_group_pool_rate,
-          seller_group_lot_project_rate_status
-        ) VALUES (?, ?, ?, ?)
-        ON DUPLICATE KEY UPDATE
-          seller_group_pool_rate = VALUES(seller_group_pool_rate),
-          seller_group_lot_project_rate_status = VALUES(seller_group_lot_project_rate_status)
+        UPDATE seller_group_lot_project_rates
+        SET
+          seller_group_pool_rate = ?,
+          bnm_override_rate = ?,
+          broker_override_rate = ?,
+          manager_override_rate = ?,
+          agent_rate = ?,
+          seller_group_lot_project_rate_status = ?
+        WHERE seller_group_id = ?
+          AND lot_project_id = ?
       `,
-      [groupId, projectId, poolRate, status]
-    );
-
-    const members = await loadGroupProjectMembers(connection, groupId, projectId);
-    const overrides = await loadGroupProjectOverrides(connection, groupId, projectId);
-    const validation = buildConfigurationValidation(
-      { ...group, seller_group_pool_rate: poolRate },
-      members,
-      overrides
-    );
-    const overAllocatedPaths = validation.paths.filter((path) =>
-      path.errors.some((message) => message.includes('exceeds the'))
-    );
-    if (overAllocatedPaths.length > 0) {
-      throw createValidationError(
-        `The ${poolRate.toFixed(2)}% pool is lower than ${overAllocatedPaths.length} active commission path(s). Lower rates first or use a higher pool.`
-      );
-    }
-
-    await writeAuditLog(connection, req, {
-      action: 'update',
-      module: 'Seller Groups',
-      entityType: 'seller_group_project_pool',
-      entityId: `${groupId}:${projectId}`,
-      entityLabel: `${group.seller_group_name} — ${group.lot_project_name}`,
-      title: 'Updated group project commission pool',
-      description: `Set the ${group.lot_project_name} commission pool to ${poolRate.toFixed(2)}%.`,
-      metadata: { groupId, projectId, poolRate, status },
-    });
-
-    await connection.commit();
-    return res.json({ message: 'Project commission pool saved.', data: { poolRate, status } });
-  } catch (error) {
-    await connection.rollback();
-    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
-  } finally {
-    connection.release();
-  }
-};
-
-const upsertSellerProjectRoleRate = async (
-  connection,
-  accreditedSellerId,
-  role,
-  projectId,
-  rate,
-  status
-) => {
-  await connection.query(
-    `
-      INSERT INTO accredited_seller_lot_project_rates (
-        accredited_seller_id,
-        lot_project_id,
-        accredited_seller_project_rate,
-        accredited_seller_lot_project_rate_status
-      ) VALUES (?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE
-        accredited_seller_project_rate = VALUES(accredited_seller_project_rate),
-        accredited_seller_lot_project_rate_status = VALUES(accredited_seller_lot_project_rate_status)
-    `,
-    [accreditedSellerId, projectId, rate, status]
-  );
-
-  await syncSellerRoleProjectRates(connection, accreditedSellerId, role, [{
-    lot_project_id: projectId,
-    accredited_seller_project_rate: rate,
-    accredited_seller_lot_project_rate_status: status,
-  }]);
-};
-
-const upsertRelationshipOverride = async (
-  connection,
-  { childId, parentId, projectId, overrideRate, status }
-) => {
-  await connection.query(
-    `
-      INSERT INTO seller_hierarchy_lot_project_overrides (
-        child_accredited_seller_id,
-        parent_accredited_seller_id,
-        lot_project_id,
-        override_rate,
-        override_rate_status
-      ) VALUES (?, ?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE
-        override_rate = VALUES(override_rate),
-        override_rate_status = VALUES(override_rate_status)
-    `,
-    [childId, parentId, projectId, overrideRate, status]
-  );
-};
-
-const getAgentPathDefinition = (group, members, agentId) => {
-  const memberMap = new Map(members.map((member) => [Number(member.accredited_seller_id), member]));
-  const userSellerMap = new Map(members.map((member) => [Number(member.user_id), member]));
-  const agent = memberMap.get(Number(agentId));
-  if (
-    !agent
-    || agent.role !== 'agent'
-    || agent.is_system_dummy
-    || agent.accredited_seller_status !== 'active'
-  ) return null;
-
-  const head = userSellerMap.get(Number(group.seller_group_head_user_id));
-  const edges = [];
-  const seen = new Set([Number(agent.accredited_seller_id)]);
-  let current = agent;
-
-  while (current) {
-    let parent = current.parent_accredited_seller_id
-      ? memberMap.get(Number(current.parent_accredited_seller_id))
-      : null;
-    if (!parent && head && !seen.has(Number(head.accredited_seller_id))) parent = head;
-    if (!parent || seen.has(Number(parent.accredited_seller_id))) break;
-
-    edges.push({ child: current, parent });
-    seen.add(Number(parent.accredited_seller_id));
-    current = parent;
-  }
-
-  return { agent, edges };
-};
-
-export const upsertAgentDirectRate = async (req, res) => {
-  const connection = await db.getConnection();
-
-  try {
-    const groupId = Number(req.params.groupId || 0);
-    const projectId = Number(req.params.projectId || 0);
-    const agentId = Number(req.params.agentId || 0);
-    const directRate = validateSellerRate(req.body.directRate, 'Sales commission rate');
-    const status = normalizeStatus(req.body.status);
-    if (!groupId || !projectId || !agentId) throw createValidationError('Group, project, and agent are required.');
-
-    await requireCommissionConfigurationSchema(connection);
-    await connection.beginTransaction();
-
-    const [sellerRows] = await connection.query(
-      `
-        SELECT acs.accredited_seller_id, acs.seller_group_id, u.role,
-               ${fullNameSql('u')} AS seller_name
-        FROM accredited_sellers acs
-        INNER JOIN users u ON u.id = acs.user_id
-        WHERE acs.accredited_seller_id = ?
-          AND acs.seller_group_id = ?
-          AND COALESCE(acs.is_system_dummy, 0) = 0
-        LIMIT 1
-      `,
-      [agentId, groupId]
-    );
-    const seller = sellerRows[0];
-    if (!seller) throw createValidationError('Sales agent does not belong to this seller group.');
-    if (seller.role !== 'agent') throw createValidationError('Sales commission rates can only be assigned to agents.');
-
-    await upsertSellerProjectRoleRate(
-      connection,
-      agentId,
-      seller.role,
-      projectId,
-      directRate,
-      status
-    );
-
-    const group = await getGroupAndProject(connection, groupId, projectId);
-    const members = await loadGroupProjectMembers(connection, groupId, projectId);
-    const overrides = await loadGroupProjectOverrides(connection, groupId, projectId);
-    const validation = buildConfigurationValidation(group, members, overrides);
-    const invalidPath = validation.paths.find((path) => Number(path.agentId) === agentId && path.hasErrors);
-    if (invalidPath && !invalidPath.errors.every((message) => message.includes('no active sales commission rate'))) {
-      throw createValidationError(invalidPath.errors[0]);
-    }
-
-    await writeAuditLog(connection, req, {
-      action: status === 'inactive' ? 'delete' : 'update',
-      module: 'Seller Groups',
-      entityType: 'agent_project_direct_rate',
-      entityId: `${agentId}:${projectId}`,
-      entityLabel: seller.seller_name,
-      title: status === 'inactive' ? 'Removed agent sales commission rate' : 'Saved agent sales commission rate',
-      description: status === 'inactive'
-        ? `Removed the project sales commission rate for ${seller.seller_name}.`
-        : `Set ${seller.seller_name}'s project sales commission rate to ${directRate.toFixed(2)}%.`,
-      metadata: { groupId, projectId, agentId, directRate, status },
-    });
-
-    await connection.commit();
-    return res.json({
-      message: status === 'inactive' ? 'Agent sales commission rate removed.' : 'Agent sales commission rate saved.',
-      data: { agentId, directRate, status },
-    });
-  } catch (error) {
-    await connection.rollback();
-    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
-  } finally {
-    connection.release();
-  }
-};
-
-export const upsertHierarchyOverride = async (req, res) => {
-  const connection = await db.getConnection();
-
-  try {
-    const groupId = Number(req.params.groupId || 0);
-    const projectId = Number(req.params.projectId || 0);
-    const childId = Number(req.params.childId || req.body.childId || 0);
-    const parentId = Number(req.body.parentId || 0);
-    const overrideRate = validateSellerRate(req.body.overrideRate, 'Override rate');
-    const status = normalizeStatus(req.body.status);
-    if (!groupId || !projectId || !childId || !parentId) {
-      throw createValidationError('Child seller, parent seller, group, and project are required.');
-    }
-    if (childId === parentId) throw createValidationError('A seller cannot receive an override from themselves.');
-
-    await requireCommissionConfigurationSchema(connection);
-    await connection.beginTransaction();
-
-    const group = await getGroupAndProject(connection, groupId, projectId);
-    if (!group) throw createValidationError('Seller group or project not found.');
-    const members = await loadGroupProjectMembers(connection, groupId, projectId);
-    const child = members.find((member) => Number(member.accredited_seller_id) === childId && !member.is_system_dummy);
-    const parent = members.find((member) => Number(member.accredited_seller_id) === parentId && !member.is_system_dummy);
-    if (!child || !parent) throw createValidationError('Both sellers must be real users in this seller group.');
-    if (parent.role === 'agent') throw createValidationError('Agents receive sales rates and cannot receive hierarchy overrides.');
-    if (getRequiredParentRole(child.role) !== parent.role) {
-      throw createValidationError(
-        `${SELLER_ROLE_LABELS[child.role] || child.role} can only report under a ${SELLER_ROLE_LABELS[getRequiredParentRole(child.role)] || 'valid parent seller'}.`
-      );
-    }
-
-    const expectedParentId = child.parent_accredited_seller_id
-      || members.find((member) => Number(member.user_id) === Number(group.seller_group_head_user_id))?.accredited_seller_id
-      || null;
-    if (Number(expectedParentId) !== parentId) {
-      throw createValidationError('Override rates can only be assigned to the seller directly above this child.');
-    }
-
-    await upsertRelationshipOverride(connection, {
-      childId,
-      parentId,
-      projectId,
-      overrideRate,
-      status,
-    });
-
-    const refreshedOverrides = await loadGroupProjectOverrides(connection, groupId, projectId);
-    const validation = buildConfigurationValidation(group, members, refreshedOverrides);
-    // Validate only paths that contain this exact relationship. Other children
-    // of the same parent keep their own override rates.
-    const affectedPaths = validation.paths.filter((path) => path.chain.some((row) =>
-      row.type === 'override'
-      && Number(row.childSellerId) === childId
-      && Number(row.sellerId) === parentId
-    ));
-    const invalidPath = affectedPaths.find((path) =>
-      path.errors.some((message) => message.includes('exceeds the'))
-    );
-    if (invalidPath) {
-      throw createValidationError(
-        invalidPath.errors.find((message) => message.includes('exceeds the'))
-      );
-    }
-
-    await writeAuditLog(connection, req, {
-      action: status === 'inactive' ? 'delete' : 'update',
-      module: 'Seller Groups',
-      entityType: 'hierarchy_project_override',
-      entityId: `${childId}:${parentId}:${projectId}`,
-      entityLabel: `${parent.display_name} override from ${child.display_name}`,
-      title: status === 'inactive' ? 'Removed hierarchy override' : 'Saved hierarchy override',
-      description: status === 'inactive'
-        ? `Removed ${parent.display_name}'s override from ${child.display_name}.`
-        : `Set ${parent.display_name}'s override from ${child.display_name} to ${overrideRate.toFixed(2)}%.`,
-      metadata: { groupId, projectId, childId, parentId, overrideRate, status },
-    });
-
-    await connection.commit();
-    return res.json({
-      message: status === 'inactive' ? 'Hierarchy override removed.' : 'Hierarchy override saved.',
-      data: { childId, parentId, overrideRate, status },
-    });
-  } catch (error) {
-    await connection.rollback();
-    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
-  } finally {
-    connection.release();
-  }
-};
-
-export const updateAgentCommissionPath = async (req, res) => {
-  const connection = await db.getConnection();
-
-  try {
-    const groupId = Number(req.params.groupId || 0);
-    const projectId = Number(req.params.projectId || 0);
-    const agentId = Number(req.params.agentId || 0);
-    if (!groupId || !projectId || !agentId) {
-      throw createValidationError('Seller group, project, and sales agent are required.');
-    }
-
-    const directRate = validateSellerRate(req.body.directRate, 'Sales commission rate');
-    const directStatus = normalizeStatus(req.body.directStatus || req.body.status);
-    const requestedOverrides = Array.isArray(req.body.overrides) ? req.body.overrides : [];
-    if (directStatus === 'active' && directRate <= 0) {
-      throw createValidationError('An active sales commission rate must be greater than 0%.');
-    }
-
-    await requireCommissionConfigurationSchema(connection);
-    await connection.beginTransaction();
-
-    const group = await getGroupAndProject(connection, groupId, projectId);
-    if (!group) throw createValidationError('This seller group is not accredited to the selected project.');
-
-    let members = await loadGroupProjectMembers(connection, groupId, projectId);
-    const pathDefinition = getAgentPathDefinition(group, members, agentId);
-    if (!pathDefinition) throw createValidationError('The selected seller is not an active sales agent in this group.');
-
-    const requestedByEdge = new Map(requestedOverrides.map((row) => [
-      `${Number(row.childId || row.childSellerId)}:${Number(row.parentId || row.sellerId)}`,
-      row,
-    ]));
-    const expectedEdgeKeys = new Set(pathDefinition.edges.map(({ child, parent }) =>
-      `${Number(child.accredited_seller_id)}:${Number(parent.accredited_seller_id)}`
-    ));
-
-    const unexpectedEdge = [...requestedByEdge.keys()].find((key) => !expectedEdgeKeys.has(key));
-    if (unexpectedEdge) {
-      throw createValidationError('The submitted commission path contains a relationship outside the agent reporting chain.');
-    }
-
-    const normalizedOverrides = pathDefinition.edges.map(({ child, parent }) => {
-      const key = `${Number(child.accredited_seller_id)}:${Number(parent.accredited_seller_id)}`;
-      const submitted = requestedByEdge.get(key);
-      if (!submitted) {
-        throw createValidationError(`Enter ${parent.display_name}'s override from ${child.display_name}.`);
-      }
-      const overrideRate = validateSellerRate(submitted.overrideRate ?? submitted.rate, 'Override rate');
-      const status = normalizeStatus(submitted.status);
-      if (status === 'active' && overrideRate <= 0) {
-        throw createValidationError(`An active override for ${parent.display_name} must be greater than 0%.`);
-      }
-      return {
-        childId: Number(child.accredited_seller_id),
-        parentId: Number(parent.accredited_seller_id),
-        childName: child.display_name,
-        parentName: parent.display_name,
-        overrideRate,
+      [
+        rates.seller_group_pool_rate,
+        rates.bnm_override_rate,
+        rates.broker_override_rate,
+        rates.manager_override_rate,
+        rates.agent_rate,
         status,
-      };
-    });
-
-    await upsertSellerProjectRoleRate(
-      connection,
-      agentId,
-      'agent',
-      projectId,
-      directRate,
-      directStatus
-    );
-
-    for (const override of normalizedOverrides) {
-      await upsertRelationshipOverride(connection, {
-        childId: override.childId,
-        parentId: override.parentId,
-        projectId,
-        overrideRate: override.overrideRate,
-        status: override.status,
-      });
-    }
-
-    members = await loadGroupProjectMembers(connection, groupId, projectId);
-    const overrides = await loadGroupProjectOverrides(connection, groupId, projectId);
-    const validation = buildConfigurationValidation(group, members, overrides);
-    const savedPath = validation.paths.find((path) => Number(path.agentId) === agentId);
-    const overAllocationError = savedPath?.errors?.find((message) => message.includes('exceeds the'));
-    if (overAllocationError) throw createValidationError(overAllocationError);
-
-    await writeAuditLog(connection, req, {
-      action: 'update',
-      module: 'Seller Groups',
-      entityType: 'agent_commission_path',
-      entityId: `${agentId}:${projectId}`,
-      entityLabel: `${pathDefinition.agent.display_name} — ${group.lot_project_name}`,
-      title: 'Updated agent commission path',
-      description: `Updated the relationship-specific commission path for ${pathDefinition.agent.display_name}.`,
-      metadata: {
         groupId,
         projectId,
-        agentId,
-        directRate,
-        directStatus,
-        overrides: normalizedOverrides,
-        allocatedRate: savedPath?.allocatedRate || 0,
-        poolRate: Number(group.seller_group_pool_rate || 0),
-        pathStatus: savedPath?.status || 'incomplete',
-      },
-    });
-
-    await connection.commit();
-    return res.json({
-      message: savedPath?.isComplete
-        ? 'Commission path saved and ready for reservations.'
-        : 'Commission path saved as incomplete. Complete the remaining allocation before using this agent for a reservation.',
-      data: savedPath,
-    });
-  } catch (error) {
-    await connection.rollback();
-    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
-  } finally {
-    connection.release();
-  }
-};
-
-export const updateMemberProjectRates = async (req, res) => {
-  const connection = await db.getConnection();
-  try {
-    const groupId = Number(req.params.groupId || 0);
-    const projectId = Number(req.params.projectId || 0);
-    const memberId = Number(req.params.memberId || 0);
-    if (!groupId || !projectId || !memberId) {
-      throw createValidationError('Seller group, project, and member are required.');
-    }
-
-    await requireCommissionConfigurationSchema(connection);
-    await connection.beginTransaction();
-
-    const group = await getGroupAndProject(connection, groupId, projectId);
-    if (!group) throw createValidationError('This seller group is not accredited to the selected project.');
-
-    let members = await loadGroupProjectMembers(connection, groupId, projectId);
-    const member = members.find((row) => Number(row.accredited_seller_id) === memberId && !row.is_system_dummy);
-    if (!member) throw createValidationError('Seller group member was not found.');
-    if (member.role !== 'agent') {
-      throw createValidationError('Parent overrides are relationship-specific. Edit them from the Commission Paths section.');
-    }
-
-    const rateType = 'direct';
-    const rateLabel = 'Sales commission rate';
-    const rate = validateSellerRate(req.body.rate ?? req.body.directRate, rateLabel);
-    const rateStatus = normalizeStatus(req.body.rateStatus ?? req.body.directStatus);
-
-    if (rateStatus === 'active' && rate <= 0) {
-      throw createValidationError(`An active ${rateLabel.toLowerCase()} must be greater than 0%.`);
-    }
-
-    await upsertSellerProjectRoleRate(
-      connection,
-      memberId,
-      member.role,
-      projectId,
-      rate,
-      rateStatus
+      ]
     );
-
-    members = await loadGroupProjectMembers(connection, groupId, projectId);
-    const overrides = await loadGroupProjectOverrides(connection, groupId, projectId);
-    const validation = buildConfigurationValidation(group, members, overrides);
-    const invalidPath = validation.paths.find((path) =>
-      Number(path.agentId) === memberId
-      && path.errors.some((message) => message.includes('exceeds the'))
-    );
-    if (invalidPath) {
-      throw createValidationError(
-        invalidPath.errors.find((message) => message.includes('exceeds the'))
-      );
-    }
+    await deactivateLegacyIndividualRates(connection, groupId);
 
     await writeAuditLog(connection, req, {
       action: 'update',
       module: 'Seller Groups',
-      entityType: 'seller_project_rate',
-      entityId: `${memberId}:${projectId}`,
-      entityLabel: member.display_name,
-      title: 'Updated agent sales rate',
-      description: `Set ${member.display_name}'s sales rate for ${group.lot_project_name} to ${rate.toFixed(2)}%.`,
-      metadata: { groupId, projectId, memberId, role: member.role, rateType, rate, rateStatus },
+      entityType: 'seller_group_project_rates',
+      entityId: `${groupId}:${projectId}`,
+      entityLabel: `${group.seller_group_name} — ${group.lot_project_name}`,
+      title: 'Updated fixed group commission rates',
+      description: `Updated the fixed role rates for ${group.seller_group_name} in ${group.lot_project_name}.`,
+      metadata: { groupId, projectId, ...rates, status },
     });
 
     await connection.commit();
     return res.json({
-      message: 'Sales rate saved.',
-      data: { memberId, role: member.role, rateType, rate, rateStatus },
+      message: 'Fixed group commission rates updated successfully.',
+      data: rates,
     });
   } catch (error) {
     await connection.rollback();

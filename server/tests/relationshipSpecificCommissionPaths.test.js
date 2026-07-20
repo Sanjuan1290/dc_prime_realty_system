@@ -4,43 +4,52 @@ import { readFile } from 'node:fs/promises';
 
 const readSource = async (path) => readFile(new URL(path, import.meta.url), 'utf8');
 
-test('parent project rates only seed missing child-parent overrides', async () => {
-  const source = await readSource('../controllers/System/sellerCommissionRates.service.js');
+test('fixed Realty rates are stored once per project and legacy individual rates are disabled', async () => {
+  const migration = await readSource('../migrations/20260720_group_fixed_project_commission_rates.sql');
 
-  assert.match(source, /INSERT IGNORE INTO seller_hierarchy_lot_project_overrides/);
-  assert.match(source, /Existing child-to-parent overrides are relationship-specific/);
-  assert.doesNotMatch(
-    source,
-    /UPDATE seller_hierarchy_lot_project_overrides\s+SET override_rate = \?/s
-  );
-  assert.match(source, /ON DUPLICATE KEY UPDATE\s+override_rate_status = 'active'/s);
+  assert.match(migration, /bnm_override_rate/);
+  assert.match(migration, /broker_override_rate/);
+  assert.match(migration, /manager_override_rate/);
+  assert.match(migration, /agent_rate/);
+  assert.match(migration, /chk_group_fixed_role_rates_total/);
+  assert.match(migration, /UPDATE accredited_seller_lot_project_rates[\s\S]*'inactive'/);
+  assert.match(migration, /UPDATE agent_lot_project_direct_rates[\s\S]*'inactive'/);
+  assert.match(migration, /UPDATE seller_hierarchy_lot_project_overrides[\s\S]*'inactive'/);
+  assert.doesNotMatch(migration, /UPDATE lot_project_commissions/);
 });
 
-test('commission path endpoint updates an exact child-parent-project edge', async () => {
+test('seller group controller updates only the fixed Realty + Project rate structure', async () => {
   const [controller, router] = await Promise.all([
     readSource('../controllers/System/sellerGroup.controller.js'),
     readSource('../routers/System/sellerGroup.routers.js'),
   ]);
 
-  assert.match(controller, /const upsertRelationshipOverride/);
-  assert.match(controller, /child_accredited_seller_id,\s+parent_accredited_seller_id,\s+lot_project_id/s);
-  assert.match(controller, /export const updateAgentCommissionPath/);
-  assert.match(controller, /relationship-specific commission path/);
-  assert.match(router, /agents\/:agentId\/path/);
+  assert.match(controller, /validateGroupFixedRateStructure/);
+  assert.match(controller, /seller_group_pool_rate = \?/);
+  assert.match(controller, /bnm_override_rate = \?/);
+  assert.match(controller, /broker_override_rate = \?/);
+  assert.match(controller, /manager_override_rate = \?/);
+  assert.match(controller, /agent_rate = \?/);
+  assert.match(router, /projects\/:projectId\/pool/);
+  assert.doesNotMatch(router, /direct-rate/);
+  assert.doesNotMatch(router, /agents\/:agentId\/path/);
+  assert.doesNotMatch(controller, /upsertHierarchyOverride/);
 });
 
-test('seller group UI edits complete paths instead of one global parent override', async () => {
-  const [page, modal] = await Promise.all([
+test('seller group UI shows one fixed project structure and does not render commission paths', async () => {
+  const [page, projectFields] = await Promise.all([
     readSource('../../client/src/pages/System/SellerGroupDetails.jsx'),
-    readSource('../../client/src/components/System/sellerGroupComponents/CommissionPathModal.jsx'),
+    readSource('../../client/src/components/System/sellerGroupComponents/ProjectAccreditationFields.jsx'),
   ]);
 
-  assert.match(page, /Commission Paths/);
-  assert.match(page, /Edit Path/);
-  assert.match(page, /agents\/\$\{agentId\}\/path/);
-  assert.match(modal, /Edit Commission Path/);
-  assert.match(modal, /This rate only applies to the/);
-  assert.match(modal, /Save Commission Path/);
+  assert.match(page, /Fixed Project Commission Structure/);
+  assert.match(page, /Rates are not repeated per seller/);
+  assert.doesNotMatch(page, /Commission Paths/);
+  assert.doesNotMatch(page, /Edit Path/);
+  assert.match(projectFields, /BNM Override/);
+  assert.match(projectFields, /Broker Override/);
+  assert.match(projectFields, /Manager Override/);
+  assert.match(projectFields, /Agent Sales Rate/);
 });
 
 test('account history uses the same listing alias emitted by the lookup helper', async () => {

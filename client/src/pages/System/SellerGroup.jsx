@@ -12,8 +12,18 @@ import { useFetch as fetchJson, useFetchPatch as patchJson } from '../../utils/u
 
 const ProjectRatesCell = ({ rates = [] }) => {
   if (!rates.length) return <p className="text-xs font-semibold text-slate-500">No accredited projects</p>
-  return <div className="flex flex-wrap gap-1.5">{rates.map((rate) => <span key={rate.lot_project_id} className="rounded-lg bg-blue-50 px-2 py-1 text-[11px] font-black text-blue-700 ring-1 ring-blue-100">{rate.lot_project_location_code || rate.lot_project_name}</span>)}</div>
+  return (
+    <div className="grid gap-2">
+      {rates.map((rate) => (
+        <div key={rate.lot_project_id} className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2">
+          <p className="text-xs font-black text-blue-900">{rate.lot_project_location_code || rate.lot_project_name} · Pool {Number(rate.seller_group_pool_rate || 0).toFixed(2)}%</p>
+          <p className="mt-1 text-[11px] font-semibold text-blue-700">BNM {Number(rate.bnm_override_rate || 0).toFixed(2)}% · Broker {Number(rate.broker_override_rate || 0).toFixed(2)}% · Manager {Number(rate.manager_override_rate || 0).toFixed(2)}% · Agent {Number(rate.agent_rate || 0).toFixed(2)}%</p>
+        </div>
+      ))}
+    </div>
+  )
 }
+
 
 const SellerGroup = () => {
   const location = useLocation()
@@ -65,7 +75,7 @@ const SellerGroup = () => {
       queryClient.invalidateQueries({ queryKey: ['seller-groups'] })
       queryClient.invalidateQueries({ queryKey: ['seller-group-options'] })
     },
-    onError: (error) => setModalNotice({ type: 'error', message: error?.message || 'Failed to update seller group.' }),
+    onError: (error) => setModalNotice({ type: 'error', message: error?.message || 'Failed to update Realty.' }),
   })
 
   const openEdit = (group) => {
@@ -84,28 +94,28 @@ const SellerGroup = () => {
   return (
     <main className="flex flex-col gap-6">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-        <PageHeader title="Seller Groups" description="Manage seller groups, accredited projects, pool rates, and member commission rates." icon={FaUserPlus} />
+        <PageHeader title="Realties" description="Manage Realty groups, accredited projects, and fixed commission rates by role." icon={FaUserPlus} />
         <div className="flex flex-col gap-2 sm:flex-row">
           <NavLink to={usersPath} className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-50">Back to Users</NavLink>
-          <button type="button" onClick={() => setShowNewGroupModal(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700"><FiPlus />New Group</button>
+          <button type="button" onClick={() => setShowNewGroupModal(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700"><FiPlus />New Realty</button>
         </div>
       </div>
 
       {alert ? <StatusAlert type={alert.type} message={alert.message} onClose={alert.type === 'loading' ? undefined : () => setAlert(null)} /> : null}
-      {groupsQuery.isLoading ? <StatusAlert type="loading" message="Loading seller groups..." /> : null}
-      {!groupsQuery.isLoading && groupsQuery.isFetching ? <StatusAlert type="info" message="Refreshing seller groups..." /> : null}
-      {groupsQuery.isError ? <StatusAlert type="error" message={groupsQuery.error?.message || 'Failed to load seller groups.'} /> : null}
+      {groupsQuery.isLoading ? <StatusAlert type="loading" message="Loading Realties..." /> : null}
+      {!groupsQuery.isLoading && groupsQuery.isFetching ? <StatusAlert type="info" message="Refreshing Realties..." /> : null}
+      {groupsQuery.isError ? <StatusAlert type="error" message={groupsQuery.error?.message || 'Failed to load Realties.'} /> : null}
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><p className="text-sm font-semibold text-slate-500">Total Groups</p><h3 className="mt-2 text-3xl font-bold text-slate-950">{pagination.total}</h3><p className="mt-2 text-sm text-slate-500">All seller groups</p></div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><p className="text-sm font-semibold text-slate-500">Active Groups</p><h3 className="mt-2 text-3xl font-bold text-slate-950">{meta.active}</h3><p className="mt-2 text-sm text-slate-500">Available for assignments</p></div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><p className="text-sm font-semibold text-slate-500">Total Realties</p><h3 className="mt-2 text-3xl font-bold text-slate-950">{pagination.total}</h3><p className="mt-2 text-sm text-slate-500">All Realty records</p></div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><p className="text-sm font-semibold text-slate-500">Active Realties</p><h3 className="mt-2 text-3xl font-bold text-slate-950">{meta.active}</h3><p className="mt-2 text-sm text-slate-500">Available for assignments</p></div>
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><p className="text-sm font-semibold text-slate-500">Total Members</p><h3 className="mt-2 text-3xl font-bold text-slate-950">{meta.totalMembers}</h3><p className="mt-2 text-sm text-slate-500">Members across groups</p></div>
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><p className="text-sm font-semibold text-slate-500">Project Accreditations</p><h3 className="mt-2 text-3xl font-bold text-slate-950">{meta.accreditedProjects}</h3><p className="mt-2 text-sm text-slate-500">Active group-project assignments</p></div>
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-4 border-b border-slate-200 p-4 xl:flex-row xl:items-center xl:justify-between">
-          <div><h2 className="text-lg font-bold text-slate-950">Seller Group Records</h2><p className="text-sm text-slate-500">Open a group to review project performance and manage member rates.</p></div>
+          <div><h2 className="text-lg font-bold text-slate-950">Realty Records</h2><p className="text-sm text-slate-500">Open a Realty to review project performance and its fixed role rates.</p></div>
           <div className="grid gap-3 md:grid-cols-[minmax(240px,1fr)_auto_auto]">
             <label className="relative block"><FiSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} placeholder="Search group, head, or description..." className="h-11 w-full rounded-xl border border-slate-200 pl-10 pr-4 text-sm outline-none focus:border-blue-300 focus:ring-4 focus:ring-blue-50" /></label>
             <select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1) }} className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-300 focus:ring-4 focus:ring-blue-50"><option value="all">All Status</option><option value="active">Active</option><option value="inactive">Inactive</option></select>
@@ -127,7 +137,7 @@ const SellerGroup = () => {
                   <td className="px-4 py-4"><div className="flex flex-wrap gap-2"><button type="button" onClick={() => navigate(`${groupBasePath}/${group.seller_group_id}`)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 hover:bg-slate-50"><FiEye />Open</button><button type="button" onClick={() => openEdit(group)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-bold text-blue-700 hover:bg-blue-100"><FiEdit2 />Edit</button><button type="button" onClick={() => { setConfirmGroup(group); setModalNotice(null) }} className={`inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-bold ${group.seller_group_status === 'active' ? 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100' : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}><FiTrash2 />{group.seller_group_status === 'active' ? 'Deactivate' : 'Activate'}</button></div></td>
                 </tr>
               ))}
-              {!groupsQuery.isLoading && !sellerGroups.length ? <tr><td colSpan={6} className="px-4 py-12 text-center text-sm font-semibold text-slate-500">No seller groups found.</td></tr> : null}
+              {!groupsQuery.isLoading && !sellerGroups.length ? <tr><td colSpan={6} className="px-4 py-12 text-center text-sm font-semibold text-slate-500">No Realties found.</td></tr> : null}
             </tbody>
           </table>
         </div>
@@ -144,7 +154,7 @@ const SellerGroup = () => {
 
       <ConfirmActionModal
         open={Boolean(confirmGroup)}
-        title={`${confirmGroup?.seller_group_status === 'active' ? 'Deactivate' : 'Activate'} Seller Group?`}
+        title={`${confirmGroup?.seller_group_status === 'active' ? 'Deactivate' : 'Activate'} Realty?`}
         message={`${confirmGroup?.seller_group_name || 'This group'} will ${confirmGroup?.seller_group_status === 'active' ? 'stop accepting new seller assignments and reservations' : 'be available for new assignments again'}. Existing records will remain available.`}
         confirmLabel={confirmGroup?.seller_group_status === 'active' ? 'Deactivate' : 'Activate'}
         tone={confirmGroup?.seller_group_status === 'active' ? 'danger' : 'primary'}
@@ -158,5 +168,3 @@ const SellerGroup = () => {
 }
 
 export default SellerGroup
-
-

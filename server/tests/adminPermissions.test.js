@@ -85,5 +85,3 @@ test('Super Admin retains every declared permission and can manage every user ro
     assert.equal(canActorChangeUserRole('super_admin', role, role), true, role);
   }
 });
-
-

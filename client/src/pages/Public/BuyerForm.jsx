@@ -229,5 +229,3 @@ const BuyerForm = () => {
 }
 
 export default BuyerForm
-
-

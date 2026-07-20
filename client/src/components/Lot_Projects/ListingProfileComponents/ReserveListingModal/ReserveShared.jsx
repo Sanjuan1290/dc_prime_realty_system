@@ -122,5 +122,3 @@ export const StepPill = ({ step, activeStep, completed }) => {
     </div>
   )
 }
-
-

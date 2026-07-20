@@ -57,5 +57,3 @@ const CashAdvanceModal = ({ advance, employees, onClose, onSaved }) => {
 }
 
 export default CashAdvanceModal
-
-

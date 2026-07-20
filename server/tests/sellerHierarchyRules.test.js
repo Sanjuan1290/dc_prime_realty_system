@@ -76,4 +76,3 @@ test('live reservation chains reject skipped roles and require a valid group hea
     seller(4, 'broker_network_manager', { is_group_head: true }),
   ], { requireGroupHead: true }), true);
 });
-

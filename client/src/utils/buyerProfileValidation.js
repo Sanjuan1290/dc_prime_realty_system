@@ -75,5 +75,3 @@ export const getBuyerProfileValidationError = (form = {}) => {
 
   return null
 }
-
-

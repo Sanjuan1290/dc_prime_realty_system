@@ -1731,28 +1731,17 @@ export const getReserveSellerOptions = async (
 ) => {
   if (!(await tableExists(connection, 'accredited_sellers'))) return [];
 
-  const hasDirectRates = await tableExists(connection, 'agent_lot_project_direct_rates');
-  const hasLegacySellerRates = await tableExists(connection, 'accredited_seller_lot_project_rates');
+  const hasFixedGroupRates = await columnExists(
+    connection,
+    'seller_group_lot_project_rates',
+    'agent_rate'
+  );
+  if (!hasFixedGroupRates) {
+    throw new Error('Run the group fixed commission rate migration before loading reservation agents.');
+  }
+
   const hasDummyColumns = await columnExists(connection, 'accredited_sellers', 'is_system_dummy');
   const hasSystemUserColumns = await columnExists(connection, 'users', 'is_system_account');
-
-  const rateJoin = hasDirectRates
-    ? `INNER JOIN agent_lot_project_direct_rates direct_rate
-         ON direct_rate.accredited_seller_id = acs.accredited_seller_id
-        AND direct_rate.lot_project_id = ?
-        AND direct_rate.direct_rate_status = 'active'`
-    : hasLegacySellerRates
-      ? `INNER JOIN accredited_seller_lot_project_rates direct_rate
-           ON direct_rate.accredited_seller_id = acs.accredited_seller_id
-          AND direct_rate.lot_project_id = ?
-          AND direct_rate.accredited_seller_lot_project_rate_status = 'active'`
-      : '';
-  const rateSelect = hasDirectRates
-    ? 'direct_rate.direct_rate'
-    : hasLegacySellerRates
-      ? 'direct_rate.accredited_seller_project_rate'
-      : '0';
-
   const keyword = String(search || '').trim();
   const searchSql = keyword
     ? `AND (
@@ -1762,7 +1751,7 @@ export const getReserveSellerOptions = async (
          OR TRIM(CONCAT_WS(' ', owner_user.first_name, owner_user.middle_name, owner_user.last_name)) LIKE ?
        )`
     : '';
-  const params = rateJoin ? [lotProjectId] : [];
+  const params = [lotProjectId];
   if (keyword) {
     const like = `%${keyword}%`;
     params.push(like, like, like, like);
@@ -1777,7 +1766,8 @@ export const getReserveSellerOptions = async (
         acs.user_id,
         TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS name,
         u.role,
-        ${rateSelect} AS rate,
+        group_rate.agent_rate AS rate,
+        group_rate.seller_group_pool_rate AS pool_rate,
         sg.seller_group_id,
         sg.seller_group_name,
         parent_acs.accredited_seller_id AS reports_under_accredited_seller_id,
@@ -1793,7 +1783,10 @@ export const getReserveSellerOptions = async (
       INNER JOIN seller_groups sg
         ON sg.seller_group_id = acs.seller_group_id
        AND sg.seller_group_status = 'active'
-      ${rateJoin}
+      INNER JOIN seller_group_lot_project_rates group_rate
+        ON group_rate.seller_group_id = sg.seller_group_id
+       AND group_rate.lot_project_id = ?
+       AND group_rate.seller_group_lot_project_rate_status = 'active'
       LEFT JOIN accredited_sellers parent_acs
         ON parent_acs.user_id = acs.accredited_seller_reports_under_user_id
       LEFT JOIN users parent_user ON parent_user.id = parent_acs.user_id
@@ -1804,50 +1797,49 @@ export const getReserveSellerOptions = async (
         AND u.status = 'active'
         AND u.role = 'agent'
         ${hasDummyColumns ? 'AND COALESCE(acs.is_system_dummy, 0) = 0' : ''}
-        AND ${rateSelect} > 0
+        AND group_rate.agent_rate > 0
+        AND ROUND(
+          group_rate.bnm_override_rate
+          + group_rate.broker_override_rate
+          + group_rate.manager_override_rate
+          + group_rate.agent_rate,
+          2
+        ) = ROUND(group_rate.seller_group_pool_rate, 2)
         ${searchSql}
-      ORDER BY
-        ${hasDummyColumns ? 'acs.is_system_dummy' : '0'} ASC,
-        name ASC
+      ORDER BY name ASC
       LIMIT ?
     `,
     params
   );
 
-  return rows.map((row) => {
-    const isSystemDummy = Number(row.is_system_dummy || row.is_system_account || 0) === 1;
-    const displayName = isSystemDummy && row.owner_name
-      ? `${row.owner_name} — Direct Sales Agent`
-      : row.name || 'Unnamed Agent';
-
-    return {
-      id: Number(row.id),
-      accredited_seller_id: Number(row.accredited_seller_id),
-      user_id: Number(row.user_id),
-      name: displayName,
-      role: 'Agent',
-      roleValue: 'agent',
-      rate: `${Number(row.rate || 0).toFixed(2)}%`,
-      rateValue: Number(row.rate || 0),
-      directRate: Number(row.rate || 0),
-      groupId: Number(row.seller_group_id),
-      groupName: row.seller_group_name || '-',
-      reportsUnderId: row.reports_under_accredited_seller_id
-        ? Number(row.reports_under_accredited_seller_id)
-        : null,
-      reportsUnderName: row.reports_under_name || '-',
-      isSystemDummy,
-      ownerId: row.dummy_owner_accredited_seller_id
-        ? Number(row.dummy_owner_accredited_seller_id)
-        : null,
-      ownerName: row.owner_name || null,
-      ownerRole: row.owner_role || null,
-      allocation: row.reports_under_name
-        ? `Agent under ${row.reports_under_name}`
-        : 'Agent direct to group head',
-    };
-  });
+  return rows.map((row) => ({
+    id: Number(row.id),
+    accredited_seller_id: Number(row.accredited_seller_id),
+    user_id: Number(row.user_id),
+    name: row.name || 'Unnamed Agent',
+    role: 'Agent',
+    roleValue: 'agent',
+    rate: `${Number(row.rate || 0).toFixed(2)}%`,
+    rateValue: Number(row.rate || 0),
+    directRate: Number(row.rate || 0),
+    poolRate: Number(row.pool_rate || 0),
+    rateSource: 'seller_group_project',
+    groupId: Number(row.seller_group_id),
+    groupName: row.seller_group_name || '-',
+    reportsUnderId: row.reports_under_accredited_seller_id
+      ? Number(row.reports_under_accredited_seller_id)
+      : null,
+    reportsUnderName: row.reports_under_name || '-',
+    isSystemDummy: false,
+    ownerId: null,
+    ownerName: null,
+    ownerRole: null,
+    allocation: row.reports_under_name
+      ? `Fixed group rate · Agent under ${row.reports_under_name}`
+      : 'Fixed seller-group project rate',
+  }));
 };
+
 
 const normalizeInterestCalculationType = () => 'amortized';
 

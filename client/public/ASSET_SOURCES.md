@@ -7,5 +7,3 @@ The uploaded source bundle referenced these files by remote URL instead of embed
 - `docImage1.png`
 
 Valid placeholder PNG files are included so the project builds and runs. Replace them with the original brand assets when available.
-
-

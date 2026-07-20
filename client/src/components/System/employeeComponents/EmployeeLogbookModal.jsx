@@ -200,5 +200,3 @@ const EmployeeLogbookModal = ({ employees = [], initialReleaseDate, onClose }) =
 }
 
 export default EmployeeLogbookModal
-
-

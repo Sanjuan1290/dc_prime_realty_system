@@ -8,10 +8,6 @@ import {
   canActorManageUserRole,
 } from '../../config/permissions.js';
 import {
-  syncChildOverrideFromCurrentParent,
-  syncSellerRoleProjectRates,
-} from './sellerCommissionRates.service.js';
-import {
   assignTopLevelSellerAsGroupHead,
   assertGroupCurrentPathsWithinPools,
   assertSellerGroupRoleHierarchy,
@@ -50,13 +46,6 @@ const sellerRoles = new Set([
   'agent',
 ]);
 
-const roleDefaultRates = {
-  broker_network_manager: 1,
-  broker: 2,
-  manager: 2,
-  agent: 3,
-};
-
 const toNullableNumber = (value) => {
   if (value === undefined || value === null || value === '') return null;
   const numberValue = Number(value);
@@ -73,8 +62,6 @@ const getErrorMessage = (error) => {
 const buildFullNameSql = (alias = 'u') => {
   return `TRIM(CONCAT_WS(' ', ${alias}.first_name, ${alias}.middle_name, ${alias}.last_name))`;
 };
-
-const getRoleDefaultRate = (role) => Number(roleDefaultRates[role] ?? 0);
 
 const normalizeStatus = (status) => (status === 'inactive' ? 'inactive' : 'active');
 
@@ -295,69 +282,8 @@ const validateSellerHierarchyAssignment = async (
   return parentUserId;
 };
 
-const getActiveLotProjects = async (connection = db) => {
-  const [projects] = await connection.query(`
-    SELECT
-      lot_project_id,
-      lot_project_name,
-      lot_project_slug,
-      lot_project_location_code
-    FROM lot_projects
-    WHERE lot_project_status = 'active'
-    ORDER BY lot_project_name ASC
-  `);
+const hydrateUserProjectRates = async (users) => users.map((user) => ({ ...user, project_rates: [] }));
 
-  return projects;
-};
-
-const normalizeProjectRates = (projectRates = [], projects = [], defaultRate = 0) => {
-  const rateMap = new Map(
-    Array.isArray(projectRates)
-      ? projectRates
-          .map((item) => [
-            Number(item.lot_project_id),
-            {
-              rate: Number(item.accredited_seller_project_rate ?? item.rate ?? item.seller_rate ?? defaultRate),
-              status: item.accredited_seller_lot_project_rate_status === 'inactive' ? 'inactive' : 'active',
-            },
-          ])
-          .filter(([projectId, entry]) => projectId && !Number.isNaN(entry.rate))
-      : []
-  );
-
-  return projects.map((project) => {
-    const current = rateMap.get(Number(project.lot_project_id));
-    return {
-      lot_project_id: Number(project.lot_project_id),
-      accredited_seller_project_rate: current ? Number(current.rate) : defaultRate,
-      accredited_seller_lot_project_rate_status: current?.status || 'active',
-    };
-  });
-};
-
-const upsertAccreditedProjectRates = async (connection, accreditedSellerId, projectRates) => {
-  if (!projectRates.length) return;
-
-  await connection.query(
-    `
-      INSERT INTO accredited_seller_lot_project_rates (
-        accredited_seller_id,
-        lot_project_id,
-        accredited_seller_project_rate,
-        accredited_seller_lot_project_rate_status
-      ) VALUES ${projectRates.map(() => '(?, ?, ?, ?)').join(', ')}
-      ON DUPLICATE KEY UPDATE
-        accredited_seller_project_rate = VALUES(accredited_seller_project_rate),
-        accredited_seller_lot_project_rate_status = VALUES(accredited_seller_lot_project_rate_status)
-    `,
-    projectRates.flatMap((rate) => [
-      accreditedSellerId,
-      rate.lot_project_id,
-      Number(rate.accredited_seller_project_rate || 0),
-      rate.accredited_seller_lot_project_rate_status === 'inactive' ? 'inactive' : 'active',
-    ])
-  );
-};
 
 const syncManagedSellerLink = async (connection, accreditedSellerId, reportsUnderUserId) => {
   await connection.query(
@@ -426,43 +352,6 @@ const getUserSelectSql = () => `
   LEFT JOIN users parent ON parent.id = a.accredited_seller_reports_under_user_id
 `;
 
-const hydrateUserProjectRates = async (users) => {
-  const accreditedSellerIds = users.map((user) => user.accredited_seller_id).filter(Boolean);
-
-  if (!accreditedSellerIds.length) {
-    return users.map((user) => ({ ...user, project_rates: [] }));
-  }
-
-  const placeholders = accreditedSellerIds.map(() => '?').join(', ');
-  const [rateRows] = await db.query(
-    `
-      SELECT
-        asr.accredited_seller_id,
-        asr.lot_project_id,
-        lp.lot_project_name,
-        lp.lot_project_slug,
-        lp.lot_project_location_code,
-        asr.accredited_seller_project_rate,
-        asr.accredited_seller_lot_project_rate_status
-      FROM accredited_seller_lot_project_rates asr
-      INNER JOIN lot_projects lp ON lp.lot_project_id = asr.lot_project_id
-      WHERE asr.accredited_seller_id IN (${placeholders})
-      ORDER BY lp.lot_project_name ASC
-    `,
-    accreditedSellerIds
-  );
-
-  const rateMap = new Map();
-  rateRows.forEach((rate) => {
-    if (!rateMap.has(rate.accredited_seller_id)) rateMap.set(rate.accredited_seller_id, []);
-    rateMap.get(rate.accredited_seller_id).push(rate);
-  });
-
-  return users.map((user) => ({
-    ...user,
-    project_rates: rateMap.get(user.accredited_seller_id) || [],
-  }));
-};
 
 export const login = async (req, res) => {
   const { email, password, rememberMe } = req.body;
@@ -1261,7 +1150,6 @@ export const createUser = async (req, res) => {
       seller_group_id,
       reports_under_user_id,
       accreditation_date,
-      project_rates = [],
     } = req.body;
 
     if (!first_name?.trim() || !last_name?.trim() || !email?.trim()) {
@@ -1342,15 +1230,9 @@ export const createUser = async (req, res) => {
       );
 
       accreditedSellerId = sellerResult.insertId;
-      const projects = await getActiveLotProjects(connection);
-      const normalizedRates = normalizeProjectRates(project_rates, projects, getRoleDefaultRate(role));
-
-      await upsertAccreditedProjectRates(connection, accreditedSellerId, normalizedRates);
       if (isGroupHeadRole(role) && !normalizedReportsUnderUserId) {
         await assignTopLevelSellerAsGroupHead(connection, Number(seller_group_id), userId);
       }
-      await syncSellerRoleProjectRates(connection, accreditedSellerId, role, normalizedRates);
-      await syncChildOverrideFromCurrentParent(connection, accreditedSellerId);
       await syncManagedSellerLink(connection, accreditedSellerId, normalizedReportsUnderUserId);
       await assertSellerGroupRoleHierarchy(connection, Number(seller_group_id));
       await assertGroupCurrentPathsWithinPools(connection, Number(seller_group_id));
@@ -1413,7 +1295,6 @@ export const editUser = async (req, res) => {
       seller_group_id,
       reports_under_user_id,
       accreditation_date,
-      project_rates = [],
     } = req.body;
 
     if (!first_name?.trim() || !last_name?.trim() || !email?.trim()) {
@@ -1519,15 +1400,9 @@ export const editUser = async (req, res) => {
       );
 
       accreditedSellerId = sellerRows[0]?.accredited_seller_id;
-      const projects = await getActiveLotProjects(connection);
-      const normalizedRates = normalizeProjectRates(project_rates, projects, getRoleDefaultRate(role));
-
-      await upsertAccreditedProjectRates(connection, accreditedSellerId, normalizedRates);
       if (isGroupHeadRole(role) && !normalizedReportsUnderUserId) {
         await assignTopLevelSellerAsGroupHead(connection, Number(seller_group_id), userId);
       }
-      await syncSellerRoleProjectRates(connection, accreditedSellerId, role, normalizedRates);
-      await syncChildOverrideFromCurrentParent(connection, accreditedSellerId);
       await syncManagedSellerLink(connection, accreditedSellerId, normalizedReportsUnderUserId);
       await assertSellerGroupRoleHierarchy(connection, Number(seller_group_id));
       await assertGroupCurrentPathsWithinPools(connection, Number(seller_group_id));
@@ -1656,5 +1531,3 @@ export const resetUserPassword = async (req, res) => {
     return res.status(500).json({ message: getErrorMessage(error) });
   }
 };
-
-

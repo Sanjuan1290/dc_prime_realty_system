@@ -1,5 +1,9 @@
 import { columnExists, tableExists } from '../_shared/lotProject.shared.js';
 import { validateSellerReportingChain } from '../../System/sellerHierarchyRules.js';
+import {
+  getGroupFixedRateForRole,
+  loadGroupFixedCommissionRates,
+} from '../../System/groupFixedCommissionRates.service.js';
 
 /**
  * Commission release stages are shared by reservation creation and manual
@@ -129,133 +133,7 @@ export const loadCurrentSellerChain = async (connection, accreditedSellerId) => 
   return chain;
 };
 
-const loadSellerRateMap = async (connection, lotProjectId, sellerIds = []) => {
-  if (!sellerIds.length || !(await tableExists(connection, 'accredited_seller_lot_project_rates'))) {
-    return new Map();
-  }
-
-  const [rows] = await connection.query(
-    `
-      SELECT accredited_seller_id, accredited_seller_project_rate
-      FROM accredited_seller_lot_project_rates
-      WHERE lot_project_id = ?
-        AND accredited_seller_lot_project_rate_status = 'active'
-        AND accredited_seller_id IN (${sellerIds.map(() => '?').join(',')})
-    `,
-    [lotProjectId, ...sellerIds]
-  );
-
-  return new Map(
-    rows.map((row) => [
-      Number(row.accredited_seller_id),
-      Number(row.accredited_seller_project_rate || 0),
-    ])
-  );
-};
-
-const loadGroupPoolRate = async (
-  connection,
-  lotProjectId,
-  sellerGroupId,
-  fallbackRate = 0
-) => {
-  if (!sellerGroupId || !(await tableExists(connection, 'seller_group_lot_project_rates'))) {
-    return fallbackRate;
-  }
-
-  const [rows] = await connection.query(
-    `
-      SELECT seller_group_pool_rate
-      FROM seller_group_lot_project_rates
-      WHERE seller_group_id = ?
-        AND lot_project_id = ?
-        AND seller_group_lot_project_rate_status = 'active'
-      LIMIT 1
-    `,
-    [sellerGroupId, lotProjectId]
-  );
-
-  return Number(rows[0]?.seller_group_pool_rate || fallbackRate || 0);
-};
-
 const overrideKey = (childId, parentId) => `${Number(childId)}:${Number(parentId)}`;
-
-const loadAgentDirectRate = async (connection, lotProjectId, agentId, legacyRateMap) => {
-  if (await tableExists(connection, 'agent_lot_project_direct_rates')) {
-    const [rows] = await connection.query(
-      `
-        SELECT direct_rate
-        FROM agent_lot_project_direct_rates
-        WHERE accredited_seller_id = ?
-          AND lot_project_id = ?
-          AND direct_rate_status = 'active'
-        LIMIT 1
-      `,
-      [agentId, lotProjectId]
-    );
-
-    return Number(rows[0]?.direct_rate || 0);
-  }
-
-  return Number(legacyRateMap.get(Number(agentId)) || 0);
-};
-
-const loadOverrideRateMap = async (
-  connection,
-  lotProjectId,
-  chain,
-  legacyRateMap,
-  groupPoolRate
-) => {
-  const rateMap = new Map();
-
-  if (await tableExists(connection, 'seller_hierarchy_lot_project_overrides')) {
-    const sellerIds = chain.map((seller) => Number(seller.accredited_seller_id));
-    if (!sellerIds.length) return rateMap;
-
-    const [rows] = await connection.query(
-      `
-        SELECT
-          child_accredited_seller_id,
-          parent_accredited_seller_id,
-          override_rate
-        FROM seller_hierarchy_lot_project_overrides
-        WHERE lot_project_id = ?
-          AND override_rate_status = 'active'
-          AND child_accredited_seller_id IN (${sellerIds.map(() => '?').join(',')})
-          AND parent_accredited_seller_id IN (${sellerIds.map(() => '?').join(',')})
-      `,
-      [lotProjectId, ...sellerIds, ...sellerIds]
-    );
-
-    rows.forEach((row) => {
-      rateMap.set(
-        overrideKey(row.child_accredited_seller_id, row.parent_accredited_seller_id),
-        Number(row.override_rate || 0)
-      );
-    });
-
-    return rateMap;
-  }
-
-  // Legacy fallback: old seller rates were cumulative ceilings. Convert each
-  // parent-child edge to an incremental override without changing old data.
-  for (let index = 1; index < chain.length; index += 1) {
-    const child = chain[index - 1];
-    const parent = chain[index];
-    const childCeiling = Number(legacyRateMap.get(Number(child.accredited_seller_id)) || 0);
-    const parentCeiling = parent.role === 'broker_network_manager'
-      ? Number(groupPoolRate || legacyRateMap.get(Number(parent.accredited_seller_id)) || 0)
-      : Number(legacyRateMap.get(Number(parent.accredited_seller_id)) || 0);
-
-    rateMap.set(
-      overrideKey(child.accredited_seller_id, parent.accredited_seller_id),
-      Math.max(roundCommissionMoney(parentCeiling - childCeiling), 0)
-    );
-  }
-
-  return rateMap;
-};
 
 /**
  * Legacy pure calculation retained for old records and regression tests.
@@ -402,6 +280,47 @@ export const buildDirectOverrideDistribution = ({
 };
 
 /**
+ * Fixed seller-group commission model. Rates are configured once per group and
+ * project, then applied uniformly to every seller with the matching role.
+ */
+export const buildGroupFixedRateDistribution = ({
+  chain = [],
+  fixedRates = {},
+  requireGroupHead = true,
+} = {}) => {
+  validateSellerReportingChain(chain, { requireGroupHead });
+
+  const rows = chain.map((seller, index) => {
+    const rate = roundCommissionMoney(getGroupFixedRateForRole(seller.role, fixedRates));
+    if (rate <= 0) {
+      throw new Error(
+        `${seller.full_name || seller.role || 'Seller'} does not have a valid fixed group rate for this project.`
+      );
+    }
+
+    return {
+      seller,
+      childSeller: index > 0 ? chain[index - 1] : null,
+      rate,
+      rateType: seller.role === 'agent' ? 'direct' : 'override',
+      sellerType: seller.role === 'agent' ? 'selling_agent' : 'hierarchy_seller',
+      saleType: 'distributed',
+    };
+  });
+
+  const poolRate = roundCommissionMoney(fixedRates.poolRate || fixedRates.seller_group_pool_rate || 0);
+  const allocatedRate = roundCommissionMoney(rows.reduce((sum, row) => sum + row.rate, 0));
+  if (poolRate <= 0) throw new Error('The seller group does not have an active project commission pool.');
+  if (Math.abs(allocatedRate - poolRate) > 0.0001) {
+    throw new Error(
+      `Fixed group rates total ${allocatedRate.toFixed(2)}%, but the project pool is ${poolRate.toFixed(2)}%. Edit the seller group rates before reserving.`
+    );
+  }
+
+  return rows;
+};
+
+/**
  * Loads the same hierarchy and rates used by reservation saving. The client
  * preview therefore cannot drift from the commission rows created later.
  */
@@ -432,54 +351,28 @@ export const getReservationCommissionPreview = async (
     throw new Error('Only active sales agents can be assigned to a reservation.');
   }
 
-  const sellerIds = chain.map((seller) => Number(seller.accredited_seller_id));
-  const legacyRateMap = await loadSellerRateMap(connection, projectId, sellerIds);
-  const directRate = await loadAgentDirectRate(
+  const fixedRates = await loadGroupFixedCommissionRates(
     connection,
-    projectId,
-    assignedSeller.accredited_seller_id,
-    legacyRateMap
-  );
-  const groupPoolRate = await loadGroupPoolRate(
-    connection,
-    projectId,
     assignedSeller.seller_group_id,
-    directRate
+    projectId
   );
-  const overrideRateMap = await loadOverrideRateMap(
-    connection,
-    projectId,
-    chain,
-    legacyRateMap,
-    groupPoolRate
-  );
+  if (!fixedRates) {
+    throw new Error('The assigned seller group is not accredited to this project or has no fixed commission rates.');
+  }
 
-  const hierarchyRows = buildDirectOverrideDistribution({
+  const hierarchyRows = buildGroupFixedRateDistribution({
     chain,
-    directRate,
-    overrideRateMap,
-    groupPoolRate,
-    includeZeroRates: true,
+    fixedRates,
     requireGroupHead: true,
   });
 
   const allocatedRate = roundCommissionMoney(
     hierarchyRows.reduce((sum, row) => sum + Number(row.rate || 0), 0)
   );
-  const normalizedPoolRate = Number(groupPoolRate || 0);
+  const normalizedPoolRate = Number(fixedRates.poolRate || 0);
   const unallocatedRate = roundCommissionMoney(Math.max(normalizedPoolRate - allocatedRate, 0));
   const allocationDifference = roundCommissionMoney(Math.abs(normalizedPoolRate - allocatedRate));
-  const allocationWarnings = hierarchyRows
-    .filter((row) => row.rateType === 'override' && Number(row.rate || 0) <= 0)
-    .map((row) => `${row.seller.full_name || 'Parent seller'} has no active override for this reporting relationship.`);
-
-  if (normalizedPoolRate > 0 && allocationDifference > 0.0001) {
-    allocationWarnings.push(
-      allocatedRate < normalizedPoolRate
-        ? `${unallocatedRate.toFixed(2)}% of the group pool is still unallocated.`
-        : `The hierarchy exceeds the group pool by ${roundCommissionMoney(allocatedRate - normalizedPoolRate).toFixed(2)}%.`
-    );
-  }
+  const allocationWarnings = [];
 
   return {
     commissionBase: baseAmount,
@@ -589,8 +482,8 @@ const insertCommissionReleaseRows = async (
 };
 
 /**
- * Replaces every commission row for one unit using the current direct-agent
- * rate and relationship overrides. Historical released rows remain protected
+ * Replaces every commission row for one unit using the current fixed Realty +
+ * Project role rates. Historical released rows remain protected
  * by the caller's recalculation lock.
  */
 export const replaceReservationCommissions = async (
@@ -737,5 +630,3 @@ export const hasReleasedCommissionActivity = ({
   Number(releasedCommissionCount || 0) > 0 ||
   Number(releasedStageCount || 0) > 0 ||
   Number(receiptCount || 0) > 0;
-
-

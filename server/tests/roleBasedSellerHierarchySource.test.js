@@ -26,7 +26,7 @@ test('seller group details can add a user directly into the current group', asyn
   assert.match(source, /lockSellerGroup/);
 });
 
-test('create and edit user screens filter reporting parents to the exact required role', async () => {
+test('create and edit user screens filter reporting parents and inherit Realty rates', async () => {
   const [createSource, editSource] = await Promise.all([
     readSource('../../client/src/components/System/userComponents/CreateUserModal.jsx'),
     readSource('../../client/src/components/System/userComponents/EditUserModal.jsx'),
@@ -37,7 +37,10 @@ test('create and edit user screens filter reporting parents to the exact require
     assert.match(source, /manager:\s*"broker"/);
     assert.match(source, /agent:\s*"manager"/);
     assert.match(source, /seller\.role === getRequiredParentRole\(form\.role\)/);
-    assert.match(source, /role === "agent" \? "Sales Commission Rate" : "Override Commission Rate"/);
+    assert.match(source, /Inherited Commission Rates/);
+    assert.doesNotMatch(source, /Sales Commission Rate/);
+    assert.doesNotMatch(source, /Override Commission Rate/);
+    assert.doesNotMatch(source, /project_rates:/);
   }
 });
 
@@ -52,13 +55,12 @@ test('group-head screens only offer BNM or Broker accounts', async () => {
   }
 });
 
-test('member rate editor exposes one role-specific rate field', async () => {
-  const source = await readSource('../../client/src/components/System/sellerGroupComponents/MemberRatesModal.jsx');
+test('individual seller rate editing is absent from the Realty details page', async () => {
+  const source = await readSource('../../client/src/pages/System/SellerGroupDetails.jsx');
 
-  assert.match(source, /isAgent \? 'Sales Commission Rate' : 'Override Commission Rate'/);
-  assert.match(source, /onSubmit\?\.\(\{ rate: numericRate, rateStatus \}\)/);
-  assert.doesNotMatch(source, /Parent Override Rate/);
-  assert.doesNotMatch(source, /Direct Commission Rate/);
+  assert.doesNotMatch(source, /MemberRatesModal/);
+  assert.doesNotMatch(source, /Edit Rate/);
+  assert.match(source, /Rates are not repeated per seller/);
 });
 
 test('seller group routes no longer expose system direct-sales-agent creation', async () => {
@@ -69,14 +71,15 @@ test('seller group routes no longer expose system direct-sales-agent creation', 
   assert.doesNotMatch(source, /toggleDirectSalesAgentStatus/);
 });
 
-test('role-rate migration mirrors agent sales rates and parent override rates', async () => {
-  const source = await readSource('../migrations/20260719_role_based_seller_rates.sql');
+test('fixed-rate migration stores all role rates on the Realty project row', async () => {
+  const source = await readSource('../migrations/20260720_group_fixed_project_commission_rates.sql');
 
-  assert.match(source, /user\.role = 'agent'/);
-  assert.match(source, /user\.role IN \('manager', 'broker', 'broker_network_manager'\)/);
-  assert.match(source, /INSERT INTO agent_lot_project_direct_rates/);
-  assert.match(source, /INSERT INTO seller_hierarchy_lot_project_overrides/);
-  assert.match(source, /BNM -> Broker -> Manager -> Agent/);
+  assert.match(source, /bnm_override_rate/);
+  assert.match(source, /broker_override_rate/);
+  assert.match(source, /manager_override_rate/);
+  assert.match(source, /agent_rate/);
+  assert.match(source, /single source of truth/);
+  assert.match(source, /chk_group_fixed_role_rates_total/);
 });
 
 test('top-level BNM or Broker accounts become the group head and reservation previews require a complete chain', async () => {
@@ -95,4 +98,3 @@ test('top-level BNM or Broker accounts become the group head and reservation pre
   assert.match(commissionSource, /validateSellerReportingChain/);
   assert.match(createUserSource, /canReplaceBrokerHead/);
 });
-

@@ -29,4 +29,3 @@ test('project account completion counts only accounts with every document submit
   assert.match(page, /project\.accountsWithCompletedDocuments/);
   assert.doesNotMatch(page, /project\.accountsWithSubmittedDocuments/);
 });
-

@@ -92,66 +92,48 @@ const hydrateSellerDocuments = async (sellers) => {
 
 
 const hydrateSellerRates = async (sellers) => {
-  const sellerIds = sellers.map((seller) => seller.accredited_seller_id).filter(Boolean);
-  if (!sellerIds.length) return sellers.map((seller) => ({ ...seller, project_rates: [], group_project_rates: [] }));
+  const groupIds = [...new Set(sellers.map((seller) => Number(seller.seller_group_id || 0)).filter(Boolean))];
+  if (!groupIds.length) {
+    return sellers.map((seller) => ({ ...seller, project_rates: [], group_project_rates: [] }));
+  }
 
-  const placeholders = sellerIds.map(() => '?').join(', ');
-
-  const [sellerRateRows] = await db.query(
+  const [groupRateRows] = await db.query(
     `
       SELECT
-        asr.accredited_seller_id,
-        asr.lot_project_id,
-        lp.lot_project_name,
-        lp.lot_project_slug,
-        lp.lot_project_location_code,
-        asr.accredited_seller_project_rate,
-        asr.accredited_seller_lot_project_rate_status
-      FROM accredited_seller_lot_project_rates asr
-      INNER JOIN lot_projects lp ON lp.lot_project_id = asr.lot_project_id
-      WHERE asr.accredited_seller_id IN (${placeholders})
-      ORDER BY lp.lot_project_name ASC
+        rate.seller_group_id,
+        rate.lot_project_id,
+        project.lot_project_name,
+        project.lot_project_slug,
+        project.lot_project_location_code,
+        rate.seller_group_pool_rate,
+        rate.bnm_override_rate,
+        rate.broker_override_rate,
+        rate.manager_override_rate,
+        rate.agent_rate,
+        rate.seller_group_lot_project_rate_status
+      FROM seller_group_lot_project_rates rate
+      INNER JOIN lot_projects project
+        ON project.lot_project_id = rate.lot_project_id
+      WHERE rate.seller_group_id IN (${groupIds.map(() => '?').join(', ')})
+      ORDER BY project.lot_project_name ASC
     `,
-    sellerIds
+    groupIds
   );
-
-  const groupIds = sellers.map((seller) => seller.seller_group_id).filter(Boolean);
-  const groupRateRows = groupIds.length
-    ? (await db.query(
-        `
-          SELECT
-            sgr.seller_group_id,
-            sgr.lot_project_id,
-            lp.lot_project_name,
-            lp.lot_project_slug,
-            lp.lot_project_location_code,
-            sgr.seller_group_pool_rate,
-            sgr.seller_group_lot_project_rate_status
-          FROM seller_group_lot_project_rates sgr
-          INNER JOIN lot_projects lp ON lp.lot_project_id = sgr.lot_project_id
-          WHERE sgr.seller_group_id IN (${groupIds.map(() => '?').join(', ')})
-          ORDER BY lp.lot_project_name ASC
-        `,
-        groupIds
-      ))[0]
-    : [];
-
-  const sellerRateMap = new Map();
-  sellerRateRows.forEach((rate) => {
-    if (!sellerRateMap.has(rate.accredited_seller_id)) sellerRateMap.set(rate.accredited_seller_id, []);
-    sellerRateMap.get(rate.accredited_seller_id).push(rate);
-  });
 
   const groupRateMap = new Map();
   groupRateRows.forEach((rate) => {
-    if (!groupRateMap.has(rate.seller_group_id)) groupRateMap.set(rate.seller_group_id, []);
-    groupRateMap.get(rate.seller_group_id).push(rate);
+    if (!groupRateMap.has(Number(rate.seller_group_id))) {
+      groupRateMap.set(Number(rate.seller_group_id), []);
+    }
+    groupRateMap.get(Number(rate.seller_group_id)).push(rate);
   });
 
   return sellers.map((seller) => ({
     ...seller,
-    project_rates: sellerRateMap.get(seller.accredited_seller_id) || [],
-    group_project_rates: groupRateMap.get(seller.seller_group_id) || [],
+    // Individual rates are intentionally empty. Every seller inherits the fixed
+    // commission rate for their role from the Realty + Project configuration.
+    project_rates: [],
+    group_project_rates: groupRateMap.get(Number(seller.seller_group_id)) || [],
   }));
 };
 
@@ -1318,5 +1300,3 @@ export const createAccreditedSellerProofOfIncomeReceipt = async (req, res) => {
     connection.release();
   }
 };
-
-

@@ -304,5 +304,3 @@ export const recordEmployeeCashAdvanceDeduction = async (req, res) => {
     connection.release();
   }
 };
-
-

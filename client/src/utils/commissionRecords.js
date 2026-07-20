@@ -95,5 +95,3 @@ export const groupCommissionRecords = (records = []) => {
     }
   })
 }
-
-

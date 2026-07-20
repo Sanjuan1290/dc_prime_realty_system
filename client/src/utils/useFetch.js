@@ -50,5 +50,3 @@ export const useFetchDelete = async (url) => {
     method: 'DELETE',
   });
 };
-
-

@@ -24,81 +24,11 @@ const roleLabels = {
   agent: "Agent",
 };
 
-const getRoleDefaultRate = (role) => {
-  if (role === "broker_network_manager") return 1;
-  if (role === "broker") return 2;
-  if (role === "manager") return 2;
-  if (role === "agent") return 3;
-  return 0;
-};
-
-const getProjectRateLabel = (role) =>
-  role === "agent" ? "Sales Commission Rate" : "Override Commission Rate";
-
 const getRequiredParentRole = (role) => ({
   broker: "broker_network_manager",
   manager: "broker",
   agent: "manager",
 }[role] || "");
-
-const normalizeProjectRates = (
-  projects = [],
-  existingRates = [],
-  defaultRate = 0,
-  valueKey = "accredited_seller_project_rate"
-) => {
-  const rateMap = new Map(
-    (existingRates || []).map((rate) => [Number(rate.lot_project_id), rate])
-  );
-
-  return projects.map((project) => {
-    const current = rateMap.get(Number(project.lot_project_id || project.id));
-
-    return {
-      lot_project_id: Number(project.lot_project_id || project.id),
-      lot_project_name: project.lot_project_name || project.label,
-      lot_project_location_code: project.lot_project_location_code,
-      [valueKey]: String(current?.[valueKey] ?? current?.rate ?? defaultRate),
-      accredited_seller_lot_project_rate_status:
-        current?.accredited_seller_lot_project_rate_status || current?.rate_status || current?.status || "active",
-    };
-  });
-};
-
-const getInitialForm = (user = {}) => ({
-  first_name: user.first_name || "",
-  middle_name: user.middle_name || "",
-  last_name: user.last_name || "",
-  email: user.email || "",
-  contact_no: user.contact_no || "",
-  tin_no: user.tin_no || "",
-  prc_no: user.prc_no || "",
-  address: user.address || "",
-  role: user.role || "agent",
-  status: user.status || "active",
-  seller_group_id: user.seller_group_id ? String(user.seller_group_id) : "",
-  reports_under_user_id: user.reports_under_user_id
-    ? String(user.reports_under_user_id)
-    : "",
-  accreditation_date:
-    user.accreditation_date || new Date().toISOString().slice(0, 10),
-});
-
-const getInitialProjectRateValues = (user = {}) =>
-  Object.fromEntries(
-    (user.project_rates || []).map((rate) => [
-      Number(rate.lot_project_id),
-      String(rate.accredited_seller_project_rate ?? rate.rate ?? ""),
-    ])
-  );
-
-const getInitialProjectRateStatuses = (user = {}) =>
-  Object.fromEntries(
-    (user.project_rates || []).map((rate) => [
-      Number(rate.lot_project_id),
-      rate.accredited_seller_lot_project_rate_status || rate.rate_status || "active",
-    ])
-  );
 
 const SearchableSelect = ({
   label,
@@ -252,13 +182,6 @@ const EditUserModal = ({ setShowEditUser, selectedUser, onSaved, allowedRoles = 
   const [activeStep, setActiveStep] = useState(1);
   const [warning, setWarning] = useState("");
   const [form, setForm] = useState(() => getInitialForm(selectedUser));
-  const [projectRateValues, setProjectRateValues] = useState(() =>
-    getInitialProjectRateValues(selectedUser)
-  );
-  const [projectRateStatuses] = useState(() =>
-    getInitialProjectRateStatuses(selectedUser)
-  );
-
 
   const {
     data: groupData,
@@ -280,19 +203,10 @@ const EditUserModal = ({ setShowEditUser, selectedUser, onSaved, allowedRoles = 
     queryFn: () => fetchApi("/accredited/parents"),
   });
 
-  const {
-    data: projectData,
-    isLoading: isProjectsLoading,
-    isError: isProjectsError,
-    error: projectsError,
-  } = useQuery({
-    queryKey: ["lot-project-options"],
-    queryFn: () => fetchApi("/projects/lot-projects/options"),
-  });
+
 
   const sellerGroups = useMemo(() => groupData?.data || [], [groupData?.data]);
   const parentSellers = useMemo(() => parentData?.data || [], [parentData?.data]);
-  const lotProjects = useMemo(() => projectData?.data || [], [projectData?.data]);
   const isSellerRole = sellerRoles.includes(form.role);
   const totalSteps = isSellerRole ? 2 : 1;
   const selectedGroup = useMemo(
@@ -300,21 +214,6 @@ const EditUserModal = ({ setShowEditUser, selectedUser, onSaved, allowedRoles = 
     [sellerGroups, form.seller_group_id]
   );
 
-  const projectRates = useMemo(() => {
-    if (!isSellerRole) return [];
-
-    const existingRates = Object.entries(projectRateValues).map(([projectId, rate]) => ({
-      lot_project_id: Number(projectId),
-      accredited_seller_project_rate: rate,
-      accredited_seller_lot_project_rate_status: projectRateStatuses[Number(projectId)] || "active",
-    }));
-
-    return normalizeProjectRates(
-      lotProjects,
-      existingRates,
-      getRoleDefaultRate(form.role)
-    );
-  }, [form.role, isSellerRole, lotProjects, projectRateStatuses, projectRateValues]);
 
   const allowedParents = useMemo(() => {
     if (!isSellerRole || form.role === "broker_network_manager") return [];
@@ -367,10 +266,7 @@ const EditUserModal = ({ setShowEditUser, selectedUser, onSaved, allowedRoles = 
 
   const updateMutation = useMutation({
     mutationFn: () =>
-      putApi(`/user/editUser/${selectedUser.id}`, {
-        ...form,
-        project_rates: isSellerRole ? projectRates : [],
-      }),
+      putApi(`/user/editUser/${selectedUser.id}`, form),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["users"] });
       queryClient.invalidateQueries({ queryKey: ["accredited"] });
@@ -387,12 +283,6 @@ const EditUserModal = ({ setShowEditUser, selectedUser, onSaved, allowedRoles = 
     setForm((current) => ({ ...current, [field]: value }));
   };
 
-  const updateProjectRate = (projectId, value) => {
-    setProjectRateValues((current) => ({
-      ...current,
-      [Number(projectId)]: value,
-    }));
-  };
 
   const validateAccountStep = () => {
     if (!form.first_name.trim() || !form.last_name.trim() || !form.email.trim()) {
@@ -431,15 +321,7 @@ const EditUserModal = ({ setShowEditUser, selectedUser, onSaved, allowedRoles = 
       return false;
     }
 
-    const invalidRate = projectRates.find((rate) => {
-      const value = Number(rate.accredited_seller_project_rate);
-      return !Number.isFinite(value) || value < 0 || value > 15;
-    });
 
-    if (invalidRate) {
-      setWarning(`${invalidRate.lot_project_name} rate must be between 0% and 15%.`);
-      return false;
-    }
 
     return true;
   };
@@ -479,7 +361,7 @@ const EditUserModal = ({ setShowEditUser, selectedUser, onSaved, allowedRoles = 
             <p className="text-sm text-slate-500">
               {activeStep === 1
                 ? "Update account and contact information."
-                : "Update the seller group, reporting line, and project rates."}
+                : "Update the seller group and reporting line. Commission rates are inherited from the Realty."}
             </p>
           </div>
 
@@ -539,7 +421,7 @@ const EditUserModal = ({ setShowEditUser, selectedUser, onSaved, allowedRoles = 
                 </span>
                 <span>
                   <span className="block text-sm font-black text-slate-950">2. Seller Hierarchy</span>
-                  <span className="block text-xs font-semibold text-slate-500">Group, reporting line, and rates</span>
+                  <span className="block text-xs font-semibold text-slate-500">Group and reporting line</span>
                 </span>
               </button>
             ) : null}
@@ -549,10 +431,10 @@ const EditUserModal = ({ setShowEditUser, selectedUser, onSaved, allowedRoles = 
         <div className="overflow-y-auto px-6 py-5">
           <div className="grid gap-5">
             {updateMutation.isPending ? (
-              <StatusAlert type="loading" message="Saving user changes and seller rates..." />
+              <StatusAlert type="loading" message="Saving user changes..." />
             ) : null}
-            {isGroupsLoading || isParentsLoading || isProjectsLoading ? (
-              <StatusAlert type="loading" message="Loading seller groups, reporting options, and project rates..." />
+            {isGroupsLoading || isParentsLoading ? (
+              <StatusAlert type="loading" message="Loading seller groups and reporting options..." />
             ) : null}
             {isGroupsError ? (
               <StatusAlert type="error" message={groupsError?.message || "Failed to load seller groups."} />
@@ -560,10 +442,7 @@ const EditUserModal = ({ setShowEditUser, selectedUser, onSaved, allowedRoles = 
             {isParentsError ? (
               <StatusAlert type="error" message={parentsError?.message || "Failed to load parent sellers."} />
             ) : null}
-            {isProjectsError ? (
-              <StatusAlert type="error" message={projectsError?.message || "Failed to load lot projects."} />
-            ) : null}
-            {warning ? <StatusAlert type="warning" message={warning} /> : null}
+{warning ? <StatusAlert type="warning" message={warning} /> : null}
 
             {activeStep === 1 ? (
               <>
@@ -708,27 +587,11 @@ const EditUserModal = ({ setShowEditUser, selectedUser, onSaved, allowedRoles = 
                   </label>
                 </div>
 
-                <div className="mt-5 border-t border-blue-100 pt-5">
-                  <div className="mb-3">
-                    <h5 className="text-sm font-black text-slate-900">Project Commission Rates</h5>
-                    <p className="text-xs font-semibold text-slate-500">
-                      {form.role === "agent"
-                        ? "Set the sales commission paid directly to this agent for each project."
-                        : "Set the override commission paid to this seller when they appear in the hierarchy."}
-                    </p>
-                  </div>
-
-                  <div className="grid gap-4 md:grid-cols-3">
-                    {projectRates.map((rate) => (
-                      <label key={rate.lot_project_id} className="flex flex-col gap-2">
-                        <p className="text-sm font-bold text-slate-700">{rate.lot_project_name} {getProjectRateLabel(form.role)}</p>
-                        <div className="relative">
-                          <input type="number" min="0" max="15" step="0.01" value={rate.accredited_seller_project_rate} onChange={(event) => updateProjectRate(rate.lot_project_id, event.target.value)} placeholder="Example: 3" className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 pr-9 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" />
-                          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500">%</span>
-                        </div>
-                      </label>
-                    ))}
-                  </div>
+                <div className="mt-5 rounded-xl border border-blue-200 bg-white px-4 py-3">
+                  <h5 className="text-sm font-black text-slate-900">Inherited Commission Rates</h5>
+                  <p className="mt-1 text-xs font-semibold text-slate-500">
+                    This seller automatically uses the fixed BNM, Broker, Manager, or Agent rate configured for the selected Realty and project. Individual seller rates cannot be edited.
+                  </p>
                 </div>
               </div>
             ) : null}
@@ -768,5 +631,3 @@ const EditUserModal = ({ setShowEditUser, selectedUser, onSaved, allowedRoles = 
 };
 
 export default EditUserModal;
-
-

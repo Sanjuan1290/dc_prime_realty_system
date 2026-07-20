@@ -31,5 +31,3 @@ test('preset ranges resolve to complete calendar months', () => {
   const nextDay = new Date(end.getFullYear(), end.getMonth(), end.getDate() + 1);
   assert.equal(nextDay.getDate(), 1);
 });
-
-
