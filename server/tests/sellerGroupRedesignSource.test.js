@@ -9,10 +9,12 @@ test('seller group details shows recipient rates, pool totals, and member pagina
 
   assert.match(source, /Sales and Commission Performance/);
   assert.match(source, /\['Seller', 'Role', 'Reports Under', 'Rates', 'Status', 'Actions'\]/);
-  assert.match(source, />Edit Rate</);
+  assert.match(source, /Commission Paths/);
+  assert.match(source, />Edit Path</);
+  assert.match(source, />Edit Sales Rate</);
   assert.match(source, /memberRatesById/);
   assert.match(source, /memberTotalPages/);
-  assert.match(source, /commission path\(s\) total/);
+  assert.match(source, /All \${allocationPaths\.length} path\(s\) ready/);
   assert.doesNotMatch(source, /Direct sales: Not enabled/);
   assert.doesNotMatch(source, /Parent gets/);
   assert.doesNotMatch(source, /Sales and Commission Trend/);
@@ -45,11 +47,10 @@ test('reservation hierarchy requires allocated rates to equal the group pool', a
   assert.match(source, /group pool is still unallocated/);
 });
 
-test('seller group router exposes analytics and unified member-rate APIs', async () => {
+test('seller group router exposes analytics, member-rate, and relationship-specific path APIs', async () => {
   const source = await readSource('../routers/System/sellerGroup.routers.js');
 
   assert.match(source, /\/:groupId\/projects\/:projectId\/analytics/);
   assert.match(source, /\/:groupId\/projects\/:projectId\/members\/:memberId\/rates/);
+  assert.match(source, /\/:groupId\/projects\/:projectId\/agents\/:agentId\/path/);
 });
-
-

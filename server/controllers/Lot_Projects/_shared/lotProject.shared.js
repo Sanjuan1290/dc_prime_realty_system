@@ -885,7 +885,7 @@ export const getListingDocuments = async (connection, lotProjectId, listingId, c
       fileUrl: imageUrls[0] || '',
       images: imageUrls,
       imageEntries,
-      imageCount: imageUrls.length,
+      imageCount: imageEntries.length,
     };
   });
 };
@@ -3536,4 +3536,3 @@ export const addIfColumnExists = async (connection, tableName, columns, values, 
     values.push(value);
   }
 };
-

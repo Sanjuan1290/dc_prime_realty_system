@@ -17,6 +17,7 @@ import {
 import { useNavigate, useParams } from 'react-router-dom'
 
 import StatusAlert from '../../components/Shared/StatusAlert'
+import TabErrorBoundary from '../../components/Shared/TabErrorBoundary'
 import UnitStatus from '../../components/Lot_Projects/ListingProfileComponents/UnitStatus/UnitStatus'
 import ClientProfile from '../../components/Lot_Projects/ListingProfileComponents/ClientProfile/ClientProfile'
 import PaymentsSOA from '../../components/Lot_Projects/ListingProfileComponents/PaymentsSOA/Payments_SOA'
@@ -661,6 +662,7 @@ const ListingProfile = () => {
         </div>
       </section>
 
+      <TabErrorBoundary resetKey={`${activeTab}-${projectSlug}-${listingId}`}>
       {!profileQuery.isLoading && !profileQuery.isError && activeTab === 'unit' ? (
         <UnitStatus
           listing={listing}
@@ -722,6 +724,7 @@ const ListingProfile = () => {
       {!profileQuery.isLoading && !profileQuery.isError && activeTab === 'printouts' ? (
         <Printouts projectSlug={projectSlug} listing={listing} client={client} soaRows={soaRows} documents={documents} />
       ) : null}
+      </TabErrorBoundary>
 
       {showHoldModal ? (
         <HoldListingModal
@@ -780,5 +783,3 @@ const ListingProfile = () => {
 }
 
 export default ListingProfile
-
-

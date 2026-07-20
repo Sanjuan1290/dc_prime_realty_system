@@ -14,6 +14,7 @@ import SystemLayout from './layout/SystemLayout'
 import AdminLayout from './layout/adminLayout'
 import LotLayout from './layout/LotLayout'
 import ProtectedPermissionRoute from './components/Auth/ProtectedPermissionRoute'
+import RouteErrorPage from './components/Shared/RouteErrorPage'
 import { PERMISSIONS } from './config/permissions'
 
 const Dashboard = lazy(() => import('./pages/System/Dashboard'))
@@ -62,7 +63,7 @@ const App = () => {
         <Route path="/change-password" element={<ChangePassword />} />
         <Route path="/buyer-form/:token" element={<BuyerForm />} />
 
-        <Route path="/super_admin" element={<SystemLayout />}>
+        <Route path="/super_admin" element={<SystemLayout />} errorElement={<RouteErrorPage />}>
           <Route index element={<Dashboard />} />
 
           <Route path="projects" element={<Projects />} />
@@ -90,7 +91,7 @@ const App = () => {
           <Route path="settings" element={<Settings />} />
         </Route>
 
-        <Route path="/admin" element={<AdminLayout />}>
+        <Route path="/admin" element={<AdminLayout />} errorElement={<RouteErrorPage />}>
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<Dashboard />} />
 
@@ -122,7 +123,7 @@ const App = () => {
           <Route path="settings" element={<Settings />} />
         </Route>
 
-        <Route path="/lot-projects/:projectSlug" element={<LotLayout />}>
+        <Route path="/lot-projects/:projectSlug" element={<LotLayout />} errorElement={<RouteErrorPage />}>
           <Route
             index
             element={protect(
@@ -223,5 +224,3 @@ const App = () => {
 }
 
 export default App
-
-

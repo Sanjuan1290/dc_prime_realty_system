@@ -6,6 +6,7 @@ import {
   FiCalendar,
   FiDollarSign,
   FiEdit2,
+  FiGitBranch,
   FiRefreshCw,
   FiSearch,
   FiShoppingBag,
@@ -16,6 +17,7 @@ import {
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
 import MemberRatesModal from '../../components/System/sellerGroupComponents/MemberRatesModal'
+import CommissionPathModal from '../../components/System/sellerGroupComponents/CommissionPathModal'
 import EditGroupModal from '../../components/System/sellerGroupComponents/EditGroupModal'
 import CreateUserModal from '../../components/System/userComponents/CreateUserModal'
 import { useFetch as fetchJson, useFetchPatch as patchJson } from '../../utils/useFetch'
@@ -98,6 +100,7 @@ const SellerGroupDetails = () => {
   const [memberPage, setMemberPage] = useState(1)
   const [memberLimit, setMemberLimit] = useState(10)
   const [rateEditor, setRateEditor] = useState(null)
+  const [pathEditor, setPathEditor] = useState(null)
   const [showCreateUser, setShowCreateUser] = useState(false)
   const [showEditGroupModal, setShowEditGroupModal] = useState(false)
   const [modalNotice, setModalNotice] = useState(null)
@@ -177,15 +180,16 @@ const SellerGroupDetails = () => {
     }
 
     realMembers.forEach((member) => {
-      if (member.role === 'agent') {
-        if (member.direct_rate_status === 'active') addRate(member.accredited_seller_id, member.direct_rate)
-        return
+      if (member.role === 'agent' && member.direct_rate_status === 'active') {
+        addRate(member.accredited_seller_id, member.direct_rate)
       }
-      if (member.project_rate_status === 'active') addRate(member.accredited_seller_id, member.project_rate)
     })
+    ;(configuration?.overrides || [])
+      .filter((row) => row.override_rate_status === 'active')
+      .forEach((row) => addRate(row.parent_accredited_seller_id, row.override_rate))
 
     return rateMap
-  }, [realMembers])
+  }, [realMembers, configuration?.overrides])
 
   const filteredMembers = useMemo(() => {
     const keyword = memberSearch.trim().toLowerCase()
@@ -237,6 +241,18 @@ const SellerGroupDetails = () => {
     onError: (error) => setModalNotice({ type: 'error', message: error?.message || 'Failed to save seller rates.' }),
   })
 
+  const commissionPathMutation = useMutation({
+    mutationFn: ({ agentId, payload }) => patchJson(`/seller-groups/${groupId}/projects/${selectedProjectId}/agents/${agentId}/path`, payload),
+    onMutate: () => setModalNotice({ type: 'loading', message: 'Saving relationship-specific commission path...' }),
+    onSuccess: (result) => {
+      setPathEditor(null)
+      setModalNotice(null)
+      setAlert({ type: result?.data?.isComplete ? 'success' : 'warning', message: result?.message || 'Commission path saved.' })
+      refreshConnectedQueries()
+    },
+    onError: (error) => setModalNotice({ type: 'error', message: error?.message || 'Failed to save commission path.' }),
+  })
+
   const applyRange = () => {
     if (!draftRange.from || !draftRange.to) {
       setAlert({ type: 'error', message: 'Select both From Date and To Date.' })
@@ -258,8 +274,14 @@ const SellerGroupDetails = () => {
   }
 
   const openRateEditor = (member) => {
+    if (member.role !== 'agent') return
     setModalNotice(null)
     setRateEditor({ member, ...getMemberContext(member) })
+  }
+
+  const openPathEditor = (path) => {
+    setModalNotice(null)
+    setPathEditor(path)
   }
 
   const isInitialLoading = projectOptionsQuery.isLoading || (selectedProjectId && configurationQuery.isLoading)
@@ -303,6 +325,7 @@ const SellerGroupDetails = () => {
                 setMemberSearch('')
                 setMemberPage(1)
                 setRateEditor(null)
+                setPathEditor(null)
                 setAlert(null)
               }}
               disabled={projectOptionsQuery.isLoading || !accreditedProjects.length}
@@ -352,18 +375,63 @@ const SellerGroupDetails = () => {
           </section>
 
           <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="flex flex-col gap-4 border-b border-slate-200 p-4 lg:flex-row lg:items-center lg:justify-between">
-              <div><h2 className="text-lg font-black text-slate-950">Member Rates</h2><p className="text-sm font-semibold text-slate-500">Each complete sales path must total the {Number(configuration.poolRate || 0).toFixed(2)}% group pool for {project.name}.</p></div>
-              <label className="relative block w-full lg:max-w-md"><FiSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={memberSearch} onChange={(event) => { setMemberSearch(event.target.value); setMemberPage(1) }} placeholder="Search seller, role, or reporting parent..." className="h-11 w-full rounded-xl border border-slate-300 pl-10 pr-4 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50" /></label>
+            <div className="flex flex-col gap-3 border-b border-slate-200 p-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <h2 className="flex items-center gap-2 text-lg font-black text-slate-950"><FiGitBranch className="text-blue-700" />Commission Paths</h2>
+                <p className="mt-1 text-sm font-semibold text-slate-500">Rates are saved per reporting relationship. Editing one agent path does not change another agent path.</p>
+              </div>
+              <div className={`rounded-xl border px-4 py-2 text-sm font-black ${incompleteAllocationPaths.length ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>
+                {allocationPaths.length
+                  ? incompleteAllocationPaths.length
+                    ? `${incompleteAllocationPaths.length} of ${allocationPaths.length} path(s) incomplete`
+                    : `All ${allocationPaths.length} path(s) ready`
+                  : 'No active agent paths'}
+              </div>
             </div>
 
-            {allocationPaths.length ? (
-              <div className={`mx-4 mt-4 rounded-xl border px-4 py-3 text-sm font-black ${incompleteAllocationPaths.length ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>
-                {incompleteAllocationPaths.length
-                  ? `${incompleteAllocationPaths.length} of ${allocationPaths.length} commission path(s) do not total the ${Number(configuration.poolRate || 0).toFixed(2)}% group pool.`
-                  : `All ${allocationPaths.length} commission path(s) total the ${Number(configuration.poolRate || 0).toFixed(2)}% group pool.`}
-              </div>
-            ) : null}
+            <div className="hidden overflow-x-auto lg:block">
+              <table className="min-w-[1050px] w-full divide-y divide-slate-200 text-sm">
+                <thead className="bg-slate-50"><tr>{['Selling Agent', 'Commission Chain', 'Allocated', 'Remaining', 'Status', 'Action'].map((head) => <th key={head} className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">{head}</th>)}</tr></thead>
+                <tbody className="divide-y divide-slate-100">
+                  {allocationPaths.map((path) => (
+                    <tr key={path.agentId} className="align-top hover:bg-slate-50">
+                      <td className="px-4 py-4"><p className="font-black text-slate-950">{path.agentName}</p><p className="mt-1 text-xs font-semibold text-slate-500">Project pool: {Number(path.poolRate || 0).toFixed(2)}%</p></td>
+                      <td className="px-4 py-4">
+                        <div className="flex max-w-xl flex-wrap gap-2">
+                          {(path.chain || []).map((row) => (
+                            <span key={`${row.type}-${row.childSellerId || row.sellerId}-${row.sellerId}`} className={`rounded-lg px-2.5 py-1 text-xs font-black ring-1 ${row.status === 'active' && Number(row.rate || 0) > 0 ? 'bg-blue-50 text-blue-700 ring-blue-100' : 'bg-slate-100 text-slate-500 ring-slate-200'}`}>
+                              {row.type === 'direct' ? `${row.sellerName}: ${Number(row.rate || 0).toFixed(2)}%` : `${row.childSellerName} → ${row.sellerName}: ${Number(row.rate || 0).toFixed(2)}%`}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 font-black text-slate-950">{Number(path.allocatedRate || 0).toFixed(2)}%</td>
+                      <td className="px-4 py-4 font-black text-slate-700">{Number(path.unallocatedRate || 0).toFixed(2)}%</td>
+                      <td className="px-4 py-4"><span className={`rounded-full px-3 py-1 text-xs font-black capitalize ${path.status === 'complete' ? 'bg-emerald-50 text-emerald-700' : path.status === 'invalid' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}`}>{path.status || 'incomplete'}</span></td>
+                      <td className="px-4 py-4"><button type="button" onClick={() => openPathEditor(path)} className="inline-flex h-9 items-center gap-2 rounded-lg bg-blue-600 px-3 text-xs font-black text-white hover:bg-blue-700"><FiEdit2 />Edit Path</button></td>
+                    </tr>
+                  ))}
+                  {!allocationPaths.length ? <tr><td colSpan={6} className="px-4 py-12 text-center text-sm font-semibold text-slate-500">Add an active agent to configure a commission path.</td></tr> : null}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="grid gap-3 p-4 lg:hidden">
+              {allocationPaths.map((path) => (
+                <article key={path.agentId} className="rounded-2xl border border-slate-200 p-4">
+                  <div className="flex items-start justify-between gap-3"><div><p className="font-black text-slate-950">{path.agentName}</p><p className="text-xs font-semibold text-slate-500">{Number(path.allocatedRate || 0).toFixed(2)}% of {Number(path.poolRate || 0).toFixed(2)}%</p></div><span className={`rounded-full px-2.5 py-1 text-xs font-black capitalize ${path.status === 'complete' ? 'bg-emerald-50 text-emerald-700' : path.status === 'invalid' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}`}>{path.status || 'incomplete'}</span></div>
+                  <div className="mt-3 flex flex-wrap gap-2">{(path.chain || []).map((row) => <span key={`${row.type}-${row.childSellerId || row.sellerId}-${row.sellerId}`} className="rounded-lg bg-blue-50 px-2.5 py-1 text-xs font-black text-blue-700">{row.sellerName}: {Number(row.rate || 0).toFixed(2)}%</span>)}</div>
+                  <button type="button" onClick={() => openPathEditor(path)} className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 text-sm font-black text-white"><FiEdit2 />Edit Commission Path</button>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex flex-col gap-4 border-b border-slate-200 p-4 lg:flex-row lg:items-center lg:justify-between">
+              <div><h2 className="text-lg font-black text-slate-950">Members and Rates</h2><p className="text-sm font-semibold text-slate-500">Agents have one sales rate. Parent sellers can show different override rates from different direct children.</p></div>
+              <label className="relative block w-full lg:max-w-md"><FiSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={memberSearch} onChange={(event) => { setMemberSearch(event.target.value); setMemberPage(1) }} placeholder="Search seller, role, or reporting parent..." className="h-11 w-full rounded-xl border border-slate-300 pl-10 pr-4 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50" /></label>
+            </div>
 
             <div className="hidden overflow-x-auto lg:block">
               <table className="min-w-[1080px] w-full divide-y divide-slate-200 text-sm">
@@ -378,7 +446,7 @@ const SellerGroupDetails = () => {
                         <td className="px-4 py-4"><p className="font-semibold text-slate-700">{context.parent?.display_name || (context.isGroupHead ? 'Developer' : 'Not assigned')}</p><p className="text-xs text-slate-500">{context.isGroupHead ? 'Top of hierarchy' : 'Direct parent'}</p></td>
                         <td className="px-4 py-4"><RatesCell rates={memberRatesById.get(Number(member.accredited_seller_id)) || []} role={member.role} /></td>
                         <td className="px-4 py-4"><span className={`rounded-full px-3 py-1 text-xs font-black capitalize ${member.accredited_seller_status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{member.accredited_seller_status}</span></td>
-                        <td className="px-4 py-4"><button type="button" onClick={() => openRateEditor(member)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-700 hover:bg-blue-100"><FiEdit2 />Edit Rate</button></td>
+                        <td className="px-4 py-4">{member.role === 'agent' ? <button type="button" onClick={() => openRateEditor(member)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-700 hover:bg-blue-100"><FiEdit2 />Edit Sales Rate</button> : <span className="text-xs font-semibold text-slate-500">Edit from Commission Paths</span>}</td>
                       </tr>
                     )
                   })}
@@ -395,7 +463,7 @@ const SellerGroupDetails = () => {
                     <div className="flex items-start justify-between gap-3"><div><p className="font-black text-slate-950">{member.display_name}</p><p className="text-xs font-semibold text-slate-500">{roleLabel(member.role)}</p></div><span className={`rounded-full px-2.5 py-1 text-xs font-black capitalize ${member.accredited_seller_status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{member.accredited_seller_status}</span></div>
                     <p className="mt-3 text-xs font-bold text-slate-500">Reports under</p><p className="font-semibold text-slate-800">{context.parent?.display_name || (context.isGroupHead ? 'Developer' : 'Not assigned')}</p>
                     <div className="mt-3"><RatesCell rates={memberRatesById.get(Number(member.accredited_seller_id)) || []} role={member.role} /></div>
-                    <button type="button" onClick={() => openRateEditor(member)} className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 text-sm font-black text-white"><FiEdit2 />Edit Rate</button>
+                    {member.role === 'agent' ? <button type="button" onClick={() => openRateEditor(member)} className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 text-sm font-black text-white"><FiEdit2 />Edit Sales Rate</button> : <p className="mt-4 rounded-xl bg-slate-50 px-3 py-2 text-center text-xs font-semibold text-slate-500">Edit this override from a selling agent's Commission Path.</p>}
                   </article>
                 )
               })}
@@ -416,6 +484,19 @@ const SellerGroupDetails = () => {
             </div>
           </section>
         </>
+      ) : null}
+
+      {pathEditor ? (
+        <CommissionPathModal
+          key={`${pathEditor.agentId}-${selectedProjectId}`}
+          path={pathEditor}
+          project={project}
+          poolRate={configuration?.poolRate || 0}
+          isPending={commissionPathMutation.isPending}
+          notice={modalNotice}
+          onClose={() => { if (!commissionPathMutation.isPending) { setPathEditor(null); setModalNotice(null) } }}
+          onSubmit={(payload) => commissionPathMutation.mutate({ agentId: pathEditor.agentId, payload })}
+        />
       ) : null}
 
       {rateEditor ? (
@@ -467,5 +548,3 @@ const SellerGroupDetails = () => {
 }
 
 export default SellerGroupDetails
-
-

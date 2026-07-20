@@ -985,12 +985,10 @@ const buildConfigurationValidation = (group, members, overrides) => {
   const memberMap = new Map(members.map((member) => [Number(member.accredited_seller_id), member]));
   const userSellerMap = new Map(members.map((member) => [Number(member.user_id), member]));
   const overrideMap = new Map(
-    overrides
-      .filter((row) => row.override_rate_status === 'active')
-      .map((row) => [
-        `${Number(row.child_accredited_seller_id)}:${Number(row.parent_accredited_seller_id)}`,
-        Number(row.override_rate || 0),
-      ])
+    overrides.map((row) => [
+      `${Number(row.child_accredited_seller_id)}:${Number(row.parent_accredited_seller_id)}`,
+      row,
+    ])
   );
   const head = userSellerMap.get(Number(group.seller_group_head_user_id));
   const poolRate = Number(group.seller_group_pool_rate || 0);
@@ -1002,14 +1000,17 @@ const buildConfigurationValidation = (group, members, overrides) => {
       const chain = [];
       const seen = new Set();
       let current = agent;
-      let total = Number(agent.direct_rate_status === 'active' ? agent.direct_rate || 0 : 0);
+      const directStatus = agent.direct_rate_status || 'inactive';
+      const directRate = Number(directStatus === 'active' ? agent.direct_rate || 0 : 0);
+      let total = directRate;
 
       chain.push({
         sellerId: agent.accredited_seller_id,
         sellerName: agent.display_name,
         role: agent.role,
         type: 'direct',
-        rate: Number(agent.direct_rate_status === 'active' ? agent.direct_rate || 0 : 0),
+        rate: directRate,
+        status: directStatus,
       });
       seen.add(agent.accredited_seller_id);
 
@@ -1020,9 +1021,10 @@ const buildConfigurationValidation = (group, members, overrides) => {
         if (!parent && head && !seen.has(Number(head.accredited_seller_id))) parent = head;
         if (!parent || seen.has(Number(parent.accredited_seller_id))) break;
 
-        const rate = Number(
-          overrideMap.get(`${Number(current.accredited_seller_id)}:${Number(parent.accredited_seller_id)}`) || 0
-        );
+        const edgeKey = `${Number(current.accredited_seller_id)}:${Number(parent.accredited_seller_id)}`;
+        const override = overrideMap.get(edgeKey) || null;
+        const status = override?.override_rate_status || 'inactive';
+        const rate = Number(status === 'active' ? override?.override_rate || 0 : 0);
         total += rate;
         chain.push({
           sellerId: parent.accredited_seller_id,
@@ -1030,28 +1032,48 @@ const buildConfigurationValidation = (group, members, overrides) => {
           role: parent.role,
           type: 'override',
           childSellerId: current.accredited_seller_id,
+          childSellerName: current.display_name,
           rate,
+          status,
+          overrideId: override?.seller_hierarchy_lot_project_override_id || null,
         });
         seen.add(parent.accredited_seller_id);
         current = parent;
       }
 
+      const normalizedTotal = Number(total.toFixed(2));
+      const difference = Number(Math.abs(poolRate - normalizedTotal).toFixed(2));
       const errors = [];
-      if (Number(agent.direct_rate || 0) <= 0 || agent.direct_rate_status !== 'active') {
+      const warnings = [];
+
+      if (Number(agent.direct_rate || 0) <= 0 || directStatus !== 'active') {
         errors.push(`${agent.display_name} has no active sales commission rate.`);
       }
-      if (poolRate > 0 && total > poolRate + 0.0001) {
-        errors.push(`Allocated ${total.toFixed(2)}% exceeds the ${poolRate.toFixed(2)}% pool.`);
+      chain
+        .filter((row) => row.type === 'override' && (row.status !== 'active' || Number(row.rate || 0) <= 0))
+        .forEach((row) => warnings.push(`${row.sellerName} has no active override from ${row.childSellerName}.`));
+      if (poolRate > 0 && normalizedTotal > poolRate + 0.0001) {
+        errors.push(`Allocated ${normalizedTotal.toFixed(2)}% exceeds the ${poolRate.toFixed(2)}% pool.`);
+      } else if (poolRate > 0 && normalizedTotal < poolRate - 0.0001) {
+        warnings.push(`${Number(poolRate - normalizedTotal).toFixed(2)}% of the group pool is still unallocated.`);
       }
+
+      const isComplete = normalizedTotal > 0
+        && errors.length === 0
+        && (!poolRate || difference <= 0.0001);
 
       paths.push({
         agentId: agent.accredited_seller_id,
         agentName: agent.display_name,
-        allocatedRate: Number(total.toFixed(2)),
+        allocatedRate: normalizedTotal,
         poolRate,
-        unallocatedRate: Number(Math.max(poolRate - total, 0).toFixed(2)),
+        unallocatedRate: Number(Math.max(poolRate - normalizedTotal, 0).toFixed(2)),
+        overAllocatedRate: Number(Math.max(normalizedTotal - poolRate, 0).toFixed(2)),
+        isComplete,
+        status: errors.length ? 'invalid' : isComplete ? 'complete' : 'incomplete',
         hasErrors: errors.length > 0,
         errors,
+        warnings,
         chain,
       });
     });
@@ -1059,6 +1081,7 @@ const buildConfigurationValidation = (group, members, overrides) => {
   return {
     pathCount: paths.length,
     errorCount: paths.filter((path) => path.hasErrors).length,
+    incompleteCount: paths.filter((path) => !path.isComplete).length,
     paths,
   };
 };
@@ -1541,6 +1564,58 @@ const upsertSellerProjectRoleRate = async (
   }]);
 };
 
+const upsertRelationshipOverride = async (
+  connection,
+  { childId, parentId, projectId, overrideRate, status }
+) => {
+  await connection.query(
+    `
+      INSERT INTO seller_hierarchy_lot_project_overrides (
+        child_accredited_seller_id,
+        parent_accredited_seller_id,
+        lot_project_id,
+        override_rate,
+        override_rate_status
+      ) VALUES (?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        override_rate = VALUES(override_rate),
+        override_rate_status = VALUES(override_rate_status)
+    `,
+    [childId, parentId, projectId, overrideRate, status]
+  );
+};
+
+const getAgentPathDefinition = (group, members, agentId) => {
+  const memberMap = new Map(members.map((member) => [Number(member.accredited_seller_id), member]));
+  const userSellerMap = new Map(members.map((member) => [Number(member.user_id), member]));
+  const agent = memberMap.get(Number(agentId));
+  if (
+    !agent
+    || agent.role !== 'agent'
+    || agent.is_system_dummy
+    || agent.accredited_seller_status !== 'active'
+  ) return null;
+
+  const head = userSellerMap.get(Number(group.seller_group_head_user_id));
+  const edges = [];
+  const seen = new Set([Number(agent.accredited_seller_id)]);
+  let current = agent;
+
+  while (current) {
+    let parent = current.parent_accredited_seller_id
+      ? memberMap.get(Number(current.parent_accredited_seller_id))
+      : null;
+    if (!parent && head && !seen.has(Number(head.accredited_seller_id))) parent = head;
+    if (!parent || seen.has(Number(parent.accredited_seller_id))) break;
+
+    edges.push({ child: current, parent });
+    seen.add(Number(parent.accredited_seller_id));
+    current = parent;
+  }
+
+  return { agent, edges };
+};
+
 export const upsertAgentDirectRate = async (req, res) => {
   const connection = await db.getConnection();
 
@@ -1654,30 +1729,29 @@ export const upsertHierarchyOverride = async (req, res) => {
       throw createValidationError('Override rates can only be assigned to the seller directly above this child.');
     }
 
-    await upsertSellerProjectRoleRate(
-      connection,
+    await upsertRelationshipOverride(connection, {
+      childId,
       parentId,
-      parent.role,
       projectId,
       overrideRate,
-      status
-    );
+      status,
+    });
 
     const refreshedOverrides = await loadGroupProjectOverrides(connection, groupId, projectId);
     const validation = buildConfigurationValidation(group, members, refreshedOverrides);
-    // One relationship can affect several agents below the child. Validate only
-    // those paths so unrelated incomplete branches do not block this save.
+    // Validate only paths that contain this exact relationship. Other children
+    // of the same parent keep their own override rates.
     const affectedPaths = validation.paths.filter((path) => path.chain.some((row) =>
       row.type === 'override'
       && Number(row.childSellerId) === childId
       && Number(row.sellerId) === parentId
     ));
     const invalidPath = affectedPaths.find((path) =>
-      path.errors.some((message) => !message.includes('no active sales commission rate'))
+      path.errors.some((message) => message.includes('exceeds the'))
     );
     if (invalidPath) {
       throw createValidationError(
-        invalidPath.errors.find((message) => !message.includes('no active sales commission rate'))
+        invalidPath.errors.find((message) => message.includes('exceeds the'))
       );
     }
 
@@ -1707,6 +1781,130 @@ export const upsertHierarchyOverride = async (req, res) => {
   }
 };
 
+export const updateAgentCommissionPath = async (req, res) => {
+  const connection = await db.getConnection();
+
+  try {
+    const groupId = Number(req.params.groupId || 0);
+    const projectId = Number(req.params.projectId || 0);
+    const agentId = Number(req.params.agentId || 0);
+    if (!groupId || !projectId || !agentId) {
+      throw createValidationError('Seller group, project, and sales agent are required.');
+    }
+
+    const directRate = validateSellerRate(req.body.directRate, 'Sales commission rate');
+    const directStatus = normalizeStatus(req.body.directStatus || req.body.status);
+    const requestedOverrides = Array.isArray(req.body.overrides) ? req.body.overrides : [];
+    if (directStatus === 'active' && directRate <= 0) {
+      throw createValidationError('An active sales commission rate must be greater than 0%.');
+    }
+
+    await requireCommissionConfigurationSchema(connection);
+    await connection.beginTransaction();
+
+    const group = await getGroupAndProject(connection, groupId, projectId);
+    if (!group) throw createValidationError('This seller group is not accredited to the selected project.');
+
+    let members = await loadGroupProjectMembers(connection, groupId, projectId);
+    const pathDefinition = getAgentPathDefinition(group, members, agentId);
+    if (!pathDefinition) throw createValidationError('The selected seller is not an active sales agent in this group.');
+
+    const requestedByEdge = new Map(requestedOverrides.map((row) => [
+      `${Number(row.childId || row.childSellerId)}:${Number(row.parentId || row.sellerId)}`,
+      row,
+    ]));
+    const expectedEdgeKeys = new Set(pathDefinition.edges.map(({ child, parent }) =>
+      `${Number(child.accredited_seller_id)}:${Number(parent.accredited_seller_id)}`
+    ));
+
+    const unexpectedEdge = [...requestedByEdge.keys()].find((key) => !expectedEdgeKeys.has(key));
+    if (unexpectedEdge) {
+      throw createValidationError('The submitted commission path contains a relationship outside the agent reporting chain.');
+    }
+
+    const normalizedOverrides = pathDefinition.edges.map(({ child, parent }) => {
+      const key = `${Number(child.accredited_seller_id)}:${Number(parent.accredited_seller_id)}`;
+      const submitted = requestedByEdge.get(key);
+      if (!submitted) {
+        throw createValidationError(`Enter ${parent.display_name}'s override from ${child.display_name}.`);
+      }
+      const overrideRate = validateSellerRate(submitted.overrideRate ?? submitted.rate, 'Override rate');
+      const status = normalizeStatus(submitted.status);
+      if (status === 'active' && overrideRate <= 0) {
+        throw createValidationError(`An active override for ${parent.display_name} must be greater than 0%.`);
+      }
+      return {
+        childId: Number(child.accredited_seller_id),
+        parentId: Number(parent.accredited_seller_id),
+        childName: child.display_name,
+        parentName: parent.display_name,
+        overrideRate,
+        status,
+      };
+    });
+
+    await upsertSellerProjectRoleRate(
+      connection,
+      agentId,
+      'agent',
+      projectId,
+      directRate,
+      directStatus
+    );
+
+    for (const override of normalizedOverrides) {
+      await upsertRelationshipOverride(connection, {
+        childId: override.childId,
+        parentId: override.parentId,
+        projectId,
+        overrideRate: override.overrideRate,
+        status: override.status,
+      });
+    }
+
+    members = await loadGroupProjectMembers(connection, groupId, projectId);
+    const overrides = await loadGroupProjectOverrides(connection, groupId, projectId);
+    const validation = buildConfigurationValidation(group, members, overrides);
+    const savedPath = validation.paths.find((path) => Number(path.agentId) === agentId);
+    const overAllocationError = savedPath?.errors?.find((message) => message.includes('exceeds the'));
+    if (overAllocationError) throw createValidationError(overAllocationError);
+
+    await writeAuditLog(connection, req, {
+      action: 'update',
+      module: 'Seller Groups',
+      entityType: 'agent_commission_path',
+      entityId: `${agentId}:${projectId}`,
+      entityLabel: `${pathDefinition.agent.display_name} — ${group.lot_project_name}`,
+      title: 'Updated agent commission path',
+      description: `Updated the relationship-specific commission path for ${pathDefinition.agent.display_name}.`,
+      metadata: {
+        groupId,
+        projectId,
+        agentId,
+        directRate,
+        directStatus,
+        overrides: normalizedOverrides,
+        allocatedRate: savedPath?.allocatedRate || 0,
+        poolRate: Number(group.seller_group_pool_rate || 0),
+        pathStatus: savedPath?.status || 'incomplete',
+      },
+    });
+
+    await connection.commit();
+    return res.json({
+      message: savedPath?.isComplete
+        ? 'Commission path saved and ready for reservations.'
+        : 'Commission path saved as incomplete. Complete the remaining allocation before using this agent for a reservation.',
+      data: savedPath,
+    });
+  } catch (error) {
+    await connection.rollback();
+    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
 export const updateMemberProjectRates = async (req, res) => {
   const connection = await db.getConnection();
   try {
@@ -1726,16 +1924,14 @@ export const updateMemberProjectRates = async (req, res) => {
     let members = await loadGroupProjectMembers(connection, groupId, projectId);
     const member = members.find((row) => Number(row.accredited_seller_id) === memberId && !row.is_system_dummy);
     if (!member) throw createValidationError('Seller group member was not found.');
+    if (member.role !== 'agent') {
+      throw createValidationError('Parent overrides are relationship-specific. Edit them from the Commission Paths section.');
+    }
 
-    const rateType = member.role === 'agent' ? 'direct' : 'override';
-    const rateLabel = rateType === 'direct' ? 'Sales commission rate' : 'Override commission rate';
-    const rate = validateSellerRate(
-      req.body.rate ?? (rateType === 'direct' ? req.body.directRate : req.body.overrideRate),
-      rateLabel
-    );
-    const rateStatus = normalizeStatus(
-      req.body.rateStatus ?? (rateType === 'direct' ? req.body.directStatus : req.body.overrideStatus)
-    );
+    const rateType = 'direct';
+    const rateLabel = 'Sales commission rate';
+    const rate = validateSellerRate(req.body.rate ?? req.body.directRate, rateLabel);
+    const rateStatus = normalizeStatus(req.body.rateStatus ?? req.body.directStatus);
 
     if (rateStatus === 'active' && rate <= 0) {
       throw createValidationError(`An active ${rateLabel.toLowerCase()} must be greater than 0%.`);
@@ -1754,12 +1950,12 @@ export const updateMemberProjectRates = async (req, res) => {
     const overrides = await loadGroupProjectOverrides(connection, groupId, projectId);
     const validation = buildConfigurationValidation(group, members, overrides);
     const invalidPath = validation.paths.find((path) =>
-      path.chain.some((row) => Number(row.sellerId) === memberId)
-      && path.errors.some((message) => !message.includes('no active sales commission rate'))
+      Number(path.agentId) === memberId
+      && path.errors.some((message) => message.includes('exceeds the'))
     );
     if (invalidPath) {
       throw createValidationError(
-        invalidPath.errors.find((message) => !message.includes('no active sales commission rate'))
+        invalidPath.errors.find((message) => message.includes('exceeds the'))
       );
     }
 
@@ -1769,14 +1965,14 @@ export const updateMemberProjectRates = async (req, res) => {
       entityType: 'seller_project_rate',
       entityId: `${memberId}:${projectId}`,
       entityLabel: member.display_name,
-      title: `Updated seller ${rateType} rate`,
-      description: `Set ${member.display_name}'s ${rateType} rate for ${group.lot_project_name} to ${rate.toFixed(2)}%.`,
+      title: 'Updated agent sales rate',
+      description: `Set ${member.display_name}'s sales rate for ${group.lot_project_name} to ${rate.toFixed(2)}%.`,
       metadata: { groupId, projectId, memberId, role: member.role, rateType, rate, rateStatus },
     });
 
     await connection.commit();
     return res.json({
-      message: `${rateType === 'direct' ? 'Sales' : 'Override'} rate saved.`,
+      message: 'Sales rate saved.',
       data: { memberId, role: member.role, rateType, rate, rateStatus },
     });
   } catch (error) {
@@ -1786,4 +1982,3 @@ export const updateMemberProjectRates = async (req, res) => {
     connection.release();
   }
 };
-

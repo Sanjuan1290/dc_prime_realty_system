@@ -67,11 +67,12 @@ const syncParentOverrides = async (connection, seller, projectRates) => {
   if (!(await tableExists(connection, 'seller_hierarchy_lot_project_overrides')) || !projectRates.length) return;
 
   for (const projectRate of projectRates) {
-    // Every manager, broker, and BNM owns one override rate per project. The
-    // relationship table mirrors that rate for every seller directly below them.
+    // A parent project rate is only a default for new reporting relationships.
+    // Existing child-to-parent overrides are relationship-specific and must not
+    // be overwritten when another child receives a different commission split.
     await connection.query(
       `
-        INSERT INTO seller_hierarchy_lot_project_overrides (
+        INSERT IGNORE INTO seller_hierarchy_lot_project_overrides (
           child_accredited_seller_id,
           parent_accredited_seller_id,
           lot_project_id,
@@ -95,9 +96,6 @@ const syncParentOverrides = async (connection, seller, projectRates) => {
               AND child.user_id <> ?
             )
           )
-        ON DUPLICATE KEY UPDATE
-          override_rate = VALUES(override_rate),
-          override_rate_status = VALUES(override_rate_status)
       `,
       [
         seller.accredited_seller_id,
@@ -109,21 +107,6 @@ const syncParentOverrides = async (connection, seller, projectRates) => {
         seller.user_id,
         Number(seller.is_group_head || 0),
         seller.user_id,
-      ]
-    );
-
-    await connection.query(
-      `
-        UPDATE seller_hierarchy_lot_project_overrides
-        SET override_rate = ?, override_rate_status = ?
-        WHERE parent_accredited_seller_id = ?
-          AND lot_project_id = ?
-      `,
-      [
-        projectRate.rate,
-        projectRate.status,
-        seller.accredited_seller_id,
-        projectRate.lot_project_id,
       ]
     );
   }
@@ -232,8 +215,7 @@ export const syncChildOverrideFromCurrentParent = async (connection, childAccred
       FROM accredited_seller_lot_project_rates parent_rate
       WHERE parent_rate.accredited_seller_id = ?
       ON DUPLICATE KEY UPDATE
-        override_rate = VALUES(override_rate),
-        override_rate_status = VALUES(override_rate_status)
+        override_rate_status = 'active'
     `,
     [childAccreditedSellerId, parent.accredited_seller_id, parent.accredited_seller_id]
   );
@@ -260,4 +242,3 @@ export const syncGroupHeadFallbackOverrides = async (connection, sellerGroupId) 
     await syncChildOverrideFromCurrentParent(connection, child.accredited_seller_id);
   }
 };
-

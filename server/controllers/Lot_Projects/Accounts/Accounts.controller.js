@@ -210,7 +210,7 @@ export const getLotProjectListingAccountHistory = async (req, res) => {
     const project = await getProjectBySlug(clean(req.params.projectSlug));
     if (!project) return res.status(404).json({ message: 'Lot project not found.' });
 
-    const lookup = getListingLookupWhere(clean(req.params.listingId));
+    const lookup = getListingLookupWhere(clean(req.params.listingId), 'listing');
     const [listingRows] = await connection.query(
       `SELECT lot_project_listing_id, current_account_id, lot_project_listing_unit_id FROM lot_project_listings listing WHERE listing.lot_project_id = ? AND ${lookup.sql} LIMIT 1`,
       [project.lot_project_id, ...lookup.params]
@@ -270,6 +270,13 @@ export const getLotProjectListingAccountHistory = async (req, res) => {
       })),
     });
   } catch (error) {
+    console.error('[AccountHistory] Failed to load listing accounts', {
+      code: error?.code,
+      message: error?.message,
+      sqlMessage: error?.sqlMessage,
+      projectSlug: req.params.projectSlug,
+      listingId: req.params.listingId,
+    });
     return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
   } finally {
     connection.release();

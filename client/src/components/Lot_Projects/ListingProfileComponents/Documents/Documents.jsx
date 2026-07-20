@@ -3,8 +3,10 @@ import {
   FiAlertCircle,
   FiCheckCircle,
   FiEdit3,
+  FiFileText,
   FiImage,
   FiLoader,
+  FiLock,
   FiTrash2,
   FiUploadCloud,
 } from 'react-icons/fi'
@@ -12,6 +14,7 @@ import StatusAlert from '../../../Shared/StatusAlert'
 import UploadDocumentModal from './UploadDocumentModal'
 import DocumentImagesModal from './DocumentImagesModal'
 import EditListingDocumentsModal from '../../ListingComponents/EditListingDocumentsModal/EditListingDocumentsModal'
+import { getDocumentFiles, getDocumentImageUrl, isPdfLike, isProtectedDocumentFile } from './documentFileUtils'
 
 const statusStyles = {
   Approved: 'border-emerald-200 bg-emerald-50 text-emerald-700',
@@ -269,9 +272,12 @@ const Documents = ({
           <tbody className="divide-y divide-slate-100">
             {rows.map((row) => {
               const isActive = activeDocumentId === row.id || isSaving
-              const firstImage = row.imageEntries?.[0] || row.images?.[0]
-              const imageSrc = row.fileUrl || getDocumentImageUrl(firstImage) || ''
-              const isProtected = Boolean(firstImage?.protected || firstImage?.accessPath || firstImage?.fileId)
+              const files = getDocumentFiles(row)
+              const firstImage = files[0] || null
+              const isProtected = isProtectedDocumentFile(firstImage)
+              const isPdf = isPdfLike(firstImage || {})
+              const imageSrc = isProtected ? '' : (getDocumentImageUrl(firstImage) || row.fileUrl || '')
+              const fileCount = Number(row.imageCount ?? files.length ?? 0)
 
               return (
                 <tr key={row.id} className="transition hover:bg-slate-50">
@@ -293,12 +299,16 @@ const Documents = ({
                   <td className="px-4 py-4">
                     <div className="flex items-center gap-3">
                       <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
-                        {row.fileName && row.fileName !== '-' && imageSrc && !isProtected ? (
+                        {row.fileName && row.fileName !== '-' && imageSrc && !isProtected && !isPdf ? (
                           <img
                             src={imageSrc}
                             alt={row.name}
                             className="h-full w-full object-cover"
                           />
+                        ) : isProtected ? (
+                          <FiLock className="h-4 w-4 text-blue-500" />
+                        ) : isPdf ? (
+                          <FiFileText className="h-4 w-4 text-slate-500" />
                         ) : (
                           <FiImage className="h-4 w-4 text-slate-300" />
                         )}
@@ -311,7 +321,7 @@ const Documents = ({
 
                         <p className="text-xs font-semibold text-slate-400">
                           {row.fileName && row.fileName !== '-'
-                            ? `${row.imageCount || row.images?.length || 1} image(s) saved`
+                            ? `${fileCount || 1} protected file(s) saved`
                             : 'No file uploaded'}
                         </p>
                       </div>
@@ -416,5 +426,3 @@ const Documents = ({
 }
 
 export default Documents
-
-

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { FiExternalLink, FiEye, FiFileText, FiImage, FiLoader, FiLock, FiSearch, FiX } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
 import { useFetch } from '../../../../utils/useFetch'
+import { getDocumentFiles, isPdfLike } from './documentFileUtils'
 
 const statusStyles = {
   Approved: 'border-emerald-200 bg-emerald-50 text-emerald-700',
@@ -17,44 +18,6 @@ const StatusPill = ({ value }) => (
     {value || 'Missing'}
   </span>
 )
-
-const normalizeFileEntry = (file, document, index) => {
-  if (!file) return null
-  if (typeof file === 'string') {
-    return {
-      url: file,
-      fileName: `${document.name || 'Document'} File ${index + 1}`,
-      resourceType: file.toLowerCase().includes('.pdf') ? 'raw' : 'image',
-      protected: false,
-    }
-  }
-
-  const url = file.url || file.secure_url || file.fileUrl || file.file_url || ''
-  const accessPath = file.accessPath || file.access_path || (file.fileId ? `/document-files/${file.fileId}/access-url` : '')
-  if (!url && !accessPath && !file.fileId) return null
-
-  return {
-    ...file,
-    url,
-    accessPath,
-    protected: Boolean(file.protected || accessPath || file.fileId),
-    fileName: file.fileName || file.file_name || file.originalFilename || file.original_filename || `${document.name || 'Document'} File ${index + 1}`,
-    resourceType: file.cloudinaryResourceType || file.resource_type || file.resourceType || (String(file.fileType || '').includes('pdf') ? 'raw' : 'image'),
-  }
-}
-
-const getDocumentFiles = (document) => {
-  const source = Array.isArray(document.imageEntries) && document.imageEntries.length
-    ? document.imageEntries
-    : Array.isArray(document.images)
-      ? document.images
-      : document.fileUrl
-        ? [document.fileUrl]
-        : []
-  return source.map((file, index) => normalizeFileEntry(file, document, index)).filter(Boolean)
-}
-
-const isPdfLike = (file) => `${file.url || ''} ${file.fileName || ''} ${file.fileType || ''} ${file.resourceType || ''}`.toLowerCase().includes('pdf')
 
 const DocumentImagesModal = ({ documents = [], onClose }) => {
   const [search, setSearch] = useState('')
