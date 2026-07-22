@@ -161,37 +161,6 @@ const getPaymentAccountNumber = (payment = {}) =>
     '-'
   )
 
-const getBrokerDetails = (listing = {}) => {
-  const hierarchy = Array.isArray(listing?.commissionRecalculation?.currentHierarchy)
-    ? listing.commissionRecalculation.currentHierarchy
-    : []
-  const broker = hierarchy.find(
-    (entry) => String(entry?.role || '').toLowerCase() === 'broker'
-  )
-  const assignedRole = String(
-    listing.seller_role || listing.sellerRole || ''
-  ).toLowerCase()
-
-  return {
-    name: cleanDisplay(
-      broker?.sellerName ||
-        broker?.seller_name ||
-        (assignedRole === 'broker'
-          ? listing.seller || listing.assigned_user
-          : ''),
-      'Authorized Realty Representative'
-    ),
-    prcNo: cleanDisplay(
-      broker?.prcNo ||
-        broker?.prc_no ||
-        (assignedRole === 'broker'
-          ? listing.sellerPrcNo || listing.seller_prc_no
-          : ''),
-      ''
-    ),
-  }
-}
-
 const AcknowledgementReceiptPage = ({
   payment = {},
   project = {},
@@ -240,8 +209,6 @@ const AcknowledgementReceiptPage = ({
   )
   const paymentAmount = cleanMoney(payment.amount)
   const paymentPurpose = getPaymentPurpose(payment)
-  const broker = getBrokerDetails(listing)
-  const witness = cleanDisplay(payment.verifiedBy, 'Authorized Representative')
   const paymentDate = payment.paymentDate || payment.payment_date
   const referenceId = cleanDisplay(
     payment.referenceId || payment.reference_id,
@@ -336,16 +303,10 @@ const AcknowledgementReceiptPage = ({
 
         <div className="mt-6 ml-auto w-[47%] text-center">
           <p>Broker:</p>
-          <div className="mt-7 border-b border-[#4b5563] px-2 pb-1 font-bold uppercase">
-            {broker.name}
-          </div>
-          <p className="mt-2">
-            {broker.prcNo ? `PRC No. ${broker.prcNo}` : 'PRC No. __________________'}
-          </p>
+          <div className="mt-7 min-h-[18px] border-b border-[#4b5563] px-2 pb-1">&nbsp;</div>
+          <p className="mt-2">PRC No. __________________</p>
 
-          <div className="mt-10 border-b border-[#4b5563] px-2 pb-1 font-bold uppercase">
-            {witness}
-          </div>
+          <div className="mt-10 min-h-[18px] border-b border-[#4b5563] px-2 pb-1">&nbsp;</div>
           <p className="mt-2">Witness</p>
         </div>
 

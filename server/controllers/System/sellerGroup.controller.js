@@ -586,8 +586,18 @@ export const getGroups = async (req, res) => {
         SELECT
           sg.*,
           ${fullNameSql('head_user')} AS group_head_name,
-          COUNT(CASE WHEN COALESCE(a.is_system_dummy, 0) = 0 THEN 1 END) AS member_count,
-          SUM(COALESCE(a.is_system_dummy, 0) = 0 AND a.accredited_seller_status = 'active') AS active_member_count
+          COUNT(CASE
+            WHEN a.accredited_seller_id IS NOT NULL
+              AND COALESCE(a.is_system_dummy, 0) = 0
+            THEN 1
+          END) AS member_count,
+          COALESCE(SUM(CASE
+            WHEN a.accredited_seller_id IS NOT NULL
+              AND COALESCE(a.is_system_dummy, 0) = 0
+              AND a.accredited_seller_status = 'active'
+            THEN 1
+            ELSE 0
+          END), 0) AS active_member_count
         FROM seller_groups sg
         LEFT JOIN users head_user ON head_user.id = sg.seller_group_head_user_id
         LEFT JOIN accredited_sellers a ON a.seller_group_id = sg.seller_group_id

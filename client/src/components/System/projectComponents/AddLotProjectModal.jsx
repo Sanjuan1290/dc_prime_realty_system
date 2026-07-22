@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { FiCheckCircle, FiSearch, FiX } from 'react-icons/fi'
+import { FiArrowLeft, FiArrowRight, FiCheckCircle, FiSearch, FiX } from 'react-icons/fi'
 import StatusAlert from '../../Shared/StatusAlert'
 
 const Field = ({
@@ -157,6 +157,7 @@ const AddLotProjectModal = ({
   const [alert, setAlert] = useState(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [selectedDocuments, setSelectedDocuments] = useState(() => normalizeProjectDocuments(project || {}))
+  const [step, setStep] = useState(1)
   const isSaving = externalIsSaving || isSubmitting
 
   const documentLibrary = useMemo(
@@ -347,21 +348,34 @@ const AddLotProjectModal = ({
     setAlert({ type: 'success', message: 'All library documents added.' })
   }
 
-  const handleSubmit = async (event) => {
-    event.preventDefault()
-
+  const validateProjectInformation = () => {
     if (!form.name.trim()) {
       setAlert({ type: 'error', message: 'Project name is required.' })
-      return
+      return false
     }
 
     if (!form.location.trim()) {
       setAlert({ type: 'error', message: 'Project location is required.' })
-      return
+      return false
     }
 
     if (!form.locationCode.trim()) {
       setAlert({ type: 'error', message: 'Location code is required.' })
+      return false
+    }
+
+    return true
+  }
+
+  const goToDocuments = () => {
+    if (!validateProjectInformation()) return
+    setAlert(null)
+    setStep(2)
+  }
+
+  const handleSave = async () => {
+    if (!validateProjectInformation()) {
+      setStep(1)
       return
     }
 
@@ -399,12 +413,14 @@ const AddLotProjectModal = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4">
-      <form
-        onSubmit={handleSubmit}
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="lot-project-modal-title"
         className="flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl"
       >
         <div className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 px-5">
-          <h2 className="text-base font-black text-slate-950">{isEdit ? 'Edit Lot Project' : 'Add Lot Project'}</h2>
+          <h2 id="lot-project-modal-title" className="text-base font-black text-slate-950">{isEdit ? 'Edit Lot Project' : 'Add Lot Project'}</h2>
 
           <button
             type="button"
@@ -414,6 +430,29 @@ const AddLotProjectModal = ({
           >
             <FiX className="h-4 w-4" />
           </button>
+        </div>
+
+        <div className="shrink-0 border-b border-slate-200 bg-white px-5 py-4">
+          <div className="mx-auto grid max-w-3xl grid-cols-[1fr_auto_1fr] items-center gap-3">
+            {[
+              { id: 1, label: 'Project Information' },
+              { id: 2, label: 'Documents' },
+            ].map((item, index) => (
+              <div key={item.id} className="contents">
+                {index > 0 ? <div className={`h-px ${step >= item.id ? 'bg-blue-500' : 'bg-slate-200'}`} /> : null}
+                <button
+                  type="button"
+                  onClick={() => item.id === 1 ? setStep(1) : goToDocuments()}
+                  className="flex min-w-0 items-center gap-3 text-left"
+                >
+                  <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-black ${step >= item.id ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                    {item.id}
+                  </span>
+                  <span className={`truncate text-sm font-black ${step === item.id ? 'text-slate-950' : 'text-slate-500'}`}>{item.label}</span>
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-4">
@@ -434,8 +473,8 @@ const AddLotProjectModal = ({
             />
           ) : null}
 
-          <div className="grid gap-4 xl:grid-cols-[0.75fr_1fr]">
-            <div className="flex flex-col gap-4">
+          {step === 1 ? (
+            <div className="mx-auto max-w-3xl">
               <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <h3 className="text-sm font-black text-slate-950">
                   Project Information
@@ -542,7 +581,9 @@ const AddLotProjectModal = ({
                   </SelectField>
                 </div>
               </section>
-
+            </div>
+          ) : (
+            <div className="grid gap-4 xl:grid-cols-[0.8fr_1.2fr]">
               <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <h3 className="text-sm font-black text-slate-950">
                   Document Templates
@@ -629,189 +670,220 @@ const AddLotProjectModal = ({
                   })}
                 </div>
               </section>
-            </div>
+              <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <h3 className="text-sm font-black text-slate-950">
+                      Default Document Requirements
+                    </h3>
+                    <p className="mt-1 text-xs font-semibold text-slate-500">
+                      These become the default checklist for listings created under this project.
+                    </p>
+                  </div>
 
-            <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <h3 className="text-sm font-black text-slate-950">
-                    Default Document Requirements
-                  </h3>
-                  <p className="mt-1 text-xs font-semibold text-slate-500">
-                    These become the default checklist for listings created under this project.
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700">
-                    {selectedTemplateIds.length} templates
-                  </span>
-                  <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700">
-                    {requiredCount} required
-                  </span>
-                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">
-                    {optionalCount} optional
-                  </span>
-                </div>
-              </div>
-
-              <div className="mt-4 flex flex-wrap gap-2">
-                {selectedTemplateIds.map((id) => {
-                  const template = documentTemplates.find((item) => item.id === id)
-
-                  if (!template) return null
-
-                  return (
-                    <span
-                      key={id}
-                      className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-black text-blue-700"
-                    >
-                      {template.name} ×
+                  <div className="flex flex-wrap gap-2">
+                    <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700">
+                      {selectedTemplateIds.length} templates
                     </span>
-                  )
-                })}
-              </div>
-
-              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <h4 className="text-sm font-black text-slate-950">
-                  Add Existing Documents
-                </h4>
-                <p className="mt-1 text-xs font-semibold text-slate-500">
-                  Create missing documents in Document Library first, then search and add them here.
-                </p>
-
-                <div className="relative mt-3">
-                  <FiSearch className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  <input
-                    value={documentSearch}
-                    onChange={(event) => setDocumentSearch(event.target.value)}
-                    placeholder="Search document library..."
-                    className="h-10 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-sm font-semibold text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
-                  />
+                    <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700">
+                      {requiredCount} required
+                    </span>
+                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">
+                      {optionalCount} optional
+                    </span>
+                  </div>
                 </div>
 
-                <div className="mt-3 grid max-h-[150px] gap-2 overflow-y-auto pr-1 md:grid-cols-2">
-                  {filteredDocuments.map((document) => {
-                    const added = selectedDocIds.has(document.id)
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {selectedTemplateIds.map((id) => {
+                    const template = documentTemplates.find((item) => item.id === id)
+
+                    if (!template) return null
 
                     return (
-                      <div
-                        key={document.id}
-                        className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white p-3"
+                      <span
+                        key={id}
+                        className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-black text-blue-700"
                       >
-                        <div>
-                          <p className="text-xs font-black text-slate-950">
-                            {document.name}
-                          </p>
-                          <p className="mt-1 text-[11px] font-semibold text-slate-500">
-                            {document.description}
-                          </p>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => addDocument(document)}
-                          disabled={added}
-                          className={`h-8 rounded-lg border px-3 text-xs font-black transition ${
-                            added
-                              ? 'cursor-not-allowed border-slate-200 bg-slate-50 text-slate-400'
-                              : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
-                          }`}
-                        >
-                          {added ? 'Added' : 'Add'}
-                        </button>
-                      </div>
+                        {template.name} ×
+                      </span>
                     )
                   })}
                 </div>
-              </div>
 
-              <div className="mt-4 max-h-[430px] space-y-3 overflow-y-auto pr-1">
-                {selectedDocuments.map((document) => (
-                  <div
-                    key={document.id}
-                    className="grid gap-3 rounded-xl border border-slate-200 bg-white p-3 md:grid-cols-[1fr_130px_130px_auto] md:items-center"
-                  >
-                    <div>
-                      <p className="text-sm font-black text-slate-950">
-                        {document.name}
-                      </p>
-                      <p className="mt-1 text-xs font-semibold text-slate-500">
-                        {document.description}
-                      </p>
+                <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <h4 className="text-sm font-black text-slate-950">
+                    Add Existing Documents
+                  </h4>
+                  <p className="mt-1 text-xs font-semibold text-slate-500">
+                    Create missing documents in Document Library first, then search and add them here.
+                  </p>
+
+                  <div className="relative mt-3">
+                    <FiSearch className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <input
+                      value={documentSearch}
+                      onChange={(event) => setDocumentSearch(event.target.value)}
+                      placeholder="Search document library..."
+                      className="h-10 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-sm font-semibold text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
+                    />
+                  </div>
+
+                  <div className="mt-3 grid max-h-[150px] gap-2 overflow-y-auto pr-1 md:grid-cols-2">
+                    {filteredDocuments.map((document) => {
+                      const added = selectedDocIds.has(document.id)
+
+                      return (
+                        <div
+                          key={document.id}
+                          className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white p-3"
+                        >
+                          <div>
+                            <p className="text-xs font-black text-slate-950">
+                              {document.name}
+                            </p>
+                            <p className="mt-1 text-[11px] font-semibold text-slate-500">
+                              {document.description}
+                            </p>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => addDocument(document)}
+                            disabled={added}
+                            className={`h-8 rounded-lg border px-3 text-xs font-black transition ${
+                              added
+                                ? 'cursor-not-allowed border-slate-200 bg-slate-50 text-slate-400'
+                                : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                            }`}
+                          >
+                            {added ? 'Added' : 'Add'}
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                <div className="mt-4 max-h-[430px] space-y-3 overflow-y-auto pr-1">
+                  {selectedDocuments.map((document) => (
+                    <div
+                      key={document.id}
+                      className="grid gap-3 rounded-xl border border-slate-200 bg-white p-3 md:grid-cols-[1fr_130px_130px_auto] md:items-center"
+                    >
+                      <div>
+                        <p className="text-sm font-black text-slate-950">
+                          {document.name}
+                        </p>
+                        <p className="mt-1 text-xs font-semibold text-slate-500">
+                          {document.description}
+                        </p>
+                      </div>
+
+                      <SelectField
+                        label="Requirement"
+                        value={document.requirement}
+                        onChange={(value) =>
+                          updateDocument(document.id, 'requirement', value)
+                        }
+                      >
+                        <option value="required">Required</option>
+                        <option value="optional">Optional</option>
+                      </SelectField>
+
+                      <SelectField
+                        label="Status"
+                        value={document.status}
+                        onChange={(value) =>
+                          updateDocument(document.id, 'status', value)
+                        }
+                      >
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                      </SelectField>
+
+                      <button
+                        type="button"
+                        onClick={() => removeDocument(document.id)}
+                        className="h-10 rounded-lg bg-red-600 px-4 text-sm font-black text-white transition hover:bg-red-700"
+                      >
+                        Remove
+                      </button>
                     </div>
+                  ))}
 
-                    <SelectField
-                      label="Requirement"
-                      value={document.requirement}
-                      onChange={(value) =>
-                        updateDocument(document.id, 'requirement', value)
-                      }
-                    >
-                      <option value="required">Required</option>
-                      <option value="optional">Optional</option>
-                    </SelectField>
+                  {!selectedDocuments.length ? (
+                    <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5 text-center text-sm font-semibold text-slate-500">
+                      No documents selected yet.
+                    </div>
+                  ) : null}
+                </div>
+              </section>
+            </div>
+          )}
+        </div>
 
-                    <SelectField
-                      label="Status"
-                      value={document.status}
-                      onChange={(value) =>
-                        updateDocument(document.id, 'status', value)
-                      }
-                    >
-                      <option value="active">Active</option>
-                      <option value="inactive">Inactive</option>
-                    </SelectField>
+        <div className="flex shrink-0 flex-col gap-2 border-t border-slate-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs font-bold text-slate-500">Step {step} of 2</p>
 
-                    <button
-                      type="button"
-                      onClick={() => removeDocument(document.id)}
-                      className="h-10 rounded-lg bg-red-600 px-4 text-sm font-black text-white transition hover:bg-red-700"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ))}
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isSaving}
+              className="h-10 rounded-lg border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Cancel
+            </button>
 
-                {!selectedDocuments.length ? (
-                  <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5 text-center text-sm font-semibold text-slate-500">
-                    No documents selected yet.
-                  </div>
-                ) : null}
-              </div>
-            </section>
+            {step === 2 ? (
+              <button
+                type="button"
+                onClick={() => { setStep(1); setAlert(null) }}
+                disabled={isSaving}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <FiArrowLeft className="h-4 w-4" />
+                Back
+              </button>
+            ) : null}
+
+            {step === 1 ? (
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  goToDocuments()
+                }}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700"
+              >
+                Next: Documents
+                <FiArrowRight className="h-4 w-4" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={isSaving}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSaving ? (
+                  <>
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <FiCheckCircle className="h-4 w-4" />
+                    {isEdit ? 'Save Changes' : 'Add Lot Project'}
+                  </>
+                )}
+              </button>
+            )}
           </div>
         </div>
-
-        <div className="flex shrink-0 flex-col gap-2 border-t border-slate-200 bg-white px-5 py-4 sm:flex-row sm:justify-end">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isSaving}
-            className="h-10 rounded-lg border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            Cancel
-          </button>
-
-          <button
-            type="submit"
-            disabled={isSaving}
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {isSaving ? (
-              <>
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-                Saving...
-              </>
-            ) : (
-              <>
-                <FiCheckCircle className="h-4 w-4" />
-                {isEdit ? 'Save Changes' : 'Add Lot Project'}
-              </>
-            )}
-          </button>
-        </div>
-      </form>
+      </div>
     </div>
   )
 }

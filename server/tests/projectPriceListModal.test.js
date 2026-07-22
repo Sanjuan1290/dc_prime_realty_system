@@ -39,3 +39,21 @@ test('print page uses the month count supplied by the Price List modal', async (
   assert.match(printPage, /netAfterReservation \/ straightPaymentMonths/);
   assert.match(printPage, /\{straightPaymentMonths\}<\/td>/);
 });
+
+test('Add and Edit Lot Project use a two-step project and documents flow', async () => {
+  const projectModal = await read('../../client/src/components/System/projectComponents/AddLotProjectModal.jsx');
+  const editModal = await read('../../client/src/components/Lot_Projects/DashboardComponents/EditProjectModal/EditProjectModal.jsx');
+
+  assert.match(projectModal, /const \[step, setStep\] = useState\(1\)/);
+  assert.match(projectModal, /Project Information/);
+  assert.match(projectModal, /Next: Documents/);
+  assert.match(projectModal, /Default Document Requirements/);
+  assert.match(projectModal, /Step \{step\} of 2/);
+  assert.match(projectModal, /role="dialog"/);
+  assert.doesNotMatch(projectModal, /<form[\s>]/);
+  assert.doesNotMatch(projectModal, /onSubmit=/);
+  assert.match(projectModal, /type="button"[\s\S]*?Next: Documents/);
+  assert.match(projectModal, /onClick=\{handleSave\}/);
+  assert.match(editModal, /mode="edit"/);
+});
+

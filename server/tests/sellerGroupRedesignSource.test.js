@@ -62,3 +62,22 @@ test('seller group router exposes group project rate editing and removes individ
   assert.doesNotMatch(router, /members\/:memberId\/rates/);
   assert.doesNotMatch(controller, /upsertAgentDirectRate/);
 });
+
+test('Realty records do not count the empty LEFT JOIN row as a member', async () => {
+  const controller = await readSource('../controllers/System/sellerGroup.controller.js');
+
+  assert.match(controller, /a\.accredited_seller_id IS NOT NULL[\s\S]*AS member_count/);
+  assert.match(controller, /COALESCE\(SUM\(CASE[\s\S]*a\.accredited_seller_id IS NOT NULL[\s\S]*AS active_member_count/);
+});
+
+test('Realty performance uses the dashboard-style complete-month range filter', async () => {
+  const source = await readSource('../../client/src/pages/System/SellerGroupDetails.jsx');
+
+  assert.match(source, /\{ value: '3_months', label: '3 Months' \}/);
+  assert.match(source, /resolvePresetDateRange/);
+  assert.match(source, /Preset ranges cover complete calendar months/);
+  assert.match(source, /disabled=\{dateRange !== 'custom'\}/);
+  assert.doesNotMatch(source, /Apply Range/);
+  assert.doesNotMatch(source, /Top of hierarchy|Direct parent/);
+});
+

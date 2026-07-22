@@ -9,7 +9,7 @@ export const getDocumentImageUrl = (entry) => {
     entry.fileUrl ||
     entry.file_url ||
     ''
-  )
+  ).trim()
 }
 
 export const isProtectedDocumentFile = (entry) => Boolean(
@@ -18,17 +18,39 @@ export const isProtectedDocumentFile = (entry) => Boolean(
   entry?.access_path ||
   entry?.fileId ||
   entry?.file_id ||
+  entry?.cloudinaryPublicId ||
+  entry?.cloudinary_public_id ||
   String(entry?.cloudinaryDeliveryType || entry?.cloudinary_delivery_type || '').toLowerCase() === 'authenticated'
 )
+
+const parseStoredFileValue = (value) => {
+  if (!value) return []
+  if (Array.isArray(value)) return value
+  if (typeof value === 'object') return [value]
+  if (typeof value !== 'string') return []
+
+  const raw = value.trim()
+  if (!raw) return []
+
+  try {
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed : parsed ? [parsed] : []
+  } catch {
+    return [raw]
+  }
+}
 
 export const normalizeDocumentFileEntry = (file, document = {}, index = 0) => {
   if (!file) return null
 
   if (typeof file === 'string') {
+    const url = file.trim()
+    if (!url) return null
+
     return {
-      url: file,
-      fileName: `${document.name || 'Document'} File ${index + 1}`,
-      resourceType: file.toLowerCase().includes('.pdf') ? 'raw' : 'image',
+      url,
+      fileName: `${document.name || document.document_name || 'Document'} File ${index + 1}`,
+      resourceType: url.toLowerCase().includes('.pdf') ? 'raw' : 'image',
       protected: false,
       accessPath: '',
     }
@@ -37,11 +59,21 @@ export const normalizeDocumentFileEntry = (file, document = {}, index = 0) => {
   if (typeof file !== 'object') return null
 
   const url = getDocumentImageUrl(file)
-  const fileId = file.fileId || file.file_id || null
-  const accessPath = file.accessPath || file.access_path || (fileId ? `/document-files/${fileId}/access-url` : '')
+  const fileId = Number(file.fileId || file.file_id || 0) || null
+  const projectSlug = String(document.projectSlug || document.project_slug || '').trim()
+  const accessPath = String(
+    file.accessPath ||
+    file.access_path ||
+    (fileId && projectSlug
+      ? `/projects/lot-projects/${projectSlug}/document-files/${fileId}/access-url`
+      : '')
+  ).trim()
   const protectedFile = isProtectedDocumentFile({ ...file, fileId, accessPath })
+  const cloudinaryPublicId = file.cloudinaryPublicId || file.cloudinary_public_id || null
 
-  if (!url && !accessPath && !fileId) return null
+  // Protected files intentionally have no permanent public URL. Keep the
+  // access route/file id so viewers can request a short-lived signed link.
+  if (!url && !accessPath && !fileId && !cloudinaryPublicId) return null
 
   return {
     ...file,
@@ -49,12 +81,15 @@ export const normalizeDocumentFileEntry = (file, document = {}, index = 0) => {
     url,
     accessPath,
     protected: protectedFile,
+    cloudinaryPublicId,
     fileName:
       file.fileName ||
       file.file_name ||
       file.originalFilename ||
       file.original_filename ||
-      `${document.name || 'Document'} File ${index + 1}`,
+      `${document.name || document.document_name || 'Document'} File ${index + 1}`,
+    fileType: file.fileType || file.file_type || '',
+    format: file.cloudinaryFormat || file.cloudinary_format || file.format || '',
     resourceType:
       file.cloudinaryResourceType ||
       file.cloudinary_resource_type ||
@@ -65,13 +100,19 @@ export const normalizeDocumentFileEntry = (file, document = {}, index = 0) => {
 }
 
 export const getDocumentFiles = (document = {}) => {
-  const source = Array.isArray(document.imageEntries) && document.imageEntries.length
-    ? document.imageEntries
-    : Array.isArray(document.images) && document.images.length
-      ? document.images
-      : document.fileUrl
-        ? [document.fileUrl]
-        : []
+  const candidates = [
+    document.imageEntries,
+    document.fileEntries,
+    document.files,
+    document.images,
+    document.lot_project_client_document_file_url,
+    document.file_url,
+    document.fileUrl,
+  ]
+
+  const source = candidates
+    .map(parseStoredFileValue)
+    .find((entries) => entries.length) || []
 
   return source
     .map((file, index) => normalizeDocumentFileEntry(file, document, index))
@@ -80,6 +121,6 @@ export const getDocumentFiles = (document = {}) => {
 
 export const isPdfLike = (file = {}) => `${
   file.url || ''
-} ${file.fileName || ''} ${file.fileType || file.file_type || ''} ${file.resourceType || ''}`
+} ${file.fileName || ''} ${file.fileType || file.file_type || ''} ${file.resourceType || ''} ${file.format || file.cloudinaryFormat || file.cloudinary_format || ''}`
   .toLowerCase()
   .includes('pdf')

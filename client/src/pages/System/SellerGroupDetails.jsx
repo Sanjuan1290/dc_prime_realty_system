@@ -3,7 +3,6 @@ import { NavLink, useLocation, useParams, useSearchParams } from 'react-router-d
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   FiArrowLeft,
-  FiCalendar,
   FiDollarSign,
   FiEdit2,
   FiRefreshCw,
@@ -32,6 +31,16 @@ const formatCurrency = (value) => new Intl.NumberFormat('en-PH', {
   maximumFractionDigits: 2,
 }).format(Number(value || 0))
 
+const dateRangeOptions = [
+  { value: 'this_month', label: 'This Month' },
+  { value: 'last_month', label: 'Last Month' },
+  { value: '2_months', label: '2 Months' },
+  { value: '3_months', label: '3 Months' },
+  { value: '6_months', label: '6 Months' },
+  { value: '12_months', label: '12 Months' },
+  { value: 'custom', label: 'Custom' },
+]
+
 const toDateInput = (date) => {
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0')
@@ -39,21 +48,20 @@ const toDateInput = (date) => {
   return `${year}-${month}-${day}`
 }
 
-const getLastTwelveMonthsRange = () => {
-  const today = new Date()
-  const from = new Date(today.getFullYear(), today.getMonth() - 11, 1)
-  return { from: toDateInput(from), to: toDateInput(today) }
-}
+const resolvePresetDateRange = (range, today = new Date()) => {
+  let from
+  let to
 
-const getPresetRange = (preset) => {
-  const today = new Date()
-  if (preset === '30_days') {
-    const from = new Date(today)
-    from.setDate(from.getDate() - 29)
-    return { from: toDateInput(from), to: toDateInput(today) }
+  if (range === 'last_month') {
+    from = new Date(today.getFullYear(), today.getMonth() - 1, 1)
+    to = new Date(today.getFullYear(), today.getMonth(), 0)
+  } else {
+    const monthCount = Number.parseInt(String(range).match(/^(\d+)_months$/)?.[1] || '1', 10)
+    from = new Date(today.getFullYear(), today.getMonth() - Math.max(monthCount - 1, 0), 1)
+    to = new Date(today.getFullYear(), today.getMonth() + 1, 0)
   }
-  if (preset === 'this_year') return { from: `${today.getFullYear()}-01-01`, to: toDateInput(today) }
-  return getLastTwelveMonthsRange()
+
+  return { from: toDateInput(from), to: toDateInput(to) }
 }
 
 const SummaryCard = ({ icon: Icon, label, value, helper }) => (
@@ -94,7 +102,8 @@ const SellerGroupDetails = () => {
   const isAdmin = location.pathname.startsWith('/admin/')
   const groupsPath = isAdmin ? '/admin/users/seller_group' : '/super_admin/users/seller_group'
 
-  const initialRange = useMemo(() => getLastTwelveMonthsRange(), [])
+  const initialRange = useMemo(() => resolvePresetDateRange('3_months'), [])
+  const [dateRange, setDateRange] = useState('3_months')
   const [alert, setAlert] = useState(null)
   const [memberSearch, setMemberSearch] = useState('')
   const [memberPage, setMemberPage] = useState(1)
@@ -174,18 +183,31 @@ const SellerGroupDetails = () => {
     queryClient.invalidateQueries({ queryKey: ['commission-preview'] })
   }
 
-  const applyRange = () => {
-    if (!draftRange.from || !draftRange.to) return setAlert({ type: 'error', message: 'Select both From Date and To Date.' })
-    if (draftRange.from > draftRange.to) return setAlert({ type: 'error', message: 'From Date cannot be after To Date.' })
+  const handleRangeChange = (value) => {
+    setDateRange(value)
     setAlert(null)
-    setAppliedRange(draftRange)
+
+    if (value !== 'custom') {
+      const nextRange = resolvePresetDateRange(value)
+      setDraftRange(nextRange)
+      setAppliedRange(nextRange)
+    }
   }
 
-  const setPreset = (preset) => {
-    const range = getPresetRange(preset)
-    setDraftRange(range)
-    setAppliedRange(range)
+  const updateCustomDate = (key, value) => {
+    const nextRange = { ...draftRange, [key]: value }
+    setDraftRange(nextRange)
+
+    if (dateRange !== 'custom') return
+    if (!nextRange.from || !nextRange.to) return
+
+    if (nextRange.from > nextRange.to) {
+      setAlert({ type: 'error', message: 'From Date cannot be after To Date.' })
+      return
+    }
+
     setAlert(null)
+    setAppliedRange(nextRange)
   }
 
   const isInitialLoading = projectOptionsQuery.isLoading || (selectedProjectId && configurationQuery.isLoading)
@@ -261,13 +283,23 @@ const SellerGroupDetails = () => {
             <div className="flex flex-col gap-4 border-b border-slate-200 p-4 xl:flex-row xl:items-end xl:justify-between">
               <div>
                 <h2 className="text-lg font-black text-slate-950">Sales and Commission Performance</h2>
-                <p className="mt-1 text-sm font-semibold text-slate-500">Live totals for {project.name} based on reservation dates within the selected range.</p>
+                <p className="mt-1 text-sm font-semibold text-slate-500">Preset ranges cover complete calendar months. Custom lets you choose exact start and end dates.</p>
               </div>
-              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-[150px_150px_auto_auto]">
-                <label className="flex flex-col gap-1"><span className="text-[11px] font-black uppercase text-slate-500">From Date</span><input type="date" value={draftRange.from} onChange={(event) => setDraftRange((current) => ({ ...current, from: event.target.value }))} className="h-10 rounded-xl border border-slate-300 px-3 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50" /></label>
-                <label className="flex flex-col gap-1"><span className="text-[11px] font-black uppercase text-slate-500">To Date</span><input type="date" value={draftRange.to} onChange={(event) => setDraftRange((current) => ({ ...current, to: event.target.value }))} className="h-10 rounded-xl border border-slate-300 px-3 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50" /></label>
-                <button type="button" onClick={applyRange} className="mt-auto inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-black text-white hover:bg-blue-700"><FiCalendar />Apply Range</button>
-                <select aria-label="Date range preset" defaultValue="last_12_months" onChange={(event) => setPreset(event.target.value)} className="mt-auto h-10 rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-700 outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50"><option value="30_days">Last 30 Days</option><option value="this_year">This Year</option><option value="last_12_months">Last 12 Months</option></select>
+              <div className="grid gap-3 sm:grid-cols-3 xl:min-w-[620px]">
+                <label className="grid gap-1">
+                  <span className="text-xs font-black uppercase tracking-wide text-slate-500">Range</span>
+                  <select value={dateRange} onChange={(event) => handleRangeChange(event.target.value)} className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-700 outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50">
+                    {dateRangeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                </label>
+                <label className="grid gap-1">
+                  <span className="text-xs font-black uppercase tracking-wide text-slate-500">From date</span>
+                  <input type="date" value={draftRange.from} onChange={(event) => updateCustomDate('from', event.target.value)} disabled={dateRange !== 'custom'} className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-700 outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500" />
+                </label>
+                <label className="grid gap-1">
+                  <span className="text-xs font-black uppercase tracking-wide text-slate-500">To date</span>
+                  <input type="date" value={draftRange.to} onChange={(event) => updateCustomDate('to', event.target.value)} disabled={dateRange !== 'custom'} className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-700 outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500" />
+                </label>
               </div>
             </div>
             <div className="grid gap-4 p-4 sm:grid-cols-2 xl:grid-cols-6">
@@ -301,7 +333,7 @@ const SellerGroupDetails = () => {
                       <tr key={member.accredited_seller_id} className="hover:bg-slate-50">
                         <td className="px-4 py-4 font-black text-slate-950">{member.display_name}</td>
                         <td className="px-4 py-4 font-semibold text-slate-700">{roleLabel(member.role)}</td>
-                        <td className="px-4 py-4"><p className="font-semibold text-slate-700">{isHead ? 'Developer' : parent?.display_name || member.reports_under_name || 'Not assigned'}</p><p className="text-xs text-slate-500">{isHead ? 'Top of hierarchy' : 'Direct parent'}</p></td>
+                        <td className="px-4 py-4 font-semibold text-slate-700">{isHead ? 'Developer' : parent?.display_name || member.reports_under_name || 'Not assigned'}</td>
                         <td className="px-4 py-4"><span className={`rounded-full px-3 py-1 text-xs font-black capitalize ${member.accredited_seller_status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{member.accredited_seller_status}</span></td>
                       </tr>
                     )

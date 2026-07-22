@@ -783,8 +783,9 @@ export const mapProfileListing = (row = {}, project = {}, documents = []) => {
 };
 
 
-const normalizeClientDocumentImageEntries = (fileUrlValue, fileNameValue = '') => {
+const normalizeClientDocumentImageEntries = (fileUrlValue, fileNameValue = '', projectSlug = '') => {
   const fallbackFileName = String(fileNameValue || '').trim();
+  const safeProjectSlug = String(projectSlug || '').trim();
   const raw = String(fileUrlValue || '').trim();
   if (!raw) return [];
 
@@ -802,10 +803,34 @@ const normalizeClientDocumentImageEntries = (fileUrlValue, fileNameValue = '') =
 
     if (typeof item === 'object') {
       const url = String(item.url || item.secure_url || item.fileUrl || item.file_url || '').trim();
-      if (!url) return null;
+      const fileId = Number(item.fileId || item.file_id || 0) || null;
+      const cloudinaryPublicId = String(item.cloudinaryPublicId || item.cloudinary_public_id || '').trim();
+      const accessPath = String(
+        item.accessPath ||
+        item.access_path ||
+        (fileId && safeProjectSlug
+          ? `/projects/lot-projects/${safeProjectSlug}/document-files/${fileId}/access-url`
+          : '')
+      ).trim();
+      const protectedFile = Boolean(
+        item.protected ||
+        accessPath ||
+        fileId ||
+        cloudinaryPublicId ||
+        String(item.cloudinaryDeliveryType || item.cloudinary_delivery_type || '').toLowerCase() === 'authenticated'
+      );
+
+      // Authenticated Cloudinary files deliberately store no permanent public URL.
+      // Keep their file id/access route so the client can request a short-lived link.
+      if (!url && !accessPath && !fileId && !cloudinaryPublicId) return null;
+
       return {
         ...item,
         url,
+        fileId,
+        accessPath,
+        protected: protectedFile,
+        cloudinaryPublicId: cloudinaryPublicId || item.cloudinaryPublicId || item.cloudinary_public_id || null,
         fileName: item.fileName || item.file_name || item.originalFilename || item.original_filename || fallbackFileName || `Document Image ${index + 1}`,
       };
     }
@@ -823,10 +848,10 @@ const normalizeClientDocumentImageEntries = (fileUrlValue, fileNameValue = '') =
   }
 };
 
-export const parseClientDocumentImages = (fileUrlValue, fileNameValue = '') =>
-  normalizeClientDocumentImageEntries(fileUrlValue, fileNameValue);
+export const parseClientDocumentImages = (fileUrlValue, fileNameValue = '', projectSlug = '') =>
+  normalizeClientDocumentImageEntries(fileUrlValue, fileNameValue, projectSlug);
 
-export const getListingDocuments = async (connection, lotProjectId, listingId, clientProfileId) => {
+export const getListingDocuments = async (connection, lotProjectId, listingId, clientProfileId, projectSlug = '') => {
   const hasListingDocuments = await tableExists(connection, 'lot_project_listing_documents');
   const hasClientDocuments = await tableExists(connection, 'lot_project_client_documents');
 
@@ -870,7 +895,8 @@ export const getListingDocuments = async (connection, lotProjectId, listingId, c
   return rows.map((document) => {
     const imageEntries = parseClientDocumentImages(
       document.lot_project_client_document_file_url,
-      document.lot_project_client_document_file_name
+      document.lot_project_client_document_file_name,
+      projectSlug
     );
     const imageUrls = imageEntries.map((image) => image.url).filter(Boolean);
 

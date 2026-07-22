@@ -25,4 +25,7 @@ test('listing printouts expose one acknowledgement receipt page per verified pay
   assert.match(receiptPage, /ACKNOWLEDGEMENT RECEIPT/)
   assert.match(receiptPage, /REFERENCE NUMBER/)
   assert.match(receiptPage, /amountToWords\(paymentAmount\)/)
+  assert.match(receiptPage, /<p>Broker:<\/p>[\s\S]*&nbsp;[\s\S]*PRC No\. __________________/)
+  assert.match(receiptPage, /&nbsp;<\/div>[\s\S]*<p className="mt-2">Witness<\/p>/)
+  assert.doesNotMatch(receiptPage, /getBrokerDetails|payment\.verifiedBy/)
 })

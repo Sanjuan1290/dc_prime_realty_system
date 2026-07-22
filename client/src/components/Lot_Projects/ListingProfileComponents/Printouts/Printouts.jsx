@@ -44,6 +44,7 @@ const Printouts = ({
     localStorage.setItem(
       'lot_project_print_payload',
       JSON.stringify({
+        projectSlug,
         project,
         listing,
         client,

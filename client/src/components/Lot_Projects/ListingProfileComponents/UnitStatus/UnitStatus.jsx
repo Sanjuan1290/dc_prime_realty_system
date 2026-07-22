@@ -273,7 +273,6 @@ const UnitStatus = ({
           <div className="flex flex-wrap items-center gap-2">
             <StatusPill status={unitData.listing_status} />
             <StatusPill status={unitData.document_status} />
-            <StatusPill status={unitData.payment_status} />
 
             <button
               type="button"

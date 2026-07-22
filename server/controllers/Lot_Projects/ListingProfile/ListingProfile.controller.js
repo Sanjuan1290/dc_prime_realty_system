@@ -655,7 +655,7 @@ export const getLotProjectListingProfile = async (req, res) => {
     const row = rows[0];
     if (!row) return res.status(404).json({ message: 'Listing not found.' });
 
-    const documents = await getListingDocuments(connection, project.lot_project_id, row.lot_project_listing_id, row.lot_project_client_profile_id);
+    const documents = await getListingDocuments(connection, project.lot_project_id, row.lot_project_listing_id, row.lot_project_client_profile_id, slug);
     const payments = await getListingPayments(connection, project.lot_project_id, row.lot_project_listing_id, row.lot_project_client_profile_id);
     const soaRows = await getListingSoaRows(connection, project.lot_project_id, row.lot_project_listing_id, row, payments);
     const cadastralLots = await getProjectCadastralLots(project.lot_project_id);

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { FiExternalLink, FiEye, FiFileText, FiImage, FiLoader, FiLock, FiSearch, FiX } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
 import { useFetch } from '../../../../utils/useFetch'
@@ -19,12 +19,72 @@ const StatusPill = ({ value }) => (
   </span>
 )
 
+const getFileKey = (document, file, index) =>
+  `${document.id || document.document_id || 'document'}-${file.fileId || file.cloudinaryPublicId || index}`
+
 const DocumentImagesModal = ({ documents = [], onClose }) => {
   const [search, setSearch] = useState('')
   const [previewFile, setPreviewFile] = useState(null)
   const [loadingKey, setLoadingKey] = useState('')
   const [notice, setNotice] = useState(null)
   const [resolvedUrls, setResolvedUrls] = useState({})
+  const [previewStatus, setPreviewStatus] = useState({ loading: false, failed: 0 })
+
+  const documentFiles = useMemo(
+    () => documents.flatMap((document) =>
+      getDocumentFiles(document).map((file, index) => ({
+        document,
+        file,
+        index,
+        key: getFileKey(document, file, index),
+      }))
+    ),
+    [documents]
+  )
+
+  useEffect(() => {
+    let cancelled = false
+    const protectedImages = documentFiles.filter(({ file }) => file.protected && !isPdfLike(file) && file.accessPath)
+
+    if (!protectedImages.length) {
+      setPreviewStatus({ loading: false, failed: 0 })
+      return () => {
+        cancelled = true
+      }
+    }
+
+    const loadProtectedPreviews = async () => {
+      setPreviewStatus({ loading: true, failed: 0 })
+      const results = await Promise.allSettled(
+        protectedImages.map(async ({ key, file }) => {
+          const result = await useFetch(file.accessPath)
+          const url = result?.data?.url || result?.url || ''
+          if (!url) throw new Error('The server did not return a document link.')
+          return { key, url }
+        })
+      )
+
+      if (cancelled) return
+
+      const nextUrls = {}
+      let failed = 0
+      results.forEach((result) => {
+        if (result.status === 'fulfilled') nextUrls[result.value.key] = result.value.url
+        else failed += 1
+      })
+
+      if (Object.keys(nextUrls).length) {
+        setResolvedUrls((current) => ({ ...current, ...nextUrls }))
+      }
+      setPreviewStatus({ loading: false, failed })
+    }
+
+    loadProtectedPreviews()
+
+    return () => {
+      cancelled = true
+    }
+  }, [documentFiles])
 
   const filteredDocuments = useMemo(() => {
     const keyword = search.trim().toLowerCase()
@@ -44,7 +104,7 @@ const DocumentImagesModal = ({ documents = [], onClose }) => {
     setNotice({ type: 'loading', message: 'Generating a secure document link...' })
     try {
       const result = await useFetch(file.accessPath)
-      const url = result?.data?.url
+      const url = result?.data?.url || result?.url
       if (!url) throw new Error('The server did not return a document link.')
       setResolvedUrls((current) => ({ ...current, [key]: url }))
       setNotice(null)
@@ -58,7 +118,7 @@ const DocumentImagesModal = ({ documents = [], onClose }) => {
   }
 
   const openFile = async (file, document, index) => {
-    const key = `${document.id}-${file.fileId || file.cloudinaryPublicId || index}`
+    const key = getFileKey(document, file, index)
     try {
       const url = await resolveFileUrl(file, key)
       if (isPdfLike(file)) {
@@ -86,6 +146,8 @@ const DocumentImagesModal = ({ documents = [], onClose }) => {
 
         <div className="shrink-0 border-b border-slate-200 bg-slate-50 p-5">
           {notice ? <StatusAlert type={notice.type} message={notice.message} onClose={notice.type === 'loading' ? undefined : () => setNotice(null)} className="mb-3" /> : null}
+          {previewStatus.loading ? <StatusAlert type="loading" message="Loading protected document previews..." className="mb-3" /> : null}
+          {!previewStatus.loading && previewStatus.failed > 0 ? <StatusAlert type="warning" message={`${previewStatus.failed} protected preview(s) could not be loaded. You can still open each file to try again.`} className="mb-3" /> : null}
           <label className="relative block">
             <FiSearch className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search document, file name, or status..." className="h-11 w-full rounded-xl border border-slate-300 bg-white pl-11 pr-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50" />
@@ -97,7 +159,7 @@ const DocumentImagesModal = ({ documents = [], onClose }) => {
             {filteredDocuments.map((document) => {
               const files = getDocumentFiles(document)
               return (
-                <section key={document.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <section key={document.id || document.document_id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                   <div className="flex items-start justify-between gap-3 border-b border-slate-200 p-4">
                     <div>
                       <h3 className="text-base font-black text-slate-950">{document.name}</h3>
@@ -110,14 +172,26 @@ const DocumentImagesModal = ({ documents = [], onClose }) => {
                     {files.length ? (
                       <div className="grid gap-3 sm:grid-cols-2">
                         {files.map((file, index) => {
-                          const key = `${document.id}-${file.fileId || file.cloudinaryPublicId || index}`
+                          const key = getFileKey(document, file, index)
                           const isPdf = isPdfLike(file)
                           const isLoading = loadingKey === key
+                          const previewUrl = !isPdf ? (file.protected ? resolvedUrls[key] : file.url) : ''
+
                           return (
                             <button key={key} type="button" onClick={() => openFile(file, document, index)} disabled={Boolean(loadingKey)} className="group overflow-hidden rounded-xl border border-slate-200 bg-slate-50 text-left transition hover:border-blue-300 hover:ring-4 hover:ring-blue-50 disabled:opacity-60">
-                              <div className="flex aspect-[4/3] flex-col items-center justify-center bg-slate-100 text-slate-500">
-                                {isLoading ? <FiLoader className="h-9 w-9 animate-spin text-blue-600" /> : isPdf ? <FiFileText className="h-10 w-10" /> : file.protected ? <FiLock className="h-10 w-10" /> : <FiImage className="h-10 w-10" />}
-                                <span className="mt-2 text-xs font-black">{isLoading ? 'Opening...' : file.protected ? 'Protected file' : isPdf ? 'Open PDF' : 'Preview image'}</span>
+                              <div className="flex aspect-[4/3] flex-col items-center justify-center overflow-hidden bg-slate-100 text-slate-500">
+                                {previewUrl ? (
+                                  <img src={previewUrl} alt={`${document.name} preview ${index + 1}`} className="h-full w-full object-contain" />
+                                ) : isLoading ? (
+                                  <FiLoader className="h-9 w-9 animate-spin text-blue-600" />
+                                ) : isPdf ? (
+                                  <FiFileText className="h-10 w-10" />
+                                ) : file.protected ? (
+                                  <FiLock className="h-10 w-10" />
+                                ) : (
+                                  <FiImage className="h-10 w-10" />
+                                )}
+                                {!previewUrl ? <span className="mt-2 text-xs font-black">{isLoading ? 'Opening...' : file.protected ? 'Protected file' : isPdf ? 'Open PDF' : 'Preview image'}</span> : null}
                               </div>
                               <div className="flex items-center justify-between gap-3 p-3">
                                 <span className="truncate text-xs font-black text-slate-700">{file.fileName || `File ${index + 1}`}</span>
