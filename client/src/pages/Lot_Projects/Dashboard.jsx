@@ -19,6 +19,7 @@ import {
 } from 'recharts'
 import {
   FiActivity,
+  FiAlertTriangle,
   FiCreditCard,
   FiEdit3,
   FiEye,
@@ -513,7 +514,8 @@ const Dashboard = () => {
 
   const topStats = [
     { label: 'Total Sales', value: isLoading ? '...' : money(stats.totalSales), helper: 'Booked contract value.', tone: 'slate', icon: FiCreditCard },
-    { label: 'Cash Collected', value: isLoading ? '...' : money(stats.totalCashCollected ?? stats.totalCollected), helper: `${percent(stats.cashCollectionProgress ?? stats.collectionProgress)} cash progress.`, tone: 'green', icon: FiActivity },
+    { label: 'Cash Collected', value: isLoading ? '...' : money(stats.totalCashCollected ?? stats.totalCollected), helper: `${percent(stats.cashCollectionProgress ?? stats.collectionProgress)} cash progress. Includes paid penalties because verified payments store one gross receipt amount.`, tone: 'green', icon: FiActivity },
+    { label: 'Penalty Accumulated', value: isLoading ? '...' : money(stats.totalPenaltyAccumulated), helper: `Paid ${money(stats.totalPenaltyPaid)} · Outstanding ${money(stats.totalPenaltyOutstanding)} after approved waivers.`, tone: 'red', icon: FiAlertTriangle },
     { label: 'Discount Applied', value: isLoading ? '...' : money(stats.discountApplied), helper: 'Earned downpayment discount. Not cash.', tone: 'amber', icon: FiCreditCard },
     { label: 'Settled Value', value: isLoading ? '...' : money(stats.settledValue), helper: `${percent(stats.settlementProgress)} of sales satisfied.`, tone: 'blue', icon: FiTrendingUp },
     { label: 'Outstanding Value', value: isLoading ? '...' : money(stats.pendingSales), helper: 'Contract value still unsettled.', tone: 'red', icon: FiCreditCard },
@@ -585,7 +587,7 @@ const Dashboard = () => {
           <button type="button" onClick={handleRefresh} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-black text-slate-700 transition hover:bg-slate-50"><FiRefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />Refresh</button>
         </div>
 
-        <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
           {topStats.map((item) => <MetricCard key={item.label} {...item} />)}
         </div>
       </section>

@@ -9,6 +9,7 @@ import {
   mapListingRow,
   formatDocumentsLabel,
   todayDateOnly,
+  getLatestActiveScheduleGenerationPredicate,
 } from '../_shared/lotProject.shared.js';
 
 const toNumber = (value) => Number(value || 0);
@@ -360,6 +361,9 @@ export const getLotProjectDashboard = async (req, res) => {
       grossCashCollectibles: 0,
       netCashCollectibles: 0,
       totalNetSales: 0,
+      totalPenaltyAccumulated: 0,
+      totalPenaltyPaid: 0,
+      totalPenaltyOutstanding: 0,
       reservationCount: 0,
       cancelledCount: 0,
       cancelledValue: 0,
@@ -419,6 +423,9 @@ export const getLotProjectDashboard = async (req, res) => {
       && await columnExists(connection, 'lot_project_reservation_history', 'refund_amount');
     const hasSelectedContractTcp = hasClientProfiles
       && await columnExists(connection, 'lot_project_client_profiles', 'soa_selected_tcp');
+    const hasScheduleAccountId = hasSchedules
+      && await columnExists(connection, 'lot_project_payment_schedules', 'lot_project_account_id');
+    const hasListingCurrentAccountId = await columnExists(connection, 'lot_project_listings', 'current_account_id');
     const effectiveTcpExpr = hasSelectedContractTcp
       ? 'COALESCE(cp.soa_selected_tcp, l.lot_project_listing_tcp)'
       : 'l.lot_project_listing_tcp';
@@ -514,6 +521,18 @@ export const getLotProjectDashboard = async (req, res) => {
             AND DATE(rh_scope.reserved_at) BETWEEN ${escapedRangeFrom} AND ${escapedRangeTo}
         )`
       : `${hasClientProfiles ? 'DATE(COALESCE(cp.lot_project_client_profile_created_at, l.lot_project_listing_updated_at))' : 'DATE(l.lot_project_listing_updated_at)'} BETWEEN ${escapedRangeFrom} AND ${escapedRangeTo}`;
+
+    const currentScheduleAccountPredicate = hasScheduleAccountId && hasListingCurrentAccountId
+      ? 's.lot_project_account_id = l.current_account_id'
+      : hasClientProfiles
+        ? "COALESCE(cp.lot_project_client_profile_status, 'active') = 'active'"
+        : '1 = 1';
+    const penaltyScheduleScope = `
+      s.schedule_status <> 'Cancelled'
+      AND l.lot_project_listing_status IN ('sold', 'pending_for_cancellation')
+      AND ${currentScheduleAccountPredicate}
+      AND (${reservationRangeScope})
+    `;
 
     const releaseSummaryJoin = hasCommissionReleases
       ? `
@@ -641,6 +660,9 @@ export const getLotProjectDashboard = async (req, res) => {
       ? await connection.query(
           `
             SELECT
+              COALESCE(SUM(CASE WHEN ${penaltyScheduleScope} THEN GREATEST(s.paid_penalty_amount, 0) + GREATEST(s.penalty_amount - s.paid_penalty_amount, 0) ELSE 0 END), 0) AS totalPenaltyAccumulated,
+              COALESCE(SUM(CASE WHEN ${penaltyScheduleScope} THEN GREATEST(s.paid_penalty_amount, 0) ELSE 0 END), 0) AS totalPenaltyPaid,
+              COALESCE(SUM(CASE WHEN ${penaltyScheduleScope} THEN GREATEST(s.penalty_amount - s.paid_penalty_amount, 0) ELSE 0 END), 0) AS totalPenaltyOutstanding,
               COALESCE(SUM(s.due_date < CURDATE() AND s.schedule_status IN ('Unpaid', 'Partial', 'Overdue') AND ${dueBalanceExpr} > 0), 0) AS overdueCount,
               COALESCE(SUM(s.due_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY) AND s.schedule_status IN ('Unpaid', 'Partial', 'Overdue') AND ${dueBalanceExpr} > 0), 0) AS dueSoonCount,
               COALESCE(SUM(CASE
@@ -656,10 +678,19 @@ export const getLotProjectDashboard = async (req, res) => {
               ON cp.lot_project_client_profile_id = s.lot_project_client_profile_id
             WHERE s.lot_project_id = ?
               AND s.due_date IS NOT NULL
+              AND l.current_account_id = s.lot_project_account_id
+              AND ${getLatestActiveScheduleGenerationPredicate('s')}
           `,
           [project.lot_project_id]
         )
-      : [[{ overdueCount: 0, dueSoonCount: 0, upcomingDueAmount: 0 }]];
+      : [[{
+          totalPenaltyAccumulated: 0,
+          totalPenaltyPaid: 0,
+          totalPenaltyOutstanding: 0,
+          overdueCount: 0,
+          dueSoonCount: 0,
+          upcomingDueAmount: 0,
+        }]];
 
     const [upcomingDueRows] = hasSchedules
       ? await connection.query(
@@ -682,6 +713,8 @@ export const getLotProjectDashboard = async (req, res) => {
               ON cp.lot_project_client_profile_id = s.lot_project_client_profile_id
             WHERE s.lot_project_id = ?
               AND s.due_date IS NOT NULL
+              AND l.current_account_id = s.lot_project_account_id
+              AND ${getLatestActiveScheduleGenerationPredicate('s')}
               AND s.schedule_status IN ('Unpaid', 'Partial', 'Overdue')
               AND s.due_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)
               AND ${dueBalanceExpr} > 0
@@ -1140,7 +1173,8 @@ export const getLotProjectDashboard = async (req, res) => {
               ON l2.lot_project_listing_id = s.lot_project_listing_id
             LEFT JOIN lot_project_client_profiles cp2
               ON cp2.lot_project_client_profile_id = s.lot_project_client_profile_id
-            WHERE s.schedule_status <> 'Cancelled'
+            WHERE l2.current_account_id = s.lot_project_account_id
+              AND ${getLatestActiveScheduleGenerationPredicate('s')}
             GROUP BY s.lot_project_listing_id
           ) sbalance ON sbalance.lot_project_listing_id = l.lot_project_listing_id
         `
@@ -1262,6 +1296,9 @@ export const getLotProjectDashboard = async (req, res) => {
           releasedCommission: toNumber(commissionSummary.releasedCommission),
           cashAdvanceDeductions: toNumber(commissionSummary.cashAdvanceDeductions),
           netRemainingCommission: toNumber(commissionSummary.netRemainingCommission),
+          totalPenaltyAccumulated: toNumber(scheduleSummary.totalPenaltyAccumulated),
+          totalPenaltyPaid: toNumber(scheduleSummary.totalPenaltyPaid),
+          totalPenaltyOutstanding: toNumber(scheduleSummary.totalPenaltyOutstanding),
           overdueCount: toNumber(scheduleSummary.overdueCount),
           dueSoonCount: toNumber(scheduleSummary.dueSoonCount),
           upcomingDueAmount: toNumber(scheduleSummary.upcomingDueAmount),

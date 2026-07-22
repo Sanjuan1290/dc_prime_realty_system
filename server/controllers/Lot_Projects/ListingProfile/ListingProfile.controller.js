@@ -46,6 +46,7 @@ import {
   allocatePaymentsToComputedRows,
   recomputeComputedSoaBalances,
   getExistingSoaScheduleRows,
+  getLatestActiveScheduleGenerationPredicate,
   canGenerateListingSoa,
   getListingSoaRows,
   getRequestToken,
@@ -599,7 +600,8 @@ export const getLotProjectListingProfile = async (req, res) => {
               MIN(CASE WHEN LOWER(description) LIKE '%monthly%' THEN due_date END),
               MIN(due_date)
             ) AS first_due_date
-          FROM lot_project_payment_schedules
+          FROM lot_project_payment_schedules schedule_row
+          WHERE ${getLatestActiveScheduleGenerationPredicate('schedule_row')}
           GROUP BY lot_project_client_profile_id
         ) schedule_summary ON schedule_summary.lot_project_client_profile_id = cp.lot_project_client_profile_id
         LEFT JOIN (

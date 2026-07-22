@@ -4,6 +4,7 @@ import {
   getErrorMessage,
   tableExists,
   columnExists,
+  getLatestActiveScheduleGenerationPredicate,
 } from '../Lot_Projects/_shared/lotProject.shared.js';
 import {
   buildSoaPdfBuffer,
@@ -641,6 +642,7 @@ export const getPaymentDueNotifications = async (req, res) => {
         ) latest_log
           ON latest_log.lot_project_payment_schedule_id = s.lot_project_payment_schedule_id
         WHERE ${where.join(' AND ')}
+          AND ${getLatestActiveScheduleGenerationPredicate('s')}
         ORDER BY
           CASE WHEN s.due_date < CURDATE() THEN 0 ELSE 1 END,
           s.due_date ASC,

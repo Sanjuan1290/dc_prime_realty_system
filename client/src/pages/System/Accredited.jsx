@@ -274,7 +274,6 @@ const IncomeRangeReportPanel = ({ seller, sellerId, receipts = EMPTY_LIST, recei
                       <th className="px-4 py-3">Release</th>
                       <th className="px-4 py-3 text-right">This Release</th>
                       <th className="px-4 py-3 text-right">Cumulative Gross</th>
-                      <th className="px-4 py-3 text-right">Deductions</th>
                       <th className="px-4 py-3 text-right">Net Income</th>
                     </tr>
                   </thead>
@@ -288,7 +287,6 @@ const IncomeRangeReportPanel = ({ seller, sellerId, receipts = EMPTY_LIST, recei
                         <td className="px-4 py-3"><p className="font-black text-slate-800">{entry.releaseStage}</p><p className="text-xs font-semibold text-slate-500">{releaseMilestoneLabel(entry)}{entry.receiptReference ? ` · Receipt ${entry.receiptReference}` : ""}</p></td>
                         <td className="px-4 py-3 text-right font-black text-slate-800">{money(entry.grossAmount)}</td>
                         <td className="px-4 py-3 text-right"><p className="font-black text-blue-700">{money(entry.cumulativeGrossTarget)}</p><p className="text-xs font-semibold text-slate-500">{Number(entry.triggerPercent || 0).toFixed(2)}% target</p></td>
-                        <td className="px-4 py-3 text-right font-black text-rose-600">{money(entry.deductionAmount)}</td>
                         <td className="px-4 py-3 text-right font-black text-emerald-700">{money(entry.netAmount)}</td>
                       </tr>
                     ))}

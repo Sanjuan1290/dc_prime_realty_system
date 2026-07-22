@@ -3,6 +3,7 @@ import {
   getErrorMessage,
   tableExists,
   getProjectBySlug,
+  getLatestActiveScheduleGenerationPredicate,
   getAuthenticatedUser,
   getUserFullName,
 } from '../_shared/lotProject.shared.js';
@@ -86,8 +87,8 @@ const scheduleSummaryJoin = `
     SELECT
       lot_project_client_profile_id,
       COUNT(*) AS schedule_count
-    FROM lot_project_payment_schedules
-    WHERE schedule_status <> 'Cancelled'
+    FROM lot_project_payment_schedules schedule_row
+    WHERE ${getLatestActiveScheduleGenerationPredicate('schedule_row')}
     GROUP BY lot_project_client_profile_id
   ) schedule_summary ON schedule_summary.lot_project_client_profile_id = c.lot_project_client_profile_id
 `;

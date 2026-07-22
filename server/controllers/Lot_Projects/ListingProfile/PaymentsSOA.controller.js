@@ -47,6 +47,7 @@ import {
   allocatePaymentsToComputedRows,
   recomputeComputedSoaBalances,
   getExistingSoaScheduleRows,
+  getLatestActiveScheduleGenerationPredicate,
   canGenerateListingSoa,
   getListingSoaRows,
   getRequestToken,
@@ -87,12 +88,12 @@ const createHttpError = (statusCode, message) => {
 const getExactFullPaymentAmount = async (connection, listing) => {
   const [scheduleRows] = await connection.query(
     `
-      SELECT *
-      FROM lot_project_payment_schedules
-      WHERE lot_project_id = ?
-        AND lot_project_listing_id = ?
-        AND lot_project_client_profile_id = ?
-        AND schedule_status <> 'Cancelled'
+      SELECT s.*
+      FROM lot_project_payment_schedules s
+      WHERE s.lot_project_id = ?
+        AND s.lot_project_listing_id = ?
+        AND s.lot_project_client_profile_id = ?
+        AND ${getLatestActiveScheduleGenerationPredicate('s')}
       ORDER BY
         CASE WHEN due_date IS NULL THEN 1 ELSE 0 END,
         due_date ASC,
@@ -641,6 +642,20 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
       !sameNumber(dailyPenaltyRate, listing.soa_penalty_rate_percent) ||
       Number(penaltyGraceDays) !== Number(listing.soa_penalty_grace_days ?? 1) ||
       String(listing.soa_penalty_calculation_method || 'daily').toLowerCase() !== 'daily';
+
+    if (firstDueDate !== currentFirstDueDate) {
+      const today = todayDateOnly();
+      const startingDate = dateOrNull(listing.soa_starting_date) || today;
+      if (!firstDueDate) {
+        return res.status(400).json({ message: 'First Due Date is required.' });
+      }
+      if (firstDueDate < today) {
+        return res.status(400).json({ message: 'First Due Date must be today or a future date.' });
+      }
+      if (firstDueDate < startingDate) {
+        return res.status(400).json({ message: 'First Due Date cannot be before the Starting Date.' });
+      }
+    }
 
     if (Number(paymentCount || 0) > 0 && structuralTermsChanged) {
       return res.status(400).json({

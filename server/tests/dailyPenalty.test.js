@@ -49,7 +49,7 @@ test('zero grace period starts penalty on the day after the due date', () => {
   assert.equal(resultNextDay.calculatedPenaltyAmount, 10);
 });
 
-test('partial payment reduces the penalty base from its payment date', () => {
+test('partial payment keeps the payment-day penalty before reducing the base', () => {
   const result = calculateScheduleDailyPenalty({
     row: schedule,
     clientProfile: profile,
@@ -63,10 +63,31 @@ test('partial payment reduces the penalty base from its payment date', () => {
     asOfDate: '2026-07-05',
   });
 
-  assert.equal(result.calculatedPenaltyAmount, 22.02);
+  assert.equal(result.calculatedPenaltyAmount, 26.02);
+  assert.equal(result.paidPenaltyAmount, 20);
+  assert.equal(result.unpaidBaseAmount, 6020);
+  assert.equal(result.outstandingPenaltyAmount, 6.02);
+});
+
+test('paid penalty remains in the accumulated total after full payment', () => {
+  const result = calculateScheduleDailyPenalty({
+    row: schedule,
+    clientProfile: profile,
+    allocations: [
+      {
+        lot_project_payment_id: 30,
+        payment_date: '2026-07-03',
+        applied_amount: 10010,
+      },
+    ],
+    asOfDate: '2026-07-03',
+  });
+
+  assert.equal(result.calculatedPenaltyAmount, 10);
+  assert.equal(result.penaltyAmount, 10);
   assert.equal(result.paidPenaltyAmount, 10);
-  assert.equal(result.unpaidBaseAmount, 6010);
-  assert.equal(result.outstandingPenaltyAmount, 12.02);
+  assert.equal(result.outstandingPenaltyAmount, 0);
+  assert.equal(result.unpaidBaseAmount, 0);
 });
 
 test('active extension temporarily suppresses penalty', () => {

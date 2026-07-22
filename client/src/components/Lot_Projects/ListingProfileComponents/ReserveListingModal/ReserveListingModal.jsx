@@ -19,7 +19,12 @@ import { StepPill } from './ReserveShared'
 import { getBuyerProfileValidationError } from '../../../../utils/buyerProfileValidation'
 import { useFetch as fetchApi } from '../../../../utils/useFetch'
 
-const todayISO = () => new Date().toISOString().slice(0, 10)
+const todayISO = () => new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Manila',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+}).format(new Date())
 
 const normalizeLibraryDocument = (document) => ({
   ...document,
@@ -315,6 +320,22 @@ const ReserveListingModal = ({
     }
     if (!paymentForm.reservationFee || Number(paymentForm.reservationFee) <= 0) {
       setAlert({ type: 'error', message: 'Reservation fee is required.' })
+      return false
+    }
+
+    const today = todayISO()
+    const startingDate = String(paymentForm.startingDate || '')
+    const firstDueDate = String(paymentForm.firstDueDate || '')
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startingDate) || startingDate < today) {
+      setAlert({ type: 'error', message: 'Starting Date must be today or a future date.' })
+      return false
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(firstDueDate) || firstDueDate < today) {
+      setAlert({ type: 'error', message: 'First Due Date must be today or a future date.' })
+      return false
+    }
+    if (firstDueDate < startingDate) {
+      setAlert({ type: 'error', message: 'First Due Date cannot be before the Starting Date.' })
       return false
     }
 

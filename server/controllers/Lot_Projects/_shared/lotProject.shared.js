@@ -1417,7 +1417,13 @@ export const calculateScheduleDailyPenalty = ({
     if (event.date > cleanAsOfDate) break;
 
     if (event.date >= penaltyStartDate) {
-      accrueUntilExclusive(event.date);
+      // The due-day penalty must remain part of the row even when the buyer
+      // pays on that date. Accrue through the payment day, then allocate the
+      // payment between penalty and principal/interest.
+      const accrualEnd = event.kind === 'payment'
+        ? addCalendarDays(event.date, 1)
+        : event.date;
+      accrueUntilExclusive(accrualEnd);
     }
 
     if (event.kind === 'relief') {
@@ -2424,16 +2430,32 @@ export const recomputeComputedSoaBalances = (rows = [], terms = {}) => {
   return visibleRows;
 };
 
+export const getLatestActiveScheduleGenerationPredicate = (alias = 's') => {
+  const safeAlias = /^[A-Za-z_][A-Za-z0-9_]*$/.test(String(alias || '')) ? alias : 's';
+  return `
+    ${safeAlias}.schedule_status <> 'Cancelled'
+    AND ${safeAlias}.created_at = (
+      SELECT MAX(latest_schedule.created_at)
+      FROM lot_project_payment_schedules latest_schedule
+      WHERE latest_schedule.lot_project_id = ${safeAlias}.lot_project_id
+        AND latest_schedule.lot_project_listing_id = ${safeAlias}.lot_project_listing_id
+        AND latest_schedule.lot_project_client_profile_id = ${safeAlias}.lot_project_client_profile_id
+        AND latest_schedule.schedule_status <> 'Cancelled'
+    )
+  `;
+};
+
 export const getExistingSoaScheduleRows = async (connection, lotProjectId, listingId, clientProfileId = 0) => {
   if (!(await tableExists(connection, 'lot_project_payment_schedules'))) return [];
 
   const [rows] = await connection.query(
     `
-      SELECT *
-      FROM lot_project_payment_schedules
-      WHERE lot_project_id = ?
-        AND lot_project_listing_id = ?
-        AND (? = 0 OR lot_project_client_profile_id = ?)
+      SELECT s.*
+      FROM lot_project_payment_schedules s
+      WHERE s.lot_project_id = ?
+        AND s.lot_project_listing_id = ?
+        AND (? = 0 OR s.lot_project_client_profile_id = ?)
+        AND ${getLatestActiveScheduleGenerationPredicate('s')}
       ORDER BY
         CASE WHEN due_date IS NULL THEN 1 ELSE 0 END,
         due_date ASC,
@@ -3040,12 +3062,13 @@ export const getBalloonPrincipalCapacity = async (
 
   const [scheduleRows] = await connection.query(
     `
-      SELECT *
-      FROM lot_project_payment_schedules
-      WHERE lot_project_id = ?
-        AND lot_project_listing_id = ?
-        AND (? = 0 OR lot_project_client_profile_id = ?)
-      ORDER BY due_date ASC, lot_project_payment_schedule_id ASC
+      SELECT s.*
+      FROM lot_project_payment_schedules s
+      WHERE s.lot_project_id = ?
+        AND s.lot_project_listing_id = ?
+        AND (? = 0 OR s.lot_project_client_profile_id = ?)
+        AND ${getLatestActiveScheduleGenerationPredicate('s')}
+      ORDER BY s.due_date ASC, s.lot_project_payment_schedule_id ASC
     `,
     [listing.lot_project_id, listing.lot_project_listing_id, Number(listing.lot_project_client_profile_id || 0), Number(listing.lot_project_client_profile_id || 0)]
   );
@@ -3092,15 +3115,16 @@ export const recomputeListingScheduleBalances = async (connection, listing) => {
 
   const [rows] = await connection.query(
     `
-      SELECT *
-      FROM lot_project_payment_schedules
-      WHERE lot_project_id = ?
-        AND lot_project_listing_id = ?
-        AND (? = 0 OR lot_project_client_profile_id = ?)
+      SELECT s.*
+      FROM lot_project_payment_schedules s
+      WHERE s.lot_project_id = ?
+        AND s.lot_project_listing_id = ?
+        AND (? = 0 OR s.lot_project_client_profile_id = ?)
+        AND ${getLatestActiveScheduleGenerationPredicate('s')}
       ORDER BY
-        CASE WHEN due_date IS NULL THEN 1 ELSE 0 END,
-        due_date ASC,
-        lot_project_payment_schedule_id ASC
+        CASE WHEN s.due_date IS NULL THEN 1 ELSE 0 END,
+        s.due_date ASC,
+        s.lot_project_payment_schedule_id ASC
     `,
     [listing.lot_project_id, listing.lot_project_listing_id, Number(listing.lot_project_client_profile_id || 0), Number(listing.lot_project_client_profile_id || 0)]
   );
@@ -3364,12 +3388,12 @@ export const applyPaymentToSchedules = async (connection, listing, paymentId, pr
 
   const [scheduleRows] = await connection.query(
     `
-      SELECT *
-      FROM lot_project_payment_schedules
-      WHERE lot_project_id = ?
-        AND lot_project_listing_id = ?
-        AND (? = 0 OR lot_project_client_profile_id = ?)
-        AND schedule_status <> 'Cancelled'
+      SELECT s.*
+      FROM lot_project_payment_schedules s
+      WHERE s.lot_project_id = ?
+        AND s.lot_project_listing_id = ?
+        AND (? = 0 OR s.lot_project_client_profile_id = ?)
+        AND ${getLatestActiveScheduleGenerationPredicate('s')}
       ORDER BY
         CASE WHEN lot_project_payment_schedule_id = ? THEN 0 ELSE 1 END,
         CASE WHEN due_date IS NULL THEN 1 ELSE 0 END,

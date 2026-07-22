@@ -300,6 +300,12 @@ const DeletePaymentModal = ({ payment, password, setPassword, alert, isDeleting,
 
 
 const dailyPenaltyRateOptions = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 2, 3, 4, 5]
+const todayManila = () => new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Manila',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+}).format(new Date())
 const penaltyGraceDayOptions = Array.from({ length: 32 }, (_, index) => index)
 
 const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, onSave }) => {
@@ -330,6 +336,11 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
     if (modalAlert?.type === 'error') setModalAlert(null)
   }
 
+  const listingStartingDate = String(getListingValue(listing, ['soaStartingDate', 'starting_date'], '') || '')
+  const firstDueMinimum = listingStartingDate && listingStartingDate > todayManila()
+    ? listingStartingDate
+    : todayManila()
+
   const submit = (event) => {
     event.preventDefault()
 
@@ -357,6 +368,17 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
     if (!Number.isInteger(monthlyTerms) || monthlyTerms < 1) {
       setModalAlert({ type: 'error', message: 'Monthly terms must be at least 1.' })
       return
+    }
+
+    if (!hasRecordedPayments) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(form.firstDueDate) || form.firstDueDate < todayManila()) {
+        setModalAlert({ type: 'error', message: 'First Due Date must be today or a future date.' })
+        return
+      }
+      if (listingStartingDate && form.firstDueDate < listingStartingDate) {
+        setModalAlert({ type: 'error', message: 'First Due Date cannot be before the Starting Date.' })
+        return
+      }
     }
 
     if (!dailyPenaltyRateOptions.includes(dailyPenaltyRate)) {
@@ -387,7 +409,7 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
   const listingInterestRate = Number(getListingValue(listing, ['annualInterestRate'], 0))
   const hasRecordedPayments = Number(getListingValue(listing, ['payment_count'], 0)) > 0
 
-  const Field = ({ label, value, onChange, type = 'number', placeholder = '', helper, disabled = false }) => (
+  const Field = ({ label, value, onChange, type = 'number', placeholder = '', helper, disabled = false, min, max }) => (
     <label className="flex flex-col gap-1.5">
       <span className="text-sm font-black text-slate-700">{label}</span>
       <input
@@ -395,6 +417,8 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
         value={value ?? ''}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
+        min={min}
+        max={max}
         disabled={isSaving || disabled}
         className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
       />
@@ -440,7 +464,7 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
               <p className="mt-1 text-xl font-black">{listingInterestRate.toFixed(2)}%</p>
               <p className="mt-1 text-xs font-semibold text-blue-700">SOA interest always follows the rate set in Edit Listing. Update it there if it needs to change.</p>
             </div>
-            <Field label="First Due Date" type="date" value={form.firstDueDate && form.firstDueDate !== '-' ? form.firstDueDate : ''} onChange={(value) => updateForm('firstDueDate', value)} disabled={hasRecordedPayments} />
+            <Field label="First Due Date" type="date" value={form.firstDueDate && form.firstDueDate !== '-' ? form.firstDueDate : ''} onChange={(value) => updateForm('firstDueDate', value)} min={firstDueMinimum} helper="Today or later, and not before the reservation starting date." disabled={hasRecordedPayments} />
             <label className="flex flex-col gap-1.5">
               <span className="text-sm font-black text-slate-700">Daily Penalty Rate</span>
               <select value={form.dailyPenaltyRate} onChange={(event) => updateForm('dailyPenaltyRate', event.target.value)} disabled={isSaving} className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100">
@@ -1115,6 +1139,12 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
 
                   <td className="px-4 py-3">
                     <p className="font-black text-red-700">{money(row.penalty)}</p>
+                    {row.penalty > 0 ? (
+                      <div className="mt-1 space-y-0.5 text-[11px] font-semibold">
+                        <p className="text-emerald-700">Paid {money(row.paidPenaltyAmount)}</p>
+                        <p className="text-red-600">Outstanding {money(row.outstandingPenaltyAmount)}</p>
+                      </div>
+                    ) : null}
                     {row.waivedPenaltyAmount > 0 ? (
                       <p className="mt-1 text-xs font-semibold text-emerald-700">
                         Waived {money(row.waivedPenaltyAmount)}

@@ -11,6 +11,7 @@ import {
   cleanBuyerType,
   cleanSecondBuyerRole,
   dateOrNull,
+  todayDateOnly,
   parseMoneyValue,
   getComputedSoaTerms,
   createComputedSoaRows,
@@ -458,6 +459,18 @@ export const reserveLotProjectListing = async (req, res) => {
       ? 'separate_soa_row'
       : 'include_in_monthly';
     const legalMiscFeeAmount = contractPricing.lmfAmount;
+    const today = todayDateOnly();
+    const startingDate = dateOrNull(terms.startingDate) || today;
+    const firstDueDate = dateOrNull(terms.firstDueDate) || startingDate;
+    if (startingDate < today) {
+      return res.status(400).json({ message: 'Starting Date must be today or a future date.' });
+    }
+    if (firstDueDate < today) {
+      return res.status(400).json({ message: 'First Due Date must be today or a future date.' });
+    }
+    if (firstDueDate < startingDate) {
+      return res.status(400).json({ message: 'First Due Date cannot be before the Starting Date.' });
+    }
     const allowedDailyPenaltyRates = new Set([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 2, 3, 4, 5]);
     const dailyPenaltyRate = Number(terms.dailyPenaltyRate ?? terms.penaltyRatePercent ?? 0.1);
     const penaltyGraceDays = Number(terms.penaltyGraceDays ?? 1);
@@ -627,8 +640,8 @@ export const reserveLotProjectListing = async (req, res) => {
       'active',
       modeOfPayment,
       reservationFee,
-      dateOrNull(terms.startingDate) || new Date().toISOString().slice(0, 10),
-      dateOrNull(terms.firstDueDate) || new Date().toISOString().slice(0, 10),
+      startingDate,
+      firstDueDate,
       Number.isNaN(downpaymentPercentage) ? 30 : downpaymentPercentage,
       Number.isNaN(downpaymentTerms) ? 3 : downpaymentTerms,
       Number.isNaN(monthlyTerms) ? 36 : monthlyTerms,
@@ -863,8 +876,8 @@ export const reserveLotProjectListing = async (req, res) => {
       buyerName,
       modeOfPayment,
       reservationFee,
-      startingDate: dateOrNull(terms.startingDate) || new Date().toISOString().slice(0, 10),
-      firstDueDate: dateOrNull(terms.firstDueDate) || new Date().toISOString().slice(0, 10),
+      startingDate: startingDate,
+      firstDueDate: firstDueDate,
       downpaymentPercentage: Number.isNaN(downpaymentPercentage) ? 30 : downpaymentPercentage,
       downpaymentTerms: Number.isNaN(downpaymentTerms) ? 3 : downpaymentTerms,
       monthlyTerms: Number.isNaN(monthlyTerms) ? 36 : monthlyTerms,

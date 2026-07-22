@@ -137,6 +137,15 @@ const ReservePaymentTermsModal = ({
   isLoadingPreview = false,
   previewError = null,
 }) => {
+  const today = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Manila',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date())
+  const firstDueMinimum = paymentForm.startingDate && paymentForm.startingDate > today
+    ? paymentForm.startingDate
+    : today
   const isCash = String(paymentForm.modeOfPayment || '').toLowerCase() === 'cash'
   const paymentCalculations = useMemo(() => getPaymentCalculations(tcp, paymentForm), [tcp, paymentForm])
   const paymentPreview = paymentCalculations.preview
@@ -169,8 +178,8 @@ const ReservePaymentTermsModal = ({
         <div className="grid gap-4 md:grid-cols-2">
           {isCash ? <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 md:col-span-2"><p className="text-xs font-black uppercase text-blue-700">Cash Schedule</p><p className="mt-1 text-sm font-semibold text-blue-900">The SOA will contain the reservation fee and one full-payment balance. Downpayment, monthly terms, and installment interest are not used.</p></div> : null}
           <TextInput label="Reservation Fee" type="number" value={paymentForm.reservationFee} onChange={(value) => updatePaymentField('reservationFee', value)} placeholder="Enter reservation fee" required />
-          <TextInput label="Starting Date" type="date" value={paymentForm.startingDate} onChange={(value) => updatePaymentField('startingDate', value)} />
-          <TextInput label={isCash ? 'Full Payment Due Date' : 'First Due Date'} type="date" value={paymentForm.firstDueDate} onChange={(value) => updatePaymentField('firstDueDate', value)} />
+          <TextInput label="Starting Date" type="date" value={paymentForm.startingDate} onChange={(value) => updatePaymentField('startingDate', value)} min={today} helper="Today or a future date." required />
+          <TextInput label={isCash ? 'Full Payment Due Date' : 'First Due Date'} type="date" value={paymentForm.firstDueDate} onChange={(value) => updatePaymentField('firstDueDate', value)} min={firstDueMinimum} helper="Must be today or later and cannot be before the starting date." required />
           <SelectInput label="Legal / Misc Fee" value={paymentForm.legalMiscFeeMode || paymentForm.legalMiscFee} onChange={(value) => { updatePaymentField('legalMiscFee', value); updatePaymentField('legalMiscFeeMode', value) }} helper={`LMF amount: ${money(paymentForm.legalMiscFeeAmount || 0)}. Pay later creates a separate SOA row.`}><option value="include_in_monthly">{isCash ? 'Include in cash balance' : 'Include in monthly'}</option><option value="separate_soa_row">Pay later as separate SOA row</option></SelectInput>
           <TextInput label="Sale Discount %" type="number" value={paymentForm.saleDiscountPercentage} onChange={(value) => updatePaymentField('saleDiscountPercentage', value)} placeholder="0" helper="Applied to the selected base selling price. LMF remains based on the original base selling price." />
 
