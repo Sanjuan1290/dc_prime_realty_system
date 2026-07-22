@@ -21,7 +21,7 @@ const AuditLogDetailsModal = ({ log, onClose }) => {
             </div>
             <div>
               <h2 className="text-xl font-black text-slate-950">Audit Log Details</h2>
-              <p className="mt-1 text-sm font-semibold text-slate-500">Complete activity record.</p>
+              <p className="mt-1 text-sm font-semibold text-slate-500">Activity, actor, request, and target information.</p>
             </div>
           </div>
           <button type="button" onClick={onClose} className="rounded-xl p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900">
@@ -47,13 +47,6 @@ const AuditLogDetailsModal = ({ log, onClose }) => {
             <p className="mt-3 whitespace-pre-wrap text-sm font-semibold leading-relaxed text-slate-600">
               {log.description || 'No description provided.'}
             </p>
-          </div>
-
-          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-950 p-4 text-slate-50">
-            <p className="text-xs font-black uppercase tracking-wide text-slate-400">Metadata JSON</p>
-            <pre className="mt-3 max-h-72 overflow-auto rounded-xl bg-black/30 p-3 text-xs leading-relaxed">
-              {JSON.stringify(log.metadata || {}, null, 2)}
-            </pre>
           </div>
         </div>
       </div>

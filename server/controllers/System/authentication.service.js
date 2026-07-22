@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import nodemailer from 'nodemailer';
+import { getRequestIpAddress } from '../../utils/requestIp.js';
 
 export const LOGIN_SESSION_SECONDS = 12 * 60 * 60;
 export const REMEMBERED_SESSION_SECONDS = 30 * 24 * 60 * 60;
@@ -100,10 +101,7 @@ export const validatePasswordResetValue = ({ newPassword, confirmPassword }) => 
   return password;
 };
 
-export const getRequestIpAddress = (req = {}) => {
-  const forwarded = String(req.headers?.['x-forwarded-for'] || '').split(',')[0].trim();
-  return forwarded || req.ip || req.socket?.remoteAddress || null;
-};
+export { getRequestIpAddress };
 
 export const assertPasswordResetEmailConfigured = () => {
   const required = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS'];

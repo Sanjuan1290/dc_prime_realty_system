@@ -20,12 +20,14 @@ import {
 import {
   FiActivity,
   FiAlertTriangle,
-  FiCreditCard,
+  FiGrid,
+  FiLayers,
   FiEdit3,
   FiEye,
   FiMapPin,
   FiPrinter,
   FiRefreshCw,
+  FiTrendingDown,
   FiTrendingUp,
   FiUsers,
   FiX,
@@ -39,7 +41,6 @@ import { useFetch, useFetchPut } from '../../utils/useFetch'
 const money = (value) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 2 }).format(Number(value || 0))
 const compactMoney = (value) => new Intl.NumberFormat('en-PH', { notation: 'compact', maximumFractionDigits: 1 }).format(Number(value || 0))
 const number = (value) => new Intl.NumberFormat('en-PH').format(Number(value || 0))
-const percent = (value) => `${Number(value || 0).toFixed(2)}%`
 
 const chartColors = {
   blue: '#2563eb',
@@ -161,12 +162,12 @@ const DateRangeFilter = ({ range, onRangeChange, dateFrom, setDateFrom, dateTo, 
 
           <label className="grid gap-1">
             <span className="text-xs font-black uppercase tracking-wide text-slate-500">From date</span>
-            <input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} disabled={!isCustom} className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500" />
+            <input type="date" value={dateFrom} max={isCustom ? dateTo || undefined : undefined} onChange={(event) => setDateFrom(event.target.value)} disabled={!isCustom} className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500" />
           </label>
 
           <label className="grid gap-1">
             <span className="text-xs font-black uppercase tracking-wide text-slate-500">To date</span>
-            <input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} disabled={!isCustom} className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500" />
+            <input type="date" value={dateTo} min={isCustom ? dateFrom || undefined : undefined} onChange={(event) => setDateTo(event.target.value)} disabled={!isCustom} className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500" />
           </label>
         </div>
       </div>
@@ -244,25 +245,26 @@ const DocumentsCell = ({ row }) => {
   )
 }
 
-const MetricCard = ({ label, value, helper, tone = 'slate', icon: Icon }) => {
+const MetricCard = ({ label, value, formula, helper, tone = 'slate', icon: Icon }) => {
   const tones = {
-    slate: 'bg-white text-slate-950',
-    blue: 'bg-blue-50 text-blue-700',
-    green: 'bg-emerald-50 text-emerald-700',
-    amber: 'bg-amber-50 text-amber-700',
-    red: 'bg-red-50 text-red-700',
-    indigo: 'bg-indigo-50 text-indigo-700',
+    slate: 'bg-white text-slate-950 border-slate-200',
+    blue: 'bg-blue-50 text-blue-700 border-blue-100',
+    green: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+    amber: 'bg-amber-50 text-amber-700 border-amber-100',
+    red: 'bg-red-50 text-red-700 border-red-100',
+    indigo: 'bg-indigo-50 text-indigo-700 border-indigo-100',
   }
 
   return (
-    <div className={`rounded-3xl border border-slate-200 p-5 shadow-sm ${tones[tone] || tones.slate}`}>
+    <div className={`rounded-3xl border p-5 shadow-sm ${tones[tone] || tones.slate}`}>
       <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-500">{label}</p>
-          <p className="mt-3 text-2xl font-black">{value}</p>
-          {helper ? <p className="mt-1 text-sm font-semibold text-slate-500">{helper}</p> : null}
+        <div className="min-w-0">
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">{label}</p>
+          <p className="mt-3 break-words text-2xl font-black">{value}</p>
+          {formula ? <p className="mt-2 text-xs font-black text-slate-700">Formula: {formula}</p> : null}
+          {helper ? <p className="mt-1 text-xs font-semibold text-slate-500">{helper}</p> : null}
         </div>
-        {Icon ? <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/70 text-current shadow-sm"><Icon className="h-5 w-5" /></div> : null}
+        {Icon ? <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/80 text-current shadow-sm"><Icon className="h-5 w-5" /></div> : null}
       </div>
     </div>
   )
@@ -445,6 +447,7 @@ const Dashboard = () => {
   const [sellerPageSize, setSellerPageSize] = useState(10)
   const [recentUnitPage, setRecentUnitPage] = useState(1)
   const [recentUnitPageSize, setRecentUnitPageSize] = useState(10)
+  const hasInvalidDateRange = dateRange === 'custom' && (!dateFrom || !dateTo || dateFrom > dateTo)
 
   const handleRangeChange = (value) => {
     setDateRange(value)
@@ -463,7 +466,7 @@ const Dashboard = () => {
   const { data, isLoading, isFetching, isError, error } = useQuery({
     queryKey: ['lot-dashboard', projectSlug, dashboardQuery],
     queryFn: () => useFetch(`/projects/lot-projects/${projectSlug}/dashboard?${dashboardQuery}`),
-    enabled: Boolean(projectSlug),
+    enabled: Boolean(projectSlug) && !hasInvalidDateRange,
   })
 
   const { data: documentsData, isLoading: isDocumentsLoading } = useQuery({
@@ -512,16 +515,20 @@ const Dashboard = () => {
     setShowPriceListModal(false)
   }
 
-  const topStats = [
-    { label: 'Total Sales', value: isLoading ? '...' : money(stats.totalSales), helper: 'Booked contract value.', tone: 'slate', icon: FiCreditCard },
-    { label: 'Cash Collected', value: isLoading ? '...' : money(stats.totalCashCollected ?? stats.totalCollected), helper: `${percent(stats.cashCollectionProgress ?? stats.collectionProgress)} cash progress. Includes paid penalties because verified payments store one gross receipt amount.`, tone: 'green', icon: FiActivity },
-    { label: 'Penalty Accumulated', value: isLoading ? '...' : money(stats.totalPenaltyAccumulated), helper: `Paid ${money(stats.totalPenaltyPaid)} · Outstanding ${money(stats.totalPenaltyOutstanding)} after approved waivers.`, tone: 'red', icon: FiAlertTriangle },
-    { label: 'Discount Applied', value: isLoading ? '...' : money(stats.discountApplied), helper: 'Earned downpayment discount. Not cash.', tone: 'amber', icon: FiCreditCard },
-    { label: 'Settled Value', value: isLoading ? '...' : money(stats.settledValue), helper: `${percent(stats.settlementProgress)} of sales satisfied.`, tone: 'blue', icon: FiTrendingUp },
-    { label: 'Outstanding Value', value: isLoading ? '...' : money(stats.pendingSales), helper: 'Contract value still unsettled.', tone: 'red', icon: FiCreditCard },
-    { label: 'Payable Commission', value: isLoading ? '...' : money(stats.eligibleCommission), helper: 'Eligible releases ready for payout.', tone: 'indigo', icon: FiUsers },
-    { label: 'Refunded Amount', value: isLoading ? '...' : money(stats.totalRefundedAmount), helper: 'Cash returned to cancelled buyers in the selected range.', tone: 'blue', icon: FiCreditCard },
-    { label: 'Discontinued Amount', value: isLoading ? '...' : money(stats.totalDiscontinuedAmount), helper: 'Cancelled-buyer cash retained by the company in the selected range.', tone: 'amber', icon: FiActivity },
+  const primarySnapshotStats = [
+    { label: 'Total Gross Sales', value: isLoading ? '...' : money(stats.totalGrossSales ?? stats.totalSales), formula: 'Cash Collected + Gross Cash Collectibles', helper: 'Active and pending-cancellation reservation contracts in the selected range.', tone: 'blue', icon: FiTrendingUp },
+    { label: 'Cash Collected', value: isLoading ? '...' : money(stats.totalCashCollected ?? stats.totalCollected), formula: 'Sum of verified payments', helper: 'Includes paid penalties because verified payments store one gross receipt amount.', tone: 'green', icon: FiActivity },
+    { label: 'Penalty Accumulated', value: isLoading ? '...' : money(stats.totalPenaltyAccumulated), formula: 'Paid penalties + outstanding penalties after approved waivers', helper: `Paid ${money(stats.totalPenaltyPaid)} · Outstanding ${money(stats.totalPenaltyOutstanding)} for the selected reservation accounts.`, tone: 'red', icon: FiAlertTriangle },
+    { label: 'Cash Collectibles − Discount', value: isLoading ? '...' : money(stats.netCashCollectibles), formula: 'Gross Cash Collectibles − Discount Applied', helper: `${money(stats.grossCashCollectibles ?? stats.cashCollectibles)} gross collectibles less ${money(stats.discountApplied)} discount.`, tone: 'amber', icon: FiGrid },
+    { label: 'Total Number of Reservations', value: isLoading ? '...' : number(stats.reservationCount), formula: 'Reservation-history records created in range', helper: 'Includes active, pending, and later-cancelled reservation events.', tone: 'indigo', icon: FiUsers },
+    { label: 'Total Net Sales', value: isLoading ? '...' : money(stats.totalNetSales), formula: 'Total Gross Sales − Discount Applied', helper: 'Finalized cancellations are reported separately.', tone: 'slate', icon: FiLayers },
+  ]
+
+  const cancellationSnapshotStats = [
+    { label: 'Pending Cancellations', value: isLoading ? '...' : `${number(stats.pendingCancellation)} · ${money(stats.pendingCancellationValue)}`, formula: 'Current pending-cancellation units and TCP', helper: 'Operational cases still awaiting a final cancellation decision.', tone: 'amber', icon: FiAlertTriangle },
+    { label: 'Finalized Cancellations', value: isLoading ? '...' : `${number(stats.cancelledCount)} · ${money(stats.cancelledValue)}`, formula: 'Cancellation events and value in the selected range', helper: 'Historical cancellation activity, separate from current inventory status.', tone: 'slate', icon: FiTrendingDown },
+    { label: 'Refunded Amount', value: isLoading ? '...' : money(stats.totalRefundedAmount), formula: 'Sum of refunded cancellation settlements', helper: 'Cash returned to cancelled buyers in the selected range.', tone: 'blue', icon: FiTrendingDown },
+    { label: 'Discontinued Amount', value: isLoading ? '...' : money(stats.totalDiscontinuedAmount), formula: 'Cancellation cash collected − refunded amount', helper: 'Cancelled-buyer cash retained by the company in the selected range.', tone: 'amber', icon: FiActivity },
   ]
 
   const commissionChartData = [
@@ -581,14 +588,20 @@ const Dashboard = () => {
         isFetching={isFetching}
       />
 
+      {hasInvalidDateRange ? <StatusAlert type="error" message="The From date must be earlier than or equal to the To date." /> : null}
+
       <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <SectionHeader title="Business Snapshot" description="Main numbers to check first." />
           <button type="button" onClick={handleRefresh} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-black text-slate-700 transition hover:bg-slate-50"><FiRefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />Refresh</button>
         </div>
 
-        <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5">
-          {topStats.map((item) => <MetricCard key={item.label} {...item} />)}
+        <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+          {primarySnapshotStats.map((item) => <MetricCard key={item.label} {...item} />)}
+        </div>
+
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {cancellationSnapshotStats.map((item) => <MetricCard key={item.label} {...item} />)}
         </div>
       </section>
 

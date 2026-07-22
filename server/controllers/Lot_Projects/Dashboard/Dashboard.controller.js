@@ -91,9 +91,9 @@ export const resolveDashboardDateRange = (query = {}, role = '') => {
   if (preset === 'custom') {
     const requestedFrom = parseDateOnly(query.from || query.dateFrom) || startOfMonth(today);
     const requestedTo = parseDateOnly(query.to || query.dateTo) || endOfMonth(today);
-    fromDate = startOfMonth(requestedFrom);
-    toDate = endOfMonth(requestedTo);
-    if (fromDate > toDate) [fromDate, toDate] = [startOfMonth(requestedTo), endOfMonth(requestedFrom)];
+    fromDate = requestedFrom;
+    toDate = requestedTo;
+    if (fromDate > toDate) [fromDate, toDate] = [requestedTo, requestedFrom];
   } else if (preset === 'last_month') {
     const lastMonth = addMonths(today, -1);
     fromDate = startOfMonth(lastMonth);
@@ -619,8 +619,9 @@ export const getLotProjectDashboard = async (req, res) => {
             FROM lot_project_commissions c
             ${releaseSummaryJoin}
             WHERE c.lot_project_id = ?
+              AND DATE(c.created_at) BETWEEN ? AND ?
           `,
-          [project.lot_project_id]
+          [project.lot_project_id, dateRange.from, dateRange.to]
         )
       : [[{
           totalCommission: 0,
@@ -996,6 +997,7 @@ export const getLotProjectDashboard = async (req, res) => {
             ON sg.seller_group_id = acs.seller_group_id
           ${releaseSummaryJoin}
           WHERE c.lot_project_id = ?
+            AND DATE(c.created_at) BETWEEN ? AND ?
           GROUP BY COALESCE(sg.seller_group_id, 0), COALESCE(sg.seller_group_name, 'No Group'), c.lot_project_listing_id
         ) group_data
         GROUP BY group_data.seller_group_id, group_data.seller_group_name
@@ -1012,7 +1014,7 @@ export const getLotProjectDashboard = async (req, res) => {
       : [[]];
 
     const [groupRows] = hasCommissions
-      ? await connection.query(groupPerformanceQuery, [project.lot_project_id])
+      ? await connection.query(groupPerformanceQuery, [project.lot_project_id, dateRange.from, dateRange.to])
       : [[]];
 
     const [sellerTrendRows] = hasCommissions

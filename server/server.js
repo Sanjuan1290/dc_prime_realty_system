@@ -6,6 +6,7 @@ import 'express-async-errors';
 
 import { db } from './db/connect.js';
 import { startDailyPenaltyJob } from './jobs/dailyPenalty.job.js';
+import { parseTrustProxySetting } from './utils/requestIp.js';
 
 // Routers
 import userRouter from './routers/System/users.routers.js';
@@ -22,6 +23,8 @@ import employeeCashAdvancesRouter from './routers/System/employeeCashAdvances.ro
 import publicBuyerFormsRouter from './routers/publicBuyerForms.router.js';
 
 const app = express();
+const trustProxySetting = parseTrustProxySetting(process.env.TRUST_PROXY);
+if (trustProxySetting !== false) app.set('trust proxy', trustProxySetting);
 
 const allowedOrigins = new Set([
   'http://localhost:5173',

@@ -245,11 +245,11 @@ const DateRangeFilter = ({
           </label>
           <label className="grid gap-1">
             <span className="text-xs font-black uppercase tracking-wide text-slate-500">From date</span>
-            <input type="date" value={fromDate} onChange={(event) => onFromDateChange(event.target.value)} disabled={!isCustom} className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-700 outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500" />
+            <input type="date" value={fromDate} max={isCustom ? toDate || undefined : undefined} onChange={(event) => onFromDateChange(event.target.value)} disabled={!isCustom} className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-700 outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500" />
           </label>
           <label className="grid gap-1">
             <span className="text-xs font-black uppercase tracking-wide text-slate-500">To date</span>
-            <input type="date" value={toDate} onChange={(event) => onToDateChange(event.target.value)} disabled={!isCustom} className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-700 outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500" />
+            <input type="date" value={toDate} min={isCustom ? fromDate || undefined : undefined} onChange={(event) => onToDateChange(event.target.value)} disabled={!isCustom} className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-700 outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500" />
           </label>
         </div>
       </div>

@@ -6,6 +6,7 @@ import {
   getErrorMessage,
   getUserFullName,
 } from '../Lot_Projects/_shared/lotProject.shared.js';
+import { getRequestIpAddress, normalizeIpAddress } from '../../utils/requestIp.js';
 
 const adminRoles = new Set(['super_admin', 'admin']);
 const allowedActions = new Set([
@@ -46,15 +47,6 @@ const safeJsonString = (value) => {
   }
 };
 
-const parseMetadata = (value) => {
-  if (!value) return null;
-  if (typeof value === 'object') return value;
-  try {
-    return JSON.parse(value);
-  } catch {
-    return { raw: String(value) };
-  }
-};
 
 const normalizeAction = (value) => {
   const action = String(value || '').trim().toLowerCase();
@@ -62,10 +54,6 @@ const normalizeAction = (value) => {
 };
 
 const buildLike = (value) => `%${String(value || '').trim()}%`;
-const getRequestIp = (req) => String(req?.ip || req?.headers?.['x-forwarded-for'] || '')
-  .split(',')[0]
-  .trim()
-  .slice(0, 45) || null;
 const escapeHtml = (value = '') => String(value ?? '')
   .replace(/&/g, '&amp;')
   .replace(/</g, '&lt;')
@@ -359,7 +347,7 @@ const insertAuditLog = async (connection, req, payload = {}) => {
       cleanText(payload.title, 'System activity'),
       cleanText(payload.description) || null,
       metadata,
-      getRequestIp(req),
+      getRequestIpAddress(req),
       String(req?.headers?.['user-agent'] || '').slice(0, 255) || null,
     ]
   );
@@ -386,8 +374,7 @@ const mapAuditLog = (row = {}) => ({
   entityLabel: row.entity_label,
   title: row.title,
   description: row.description,
-  metadata: parseMetadata(row.metadata_json),
-  ipAddress: row.ip_address,
+  ipAddress: normalizeIpAddress(row.ip_address),
   userAgent: row.user_agent,
   createdAt: row.audit_log_created_at,
 });
@@ -606,7 +593,21 @@ export const getAuditLogs = async (req, res) => {
     const [rows] = await connection.query(
       `
         SELECT
-          al.*,
+          al.audit_log_id,
+          al.actor_user_id,
+          al.actor_name,
+          al.actor_email,
+          al.actor_role,
+          al.action,
+          al.module,
+          al.entity_type,
+          al.entity_id,
+          al.entity_label,
+          al.title,
+          al.description,
+          al.ip_address,
+          al.user_agent,
+          al.audit_log_created_at,
           TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS user_full_name,
           u.email AS user_email,
           u.role AS user_role
@@ -736,7 +737,7 @@ export const requestAuditLogArchive = async (req, res) => {
         eligibleCount,
         ARCHIVE_CODE_MAX_ATTEMPTS,
         ARCHIVE_CODE_EXPIRY_MINUTES,
-        getRequestIp(req),
+        getRequestIpAddress(req),
       ]
     );
 
@@ -903,7 +904,7 @@ export const confirmAuditLogArchive = async (req, res) => {
         actor.id,
         getUserFullName(actor),
         actor.email || null,
-        getRequestIp(req),
+        getRequestIpAddress(req),
         String(req?.headers?.['user-agent'] || '').slice(0, 255) || null,
       ]
     );
@@ -1014,7 +1015,7 @@ export const confirmAuditLogArchive = async (req, res) => {
         retentionDays,
         cutoffAt,
         exportSha256,
-        getRequestIp(req),
+        getRequestIpAddress(req),
         String(req?.headers?.['user-agent'] || '').slice(0, 255) || null,
       ]
     );
@@ -1119,7 +1120,7 @@ export const downloadAuditLogArchiveExport = async (req, res) => {
         Number(archive.retention_days || 0),
         archive.cutoff_at,
         archive.export_sha256,
-        getRequestIp(req),
+        getRequestIpAddress(req),
         String(req?.headers?.['user-agent'] || '').slice(0, 255) || null,
       ]
     );
