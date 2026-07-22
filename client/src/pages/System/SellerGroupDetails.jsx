@@ -16,6 +16,7 @@ import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
 import EditGroupModal from '../../components/System/sellerGroupComponents/EditGroupModal'
 import CreateUserModal from '../../components/System/userComponents/CreateUserModal'
+import EditUserModal from '../../components/System/userComponents/EditUserModal'
 import { useFetch as fetchJson } from '../../utils/useFetch'
 
 const roleLabel = (role = '') => ({
@@ -109,6 +110,8 @@ const SellerGroupDetails = () => {
   const [memberPage, setMemberPage] = useState(1)
   const [memberLimit, setMemberLimit] = useState(10)
   const [showCreateUser, setShowCreateUser] = useState(false)
+  const [showEditUser, setShowEditUser] = useState(false)
+  const [selectedMember, setSelectedMember] = useState(null)
   const [showEditGroupModal, setShowEditGroupModal] = useState(false)
   const [draftRange, setDraftRange] = useState(initialRange)
   const [appliedRange, setAppliedRange] = useState(initialRange)
@@ -173,6 +176,20 @@ const SellerGroupDetails = () => {
     const start = (currentMemberPage - 1) * memberLimit
     return filteredMembers.slice(start, start + memberLimit)
   }, [filteredMembers, memberLimit, currentMemberPage])
+
+  const openEditMember = (member) => {
+    setSelectedMember({
+      ...member,
+      id: Number(member.user_id),
+      status: member.user_status || member.accredited_seller_status || 'active',
+      seller_group_id: Number(member.seller_group_id || group.id || groupId),
+      reports_under_user_id: member.accredited_seller_reports_under_user_id
+        ?? member.reports_under_user_id
+        ?? '',
+    })
+    setShowEditUser(true)
+    setAlert(null)
+  }
 
   const refreshConnectedQueries = () => {
     queryClient.invalidateQueries({ queryKey: ['seller-group-project-options', Number(groupId)] })
@@ -324,7 +341,7 @@ const SellerGroupDetails = () => {
             </div>
             <div className="hidden overflow-x-auto lg:block">
               <table className="min-w-[760px] w-full divide-y divide-slate-200 text-sm">
-                <thead className="bg-slate-50"><tr>{['Seller', 'Role', 'Reports Under', 'Status'].map((head) => <th key={head} className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">{head}</th>)}</tr></thead>
+                <thead className="bg-slate-50"><tr>{['Seller', 'Role', 'Reports Under', 'Status', 'Actions'].map((head) => <th key={head} className={`px-4 py-3 text-xs font-black uppercase tracking-wide text-slate-500 ${head === 'Actions' ? 'text-right' : 'text-left'}`}>{head}</th>)}</tr></thead>
                 <tbody className="divide-y divide-slate-100">
                   {paginatedMembers.map((member) => {
                     const isHead = Number(member.user_id) === Number(group.headUserId)
@@ -335,10 +352,13 @@ const SellerGroupDetails = () => {
                         <td className="px-4 py-4 font-semibold text-slate-700">{roleLabel(member.role)}</td>
                         <td className="px-4 py-4 font-semibold text-slate-700">{isHead ? 'Developer' : parent?.display_name || member.reports_under_name || 'Not assigned'}</td>
                         <td className="px-4 py-4"><span className={`rounded-full px-3 py-1 text-xs font-black capitalize ${member.accredited_seller_status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{member.accredited_seller_status}</span></td>
+                        <td className="px-4 py-4 text-right">
+                          <button type="button" onClick={() => openEditMember(member)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"><FiEdit2 className="h-3.5 w-3.5" />Edit User</button>
+                        </td>
                       </tr>
                     )
                   })}
-                  {!filteredMembers.length ? <tr><td colSpan={4} className="px-4 py-12 text-center text-sm font-semibold text-slate-500">No members match your search.</td></tr> : null}
+                  {!filteredMembers.length ? <tr><td colSpan={5} className="px-4 py-12 text-center text-sm font-semibold text-slate-500">No members match your search.</td></tr> : null}
                 </tbody>
               </table>
             </div>
@@ -350,6 +370,7 @@ const SellerGroupDetails = () => {
                   <article key={member.accredited_seller_id} className="rounded-2xl border border-slate-200 p-4">
                     <div className="flex items-start justify-between gap-3"><div><p className="font-black text-slate-950">{member.display_name}</p><p className="text-xs font-semibold text-slate-500">{roleLabel(member.role)}</p></div><span className={`rounded-full px-2.5 py-1 text-xs font-black capitalize ${member.accredited_seller_status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{member.accredited_seller_status}</span></div>
                     <p className="mt-3 text-xs font-bold text-slate-500">Reports under</p><p className="font-semibold text-slate-800">{isHead ? 'Developer' : parent?.display_name || member.reports_under_name || 'Not assigned'}</p>
+                    <button type="button" onClick={() => openEditMember(member)} className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"><FiEdit2 className="h-4 w-4" />Edit User</button>
                   </article>
                 )
               })}
@@ -375,6 +396,26 @@ const SellerGroupDetails = () => {
           lockSellerGroup
           title={`Add User to ${pageTitle}`}
           onSaved={(message) => { setAlert({ type: 'success', message }); refreshConnectedQueries() }}
+        />
+      ) : null}
+
+      {showEditUser && selectedMember ? (
+        <EditUserModal
+          key={selectedMember.id}
+          setShowEditUser={(isOpen) => {
+            setShowEditUser(isOpen)
+            if (!isOpen) setSelectedMember(null)
+          }}
+          selectedUser={selectedMember}
+          allowedRoles={['broker_network_manager', 'broker', 'manager', 'agent']}
+          actorRole={isAdmin ? 'admin' : 'super_admin'}
+          initialSellerGroupId={String(group.id || groupId)}
+          lockSellerGroup
+          onSaved={(message) => {
+            setSelectedMember(null)
+            setAlert({ type: 'success', message })
+            refreshConnectedQueries()
+          }}
         />
       ) : null}
 

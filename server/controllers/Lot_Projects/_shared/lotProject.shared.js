@@ -616,13 +616,19 @@ export const mapProfileListing = (row = {}, project = {}, documents = []) => {
   const pricePerSqm = hasContractSnapshot
     ? Number(row.soa_selected_price_per_sqm || selectedListingPricing.pricePerSqm)
     : installmentPricing.pricePerSqm;
+  const baseSellingPrice = hasContractSnapshot
+    ? Number(row.soa_selected_base_selling_price || selectedListingPricing.baseSellingPrice)
+    : Number(installmentPricing.baseSellingPrice || 0);
   const netSellingPrice = hasContractSnapshot
     ? Number(row.soa_selected_net_selling_price || selectedListingPricing.netSellingPrice)
     : Number(row.lot_project_listing_net_selling_price || installmentPricing.netSellingPrice);
-  const lmfRate = Number(row.lot_project_listing_lmf_rate || 0);
+  const listingLmfRate = Number(row.lot_project_listing_lmf_rate || 0);
   const lmfAmount = hasContractSnapshot
     ? Number(row.soa_selected_lmf_amount || selectedListingPricing.lmfAmount)
     : Number(row.lot_project_listing_lmf_amount || installmentPricing.lmfAmount);
+  const lmfRate = hasContractSnapshot && baseSellingPrice > 0
+    ? Math.round(((lmfAmount / baseSellingPrice) * 100 + Number.EPSILON) * 100) / 100
+    : listingLmfRate;
   const tcp = hasContractSnapshot
     ? Number(row.soa_selected_tcp || selectedListingPricing.tcp)
     : Number(row.lot_project_listing_tcp || installmentPricing.tcp);
@@ -682,12 +688,13 @@ export const mapProfileListing = (row = {}, project = {}, documents = []) => {
     selectedPricingMode: contractMode,
     saleDiscountPercentage: Number(row.soa_sale_discount_percentage || 0),
     saleDiscountAmount: Number(row.soa_sale_discount_amount || 0),
-    baseSellingPrice: Number(row.soa_selected_base_selling_price || selectedListingPricing.baseSellingPrice),
+    baseSellingPrice,
     net_selling_price: money(netSellingPrice),
     netSellingPrice,
     lmf_rate: `${lmfRate}%`,
     lmfRate,
     legalMiscRate: lmfRate,
+    listingLmfRate,
     lmf_amount: money(lmfAmount),
     lmfAmount,
     tcp: money(tcp),
@@ -1875,8 +1882,17 @@ export const getReserveSellerOptions = async (
 
 const normalizeInterestCalculationType = () => 'amortized';
 
-const getEffectiveSoaInterestRate = (listingRow = {}) =>
-  Number(listingRow.annual_interest_rate ?? listingRow.lot_project_listing_annual_interest_rate ?? 0);
+const getEffectiveSoaInterestRate = (listingRow = {}) => {
+  const isOverridden = Number(listingRow.soa_interest_rate_overridden || 0) === 1;
+  if (isOverridden) return Number(listingRow.soa_annual_interest_rate || 0);
+
+  return Number(
+    listingRow.annual_interest_rate ??
+    listingRow.lot_project_listing_annual_interest_rate ??
+    listingRow.soa_annual_interest_rate ??
+    0
+  );
+};
 
 const getMonthlyAmortizationAmount = (financedBalance, annualInterestRate, monthlyTerms) => {
   const principal = roundMoneyValue(financedBalance || 0);

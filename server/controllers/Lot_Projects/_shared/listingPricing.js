@@ -70,19 +70,25 @@ export const getListingPricePerSqmForMode = (listing = {}, mode = 'installment')
 export const getListingPricingForMode = (
   listing = {},
   mode = 'installment',
-  saleDiscountPercentage = 0
+  saleDiscountPercentage = 0,
+  legalMiscRateOverride = null
 ) => {
   const pricingMode = normalizePricingMode(mode);
+  const hasLegalMiscRateOverride =
+    legalMiscRateOverride !== undefined &&
+    legalMiscRateOverride !== null &&
+    String(legalMiscRateOverride).trim() !== '';
   const pricing = calculateContractPricing({
     lotAreaSqm:
       listing.lot_project_listing_area_sqm ??
       listing.lotAreaSqm ??
       listing.area,
     pricePerSqm: getListingPricePerSqmForMode(listing, pricingMode),
-    legalMiscRate:
-      listing.lot_project_listing_lmf_rate ??
-      listing.legalMiscRate ??
-      listing.lmfRate,
+    legalMiscRate: hasLegalMiscRateOverride
+      ? legalMiscRateOverride
+      : listing.lot_project_listing_lmf_rate ??
+        listing.legalMiscRate ??
+        listing.lmfRate,
     saleDiscountPercentage,
   });
 

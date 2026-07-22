@@ -380,7 +380,7 @@ const CreateUserModal = ({
         </div>
 
         <div className="border-b border-slate-200 bg-slate-50 px-6 py-4">
-          <div className={`grid gap-3 ${totalSteps === 2 ? "sm:grid-cols-2" : "grid-cols-1"}`}>
+          <div className={`grid gap-3  ${totalSteps === 2 ? "sm:grid-cols-2" : "grid-cols-1"}`}>
             <button
               type="button"
               onClick={() => setActiveStep(1)}
@@ -423,7 +423,7 @@ const CreateUserModal = ({
           </div>
         </div>
 
-        <div className="overflow-y-auto px-6 py-5">
+        <div className=" h-fit px-6 py-5">
           <div className="grid gap-5">
             {createMutation.isPending ? (
               <StatusAlert type="loading" message="Creating user account..." />
@@ -525,7 +525,7 @@ const CreateUserModal = ({
             ) : null}
 
             {activeStep === 2 && isSellerRole ? (
-              <div className="rounded-2xl border border-blue-100 bg-blue-50 p-5">
+              <div className="rounded-2xl border border-blue-100 bg-blue-50 p-5 ">
                 <div className="mb-5 flex items-center gap-3">
                   <FiUserCheck className="h-5 w-5 text-blue-700" />
                   <div>

@@ -132,6 +132,7 @@ const replaceReservationSchedules = async (connection, projectId, listing, clien
     soa_downpayment_terms: profileTerms.downpaymentTerms,
     soa_monthly_terms: profileTerms.monthlyTerms,
     soa_annual_interest_rate: profileTerms.annualInterestRate,
+    soa_interest_rate_overridden: profileTerms.interestRateOverridden ? 1 : 0,
     soa_dp_discount_percentage: profileTerms.dpDiscountPercentage,
     soa_legal_misc_fee_mode: profileTerms.legalMiscFeeMode,
     soa_legal_misc_fee_amount: profileTerms.legalMiscFeeAmount,
@@ -417,7 +418,24 @@ export const reserveLotProjectListing = async (req, res) => {
     if (saleDiscountPercentage < 0 || saleDiscountPercentage > 100) {
       return res.status(400).json({ message: 'Sale discount percentage must be between 0 and 100.' });
     }
-    const contractPricing = getListingPricingForMode(listing, modeOfPayment, saleDiscountPercentage);
+    const listingLmfRate = parseMoneyValue(listing.lot_project_listing_lmf_rate || 0);
+    const hasSubmittedLmfRate =
+      terms.legalMiscFeeRate !== undefined &&
+      terms.legalMiscFeeRate !== null &&
+      String(terms.legalMiscFeeRate).trim() !== '';
+    const selectedLmfRate = hasSubmittedLmfRate
+      ? Number(terms.legalMiscFeeRate)
+      : listingLmfRate;
+    if (!Number.isFinite(selectedLmfRate) || selectedLmfRate < 0 || selectedLmfRate > 100) {
+      return res.status(400).json({ message: 'LMF rate must be between 0 and 100.' });
+    }
+
+    const contractPricing = getListingPricingForMode(
+      listing,
+      modeOfPayment,
+      saleDiscountPercentage,
+      selectedLmfRate
+    );
     if (contractPricing.pricePerSqm <= 0 || contractPricing.baseSellingPrice <= 0) {
       return res.status(400).json({ message: `The listing does not have a valid ${modeOfPayment} price per SQM.` });
     }
@@ -426,6 +444,7 @@ export const reserveLotProjectListing = async (req, res) => {
     // Replace them in-memory with the immutable contract calculation selected by
     // this reservation. The public listing row itself remains unchanged.
     listing.lot_project_listing_price_per_sqm = contractPricing.pricePerSqm;
+    listing.lot_project_listing_lmf_rate = contractPricing.legalMiscRate;
     listing.lot_project_listing_net_selling_price = contractPricing.netSellingPrice;
     listing.lot_project_listing_lmf_amount = contractPricing.lmfAmount;
     listing.lot_project_listing_tcp = contractPricing.tcp;
@@ -528,10 +547,19 @@ export const reserveLotProjectListing = async (req, res) => {
       });
     }
     const listingInterestRate = parseMoneyValue(listing.annual_interest_rate || 0);
+    const hasSubmittedInterestRate =
+      terms.interestRate !== undefined &&
+      terms.interestRate !== null &&
+      String(terms.interestRate).trim() !== '';
     const selectedInterestRate = isCash
       ? 0
-      : parseMoneyValue(terms.interestRate || listingInterestRate || 0);
-    const interestRateOverridden = !isCash && terms.interestRate !== undefined && terms.interestRate !== null && terms.interestRate !== '' && Math.abs(selectedInterestRate - listingInterestRate) > 0.0001 ? 1 : 0;
+      : hasSubmittedInterestRate
+        ? Number(terms.interestRate)
+        : listingInterestRate;
+    if (!Number.isFinite(selectedInterestRate) || selectedInterestRate < 0 || selectedInterestRate > 100) {
+      return res.status(400).json({ message: 'Interest rate must be between 0 and 100.' });
+    }
+    const interestRateOverridden = !isCash && hasSubmittedInterestRate && Math.abs(selectedInterestRate - listingInterestRate) > 0.0001 ? 1 : 0;
 
     const columns = [
       'lot_project_id',
@@ -803,6 +831,7 @@ export const reserveLotProjectListing = async (req, res) => {
         soa_downpayment_terms: Number.isNaN(downpaymentTerms) ? 3 : downpaymentTerms,
         soa_monthly_terms: Number.isNaN(monthlyTerms) ? 36 : monthlyTerms,
         soa_annual_interest_rate: selectedInterestRate,
+        soa_interest_rate_overridden: interestRateOverridden,
         soa_dp_discount_percentage: dpDiscountPercentage,
         soa_legal_misc_fee_mode: legalMiscFeeMode,
         soa_legal_misc_fee_amount: legalMiscFeeAmount,
@@ -882,6 +911,7 @@ export const reserveLotProjectListing = async (req, res) => {
       downpaymentTerms: Number.isNaN(downpaymentTerms) ? 3 : downpaymentTerms,
       monthlyTerms: Number.isNaN(monthlyTerms) ? 36 : monthlyTerms,
       annualInterestRate: selectedInterestRate,
+      interestRateOverridden: Boolean(interestRateOverridden),
       dpDiscountPercentage,
       reservationFeeAppliedToDownpayment,
       legalMiscFeeMode,
@@ -963,6 +993,10 @@ export const reserveLotProjectListing = async (req, res) => {
         buyerName,
         buyerType,
         modeOfPayment,
+        selectedLmfRate: contractPricing.legalMiscRate,
+        selectedLmfAmount: contractPricing.lmfAmount,
+        selectedInterestRate,
+        interestRateOverridden: Boolean(interestRateOverridden),
         reservationFeeAppliedToDownpayment,
         assignedSellerId,
         saleChannel,

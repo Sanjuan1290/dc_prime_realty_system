@@ -30,6 +30,38 @@ const getRequiredParentRole = (role) => ({
   agent: "manager",
 }[role] || "");
 
+const toDateInput = (value) => {
+  const match = String(value || "").match(/^(\d{4}-\d{2}-\d{2})/);
+  return match?.[1] || new Date().toISOString().slice(0, 10);
+};
+
+const getInitialForm = (user = {}, { initialSellerGroupId = "", lockSellerGroup = false } = {}) => ({
+  first_name: String(user.first_name ?? user.firstName ?? ""),
+  middle_name: String(user.middle_name ?? user.middleName ?? ""),
+  last_name: String(user.last_name ?? user.lastName ?? ""),
+  email: String(user.email ?? ""),
+  contact_no: String(user.contact_no ?? user.contactNo ?? ""),
+  tin_no: String(user.tin_no ?? user.tinNo ?? ""),
+  prc_no: String(user.prc_no ?? user.prcNo ?? ""),
+  address: String(user.address ?? ""),
+  role: String(user.role || "agent"),
+  status: String(user.status || user.user_status || user.accredited_seller_status || "active"),
+  seller_group_id: String(
+    lockSellerGroup
+      ? (initialSellerGroupId || user.seller_group_id || "")
+      : (user.seller_group_id || "")
+  ),
+  reports_under_user_id: String(
+    user.reports_under_user_id
+      ?? user.accredited_seller_reports_under_user_id
+      ?? ""
+  ),
+  accreditation_date: toDateInput(
+    user.accreditation_date
+      ?? user.accredited_seller_accreditation_date
+  ),
+});
+
 const SearchableSelect = ({
   label,
   value,
@@ -175,13 +207,24 @@ const SearchableSelect = ({
   );
 };
 
-const EditUserModal = ({ setShowEditUser, selectedUser, onSaved, allowedRoles = Object.keys(roleLabels), actorRole = "super_admin" }) => {
+const EditUserModal = ({
+  setShowEditUser,
+  selectedUser,
+  onSaved,
+  allowedRoles = Object.keys(roleLabels),
+  actorRole = "super_admin",
+  initialSellerGroupId = "",
+  lockSellerGroup = false,
+}) => {
   const queryClient = useQueryClient();
   const availableRoleEntries = useMemo(() => Object.entries(roleLabels).filter(([value]) => allowedRoles.includes(value)), [allowedRoles]);
   const isPrivilegedRoleLocked = actorRole === "admin" && ["admin", "super_admin"].includes(selectedUser?.role);
   const [activeStep, setActiveStep] = useState(1);
   const [warning, setWarning] = useState("");
-  const [form, setForm] = useState(() => getInitialForm(selectedUser));
+  const [form, setForm] = useState(() => getInitialForm(selectedUser, {
+    initialSellerGroupId,
+    lockSellerGroup,
+  }));
 
   const {
     data: groupData,
@@ -497,7 +540,9 @@ const EditUserModal = ({ setShowEditUser, selectedUser, onSaved, allowedRoles = 
                           ...current,
                           role: nextRole,
                           seller_group_id: sellerRoles.includes(nextRole)
-                            ? current.seller_group_id
+                            ? (lockSellerGroup
+                              ? String(initialSellerGroupId || current.seller_group_id)
+                              : current.seller_group_id)
                             : "",
                           reports_under_user_id: "",
                         }));
@@ -562,6 +607,7 @@ const EditUserModal = ({ setShowEditUser, selectedUser, onSaved, allowedRoles = 
                     searchPlaceholder="Search seller groups..."
                     emptyText="No seller groups match your search."
                     required
+                    disabled={lockSellerGroup}
                   />
 
                   <SearchableSelect

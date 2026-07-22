@@ -13,7 +13,7 @@ test('seller group details shows one fixed project structure and scalable member
   assert.match(source, /Broker Override/);
   assert.match(source, /Manager Override/);
   assert.match(source, /Agent Sales Rate/);
-  assert.match(source, /\['Seller', 'Role', 'Reports Under', 'Status'\]/);
+  assert.match(source, /\['Seller', 'Role', 'Reports Under', 'Status', 'Actions'\]/);
   assert.match(source, /memberTotalPages/);
   assert.doesNotMatch(source, /Commission Paths/);
   assert.doesNotMatch(source, /Edit Sales Rate/);
@@ -29,6 +29,11 @@ test('new and edit Realty forms configure fixed role rates for every selected pr
 
   assert.match(newGroupSource, /project_rates: \[\]/);
   assert.match(newGroupSource, /ProjectAccreditationFields/);
+  assert.match(newGroupSource, /ConfirmActionModal/);
+  assert.match(newGroupSource, /onRequestRemove=/);
+  assert.match(newGroupSource, /Unselect Project\?/);
+  assert.match(newGroupSource, /confirmLabel=\"Unselect Project\"/);
+  assert.match(newGroupSource, /project_rates: current\.project_rates\.filter/);
   assert.match(editGroupSource, /ProjectAccreditationFields/);
   assert.match(editGroupSource, /Remove Project Accreditation\?/);
   assert.match(projectFieldsSource, /seller_group_pool_rate/);
@@ -80,4 +85,3 @@ test('Realty performance uses the dashboard-style complete-month range filter', 
   assert.doesNotMatch(source, /Apply Range/);
   assert.doesNotMatch(source, /Top of hierarchy|Direct parent/);
 });
-

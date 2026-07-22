@@ -86,6 +86,12 @@ const ReserveListingModal = ({
     firstDueDate: todayISO(),
     legalMiscFee: 'include_in_monthly',
     legalMiscFeeMode: 'include_in_monthly',
+    legalMiscFeeRate: String(
+      listing?.lmfRate ??
+      listing?.legalMiscRate ??
+      listing?.lot_project_listing_lmf_rate ??
+      0
+    ),
     legalMiscFeeAmount: String(listing?.lmfAmount || listing?.legalMiscFeeAmount || 0),
     downpaymentPercentageMode: '30',
     customDownpaymentPercentage: '',
@@ -96,7 +102,11 @@ const ReserveListingModal = ({
     dpDiscountPercentage: '0',
     monthlyTermsMode: '36',
     customMonthlyTerms: '',
-    interestRate: String(listing?.annualInterestRate || '0'),
+    interestRate: String(
+      listing?.annualInterestRate ??
+      listing?.annual_interest_rate ??
+      0
+    ),
     dailyPenaltyRate: '0.1',
     penaltyGraceDays: '1',
   })
@@ -105,9 +115,15 @@ const ReserveListingModal = ({
     () => getListingPricingForMode(
       listing,
       paymentForm.modeOfPayment,
-      Number(paymentForm.saleDiscountPercentage || 0)
+      Number(paymentForm.saleDiscountPercentage || 0),
+      paymentForm.legalMiscFeeRate
     ),
-    [listing, paymentForm.modeOfPayment, paymentForm.saleDiscountPercentage]
+    [
+      listing,
+      paymentForm.modeOfPayment,
+      paymentForm.saleDiscountPercentage,
+      paymentForm.legalMiscFeeRate,
+    ]
   )
   const tcp = contractPricing.tcp
   const projectSlug = project?.slug || project?.lot_project_slug || listing?.project_slug || ''
@@ -158,7 +174,10 @@ const ReserveListingModal = ({
 
 
   const effectivePaymentForm = useMemo(
-    () => ({ ...paymentForm, legalMiscFeeAmount: String(contractPricing.lmfAmount || 0) }),
+    () => ({
+      ...paymentForm,
+      legalMiscFeeAmount: String(contractPricing.lmfAmount || 0),
+    }),
     [paymentForm, contractPricing.lmfAmount]
   )
 
@@ -345,6 +364,28 @@ const ReserveListingModal = ({
       setAlert({ type: 'error', message: 'Sale discount percentage must be between 0 and 100.' })
       return false
     }
+    const legalMiscFeeRate = Number(paymentForm.legalMiscFeeRate)
+    if (
+      String(paymentForm.legalMiscFeeRate ?? '').trim() === '' ||
+      !Number.isFinite(legalMiscFeeRate) ||
+      legalMiscFeeRate < 0 ||
+      legalMiscFeeRate > 100
+    ) {
+      setAlert({ type: 'error', message: 'LMF rate must be between 0 and 100.' })
+      return false
+    }
+    const interestRate = Number(paymentForm.interestRate)
+    if (
+      !isCash && (
+        String(paymentForm.interestRate ?? '').trim() === '' ||
+        !Number.isFinite(interestRate) ||
+        interestRate < 0 ||
+        interestRate > 100
+      )
+    ) {
+      setAlert({ type: 'error', message: 'Interest rate must be between 0 and 100.' })
+      return false
+    }
     const dpDiscountPercentage = Number(paymentForm.dpDiscountPercentage || 0)
     if (!Number.isFinite(dpDiscountPercentage) || dpDiscountPercentage < 0 || dpDiscountPercentage > 100) {
       setAlert({ type: 'error', message: 'Downpayment discount percentage must be between 0 and 100.' })
@@ -418,7 +459,11 @@ const ReserveListingModal = ({
           ...effectivePaymentForm,
           sellerId: selectedAgent.id,
           legalMiscFeeMode: effectivePaymentForm.legalMiscFeeMode || effectivePaymentForm.legalMiscFee,
+          legalMiscFeeRate: Number(effectivePaymentForm.legalMiscFeeRate || 0),
           legalMiscFeeAmount: effectivePaymentForm.legalMiscFeeAmount,
+          interestRate: Number.isFinite(Number(effectivePaymentForm.interestRate))
+            ? Number(effectivePaymentForm.interestRate)
+            : 0,
           tcp,
           selectedPricing: contractPricing,
           saleDiscountPercentage: Number(paymentForm.saleDiscountPercentage || 0),
