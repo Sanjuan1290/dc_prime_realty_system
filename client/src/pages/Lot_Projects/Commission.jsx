@@ -220,7 +220,7 @@ const Commission = () => {
       <section className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <PageHeader
           title={`${project.name || 'Lot Project'} Commissions`}
-          description="One record per unit and buyer, with every commission recipient available inside Details."
+          description="One record per unit and buyer. Commission Base uses lot area × selected price per SQM before sale discount and LMF."
           icon={FiDollarSign}
         />
 
@@ -297,14 +297,14 @@ const Commission = () => {
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 bg-white px-5 py-4">
           <h2 className="text-lg font-black text-slate-950">Commission Records</h2>
-          <p className="mt-1 text-sm font-semibold text-slate-500">One row per unit and buyer. Open Details, then select a seller to view or manage that recipient’s commission.</p>
+          <p className="mt-1 text-sm font-semibold text-slate-500">One row per unit and buyer. Commission Base is saved before sale discount and LMF; open Details to manage each recipient.</p>
         </div>
 
         <div className="hidden overflow-x-auto lg:block">
           <table className="min-w-[1080px] w-full divide-y divide-slate-200 text-sm">
             <thead className="bg-slate-50">
               <tr>
-                {['Unit', 'Client', 'Sellers', 'Group Name', 'Commission Base', 'Total Gross', 'Released', 'Net Remaining', 'Payment %', 'Actions'].map((head) => (
+                {['Unit', 'Client', 'Sellers', 'Group Name', 'Commission Base (Before Discount)', 'Total Gross', 'Released', 'Net Remaining', 'Payment %', 'Actions'].map((head) => (
                   <th key={head} className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">{head}</th>
                 ))}
               </tr>
@@ -365,7 +365,7 @@ const Commission = () => {
               </div>
 
               <div className="mt-4 grid grid-cols-2 gap-2">
-                <div className="rounded-xl bg-slate-50 p-3"><p className="text-[10px] font-black uppercase text-slate-400">Commission Base</p><p className="mt-1 text-sm font-black text-slate-900">{money(record.commissionBase)}</p></div>
+                <div className="rounded-xl bg-slate-50 p-3"><p className="text-[10px] font-black uppercase text-slate-400">Commission Base (Before Discount)</p><p className="mt-1 text-sm font-black text-slate-900">{money(record.commissionBase)}</p></div>
                 <div className="rounded-xl bg-slate-50 p-3"><p className="text-[10px] font-black uppercase text-slate-400">Total Gross</p><p className="mt-1 text-sm font-black text-slate-900">{money(record.grossCommission)}</p></div>
                 <div className="rounded-xl bg-emerald-50 p-3"><p className="text-[10px] font-black uppercase text-emerald-600">Released</p><p className="mt-1 text-sm font-black text-emerald-700">{money(record.released)}</p></div>
                 <div className="rounded-xl bg-blue-50 p-3"><p className="text-[10px] font-black uppercase text-blue-600">Net Remaining</p><p className="mt-1 text-sm font-black text-blue-700">{money(record.netRemaining)}</p></div>

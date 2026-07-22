@@ -97,7 +97,7 @@ const HierarchyPreview = ({ preview, isLoading, error, hasSelectedAgent }) => {
   return (
     <div className="grid gap-4">
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <PreviewCard label="Commission Base" value={money(preview?.commissionBase)} />
+        <PreviewCard label="Commission Base (Before Discount)" value={money(preview?.commissionBase)} />
         <PreviewCard label="Group Pool" value={`${Number(preview?.poolRate || 0).toFixed(2)}%`} tone="blue" />
         <PreviewCard label="Total Allocated" value={`${Number(preview?.allocatedRate || 0).toFixed(2)}%`} tone={preview?.isValid ? 'emerald' : 'red'} />
         <PreviewCard label="Unallocated" value={`${Number(preview?.unallocatedRate || 0).toFixed(2)}%`} tone="amber" />
@@ -170,6 +170,10 @@ const ReservePaymentTermsModal = ({
   const paymentCalculations = useMemo(() => getPaymentCalculations(tcp, paymentForm), [tcp, paymentForm])
   const paymentPreview = paymentCalculations.preview
   const lmfTreatment = paymentPreview.legalMiscFeeMode === 'separate_soa_row' ? 'Separate SOA row' : isCash ? 'Included in cash balance' : 'Included in monthly'
+  const selectedPenaltyRateOption = dailyPenaltyRateOptions.includes(Number(paymentForm.dailyPenaltyRate))
+    ? String(Number(paymentForm.dailyPenaltyRate))
+    : 'custom'
+  const isCustomPenaltyRate = selectedPenaltyRateOption === 'custom'
 
   return (
     <div className="flex flex-col gap-4">
@@ -239,13 +243,36 @@ const ReservePaymentTermsModal = ({
             />
           </> : null}
 
-          <SelectInput label={isCash ? 'Daily Penalty Rate for Overdue Cash Balance (%)' : 'Daily Penalty Rate for Overdue Installment (%)'} value={paymentForm.dailyPenaltyRate} onChange={(value) => updatePaymentField('dailyPenaltyRate', value)} helper="Saved with this buyer's reservation." required>{dailyPenaltyRateOptions.map((value) => <option key={value} value={String(value)}>{value}% per day</option>)}</SelectInput>
+          <SelectInput
+            label={isCash ? 'Daily Penalty Rate for Overdue Cash Balance (%)' : 'Daily Penalty Rate for Overdue Installment (%)'}
+            value={selectedPenaltyRateOption}
+            onChange={(value) => updatePaymentField('dailyPenaltyRate', value === 'custom' ? '' : value)}
+            helper="Choose a preset or enter a custom rate from 0% to 100% per day."
+            required
+          >
+            {dailyPenaltyRateOptions.map((value) => <option key={value} value={String(value)}>{value}% per day</option>)}
+            <option value="custom">Custom</option>
+          </SelectInput>
+          {isCustomPenaltyRate ? (
+            <TextInput
+              label="Custom Daily Penalty Rate (%)"
+              type="number"
+              value={paymentForm.dailyPenaltyRate}
+              onChange={(value) => updatePaymentField('dailyPenaltyRate', value)}
+              min="0"
+              max="100"
+              step="0.01"
+              placeholder="Enter 0 to 100"
+              helper="Saved only for this buyer's reservation."
+              required
+            />
+          ) : null}
           <SelectInput label="Penalty-Free Grace Period" value={paymentForm.penaltyGraceDays} onChange={(value) => updatePaymentField('penaltyGraceDays', value)} helper="Choose when daily penalties begin." required>{penaltyGraceDayOptions.map((value) => <option key={value} value={value}>{value === '0' ? 'No grace period (0 days)' : `${value} day${value === '1' ? '' : 's'}`}</option>)}</SelectInput>
           {!isCash ? <TextInput label="Monthly Amortization" value={money(paymentPreview.monthlyAmortization)} onChange={() => null} disabled helper="Calculated from the balance, interest rate, and monthly terms." /> : null}
         </div>
       </SectionCard>
 
-      <SectionCard title="Automatic Hierarchy Commission Preview" description="Shows every seller who will receive a direct commission or override from this reservation.">
+      <SectionCard title="Automatic Hierarchy Commission Preview" description="Commission Base is lot area × selected price per SQM before sale discount and LMF.">
         <HierarchyPreview preview={commissionPreview} isLoading={isLoadingPreview} error={previewError} hasSelectedAgent={Boolean(paymentForm.sellerId)} />
       </SectionCard>
 

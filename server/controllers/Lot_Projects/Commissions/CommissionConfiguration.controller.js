@@ -88,6 +88,9 @@ export const getReservationCommissionPreviewController = async (req, res) => {
       return res.status(400).json({ message: 'Sale discount percentage must be between 0 and 100.' });
     }
     const contractPricing = getListingPricingForMode(listing, modeOfPayment, saleDiscountPercentage);
+    listing.commissionBase = contractPricing.baseSellingPrice;
+    listing.soa_selected_price_per_sqm = contractPricing.pricePerSqm;
+    listing.soa_selected_base_selling_price = contractPricing.baseSellingPrice;
     listing.lot_project_listing_net_selling_price = contractPricing.netSellingPrice;
     listing.lot_project_listing_tcp = contractPricing.tcp;
 

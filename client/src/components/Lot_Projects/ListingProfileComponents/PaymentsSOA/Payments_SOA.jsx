@@ -381,8 +381,9 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
       }
     }
 
-    if (!dailyPenaltyRateOptions.includes(dailyPenaltyRate)) {
-      setModalAlert({ type: 'error', message: 'Select a valid daily penalty rate.' })
+    const dailyPenaltyRateRaw = String(form.dailyPenaltyRate ?? '').trim()
+    if (dailyPenaltyRateRaw === '' || !Number.isFinite(dailyPenaltyRate) || dailyPenaltyRate < 0 || dailyPenaltyRate > 100) {
+      setModalAlert({ type: 'error', message: 'Daily penalty rate must be between 0 and 100.' })
       return
     }
 
@@ -408,8 +409,12 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
 
   const listingInterestRate = Number(getListingValue(listing, ['annualInterestRate'], 0))
   const hasRecordedPayments = Number(getListingValue(listing, ['payment_count'], 0)) > 0
+  const selectedPenaltyRateOption = dailyPenaltyRateOptions.includes(Number(form.dailyPenaltyRate))
+    ? String(Number(form.dailyPenaltyRate))
+    : 'custom'
+  const isCustomPenaltyRate = selectedPenaltyRateOption === 'custom'
 
-  const Field = ({ label, value, onChange, type = 'number', placeholder = '', helper, disabled = false, min, max }) => (
+  const Field = ({ label, value, onChange, type = 'number', placeholder = '', helper, disabled = false, min, max, step }) => (
     <label className="flex flex-col gap-1.5">
       <span className="text-sm font-black text-slate-700">{label}</span>
       <input
@@ -419,6 +424,7 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
         placeholder={placeholder}
         min={min}
         max={max}
+        step={step}
         disabled={isSaving || disabled}
         className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
       />
@@ -467,10 +473,29 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
             <Field label="First Due Date" type="date" value={form.firstDueDate && form.firstDueDate !== '-' ? form.firstDueDate : ''} onChange={(value) => updateForm('firstDueDate', value)} min={firstDueMinimum} helper="Today or later, and not before the reservation starting date." disabled={hasRecordedPayments} />
             <label className="flex flex-col gap-1.5">
               <span className="text-sm font-black text-slate-700">Daily Penalty Rate</span>
-              <select value={form.dailyPenaltyRate} onChange={(event) => updateForm('dailyPenaltyRate', event.target.value)} disabled={isSaving} className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100">
+              <select
+                value={selectedPenaltyRateOption}
+                onChange={(event) => updateForm('dailyPenaltyRate', event.target.value === 'custom' ? '' : event.target.value)}
+                disabled={isSaving}
+                className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100"
+              >
                 {dailyPenaltyRateOptions.map((rate) => <option key={rate} value={rate}>{rate}% per day</option>)}
+                <option value="custom">Custom</option>
               </select>
+              <span className="text-xs font-semibold text-slate-500">Choose a preset or enter a custom rate from 0% to 100% per day.</span>
             </label>
+            {isCustomPenaltyRate ? (
+              <Field
+                label="Custom Daily Penalty Rate (%)"
+                value={form.dailyPenaltyRate}
+                onChange={(value) => updateForm('dailyPenaltyRate', value)}
+                placeholder="Enter 0 to 100"
+                helper="This rate remains editable even after payments are recorded."
+                min="0"
+                max="100"
+                step="0.01"
+              />
+            ) : null}
             <label className="flex flex-col gap-1.5">
               <span className="text-sm font-black text-slate-700">Penalty-Free Grace Period</span>
               <select value={form.penaltyGraceDays} onChange={(event) => updateForm('penaltyGraceDays', event.target.value)} disabled={isSaving} className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100">

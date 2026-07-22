@@ -89,7 +89,7 @@ const CommissionDistribution = ({
       <div className="space-y-4 p-4 sm:p-5">
         {showSummary ? (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-            <SummaryCard label="Commission Base" value={money(summary.commissionBase)} />
+            <SummaryCard label="Commission Base (Before Discount)" value={money(summary.commissionBase)} />
             <SummaryCard label="Saved Pool Rate" value={`${summary.allocatedRate.toFixed(2)}%`} tone="blue" />
             <SummaryCard label="Gross Commission" value={money(summary.grossCommission)} tone="emerald" />
             <SummaryCard label="Released" value={money(summary.releasedAmount)} tone="blue" />

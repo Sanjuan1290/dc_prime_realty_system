@@ -444,6 +444,9 @@ export const reserveLotProjectListing = async (req, res) => {
     // Replace them in-memory with the immutable contract calculation selected by
     // this reservation. The public listing row itself remains unchanged.
     listing.lot_project_listing_price_per_sqm = contractPricing.pricePerSqm;
+    listing.commissionBase = contractPricing.baseSellingPrice;
+    listing.soa_selected_price_per_sqm = contractPricing.pricePerSqm;
+    listing.soa_selected_base_selling_price = contractPricing.baseSellingPrice;
     listing.lot_project_listing_lmf_rate = contractPricing.legalMiscRate;
     listing.lot_project_listing_net_selling_price = contractPricing.netSellingPrice;
     listing.lot_project_listing_lmf_amount = contractPricing.lmfAmount;
@@ -490,11 +493,10 @@ export const reserveLotProjectListing = async (req, res) => {
     if (firstDueDate < startingDate) {
       return res.status(400).json({ message: 'First Due Date cannot be before the Starting Date.' });
     }
-    const allowedDailyPenaltyRates = new Set([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 2, 3, 4, 5]);
     const dailyPenaltyRate = Number(terms.dailyPenaltyRate ?? terms.penaltyRatePercent ?? 0.1);
     const penaltyGraceDays = Number(terms.penaltyGraceDays ?? 1);
-    if (!allowedDailyPenaltyRates.has(dailyPenaltyRate)) {
-      return res.status(400).json({ message: 'Select a valid daily penalty rate.' });
+    if (!Number.isFinite(dailyPenaltyRate) || dailyPenaltyRate < 0 || dailyPenaltyRate > 100) {
+      return res.status(400).json({ message: 'Daily penalty rate must be between 0 and 100.' });
     }
     if (!Number.isInteger(penaltyGraceDays) || penaltyGraceDays < 0 || penaltyGraceDays > 31) {
       return res.status(400).json({ message: 'Penalty grace period must be between 0 and 31 days.' });

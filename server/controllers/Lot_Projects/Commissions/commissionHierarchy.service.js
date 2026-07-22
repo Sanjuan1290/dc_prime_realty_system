@@ -4,6 +4,12 @@ import {
   getGroupFixedRateForRole,
   loadGroupFixedCommissionRates,
 } from '../../System/groupFixedCommissionRates.service.js';
+import {
+  resolveCommissionBaseAmount,
+  roundCommissionMoney,
+} from './commissionBase.js';
+
+export { resolveCommissionBaseAmount, roundCommissionMoney } from './commissionBase.js';
 
 /**
  * Commission release stages are shared by reservation creation and manual
@@ -16,9 +22,6 @@ export const COMMISSION_RELEASE_STAGES = Object.freeze([
   { stage: '4th Release', trigger: 75, percent: 15 },
   { stage: 'Retention', trigger: 100, percent: 25 },
 ]);
-
-export const roundCommissionMoney = (value) =>
-  Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
 
 const sellerSelectSql = ({ hasDummyColumns = false } = {}) => `
   SELECT
@@ -330,12 +333,7 @@ export const getReservationCommissionPreview = async (
   listing,
   assignedSellerId
 ) => {
-  const baseAmount = roundCommissionMoney(
-    listing?.lot_project_listing_net_selling_price ||
-      listing?.lot_project_listing_tcp ||
-      listing?.commissionBase ||
-      0
-  );
+  const baseAmount = resolveCommissionBaseAmount(listing);
 
   if (baseAmount <= 0) throw new Error('The listing does not have a valid commission base amount.');
 

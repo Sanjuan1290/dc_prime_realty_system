@@ -599,8 +599,6 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
       listing.soa_penalty_grace_days ??
       1
     );
-    const allowedDailyPenaltyRates = new Set([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 2, 3, 4, 5]);
-
     if (dpDiscountPercentage < 0 || dpDiscountPercentage > 100) {
       return res.status(400).json({ message: 'DP Discount % must be between 0 and 100.' });
     }
@@ -621,8 +619,8 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
       return res.status(400).json({ message: 'Annual interest rate cannot be negative.' });
     }
 
-    if (!allowedDailyPenaltyRates.has(dailyPenaltyRate)) {
-      return res.status(400).json({ message: 'Daily penalty rate must use one of the allowed values.' });
+    if (!Number.isFinite(dailyPenaltyRate) || dailyPenaltyRate < 0 || dailyPenaltyRate > 100) {
+      return res.status(400).json({ message: 'Daily penalty rate must be between 0 and 100.' });
     }
 
     if (!Number.isInteger(penaltyGraceDays) || penaltyGraceDays < 0 || penaltyGraceDays > 31) {

@@ -408,9 +408,10 @@ const ReserveListingModal = ({
       return false
     }
 
-    const allowedPenaltyRates = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 2, 3, 4, 5]
-    if (!allowedPenaltyRates.includes(Number(paymentForm.dailyPenaltyRate))) {
-      setAlert({ type: 'error', message: 'Select a valid daily penalty rate.' })
+    const dailyPenaltyRateRaw = String(paymentForm.dailyPenaltyRate ?? '').trim()
+    const dailyPenaltyRate = Number(dailyPenaltyRateRaw)
+    if (dailyPenaltyRateRaw === '' || !Number.isFinite(dailyPenaltyRate) || dailyPenaltyRate < 0 || dailyPenaltyRate > 100) {
+      setAlert({ type: 'error', message: 'Daily penalty rate must be between 0 and 100.' })
       return false
     }
     const graceDays = Number(paymentForm.penaltyGraceDays)
