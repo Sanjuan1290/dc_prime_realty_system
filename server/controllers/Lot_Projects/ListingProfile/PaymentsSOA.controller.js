@@ -264,12 +264,6 @@ export const createLotProjectListingPayment = async (req, res) => {
     if (paymentMethod !== 'Cash' && !accountNumber) {
       return res.status(400).json({ message: 'Account No. / wallet number is required for non-cash payments.' });
     }
-    if (paymentMethod !== 'Cash' && !bankName) {
-      return res.status(400).json({ message: 'Bank / payment provider is required for non-cash payments.' });
-    }
-    if (paymentMethod !== 'Cash' && !accountNumber) {
-      return res.status(400).json({ message: 'Account No. / wallet number is required for non-cash payments.' });
-    }
     if (paymentMethod !== 'Cash' && !referenceId) {
       return res.status(400).json({ message: 'Reference ID is required for non-cash payments.' });
     }
@@ -1569,3 +1563,4 @@ export const restorePaymentSchedulePenaltyWaiver = async (req, res) => {
     connection.release();
   }
 };
+
