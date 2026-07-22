@@ -117,6 +117,16 @@ const normalizePayments = (payments = [], listing = {}) => {
     paymentType: payment.paymentType || payment.type || 'Other',
     amount: cleanMoney(payment.amount ?? payment.lot_project_payment_amount),
     method: payment.method || payment.paymentMethod || payment.lot_project_payment_method || '-',
+    bankName:
+      payment.bankName ||
+      payment.bank_name ||
+      payment.lot_project_payment_bank_name ||
+      '',
+    accountNumber:
+      payment.accountNumber ||
+      payment.account_number ||
+      payment.lot_project_payment_account_number ||
+      '',
     referenceId:
       payment.referenceId ||
       payment.reference_id ||

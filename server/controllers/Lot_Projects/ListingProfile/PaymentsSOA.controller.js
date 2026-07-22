@@ -240,6 +240,12 @@ export const createLotProjectListingPayment = async (req, res) => {
     const paymentDate = dateOrNull(req.body.paymentDate || req.body.payment_date) || new Date().toISOString().slice(0, 10);
     const paymentType = normalizePaymentType(req.body.paymentType || req.body.payment_type);
     const paymentMethod = normalizePaymentMethod(req.body.method || req.body.paymentMethod || req.body.payment_method);
+    const bankName = paymentMethod === 'Cash'
+      ? null
+      : toNullable(req.body.bankName || req.body.bank_name || req.body.paymentBank || req.body.payment_bank);
+    const accountNumber = paymentMethod === 'Cash'
+      ? null
+      : toNullable(req.body.accountNumber || req.body.account_number || req.body.accountNo || req.body.account_no);
     const requestedScheduleId = req.body.soaRowId ?? req.body.paymentScheduleId ?? req.body.lot_project_payment_schedule_id;
     const scheduleId = paymentType === 'full_payment' || paymentType === 'balloon'
       ? null
@@ -251,6 +257,18 @@ export const createLotProjectListingPayment = async (req, res) => {
       ? await getNextCashReference(connection, listing.lot_project_listing_unit_id)
       : toNullable(req.body.referenceId || req.body.reference_id);
 
+    if (paymentMethod !== 'Cash' && !bankName) {
+      return res.status(400).json({ message: 'Bank / payment provider is required for non-cash payments.' });
+    }
+    if (paymentMethod !== 'Cash' && !accountNumber) {
+      return res.status(400).json({ message: 'Account No. / wallet number is required for non-cash payments.' });
+    }
+    if (paymentMethod !== 'Cash' && !bankName) {
+      return res.status(400).json({ message: 'Bank / payment provider is required for non-cash payments.' });
+    }
+    if (paymentMethod !== 'Cash' && !accountNumber) {
+      return res.status(400).json({ message: 'Account No. / wallet number is required for non-cash payments.' });
+    }
     if (paymentMethod !== 'Cash' && !referenceId) {
       return res.status(400).json({ message: 'Reference ID is required for non-cash payments.' });
     }
@@ -275,13 +293,15 @@ export const createLotProjectListingPayment = async (req, res) => {
           lot_project_payment_schedule_id,
           lot_project_payment_type,
           lot_project_payment_method,
+          lot_project_payment_bank_name,
+          lot_project_payment_account_number,
           lot_project_payment_amount,
           lot_project_payment_date,
           lot_project_payment_reference_id,
           lot_project_payment_status,
           lot_project_payment_verified_by_user_id,
           lot_project_payment_verified_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Verified', ?, NOW())
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Verified', ?, NOW())
       `,
       [
         project.lot_project_id,
@@ -291,6 +311,8 @@ export const createLotProjectListingPayment = async (req, res) => {
         scheduleId,
         paymentType,
         paymentMethod,
+        bankName,
+        accountNumber,
         amount,
         paymentDate,
         referenceId,
@@ -334,6 +356,8 @@ export const createLotProjectListingPayment = async (req, res) => {
         paymentDate,
         paymentType,
         paymentMethod,
+        bankName,
+        accountNumber,
         referenceId,
         scheduleId,
       },
@@ -378,6 +402,24 @@ export const updateLotProjectListingPayment = async (req, res) => {
     const paymentDate = dateOrNull(req.body.paymentDate || req.body.payment_date) || plainDate(existingPayment.lot_project_payment_date);
     const paymentType = normalizePaymentType(req.body.paymentType || req.body.payment_type || existingPayment.lot_project_payment_type);
     const paymentMethod = normalizePaymentMethod(req.body.method || req.body.paymentMethod || req.body.payment_method || existingPayment.lot_project_payment_method);
+    const bankName = paymentMethod === 'Cash'
+      ? null
+      : toNullable(
+          req.body.bankName ||
+          req.body.bank_name ||
+          req.body.paymentBank ||
+          req.body.payment_bank ||
+          existingPayment.lot_project_payment_bank_name
+        );
+    const accountNumber = paymentMethod === 'Cash'
+      ? null
+      : toNullable(
+          req.body.accountNumber ||
+          req.body.account_number ||
+          req.body.accountNo ||
+          req.body.account_no ||
+          existingPayment.lot_project_payment_account_number
+        );
     const requestedScheduleId = req.body.soaRowId ?? req.body.paymentScheduleId ?? req.body.lot_project_payment_schedule_id;
     const scheduleId = paymentType === 'full_payment' || paymentType === 'balloon'
       ? null
@@ -386,7 +428,11 @@ export const updateLotProjectListingPayment = async (req, res) => {
     if (amount <= 0) return res.status(400).json({ message: 'Payment amount must be greater than 0.' });
 
     const referenceId = paymentMethod === 'Cash'
-      ? (existingPayment.lot_project_payment_reference_id || await getNextCashReference(connection, listing.lot_project_listing_unit_id))
+      ? (
+          existingPayment.lot_project_payment_method === 'Cash' && existingPayment.lot_project_payment_reference_id
+            ? existingPayment.lot_project_payment_reference_id
+            : await getNextCashReference(connection, listing.lot_project_listing_unit_id)
+        )
       : toNullable(req.body.referenceId || req.body.reference_id);
 
     if (paymentMethod !== 'Cash' && !referenceId) {
@@ -408,6 +454,8 @@ export const updateLotProjectListingPayment = async (req, res) => {
         SET lot_project_payment_schedule_id = ?,
             lot_project_payment_type = ?,
             lot_project_payment_method = ?,
+            lot_project_payment_bank_name = ?,
+            lot_project_payment_account_number = ?,
             lot_project_payment_amount = ?,
             lot_project_payment_date = ?,
             lot_project_payment_reference_id = ?,
@@ -424,6 +472,8 @@ export const updateLotProjectListingPayment = async (req, res) => {
         scheduleId,
         paymentType,
         paymentMethod,
+        bankName,
+        accountNumber,
         amount,
         paymentDate,
         referenceId,

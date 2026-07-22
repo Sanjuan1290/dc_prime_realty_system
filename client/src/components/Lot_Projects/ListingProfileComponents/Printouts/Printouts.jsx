@@ -16,6 +16,13 @@ const printItems = [
     path: 'statement-of-account',
   },
   {
+    title: 'Acknowledgement Receipts',
+    type: 'acknowledgement-receipts',
+    desc: 'One printable acknowledgement receipt per verified payment, one payment per A4 page.',
+    icon: FiFileText,
+    path: 'acknowledgement-receipts',
+  },
+  {
     title: 'Print Documents',
     type: 'documents',
     desc: 'Printable document image compilation using uploaded document files.',
@@ -24,14 +31,24 @@ const printItems = [
   },
 ]
 
-const Printouts = ({ projectSlug, listing, client, soaRows = [], documents = [] }) => {
+const Printouts = ({
+  projectSlug,
+  project = {},
+  listing,
+  client,
+  soaRows = [],
+  payments = [],
+  documents = [],
+}) => {
   const handlePreview = (item) => {
     localStorage.setItem(
       'lot_project_print_payload',
       JSON.stringify({
+        project,
         listing,
         client,
         soaRows,
+        payments,
         documents,
       })
     )
@@ -48,9 +65,12 @@ const Printouts = ({ projectSlug, listing, client, soaRows = [], documents = [] 
         </p>
       </div>
 
-      <div className="mt-5 grid gap-4 md:grid-cols-3">
+      <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {printItems.map((item) => {
           const Icon = item.icon
+          const paymentCount = payments.filter(
+            (payment) => String(payment?.status || 'Verified').toLowerCase() === 'verified'
+          ).length
 
           return (
             <button
@@ -63,7 +83,15 @@ const Printouts = ({ projectSlug, listing, client, soaRows = [], documents = [] 
                 <Icon className="h-6 w-6" />
               </div>
 
-              <p className="mt-4 font-black text-slate-950">{item.title}</p>
+              <div className="mt-4 flex items-start justify-between gap-3">
+                <p className="font-black text-slate-950">{item.title}</p>
+
+                {item.type === 'acknowledgement-receipts' ? (
+                  <span className="shrink-0 rounded-full bg-blue-100 px-2.5 py-1 text-[11px] font-black text-blue-700">
+                    {paymentCount}
+                  </span>
+                ) : null}
+              </div>
 
               <p className="mt-1 text-sm font-semibold leading-relaxed text-slate-500">
                 {item.desc}

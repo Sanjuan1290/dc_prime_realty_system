@@ -42,6 +42,7 @@ const LotSettings = lazy(() => import('./pages/Lot_Projects/Settings'))
 
 import OfferToBuyPrintPage from './components/Lot_Projects/ListingProfileComponents/Printouts/OfferToBuyPrintPage'
 import SOAPrintPage from './components/Lot_Projects/ListingProfileComponents/Printouts/SOAPrintPage'
+import PaymentAcknowledgementReceiptsPrintPage from './components/Lot_Projects/ListingProfileComponents/Printouts/PaymentAcknowledgementReceiptsPrintPage'
 import DocumentsPrintPage from './components/Lot_Projects/ListingProfileComponents/Printouts/DocumentsPrintPage'
 import AccreditedSellerProofOfIncomePrintPage from './components/Lot_Projects/ListingProfileComponents/Printouts/AccreditedSellerProofOfIncomePrintPage'
 import AccreditedSellerIncomeRangePrintPage from './components/Lot_Projects/ListingProfileComponents/Printouts/AccreditedSellerIncomeRangePrintPage'
@@ -175,6 +176,10 @@ const App = () => {
         <Route
           path="/lot-projects/:projectSlug/printouts/statement-of-account"
           element={<SOAPrintPage />}
+        />
+        <Route
+          path="/lot-projects/:projectSlug/printouts/acknowledgement-receipts"
+          element={<PaymentAcknowledgementReceiptsPrintPage />}
         />
         <Route
           path="/super_admin/accredited/proof-of-income/print"

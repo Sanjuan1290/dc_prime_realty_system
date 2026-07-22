@@ -182,6 +182,16 @@ const AddSOAPaymentModal = ({
     ),
     paymentDate: formatDate(initialPayment?.paymentDate),
     method: initialPayment?.method || 'Cash',
+    bankName:
+      initialPayment?.bankName ||
+      initialPayment?.bank_name ||
+      initialPayment?.paymentBank ||
+      '',
+    accountNumber:
+      initialPayment?.accountNumber ||
+      initialPayment?.account_number ||
+      initialPayment?.accountNo ||
+      '',
     referenceId:
       initialPayment?.referenceId && initialPayment?.referenceId !== '-'
         ? initialPayment.referenceId
@@ -267,6 +277,8 @@ const AddSOAPaymentModal = ({
       const next = { ...current, [key]: value }
 
       if (key === 'method' && value === 'Cash') {
+        next.bankName = ''
+        next.accountNumber = ''
         next.referenceId = isEdit && current.method === 'Cash' ? current.referenceId : ''
       }
 
@@ -347,6 +359,22 @@ const AddSOAPaymentModal = ({
       return
     }
 
+    if (form.method !== 'Cash' && !form.bankName.trim()) {
+      setAlert({
+        type: 'error',
+        message: 'Bank / payment provider is required for non-cash payments.',
+      })
+      return
+    }
+
+    if (form.method !== 'Cash' && !form.accountNumber.trim()) {
+      setAlert({
+        type: 'error',
+        message: 'Account No. / wallet number is required for non-cash payments.',
+      })
+      return
+    }
+
     if (form.method !== 'Cash' && !form.referenceId.trim()) {
       setAlert({
         type: 'error',
@@ -368,6 +396,8 @@ const AddSOAPaymentModal = ({
         amount: paymentAmount,
         paymentDate: form.paymentDate,
         method: form.method,
+        bankName: form.method === 'Cash' ? null : form.bankName.trim(),
+        accountNumber: form.method === 'Cash' ? null : form.accountNumber.trim(),
         referenceId: form.method === 'Cash' ? form.referenceId : form.referenceId.trim(),
       })
     } catch (error) {
@@ -552,6 +582,28 @@ const AddSOAPaymentModal = ({
               <option value="Check">Check</option>
               <option value="Other">Other</option>
             </SelectField>
+
+            {form.method !== 'Cash' ? (
+              <>
+                <Field
+                  label="Bank / Payment Provider"
+                  value={form.bankName}
+                  onChange={(value) => updateField('bankName', value)}
+                  placeholder="Example: BPI, BDO, GCash, Maya"
+                  helper="This appears under BANK on the acknowledgement receipt."
+                  required
+                />
+
+                <Field
+                  label="Account No. / Wallet No."
+                  value={form.accountNumber}
+                  onChange={(value) => updateField('accountNumber', value)}
+                  placeholder="Enter the receiving account or wallet number"
+                  helper="Saved as text to preserve leading zeroes and printed on the acknowledgement receipt."
+                  required
+                />
+              </>
+            ) : null}
 
             <Field
               label="Reference ID / OR No. / Transaction No."

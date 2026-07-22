@@ -722,7 +722,15 @@ const ListingProfile = () => {
       ) : null}
 
       {!profileQuery.isLoading && !profileQuery.isError && activeTab === 'printouts' ? (
-        <Printouts projectSlug={projectSlug} listing={listing} client={client} soaRows={soaRows} documents={documents} />
+        <Printouts
+          projectSlug={projectSlug}
+          project={project}
+          listing={listing}
+          client={client}
+          soaRows={soaRows}
+          payments={payments}
+          documents={documents}
+        />
       ) : null}
       </TabErrorBoundary>
 

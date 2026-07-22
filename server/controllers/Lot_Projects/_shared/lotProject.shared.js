@@ -2688,6 +2688,8 @@ export const mapPaymentRow = (row = {}) => ({
   scheduleDescription: row.schedule_description || '-',
   type: getPaymentTypeLabel(row.lot_project_payment_type),
   method: row.lot_project_payment_method || '-',
+  bankName: row.lot_project_payment_bank_name || '',
+  accountNumber: row.lot_project_payment_account_number || '',
   amount: Number(row.lot_project_payment_amount || 0),
   paymentDate: plainDate(row.lot_project_payment_date),
   referenceId: row.lot_project_payment_reference_id || '-',
