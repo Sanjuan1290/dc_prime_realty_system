@@ -5,6 +5,7 @@ import {
   Area,
   Bar,
   BarChart,
+  Cell,
   CartesianGrid,
   ComposedChart,
   Legend,
@@ -443,6 +444,10 @@ const Dashboard = () => {
     total.cancelledValue += Number(stats.cancelledValue || 0)
     total.totalRefundedAmount += Number(stats.totalRefundedAmount || 0)
     total.totalDiscontinuedAmount += Number(stats.totalDiscontinuedAmount || 0)
+    total.totalCommission += Number(stats.totalCommission || 0)
+    total.eligibleCommission += Number(stats.eligibleCommission || 0)
+    total.releasedCommission += Number(stats.releasedCommission || 0)
+    total.netRemainingCommission += Number(stats.netRemainingCommission || 0)
     total.listedInventory += Number(stats.listedLotValue || 0)
     total.availableInventory += Number(stats.availableLotValue || 0)
     total.soldInventory += Number(stats.soldLotValue || 0)
@@ -461,6 +466,10 @@ const Dashboard = () => {
     cancelledValue: 0,
     totalRefundedAmount: 0,
     totalDiscontinuedAmount: 0,
+    totalCommission: 0,
+    eligibleCommission: 0,
+    releasedCommission: 0,
+    netRemainingCommission: 0,
     listedInventory: 0,
     availableInventory: 0,
     soldInventory: 0,
@@ -496,6 +505,12 @@ const Dashboard = () => {
     dueSoon: Number(report.stats?.dueSoonCount || 0),
     overdue: Number(report.stats?.overdueCount || 0),
   }))
+  const commissionChartData = [
+    { label: 'Total', value: Number(summary.totalCommission || 0), color: chartColors.blue },
+    { label: 'Eligible', value: Number(summary.eligibleCommission || 0), color: chartColors.amber },
+    { label: 'Released', value: Number(summary.releasedCommission || 0), color: chartColors.green },
+    { label: 'Remaining', value: Number(summary.netRemainingCommission || 0), color: chartColors.red },
+  ]
   const isProjectsLoading = (shouldLoadLotProjects && lotProjectsQuery.isLoading)
     || (shouldLoadHouseLotProjects && houseLotProjectsQuery.isLoading)
   const isProjectsError = (shouldLoadLotProjects && lotProjectsQuery.isError)
@@ -621,7 +636,21 @@ const Dashboard = () => {
         </ChartCard>
       </section>
 
-      <section className="grid gap-6">
+      <section className="grid gap-6 xl:grid-cols-2">
+        <ChartCard title="Commission Comparison" description="Company-wide commission liability, eligible releases, released amount, and remaining balance for the selected projects.">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={commissionChartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="label" tick={{ fontSize: 12 }} />
+              <YAxis tickFormatter={compactMoney} tick={{ fontSize: 11 }} />
+              <Tooltip content={<ChartTooltip />} />
+              <Bar dataKey="value" name="Amount" radius={[8, 8, 0, 0]}>
+                {commissionChartData.map((item) => <Cell key={item.label} fill={item.color} />)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+
         <ChartCard title="Inventory by Project" description="Current listed, available, sold, pending-cancellation, and cancelled values by project.">
           {projectInventoryChart.length ? <ResponsiveContainer width="100%" height="100%"><BarChart data={projectInventoryChart} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="project" tick={{ fontSize: 11 }} /><YAxis tickFormatter={compactMoney} tick={{ fontSize: 11 }} /><Tooltip content={<ChartTooltip />} /><Legend /><Bar dataKey="listedInventory" name="Listed" fill={chartColors.slate} radius={[8, 8, 0, 0]} /><Bar dataKey="availableInventory" name="Available" fill={chartColors.amber} radius={[8, 8, 0, 0]} /><Bar dataKey="soldInventory" name="Sold / Active" fill={chartColors.indigo} radius={[8, 8, 0, 0]} /><Bar dataKey="pendingCancellationValue" name="Pending Cancellation" fill={chartColors.violet} radius={[8, 8, 0, 0]} /><Bar dataKey="cancelledInventoryValue" name="Cancelled" fill={chartColors.red} radius={[8, 8, 0, 0]} /></BarChart></ResponsiveContainer> : <EmptyChart />}
         </ChartCard>

@@ -467,7 +467,6 @@ const UnitStatus = ({
           unitId={unitData.unit_id || unitData.unitCode}
           buyerName={unitData.buyer_name}
           cashCollected={unitData.totalPaid}
-          commissionBase={unitData.commissionRecalculation?.commissionBase || unitData.netSellingPriceAmount || unitData.tcpAmount}
           onClose={() => setShowSettlementModal(false)}
           onConfirm={handleSettleCancellation}
           isSaving={isSaving}

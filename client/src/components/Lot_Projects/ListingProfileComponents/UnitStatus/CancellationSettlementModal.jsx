@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { FiAlertTriangle, FiX } from 'react-icons/fi'
+import { FiX } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
 import { LuPhilippinePeso } from "react-icons/lu";
 
@@ -20,7 +20,6 @@ const CancellationSettlementModal = ({
   unitId,
   buyerName,
   cashCollected = 0,
-  commissionBase = 0,
   onClose,
   onConfirm,
   isSaving = false,
@@ -41,15 +40,6 @@ const CancellationSettlementModal = ({
     return Math.max(Number(refundAmount || 0), 0)
   }, [collected, refundAmount, refundType])
   const discontinued = Math.max(collected - effectiveRefund, 0)
-  const retainedPercent = Number(commissionBase || 0) > 0 ? Math.min(100, (discontinued / Number(commissionBase)) * 100) : 0
-  const commissionStages = [
-    { label: '1st Release', trigger: 20 },
-    { label: '2nd Release', trigger: 40 },
-    { label: '3rd Release', trigger: 60 },
-    { label: '4th Release', trigger: 75 },
-    { label: 'Retention', trigger: 100 },
-  ]
-
   const submit = async (event) => {
     event.preventDefault()
     setNotice(null)
@@ -166,27 +156,6 @@ const CancellationSettlementModal = ({
               <span className="text-xs font-black uppercase tracking-wide text-slate-500">Settlement Notes</span>
               <textarea value={settlementNotes} onChange={(event) => setSettlementNotes(event.target.value)} rows={3} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-50" placeholder="Internal approval, conditions, and supporting details" />
             </label>
-          </div>
-
-          <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
-            <div className="flex items-start gap-3">
-              <FiAlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
-              <div className="w-full">
-                <p className="font-black">Cancellation commission preview</p>
-                <p className="mt-1 font-semibold">The retained commissionable amount is {money(discontinued)}, equal to {retainedPercent.toFixed(2)}% of the saved commission base. Reached milestones remain payable. Unreached milestones become forfeited. Released commissions remain unchanged.</p>
-                <div className="mt-3 grid gap-2 sm:grid-cols-5">
-                  {commissionStages.map((stage) => {
-                    const earned = retainedPercent >= stage.trigger
-                    return (
-                      <div key={stage.label} className={`rounded-xl border px-3 py-2 ${earned ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-white text-slate-600'}`}>
-                        <p className="text-xs font-black">{stage.label}</p>
-                        <p className="mt-1 text-[11px] font-semibold">{stage.trigger}% · {earned ? 'Earned' : 'Forfeited'}</p>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            </div>
           </div>
 
           <label className="mt-5 flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 p-4 hover:bg-slate-50">
