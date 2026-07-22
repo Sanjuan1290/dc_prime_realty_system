@@ -245,7 +245,6 @@ const mapReleaseRow = (row = {}, paymentPercent = 0, releaseDateInfo = {}, commi
     canRelease: ['Eligible', 'Earned on Cancellation'].includes(status),
     canHold: !['Released', 'On Hold', 'Cancelled', 'Earned on Cancellation', 'Forfeited on Cancellation'].includes(status),
     canUnhold: status === 'On Hold' && (!isFinalRelease(row.release_stage) || retentionReady),
-    canCancel: !['Released', 'Cancelled', 'Forfeited on Cancellation'].includes(status),
     retentionReady,
     paymentComplete: isPaymentComplete(commission),
     documentsComplete: areDocumentsComplete(commission),
@@ -291,7 +290,6 @@ const buildFallbackMilestones = (commission = {}, releaseDateInfo = {}) => {
       canRelease: status === 'Eligible',
       canHold: !['Released', 'On Hold', 'Cancelled', 'Earned on Cancellation', 'Forfeited on Cancellation'].includes(status),
       canUnhold: status === 'On Hold' && (!isFinalRelease(stage.stage) || retentionReady),
-      canCancel: !['Released', 'Cancelled', 'Forfeited on Cancellation'].includes(status),
       retentionReady,
       paymentComplete: isPaymentComplete(commission),
       documentsComplete: areDocumentsComplete(commission),
@@ -767,7 +765,7 @@ export const updateLotProjectCommission = async (req, res) => {
 
     const hasReleaseTable = await tableExists(connection, 'lot_project_commission_releases');
 
-    if (hasReleaseTable && ['release_stage', 'hold_stage', 'unhold_stage', 'cancel_stage'].includes(action)) {
+    if (hasReleaseTable && ['release_stage', 'hold_stage', 'unhold_stage'].includes(action)) {
       if (!releaseId) {
         return res.status(400).json({ success: false, message: 'Release stage id is required.' });
       }
@@ -868,13 +866,6 @@ export const updateLotProjectCommission = async (req, res) => {
             : 'Pending';
         nextStatus = next;
         message = `${release.release_stage} hold removed.`;
-      } else if (action === 'cancel_stage') {
-        if (computedStatus === 'Released') {
-          await connection.rollback();
-          return res.status(400).json({ success: false, message: 'Released stages cannot be cancelled.' });
-        }
-        nextStatus = 'Cancelled';
-        message = `${release.release_stage} cancelled.`;
       }
 
       await connection.query(
@@ -987,9 +978,6 @@ export const updateLotProjectCommission = async (req, res) => {
     } else if (action === 'unhold') {
       nextStatus = toNumber(commission.payment_percent) > 0 ? 'Eligible' : 'Pending';
       message = 'Commission hold removed.';
-    } else if (action === 'cancel') {
-      nextStatus = 'Cancelled';
-      message = 'Commission cancelled.';
     } else {
       return res.status(400).json({ success: false, message: 'Invalid commission action.' });
     }

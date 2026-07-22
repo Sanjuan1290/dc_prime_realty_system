@@ -87,7 +87,6 @@ const ConfirmDialog = ({ action, stage, isSaving, onCancel, onConfirm }) => {
     release_stage: 'release this stage',
     hold_stage: 'hold this stage',
     unhold_stage: 'unhold this stage',
-    cancel_stage: 'cancel this stage',
   }
 
   return (
@@ -302,11 +301,6 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, isSaving = fa
                               </button>
                             ) : null}
 
-                            {!isReleased && !isCancelled && !isForfeitedOnCancellation ? (
-                              <button type="button" onClick={() => openConfirm('cancel_stage', stage)} disabled={isSaving} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-red-600 px-3 text-[11px] font-black text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60">
-                                Cancel
-                              </button>
-                            ) : null}
                           </div>
                         </td>
                       </tr>
