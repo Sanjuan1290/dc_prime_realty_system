@@ -401,7 +401,8 @@ const OfferToBuyPrintPage = () => {
               box-shadow: none !important;
             }
             .otb-form {
-              min-height: 276mm !important;
+              min-height: 0 !important;
+              height: auto !important;
             }
           }
         `}</style>

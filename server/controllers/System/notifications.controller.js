@@ -7,11 +7,13 @@ import {
   getLatestActiveScheduleGenerationPredicate,
 } from '../Lot_Projects/_shared/lotProject.shared.js';
 import {
+  buildMissingDocumentsPdfBuffer,
   buildSoaPdfBuffer,
   formatSoaReference,
   getManilaDateOnly,
   sanitizeAttachmentFileName,
 } from '../../services/paymentSoaPdf.service.js';
+import { writeAuditLog } from './auditLogs.controller.js';
 
 const toDateOnly = (value) => {
   if (!value) return '-';
@@ -68,6 +70,126 @@ const adminRoles = new Set(['super_admin', 'admin']);
 
 const canManageNotifications = (user = {}) => adminRoles.has(user.role);
 
+const EMAIL_LOGO_CID = 'dc-prime-logo@dcprime';
+const DEFAULT_EMAIL_LOGO_URL = 'https://res.cloudinary.com/dvazrmgq9/image/upload/v1784705909/logo-mobile_2_i0damo.png';
+const emailLogoCache = {
+  url: '',
+  expiresAt: 0,
+  attachment: null,
+};
+
+const getEmailLogoUrl = () => String(process.env.EMAIL_LOGO_URL || DEFAULT_EMAIL_LOGO_URL).trim();
+
+const getEmailLogoAttachment = async () => {
+  const url = getEmailLogoUrl();
+  if (!url) return null;
+
+  if (emailLogoCache.url === url && emailLogoCache.attachment && emailLogoCache.expiresAt > Date.now()) {
+    return emailLogoCache.attachment;
+  }
+
+  try {
+    const response = await fetch(url, {
+      headers: { Accept: 'image/*' },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!response.ok) return null;
+
+    const contentType = String(response.headers.get('content-type') || 'image/png').split(';')[0].trim();
+    if (!contentType.startsWith('image/')) return null;
+
+    const extension = contentType.split('/')[1]?.replace('jpeg', 'jpg').replace(/[^a-z0-9]/gi, '') || 'png';
+    const content = Buffer.from(await response.arrayBuffer());
+    if (!content.length) return null;
+
+    const attachment = {
+      filename: `dc-prime-email-logo.${extension}`,
+      content,
+      contentType,
+      cid: EMAIL_LOGO_CID,
+      contentDisposition: 'inline',
+    };
+    emailLogoCache.url = url;
+    emailLogoCache.attachment = attachment;
+    emailLogoCache.expiresAt = Date.now() + (60 * 60 * 1000);
+    return attachment;
+  } catch {
+    return null;
+  }
+};
+
+const pdfLogoCache = {
+  url: '',
+  expiresAt: 0,
+  image: null,
+};
+
+const getCloudinaryJpegUrl = (url = '') => {
+  const value = String(url || '').trim();
+  if (!value.includes('/image/upload/')) return value;
+  return value.replace('/image/upload/', '/image/upload/f_jpg,q_auto:good/');
+};
+
+const getPdfLogoImage = async () => {
+  const sourceUrl = getEmailLogoUrl();
+  if (!sourceUrl) return null;
+
+  if (pdfLogoCache.url === sourceUrl && pdfLogoCache.image && pdfLogoCache.expiresAt > Date.now()) {
+    return pdfLogoCache.image;
+  }
+
+  const candidates = [...new Set([getCloudinaryJpegUrl(sourceUrl), sourceUrl])];
+  for (const url of candidates) {
+    try {
+      const response = await fetch(url, {
+        headers: { Accept: 'image/jpeg,image/jpg;q=0.9' },
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!response.ok) continue;
+
+      const contentType = String(response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+      if (!['image/jpeg', 'image/jpg'].includes(contentType)) continue;
+
+      const content = Buffer.from(await response.arrayBuffer());
+      if (content.length < 12 || content[0] !== 0xff || content[1] !== 0xd8) continue;
+
+      const image = { content, contentType: 'image/jpeg' };
+      pdfLogoCache.url = sourceUrl;
+      pdfLogoCache.image = image;
+      pdfLogoCache.expiresAt = Date.now() + (60 * 60 * 1000);
+      return image;
+    } catch {
+      // Try the next candidate. The PDF falls back to the built-in mark when the remote logo is unavailable.
+    }
+  }
+
+  return null;
+};
+
+const buildBrandedEmailHtml = ({
+  companyName = 'D&C Prime Realty',
+  title,
+  bodyHtml,
+  detailsHtml = '',
+}) => `
+  <div style="margin:0;background:#f1f5f9;padding:28px 14px;font-family:Arial,Helvetica,sans-serif;color:#0f172a;line-height:1.6">
+    <div style="max-width:640px;margin:0 auto;overflow:hidden;border:1px solid #dbe3ee;border-radius:16px;background:#ffffff">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;border-bottom:1px solid #e2e8f0;padding:20px 24px">
+        <img src="cid:${EMAIL_LOGO_CID}" alt="${escapeHtml(companyName)}" width="92" style="display:block;width:92px;max-width:92px;height:auto;border:0">
+        <div style="font-size:13px;font-weight:700;color:#64748b;text-align:right">${escapeHtml(companyName)}</div>
+      </div>
+      <div style="padding:26px 24px">
+        <h1 style="margin:0 0 18px;font-size:22px;line-height:1.25;color:#0f172a">${escapeHtml(title)}</h1>
+        ${bodyHtml}
+        ${detailsHtml}
+        <div style="margin-top:24px;border-top:1px solid #e2e8f0;padding-top:16px;font-size:12px;font-weight:700;color:#64748b;text-align:center">
+          This is an auto-generated email. Please do not reply to this message.
+        </div>
+      </div>
+    </div>
+  </div>
+`;
+
 const notificationLogTableSql = `
   CREATE TABLE IF NOT EXISTS lot_project_notification_logs (
     notification_log_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -112,6 +234,46 @@ const notificationLogTableSql = `
 
 const ensureNotificationTable = async (connection) => {
   await connection.query(notificationLogTableSql);
+};
+
+const documentNotificationLogTableSql = `
+  CREATE TABLE IF NOT EXISTS lot_project_document_notification_logs (
+    document_notification_log_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    lot_project_id INT UNSIGNED NULL,
+    lot_project_listing_id INT UNSIGNED NOT NULL,
+    lot_project_client_profile_id INT UNSIGNED NOT NULL,
+    lot_project_account_id BIGINT UNSIGNED NULL,
+    recipient_email VARCHAR(150) NOT NULL,
+    subject VARCHAR(255) NOT NULL,
+    message TEXT NOT NULL,
+    attachment_filename VARCHAR(255) NULL,
+    sent_by_user_id INT UNSIGNED NULL,
+    sent_at DATETIME NULL,
+    send_status ENUM('sent','failed') NOT NULL DEFAULT 'sent',
+    error_message TEXT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (document_notification_log_id),
+    KEY idx_document_notification_listing_client (lot_project_listing_id, lot_project_client_profile_id),
+    KEY idx_document_notification_project (lot_project_id),
+    KEY idx_document_notification_account (lot_project_account_id),
+    KEY idx_document_notification_sender (sent_by_user_id),
+    CONSTRAINT fk_document_notification_project
+      FOREIGN KEY (lot_project_id) REFERENCES lot_projects (lot_project_id)
+      ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT fk_document_notification_listing
+      FOREIGN KEY (lot_project_listing_id) REFERENCES lot_project_listings (lot_project_listing_id)
+      ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_document_notification_client
+      FOREIGN KEY (lot_project_client_profile_id) REFERENCES lot_project_client_profiles (lot_project_client_profile_id)
+      ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_document_notification_sender
+      FOREIGN KEY (sent_by_user_id) REFERENCES users (id)
+      ON DELETE SET NULL ON UPDATE CASCADE
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
+`;
+
+const ensureDocumentNotificationLogTable = async (connection) => {
+  await connection.query(documentNotificationLogTableSql);
 };
 
 const soaStatementTableSql = `
@@ -179,6 +341,7 @@ const ensureSoaStatementTable = async (connection) => {
 
 const ensureNotificationTables = async (connection) => {
   await ensureNotificationTable(connection);
+  await ensureDocumentNotificationLogTable(connection);
   await ensureSoaStatementTable(connection);
 };
 
@@ -486,18 +649,28 @@ const buildNotificationMessage = (notification, statement) => {
     companyName,
   ].join('\n');
 
-  const htmlMessage = `
-    <div style="margin:0;background:#f8fafc;padding:24px;font-family:Arial,Helvetica,sans-serif;color:#0f172a;line-height:1.6">
-      <div style="max-width:640px;margin:0 auto;border:1px solid #e2e8f0;border-radius:12px;background:#ffffff;padding:28px">
-        <p style="margin:0 0 16px">Dear ${escapeHtml(notification.buyerName)},</p>
-        <p style="margin:0 0 16px">${escapeHtml(opening)}</p>
-        <p style="margin:0 0 16px">Your Statement of Account <strong>${escapeHtml(statement.soaReference)}</strong> is attached as a PDF.</p>
-        <p style="margin:0 0 16px">If you have already made the payment, please disregard this message.</p>
-        <p style="margin:0 0 20px">For questions, contact ${escapeHtml(companyName)} at ${escapeHtml(companyContactNumber)} or ${escapeHtml(companyEmail)}.</p>
-        <p style="margin:0">Thank you,<br><strong>${escapeHtml(companyName)}</strong></p>
-      </div>
+  const detailsHtml = `
+    <div style="margin:20px 0 0;overflow:hidden;border:1px solid #dbe3ee;border-radius:12px">
+      <table role="presentation" style="width:100%;border-collapse:collapse;font-size:14px">
+        <tr><td style="width:38%;background:#f8fafc;padding:10px 12px;font-weight:700;color:#475569">SOA Number</td><td style="padding:10px 12px;font-weight:700">${escapeHtml(statement.soaReference)}</td></tr>
+        <tr><td style="background:#f8fafc;padding:10px 12px;font-weight:700;color:#475569;border-top:1px solid #e2e8f0">Project</td><td style="padding:10px 12px;border-top:1px solid #e2e8f0">${escapeHtml(notification.projectName)}</td></tr>
+        <tr><td style="background:#f8fafc;padding:10px 12px;font-weight:700;color:#475569;border-top:1px solid #e2e8f0">Unit</td><td style="padding:10px 12px;border-top:1px solid #e2e8f0">${escapeHtml(notification.unitId)}</td></tr>
+        <tr><td style="background:#f8fafc;padding:10px 12px;font-weight:700;color:#475569;border-top:1px solid #e2e8f0">Amount Due</td><td style="padding:10px 12px;border-top:1px solid #e2e8f0;font-weight:800;color:#b91c1c">${escapeHtml(money(notification.paymentDue))}</td></tr>
+      </table>
     </div>
   `;
+  const htmlMessage = buildBrandedEmailHtml({
+    companyName,
+    title: isOverdue ? 'Overdue Payment Notice' : 'Payment Reminder',
+    bodyHtml: `
+      <p style="margin:0 0 16px">Dear ${escapeHtml(notification.buyerName)},</p>
+      <p style="margin:0 0 16px">${escapeHtml(opening)}</p>
+      <p style="margin:0 0 16px">Your Statement of Account is attached as a PDF for your reference.</p>
+      <p style="margin:0 0 16px">If you have already made the payment, please disregard this message.</p>
+      <p style="margin:0">For questions, contact ${escapeHtml(companyName)} at ${escapeHtml(companyContactNumber)} or ${escapeHtml(companyEmail)}.</p>
+    `,
+    detailsHtml,
+  });
 
   return { subject, textMessage, htmlMessage };
 };
@@ -527,13 +700,27 @@ const sendEmail = async ({ to, subject, text, html, attachments = [] }) => {
     },
   });
 
+  let finalHtml = String(html || '');
+  const finalAttachments = [...attachments];
+  if (finalHtml.includes(`cid:${EMAIL_LOGO_CID}`)) {
+    const logoAttachment = await getEmailLogoAttachment();
+    if (logoAttachment) {
+      finalAttachments.unshift(logoAttachment);
+    } else {
+      const fallbackLogoUrl = getEmailLogoUrl();
+      finalHtml = fallbackLogoUrl
+        ? finalHtml.replaceAll(`cid:${EMAIL_LOGO_CID}`, escapeHtml(fallbackLogoUrl))
+        : finalHtml.replace(/<img[^>]+dc-prime-logo@dcprime[^>]*>/gi, '');
+    }
+  }
+
   await transporter.sendMail({
     from: process.env.SMTP_FROM || process.env.SMTP_USER,
     to,
     subject,
     text,
-    html,
-    attachments,
+    html: finalHtml,
+    attachments: finalAttachments,
   });
 };
 
@@ -552,6 +739,8 @@ export const getPaymentDueNotifications = async (req, res) => {
     await ensureNotificationTable(connection);
 
     const category = String(req.query.category || 'all').toLowerCase();
+    await ensureDocumentNotificationLogTable(connection);
+
     const search = String(req.query.search || '').trim();
     const projectSlug = String(req.query.projectSlug || '').trim();
     const discountExpr = await getScheduleDiscountExpression(connection, 's');
@@ -719,10 +908,12 @@ export const sendPaymentDueNotification = async (req, res) => {
 
     const statement = await prepareSoaStatement(connection, notification, user.id);
     const { subject, textMessage, htmlMessage } = buildNotificationMessage(notification, statement);
+    const pdfLogoImage = await getPdfLogoImage();
     const pdfBuffer = buildSoaPdfBuffer({
       notification,
       soaReference: statement.soaReference,
       statementDate: statement.statementDate,
+      logoImage: pdfLogoImage,
     });
     const logMessage = `${textMessage}\n\nAttachment: ${statement.pdfFilename}`;
 
@@ -894,6 +1085,314 @@ export const markPaymentDueContacted = async (req, res) => {
   }
 };
 
+
+const getDocumentNotificationContext = async (connection, listingId, clientProfileId) => {
+  const [contextRows] = await connection.query(
+    `
+      SELECT
+        lp.lot_project_id,
+        lp.lot_project_name,
+        lp.lot_project_slug,
+        l.lot_project_listing_id,
+        l.lot_project_listing_unit_id,
+        l.current_account_id AS lot_project_account_id,
+        cp.lot_project_client_profile_id,
+        cp.buyer_full_name,
+        cp.buyer_first_name,
+        cp.buyer_middle_name,
+        cp.buyer_last_name,
+        cp.buyer_email,
+        cp.buyer_contact_number,
+        st.company_name,
+        st.company_email,
+        st.company_contact_number,
+        st.reservation_contact_number
+      FROM lot_project_listings l
+      INNER JOIN lot_projects lp
+        ON lp.lot_project_id = l.lot_project_id
+      INNER JOIN lot_project_client_profiles cp
+        ON cp.lot_project_listing_id = l.lot_project_listing_id
+      LEFT JOIN lot_project_settings st
+        ON st.lot_project_id = lp.lot_project_id
+      WHERE l.lot_project_listing_id = ?
+        AND cp.lot_project_client_profile_id = ?
+      LIMIT 1
+    `,
+    [listingId, clientProfileId]
+  );
+
+  const context = contextRows[0];
+  if (!context) return null;
+
+  const [documentRows] = await connection.query(
+    `
+      SELECT
+        d.document_name,
+        COALESCE(cd.lot_project_client_document_status, 'Missing') AS document_status
+      FROM lot_project_listing_documents ld
+      INNER JOIN documents d
+        ON d.document_id = ld.document_id
+      LEFT JOIN lot_project_client_documents cd
+        ON cd.lot_project_listing_id = ld.lot_project_listing_id
+       AND cd.lot_project_client_profile_id = ?
+       AND cd.document_id = ld.document_id
+      WHERE ld.lot_project_id = ?
+        AND ld.lot_project_listing_id = ?
+        AND ld.lot_project_listing_document_status = 'active'
+        AND ld.lot_project_listing_document_is_required = 1
+        AND COALESCE(cd.lot_project_client_document_status, 'Missing') IN ('Missing', 'Rejected')
+      ORDER BY
+        CASE COALESCE(cd.lot_project_client_document_status, 'Missing')
+          WHEN 'Missing' THEN 0
+          ELSE 1
+        END,
+        d.document_name ASC
+    `,
+    [clientProfileId, context.lot_project_id, listingId]
+  );
+
+  const buyerName = fullName(context);
+  return {
+    projectId: Number(context.lot_project_id),
+    projectName: context.lot_project_name || 'Lot Project',
+    projectSlug: context.lot_project_slug || '',
+    listingId: Number(context.lot_project_listing_id),
+    unitId: context.lot_project_listing_unit_id || '-',
+    clientProfileId: Number(context.lot_project_client_profile_id),
+    accountId: context.lot_project_account_id ? Number(context.lot_project_account_id) : null,
+    buyerName,
+    buyerEmail: context.buyer_email || '',
+    buyerContactNumber: context.buyer_contact_number || '',
+    companyName: context.company_name || 'D&C Prime Realty',
+    companyEmail: context.company_email || process.env.SMTP_USER || 'dcprimerealty@gmail.com',
+    companyContactNumber: context.company_contact_number || context.reservation_contact_number || '(046) 866-0616',
+    missingDocuments: documentRows
+      .filter((row) => String(row.document_status || '').toLowerCase() === 'missing')
+      .map((row) => row.document_name),
+    rejectedDocuments: documentRows
+      .filter((row) => String(row.document_status || '').toLowerCase() === 'rejected')
+      .map((row) => row.document_name),
+  };
+};
+
+const buildDocumentNotificationMessage = (context, attachmentFilename) => {
+  const missingCount = context.missingDocuments.length;
+  const rejectedCount = context.rejectedDocuments.length;
+  const companyName = context.companyName || 'D&C Prime Realty';
+  const subject = `Missing Document Requirements - Unit ${context.unitId}`;
+  const summaryParts = [];
+  if (missingCount > 0) summaryParts.push(`${missingCount} missing`);
+  if (rejectedCount > 0) summaryParts.push(`${rejectedCount} for resubmission`);
+  const summaryText = summaryParts.join(' and ') || 'pending required documents';
+
+  const textMessage = [
+    `Dear ${context.buyerName},`,
+    '',
+    `Our records show ${summaryText} for Unit ${context.unitId}.`,
+    `The document requirements checklist is attached as ${attachmentFilename}.`,
+    '',
+    'Please submit the required documents so we can continue processing your account.',
+    '',
+    `For questions, contact ${companyName} at ${context.companyContactNumber} or ${context.companyEmail}.`,
+    '',
+    'Thank you,',
+    companyName,
+  ].join('\n');
+
+  const detailsHtml = `
+    <div style="margin:20px 0 0;overflow:hidden;border:1px solid #dbe3ee;border-radius:12px">
+      <table role="presentation" style="width:100%;border-collapse:collapse;font-size:14px">
+        <tr><td style="width:38%;background:#f8fafc;padding:10px 12px;font-weight:700;color:#475569">Client</td><td style="padding:10px 12px">${escapeHtml(context.buyerName)}</td></tr>
+        <tr><td style="background:#f8fafc;padding:10px 12px;font-weight:700;color:#475569;border-top:1px solid #e2e8f0">Project</td><td style="padding:10px 12px;border-top:1px solid #e2e8f0">${escapeHtml(context.projectName)}</td></tr>
+        <tr><td style="background:#f8fafc;padding:10px 12px;font-weight:700;color:#475569;border-top:1px solid #e2e8f0">Unit No.</td><td style="padding:10px 12px;border-top:1px solid #e2e8f0">${escapeHtml(context.unitId)}</td></tr>
+        <tr><td style="background:#f8fafc;padding:10px 12px;font-weight:700;color:#475569;border-top:1px solid #e2e8f0">Missing</td><td style="padding:10px 12px;border-top:1px solid #e2e8f0;font-weight:800;color:#b45309">${missingCount}</td></tr>
+        <tr><td style="background:#f8fafc;padding:10px 12px;font-weight:700;color:#475569;border-top:1px solid #e2e8f0">For Resubmission</td><td style="padding:10px 12px;border-top:1px solid #e2e8f0;font-weight:800;color:#b91c1c">${rejectedCount}</td></tr>
+      </table>
+    </div>
+  `;
+
+  const htmlMessage = buildBrandedEmailHtml({
+    companyName,
+    title: `Missing Document Requirements - Unit ${context.unitId}`,
+    bodyHtml: `
+      <p style="margin:0 0 16px">Dear ${escapeHtml(context.buyerName)},</p>
+      <p style="margin:0 0 16px">Our records show that some required documents for Unit <strong>${escapeHtml(context.unitId)}</strong> are still missing or need to be submitted again.</p>
+      <p style="margin:0 0 16px">A complete document requirements checklist is attached as a PDF.</p>
+      <p style="margin:0">Please submit the required documents so we can continue processing your account. For questions, contact ${escapeHtml(companyName)} at ${escapeHtml(context.companyContactNumber)} or ${escapeHtml(context.companyEmail)}.</p>
+    `,
+    detailsHtml,
+  });
+
+  return { subject, textMessage, htmlMessage };
+};
+
+export const sendDocumentNotification = async (req, res) => {
+  const connection = await db.getConnection();
+
+  try {
+    const user = await getAuthenticatedUser(req);
+    if (!user) return res.status(401).json({ message: 'Please login before sending a document notification.' });
+    if (!canManageNotifications(user)) return res.status(403).json({ message: 'Admin access only.' });
+
+    const listingId = Number(req.params.listingId || 0);
+    const clientProfileId = Number(req.params.clientProfileId || 0);
+    if (!listingId || !clientProfileId) {
+      return res.status(400).json({ message: 'Listing and client profile are required.' });
+    }
+
+    const requiredTables = [
+      'lot_projects',
+      'lot_project_listings',
+      'lot_project_listing_documents',
+      'lot_project_client_profiles',
+      'lot_project_client_documents',
+      'documents',
+    ];
+    for (const tableName of requiredTables) {
+      if (!(await tableExists(connection, tableName))) {
+        return res.status(500).json({ message: `${tableName} table does not exist.` });
+      }
+    }
+
+    await ensureDocumentNotificationLogTable(connection);
+    const context = await getDocumentNotificationContext(connection, listingId, clientProfileId);
+    if (!context) return res.status(404).json({ message: 'Buyer document record not found.' });
+    if (!context.buyerEmail) {
+      return res.status(400).json({ message: 'Buyer email is missing. Add the buyer email before sending.' });
+    }
+
+    const totalPending = context.missingDocuments.length + context.rejectedDocuments.length;
+    if (totalPending <= 0) {
+      return res.status(400).json({ message: 'This buyer has no missing or rejected required documents.' });
+    }
+
+    const attachmentFilename = sanitizeAttachmentFileName(
+      `Missing-Document-Requirements-${context.projectName}-${context.unitId}`
+    );
+    const pdfLogoImage = await getPdfLogoImage();
+    const pdfBuffer = buildMissingDocumentsPdfBuffer({
+      companyName: context.companyName,
+      companyEmail: context.companyEmail,
+      companyContactNumber: context.companyContactNumber,
+      buyerName: context.buyerName,
+      projectName: context.projectName,
+      unitId: context.unitId,
+      generatedDate: getManilaDateOnly(),
+      missingDocuments: context.missingDocuments,
+      rejectedDocuments: context.rejectedDocuments,
+      logoImage: pdfLogoImage,
+    });
+    const { subject, textMessage, htmlMessage } = buildDocumentNotificationMessage(context, attachmentFilename);
+
+    try {
+      await sendEmail({
+        to: context.buyerEmail,
+        subject,
+        text: textMessage,
+        html: htmlMessage,
+        attachments: [
+          {
+            filename: attachmentFilename,
+            content: pdfBuffer,
+            contentType: 'application/pdf',
+            contentDisposition: 'attachment',
+          },
+        ],
+      });
+
+      await connection.query(
+        `
+          INSERT INTO lot_project_document_notification_logs (
+            lot_project_id,
+            lot_project_listing_id,
+            lot_project_client_profile_id,
+            lot_project_account_id,
+            recipient_email,
+            subject,
+            message,
+            attachment_filename,
+            sent_by_user_id,
+            sent_at,
+            send_status
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 'sent')
+        `,
+        [
+          context.projectId,
+          context.listingId,
+          context.clientProfileId,
+          context.accountId,
+          context.buyerEmail,
+          subject,
+          `${textMessage}\n\nAttachment: ${attachmentFilename}`,
+          attachmentFilename,
+          user.id,
+        ]
+      );
+
+      await writeAuditLog(connection, req, {
+        actor: user,
+        action: 'send',
+        module: 'Notifications',
+        entityType: 'lot_project_client_document',
+        entityId: String(context.clientProfileId),
+        entityLabel: `${context.unitId} — ${context.buyerName}`,
+        title: 'Sent missing document requirements',
+        description: `Sent the missing document requirements PDF for ${context.unitId} to ${context.buyerEmail}.`,
+        metadata: {
+          projectId: context.projectId,
+          listingId: context.listingId,
+          clientProfileId: context.clientProfileId,
+          missingCount: context.missingDocuments.length,
+          rejectedCount: context.rejectedDocuments.length,
+          attachmentFilename,
+        },
+      });
+
+      return res.json({
+        success: true,
+        message: `Document requirements email sent to ${context.buyerEmail} with ${attachmentFilename} attached.`,
+        data: { attachmentFilename },
+      });
+    } catch (emailError) {
+      await connection.query(
+        `
+          INSERT INTO lot_project_document_notification_logs (
+            lot_project_id,
+            lot_project_listing_id,
+            lot_project_client_profile_id,
+            lot_project_account_id,
+            recipient_email,
+            subject,
+            message,
+            attachment_filename,
+            sent_by_user_id,
+            sent_at,
+            send_status,
+            error_message
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 'failed', ?)
+        `,
+        [
+          context.projectId,
+          context.listingId,
+          context.clientProfileId,
+          context.accountId,
+          context.buyerEmail,
+          subject,
+          `${textMessage}\n\nAttachment: ${attachmentFilename}`,
+          attachmentFilename,
+          user.id,
+          emailError?.message || 'Failed to send email.',
+        ]
+      );
+      return res.status(500).json({ message: emailError?.message || 'Failed to send document requirements email.' });
+    }
+  } catch (error) {
+    return res.status(500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
 export const getDocumentNotifications = async (req, res) => {
   const connection = await db.getConnection();
 
@@ -956,6 +1455,9 @@ export const getDocumentNotifications = async (req, res) => {
           cp.buyer_full_name,
           cp.buyer_email,
           cp.buyer_contact_number,
+          latest_document_log.send_status AS last_document_notification_status,
+          latest_document_log.sent_at AS last_document_notification_at,
+          latest_document_log.attachment_filename AS last_document_attachment_filename,
           COUNT(ld.lot_project_listing_document_id) AS total_documents,
           COALESCE(SUM(COALESCE(cd.lot_project_client_document_status, 'Missing') IN ('Submitted', 'Approved')), 0) AS submitted_documents,
           COALESCE(SUM(COALESCE(cd.lot_project_client_document_status, 'Missing') = 'Approved'), 0) AS approved_documents,
@@ -984,6 +1486,21 @@ export const getDocumentNotifications = async (req, res) => {
           ON cd.lot_project_listing_id = l.lot_project_listing_id
          AND cd.lot_project_client_profile_id = cp.lot_project_client_profile_id
          AND cd.document_id = ld.document_id
+        LEFT JOIN (
+          SELECT document_log.*
+          FROM lot_project_document_notification_logs document_log
+          INNER JOIN (
+            SELECT
+              lot_project_listing_id,
+              lot_project_client_profile_id,
+              MAX(document_notification_log_id) AS latest_id
+            FROM lot_project_document_notification_logs
+            GROUP BY lot_project_listing_id, lot_project_client_profile_id
+          ) latest
+            ON latest.latest_id = document_log.document_notification_log_id
+        ) latest_document_log
+          ON latest_document_log.lot_project_listing_id = l.lot_project_listing_id
+         AND latest_document_log.lot_project_client_profile_id = cp.lot_project_client_profile_id
         WHERE l.lot_project_listing_status IN ('sold', 'pending_for_cancellation')
           AND cp.lot_project_client_profile_status IN ('active', 'closed')
           ${filters.length ? `AND ${filters.join(' AND ')}` : ''}
@@ -998,7 +1515,10 @@ export const getDocumentNotifications = async (req, res) => {
           cp.lot_project_client_profile_id,
           cp.buyer_full_name,
           cp.buyer_email,
-          cp.buyer_contact_number
+          cp.buyer_contact_number,
+          latest_document_log.send_status,
+          latest_document_log.sent_at,
+          latest_document_log.attachment_filename
         ${havingSql}
         ORDER BY pending_required_documents DESC, awaiting_approval_documents DESC, lp.lot_project_name ASC, l.lot_project_listing_unit_id ASC
       `,
@@ -1017,6 +1537,9 @@ export const getDocumentNotifications = async (req, res) => {
       buyerName: row.buyer_full_name || '-',
       buyerEmail: row.buyer_email || '',
       buyerContactNumber: row.buyer_contact_number || '',
+      lastDocumentNotificationStatus: row.last_document_notification_status || null,
+      lastDocumentNotificationAt: row.last_document_notification_at ? toDateOnly(row.last_document_notification_at) : null,
+      lastDocumentAttachmentFilename: row.last_document_attachment_filename || null,
       totalDocuments: Number(row.total_documents || 0),
       submittedDocuments: Number(row.submitted_documents || 0),
       approvedDocuments: Number(row.approved_documents || 0),

@@ -122,6 +122,17 @@ const Notifications = () => {
     onError: (error) => setAlert({ type: 'error', message: error?.message || 'Failed to send notification email.' }),
   })
 
+  const documentSendMutation = useMutation({
+    mutationFn: ({ listingId, clientProfileId }) =>
+      useFetchPost(`/notifications/documents/${listingId}/${clientProfileId}/send`, {}),
+    onMutate: () => setAlert({ type: 'loading', message: 'Sending document requirements email...' }),
+    onSuccess: (response) => {
+      setAlert({ type: 'success', message: response?.message || 'Document requirements email sent successfully.' })
+      queryClient.invalidateQueries({ queryKey: ['system-document-notifications'] })
+    },
+    onError: (error) => setAlert({ type: 'error', message: error?.message || 'Failed to send document requirements email.' }),
+  })
+
   const contactedMutation = useMutation({
     mutationFn: ({ scheduleId }) => useFetchPost(`/notifications/payment-dues/${scheduleId}/contacted`, { message: 'Marked as contacted from System Notifications.' }),
     onMutate: () => setAlert({ type: 'loading', message: 'Marking schedule as contacted...' }),
@@ -141,7 +152,7 @@ const Notifications = () => {
   const totalPages = Math.max(1, Math.ceil(records.length / pageSize))
   const currentPage = Math.min(page, totalPages)
   const paginatedRecords = records.slice((currentPage - 1) * pageSize, currentPage * pageSize)
-  const isBusy = sendMutation.isPending || contactedMutation.isPending
+  const isBusy = sendMutation.isPending || documentSendMutation.isPending || contactedMutation.isPending
 
   const changeTab = (nextTab) => {
     setTab(nextTab)
@@ -155,6 +166,16 @@ const Notifications = () => {
       ? `Send overdue notice to ${item.buyerEmail || item.buyerName}?`
       : `Send payment reminder to ${item.buyerEmail || item.buyerName}?`
     if (window.confirm(message)) sendMutation.mutate({ scheduleId: item.scheduleId })
+  }
+
+  const handleDocumentSend = (item) => {
+    const recipient = item.buyerEmail || item.buyerName
+    if (window.confirm(`Send the missing document requirements PDF to ${recipient}?`)) {
+      documentSendMutation.mutate({
+        listingId: item.listingId,
+        clientProfileId: item.clientProfileId,
+      })
+    }
   }
 
   const handleContacted = (item) => {
@@ -219,7 +240,7 @@ const Notifications = () => {
           </>
         ) : (
           <>
-            <div className="overflow-x-auto"><table className="min-w-[1200px] w-full divide-y divide-slate-200 text-sm"><thead className="bg-slate-50"><tr>{['Project', 'Unit', 'Buyer', 'Email / Contact', 'Submitted / Total', 'Approved', 'Awaiting', 'Missing Required', 'Rejected Required', 'Status', 'Action'].map((header) => <th key={header} className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">{header}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{paginatedRecords.map((item) => <tr key={item.listingId} className="align-top hover:bg-slate-50"><td className="px-4 py-4 font-black">{item.projectName}</td><td className="px-4 py-4 font-black text-blue-700">{item.unitId}</td><td className="px-4 py-4 font-semibold text-slate-700">{item.buyerName}</td><td className="px-4 py-4 font-semibold text-slate-600"><p>{item.buyerEmail || '-'}</p><p className="text-xs">{item.buyerContactNumber || '-'}</p></td><td className="px-4 py-4 font-black text-blue-700">{item.submittedDocuments} / {item.totalDocuments}</td><td className="px-4 py-4 font-black text-emerald-700">{item.approvedDocuments}</td><td className="px-4 py-4 font-black text-amber-700">{item.awaitingApprovalDocuments}</td><td className="px-4 py-4 font-black text-red-700">{item.missingRequiredDocuments}</td><td className="px-4 py-4 font-black text-red-700">{item.rejectedRequiredDocuments}</td><td className="px-4 py-4"><span className={`inline-flex rounded-full px-3 py-1 text-xs font-black ${item.pendingRequiredDocuments > 0 ? 'bg-red-50 text-red-700' : item.awaitingApprovalDocuments > 0 ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>{item.pendingRequiredDocuments > 0 ? 'Incomplete' : item.awaitingApprovalDocuments > 0 ? 'For Review' : 'Complete'}</span></td><td className="px-4 py-4"><Link to={item.listingPath} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 hover:bg-slate-50"><FiFileText /> Review</Link></td></tr>)}</tbody></table></div>
+            <div className="overflow-x-auto"><table className="min-w-[1380px] w-full divide-y divide-slate-200 text-sm"><thead className="bg-slate-50"><tr>{['Project', 'Unit', 'Buyer', 'Email / Contact', 'Submitted / Total', 'Approved', 'Awaiting', 'Missing Required', 'Rejected Required', 'Status', 'Last Email', 'Actions'].map((header) => <th key={header} className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">{header}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{paginatedRecords.map((item) => <tr key={item.listingId} className="align-top hover:bg-slate-50"><td className="px-4 py-4 font-black">{item.projectName}</td><td className="px-4 py-4 font-black text-blue-700">{item.unitId}</td><td className="px-4 py-4 font-semibold text-slate-700">{item.buyerName}</td><td className="px-4 py-4 font-semibold text-slate-600"><p>{item.buyerEmail || '-'}</p><p className="text-xs">{item.buyerContactNumber || '-'}</p></td><td className="px-4 py-4 font-black text-blue-700">{item.submittedDocuments} / {item.totalDocuments}</td><td className="px-4 py-4 font-black text-emerald-700">{item.approvedDocuments}</td><td className="px-4 py-4 font-black text-amber-700">{item.awaitingApprovalDocuments}</td><td className="px-4 py-4 font-black text-red-700">{item.missingRequiredDocuments}</td><td className="px-4 py-4 font-black text-red-700">{item.rejectedRequiredDocuments}</td><td className="px-4 py-4"><span className={`inline-flex rounded-full px-3 py-1 text-xs font-black ${item.pendingRequiredDocuments > 0 ? 'bg-red-50 text-red-700' : item.awaitingApprovalDocuments > 0 ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>{item.pendingRequiredDocuments > 0 ? 'Incomplete' : item.awaitingApprovalDocuments > 0 ? 'For Review' : 'Complete'}</span></td><td className="px-4 py-4"><span className={`inline-flex rounded-full border px-3 py-1 text-xs font-black ${statusStyles[item.lastDocumentNotificationStatus] || 'border-slate-200 bg-slate-50 text-slate-600'}`}>{getLastStatusLabel(item.lastDocumentNotificationStatus)}</span>{item.lastDocumentNotificationAt ? <p className="mt-1 text-xs font-semibold text-slate-500">{item.lastDocumentNotificationAt}</p> : null}</td><td className="px-4 py-4"><div className="flex flex-wrap gap-2">{canManage ? <button type="button" onClick={() => handleDocumentSend(item)} disabled={isBusy || !item.buyerEmail || item.pendingRequiredDocuments <= 0} className="inline-flex h-9 items-center gap-2 rounded-lg bg-blue-600 px-3 text-xs font-black text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"><FiMail /> Send Email</button> : null}<Link to={item.listingPath} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 hover:bg-slate-50"><FiFileText /> Review</Link></div></td></tr>)}</tbody></table></div>
             <Pagination total={records.length} page={currentPage} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1) }} />
           </>
         )}
