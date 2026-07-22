@@ -203,19 +203,19 @@ const createMockResponse = () => ({
   },
 });
 
-test('commission recalculation role guard blocks Admin and allows Super Admin', () => {
+test('commission recalculation role guard allows Admin 1 and Super Admin', () => {
   const guard = requireRole('super_admin');
 
   const adminResponse = createMockResponse();
   let adminNextCalled = false;
   guard(
-    { authUser: { role: 'admin' } },
+    { authUser: { role: 'admin', admin_type: 'admin_1' } },
     adminResponse,
     () => { adminNextCalled = true; }
   );
 
-  assert.equal(adminResponse.statusCode, 403);
-  assert.equal(adminNextCalled, false);
+  assert.equal(adminResponse.statusCode, 200);
+  assert.equal(adminNextCalled, true);
 
   const superAdminResponse = createMockResponse();
   let superAdminNextCalled = false;

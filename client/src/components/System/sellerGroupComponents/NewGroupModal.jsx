@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FiLoader, FiUsers, FiX } from 'react-icons/fi'
 import StatusAlert from '../../Shared/StatusAlert'
+import ConfirmActionModal from '../../Shared/ConfirmActionModal'
 import ProjectAccreditationFields from './ProjectAccreditationFields'
 import { useFetch as fetchJson, useFetchPost as postJson } from '../../../utils/useFetch'
 
@@ -33,6 +34,7 @@ const validateProjectRates = (projectRates, groupHeadRole = 'broker_network_mana
 const NewGroupModal = ({ setShowNewGroupModal, onSaved }) => {
   const queryClient = useQueryClient()
   const [notice, setNotice] = useState(null)
+  const [projectPendingRemoval, setProjectPendingRemoval] = useState(null)
   const [form, setForm] = useState({
     seller_group_name: '',
     seller_group_head_user_id: '',
@@ -165,6 +167,10 @@ const NewGroupModal = ({ setShowNewGroupModal, onSaved }) => {
               projects={projects}
               projectRates={form.project_rates}
               onChange={(value) => updateForm('project_rates', value)}
+              onRequestRemove={(project) => {
+                setNotice(null)
+                setProjectPendingRemoval(project)
+              }}
               groupHeadRole={groupHeadRole}
               disabled={mutation.isPending || projectsQuery.isLoading}
             />
@@ -179,6 +185,23 @@ const NewGroupModal = ({ setShowNewGroupModal, onSaved }) => {
           </button>
         </footer>
       </form>
+
+      <ConfirmActionModal
+        open={Boolean(projectPendingRemoval)}
+        title="Unselect Project?"
+        message={`Remove ${projectPendingRemoval?.lot_project_name || projectPendingRemoval?.label || 'this project'} from this Realty form? Any pool and fixed role rates entered for this project will be discarded. You can select it again before creating the Realty.`}
+        confirmLabel="Unselect Project"
+        onClose={() => setProjectPendingRemoval(null)}
+        onConfirm={() => {
+          const projectId = Number(projectPendingRemoval?.lot_project_id || projectPendingRemoval?.id)
+          setForm((current) => ({
+            ...current,
+            project_rates: current.project_rates.filter((rate) => Number(rate.lot_project_id) !== projectId),
+          }))
+          setProjectPendingRemoval(null)
+          setNotice({ type: 'warning', message: 'Project unselected. Select it again before creating the Realty if this was not intended.' })
+        }}
+      />
     </div>
   )
 }
