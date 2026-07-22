@@ -85,7 +85,7 @@ const AuditLogs = () => {
   const [archiveRequest, setArchiveRequest] = useState(null)
   const [archiveError, setArchiveError] = useState('')
 
-  const isSuperAdmin = currentUserData?.user?.role === 'super_admin'
+  const isSuperAdmin = ['super_admin', 'admin'].includes(currentUserData?.user?.role)
 
   const queryString = useMemo(() => {
     const params = new URLSearchParams({ page: String(page), limit: String(limit) })
@@ -238,7 +238,7 @@ const AuditLogs = () => {
 
       <section className="rounded-2xl border border-blue-100 bg-blue-50 px-5 py-4 text-sm font-semibold text-blue-900">
         <p className="font-black">Audit retention: {archivePolicy.retentionDays} days</p>
-        <p className="mt-1">Permanent delete-all is disabled. Only a Super Admin can export and archive records older than the retention period.</p>
+        <p className="mt-1">Permanent delete-all is disabled. Only a full-access administrator can export and archive records older than the retention period.</p>
       </section>
 
       <AuditLogFilters

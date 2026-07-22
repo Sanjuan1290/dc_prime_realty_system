@@ -20,6 +20,7 @@ import {
 } from "react-icons/fi";
 import useCurrentUser from "../utils/useCurrentUser";
 import StatusAlert from "../components/Shared/StatusAlert";
+import { isFullAccessAdministrator } from "../config/permissions";
 
 const getFullName = (user) => {
   const name = [user?.first_name, user?.middle_name, user?.last_name]
@@ -103,13 +104,14 @@ const SystemLayout = () => {
 
 
   const roleBasePath = `/${user?.role || "super_admin"}`;
+  const dashboardPathname = user?.role === "admin" ? "dashboard" : "";
 
   const navGroups = useMemo(
     () => [
       {
         title: "OVERVIEW",
         description: "Main summary",
-        items: [{ label: "Dashboard", pathname: "", icon: FiHome }],
+        items: [{ label: "Dashboard", pathname: dashboardPathname, icon: FiHome }],
       },
       {
         title: "PROJECTS",
@@ -166,7 +168,7 @@ const SystemLayout = () => {
         ],
       },
     ],
-    []
+    [dashboardPathname]
   );
 
   const activeItem = useMemo(() => {
@@ -207,8 +209,8 @@ const SystemLayout = () => {
     return <Navigate to="/change-password" replace />;
   }
 
-  if (user?.role !== "super_admin") {
-    return <Navigate to={user?.role === "admin" ? "/admin/projects" : "/"} replace />;
+  if (!isFullAccessAdministrator(user)) {
+    return <Navigate to="/" replace />;
   }
 
   return (
@@ -351,7 +353,7 @@ const SystemLayout = () => {
             </p>
 
             <span className="mt-2 inline-flex rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-black text-blue-700">
-              {formatRole(user?.role)}
+              {user?.role === "admin" ? "Admin 1" : formatRole(user?.role)}
             </span>
           </div>
 
@@ -408,7 +410,7 @@ const SystemLayout = () => {
         <div className="flex shrink-0 items-center gap-3">
           <div className="hidden text-right sm:block">
             <h3 className="font-semibold">{getFullName(user)}</h3>
-            <p className="text-xs text-slate-500">{formatRole(user?.role)}</p>
+            <p className="text-xs text-slate-500">{user?.role === "admin" ? "Admin 1" : formatRole(user?.role)}</p>
           </div>
 
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-sm font-bold text-white">

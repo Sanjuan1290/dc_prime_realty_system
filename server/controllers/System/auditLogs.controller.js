@@ -139,8 +139,8 @@ const requireSuperAdmin = async (req) => {
     throw error;
   }
 
-  if (user.role !== 'super_admin') {
-    const error = new Error('Only a Super Admin can archive audit logs.');
+  if (!['super_admin', 'admin'].includes(user.role)) {
+    const error = new Error('Only a full-access administrator can archive audit logs.');
     error.statusCode = 403;
     throw error;
   }

@@ -41,7 +41,7 @@ const mapSettingsToForm = (settings = {}) => ({
 
 const Settings = () => {
   const { data: currentUserData } = useCurrentUser()
-  const canManage = currentUserData?.user?.role === 'super_admin'
+  const canManage = ['super_admin', 'admin'].includes(currentUserData?.user?.role)
   const queryClient = useQueryClient()
   const [form, setForm] = useState(defaultForm)
   const [alert, setAlert] = useState(null)
@@ -116,7 +116,7 @@ const Settings = () => {
         </div>
       </div>
 
-      {!canManage ? <ReadOnlyNotice message="Admin can review system settings. Only a Super Admin can edit and save changes." /> : null}
+      {!canManage ? <ReadOnlyNotice message="This account can review system settings but cannot edit them." /> : null}
 
       {alert ? (
         <StatusAlert type={alert.type} message={alert.message} onClose={alert.type === 'loading' ? undefined : () => setAlert(null)} />

@@ -22,7 +22,7 @@ const DeleteAccountRecordsModal = ({ projectSlug, account, onClose, onDeleted })
   const requestCode = async (event) => {
     event.preventDefault()
     setNotice(null)
-    if (!password) return setNotice({ type: 'warning', message: 'Enter the Super Admin password.' })
+    if (!password) return setNotice({ type: 'warning', message: 'Enter the administrator password.' })
     if (reason.trim().length < 10) return setNotice({ type: 'warning', message: 'Enter a deletion reason with at least 10 characters.' })
     if (confirmationText.trim() !== requiredText) return setNotice({ type: 'warning', message: `Type ${requiredText} exactly.` })
 
@@ -70,7 +70,7 @@ const DeleteAccountRecordsModal = ({ projectSlug, account, onClose, onDeleted })
           <div className="flex gap-3">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-red-700 shadow-sm"><FiAlertTriangle className="h-5 w-5" /></div>
             <div>
-              <p className="text-xs font-black uppercase tracking-wide text-red-700">Super Admin only</p>
+              <p className="text-xs font-black uppercase tracking-wide text-red-700">Full-access administrator only</p>
               <h2 className="mt-1 text-xl font-black text-red-950">Permanently Delete Account Records</h2>
               <p className="mt-1 text-sm font-semibold text-red-800">{account?.accountReference} · {account?.buyerName} · {account?.unitId}</p>
             </div>
@@ -94,7 +94,7 @@ const DeleteAccountRecordsModal = ({ projectSlug, account, onClose, onDeleted })
               </div>
 
               <label className="block">
-                <span className="mb-1.5 flex items-center gap-2 text-sm font-black text-slate-700"><FiLock /> Super Admin password</span>
+                <span className="mb-1.5 flex items-center gap-2 text-sm font-black text-slate-700"><FiLock /> Administrator password</span>
                 <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} disabled={busy} autoComplete="current-password" placeholder="Enter your current password" className="h-12 w-full rounded-xl border border-slate-300 px-4 text-sm font-semibold outline-none transition focus:border-red-400 focus:ring-4 focus:ring-red-50" />
               </label>
 

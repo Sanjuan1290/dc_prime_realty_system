@@ -212,7 +212,7 @@ const DeletePaymentModal = ({ payment, password, setPassword, alert, isDeleting,
             <div>
               <h3 className="text-lg font-black text-slate-950">Delete Payment</h3>
               <p className="text-sm font-semibold text-slate-500">
-                Super admin password is required.
+                Administrator password is required.
               </p>
             </div>
           </div>
@@ -309,6 +309,7 @@ const todayManila = () => new Intl.DateTimeFormat('en-CA', {
 const penaltyGraceDayOptions = Array.from({ length: 32 }, (_, index) => index)
 
 const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, onSave }) => {
+  const initialDailyPenaltyRate = String(getListingValue(listing, ['soaPenaltyRatePercent'], 0.1))
   const [form, setForm] = useState(() => ({
     dpDiscountPercentage: String(getListingValue(listing, ['soaDpDiscountPercentage'], 0)),
     downpaymentPercentage: String(getListingValue(listing, ['soaDownpaymentPercentage'], 30)),
@@ -317,9 +318,12 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
       (getListingValue(listing, ['soaReservationFeeAppliedToDownpayment'], false) ? 'apply_to_downpayment' : 'separate'),
     monthlyTerms: String(getListingValue(listing, ['soaMonthlyTerms'], 36)),
     firstDueDate: getListingValue(listing, ['soaFirstDueDate', 'first_due_date'], ''),
-    dailyPenaltyRate: String(getListingValue(listing, ['soaPenaltyRatePercent'], 0.1)),
+    dailyPenaltyRate: initialDailyPenaltyRate,
     penaltyGraceDays: String(getListingValue(listing, ['soaPenaltyGraceDays'], 1)),
   }))
+  const [penaltyRateMode, setPenaltyRateMode] = useState(() =>
+    dailyPenaltyRateOptions.includes(Number(initialDailyPenaltyRate)) ? 'preset' : 'custom'
+  )
   const [modalAlert, setModalAlert] = useState({
     type: 'info',
     message: 'Payment schedule fields lock after a payment is recorded. Daily penalty rate and grace period stay editable.',
@@ -409,10 +413,10 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
 
   const listingInterestRate = Number(getListingValue(listing, ['annualInterestRate'], 0))
   const hasRecordedPayments = Number(getListingValue(listing, ['payment_count'], 0)) > 0
-  const selectedPenaltyRateOption = dailyPenaltyRateOptions.includes(Number(form.dailyPenaltyRate))
-    ? String(Number(form.dailyPenaltyRate))
-    : 'custom'
-  const isCustomPenaltyRate = selectedPenaltyRateOption === 'custom'
+  const selectedPenaltyRateOption = penaltyRateMode === 'custom'
+    ? 'custom'
+    : String(Number(form.dailyPenaltyRate))
+  const isCustomPenaltyRate = penaltyRateMode === 'custom'
 
   const Field = ({ label, value, onChange, type = 'number', placeholder = '', helper, disabled = false, min, max, step }) => (
     <label className="flex flex-col gap-1.5">
@@ -475,7 +479,16 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
               <span className="text-sm font-black text-slate-700">Daily Penalty Rate</span>
               <select
                 value={selectedPenaltyRateOption}
-                onChange={(event) => updateForm('dailyPenaltyRate', event.target.value === 'custom' ? '' : event.target.value)}
+                onChange={(event) => {
+                  const nextValue = event.target.value
+                  if (nextValue === 'custom') {
+                    setPenaltyRateMode('custom')
+                    updateForm('dailyPenaltyRate', '')
+                  } else {
+                    setPenaltyRateMode('preset')
+                    updateForm('dailyPenaltyRate', nextValue)
+                  }
+                }}
                 disabled={isSaving}
                 className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100"
               >
@@ -522,7 +535,7 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
   const { data: currentUserData } = useCurrentUser()
   const currentUserRole = currentUserData?.user?.role
   const canManagePenaltyRelief = ['admin', 'super_admin'].includes(currentUserRole)
-  const canCorrectPenalty = currentUserRole === 'super_admin'
+  const canCorrectPenalty = ['super_admin', 'admin'].includes(currentUserRole)
 
   const rows = useMemo(() => normalizeRows(soaRows), [soaRows])
   const paymentRecords = useMemo(() => normalizePayments(payments, listing), [payments, listing])
@@ -646,10 +659,10 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
     onSuccess: (result) => {
       setPenaltyReliefRow(null)
       setPenaltyReliefAlert(null)
-      setAlert({ type: 'success', message: result?.message || 'Penalty-free extension saved.' })
+      setAlert({ type: 'success', message: result?.message || 'The new penalty-free payment date was saved.' })
       invalidateProfile()
     },
-    onError: (error) => setPenaltyReliefAlert({ type: 'error', message: error?.message || 'Failed to save penalty-free extension.' }),
+    onError: (error) => setPenaltyReliefAlert({ type: 'error', message: error?.message || 'The new payment date could not be saved.' }),
   })
 
   const editPenaltyExtensionMutation = useMutation({
@@ -661,10 +674,10 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
     onSuccess: (result) => {
       setPenaltyReliefRow(null)
       setPenaltyReliefAlert(null)
-      setAlert({ type: 'success', message: result?.message || 'Penalty-free extension updated.' })
+      setAlert({ type: 'success', message: result?.message || 'The penalty-free payment date was updated.' })
       invalidateProfile()
     },
-    onError: (error) => setPenaltyReliefAlert({ type: 'error', message: error?.message || 'Failed to update penalty-free extension.' }),
+    onError: (error) => setPenaltyReliefAlert({ type: 'error', message: error?.message || 'The payment-date extension could not be updated.' }),
   })
 
   const correctPenaltyMutation = useMutation({
@@ -676,10 +689,10 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
     onSuccess: (result) => {
       setPenaltyReliefRow(null)
       setPenaltyReliefAlert(null)
-      setAlert({ type: 'success', message: result?.message || 'Penalty reset as a correction.' })
+      setAlert({ type: 'success', message: result?.message || 'The incorrect penalty was cleared.' })
       invalidateProfile()
     },
-    onError: (error) => setPenaltyReliefAlert({ type: 'error', message: error?.message || 'Failed to reset penalty.' }),
+    onError: (error) => setPenaltyReliefAlert({ type: 'error', message: error?.message || 'The penalty could not be corrected.' }),
   })
 
   const waivePenaltyMutation = useMutation({
@@ -691,10 +704,10 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
     onSuccess: (result) => {
       setPenaltyReliefRow(null)
       setPenaltyReliefAlert(null)
-      setAlert({ type: 'success', message: result?.message || 'Penalty waiver saved.' })
+      setAlert({ type: 'success', message: result?.message || 'The penalty reduction was saved.' })
       invalidateProfile()
     },
-    onError: (error) => setPenaltyReliefAlert({ type: 'error', message: error?.message || 'Failed to save penalty waiver.' }),
+    onError: (error) => setPenaltyReliefAlert({ type: 'error', message: error?.message || 'The penalty reduction could not be saved.' }),
   })
 
   const restorePenaltyMutation = useMutation({
@@ -706,10 +719,10 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
     onSuccess: (result) => {
       setPenaltyReliefRow(null)
       setPenaltyReliefAlert(null)
-      setAlert({ type: 'success', message: result?.message || 'Waived penalty restored.' })
+      setAlert({ type: 'success', message: result?.message || 'The removed penalty was added back.' })
       invalidateProfile()
     },
-    onError: (error) => setPenaltyReliefAlert({ type: 'error', message: error?.message || 'Failed to restore waived penalty.' }),
+    onError: (error) => setPenaltyReliefAlert({ type: 'error', message: error?.message || 'The penalty could not be added back.' }),
   })
 
   const handleSaveSoaTerms = (payload) => {
@@ -790,7 +803,7 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
 
   const handleConfirmDelete = () => {
     if (!deletePassword.trim()) {
-      setDeleteAlert({ type: 'error', message: 'Super admin password is required.' })
+      setDeleteAlert({ type: 'error', message: 'Administrator password is required.' })
       return
     }
 
@@ -897,7 +910,7 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
 
       <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
         <SummaryCard label="Payment Records" value={paymentRecords.length} isMoney={false} />
-        <SummaryCard label="Verified Collections" value={totalPaid} tone="emerald" />
+        <SummaryCard label="Total Payments Made" value={totalPaid} tone="emerald" />
         <SummaryCard label="Balloon Principal Reduction" value={balloonPrincipalReduction} tone="blue" />
         <SummaryCard label="Remaining Monthly Terms" value={remainingMonthlyTerms} isMoney={false} />
         <SummaryCard label="Unpaid Scheduled Due" value={totalDue} tone="blue" />
@@ -1094,8 +1107,15 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
               </p>
             </div>
 
-            <div className="text-sm font-black text-slate-700">
-              Remaining Principal: {money(remainingBalance)}
+            <div className="grid gap-2 text-right sm:grid-cols-2">
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2">
+                <p className="text-[11px] font-black uppercase tracking-wide text-emerald-700">Total Payments Made</p>
+                <p className="mt-0.5 text-sm font-black text-emerald-900">{money(totalPaid)}</p>
+              </div>
+              <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2">
+                <p className="text-[11px] font-black uppercase tracking-wide text-blue-700">Remaining Principal</p>
+                <p className="mt-0.5 text-sm font-black text-blue-900">{money(remainingBalance)}</p>
+              </div>
             </div>
           </div>
         </div>
@@ -1113,7 +1133,7 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
                   'Interest',
                   'Discount',
                   'Penalty',
-                  'Penalty Relief',
+                  'Penalty Adjustment',
                   'Date Paid',
                   'Amount Paid',
                   'Reference ID',
@@ -1172,7 +1192,7 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
                     ) : null}
                     {row.waivedPenaltyAmount > 0 ? (
                       <p className="mt-1 text-xs font-semibold text-emerald-700">
-                        Waived {money(row.waivedPenaltyAmount)}
+                        Removed {money(row.waivedPenaltyAmount)}
                       </p>
                     ) : null}
                   </td>
@@ -1187,7 +1207,7 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
                       </div>
                     ) : row.penaltyReliefs?.length ? (
                       <span className="text-xs font-black text-slate-600">
-                        {row.penaltyReliefs.length} relief record{row.penaltyReliefs.length === 1 ? '' : 's'}
+                        {row.penaltyReliefs.length} adjustment record{row.penaltyReliefs.length === 1 ? '' : 's'}
                       </span>
                     ) : (
                       <span className="text-xs font-semibold text-slate-400">None</span>
@@ -1231,7 +1251,7 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
                         className="inline-flex h-9 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400"
                       >
                         <FiClock className="h-3.5 w-3.5" />
-                        {canManagePenaltyRelief ? 'Penalty Relief' : 'Relief History'}
+                        {canManagePenaltyRelief ? 'Penalty Adjustment' : 'Adjustment History'}
                       </button>
                     )}
                   </td>
@@ -1256,13 +1276,15 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
         </div>
 
         <div className="border-t border-slate-200 bg-slate-50 px-5 py-4">
-          <div className="flex flex-col gap-2 text-sm sm:flex-row sm:items-center sm:justify-end">
-            <span className="font-semibold text-slate-500">
-              Remaining principal balance as of statement date:
-            </span>
-            <span className="text-lg font-black text-slate-950">
-              {money(remainingBalance)}
-            </span>
+          <div className="flex flex-col gap-3 text-sm sm:flex-row sm:items-center sm:justify-end sm:gap-8">
+            <div className="flex items-center justify-between gap-3 sm:justify-end">
+              <span className="font-semibold text-slate-500">Total payments made:</span>
+              <span className="text-lg font-black text-emerald-700">{money(totalPaid)}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3 sm:justify-end">
+              <span className="font-semibold text-slate-500">Remaining principal balance:</span>
+              <span className="text-lg font-black text-slate-950">{money(remainingBalance)}</span>
+            </div>
           </div>
         </div>
       </section>

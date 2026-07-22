@@ -93,7 +93,7 @@ export const getLotProjectSettings = async (req, res) => {
     return res.json({
       success: true,
       data: mapSettings(settings, project),
-      canEdit: currentUser?.role === 'super_admin',
+      canEdit: ['super_admin', 'admin'].includes(currentUser?.role),
       project: {
         id: project.lot_project_id,
         name: project.lot_project_name,
@@ -127,8 +127,8 @@ export const updateLotProjectSettings = async (req, res) => {
       return res.status(401).json({ success: false, message: 'Please login before updating settings.' });
     }
 
-    if (currentUser.role !== 'super_admin') {
-      return res.status(403).json({ success: false, message: 'Only super admin can update release days and project settings.' });
+    if (!['super_admin', 'admin'].includes(currentUser.role)) {
+      return res.status(403).json({ success: false, message: 'Only a full-access administrator can update release days and project settings.' });
     }
 
     const releaseDayOne = toDay(req.body.releaseDayOne ?? req.body.release_day_one, 7);

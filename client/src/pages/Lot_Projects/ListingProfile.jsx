@@ -110,7 +110,7 @@ const ListingProfile = () => {
   const queryClient = useQueryClient()
   const { projectSlug, listingId } = useParams()
   const { data: currentUserData } = useCurrentUser()
-  const canRecalculateCommission = currentUserData?.user?.role === 'super_admin'
+  const canRecalculateCommission = ['super_admin', 'admin'].includes(currentUserData?.user?.role)
 
   const [activeTab, setActiveTab] = useState('unit')
   const [showReserveModal, setShowReserveModal] = useState(false)
@@ -717,7 +717,7 @@ const ListingProfile = () => {
         <AccountHistoryPanel
           projectSlug={projectSlug}
           listingId={listingId}
-          isSuperAdmin={currentUserData?.user?.role === 'super_admin'}
+          isSuperAdmin={['super_admin', 'admin'].includes(currentUserData?.user?.role)}
         />
       ) : null}
 

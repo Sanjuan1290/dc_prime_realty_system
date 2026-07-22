@@ -47,46 +47,20 @@ export const USER_ROLES = Object.freeze([
   'agent',
 ]);
 
-export const ADMIN_CREATABLE_USER_ROLES = Object.freeze([
-  'broker_network_manager',
-  'broker',
-  'manager',
-  'agent',
+export const ADMIN_TYPES = Object.freeze([
+  { value: 'admin_1', label: 'Admin 1', description: 'Full system access, equivalent to Super Admin.' },
+  { value: 'admin_2', label: 'Admin 2', description: 'Permission set will be configured later.', disabled: true },
+  { value: 'admin_3', label: 'Admin 3', description: 'Permission set will be configured later.', disabled: true },
 ]);
+
+export const ADMIN_CREATABLE_USER_ROLES = USER_ROLES;
 
 // Kept for compatibility with older imports. Admin can manage every existing account.
 export const ADMIN_MANAGEABLE_USER_ROLES = USER_ROLES;
 
 const allPermissions = new Set(Object.values(PERMISSIONS));
 const knownUserRoles = new Set(USER_ROLES);
-const adminPermissions = new Set([
-  PERMISSIONS.SYSTEM_DASHBOARD_VIEW,
-  PERMISSIONS.SYSTEM_PROJECTS_VIEW,
-  PERMISSIONS.SYSTEM_ACCREDITED_VIEW,
-  PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW,
-  PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE,
-  PERMISSIONS.SYSTEM_DOCUMENTS_VIEW,
-  PERMISSIONS.SYSTEM_NOTIFICATIONS_VIEW,
-  PERMISSIONS.SYSTEM_NOTIFICATIONS_MANAGE,
-  PERMISSIONS.AUDIT_LOGS_VIEW,
-  PERMISSIONS.SYSTEM_USERS_VIEW,
-  PERMISSIONS.SYSTEM_USERS_CREATE,
-  PERMISSIONS.SYSTEM_USERS_EDIT,
-  PERMISSIONS.SYSTEM_USERS_RESET_PASSWORD,
-  PERMISSIONS.SYSTEM_USERS_CHANGE_STATUS,
-  PERMISSIONS.SYSTEM_SETTINGS_VIEW,
-  PERMISSIONS.EMPLOYEES_VIEW,
-  PERMISSIONS.EMPLOYEES_MANAGE,
-  PERMISSIONS.ATTENDANCE_VIEW,
-  PERMISSIONS.ATTENDANCE_MANAGE,
-  PERMISSIONS.PAYROLL_VIEW,
-  PERMISSIONS.PAYROLL_MANAGE,
-  PERMISSIONS.LOT_DASHBOARD_VIEW,
-  PERMISSIONS.LOT_LISTINGS_VIEW,
-  PERMISSIONS.LOT_LISTINGS_MANAGE,
-  PERMISSIONS.LOT_PAYMENT_LOGS_VIEW,
-  PERMISSIONS.LOT_SETTINGS_VIEW,
-]);
+const adminPermissions = new Set(Object.values(PERMISSIONS));
 
 const rolePermissions = { super_admin: allPermissions, admin: adminPermissions };
 
@@ -95,4 +69,10 @@ export const canManageUserRole = (actorRole, targetRole) => (
   knownUserRoles.has(String(targetRole || ''))
   && (actorRole === 'super_admin' || actorRole === 'admin')
 );
+export const isFullAccessAdministrator = (userOrRole, adminType = '') => {
+  const role = typeof userOrRole === 'object' ? userOrRole?.role : userOrRole;
+  const type = typeof userOrRole === 'object' ? userOrRole?.admin_type : adminType;
+  return role === 'super_admin' || (role === 'admin' && (!type || type === 'admin_1'));
+};
+
 export const getRoleHome = (role) => role === 'admin' ? '/admin/dashboard' : role === 'super_admin' ? '/super_admin' : '/';

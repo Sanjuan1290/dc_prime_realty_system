@@ -620,7 +620,7 @@ export const purgeLotProjectAccount = async (req, res) => {
       entityId: deletionReference,
       entityLabel: `${account.account_reference} — ${account.lot_project_listing_unit_id}`,
       title: 'Permanently deleted closed buyer account records',
-      description: `Permanently deleted ${account.account_reference} after Super Admin password and email-code verification.`,
+      description: `Permanently deleted ${account.account_reference} after administrator password and email-code verification.`,
       metadata: { deletionReference, accountReference: account.account_reference, listingId: account.lot_project_listing_id, unitId: account.lot_project_listing_unit_id, deletedRowCounts: counts, cloudinaryAssetCount: assets.length, manifestHash },
     });
 

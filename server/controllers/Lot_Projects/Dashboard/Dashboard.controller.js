@@ -124,7 +124,7 @@ export const resolveDashboardDateRange = (query = {}, role = '') => {
     from: toDateOnly(fromDate),
     to: toDateOnly(toDate),
     spanMonths,
-    longRangeWarning: String(role || '') === 'super_admin' && spanMonths > 12,
+    longRangeWarning: ['super_admin', 'admin'].includes(String(role || '')) && spanMonths > 12,
     groupBy: dayDiff > 45 ? 'month' : 'day',
   };
 };

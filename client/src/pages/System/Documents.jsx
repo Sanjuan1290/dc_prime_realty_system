@@ -15,7 +15,7 @@ import { useFetch } from "../../utils/useFetch";
 
 const Document = () => {
   const { data: currentUserData } = useCurrentUser();
-  const canManage = currentUserData?.user?.role === "super_admin";
+  const canManage = ["super_admin", "admin"].includes(currentUserData?.user?.role);
   const [showAddTemplateModal, setShowAddTemplateModal] = useState(false);
   const [showAddDocumentModal, setShowAddDocumentModal] = useState(false);
   const [selectedDocument, setSelectedDocument] = useState(null);
@@ -78,7 +78,7 @@ const Document = () => {
         ) : null}
       </div>
 
-      {!canManage ? <ReadOnlyNotice message="Admin can review documents and templates. Only a Super Admin can add, edit, or delete them." /> : null}
+      {!canManage ? <ReadOnlyNotice message="This account can review documents and templates but cannot add, edit, or delete them." /> : null}
       {alert ? <StatusAlert type={alert.type} message={alert.message} onClose={() => setAlert(null)} /> : null}
       {isInitialLoading ? <StatusAlert type="loading" message="Loading document records..." /> : null}
       {isRefreshing ? <StatusAlert type="info" message="Refreshing document records..." /> : null}

@@ -609,7 +609,7 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
 
 const Accredited = () => {
   const { data: currentUserData } = useCurrentUser();
-  const canManage = currentUserData?.user?.role === "super_admin";
+  const canManage = ["super_admin", "admin"].includes(currentUserData?.user?.role);
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");

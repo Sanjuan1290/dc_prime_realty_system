@@ -11,6 +11,7 @@ import {
   FiX,
 } from "react-icons/fi";
 import StatusAlert from "../../Shared/StatusAlert";
+import { ADMIN_TYPES } from "../../../config/permissions";
 import { useFetch as fetchApi, useFetchPut as putApi } from "../../../utils/useFetch";
 
 const sellerRoles = ["broker_network_manager", "broker", "manager", "agent"];
@@ -45,6 +46,7 @@ const getInitialForm = (user = {}, { initialSellerGroupId = "", lockSellerGroup 
   prc_no: String(user.prc_no ?? user.prcNo ?? ""),
   address: String(user.address ?? ""),
   role: String(user.role || "agent"),
+  admin_type: String(user.admin_type || (user.role === "admin" ? "admin_1" : "")),
   status: String(user.status || user.user_status || user.accredited_seller_status || "active"),
   seller_group_id: String(
     lockSellerGroup
@@ -218,7 +220,7 @@ const EditUserModal = ({
 }) => {
   const queryClient = useQueryClient();
   const availableRoleEntries = useMemo(() => Object.entries(roleLabels).filter(([value]) => allowedRoles.includes(value)), [allowedRoles]);
-  const isPrivilegedRoleLocked = actorRole === "admin" && ["admin", "super_admin"].includes(selectedUser?.role);
+  const isPrivilegedRoleLocked = false;
   const [activeStep, setActiveStep] = useState(1);
   const [warning, setWarning] = useState("");
   const [form, setForm] = useState(() => getInitialForm(selectedUser, {
@@ -340,6 +342,11 @@ const EditUserModal = ({
 
     if (!allowedRoles.includes(form.role)) {
       setWarning("You do not have permission to assign this user role.");
+      return false;
+    }
+
+    if (form.role === "admin" && form.admin_type !== "admin_1") {
+      setWarning("Only Admin 1 is available right now. Admin 2 and Admin 3 will be configured later.");
       return false;
     }
 
@@ -539,6 +546,7 @@ const EditUserModal = ({
                         setForm((current) => ({
                           ...current,
                           role: nextRole,
+                          admin_type: nextRole === "admin" ? "admin_1" : "",
                           seller_group_id: sellerRoles.includes(nextRole)
                             ? (lockSellerGroup
                               ? String(initialSellerGroupId || current.seller_group_id)
@@ -555,14 +563,18 @@ const EditUserModal = ({
                         <option key={value} value={value}>{label}</option>
                       ))}
                     </select>
-                    {actorRole === "admin" ? (
-                      <p className="text-xs font-semibold text-slate-500">
-                        {isPrivilegedRoleLocked
-                          ? "You can edit this account, but only a Super Admin can change its role."
-                          : "Admin can assign seller roles only. Admin and Super Admin roles are unavailable."}
-                      </p>
-                    ) : null}
+                    <p className="text-xs font-semibold text-slate-500">Admin 1 has full user-management access. Admin 2 and Admin 3 remain unavailable.</p>
                   </label>
+
+                  {form.role === "admin" ? (
+                    <label className="flex flex-col gap-2">
+                      <p className="text-sm font-bold text-slate-700">Admin Type</p>
+                      <select value={form.admin_type || "admin_1"} onChange={(event) => updateForm("admin_type", event.target.value)} className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50">
+                        {ADMIN_TYPES.map((type) => <option key={type.value} value={type.value} disabled={type.disabled}>{type.label}{type.disabled ? " — Coming later" : " — Full access"}</option>)}
+                      </select>
+                      <p className="text-xs font-semibold text-slate-500">Admin 1 has the same permissions as Super Admin.</p>
+                    </label>
+                  ) : null}
 
                   <label className="flex flex-col gap-2">
                     <p className="text-sm font-bold text-slate-700">Status</p>

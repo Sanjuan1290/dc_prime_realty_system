@@ -15,7 +15,7 @@ const StatCard = ({ label, value, helper, icon: Icon }) => <div className="round
 
 const EmployeeCashAdvances = () => {
   const { data: currentUserData } = useCurrentUser()
-  const canManage = currentUserData?.user?.role === 'super_admin'
+  const canManage = ['super_admin', 'admin'].includes(currentUserData?.user?.role)
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('all')
   const [page, setPage] = useState(1)
@@ -45,7 +45,7 @@ const EmployeeCashAdvances = () => {
   return <main className="flex flex-col gap-6">
     <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between"><PageHeader title="Employee Cash Advances" description="Salary cash advances, approvals, automatic next-release deductions, and balance history." icon={FiDollarSign} /><div className="flex flex-col gap-2 sm:flex-row"><button type="button" onClick={() => advancesQuery.refetch()} disabled={advancesQuery.isFetching} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 hover:bg-slate-50 disabled:opacity-60"><FiRefreshCw className={advancesQuery.isFetching ? 'animate-spin' : ''} />Refresh</button>{canManage ? <button type="button" onClick={openAdd} disabled={!employees.length} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white hover:bg-blue-700 disabled:bg-blue-300"><FiPlus />Add Cash Advance</button> : null}</div></div>
 
-    {!canManage ? <ReadOnlyNotice message="Admin can review employee salary advances and deduction history. Only a Super Admin can add, approve, reject, cancel, or deduct an advance." /> : null}
+    {!canManage ? <ReadOnlyNotice message="This account can review employee salary advances but cannot change them." /> : null}
     <StatusAlert type="info" message="Employee cash advances are separate from accredited seller commission advances." />
     {alert ? <StatusAlert type={alert.type} message={alert.message} onClose={() => setAlert(null)} /> : null}
     {advancesQuery.isLoading ? <StatusAlert type="loading" message="Loading employee cash advances..." /> : null}

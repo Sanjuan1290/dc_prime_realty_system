@@ -11,6 +11,7 @@ import {
   FiX,
 } from "react-icons/fi";
 import StatusAlert from "../../Shared/StatusAlert";
+import { ADMIN_TYPES } from "../../../config/permissions";
 import { useFetch as fetchApi, useFetchPost as postApi } from "../../../utils/useFetch";
 
 const sellerRoles = ["broker_network_manager", "broker", "manager", "agent"];
@@ -192,6 +193,7 @@ const CreateUserModal = ({
     address: "",
     password: "password",
     role: initialRole,
+    admin_type: initialRole === "admin" ? "admin_1" : "",
     status: "active",
     seller_group_id: String(initialSellerGroupId || ""),
     reports_under_user_id: "",
@@ -300,6 +302,11 @@ const CreateUserModal = ({
 
     if (!allowedRoles.includes(form.role)) {
       setWarning("You do not have permission to create this user role.");
+      return false;
+    }
+
+    if (form.role === "admin" && form.admin_type !== "admin_1") {
+      setWarning("Only Admin 1 is available right now. Admin 2 and Admin 3 will be configured later.");
       return false;
     }
 
@@ -496,6 +503,7 @@ const CreateUserModal = ({
                         setForm((current) => ({
                           ...current,
                           role: nextRole,
+                          admin_type: nextRole === "admin" ? "admin_1" : "",
                           seller_group_id: sellerRoles.includes(nextRole)
                             ? (lockSellerGroup ? String(initialSellerGroupId || current.seller_group_id) : current.seller_group_id)
                             : "",
@@ -510,8 +518,18 @@ const CreateUserModal = ({
                         <option key={value} value={value}>{label}</option>
                       ))}
                     </select>
-                    {actorRole === "admin" ? <p className="text-xs font-semibold text-slate-500">Admin can create seller accounts only. Admin and Super Admin roles are unavailable.</p> : null}
+                    <p className="text-xs font-semibold text-slate-500">Admin 1 has the same system access as Super Admin. Admin 2 and Admin 3 are reserved for future permission sets.</p>
                   </label>
+
+                  {form.role === "admin" ? (
+                    <label className="flex flex-col gap-2">
+                      <p className="text-sm font-bold text-slate-700">Admin Type</p>
+                      <select value={form.admin_type || "admin_1"} onChange={(event) => updateForm("admin_type", event.target.value)} className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50">
+                        {ADMIN_TYPES.map((type) => <option key={type.value} value={type.value} disabled={type.disabled}>{type.label}{type.disabled ? " — Coming later" : " — Full access"}</option>)}
+                      </select>
+                      <p className="text-xs font-semibold text-slate-500">Admin 1 has the same permissions as Super Admin.</p>
+                    </label>
+                  ) : null}
 
                   <label className="flex flex-col gap-2">
                     <p className="text-sm font-bold text-slate-700">Status</p>

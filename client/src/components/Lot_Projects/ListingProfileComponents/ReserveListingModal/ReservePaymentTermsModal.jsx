@@ -137,6 +137,9 @@ const ReservePaymentTermsModal = ({
   isLoadingPreview = false,
   previewError = null,
 }) => {
+  const [penaltyRateMode, setPenaltyRateMode] = useState(() =>
+    dailyPenaltyRateOptions.includes(Number(paymentForm.dailyPenaltyRate)) ? 'preset' : 'custom'
+  )
   const today = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Manila',
     year: 'numeric',
@@ -170,10 +173,10 @@ const ReservePaymentTermsModal = ({
   const paymentCalculations = useMemo(() => getPaymentCalculations(tcp, paymentForm), [tcp, paymentForm])
   const paymentPreview = paymentCalculations.preview
   const lmfTreatment = paymentPreview.legalMiscFeeMode === 'separate_soa_row' ? 'Separate SOA row' : isCash ? 'Included in cash balance' : 'Included in monthly'
-  const selectedPenaltyRateOption = dailyPenaltyRateOptions.includes(Number(paymentForm.dailyPenaltyRate))
-    ? String(Number(paymentForm.dailyPenaltyRate))
-    : 'custom'
-  const isCustomPenaltyRate = selectedPenaltyRateOption === 'custom'
+  const selectedPenaltyRateOption = penaltyRateMode === 'custom'
+    ? 'custom'
+    : String(Number(paymentForm.dailyPenaltyRate))
+  const isCustomPenaltyRate = penaltyRateMode === 'custom'
 
   return (
     <div className="flex flex-col gap-4">
@@ -246,7 +249,15 @@ const ReservePaymentTermsModal = ({
           <SelectInput
             label={isCash ? 'Daily Penalty Rate for Overdue Cash Balance (%)' : 'Daily Penalty Rate for Overdue Installment (%)'}
             value={selectedPenaltyRateOption}
-            onChange={(value) => updatePaymentField('dailyPenaltyRate', value === 'custom' ? '' : value)}
+            onChange={(value) => {
+              if (value === 'custom') {
+                setPenaltyRateMode('custom')
+                updatePaymentField('dailyPenaltyRate', '')
+              } else {
+                setPenaltyRateMode('preset')
+                updatePaymentField('dailyPenaltyRate', value)
+              }
+            }}
             helper="Choose a preset or enter a custom rate from 0% to 100% per day."
             required
           >

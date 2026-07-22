@@ -20,7 +20,7 @@ import CreateUserModal from "../../components/System/userComponents/CreateUserMo
 import EditUserModal from "../../components/System/userComponents/EditUserModal";
 import { formatDateTime } from "../../utils/formatDateTime";
 import { useFetch as fetchApi, useFetchPatch as patchApi } from "../../utils/useFetch";
-import { ADMIN_CREATABLE_USER_ROLES, PERMISSIONS, canManageUserRole, hasPermission } from "../../config/permissions";
+import { PERMISSIONS, canManageUserRole, hasPermission } from "../../config/permissions";
 
 const roleLabels = {
   super_admin: "Super Admin",
@@ -92,14 +92,8 @@ const Users = () => {
   const canResetPasswords = hasPermission(actorRole, PERMISSIONS.SYSTEM_USERS_RESET_PASSWORD);
   const canChangeStatus = hasPermission(actorRole, PERMISSIONS.SYSTEM_USERS_CHANGE_STATUS);
   const canManageSellerGroups = hasPermission(actorRole, PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE);
-  const createAllowedRoles = actorRole === "admin"
-    ? ADMIN_CREATABLE_USER_ROLES
-    : Object.keys(roleLabels);
-  const getEditAllowedRoles = (user) => {
-    if (actorRole !== "admin") return Object.keys(roleLabels);
-    if (["admin", "super_admin"].includes(user?.role)) return [user.role];
-    return ADMIN_CREATABLE_USER_ROLES;
-  };
+  const createAllowedRoles = Object.keys(roleLabels);
+  const getEditAllowedRoles = () => Object.keys(roleLabels);
   const canManageAccount = (user) => canManageUserRole(actorRole, user?.role);
   const queryClient = useQueryClient();
   const [showEditUser, setShowEditUser] = useState(false);
@@ -233,13 +227,7 @@ const Users = () => {
         </div>
       </div>
 
-      {actorRole === "admin" ? (
-        <StatusAlert
-          type="info"
-          title="Admin account controls"
-          message="You can create seller accounts and manage every existing user account. Admin and Super Admin roles cannot be created or reassigned."
-        />
-      ) : null}
+      {actorRole === "admin" ? <StatusAlert type="info" title="Admin 1 full access" message="This Admin 1 account has the same operational permissions and navigation as Super Admin." /> : null}
       {alert ? <StatusAlert type={alert.type} message={alert.message} onClose={alert.type === "loading" ? undefined : () => setAlert(null)} /> : null}
       {isLoading ? <StatusAlert type="loading" message="Loading users..." /> : null}
       {!isLoading && isFetching ? <StatusAlert type="info" message="Refreshing users..." /> : null}
@@ -353,7 +341,7 @@ const Users = () => {
                       <p className="font-semibold text-slate-800">{user.email}</p>
                       <p className="text-xs text-slate-500">{user.contact_no || "No contact"}</p>
                     </div>
-                    <p className="font-semibold text-slate-700">{roleLabels[user.role] || user.role}</p>
+                    <p className="font-semibold text-slate-700">{user.role === "admin" ? `Admin ${String(user.admin_type || "admin_1").replace("admin_", "")}` : (roleLabels[user.role] || user.role)}</p>
                     <p className="font-semibold text-slate-700">{user.seller_group_name || "—"}</p>
                     <p className="text-slate-600">{user.reports_under_name || "Direct / None"}</p>
                     <span className={`w-fit rounded-full border px-3 py-1 text-xs font-bold capitalize ${user.status === "active" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-slate-50 text-slate-500"}`}>

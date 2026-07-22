@@ -11,7 +11,6 @@ import Login from './auth/Login'
 import ChangePassword from './auth/ChangePassword'
 import BuyerForm from './pages/Public/BuyerForm'
 import SystemLayout from './layout/SystemLayout'
-import AdminLayout from './layout/adminLayout'
 import LotLayout from './layout/LotLayout'
 import ProtectedPermissionRoute from './components/Auth/ProtectedPermissionRoute'
 import RouteErrorPage from './components/Shared/RouteErrorPage'
@@ -92,7 +91,7 @@ const App = () => {
           <Route path="settings" element={<Settings />} />
         </Route>
 
-        <Route path="/admin" element={<AdminLayout />} errorElement={<RouteErrorPage />}>
+        <Route path="/admin" element={<SystemLayout />} errorElement={<RouteErrorPage />}>
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<Dashboard />} />
 
@@ -117,10 +116,7 @@ const App = () => {
           <Route path="audit-logs" element={<AuditLogs />} />
           <Route path="employees" element={<Employees />} />
           <Route path="attendance" element={<Attendance />} />
-          <Route
-            path="cash-advances"
-            element={<Navigate to="/admin/employees" replace />}
-          />
+          <Route path="cash-advances" element={<EmployeeCashAdvances />} />
           <Route path="settings" element={<Settings />} />
         </Route>
 

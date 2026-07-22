@@ -51,19 +51,15 @@ export const USER_ROLES = Object.freeze([
   'agent',
 ]);
 
-export const ADMIN_CREATABLE_USER_ROLES = Object.freeze([
-  'broker_network_manager',
-  'broker',
-  'manager',
-  'agent',
-]);
+export const ADMIN_TYPES = Object.freeze(['admin_1', 'admin_2', 'admin_3']);
+
+export const ADMIN_CREATABLE_USER_ROLES = USER_ROLES;
 
 // Kept for compatibility with older imports. Admin can manage every existing account.
 export const ADMIN_MANAGEABLE_USER_ROLES = USER_ROLES;
 
 const knownUserRoles = new Set(USER_ROLES);
 const adminCreatableUserRoles = new Set(ADMIN_CREATABLE_USER_ROLES);
-const privilegedUserRoles = new Set(['super_admin', 'admin']);
 
 // Super Admin and Admin can manage existing accounts of any declared role.
 export const canActorManageUserRole = (actorRole, targetRole) => {
@@ -71,57 +67,24 @@ export const canActorManageUserRole = (actorRole, targetRole) => {
   return actorRole === 'super_admin' || actorRole === 'admin';
 };
 
-// Admin can create seller accounts only.
-export const canActorCreateUserRole = (actorRole, requestedRole) => {
-  if (actorRole === 'super_admin') return knownUserRoles.has(String(requestedRole || ''));
-  return actorRole === 'admin' && adminCreatableUserRoles.has(String(requestedRole || ''));
-};
+// Admin 1 currently has the same account-management authority as Super Admin.
+export const canActorCreateUserRole = (actorRole, requestedRole) => (
+  ['super_admin', 'admin'].includes(String(actorRole || ''))
+  && adminCreatableUserRoles.has(String(requestedRole || ''))
+);
 
-// Admin cannot assign Admin or Super Admin roles through editing.
-// Existing privileged accounts keep their current role while Admin edits other fields.
+// Admin 1 can edit and assign every declared system role.
 export const canActorChangeUserRole = (actorRole, currentRole, requestedRole) => {
   const current = String(currentRole || '');
   const next = String(requestedRole || '');
-
-  if (!knownUserRoles.has(current) || !knownUserRoles.has(next)) return false;
-  if (actorRole === 'super_admin') return true;
-  if (actorRole !== 'admin') return false;
-
-  if (privilegedUserRoles.has(current)) return next === current;
-  return adminCreatableUserRoles.has(next);
+  return ['super_admin', 'admin'].includes(String(actorRole || ''))
+    && knownUserRoles.has(current)
+    && knownUserRoles.has(next);
 };
 
 const superAdminPermissions = new Set(Object.values(PERMISSIONS));
 
-const adminPermissions = new Set([
-  PERMISSIONS.SYSTEM_DASHBOARD_VIEW,
-  PERMISSIONS.SYSTEM_PROJECTS_VIEW,
-  PERMISSIONS.SYSTEM_ACCREDITED_VIEW,
-  PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW,
-  PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE,
-  PERMISSIONS.SYSTEM_DOCUMENTS_VIEW,
-  PERMISSIONS.SYSTEM_NOTIFICATIONS_VIEW,
-  PERMISSIONS.SYSTEM_NOTIFICATIONS_MANAGE,
-  PERMISSIONS.AUDIT_LOGS_VIEW,
-  PERMISSIONS.SYSTEM_USERS_VIEW,
-  PERMISSIONS.SYSTEM_USERS_CREATE,
-  PERMISSIONS.SYSTEM_USERS_EDIT,
-  PERMISSIONS.SYSTEM_USERS_RESET_PASSWORD,
-  PERMISSIONS.SYSTEM_USERS_CHANGE_STATUS,
-  PERMISSIONS.SYSTEM_SETTINGS_VIEW,
-  PERMISSIONS.EMPLOYEES_VIEW,
-  PERMISSIONS.EMPLOYEES_MANAGE,
-  PERMISSIONS.ATTENDANCE_VIEW,
-  PERMISSIONS.ATTENDANCE_MANAGE,
-  PERMISSIONS.PAYROLL_VIEW,
-  PERMISSIONS.PAYROLL_MANAGE,
-  PERMISSIONS.LOT_PROJECT_VIEW,
-  PERMISSIONS.LOT_DASHBOARD_VIEW,
-  PERMISSIONS.LOT_LISTINGS_VIEW,
-  PERMISSIONS.LOT_LISTINGS_MANAGE,
-  PERMISSIONS.LOT_PAYMENT_LOGS_VIEW,
-  PERMISSIONS.LOT_SETTINGS_VIEW,
-]);
+const adminPermissions = new Set(Object.values(PERMISSIONS));
 
 export const ROLE_PERMISSIONS = Object.freeze({
   super_admin: superAdminPermissions,
@@ -130,3 +93,8 @@ export const ROLE_PERMISSIONS = Object.freeze({
 
 export const roleHasPermission = (role, permission) =>
   Boolean(permission && ROLE_PERMISSIONS[String(role || '')]?.has(permission));
+
+export const isFullAccessAdministrator = (user = {}) => (
+  user?.role === 'super_admin'
+  || (user?.role === 'admin' && (!user?.admin_type || user.admin_type === 'admin_1'))
+);

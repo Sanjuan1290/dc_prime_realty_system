@@ -62,23 +62,13 @@ const LotLayout = () => {
   const project = data?.data
   const basePath = `/lot-projects/${projectSlug}`
 
-  const navItems = useMemo(() => {
-    const common = [
-      { label: 'Listings / Units', path: `${basePath}/listings`, icon: FiGrid },
-      { label: 'Payments Audit', path: `${basePath}/payments-audit`, icon: FiShield },
-      { label: 'Settings', path: `${basePath}/settings`, icon: FiSettings },
-    ]
-
-    if (user?.role === 'admin') return common
-
-    return [
-      { label: 'Dashboard', path: basePath, icon: FiBarChart2, end: true },
-      common[0],
-      common[1],
-      { label: 'Commissions', path: `${basePath}/commissions`, icon: FiDollarSign },
-      common[2],
-    ]
-  }, [basePath, user?.role])
+  const navItems = useMemo(() => [
+    { label: 'Dashboard', path: basePath, icon: FiBarChart2, end: true },
+    { label: 'Listings / Units', path: `${basePath}/listings`, icon: FiGrid },
+    { label: 'Payments Audit', path: `${basePath}/payments-audit`, icon: FiShield },
+    { label: 'Commissions', path: `${basePath}/commissions`, icon: FiDollarSign },
+    { label: 'Settings', path: `${basePath}/settings`, icon: FiSettings },
+  ], [basePath])
 
   const pageTitle = useMemo(
     () => getPageTitle(location.pathname, project?.lot_project_name),
@@ -103,10 +93,6 @@ const LotLayout = () => {
 
   if (!['super_admin', 'admin'].includes(user?.role)) {
     return <Navigate to="/" replace />
-  }
-
-  if (user?.role === 'admin' && location.pathname === basePath) {
-    return <Navigate to={`${basePath}/listings`} replace />
   }
 
   if (isError) {

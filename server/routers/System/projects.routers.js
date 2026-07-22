@@ -100,14 +100,14 @@ router.put('/lot-projects/:projectSlug/settings', requirePermission(PERMISSIONS.
 router.get('/lot-projects/:projectSlug/listings/:listingId', requirePermission(PERMISSIONS.LOT_LISTINGS_VIEW), getLotProjectListingProfile);
 router.get('/lot-projects/:projectSlug/listings/:listingId/accounts', requirePermission(PERMISSIONS.LOT_LISTINGS_VIEW), getLotProjectListingAccountHistory);
 router.get('/lot-projects/:projectSlug/accounts/:accountId/purge-preview', requirePermission(PERMISSIONS.LOT_LISTINGS_VIEW), requireRole('super_admin'), getLotProjectAccountPurgePreview);
-router.post('/lot-projects/:projectSlug/accounts/:accountId/purge-code', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), requireRole('super_admin'), requireCurrentPassword({ field: 'password', label: 'Super Admin password' }), requestLotProjectAccountPurgeCode);
+router.post('/lot-projects/:projectSlug/accounts/:accountId/purge-code', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), requireRole('super_admin'), requireCurrentPassword({ field: 'password', label: 'Administrator password' }), requestLotProjectAccountPurgeCode);
 router.post('/lot-projects/:projectSlug/accounts/:accountId/purge', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), requireRole('super_admin'), purgeLotProjectAccount);
 router.get('/lot-projects/:projectSlug/document-files/:fileId/access-url', requirePermission(PERMISSIONS.LOT_LISTINGS_VIEW), getLotProjectDocumentFileAccessUrl);
 router.post(
   '/lot-projects/:projectSlug/listings/:listingId/recalculate-commission',
   requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE),
   requireRole('super_admin'),
-  requireCurrentPassword({ field: 'password', label: 'Super Admin password' }),
+  requireCurrentPassword({ field: 'password', label: 'Administrator password' }),
   recalculateLotProjectListingCommission
 );
 router.get('/lot-projects/:projectSlug', requirePermission(PERMISSIONS.LOT_PROJECT_VIEW), getLotProjectBySlug);

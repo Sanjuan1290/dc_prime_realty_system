@@ -24,13 +24,13 @@ const addDaysISO = (days) => {
 
 const reliefLabel = (type) => {
   const labels = {
-    penalty_free_extension: 'Penalty-Free Extension',
-    full_waiver: 'Full Waiver',
-    partial_waiver: 'Partial Waiver',
-    penalty_correction: 'Penalty Reset (Correction)',
-    restoration: 'Penalty Restoration',
+    penalty_free_extension: 'Payment-Date Extension',
+    full_waiver: 'Full Penalty Reduction',
+    partial_waiver: 'Partial Penalty Reduction',
+    penalty_correction: 'Penalty Correction',
+    restoration: 'Penalty Added Back',
   }
-  return labels[type] || type || 'Penalty Relief'
+  return labels[type] || type || 'Penalty Adjustment'
 }
 
 const PenaltyReliefModal = ({
@@ -159,7 +159,7 @@ const PenaltyReliefModal = ({
     if (waiverType === 'partial' && (amount <= 0 || amount > Number(row?.outstandingPenaltyAmount || 0))) {
       setLocalAlert({
         type: 'error',
-        message: 'Partial waiver amount must be greater than 0 and cannot exceed the outstanding penalty.',
+        message: 'The amount to remove must be greater than ₱0.00 and cannot be more than the penalty still due.',
       })
       return
     }
@@ -175,14 +175,14 @@ const PenaltyReliefModal = ({
     event.preventDefault()
     if (!restoreRelief) return
     if (!restoreReason.trim()) {
-      setLocalAlert({ type: 'error', message: 'Restore reason is required.' })
+      setLocalAlert({ type: 'error', message: 'Please explain why the penalty should be added back.' })
       return
     }
 
     const isCorrection = restoreRelief.reliefType === 'penalty_correction'
     const amount = isCorrection || restoreAmount === '' ? undefined : Number(restoreAmount)
     if (!isCorrection && amount !== undefined && amount <= 0) {
-      setLocalAlert({ type: 'error', message: 'Restore amount must be greater than 0.' })
+      setLocalAlert({ type: 'error', message: 'The amount to add back must be greater than ₱0.00.' })
       return
     }
 
@@ -202,11 +202,11 @@ const PenaltyReliefModal = ({
               <FiShield className="h-5 w-5" />
             </div>
             <div>
-              <h3 className="text-lg font-black text-slate-950">Penalty Relief</h3>
+              <h3 className="text-lg font-black text-slate-950">Penalty Adjustment</h3>
               <p className="text-sm font-semibold text-slate-500">{row?.description || 'Selected SOA row'}</p>
             </div>
           </div>
-          <button type="button" onClick={onClose} disabled={isSaving} className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:opacity-50" aria-label="Close penalty relief modal">
+          <button type="button" onClick={onClose} disabled={isSaving} className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:opacity-50" aria-label="Close penalty adjustment modal">
             <FiX className="h-4 w-4" />
           </button>
         </div>
@@ -218,25 +218,25 @@ const PenaltyReliefModal = ({
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4"><p className="text-xs font-black uppercase text-slate-500">Installment Due</p><p className="mt-1 text-sm font-black text-slate-950">{money(row?.dueAmount)}</p></div>
-            <div className="rounded-xl border border-red-200 bg-red-50 p-4"><p className="text-xs font-black uppercase text-red-600">Calculated Penalty</p><p className="mt-1 text-sm font-black text-red-800">{money(row?.calculatedPenaltyAmount)}</p></div>
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4"><p className="text-xs font-black uppercase text-emerald-600">Waived</p><p className="mt-1 text-sm font-black text-emerald-800">{money(row?.waivedPenaltyAmount)}</p></div>
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4"><p className="text-xs font-black uppercase text-amber-700">Outstanding Penalty</p><p className="mt-1 text-sm font-black text-amber-900">{money(row?.outstandingPenaltyAmount)}</p></div>
+            <div className="rounded-xl border border-red-200 bg-red-50 p-4"><p className="text-xs font-black uppercase text-red-600">Penalty Before Adjustments</p><p className="mt-1 text-sm font-black text-red-800">{money(row?.calculatedPenaltyAmount)}</p></div>
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4"><p className="text-xs font-black uppercase text-emerald-600">Penalty Removed</p><p className="mt-1 text-sm font-black text-emerald-800">{money(row?.waivedPenaltyAmount)}</p></div>
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4"><p className="text-xs font-black uppercase text-amber-700">Penalty Still Due</p><p className="mt-1 text-sm font-black text-amber-900">{money(row?.outstandingPenaltyAmount)}</p></div>
           </div>
 
           <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 text-sm font-semibold text-slate-600">
             <p>Daily rate: <span className="font-black text-slate-900">{Number(row?.penaltyRatePercent || 0)}%</span>{' · '}Grace period: <span className="font-black text-slate-900">{Number(row?.penaltyGraceDays || 0)} day(s)</span></p>
-            <p className="mt-1 text-xs text-slate-500">Penalty stays separate from TCP and the principal balance.</p>
+            <p className="mt-1 text-xs text-slate-500">Penalty charges are separate from the property price and principal balance.</p>
           </div>
 
-          {!canManage ? <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-600">Penalty relief is view-only for your account.</div> : null}
+          {!canManage ? <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-600">You can review penalty adjustments, but your account cannot change them.</div> : null}
 
           {canManage ? (
             <div className="mt-5 grid gap-2 rounded-xl bg-slate-100 p-1 sm:grid-cols-3">
               <button type="button" onClick={() => switchAction('extension')} disabled={!extensionAvailable} className={`rounded-lg px-3 py-2 text-sm font-black transition ${action === 'extension' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'} disabled:cursor-not-allowed disabled:opacity-40`}>
-                {activeExtension ? 'Edit Extension' : 'Penalty-Free Extension'}
+                {activeExtension ? 'Change Payment Date' : 'Give More Time'}
               </button>
-              <button type="button" onClick={() => switchAction('waiver')} disabled={!row?.canWaivePenalty} className={`rounded-lg px-3 py-2 text-sm font-black transition ${action === 'waiver' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'} disabled:cursor-not-allowed disabled:opacity-40`}>Waive Penalty</button>
-              {canCorrect ? <button type="button" onClick={() => switchAction('correction')} className={`rounded-lg px-3 py-2 text-sm font-black transition ${action === 'correction' ? 'bg-white text-red-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>Reset Correction</button> : null}
+              <button type="button" onClick={() => switchAction('waiver')} disabled={!row?.canWaivePenalty} className={`rounded-lg px-3 py-2 text-sm font-black transition ${action === 'waiver' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'} disabled:cursor-not-allowed disabled:opacity-40`}>Reduce Penalty</button>
+              {canCorrect ? <button type="button" onClick={() => switchAction('correction')} className={`rounded-lg px-3 py-2 text-sm font-black transition ${action === 'correction' ? 'bg-white text-red-700 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}>Correct Penalty</button> : null}
             </div>
           ) : null}
 
@@ -246,33 +246,38 @@ const PenaltyReliefModal = ({
                 <div>
                   <div className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
                     {activeExtension ? <FiEdit2 className="mt-0.5 h-5 w-5 shrink-0" /> : <FiClock className="mt-0.5 h-5 w-5 shrink-0" />}
-                    <p className="font-semibold">Penalty earned before the extension stays recorded. New penalty pauses through the promised date. A broken promise restores normal accrual for the full late period.</p>
+                    <p className="font-semibold">Penalties already charged will remain. No new penalty will be added until the promised payment date. If payment is still not made, penalties will continue afterward.</p>
                   </div>
-                  <label className="mt-4 flex flex-col gap-1.5"><span className="text-sm font-black text-slate-700">Penalty-Free Until</span><input type="date" min={todayISO()} max={addDaysISO(31)} value={promisedPaymentDate} onChange={(event) => setPromisedPaymentDate(event.target.value)} disabled={isSaving} className="h-11 rounded-xl border border-slate-300 px-3 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100" /></label>
+                  <label className="mt-4 flex flex-col gap-1.5"><span className="text-sm font-black text-slate-700">No New Penalty Until</span><input type="date" min={todayISO()} max={addDaysISO(31)} value={promisedPaymentDate} onChange={(event) => setPromisedPaymentDate(event.target.value)} disabled={isSaving} className="h-11 rounded-xl border border-slate-300 px-3 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100" /></label>
                 </div>
               ) : action === 'waiver' ? (
-                <div className="grid gap-4 md:grid-cols-2">
-                  <label className="flex flex-col gap-1.5"><span className="text-sm font-black text-slate-700">Waiver Type</span><select value={waiverType} onChange={(event) => setWaiverType(event.target.value)} disabled={isSaving} className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100"><option value="full">Full waiver</option><option value="partial">Partial waiver</option></select></label>
-                  <label className="flex flex-col gap-1.5"><span className="text-sm font-black text-slate-700">Waiver Amount</span><input type="number" min="0.01" step="0.01" max={row?.outstandingPenaltyAmount || 0} value={waiverType === 'full' ? row?.outstandingPenaltyAmount || 0 : waiverAmount} onChange={(event) => setWaiverAmount(event.target.value)} disabled={isSaving || waiverType === 'full'} className="h-11 rounded-xl border border-slate-300 px-3 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100" /></label>
+                <div>
+                  <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-900">
+                    Remove all or part of the unpaid penalty. This will not change the monthly principal, interest, or property price.
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                  <label className="flex flex-col gap-1.5"><span className="text-sm font-black text-slate-700">Reduction Type</span><select value={waiverType} onChange={(event) => setWaiverType(event.target.value)} disabled={isSaving} className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100"><option value="full">Remove the full unpaid penalty</option><option value="partial">Remove part of the unpaid penalty</option></select></label>
+                  <label className="flex flex-col gap-1.5"><span className="text-sm font-black text-slate-700">Amount to Remove</span><input type="number" min="0.01" step="0.01" max={row?.outstandingPenaltyAmount || 0} value={waiverType === 'full' ? row?.outstandingPenaltyAmount || 0 : waiverAmount} onChange={(event) => setWaiverAmount(event.target.value)} disabled={isSaving || waiverType === 'full'} className="h-11 rounded-xl border border-slate-300 px-3 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100" /></label>
+                  </div>
                 </div>
               ) : (
                 <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">
                   <FiRefreshCw className="mt-0.5 h-5 w-5 shrink-0" />
-                  <div><p className="font-black">Super Admin Correction</p><p className="mt-1 font-semibold">This sets the selected row’s current calculated penalty to PHP 0.00. It does not change the due date, rate, or grace period. New late days can accrue again after the correction date.</p></div>
+                  <div><p className="font-black">Correct an Incorrect Penalty</p><p className="mt-1 font-semibold">Use this only when the penalty is wrong because a payment or date was recorded incorrectly. The current penalty will become ₱0.00. New penalties may still be added if the installment remains overdue.</p></div>
                 </div>
               )}
 
               <div className="mt-4 grid gap-4 md:grid-cols-2">
-                <label className="flex flex-col gap-1.5"><span className="text-sm font-black text-slate-700">Reason</span><input value={reason} onChange={(event) => setReason(event.target.value)} placeholder={action === 'correction' ? 'Example: Payment was entered late in the system' : 'Reason for this action'} disabled={isSaving} className="h-11 rounded-xl border border-slate-300 px-3 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100" /></label>
-                <label className="flex flex-col gap-1.5"><span className="text-sm font-black text-slate-700">Internal Notes</span><input value={internalNotes} onChange={(event) => setInternalNotes(event.target.value)} placeholder="Optional notes" disabled={isSaving} className="h-11 rounded-xl border border-slate-300 px-3 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100" /></label>
+                <label className="flex flex-col gap-1.5"><span className="text-sm font-black text-slate-700">Reason</span><input value={reason} onChange={(event) => setReason(event.target.value)} placeholder={action === 'correction' ? 'Example: Payment was already made but recorded late' : 'Explain why this change is needed'} disabled={isSaving} className="h-11 rounded-xl border border-slate-300 px-3 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100" /></label>
+                <label className="flex flex-col gap-1.5"><span className="text-sm font-black text-slate-700">Private Notes</span><input value={internalNotes} onChange={(event) => setInternalNotes(event.target.value)} placeholder="Optional notes for staff" disabled={isSaving} className="h-11 rounded-xl border border-slate-300 px-3 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100" /></label>
               </div>
 
-              <div className="mt-4 flex justify-end"><button type="submit" disabled={isSaving || (action === 'extension' && !extensionAvailable) || (action === 'waiver' && !row?.canWaivePenalty)} className={`h-10 rounded-lg px-5 text-sm font-black text-white transition disabled:cursor-not-allowed ${action === 'correction' ? 'bg-red-600 hover:bg-red-700 disabled:bg-red-300' : 'bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300'}`}>{isSaving ? 'Saving...' : action === 'extension' ? activeExtension ? 'Save Extension' : 'Grant Extension' : action === 'correction' ? 'Reset Penalty to PHP 0.00' : 'Save Waiver'}</button></div>
+              <div className="mt-4 flex justify-end"><button type="submit" disabled={isSaving || (action === 'extension' && !extensionAvailable) || (action === 'waiver' && !row?.canWaivePenalty)} className={`h-10 rounded-lg px-5 text-sm font-black text-white transition disabled:cursor-not-allowed ${action === 'correction' ? 'bg-red-600 hover:bg-red-700 disabled:bg-red-300' : 'bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300'}`}>{isSaving ? 'Saving...' : action === 'extension' ? activeExtension ? 'Save New Payment Date' : 'Give More Time' : action === 'correction' ? 'Correct Penalty to ₱0.00' : 'Apply Penalty Reduction'}</button></div>
             </form>
           ) : null}
 
           <div className="mt-5">
-            <h4 className="text-sm font-black text-slate-950">Relief History</h4>
+            <h4 className="text-sm font-black text-slate-950">Penalty Adjustment History</h4>
             <div className="mt-3 flex flex-col gap-3">
               {reliefs.map((relief) => (
                 <div key={relief.penaltyReliefId || relief.id} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
@@ -282,22 +287,22 @@ const PenaltyReliefModal = ({
                   </div>
 
                   {canRestore(relief) ? (
-                    <button type="button" onClick={() => { setRestoreRelief(relief); setRestoreAmount(''); setRestoreReason(''); setLocalAlert(null) }} disabled={isSaving} className="mt-3 inline-flex h-9 items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 text-xs font-black text-amber-800 transition hover:bg-amber-100 disabled:opacity-50"><FiRotateCcw className="h-3.5 w-3.5" />{relief.reliefType === 'penalty_correction' ? 'Restore Penalty Calculation' : 'Restore Waived Penalty'}</button>
+                    <button type="button" onClick={() => { setRestoreRelief(relief); setRestoreAmount(''); setRestoreReason(''); setLocalAlert(null) }} disabled={isSaving} className="mt-3 inline-flex h-9 items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 text-xs font-black text-amber-800 transition hover:bg-amber-100 disabled:opacity-50"><FiRotateCcw className="h-3.5 w-3.5" />{relief.reliefType === 'penalty_correction' ? 'Recalculate Penalty' : 'Add Removed Penalty Back'}</button>
                   ) : null}
                 </div>
               ))}
-              {!reliefs.length ? <div className="rounded-xl border border-dashed border-slate-300 p-5 text-center text-sm font-semibold text-slate-500">No penalty relief records for this row.</div> : null}
+              {!reliefs.length ? <div className="rounded-xl border border-dashed border-slate-300 p-5 text-center text-sm font-semibold text-slate-500">No penalty adjustments have been made for this installment.</div> : null}
             </div>
           </div>
 
           {restoreRelief ? (
             <form onSubmit={submitRestore} className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4">
-              <div className="flex items-center justify-between gap-3"><div><h4 className="text-sm font-black text-amber-950">{restoreRelief.reliefType === 'penalty_correction' ? 'Restore Penalty Calculation' : 'Restore Waived Penalty'}</h4><p className="mt-1 text-xs font-semibold text-amber-800">{restoreRelief.reliefType === 'penalty_correction' ? 'This removes the correction and recalculates the row using its payment history.' : 'Leave amount blank to restore the remaining waiver.'}</p></div><button type="button" onClick={() => setRestoreRelief(null)} className="text-amber-800"><FiX className="h-4 w-4" /></button></div>
+              <div className="flex items-center justify-between gap-3"><div><h4 className="text-sm font-black text-amber-950">{restoreRelief.reliefType === 'penalty_correction' ? 'Recalculate Penalty' : 'Add Removed Penalty Back'}</h4><p className="mt-1 text-xs font-semibold text-amber-800">{restoreRelief.reliefType === 'penalty_correction' ? 'This removes the previous correction and calculates the penalty again from the payment history.' : 'Leave the amount blank to add back the full remaining reduced amount.'}</p></div><button type="button" onClick={() => setRestoreRelief(null)} className="text-amber-800"><FiX className="h-4 w-4" /></button></div>
               <div className="mt-4 grid gap-4 md:grid-cols-2">
-                {restoreRelief.reliefType !== 'penalty_correction' ? <label className="flex flex-col gap-1.5"><span className="text-sm font-black text-amber-950">Restore Amount</span><input type="number" min="0.01" step="0.01" value={restoreAmount} onChange={(event) => setRestoreAmount(event.target.value)} max={getRestorableAmount(restoreRelief)} placeholder={`Up to ${money(getRestorableAmount(restoreRelief))}`} disabled={isSaving} className="h-11 rounded-xl border border-amber-300 bg-white px-3 text-sm font-semibold outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-100" /></label> : null}
-                <label className="flex flex-col gap-1.5"><span className="text-sm font-black text-amber-950">Reason</span><input value={restoreReason} onChange={(event) => setRestoreReason(event.target.value)} placeholder="Why is this relief being restored?" disabled={isSaving} className="h-11 rounded-xl border border-amber-300 bg-white px-3 text-sm font-semibold outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-100" /></label>
+                {restoreRelief.reliefType !== 'penalty_correction' ? <label className="flex flex-col gap-1.5"><span className="text-sm font-black text-amber-950">Amount to Add Back</span><input type="number" min="0.01" step="0.01" value={restoreAmount} onChange={(event) => setRestoreAmount(event.target.value)} max={getRestorableAmount(restoreRelief)} placeholder={`Up to ${money(getRestorableAmount(restoreRelief))}`} disabled={isSaving} className="h-11 rounded-xl border border-amber-300 bg-white px-3 text-sm font-semibold outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-100" /></label> : null}
+                <label className="flex flex-col gap-1.5"><span className="text-sm font-black text-amber-950">Reason</span><input value={restoreReason} onChange={(event) => setRestoreReason(event.target.value)} placeholder="Why should this penalty be added back?" disabled={isSaving} className="h-11 rounded-xl border border-amber-300 bg-white px-3 text-sm font-semibold outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-100" /></label>
               </div>
-              <div className="mt-4 flex justify-end"><button type="submit" disabled={isSaving} className="h-10 rounded-lg bg-amber-600 px-5 text-sm font-black text-white transition hover:bg-amber-700 disabled:bg-amber-300">{isSaving ? 'Restoring...' : 'Restore Penalty'}</button></div>
+              <div className="mt-4 flex justify-end"><button type="submit" disabled={isSaving} className="h-10 rounded-lg bg-amber-600 px-5 text-sm font-black text-white transition hover:bg-amber-700 disabled:bg-amber-300">{isSaving ? 'Restoring...' : 'Add Penalty Back'}</button></div>
             </form>
           ) : null}
         </div>

@@ -7,7 +7,7 @@ import {
 import { writeAuditLog } from './auditLogs.controller.js';
 
 const adminRoles = new Set(['super_admin', 'admin']);
-const settingsManagerRoles = new Set(['super_admin']);
+const settingsManagerRoles = new Set(['super_admin', 'admin']);
 
 const cleanText = (value, fallback = '') => String(value ?? fallback).trim();
 const nullableText = (value) => {
@@ -47,7 +47,7 @@ const requireSettingsManager = async (req) => {
     throw error;
   }
   if (!settingsManagerRoles.has(user.role)) {
-    const error = new Error('Only a Super Admin can edit system settings.');
+    const error = new Error('Only a full-access administrator can edit system settings.');
     error.statusCode = 403;
     throw error;
   }

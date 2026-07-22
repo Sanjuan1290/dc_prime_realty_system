@@ -115,7 +115,7 @@ const Settings = () => {
             type="button"
             onClick={() => {
               if (!canEdit) {
-                setAlert({ type: 'warning', message: 'Only super admin can edit project settings.' })
+                setAlert({ type: 'warning', message: 'Only a full-access administrator can edit project settings.' })
                 return
               }
 
@@ -132,13 +132,13 @@ const Settings = () => {
       </section>
 
       {!canEdit && !isLoading ? (
-        <StatusAlert type="info" message="Settings are view-only for this account. Only super admin can edit release days and project contact details." />
+        <StatusAlert type="info" message="Settings are view-only for this account. A full-access administrator can edit release days and project contact details." />
       ) : null}
 
       <section className="grid gap-4 md:grid-cols-2">
         <SettingCard
           title="Commission Release Days"
-          description="Allowed days when Super Admin can release eligible commissions."
+          description="Allowed days when a full-access administrator can release eligible commissions."
         >
           <div className="grid gap-3 sm:grid-cols-2">
             <InfoItem label="First Release Day" value={daySuffix(settings.releaseDayOne)} />

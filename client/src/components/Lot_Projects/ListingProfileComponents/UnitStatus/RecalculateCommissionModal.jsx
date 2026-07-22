@@ -49,7 +49,7 @@ const RecalculateCommissionModal = ({
     if (!password) {
       setNotice({
         type: 'warning',
-        message: 'Enter your current Super Admin password to authorize recalculation.',
+        message: 'Enter your current administrator password to authorize recalculation.',
       })
       return
     }

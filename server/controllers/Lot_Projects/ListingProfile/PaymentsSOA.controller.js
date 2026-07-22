@@ -873,20 +873,20 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
 
 
 const verifySuperAdminPassword = async (connection, user, password) => {
-  if (!password) return { ok: false, message: 'Super admin password is required.' };
+  if (!password) return { ok: false, message: 'Administrator password is required.' };
 
-  if (user?.role === 'super_admin') {
+  if (['super_admin', 'admin'].includes(user?.role)) {
     const isPasswordCorrect = await bcrypt.compare(password, user.password_hash || '');
     return isPasswordCorrect
       ? { ok: true, superAdmin: user }
-      : { ok: false, message: 'Super admin password is incorrect.' };
+      : { ok: false, message: 'Administrator password is incorrect.' };
   }
 
   const [superAdmins] = await connection.query(
     `
       SELECT id, first_name, middle_name, last_name, email, role, password_hash, status
       FROM users
-      WHERE role = 'super_admin'
+      WHERE role IN ('super_admin', 'admin')
         AND status = 'active'
     `
   );
@@ -897,7 +897,7 @@ const verifySuperAdminPassword = async (connection, user, password) => {
     }
   }
 
-  return { ok: false, message: user ? 'Super admin password is incorrect.' : 'Please enter a valid super admin password.' };
+  return { ok: false, message: user ? 'Administrator password is incorrect.' : 'Please enter a valid administrator password.' };
 };
 
 export const deleteLotProjectListingPayment = async (req, res) => {
@@ -1090,7 +1090,7 @@ export const grantPaymentSchedulePenaltyExtension = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: `Penalty-free extension granted through ${promisedPaymentDate}.`,
+      message: `No new penalty will be added through ${promisedPaymentDate}.`,
       penalty_relief_id: result.insertId,
     });
   } catch (error) {
@@ -1186,7 +1186,7 @@ export const updatePaymentSchedulePenaltyExtension = async (req, res) => {
     });
 
     await connection.commit();
-    return res.json({ success: true, message: `Penalty-free extension updated through ${promisedPaymentDate}.` });
+    return res.json({ success: true, message: `The penalty-free payment date was updated to ${promisedPaymentDate}.` });
   } catch (error) {
     try { await connection.rollback(); } catch {}
     return res.status(error?.statusCode || 500).json({ message: getErrorMessage(error) });
@@ -1200,8 +1200,8 @@ export const correctPaymentSchedulePenalty = async (req, res) => {
 
   try {
     const user = await requirePenaltyManager(req);
-    if (user.role !== 'super_admin') {
-      throw createHttpError(403, 'Only a super admin can reset a penalty as a correction.');
+    if (!['super_admin', 'admin'].includes(user.role)) {
+      throw createHttpError(403, 'Only a full-access administrator can correct a penalty.');
     }
 
     const slug = String(req.params.projectSlug || '').trim();
@@ -1281,7 +1281,7 @@ export const correctPaymentSchedulePenalty = async (req, res) => {
     await connection.commit();
     return res.status(201).json({
       success: true,
-      message: 'Penalty reset to PHP 0.00 as a correction.',
+      message: 'The incorrect penalty was cleared and is now ₱0.00.',
       penalty_relief_id: result.insertId,
       corrected_amount: correctedAmount,
     });
@@ -1397,7 +1397,7 @@ export const waivePaymentSchedulePenalty = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: `${waiverType === 'full' ? 'Full' : 'Partial'} penalty waiver saved.`,
+      message: `${waiverType === 'full' ? 'Full' : 'Partial'} penalty reduction saved.`,
       penalty_relief_id: result.insertId,
       waived_amount: roundMoneyValue(requestedAmount),
     });
@@ -1455,8 +1455,8 @@ export const restorePaymentSchedulePenaltyWaiver = async (req, res) => {
     if (!relief) throw createHttpError(404, 'Penalty relief record was not found.');
 
     const isCorrection = relief.relief_type === 'penalty_correction';
-    if (isCorrection && user.role !== 'super_admin') {
-      throw createHttpError(403, 'Only a super admin can restore a penalty correction.');
+    if (isCorrection && !['super_admin', 'admin'].includes(user.role)) {
+      throw createHttpError(403, 'Only a full-access administrator can recalculate a corrected penalty.');
     }
 
     const [restorationRows] = await connection.query(
@@ -1558,7 +1558,7 @@ export const restorePaymentSchedulePenaltyWaiver = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: isCorrection ? 'Penalty correction restored successfully.' : 'Waived penalty restored successfully.',
+      message: isCorrection ? 'The penalty was recalculated successfully.' : 'The removed penalty was added back successfully.',
       penalty_relief_id: result.insertId,
       restored_amount: roundMoneyValue(requestedAmount),
     });

@@ -93,7 +93,7 @@ const normalizeProject = (project) => ({
 
 const Projects = () => {
   const { data: currentUserData } = useCurrentUser()
-  const canManage = currentUserData?.user?.role === 'super_admin'
+  const canManage = ['super_admin', 'admin'].includes(currentUserData?.user?.role)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
@@ -341,7 +341,7 @@ const Projects = () => {
 
   return (
     <main className="flex flex-col gap-6">
-      {!canManage ? <ReadOnlyNotice message="Admin can open and review projects. Only a Super Admin can add, delete, or change project status." /> : null}
+      {!canManage ? <ReadOnlyNotice message="This account can review projects but cannot add, delete, or change project status." /> : null}
 
       {alert ? (
         <StatusAlert

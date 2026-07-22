@@ -38,6 +38,7 @@ import {
 } from './authentication.service.js';
 
 const userRoles = new Set(['super_admin', 'admin', 'broker_network_manager', 'broker', 'manager', 'agent']);
+const supportedAdminTypes = new Set(['admin_1']);
 
 const sellerRoles = new Set([
   'broker_network_manager',
@@ -89,6 +90,15 @@ const createValidationError = (message) => {
   const error = new Error(message);
   error.statusCode = 400;
   return error;
+};
+
+const normalizeAdminType = (role, value) => {
+  if (String(role || '') !== 'admin') return null;
+  const adminType = String(value || 'admin_1').trim().toLowerCase();
+  if (!supportedAdminTypes.has(adminType)) {
+    throw createValidationError('Admin 2 and Admin 3 are visible for future use but are not available yet. Select Admin 1.');
+  }
+  return adminType;
 };
 
 const getSellerDependencyState = async (connection, userId) => {
@@ -331,6 +341,7 @@ const getUserSelectSql = () => `
     u.address,
     u.email,
     u.role,
+    u.admin_type,
     u.status,
     u.must_change_password,
     u.can_login,
@@ -374,6 +385,7 @@ export const login = async (req, res) => {
         email,
         password_hash,
         role,
+        admin_type,
         status,
         must_change_password,
         COALESCE(auth_version, 0) AS auth_version,
@@ -445,6 +457,7 @@ export const login = async (req, res) => {
       address: user.address,
       email: user.email,
       role: user.role,
+      admin_type: user.admin_type || null,
       status: user.status,
       must_change_password: Boolean(user.must_change_password),
       last_login: user.last_login,
@@ -883,6 +896,7 @@ export const getMe = async (req, res) => {
           tin_no,
           email,
           role,
+          admin_type,
           status,
           must_change_password,
           COALESCE(auth_version, 0) AS auth_version,
@@ -1146,6 +1160,7 @@ export const createUser = async (req, res) => {
       email,
       password = 'password',
       role = 'agent',
+      admin_type,
       status = 'active',
       seller_group_id,
       reports_under_user_id,
@@ -1159,9 +1174,10 @@ export const createUser = async (req, res) => {
       return res.status(400).json({ message: 'Select a valid user role.' });
     }
     if (!actorCanCreateTargetRole(req, role)) {
-      return denyUserManagement(res, 'Admin can create seller accounts only. Admin and Super Admin accounts can only be created by a Super Admin.');
+      return denyUserManagement(res, 'You do not have permission to create this account type.');
     }
 
+    const normalizedAdminType = normalizeAdminType(role, admin_type);
     const normalizedReportsUnderUserId = sellerRoles.has(role)
       ? await validateSellerHierarchyAssignment(connection, {
           role,
@@ -1187,9 +1203,10 @@ export const createUser = async (req, res) => {
           email,
           password_hash,
           role,
+          admin_type,
           status,
           must_change_password
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
       `,
       [
         first_name.trim(),
@@ -1202,6 +1219,7 @@ export const createUser = async (req, res) => {
         email.trim(),
         passwordHash,
         role,
+        normalizedAdminType,
         normalizeStatus(status),
       ]
     );
@@ -1246,7 +1264,7 @@ export const createUser = async (req, res) => {
       entityLabel: `${first_name.trim()} ${last_name.trim()}`,
       title: 'Created user account',
       description: `Created account for ${first_name.trim()} ${last_name.trim()} (${email.trim()}).`,
-      metadata: { role, status: normalizeStatus(status), seller_group_id, reports_under_user_id: normalizedReportsUnderUserId },
+      metadata: { role, admin_type: normalizedAdminType, status: normalizeStatus(status), seller_group_id, reports_under_user_id: normalizedReportsUnderUserId },
     });
 
     if (accreditedSellerId) {
@@ -1258,7 +1276,7 @@ export const createUser = async (req, res) => {
         entityLabel: `${first_name.trim()} ${last_name.trim()}`,
         title: 'Accredited seller',
         description: `Accredited ${first_name.trim()} ${last_name.trim()} as ${role}.`,
-        metadata: { role, status: normalizeStatus(status), seller_group_id, reports_under_user_id: normalizedReportsUnderUserId },
+        metadata: { role, admin_type: normalizedAdminType, status: normalizeStatus(status), seller_group_id, reports_under_user_id: normalizedReportsUnderUserId },
       });
     }
 
@@ -1291,6 +1309,7 @@ export const editUser = async (req, res) => {
       address,
       email,
       role,
+      admin_type,
       status,
       seller_group_id,
       reports_under_user_id,
@@ -1305,7 +1324,7 @@ export const editUser = async (req, res) => {
     }
 
     const [targetRows] = await connection.query(
-      `SELECT id, role FROM users WHERE id = ? LIMIT 1`,
+      `SELECT id, role, admin_type FROM users WHERE id = ? LIMIT 1`,
       [userId]
     );
     const targetUser = targetRows[0];
@@ -1318,9 +1337,11 @@ export const editUser = async (req, res) => {
     if (!actorCanChangeTargetRole(req, targetUser.role, role)) {
       return denyUserManagement(
         res,
-        'Admin cannot create or assign Admin and Super Admin roles. Existing privileged accounts must keep their current role.'
+        'You do not have permission to assign the selected role.'
       );
     }
+
+    const normalizedAdminType = normalizeAdminType(role, admin_type);
 
     const dependencyState = await validateSellerRemovalOrRoleChange(connection, userId, role);
     const normalizedReportsUnderUserId = sellerRoles.has(role)
@@ -1349,6 +1370,7 @@ export const editUser = async (req, res) => {
           address = ?,
           email = ?,
           role = ?,
+          admin_type = ?,
           status = ?
         WHERE id = ?
       `,
@@ -1362,6 +1384,7 @@ export const editUser = async (req, res) => {
         address?.trim() || null,
         email.trim(),
         role,
+        normalizedAdminType,
         normalizeStatus(status),
         userId,
       ]
@@ -1423,7 +1446,7 @@ export const editUser = async (req, res) => {
       entityLabel: `${first_name.trim()} ${last_name.trim()}`,
       title: 'Updated user account',
       description: `Updated account for ${first_name.trim()} ${last_name.trim()} (${email.trim()}).`,
-      metadata: { role, status: normalizeStatus(status), seller_group_id, reports_under_user_id: normalizedReportsUnderUserId },
+      metadata: { role, admin_type: normalizedAdminType, status: normalizeStatus(status), seller_group_id, reports_under_user_id: normalizedReportsUnderUserId },
     });
 
     if (accreditedSellerId) {
