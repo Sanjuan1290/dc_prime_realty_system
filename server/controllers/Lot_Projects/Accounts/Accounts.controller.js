@@ -229,10 +229,10 @@ export const getLotProjectListingAccountHistory = async (req, res) => {
           profile.buyer_full_name,
           profile.buyer_email,
           profile.buyer_contact_number,
-          (SELECT COUNT(*) FROM lot_project_payments payment WHERE payment.lot_project_client_profile_id = account.lot_project_client_profile_id) AS payment_count,
-          (SELECT COALESCE(SUM(payment.lot_project_payment_amount), 0) FROM lot_project_payments payment WHERE payment.lot_project_client_profile_id = account.lot_project_client_profile_id AND payment.lot_project_payment_status = 'Verified') AS verified_payment_total,
-          (SELECT COUNT(*) FROM lot_project_client_documents document_row WHERE document_row.lot_project_client_profile_id = account.lot_project_client_profile_id) AS document_count,
-          (SELECT COUNT(*) FROM lot_project_commissions commission WHERE commission.lot_project_client_profile_id = account.lot_project_client_profile_id) AS commission_count
+          (SELECT COUNT(*) FROM lot_project_payments payment WHERE payment.lot_project_account_id = account.lot_project_account_id) AS payment_count,
+          (SELECT COALESCE(SUM(payment.lot_project_payment_amount), 0) FROM lot_project_payments payment WHERE payment.lot_project_account_id = account.lot_project_account_id AND payment.lot_project_payment_status = 'Verified') AS verified_payment_total,
+          (SELECT COUNT(*) FROM lot_project_client_documents document_row WHERE document_row.lot_project_account_id = account.lot_project_account_id) AS document_count,
+          (SELECT COUNT(*) FROM lot_project_commissions commission WHERE commission.lot_project_account_id = account.lot_project_account_id) AS commission_count
         FROM lot_project_accounts account
         LEFT JOIN lot_project_client_profiles profile
           ON profile.lot_project_client_profile_id = account.lot_project_client_profile_id

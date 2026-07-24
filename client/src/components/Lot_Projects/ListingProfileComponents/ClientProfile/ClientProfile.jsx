@@ -267,7 +267,7 @@ const PersonDetails = ({ title, data, second = false }) => {
   )
 }
 
-const ClientProfile = ({ client = fallbackClient, listing = {}, onSave, isSaving = false }) => {
+const ClientProfile = ({ client = fallbackClient, listing = {}, onSave, isSaving = false, readOnly = false }) => {
   const [profile, setProfile] = useState(() => buildProfile(client))
   const [showEditModal, setShowEditModal] = useState(false)
   const [alert, setAlert] = useState(null)
@@ -288,12 +288,13 @@ const ClientProfile = ({ client = fallbackClient, listing = {}, onSave, isSaving
     .toLowerCase()
 
   const isReservedListing = Boolean(
-    listing?.canEditBuyerProfile ??
-      (listingStatusKey && !['available', 'hold'].includes(listingStatusKey))
+    !readOnly && (listing?.canEditBuyerProfile ??
+      (listingStatusKey && !['available', 'hold'].includes(listingStatusKey)))
   )
 
-  const buyerProfileLockedMessage =
-    listingStatusKey === 'hold'
+  const buyerProfileLockedMessage = readOnly
+    ? 'This historical buyer profile is read-only.'
+    : listingStatusKey === 'hold'
       ? 'This unit is on hold. Reserve or sell this unit first before editing the buyer profile.'
       : 'Reserve this unit first before editing the buyer profile.'
 
@@ -368,7 +369,7 @@ const ClientProfile = ({ client = fallbackClient, listing = {}, onSave, isSaving
             }`}
           >
             {isReservedListing ? <FiEdit3 className="h-4 w-4" /> : <FiLock className="h-4 w-4" />}
-            {isReservedListing ? 'Edit' : 'Reserve First'}
+            {isReservedListing ? 'Edit' : readOnly ? 'Read-only' : 'Reserve First'}
           </button>
         </div>
       </div>

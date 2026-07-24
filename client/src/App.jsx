@@ -143,6 +143,13 @@ const App = () => {
             )}
           />
           <Route
+            path="listings/:listingId/accounts/:accountId"
+            element={protect(
+              PERMISSIONS.LOT_LISTINGS_VIEW,
+              <LotListingProfile />
+            )}
+          />
+          <Route
             path="payments-audit"
             element={protect(
               PERMISSIONS.LOT_PAYMENT_LOGS_VIEW,

@@ -664,11 +664,11 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
   )
 }
 
-const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
+const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [], readOnly = false }) => {
   const { projectSlug, listingId } = useParams()
   const queryClient = useQueryClient()
   const { data: currentUserData } = useCurrentUser()
-  const canManagePenaltyRelief = isFullAccessAdministrator(currentUserData?.user)
+  const canManagePenaltyRelief = !readOnly && isFullAccessAdministrator(currentUserData?.user)
   const canCorrectPenalty = canManagePenaltyRelief
   const canWaiveLmf = canManagePenaltyRelief
 
@@ -723,7 +723,7 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
   const [typeFilter, setTypeFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
 
-  const profileKey = ['lot-listing-profile', projectSlug, listingId]
+  const profileKey = ['lot-listing-profile', projectSlug, listingId, listing?.accountId || 'current']
 
   const invalidateProfile = () => {
     queryClient.invalidateQueries({ queryKey: profileKey })
@@ -1041,6 +1041,12 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
         />
       ) : null}
 
+      {readOnly ? (
+        <div className="mb-4 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-900">
+          <span className="font-black">Read-only account:</span> payments and SOA rows shown here belong only to {listing?.accountReference || 'the selected buyer account'}.
+        </div>
+      ) : null}
+
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div>
           <h2 className="text-2xl font-black text-slate-950">Payments & SOA</h2>
@@ -1050,22 +1056,28 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => setShowSoaTermsModal(true)}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-50 active:scale-[0.98]"
-          >
-            <FiSettings className="h-4 w-4" />
-            Edit SOA Terms
-          </button>
-          <button
-            type="button"
-            onClick={openAddModal}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98]"
-          >
-            <FiPlus className="h-4 w-4" />
-            Add Payment
-          </button>
+          {!readOnly ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setShowSoaTermsModal(true)}
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-50 active:scale-[0.98]"
+              >
+                <FiSettings className="h-4 w-4" />
+                Edit SOA Terms
+              </button>
+              <button
+                type="button"
+                onClick={openAddModal}
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98]"
+              >
+                <FiPlus className="h-4 w-4" />
+                Add Payment
+              </button>
+            </>
+          ) : (
+            <span className="inline-flex h-11 items-center rounded-xl border border-blue-200 bg-blue-50 px-5 text-sm font-black text-blue-700">Historical record</span>
+          )}
         </div>
       </div>
 
@@ -1196,25 +1208,29 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
                   </td>
 
                   <td className="px-4 py-4">
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => openEditModal(payment)}
-                        className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 transition hover:bg-slate-50"
-                      >
-                        <FiEdit2 className="h-3.5 w-3.5" />
-                        Edit
-                      </button>
+                    {readOnly ? (
+                      <span className="text-xs font-black text-slate-400">Read-only</span>
+                    ) : (
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => openEditModal(payment)}
+                          className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 transition hover:bg-slate-50"
+                        >
+                          <FiEdit2 className="h-3.5 w-3.5" />
+                          Edit
+                        </button>
 
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteClick(payment)}
-                        className="inline-flex h-9 items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 text-xs font-black text-red-700 transition hover:bg-red-100"
-                      >
-                        <FiTrash2 className="h-3.5 w-3.5" />
-                        Delete
-                      </button>
-                    </div>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteClick(payment)}
+                          className="inline-flex h-9 items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 text-xs font-black text-red-700 transition hover:bg-red-100"
+                        >
+                          <FiTrash2 className="h-3.5 w-3.5" />
+                          Delete
+                        </button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -1413,6 +1429,8 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
                   <td className="px-4 py-3">
                     {row.scheduleType === 'balloon' ? (
                       <span className="text-xs font-semibold text-slate-400">Not applicable</span>
+                    ) : readOnly ? (
+                      <span className="text-xs font-black text-slate-400">Read-only</span>
                     ) : row.scheduleType === 'legal_misc' ? (
                       <button
                         type="button"
@@ -1483,7 +1501,7 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
         </div>
       </section>
 
-      {showSoaTermsModal ? (
+      {!readOnly && showSoaTermsModal ? (
         <SoaTermsModal
           listing={listing}
           isSaving={updateSoaTermsMutation.isPending}
@@ -1496,7 +1514,7 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
         />
       ) : null}
 
-      {showPaymentModal ? (
+      {!readOnly && showPaymentModal ? (
         <AddSOAPaymentModal
           listing={listing}
           rows={rows}
@@ -1511,7 +1529,7 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
         />
       ) : null}
 
-      {penaltyReliefRow ? (
+      {!readOnly && penaltyReliefRow ? (
         <PenaltyReliefModal
           row={penaltyReliefRow}
           alert={penaltyReliefAlert}
@@ -1531,7 +1549,7 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
         />
       ) : null}
 
-      <LmfWaiverModal
+      {!readOnly ? <LmfWaiverModal
         row={lmfWaiverRow}
         alert={lmfWaiverAlert}
         isSaving={waiveLmfMutation.isPending}
@@ -1541,9 +1559,9 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
           setLmfWaiverAlert(null)
         }}
         onConfirm={(payload) => waiveLmfMutation.mutate(payload)}
-      />
+      /> : null}
 
-      <DeletePaymentModal
+      {!readOnly ? <DeletePaymentModal
         payment={deletePayment}
         password={deletePassword}
         setPassword={setDeletePassword}
@@ -1555,13 +1573,9 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
           setDeleteAlert(null)
         }}
         onConfirm={handleConfirmDelete}
-      />
+      /> : null}
     </section>
   )
 }
 
 export default PaymentsSOA
-
-
-
-

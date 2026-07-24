@@ -109,9 +109,14 @@ const HoldListingModal = ({ listing, isSaving, onClose, onSubmit }) => {
 const ListingProfile = () => {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { projectSlug, listingId } = useParams()
+  const { projectSlug, listingId, accountId } = useParams()
   const { data: currentUserData } = useCurrentUser()
   const canRecalculateCommission = isFullAccessAdministrator(currentUserData?.user)
+  const isAccountRoute = Boolean(accountId)
+  const profileKey = ['lot-listing-profile', projectSlug, listingId, accountId || 'current']
+  const profileUrl = accountId
+    ? `/projects/lot-projects/${projectSlug}/listings/${listingId}/accounts/${accountId}`
+    : `/projects/lot-projects/${projectSlug}/listings/${listingId}`
 
   const [activeTab, setActiveTab] = useState('unit')
   const [showReserveModal, setShowReserveModal] = useState(false)
@@ -123,8 +128,8 @@ const ListingProfile = () => {
   const [alert, setAlert] = useState(null)
 
   const profileQuery = useQuery({
-    queryKey: ['lot-listing-profile', projectSlug, listingId],
-    queryFn: () => useFetch(`/projects/lot-projects/${projectSlug}/listings/${listingId}`),
+    queryKey: profileKey,
+    queryFn: () => useFetch(profileUrl),
     enabled: Boolean(projectSlug && listingId),
     retry: false,
   })
@@ -132,12 +137,14 @@ const ListingProfile = () => {
   const buyerFormStateQuery = useQuery({
     queryKey: ['lot-buyer-form-state', projectSlug, listingId],
     queryFn: () => useFetch(`/projects/lot-projects/${projectSlug}/listings/${listingId}/buyer-form`),
-    enabled: Boolean(projectSlug && listingId),
+    enabled: Boolean(projectSlug && listingId && !isAccountRoute),
     retry: false,
     refetchOnWindowFocus: true,
   })
 
   const profile = profileQuery.data?.data || {}
+  const account = profile.account || null
+  const readOnly = Boolean(isAccountRoute || profile.readOnly)
   const project = profile.project || {}
   const listing = profile.listing || emptyListing
   const client = profile.client || {}
@@ -145,7 +152,7 @@ const ListingProfile = () => {
   const payments = profile.payments || []
   const documents = profile.documents || []
   const profileBuyerForm = profile.buyerForm || {}
-  const buyerForm = buyerFormStateQuery.isSuccess
+  const buyerForm = !readOnly && buyerFormStateQuery.isSuccess
     ? { ...profileBuyerForm, ...(buyerFormStateQuery.data?.data || {}) }
     : profileBuyerForm
   const pendingBuyerFormSubmission = buyerForm.pendingSubmission || null
@@ -154,14 +161,14 @@ const ListingProfile = () => {
   const reserveDocumentsQuery = useQuery({
     queryKey: ['documents'],
     queryFn: () => useFetch('/documents/getDocuments'),
-    enabled: showReserveModal || activeTab === 'documents',
+    enabled: !readOnly && (showReserveModal || activeTab === 'documents'),
     staleTime: 1000 * 60 * 5,
   })
 
   const reserveTemplatesQuery = useQuery({
     queryKey: ['document-templates'],
     queryFn: () => useFetch('/documents/getTemplates'),
-    enabled: showReserveModal || activeTab === 'documents',
+    enabled: !readOnly && (showReserveModal || activeTab === 'documents'),
     staleTime: 1000 * 60 * 5,
   })
 
@@ -186,8 +193,11 @@ const ListingProfile = () => {
       ...listing,
       tcp: listing.tcpAmount ?? listing.tcp ?? 0,
       balance: listing.balanceAmount ?? listing.balance ?? 0,
+      accountId: account?.id || null,
+      accountReference: account?.accountReference || '',
+      readOnly,
     }),
-    [listing]
+    [listing, account, readOnly]
   )
 
   const updateListingMutation = useMutation({
@@ -465,7 +475,7 @@ const ListingProfile = () => {
 
   const handleRefresh = () => {
     profileQuery.refetch()
-    buyerFormStateQuery.refetch()
+    if (!readOnly) buyerFormStateQuery.refetch()
   }
 
   const isHeld = listing.rawStatus === 'hold' || listing.listing_status === 'Hold'
@@ -474,7 +484,7 @@ const ListingProfile = () => {
   const isBuyerFormHold = Boolean(isHeld && pendingBuyerFormSubmission)
   const canManageBuyerForm = Boolean(canReserve && !buyerForm.migrationRequired)
   const hasActiveBuyerFormLink = ['active', 'opened'].includes(String(currentBuyerFormLink?.status || '').toLowerCase())
-  const canManageDocuments = Boolean(listing.hasClientProfile && listing.canEditBuyerProfile)
+  const canManageDocuments = Boolean(!readOnly && listing.hasClientProfile && listing.canEditBuyerProfile)
 
   return (
     <main className="flex flex-col gap-6">
@@ -492,38 +502,47 @@ const ListingProfile = () => {
         <StatusAlert type="error" message={profileQuery.error?.message || 'Failed to load listing profile.'} />
       ) : null}
 
-      {buyerForm.migrationRequired ? (
+      {!readOnly && buyerForm.migrationRequired ? (
         <StatusAlert type="warning" message={buyerForm.message || 'Run the buyer form database migration before using form links.'} />
       ) : null}
 
-      <BuyerFormStatusBanner
+      {!readOnly ? <BuyerFormStatusBanner
         submission={pendingBuyerFormSubmission}
         onReview={reviewBuyerFormSubmission}
         onReject={rejectBuyerFormSubmission}
         isSaving={rejectBuyerFormSubmissionMutation.isPending}
-      />
+      /> : null}
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        {readOnly ? (
+          <div className="mb-4 flex flex-col gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-900 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="font-black">Read-only historical account</p>
+              <p className="mt-0.5 text-blue-800">This page is locked to {account?.accountReference || 'the selected account'}. Payments, documents, SOA rows, and commissions are loaded only by its account ID.</p>
+            </div>
+            <button type="button" onClick={() => navigate(`/lot-projects/${projectSlug}/listings/${listingId}`)} className="h-10 shrink-0 rounded-xl border border-blue-300 bg-white px-4 font-black text-blue-700 transition hover:bg-blue-100">Back to Current Listing</button>
+          </div>
+        ) : null}
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex items-start gap-4">
             <button
               type="button"
-              onClick={() => navigate(`/lot-projects/${projectSlug}/listings`)}
+              onClick={() => navigate(readOnly ? `/lot-projects/${projectSlug}/listings/${listingId}` : `/lot-projects/${projectSlug}/listings`)}
               className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-950 active:scale-[0.98]"
-              aria-label="Back to listings"
+              aria-label={readOnly ? 'Back to current listing' : 'Back to listings'}
             >
               <FiArrowLeft className="h-4 w-4" />
             </button>
 
             <div>
-              <p className="text-xs font-black uppercase tracking-wide text-blue-700">Listing Details</p>
+              <p className="text-xs font-black uppercase tracking-wide text-blue-700">{readOnly ? 'Historical Buyer Account' : 'Listing Details'}</p>
 
               <h1 className="mt-1 text-2xl font-black text-slate-950 sm:text-3xl">
                 {listing.unit_id || listing.unitCode || '-'}
               </h1>
 
               <p className="mt-1 text-sm font-semibold text-slate-500">
-                {listing.project_name || project.name || 'Lot Project'} • {listing.listing_status || '-'}
+                {listing.project_name || project.name || 'Lot Project'} • {readOnly ? account?.statusLabel || listing.listing_status || '-' : listing.listing_status || '-'}
               </p>
 
                 {listing.rawStatus === 'hold' && listing.heldForName ? (
@@ -541,12 +560,12 @@ const ListingProfile = () => {
                 ) : null}
 
               <p className="mt-1 text-xs font-semibold text-slate-400">
-                Database route id: {listingId || '-'}
+                Database route id: {listingId || '-'}{readOnly && account?.accountReference ? ` • ${account.accountReference}` : ''}
               </p>
             </div>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-7">
+          <div className={`grid gap-3 sm:grid-cols-2 ${readOnly ? 'xl:grid-cols-4' : 'xl:grid-cols-7'}`}>
             <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
               <p className="text-xs font-black uppercase text-slate-500">TCP</p>
               <p className="mt-1 text-sm font-black text-slate-950">
@@ -581,6 +600,7 @@ const ListingProfile = () => {
               Refresh
             </button>
 
+            {!readOnly ? <>
             <button
               type="button"
               onClick={() => {
@@ -634,6 +654,13 @@ const ListingProfile = () => {
               <FiUserCheck className="h-4 w-4" />
               {isBuyerFormHold ? 'Review Form' : 'Reserve'}
             </button>
+            </> : (
+              <div className="sm:col-span-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
+                <p className="text-xs font-black uppercase text-blue-700">Account</p>
+                <p className="mt-1 text-sm font-black text-blue-950">{account?.accountReference || '-'}</p>
+                <p className="mt-1 text-xs font-semibold text-blue-800">{account?.buyerName || listing.buyer_name || '-'}</p>
+              </div>
+            )}
           </div>
         </div>
       </section>
@@ -663,7 +690,7 @@ const ListingProfile = () => {
         </div>
       </section>
 
-      <TabErrorBoundary resetKey={`${activeTab}-${projectSlug}-${listingId}`}>
+      <TabErrorBoundary resetKey={`${activeTab}-${projectSlug}-${listingId}-${accountId || 'current'}`}>
       {!profileQuery.isLoading && !profileQuery.isError && activeTab === 'unit' ? (
         <UnitStatus
           listing={listing}
@@ -673,6 +700,7 @@ const ListingProfile = () => {
           onRecalculateCommission={(payload) => recalculateCommissionMutation.mutateAsync(payload)}
           isSaving={updateListingMutation.isPending}
           isRecalculatingCommission={recalculateCommissionMutation.isPending}
+          readOnly={readOnly}
         />
       ) : null}
 
@@ -682,18 +710,19 @@ const ListingProfile = () => {
           listing={listing}
           onSave={(payload) => updateClientProfileMutation.mutateAsync(payload)}
           isSaving={updateClientProfileMutation.isPending}
+          readOnly={readOnly}
         />
       ) : null}
 
       {!profileQuery.isLoading && !profileQuery.isError && activeTab === 'payments' ? (
-        <PaymentsSOA listing={paymentListing} soaRows={soaRows} payments={payments} />
+        <PaymentsSOA listing={paymentListing} soaRows={soaRows} payments={payments} readOnly={readOnly} />
       ) : null}
 
       {!profileQuery.isLoading && !profileQuery.isError && activeTab === 'documents' ? (
         <Documents
           documents={documents}
           canManage={canManageDocuments}
-          canEditRequirements={Boolean(listing.id || listing.routeId || listingId)}
+          canEditRequirements={Boolean(!readOnly && (listing.id || listing.routeId || listingId))}
           projectSlug={projectSlug}
           listingId={listingId}
           project={project}
@@ -711,6 +740,7 @@ const ListingProfile = () => {
             clearDocumentMutation.isPending
           }
           isSavingRequirements={updateDocumentRequirementsMutation.isPending}
+          readOnly={readOnly}
         />
       ) : null}
 
@@ -731,11 +761,12 @@ const ListingProfile = () => {
           soaRows={soaRows}
           payments={payments}
           documents={documents}
+          account={account}
         />
       ) : null}
       </TabErrorBoundary>
 
-      {showHoldModal ? (
+      {!readOnly && showHoldModal ? (
         <HoldListingModal
           listing={listing}
           isSaving={holdListingMutation.isPending}
@@ -744,7 +775,7 @@ const ListingProfile = () => {
         />
       ) : null}
 
-      {showReserveModal ? (
+      {!readOnly && showReserveModal ? (
         <ReserveListingModal
           listing={listing}
           client={reserveMode === 'submission-review' ? pendingBuyerFormSubmission?.submittedPayload || {} : client}
@@ -766,7 +797,7 @@ const ListingProfile = () => {
       ) : null}
 
 
-      {showBuyerFormLinkModal ? (
+      {!readOnly && showBuyerFormLinkModal ? (
         <BuyerFormLinkModal
           listing={listing}
           currentLink={currentBuyerFormLink}
@@ -792,4 +823,3 @@ const ListingProfile = () => {
 }
 
 export default ListingProfile
-

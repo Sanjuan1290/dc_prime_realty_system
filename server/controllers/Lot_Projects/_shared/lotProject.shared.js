@@ -891,46 +891,85 @@ const normalizeClientDocumentImageEntries = (fileUrlValue, fileNameValue = '', p
 export const parseClientDocumentImages = (fileUrlValue, fileNameValue = '', projectSlug = '') =>
   normalizeClientDocumentImageEntries(fileUrlValue, fileNameValue, projectSlug);
 
-export const getListingDocuments = async (connection, lotProjectId, listingId, clientProfileId, projectSlug = '') => {
+export const getListingDocuments = async (
+  connection,
+  lotProjectId,
+  listingId,
+  clientProfileId,
+  projectSlug = '',
+  accountId = 0
+) => {
   const hasListingDocuments = await tableExists(connection, 'lot_project_listing_documents');
   const hasClientDocuments = await tableExists(connection, 'lot_project_client_documents');
+  const selectedAccountId = Number(accountId || 0);
+  const selectedProfileId = Number(clientProfileId || 0);
 
-  if (!hasListingDocuments) return [];
+  if (!hasListingDocuments && !hasClientDocuments) return [];
 
-  const clientDocumentJoin = hasClientDocuments && clientProfileId
-    ? `
-        LEFT JOIN lot_project_client_documents cd
-          ON cd.document_id = d.document_id
-          AND cd.lot_project_listing_id = lpd.lot_project_listing_id
-          AND cd.lot_project_client_profile_id = ?
+  let rows = [];
+
+  // Buyer documents are account-owned records. When an account is selected,
+  // never fall back to another buyer on the same listing.
+  if (hasClientDocuments && (selectedAccountId || selectedProfileId)) {
+    const hasAccountColumn = await columnExists(connection, 'lot_project_client_documents', 'lot_project_account_id');
+    if (selectedAccountId && !hasAccountColumn) {
+      throw Object.assign(new Error('Buyer-account document migration is incomplete.'), { statusCode: 500 });
+    }
+
+    const accountPredicate = selectedAccountId
+      ? 'cd.lot_project_account_id = ?'
+      : 'cd.lot_project_client_profile_id = ?';
+    const accountValue = selectedAccountId || selectedProfileId;
+
+    const [accountRows] = await connection.query(
       `
-    : `LEFT JOIN (SELECT NULL AS document_id, NULL AS lot_project_client_document_file_name, NULL AS lot_project_client_document_file_url, 'Missing' AS lot_project_client_document_status) cd ON 1 = 0`;
-
-  const params = hasClientDocuments && clientProfileId
-    ? [clientProfileId, lotProjectId, listingId]
-    : [lotProjectId, listingId];
-
-  const [rows] = await connection.query(
-    `
-      SELECT
-        lpd.lot_project_listing_document_id,
-        lpd.document_id,
-        lpd.lot_project_listing_document_is_required,
-        d.document_name,
-        d.document_description,
-        cd.lot_project_client_document_file_name,
-        cd.lot_project_client_document_file_url,
-        cd.lot_project_client_document_status
-      FROM lot_project_listing_documents lpd
-      INNER JOIN documents d ON d.document_id = lpd.document_id
-      ${clientDocumentJoin}
-      WHERE lpd.lot_project_id = ?
-        AND lpd.lot_project_listing_id = ?
-        AND lpd.lot_project_listing_document_status = 'active'
-      ORDER BY lpd.lot_project_listing_document_is_required DESC, d.document_name ASC
-    `,
-    params
-  );
+        SELECT
+          COALESCE(lpd.lot_project_listing_document_id, cd.lot_project_client_document_id) AS lot_project_listing_document_id,
+          cd.document_id,
+          COALESCE(lpd.lot_project_listing_document_is_required, 1) AS lot_project_listing_document_is_required,
+          d.document_name,
+          d.document_description,
+          cd.lot_project_client_document_file_name,
+          cd.lot_project_client_document_file_url,
+          cd.lot_project_client_document_status
+        FROM lot_project_client_documents cd
+        INNER JOIN documents d
+          ON d.document_id = cd.document_id
+        LEFT JOIN lot_project_listing_documents lpd
+          ON lpd.lot_project_id = cd.lot_project_id
+         AND lpd.lot_project_listing_id = cd.lot_project_listing_id
+         AND lpd.document_id = cd.document_id
+        WHERE cd.lot_project_id = ?
+          AND cd.lot_project_listing_id = ?
+          AND ${accountPredicate}
+        ORDER BY COALESCE(lpd.lot_project_listing_document_is_required, 1) DESC, d.document_name ASC
+      `,
+      [lotProjectId, listingId, accountValue]
+    );
+    rows = accountRows;
+  } else if (hasListingDocuments) {
+    const [listingRows] = await connection.query(
+      `
+        SELECT
+          lpd.lot_project_listing_document_id,
+          lpd.document_id,
+          lpd.lot_project_listing_document_is_required,
+          d.document_name,
+          d.document_description,
+          NULL AS lot_project_client_document_file_name,
+          NULL AS lot_project_client_document_file_url,
+          'Missing' AS lot_project_client_document_status
+        FROM lot_project_listing_documents lpd
+        INNER JOIN documents d ON d.document_id = lpd.document_id
+        WHERE lpd.lot_project_id = ?
+          AND lpd.lot_project_listing_id = ?
+          AND lpd.lot_project_listing_document_status = 'active'
+        ORDER BY lpd.lot_project_listing_document_is_required DESC, d.document_name ASC
+      `,
+      [lotProjectId, listingId]
+    );
+    rows = listingRows;
+  }
 
   return rows.map((document) => {
     const imageEntries = parseClientDocumentImages(
@@ -2556,13 +2595,37 @@ export const getLatestActiveScheduleGenerationPredicate = (alias = 's') => {
       WHERE latest_schedule.lot_project_id = ${safeAlias}.lot_project_id
         AND latest_schedule.lot_project_listing_id = ${safeAlias}.lot_project_listing_id
         AND latest_schedule.lot_project_client_profile_id = ${safeAlias}.lot_project_client_profile_id
+        AND latest_schedule.lot_project_account_id <=> ${safeAlias}.lot_project_account_id
         AND latest_schedule.schedule_status <> 'Cancelled'
     )
   `;
 };
 
-export const getExistingSoaScheduleRows = async (connection, lotProjectId, listingId, clientProfileId = 0) => {
+export const getExistingSoaScheduleRows = async (
+  connection,
+  lotProjectId,
+  listingId,
+  clientProfileId = 0,
+  accountId = 0,
+  { includeCancelled = false } = {}
+) => {
   if (!(await tableExists(connection, 'lot_project_payment_schedules'))) return [];
+
+  const selectedAccountId = Number(accountId || 0);
+  if (selectedAccountId && !(await columnExists(connection, 'lot_project_payment_schedules', 'lot_project_account_id'))) {
+    throw Object.assign(new Error('Buyer-account SOA migration is incomplete.'), { statusCode: 500 });
+  }
+
+  const scheduleGenerationPredicate = includeCancelled
+    ? `s.created_at = (
+        SELECT MAX(latest_schedule.created_at)
+        FROM lot_project_payment_schedules latest_schedule
+        WHERE latest_schedule.lot_project_id = s.lot_project_id
+          AND latest_schedule.lot_project_listing_id = s.lot_project_listing_id
+          AND latest_schedule.lot_project_client_profile_id = s.lot_project_client_profile_id
+          AND latest_schedule.lot_project_account_id <=> s.lot_project_account_id
+      )`
+    : getLatestActiveScheduleGenerationPredicate('s');
 
   const [rows] = await connection.query(
     `
@@ -2571,13 +2634,21 @@ export const getExistingSoaScheduleRows = async (connection, lotProjectId, listi
       WHERE s.lot_project_id = ?
         AND s.lot_project_listing_id = ?
         AND (? = 0 OR s.lot_project_client_profile_id = ?)
-        AND ${getLatestActiveScheduleGenerationPredicate('s')}
+        AND (? = 0 OR s.lot_project_account_id = ?)
+        AND ${scheduleGenerationPredicate}
       ORDER BY
         CASE WHEN due_date IS NULL THEN 1 ELSE 0 END,
         due_date ASC,
         lot_project_payment_schedule_id ASC
     `,
-    [lotProjectId, listingId, Number(clientProfileId || 0), Number(clientProfileId || 0)]
+    [
+      lotProjectId,
+      listingId,
+      Number(clientProfileId || 0),
+      Number(clientProfileId || 0),
+      selectedAccountId,
+      selectedAccountId,
+    ]
   );
 
   return rows;
@@ -2604,11 +2675,26 @@ export const canGenerateListingSoa = (listingRow = {}) => {
   return true;
 };
 
-export const getListingSoaRows = async (connection, lotProjectId, listingId, listingRow = {}, payments = []) => {
-  if (!canGenerateListingSoa(listingRow)) return [];
+export const getListingSoaRows = async (
+  connection,
+  lotProjectId,
+  listingId,
+  listingRow = {},
+  payments = [],
+  { accountId = 0, readOnly = false } = {}
+) => {
+  const selectedAccountId = Number(accountId || listingRow.lot_project_account_id || 0);
+  if (!canGenerateListingSoa(listingRow) && !selectedAccountId) return [];
 
   const clientProfileId = Number(listingRow.lot_project_client_profile_id || listingRow.clientProfileId || 0);
-  let existingScheduleRows = await getExistingSoaScheduleRows(connection, lotProjectId, listingId, clientProfileId);
+  let existingScheduleRows = await getExistingSoaScheduleRows(
+    connection,
+    lotProjectId,
+    listingId,
+    clientProfileId,
+    selectedAccountId,
+    { includeCancelled: readOnly }
+  );
 
   const hasLegacyLegalMiscPrincipalReduction = existingScheduleRows.some((row) => {
     if (getStoredScheduleType(row) !== 'legal_misc') return false;
@@ -2624,16 +2710,25 @@ export const getListingSoaRows = async (connection, lotProjectId, listingId, lis
         lot_project_id: lotProjectId,
         lot_project_listing_id: listingId,
         lot_project_client_profile_id: clientProfileId,
+        lot_project_account_id: selectedAccountId,
       })
     : false;
 
-  if (existingScheduleRows.length && (hasLegacyBalloonAllocation || hasLegacyLegalMiscPrincipalReduction)) {
+  if (!readOnly && existingScheduleRows.length && (hasLegacyBalloonAllocation || hasLegacyLegalMiscPrincipalReduction)) {
     await recomputeListingScheduleBalances(connection, {
       ...(listingRow || {}),
       lot_project_id: lotProjectId,
       lot_project_listing_id: listingId,
+      lot_project_client_profile_id: clientProfileId,
+      lot_project_account_id: selectedAccountId,
     });
-    existingScheduleRows = await getExistingSoaScheduleRows(connection, lotProjectId, listingId, clientProfileId);
+    existingScheduleRows = await getExistingSoaScheduleRows(
+      connection,
+      lotProjectId,
+      listingId,
+      clientProfileId,
+      selectedAccountId
+    );
   }
 
   const terms = getComputedSoaTerms(listingRow, existingScheduleRows);
@@ -2649,10 +2744,12 @@ export const getListingSoaRows = async (connection, lotProjectId, listingId, lis
       todayDateOnly()
     );
 
-    const activeScheduleRows = existingScheduleRows.filter(
-      (row) => String(row.schedule_status || '').toLowerCase() !== 'cancelled'
-    );
-    const storedRows = activeScheduleRows.map((row, index) => {
+    const visibleScheduleRows = readOnly
+      ? existingScheduleRows
+      : existingScheduleRows.filter(
+          (row) => String(row.schedule_status || '').toLowerCase() !== 'cancelled'
+        );
+    const storedRows = visibleScheduleRows.map((row, index) => {
       const scheduleId = Number(row.lot_project_payment_schedule_id || 0);
       const snapshot = snapshots.get(scheduleId) || {};
       return {
@@ -2695,15 +2792,22 @@ export const getListingSoaRows = async (connection, lotProjectId, listingId, lis
     const balloonPayments = await getVerifiedBalloonPayments(connection, {
       lot_project_id: lotProjectId,
       lot_project_listing_id: listingId,
+      lot_project_client_profile_id: clientProfileId,
+      lot_project_account_id: selectedAccountId,
     });
     const balloonRows = balloonPayments.map((payment, index) =>
       createBalloonPrincipalRow(payment, index + 1)
     );
 
-    return recomputeComputedSoaBalances(
-      sortComputedRows([...storedRows, ...balloonRows]),
-      terms
-    );
+    const sortedRows = sortComputedRows([...storedRows, ...balloonRows]);
+    if (readOnly) {
+      return sortedRows.map((row) => ({
+        ...row,
+        totalDue: getScheduleTotalDue(row),
+      }));
+    }
+
+    return recomputeComputedSoaBalances(sortedRows, terms);
   }
 
   const computedRows = createComputedSoaRows(terms);
@@ -2874,8 +2978,19 @@ export const mapPaymentRow = (row = {}) => ({
   updatedAt: formatDateTime(row.lot_project_payment_updated_at),
 });
 
-export const getListingPayments = async (connection, lotProjectId, listingId, clientProfileId = 0) => {
+export const getListingPayments = async (
+  connection,
+  lotProjectId,
+  listingId,
+  clientProfileId = 0,
+  accountId = 0
+) => {
   if (!(await tableExists(connection, 'lot_project_payments'))) return [];
+
+  const selectedAccountId = Number(accountId || 0);
+  if (selectedAccountId && !(await columnExists(connection, 'lot_project_payments', 'lot_project_account_id'))) {
+    throw Object.assign(new Error('Buyer-account payment migration is incomplete.'), { statusCode: 500 });
+  }
 
   const [rows] = await connection.query(
     `
@@ -2886,15 +3001,26 @@ export const getListingPayments = async (connection, lotProjectId, listingId, cl
       FROM lot_project_payments p
       LEFT JOIN lot_project_payment_schedules ps
         ON ps.lot_project_payment_schedule_id = p.lot_project_payment_schedule_id
+       AND (? = 0 OR ps.lot_project_account_id = ?)
       LEFT JOIN users u
         ON u.id = p.lot_project_payment_verified_by_user_id
       WHERE p.lot_project_id = ?
         AND p.lot_project_listing_id = ?
         AND (? = 0 OR p.lot_project_client_profile_id = ?)
+        AND (? = 0 OR p.lot_project_account_id = ?)
         AND p.lot_project_payment_status = 'Verified'
       ORDER BY p.lot_project_payment_date DESC, p.lot_project_payment_id DESC
     `,
-    [lotProjectId, listingId, Number(clientProfileId || 0), Number(clientProfileId || 0)]
+    [
+      selectedAccountId,
+      selectedAccountId,
+      lotProjectId,
+      listingId,
+      Number(clientProfileId || 0),
+      Number(clientProfileId || 0),
+      selectedAccountId,
+      selectedAccountId,
+    ]
   );
 
   return rows.map(mapPaymentRow);
@@ -3052,6 +3178,7 @@ export const getVerifiedBalloonPayments = async (
       WHERE lot_project_id = ?
         AND lot_project_listing_id = ?
         AND (? = 0 OR lot_project_client_profile_id = ?)
+        AND (? = 0 OR lot_project_account_id = ?)
         AND lot_project_payment_type = 'balloon'
         AND lot_project_payment_status = 'Verified'
         AND (? = 0 OR lot_project_payment_id <> ?)
@@ -3062,6 +3189,8 @@ export const getVerifiedBalloonPayments = async (
       listing.lot_project_listing_id,
       Number(listing.lot_project_client_profile_id || 0),
       Number(listing.lot_project_client_profile_id || 0),
+      Number(listing.lot_project_account_id || 0),
+      Number(listing.lot_project_account_id || 0),
       Number(excludePaymentId || 0),
       Number(excludePaymentId || 0),
     ]
@@ -3087,10 +3216,18 @@ export const hasLegacyBalloonAllocations = async (connection, listing) => {
       WHERE payment.lot_project_id = ?
         AND payment.lot_project_listing_id = ?
         AND (? = 0 OR payment.lot_project_client_profile_id = ?)
+        AND (? = 0 OR payment.lot_project_account_id = ?)
         AND payment.lot_project_payment_type = 'balloon'
       LIMIT 1
     `,
-    [listing.lot_project_id, listing.lot_project_listing_id, Number(listing.lot_project_client_profile_id || 0), Number(listing.lot_project_client_profile_id || 0)]
+    [
+      listing.lot_project_id,
+      listing.lot_project_listing_id,
+      Number(listing.lot_project_client_profile_id || 0),
+      Number(listing.lot_project_client_profile_id || 0),
+      Number(listing.lot_project_account_id || 0),
+      Number(listing.lot_project_account_id || 0),
+    ]
   );
 
   return rows.length > 0;
@@ -3108,9 +3245,17 @@ const removeLegacyBalloonAllocations = async (connection, listing) => {
       WHERE payment.lot_project_id = ?
         AND payment.lot_project_listing_id = ?
         AND (? = 0 OR payment.lot_project_client_profile_id = ?)
+        AND (? = 0 OR payment.lot_project_account_id = ?)
         AND payment.lot_project_payment_type = 'balloon'
     `,
-    [listing.lot_project_id, listing.lot_project_listing_id, Number(listing.lot_project_client_profile_id || 0), Number(listing.lot_project_client_profile_id || 0)]
+    [
+      listing.lot_project_id,
+      listing.lot_project_listing_id,
+      Number(listing.lot_project_client_profile_id || 0),
+      Number(listing.lot_project_client_profile_id || 0),
+      Number(listing.lot_project_account_id || 0),
+      Number(listing.lot_project_account_id || 0),
+    ]
   );
 
   await connection.query(
@@ -3122,9 +3267,17 @@ const removeLegacyBalloonAllocations = async (connection, listing) => {
       WHERE payment.lot_project_id = ?
         AND payment.lot_project_listing_id = ?
         AND (? = 0 OR payment.lot_project_client_profile_id = ?)
+        AND (? = 0 OR payment.lot_project_account_id = ?)
         AND payment.lot_project_payment_type = 'balloon'
     `,
-    [listing.lot_project_id, listing.lot_project_listing_id, Number(listing.lot_project_client_profile_id || 0), Number(listing.lot_project_client_profile_id || 0)]
+    [
+      listing.lot_project_id,
+      listing.lot_project_listing_id,
+      Number(listing.lot_project_client_profile_id || 0),
+      Number(listing.lot_project_client_profile_id || 0),
+      Number(listing.lot_project_account_id || 0),
+      Number(listing.lot_project_account_id || 0),
+    ]
   );
 
   for (const affected of affectedRows) {
@@ -3720,6 +3873,3 @@ export const addIfColumnExists = async (connection, tableName, columns, values, 
     values.push(value);
   }
 };
-
-
-

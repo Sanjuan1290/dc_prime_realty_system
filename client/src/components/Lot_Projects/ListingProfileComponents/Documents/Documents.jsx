@@ -67,6 +67,7 @@ const Documents = ({
   onSaveRequirements,
   isSaving = false,
   isSavingRequirements = false,
+  readOnly = false,
 }) => {
   const rows = documents
   const [uploadDoc, setUploadDoc] = useState(null)
@@ -195,7 +196,7 @@ const Documents = ({
       {!canManage ? (
         <div className="mb-4 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
           <FiAlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
-          <p>Reserve this unit first before uploading, approving, or clearing buyer documents.</p>
+          <p>{readOnly ? 'Historical account documents are read-only. You can still open and print retained files.' : 'Reserve this unit first before uploading, approving, or clearing buyer documents.'}</p>
         </div>
       ) : null}
 
@@ -204,7 +205,7 @@ const Documents = ({
           <h2 className="text-xl font-black text-slate-950">Documents</h2>
 
           <p className="mt-1 text-sm font-semibold text-slate-500">
-            Manage required documents, uploads, approvals, and document image previews.
+            {readOnly ? 'View the document checklist and retained files for this buyer account.' : 'Manage required documents, uploads, approvals, and document image previews.'}
           </p>
         </div>
 
@@ -231,15 +232,17 @@ const Documents = ({
             </span>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setShowEditRequirements(true)}
-            disabled={!canEditRequirements || isSavingRequirements}
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98]"
-          >
-            <FiEdit3 className="h-4 w-4" />
-            Edit Requirements
-          </button>
+          {!readOnly ? (
+            <button
+              type="button"
+              onClick={() => setShowEditRequirements(true)}
+              disabled={!canEditRequirements || isSavingRequirements}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98]"
+            >
+              <FiEdit3 className="h-4 w-4" />
+              Edit Requirements
+            </button>
+          ) : null}
 
           <button
             type="button"
@@ -388,7 +391,7 @@ const Documents = ({
         </table>
       </div>
 
-      {uploadDoc ? (
+      {!readOnly && uploadDoc ? (
         <UploadDocumentModal
           document={uploadDoc}
           signaturePath={`/projects/lot-projects/${projectSlug}/listings/${listingId || listing?.routeId || listing?.id || listing?.lot_project_listing_id}/documents/${uploadDoc.id}/upload-signature`}
@@ -408,7 +411,7 @@ const Documents = ({
         />
       ) : null}
 
-      {showEditRequirements ? (
+      {!readOnly && showEditRequirements ? (
         <EditListingDocumentsModal
           selectedDocuments={rows}
           libraryDocuments={libraryDocuments}

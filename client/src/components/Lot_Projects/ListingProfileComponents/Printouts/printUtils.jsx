@@ -45,7 +45,11 @@ export const getValue = (source, keys, fallback = '-') => {
 
 export const readPrintPayload = () => {
   try {
-    const saved = localStorage.getItem('lot_project_print_payload')
+    const printKey = new URLSearchParams(window.location.search).get('printKey')
+    const storageKey = printKey
+      ? `lot_project_print_payload:${printKey}`
+      : 'lot_project_print_payload'
+    const saved = localStorage.getItem(storageKey)
     if (!saved) return {}
 
     return JSON.parse(saved)

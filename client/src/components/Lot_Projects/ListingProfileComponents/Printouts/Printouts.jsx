@@ -39,10 +39,15 @@ const Printouts = ({
   soaRows = [],
   payments = [],
   documents = [],
+  account = null,
 }) => {
   const handlePreview = (item) => {
+    const printKey = window.crypto?.randomUUID?.()
+      || `${Date.now()}-${Math.random().toString(36).slice(2)}`
+    const storageKey = `lot_project_print_payload:${printKey}`
+
     localStorage.setItem(
-      'lot_project_print_payload',
+      storageKey,
       JSON.stringify({
         projectSlug,
         project,
@@ -51,10 +56,15 @@ const Printouts = ({
         soaRows,
         payments,
         documents,
+        account,
+        readOnly: Boolean(account),
       })
     )
 
-    window.open(`/lot-projects/${projectSlug}/printouts/${item.path}`, '_blank')
+    window.open(
+      `/lot-projects/${projectSlug}/printouts/${item.path}?printKey=${encodeURIComponent(printKey)}`,
+      '_blank'
+    )
   }
 
   return (
@@ -62,7 +72,9 @@ const Printouts = ({
       <div>
         <h2 className="text-xl font-black text-slate-950">Printouts</h2>
         <p className="mt-1 text-sm font-semibold text-slate-500">
-          Open complete printable pages before printing.
+          {account
+            ? `Print retained records for ${account.accountReference || 'this historical account'}.`
+            : 'Open complete printable pages before printing.'}
         </p>
       </div>
 

@@ -183,6 +183,7 @@ const UnitStatus = ({
   onRecalculateCommission,
   isSaving = false,
   isRecalculatingCommission = false,
+  readOnly = false,
 }) => {
   const [showEditModal, setShowEditModal] = useState(false)
   const [showRecalculateModal, setShowRecalculateModal] = useState(false)
@@ -278,11 +279,12 @@ const UnitStatus = ({
     } catch {}
   }
 
-  const showSettlementButton =
+  const showSettlementButton = !readOnly && (
     unitData.listing_status === 'Pending Cancellation' ||
     unitData.listing_status === 'Pending for Cancellation'
+  )
 
-  const showAvailableButton = unitData.listing_status === 'Cancelled'
+  const showAvailableButton = !readOnly && unitData.listing_status === 'Cancelled'
 
   return (
     <div className="flex flex-col gap-5">
@@ -292,6 +294,10 @@ const UnitStatus = ({
           message={alert.message}
           onClose={() => setAlert(null)}
         />
+      ) : null}
+
+      {readOnly ? (
+        <StatusAlert type="info" message="Historical account details are read-only. Listing changes and cancellation actions are disabled." />
       ) : null}
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -310,15 +316,17 @@ const UnitStatus = ({
             <StatusPill status={unitData.listing_status} />
             <StatusPill status={unitData.document_status} />
 
-            <button
-              type="button"
-              onClick={() => setShowEditModal(true)}
-              disabled={isSaving}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98]"
-            >
-              <FiEdit3 className="h-4 w-4" />
-              Edit
-            </button>
+            {!readOnly ? (
+              <button
+                type="button"
+                onClick={() => setShowEditModal(true)}
+                disabled={isSaving}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98]"
+              >
+                <FiEdit3 className="h-4 w-4" />
+                Edit
+              </button>
+            ) : null}
 
             {showSettlementButton ? (
               <button
@@ -490,7 +498,7 @@ const UnitStatus = ({
         title="Seller / Commission"
         description="Assigned seller details and the saved commission distribution for this sale."
         icon={FiBriefcase}
-        action={canRecalculateCommission && (unitData.hasClientProfile || unitData.rawStatus === 'sold') ? (
+        action={!readOnly && canRecalculateCommission && (unitData.hasClientProfile || unitData.rawStatus === 'sold') ? (
           <button
             type="button"
             onClick={() => setShowRecalculateModal(true)}
@@ -532,7 +540,9 @@ const UnitStatus = ({
         <DetailBox label="Client Unit Updated" value={unitData.client_unit_updated} />
       </SectionBlock>
 
-      <ConfirmActionModal
+      {!readOnly ? (
+        <>
+        <ConfirmActionModal
         open={confirmAction === 'cancel-cancellation'}
         title="Cancel Pending Cancellation?"
         message="The buyer account returns to Sold / Active. Buyer, payment, SOA, document, and commission records remain unchanged."
@@ -554,7 +564,10 @@ const UnitStatus = ({
         onConfirm={submitMakeAvailable}
       />
 
-      {showSettlementModal ? (
+        </>
+      ) : null}
+
+      {!readOnly && showSettlementModal ? (
         <CancellationSettlementModal
           unitId={unitData.unit_id || unitData.unitCode}
           buyerName={unitData.buyer_name}
@@ -565,7 +578,7 @@ const UnitStatus = ({
         />
       ) : null}
 
-      {showEditModal ? (
+      {!readOnly && showEditModal ? (
         <EditUnitStatusModal
           listing={unitData}
           project={project}
@@ -575,7 +588,7 @@ const UnitStatus = ({
         />
       ) : null}
 
-      {canRecalculateCommission && showRecalculateModal ? (
+      {!readOnly && canRecalculateCommission && showRecalculateModal ? (
         <RecalculateCommissionModal
           listing={unitData}
           commissionState={unitData.commissionRecalculation || {}}

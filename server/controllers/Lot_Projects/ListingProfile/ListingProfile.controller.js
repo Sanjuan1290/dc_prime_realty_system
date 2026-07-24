@@ -148,7 +148,7 @@ const formatCommissionRole = (role = '') =>
 const loadListingCommissionSnapshot = async (
   connection,
   listingId,
-  { lock = false, clientProfileId = 0 } = {}
+  { lock = false, clientProfileId = 0, accountId = 0 } = {}
 ) => {
   if (!(await tableExists(connection, 'lot_project_commissions'))) {
     return { commissionRows: [], releaseRows: [], receiptRows: [] };
@@ -172,12 +172,19 @@ const loadListingCommissionSnapshot = async (
         ON reports.id = acs.accredited_seller_reports_under_user_id
       WHERE c.lot_project_listing_id = ?
         AND (? = 0 OR c.lot_project_client_profile_id = ?)
+        AND (? = 0 OR c.lot_project_account_id = ?)
       ORDER BY
         FIELD(c.commission_role, 'agent', 'manager', 'broker', 'broker_network_manager'),
         c.lot_project_commission_id
       ${lock ? 'FOR UPDATE' : ''}
     `,
-    [listingId, Number(clientProfileId || 0), Number(clientProfileId || 0)]
+    [
+      listingId,
+      Number(clientProfileId || 0),
+      Number(clientProfileId || 0),
+      Number(accountId || 0),
+      Number(accountId || 0),
+    ]
   );
 
   const commissionIds = commissionRows.map((row) => Number(row.lot_project_commission_id));
@@ -217,9 +224,16 @@ const loadListingCommissionSnapshot = async (
         FROM lot_project_commission_receipts
         WHERE lot_project_listing_id = ?
           AND (? = 0 OR lot_project_client_profile_id = ?)
+          AND (? = 0 OR lot_project_account_id = ?)
         ${lock ? 'FOR UPDATE' : ''}
       `,
-      [listingId, Number(clientProfileId || 0), Number(clientProfileId || 0)]
+      [
+        listingId,
+        Number(clientProfileId || 0),
+        Number(clientProfileId || 0),
+        Number(accountId || 0),
+        Number(accountId || 0),
+      ]
     );
 
     receiptRows = rows;
@@ -442,18 +456,35 @@ const mapCommissionSnapshotRows = (rows = [], releaseRows = []) => {
     });
 };
 
+const getBuyerAccountStatusLabel = (status = '') => ({
+  active: 'Sold / Active',
+  pending_cancellation: 'Pending Cancellation',
+  cancelled: 'Cancelled',
+  closed_fully_paid: 'Fully Paid',
+  deletion_pending: 'Deletion Pending',
+}[String(status || '').trim().toLowerCase()] || 'Historical Account');
+
 export const getLotProjectListingProfile = async (req, res) => {
   const connection = await db.getConnection();
 
   try {
     const slug = String(req.params.projectSlug || '').trim();
     const listingLookup = String(req.params.listingId || '').trim();
+    const requestedAccountId = Number(req.params.accountId || 0);
+    const isAccountRoute = Boolean(req.params.accountId);
     const project = await getProjectBySlug(slug);
 
     if (!project) return res.status(404).json({ message: 'Lot project not found.' });
     if (!listingLookup) return res.status(400).json({ message: 'Listing id is required.' });
+    if (isAccountRoute && (!Number.isInteger(requestedAccountId) || requestedAccountId <= 0)) {
+      return res.status(400).json({ message: 'A valid buyer account id is required.' });
+    }
     if (!(await tableExists(connection, 'lot_project_listings'))) {
       return res.status(500).json({ message: 'lot_project_listings table does not exist.' });
+    }
+
+    if (!(await tableExists(connection, 'lot_project_accounts'))) {
+      return res.status(500).json({ message: 'Buyer account migration is incomplete.' });
     }
 
     const hasListingCadastralLinks = await tableExists(connection, 'lot_project_listing_cadastral_lots');
@@ -530,6 +561,15 @@ export const getLotProjectListingProfile = async (req, res) => {
          LEFT JOIN users assignedReports ON assignedReports.id = assignedAcs.accredited_seller_reports_under_user_id`
       : ``;
 
+    const selectedAccountJoin = isAccountRoute
+      ? `INNER JOIN lot_project_accounts current_account
+           ON current_account.lot_project_account_id = ?
+          AND current_account.lot_project_listing_id = l.lot_project_listing_id
+          AND current_account.lot_project_id = l.lot_project_id`
+      : `LEFT JOIN lot_project_accounts current_account
+           ON current_account.lot_project_account_id = l.current_account_id`;
+    const selectedAccountParams = isAccountRoute ? [requestedAccountId] : [];
+
     const [rows] = await connection.query(
       `
         SELECT
@@ -540,18 +580,25 @@ export const getLotProjectListingProfile = async (req, res) => {
           current_account.lot_project_account_id,
           current_account.account_reference,
           current_account.account_status,
+          current_account.buyer_name_snapshot,
+          current_account.unit_id_snapshot,
+          current_account.reservation_date,
+          current_account.cancellation_date,
+          current_account.closed_at,
+          current_account.cancellation_reason AS account_cancellation_reason,
+          current_account.settlement_notes AS account_settlement_notes,
           payment_summary.total_paid,
           payment_summary.payment_count,
           payment_summary.latest_payment_date,
           payment_summary.latest_payment_amount,
           cancellation_history.cancellation_refund_type,
-          cancellation_history.cancellation_reason,
-          cancellation_history.cash_collected_at_cancellation,
-          cancellation_history.refund_amount,
-          cancellation_history.discontinued_amount,
+          COALESCE(cancellation_history.cancellation_reason, current_account.cancellation_reason) AS cancellation_reason,
+          COALESCE(cancellation_history.cash_collected_at_cancellation, current_account.cash_collected_at_cancellation) AS cash_collected_at_cancellation,
+          COALESCE(cancellation_history.refund_amount, current_account.refund_amount) AS refund_amount,
+          COALESCE(cancellation_history.discontinued_amount, current_account.discontinued_amount) AS discontinued_amount,
           cancellation_history.refund_date,
           cancellation_history.refund_reference,
-          cancellation_history.cancellation_settlement_notes,
+          COALESCE(cancellation_history.cancellation_settlement_notes, current_account.settlement_notes) AS cancellation_settlement_notes,
           cancellation_history.released_commission_amount_at_cancellation,
           cancellation_history.cancelled_at,
           cancellation_history.sale_data_archived_at,
@@ -576,24 +623,23 @@ export const getLotProjectListingProfile = async (req, res) => {
           commission.commission_status,
           ${assignedUserSelect}
         FROM lot_project_listings l
-        LEFT JOIN lot_project_accounts current_account
-          ON current_account.lot_project_account_id = l.current_account_id
+        ${selectedAccountJoin}
         LEFT JOIN lot_project_client_profiles cp
           ON cp.lot_project_client_profile_id = current_account.lot_project_client_profile_id
         LEFT JOIN (
           SELECT
-            lot_project_client_profile_id,
+            lot_project_account_id,
             COALESCE(SUM(lot_project_payment_amount), 0) AS total_paid,
             COUNT(*) AS payment_count,
             MAX(lot_project_payment_date) AS latest_payment_date,
             SUBSTRING_INDEX(GROUP_CONCAT(lot_project_payment_amount ORDER BY lot_project_payment_date DESC, lot_project_payment_id DESC), ',', 1) AS latest_payment_amount
           FROM lot_project_payments
           WHERE lot_project_payment_status = 'Verified'
-          GROUP BY lot_project_client_profile_id
-        ) payment_summary ON payment_summary.lot_project_client_profile_id = cp.lot_project_client_profile_id
+          GROUP BY lot_project_account_id
+        ) payment_summary ON payment_summary.lot_project_account_id = current_account.lot_project_account_id
         LEFT JOIN (
           SELECT
-            lot_project_client_profile_id,
+            lot_project_account_id,
             COALESCE(
               MIN(CASE WHEN schedule_status IN ('Unpaid', 'Partial') AND LOWER(description) NOT LIKE '%reservation%' THEN due_date END),
               MIN(CASE WHEN LOWER(description) LIKE '%downpayment%' THEN due_date END),
@@ -602,22 +648,14 @@ export const getLotProjectListingProfile = async (req, res) => {
             ) AS first_due_date
           FROM lot_project_payment_schedules schedule_row
           WHERE ${getLatestActiveScheduleGenerationPredicate('schedule_row')}
-          GROUP BY lot_project_client_profile_id
-        ) schedule_summary ON schedule_summary.lot_project_client_profile_id = cp.lot_project_client_profile_id
-        LEFT JOIN (
-          SELECT rh.*
-          FROM lot_project_reservation_history rh
-          INNER JOIN (
-            SELECT lot_project_listing_id, MAX(lot_project_reservation_history_id) AS latest_history_id
-            FROM lot_project_reservation_history
-            WHERE reservation_status = 'cancelled'
-            GROUP BY lot_project_listing_id
-          ) latest_cancellation
-            ON latest_cancellation.latest_history_id = rh.lot_project_reservation_history_id
-        ) cancellation_history
-          ON cancellation_history.lot_project_listing_id = l.lot_project_listing_id
+          GROUP BY lot_project_account_id
+        ) schedule_summary ON schedule_summary.lot_project_account_id = current_account.lot_project_account_id
+        LEFT JOIN lot_project_reservation_history cancellation_history
+          ON cancellation_history.lot_project_reservation_history_id = current_account.lot_project_reservation_history_id
+
         LEFT JOIN (
           SELECT
+            lot_project_account_id,
             lot_project_client_profile_id,
             CAST(SUBSTRING_INDEX(
               GROUP_CONCAT(
@@ -640,8 +678,8 @@ export const getLotProjectListingProfile = async (req, res) => {
               ELSE 'Pending'
             END AS commission_status
           FROM lot_project_commissions
-          GROUP BY lot_project_client_profile_id
-        ) commission ON commission.lot_project_client_profile_id = cp.lot_project_client_profile_id
+          GROUP BY lot_project_account_id, lot_project_client_profile_id
+        ) commission ON commission.lot_project_account_id = current_account.lot_project_account_id
         ${assignedSellerJoin}
         LEFT JOIN accredited_sellers acs ON acs.accredited_seller_id = commission.accredited_seller_id
         LEFT JOIN users seller ON seller.id = acs.user_id
@@ -651,15 +689,43 @@ export const getLotProjectListingProfile = async (req, res) => {
           AND ${lookup.sql}
         LIMIT 1
       `,
-      [project.lot_project_id, ...lookup.params]
+      [...selectedAccountParams, project.lot_project_id, ...lookup.params]
     );
 
     const row = rows[0];
-    if (!row) return res.status(404).json({ message: 'Listing not found.' });
+    if (!row) {
+      return res.status(404).json({
+        message: isAccountRoute ? 'Buyer account not found for this listing.' : 'Listing not found.',
+      });
+    }
 
-    const documents = await getListingDocuments(connection, project.lot_project_id, row.lot_project_listing_id, row.lot_project_client_profile_id, slug);
-    const payments = await getListingPayments(connection, project.lot_project_id, row.lot_project_listing_id, row.lot_project_client_profile_id);
-    const soaRows = await getListingSoaRows(connection, project.lot_project_id, row.lot_project_listing_id, row, payments);
+    const selectedAccountId = Number(row.lot_project_account_id || 0);
+    const readOnly = isAccountRoute;
+    row.isHistoricalAccount = readOnly;
+
+    const documents = await getListingDocuments(
+      connection,
+      project.lot_project_id,
+      row.lot_project_listing_id,
+      row.lot_project_client_profile_id,
+      slug,
+      selectedAccountId
+    );
+    const payments = await getListingPayments(
+      connection,
+      project.lot_project_id,
+      row.lot_project_listing_id,
+      row.lot_project_client_profile_id,
+      selectedAccountId
+    );
+    const soaRows = await getListingSoaRows(
+      connection,
+      project.lot_project_id,
+      row.lot_project_listing_id,
+      row,
+      payments,
+      { accountId: selectedAccountId, readOnly }
+    );
     const cadastralLots = await getProjectCadastralLots(project.lot_project_id);
     const defaultDocuments = await getProjectDefaultDocuments(project.lot_project_id);
     let buyerForm = { currentLink: null, latestSubmission: null, pendingSubmission: null };
@@ -677,7 +743,10 @@ export const getLotProjectListingProfile = async (req, res) => {
     const commissionSnapshot = await loadListingCommissionSnapshot(
       connection,
       row.lot_project_listing_id,
-      { clientProfileId: row.lot_project_client_profile_id }
+      {
+        clientProfileId: row.lot_project_client_profile_id,
+        accountId: selectedAccountId,
+      }
     );
     const commissionRecalculation = {
       ...buildCommissionRecalculationState({
@@ -693,10 +762,34 @@ export const getLotProjectListingProfile = async (req, res) => {
       ),
     };
     const sellerName = row.seller_name || '-';
-    const canEditBuyerProfile = canEditBuyerProfileForListing(row.lot_project_listing_status);
-    const clientProfile = canEditBuyerProfile
+    const hasSelectedClientProfile = Boolean(row.lot_project_client_profile_id);
+    const clientProfile = hasSelectedClientProfile
       ? mapClientProfile(row, sellerName)
       : { profileStatus: 'not_reserved', buyerType: 'single', seller: '-' };
+
+    let mappedListing = applyActualPaymentStateToListing(
+      mapProfileListing(row, project, documents),
+      soaRows
+    );
+
+    if (readOnly) {
+      const accountStatusLabel = getBuyerAccountStatusLabel(row.account_status);
+      mappedListing = {
+        ...mappedListing,
+        unit_id: row.unit_id_snapshot || mappedListing.unit_id,
+        unitCode: row.unit_id_snapshot || mappedListing.unitCode,
+        buyer_name: row.buyer_full_name || row.buyer_name_snapshot || mappedListing.buyer_name,
+        listing_status: accountStatusLabel,
+        status: accountStatusLabel,
+        rawStatus: row.account_status,
+        canEditBuyerProfile: false,
+        canUsePayments: true,
+        isHistoricalAccount: true,
+        accountId: selectedAccountId,
+        accountReference: row.account_reference,
+        accountStatus: row.account_status,
+      };
+    }
 
     return res.json({
       success: true,
@@ -713,12 +806,24 @@ export const getLotProjectListingProfile = async (req, res) => {
           defaultDocuments,
         },
         listing: {
-          ...applyActualPaymentStateToListing(
-            mapProfileListing(row, project, documents),
-            soaRows
-          ),
+          ...mappedListing,
           commissionRecalculation,
         },
+        account: selectedAccountId
+          ? {
+              id: selectedAccountId,
+              accountReference: row.account_reference,
+              status: row.account_status,
+              statusLabel: getBuyerAccountStatusLabel(row.account_status),
+              isCurrent: Number(row.current_account_id || 0) === selectedAccountId,
+              reservationDate: row.reservation_date,
+              cancellationDate: row.cancellation_date,
+              closedAt: row.closed_at,
+              buyerName: row.buyer_full_name || row.buyer_name_snapshot || '-',
+              unitId: row.unit_id_snapshot || row.lot_project_listing_unit_id,
+            }
+          : null,
+        readOnly,
         client: clientProfile,
         soaRows,
         payments,
@@ -727,7 +832,7 @@ export const getLotProjectListingProfile = async (req, res) => {
       },
     });
   } catch (error) {
-    return res.status(500).json({ message: getErrorMessage(error) });
+    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
   } finally {
     connection.release();
   }
