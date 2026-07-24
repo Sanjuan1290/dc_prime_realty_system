@@ -7,6 +7,12 @@ const downpaymentTermOptions = Array.from({ length: 12 }, (_, index) => String(i
 const dailyPenaltyRateOptions = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 2, 3, 4, 5]
 const penaltyGraceDayOptions = Array.from({ length: 32 }, (_, index) => String(index))
 
+const shiftIsoYears = (value, years) => {
+  const [year, month, day] = String(value || '').split('-').map(Number)
+  if (!year || !month || !day) return value
+  return new Date(Date.UTC(year + years, month - 1, day)).toISOString().slice(0, 10)
+}
+
 const PreviewCard = ({ label, value, tone = 'slate' }) => {
   const tones = {
     slate: 'border-slate-200 bg-slate-50 text-slate-950',
@@ -146,9 +152,16 @@ const ReservePaymentTermsModal = ({
     month: '2-digit',
     day: '2-digit',
   }).format(new Date())
-  const firstDueMinimum = paymentForm.startingDate && paymentForm.startingDate > today
-    ? paymentForm.startingDate
-    : today
+  const historicalMinimum = shiftIsoYears(today, -1)
+  const isHistoricalEntry = Boolean(paymentForm.isHistoricalEntry)
+  const startingDateMinimum = isHistoricalEntry ? historicalMinimum : today
+  const startingDateMaximum = isHistoricalEntry ? today : undefined
+  const firstDueMinimum = isHistoricalEntry
+    ? (paymentForm.startingDate || historicalMinimum)
+    : paymentForm.startingDate && paymentForm.startingDate > today
+      ? paymentForm.startingDate
+      : today
+  const firstDueMaximum = isHistoricalEntry ? today : undefined
   const isCash = String(paymentForm.modeOfPayment || '').toLowerCase() === 'cash'
   const lotAreaSqm = Number(
     listing?.lotAreaSqm ??
@@ -206,8 +219,45 @@ const ReservePaymentTermsModal = ({
         <div className="grid gap-4 md:grid-cols-2">
           {isCash ? <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 md:col-span-2"><p className="text-xs font-black uppercase text-blue-700">Cash Schedule</p><p className="mt-1 text-sm font-semibold text-blue-900">The SOA will contain the reservation fee and one full-payment balance. Downpayment, monthly terms, and installment interest are not used.</p></div> : null}
           <TextInput label="Reservation Fee" type="number" value={paymentForm.reservationFee} onChange={(value) => updatePaymentField('reservationFee', value)} placeholder="Enter reservation fee" required />
-          <TextInput label="Starting Date" type="date" value={paymentForm.startingDate} onChange={(value) => updatePaymentField('startingDate', value)} min={today} helper="Today or a future date." required />
-          <TextInput label={isCash ? 'Full Payment Due Date' : 'First Due Date'} type="date" value={paymentForm.firstDueDate} onChange={(value) => updatePaymentField('firstDueDate', value)} min={firstDueMinimum} helper="Must be today or later and cannot be before the starting date." required />
+          <label className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 md:col-span-2">
+            <input
+              type="checkbox"
+              checked={isHistoricalEntry}
+              onChange={(event) => {
+                const checked = event.target.checked
+                updatePaymentField('isHistoricalEntry', checked)
+                if (!checked) {
+                  if (String(paymentForm.startingDate || '') < today) updatePaymentField('startingDate', today)
+                  if (String(paymentForm.firstDueDate || '') < today) updatePaymentField('firstDueDate', today)
+                }
+              }}
+              className="mt-0.5 h-4 w-4 rounded border-blue-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span>
+              <span className="block text-sm font-black text-blue-950">Encode an existing or historical client account</span>
+              <span className="mt-1 block text-xs font-semibold text-blue-700">Allows the starting date and first due date from {historicalMinimum} through {today}.</span>
+            </span>
+          </label>
+          <TextInput
+            label="Starting Date"
+            type="date"
+            value={paymentForm.startingDate}
+            onChange={(value) => updatePaymentField('startingDate', value)}
+            min={startingDateMinimum}
+            max={startingDateMaximum}
+            helper={isHistoricalEntry ? `Choose a date from ${historicalMinimum} through ${today}.` : 'Today or a future date.'}
+            required
+          />
+          <TextInput
+            label={isCash ? 'Full Payment Due Date' : 'First Due Date'}
+            type="date"
+            value={paymentForm.firstDueDate}
+            onChange={(value) => updatePaymentField('firstDueDate', value)}
+            min={firstDueMinimum}
+            max={firstDueMaximum}
+            helper={isHistoricalEntry ? 'Cannot be before the starting date or after today.' : 'Must be today or later and cannot be before the starting date.'}
+            required
+          />
           <TextInput
             label="LMF Rate (%)"
             type="number"
@@ -229,7 +279,7 @@ const ReservePaymentTermsModal = ({
             <SelectInput label="Downpayment Terms" value={paymentForm.downpaymentTermsMode} onChange={(value) => updatePaymentField('downpaymentTermsMode', value)} helper="Choose spot cash, 1–12 months, or custom." required><option value="spot_cash">Spot Cash</option>{downpaymentTermOptions.map((value) => <option key={value} value={value}>{value} month{value === '1' ? '' : 's'}</option>)}<option value="custom">Custom</option></SelectInput>
             {paymentForm.downpaymentTermsMode === 'custom' ? <TextInput label="Custom Downpayment Terms" type="number" value={paymentForm.customDownpaymentTerms} onChange={(value) => updatePaymentField('customDownpaymentTerms', value)} placeholder="Number of months" required /> : null}
             <SelectInput label="Reservation Fee Treatment" value={paymentForm.reservationFeeTreatment || 'separate'} onChange={(value) => updatePaymentField('reservationFeeTreatment', value)} helper="Choose if the reservation fee stays separate or counts toward the required downpayment." required><option value="separate">Separate from Downpayment</option><option value="apply_to_downpayment">Deduct Reservation Fee from Downpayment</option></SelectInput>
-            <TextInput label="Downpayment Discount %" type="number" value={paymentForm.dpDiscountPercentage} onChange={(value) => updatePaymentField('dpDiscountPercentage', value)} placeholder="0" helper="Applied only to the gross downpayment. It does not change the property TCP." />
+            <TextInput label="Downpayment Discount %" type="number" value={paymentForm.dpDiscountPercentage} onChange={(value) => updatePaymentField('dpDiscountPercentage', value)} placeholder="0" helper="Applied to the complete required downpayment before the reservation fee is deducted. It does not change the property TCP." />
             <SelectInput label="Monthly Terms" value={paymentForm.monthlyTermsMode} onChange={(value) => updatePaymentField('monthlyTermsMode', value)} helper="Choose 12, 24, 36, 48, 60 months, or custom." required><option value="12">12 months</option><option value="24">24 months</option><option value="36">36 months</option><option value="48">48 months</option><option value="60">60 months</option><option value="custom">Custom</option></SelectInput>
             {paymentForm.monthlyTermsMode === 'custom' ? <TextInput label="Custom Monthly Terms" type="number" value={paymentForm.customMonthlyTerms} onChange={(value) => updatePaymentField('customMonthlyTerms', value)} placeholder="Number of months" required /> : null}
             <TextInput
@@ -369,6 +419,17 @@ const ReservePaymentTermsModal = ({
             />
 
             <PreviewCard
+              label="Downpayment Discount"
+              value={money(paymentPreview.dpDiscountAmount)}
+              tone="amber"
+            />
+
+            <PreviewCard
+              label="DP After Discount"
+              value={money(paymentPreview.discountedDpTarget)}
+            />
+
+            <PreviewCard
               label="Reservation Applied to DP"
               value={money(paymentPreview.reservationFeeDownpaymentCredit)}
               tone={
@@ -379,23 +440,14 @@ const ReservePaymentTermsModal = ({
             />
 
             <PreviewCard
-              label={
-                paymentPreview.reservationFeeAppliedToDownpayment
-                  ? "DP Less Reservation"
-                  : "DP Gross"
-              }
-              value={money(paymentPreview.dpGross)}
-            />
-
-            <PreviewCard
-              label="Downpayment Discount"
-              value={money(paymentPreview.dpDiscountAmount)}
-              tone="amber"
-            />
-
-            <PreviewCard
-              label="DP Net Payable"
+              label="Remaining DP Payable"
               value={money(paymentPreview.dpNet)}
+            />
+
+            <PreviewCard
+              label="DP Amount per Term"
+              value={money(paymentPreview.dpAmountPerTerm)}
+              tone="emerald"
             />
 
             <PreviewCard
@@ -417,3 +469,6 @@ const ReservePaymentTermsModal = ({
 }
 
 export default ReservePaymentTermsModal
+
+
+

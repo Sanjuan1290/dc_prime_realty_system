@@ -26,6 +26,12 @@ const todayISO = () => new Intl.DateTimeFormat('en-CA', {
   day: '2-digit',
 }).format(new Date())
 
+const shiftIsoYears = (value, years) => {
+  const [year, month, day] = String(value || '').split('-').map(Number)
+  if (!year || !month || !day) return value
+  return new Date(Date.UTC(year + years, month - 1, day)).toISOString().slice(0, 10)
+}
+
 const normalizeLibraryDocument = (document) => ({
   ...document,
   id: Number(document.document_id || document.id),
@@ -84,6 +90,7 @@ const ReserveListingModal = ({
     reservationFee: String(listing?.reservationFee || '50000'),
     startingDate: todayISO(),
     firstDueDate: todayISO(),
+    isHistoricalEntry: false,
     legalMiscFee: 'include_in_monthly',
     legalMiscFeeMode: 'include_in_monthly',
     legalMiscFeeRate: String(
@@ -343,16 +350,40 @@ const ReserveListingModal = ({
     }
 
     const today = todayISO()
+    const historicalMinimum = shiftIsoYears(today, -1)
     const startingDate = String(paymentForm.startingDate || '')
     const firstDueDate = String(paymentForm.firstDueDate || '')
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(startingDate) || startingDate < today) {
-      setAlert({ type: 'error', message: 'Starting Date must be today or a future date.' })
+    const isHistoricalEntry = Boolean(paymentForm.isHistoricalEntry)
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startingDate)) {
+      setAlert({ type: 'error', message: 'Starting Date is required.' })
       return false
     }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(firstDueDate) || firstDueDate < today) {
-      setAlert({ type: 'error', message: 'First Due Date must be today or a future date.' })
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(firstDueDate)) {
+      setAlert({ type: 'error', message: 'First Due Date is required.' })
       return false
     }
+
+    if (isHistoricalEntry) {
+      if (startingDate < historicalMinimum || startingDate > today) {
+        setAlert({ type: 'error', message: `Historical Starting Date must be from ${historicalMinimum} through ${today}.` })
+        return false
+      }
+      if (firstDueDate > today) {
+        setAlert({ type: 'error', message: 'Historical First Due Date cannot be after today.' })
+        return false
+      }
+    } else {
+      if (startingDate < today) {
+        setAlert({ type: 'error', message: 'Starting Date must be today or a future date.' })
+        return false
+      }
+      if (firstDueDate < today) {
+        setAlert({ type: 'error', message: 'First Due Date must be today or a future date.' })
+        return false
+      }
+    }
+
     if (firstDueDate < startingDate) {
       setAlert({ type: 'error', message: 'First Due Date cannot be before the Starting Date.' })
       return false
@@ -545,3 +576,6 @@ const ReserveListingModal = ({
 }
 
 export default ReserveListingModal
+
+
+

@@ -48,6 +48,13 @@ const normalizeNumberOption = (modeValue, customValue, fallback = 0) => {
   return Number.isNaN(numberValue) ? fallback : numberValue;
 };
 
+const shiftDateYears = (value, years) => {
+  const clean = dateOrNull(value);
+  if (!clean) return null;
+  const [year, month, day] = clean.split('-').map(Number);
+  return new Date(Date.UTC(year + Number(years || 0), month - 1, day)).toISOString().slice(0, 10);
+};
+
 const getMissingDailyPenaltySchemaItems = async (connection) => {
   const missing = [];
 
@@ -170,6 +177,7 @@ const replaceReservationSchedules = async (connection, projectId, listing, clien
   };
 
   await addOptionalColumn('interest_amount');
+  await addOptionalColumn('discount_amount');
   await addOptionalColumn('principal_amount');
   await addOptionalColumn('monthly_amortization_amount');
   await addOptionalColumn('paid_interest_amount');
@@ -195,6 +203,7 @@ const replaceReservationSchedules = async (connection, projectId, listing, clien
     ];
     const optionalValues = optionalColumns.map((column) => {
       if (column === 'interest_amount') return Number(row.interest || 0);
+      if (column === 'discount_amount') return Number(row.discountAmount || row.discount_amount || 0);
       if (column === 'principal_amount') return Number(row.principalAmount || row.principal_amount || 0);
       if (column === 'monthly_amortization_amount') return Number(row.monthlyAmortizationAmount || row.dueAmount || 0);
       return 0;
@@ -482,14 +491,29 @@ export const reserveLotProjectListing = async (req, res) => {
       : 'include_in_monthly';
     const legalMiscFeeAmount = contractPricing.lmfAmount;
     const today = todayDateOnly();
+    const historicalMinimum = shiftDateYears(today, -1);
+    const isHistoricalEntry = terms.isHistoricalEntry === true || Number(terms.isHistoricalEntry || 0) === 1;
     const startingDate = dateOrNull(terms.startingDate) || today;
     const firstDueDate = dateOrNull(terms.firstDueDate) || startingDate;
-    if (startingDate < today) {
-      return res.status(400).json({ message: 'Starting Date must be today or a future date.' });
+
+    if (isHistoricalEntry) {
+      if (startingDate < historicalMinimum || startingDate > today) {
+        return res.status(400).json({
+          message: `Historical Starting Date must be from ${historicalMinimum} through ${today}.`,
+        });
+      }
+      if (firstDueDate > today) {
+        return res.status(400).json({ message: 'Historical First Due Date cannot be after today.' });
+      }
+    } else {
+      if (startingDate < today) {
+        return res.status(400).json({ message: 'Starting Date must be today or a future date.' });
+      }
+      if (firstDueDate < today) {
+        return res.status(400).json({ message: 'First Due Date must be today or a future date.' });
+      }
     }
-    if (firstDueDate < today) {
-      return res.status(400).json({ message: 'First Due Date must be today or a future date.' });
-    }
+
     if (firstDueDate < startingDate) {
       return res.status(400).json({ message: 'First Due Date cannot be before the Starting Date.' });
     }
@@ -704,6 +728,7 @@ export const reserveLotProjectListing = async (req, res) => {
     await addIfColumnExists(connection, tableName, columns, values, 'soa_penalty_rate_percent', dailyPenaltyRate);
     await addIfColumnExists(connection, tableName, columns, values, 'soa_penalty_grace_days', penaltyGraceDays);
     await addIfColumnExists(connection, tableName, columns, values, 'soa_penalty_calculation_method', 'daily');
+    await addIfColumnExists(connection, tableName, columns, values, 'soa_is_historical_entry', isHistoricalEntry ? 1 : 0);
 
     const updateAssignments = columns
       .filter((column) => !['lot_project_id', 'lot_project_listing_id'].includes(column))
@@ -1005,6 +1030,9 @@ export const reserveLotProjectListing = async (req, res) => {
         dailyPenaltyRate,
         penaltyGraceDays,
         penaltyCalculationMethod: 'daily',
+        isHistoricalEntry,
+        startingDate,
+        firstDueDate,
         buyerFormSubmissionId,
       },
     });
@@ -1028,3 +1056,6 @@ export const reserveLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
+
+
+

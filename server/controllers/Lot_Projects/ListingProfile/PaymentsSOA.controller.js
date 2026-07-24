@@ -68,6 +68,7 @@ import {
   getPaymentById,
   getListingPenaltySnapshots,
   refreshListingPenaltyCache,
+  getStoredScheduleType,
   todayDateOnly,
   dateOrNull,
   parseMoneyValue,
@@ -172,6 +173,13 @@ const addDaysToDateOnly = (value, days = 0) => {
   if (!clean) return null;
   const [year, month, day] = clean.split('-').map(Number);
   return new Date(Date.UTC(year, month - 1, day + Number(days || 0))).toISOString().slice(0, 10);
+};
+
+const shiftDateYears = (value, years = 0) => {
+  const clean = dateOrNull(value);
+  if (!clean) return null;
+  const [year, month, day] = clean.split('-').map(Number);
+  return new Date(Date.UTC(year + Number(years || 0), month - 1, day)).toISOString().slice(0, 10);
 };
 
 const getPenaltyReliefContext = async (connection, project, listing, scheduleId, asOfDate = todayDateOnly()) => {
@@ -580,6 +588,11 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
     const interestRateSource = 'listing';
     const annualInterestRate = Number(listing.annual_interest_rate || 0);
     const firstDueDate = dateOrNull(req.body.firstDueDate || req.body.soa_first_due_date || listing.soa_first_due_date);
+    const currentHistoricalEntry = Number(listing.soa_is_historical_entry || 0) === 1 ||
+      Boolean(dateOrNull(listing.soa_starting_date) && dateOrNull(listing.soa_starting_date) < todayDateOnly());
+    const isHistoricalEntry = req.body.isHistoricalEntry !== undefined
+      ? (req.body.isHistoricalEntry === true || Number(req.body.isHistoricalEntry || 0) === 1)
+      : currentHistoricalEntry;
     const dailyPenaltyRate = Number(
       req.body.dailyPenaltyRate ??
       req.body.soa_penalty_rate_percent ??
@@ -628,19 +641,27 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
       Number(downpaymentTerms) !== Number(listing.soa_downpayment_terms ?? 3) ||
       Number(monthlyTerms) !== Number(listing.soa_monthly_terms ?? 36) ||
       Number(reservationFeeAppliedToDownpayment) !== Number(listing.soa_reservation_fee_applied_to_downpayment || 0) ||
-      firstDueDate !== currentFirstDueDate;
+      firstDueDate !== currentFirstDueDate ||
+      Number(isHistoricalEntry) !== Number(currentHistoricalEntry);
     const penaltyTermsChanged =
       !sameNumber(dailyPenaltyRate, listing.soa_penalty_rate_percent) ||
       Number(penaltyGraceDays) !== Number(listing.soa_penalty_grace_days ?? 1) ||
       String(listing.soa_penalty_calculation_method || 'daily').toLowerCase() !== 'daily';
 
-    if (firstDueDate !== currentFirstDueDate) {
+    if (firstDueDate !== currentFirstDueDate || isHistoricalEntry !== currentHistoricalEntry) {
       const today = todayDateOnly();
+      const historicalMinimum = shiftDateYears(today, -1);
       const startingDate = dateOrNull(listing.soa_starting_date) || today;
       if (!firstDueDate) {
         return res.status(400).json({ message: 'First Due Date is required.' });
       }
-      if (firstDueDate < today) {
+      if (isHistoricalEntry) {
+        if (firstDueDate < historicalMinimum || firstDueDate > today) {
+          return res.status(400).json({
+            message: `Historical First Due Date must be from ${historicalMinimum} through ${today}.`,
+          });
+        }
+      } else if (firstDueDate < today) {
         return res.status(400).json({ message: 'First Due Date must be today or a future date.' });
       }
       if (firstDueDate < startingDate) {
@@ -672,6 +693,7 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
     await addProfileUpdate('soa_annual_interest_rate', annualInterestRate);
     await addProfileUpdate('soa_interest_rate_overridden', 0);
     await addProfileUpdate('soa_first_due_date', firstDueDate);
+    await addProfileUpdate('soa_is_historical_entry', isHistoricalEntry ? 1 : 0);
     await addProfileUpdate('soa_penalty_calculation_method', 'daily');
     await addProfileUpdate('soa_penalty_rate_percent', dailyPenaltyRate);
     await addProfileUpdate('soa_penalty_grace_days', penaltyGraceDays);
@@ -707,6 +729,7 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
         soa_annual_interest_rate: annualInterestRate,
         soa_interest_rate_overridden: 0,
         soa_first_due_date: firstDueDate,
+        soa_is_historical_entry: isHistoricalEntry ? 1 : 0,
         soa_penalty_calculation_method: 'daily',
         soa_penalty_rate_percent: dailyPenaltyRate,
         soa_penalty_grace_days: penaltyGraceDays,
@@ -828,6 +851,7 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
         monthlyTerms,
         annualInterestRate,
         firstDueDate,
+        isHistoricalEntry,
         dailyPenaltyRate,
         penaltyGraceDays,
         structuralTermsChanged,
@@ -852,6 +876,7 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
         annualInterestRate,
         interestRateSource,
         firstDueDate,
+        isHistoricalEntry,
         dailyPenaltyRate,
         penaltyGraceDays,
       },
@@ -859,6 +884,227 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
   } catch (error) {
     await connection.rollback();
     return res.status(500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
+
+export const waiveSeparateLegalMiscFee = async (req, res) => {
+  const connection = await db.getConnection();
+
+  try {
+    const user = await getAuthenticatedUser(req);
+    const slug = String(req.params.projectSlug || '').trim();
+    const listingLookup = String(req.params.listingId || '').trim();
+    const scheduleId = Number(req.params.scheduleId || 0);
+    const reason = String(req.body.reason || '').trim();
+    const approvalReference = toNullable(req.body.approvalReference || req.body.approval_reference);
+    const internalNotes = toNullable(req.body.internalNotes || req.body.internal_notes);
+    const project = await getProjectBySlug(slug);
+
+    if (!user) throw createHttpError(401, 'Authentication is required.');
+    if (!isFullAccessAdministrator(user)) {
+      throw createHttpError(403, 'Only an admin or super admin can waive a Legal / Misc Fee.');
+    }
+    if (!project) throw createHttpError(404, 'Lot project not found.');
+    if (!listingLookup || !scheduleId) throw createHttpError(400, 'Listing and Legal / Misc Fee row are required.');
+    if (!reason) throw createHttpError(400, 'Reason is required.');
+    if (!(await tableExists(connection, 'lot_project_contract_adjustments'))) {
+      throw createHttpError(500, 'Contract adjustment table is missing. Run server/migrations/20260724_soa_dp_discount_historical_lmf_waiver.sql first.');
+    }
+
+    const lookup = getListingLookupWhere(listingLookup);
+    await connection.beginTransaction();
+
+    const [listingRows] = await connection.query(
+      `
+        SELECT l.*, account.lot_project_account_id, account.account_reference, cp.*
+        FROM lot_project_listings l
+        INNER JOIN lot_project_accounts account
+          ON account.lot_project_account_id = l.current_account_id
+        INNER JOIN lot_project_client_profiles cp
+          ON cp.lot_project_client_profile_id = account.lot_project_client_profile_id
+        WHERE l.lot_project_id = ?
+          AND ${lookup.sql}
+        LIMIT 1
+        FOR UPDATE
+      `,
+      [project.lot_project_id, ...lookup.params]
+    );
+
+    const listing = listingRows[0];
+    if (!listing) throw createHttpError(404, 'Reserved listing not found.');
+
+    const [scheduleRows] = await connection.query(
+      `
+        SELECT *
+        FROM lot_project_payment_schedules
+        WHERE lot_project_payment_schedule_id = ?
+          AND lot_project_id = ?
+          AND lot_project_listing_id = ?
+          AND lot_project_client_profile_id = ?
+        LIMIT 1
+        FOR UPDATE
+      `,
+      [scheduleId, project.lot_project_id, listing.lot_project_listing_id, listing.lot_project_client_profile_id]
+    );
+
+    const schedule = scheduleRows[0];
+    if (!schedule || getStoredScheduleType(schedule) !== 'legal_misc') {
+      throw createHttpError(404, 'Legal / Misc Fee SOA row not found.');
+    }
+    if (String(listing.soa_legal_misc_fee_mode || '').toLowerCase() !== 'separate_soa_row') {
+      throw createHttpError(400, 'LMF can only be waived when it is a separate SOA row.');
+    }
+    if (String(schedule.schedule_status || '').toLowerCase() === 'cancelled') {
+      throw createHttpError(400, 'This Legal / Misc Fee has already been removed.');
+    }
+
+    const originalLmfAmount = roundMoneyValue(
+      listing.soa_selected_lmf_amount ?? listing.soa_legal_misc_fee_amount ?? schedule.due_amount ?? 0
+    );
+    if (originalLmfAmount <= 0.009) throw createHttpError(400, 'This account has no Legal / Misc Fee to waive.');
+
+    const [paymentRows] = await connection.query(
+      `
+        SELECT
+          COALESCE(SUM(CASE WHEN p.lot_project_payment_status = 'Verified' THEN p.lot_project_payment_amount ELSE 0 END), 0) AS direct_paid,
+          COALESCE(SUM(CASE WHEN p.lot_project_payment_status = 'Verified' THEN a.applied_amount ELSE 0 END), 0) AS allocated_paid
+        FROM lot_project_payments p
+        LEFT JOIN lot_project_payment_allocations a
+          ON a.lot_project_payment_id = p.lot_project_payment_id
+          AND a.lot_project_payment_schedule_id = ?
+        WHERE p.lot_project_id = ?
+          AND p.lot_project_listing_id = ?
+          AND p.lot_project_client_profile_id = ?
+          AND (p.lot_project_payment_schedule_id = ? OR a.lot_project_payment_schedule_id = ?)
+      `,
+      [scheduleId, project.lot_project_id, listing.lot_project_listing_id, listing.lot_project_client_profile_id, scheduleId, scheduleId]
+    );
+    const recordedLmfPayment = roundMoneyValue(
+      Math.max(Number(schedule.amount_paid || 0), Number(paymentRows[0]?.direct_paid || 0), Number(paymentRows[0]?.allocated_paid || 0))
+    );
+    if (recordedLmfPayment > 0.009) {
+      throw createHttpError(400, 'The Legal / Misc Fee already has a recorded payment. Reverse, refund, or reallocate it before waiving the fee.');
+    }
+
+    const originalTcp = roundMoneyValue(listing.soa_selected_tcp || listing.lot_project_listing_tcp || 0);
+    const adjustedTcp = roundMoneyValue(Math.max(originalTcp - originalLmfAmount, 0));
+
+    const [adjustmentResult] = await connection.query(
+      `
+        INSERT INTO lot_project_contract_adjustments (
+          lot_project_id,
+          lot_project_listing_id,
+          lot_project_client_profile_id,
+          lot_project_account_id,
+          lot_project_payment_schedule_id,
+          adjustment_type,
+          original_amount,
+          adjustment_amount,
+          reason,
+          approval_reference,
+          internal_notes,
+          approved_by_user_id
+        ) VALUES (?, ?, ?, ?, ?, 'lmf_waiver', ?, ?, ?, ?, ?, ?)
+      `,
+      [
+        project.lot_project_id,
+        listing.lot_project_listing_id,
+        listing.lot_project_client_profile_id,
+        listing.lot_project_account_id,
+        scheduleId,
+        originalLmfAmount,
+        originalLmfAmount,
+        reason,
+        approvalReference,
+        internalNotes,
+        user.id,
+      ]
+    );
+
+    await connection.query(
+      `
+        UPDATE lot_project_client_profiles
+        SET soa_selected_tcp = ?,
+            soa_selected_lmf_amount = 0,
+            soa_legal_misc_fee_amount = 0,
+            soa_lmf_waived_amount = ?,
+            soa_lmf_waiver_reason = ?,
+            soa_lmf_waiver_reference = ?,
+            soa_lmf_waived_by_user_id = ?,
+            soa_lmf_waived_at = NOW()
+        WHERE lot_project_client_profile_id = ?
+          AND lot_project_id = ?
+          AND lot_project_listing_id = ?
+      `,
+      [
+        adjustedTcp,
+        originalLmfAmount,
+        reason,
+        approvalReference,
+        user.id,
+        listing.lot_project_client_profile_id,
+        project.lot_project_id,
+        listing.lot_project_listing_id,
+      ]
+    );
+
+    const scheduleSet = [
+      'due_amount = 0',
+      'penalty_amount = 0',
+      'amount_paid = 0',
+      'date_paid = NULL',
+      'reference_id = NULL',
+      'ending_balance = beginning_balance',
+      "schedule_status = 'Cancelled'",
+      'updated_at = NOW()',
+    ];
+    for (const column of ['interest_amount', 'discount_amount', 'principal_amount', 'monthly_amortization_amount', 'calculated_penalty_amount', 'waived_penalty_amount', 'paid_penalty_amount', 'paid_interest_amount', 'paid_principal_amount']) {
+      if (await columnExists(connection, 'lot_project_payment_schedules', column)) scheduleSet.push(`${column} = 0`);
+    }
+    await connection.query(
+      `UPDATE lot_project_payment_schedules SET ${scheduleSet.join(', ')} WHERE lot_project_payment_schedule_id = ?`,
+      [scheduleId]
+    );
+
+    await recomputeListingScheduleBalances(connection, {
+      ...listing,
+      soa_selected_tcp: adjustedTcp,
+      soa_selected_lmf_amount: 0,
+      soa_legal_misc_fee_amount: 0,
+    });
+
+    await writeAuditLog(connection, req, {
+      action: 'update',
+      module: 'Payments',
+      entityType: 'lot_project_contract_adjustment',
+      entityId: String(adjustmentResult.insertId || scheduleId),
+      entityLabel: `Unit ${listing.lot_project_listing_unit_id} — ${listing.buyer_full_name || 'Client'}`,
+      title: 'Waived Legal / Misc Fee',
+      description: `Waived ${money(originalLmfAmount)} Legal / Misc Fee for ${listing.buyer_full_name || listing.lot_project_listing_unit_id}.`,
+      metadata: {
+        clientProfileId: listing.lot_project_client_profile_id,
+        accountId: listing.lot_project_account_id,
+        scheduleId,
+        originalTcp,
+        adjustedTcp,
+        waivedAmount: originalLmfAmount,
+        reason,
+        approvalReference,
+      },
+    });
+
+    await connection.commit();
+    return res.json({
+      success: true,
+      message: `Legal / Misc Fee of ${money(originalLmfAmount)} was waived successfully.`,
+      data: { originalLmfAmount, originalTcp, adjustedTcp },
+    });
+  } catch (error) {
+    try { await connection.rollback(); } catch {}
+    return res.status(error?.statusCode || 500).json({ message: getErrorMessage(error) });
   } finally {
     connection.release();
   }
@@ -1562,4 +1808,7 @@ export const restorePaymentSchedulePenaltyWaiver = async (req, res) => {
     connection.release();
   }
 };
+
+
+
 

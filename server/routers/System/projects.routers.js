@@ -56,6 +56,7 @@ import {
   updateLotProjectListingPayment,
   deleteLotProjectListingPayment,
   updateLotProjectListingSoaTerms,
+  waiveSeparateLegalMiscFee,
   grantPaymentSchedulePenaltyExtension,
   updatePaymentSchedulePenaltyExtension,
   correctPaymentSchedulePenalty,
@@ -138,6 +139,7 @@ router.put('/lot-projects/:projectSlug/listings/:listingId/soa-terms', requirePe
 router.post('/lot-projects/:projectSlug/listings/:listingId/payments', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), createLotProjectListingPayment);
 router.put('/lot-projects/:projectSlug/listings/:listingId/payments/:paymentId', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), updateLotProjectListingPayment);
 router.post('/lot-projects/:projectSlug/listings/:listingId/payments/:paymentId/delete', requirePermission(PERMISSIONS.LOT_PAYMENT_DELETE), deleteLotProjectListingPayment);
+router.post('/lot-projects/:projectSlug/listings/:listingId/payment-schedules/:scheduleId/lmf-waiver', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), waiveSeparateLegalMiscFee);
 router.post('/lot-projects/:projectSlug/listings/:listingId/payment-schedules/:scheduleId/penalty-extension', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), grantPaymentSchedulePenaltyExtension);
 router.put('/lot-projects/:projectSlug/listings/:listingId/payment-schedules/:scheduleId/penalty-extension/:reliefId', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), updatePaymentSchedulePenaltyExtension);
 router.post('/lot-projects/:projectSlug/listings/:listingId/payment-schedules/:scheduleId/penalty-correction', requirePermission(PERMISSIONS.LOT_PENALTY_CORRECT), correctPaymentSchedulePenalty);
@@ -145,4 +147,7 @@ router.post('/lot-projects/:projectSlug/listings/:listingId/payment-schedules/:s
 router.post('/lot-projects/:projectSlug/listings/:listingId/penalty-reliefs/:reliefId/restore', requirePermission(PERMISSIONS.LOT_PENALTY_CORRECT), restorePaymentSchedulePenaltyWaiver);
 
 export default router;
+
+
+
 

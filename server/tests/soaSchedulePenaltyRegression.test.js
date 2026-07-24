@@ -18,18 +18,19 @@ test('SOA live queries keep only the newest active schedule generation', () => {
   assert.match(payments, /SET schedule_status = 'Cancelled'[\s\S]*INSERT INTO lot_project_payment_schedules/);
 });
 
-test('reservation and editable due dates block past dates in Manila time', () => {
+test('reservation and editable due dates use Manila time with controlled historical encoding', () => {
   const modal = read('client/src/components/Lot_Projects/ListingProfileComponents/ReserveListingModal/ReserveListingModal.jsx');
   const paymentTerms = read('client/src/components/Lot_Projects/ListingProfileComponents/ReserveListingModal/ReservePaymentTermsModal.jsx');
   const reserveController = read('server/controllers/Lot_Projects/ListingProfile/ReserveListing.controller.js');
   const paymentController = read('server/controllers/Lot_Projects/ListingProfile/PaymentsSOA.controller.js');
 
   assert.match(modal, /timeZone: 'Asia\/Manila'/);
-  assert.match(paymentTerms, /min=\{today\}/);
+  assert.match(paymentTerms, /Encode an existing or historical client account/);
+  assert.match(paymentTerms, /min=\{startingDateMinimum\}/);
   assert.match(paymentTerms, /min=\{firstDueMinimum\}/);
-  assert.match(reserveController, /Starting Date must be today or a future date/);
+  assert.match(reserveController, /Historical Starting Date must be from/);
   assert.match(reserveController, /First Due Date cannot be before the Starting Date/);
-  assert.match(paymentController, /First Due Date must be today or a future date/);
+  assert.match(paymentController, /Historical First Due Date must be from/);
 });
 
 test('paid penalty remains accumulated and visible in SOA and dashboards', () => {
@@ -44,3 +45,6 @@ test('paid penalty remains accumulated and visible in SOA and dashboards', () =>
   assert.match(soa, /Outstanding \{money\(row\.outstandingPenaltyAmount\)\}/);
   assert.match(systemDashboard, /Paid penalties \+ outstanding penalties/);
 });
+
+
+

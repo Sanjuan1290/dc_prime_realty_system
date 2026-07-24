@@ -624,7 +624,7 @@ export const mapProfileListing = (row = {}, project = {}, documents = []) => {
     : Number(row.lot_project_listing_net_selling_price || installmentPricing.netSellingPrice);
   const listingLmfRate = Number(row.lot_project_listing_lmf_rate || 0);
   const lmfAmount = hasContractSnapshot
-    ? Number(row.soa_selected_lmf_amount || selectedListingPricing.lmfAmount)
+    ? Number(row.soa_selected_lmf_amount ?? selectedListingPricing.lmfAmount)
     : Number(row.lot_project_listing_lmf_amount || installmentPricing.lmfAmount);
   const lmfRate = hasContractSnapshot && baseSellingPrice > 0
     ? Math.round(((lmfAmount / baseSellingPrice) * 100 + Number.EPSILON) * 100) / 100
@@ -634,6 +634,27 @@ export const mapProfileListing = (row = {}, project = {}, documents = []) => {
     : Number(row.lot_project_listing_tcp || installmentPricing.tcp);
   const reservationFee = Number(row.lot_project_listing_reservation_fee || 0);
   const annualInterestRate = Number(row.annual_interest_rate || 0);
+  const legalMiscFeeMode = String(row.soa_legal_misc_fee_mode || 'include_in_monthly') === 'separate_soa_row'
+    ? 'separate_soa_row'
+    : 'include_in_monthly';
+  const principalTcp = roundMoneyValue(
+    legalMiscFeeMode === 'separate_soa_row' ? Math.max(tcp - lmfAmount, 0) : tcp
+  );
+  const soaReservationFee = Number(row.soa_reservation_fee || reservationFee || 0);
+  const soaDownpaymentPercentage = Number(row.soa_downpayment_percentage || 0);
+  const soaDownpaymentTerms = Number(row.soa_downpayment_terms || 0);
+  const soaDpDiscountPercentage = Number(row.soa_dp_discount_percentage || 0);
+  const soaDpTarget = roundMoneyValue(principalTcp * (soaDownpaymentPercentage / 100));
+  const soaDpDiscountAmount = roundMoneyValue(soaDpTarget * (soaDpDiscountPercentage / 100));
+  const soaDpAfterDiscount = roundMoneyValue(Math.max(soaDpTarget - soaDpDiscountAmount, 0));
+  const soaReservationAppliedToDp = Number(row.soa_reservation_fee_applied_to_downpayment || 0) === 1;
+  const soaReservationDpCredit = soaReservationAppliedToDp
+    ? roundMoneyValue(Math.min(soaReservationFee, soaDpAfterDiscount))
+    : 0;
+  const soaRemainingDpPayable = roundMoneyValue(Math.max(soaDpAfterDiscount - soaReservationDpCredit, 0));
+  const soaDpAmountPerTerm = soaDownpaymentTerms > 0
+    ? roundMoneyValue(soaRemainingDpPayable / soaDownpaymentTerms)
+    : soaRemainingDpPayable;
   const totalPaid = Number(row.total_paid || 0);
   const balance = Math.max(tcp - totalPaid, 0);
   const paymentCount = Number(row.payment_count || 0);
@@ -704,21 +725,33 @@ export const mapProfileListing = (row = {}, project = {}, documents = []) => {
     interestRate: `${annualInterestRate.toFixed(2)}%`,
     soaModeOfPayment: row.soa_mode_of_payment || 'installment',
     modeOfPayment: row.soa_mode_of_payment || 'installment',
-    soaReservationFee: Number(row.soa_reservation_fee || reservationFee || 0),
-    soaReservationFeeAppliedToDownpayment: Number(row.soa_reservation_fee_applied_to_downpayment || 0) === 1,
+    soaReservationFee,
+    soaReservationFeeAppliedToDownpayment: soaReservationAppliedToDp,
     reservationFeeTreatment: Number(row.soa_reservation_fee_applied_to_downpayment || 0) === 1
       ? 'apply_to_downpayment'
       : 'separate',
     soaStartingDate: row.soa_starting_date ? plainDate(row.soa_starting_date) : '-',
     soaFirstDueDate: row.soa_first_due_date ? plainDate(row.soa_first_due_date) : '-',
-    soaDownpaymentPercentage: Number(row.soa_downpayment_percentage || 0),
-    soaDownpaymentTerms: Number(row.soa_downpayment_terms || 0),
+    soaIsHistoricalEntry: Number(row.soa_is_historical_entry || 0) === 1,
+    soaDownpaymentPercentage,
+    soaDownpaymentTerms,
+    soaDpTarget,
+    soaDpDiscountAmount,
+    soaDpAfterDiscount,
+    soaReservationDpCredit,
+    soaRemainingDpPayable,
+    soaDpAmountPerTerm,
     soaMonthlyTerms: Number(row.soa_monthly_terms || 0),
     soaAnnualInterestRate: Number(Number(row.soa_interest_rate_overridden || 0) === 1 ? row.soa_annual_interest_rate : annualInterestRate),
     soaListingAnnualInterestRate: annualInterestRate,
     soaInterestRateSource: Number(row.soa_interest_rate_overridden || 0) === 1 ? 'custom' : 'listing',
     soaInterestRateOverridden: Number(row.soa_interest_rate_overridden || 0) === 1,
-    soaDpDiscountPercentage: Number(row.soa_dp_discount_percentage || 0),
+    soaDpDiscountPercentage,
+    soaLegalMiscFeeMode: legalMiscFeeMode,
+    soaLmfWaivedAmount: Number(row.soa_lmf_waived_amount || 0),
+    soaLmfWaiverReason: row.soa_lmf_waiver_reason || '',
+    soaLmfWaiverReference: row.soa_lmf_waiver_reference || '',
+    soaLmfWaivedAt: row.soa_lmf_waived_at ? formatDateTime(row.soa_lmf_waived_at) : '-',
     soaPenaltyRatePercent: Number(row.soa_penalty_rate_percent || 0),
     soaPenaltyGraceDays: Number(row.soa_penalty_grace_days || 0),
     soaPenaltyCalculationMethod: row.soa_penalty_calculation_method || (Number(row.soa_penalty_rate_percent || 0) > 0 ? 'monthly_started' : 'none'),
@@ -994,7 +1027,12 @@ const isStoredDownpaymentRow = (row = {}) => {
 
 const getDownpaymentDiscountRate = (clientProfile = {}) => Number(clientProfile.soa_dp_discount_percentage || 0);
 
-const getExpectedDownpaymentGrossPerRow = (row = {}, clientProfile = {}) => {
+const getDownpaymentRowOrdinal = (row = {}) => {
+  const match = String(row.description || '').trim().match(/^(\d+)/);
+  return match ? Number(match[1]) : 1;
+};
+
+const getExpectedDownpaymentRowAmounts = (row = {}, clientProfile = {}) => {
   const tcp = Number(
     clientProfile.soa_selected_tcp ||
       clientProfile.selectedTcp ||
@@ -1003,12 +1041,33 @@ const getExpectedDownpaymentGrossPerRow = (row = {}, clientProfile = {}) => {
       clientProfile.total_contract_price ||
       0
   );
+  const legalMiscFeeMode = String(
+    clientProfile.soa_legal_misc_fee_mode || clientProfile.legalMiscFeeMode || 'include_in_monthly'
+  ) === 'separate_soa_row'
+    ? 'separate_soa_row'
+    : 'include_in_monthly';
+  const legalMiscFeeAmount = Number(
+    clientProfile.soa_selected_lmf_amount ??
+      clientProfile.soa_legal_misc_fee_amount ??
+      clientProfile.lot_project_listing_lmf_amount ??
+      0
+  );
+  const principalTcp = roundMoneyValue(
+    legalMiscFeeMode === 'separate_soa_row'
+      ? Math.max(tcp - legalMiscFeeAmount, 0)
+      : tcp
+  );
   const downpaymentPercentage = Number(clientProfile.soa_downpayment_percentage || 0);
+  const dpDiscountPercentage = Number(clientProfile.soa_dp_discount_percentage || 0);
   const downpaymentTerms = Math.max(Number(clientProfile.soa_downpayment_terms || 0), 1);
 
-  if (tcp <= 0 || downpaymentPercentage <= 0) return 0;
+  if (principalTcp <= 0 || downpaymentPercentage <= 0) {
+    return { grossAmount: 0, discountAmount: 0, cashAmount: 0 };
+  }
 
-  const targetTotal = roundMoneyValue(tcp * (downpaymentPercentage / 100));
+  const targetTotal = roundMoneyValue(principalTcp * (downpaymentPercentage / 100));
+  const discountTotal = roundMoneyValue(targetTotal * (dpDiscountPercentage / 100));
+  const discountedTarget = roundMoneyValue(Math.max(targetTotal - discountTotal, 0));
   const reservationFee = roundMoneyValue(
     clientProfile.soa_reservation_fee ?? clientProfile.reservationFee ?? clientProfile.lot_project_listing_reservation_fee ?? 0
   );
@@ -1017,15 +1076,28 @@ const getExpectedDownpaymentGrossPerRow = (row = {}, clientProfile = {}) => {
       clientProfile.reservationFeeAppliedToDownpayment ??
       0
   ) === 1;
-  const reservationCredit = reservationApplied ? Math.min(reservationFee, targetTotal) : 0;
+  const reservationCredit = reservationApplied
+    ? roundMoneyValue(Math.min(reservationFee, discountedTarget))
+    : 0;
   const grossTotal = roundMoneyValue(Math.max(targetTotal - reservationCredit, 0));
+  const cashTotal = roundMoneyValue(Math.max(discountedTarget - reservationCredit, 0));
   const baseGross = roundMoneyValue(grossTotal / downpaymentTerms);
-  const rowIndex = Number(row.sequence || row.row_number || 0);
+  const baseDiscount = roundMoneyValue(discountTotal / downpaymentTerms);
+  const baseCash = roundMoneyValue(cashTotal / downpaymentTerms);
+  const rowIndex = Math.min(Math.max(getDownpaymentRowOrdinal(row), 1), downpaymentTerms);
   const isLast = downpaymentTerms === 1 || rowIndex === downpaymentTerms;
 
-  return isLast
-    ? roundMoneyValue(grossTotal - (baseGross * (downpaymentTerms - 1)))
-    : baseGross;
+  return {
+    grossAmount: isLast
+      ? roundMoneyValue(grossTotal - (baseGross * (downpaymentTerms - 1)))
+      : baseGross,
+    discountAmount: isLast
+      ? roundMoneyValue(discountTotal - (baseDiscount * (downpaymentTerms - 1)))
+      : baseDiscount,
+    cashAmount: isLast
+      ? roundMoneyValue(cashTotal - (baseCash * (downpaymentTerms - 1)))
+      : baseCash,
+  };
 };
 
 export const getStoredRowDiscountInfo = (row = {}, clientProfile = {}) => {
@@ -1058,9 +1130,10 @@ export const getStoredRowDiscountInfo = (row = {}, clientProfile = {}) => {
     };
   }
 
-  const expectedGross = getExpectedDownpaymentGrossPerRow(row, clientProfile);
-  const expectedDiscount = expectedGross > 0 ? roundMoneyValue(expectedGross * (rate / 100)) : 0;
-  const expectedNet = expectedGross > 0 ? roundMoneyValue(Math.max(expectedGross - expectedDiscount, 0)) : 0;
+  const expectedAmounts = getExpectedDownpaymentRowAmounts(row, clientProfile);
+  const expectedGross = expectedAmounts.grossAmount;
+  const expectedDiscount = expectedAmounts.discountAmount;
+  const expectedNet = expectedAmounts.cashAmount;
   const looksStoredNet = expectedNet > 0 && Math.abs(dueAmount - expectedNet) <= 0.05;
 
   if (looksStoredNet) {
@@ -1968,25 +2041,35 @@ export const getComputedSoaTerms = (listingRow = {}, existingScheduleRows = []) 
     (sum, row) => sum + Number(row.due_amount || 0),
     0
   );
+  const hasSavedDownpaymentTerms =
+    listingRow.soa_downpayment_percentage !== undefined &&
+    listingRow.soa_downpayment_percentage !== null;
   const downpaymentTargetTotal = roundMoneyValue(principalTcp * (downpaymentPercentage / 100));
+  const downpaymentDiscountTotal = roundMoneyValue(
+    downpaymentTargetTotal * (dpDiscountPercentage / 100)
+  );
+  const discountedDownpaymentTarget = roundMoneyValue(
+    Math.max(downpaymentTargetTotal - downpaymentDiscountTotal, 0)
+  );
   const reservationFeeAppliedToDownpayment = Number(
     listingRow.soa_reservation_fee_applied_to_downpayment ??
       listingRow.reservationFeeAppliedToDownpayment ??
       (listingRow.reservationFeeTreatment === 'apply_to_downpayment' ? 1 : 0)
   ) === 1;
   const reservationFeeDownpaymentCredit = reservationFeeAppliedToDownpayment
-    ? roundMoneyValue(Math.min(reservationFee, downpaymentTargetTotal))
+    ? roundMoneyValue(Math.min(reservationFee, discountedDownpaymentTarget))
     : 0;
   const computedDownpaymentGrossTotal = roundMoneyValue(
     Math.max(downpaymentTargetTotal - reservationFeeDownpaymentCredit, 0)
   );
   const downpaymentGrossTotal = roundMoneyValue(
-    existingDownpaymentRows.length ? inferredDownpaymentGrossTotal : computedDownpaymentGrossTotal
+    hasSavedDownpaymentTerms || !existingDownpaymentRows.length
+      ? computedDownpaymentGrossTotal
+      : inferredDownpaymentGrossTotal
   );
-  const downpaymentDiscountTotal = roundMoneyValue(downpaymentGrossTotal * (dpDiscountPercentage / 100));
-  const computedDownpaymentTotal = roundMoneyValue(Math.max(downpaymentGrossTotal - downpaymentDiscountTotal, 0));
-
-  const downpaymentTotal = computedDownpaymentTotal;
+  const downpaymentTotal = roundMoneyValue(
+    Math.max(discountedDownpaymentTarget - reservationFeeDownpaymentCredit, 0)
+  );
 
   const downpaymentTerms = Math.max(
     Number(
@@ -2040,6 +2123,7 @@ export const getComputedSoaTerms = (listingRow = {}, existingScheduleRows = []) 
     reservationFeeDownpaymentCredit,
     downpaymentGrossTotal,
     downpaymentDiscountTotal,
+    discountedDownpaymentTarget,
     downpaymentTotal,
     downpaymentTerms,
     monthlyTerms,
@@ -2129,6 +2213,7 @@ export const createComputedSoaRows = (terms = {}) => {
 
   const dpTerms = terms.downpaymentTerms <= 0 ? 1 : terms.downpaymentTerms;
   const baseDownpaymentGross = dpTerms > 0 ? roundMoneyValue((terms.downpaymentGrossTotal || terms.downpaymentTotal || 0) / dpTerms) : 0;
+  const baseDownpaymentDiscount = dpTerms > 0 ? roundMoneyValue((terms.downpaymentDiscountTotal || 0) / dpTerms) : 0;
   let downpaymentGrossRemainder = roundMoneyValue(terms.downpaymentGrossTotal || terms.downpaymentTotal || 0);
   let downpaymentDiscountRemainder = roundMoneyValue(terms.downpaymentDiscountTotal || 0);
 
@@ -2137,8 +2222,8 @@ export const createComputedSoaRows = (terms = {}) => {
 
     const isLast = index === dpTerms;
     const dueAmount = roundMoneyValue(isLast ? downpaymentGrossRemainder : baseDownpaymentGross);
-    const discountAmount = roundMoneyValue(isLast ? downpaymentDiscountRemainder : dueAmount * (Number(terms.dpDiscountPercentage || 0) / 100));
-    const principalAmount = roundMoneyValue(Math.max(dueAmount - discountAmount, 0));
+    const discountAmount = roundMoneyValue(isLast ? downpaymentDiscountRemainder : baseDownpaymentDiscount);
+    const principalAmount = dueAmount;
     downpaymentGrossRemainder = roundMoneyValue(downpaymentGrossRemainder - dueAmount);
     downpaymentDiscountRemainder = roundMoneyValue(downpaymentDiscountRemainder - discountAmount);
 
@@ -2247,6 +2332,8 @@ const getPaymentBreakdownForRow = (row = {}, amountPaid = 0) => {
   const penaltyDue = Number(row.penalty || 0);
   const interestDue = Number(row.interest || 0);
   const principalDue = Number(row.principalAmount ?? row.principal_amount ?? row.dueAmount ?? 0);
+  const discountDue = Number(row.discountAmount ?? row.discount_amount ?? 0);
+  const principalCashDue = roundMoneyValue(Math.max(principalDue - discountDue, 0));
 
   const penaltyPaid = roundMoneyValue(Math.min(remaining, penaltyDue));
   remaining = roundMoneyValue(Math.max(remaining - penaltyPaid, 0));
@@ -2254,7 +2341,7 @@ const getPaymentBreakdownForRow = (row = {}, amountPaid = 0) => {
   const interestPaid = roundMoneyValue(Math.min(remaining, interestDue));
   remaining = roundMoneyValue(Math.max(remaining - interestPaid, 0));
 
-  const principalPaid = roundMoneyValue(Math.min(remaining, principalDue));
+  const principalPaid = roundMoneyValue(Math.min(remaining, principalCashDue));
 
   return { penaltyPaid, interestPaid, principalPaid };
 };
@@ -2382,15 +2469,27 @@ export const recomputeComputedSoaBalances = (rows = [], terms = {}) => {
     const interestPaid = hasExplicitBreakdown
       ? roundMoneyValue(row.paidInterestAmount ?? row.paid_interest_amount ?? computedBreakdown.interestPaid)
       : computedBreakdown.interestPaid;
-    const principalPaid = hasExplicitBreakdown
-      ? roundMoneyValue(row.paidPrincipalAmount ?? row.paid_principal_amount ?? computedBreakdown.principalPaid)
-      : computedBreakdown.principalPaid;
+    const isLegalMiscFee = scheduleType === 'legal_misc';
+    const principalPaid = isLegalMiscFee
+      ? 0
+      : hasExplicitBreakdown
+        ? roundMoneyValue(row.paidPrincipalAmount ?? row.paid_principal_amount ?? computedBreakdown.principalPaid)
+        : computedBreakdown.principalPaid;
     const discountAmount = roundMoneyValue(Number(row.discountAmount || row.discount_amount || 0));
-    const principalDue = roundMoneyValue(Number(row.principalAmount ?? row.principal_amount ?? row.dueAmount ?? 0));
-    const discountCredit = principalPaid > 0 && discountAmount > 0
-      ? roundMoneyValue(Math.min(discountAmount, principalDue > 0 ? discountAmount * (principalPaid / principalDue) : discountAmount))
+    const principalDue = isLegalMiscFee
+      ? 0
+      : roundMoneyValue(Number(row.principalAmount ?? row.principal_amount ?? row.dueAmount ?? 0));
+    const principalCashDue = roundMoneyValue(Math.max(principalDue - discountAmount, 0));
+    const discountCredit = !isLegalMiscFee && discountAmount > 0 && (principalPaid > 0 || principalCashDue <= 0.009)
+      ? roundMoneyValue(
+          principalCashDue <= 0.009
+            ? discountAmount
+            : Math.min(discountAmount, discountAmount * (principalPaid / principalCashDue))
+        )
       : 0;
-    const actualPrincipalReduction = roundMoneyValue(principalPaid + discountCredit);
+    const actualPrincipalReduction = isLegalMiscFee
+      ? 0
+      : roundMoneyValue(principalPaid + discountCredit);
 
     runningBalance = roundMoneyValue(Math.max(runningBalance - actualPrincipalReduction, 0));
     row.endingBalance = runningBalance;
@@ -2409,6 +2508,7 @@ export const recomputeComputedSoaBalances = (rows = [], terms = {}) => {
     visibleRows.push({
       id: row.id,
       scheduleId: row.scheduleId || row.lot_project_payment_schedule_id || row.id,
+      scheduleType,
       dueDate: row.dueDate,
       description: row.description,
       beginningBalance: row.beginningBalance,
@@ -2510,14 +2610,24 @@ export const getListingSoaRows = async (connection, lotProjectId, listingId, lis
   const clientProfileId = Number(listingRow.lot_project_client_profile_id || listingRow.clientProfileId || 0);
   let existingScheduleRows = await getExistingSoaScheduleRows(connection, lotProjectId, listingId, clientProfileId);
 
-  if (
-    existingScheduleRows.length &&
-    await hasLegacyBalloonAllocations(connection, {
-      lot_project_id: lotProjectId,
-      lot_project_listing_id: listingId,
-      lot_project_client_profile_id: clientProfileId,
-    })
-  ) {
+  const hasLegacyLegalMiscPrincipalReduction = existingScheduleRows.some((row) => {
+    if (getStoredScheduleType(row) !== 'legal_misc') return false;
+
+    const paidPrincipal = Number(row.paid_principal_amount || 0);
+    const beginningBalance = Number(row.beginning_balance || 0);
+    const endingBalance = Number(row.ending_balance || 0);
+
+    return paidPrincipal > 0.009 || endingBalance + 0.009 < beginningBalance;
+  });
+  const hasLegacyBalloonAllocation = existingScheduleRows.length
+    ? await hasLegacyBalloonAllocations(connection, {
+        lot_project_id: lotProjectId,
+        lot_project_listing_id: listingId,
+        lot_project_client_profile_id: clientProfileId,
+      })
+    : false;
+
+  if (existingScheduleRows.length && (hasLegacyBalloonAllocation || hasLegacyLegalMiscPrincipalReduction)) {
     await recomputeListingScheduleBalances(connection, {
       ...(listingRow || {}),
       lot_project_id: lotProjectId,
@@ -3212,6 +3322,11 @@ export const recomputeListingScheduleBalances = async (connection, listing) => {
   for (const row of rows) {
     const scheduleType = getStoredScheduleType(row);
     const scheduleId = Number(row.lot_project_payment_schedule_id || 0);
+    const isCancelled = String(row.schedule_status || '').toLowerCase() === 'cancelled';
+
+    // A waived separate LMF stays cancelled. Recomputing principal balances must
+    // not reactivate a non-monthly row that was intentionally removed.
+    if (isCancelled && scheduleType !== 'monthly') continue;
 
     if (
       scheduleType === 'monthly' &&
@@ -3273,9 +3388,12 @@ export const recomputeListingScheduleBalances = async (connection, listing) => {
     const interestDue = scheduleType === 'monthly'
       ? roundMoneyValue(adjustment?.interest || 0)
       : roundMoneyValue(row.interest_amount || 0);
-    const principalDue = scheduleType === 'monthly'
-      ? roundMoneyValue(adjustment?.principalAmount || 0)
-      : roundMoneyValue(row.principal_amount ?? row.due_amount ?? 0);
+    const isLegalMiscFee = scheduleType === 'legal_misc';
+    const principalDue = isLegalMiscFee
+      ? 0
+      : scheduleType === 'monthly'
+        ? roundMoneyValue(adjustment?.principalAmount || 0)
+        : roundMoneyValue(row.principal_amount ?? row.due_amount ?? 0);
     const monthlyAmount = scheduleType === 'monthly'
       ? roundMoneyValue(adjustment?.monthlyAmortizationAmount || dueAmount)
       : roundMoneyValue(row.monthly_amortization_amount ?? row.due_amount ?? 0);
@@ -3297,13 +3415,17 @@ export const recomputeListingScheduleBalances = async (connection, listing) => {
     const paidInterest = roundMoneyValue(Math.min(remainingPaid, interestDue));
     remainingPaid = roundMoneyValue(Math.max(remainingPaid - paidInterest, 0));
 
-    const paidPrincipal = roundMoneyValue(
-      Math.min(remainingPaid, principalDue, runningBalance)
-    );
-    const principalCashDue = roundMoneyValue(
-      Math.max(discountInfo.cashDueAmount - penaltyDue - interestDue, 0)
-    );
-    const discountCredit = discountInfo.discountAmount > 0 && paidPrincipal > 0
+    const principalCashDue = isLegalMiscFee
+      ? 0
+      : roundMoneyValue(
+          Math.max(discountInfo.cashDueAmount - penaltyDue - interestDue, 0)
+        );
+    const paidPrincipal = isLegalMiscFee
+      ? 0
+      : roundMoneyValue(
+          Math.min(remainingPaid, principalCashDue, runningBalance)
+        );
+    const discountCredit = !isLegalMiscFee && discountInfo.discountAmount > 0 && paidPrincipal > 0
       ? roundMoneyValue(
           Math.min(
             discountInfo.discountAmount,
@@ -3312,9 +3434,11 @@ export const recomputeListingScheduleBalances = async (connection, listing) => {
           )
         )
       : 0;
-    const principalReduction = roundMoneyValue(
-      Math.min(paidPrincipal + discountCredit, runningBalance)
-    );
+    const principalReduction = isLegalMiscFee
+      ? 0
+      : roundMoneyValue(
+          Math.min(paidPrincipal + discountCredit, runningBalance)
+        );
     runningBalance = roundMoneyValue(
       Math.max(runningBalance - principalReduction, 0)
     );
@@ -3596,3 +3720,6 @@ export const addIfColumnExists = async (connection, tableName, columns, values, 
     values.push(value);
   }
 };
+
+
+

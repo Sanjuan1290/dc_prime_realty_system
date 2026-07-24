@@ -300,6 +300,87 @@ const DeletePaymentModal = ({ payment, password, setPassword, alert, isDeleting,
 }
 
 
+const LmfWaiverModal = ({ row, alert, isSaving, onClose, onConfirm }) => {
+  const [reason, setReason] = useState('')
+  const [approvalReference, setApprovalReference] = useState('')
+  const [internalNotes, setInternalNotes] = useState('')
+  const [localAlert, setLocalAlert] = useState(null)
+
+  useEffect(() => {
+    setReason('')
+    setApprovalReference('')
+    setInternalNotes('')
+    setLocalAlert(null)
+  }, [row?.scheduleId])
+
+  if (!row) return null
+
+  const submit = (event) => {
+    event.preventDefault()
+    if (!reason.trim()) {
+      setLocalAlert({ type: 'error', message: 'Reason is required.' })
+      return
+    }
+
+    onConfirm({
+      scheduleId: row.scheduleId,
+      reason: reason.trim(),
+      approvalReference: approvalReference.trim() || null,
+      internalNotes: internalNotes.trim() || null,
+    })
+  }
+
+  return (
+    <div className="fixed inset-0 z-[78] flex items-center justify-center bg-slate-950/50 p-4">
+      <form onSubmit={submit} className="w-full max-w-xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+          <div>
+            <h3 className="text-lg font-black text-slate-950">Waive Legal / Misc Fee</h3>
+            <p className="mt-1 text-sm font-semibold text-slate-500">
+              Remove the separate LMF from this buyer account without changing the lot principal or monthly schedule.
+            </p>
+          </div>
+          <button type="button" onClick={onClose} disabled={isSaving} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60" aria-label="Close LMF waiver modal">
+            <FiX className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="space-y-4 p-5">
+          {(localAlert || alert) ? <StatusAlert type={(localAlert || alert).type} message={(localAlert || alert).message} onClose={() => setLocalAlert(null)} /> : null}
+
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+            <p className="text-xs font-black uppercase tracking-wide text-amber-700">Separate LMF to waive</p>
+            <p className="mt-1 text-2xl font-black text-amber-950">{money(row.dueAmount)}</p>
+            <p className="mt-1 text-xs font-semibold text-amber-800">This action is blocked when any verified payment has been applied to the LMF row.</p>
+          </div>
+
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm font-black text-slate-700">Reason <span className="text-red-500">*</span></span>
+            <textarea value={reason} onChange={(event) => { setReason(event.target.value); setLocalAlert(null) }} rows={3} placeholder="Why did the developer approve the LMF waiver?" className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50" />
+          </label>
+
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm font-black text-slate-700">Developer Approval Reference</span>
+            <input value={approvalReference} onChange={(event) => setApprovalReference(event.target.value)} placeholder="Approval letter, email, memo, or reference number" className="h-11 rounded-xl border border-slate-300 px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50" />
+          </label>
+
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm font-black text-slate-700">Internal Notes</span>
+            <textarea value={internalNotes} onChange={(event) => setInternalNotes(event.target.value)} rows={3} placeholder="Optional internal notes" className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50" />
+          </label>
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-slate-200 px-5 py-4">
+          <button type="button" onClick={onClose} disabled={isSaving} className="h-10 rounded-lg border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">Cancel</button>
+          <button type="submit" disabled={isSaving} className="h-10 rounded-lg bg-amber-600 px-5 text-sm font-black text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:bg-amber-300">
+            {isSaving ? 'Waiving LMF...' : 'Waive LMF'}
+          </button>
+        </div>
+      </form>
+    </div>
+  )
+}
+
 const dailyPenaltyRateOptions = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 2, 3, 4, 5]
 const todayManila = () => new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Asia/Manila',
@@ -307,6 +388,11 @@ const todayManila = () => new Intl.DateTimeFormat('en-CA', {
   month: '2-digit',
   day: '2-digit',
 }).format(new Date())
+const shiftIsoYears = (value, years) => {
+  const [year, month, day] = String(value || '').split('-').map(Number)
+  if (!year || !month || !day) return value
+  return new Date(Date.UTC(year + years, month - 1, day)).toISOString().slice(0, 10)
+}
 const penaltyGraceDayOptions = Array.from({ length: 32 }, (_, index) => index)
 
 const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, onSave }) => {
@@ -319,6 +405,13 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
       (getListingValue(listing, ['soaReservationFeeAppliedToDownpayment'], false) ? 'apply_to_downpayment' : 'separate'),
     monthlyTerms: String(getListingValue(listing, ['soaMonthlyTerms'], 36)),
     firstDueDate: getListingValue(listing, ['soaFirstDueDate', 'first_due_date'], ''),
+    isHistoricalEntry: Boolean(
+      getListingValue(listing, ['soaIsHistoricalEntry'], false) ||
+      (() => {
+        const startingDate = String(getListingValue(listing, ['soaStartingDate', 'starting_date'], '') || '')
+        return startingDate && startingDate < todayManila()
+      })()
+    ),
     dailyPenaltyRate: initialDailyPenaltyRate,
     penaltyGraceDays: String(getListingValue(listing, ['soaPenaltyGraceDays'], 1)),
   }))
@@ -341,10 +434,15 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
     if (modalAlert?.type === 'error') setModalAlert(null)
   }
 
+  const today = todayManila()
+  const historicalMinimum = shiftIsoYears(today, -1)
   const listingStartingDate = String(getListingValue(listing, ['soaStartingDate', 'starting_date'], '') || '')
-  const firstDueMinimum = listingStartingDate && listingStartingDate > todayManila()
-    ? listingStartingDate
-    : todayManila()
+  const firstDueMinimum = form.isHistoricalEntry
+    ? (listingStartingDate && listingStartingDate > historicalMinimum ? listingStartingDate : historicalMinimum)
+    : listingStartingDate && listingStartingDate > today
+      ? listingStartingDate
+      : today
+  const firstDueMaximum = form.isHistoricalEntry ? today : undefined
 
   const submit = (event) => {
     event.preventDefault()
@@ -376,7 +474,16 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
     }
 
     if (!hasRecordedPayments) {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(form.firstDueDate) || form.firstDueDate < todayManila()) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(form.firstDueDate)) {
+        setModalAlert({ type: 'error', message: 'First Due Date is required.' })
+        return
+      }
+      if (form.isHistoricalEntry) {
+        if (form.firstDueDate < historicalMinimum || form.firstDueDate > today) {
+          setModalAlert({ type: 'error', message: `Historical First Due Date must be from ${historicalMinimum} through ${today}.` })
+          return
+        }
+      } else if (form.firstDueDate < today) {
         setModalAlert({ type: 'error', message: 'First Due Date must be today or a future date.' })
         return
       }
@@ -407,6 +514,7 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
       monthlyTerms,
       interestRateSource: 'listing',
       firstDueDate: form.firstDueDate || null,
+      isHistoricalEntry: Boolean(form.isHistoricalEntry),
       dailyPenaltyRate,
       penaltyGraceDays,
     })
@@ -475,7 +583,33 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
               <p className="mt-1 text-xl font-black">{listingInterestRate.toFixed(2)}%</p>
               <p className="mt-1 text-xs font-semibold text-blue-700">SOA interest always follows the rate set in Edit Listing. Update it there if it needs to change.</p>
             </div>
-            <Field label="First Due Date" type="date" value={form.firstDueDate && form.firstDueDate !== '-' ? form.firstDueDate : ''} onChange={(value) => updateForm('firstDueDate', value)} min={firstDueMinimum} helper="Today or later, and not before the reservation starting date." disabled={hasRecordedPayments} />
+            <label className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 md:col-span-2">
+              <input
+                type="checkbox"
+                checked={Boolean(form.isHistoricalEntry)}
+                onChange={(event) => {
+                  const checked = event.target.checked
+                  updateForm('isHistoricalEntry', checked)
+                  if (!checked && String(form.firstDueDate || '') < today) updateForm('firstDueDate', today)
+                }}
+                disabled={isSaving || hasRecordedPayments}
+                className="mt-0.5 h-4 w-4 rounded border-blue-300 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed"
+              />
+              <span>
+                <span className="block text-sm font-black text-blue-950">Historical client account</span>
+                <span className="mt-1 block text-xs font-semibold text-blue-700">Allows a first due date from {historicalMinimum} through {today}. The date cannot be before the saved starting date.</span>
+              </span>
+            </label>
+            <Field
+              label="First Due Date"
+              type="date"
+              value={form.firstDueDate && form.firstDueDate !== '-' ? form.firstDueDate : ''}
+              onChange={(value) => updateForm('firstDueDate', value)}
+              min={firstDueMinimum}
+              max={firstDueMaximum}
+              helper={form.isHistoricalEntry ? 'Historical date cannot be before the reservation starting date or after today.' : 'Today or later, and not before the reservation starting date.'}
+              disabled={hasRecordedPayments}
+            />
             <label className="flex flex-col gap-1.5">
               <span className="text-sm font-black text-slate-700">Daily Penalty Rate</span>
               <select
@@ -536,6 +670,7 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
   const { data: currentUserData } = useCurrentUser()
   const canManagePenaltyRelief = isFullAccessAdministrator(currentUserData?.user)
   const canCorrectPenalty = canManagePenaltyRelief
+  const canWaiveLmf = canManagePenaltyRelief
 
   const rows = useMemo(() => normalizeRows(soaRows), [soaRows])
   const paymentRecords = useMemo(() => normalizePayments(payments, listing), [payments, listing])
@@ -583,6 +718,8 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
   const [deleteAlert, setDeleteAlert] = useState(null)
   const [penaltyReliefRow, setPenaltyReliefRow] = useState(null)
   const [penaltyReliefAlert, setPenaltyReliefAlert] = useState(null)
+  const [lmfWaiverRow, setLmfWaiverRow] = useState(null)
+  const [lmfWaiverAlert, setLmfWaiverAlert] = useState(null)
   const [typeFilter, setTypeFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
 
@@ -648,6 +785,21 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
     onError: (error) => {
       setAlert({ type: 'error', message: error?.message || 'Failed to save SOA terms.' })
     },
+  })
+
+  const waiveLmfMutation = useMutation({
+    mutationFn: ({ scheduleId, ...payload }) =>
+      useFetchPost(
+        `/projects/lot-projects/${projectSlug}/listings/${listingId}/payment-schedules/${scheduleId}/lmf-waiver`,
+        payload
+      ),
+    onSuccess: (result) => {
+      setLmfWaiverRow(null)
+      setLmfWaiverAlert(null)
+      setAlert({ type: 'success', message: result?.message || 'Legal / Misc Fee waived successfully.' })
+      invalidateProfile()
+    },
+    onError: (error) => setLmfWaiverAlert({ type: 'error', message: error?.message || 'The Legal / Misc Fee could not be waived.' }),
   })
 
   const grantPenaltyExtensionMutation = useMutation({
@@ -745,6 +897,15 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
     }, 0),
     [rows]
   )
+
+  const outstandingLmf = useMemo(
+    () => rows
+      .filter((row) => row.scheduleType === 'legal_misc' && String(row.status || '').toLowerCase() !== 'cancelled')
+      .reduce((sum, row) => sum + Math.max(Number(row.totalDue ?? row.dueAmount ?? 0) - Number(row.amountPaid || 0), 0), 0),
+    [rows]
+  )
+
+  const lmfWaivedAmount = cleanMoney(getListingValue(listing, ['soaLmfWaivedAmount'], 0))
 
   const totalPaid = useMemo(
     () => paymentRecords.reduce((sum, payment) => sum + Number(payment.amount || 0), 0),
@@ -950,6 +1111,13 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
       </div>
 
       <section className="mt-5 overflow-hidden rounded-2xl border border-slate-200">
+        {lmfWaivedAmount > 0 ? (
+          <div className="border-b border-emerald-200 bg-emerald-50 px-5 py-3 text-sm font-semibold text-emerald-900">
+            <span className="font-black">Legal / Misc Fee waived:</span> {money(lmfWaivedAmount)}
+            {listing?.soaLmfWaiverReference ? <span> · Reference: {listing.soaLmfWaiverReference}</span> : null}
+          </div>
+        ) : null}
+
         <div className="overflow-x-auto">
           <table className="min-w-[1150px] w-full divide-y divide-slate-200 text-sm">
             <thead className="bg-slate-50">
@@ -1107,14 +1275,22 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
               </p>
             </div>
 
-            <div className="grid gap-2 text-right sm:grid-cols-2">
+            <div className="grid gap-2 text-right sm:grid-cols-2 xl:grid-cols-4">
               <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2">
-                <p className="text-[11px] font-black uppercase tracking-wide text-emerald-700">Total Payments Made</p>
+                <p className="text-[11px] font-black uppercase tracking-wide text-emerald-700">Cash Payments Made</p>
                 <p className="mt-0.5 text-sm font-black text-emerald-900">{money(totalPaid)}</p>
               </div>
               <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2">
-                <p className="text-[11px] font-black uppercase tracking-wide text-blue-700">Remaining Principal</p>
+                <p className="text-[11px] font-black uppercase tracking-wide text-blue-700">Remaining Lot Principal</p>
                 <p className="mt-0.5 text-sm font-black text-blue-900">{money(remainingBalance)}</p>
+              </div>
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2">
+                <p className="text-[11px] font-black uppercase tracking-wide text-amber-700">Outstanding LMF</p>
+                <p className="mt-0.5 text-sm font-black text-amber-900">{money(outstandingLmf)}</p>
+              </div>
+              <div className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-2">
+                <p className="text-[11px] font-black uppercase tracking-wide text-violet-700">Total Account Outstanding</p>
+                <p className="mt-0.5 text-sm font-black text-violet-900">{money(totalDue)}</p>
               </div>
             </div>
           </div>
@@ -1237,6 +1413,20 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
                   <td className="px-4 py-3">
                     {row.scheduleType === 'balloon' ? (
                       <span className="text-xs font-semibold text-slate-400">Not applicable</span>
+                    ) : row.scheduleType === 'legal_misc' ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLmfWaiverRow(row)
+                          setLmfWaiverAlert(null)
+                        }}
+                        disabled={!canWaiveLmf || !row.scheduleId || row.amountPaid > 0 || String(row.status || '').toLowerCase() === 'cancelled'}
+                        className="inline-flex h-9 items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 text-xs font-black text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400"
+                        title={row.amountPaid > 0 ? 'Reverse or refund the recorded LMF payment before waiving the fee.' : !canWaiveLmf ? 'Only an admin or super admin can waive LMF.' : 'Waive this separate Legal / Misc Fee.'}
+                      >
+                        <FiX className="h-3.5 w-3.5" />
+                        Waive LMF
+                      </button>
                     ) : (
                       <button
                         type="button"
@@ -1284,6 +1474,10 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
             <div className="flex items-center justify-between gap-3 sm:justify-end">
               <span className="font-semibold text-slate-500">Remaining principal balance:</span>
               <span className="text-lg font-black text-slate-950">{money(remainingBalance)}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3 sm:justify-end">
+              <span className="font-semibold text-slate-500">Outstanding Legal / Misc Fee:</span>
+              <span className="text-lg font-black text-amber-700">{money(outstandingLmf)}</span>
             </div>
           </div>
         </div>
@@ -1337,6 +1531,18 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
         />
       ) : null}
 
+      <LmfWaiverModal
+        row={lmfWaiverRow}
+        alert={lmfWaiverAlert}
+        isSaving={waiveLmfMutation.isPending}
+        onClose={() => {
+          if (waiveLmfMutation.isPending) return
+          setLmfWaiverRow(null)
+          setLmfWaiverAlert(null)
+        }}
+        onConfirm={(payload) => waiveLmfMutation.mutate(payload)}
+      />
+
       <DeletePaymentModal
         payment={deletePayment}
         password={deletePassword}
@@ -1355,4 +1561,7 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
 }
 
 export default PaymentsSOA
+
+
+
 

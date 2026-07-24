@@ -173,25 +173,29 @@ export const getPaymentCalculations = (tcp, paymentForm) => {
       : 'separate'
   const reservationFeeAppliedToDownpayment = reservationFeeTreatment === 'apply_to_downpayment'
 
-  // The downpayment target stays based on the selected percentage. When the
-  // reservation fee is applied to it, only the unpaid part becomes a DP schedule.
-  const dpTarget = isCash ? 0 : principalBase * (downpaymentPercentage / 100)
-  const reservationFeeDownpaymentCredit = reservationFeeAppliedToDownpayment
-    ? Math.min(reservationFee, dpTarget)
-    : 0
-  const dpGross = Math.max(dpTarget - reservationFeeDownpaymentCredit, 0)
+  // Apply the DP discount to the complete required downpayment first. When
+  // the reservation fee counts toward the DP, deduct it from the discounted cash
+  // requirement. This keeps the SOA aligned with the approved contract terms.
+  const dpTarget = isCash
+    ? 0
+    : roundMoney(principalBase * (downpaymentPercentage / 100))
   const dpDiscountAmount = isCash
     ? 0
-    : dpGross * (Number(paymentForm.dpDiscountPercentage || 0) / 100)
-  const dpNet = Math.max(dpGross - dpDiscountAmount, 0)
+    : roundMoney(dpTarget * (Number(paymentForm.dpDiscountPercentage || 0) / 100))
+  const discountedDpTarget = roundMoney(Math.max(dpTarget - dpDiscountAmount, 0))
+  const reservationFeeDownpaymentCredit = reservationFeeAppliedToDownpayment
+    ? roundMoney(Math.min(reservationFee, discountedDpTarget))
+    : 0
 
-  // The discount reduces the cash the buyer pays for the remaining downpayment.
-  // The gross scheduled DP still reduces the financed balance.
-  const downpaymentCredit = dpNet + dpDiscountAmount
-  const balance = Math.max(
+  // Gross scheduled principal is the DP target that remains after the credited
+  // reservation. Net payable is the actual cash still required after discount.
+  const dpGross = roundMoney(Math.max(dpTarget - reservationFeeDownpaymentCredit, 0))
+  const dpNet = roundMoney(Math.max(discountedDpTarget - reservationFeeDownpaymentCredit, 0))
+  const downpaymentCredit = roundMoney(dpNet + dpDiscountAmount)
+  const balance = roundMoney(Math.max(
     principalBase - reservationFee - downpaymentCredit,
     0
-  )
+  ))
   const monthlyAmortization = !isCash
     ? calculateMonthlyAmortization(
         balance,
@@ -220,7 +224,9 @@ export const getPaymentCalculations = (tcp, paymentForm) => {
       principalBase,
       dpGross,
       dpDiscountAmount,
+      discountedDpTarget,
       dpNet,
+      dpAmountPerTerm: downpaymentTerms > 0 ? roundMoney(dpNet / downpaymentTerms) : dpNet,
       downpaymentCredit,
       balance,
       monthlyAmortization,
@@ -228,3 +234,6 @@ export const getPaymentCalculations = (tcp, paymentForm) => {
     },
   }
 }
+
+
+

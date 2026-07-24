@@ -33,6 +33,14 @@ const fallbackListing = {
   lmf_rate: '0%',
   lmf_amount: '₱0.00',
   tcp: '₱0.00',
+  soaDpDiscountPercentage: 0,
+  soaDpDiscountAmount: 0,
+  soaDpTarget: 0,
+  soaDpAfterDiscount: 0,
+  soaReservationDpCredit: 0,
+  soaRemainingDpPayable: 0,
+  soaDpAmountPerTerm: 0,
+  soaLmfWaivedAmount: 0,
   buyer_name: '-',
   spouse_co_owner: '-',
   email: '-',
@@ -349,8 +357,15 @@ const UnitStatus = ({
         <DetailBox label="LMF Rate" value={unitData.lmf_rate} />
         {unitData.hasClientProfile ? <DetailBox label="Selected Pricing" value={String(unitData.selectedPricingMode || unitData.modeOfPayment || 'installment').toUpperCase()} highlight /> : null}
         {unitData.hasClientProfile ? <DetailBox label="Sale Discount" value={`${Number(unitData.saleDiscountPercentage || 0)}% (${money(unitData.saleDiscountAmount)})`} /> : null}
+        {unitData.hasClientProfile && String(unitData.modeOfPayment || '').toLowerCase() !== 'cash' ? <DetailBox label={`DP Target (${Number(unitData.soaDownpaymentPercentage || 0)}%)`} value={money(unitData.soaDpTarget)} /> : null}
+        {unitData.hasClientProfile && String(unitData.modeOfPayment || '').toLowerCase() !== 'cash' ? <DetailBox label={`DP Discount (${Number(unitData.soaDpDiscountPercentage || 0)}%)`} value={money(unitData.soaDpDiscountAmount)} /> : null}
+        {unitData.hasClientProfile && String(unitData.modeOfPayment || '').toLowerCase() !== 'cash' ? <DetailBox label="DP After Discount" value={money(unitData.soaDpAfterDiscount)} /> : null}
+        {unitData.hasClientProfile && String(unitData.modeOfPayment || '').toLowerCase() !== 'cash' ? <DetailBox label="Reservation Applied to DP" value={money(unitData.soaReservationDpCredit)} /> : null}
+        {unitData.hasClientProfile && String(unitData.modeOfPayment || '').toLowerCase() !== 'cash' ? <DetailBox label="Remaining DP Payable" value={money(unitData.soaRemainingDpPayable)} highlight /> : null}
+        {unitData.hasClientProfile && String(unitData.modeOfPayment || '').toLowerCase() !== 'cash' ? <DetailBox label={`DP per Term (${Number(unitData.soaDownpaymentTerms || 0)})`} value={money(unitData.soaDpAmountPerTerm)} /> : null}
         <DetailBox label={unitData.hasClientProfile ? "Contract Net Selling Price" : "Installment Net Selling Price"} value={unitData.net_selling_price} />
         <DetailBox label={unitData.hasClientProfile ? "Contract LMF Amount" : "Installment LMF Amount"} value={unitData.lmf_amount} />
+        {unitData.hasClientProfile && Number(unitData.soaLmfWaivedAmount || 0) > 0 ? <DetailBox label="LMF Status" value={`Waived (${money(unitData.soaLmfWaivedAmount)})`} highlight /> : null}
         <DetailBox label={unitData.hasClientProfile ? "Contract TCP" : "Installment TCP"} value={unitData.tcp} highlight />
         <DetailBox
           label="Reservation Fee"
@@ -497,3 +512,6 @@ const UnitStatus = ({
 }
 
 export default UnitStatus
+
+
+
