@@ -307,17 +307,36 @@ const buildEarnedDiscountTrendRows = (paymentRows = [], dateRange = {}) => {
     const listingId = Number(row.lot_project_listing_id || 0);
     if (!listingId) continue;
 
-    const downpaymentTarget = toNumber(row.lot_project_listing_tcp)
-      * (toNumber(row.soa_downpayment_percentage) / 100);
+    const effectiveTcp = toNumber(row.lot_project_listing_tcp);
+    const legalMiscFeeMode = String(row.soa_legal_misc_fee_mode || 'include_in_monthly');
+    const legalMiscFeeAmount = toNumber(
+      row.soa_selected_lmf_amount
+      ?? row.soa_legal_misc_fee_amount
+      ?? row.lot_project_listing_lmf_amount
+    );
+    const principalTcp = legalMiscFeeMode === 'separate_soa_row'
+      ? Math.max(effectiveTcp - legalMiscFeeAmount, 0)
+      : effectiveTcp;
+    const downpaymentTarget = roundMoney(
+      principalTcp * (toNumber(row.soa_downpayment_percentage) / 100)
+    );
+    const totalDiscount = roundMoney(
+      downpaymentTarget * (toNumber(row.soa_dp_discount_percentage) / 100)
+    );
+    const discountedDownpaymentTarget = Math.max(
+      roundMoney(downpaymentTarget - totalDiscount),
+      0
+    );
     const reservationCredit = Number(row.soa_reservation_fee_applied_to_downpayment || 0) === 1
       ? Math.min(
           toNumber(row.soa_reservation_fee ?? row.lot_project_listing_reservation_fee),
-          downpaymentTarget
+          discountedDownpaymentTarget
         )
       : 0;
-    const grossDownpayment = Math.max(downpaymentTarget - reservationCredit, 0);
-    const totalDiscount = roundMoney(grossDownpayment * (toNumber(row.soa_dp_discount_percentage) / 100));
-    const netDownpayment = Math.max(roundMoney(grossDownpayment - totalDiscount), 0);
+    const netDownpayment = Math.max(
+      roundMoney(discountedDownpaymentTarget - reservationCredit),
+      0
+    );
     const previousPaid = toNumber(paidByListing.get(listingId));
     const nextPaid = previousPaid + toNumber(row.lot_project_payment_amount);
     paidByListing.set(listingId, nextPaid);
@@ -449,6 +468,16 @@ export const getLotProjectDashboard = async (req, res) => {
     const effectiveTcpExpr = hasSelectedContractTcp
       ? 'COALESCE(cp.soa_selected_tcp, l.lot_project_listing_tcp)'
       : 'l.lot_project_listing_tcp';
+    const effectiveLmfExpr = hasClientProfiles
+      ? 'COALESCE(cp.soa_selected_lmf_amount, cp.soa_legal_misc_fee_amount, l.lot_project_listing_lmf_amount, 0)'
+      : 'COALESCE(l.lot_project_listing_lmf_amount, 0)';
+    const principalTcpExpr = hasClientProfiles
+      ? `CASE
+          WHEN COALESCE(cp.soa_legal_misc_fee_mode, 'include_in_monthly') = 'separate_soa_row'
+            THEN GREATEST(ROUND((${effectiveTcpExpr}) - (${effectiveLmfExpr}), 2), 0)
+          ELSE (${effectiveTcpExpr})
+        END`
+      : effectiveTcpExpr;
 
     const paymentSummarySelect = hasPayments
       ? `COALESCE((
@@ -472,20 +501,23 @@ export const getLotProjectDashboard = async (req, res) => {
       : '0';
 
     const downpaymentTargetExpr = hasClientProfiles
-      ? `((${effectiveTcpExpr}) * (COALESCE(cp.soa_downpayment_percentage, 0) / 100))`
+      ? `ROUND((${principalTcpExpr}) * (COALESCE(cp.soa_downpayment_percentage, 0) / 100), 2)`
       : '0';
+    const totalDiscountExpr = hasClientProfiles
+      ? `ROUND((${downpaymentTargetExpr}) * (COALESCE(cp.soa_dp_discount_percentage, 0) / 100), 2)`
+      : '0';
+    const discountedDownpaymentTargetExpr = `GREATEST(ROUND((${downpaymentTargetExpr}) - (${totalDiscountExpr}), 2), 0)`;
     const reservationFeeDownpaymentCreditExpr = hasClientProfiles
       ? `CASE
           WHEN COALESCE(cp.soa_reservation_fee_applied_to_downpayment, 0) = 1
-            THEN LEAST(COALESCE(cp.soa_reservation_fee, l.lot_project_listing_reservation_fee, 0), (${downpaymentTargetExpr}))
+            THEN LEAST(
+              COALESCE(cp.soa_reservation_fee, l.lot_project_listing_reservation_fee, 0),
+              (${discountedDownpaymentTargetExpr})
+            )
           ELSE 0
         END`
       : '0';
-    const downpaymentGrossExpr = `GREATEST(ROUND((${downpaymentTargetExpr}) - (${reservationFeeDownpaymentCreditExpr}), 2), 0)`;
-    const totalDiscountExpr = hasClientProfiles
-      ? `ROUND((${downpaymentGrossExpr}) * (COALESCE(cp.soa_dp_discount_percentage, 0) / 100), 2)`
-      : '0';
-    const netDownpaymentExpr = `GREATEST(ROUND((${downpaymentGrossExpr}) - (${totalDiscountExpr}), 2), 0)`;
+    const netDownpaymentExpr = `GREATEST(ROUND((${discountedDownpaymentTargetExpr}) - (${reservationFeeDownpaymentCreditExpr}), 2), 0)`;
     const earnedDiscountExpr = hasClientProfiles
       ? `CASE
           WHEN (${totalDiscountExpr}) <= 0 THEN 0
@@ -828,7 +860,11 @@ export const getLotProjectDashboard = async (req, res) => {
               cp.soa_reservation_fee,
               cp.soa_reservation_fee_applied_to_downpayment,
               cp.soa_downpayment_percentage,
-              cp.soa_dp_discount_percentage
+              cp.soa_dp_discount_percentage,
+              cp.soa_legal_misc_fee_mode,
+              cp.soa_selected_lmf_amount,
+              cp.soa_legal_misc_fee_amount,
+              l.lot_project_listing_lmf_amount
             FROM lot_project_payments p
             INNER JOIN lot_project_listings l
               ON l.lot_project_listing_id = p.lot_project_listing_id
@@ -1478,4 +1514,3 @@ export const getLotProjectPriceList = async (req, res) => {
     connection.release();
   }
 };
-

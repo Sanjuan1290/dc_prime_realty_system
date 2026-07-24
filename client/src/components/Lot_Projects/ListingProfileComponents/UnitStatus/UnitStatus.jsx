@@ -126,7 +126,35 @@ const StatusPill = ({ status }) => (
   </span>
 )
 
-const SectionBlock = ({ title, description, icon: Icon, action = null, children }) => (
+const PricingColumn = ({ title, description, icon: Icon, tone = 'blue', children }) => {
+  const theme = tone === 'emerald'
+    ? { border: 'border-emerald-200', header: 'bg-emerald-50', icon: 'bg-white text-emerald-700', title: 'text-emerald-950' }
+    : { border: 'border-blue-200', header: 'bg-blue-50', icon: 'bg-white text-blue-700', title: 'text-blue-950' }
+
+  return (
+    <div className={`overflow-hidden rounded-2xl border bg-white ${theme.border}`}>
+      <div className={`flex items-start gap-3 border-b p-4 ${theme.border} ${theme.header}`}>
+        <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${theme.icon}`}>
+          <Icon className="h-4 w-4" />
+        </span>
+        <div>
+          <h3 className={`text-base font-black ${theme.title}`}>{title}</h3>
+          <p className="mt-0.5 text-xs font-semibold text-slate-500">{description}</p>
+        </div>
+      </div>
+      <div className="grid gap-3 p-4 sm:grid-cols-2">{children}</div>
+    </div>
+  )
+}
+
+const SectionBlock = ({
+  title,
+  description,
+  icon: Icon,
+  action = null,
+  contentClassName = 'grid gap-3 p-5 sm:grid-cols-2 xl:grid-cols-4',
+  children,
+}) => (
   <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
     <div className="flex flex-col gap-3 border-b border-slate-200 p-5 sm:flex-row sm:items-start sm:justify-between">
       <div className="flex items-start gap-3">
@@ -143,7 +171,7 @@ const SectionBlock = ({ title, description, icon: Icon, action = null, children 
       {action ? <div className="shrink-0">{action}</div> : null}
     </div>
 
-    <div className="grid gap-3 p-5 sm:grid-cols-2 xl:grid-cols-4">{children}</div>
+    <div className={contentClassName}>{children}</div>
   </section>
 )
 
@@ -346,32 +374,81 @@ const UnitStatus = ({
 
       <SectionBlock
         title="Lot Pricing"
-        description="Installment and cash pricing, lot area, LMF, selected contract price, reservation fee, and interest rate."
+        description="Compare the installment and cash computations side by side."
         icon={FiDollarSign}
+        contentClassName="space-y-4 p-5"
       >
-        <DetailBox label="Lot Area SQM" value={unitData.lot_area_sqm} />
-        <DetailBox label="Installment Price / SQM" value={money(unitData.installmentPricePerSqm ?? unitData.pricePerSqm)} />
-        <DetailBox label="Cash Price / SQM" value={money(unitData.cashPricePerSqm ?? unitData.pricePerSqm)} />
-        <DetailBox label="Installment TCP" value={money(unitData.installmentTcp ?? unitData.tcpAmount)} />
-        <DetailBox label="Cash TCP" value={money(unitData.cashTcp ?? unitData.tcpAmount)} />
-        <DetailBox label="LMF Rate" value={unitData.lmf_rate} />
-        {unitData.hasClientProfile ? <DetailBox label="Selected Pricing" value={String(unitData.selectedPricingMode || unitData.modeOfPayment || 'installment').toUpperCase()} highlight /> : null}
-        {unitData.hasClientProfile ? <DetailBox label="Sale Discount" value={`${Number(unitData.saleDiscountPercentage || 0)}% (${money(unitData.saleDiscountAmount)})`} /> : null}
-        {unitData.hasClientProfile && String(unitData.modeOfPayment || '').toLowerCase() !== 'cash' ? <DetailBox label={`DP Target (${Number(unitData.soaDownpaymentPercentage || 0)}%)`} value={money(unitData.soaDpTarget)} /> : null}
-        {unitData.hasClientProfile && String(unitData.modeOfPayment || '').toLowerCase() !== 'cash' ? <DetailBox label={`DP Discount (${Number(unitData.soaDpDiscountPercentage || 0)}%)`} value={money(unitData.soaDpDiscountAmount)} /> : null}
-        {unitData.hasClientProfile && String(unitData.modeOfPayment || '').toLowerCase() !== 'cash' ? <DetailBox label="DP After Discount" value={money(unitData.soaDpAfterDiscount)} /> : null}
-        {unitData.hasClientProfile && String(unitData.modeOfPayment || '').toLowerCase() !== 'cash' ? <DetailBox label="Reservation Applied to DP" value={money(unitData.soaReservationDpCredit)} /> : null}
-        {unitData.hasClientProfile && String(unitData.modeOfPayment || '').toLowerCase() !== 'cash' ? <DetailBox label="Remaining DP Payable" value={money(unitData.soaRemainingDpPayable)} highlight /> : null}
-        {unitData.hasClientProfile && String(unitData.modeOfPayment || '').toLowerCase() !== 'cash' ? <DetailBox label={`DP per Term (${Number(unitData.soaDownpaymentTerms || 0)})`} value={money(unitData.soaDpAmountPerTerm)} /> : null}
-        <DetailBox label={unitData.hasClientProfile ? "Contract Net Selling Price" : "Installment Net Selling Price"} value={unitData.net_selling_price} />
-        <DetailBox label={unitData.hasClientProfile ? "Contract LMF Amount" : "Installment LMF Amount"} value={unitData.lmf_amount} />
-        {unitData.hasClientProfile && Number(unitData.soaLmfWaivedAmount || 0) > 0 ? <DetailBox label="LMF Status" value={`Waived (${money(unitData.soaLmfWaivedAmount)})`} highlight /> : null}
-        <DetailBox label={unitData.hasClientProfile ? "Contract TCP" : "Installment TCP"} value={unitData.tcp} highlight />
-        <DetailBox
-          label="Reservation Fee"
-          value={typeof unitData.reservationFee === 'number' ? `₱${unitData.reservationFee.toLocaleString('en-PH')}.00` : unitData.reservationFee || '₱0.00'}
-        />
-        <DetailBox label="Annual Interest Rate" value={unitData.interestRate || `${unitData.annualInterestRate || 0}%`} />
+        <div className="grid gap-3 sm:grid-cols-3">
+          <DetailBox label="Lot Area SQM" value={unitData.lot_area_sqm} />
+          <DetailBox label="LMF Rate" value={unitData.lmf_rate} />
+          <DetailBox
+            label="Reservation Fee"
+            value={typeof unitData.reservationFee === 'number' ? `₱${unitData.reservationFee.toLocaleString('en-PH')}.00` : unitData.reservationFee || '₱0.00'}
+          />
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <PricingColumn
+            title="Installment Pricing"
+            description="Price, LMF, TCP, and interest for installment payment."
+            icon={FiCreditCard}
+          >
+            <DetailBox label="Price / SQM" value={money(unitData.installmentPricePerSqm ?? unitData.pricePerSqm)} />
+            <DetailBox label="Net Selling Price" value={money(unitData.installmentNetSellingPrice ?? unitData.netSellingPrice)} />
+            <DetailBox label="LMF Amount" value={money(unitData.installmentLmfAmount ?? unitData.lmfAmount)} />
+            <DetailBox label="TCP" value={money(unitData.installmentTcp ?? unitData.tcpAmount)} highlight />
+            <DetailBox label="Annual Interest Rate" value={unitData.interestRate || `${unitData.annualInterestRate || 0}%`} long />
+          </PricingColumn>
+
+          <PricingColumn
+            title="Cash Pricing"
+            description="Price, LMF, and TCP for full cash payment."
+            icon={FiDollarSign}
+            tone="emerald"
+          >
+            <DetailBox label="Price / SQM" value={money(unitData.cashPricePerSqm ?? unitData.pricePerSqm)} />
+            <DetailBox label="Net Selling Price" value={money(unitData.cashNetSellingPrice ?? unitData.netSellingPrice)} />
+            <DetailBox label="LMF Amount" value={money(unitData.cashLmfAmount ?? unitData.lmfAmount)} />
+            <DetailBox label="TCP" value={money(unitData.cashTcp ?? unitData.tcpAmount)} highlight />
+            <DetailBox label="Interest" value="Not applicable" long />
+          </PricingColumn>
+        </div>
+
+        {unitData.hasClientProfile ? (
+          <div className="rounded-2xl border border-violet-200 bg-violet-50/40 p-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="text-base font-black text-violet-950">Selected Contract Computation</h3>
+                <p className="mt-0.5 text-xs font-semibold text-slate-500">Saved pricing and payment terms for this buyer account.</p>
+              </div>
+              <span className="inline-flex w-fit rounded-full border border-violet-200 bg-white px-3 py-1 text-xs font-black text-violet-700">
+                {String(unitData.selectedPricingMode || unitData.modeOfPayment || 'installment').toUpperCase()}
+              </span>
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <DetailBox label="Sale Discount" value={`${Number(unitData.saleDiscountPercentage || 0)}% (${money(unitData.saleDiscountAmount)})`} />
+              <DetailBox label="Contract Net Selling Price" value={unitData.net_selling_price} />
+              <DetailBox label="Contract LMF Amount" value={unitData.lmf_amount} />
+              <DetailBox label="Contract TCP" value={unitData.tcp} highlight />
+              {Number(unitData.soaLmfWaivedAmount || 0) > 0 ? <DetailBox label="LMF Status" value={`Waived (${money(unitData.soaLmfWaivedAmount)})`} highlight /> : null}
+            </div>
+
+            {String(unitData.modeOfPayment || '').toLowerCase() !== 'cash' ? (
+              <div className="mt-4 border-t border-violet-200 pt-4">
+                <h4 className="text-sm font-black text-violet-950">Downpayment Computation</h4>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  <DetailBox label={`DP Target (${Number(unitData.soaDownpaymentPercentage || 0)}%)`} value={money(unitData.soaDpTarget)} />
+                  <DetailBox label={`DP Discount (${Number(unitData.soaDpDiscountPercentage || 0)}%)`} value={money(unitData.soaDpDiscountAmount)} />
+                  <DetailBox label="DP After Discount" value={money(unitData.soaDpAfterDiscount)} />
+                  <DetailBox label="Reservation Applied to DP" value={money(unitData.soaReservationDpCredit)} />
+                  <DetailBox label="Remaining DP Payable" value={money(unitData.soaRemainingDpPayable)} highlight />
+                  <DetailBox label={`DP per Term (${Number(unitData.soaDownpaymentTerms || 0)})`} value={money(unitData.soaDpAmountPerTerm)} />
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </SectionBlock>
 
       <SectionBlock title="Buyer Information" description="Buyer profile and assigned account details." icon={FiUser}>
@@ -512,6 +589,3 @@ const UnitStatus = ({
 }
 
 export default UnitStatus
-
-
-

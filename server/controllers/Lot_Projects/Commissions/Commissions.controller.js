@@ -95,38 +95,55 @@ const scheduleSummaryJoin = `
 `;
 
 const effectiveTcpSql = `COALESCE(cp.soa_selected_tcp, l.lot_project_listing_tcp)`;
+const effectiveLmfAmountSql = `COALESCE(cp.soa_selected_lmf_amount, cp.soa_legal_misc_fee_amount, l.lot_project_listing_lmf_amount, 0)`;
+const principalTcpSql = `
+  CASE
+    WHEN COALESCE(cp.soa_legal_misc_fee_mode, 'include_in_monthly') = 'separate_soa_row'
+      THEN GREATEST(ROUND((${effectiveTcpSql}) - (${effectiveLmfAmountSql}), 2), 0)
+    ELSE (${effectiveTcpSql})
+  END
+`;
 
+// The DP discount is based on the full DP target before the reservation credit.
+// This mirrors the SOA calculation used by getComputedSoaTerms().
 const downpaymentTargetSql = `
-  ROUND((${effectiveTcpSql}) * (COALESCE(cp.soa_downpayment_percentage, 30) / 100), 2)
+  ROUND((${principalTcpSql}) * (COALESCE(cp.soa_downpayment_percentage, 30) / 100), 2)
+`;
+
+const downpaymentDiscountTotalSql = `
+  ROUND((${downpaymentTargetSql}) * (COALESCE(cp.soa_dp_discount_percentage, 0) / 100), 2)
+`;
+
+const discountedDownpaymentTargetSql = `
+  GREATEST(ROUND((${downpaymentTargetSql}) - (${downpaymentDiscountTotalSql}), 2), 0)
 `;
 
 const reservationFeeDownpaymentCreditSql = `
   CASE
     WHEN COALESCE(cp.soa_reservation_fee_applied_to_downpayment, 0) = 1
-      THEN LEAST(COALESCE(cp.soa_reservation_fee, l.lot_project_listing_reservation_fee, 0), (${downpaymentTargetSql}))
+      THEN LEAST(
+        COALESCE(cp.soa_reservation_fee, l.lot_project_listing_reservation_fee, 0),
+        (${discountedDownpaymentTargetSql})
+      )
     ELSE 0
   END
 `;
 
-const downpaymentGrossSql = `
-  GREATEST(ROUND((${downpaymentTargetSql}) - (${reservationFeeDownpaymentCreditSql}), 2), 0)
-`;
-
-const downpaymentDiscountTotalSql = `
-  ROUND((${downpaymentGrossSql}) * (COALESCE(cp.soa_dp_discount_percentage, 0) / 100), 2)
-`;
-
-const downpaymentNetSql = `
-  GREATEST((${downpaymentGrossSql}) - (${downpaymentDiscountTotalSql}), 0)
+const remainingDownpaymentCashSql = `
+  GREATEST(ROUND((${discountedDownpaymentTargetSql}) - (${reservationFeeDownpaymentCreditSql}), 2), 0)
 `;
 
 const earnedDownpaymentDiscountSql = `
   CASE
     WHEN (${downpaymentDiscountTotalSql}) <= 0 THEN 0
-    WHEN (${downpaymentNetSql}) <= 0 THEN (${downpaymentDiscountTotalSql})
+    WHEN (${remainingDownpaymentCashSql}) <= 0 THEN (${downpaymentDiscountTotalSql})
     ELSE LEAST(
       (${downpaymentDiscountTotalSql}),
-      ROUND((${downpaymentDiscountTotalSql}) * (COALESCE(payment_summary.downpayment_paid, 0) / NULLIF((${downpaymentNetSql}), 0)), 2)
+      ROUND(
+        (${downpaymentDiscountTotalSql})
+        * (COALESCE(payment_summary.downpayment_paid, 0) / NULLIF((${remainingDownpaymentCashSql}), 0)),
+        2
+      )
     )
   END
 `;
@@ -136,13 +153,17 @@ const paidValueWithDiscountSql = `
 `;
 
 const actualRemainingBalanceSql = `
-  GREATEST(ROUND((${effectiveTcpSql}) - (${paidValueWithDiscountSql}), 2), 0)
+  CASE
+    WHEN COALESCE(l.lot_project_listing_sold_substatus, '') = 'fully_paid' THEN 0
+    ELSE GREATEST(ROUND((${effectiveTcpSql}) - (${paidValueWithDiscountSql}), 2), 0)
+  END
 `;
 
 const unpaidScheduledDueSql = actualRemainingBalanceSql;
 
 const computedPaymentPercentSql = `
   CASE
+    WHEN COALESCE(l.lot_project_listing_sold_substatus, '') = 'fully_paid' THEN 100
     WHEN (${effectiveTcpSql}) <= 0 THEN 0
     ELSE LEAST(100, ROUND(((${paidValueWithDiscountSql}) / NULLIF((${effectiveTcpSql}), 0)) * 100, 2))
   END
@@ -406,9 +427,27 @@ const getProjectReleaseSettings = async (connection, lotProjectId) => {
 };
 
 const syncReleaseStatuses = async (connection, commissionRows = []) => {
-  if (!commissionRows.length || !(await tableExists(connection, 'lot_project_commission_releases'))) return;
+  if (!commissionRows.length) return;
+
+  const hasReleaseTable = await tableExists(connection, 'lot_project_commission_releases');
 
   for (const commission of commissionRows) {
+    const paymentPercent = getPaymentPercent(commission);
+
+    // Keep the stored percentage aligned with the live contract calculation so
+    // older fallbacks, account history, and later actions do not retain stale data.
+    await connection.query(
+      `
+        UPDATE lot_project_commissions
+        SET payment_percent = ?
+        WHERE lot_project_commission_id = ?
+          AND ABS(COALESCE(payment_percent, 0) - ?) > 0.004
+      `,
+      [paymentPercent, commission.lot_project_commission_id, paymentPercent]
+    );
+
+    if (!hasReleaseTable) continue;
+
     await connection.query(
       `
         UPDATE lot_project_commission_releases
@@ -423,7 +462,7 @@ const syncReleaseStatuses = async (connection, commissionRows = []) => {
       `,
       [
         isRetentionReady(commission) ? 1 : 0,
-        getPaymentPercent(commission),
+        paymentPercent,
         commission.lot_project_commission_id,
       ]
     );
@@ -1066,4 +1105,3 @@ export const updateLotProjectCommission = async (req, res) => {
     connection.release();
   }
 };
-

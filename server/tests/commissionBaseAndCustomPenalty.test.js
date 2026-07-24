@@ -73,3 +73,37 @@ test('reservation and SOA editing support a custom daily penalty rate from 0 to 
   assert.doesNotMatch(reserveController, /allowedDailyPenaltyRates/);
   assert.doesNotMatch(soaController, /allowedDailyPenaltyRates/);
 });
+
+test('commission payment progress credits the full DP discount and reports a fully paid account as 100 percent', () => {
+  const commissionController = read('server/controllers/Lot_Projects/Commissions/Commissions.controller.js');
+  const dashboardController = read('server/controllers/Lot_Projects/Dashboard/Dashboard.controller.js');
+
+  // LA-1804: ₱825,000 TCP includes a separate ₱75,000 LMF.
+  // The 15% discount applies to the full 20% DP target before the ₱50,000 reservation credit.
+  const tcp = 825000;
+  const principalTcp = tcp - 75000;
+  const downpaymentTarget = principalTcp * 0.20;
+  const discount = downpaymentTarget * 0.15;
+  const discountedTarget = downpaymentTarget - discount;
+  const remainingDpCash = discountedTarget - 50000;
+  const downpaymentPaid = 77500;
+  const totalPaid = 802500;
+  const earnedDiscount = Math.min(discount, discount * (downpaymentPaid / remainingDpCash));
+  const paymentPercent = Math.min(100, Math.round(((totalPaid + earnedDiscount) / tcp) * 10000) / 100);
+
+  assert.equal(principalTcp, 750000);
+  assert.equal(downpaymentTarget, 150000);
+  assert.equal(discount, 22500);
+  assert.equal(remainingDpCash, 77500);
+  assert.equal(earnedDiscount, 22500);
+  assert.equal(paymentPercent, 100);
+
+  assert.match(commissionController, /const principalTcpSql = `[\s\S]*separate_soa_row[\s\S]*effectiveLmfAmountSql/);
+  assert.match(commissionController, /const downpaymentDiscountTotalSql = `[\s\S]*downpaymentTargetSql[\s\S]*soa_dp_discount_percentage/);
+  assert.match(commissionController, /const remainingDownpaymentCashSql = `[\s\S]*discountedDownpaymentTargetSql[\s\S]*reservationFeeDownpaymentCreditSql/);
+  assert.match(commissionController, /lot_project_listing_sold_substatus[\s\S]*fully_paid[\s\S]*THEN 100/);
+  assert.doesNotMatch(commissionController, /downpaymentGrossSql/);
+
+  assert.match(dashboardController, /const principalTcpExpr = hasClientProfiles[\s\S]*separate_soa_row/);
+  assert.match(dashboardController, /const totalDiscountExpr = hasClientProfiles[\s\S]*downpaymentTargetExpr[\s\S]*soa_dp_discount_percentage/);
+});

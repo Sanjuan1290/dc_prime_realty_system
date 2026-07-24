@@ -49,6 +49,19 @@ test('Lot Pricing shows the saved DP discount breakdown', () => {
   assert.match(unitStatus, /DP per Term/);
 });
 
+test('Lot Pricing separates installment and cash computations into two columns', () => {
+  const unitStatus = read('client/src/components/Lot_Projects/ListingProfileComponents/UnitStatus/UnitStatus.jsx');
+
+  assert.match(unitStatus, /Installment Pricing/);
+  assert.match(unitStatus, /Cash Pricing/);
+  assert.match(unitStatus, /grid gap-4 lg:grid-cols-2/);
+  assert.match(unitStatus, /installmentNetSellingPrice/);
+  assert.match(unitStatus, /cashNetSellingPrice/);
+  assert.match(unitStatus, /installmentLmfAmount/);
+  assert.match(unitStatus, /cashLmfAmount/);
+  assert.match(unitStatus, /Selected Contract Computation/);
+});
+
 
 test('paid separate LMF is never treated as lot principal and old rows self-repair', () => {
   const shared = read('server/controllers/Lot_Projects/_shared/lotProject.shared.js');
