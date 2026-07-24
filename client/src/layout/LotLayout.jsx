@@ -22,6 +22,7 @@ import {
 import StatusAlert from '../components/Shared/StatusAlert'
 import useCurrentUser from '../utils/useCurrentUser'
 import { useFetch } from '../utils/useFetch'
+import { isFullAccessAdministrator } from '../config/permissions'
 
 const getPageTitle = (pathname, projectName) => {
   if (pathname.includes('/listings/')) return 'Listing Profile'
@@ -91,7 +92,7 @@ const LotLayout = () => {
     return <Navigate to="/change-password" replace />
   }
 
-  if (!['super_admin', 'admin'].includes(user?.role)) {
+  if (!isFullAccessAdministrator(user)) {
     return <Navigate to="/" replace />
   }
 
@@ -253,3 +254,4 @@ const LotLayout = () => {
 }
 
 export default LotLayout
+

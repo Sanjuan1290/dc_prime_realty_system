@@ -8,6 +8,7 @@ import CashAdvanceModal from '../../components/System/employeeComponents/CashAdv
 import CashAdvanceDetailsModal from '../../components/System/employeeComponents/CashAdvanceDetailsModal'
 import useCurrentUser from '../../utils/useCurrentUser'
 import { useFetch } from '../../utils/useFetch'
+import { isFullAccessAdministrator } from '../../config/permissions'
 
 const money = (value) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value || 0))
 const statusTone = { pending: 'bg-amber-50 text-amber-700', approved: 'bg-blue-50 text-blue-700', active: 'bg-blue-50 text-blue-700', paid: 'bg-emerald-50 text-emerald-700', rejected: 'bg-red-50 text-red-700', cancelled: 'bg-slate-100 text-slate-600' }
@@ -15,7 +16,7 @@ const StatCard = ({ label, value, helper, icon: Icon }) => <div className="round
 
 const EmployeeCashAdvances = () => {
   const { data: currentUserData } = useCurrentUser()
-  const canManage = ['super_admin', 'admin'].includes(currentUserData?.user?.role)
+  const canManage = isFullAccessAdministrator(currentUserData?.user)
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('all')
   const [page, setPage] = useState(1)
@@ -77,3 +78,4 @@ const EmployeeCashAdvances = () => {
 }
 
 export default EmployeeCashAdvances
+

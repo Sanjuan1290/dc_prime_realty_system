@@ -563,16 +563,16 @@ const EditUserModal = ({
                         <option key={value} value={value}>{label}</option>
                       ))}
                     </select>
-                    <p className="text-xs font-semibold text-slate-500">Admin 1 has full user-management access. Admin 2 and Admin 3 remain unavailable.</p>
+                    <p className="text-xs font-semibold text-slate-500">Admin 1 can manage ordinary user accounts. Super Admin accounts remain owner-only; Admin 2 and Admin 3 remain unavailable.</p>
                   </label>
 
                   {form.role === "admin" ? (
                     <label className="flex flex-col gap-2">
                       <p className="text-sm font-bold text-slate-700">Admin Type</p>
                       <select value={form.admin_type || "admin_1"} onChange={(event) => updateForm("admin_type", event.target.value)} className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50">
-                        {ADMIN_TYPES.map((type) => <option key={type.value} value={type.value} disabled={type.disabled}>{type.label}{type.disabled ? " — Coming later" : " — Full access"}</option>)}
+                        {ADMIN_TYPES.map((type) => <option key={type.value} value={type.value} disabled={type.disabled}>{type.label}{type.disabled ? " — Coming later" : " — Operational access"}</option>)}
                       </select>
-                      <p className="text-xs font-semibold text-slate-500">Admin 1 has the same permissions as Super Admin.</p>
+                      <p className="text-xs font-semibold text-slate-500">Admin 1 has full operational access with owner-only safeguards and a 12-month dashboard limit.</p>
                     </label>
                   ) : null}
 
@@ -689,3 +689,4 @@ const EditUserModal = ({
 };
 
 export default EditUserModal;
+

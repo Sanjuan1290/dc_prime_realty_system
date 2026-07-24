@@ -71,7 +71,23 @@ const getInclusiveMonthSpan = (fromDate, toDate) =>
   + (toDate.getMonth() - fromDate.getMonth())
   + 1;
 
-export const resolveDashboardDateRange = (query = {}, role = '') => {
+const normalizeDashboardActor = (userOrRole = '', adminType = '') => {
+  if (userOrRole && typeof userOrRole === 'object') {
+    return {
+      role: String(userOrRole.role || ''),
+      adminType: String(userOrRole.admin_type || ''),
+    };
+  }
+  return { role: String(userOrRole || ''), adminType: String(adminType || '') };
+};
+
+const exceedsOneYear = (fromDate, toDate) => {
+  const maximumEnd = new Date(fromDate.getFullYear() + 1, fromDate.getMonth(), fromDate.getDate());
+  maximumEnd.setDate(maximumEnd.getDate() - 1);
+  return toDate > maximumEnd;
+};
+
+export const resolveDashboardDateRange = (query = {}, userOrRole = '', adminType = '') => {
   const today = new Date();
   const requestedPreset = String(query.range || query.dateRange || '3_months').toLowerCase();
   const allowedPresets = new Set([
@@ -111,9 +127,13 @@ export const resolveDashboardDateRange = (query = {}, role = '') => {
     toDate = endOfMonth(today);
   }
 
+  const actor = normalizeDashboardActor(userOrRole, adminType);
+  const isAdmin1 = actor.role === 'admin' && (!actor.adminType || actor.adminType === 'admin_1');
+  const isOverOneYear = exceedsOneYear(fromDate, toDate);
   const spanMonths = getInclusiveMonthSpan(fromDate, toDate);
-  if (String(role || '') === 'admin' && spanMonths > 12) {
-    const error = new Error('Admin dashboard reports are limited to 12 calendar months.');
+
+  if (isAdmin1 && isOverOneYear) {
+    const error = new Error('Admin 1 dashboard reports are limited to 12 months (1 year).');
     error.statusCode = 400;
     throw error;
   }
@@ -124,7 +144,7 @@ export const resolveDashboardDateRange = (query = {}, role = '') => {
     from: toDateOnly(fromDate),
     to: toDateOnly(toDate),
     spanMonths,
-    longRangeWarning: ['super_admin', 'admin'].includes(String(role || '')) && spanMonths > 12,
+    longRangeWarning: actor.role === 'super_admin' && isOverOneYear,
     groupBy: dayDiff > 45 ? 'month' : 'day',
   };
 };
@@ -340,7 +360,7 @@ export const getLotProjectDashboard = async (req, res) => {
 
     const projectPayload = await buildProjectPayload(project);
     const hasListings = await tableExists(connection, 'lot_project_listings');
-    const dateRange = resolveDashboardDateRange(req.query, req.authUser?.role);
+    const dateRange = resolveDashboardDateRange(req.query, req.authUser);
 
     const emptyStats = {
       totalUnits: 0,
@@ -1458,3 +1478,4 @@ export const getLotProjectPriceList = async (req, res) => {
     connection.release();
   }
 };
+

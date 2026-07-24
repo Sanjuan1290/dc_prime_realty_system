@@ -17,7 +17,7 @@ test('Admin uses the same SystemLayout and full navigation as Super Admin', () =
   assert.doesNotMatch(app, /<Route path="\/admin" element=\{<AdminLayout \/>\}/);
   assert.match(systemLayout, /isFullAccessAdministrator\(user\)/);
   assert.match(systemLayout, /Admin 1/);
-  assert.match(lotLayout, /\['super_admin', 'admin'\]\.includes\(user\?\.role\)/);
+  assert.match(lotLayout, /isFullAccessAdministrator\(user\)/);
 });
 
 test('Admin type selector enables Admin 1 and shows disabled future types', () => {
@@ -67,3 +67,4 @@ test('Penalty adjustment wording is understandable without technical correction 
   assert.doesNotMatch(modal, />Reset Correction</);
   assert.doesNotMatch(modal, />Waive Penalty</);
 });
+

@@ -21,8 +21,16 @@ export const requireRole = (...allowedRoles) => (req, res, next) => {
   return next();
 };
 
+export const requireExactRole = (...allowedRoles) => (req, res, next) => {
+  const role = req.authUser?.role;
+  if (!allowedRoles.includes(role)) {
+    return denied(res, 403, 'This owner-only action requires a Super Admin account.');
+  }
+  return next();
+};
+
 export const requirePermission = (permission) => (req, res, next) => {
-  if (!roleHasPermission(req.authUser?.role, permission)) {
+  if (!roleHasPermission(req.authUser, permission)) {
     return denied(res, 403, 'You do not have permission to perform this action.');
   }
   return next();
@@ -58,3 +66,4 @@ export const requireCurrentPassword = ({
 
   return next();
 };
+

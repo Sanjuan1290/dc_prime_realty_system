@@ -289,13 +289,128 @@ const ReservePaymentTermsModal = ({
 
       <SectionCard title="Payment Preview">
         <div className="mb-3 grid gap-3 md:grid-cols-2 lg:grid-cols-5">
-          <PreviewCard label="Base Selling Price" value={money(contractPricing?.baseSellingPrice)} />
-          <PreviewCard label={`Sale Discount (${Number(paymentForm.saleDiscountPercentage || 0)}%)`} value={money(contractPricing?.saleDiscountAmount)} tone="amber" />
-          <PreviewCard label="Net Selling Price" value={money(contractPricing?.netSellingPrice)} />
-          <PreviewCard label={`LMF (${Number(contractPricing?.legalMiscRate || 0).toFixed(2)}%)`} value={money(contractPricing?.lmfAmount)} />
-          <PreviewCard label="Final TCP" value={money(tcp)} tone="blue" />
+          <PreviewCard
+            label="Base Selling Price"
+            value={money(contractPricing?.baseSellingPrice)}
+          />
+
+          <PreviewCard
+            label={`Sale Discount (${Number(
+              paymentForm.saleDiscountPercentage || 0
+            )}%)`}
+            value={money(contractPricing?.saleDiscountAmount)}
+            tone="amber"
+          />
+
+          <PreviewCard
+            label="Net Selling Price"
+            value={money(contractPricing?.netSellingPrice)}
+          />
+
+          <PreviewCard
+            label={`LMF (${Number(
+              contractPricing?.legalMiscRate || 0
+            ).toFixed(2)}%)`}
+            value={money(contractPricing?.lmfAmount)}
+          />
+
+          <PreviewCard
+            label="Final TCP"
+            value={money(tcp)}
+            tone="blue"
+          />
         </div>
-        {isCash ? <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6"><PreviewCard label="Reservation" value={money(paymentPreview.reservationFee)} /><PreviewCard label="LMF Treatment" value={lmfTreatment} /><PreviewCard label="Full Payment Balance" value={money(paymentPreview.fullPaymentAmount)} tone="blue" /><PreviewCard label="Full Payment Due" value={paymentForm.firstDueDate || '-'} tone="emerald" /><PreviewCard label="Interest" value="0%" tone="emerald" /></div> : <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-9"><PreviewCard label="Reservation" value={money(paymentPreview.reservationFee)} /><PreviewCard label="LMF Treatment" value={lmfTreatment} /><PreviewCard label="DP Target" value={money(paymentPreview.dpTarget)} /><PreviewCard label="Reservation Applied to DP" value={money(paymentPreview.reservationFeeDownpaymentCredit)} tone={paymentPreview.reservationFeeAppliedToDownpayment ? 'amber' : 'slate'} /><PreviewCard label={paymentPreview.reservationFeeAppliedToDownpayment ? 'DP Less Reservation' : 'DP Gross'} value={money(paymentPreview.dpGross)} /><PreviewCard label="Downpayment Discount" value={money(paymentPreview.dpDiscountAmount)} tone="amber" /><PreviewCard label="DP Net Payable" value={money(paymentPreview.dpNet)} /><PreviewCard label="Balance" value={money(paymentPreview.balance)} tone="blue" /><PreviewCard label="Monthly" value={money(paymentPreview.monthlyAmortization)} tone="emerald" /></div>}
+
+        {isCash ? (
+          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+            <PreviewCard
+              label="Reservation"
+              value={money(paymentPreview.reservationFee)}
+            />
+
+            <PreviewCard
+              label="LMF Treatment"
+              value={lmfTreatment}
+            />
+
+            <PreviewCard
+              label="Full Payment Balance"
+              value={money(paymentPreview.fullPaymentAmount)}
+              tone="blue"
+            />
+
+            <PreviewCard
+              label="Full Payment Due"
+              value={paymentForm.firstDueDate || "-"}
+              tone="emerald"
+            />
+
+            <PreviewCard
+              label="Interest"
+              value="0%"
+              tone="emerald"
+            />
+          </div>
+        ) : (
+          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-5">
+            <PreviewCard
+              label="Reservation"
+              value={money(paymentPreview.reservationFee)}
+            />
+
+            <PreviewCard
+              label="LMF Treatment"
+              value={lmfTreatment}
+            />
+
+            <PreviewCard
+              label="DP Target"
+              value={money(paymentPreview.dpTarget)}
+            />
+
+            <PreviewCard
+              label="Reservation Applied to DP"
+              value={money(paymentPreview.reservationFeeDownpaymentCredit)}
+              tone={
+                paymentPreview.reservationFeeAppliedToDownpayment
+                  ? "amber"
+                  : "slate"
+              }
+            />
+
+            <PreviewCard
+              label={
+                paymentPreview.reservationFeeAppliedToDownpayment
+                  ? "DP Less Reservation"
+                  : "DP Gross"
+              }
+              value={money(paymentPreview.dpGross)}
+            />
+
+            <PreviewCard
+              label="Downpayment Discount"
+              value={money(paymentPreview.dpDiscountAmount)}
+              tone="amber"
+            />
+
+            <PreviewCard
+              label="DP Net Payable"
+              value={money(paymentPreview.dpNet)}
+            />
+
+            <PreviewCard
+              label="Balance"
+              value={money(paymentPreview.balance)}
+              tone="blue"
+            />
+
+            <PreviewCard
+              label="Monthly"
+              value={money(paymentPreview.monthlyAmortization)}
+              tone="emerald"
+            />
+          </div>
+        )}
       </SectionCard>
     </div>
   )

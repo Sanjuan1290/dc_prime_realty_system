@@ -86,15 +86,17 @@ const ResetPasswordConfirmModal = ({ user, onClose, onConfirm, isSaving }) => {
 
 const Users = () => {
   const { data: currentUserData } = useCurrentUser();
-  const actorRole = currentUserData?.user?.role || "";
-  const canCreateUsers = hasPermission(actorRole, PERMISSIONS.SYSTEM_USERS_CREATE);
-  const canEditUsers = hasPermission(actorRole, PERMISSIONS.SYSTEM_USERS_EDIT);
-  const canResetPasswords = hasPermission(actorRole, PERMISSIONS.SYSTEM_USERS_RESET_PASSWORD);
-  const canChangeStatus = hasPermission(actorRole, PERMISSIONS.SYSTEM_USERS_CHANGE_STATUS);
-  const canManageSellerGroups = hasPermission(actorRole, PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE);
-  const createAllowedRoles = Object.keys(roleLabels);
-  const getEditAllowedRoles = () => Object.keys(roleLabels);
-  const canManageAccount = (user) => canManageUserRole(actorRole, user?.role);
+  const actorUser = currentUserData?.user || {};
+  const actorRole = actorUser.role || "";
+  const isSuperAdmin = actorRole === "super_admin";
+  const canCreateUsers = hasPermission(actorUser, PERMISSIONS.SYSTEM_USERS_CREATE);
+  const canEditUsers = hasPermission(actorUser, PERMISSIONS.SYSTEM_USERS_EDIT);
+  const canResetPasswords = hasPermission(actorUser, PERMISSIONS.SYSTEM_USERS_RESET_PASSWORD);
+  const canChangeStatus = hasPermission(actorUser, PERMISSIONS.SYSTEM_USERS_CHANGE_STATUS);
+  const canManageSellerGroups = hasPermission(actorUser, PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE);
+  const createAllowedRoles = Object.keys(roleLabels).filter((role) => isSuperAdmin || role !== "super_admin");
+  const getEditAllowedRoles = () => Object.keys(roleLabels).filter((role) => isSuperAdmin || role !== "super_admin");
+  const canManageAccount = (user) => canManageUserRole(actorUser, user?.role);
   const queryClient = useQueryClient();
   const [showEditUser, setShowEditUser] = useState(false);
   const [showCreateUser, setShowCreateUser] = useState(false);
@@ -227,7 +229,7 @@ const Users = () => {
         </div>
       </div>
 
-      {actorRole === "admin" ? <StatusAlert type="info" title="Admin 1 full access" message="This Admin 1 account has the same operational permissions and navigation as Super Admin." /> : null}
+      {actorRole === "admin" ? <StatusAlert type="info" title="Admin 1 operational access" message="Admin 1 can manage daily system operations. Super Admin accounts, permanent buyer-account deletion, and owner-only recovery actions remain protected. Dashboard reports are limited to 12 months." /> : null}
       {alert ? <StatusAlert type={alert.type} message={alert.message} onClose={alert.type === "loading" ? undefined : () => setAlert(null)} /> : null}
       {isLoading ? <StatusAlert type="loading" message="Loading users..." /> : null}
       {!isLoading && isFetching ? <StatusAlert type="info" message="Refreshing users..." /> : null}
@@ -398,3 +400,4 @@ const Users = () => {
 };
 
 export default Users;
+

@@ -85,7 +85,7 @@ const Pagination = ({ total, page, pageSize, onPageChange, onPageSizeChange }) =
 
 const Notifications = () => {
   const { data: currentUserData } = useCurrentUser()
-  const canManage = hasPermission(currentUserData?.user?.role, PERMISSIONS.SYSTEM_NOTIFICATIONS_MANAGE)
+  const canManage = hasPermission(currentUserData?.user, PERMISSIONS.SYSTEM_NOTIFICATIONS_MANAGE)
   const queryClient = useQueryClient()
   const [tab, setTab] = useState('payments')
   const [category, setCategory] = useState('all')
@@ -250,3 +250,4 @@ const Notifications = () => {
 }
 
 export default Notifications
+

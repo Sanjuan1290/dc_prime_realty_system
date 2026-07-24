@@ -8,6 +8,7 @@ import {
   getUserFullName,
 } from '../_shared/lotProject.shared.js';
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
+import { isFullAccessAdministrator } from '../../../config/permissions.js';
 
 const toNumber = (value) => Number(value || 0);
 const roundMoney = (value) => Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
@@ -759,7 +760,7 @@ export const updateLotProjectCommission = async (req, res) => {
       return res.status(401).json({ success: false, message: 'Please login before updating commission.' });
     }
 
-    if (!['super_admin', 'admin'].includes(currentUser.role)) {
+    if (!isFullAccessAdministrator(currentUser)) {
       return res.status(403).json({ success: false, message: 'Admin access is required to update commission.' });
     }
 
@@ -1065,3 +1066,4 @@ export const updateLotProjectCommission = async (req, res) => {
     connection.release();
   }
 };
+

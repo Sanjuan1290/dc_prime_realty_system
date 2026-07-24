@@ -12,10 +12,11 @@ import AddDocument from "../../components/System/documentComponents/AddDocument"
 import EditDocument from "../../components/System/documentComponents/EditDocument";
 import EditDocumentTemplate from "../../components/System/documentComponents/EditDocumentTemplate";
 import { useFetch } from "../../utils/useFetch";
+import { isFullAccessAdministrator } from "../../config/permissions";
 
 const Document = () => {
   const { data: currentUserData } = useCurrentUser();
-  const canManage = ["super_admin", "admin"].includes(currentUserData?.user?.role);
+  const canManage = isFullAccessAdministrator(currentUserData?.user);
   const [showAddTemplateModal, setShowAddTemplateModal] = useState(false);
   const [showAddDocumentModal, setShowAddDocumentModal] = useState(false);
   const [selectedDocument, setSelectedDocument] = useState(null);
@@ -125,3 +126,4 @@ const Document = () => {
 };
 
 export default Document;
+

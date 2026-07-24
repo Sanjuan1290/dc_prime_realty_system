@@ -5,9 +5,7 @@ import {
   getUserFullName,
 } from '../Lot_Projects/_shared/lotProject.shared.js';
 import { writeAuditLog } from './auditLogs.controller.js';
-
-const adminRoles = new Set(['super_admin', 'admin']);
-const settingsManagerRoles = new Set(['super_admin', 'admin']);
+import { isFullAccessAdministrator } from '../../config/permissions.js';
 
 const cleanText = (value, fallback = '') => String(value ?? fallback).trim();
 const nullableText = (value) => {
@@ -29,7 +27,7 @@ const requireAdmin = async (req) => {
     throw error;
   }
 
-  if (!adminRoles.has(user.role)) {
+  if (!isFullAccessAdministrator(user)) {
     const error = new Error('Admin access only.');
     error.statusCode = 403;
     throw error;
@@ -46,7 +44,7 @@ const requireSettingsManager = async (req) => {
     error.statusCode = 401;
     throw error;
   }
-  if (!settingsManagerRoles.has(user.role)) {
+  if (!isFullAccessAdministrator(user)) {
     const error = new Error('Only a full-access administrator can edit system settings.');
     error.statusCode = 403;
     throw error;
@@ -248,3 +246,4 @@ export const updateSystemSettings = async (req, res) => {
     connection.release();
   }
 };
+

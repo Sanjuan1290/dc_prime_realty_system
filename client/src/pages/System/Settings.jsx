@@ -8,6 +8,7 @@ import useCurrentUser from '../../utils/useCurrentUser'
 import SystemSettingsForm from '../../components/System/settingsComponents/SystemSettingsForm'
 import { formatDateTime } from '../../utils/formatDateTime'
 import { useFetch, useFetchPut } from '../../utils/useFetch'
+import { isFullAccessAdministrator } from '../../config/permissions'
 
 const defaultForm = {
   companyName: '',
@@ -41,7 +42,7 @@ const mapSettingsToForm = (settings = {}) => ({
 
 const Settings = () => {
   const { data: currentUserData } = useCurrentUser()
-  const canManage = ['super_admin', 'admin'].includes(currentUserData?.user?.role)
+  const canManage = isFullAccessAdministrator(currentUserData?.user)
   const queryClient = useQueryClient()
   const [form, setForm] = useState(defaultForm)
   const [alert, setAlert] = useState(null)
@@ -150,3 +151,4 @@ const Settings = () => {
 }
 
 export default Settings
+

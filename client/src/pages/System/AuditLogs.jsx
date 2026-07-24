@@ -17,6 +17,7 @@ import AuditLogFilters from '../../components/System/auditLogsComponents/AuditLo
 import AuditLogTable from '../../components/System/auditLogsComponents/AuditLogTable'
 import { useFetch, useFetchPost } from '../../utils/useFetch'
 import useCurrentUser from '../../utils/useCurrentUser'
+import { isFullAccessAdministrator } from '../../config/permissions'
 
 const StatCard = ({ label, value, helper, icon: Icon, tone = 'slate' }) => {
   const tones = {
@@ -85,7 +86,7 @@ const AuditLogs = () => {
   const [archiveRequest, setArchiveRequest] = useState(null)
   const [archiveError, setArchiveError] = useState('')
 
-  const isSuperAdmin = ['super_admin', 'admin'].includes(currentUserData?.user?.role)
+  const isSuperAdmin = isFullAccessAdministrator(currentUserData?.user)
 
   const queryString = useMemo(() => {
     const params = new URLSearchParams({ page: String(page), limit: String(limit) })
@@ -293,3 +294,4 @@ const AuditLogs = () => {
 }
 
 export default AuditLogs
+

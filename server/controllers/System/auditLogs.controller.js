@@ -7,8 +7,7 @@ import {
   getUserFullName,
 } from '../Lot_Projects/_shared/lotProject.shared.js';
 import { getRequestIpAddress, normalizeIpAddress } from '../../utils/requestIp.js';
-
-const adminRoles = new Set(['super_admin', 'admin']);
+import { isFullAccessAdministrator } from '../../config/permissions.js';
 const allowedActions = new Set([
   'create',
   'update',
@@ -122,7 +121,7 @@ const requireAdmin = async (req) => {
     throw error;
   }
 
-  if (!adminRoles.has(user.role)) {
+  if (!isFullAccessAdministrator(user)) {
     const error = new Error('Admin access only.');
     error.statusCode = 403;
     throw error;
@@ -139,7 +138,7 @@ const requireSuperAdmin = async (req) => {
     throw error;
   }
 
-  if (!['super_admin', 'admin'].includes(user.role)) {
+  if (!isFullAccessAdministrator(user)) {
     const error = new Error('Only a full-access administrator can archive audit logs.');
     error.statusCode = 403;
     throw error;
@@ -1139,3 +1138,4 @@ export const downloadAuditLogArchiveExport = async (req, res) => {
     connection.release();
   }
 };
+

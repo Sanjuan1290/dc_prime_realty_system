@@ -48,31 +48,75 @@ export const USER_ROLES = Object.freeze([
 ]);
 
 export const ADMIN_TYPES = Object.freeze([
-  { value: 'admin_1', label: 'Admin 1', description: 'Full system access, equivalent to Super Admin.' },
+  {
+    value: 'admin_1',
+    label: 'Admin 1',
+    description: 'Full operational access with owner-only safeguards and a 12-month dashboard limit.',
+  },
   { value: 'admin_2', label: 'Admin 2', description: 'Permission set will be configured later.', disabled: true },
   { value: 'admin_3', label: 'Admin 3', description: 'Permission set will be configured later.', disabled: true },
 ]);
 
-export const ADMIN_CREATABLE_USER_ROLES = USER_ROLES;
-
-// Kept for compatibility with older imports. Admin can manage every existing account.
-export const ADMIN_MANAGEABLE_USER_ROLES = USER_ROLES;
+export const ADMIN_CREATABLE_USER_ROLES = Object.freeze(USER_ROLES.filter((role) => role !== 'super_admin'));
+export const ADMIN_MANAGEABLE_USER_ROLES = ADMIN_CREATABLE_USER_ROLES;
 
 const allPermissions = new Set(Object.values(PERMISSIONS));
 const knownUserRoles = new Set(USER_ROLES);
-const adminPermissions = new Set(Object.values(PERMISSIONS));
 
-const rolePermissions = { super_admin: allPermissions, admin: adminPermissions };
+const normalizeActor = (userOrRole, adminType = '') => {
+  if (userOrRole && typeof userOrRole === 'object') {
+    return {
+      role: String(userOrRole.role || ''),
+      adminType: String(userOrRole.admin_type || ''),
+    };
+  }
 
-export const hasPermission = (role, permission) => Boolean(rolePermissions[role]?.has(permission));
-export const canManageUserRole = (actorRole, targetRole) => (
-  knownUserRoles.has(String(targetRole || ''))
-  && (actorRole === 'super_admin' || actorRole === 'admin')
-);
+  return {
+    role: String(userOrRole || ''),
+    adminType: String(adminType || ''),
+  };
+};
+
+export const isAdmin1 = (userOrRole, adminType = '') => {
+  const actor = normalizeActor(userOrRole, adminType);
+  return actor.role === 'admin' && (!actor.adminType || actor.adminType === 'admin_1');
+};
+
 export const isFullAccessAdministrator = (userOrRole, adminType = '') => {
-  const role = typeof userOrRole === 'object' ? userOrRole?.role : userOrRole;
-  const type = typeof userOrRole === 'object' ? userOrRole?.admin_type : adminType;
-  return role === 'super_admin' || (role === 'admin' && (!type || type === 'admin_1'));
+  const actor = normalizeActor(userOrRole, adminType);
+  return actor.role === 'super_admin' || isAdmin1(actor.role, actor.adminType);
+};
+
+export const hasPermission = (userOrRole, permission, adminType = '') => {
+  if (!permission) return false;
+  const actor = normalizeActor(userOrRole, adminType);
+  return (actor.role === 'super_admin' || isAdmin1(actor.role, actor.adminType))
+    && allPermissions.has(permission);
+};
+
+export const canManageUserRole = (userOrRole, targetRole, adminType = '') => {
+  const actor = normalizeActor(userOrRole, adminType);
+  const target = String(targetRole || '');
+  if (!knownUserRoles.has(target)) return false;
+  if (target === 'super_admin') return actor.role === 'super_admin';
+  return actor.role === 'super_admin' || isAdmin1(actor.role, actor.adminType);
+};
+
+export const canCreateUserRole = (userOrRole, requestedRole, adminType = '') => {
+  const actor = normalizeActor(userOrRole, adminType);
+  const requested = String(requestedRole || '');
+  if (!knownUserRoles.has(requested)) return false;
+  if (requested === 'super_admin') return actor.role === 'super_admin';
+  return actor.role === 'super_admin' || isAdmin1(actor.role, actor.adminType);
+};
+
+export const canChangeUserRole = (userOrRole, currentRole, requestedRole, adminType = '') => {
+  const actor = normalizeActor(userOrRole, adminType);
+  const current = String(currentRole || '');
+  const requested = String(requestedRole || '');
+  if (!knownUserRoles.has(current) || !knownUserRoles.has(requested)) return false;
+  if (current === 'super_admin' || requested === 'super_admin') return actor.role === 'super_admin';
+  return actor.role === 'super_admin' || isAdmin1(actor.role, actor.adminType);
 };
 
 export const getRoleHome = (role) => role === 'admin' ? '/admin/dashboard' : role === 'super_admin' ? '/super_admin' : '/';

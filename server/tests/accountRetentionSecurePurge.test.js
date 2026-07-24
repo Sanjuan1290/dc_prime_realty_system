@@ -19,7 +19,7 @@ test('secure purge requires super admin password and email-code routes', () => {
   const router = read('server/routers/System/projects.routers.js');
   const controller = read('server/controllers/Lot_Projects/Accounts/Accounts.controller.js');
   assert.match(router, /accounts\/:accountId\/purge-code/);
-  assert.match(router, /requireRole\('super_admin'\)/);
+  assert.match(router, /requireExactRole\('super_admin'\)/);
   assert.match(router, /requireCurrentPassword/);
   assert.match(router, /accounts\/:accountId\/purge'/);
   assert.match(controller, /crypto\.randomInt\(100000, 1000000\)/);
@@ -108,3 +108,4 @@ test('account foreign keys block accidental deletion outside the verified purge'
   assert.match(migration, /fk_client_document_account[\s\S]*RESTRICT/);
   assert.match(migration, /fk_commission_account[\s\S]*RESTRICT/);
 });
+

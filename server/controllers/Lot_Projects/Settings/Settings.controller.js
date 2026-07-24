@@ -7,6 +7,7 @@ import {
   toNullable,
 } from '../_shared/lotProject.shared.js';
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
+import { isFullAccessAdministrator } from '../../../config/permissions.js';
 
 const toDay = (value, fallback) => {
   const number = Number(value || fallback);
@@ -93,7 +94,7 @@ export const getLotProjectSettings = async (req, res) => {
     return res.json({
       success: true,
       data: mapSettings(settings, project),
-      canEdit: ['super_admin', 'admin'].includes(currentUser?.role),
+      canEdit: isFullAccessAdministrator(currentUser),
       project: {
         id: project.lot_project_id,
         name: project.lot_project_name,
@@ -127,7 +128,7 @@ export const updateLotProjectSettings = async (req, res) => {
       return res.status(401).json({ success: false, message: 'Please login before updating settings.' });
     }
 
-    if (!['super_admin', 'admin'].includes(currentUser.role)) {
+    if (!isFullAccessAdministrator(currentUser)) {
       return res.status(403).json({ success: false, message: 'Only a full-access administrator can update release days and project settings.' });
     }
 
@@ -216,3 +217,4 @@ export const updateLotProjectSettings = async (req, res) => {
     connection.release();
   }
 };
+

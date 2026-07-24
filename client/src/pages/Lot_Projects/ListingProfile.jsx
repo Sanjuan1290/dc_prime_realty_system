@@ -29,6 +29,7 @@ import BuyerFormLinkModal from '../../components/Lot_Projects/ListingProfileComp
 import BuyerFormStatusBanner from '../../components/Lot_Projects/ListingProfileComponents/BuyerForm/BuyerFormStatusBanner'
 import { useFetch, useFetchPatch, useFetchPost, useFetchPut } from '../../utils/useFetch'
 import useCurrentUser from '../../utils/useCurrentUser'
+import { isFullAccessAdministrator } from '../../config/permissions'
 
 const money = (value) =>
   new Intl.NumberFormat('en-PH', {
@@ -110,7 +111,7 @@ const ListingProfile = () => {
   const queryClient = useQueryClient()
   const { projectSlug, listingId } = useParams()
   const { data: currentUserData } = useCurrentUser()
-  const canRecalculateCommission = ['super_admin', 'admin'].includes(currentUserData?.user?.role)
+  const canRecalculateCommission = isFullAccessAdministrator(currentUserData?.user)
 
   const [activeTab, setActiveTab] = useState('unit')
   const [showReserveModal, setShowReserveModal] = useState(false)
@@ -717,7 +718,7 @@ const ListingProfile = () => {
         <AccountHistoryPanel
           projectSlug={projectSlug}
           listingId={listingId}
-          isSuperAdmin={['super_admin', 'admin'].includes(currentUserData?.user?.role)}
+          isSuperAdmin={currentUserData?.user?.role === 'super_admin'}
         />
       ) : null}
 
@@ -791,3 +792,4 @@ const ListingProfile = () => {
 }
 
 export default ListingProfile
+

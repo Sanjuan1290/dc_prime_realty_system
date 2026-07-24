@@ -76,8 +76,7 @@ import {
   addIfColumnExists,
 } from '../_shared/lotProject.shared.js';
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
-
-const penaltyManagerRoles = new Set(['super_admin', 'admin']);
+import { isFullAccessAdministrator } from '../../../config/permissions.js';
 
 const createHttpError = (statusCode, message) => {
   const error = new Error(message);
@@ -162,7 +161,7 @@ const validateBalloonPaymentAmount = async (
 const requirePenaltyManager = async (req) => {
   const user = await getAuthenticatedUser(req);
   if (!user) throw createHttpError(401, 'Authentication is required.');
-  if (!penaltyManagerRoles.has(user.role)) {
+  if (!isFullAccessAdministrator(user)) {
     throw createHttpError(403, 'Only an admin or super admin can manage penalty relief.');
   }
   return user;
@@ -869,7 +868,7 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
 const verifySuperAdminPassword = async (connection, user, password) => {
   if (!password) return { ok: false, message: 'Administrator password is required.' };
 
-  if (['super_admin', 'admin'].includes(user?.role)) {
+  if (isFullAccessAdministrator(user)) {
     const isPasswordCorrect = await bcrypt.compare(password, user.password_hash || '');
     return isPasswordCorrect
       ? { ok: true, superAdmin: user }
@@ -878,9 +877,9 @@ const verifySuperAdminPassword = async (connection, user, password) => {
 
   const [superAdmins] = await connection.query(
     `
-      SELECT id, first_name, middle_name, last_name, email, role, password_hash, status
+      SELECT id, first_name, middle_name, last_name, email, role, admin_type, password_hash, status
       FROM users
-      WHERE role IN ('super_admin', 'admin')
+      WHERE (role = 'super_admin' OR (role = 'admin' AND (admin_type IS NULL OR admin_type = 'admin_1')))
         AND status = 'active'
     `
   );
@@ -1194,7 +1193,7 @@ export const correctPaymentSchedulePenalty = async (req, res) => {
 
   try {
     const user = await requirePenaltyManager(req);
-    if (!['super_admin', 'admin'].includes(user.role)) {
+    if (!isFullAccessAdministrator(user)) {
       throw createHttpError(403, 'Only a full-access administrator can correct a penalty.');
     }
 
@@ -1449,7 +1448,7 @@ export const restorePaymentSchedulePenaltyWaiver = async (req, res) => {
     if (!relief) throw createHttpError(404, 'Penalty relief record was not found.');
 
     const isCorrection = relief.relief_type === 'penalty_correction';
-    if (isCorrection && !['super_admin', 'admin'].includes(user.role)) {
+    if (isCorrection && !isFullAccessAdministrator(user)) {
       throw createHttpError(403, 'Only a full-access administrator can recalculate a corrected penalty.');
     }
 

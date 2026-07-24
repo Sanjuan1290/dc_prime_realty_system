@@ -37,6 +37,7 @@ import StatusAlert from '../../components/Shared/StatusAlert'
 import ProjectDetailsModal from '../../components/Lot_Projects/DashboardComponents/ProjectDetailsModal/ProjectDetailsModal'
 import EditProjectModal from '../../components/Lot_Projects/DashboardComponents/EditProjectModal/EditProjectModal'
 import { useFetch, useFetchPut } from '../../utils/useFetch'
+import useCurrentUser from '../../utils/useCurrentUser'
 
 const money = (value) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 2 }).format(Number(value || 0))
 const compactMoney = (value) => new Intl.NumberFormat('en-PH', { notation: 'compact', maximumFractionDigits: 1 }).format(Number(value || 0))
@@ -64,6 +65,23 @@ const dateRangeOptions = [
 
 const padDatePart = (value) => String(value).padStart(2, '0')
 const toDateInput = (date) => `${date.getFullYear()}-${padDatePart(date.getMonth() + 1)}-${padDatePart(date.getDate())}`
+
+const parseDateInput = (value) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))) return null
+  const [year, month, day] = value.split('-').map(Number)
+  const date = new Date(year, month - 1, day)
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) return null
+  return date
+}
+
+const exceedsTwelveMonths = (fromDate, toDate) => {
+  const from = parseDateInput(fromDate)
+  const to = parseDateInput(toDate)
+  if (!from || !to || from > to) return false
+  const maximumEnd = new Date(from.getFullYear() + 1, from.getMonth(), from.getDate())
+  maximumEnd.setDate(maximumEnd.getDate() - 1)
+  return to > maximumEnd
+}
 
 const resolvePresetDateRange = (range, today = new Date()) => {
   let start
@@ -139,7 +157,7 @@ const EmptyChart = ({ message = 'No chart data yet.' }) => (
   </div>
 )
 
-const DateRangeFilter = ({ range, onRangeChange, dateFrom, setDateFrom, dateTo, setDateTo, isFetching }) => {
+const DateRangeFilter = ({ range, onRangeChange, dateFrom, setDateFrom, dateTo, setDateTo, isFetching, isAdmin1 }) => {
   const isCustom = range === 'custom'
 
   return (
@@ -172,7 +190,10 @@ const DateRangeFilter = ({ range, onRangeChange, dateFrom, setDateFrom, dateTo, 
         </div>
       </div>
 
-      {isFetching ? <p className="mt-3 text-xs font-black text-blue-700">Updating dashboard data...</p> : null}
+      <div className="mt-3 flex flex-wrap items-center gap-3 text-xs font-bold text-slate-500">
+        {isAdmin1 ? <span>Admin 1 limit: up to 12 months (1 year).</span> : null}
+        {isFetching ? <span className="text-blue-700">Updating dashboard data...</span> : null}
+      </div>
     </section>
   )
 }
@@ -447,7 +468,12 @@ const Dashboard = () => {
   const [sellerPageSize, setSellerPageSize] = useState(10)
   const [recentUnitPage, setRecentUnitPage] = useState(1)
   const [recentUnitPageSize, setRecentUnitPageSize] = useState(10)
+  const { data: currentUserData } = useCurrentUser()
+  const currentUser = currentUserData?.user || {}
+  const isAdmin1 = currentUser.role === 'admin' && (!currentUser.admin_type || currentUser.admin_type === 'admin_1')
   const hasInvalidDateRange = dateRange === 'custom' && (!dateFrom || !dateTo || dateFrom > dateTo)
+  const adminRangeBlocked = isAdmin1 && exceedsTwelveMonths(dateFrom, dateTo)
+  const canLoadDateRange = !hasInvalidDateRange && !adminRangeBlocked
 
   const handleRangeChange = (value) => {
     setDateRange(value)
@@ -466,7 +492,7 @@ const Dashboard = () => {
   const { data, isLoading, isFetching, isError, error } = useQuery({
     queryKey: ['lot-dashboard', projectSlug, dashboardQuery],
     queryFn: () => useFetch(`/projects/lot-projects/${projectSlug}/dashboard?${dashboardQuery}`),
-    enabled: Boolean(projectSlug) && !hasInvalidDateRange,
+    enabled: Boolean(projectSlug) && canLoadDateRange,
   })
 
   const { data: documentsData, isLoading: isDocumentsLoading } = useQuery({
@@ -505,6 +531,7 @@ const Dashboard = () => {
   const handleSaveProject = (updatedProject) => updateProjectMutation.mutateAsync(updatedProject)
 
   const handleRefresh = () => {
+    if (!canLoadDateRange) return
     setAlert({ type: 'info', message: 'Refreshing project dashboard...' })
     queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] })
   }
@@ -586,14 +613,16 @@ const Dashboard = () => {
         dateTo={dateTo}
         setDateTo={setDateTo}
         isFetching={isFetching}
+        isAdmin1={isAdmin1}
       />
 
       {hasInvalidDateRange ? <StatusAlert type="error" message="The From date must be earlier than or equal to the To date." /> : null}
+      {adminRangeBlocked ? <StatusAlert type="error" message="Admin 1 dashboard reports are limited to 12 months (1 year). Select a shorter custom date range." /> : null}
 
       <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <SectionHeader title="Business Snapshot" description="Main numbers to check first." />
-          <button type="button" onClick={handleRefresh} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-black text-slate-700 transition hover:bg-slate-50"><FiRefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />Refresh</button>
+          <button type="button" onClick={handleRefresh} disabled={!canLoadDateRange || isFetching} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"><FiRefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />Refresh</button>
         </div>
 
         <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
@@ -750,3 +779,4 @@ const Dashboard = () => {
 }
 
 export default Dashboard
+

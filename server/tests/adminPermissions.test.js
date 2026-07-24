@@ -9,44 +9,56 @@ import {
   roleHasPermission,
 } from '../config/permissions.js';
 
-const allUserRoles = ['super_admin', 'admin', 'broker_network_manager', 'broker', 'manager', 'agent'];
+const ordinaryUserRoles = ['admin', 'broker_network_manager', 'broker', 'manager', 'agent'];
+const admin1 = { role: 'admin', admin_type: 'admin_1' };
+const superAdmin = { role: 'super_admin', admin_type: null };
 
-test('Admin 1 receives every declared permission', () => {
+test('Admin 1 receives every declared operational permission while future admin types receive none', () => {
   for (const permission of Object.values(PERMISSIONS)) {
-    assert.equal(roleHasPermission('admin', permission), true, permission);
+    assert.equal(roleHasPermission(admin1, permission), true, permission);
+    assert.equal(roleHasPermission({ role: 'admin', admin_type: 'admin_2' }, permission), false, permission);
+    assert.equal(roleHasPermission({ role: 'admin', admin_type: 'admin_3' }, permission), false, permission);
   }
 
-  assert.equal(isFullAccessAdministrator({ role: 'admin', admin_type: 'admin_1' }), true);
+  assert.equal(isFullAccessAdministrator(admin1), true);
   assert.equal(isFullAccessAdministrator({ role: 'admin', admin_type: null }), true);
   assert.equal(isFullAccessAdministrator({ role: 'admin', admin_type: 'admin_2' }), false);
   assert.equal(isFullAccessAdministrator({ role: 'admin', admin_type: 'admin_3' }), false);
 });
 
-test('Admin 1 can create, edit, and manage every declared user role', () => {
-  for (const role of allUserRoles) {
-    assert.equal(canActorManageUserRole('admin', role), true, role);
-    assert.equal(canActorCreateUserRole('admin', role), true, role);
+test('Admin 1 manages ordinary accounts but cannot create or change Super Admin accounts', () => {
+  for (const role of ordinaryUserRoles) {
+    assert.equal(canActorManageUserRole(admin1, role), true, role);
+    assert.equal(canActorCreateUserRole(admin1, role), true, role);
   }
 
-  for (const currentRole of allUserRoles) {
-    for (const requestedRole of allUserRoles) {
+  assert.equal(canActorManageUserRole(admin1, 'super_admin'), false);
+  assert.equal(canActorCreateUserRole(admin1, 'super_admin'), false);
+
+  for (const currentRole of ordinaryUserRoles) {
+    for (const requestedRole of ordinaryUserRoles) {
       assert.equal(
-        canActorChangeUserRole('admin', currentRole, requestedRole),
+        canActorChangeUserRole(admin1, currentRole, requestedRole),
         true,
         `${currentRole} -> ${requestedRole}`
       );
     }
+    assert.equal(canActorChangeUserRole(admin1, currentRole, 'super_admin'), false);
+  }
+
+  for (const requestedRole of [...ordinaryUserRoles, 'super_admin']) {
+    assert.equal(canActorChangeUserRole(admin1, 'super_admin', requestedRole), false);
   }
 });
 
-test('Super Admin retains every declared permission and can manage every user role', () => {
+test('Super Admin retains every permission and owner-only account authority', () => {
   for (const permission of Object.values(PERMISSIONS)) {
-    assert.equal(roleHasPermission('super_admin', permission), true, permission);
+    assert.equal(roleHasPermission(superAdmin, permission), true, permission);
   }
 
-  for (const role of allUserRoles) {
-    assert.equal(canActorManageUserRole('super_admin', role), true, role);
-    assert.equal(canActorCreateUserRole('super_admin', role), true, role);
-    assert.equal(canActorChangeUserRole('super_admin', role, role), true, role);
+  for (const role of [...ordinaryUserRoles, 'super_admin']) {
+    assert.equal(canActorManageUserRole(superAdmin, role), true, role);
+    assert.equal(canActorCreateUserRole(superAdmin, role), true, role);
+    assert.equal(canActorChangeUserRole(superAdmin, role, role), true, role);
   }
 });

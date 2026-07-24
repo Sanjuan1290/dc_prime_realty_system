@@ -52,49 +52,73 @@ export const USER_ROLES = Object.freeze([
 ]);
 
 export const ADMIN_TYPES = Object.freeze(['admin_1', 'admin_2', 'admin_3']);
-
-export const ADMIN_CREATABLE_USER_ROLES = USER_ROLES;
-
-// Kept for compatibility with older imports. Admin can manage every existing account.
-export const ADMIN_MANAGEABLE_USER_ROLES = USER_ROLES;
+export const ADMIN_CREATABLE_USER_ROLES = Object.freeze(USER_ROLES.filter((role) => role !== 'super_admin'));
+export const ADMIN_MANAGEABLE_USER_ROLES = ADMIN_CREATABLE_USER_ROLES;
 
 const knownUserRoles = new Set(USER_ROLES);
-const adminCreatableUserRoles = new Set(ADMIN_CREATABLE_USER_ROLES);
+const allPermissions = new Set(Object.values(PERMISSIONS));
 
-// Super Admin and Admin can manage existing accounts of any declared role.
-export const canActorManageUserRole = (actorRole, targetRole) => {
-  if (!knownUserRoles.has(String(targetRole || ''))) return false;
-  return actorRole === 'super_admin' || actorRole === 'admin';
+const normalizeActor = (userOrRole, adminType = '') => {
+  if (userOrRole && typeof userOrRole === 'object') {
+    return {
+      role: String(userOrRole.role || ''),
+      adminType: String(userOrRole.admin_type || ''),
+    };
+  }
+
+  return {
+    role: String(userOrRole || ''),
+    adminType: String(adminType || ''),
+  };
 };
 
-// Admin 1 currently has the same account-management authority as Super Admin.
-export const canActorCreateUserRole = (actorRole, requestedRole) => (
-  ['super_admin', 'admin'].includes(String(actorRole || ''))
-  && adminCreatableUserRoles.has(String(requestedRole || ''))
-);
+export const isAdmin1 = (userOrRole, adminType = '') => {
+  const actor = normalizeActor(userOrRole, adminType);
+  return actor.role === 'admin' && (!actor.adminType || actor.adminType === 'admin_1');
+};
 
-// Admin 1 can edit and assign every declared system role.
-export const canActorChangeUserRole = (actorRole, currentRole, requestedRole) => {
+export const isFullAccessAdministrator = (userOrRole = {}, adminType = '') => {
+  const actor = normalizeActor(userOrRole, adminType);
+  return actor.role === 'super_admin' || isAdmin1(actor.role, actor.adminType);
+};
+
+// Admin 1 may manage ordinary accounts, but Super Admin accounts remain owner-only.
+export const canActorManageUserRole = (userOrRole, targetRole, adminType = '') => {
+  const actor = normalizeActor(userOrRole, adminType);
+  const target = String(targetRole || '');
+  if (!knownUserRoles.has(target)) return false;
+  if (target === 'super_admin') return actor.role === 'super_admin';
+  return actor.role === 'super_admin' || isAdmin1(actor.role, actor.adminType);
+};
+
+// Creating a Super Admin account remains restricted to an existing Super Admin.
+export const canActorCreateUserRole = (userOrRole, requestedRole, adminType = '') => {
+  const actor = normalizeActor(userOrRole, adminType);
+  const requested = String(requestedRole || '');
+  if (!knownUserRoles.has(requested)) return false;
+  if (requested === 'super_admin') return actor.role === 'super_admin';
+  return actor.role === 'super_admin' || isAdmin1(actor.role, actor.adminType);
+};
+
+// Editing, promoting to, or demoting from Super Admin remains owner-only.
+export const canActorChangeUserRole = (userOrRole, currentRole, requestedRole, adminType = '') => {
+  const actor = normalizeActor(userOrRole, adminType);
   const current = String(currentRole || '');
-  const next = String(requestedRole || '');
-  return ['super_admin', 'admin'].includes(String(actorRole || ''))
-    && knownUserRoles.has(current)
-    && knownUserRoles.has(next);
+  const requested = String(requestedRole || '');
+  if (!knownUserRoles.has(current) || !knownUserRoles.has(requested)) return false;
+  if (current === 'super_admin' || requested === 'super_admin') return actor.role === 'super_admin';
+  return actor.role === 'super_admin' || isAdmin1(actor.role, actor.adminType);
 };
-
-const superAdminPermissions = new Set(Object.values(PERMISSIONS));
-
-const adminPermissions = new Set(Object.values(PERMISSIONS));
 
 export const ROLE_PERMISSIONS = Object.freeze({
-  super_admin: superAdminPermissions,
-  admin: adminPermissions,
+  super_admin: allPermissions,
+  admin_1: allPermissions,
 });
 
-export const roleHasPermission = (role, permission) =>
-  Boolean(permission && ROLE_PERMISSIONS[String(role || '')]?.has(permission));
-
-export const isFullAccessAdministrator = (user = {}) => (
-  user?.role === 'super_admin'
-  || (user?.role === 'admin' && (!user?.admin_type || user.admin_type === 'admin_1'))
-);
+export const roleHasPermission = (userOrRole, permission, adminType = '') => {
+  if (!permission) return false;
+  const actor = normalizeActor(userOrRole, adminType);
+  if (actor.role === 'super_admin') return allPermissions.has(permission);
+  if (isAdmin1(actor.role, actor.adminType)) return allPermissions.has(permission);
+  return false;
+};

@@ -14,6 +14,7 @@ import {
   sanitizeAttachmentFileName,
 } from '../../services/paymentSoaPdf.service.js';
 import { writeAuditLog } from './auditLogs.controller.js';
+import { isFullAccessAdministrator } from '../../config/permissions.js';
 
 const toDateOnly = (value) => {
   if (!value) return '-';
@@ -66,9 +67,7 @@ const fullName = (row = {}) => {
   return row.buyer_full_name || name || 'No buyer name';
 };
 
-const adminRoles = new Set(['super_admin', 'admin']);
-
-const canManageNotifications = (user = {}) => adminRoles.has(user.role);
+const canManageNotifications = (user = {}) => isFullAccessAdministrator(user);
 
 const EMAIL_LOGO_CID = 'dc-prime-logo@dcprime';
 const DEFAULT_EMAIL_LOGO_URL = 'https://res.cloudinary.com/dvazrmgq9/image/upload/v1784705909/logo-mobile_2_i0damo.png';
@@ -1571,3 +1570,4 @@ export const getDocumentNotifications = async (req, res) => {
     connection.release();
   }
 };
+

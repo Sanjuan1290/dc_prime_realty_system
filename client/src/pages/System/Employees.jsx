@@ -17,7 +17,7 @@ const StatCard = ({ label, value, helper, icon: Icon }) => <div className="round
 const Employees = () => {
   const queryClient = useQueryClient()
   const { data: currentUserData } = useCurrentUser()
-  const canManage = hasPermission(currentUserData?.user?.role, PERMISSIONS.EMPLOYEES_MANAGE)
+  const canManage = hasPermission(currentUserData?.user, PERMISSIONS.EMPLOYEES_MANAGE)
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('all')
   const [department, setDepartment] = useState('all')
@@ -124,3 +124,4 @@ const Employees = () => {
 }
 
 export default Employees
+

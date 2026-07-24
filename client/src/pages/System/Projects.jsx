@@ -23,6 +23,7 @@ import {
   useFetchPatch,
   useFetchPost,
 } from '../../utils/useFetch'
+import { isFullAccessAdministrator } from '../../config/permissions'
 
 const StatCard = ({ label, value }) => (
   <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -93,7 +94,7 @@ const normalizeProject = (project) => ({
 
 const Projects = () => {
   const { data: currentUserData } = useCurrentUser()
-  const canManage = ['super_admin', 'admin'].includes(currentUserData?.user?.role)
+  const canManage = isFullAccessAdministrator(currentUserData?.user)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
@@ -682,3 +683,4 @@ const Projects = () => {
 }
 
 export default Projects
+

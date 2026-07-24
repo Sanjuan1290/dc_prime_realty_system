@@ -76,13 +76,13 @@ const denyUserManagement = (res, message) => res.status(403).json({
 });
 
 const actorCanManageTargetRole = (req, targetRole) =>
-  canActorManageUserRole(req.authUser?.role, targetRole);
+  canActorManageUserRole(req.authUser, targetRole);
 
 const actorCanCreateTargetRole = (req, targetRole) =>
-  canActorCreateUserRole(req.authUser?.role, targetRole);
+  canActorCreateUserRole(req.authUser, targetRole);
 
 const actorCanChangeTargetRole = (req, currentRole, requestedRole) =>
-  canActorChangeUserRole(req.authUser?.role, currentRole, requestedRole);
+  canActorChangeUserRole(req.authUser, currentRole, requestedRole);
 
 const validateRequestedRole = (role) => userRoles.has(String(role || ''));
 
@@ -1554,3 +1554,4 @@ export const resetUserPassword = async (req, res) => {
     return res.status(500).json({ message: getErrorMessage(error) });
   }
 };
+

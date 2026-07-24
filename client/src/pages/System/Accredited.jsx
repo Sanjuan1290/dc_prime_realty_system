@@ -8,6 +8,7 @@ import { FaUserPlus } from "react-icons/fa";
 import { FiCalendar, FiFileText, FiLoader, FiPrinter, FiRefreshCw, FiSearch, FiUsers, FiX } from "react-icons/fi";
 import { formatDateTime } from "../../utils/formatDateTime";
 import { useFetch as fetchApi, useFetchPost as postApi } from "../../utils/useFetch";
+import { isFullAccessAdministrator } from "../../config/permissions";
 
 const EMPTY_LIST = [];
 
@@ -609,7 +610,7 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
 
 const Accredited = () => {
   const { data: currentUserData } = useCurrentUser();
-  const canManage = ["super_admin", "admin"].includes(currentUserData?.user?.role);
+  const canManage = isFullAccessAdministrator(currentUserData?.user);
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
@@ -720,3 +721,4 @@ const Accredited = () => {
 };
 
 export default Accredited;
+

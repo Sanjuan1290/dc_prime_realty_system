@@ -17,6 +17,7 @@ import { useFetchPost, useFetchPut } from '../../../../utils/useFetch'
 import useCurrentUser from '../../../../utils/useCurrentUser'
 import AddSOAPaymentModal from './AddSOAPaymentModal'
 import PenaltyReliefModal from './PenaltyReliefModal'
+import { isFullAccessAdministrator } from '../../../../config/permissions'
 
 const money = (value) =>
   new Intl.NumberFormat('en-PH', {
@@ -533,9 +534,8 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
   const { projectSlug, listingId } = useParams()
   const queryClient = useQueryClient()
   const { data: currentUserData } = useCurrentUser()
-  const currentUserRole = currentUserData?.user?.role
-  const canManagePenaltyRelief = ['admin', 'super_admin'].includes(currentUserRole)
-  const canCorrectPenalty = ['super_admin', 'admin'].includes(currentUserRole)
+  const canManagePenaltyRelief = isFullAccessAdministrator(currentUserData?.user)
+  const canCorrectPenalty = canManagePenaltyRelief
 
   const rows = useMemo(() => normalizeRows(soaRows), [soaRows])
   const paymentRecords = useMemo(() => normalizePayments(payments, listing), [payments, listing])
@@ -1355,3 +1355,4 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [] }) => {
 }
 
 export default PaymentsSOA
+

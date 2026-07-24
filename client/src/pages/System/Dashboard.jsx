@@ -221,7 +221,8 @@ const DateRangeFilter = ({
   toDate,
   onToDateChange,
   isFetching,
-  role,
+  isAdmin1,
+  isSuperAdmin,
   daySpan,
 }) => {
   const isCustom = range === 'custom'
@@ -254,7 +255,7 @@ const DateRangeFilter = ({
         </div>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-3 text-xs font-bold text-slate-500">
-        <span>{role === 'admin' ? 'Admin limit: up to 12 months.' : 'Super Admin may load longer custom ranges after confirmation.'}</span>
+        <span>{isAdmin1 ? 'Admin 1 limit: up to 12 months (1 year).' : isSuperAdmin ? 'Super Admin may load longer custom ranges after confirmation.' : 'Select a supported date range.'}</span>
         {daySpan > 0 ? <span className="rounded-full bg-slate-100 px-2.5 py-1">Selected: {number(daySpan)} day{daySpan === 1 ? '' : 's'}</span> : null}
         {isFetching ? <span className="text-blue-700">Updating dashboard data...</span> : null}
       </div>
@@ -311,8 +312,11 @@ const Dashboard = () => {
   const [approvedLongRangeKey, setApprovedLongRangeKey] = useState('')
   const [projectScope, setProjectScope] = useState('all')
   const { data: currentUserData } = useCurrentUser()
-  const role = currentUserData?.user?.role || 'super_admin'
+  const currentUser = currentUserData?.user || {}
+  const role = currentUser.role || 'super_admin'
   const isAdmin = role === 'admin'
+  const isAdmin1 = isAdmin && (!currentUser.admin_type || currentUser.admin_type === 'admin_1')
+  const isSuperAdmin = role === 'super_admin'
   const roleBasePath = isAdmin ? '/admin' : '/super_admin'
   const houseLotEnabled = import.meta.env.VITE_FEATURE_HOUSE_LOT === 'true'
   const projectsPath = projectScope === 'lot'
@@ -323,9 +327,9 @@ const Dashboard = () => {
   const selectedDaySpan = inclusiveDaySpan(fromDate, toDate)
   const hasInvalidOrder = selectedDaySpan <= 0
   const isLongerThanTwelveMonths = exceedsTwelveMonths(fromDate, toDate)
-  const adminRangeBlocked = isAdmin && isLongerThanTwelveMonths
+  const adminRangeBlocked = isAdmin1 && isLongerThanTwelveMonths
   const longRangeKey = `${fromDate}:${toDate}`
-  const superAdminNeedsConfirmation = !isAdmin && dateRange === 'custom' && isLongerThanTwelveMonths && approvedLongRangeKey !== longRangeKey
+  const superAdminNeedsConfirmation = isSuperAdmin && dateRange === 'custom' && isLongerThanTwelveMonths && approvedLongRangeKey !== longRangeKey
   const canLoadRange = !hasInvalidOrder && !adminRangeBlocked && !superAdminNeedsConfirmation
 
   const resetApproval = () => setApprovedLongRangeKey('')
@@ -560,12 +564,13 @@ const Dashboard = () => {
         toDate={toDate}
         onToDateChange={(value) => { setToDate(value); resetApproval() }}
         isFetching={isDashboardsFetching}
-        role={role}
+        isAdmin1={isAdmin1}
+        isSuperAdmin={isSuperAdmin}
         daySpan={selectedDaySpan}
       />
 
       {hasInvalidOrder ? <StatusAlert type="error" message="The From date must be earlier than or equal to the To date." /> : null}
-      {adminRangeBlocked ? <StatusAlert type="error" message="Admin dashboard reports are limited to 12 months. Select a shorter custom date range." /> : null}
+      {adminRangeBlocked ? <StatusAlert type="error" message="Admin 1 dashboard reports are limited to 12 months (1 year). Select a shorter custom date range." /> : null}
       {superAdminNeedsConfirmation ? (
         <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-950 shadow-sm">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -669,3 +674,4 @@ const Dashboard = () => {
 }
 
 export default Dashboard
+

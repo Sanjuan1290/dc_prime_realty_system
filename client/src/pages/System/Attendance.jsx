@@ -56,8 +56,8 @@ const StatCard = ({ label, value, helper, icon: Icon }) => (
 const Attendance = () => {
   const queryClient = useQueryClient()
   const { data: currentUserData } = useCurrentUser()
-  const canManage = hasPermission(currentUserData?.user?.role, PERMISSIONS.ATTENDANCE_MANAGE)
-  const canFinalizePayroll = hasPermission(currentUserData?.user?.role, PERMISSIONS.PAYROLL_MANAGE)
+  const canManage = hasPermission(currentUserData?.user, PERMISSIONS.ATTENDANCE_MANAGE)
+  const canFinalizePayroll = hasPermission(currentUserData?.user, PERMISSIONS.PAYROLL_MANAGE)
 
   const today = new Date().toISOString().slice(0, 10)
   const [search, setSearch] = useState('')
@@ -323,3 +323,4 @@ const Attendance = () => {
 }
 
 export default Attendance
+
