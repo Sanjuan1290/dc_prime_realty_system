@@ -600,7 +600,7 @@ const Dashboard = () => {
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
         <MetricCard label="Total Gross Sales" value={isLoading ? '...' : money(summary.totalGrossSales)} formula="Cash Collected + Gross Cash Collectibles" helper="Active and pending-cancellation reservation contracts in the selected range." icon={FiTrendingUp} tone="blue" />
-        <MetricCard label="Cash Collected" value={isLoading ? '...' : money(summary.cashCollected)} formula="Sum of verified payments" helper="Includes paid penalties because verified payments store one gross receipt amount." icon={FiActivity} tone="green" />
+        <MetricCard label="Cash Collected" value={isLoading ? '...' : money(summary.cashCollected)} formula="Verified payments from current buyer accounts" helper="Includes active and pending-cancellation accounts only. Finalized cancelled-account cash stays in the cancellation totals." icon={FiActivity} tone="green" />
         <MetricCard label="Penalty Accumulated" value={isLoading ? '...' : money(summary.penaltyAccumulated)} formula="Paid penalties + outstanding penalties after approved waivers" helper={`Paid ${money(summary.penaltyPaid)} · Outstanding ${money(summary.penaltyOutstanding)} for the selected reservation accounts.`} icon={FiAlertTriangle} tone="red" />
         <MetricCard label="Cash Collectibles − Discount" value={isLoading ? '...' : money(summary.netCashCollectibles)} formula="Gross Cash Collectibles − Discount Applied" helper={`${money(summary.grossCashCollectibles)} gross collectibles less ${money(summary.discountApplied)} discount.`} icon={FiGrid} tone="amber" />
         <MetricCard label="Total Number of Reservations" value={isLoading ? '...' : number(summary.reservationCount)} formula="Reservation-history records created in range" helper="Includes active, pending, and later-cancelled reservation events." icon={FiUsers} tone="indigo" />
@@ -674,4 +674,3 @@ const Dashboard = () => {
 }
 
 export default Dashboard
-

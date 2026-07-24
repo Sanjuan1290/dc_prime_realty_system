@@ -544,7 +544,7 @@ const Dashboard = () => {
 
   const primarySnapshotStats = [
     { label: 'Total Gross Sales', value: isLoading ? '...' : money(stats.totalGrossSales ?? stats.totalSales), formula: 'Cash Collected + Gross Cash Collectibles', helper: 'Active and pending-cancellation reservation contracts in the selected range.', tone: 'blue', icon: FiTrendingUp },
-    { label: 'Cash Collected', value: isLoading ? '...' : money(stats.totalCashCollected ?? stats.totalCollected), formula: 'Sum of verified payments', helper: 'Includes paid penalties because verified payments store one gross receipt amount.', tone: 'green', icon: FiActivity },
+    { label: 'Cash Collected', value: isLoading ? '...' : money(stats.totalCashCollected ?? stats.totalCollected), formula: 'Verified payments from current buyer accounts', helper: 'Includes active and pending-cancellation accounts only. Finalized cancelled-account cash stays in the cancellation totals.', tone: 'green', icon: FiActivity },
     { label: 'Penalty Accumulated', value: isLoading ? '...' : money(stats.totalPenaltyAccumulated), formula: 'Paid penalties + outstanding penalties after approved waivers', helper: `Paid ${money(stats.totalPenaltyPaid)} · Outstanding ${money(stats.totalPenaltyOutstanding)} for the selected reservation accounts.`, tone: 'red', icon: FiAlertTriangle },
     { label: 'Cash Collectibles − Discount', value: isLoading ? '...' : money(stats.netCashCollectibles), formula: 'Gross Cash Collectibles − Discount Applied', helper: `${money(stats.grossCashCollectibles ?? stats.cashCollectibles)} gross collectibles less ${money(stats.discountApplied)} discount.`, tone: 'amber', icon: FiGrid },
     { label: 'Total Number of Reservations', value: isLoading ? '...' : number(stats.reservationCount), formula: 'Reservation-history records created in range', helper: 'Includes active, pending, and later-cancelled reservation events.', tone: 'indigo', icon: FiUsers },
@@ -779,4 +779,3 @@ const Dashboard = () => {
 }
 
 export default Dashboard
-

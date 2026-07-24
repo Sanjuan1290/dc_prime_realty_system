@@ -75,7 +75,18 @@ test('current commission and SOA totals are isolated by buyer account', () => {
   assert.match(commissions, /GROUP BY lot_project_client_profile_id/);
   assert.doesNotMatch(commissions, /payment_summary ON payment_summary\.lot_project_listing_id = c\.lot_project_listing_id/);
   assert.match(listingProfile, /current_account\.lot_project_account_id = l\.current_account_id/);
-  assert.match(listingProfile, /payment_summary\.lot_project_client_profile_id = cp\.lot_project_client_profile_id/);
+  assert.match(
+    listingProfile,
+    /payment_summary ON payment_summary\.lot_project_account_id = current_account\.lot_project_account_id/
+  );
+  assert.match(
+    listingProfile,
+    /schedule_summary ON schedule_summary\.lot_project_account_id = current_account\.lot_project_account_id/
+  );
+  assert.doesNotMatch(
+    listingProfile,
+    /payment_summary\.lot_project_client_profile_id = cp\.lot_project_client_profile_id/
+  );
   assert.match(commissionGrouping, /`account-\$\{accountId\}`/);
 });
 

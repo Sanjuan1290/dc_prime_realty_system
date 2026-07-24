@@ -664,8 +664,14 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
   )
 }
 
-const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [], readOnly = false }) => {
-  const { projectSlug, listingId } = useParams()
+const PaymentsSOA = ({
+  listing = {},
+  soaRows = [],
+  payments = [],
+  readOnly = false,
+  profileQueryKey = null,
+}) => {
+  const { projectSlug, listingId, accountId } = useParams()
   const queryClient = useQueryClient()
   const { data: currentUserData } = useCurrentUser()
   const canManagePenaltyRelief = !readOnly && isFullAccessAdministrator(currentUserData?.user)
@@ -723,22 +729,38 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [], readOnly = fal
   const [typeFilter, setTypeFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
 
-  const profileKey = ['lot-listing-profile', projectSlug, listingId, listing?.accountId || 'current']
+  const activeProfileKey = useMemo(
+    () =>
+      Array.isArray(profileQueryKey) && profileQueryKey.length
+        ? profileQueryKey
+        : ['lot-listing-profile', projectSlug, listingId, accountId || 'current'],
+    [profileQueryKey, projectSlug, listingId, accountId]
+  )
 
-  const invalidateProfile = () => {
-    queryClient.invalidateQueries({ queryKey: profileKey })
-    queryClient.invalidateQueries({ queryKey: ['lot-listings', projectSlug] })
-    queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] })
+  const refreshProfile = async () => {
+    // Refetch the exact route-level profile currently rendered on screen.
+    // The current route uses the literal `current` cache scope, while archived
+    // routes use their account ID. Do not derive this key from listing.accountId.
+    await queryClient.invalidateQueries({
+      queryKey: activeProfileKey,
+      exact: true,
+      refetchType: 'active',
+    })
+
+    void queryClient.invalidateQueries({ queryKey: ['lot-listings', projectSlug] })
+    void queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] })
+    void queryClient.invalidateQueries({ queryKey: ['lot-payment-logs', projectSlug] })
+    void queryClient.invalidateQueries({ queryKey: ['system-payment-notifications'] })
   }
 
   const createPaymentMutation = useMutation({
     mutationFn: (payload) =>
       useFetchPost(`/projects/lot-projects/${projectSlug}/listings/${listingId}/payments`, payload),
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
       setShowPaymentModal(false)
       setEditingPayment(null)
       setAlert({ type: 'success', message: result?.message || 'Payment saved successfully.' })
-      invalidateProfile()
+      await refreshProfile()
     },
   })
 
@@ -748,11 +770,11 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [], readOnly = fal
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/payments/${payload.paymentId}`,
         payload
       ),
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
       setShowPaymentModal(false)
       setEditingPayment(null)
       setAlert({ type: 'success', message: result?.message || 'Payment updated successfully.' })
-      invalidateProfile()
+      await refreshProfile()
     },
   })
 
@@ -762,12 +784,12 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [], readOnly = fal
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/payments/${paymentId}/delete`,
         { superAdminPassword }
       ),
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
       setDeletePayment(null)
       setDeletePassword('')
       setDeleteAlert(null)
       setAlert({ type: 'success', message: result?.message || 'Payment deleted successfully.' })
-      invalidateProfile()
+      await refreshProfile()
     },
     onError: (error) => {
       setDeleteAlert({ type: 'error', message: error?.message || 'Failed to delete payment.' })
@@ -777,10 +799,10 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [], readOnly = fal
   const updateSoaTermsMutation = useMutation({
     mutationFn: (payload) =>
       useFetchPut(`/projects/lot-projects/${projectSlug}/listings/${listingId}/soa-terms`, payload),
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
       setShowSoaTermsModal(false)
       setAlert({ type: 'success', message: result?.message || 'SOA terms saved successfully.' })
-      invalidateProfile()
+      await refreshProfile()
     },
     onError: (error) => {
       setAlert({ type: 'error', message: error?.message || 'Failed to save SOA terms.' })
@@ -793,11 +815,11 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [], readOnly = fal
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/payment-schedules/${scheduleId}/lmf-waiver`,
         payload
       ),
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
       setLmfWaiverRow(null)
       setLmfWaiverAlert(null)
       setAlert({ type: 'success', message: result?.message || 'Legal / Misc Fee waived successfully.' })
-      invalidateProfile()
+      await refreshProfile()
     },
     onError: (error) => setLmfWaiverAlert({ type: 'error', message: error?.message || 'The Legal / Misc Fee could not be waived.' }),
   })
@@ -808,11 +830,11 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [], readOnly = fal
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/payment-schedules/${scheduleId}/penalty-extension`,
         payload
       ),
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
       setPenaltyReliefRow(null)
       setPenaltyReliefAlert(null)
       setAlert({ type: 'success', message: result?.message || 'The new penalty-free payment date was saved.' })
-      invalidateProfile()
+      await refreshProfile()
     },
     onError: (error) => setPenaltyReliefAlert({ type: 'error', message: error?.message || 'The new payment date could not be saved.' }),
   })
@@ -823,11 +845,11 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [], readOnly = fal
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/payment-schedules/${scheduleId}/penalty-extension/${reliefId}`,
         payload
       ),
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
       setPenaltyReliefRow(null)
       setPenaltyReliefAlert(null)
       setAlert({ type: 'success', message: result?.message || 'The penalty-free payment date was updated.' })
-      invalidateProfile()
+      await refreshProfile()
     },
     onError: (error) => setPenaltyReliefAlert({ type: 'error', message: error?.message || 'The payment-date extension could not be updated.' }),
   })
@@ -838,11 +860,11 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [], readOnly = fal
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/payment-schedules/${scheduleId}/penalty-correction`,
         payload
       ),
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
       setPenaltyReliefRow(null)
       setPenaltyReliefAlert(null)
       setAlert({ type: 'success', message: result?.message || 'The incorrect penalty was cleared.' })
-      invalidateProfile()
+      await refreshProfile()
     },
     onError: (error) => setPenaltyReliefAlert({ type: 'error', message: error?.message || 'The penalty could not be corrected.' }),
   })
@@ -853,11 +875,11 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [], readOnly = fal
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/payment-schedules/${scheduleId}/penalty-waiver`,
         payload
       ),
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
       setPenaltyReliefRow(null)
       setPenaltyReliefAlert(null)
       setAlert({ type: 'success', message: result?.message || 'The penalty reduction was saved.' })
-      invalidateProfile()
+      await refreshProfile()
     },
     onError: (error) => setPenaltyReliefAlert({ type: 'error', message: error?.message || 'The penalty reduction could not be saved.' }),
   })
@@ -868,11 +890,11 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [], readOnly = fal
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/penalty-reliefs/${reliefId}/restore`,
         payload
       ),
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
       setPenaltyReliefRow(null)
       setPenaltyReliefAlert(null)
       setAlert({ type: 'success', message: result?.message || 'The removed penalty was added back.' })
-      invalidateProfile()
+      await refreshProfile()
     },
     onError: (error) => setPenaltyReliefAlert({ type: 'error', message: error?.message || 'The penalty could not be added back.' }),
   })
@@ -1579,3 +1601,4 @@ const PaymentsSOA = ({ listing = {}, soaRows = [], payments = [], readOnly = fal
 }
 
 export default PaymentsSOA
+

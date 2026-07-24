@@ -454,6 +454,7 @@ export const getLotProjectDashboard = async (req, res) => {
     const hasCommissions = await tableExists(connection, 'lot_project_commissions');
     const hasCommissionReleases = await tableExists(connection, 'lot_project_commission_releases');
     const hasClientProfiles = await tableExists(connection, 'lot_project_client_profiles');
+    const hasAccounts = await tableExists(connection, 'lot_project_accounts');
     const hasListingDocuments = await tableExists(connection, 'lot_project_listing_documents');
     const hasClientDocuments = await tableExists(connection, 'lot_project_client_documents');
     const hasListingCadastralLinks = await tableExists(connection, 'lot_project_listing_cadastral_lots');
@@ -464,7 +465,31 @@ export const getLotProjectDashboard = async (req, res) => {
       && await columnExists(connection, 'lot_project_client_profiles', 'soa_selected_tcp');
     const hasScheduleAccountId = hasSchedules
       && await columnExists(connection, 'lot_project_payment_schedules', 'lot_project_account_id');
+    const hasPaymentAccountId = hasPayments
+      && await columnExists(connection, 'lot_project_payments', 'lot_project_account_id');
     const hasListingCurrentAccountId = await columnExists(connection, 'lot_project_listings', 'current_account_id');
+    const canScopeCurrentAccount = hasAccounts && hasListingCurrentAccountId;
+    const getCurrentClientJoin = (
+      listingAlias = 'l',
+      clientAlias = 'cp',
+      accountAlias = 'current_account'
+    ) => {
+      if (!hasClientProfiles) return '';
+      if (canScopeCurrentAccount) {
+        return `LEFT JOIN lot_project_accounts ${accountAlias}
+          ON ${accountAlias}.lot_project_account_id = ${listingAlias}.current_account_id
+        LEFT JOIN lot_project_client_profiles ${clientAlias}
+          ON ${clientAlias}.lot_project_client_profile_id = ${accountAlias}.lot_project_client_profile_id`;
+      }
+      return `LEFT JOIN lot_project_client_profiles ${clientAlias}
+        ON ${clientAlias}.lot_project_listing_id = ${listingAlias}.lot_project_listing_id
+        AND ${clientAlias}.lot_project_client_profile_status = 'active'`;
+    };
+    const currentPaymentPredicate = hasPaymentAccountId && hasListingCurrentAccountId
+      ? 'p.lot_project_account_id = l.current_account_id'
+      : hasClientProfiles
+        ? 'p.lot_project_client_profile_id = cp.lot_project_client_profile_id'
+        : '1 = 1';
     const effectiveTcpExpr = hasSelectedContractTcp
       ? 'COALESCE(cp.soa_selected_tcp, l.lot_project_listing_tcp)'
       : 'l.lot_project_listing_tcp';
@@ -486,6 +511,7 @@ export const getLotProjectDashboard = async (req, res) => {
           WHERE p.lot_project_id = l.lot_project_id
             AND p.lot_project_listing_id = l.lot_project_listing_id
             AND p.lot_project_payment_status = 'Verified'
+            AND ${currentPaymentPredicate}
         ), 0)`
       : '0';
 
@@ -496,6 +522,7 @@ export const getLotProjectDashboard = async (req, res) => {
           WHERE p.lot_project_id = l.lot_project_id
             AND p.lot_project_listing_id = l.lot_project_listing_id
             AND p.lot_project_payment_status = 'Verified'
+            AND ${currentPaymentPredicate}
             AND p.lot_project_payment_type IN ('downpayment', 'down_payment')
         ), 0)`
       : '0';
@@ -538,6 +565,7 @@ export const getLotProjectDashboard = async (req, res) => {
           WHERE p.lot_project_id = l.lot_project_id
             AND p.lot_project_listing_id = l.lot_project_listing_id
             AND p.lot_project_payment_status = 'Verified'
+            AND ${currentPaymentPredicate}
             AND DATE(p.lot_project_payment_date) BETWEEN ${escapedRangeFrom} AND ${escapedRangeTo}
         ), 0)`
       : '0';
@@ -548,6 +576,7 @@ export const getLotProjectDashboard = async (req, res) => {
           WHERE p.lot_project_id = l.lot_project_id
             AND p.lot_project_listing_id = l.lot_project_listing_id
             AND p.lot_project_payment_status = 'Verified'
+            AND ${currentPaymentPredicate}
             AND p.lot_project_payment_type IN ('downpayment', 'down_payment')
             AND DATE(p.lot_project_payment_date) BETWEEN ${escapedRangeFrom} AND ${escapedRangeTo}
         ), 0)`
@@ -633,7 +662,7 @@ export const getLotProjectDashboard = async (req, res) => {
           COALESCE(SUM(CASE WHEN l.lot_project_listing_status = 'pending_for_cancellation' THEN ${inventoryTcpExpr} ELSE 0 END), 0) AS pendingCancellationValue,
           COALESCE(SUM(CASE WHEN l.lot_project_listing_status = 'cancelled' THEN ${inventoryTcpExpr} ELSE 0 END), 0) AS cancelledInventoryValue
         FROM lot_project_listings l
-        ${hasClientProfiles ? "LEFT JOIN lot_project_client_profiles cp ON cp.lot_project_listing_id = l.lot_project_listing_id AND cp.lot_project_client_profile_status = 'active'" : ''}
+        ${getCurrentClientJoin()}
         WHERE l.lot_project_id = ?
       `,
       [project.lot_project_id]
@@ -651,7 +680,7 @@ export const getLotProjectDashboard = async (req, res) => {
           COALESCE(SUM(GREATEST(${effectiveTcpExpr} - (${rangeEarnedDiscountExpr}), 0)), 0) AS totalNetSales,
           COALESCE(SUM(GREATEST(${effectiveTcpExpr} - ${rangePaymentSummarySelect} - (${rangeEarnedDiscountExpr}), 0)), 0) AS pendingSales
         FROM lot_project_listings l
-        ${hasClientProfiles ? "LEFT JOIN lot_project_client_profiles cp ON cp.lot_project_listing_id = l.lot_project_listing_id AND cp.lot_project_client_profile_status = 'active'" : ''}
+        ${getCurrentClientJoin()}
         WHERE l.lot_project_id = ?
           AND l.lot_project_listing_status IN ('sold', 'pending_for_cancellation')
           AND ${reservationRangeScope}
@@ -781,9 +810,7 @@ export const getLotProjectDashboard = async (req, res) => {
     const saleDateSelect = hasClientProfiles
       ? 'DATE(COALESCE(cp.lot_project_client_profile_created_at, l.lot_project_listing_updated_at))'
       : 'DATE(l.lot_project_listing_updated_at)';
-    const saleClientJoin = hasClientProfiles
-      ? "LEFT JOIN lot_project_client_profiles cp ON cp.lot_project_listing_id = l.lot_project_listing_id AND cp.lot_project_client_profile_status = 'active'"
-      : '';
+    const saleClientJoin = getCurrentClientJoin();
 
     const [salesTrendRows] = hasReservationHistory
       ? await connection.query(
@@ -834,9 +861,10 @@ export const getLotProjectDashboard = async (req, res) => {
             FROM lot_project_payments p
             INNER JOIN lot_project_listings l
               ON l.lot_project_listing_id = p.lot_project_listing_id
-            ${hasClientProfiles ? "LEFT JOIN lot_project_client_profiles cp ON cp.lot_project_listing_id = l.lot_project_listing_id AND cp.lot_project_client_profile_status = 'active'" : ''}
+            ${getCurrentClientJoin()}
             WHERE p.lot_project_id = ?
               AND p.lot_project_payment_status = 'Verified'
+              AND ${currentPaymentPredicate}
               AND DATE(p.lot_project_payment_date) BETWEEN ? AND ?
               AND l.lot_project_listing_status IN ('sold', 'pending_for_cancellation')
               AND ${reservationRangeScope}
@@ -868,10 +896,10 @@ export const getLotProjectDashboard = async (req, res) => {
             FROM lot_project_payments p
             INNER JOIN lot_project_listings l
               ON l.lot_project_listing_id = p.lot_project_listing_id
-            INNER JOIN lot_project_client_profiles cp
-              ON cp.lot_project_listing_id = p.lot_project_listing_id
+            ${getCurrentClientJoin()}
             WHERE p.lot_project_id = ?
               AND p.lot_project_payment_status = 'Verified'
+              AND ${currentPaymentPredicate}
               AND p.lot_project_payment_type IN ('downpayment', 'down_payment')
               AND DATE(p.lot_project_payment_date) BETWEEN ? AND ?
               AND l.lot_project_listing_status IN ('sold', 'pending_for_cancellation')
@@ -1137,7 +1165,7 @@ export const getLotProjectDashboard = async (req, res) => {
       : `NULL AS cadastral_lots,`;
 
     const clientJoin = hasClientProfiles
-      ? `LEFT JOIN lot_project_client_profiles cp ON cp.lot_project_listing_id = l.lot_project_listing_id AND cp.lot_project_client_profile_status = 'active'`
+      ? getCurrentClientJoin()
       : `LEFT JOIN (SELECT NULL AS lot_project_listing_id, NULL AS lot_project_client_profile_id, NULL AS buyer_full_name) cp ON 1 = 0`;
 
     const listingDocumentJoin = hasListingDocuments

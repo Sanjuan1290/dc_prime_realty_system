@@ -39,7 +39,11 @@ test('protected document metadata remains visible without a permanent public URL
 test('listing document mapper keeps protected entries that intentionally have no URL', () => {
   const shared = read('server/controllers/Lot_Projects/_shared/lotProject.shared.js');
   assert.match(shared, /if \(!url && !accessPath && !fileId && !cloudinaryPublicId\) return null/);
-  assert.match(shared, /getListingDocuments = async \(connection, lotProjectId, listingId, clientProfileId, projectSlug = ''\)/);
+  assert.match(
+    shared,
+    /getListingDocuments = async \([\s\S]*?connection,[\s\S]*?lotProjectId,[\s\S]*?listingId,[\s\S]*?clientProfileId,[\s\S]*?projectSlug = '',[\s\S]*?accountId = 0[\s\S]*?\) =>/
+  );
+  assert.match(shared, /cd\.lot_project_account_id = \?/);
   assert.match(shared, /parseClientDocumentImages\([\s\S]*?projectSlug[\s\S]*?\)/);
 });
 

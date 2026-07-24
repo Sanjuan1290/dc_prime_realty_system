@@ -715,7 +715,13 @@ const ListingProfile = () => {
       ) : null}
 
       {!profileQuery.isLoading && !profileQuery.isError && activeTab === 'payments' ? (
-        <PaymentsSOA listing={paymentListing} soaRows={soaRows} payments={payments} readOnly={readOnly} />
+        <PaymentsSOA
+          listing={paymentListing}
+          soaRows={soaRows}
+          payments={payments}
+          readOnly={readOnly}
+          profileQueryKey={profileKey}
+        />
       ) : null}
 
       {!profileQuery.isLoading && !profileQuery.isError && activeTab === 'documents' ? (
@@ -823,3 +829,4 @@ const ListingProfile = () => {
 }
 
 export default ListingProfile
+
