@@ -165,6 +165,7 @@ export const getLotProjectBySlug = async (req, res) => {
         locationCode: project.lot_project_location_code,
         administrator: project.lot_project_administrator_name,
         taxDeclarationNo: project.lot_project_tax_declaration_no,
+        titleNumber: project.lot_project_title_number,
         pin: project.lot_project_pin,
         status: project.lot_project_status,
         routePath: `/lot-projects/${project.lot_project_slug}`,
@@ -199,11 +200,12 @@ export const createLotProject = async (req, res) => {
           lot_project_location_code,
           lot_project_administrator_name,
           lot_project_tax_declaration_no,
+          lot_project_title_number,
           lot_project_pin,
           lot_project_status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
-      [payload.name, payload.slug, payload.location, payload.locationCode, payload.administrator, payload.taxDeclarationNo, payload.pin, payload.status]
+      [payload.name, payload.slug, payload.location, payload.locationCode, payload.administrator, payload.taxDeclarationNo, payload.titleNumber, payload.pin, payload.status]
     );
 
     const lotProjectId = projectResult.insertId;
@@ -312,11 +314,12 @@ export const updateLotProject = async (req, res) => {
           lot_project_location_code = ?,
           lot_project_administrator_name = ?,
           lot_project_tax_declaration_no = ?,
+          lot_project_title_number = ?,
           lot_project_pin = ?,
           lot_project_status = ?
         WHERE lot_project_id = ?
       `,
-      [payload.name, payload.slug, payload.location, payload.locationCode, payload.administrator, payload.taxDeclarationNo, payload.pin, payload.status, lotProjectId]
+      [payload.name, payload.slug, payload.location, payload.locationCode, payload.administrator, payload.taxDeclarationNo, payload.titleNumber, payload.pin, payload.status, lotProjectId]
     );
 
     if (result.affectedRows === 0) {

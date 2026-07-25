@@ -428,6 +428,7 @@ const toProjectView = (project = {}) => ({
   project_bailen_location_code: project.lot_project_location_code || project.locationCode,
   project_bailen_administrator_name: project.lot_project_administrator_name || project.administrator,
   project_bailen_tax_declaration_no: project.lot_project_tax_declaration_no || project.taxDeclarationNo,
+  project_bailen_title_number: project.lot_project_title_number || project.titleNumber,
   project_bailen_pin: project.lot_project_pin || project.pin,
   project_bailen_status: project.lot_project_status || project.status,
   project_bailen_document_template: 'Project Default Documents',

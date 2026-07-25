@@ -145,6 +145,7 @@ const AddLotProjectModal = ({
     locationCode: project?.project_bailen_location_code || project?.lot_project_location_code || project?.locationCode || '',
     administrator: project?.project_bailen_administrator_name || project?.lot_project_administrator_name || project?.administrator || '',
     taxDeclarationNo: project?.project_bailen_tax_declaration_no || project?.lot_project_tax_declaration_no || project?.taxDeclarationNo || '',
+    titleNumber: project?.project_bailen_title_number || project?.lot_project_title_number || project?.titleNumber || '',
     pin: project?.project_bailen_pin || project?.lot_project_pin || project?.pin || '',
     status: project?.project_bailen_status || project?.lot_project_status || project?.status || 'active',
   }))
@@ -392,6 +393,7 @@ const AddLotProjectModal = ({
         locationCode: form.locationCode.trim().toUpperCase(),
         administrator: form.administrator.trim(),
         taxDeclarationNo: form.taxDeclarationNo.trim(),
+        titleNumber: form.titleNumber.trim(),
         pin: form.pin.trim(),
         status: form.status,
         cadastralLots,
@@ -521,6 +523,14 @@ const AddLotProjectModal = ({
                     value={form.taxDeclarationNo}
                     onChange={(value) => updateForm('taxDeclarationNo', value)}
                     placeholder="AA-06-0005-xxxxx"
+                  />
+
+                  <Field
+                    label="Title Number"
+                    type="text"
+                    value={form.titleNumber}
+                    onChange={(value) => updateForm('titleNumber', value)}
+                    placeholder="Enter title number"
                   />
 
                   <Field

@@ -618,7 +618,7 @@ const Projects = () => {
                 <Tooltip content={<DocumentChartTooltip />} />
                 <Legend />
                 <Bar dataKey="approved" name="Approved" stackId="documents" fill="#059669" />
-                <Bar dataKey="awaitingApproval" name="Awaiting Approval" stackId="documents" fill="#d97706" />
+                <Bar dataKey="awaitingApproval" name="Awaiting Approval" stackId="documents" fill="#FF9A1F" />
                 <Bar dataKey="pendingRequired" name="Pending Required" stackId="documents" fill="#dc2626" radius={[0, 6, 6, 0]} />
               </BarChart>
             </ResponsiveContainer>

@@ -1,4 +1,4 @@
-import test from 'node:test';
+  import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
@@ -17,6 +17,7 @@ test('project price list uses listing inventory pricing without an out-of-scope 
   assert.doesNotMatch(source, /effectiveTcpExpr/);
   assert.match(source, /SELECT\s+l\.\*,\s+\$\{cadastralSelect\}/s);
   assert.match(source, /listings:\s*rows\.map\(mapListingRow\)/);
+  assert.match(source, /lot_project_listing_status = 'available'/);
 });
 
 test('project price list response still exposes dual cash and installment values through mapListingRow', async () => {
@@ -47,7 +48,6 @@ test('project unit price list matches the inventory sheet columns and straight-p
     'Net After Reservation',
     'Straight Payment (Months)',
     'Straight Payment (Monthly)',
-    'Listing Status',
   ]) {
     assert.match(printSource, new RegExp(heading.replace(/[()]/g, '\\$&')));
   }
@@ -61,6 +61,10 @@ test('project unit price list matches the inventory sheet columns and straight-p
   assert.doesNotMatch(printSource, />Installment TCP</);
   assert.doesNotMatch(printSource, />Cash TCP</);
   assert.doesNotMatch(printSource, />LMF Rate</);
-  assert.match(printSource, /listing\.status/);
-  assert.match(printSource, /colSpan=\{13\}/);
+  assert.match(printSource, /const availableListings = listings\.filter/);
+  assert.match(printSource, /listing\.rawStatus \?\? listing\.status/);
+  assert.match(printSource, /=== 'available'/);
+  assert.doesNotMatch(printSource, /Listing Status/);
+  assert.doesNotMatch(printSource, /statusTone/);
+  assert.match(printSource, /colSpan=\{12\}/);
 });

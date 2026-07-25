@@ -270,7 +270,7 @@ const ReservePaymentTermsModal = ({
             helper={`Listing default: ${listingLmfRate.toFixed(2)}%. This reservation uses the entered rate without changing the listing.`}
             required
           />
-          <SelectInput label="Legal / Misc Fee Treatment" value={paymentForm.legalMiscFeeMode || paymentForm.legalMiscFee} onChange={(value) => { updatePaymentField('legalMiscFee', value); updatePaymentField('legalMiscFeeMode', value) }} helper={`Calculated LMF: ${money(paymentForm.legalMiscFeeAmount || 0)}. Pay later creates a separate SOA row.`}><option value="include_in_monthly">{isCash ? 'Include in cash balance' : 'Include in monthly'}</option><option value="separate_soa_row">Pay later as separate SOA row</option></SelectInput>
+          <SelectInput label="Legal / Misc Fee Treatment" value={paymentForm.legalMiscFeeMode || paymentForm.legalMiscFee} onChange={(value) => { updatePaymentField('legalMiscFee', value); updatePaymentField('legalMiscFeeMode', value) }} helper={`Calculated LMF: ${money(paymentForm.legalMiscFeeAmount || 0)}. Pay later creates a separate SOA row.`}><option value="include_in_monthly">{isCash ? 'Include in cash balance' : 'Include in monthly'}</option><option value="separate_soa_row">Pay later</option></SelectInput>
           <TextInput label="Sale Discount %" type="number" value={paymentForm.saleDiscountPercentage} onChange={(value) => updatePaymentField('saleDiscountPercentage', value)} min="0" max="100" step="0.01" placeholder="0" helper="Applied to the selected base selling price. LMF remains based on the original base selling price." />
 
           {!isCash ? <>

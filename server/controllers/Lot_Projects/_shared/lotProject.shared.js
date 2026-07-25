@@ -129,6 +129,7 @@ export const normalizeProjectPayload = (body = {}) => {
     locationCode: String(body.lot_project_location_code || body.project_bailen_location_code || body.locationCode || '').trim().toUpperCase(),
     administrator: toNullable(body.lot_project_administrator_name || body.project_bailen_administrator_name || body.administrator),
     taxDeclarationNo: toNullable(body.lot_project_tax_declaration_no || body.project_bailen_tax_declaration_no || body.taxDeclarationNo),
+    titleNumber: toNullable(body.lot_project_title_number || body.project_bailen_title_number || body.titleNumber),
     pin: toNullable(body.lot_project_pin || body.project_bailen_pin || body.pin),
     status: toActiveStatus(body.lot_project_status || body.project_bailen_status || body.status),
     cadastralLots: Array.isArray(body.cadastralLots)
@@ -269,6 +270,7 @@ export const mapProjectRows = (projects = [], cadastralRows = []) => {
     locationCode: project.lot_project_location_code,
     administrator: project.lot_project_administrator_name,
     taxDeclarationNo: project.lot_project_tax_declaration_no,
+    titleNumber: project.lot_project_title_number,
     pin: project.lot_project_pin,
     status: project.lot_project_status,
     routePath: `/lot-projects/${project.lot_project_slug}`,

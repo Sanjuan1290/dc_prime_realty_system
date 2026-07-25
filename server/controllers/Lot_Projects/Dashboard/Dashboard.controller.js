@@ -25,6 +25,7 @@ const buildProjectPayload = async (project) => {
     name: project.lot_project_name,
     location: project.lot_project_location,
     locationCode: project.lot_project_location_code,
+    titleNumber: project.lot_project_title_number,
     cadastralLots,
     defaultDocuments,
   };

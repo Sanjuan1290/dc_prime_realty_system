@@ -30,15 +30,14 @@ const ProjectDetailsModal = ({ project, onClose, onEdit }) => {
 
         <div className="overflow-y-auto p-6">
           <div className="grid gap-4 md:grid-cols-2">
-            <DetailItem label="Project ID" value={project.project_bailen_id} />
-            <DetailItem label="Project Name" value={project.project_bailen_name} />
+            <DetailItem label="Project Name" value={project.project_bailen_name} wide />
             <DetailItem label="Location" value={project.project_bailen_location} />
             <DetailItem label="Location Code" value={project.project_bailen_location_code} />
             <DetailItem label="Administrator" value={project.project_bailen_administrator_name} />
             <DetailItem label="Tax Declaration No." value={project.project_bailen_tax_declaration_no} />
+            <DetailItem label="Title Number" value={project.project_bailen_title_number} />
             <DetailItem label="PIN" value={project.project_bailen_pin} />
             <DetailItem label="Status" value={project.project_bailen_status} />
-            <DetailItem label="Document Template" value={project.project_bailen_document_template} />
             <DetailItem label="Required Documents" value={project.project_bailen_required_documents} />
             <DetailItem label="Created At" value={project.project_bailen_created_at} />
             <DetailItem label="Updated At" value={project.project_bailen_updated_at} />

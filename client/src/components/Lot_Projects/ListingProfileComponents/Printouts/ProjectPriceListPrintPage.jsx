@@ -28,17 +28,6 @@ const todayDateOnly = () =>
     day: '2-digit',
   }).format(new Date())
 
-const statusTone = (status = '') => {
-  const value = String(status || '').toLowerCase()
-  if (value.includes('available')) return 'text-emerald-700'
-  if (value.includes('hold')) return 'text-amber-700'
-  if (value.includes('pending')) return 'text-orange-700'
-  if (value.includes('cancel')) return 'text-red-700'
-  if (value.includes('fully paid')) return 'text-violet-700'
-  if (value.includes('sold')) return 'text-blue-700'
-  return 'text-slate-700'
-}
-
 const getPriceListValues = (listing = {}, straightPaymentMonths = DEFAULT_STRAIGHT_PAYMENT_MONTHS) => {
   const area = Number(listing.area || 0)
   const cashPricePerSqm = Number(listing.cashPricePerSqm ?? listing.pricePerSqm ?? 0)
@@ -82,6 +71,9 @@ const ProjectPriceListPrintPage = () => {
   const payload = data?.data || {}
   const project = payload.project || {}
   const listings = payload.listings || []
+  const availableListings = listings.filter((listing) =>
+    String(listing.rawStatus ?? listing.status ?? '').trim().toLowerCase() === 'available'
+  )
   const priceListDate = payload.printedAt || todayDateOnly()
   const straightPaymentMonths = normalizeStraightPaymentMonths(
     new URLSearchParams(window.location.search).get('straightPaymentMonths')
@@ -124,7 +116,7 @@ const ProjectPriceListPrintPage = () => {
             As of {formatDate(priceListDate)}
           </p>
           <p className="text-[10px] font-semibold">
-            {project.location || '-'} · Project Code: {project.locationCode || '-'} · Total Units: {listings.length}
+            {project.location || '-'} · Project Code: {project.locationCode || '-'} · Available Units: {availableListings.length}
           </p>
         </div>
 
@@ -132,18 +124,17 @@ const ProjectPriceListPrintPage = () => {
           <table className="project-price-list-table w-full table-fixed border-collapse text-[7px] leading-tight">
             <colgroup>
               <col className="w-[3%]" />
+              <col className="w-[8%]" />
               <col className="w-[7%]" />
               <col className="w-[6%]" />
-              <col className="w-[5%]" />
-              <col className="w-[8%]" />
-              <col className="w-[10%]" />
-              <col className="w-[8%]" />
-              <col className="w-[11%]" />
-              <col className="w-[8%]" />
               <col className="w-[9%]" />
-              <col className="w-[7%]" />
-              <col className="w-[8%]" />
+              <col className="w-[11%]" />
+              <col className="w-[9%]" />
+              <col className="w-[12%]" />
+              <col className="w-[9%]" />
               <col className="w-[10%]" />
+              <col className="w-[7%]" />
+              <col className="w-[9%]" />
             </colgroup>
             <thead>
               <tr className="bg-slate-200 text-center font-black uppercase">
@@ -159,11 +150,10 @@ const ProjectPriceListPrintPage = () => {
                 <th className="border border-black px-1 py-1">Net After Reservation</th>
                 <th className="border border-black px-1 py-1">Straight Payment (Months)</th>
                 <th className="border border-black px-1 py-1">Straight Payment (Monthly)</th>
-                <th className="border border-black px-1 py-1">Listing Status</th>
               </tr>
             </thead>
             <tbody>
-              {listings.length ? listings.map((listing, index) => {
+              {availableListings.length ? availableListings.map((listing, index) => {
                 const values = getPriceListValues(listing, straightPaymentMonths)
 
                 return (
@@ -180,14 +170,11 @@ const ProjectPriceListPrintPage = () => {
                     <td className="border border-black px-1 py-1 text-right">{money(values.netAfterReservation)}</td>
                     <td className="border border-black px-1 py-1 text-center">{straightPaymentMonths}</td>
                     <td className="border border-black px-1 py-1 text-right font-black">{money(values.straightPaymentMonthly)}</td>
-                    <td className={`border border-black px-1 py-1 text-center font-black uppercase ${statusTone(listing.status)}`}>
-                      {listing.status || '-'}
-                    </td>
                   </tr>
                 )
               }) : (
                 <tr>
-                  <td colSpan={13} className="border border-black px-2 py-8 text-center text-sm font-bold">No listings found.</td>
+                  <td colSpan={12} className="border border-black px-2 py-8 text-center text-sm font-bold">No available listings found.</td>
                 </tr>
               )}
             </tbody>
