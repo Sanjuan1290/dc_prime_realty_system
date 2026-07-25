@@ -13,7 +13,7 @@ test('project document compliance defaults to All Projects', async () => {
   assert.match(page, /activeDocumentProjectId === 'all' \? `\$\{unit\.projectName\} · \$\{unit\.unitId\}`/);
 });
 
-test('project account completion counts only accounts with every document submitted or approved', async () => {
+test('project account completion counts only accounts with every document approved', async () => {
   const [controller, page] = await Promise.all([
     read('../controllers/System/projects.controller.js'),
     read('../../client/src/pages/System/Projects.jsx'),
@@ -21,7 +21,8 @@ test('project account completion counts only accounts with every document submit
 
   assert.match(controller, /const completedAccountsByProject = new Map\(\)/);
   assert.match(controller, /counts\.totalDocuments > 0/);
-  assert.match(controller, /counts\.submittedDocuments === counts\.totalDocuments/);
+  assert.match(controller, /counts\.approvedDocuments === counts\.totalDocuments/);
+  assert.doesNotMatch(controller, /counts\.submittedDocuments === counts\.totalDocuments/);
   assert.match(controller, /accountsWithCompletedDocuments:/);
   assert.doesNotMatch(controller, /accountsWithSubmittedDocuments:/);
 
@@ -29,3 +30,4 @@ test('project account completion counts only accounts with every document submit
   assert.match(page, /project\.accountsWithCompletedDocuments/);
   assert.doesNotMatch(page, /project\.accountsWithSubmittedDocuments/);
 });
+

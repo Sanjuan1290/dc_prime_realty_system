@@ -414,322 +414,387 @@ const AddLotProjectModal = ({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4">
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="lot-project-modal-title"
-        className="flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl"
-      >
-        <div className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 px-5">
-          <h2 id="lot-project-modal-title" className="text-base font-black text-slate-950">{isEdit ? 'Edit Lot Project' : 'Add Lot Project'}</h2>
-
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
-            aria-label="Close modal"
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/45 p-3 sm:p-4">
+      {step === 1 ? (
+        <div className="flex min-h-full items-center justify-center">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="lot-project-information-modal-title"
+            className="flex max-h-[94vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl"
           >
-            <FiX className="h-4 w-4" />
-          </button>
-        </div>
+            <div className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 px-5">
+              <div className="min-w-0">
+                <p className="text-[11px] font-black uppercase tracking-[0.16em] text-blue-600">
+                  Step 1 of 2
+                </p>
+                <h2
+                  id="lot-project-information-modal-title"
+                  className="truncate text-base font-black text-slate-950"
+                >
+                  {isEdit ? 'Edit Lot Project' : 'Add Lot Project'}
+                </h2>
+              </div>
 
-        <div className="shrink-0 border-b border-slate-200 bg-white px-5 py-4">
-          <div className="mx-auto grid max-w-3xl grid-cols-[1fr_auto_1fr] items-center gap-3">
-            {[
-              { id: 1, label: 'Project Information' },
-              { id: 2, label: 'Documents' },
-            ].map((item, index) => (
-              <div key={item.id} className="contents">
-                {index > 0 ? <div className={`h-px ${step >= item.id ? 'bg-blue-500' : 'bg-slate-200'}`} /> : null}
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+                aria-label="Close modal"
+              >
+                <FiX className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="shrink-0 border-b border-slate-200 bg-white px-5 py-4">
+              <div className="mx-auto grid max-w-3xl grid-cols-[1fr_auto_1fr] items-center gap-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-600 text-sm font-black text-white">
+                    1
+                  </span>
+                  <span className="truncate text-sm font-black text-slate-950">
+                    Project Information
+                  </span>
+                </div>
+
+                <div className="h-px bg-slate-200" />
+
                 <button
                   type="button"
-                  onClick={() => item.id === 1 ? setStep(1) : goToDocuments()}
+                  onClick={goToDocuments}
                   className="flex min-w-0 items-center gap-3 text-left"
                 >
-                  <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-black ${step >= item.id ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
-                    {item.id}
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-sm font-black text-slate-500">
+                    2
                   </span>
-                  <span className={`truncate text-sm font-black ${step === item.id ? 'text-slate-950' : 'text-slate-500'}`}>{item.label}</span>
+                  <span className="truncate text-sm font-black text-slate-500">
+                    Documents
+                  </span>
                 </button>
               </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-4">
-          {alert ? (
-            <StatusAlert
-              type={alert.type}
-              message={alert.message}
-              onClose={alert.type === 'loading' ? undefined : () => setAlert(null)}
-              className="mb-4"
-            />
-          ) : null}
-
-          {isLoadingDocuments ? (
-            <StatusAlert
-              type="loading"
-              message="Loading document library and templates..."
-              className="mb-4"
-            />
-          ) : null}
-
-          {step === 1 ? (
-            <div className="mx-auto max-w-3xl">
-              <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <h3 className="text-sm font-black text-slate-950">
-                  Project Information
-                </h3>
-                <p className="mt-1 text-xs font-semibold text-slate-500">
-                  Basic project details and status.
-                </p>
-
-                <div className="mt-4 grid gap-3">
-                  <Field
-                    label="Project Name"
-                    value={form.name}
-                    onChange={(value) => updateForm('name', value)}
-                    placeholder="Example: Bailen Project"
-                    required
-                  />
-
-                  <Field
-                    label="Location"
-                    value={form.location}
-                    onChange={(value) => updateForm('location', value)}
-                    placeholder="Example: Bailen, Cavite"
-                    required
-                  />
-
-                  <Field
-                    label="Location Code"
-                    value={form.locationCode}
-                    onChange={(value) => updateForm('locationCode', value)}
-                    placeholder="ex. LA, PE"
-                    helper="This becomes the unit prefix."
-                    required
-                  />
-
-                  <Field
-                    label="Administrator"
-                    value={form.administrator}
-                    onChange={(value) => updateForm('administrator', value)}
-                    placeholder="Enter admin name"
-                  />
-
-                  <Field
-                    label="Tax Declaration No."
-                    value={form.taxDeclarationNo}
-                    onChange={(value) => updateForm('taxDeclarationNo', value)}
-                    placeholder="AA-06-0005-xxxxx"
-                  />
-
-                  <Field
-                    label="Title Number"
-                    type="text"
-                    value={form.titleNumber}
-                    onChange={(value) => updateForm('titleNumber', value)}
-                    placeholder="Enter title number"
-                  />
-
-                  <Field
-                    label="PIN"
-                    value={form.pin}
-                    onChange={(value) => updateForm('pin', value)}
-                    placeholder="022-06-0005-xxx-xx"
-                  />
-
-                  <div>
-                    <div className="flex items-end gap-2">
-                      <div className="flex-1">
-                        <Field
-                          label="Cadastral Lot Numbers"
-                          value={cadastralInput}
-                          onChange={setCadastralInput}
-                          placeholder="Example: 1306"
-                          helper="Add values like 1306 or 1307. Listings will select from these."
-                        />
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={addCadastralLot}
-                        className="h-10 rounded-lg border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 transition hover:bg-slate-50"
-                      >
-                        Add
-                      </button>
-                    </div>
-
-                    {cadastralLots.length ? (
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {cadastralLots.map((lot) => (
-                          <button
-                            key={lot}
-                            type="button"
-                            onClick={() => removeCadastralLot(lot)}
-                            className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-black text-blue-700 transition hover:bg-blue-100"
-                          >
-                            {lot} ×
-                          </button>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="mt-2 rounded-lg border border-dashed border-blue-200 bg-blue-50 p-3 text-xs font-semibold text-blue-700">
-                        No cadastral lot numbers yet. Add at least one if this project has fixed cadastral lots.
-                      </div>
-                    )}
-                  </div>
-
-                  <SelectField
-                    label="Status"
-                    value={form.status}
-                    onChange={(value) => updateForm('status', value)}
-                  >
-                    <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
-                  </SelectField>
-                </div>
-              </section>
             </div>
-          ) : (
-            <div className="grid gap-4 xl:grid-cols-[0.8fr_1.2fr]">
-              <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <h3 className="text-sm font-black text-slate-950">
-                  Document Templates
-                </h3>
-                <p className="mt-1 text-xs font-semibold text-slate-500">
-                  Select one or more templates. The selected documents appear on the right immediately.
-                </p>
 
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={selectAllTemplates}
-                    className="h-9 rounded-lg border border-slate-300 bg-white px-3 text-xs font-black text-slate-700 transition hover:bg-slate-50"
-                  >
-                    Select All Templates
-                  </button>
+            <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-4">
+              {alert ? (
+                <StatusAlert
+                  type={alert.type}
+                  message={alert.message}
+                  onClose={alert.type === 'loading' ? undefined : () => setAlert(null)}
+                  className="mb-4"
+                />
+              ) : null}
 
-                  <button
-                    type="button"
-                    onClick={clearTemplates}
-                    className="h-9 rounded-lg border border-slate-300 bg-white px-3 text-xs font-black text-slate-700 transition hover:bg-slate-50"
-                  >
-                    Clear Templates
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={useAllLibraryDocs}
-                    className="h-9 rounded-lg border border-slate-300 bg-white px-3 text-xs font-black text-slate-700 transition hover:bg-slate-50"
-                  >
-                    Use All Library Docs
-                  </button>
-                </div>
-
-                <div className="relative mt-4">
-                  <FiSearch className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  <input
-                    value={templateSearch}
-                    onChange={(event) => setTemplateSearch(event.target.value)}
-                    placeholder="Search templates..."
-                    className="h-10 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-sm font-semibold text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
-                  />
-                </div>
-
-                <div className="mt-3 max-h-[320px] space-y-2 overflow-y-auto pr-1">
-                  {filteredTemplates.map((template) => {
-                    const selected = selectedTemplateIds.includes(template.id)
-
-                    return (
-                      <button
-                        key={template.id}
-                        type="button"
-                        onClick={() => toggleTemplate(template)}
-                        className={`w-full rounded-xl border p-3 text-left transition ${
-                          selected
-                            ? 'border-blue-400 bg-blue-50 ring-2 ring-blue-100'
-                            : 'border-slate-200 bg-white hover:border-blue-200 hover:bg-blue-50/40'
-                        }`}
-                      >
-                        <div className="flex items-start gap-2">
-                          <input
-                            type="checkbox"
-                            checked={selected}
-                            onChange={() => toggleTemplate(template)}
-                            onClick={(event) => event.stopPropagation()}
-                            className="mt-0.5 h-4 w-4 rounded border-slate-300"
-                          />
-
-                          <div>
-                            <p className="text-xs font-black text-slate-950">
-                              {template.name}
-                            </p>
-                            <p className="mt-1 text-xs font-semibold text-slate-500">
-                              {template.description}
-                            </p>
-
-                            <span className="mt-2 inline-flex rounded-full bg-slate-100 px-2 py-1 text-[11px] font-black text-slate-600">
-                              {template.required} required / {template.docs.length} docs
-                            </span>
-                          </div>
-                        </div>
-                      </button>
-                    )
-                  })}
-                </div>
-              </section>
-              <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <h3 className="text-sm font-black text-slate-950">
-                      Default Document Requirements
-                    </h3>
-                    <p className="mt-1 text-xs font-semibold text-slate-500">
-                      These become the default checklist for listings created under this project.
-                    </p>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700">
-                      {selectedTemplateIds.length} templates
-                    </span>
-                    <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700">
-                      {requiredCount} required
-                    </span>
-                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">
-                      {optionalCount} optional
-                    </span>
-                  </div>
-                </div>
-
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {selectedTemplateIds.map((id) => {
-                    const template = documentTemplates.find((item) => item.id === id)
-
-                    if (!template) return null
-
-                    return (
-                      <span
-                        key={id}
-                        className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-black text-blue-700"
-                      >
-                        {template.name} ×
-                      </span>
-                    )
-                  })}
-                </div>
-
-                <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <h4 className="text-sm font-black text-slate-950">
-                    Add Existing Documents
-                  </h4>
+              <div className="mx-auto max-w-3xl">
+                <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <h3 className="text-sm font-black text-slate-950">
+                    Project Information
+                  </h3>
                   <p className="mt-1 text-xs font-semibold text-slate-500">
-                    Create missing documents in Document Library first, then search and add them here.
+                    Basic project details and status.
                   </p>
 
-                  <div className="relative mt-3">
+                  <div className="mt-4 grid gap-3">
+                    <Field
+                      label="Project Name"
+                      value={form.name}
+                      onChange={(value) => updateForm('name', value)}
+                      placeholder="Example: Bailen Project"
+                      required
+                    />
+
+                    <Field
+                      label="Location"
+                      value={form.location}
+                      onChange={(value) => updateForm('location', value)}
+                      placeholder="Example: Bailen, Cavite"
+                      required
+                    />
+
+                    <Field
+                      label="Location Code"
+                      value={form.locationCode}
+                      onChange={(value) => updateForm('locationCode', value)}
+                      placeholder="ex. LA, PE"
+                      helper="This becomes the unit prefix."
+                      required
+                    />
+
+                    <Field
+                      label="Administrator"
+                      value={form.administrator}
+                      onChange={(value) => updateForm('administrator', value)}
+                      placeholder="Enter admin name"
+                    />
+
+                    <Field
+                      label="Tax Declaration No."
+                      value={form.taxDeclarationNo}
+                      onChange={(value) => updateForm('taxDeclarationNo', value)}
+                      placeholder="AA-06-0005-xxxxx"
+                    />
+
+                    <Field
+                      label="Title Number"
+                      type="text"
+                      value={form.titleNumber}
+                      onChange={(value) => updateForm('titleNumber', value)}
+                      placeholder="Enter title number"
+                    />
+
+                    <Field
+                      label="PIN"
+                      value={form.pin}
+                      onChange={(value) => updateForm('pin', value)}
+                      placeholder="022-06-0005-xxx-xx"
+                    />
+
+                    <div>
+                      <div className="flex items-end gap-2">
+                        <div className="flex-1">
+                          <Field
+                            label="Cadastral Lot Numbers"
+                            value={cadastralInput}
+                            onChange={setCadastralInput}
+                            placeholder="Example: 1306"
+                            helper="Add values like 1306 or 1307. Listings will select from these."
+                          />
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={addCadastralLot}
+                          className="h-10 rounded-lg border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 transition hover:bg-slate-50"
+                        >
+                          Add
+                        </button>
+                      </div>
+
+                      {cadastralLots.length ? (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {cadastralLots.map((lot) => (
+                            <button
+                              key={lot}
+                              type="button"
+                              onClick={() => removeCadastralLot(lot)}
+                              className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-black text-blue-700 transition hover:bg-blue-100"
+                            >
+                              {lot} ×
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="mt-2 rounded-lg border border-dashed border-blue-200 bg-blue-50 p-3 text-xs font-semibold text-blue-700">
+                          No cadastral lot numbers yet. Add at least one if this project has fixed cadastral lots.
+                        </div>
+                      )}
+                    </div>
+
+                    <SelectField
+                      label="Status"
+                      value={form.status}
+                      onChange={(value) => updateForm('status', value)}
+                    >
+                      <option value="active">Active</option>
+                      <option value="inactive">Inactive</option>
+                    </SelectField>
+                  </div>
+                </section>
+              </div>
+            </div>
+
+            <div className="flex shrink-0 flex-col gap-2 border-t border-slate-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs font-bold text-slate-500">Step 1 of 2</p>
+
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  disabled={isSaving}
+                  className="h-10 rounded-lg border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    goToDocuments()
+                  }}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700"
+                >
+                  Next: Documents
+                  <FiArrowRight className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Project document setup"
+          className="mx-auto grid min-h-full w-full max-w-[1500px] content-center gap-4 lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]"
+        >
+          <section className="flex max-h-[88vh] min-h-[620px] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl lg:h-[92vh] lg:max-h-[92vh]">
+            <div className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 px-5">
+              <div className="min-w-0">
+                <p className="text-[11px] font-black uppercase tracking-[0.16em] text-blue-600">
+                  Step 2 of 2 · Document Picker
+                </p>
+                <h2
+                  id="document-picker-modal-title"
+                  className="truncate text-base font-black text-slate-950"
+                >
+                  Choose Documents
+                </h2>
+              </div>
+
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+                aria-label="Close document picker"
+              >
+                <FiX className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-4">
+              {alert ? (
+                <StatusAlert
+                  type={alert.type}
+                  message={alert.message}
+                  onClose={alert.type === 'loading' ? undefined : () => setAlert(null)}
+                  className="mb-4"
+                />
+              ) : null}
+
+              {isLoadingDocuments ? (
+                <StatusAlert
+                  type="loading"
+                  message="Loading document library and templates..."
+                  className="mb-4"
+                />
+              ) : null}
+
+              <div className="grid gap-4 xl:grid-rows-1">
+                <section className="flex min-h-[290px] flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <h3 className="text-sm font-black text-slate-950">
+                        Document Templates
+                      </h3>
+                      <p className="mt-1 text-xs font-semibold text-slate-500">
+                        Selecting a template adds its documents to the project list.
+                      </p>
+                    </div>
+
+                    <span className="shrink-0 rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700">
+                      {selectedTemplateIds.length} selected
+                    </span>
+                  </div>
+
+                  <div className="mt-3 flex shrink-0 flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={selectAllTemplates}
+                      className="h-8 rounded-lg border border-slate-300 bg-white px-3 text-xs font-black text-slate-700 transition hover:bg-slate-100"
+                    >
+                      Select All Templates
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={clearTemplates}
+                      className="h-8 rounded-lg border border-slate-300 bg-white px-3 text-xs font-black text-slate-700 transition hover:bg-slate-100"
+                    >
+                      Clear Templates
+                    </button>
+                  </div>
+
+                  <div className="relative mt-3 shrink-0">
+                    <FiSearch className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <input
+                      value={templateSearch}
+                      onChange={(event) => setTemplateSearch(event.target.value)}
+                      placeholder="Search templates..."
+                      className="h-10 w-full rounded-lg border border-slate-300 bg-white pl-9 pr-3 text-sm font-semibold text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
+                    />
+                  </div>
+
+                  <div className="mt-3 min-h-[180px] flex-1 space-y-2 overflow-y-auto pr-1">
+                    {filteredTemplates.map((template) => {
+                      const selected = selectedTemplateIds.includes(template.id)
+
+                      return (
+                        <button
+                          key={template.id}
+                          type="button"
+                          onClick={() => toggleTemplate(template)}
+                          className={`w-full rounded-xl border p-3 text-left transition ${
+                            selected
+                              ? 'border-blue-400 bg-blue-50 ring-2 ring-blue-100'
+                              : 'border-slate-200 bg-white hover:border-blue-200 hover:bg-blue-50/40'
+                          }`}
+                        >
+                          <div className="flex items-start gap-2">
+                            <input
+                              type="checkbox"
+                              checked={selected}
+                              onChange={() => toggleTemplate(template)}
+                              onClick={(event) => event.stopPropagation()}
+                              className="mt-0.5 h-4 w-4 rounded border-slate-300"
+                            />
+
+                            <div className="min-w-0">
+                              <p className="break-words text-xs font-black text-slate-950">
+                                {template.name}
+                              </p>
+                              <p className="mt-1 break-words text-xs font-semibold text-slate-500">
+                                {template.description}
+                              </p>
+
+                              <span className="mt-2 inline-flex rounded-full bg-slate-100 px-2 py-1 text-[11px] font-black text-slate-600">
+                                {template.required} required / {template.docs.length} docs
+                              </span>
+                            </div>
+                          </div>
+                        </button>
+                      )
+                    })}
+
+                    {!filteredTemplates.length ? (
+                      <div className="rounded-xl border border-dashed border-slate-300 bg-white p-4 text-center text-xs font-semibold text-slate-500">
+                        No matching templates found.
+                      </div>
+                    ) : null}
+                  </div>
+                </section>
+
+                <section className="flex min-h-[290px] flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <h3 className="text-sm font-black text-slate-950">
+                        Document Library
+                      </h3>
+                      <p className="mt-1 text-xs font-semibold text-slate-500">
+                        Add individual documents that are not included in a template.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={useAllLibraryDocs}
+                      className="h-8 shrink-0 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-700 transition hover:bg-blue-100"
+                    >
+                      Use All Library Docs
+                    </button>
+                  </div>
+
+                  <div className="relative mt-3 shrink-0">
                     <FiSearch className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                     <input
                       value={documentSearch}
@@ -739,20 +804,20 @@ const AddLotProjectModal = ({
                     />
                   </div>
 
-                  <div className="mt-3 grid max-h-[150px] gap-2 overflow-y-auto pr-1 md:grid-cols-2">
+                  <div className="mt-3 grid min-h-[180px] flex-1 content-start gap-2 overflow-y-auto pr-1 sm:grid-cols-2">
                     {filteredDocuments.map((document) => {
                       const added = selectedDocIds.has(document.id)
 
                       return (
                         <div
                           key={document.id}
-                          className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white p-3"
+                          className="flex min-w-0 flex-col justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3"
                         >
-                          <div>
-                            <p className="text-xs font-black text-slate-950">
+                          <div className="min-w-0">
+                            <p className="break-words text-xs font-black text-slate-950">
                               {document.name}
                             </p>
-                            <p className="mt-1 text-[11px] font-semibold text-slate-500">
+                            <p className="mt-1 break-words text-[11px] font-semibold text-slate-500">
                               {document.description}
                             </p>
                           </div>
@@ -761,35 +826,135 @@ const AddLotProjectModal = ({
                             type="button"
                             onClick={() => addDocument(document)}
                             disabled={added}
-                            className={`h-8 rounded-lg border px-3 text-xs font-black transition ${
+                            className={`h-8 w-full rounded-lg border px-3 text-xs font-black transition ${
                               added
                                 ? 'cursor-not-allowed border-slate-200 bg-slate-50 text-slate-400'
                                 : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
                             }`}
                           >
-                            {added ? 'Added' : 'Add'}
+                            {added ? 'Added' : 'Add Document'}
                           </button>
                         </div>
                       )
                     })}
-                  </div>
-                </div>
 
-                <div className="mt-4 max-h-[430px] space-y-3 overflow-y-auto pr-1">
-                  {selectedDocuments.map((document) => (
-                    <div
-                      key={document.id}
-                      className="grid gap-3 rounded-xl border border-slate-200 bg-white p-3 md:grid-cols-[1fr_130px_130px_auto] md:items-center"
-                    >
-                      <div>
-                        <p className="text-sm font-black text-slate-950">
+                    {!filteredDocuments.length ? (
+                      <div className="rounded-xl border border-dashed border-slate-300 bg-white p-4 text-center text-xs font-semibold text-slate-500 sm:col-span-2">
+                        No matching library documents found.
+                      </div>
+                    ) : null}
+                  </div>
+                </section>
+              </div>
+            </div>
+
+            <div className="flex shrink-0 flex-col gap-2 border-t border-slate-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs font-bold text-slate-500">
+                Add documents here, then review them in the separate modal.
+              </p>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setStep(1)
+                  setAlert(null)
+                }}
+                disabled={isSaving}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <FiArrowLeft className="h-4 w-4" />
+                Back to Project Information
+              </button>
+            </div>
+          </section>
+
+          <section className="flex max-h-[88vh] min-h-[620px] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl lg:h-[92vh] lg:max-h-[92vh]">
+            <div className="flex min-h-16 shrink-0 items-center justify-between gap-4 border-b border-slate-200 px-5 py-3">
+              <div className="min-w-0">
+                <p className="text-[11px] font-black uppercase tracking-[0.16em] text-blue-600">
+                  Step 2 of 2 · Project Checklist
+                </p>
+                <h2
+                  id="added-documents-modal-title"
+                  className="truncate text-base font-black text-slate-950"
+                >
+                  Documents Added
+                </h2>
+              </div>
+
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+                aria-label="Close added documents modal"
+              >
+                <FiX className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="shrink-0 border-b border-slate-200 bg-white px-5 py-4">
+              <div className="flex flex-wrap gap-2">
+                <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700">
+                  {selectedDocuments.length} total
+                </span>
+                <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700">
+                  {requiredCount} required
+                </span>
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">
+                  {optionalCount} optional
+                </span>
+              </div>
+
+              {selectedTemplateIds.length ? (
+                <div className="mt-3 flex max-h-20 flex-wrap gap-2 overflow-y-auto pr-1">
+                  {selectedTemplateIds.map((id) => {
+                    const template = documentTemplates.find((item) => item.id === id)
+
+                    if (!template) return null
+
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => toggleTemplate(template)}
+                        className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-black text-blue-700 transition hover:bg-blue-100"
+                        title="Uncheck template. Added documents will remain for review."
+                      >
+                        {template.name} ×
+                      </button>
+                    )
+                  })}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-4">
+              <div className="space-y-3">
+                {selectedDocuments.map((document) => (
+                  <article
+                    key={document.id}
+                    className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="break-words text-sm font-black text-slate-950">
                           {document.name}
                         </p>
-                        <p className="mt-1 text-xs font-semibold text-slate-500">
+                        <p className="mt-1 break-words text-xs font-semibold text-slate-500">
                           {document.description}
                         </p>
                       </div>
 
+                      <button
+                        type="button"
+                        onClick={() => removeDocument(document.id)}
+                        className="h-9 shrink-0 rounded-lg border border-red-200 bg-red-50 px-3 text-xs font-black text-red-700 transition hover:bg-red-100"
+                      >
+                        Remove
+                      </button>
+                    </div>
+
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
                       <SelectField
                         label="Requirement"
                         value={document.requirement}
@@ -811,89 +976,63 @@ const AddLotProjectModal = ({
                         <option value="active">Active</option>
                         <option value="inactive">Inactive</option>
                       </SelectField>
-
-                      <button
-                        type="button"
-                        onClick={() => removeDocument(document.id)}
-                        className="h-10 rounded-lg bg-red-600 px-4 text-sm font-black text-white transition hover:bg-red-700"
-                      >
-                        Remove
-                      </button>
                     </div>
-                  ))}
+                  </article>
+                ))}
 
-                  {!selectedDocuments.length ? (
-                    <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5 text-center text-sm font-semibold text-slate-500">
-                      No documents selected yet.
+                {!selectedDocuments.length ? (
+                  <div className="flex min-h-[360px] items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white p-5 text-center">
+                    <div>
+                      <p className="text-sm font-black text-slate-700">
+                        No documents added yet
+                      </p>
+                      <p className="mt-1 text-xs font-semibold text-slate-500">
+                        Use the separate Document Picker modal to add templates or library documents.
+                      </p>
                     </div>
-                  ) : null}
-                </div>
-              </section>
+                  </div>
+                ) : null}
+              </div>
             </div>
-          )}
+
+            <div className="flex shrink-0 flex-col gap-2 border-t border-slate-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs font-bold text-slate-500">
+                Review requirement and status before saving.
+              </p>
+
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  disabled={isSaving}
+                  className="h-10 rounded-lg border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={isSaving}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isSaving ? (
+                    <>
+                      <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <FiCheckCircle className="h-4 w-4" />
+                      {isEdit ? 'Save Changes' : 'Add Lot Project'}
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </section>
         </div>
-
-        <div className="flex shrink-0 flex-col gap-2 border-t border-slate-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-xs font-bold text-slate-500">Step {step} of 2</p>
-
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isSaving}
-              className="h-10 rounded-lg border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              Cancel
-            </button>
-
-            {step === 2 ? (
-              <button
-                type="button"
-                onClick={() => { setStep(1); setAlert(null) }}
-                disabled={isSaving}
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <FiArrowLeft className="h-4 w-4" />
-                Back
-              </button>
-            ) : null}
-
-            {step === 1 ? (
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.preventDefault()
-                  event.stopPropagation()
-                  goToDocuments()
-                }}
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700"
-              >
-                Next: Documents
-                <FiArrowRight className="h-4 w-4" />
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={isSaving}
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {isSaving ? (
-                  <>
-                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <FiCheckCircle className="h-4 w-4" />
-                    {isEdit ? 'Save Changes' : 'Add Lot Project'}
-                  </>
-                )}
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
+      )}
     </div>
   )
 }

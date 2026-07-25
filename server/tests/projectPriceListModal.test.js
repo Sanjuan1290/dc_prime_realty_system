@@ -40,20 +40,28 @@ test('print page uses the month count supplied by the Price List modal', async (
   assert.match(printPage, /\{straightPaymentMonths\}<\/td>/);
 });
 
-test('Add and Edit Lot Project use a two-step project and documents flow', async () => {
+test('Add and Edit Lot Project use two separate floating document modals', async () => {
   const projectModal = await read('../../client/src/components/System/projectComponents/AddLotProjectModal.jsx');
   const editModal = await read('../../client/src/components/Lot_Projects/DashboardComponents/EditProjectModal/EditProjectModal.jsx');
 
   assert.match(projectModal, /const \[step, setStep\] = useState\(1\)/);
   assert.match(projectModal, /Project Information/);
   assert.match(projectModal, /Next: Documents/);
-  assert.match(projectModal, /Default Document Requirements/);
-  assert.match(projectModal, /Step \{step\} of 2/);
-  assert.match(projectModal, /role="dialog"/);
+  assert.match(projectModal, /aria-label="Project document setup"/);
+  assert.match(projectModal, /Step 2 of 2 · Document Picker/);
+  assert.match(projectModal, /Step 2 of 2 · Project Checklist/);
+  assert.match(projectModal, /Choose Documents/);
+  assert.match(projectModal, /Documents Added/);
+  assert.match(projectModal, /lg:grid-cols-\[minmax\(0,0\.92fr\)_minmax\(0,1\.08fr\)\]/);
+
+  const floatingDocumentModals = projectModal.match(
+    /<section className="flex max-h-\[88vh\][^"]*shadow-2xl/g
+  ) || [];
+  assert.equal(floatingDocumentModals.length, 2);
+
   assert.doesNotMatch(projectModal, /<form[\s>]/);
   assert.doesNotMatch(projectModal, /onSubmit=/);
   assert.match(projectModal, /type="button"[\s\S]*?Next: Documents/);
   assert.match(projectModal, /onClick=\{handleSave\}/);
   assert.match(editModal, /mode="edit"/);
 });
-

@@ -622,7 +622,7 @@ export const getLotProjectDocumentCompliance = async (req, res) => {
     unitRows.forEach((row) => {
       const counts = mapCounts(row);
       const isDocumentComplete = counts.totalDocuments > 0
-        && counts.submittedDocuments === counts.totalDocuments;
+        && counts.approvedDocuments === counts.totalDocuments;
 
       if (!isDocumentComplete) return;
 
@@ -671,3 +671,4 @@ export const getLotProjectDocumentCompliance = async (req, res) => {
     connection.release();
   }
 };
+
