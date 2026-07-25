@@ -591,13 +591,15 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
                   const checked = event.target.checked
                   updateForm('isHistoricalEntry', checked)
                   if (!checked && String(form.firstDueDate || '') < today) updateForm('firstDueDate', today)
-                }}
+                }}  
                 disabled={isSaving || hasRecordedPayments}
                 className="mt-0.5 h-4 w-4 rounded border-blue-300 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed"
               />
               <span>
-                <span className="block text-sm font-black text-blue-950">Historical client account</span>
-                <span className="mt-1 block text-xs font-semibold text-blue-700">Allows a first due date from {historicalMinimum} through {today}. The date cannot be before the saved starting date.</span>
+                <span className="block text-sm font-black text-blue-950">Allow Backdated SOA Date</span>
+                <span className="mt-1 block text-xs font-semibold text-blue-700">
+                  Use this when encoding an account that started before today. This option is only available before any payment is recorded. The First Due Date may be set from {historicalMinimum} through {today}, but it cannot be earlier than the saved Starting Date.
+                </span>
               </span>
             </label>
             <Field
