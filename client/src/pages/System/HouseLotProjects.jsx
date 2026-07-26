@@ -15,3 +15,4 @@ const HouseLotProjects = () => (
 )
 
 export default HouseLotProjects
+

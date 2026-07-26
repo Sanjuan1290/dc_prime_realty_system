@@ -319,20 +319,22 @@ export const normalizeGroupProjectRates = (
     if (!project) throw createValidationError('One or more selected projects are unavailable or inactive.');
     if (selectedProjectIds.has(projectId)) throw createValidationError(`${project.lot_project_name} was selected more than once.`);
     selectedProjectIds.add(projectId);
-    const rates = validateGroupFixedRateStructure(item, {
+    const {
+      seller_group_type: _sellerGroupType,
+      ...rates
+    } = validateGroupFixedRateStructure(item, {
       groupHeadRole,
       projectName: project.lot_project_name,
       groupType,
     });
     return {
       lot_project_id: projectId,
-      commission_structure_type: normalizeSellerGroupType(groupType),
       ...rates,
     };
   });
 };
 
-const upsertGroupProjectRates = async (connection, groupId, projectRates) => {
+const upsertGroupProjectRates = async (connection, groupId, projectRates, groupType) => {
   if (!projectRates.length) return;
   await connection.query(
     `
@@ -359,7 +361,7 @@ const upsertGroupProjectRates = async (connection, groupId, projectRates) => {
       rate.sales_director_rate,
       rate.unit_manager_rate,
       rate.sales_agent_rate,
-      rate.commission_structure_type,
+      normalizeSellerGroupType(groupType),
     ])
   );
 };
@@ -394,8 +396,8 @@ const deactivateLegacyIndividualRates = async (connection, groupId) => {
   }
 };
 
-const syncGroupProjectAccreditations = async (connection, groupId, projectRates) => {
-  await upsertGroupProjectRates(connection, groupId, projectRates);
+const syncGroupProjectAccreditations = async (connection, groupId, projectRates, groupType) => {
+  await upsertGroupProjectRates(connection, groupId, projectRates, groupType);
   const selectedIds = projectRates.map((rate) => Number(rate.lot_project_id));
   if (!selectedIds.length) return;
   const placeholders = selectedIds.map(() => '?').join(', ');
@@ -606,7 +608,7 @@ export const createGroup = async (req, res) => {
       groupHeadRole: groupHead?.role || 'division_manager',
       groupType,
     });
-    await syncGroupProjectAccreditations(connection, groupId, normalizedRates);
+    await syncGroupProjectAccreditations(connection, groupId, normalizedRates, groupType);
 
     await writeAuditLog(connection, req, {
       action: 'create',
@@ -805,7 +807,7 @@ export const editGroup = async (req, res) => {
       groupHeadRole: nextHead?.role || 'division_manager',
       groupType,
     });
-    await syncGroupProjectAccreditations(connection, groupId, normalizedRates);
+    await syncGroupProjectAccreditations(connection, groupId, normalizedRates, groupType);
 
     await writeAuditLog(connection, req, {
       action: 'update', module: 'Groups', entityType: 'seller_group', entityId: String(groupId),
@@ -1322,3 +1324,4 @@ export const updateGroupProjectPool = async (req, res) => {
     connection.release();
   }
 };
+

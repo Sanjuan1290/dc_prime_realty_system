@@ -636,10 +636,10 @@ const AddLotProjectModal = ({
           role="dialog"
           aria-modal="true"
           aria-label="Project document setup"
-          className="mx-auto grid min-h-full w-full max-w-[1500px] content-center gap-4 lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]"
+          className="mx-auto grid min-h-full w-full max-w-[1500px] content-center gap-4 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]"
         >
           <section className="flex max-h-[88vh] min-h-[620px] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl lg:h-[92vh] lg:max-h-[92vh]">
-            <div className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 px-5">
+            <div className="flex min-h-16 shrink-0 items-center justify-between gap-4 border-b border-slate-200 px-5 py-3">
               <div className="min-w-0">
                 <p className="text-[11px] font-black uppercase tracking-[0.16em] text-blue-600">
                   Step 2 of 2 · Document Picker
@@ -650,6 +650,9 @@ const AddLotProjectModal = ({
                 >
                   Choose Documents
                 </h2>
+                <p className="mt-1 text-xs font-semibold text-slate-500">
+                  Select a template or add documents from the library on the left.
+                </p>
               </div>
 
               <button
@@ -880,6 +883,9 @@ const AddLotProjectModal = ({
                 >
                   Documents Added
                 </h2>
+                <p className="mt-1 text-xs font-semibold text-slate-500">
+                  Review the final checklist and edit each document before saving.
+                </p>
               </div>
 
               <button
@@ -1038,3 +1044,4 @@ const AddLotProjectModal = ({
 }
 
 export default AddLotProjectModal
+

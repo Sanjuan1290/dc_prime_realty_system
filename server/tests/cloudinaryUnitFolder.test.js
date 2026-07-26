@@ -170,3 +170,4 @@ test('Cloudinary signature is stable regardless of object key order', () => {
   assert.equal(first, second);
   assert.equal(first.length, 40);
 });
+

@@ -71,3 +71,4 @@ test('paid separate LMF is never treated as lot principal and old rows self-repa
   assert.match(shared, /const principalReduction = isLegalMiscFee\s*\? 0/);
   assert.match(shared, /hasLegacyLegalMiscPrincipalReduction/);
 });
+

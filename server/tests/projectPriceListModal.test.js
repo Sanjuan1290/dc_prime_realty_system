@@ -52,7 +52,7 @@ test('Add and Edit Lot Project use two separate floating document modals', async
   assert.match(projectModal, /Step 2 of 2 · Project Checklist/);
   assert.match(projectModal, /Choose Documents/);
   assert.match(projectModal, /Documents Added/);
-  assert.match(projectModal, /lg:grid-cols-\[minmax\(0,0\.92fr\)_minmax\(0,1\.08fr\)\]/);
+  assert.match(projectModal, /lg:grid-cols-\[minmax\(0,0\.95fr\)_minmax\(0,1\.05fr\)\]/);
 
   const floatingDocumentModals = projectModal.match(
     /<section className="flex max-h-\[88vh\][^"]*shadow-2xl/g
@@ -65,3 +65,4 @@ test('Add and Edit Lot Project use two separate floating document modals', async
   assert.match(projectModal, /onClick=\{handleSave\}/);
   assert.match(editModal, /mode="edit"/);
 });
+

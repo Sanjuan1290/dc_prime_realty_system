@@ -64,7 +64,7 @@ export const validateSellerReportingChain = (
     throw new Error('Assigned seller hierarchy could not be loaded.');
   }
   if (chain[0]?.role !== 'sales_agent') {
-    throw new Error('Only active Sales Agents can use the in-house commission hierarchy.');
+    throw new Error('Only active Sales Agents can be assigned to the in-house commission hierarchy.');
   }
 
   const groupId = Number(chain[0]?.seller_group_id || 0);
@@ -93,3 +93,4 @@ export const validateSellerReportingChain = (
 
   return true;
 };
+

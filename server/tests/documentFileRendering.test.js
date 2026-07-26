@@ -60,3 +60,4 @@ test('document modal and print page request short-lived links for protected file
   assert.match(printPage, /await useFetch\(file\.accessPath\)/);
   assert.match(printPage, /Preparing protected document files/);
 });
+

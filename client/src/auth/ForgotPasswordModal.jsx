@@ -199,3 +199,4 @@ const ForgotPasswordModal = ({ initialEmail = '', onClose, onComplete }) => {
 }
 
 export default ForgotPasswordModal
+

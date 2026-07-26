@@ -264,3 +264,4 @@ LEFT JOIN users head_user
 INNER JOIN lot_projects project
   ON project.lot_project_id = rate.lot_project_id
 ORDER BY group_row.seller_group_name, project.lot_project_name;
+

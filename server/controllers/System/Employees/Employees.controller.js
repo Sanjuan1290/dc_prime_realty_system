@@ -318,3 +318,4 @@ export const updateEmployeeStatus = async (req, res) => {
     connection.release();
   }
 };
+

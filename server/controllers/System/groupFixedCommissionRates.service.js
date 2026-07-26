@@ -89,7 +89,7 @@ export const validateGroupFixedRateStructure = (
 
   if (groupHeadRole === 'sales_director') {
     if (divisionManagerRate !== 0) {
-      throw createValidationError('Division Manager rate must be 0% when the group head is a Sales Director.');
+      throw createValidationError('BNM override must be 0% (Division Manager rate) when the group head is a Sales Director.');
     }
   } else if (divisionManagerRate <= 0) {
     throw createValidationError('Division Manager rate must be greater than 0%.');
@@ -211,3 +211,4 @@ export const summarizeGroupFixedRates = (rates = {}) => {
       : roundRate(divisionManagerRate + salesDirectorRate + unitManagerRate + salesAgentRate),
   };
 };
+

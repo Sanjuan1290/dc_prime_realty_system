@@ -95,3 +95,4 @@ test('migration creates reset-code storage and auth versioning', () => {
   assert.match(controller, /auth_version = COALESCE\(auth_version, 0\) \+ 1/i);
   assert.match(sharedAuth, /decoded\.authVersion/);
 });
+

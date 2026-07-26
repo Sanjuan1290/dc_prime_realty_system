@@ -347,3 +347,4 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, isSaving = fa
 }
 
 export default ReleaseDetailsModal
+

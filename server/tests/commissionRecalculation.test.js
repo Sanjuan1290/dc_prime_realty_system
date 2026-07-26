@@ -33,7 +33,7 @@ test('any released amount, released stage, or receipt locks recalculation', () =
 test('legacy cumulative distribution can read a historical agent-to-broker chain', () => {
   const chain = [
     seller(1, 'sales_agent', 'Agent One'),
-    seller(3, 'sales_director', 'Broker One'),
+    seller(3, 'sales_director', 'Sales Director One'),
     seller(4, 'division_manager', 'BNM One'),
   ];
   const rateMap = new Map([
@@ -60,7 +60,7 @@ test('current hierarchy adds the manager share after the agent reports to a mana
   const chain = [
     seller(1, 'sales_agent', 'Agent One'),
     seller(2, 'unit_manager', 'Manager One'),
-    seller(3, 'sales_director', 'Broker One'),
+    seller(3, 'sales_director', 'Sales Director One'),
     seller(4, 'division_manager', 'BNM One'),
   ];
   const rateMap = new Map([
@@ -91,7 +91,7 @@ test('direct-agent commission uses explicit relationship overrides', () => {
   const chain = [
     seller(1, 'sales_agent', 'Agent One'),
     seller(2, 'unit_manager', 'Manager One'),
-    seller(3, 'sales_director', 'Broker One'),
+    seller(3, 'sales_director', 'Sales Director One'),
     seller(4, 'division_manager', 'BNM One'),
   ];
   const overrideRateMap = new Map([
@@ -115,10 +115,10 @@ test('direct-agent commission uses explicit relationship overrides', () => {
   ]);
 });
 
-test('current direct-override commission rejects an Agent reporting directly to a Broker', () => {
+test('current direct-override commission rejects a Sales Agent reporting directly to a Sales Director', () => {
   const chain = [
     seller(1, 'sales_agent', 'Agent One'),
-    seller(3, 'sales_director', 'Broker One'),
+    seller(3, 'sales_director', 'Sales Director One'),
   ];
 
   assert.throws(
@@ -128,7 +128,7 @@ test('current direct-override commission rejects an Agent reporting directly to 
       overrideRateMap: new Map([['1:3', 2]]),
       groupPoolRate: 5,
     }),
-    /can only report under a Manager/i
+    /can only report under a Unit Manager/i
   );
 });
 
@@ -281,3 +281,4 @@ test('verified recalculation password is removed before the controller runs', as
   assert.equal(Object.hasOwn(request.body, 'password'), false);
   assert.equal(request.body.acknowledgement, true);
 });
+

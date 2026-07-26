@@ -39,3 +39,4 @@ test('sales totals remain contract based while gross verified receipts still inc
   assert.match(controller, /GREATEST\(\$\{effectiveTcpExpr\} - \(\$\{rangeEarnedDiscountExpr\}\), 0\)/)
   assert.doesNotMatch(controller, /AS totalNetSales[^\n]*penalty_amount/)
 })
+

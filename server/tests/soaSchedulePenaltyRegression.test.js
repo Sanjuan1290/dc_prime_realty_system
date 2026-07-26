@@ -45,3 +45,4 @@ test('paid penalty remains accumulated and visible in SOA and dashboards', () =>
   assert.match(soa, /Outstanding \{money\(row\.outstandingPenaltyAmount\)\}/);
   assert.match(systemDashboard, /Paid penalties \+ outstanding penalties/);
 });
+

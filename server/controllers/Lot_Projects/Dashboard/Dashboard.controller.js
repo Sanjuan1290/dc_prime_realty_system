@@ -1524,6 +1524,7 @@ export const getLotProjectPriceList = async (req, res) => {
           0 AS project_required_document_count
         FROM lot_project_listings l
         WHERE l.lot_project_id = ?
+          AND lot_project_listing_status = 'available'
         ORDER BY l.lot_project_listing_unit_id ASC, l.lot_project_listing_id ASC
       `,
       [project.lot_project_id]
@@ -1543,3 +1544,4 @@ export const getLotProjectPriceList = async (req, res) => {
     connection.release();
   }
 };
+

@@ -36,3 +36,4 @@ test('template and library lists have separate scrolling areas', async () => {
   assert.match(modal, /No matching library documents found\./);
   assert.match(modal, /Select a template or add documents from the library on the left\./);
 });
+
