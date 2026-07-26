@@ -88,9 +88,20 @@ const App = () => {
           <Route path="users/groups/external/:groupId" element={<SellerGroupDetails expectedGroupType="external" />} />
           <Route path="notifications" element={<Notifications />} />
           <Route path="audit-logs" element={<AuditLogs />} />
-          <Route path="employees" element={<Employees />} />
+          {/* <Route path="employees" element={<Employees />} />
           <Route path="attendance" element={<Attendance />} />
-          <Route path="cash-advances" element={<EmployeeCashAdvances />} />
+          <Route path="cash-advances" element={<EmployeeCashAdvances />} /> */}
+
+          <Route path="employees" element={
+            <p className='text-4xl font-extrabold '>On Going... 🧒</p>
+          } />
+          <Route path="attendance" element={
+            <p className='text-4xl font-extrabold '>On Going... 🧒</p>
+          } />
+          <Route path="cash-advances" element={
+            <p className='text-4xl font-extrabold '>On Going... 🧒</p>
+          } />
+
           <Route path="settings" element={<Settings />} />
         </Route>
 
