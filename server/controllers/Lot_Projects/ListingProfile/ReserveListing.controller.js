@@ -18,6 +18,7 @@ import {
   recomputeComputedSoaBalances,
 } from '../_shared/lotProject.shared.js';
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
+import { toFormalTitleCase } from '../_shared/buyerProfileText.js';
 import { getListingPricingForMode } from '../_shared/listingPricing.js';
 import { replaceReservationCommissions } from '../Commissions/commissionHierarchy.service.js';
 import {
@@ -29,7 +30,7 @@ import {
   revokeOpenBuyerFormLinks,
 } from '../BuyerForms/buyerForm.shared.js';
 
-const cleanNamePart = (value) => String(value || '').trim();
+const cleanNamePart = (value) => toFormalTitleCase(value, 255);
 
 const firstMissingRequiredField = (fields = []) =>
   fields.find((field) => !String(field.value ?? '').trim());
@@ -665,20 +666,20 @@ export const reserveLotProjectListing = async (req, res) => {
       toNullable(buyerSuffix),
       buyerName,
       dateOrNull(clientProfile.birthDate || clientProfile.buyer_birth_date),
-      toNullable(clientProfile.placeOfBirth || clientProfile.buyer_place_of_birth),
-      toNullable(clientProfile.citizenship || clientProfile.buyer_citizenship),
-      toNullable(clientProfile.gender || clientProfile.buyer_gender),
-      toNullable(clientProfile.civilStatus || clientProfile.buyer_civil_status),
+      toNullable(toFormalTitleCase(clientProfile.placeOfBirth || clientProfile.buyer_place_of_birth, 255)),
+      toNullable(toFormalTitleCase(clientProfile.citizenship || clientProfile.buyer_citizenship, 255)),
+      toNullable(toFormalTitleCase(clientProfile.gender || clientProfile.buyer_gender, 100)),
+      toNullable(toFormalTitleCase(clientProfile.civilStatus || clientProfile.buyer_civil_status, 100)),
       toNullable(clientProfile.contactNo || clientProfile.buyer_contact_number),
       toNullable(clientProfile.email || clientProfile.buyer_email),
       toNullable(clientProfile.tin || clientProfile.buyer_tin),
-      toNullable(clientProfile.presentAddress || clientProfile.buyer_present_address),
-      toNullable(clientProfile.permanentAddress || clientProfile.buyer_permanent_address),
-      toNullable(clientProfile.employmentStatus || clientProfile.buyer_employment_status),
-      toNullable(clientProfile.employerBusinessName || clientProfile.buyer_employer_business_name),
-      toNullable(clientProfile.employerBusinessAddress || clientProfile.buyer_employer_business_address),
-      toNullable(clientProfile.natureOfWorkBusiness || clientProfile.buyer_nature_of_work_business),
-      toNullable(clientProfile.occupationPositionTitle || clientProfile.buyer_occupation_position),
+      toNullable(toFormalTitleCase(clientProfile.presentAddress || clientProfile.buyer_present_address, 2000)),
+      toNullable(toFormalTitleCase(clientProfile.permanentAddress || clientProfile.buyer_permanent_address, 2000)),
+      toNullable(toFormalTitleCase(clientProfile.employmentStatus || clientProfile.buyer_employment_status, 255)),
+      toNullable(toFormalTitleCase(clientProfile.employerBusinessName || clientProfile.buyer_employer_business_name, 255)),
+      toNullable(toFormalTitleCase(clientProfile.employerBusinessAddress || clientProfile.buyer_employer_business_address, 2000)),
+      toNullable(toFormalTitleCase(clientProfile.natureOfWorkBusiness || clientProfile.buyer_nature_of_work_business, 255)),
+      toNullable(toFormalTitleCase(clientProfile.occupationPositionTitle || clientProfile.buyer_occupation_position, 255)),
       parseMoneyValue(clientProfile.monthlyIncome || clientProfile.buyer_monthly_income),
       hasSecondBuyer ? secondBuyerName : null,
       hasSecondBuyer ? toNullable(secondBuyerFirstName) : null,
@@ -686,20 +687,20 @@ export const reserveLotProjectListing = async (req, res) => {
       hasSecondBuyer ? toNullable(secondBuyerLastName) : null,
       hasSecondBuyer ? toNullable(secondBuyerSuffix) : null,
       hasSecondBuyer ? dateOrNull(clientProfile.secondBuyerBirthDate || clientProfile.second_buyer_birth_date) : null,
-      hasSecondBuyer ? toNullable(clientProfile.secondBuyerPlaceOfBirth || clientProfile.second_buyer_place_of_birth) : null,
-      hasSecondBuyer ? toNullable(clientProfile.secondBuyerCitizenship || clientProfile.second_buyer_citizenship) : null,
-      hasSecondBuyer ? toNullable(clientProfile.secondBuyerGender || clientProfile.second_buyer_gender) : null,
-      hasSecondBuyer ? toNullable(clientProfile.secondBuyerCivilStatus || clientProfile.second_buyer_civil_status) : null,
+      hasSecondBuyer ? toNullable(toFormalTitleCase(clientProfile.secondBuyerPlaceOfBirth || clientProfile.second_buyer_place_of_birth, 255)) : null,
+      hasSecondBuyer ? toNullable(toFormalTitleCase(clientProfile.secondBuyerCitizenship || clientProfile.second_buyer_citizenship, 255)) : null,
+      hasSecondBuyer ? toNullable(toFormalTitleCase(clientProfile.secondBuyerGender || clientProfile.second_buyer_gender, 100)) : null,
+      hasSecondBuyer ? toNullable(toFormalTitleCase(clientProfile.secondBuyerCivilStatus || clientProfile.second_buyer_civil_status, 100)) : null,
       hasSecondBuyer ? toNullable(clientProfile.secondBuyerContactNo || clientProfile.second_buyer_contact_number) : null,
       hasSecondBuyer ? toNullable(clientProfile.secondBuyerEmail || clientProfile.second_buyer_email) : null,
       hasSecondBuyer ? toNullable(clientProfile.secondBuyerTin || clientProfile.second_buyer_tin) : null,
-      hasSecondBuyer ? toNullable(clientProfile.secondBuyerPresentAddress || clientProfile.second_buyer_present_address) : null,
-      hasSecondBuyer ? toNullable(clientProfile.secondBuyerPermanentAddress || clientProfile.second_buyer_permanent_address) : null,
-      hasSecondBuyer ? toNullable(clientProfile.secondBuyerEmploymentStatus || clientProfile.second_buyer_employment_status) : null,
-      hasSecondBuyer ? toNullable(clientProfile.secondBuyerEmployerBusinessName || clientProfile.second_buyer_employer_business_name) : null,
-      hasSecondBuyer ? toNullable(clientProfile.secondBuyerEmployerBusinessAddress || clientProfile.second_buyer_employer_business_address) : null,
-      hasSecondBuyer ? toNullable(clientProfile.secondBuyerNatureOfWorkBusiness || clientProfile.second_buyer_nature_of_work_business) : null,
-      hasSecondBuyer ? toNullable(clientProfile.secondBuyerOccupationPositionTitle || clientProfile.second_buyer_occupation_position) : null,
+      hasSecondBuyer ? toNullable(toFormalTitleCase(clientProfile.secondBuyerPresentAddress || clientProfile.second_buyer_present_address, 2000)) : null,
+      hasSecondBuyer ? toNullable(toFormalTitleCase(clientProfile.secondBuyerPermanentAddress || clientProfile.second_buyer_permanent_address, 2000)) : null,
+      hasSecondBuyer ? toNullable(toFormalTitleCase(clientProfile.secondBuyerEmploymentStatus || clientProfile.second_buyer_employment_status, 255)) : null,
+      hasSecondBuyer ? toNullable(toFormalTitleCase(clientProfile.secondBuyerEmployerBusinessName || clientProfile.second_buyer_employer_business_name, 255)) : null,
+      hasSecondBuyer ? toNullable(toFormalTitleCase(clientProfile.secondBuyerEmployerBusinessAddress || clientProfile.second_buyer_employer_business_address, 2000)) : null,
+      hasSecondBuyer ? toNullable(toFormalTitleCase(clientProfile.secondBuyerNatureOfWorkBusiness || clientProfile.second_buyer_nature_of_work_business, 255)) : null,
+      hasSecondBuyer ? toNullable(toFormalTitleCase(clientProfile.secondBuyerOccupationPositionTitle || clientProfile.second_buyer_occupation_position, 255)) : null,
       hasSecondBuyer ? parseMoneyValue(clientProfile.secondBuyerMonthlyIncome || clientProfile.second_buyer_monthly_income) : 0,
       'active',
       modeOfPayment,
@@ -1066,4 +1067,5 @@ export const reserveLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
+
 

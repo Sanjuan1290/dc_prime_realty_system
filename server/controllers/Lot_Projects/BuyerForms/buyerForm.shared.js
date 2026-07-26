@@ -1,5 +1,10 @@
 import crypto from 'node:crypto';
 import { columnExists, tableExists } from '../_shared/lotProject.shared.js';
+import {
+  cleanBuyerProfileText,
+  isFormalBuyerProfileField,
+  toFormalTitleCase,
+} from '../_shared/buyerProfileText.js';
 
 export const BUYER_FORM_LINK_STATUSES = new Set([
   'active',
@@ -97,11 +102,7 @@ const secondBuyerRequiredFields = [
   ['secondBuyerMonthlyIncome', 'Spouse / second buyer monthly income'],
 ];
 
-const cleanText = (value, maxLength = 2000) =>
-  String(value ?? '')
-    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
-    .trim()
-    .slice(0, maxLength);
+const cleanText = cleanBuyerProfileText;
 
 const buildName = ({ firstName, middleName, lastName, suffix }) =>
   [firstName, middleName, lastName, suffix].map((value) => cleanText(value, 100)).filter(Boolean).join(' ');
@@ -159,7 +160,9 @@ export const sanitizeBuyerProfilePayload = (input = {}) => {
   const profile = {};
   for (const field of profileTextFields) {
     const maxLength = field.toLowerCase().includes('address') ? 2000 : 255;
-    profile[field] = cleanText(input[field], maxLength);
+    profile[field] = isFormalBuyerProfileField(field)
+      ? toFormalTitleCase(input[field], maxLength)
+      : cleanText(input[field], maxLength);
   }
 
   profile.buyerType = cleanBuyerType(input.buyerType || input.buyer_type);
@@ -419,4 +422,5 @@ export const getPublicBuyerFormUrl = (req, token) => {
   const origin = String(req?.headers?.origin || corsOrigin || 'http://localhost:5174').replace(/\/$/, '');
   return `${origin}/buyer-form/${token}`;
 };
+
 

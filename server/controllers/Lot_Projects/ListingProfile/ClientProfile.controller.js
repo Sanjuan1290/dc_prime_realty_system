@@ -69,8 +69,9 @@ import {
   addIfColumnExists,
 } from '../_shared/lotProject.shared.js';
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
+import { toFormalTitleCase } from '../_shared/buyerProfileText.js';
 
-const cleanNamePart = (value) => String(value || '').trim();
+const cleanNamePart = (value) => toFormalTitleCase(value, 255);
 
 const firstMissingRequiredField = (fields = []) =>
   fields.find((field) => !String(field.value ?? '').trim());
@@ -247,20 +248,20 @@ export const updateLotProjectClientProfile = async (req, res) => {
       toNullable(buyerSuffix),
       buyerName,
       dateOrNull(req.body.birthDate || req.body.buyer_birth_date),
-      toNullable(req.body.placeOfBirth || req.body.buyer_place_of_birth),
-      toNullable(req.body.citizenship || req.body.buyer_citizenship),
-      toNullable(req.body.gender || req.body.buyer_gender),
-      toNullable(req.body.civilStatus || req.body.buyer_civil_status),
+      toNullable(toFormalTitleCase(req.body.placeOfBirth || req.body.buyer_place_of_birth, 255)),
+      toNullable(toFormalTitleCase(req.body.citizenship || req.body.buyer_citizenship, 255)),
+      toNullable(toFormalTitleCase(req.body.gender || req.body.buyer_gender, 100)),
+      toNullable(toFormalTitleCase(req.body.civilStatus || req.body.buyer_civil_status, 100)),
       toNullable(req.body.contactNo || req.body.buyer_contact_number),
       toNullable(req.body.email || req.body.buyer_email),
       toNullable(req.body.tin || req.body.buyer_tin),
-      toNullable(req.body.presentAddress || req.body.buyer_present_address),
-      toNullable(req.body.permanentAddress || req.body.buyer_permanent_address),
-      toNullable(req.body.employmentStatus || req.body.buyer_employment_status),
-      toNullable(req.body.employerBusinessName || req.body.buyer_employer_business_name),
-      toNullable(req.body.employerBusinessAddress || req.body.buyer_employer_business_address),
-      toNullable(req.body.natureOfWorkBusiness || req.body.buyer_nature_of_work_business),
-      toNullable(req.body.occupationPositionTitle || req.body.buyer_occupation_position),
+      toNullable(toFormalTitleCase(req.body.presentAddress || req.body.buyer_present_address, 2000)),
+      toNullable(toFormalTitleCase(req.body.permanentAddress || req.body.buyer_permanent_address, 2000)),
+      toNullable(toFormalTitleCase(req.body.employmentStatus || req.body.buyer_employment_status, 255)),
+      toNullable(toFormalTitleCase(req.body.employerBusinessName || req.body.buyer_employer_business_name, 255)),
+      toNullable(toFormalTitleCase(req.body.employerBusinessAddress || req.body.buyer_employer_business_address, 2000)),
+      toNullable(toFormalTitleCase(req.body.natureOfWorkBusiness || req.body.buyer_nature_of_work_business, 255)),
+      toNullable(toFormalTitleCase(req.body.occupationPositionTitle || req.body.buyer_occupation_position, 255)),
       parseMoneyValue(req.body.monthlyIncome || req.body.buyer_monthly_income),
       hasSecondBuyer ? secondBuyerName : null,
       hasSecondBuyer ? toNullable(secondBuyerFirstName) : null,
@@ -268,20 +269,20 @@ export const updateLotProjectClientProfile = async (req, res) => {
       hasSecondBuyer ? toNullable(secondBuyerLastName) : null,
       hasSecondBuyer ? toNullable(secondBuyerSuffix) : null,
       hasSecondBuyer ? dateOrNull(req.body.secondBuyerBirthDate || req.body.second_buyer_birth_date) : null,
-      hasSecondBuyer ? toNullable(req.body.secondBuyerPlaceOfBirth || req.body.second_buyer_place_of_birth) : null,
-      hasSecondBuyer ? toNullable(req.body.secondBuyerCitizenship || req.body.second_buyer_citizenship) : null,
-      hasSecondBuyer ? toNullable(req.body.secondBuyerGender || req.body.second_buyer_gender) : null,
-      hasSecondBuyer ? toNullable(req.body.secondBuyerCivilStatus || req.body.second_buyer_civil_status) : null,
+      hasSecondBuyer ? toNullable(toFormalTitleCase(req.body.secondBuyerPlaceOfBirth || req.body.second_buyer_place_of_birth, 255)) : null,
+      hasSecondBuyer ? toNullable(toFormalTitleCase(req.body.secondBuyerCitizenship || req.body.second_buyer_citizenship, 255)) : null,
+      hasSecondBuyer ? toNullable(toFormalTitleCase(req.body.secondBuyerGender || req.body.second_buyer_gender, 100)) : null,
+      hasSecondBuyer ? toNullable(toFormalTitleCase(req.body.secondBuyerCivilStatus || req.body.second_buyer_civil_status, 100)) : null,
       hasSecondBuyer ? toNullable(req.body.secondBuyerContactNo || req.body.second_buyer_contact_number) : null,
       hasSecondBuyer ? toNullable(req.body.secondBuyerEmail || req.body.second_buyer_email) : null,
       hasSecondBuyer ? toNullable(req.body.secondBuyerTin || req.body.second_buyer_tin) : null,
-      hasSecondBuyer ? toNullable(req.body.secondBuyerPresentAddress || req.body.second_buyer_present_address) : null,
-      hasSecondBuyer ? toNullable(req.body.secondBuyerPermanentAddress || req.body.second_buyer_permanent_address) : null,
-      hasSecondBuyer ? toNullable(req.body.secondBuyerEmploymentStatus || req.body.second_buyer_employment_status) : null,
-      hasSecondBuyer ? toNullable(req.body.secondBuyerEmployerBusinessName || req.body.second_buyer_employer_business_name) : null,
-      hasSecondBuyer ? toNullable(req.body.secondBuyerEmployerBusinessAddress || req.body.second_buyer_employer_business_address) : null,
-      hasSecondBuyer ? toNullable(req.body.secondBuyerNatureOfWorkBusiness || req.body.second_buyer_nature_of_work_business) : null,
-      hasSecondBuyer ? toNullable(req.body.secondBuyerOccupationPositionTitle || req.body.second_buyer_occupation_position) : null,
+      hasSecondBuyer ? toNullable(toFormalTitleCase(req.body.secondBuyerPresentAddress || req.body.second_buyer_present_address, 2000)) : null,
+      hasSecondBuyer ? toNullable(toFormalTitleCase(req.body.secondBuyerPermanentAddress || req.body.second_buyer_permanent_address, 2000)) : null,
+      hasSecondBuyer ? toNullable(toFormalTitleCase(req.body.secondBuyerEmploymentStatus || req.body.second_buyer_employment_status, 255)) : null,
+      hasSecondBuyer ? toNullable(toFormalTitleCase(req.body.secondBuyerEmployerBusinessName || req.body.second_buyer_employer_business_name, 255)) : null,
+      hasSecondBuyer ? toNullable(toFormalTitleCase(req.body.secondBuyerEmployerBusinessAddress || req.body.second_buyer_employer_business_address, 2000)) : null,
+      hasSecondBuyer ? toNullable(toFormalTitleCase(req.body.secondBuyerNatureOfWorkBusiness || req.body.second_buyer_nature_of_work_business, 255)) : null,
+      hasSecondBuyer ? toNullable(toFormalTitleCase(req.body.secondBuyerOccupationPositionTitle || req.body.second_buyer_occupation_position, 255)) : null,
       hasSecondBuyer ? parseMoneyValue(req.body.secondBuyerMonthlyIncome || req.body.second_buyer_monthly_income) : 0,
       'active',
     ];
@@ -353,4 +354,5 @@ export const updateLotProjectClientProfile = async (req, res) => {
     connection.release();
   }
 };
+
 

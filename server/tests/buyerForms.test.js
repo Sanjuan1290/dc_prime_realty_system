@@ -68,3 +68,70 @@ test('future birth dates and negative income are rejected', () => {
   assert.equal(negative.field, 'monthlyIncome');
 });
 
+
+
+test('buyer profile text is saved in formal title case without changing contact identifiers', () => {
+  const profile = sanitizeBuyerProfilePayload({
+    ...completePrincipal,
+    buyerFirstName: 'robert renby',
+    buyerMiddleName: 'cortez',
+    buyerLastName: 'san juan',
+    buyerSuffix: 'iii',
+    placeOfBirth: 'imus',
+    citizenship: 'filipino',
+    presentAddress: 'b70 l44 cremona st. cluster 5, bella vista, brgy. santiago, general trias, cavite',
+    employerBusinessName: 'd&c prime realty',
+    natureOfWorkBusiness: 'it services',
+    occupationPositionTitle: 'it manager',
+    email: 'Robert.Test+Buyer@Example.com',
+    contactNo: '09094545',
+    tin: '123-456-789-000',
+    presentZipCode: '4107',
+  });
+
+  assert.equal(profile.buyerFirstName, 'Robert Renby');
+  assert.equal(profile.buyerMiddleName, 'Cortez');
+  assert.equal(profile.buyerLastName, 'San Juan');
+  assert.equal(profile.buyerSuffix, 'III');
+  assert.equal(profile.buyerName, 'Robert Renby Cortez San Juan III');
+  assert.equal(profile.placeOfBirth, 'Imus');
+  assert.equal(profile.presentAddress, 'B70 L44 Cremona St. Cluster 5, Bella Vista, Brgy. Santiago, General Trias, Cavite');
+  assert.equal(profile.employerBusinessName, 'D&C Prime Realty');
+  assert.equal(profile.natureOfWorkBusiness, 'IT Services');
+  assert.equal(profile.occupationPositionTitle, 'IT Manager');
+  assert.equal(profile.email, 'Robert.Test+Buyer@Example.com');
+  assert.equal(profile.contactNo, '09094545');
+  assert.equal(profile.tin, '123-456-789-000');
+  assert.equal(profile.presentZipCode, '4107');
+});
+
+test('second buyer formal text is normalized before public-link submission data is stored', () => {
+  const profile = sanitizeBuyerProfilePayload({
+    ...completePrincipal,
+    buyerType: 'spouses',
+    secondBuyerRole: 'spouse',
+    secondBuyerFirstName: 'maria',
+    secondBuyerMiddleName: 'del rosario',
+    secondBuyerLastName: "o'connor-santos",
+    secondBuyerSuffix: 'jr.',
+    secondBuyerBirthDate: '1996-04-02',
+    secondBuyerPlaceOfBirth: 'general trias',
+    secondBuyerCitizenship: 'filipino',
+    secondBuyerGender: 'female',
+    secondBuyerCivilStatus: 'married',
+    secondBuyerContactNo: '09170000000',
+    secondBuyerPresentAddress: 'imus, cavite',
+    secondBuyerPresentZipCode: '4103',
+    secondBuyerEmploymentStatus: 'employed - private',
+    secondBuyerMonthlyIncome: '40000',
+  });
+
+  assert.equal(profile.secondBuyerFirstName, 'Maria');
+  assert.equal(profile.secondBuyerMiddleName, 'Del Rosario');
+  assert.equal(profile.secondBuyerLastName, "O'Connor-Santos");
+  assert.equal(profile.secondBuyerSuffix, 'Jr.');
+  assert.equal(profile.secondBuyerName, "Maria Del Rosario O'Connor-Santos Jr.");
+  assert.equal(profile.secondBuyerPlaceOfBirth, 'General Trias');
+  assert.equal(profile.secondBuyerPresentAddress, 'Imus, Cavite');
+  assert.equal(profile.secondBuyerEmploymentStatus, 'Employed - Private');
+});
