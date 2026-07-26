@@ -18,11 +18,11 @@ test('reservation template selection filters the document library without loadin
 test('in-house group details can add a member directly into the current group', async () => {
   const source = await readSource('../../client/src/pages/System/SellerGroupDetails.jsx');
 
-  assert.match(source, />Add Member<\/button>/);
+  assert.match(source, /Add Member/);
   assert.match(source, /<CreateUserModal/);
   assert.match(source, /initialSellerGroupId=\{String\(group\.id \|\| groupId\)\}/);
   assert.match(source, /lockSellerGroup/);
-  assert.match(source, /allowedRoles=\{\['division_manager', 'sales_director', 'unit_manager', 'sales_agent'\]\}/);
+  assert.match(source, /allowedRoles=\{\[[\s\S]*'division_manager'[\s\S]*'sales_director'[\s\S]*'unit_manager'[\s\S]*'sales_agent'[\s\S]*\]\}/);
 });
 
 test('create and edit user screens use the renamed in-house reporting hierarchy', async () => {

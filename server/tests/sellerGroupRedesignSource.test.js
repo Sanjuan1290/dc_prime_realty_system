@@ -12,7 +12,9 @@ test('group details show a type-aware project commission structure and performan
   assert.match(source, /Sales Director Rate/);
   assert.match(source, /Unit Manager Rate/);
   assert.match(source, /Sales Agent Rate/);
-  assert.match(source, /External Group Rate/);
+  assert.doesNotMatch(source, /External Group Rate/);
+  assert.match(source, /Contact Number/);
+  assert.match(source, /Address/);
   assert.match(source, /type="date"/);
   assert.match(source, /Released commissions are grouped by actual release date/);
   assert.doesNotMatch(source, /Commission Paths/);
