@@ -232,7 +232,7 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, isSaving = fa
               <InfoCard label="Gross Commission" value={money(grossCommission)} />
               <InfoCard label="Released" value={money(released)} />
               <InfoCard label="Net Remaining" value={money(netRemaining)} />
-              <InfoCard label="Seller Group" value={commission.sellerGroup || '-'} />
+              <InfoCard label="Group" value={commission.sellerGroup || '-'} />
               <InfoCard label="Reports Under" value={commission.reportsUnder || '-'} />
             </div>
           </section>

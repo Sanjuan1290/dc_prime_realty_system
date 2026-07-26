@@ -21,10 +21,11 @@ const titleCase = (value = '') =>
 
 const roleLabel = (value = '') => {
   const labels = {
-    broker_network_manager: 'Broker Network Manager',
-    broker: 'Broker',
-    manager: 'Manager',
-    agent: 'Agent',
+    division_manager: 'Division Manager',
+    sales_director: 'Sales Director',
+    unit_manager: 'Unit Manager',
+    sales_agent: 'Sales Agent',
+    external_group: 'External Group',
   };
   return labels[value] || titleCase(value);
 };
@@ -33,17 +34,18 @@ const sellerTypeLabel = (value = '') => {
   const labels = {
     main_seller: 'Main Seller',
     hierarchy_seller: 'Hierarchy Seller',
-    selling_agent: 'Selling Agent',
+    selling_agent: 'Sales Agent',
   };
   return labels[value] || titleCase(value);
 };
 
 const hierarchyLabel = (value = '') => {
   const labels = {
-    broker_network_manager: 'BNM',
-    broker: 'Broker',
-    manager: 'Manager',
-    agent: 'Agent',
+    division_manager: 'Division Manager',
+    sales_director: 'Sales Director',
+    unit_manager: 'Unit Manager',
+    sales_agent: 'Sales Agent',
+    external_group: 'External Group',
   };
   return labels[value] || roleLabel(value);
 };
@@ -735,7 +737,7 @@ export const getLotProjectCommissions = async (req, res) => {
         ) payment_summary ON payment_summary.lot_project_client_profile_id = c.lot_project_client_profile_id
         ${scheduleSummaryJoin}
         WHERE ${where.join(' AND ')}
-        ORDER BY l.lot_project_listing_unit_id ASC, FIELD(c.commission_role, 'broker_network_manager', 'broker', 'manager', 'agent'), c.lot_project_commission_id ASC
+        ORDER BY l.lot_project_listing_unit_id ASC, FIELD(c.commission_role, 'division_manager', 'sales_director', 'unit_manager', 'sales_agent'), c.lot_project_commission_id ASC
       `,
       params
     );

@@ -41,10 +41,11 @@ export const PERMISSIONS = Object.freeze({
 export const USER_ROLES = Object.freeze([
   'super_admin',
   'admin',
-  'broker_network_manager',
-  'broker',
-  'manager',
-  'agent',
+  'division_manager',
+  'sales_director',
+  'unit_manager',
+  'sales_agent',
+  'external_group',
 ]);
 
 export const ADMIN_TYPES = Object.freeze([
@@ -57,7 +58,7 @@ export const ADMIN_TYPES = Object.freeze([
   { value: 'admin_3', label: 'Admin 3', description: 'Permission set will be configured later.', disabled: true },
 ]);
 
-export const ADMIN_CREATABLE_USER_ROLES = Object.freeze(USER_ROLES.filter((role) => role !== 'super_admin'));
+export const ADMIN_CREATABLE_USER_ROLES = Object.freeze(USER_ROLES.filter((role) => !['super_admin', 'external_group'].includes(role)));
 export const ADMIN_MANAGEABLE_USER_ROLES = ADMIN_CREATABLE_USER_ROLES;
 
 const allPermissions = new Set(Object.values(PERMISSIONS));

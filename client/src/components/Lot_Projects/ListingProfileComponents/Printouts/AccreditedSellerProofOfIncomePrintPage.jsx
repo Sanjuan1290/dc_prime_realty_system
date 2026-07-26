@@ -11,10 +11,11 @@ const readProofPayload = () => {
 }
 
 const roleLabels = {
-  broker_network_manager: 'BROKER NETWORK MANAGER',
-  broker: 'BROKER',
-  manager: 'MANAGER',
-  agent: 'SALES AGENT',
+  division_manager: 'DIVISION MANAGER',
+  sales_director: 'SALES DIRECTOR',
+  unit_manager: 'UNIT MANAGER',
+  sales_agent: 'SALES AGENT',
+  external_group: 'EXTERNAL GROUP',
 }
 
 const amountNumber = (value) =>
@@ -104,6 +105,9 @@ export const CommissionReceiptPrint = ({ seller = {}, receipt = {} }) => {
   const commissionRate = Number(receipt.commissionRate || 0)
   const role = receipt.commissionRole || seller.role
   const amountText = amountNumber(totalAmount)
+  const isExternalGroup = role === 'external_group' || seller.seller_group_type === 'external'
+  const payeeName = isExternalGroup ? seller.seller_group_name || seller.sellerGroupName || seller.full_name || '-' : seller.full_name || seller.fullName || '-'
+  const representativeName = isExternalGroup ? seller.full_name || seller.fullName || '-' : null
 
   return (
     <section
@@ -139,13 +143,12 @@ export const CommissionReceiptPrint = ({ seller = {}, receipt = {} }) => {
                   COMMISSION<br />RELEASE
                 </p>
                 <p className="mt-14 text-[13px] font-medium uppercase">
-                  {seller.full_name || seller.fullName || '-'}
+                  {payeeName}
                 </p>
               </td>
 
               <td className="border border-[#8a8a8a] px-2 py-3">
-                <p className="text-[13px] font-bold underline">TOT
-                  AL:</p>
+                <p className="text-[13px] font-bold underline">TOTAL:</p>
                 <p className="text-[13px] font-bold">{amountText}</p>
 
                 <div className="mt-7 text-[13px] font-bold uppercase leading-[1.25]">
@@ -186,8 +189,9 @@ export const CommissionReceiptPrint = ({ seller = {}, receipt = {} }) => {
           <p className="text-[14px]">Payee:</p>
           <div className="mt-10 w-[78mm] border-b border-[#555]" />
           <p className="mt-1 text-[13px] font-bold uppercase">
-            {seller.full_name || seller.fullName || '-'}
+            {payeeName}
           </p>
+          {representativeName ? <p className="text-[11px] uppercase">Representative: {representativeName}</p> : null}
           <p className="text-[12px]">Signature and Date</p>
         </div>
 

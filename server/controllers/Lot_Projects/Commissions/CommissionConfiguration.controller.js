@@ -26,8 +26,8 @@ const getListingForPreview = async (connection, projectId, listingLookup) => {
 };
 
 /**
- * Returns only active real agents that have a sales commission rate for the
- * selected project. Managers, brokers, and BNMs never appear directly.
+ * Returns active In-House Sales Agents and registered External Group accounts
+ * that have an active commission structure for the selected project.
  */
 export const getReservationAgents = async (req, res) => {
   const connection = await db.getConnection();
@@ -38,17 +38,17 @@ export const getReservationAgents = async (req, res) => {
 
     const search = String(req.query.search || '').trim();
     const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 100);
-    const agents = await getReserveSellerOptions(connection, project.lot_project_id, {
+    const sellers = await getReserveSellerOptions(connection, project.lot_project_id, {
       search,
       limit,
     });
 
     return res.json({
       success: true,
-      data: agents,
+      data: sellers,
       meta: {
         search,
-        total: agents.length,
+        total: sellers.length,
         projectId: Number(project.lot_project_id),
         projectName: project.lot_project_name,
       },
@@ -75,9 +75,9 @@ export const getReservationCommissionPreviewController = async (req, res) => {
     }
 
     const listingLookup = String(req.query.listingId || '').trim();
-    const agentId = Number(req.query.agentId || 0);
+    const sellerId = Number(req.query.sellerId ?? req.query.agentId ?? 0);
     if (!listingLookup) return res.status(400).json({ message: 'Listing id is required.' });
-    if (!agentId) return res.status(400).json({ message: 'Sales agent is required.' });
+    if (!sellerId) return res.status(400).json({ message: 'Seller / Group is required.' });
 
     const listing = await getListingForPreview(connection, project.lot_project_id, listingLookup);
     if (!listing) return res.status(404).json({ message: 'Listing not found.' });
@@ -98,7 +98,7 @@ export const getReservationCommissionPreviewController = async (req, res) => {
       connection,
       project.lot_project_id,
       listing,
-      agentId
+      sellerId
     );
 
     return res.json({

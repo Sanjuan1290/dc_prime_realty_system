@@ -526,12 +526,12 @@ export const reserveLotProjectListing = async (req, res) => {
       return res.status(400).json({ message: 'Penalty grace period must be between 0 and 31 days.' });
     }
     const assignedSellerId = Number(terms.sellerId || reservation.sellerId || reservation.seller?.id || reservation.seller?.accredited_seller_id || 0) || null;
-    // New reservations always use distributed commission generation. A non-agent
-    // sale is represented by a system-owned agent created from the Seller Group page.
-    const saleChannel = 'distributed';
+    // The commission service determines whether this is an In-House distributed sale
+    // or a single-recipient External Group sale.
+    let saleChannel = 'distributed';
 
     if (!assignedSellerId) {
-      return res.status(400).json({ message: 'Assigned sales agent is required.' });
+      return res.status(400).json({ message: 'Assigned Seller / Group is required.' });
     }
 
     if (await tableExists(connection, 'accredited_sellers')) {
@@ -544,6 +544,8 @@ export const reserveLotProjectListing = async (req, res) => {
             u.role,
             u.status AS user_status,
             sg.seller_group_name,
+            sg.seller_group_type,
+            sg.seller_group_external_account_user_id,
             sg.seller_group_status
           FROM accredited_sellers acs
           INNER JOIN users u ON u.id = acs.user_id
@@ -556,13 +558,21 @@ export const reserveLotProjectListing = async (req, res) => {
 
       const assignedSeller = sellerRows[0];
       if (!assignedSeller || assignedSeller.accredited_seller_status !== 'active' || assignedSeller.user_status !== 'active') {
-        return res.status(400).json({ message: 'Assigned sales agent is not active.' });
+        return res.status(400).json({ message: 'The assigned Seller / Group is not active.' });
       }
-      if (assignedSeller.role !== 'agent') {
-        return res.status(400).json({ message: 'Only active sales agents can be assigned to a reservation.' });
+      const isInHouseSalesAgent = assignedSeller.seller_group_type === 'in_house' && assignedSeller.role === 'sales_agent';
+      const isExternalGroupAccount =
+        assignedSeller.seller_group_type === 'external' &&
+        assignedSeller.role === 'external_group' &&
+        Number(assignedSeller.user_id) === Number(assignedSeller.seller_group_external_account_user_id || 0);
+      if (!isInHouseSalesAgent && !isExternalGroupAccount) {
+        return res.status(400).json({
+          message: 'Select an active In-House Sales Agent or the registered External Group account.',
+        });
       }
+      saleChannel = isExternalGroupAccount ? 'external_group' : 'distributed';
       if (assignedSeller.seller_group_status !== 'active') {
-        return res.status(400).json({ message: 'The selected sales agent belongs to an inactive seller group.' });
+        return res.status(400).json({ message: 'The selected group is inactive.' });
       }
     }
 
@@ -1056,6 +1066,3 @@ export const reserveLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
-
-
-

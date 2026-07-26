@@ -14,21 +14,21 @@ import StatusAlert from "../../Shared/StatusAlert";
 import { ADMIN_TYPES } from "../../../config/permissions";
 import { useFetch as fetchApi, useFetchPut as putApi } from "../../../utils/useFetch";
 
-const sellerRoles = ["broker_network_manager", "broker", "manager", "agent"];
+const sellerRoles = ["division_manager", "sales_director", "unit_manager", "sales_agent"];
 
 const roleLabels = {
   super_admin: "Super Admin",
   admin: "Admin",
-  broker_network_manager: "Broker Network Manager",
-  broker: "Broker",
-  manager: "Manager",
-  agent: "Agent",
+  division_manager: "Division Manager",
+  sales_director: "Sales Director",
+  unit_manager: "Unit Manager",
+  sales_agent: "Sales Agent",
 };
 
 const getRequiredParentRole = (role) => ({
-  broker: "broker_network_manager",
-  manager: "broker",
-  agent: "manager",
+  sales_director: "division_manager",
+  unit_manager: "sales_director",
+  sales_agent: "unit_manager",
 }[role] || "");
 
 const toDateInput = (value) => {
@@ -45,7 +45,7 @@ const getInitialForm = (user = {}, { initialSellerGroupId = "", lockSellerGroup 
   tin_no: String(user.tin_no ?? user.tinNo ?? ""),
   prc_no: String(user.prc_no ?? user.prcNo ?? ""),
   address: String(user.address ?? ""),
-  role: String(user.role || "agent"),
+  role: String(user.role || "sales_agent"),
   admin_type: String(user.admin_type || (user.role === "admin" ? "admin_1" : "")),
   status: String(user.status || user.user_status || user.accredited_seller_status || "active"),
   seller_group_id: String(
@@ -235,7 +235,7 @@ const EditUserModal = ({
     error: groupsError,
   } = useQuery({
     queryKey: ["seller-group-options"],
-    queryFn: () => fetchApi("/seller-groups/options"),
+    queryFn: () => fetchApi("/seller-groups/options?groupType=in_house"),
   });
 
   const {
@@ -261,7 +261,7 @@ const EditUserModal = ({
 
 
   const allowedParents = useMemo(() => {
-    if (!isSellerRole || form.role === "broker_network_manager") return [];
+    if (!isSellerRole || form.role === "division_manager") return [];
 
     return parentSellers.filter((seller) => {
       if (Number(seller.user_id) === Number(selectedUser?.id)) return false;
@@ -277,15 +277,15 @@ const EditUserModal = ({
   const isSelectedUserGroupHead = Number(selectedGroup?.seller_group_head_user_id || 0) === Number(selectedUser?.id || 0);
   const groupHasHead = Boolean(selectedGroup?.seller_group_head_user_id);
   const groupHeadRole = selectedGroup?.seller_group_head_role || '';
-  const canReplaceBrokerHead = form.role === "broker_network_manager"
-    && groupHeadRole === "broker"
+  const canReplaceBrokerHead = form.role === "division_manager"
+    && groupHeadRole === "sales_director"
     && !isSelectedUserGroupHead;
-  const roleConflictsWithGroupHead = form.role === "broker_network_manager"
+  const roleConflictsWithGroupHead = form.role === "division_manager"
     && groupHasHead
     && !isSelectedUserGroupHead
     && !canReplaceBrokerHead;
-  const canLeaveParentEmpty = (form.role === "broker_network_manager" && (!groupHasHead || isSelectedUserGroupHead || canReplaceBrokerHead))
-    || (form.role === "broker" && (isSelectedUserGroupHead || !groupHasHead));
+  const canLeaveParentEmpty = (form.role === "division_manager" && (!groupHasHead || isSelectedUserGroupHead || canReplaceBrokerHead))
+    || (form.role === "sales_director" && (isSelectedUserGroupHead || !groupHasHead));
   const parentIsRequired = isSellerRole && !canLeaveParentEmpty;
 
   const groupOptions = useMemo(
@@ -303,7 +303,7 @@ const EditUserModal = ({
         value: String(seller.user_id),
         label: seller.full_name,
         description: `${roleLabels[seller.role] || seller.role}${
-          seller.seller_group_id ? " · Same seller group" : ""
+          seller.seller_group_id ? " · Same In-House Group" : ""
         }`,
       })),
     [allowedParents]
@@ -357,12 +357,12 @@ const EditUserModal = ({
     if (!isSellerRole) return true;
 
     if (!form.seller_group_id) {
-      setWarning("Select a seller group.");
+      setWarning("Select a In-House Group.");
       return false;
     }
 
     if (roleConflictsWithGroupHead) {
-      setWarning("This group already has a Broker Network Manager as its head.");
+      setWarning("This group already has a Division Manager as its head.");
       return false;
     }
 
@@ -411,7 +411,7 @@ const EditUserModal = ({
             <p className="text-sm text-slate-500">
               {activeStep === 1
                 ? "Update account and contact information."
-                : "Update the seller group and reporting line. Commission rates are inherited from the Realty."}
+                : "Update the In-House Group and reporting line. Commission rates are inherited from the group."}
             </p>
           </div>
 
@@ -470,7 +470,7 @@ const EditUserModal = ({
                   <FiUserCheck className="h-4 w-4" />
                 </span>
                 <span>
-                  <span className="block text-sm font-black text-slate-950">2. Seller Hierarchy</span>
+                  <span className="block text-sm font-black text-slate-950">2. In-House Hierarchy</span>
                   <span className="block text-xs font-semibold text-slate-500">Group and reporting line</span>
                 </span>
               </button>
@@ -484,10 +484,10 @@ const EditUserModal = ({
               <StatusAlert type="loading" message="Saving user changes..." />
             ) : null}
             {isGroupsLoading || isParentsLoading ? (
-              <StatusAlert type="loading" message="Loading seller groups and reporting options..." />
+              <StatusAlert type="loading" message="Loading In-House Groups and reporting options..." />
             ) : null}
             {isGroupsError ? (
-              <StatusAlert type="error" message={groupsError?.message || "Failed to load seller groups."} />
+              <StatusAlert type="error" message={groupsError?.message || "Failed to load In-House Groups."} />
             ) : null}
             {isParentsError ? (
               <StatusAlert type="error" message={parentsError?.message || "Failed to load parent sellers."} />
@@ -597,14 +597,14 @@ const EditUserModal = ({
                 <div className="mb-5 flex items-center gap-3">
                   <FiUserCheck className="h-5 w-5 text-blue-700" />
                   <div>
-                    <h4 className="font-bold text-slate-950">Seller Hierarchy</h4>
+                    <h4 className="font-bold text-slate-950">In-House Hierarchy</h4>
                     <p className="text-sm text-slate-500">Search the group and reporting list instead of scrolling through every record.</p>
                   </div>
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-3">
                   <SearchableSelect
-                    label="Seller Group"
+                    label="In-House Group"
                     value={form.seller_group_id}
                     options={groupOptions}
                     onChange={(value) => {
@@ -615,9 +615,9 @@ const EditUserModal = ({
                       }));
                       setWarning("");
                     }}
-                    placeholder="Select seller group"
-                    searchPlaceholder="Search seller groups..."
-                    emptyText="No seller groups match your search."
+                    placeholder="Select In-House Group"
+                    searchPlaceholder="Search In-House Groups..."
+                    emptyText="No In-House Groups match your search."
                     required
                     disabled={lockSellerGroup}
                   />
@@ -627,15 +627,15 @@ const EditUserModal = ({
                     value={form.reports_under_user_id}
                     options={parentOptions}
                     onChange={(value) => updateForm("reports_under_user_id", value)}
-                    placeholder={form.role === "broker_network_manager" ? "Direct to Developer" : `Select ${roleLabels[getRequiredParentRole(form.role)] || "parent seller"}`}
+                    placeholder={form.role === "division_manager" ? "Direct to Developer" : `Select ${roleLabels[getRequiredParentRole(form.role)] || "parent seller"}`}
                     searchPlaceholder="Search name or role..."
-                    emptyOptionLabel={canLeaveParentEmpty && form.role !== "broker_network_manager" ? "Direct to Developer / None" : undefined}
+                    emptyOptionLabel={canLeaveParentEmpty && form.role !== "division_manager" ? "Direct to Developer / None" : undefined}
                     emptyText={
                       form.seller_group_id
                         ? "No eligible parent seller matches your search."
-                        : "Select a seller group first."
+                        : "Select a In-House Group first."
                     }
-                    disabled={!form.seller_group_id || form.role === "broker_network_manager"}
+                    disabled={!form.seller_group_id || form.role === "division_manager"}
                     required={parentIsRequired}
                   />
 
@@ -648,7 +648,7 @@ const EditUserModal = ({
                 <div className="mt-5 rounded-xl border border-blue-200 bg-white px-4 py-3">
                   <h5 className="text-sm font-black text-slate-900">Inherited Commission Rates</h5>
                   <p className="mt-1 text-xs font-semibold text-slate-500">
-                    This seller automatically uses the fixed BNM, Broker, Manager, or Agent rate configured for the selected Realty and project. Individual seller rates cannot be edited.
+                    This seller automatically uses the fixed Division Manager, Sales Director, Unit Manager, or Sales Agent rate configured for the selected In-House Group and project. Individual seller rates cannot be edited.
                   </p>
                 </div>
               </div>
@@ -673,7 +673,7 @@ const EditUserModal = ({
 
             {activeStep === 1 && isSellerRole ? (
               <button type="button" onClick={goNext} disabled={updateMutation.isPending} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300">
-                Next: Seller Hierarchy
+                Next: In-House Hierarchy
                 <FiArrowRight className="h-4 w-4" />
               </button>
             ) : (
@@ -689,4 +689,3 @@ const EditUserModal = ({
 };
 
 export default EditUserModal;
-

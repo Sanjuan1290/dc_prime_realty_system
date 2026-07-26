@@ -21,16 +21,16 @@ test('Edit User modal defines and uses a complete initial form mapper', () => {
   assert.match(editUserModal, /useState\(\(\) => getInitialForm\(selectedUser/)
 })
 
-test('Realty Members can open the shared Edit User modal', () => {
+test('In-House Members can open the shared Edit User modal', () => {
   assert.match(sellerGroupDetails, /import EditUserModal/)
-  assert.match(sellerGroupDetails, /const openEditMember = \(member\) =>/)
+  assert.match(sellerGroupDetails, /onClick=\{\(\) => setSelectedMember\(/)
   assert.match(sellerGroupDetails, /Edit User/)
-  assert.match(sellerGroupDetails, /showEditUser && selectedMember/)
+  assert.match(sellerGroupDetails, /selectedMember \? <EditUserModal/)
   assert.match(sellerGroupDetails, /initialSellerGroupId=\{String\(group\.id \|\| groupId\)\}/)
   assert.match(sellerGroupDetails, /lockSellerGroup/)
 })
 
-test('Realty member payload includes editable user fields', () => {
+test('In-House member payload includes editable user fields', () => {
   for (const field of ['u.first_name', 'u.middle_name', 'u.last_name', 'u.email', 'u.contact_no', 'u.tin_no', 'u.prc_no', 'u.address', 'accredited_seller_accreditation_date AS accreditation_date']) {
     assert.match(sellerGroupController, new RegExp(field.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
   }

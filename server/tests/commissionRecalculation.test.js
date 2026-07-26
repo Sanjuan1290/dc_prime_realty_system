@@ -32,9 +32,9 @@ test('any released amount, released stage, or receipt locks recalculation', () =
 
 test('legacy cumulative distribution can read a historical agent-to-broker chain', () => {
   const chain = [
-    seller(1, 'agent', 'Agent One'),
-    seller(3, 'broker', 'Broker One'),
-    seller(4, 'broker_network_manager', 'BNM One'),
+    seller(1, 'sales_agent', 'Agent One'),
+    seller(3, 'sales_director', 'Broker One'),
+    seller(4, 'division_manager', 'BNM One'),
   ];
   const rateMap = new Map([
     [1, 3],
@@ -50,18 +50,18 @@ test('legacy cumulative distribution can read a historical agent-to-broker chain
   });
 
   assert.deepEqual(rows.map((row) => [row.seller.role, row.rate]), [
-    ['agent', 3],
-    ['broker', 4],
-    ['broker_network_manager', 1],
+    ['sales_agent', 3],
+    ['sales_director', 4],
+    ['division_manager', 1],
   ]);
 });
 
 test('current hierarchy adds the manager share after the agent reports to a manager', () => {
   const chain = [
-    seller(1, 'agent', 'Agent One'),
-    seller(2, 'manager', 'Manager One'),
-    seller(3, 'broker', 'Broker One'),
-    seller(4, 'broker_network_manager', 'BNM One'),
+    seller(1, 'sales_agent', 'Agent One'),
+    seller(2, 'unit_manager', 'Manager One'),
+    seller(3, 'sales_director', 'Broker One'),
+    seller(4, 'division_manager', 'BNM One'),
   ];
   const rateMap = new Map([
     [1, 3],
@@ -78,10 +78,10 @@ test('current hierarchy adds the manager share after the agent reports to a mana
   });
 
   assert.deepEqual(rows.map((row) => [row.seller.role, row.rate]), [
-    ['agent', 3],
-    ['manager', 2],
-    ['broker', 2],
-    ['broker_network_manager', 1],
+    ['sales_agent', 3],
+    ['unit_manager', 2],
+    ['sales_director', 2],
+    ['division_manager', 1],
   ]);
 });
 
@@ -89,10 +89,10 @@ test('current hierarchy adds the manager share after the agent reports to a mana
 
 test('direct-agent commission uses explicit relationship overrides', () => {
   const chain = [
-    seller(1, 'agent', 'Agent One'),
-    seller(2, 'manager', 'Manager One'),
-    seller(3, 'broker', 'Broker One'),
-    seller(4, 'broker_network_manager', 'BNM One'),
+    seller(1, 'sales_agent', 'Agent One'),
+    seller(2, 'unit_manager', 'Manager One'),
+    seller(3, 'sales_director', 'Broker One'),
+    seller(4, 'division_manager', 'BNM One'),
   ];
   const overrideRateMap = new Map([
     ['1:2', 1],
@@ -108,17 +108,17 @@ test('direct-agent commission uses explicit relationship overrides', () => {
   });
 
   assert.deepEqual(rows.map((row) => [row.seller.role, row.rateType, row.rate]), [
-    ['agent', 'direct', 4],
-    ['manager', 'override', 1],
-    ['broker', 'override', 2],
-    ['broker_network_manager', 'override', 1],
+    ['sales_agent', 'direct', 4],
+    ['unit_manager', 'override', 1],
+    ['sales_director', 'override', 2],
+    ['division_manager', 'override', 1],
   ]);
 });
 
 test('current direct-override commission rejects an Agent reporting directly to a Broker', () => {
   const chain = [
-    seller(1, 'agent', 'Agent One'),
-    seller(3, 'broker', 'Broker One'),
+    seller(1, 'sales_agent', 'Agent One'),
+    seller(3, 'sales_director', 'Broker One'),
   ];
 
   assert.throws(
@@ -135,7 +135,7 @@ test('current direct-override commission rejects an Agent reporting directly to 
 test('direct-agent commission rejects a non-agent assignment', () => {
   assert.throws(
     () => buildDirectOverrideDistribution({
-      chain: [seller(2, 'manager', 'Manager One')],
+      chain: [seller(2, 'unit_manager', 'Manager One')],
       directRate: 4,
       overrideRateMap: new Map(),
       groupPoolRate: 8,
@@ -146,8 +146,8 @@ test('direct-agent commission rejects a non-agent assignment', () => {
 
 test('direct and override allocation cannot exceed the group project pool', () => {
   const chain = [
-    seller(1, 'agent', 'Agent One'),
-    seller(2, 'manager', 'Manager One'),
+    seller(1, 'sales_agent', 'Agent One'),
+    seller(2, 'unit_manager', 'Manager One'),
   ];
 
   assert.throws(
@@ -163,8 +163,8 @@ test('direct and override allocation cannot exceed the group project pool', () =
 
 test('invalid parent ceilings are rejected before commission rows are replaced', () => {
   const chain = [
-    seller(1, 'agent', 'Agent One'),
-    seller(2, 'manager', 'Manager One'),
+    seller(1, 'sales_agent', 'Agent One'),
+    seller(2, 'unit_manager', 'Manager One'),
   ];
   const rateMap = new Map([
     [1, 5],

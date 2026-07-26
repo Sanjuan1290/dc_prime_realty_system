@@ -46,9 +46,12 @@ const normalizeAgent = (agent = {}) => ({
   ...agent,
   id: Number(agent.accreditedSellerId || agent.accredited_seller_id || agent.id),
   accredited_seller_id: Number(agent.accreditedSellerId || agent.accredited_seller_id || agent.id),
-  name: agent.name || 'Unnamed sales agent',
-  role: agent.role || 'Agent',
-  roleValue: agent.roleValue || agent.role_value || 'agent',
+  name: agent.name || 'Unnamed Seller / Group',
+  role: agent.role || 'Sales Agent',
+  roleValue: agent.roleValue || agent.role_value || 'sales_agent',
+  groupType: agent.groupType || agent.group_type || 'in_house',
+  isExternalGroup: Boolean(agent.isExternalGroup ?? agent.is_external_group ?? (agent.groupType === 'external')),
+  representativeName: agent.representativeName || agent.representative_name || null,
   directRate: Number(agent.directRate ?? agent.rateValue ?? agent.rate ?? 0),
   rateValue: Number(agent.directRate ?? agent.rateValue ?? agent.rate ?? 0),
   groupName: agent.groupName || agent.group_name || '-',
@@ -151,7 +154,7 @@ const ReserveListingModal = ({
     [documentTemplates]
   )
 
-  // Delay agent searches slightly so typing does not issue one request per key.
+  // Delay seller/group searches slightly so typing does not issue one request per key.
   useEffect(() => {
     const timeoutId = window.setTimeout(() => setDebouncedAgentSearch(agentSearch.trim()), 300)
     return () => window.clearTimeout(timeoutId)
@@ -193,7 +196,7 @@ const ReserveListingModal = ({
     queryFn: () => {
       const params = new URLSearchParams({
         listingId: String(listingLookup),
-        agentId: String(paymentForm.sellerId),
+        sellerId: String(paymentForm.sellerId),
         modeOfPayment: paymentForm.modeOfPayment,
         saleDiscountPercentage: String(paymentForm.saleDiscountPercentage || 0),
       })
@@ -228,7 +231,7 @@ const ReserveListingModal = ({
   }, [documentLibrary, searchDocument, selectedTemplateId, templateDocuments])
 
   const updatePaymentField = (key, value) => {
-    // Clear the old hierarchy immediately when another agent is selected.
+    // Clear the old commission preview immediately when another seller or group is selected.
     if (key === 'sellerId' && String(value) !== String(paymentForm.sellerId)) {
       setSelectedAgentSnapshot(fetchedAgents.find((agent) => String(agent.id) === String(value)) || null)
     }
@@ -321,27 +324,27 @@ const ReserveListingModal = ({
 
   const validatePaymentStep = () => {
     if (!paymentForm.sellerId || !selectedAgent) {
-      setAlert({ type: 'error', message: 'Select an active sales agent for this reservation.' })
+      setAlert({ type: 'error', message: 'Select an active Seller / Group for this reservation.' })
       return false
     }
-    if (String(selectedAgent.roleValue).toLowerCase() !== 'agent') {
-      setAlert({ type: 'error', message: 'Only active sales agents can be assigned to a reservation.' })
+    if (!['sales_agent', 'external_group'].includes(String(selectedAgent.roleValue).toLowerCase())) {
+      setAlert({ type: 'error', message: 'Select an active In-House Sales Agent or External Group account.' })
       return false
     }
     if (Number(selectedAgent.directRate || 0) <= 0) {
-      setAlert({ type: 'error', message: 'The selected agent does not have an active sales commission rate for this project.' })
+      setAlert({ type: 'error', message: 'The selected Seller / Group does not have an active project commission rate.' })
       return false
     }
     if (previewQuery.isLoading || previewQuery.isFetching) {
-      setAlert({ type: 'loading', message: 'Calculating the commission hierarchy...' })
+      setAlert({ type: 'loading', message: 'Calculating the commission structure...' })
       return false
     }
     if (previewQuery.isError || !commissionPreview) {
-      setAlert({ type: 'error', message: previewQuery.error?.message || 'The commission hierarchy could not be loaded.' })
+      setAlert({ type: 'error', message: previewQuery.error?.message || 'The commission structure could not be loaded.' })
       return false
     }
     if (!commissionPreview.isValid) {
-      setAlert({ type: 'error', message: 'The selected agent hierarchy has an invalid commission allocation.' })
+      setAlert({ type: 'error', message: 'The selected commission structure has an invalid allocation.' })
       return false
     }
     if (!paymentForm.reservationFee || Number(paymentForm.reservationFee) <= 0) {
@@ -477,7 +480,7 @@ const ReserveListingModal = ({
     const paymentCalculations = getPaymentCalculations(tcp, effectivePaymentForm)
 
     // New reservations always use distributed commission generation. A
-    // non-agent direct sale is represented by that seller's system agent.
+    // The selected account now represents either an In-House Sales Agent or an External Group.
     const payload = {
       listing,
       buyerFormSubmissionId: buyerFormSubmissionId || undefined,
@@ -559,7 +562,7 @@ const ReserveListingModal = ({
 
           {activeStep === 2 ? <ReserveDocumentChecklistModal filteredDocuments={filteredDocuments} searchDocument={searchDocument} setSearchDocument={setSearchDocument} selectedDocuments={selectedDocuments} isSaving={isSaving} isLoadingDefaults={isLoadingDocuments} deletingDocId={null} isDocumentAdded={isDocumentAdded} addDocument={addDocument} removeDocument={removeDocument} loadProjectDefaults={loadProjectDefaults} documentTemplates={activeDocumentTemplates} selectedTemplateId={selectedTemplateId} setSelectedTemplateId={setSelectedTemplateId} /> : null}
 
-          {activeStep === 3 ? <ReservePaymentTermsModal listing={listing} project={project} tcp={tcp} contractPricing={contractPricing} paymentForm={effectivePaymentForm} updatePaymentField={updatePaymentField} agents={fetchedAgents} selectedAgent={selectedAgent} agentSearch={agentSearch} setAgentSearch={setAgentSearch} isLoadingAgents={agentsQuery.isLoading || agentsQuery.isFetching} agentsError={!projectSlug ? 'Project information is missing.' : agentsQuery.isError ? agentsQuery.error?.message || 'Failed to load sales agents.' : null} commissionPreview={commissionPreview} isLoadingPreview={previewQuery.isLoading || previewQuery.isFetching} previewError={previewQuery.isError ? previewQuery.error?.message || 'Failed to load the commission hierarchy.' : null} /> : null}
+          {activeStep === 3 ? <ReservePaymentTermsModal listing={listing} project={project} tcp={tcp} contractPricing={contractPricing} paymentForm={effectivePaymentForm} updatePaymentField={updatePaymentField} agents={fetchedAgents} selectedAgent={selectedAgent} agentSearch={agentSearch} setAgentSearch={setAgentSearch} isLoadingAgents={agentsQuery.isLoading || agentsQuery.isFetching} agentsError={!projectSlug ? 'Project information is missing.' : agentsQuery.isError ? agentsQuery.error?.message || 'Failed to load Seller / Group options.' : null} commissionPreview={commissionPreview} isLoadingPreview={previewQuery.isLoading || previewQuery.isFetching} previewError={previewQuery.isError ? previewQuery.error?.message || 'Failed to load the commission structure.' : null} /> : null}
         </div>
 
         <div className="flex shrink-0 flex-col gap-3 border-t border-slate-200 bg-white px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
@@ -576,6 +579,3 @@ const ReserveListingModal = ({
 }
 
 export default ReserveListingModal
-
-
-

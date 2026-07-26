@@ -4,84 +4,69 @@ import { readFile } from 'node:fs/promises';
 
 const readSource = async (path) => readFile(new URL(path, import.meta.url), 'utf8');
 
-test('seller group details shows one fixed project structure and scalable member pagination', async () => {
+test('group details show a type-aware project commission structure and performance range', async () => {
   const source = await readSource('../../client/src/pages/System/SellerGroupDetails.jsx');
 
-  assert.match(source, /Sales and Commission Performance/);
-  assert.match(source, /Fixed Project Commission Structure/);
-  assert.match(source, /BNM Override/);
-  assert.match(source, /Broker Override/);
-  assert.match(source, /Manager Override/);
-  assert.match(source, /Agent Sales Rate/);
-  assert.match(source, /\['Seller', 'Role', 'Reports Under', 'Status', 'Actions'\]/);
-  assert.match(source, /memberTotalPages/);
+  assert.match(source, /Project Commission Structure/);
+  assert.match(source, /Division Manager Rate/);
+  assert.match(source, /Sales Director Rate/);
+  assert.match(source, /Unit Manager Rate/);
+  assert.match(source, /Sales Agent Rate/);
+  assert.match(source, /External Group Rate/);
+  assert.match(source, /type="date"/);
+  assert.match(source, /Released commissions are grouped by actual release date/);
   assert.doesNotMatch(source, /Commission Paths/);
-  assert.doesNotMatch(source, /Edit Sales Rate/);
-  assert.doesNotMatch(source, /memberRatesById/);
 });
 
-test('new and edit Realty forms configure fixed role rates for every selected project', async () => {
+test('new and edit group forms configure in-house rates or an external Pool Rate', async () => {
   const [newGroupSource, editGroupSource, projectFieldsSource] = await Promise.all([
     readSource('../../client/src/components/System/sellerGroupComponents/NewGroupModal.jsx'),
     readSource('../../client/src/components/System/sellerGroupComponents/EditGroupModal.jsx'),
     readSource('../../client/src/components/System/sellerGroupComponents/ProjectAccreditationFields.jsx'),
   ]);
 
-  assert.match(newGroupSource, /project_rates: \[\]/);
-  assert.match(newGroupSource, /ProjectAccreditationFields/);
-  assert.match(newGroupSource, /ConfirmActionModal/);
-  assert.match(newGroupSource, /onRequestRemove=/);
-  assert.match(newGroupSource, /Unselect Project\?/);
-  assert.match(newGroupSource, /confirmLabel=\"Unselect Project\"/);
-  assert.match(newGroupSource, /project_rates: current\.project_rates\.filter/);
-  assert.match(editGroupSource, /ProjectAccreditationFields/);
-  assert.match(editGroupSource, /Remove Project Accreditation\?/);
+  for (const source of [newGroupSource, editGroupSource]) {
+    assert.match(source, /groupType/);
+    assert.match(source, /ProjectAccreditationFields/);
+    assert.match(source, /Remove Project Accreditation\?/);
+    assert.match(source, /external_account/);
+  }
   assert.match(projectFieldsSource, /seller_group_pool_rate/);
-  assert.match(projectFieldsSource, /bnm_override_rate/);
-  assert.match(projectFieldsSource, /broker_override_rate/);
-  assert.match(projectFieldsSource, /manager_override_rate/);
-  assert.match(projectFieldsSource, /agent_rate/);
-  assert.match(projectFieldsSource, /Allocated \{moneyRate\(allocated\)\}% of/);
+  assert.match(projectFieldsSource, /division_manager_rate/);
+  assert.match(projectFieldsSource, /sales_director_rate/);
+  assert.match(projectFieldsSource, /unit_manager_rate/);
+  assert.match(projectFieldsSource, /sales_agent_rate/);
+  assert.match(projectFieldsSource, /Full Pool Rate/);
+  assert.match(projectFieldsSource, /Allocated \$\{moneyRate\(allocated\)\}% of/);
 });
 
-test('reservation hierarchy uses fixed Realty rates and requires an exact pool allocation', async () => {
+test('reservation commission service branches between in-house distribution and one external recipient', async () => {
   const source = await readSource('../controllers/Lot_Projects/Commissions/commissionHierarchy.service.js');
 
-  assert.match(source, /loadGroupFixedCommissionRates/);
+  assert.match(source, /fixedRates\.groupType === 'external'/);
+  assert.match(source, /Only the registered External Group account/);
+  assert.match(source, /saleType: 'direct'/);
   assert.match(source, /buildGroupFixedRateDistribution/);
   assert.match(source, /Math\.abs\(allocatedRate - poolRate\) > 0\.0001/);
-  assert.match(source, /Fixed group rates total/);
 });
 
-test('seller group router exposes group project rate editing and removes individual rate endpoints', async () => {
+test('group API filters by group type and exposes project commission editing', async () => {
   const [router, controller] = await Promise.all([
     readSource('../routers/System/sellerGroup.routers.js'),
     readSource('../controllers/System/sellerGroup.controller.js'),
   ]);
 
+  assert.match(controller, /sg\.seller_group_type = \?/);
+  assert.match(controller, /Group Type cannot be changed after creation/);
+  assert.match(controller, /An External Group must contain exactly one External Group account/);
   assert.match(router, /\/:groupId\/projects\/:projectId\/analytics/);
   assert.match(router, /\/:groupId\/projects\/:projectId\/pool/);
   assert.doesNotMatch(router, /agents\/:agentId\/direct-rate/);
-  assert.doesNotMatch(router, /agents\/:agentId\/path/);
-  assert.doesNotMatch(router, /children\/:childId\/override/);
-  assert.doesNotMatch(router, /members\/:memberId\/rates/);
-  assert.doesNotMatch(controller, /upsertAgentDirectRate/);
 });
 
-test('Realty records do not count the empty LEFT JOIN row as a member', async () => {
+test('group member counts exclude system dummy sellers and use type-specific account totals', async () => {
   const controller = await readSource('../controllers/System/sellerGroup.controller.js');
 
-  assert.match(controller, /a\.accredited_seller_id IS NOT NULL[\s\S]*AS member_count/);
-  assert.match(controller, /COALESCE\(SUM\(CASE[\s\S]*a\.accredited_seller_id IS NOT NULL[\s\S]*AS active_member_count/);
-});
-
-test('Realty performance uses the dashboard-style complete-month range filter', async () => {
-  const source = await readSource('../../client/src/pages/System/SellerGroupDetails.jsx');
-
-  assert.match(source, /\{ value: '3_months', label: '3 Months' \}/);
-  assert.match(source, /resolvePresetDateRange/);
-  assert.match(source, /Preset ranges cover complete calendar months/);
-  assert.match(source, /disabled=\{dateRange !== 'custom'\}/);
-  assert.doesNotMatch(source, /Apply Range/);
-  assert.doesNotMatch(source, /Top of hierarchy|Direct parent/);
+  assert.match(controller, /COALESCE\(member\.is_system_dummy, 0\) = 0/);
+  assert.match(controller, /COUNT\(DISTINCT sg\.seller_group_external_account_user_id\) AS total_accounts/);
 });

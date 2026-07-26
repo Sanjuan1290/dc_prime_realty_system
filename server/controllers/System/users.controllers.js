@@ -37,14 +37,14 @@ import {
   verifyPasswordResetToken,
 } from './authentication.service.js';
 
-const userRoles = new Set(['super_admin', 'admin', 'broker_network_manager', 'broker', 'manager', 'agent']);
+const userRoles = new Set(['super_admin', 'admin', 'division_manager', 'sales_director', 'unit_manager', 'sales_agent', 'external_group']);
 const supportedAdminTypes = new Set(['admin_1']);
 
 const sellerRoles = new Set([
-  'broker_network_manager',
-  'broker',
-  'manager',
-  'agent',
+  'division_manager',
+  'sales_director',
+  'unit_manager',
+  'sales_agent',
 ]);
 
 const toNullableNumber = (value) => {
@@ -152,7 +152,7 @@ const validateSellerRemovalOrRoleChange = async (connection, userId, requestedRo
 
   if (!isSellerRole(requestedRole)) {
     if (dependencies.headedGroup) {
-      throw createValidationError('Change the seller group head before removing this user from the seller hierarchy.');
+      throw createValidationError('Change the In-House Group Head before removing this user from the hierarchy.');
     }
     if (dependencies.directReports.length) {
       throw createValidationError('Reassign this seller’s direct reports before changing the account to a non-seller role.');
@@ -175,7 +175,7 @@ const validateSellerHierarchyAssignment = async (
   const groupId = toNullableNumber(sellerGroupId);
   const parentUserId = toNullableNumber(reportsUnderUserId);
 
-  if (!groupId) throw createValidationError('Select a seller group.');
+  if (!groupId) throw createValidationError('Select an In-House Group.');
 
   const [groupRows] = await connection.query(
     `
@@ -183,6 +183,7 @@ const validateSellerHierarchyAssignment = async (
         group_row.seller_group_id,
         group_row.seller_group_head_user_id,
         group_row.seller_group_status,
+        group_row.seller_group_type,
         head_user.role AS seller_group_head_role
       FROM seller_groups group_row
       LEFT JOIN users head_user ON head_user.id = group_row.seller_group_head_user_id
@@ -192,9 +193,12 @@ const validateSellerHierarchyAssignment = async (
     [groupId]
   );
   const group = groupRows[0];
-  if (!group) throw createValidationError('The selected seller group was not found.');
+  if (!group) throw createValidationError('The selected In-House Group was not found.');
   if (group.seller_group_status !== 'active') {
-    throw createValidationError('The selected seller group is inactive.');
+    throw createValidationError('The selected In-House Group is inactive.');
+  }
+  if (group.seller_group_type !== 'in_house') {
+    throw createValidationError('In-house positions can only be assigned to an In-House Group.');
   }
 
   const dependencies = dependencyState || await getSellerDependencyState(connection, userId);
@@ -202,10 +206,10 @@ const validateSellerHierarchyAssignment = async (
   const headedGroup = dependencies.headedGroup;
 
   if (headedGroup && !isGroupHeadRole(role)) {
-    throw createValidationError('Only a Broker Network Manager or Broker can be the head of a seller group. Change the group head first.');
+    throw createValidationError('Only a Division Manager or Sales Director can be the head of an In-House Group. Change the Group Head first.');
   }
   if (headedGroup && Number(headedGroup.seller_group_id) !== groupId) {
-    throw createValidationError('A group head cannot be moved to another seller group. Change the group head first.');
+    throw createValidationError('A Group Head cannot be moved to another In-House Group. Change the Group Head first.');
   }
 
   if (
@@ -227,19 +231,19 @@ const validateSellerHierarchyAssignment = async (
 
   const isCurrentGroupHead = Boolean(userId && Number(group.seller_group_head_user_id) === Number(userId));
 
-  if (role === 'broker_network_manager') {
-    if (parentUserId) throw createValidationError('A Broker Network Manager reports directly to the developer.');
+  if (role === 'division_manager') {
+    if (parentUserId) throw createValidationError('A Division Manager reports directly to the developer.');
     const canReplaceBrokerHead = group.seller_group_head_user_id
-      && group.seller_group_head_role === 'broker'
+      && group.seller_group_head_role === 'sales_director'
       && !isCurrentGroupHead;
     if (group.seller_group_head_user_id && !isCurrentGroupHead && !canReplaceBrokerHead) {
-      throw createValidationError('This group already has a Broker Network Manager as its head.');
+      throw createValidationError('This group already has a Division Manager as its Group Head.');
     }
     return null;
   }
 
   if (!parentUserId) {
-    const canBeUnassignedBroker = role === 'broker'
+    const canBeUnassignedBroker = role === 'sales_director'
       && (!group.seller_group_head_user_id || isCurrentGroupHead);
     if (canBeUnassignedBroker) return null;
 
@@ -252,7 +256,7 @@ const validateSellerHierarchyAssignment = async (
     throw createValidationError('A seller cannot report under themselves.');
   }
   if (isCurrentGroupHead) {
-    throw createValidationError('The seller group head reports directly to the developer and cannot have a reporting parent.');
+    throw createValidationError('The In-House Group Head reports directly to the developer and cannot have a reporting parent.');
   }
 
   const [parentRows] = await connection.query(
@@ -279,7 +283,7 @@ const validateSellerHierarchyAssignment = async (
     throw createValidationError('The selected reporting parent must be active.');
   }
   if (Number(parent.seller_group_id) !== groupId) {
-    throw createValidationError('The seller and reporting parent must belong to the same seller group.');
+    throw createValidationError('The seller and reporting parent must belong to the same In-House Group.');
   }
 
   const expectedRole = getRequiredParentRole(role);
@@ -1159,7 +1163,7 @@ export const createUser = async (req, res) => {
       address,
       email,
       password = 'password',
-      role = 'agent',
+      role = 'sales_agent',
       admin_type,
       status = 'active',
       seller_group_id,
@@ -1172,6 +1176,9 @@ export const createUser = async (req, res) => {
     }
     if (!validateRequestedRole(role)) {
       return res.status(400).json({ message: 'Select a valid user role.' });
+    }
+    if (role === 'external_group') {
+      return res.status(400).json({ message: 'Create External Group accounts from the External Groups page.' });
     }
     if (!actorCanCreateTargetRole(req, role)) {
       return denyUserManagement(res, 'You do not have permission to create this account type.');
@@ -1329,6 +1336,9 @@ export const editUser = async (req, res) => {
     );
     const targetUser = targetRows[0];
     if (!targetUser) return res.status(404).json({ message: 'User not found.' });
+    if (targetUser.role === 'external_group' || role === 'external_group') {
+      return res.status(400).json({ message: 'Manage External Group accounts from the External Groups page.' });
+    }
 
     if (!actorCanManageTargetRole(req, targetUser.role)) {
       return denyUserManagement(res, 'You do not have permission to edit this account.');
@@ -1485,6 +1495,9 @@ export const toggleUserStatus = async (req, res) => {
     const user = rows[0];
 
     if (!user) return res.status(404).json({ message: 'User not found.' });
+    if (user.role === 'external_group') {
+      return res.status(400).json({ message: 'Manage External Group accounts from the External Groups page.' });
+    }
     if (!actorCanManageTargetRole(req, user.role)) {
       return denyUserManagement(res, 'You do not have permission to activate or deactivate this account.');
     }
@@ -1528,6 +1541,9 @@ export const resetUserPassword = async (req, res) => {
     const user = rows[0];
 
     if (!user) return res.status(404).json({ message: 'User not found.' });
+    if (user.role === 'external_group') {
+      return res.status(400).json({ message: 'Manage External Group accounts from the External Groups page.' });
+    }
     if (!actorCanManageTargetRole(req, user.role)) {
       return denyUserManagement(res, 'You do not have permission to reset this account password.');
     }
@@ -1554,4 +1570,3 @@ export const resetUserPassword = async (req, res) => {
     return res.status(500).json({ message: getErrorMessage(error) });
   }
 };
-

@@ -25,10 +25,11 @@ import { PERMISSIONS, canManageUserRole, hasPermission } from "../../config/perm
 const roleLabels = {
   super_admin: "Super Admin",
   admin: "Admin",
-  broker_network_manager: "Broker Network Manager",
-  broker: "Broker",
-  manager: "Manager",
-  agent: "Agent",
+  division_manager: "Division Manager",
+  sales_director: "Sales Director",
+  unit_manager: "Unit Manager",
+  sales_agent: "Sales Agent",
+  external_group: "External Group",
 };
 
 
@@ -94,9 +95,9 @@ const Users = () => {
   const canResetPasswords = hasPermission(actorUser, PERMISSIONS.SYSTEM_USERS_RESET_PASSWORD);
   const canChangeStatus = hasPermission(actorUser, PERMISSIONS.SYSTEM_USERS_CHANGE_STATUS);
   const canManageSellerGroups = hasPermission(actorUser, PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE);
-  const createAllowedRoles = Object.keys(roleLabels).filter((role) => isSuperAdmin || role !== "super_admin");
-  const getEditAllowedRoles = () => Object.keys(roleLabels).filter((role) => isSuperAdmin || role !== "super_admin");
-  const canManageAccount = (user) => canManageUserRole(actorUser, user?.role);
+  const createAllowedRoles = Object.keys(roleLabels).filter((role) => role !== "external_group" && (isSuperAdmin || role !== "super_admin"));
+  const getEditAllowedRoles = (user) => user?.role === "external_group" ? ["external_group"] : Object.keys(roleLabels).filter((role) => role !== "external_group" && (isSuperAdmin || role !== "super_admin"));
+  const canManageAccount = (user) => user?.role !== "external_group" && canManageUserRole(actorUser, user?.role);
   const queryClient = useQueryClient();
   const [showEditUser, setShowEditUser] = useState(false);
   const [showCreateUser, setShowCreateUser] = useState(false);
@@ -215,13 +216,13 @@ const Users = () => {
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <PageHeader
           title="User Management"
-          description="Create accounts and set hierarchy. Commission rates are controlled by Seller Groups, not individual accounts."
+          description="Create user accounts, assign the in-house sales hierarchy, and manage internal and external groups."
           icon={FaUserPlus}
         />
 
         <div className="flex flex-col gap-2 sm:flex-row">
           {canManageSellerGroups ? (
-            <NavLink to="seller_group" className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-sm font-bold text-slate-700 shadow-sm hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700">Seller Group</NavLink>
+            <><NavLink to="groups/in-house" className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-sm font-bold text-slate-700 shadow-sm hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700">In-House Group</NavLink><NavLink to="groups/external" className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-sm font-bold text-slate-700 shadow-sm hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700">External Group</NavLink></>
           ) : null}
           {canCreateUsers ? (
             <button type="button" onClick={() => setShowCreateUser(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-bold text-white shadow-sm hover:bg-blue-700"><FiPlus className="h-4 w-4" />Create User</button>
@@ -321,7 +322,7 @@ const Users = () => {
               <p>User</p>
               <p>Contact</p>
               <p>Role</p>
-              <p>Seller Group</p>
+              <p>Group</p>
               <p>Reports Under</p>
               <p>Status</p>
               <p className="text-right">Actions</p>
@@ -357,7 +358,7 @@ const Users = () => {
                           {canChangeStatus ? <button type="button" onClick={() => handleToggleStatus(user)} disabled={resetPasswordMutation.isPending || toggleStatusMutation.isPending} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60">{activeAction?.type === "status" && activeAction?.userId === user.id ? "Updating..." : user.status === "active" ? "Deactivate" : "Activate"}</button> : null}
                         </>
                       ) : (
-                        <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-black text-slate-500">Protected account</span>
+                        <span className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-black text-blue-700">{user.role === "external_group" ? "Managed in External Groups" : "Protected account"}</span>
                       )}
                     </div>
                   </div>
@@ -400,4 +401,3 @@ const Users = () => {
 };
 
 export default Users;
-

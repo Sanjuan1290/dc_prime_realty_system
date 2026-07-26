@@ -4,10 +4,11 @@ const toNumber = (value) => {
 }
 
 const roleOrder = {
-  agent: 1,
-  manager: 2,
-  broker: 3,
-  broker_network_manager: 4,
+  external_group: 0,
+  sales_agent: 1,
+  unit_manager: 2,
+  sales_director: 3,
+  division_manager: 4,
 }
 
 const sellerSortValue = (seller = {}) => {

@@ -9,7 +9,7 @@ import {
   roleHasPermission,
 } from '../config/permissions.js';
 
-const ordinaryUserRoles = ['admin', 'broker_network_manager', 'broker', 'manager', 'agent'];
+const ordinaryUserRoles = ['admin', 'division_manager', 'sales_director', 'unit_manager', 'sales_agent'];
 const admin1 = { role: 'admin', admin_type: 'admin_1' };
 const superAdmin = { role: 'super_admin', admin_type: null };
 

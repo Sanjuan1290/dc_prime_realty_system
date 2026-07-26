@@ -512,7 +512,7 @@ const UnitStatus = ({
       >
         <DetailBox label="Assigned Seller" value={unitData.seller} />
         <DetailBox label="Seller Role" value={unitData.seller_role} />
-        <DetailBox label="Seller Group" value={unitData.seller_group} />
+        <DetailBox label="Group" value={unitData.seller_group} />
         <DetailBox label="Sale Channel" value={unitData.sale_channel} />
         <DetailBox label="Seller Email" value={unitData.seller_email} />
         <DetailBox label="Seller Contact No." value={unitData.seller_contact_no} />

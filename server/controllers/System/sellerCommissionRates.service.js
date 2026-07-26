@@ -113,8 +113,8 @@ const syncParentOverrides = async (connection, seller, projectRates) => {
 };
 
 /**
- * Mirrors the role-based project rate into the commission tables:
- * agents own a direct sales rate; managers, brokers, and BNMs own an override.
+ * Mirrors legacy role-based project rates into the old commission tables:
+ * Sales Agents own a direct rate; Unit Managers, Sales Directors, and Division Managers own overrides.
  */
 export const syncSellerRoleProjectRates = async (
   connection,
@@ -128,7 +128,7 @@ export const syncSellerRoleProjectRates = async (
   const seller = await getSellerContext(connection, accreditedSellerId);
   if (!seller) return;
 
-  if (role === 'agent') {
+  if (role === 'sales_agent') {
     await upsertDirectRates(connection, accreditedSellerId, normalizedRates);
     if (await tableExists(connection, 'seller_hierarchy_lot_project_overrides')) {
       await connection.query(
@@ -195,7 +195,7 @@ export const syncChildOverrideFromCurrentParent = async (connection, childAccred
   );
 
   const parent = await resolveCurrentParent(connection, child);
-  if (!parent || parent.role === 'agent') return;
+  if (!parent || parent.role === 'sales_agent') return;
 
   await connection.query(
     `

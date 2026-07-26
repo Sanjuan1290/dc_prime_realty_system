@@ -81,8 +81,11 @@ const App = () => {
           <Route path="documents" element={<Documents />} />
           <Route path="users" element={<Users />} />
           <Route path="accredited" element={<Accredited />} />
-          <Route path="users/seller_group" element={<SellerGroup />} />
-          <Route path="users/seller_group/:groupId" element={<SellerGroupDetails />} />
+          <Route path="users/seller_group" element={<Navigate to="/super_admin/users/groups/in-house" replace />} />
+          <Route path="users/groups/in-house" element={<SellerGroup groupType="in_house" />} />
+          <Route path="users/groups/in-house/:groupId" element={<SellerGroupDetails expectedGroupType="in_house" />} />
+          <Route path="users/groups/external" element={<SellerGroup groupType="external" />} />
+          <Route path="users/groups/external/:groupId" element={<SellerGroupDetails expectedGroupType="external" />} />
           <Route path="notifications" element={<Notifications />} />
           <Route path="audit-logs" element={<AuditLogs />} />
           <Route path="employees" element={<Employees />} />
@@ -109,8 +112,11 @@ const App = () => {
 
           <Route path="documents" element={<Documents />} />
           <Route path="users" element={<Users />} />
-          <Route path="users/seller_group" element={<SellerGroup />} />
-          <Route path="users/seller_group/:groupId" element={<SellerGroupDetails />} />
+          <Route path="users/seller_group" element={<Navigate to="/admin/users/groups/in-house" replace />} />
+          <Route path="users/groups/in-house" element={<SellerGroup groupType="in_house" />} />
+          <Route path="users/groups/in-house/:groupId" element={<SellerGroupDetails expectedGroupType="in_house" />} />
+          <Route path="users/groups/external" element={<SellerGroup groupType="external" />} />
+          <Route path="users/groups/external/:groupId" element={<SellerGroupDetails expectedGroupType="external" />} />
           <Route path="accredited" element={<Accredited />} />
           <Route path="notifications" element={<Notifications />} />
           <Route path="audit-logs" element={<AuditLogs />} />

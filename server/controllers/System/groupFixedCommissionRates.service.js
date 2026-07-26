@@ -14,10 +14,18 @@ const normalizeRate = (value, label) => {
   return roundRate(rate);
 };
 
+export const normalizeSellerGroupType = (value) =>
+  String(value || '').trim().toLowerCase() === 'external' ? 'external' : 'in_house';
+
 export const validateGroupFixedRateStructure = (
   input = {},
-  { groupHeadRole = 'broker_network_manager', projectName = 'Project' } = {}
+  {
+    groupHeadRole = 'division_manager',
+    projectName = 'Project',
+    groupType = input.seller_group_type || input.groupType || 'in_house',
+  } = {}
 ) => {
+  const normalizedGroupType = normalizeSellerGroupType(groupType);
   const poolRate = normalizeRate(
     input.seller_group_pool_rate ?? input.poolRate,
     `${projectName} pool rate`
@@ -26,43 +34,69 @@ export const validateGroupFixedRateStructure = (
     throw createValidationError(`${projectName} pool rate must be between 6% and 15%.`);
   }
 
-  const bnmOverrideRate = normalizeRate(
-    input.bnm_override_rate ?? input.bnmOverrideRate ?? 0,
-    'BNM override rate'
-  );
-  const brokerOverrideRate = normalizeRate(
-    input.broker_override_rate ?? input.brokerOverrideRate ?? 0,
-    'Broker override rate'
-  );
-  const managerOverrideRate = normalizeRate(
-    input.manager_override_rate ?? input.managerOverrideRate ?? 0,
-    'Manager override rate'
-  );
-  const agentRate = normalizeRate(
-    input.agent_rate ?? input.agentRate ?? 0,
-    'Agent sales rate'
-  );
+  if (normalizedGroupType === 'external') {
+    const positionValues = [
+      input.division_manager_rate ?? input.divisionManagerRate ?? 0,
+      input.sales_director_rate ?? input.salesDirectorRate ?? 0,
+      input.unit_manager_rate ?? input.unitManagerRate ?? 0,
+      input.sales_agent_rate ?? input.salesAgentRate ?? 0,
+    ].map(Number);
 
-  if (brokerOverrideRate <= 0) {
-    throw createValidationError('Broker override rate must be greater than 0%.');
-  }
-  if (managerOverrideRate <= 0) {
-    throw createValidationError('Manager override rate must be greater than 0%.');
-  }
-  if (agentRate <= 0) {
-    throw createValidationError('Agent sales rate must be greater than 0%.');
-  }
-
-  if (groupHeadRole === 'broker') {
-    if (bnmOverrideRate !== 0) {
-      throw createValidationError('BNM override must be 0% when the Realty head is a Broker.');
+    if (positionValues.some((rate) => Number.isFinite(rate) && Math.abs(rate) > 0.0001)) {
+      throw createValidationError(
+        'External Groups use the full Pool Rate. In-house position rates must be 0%.'
+      );
     }
-  } else if (bnmOverrideRate <= 0) {
-    throw createValidationError('BNM override rate must be greater than 0%.');
+
+    return {
+      seller_group_type: normalizedGroupType,
+      seller_group_pool_rate: poolRate,
+      division_manager_rate: 0,
+      sales_director_rate: 0,
+      unit_manager_rate: 0,
+      sales_agent_rate: 0,
+      allocated_rate: poolRate,
+      remaining_rate: 0,
+    };
+  }
+
+  const divisionManagerRate = normalizeRate(
+    input.division_manager_rate ?? input.divisionManagerRate ?? 0,
+    'Division Manager rate'
+  );
+  const salesDirectorRate = normalizeRate(
+    input.sales_director_rate ?? input.salesDirectorRate ?? 0,
+    'Sales Director rate'
+  );
+  const unitManagerRate = normalizeRate(
+    input.unit_manager_rate ?? input.unitManagerRate ?? 0,
+    'Unit Manager rate'
+  );
+  const salesAgentRate = normalizeRate(
+    input.sales_agent_rate ?? input.salesAgentRate ?? 0,
+    'Sales Agent rate'
+  );
+
+  if (salesDirectorRate <= 0) {
+    throw createValidationError('Sales Director rate must be greater than 0%.');
+  }
+  if (unitManagerRate <= 0) {
+    throw createValidationError('Unit Manager rate must be greater than 0%.');
+  }
+  if (salesAgentRate <= 0) {
+    throw createValidationError('Sales Agent rate must be greater than 0%.');
+  }
+
+  if (groupHeadRole === 'sales_director') {
+    if (divisionManagerRate !== 0) {
+      throw createValidationError('Division Manager rate must be 0% when the group head is a Sales Director.');
+    }
+  } else if (divisionManagerRate <= 0) {
+    throw createValidationError('Division Manager rate must be greater than 0%.');
   }
 
   const allocatedRate = roundRate(
-    bnmOverrideRate + brokerOverrideRate + managerOverrideRate + agentRate
+    divisionManagerRate + salesDirectorRate + unitManagerRate + salesAgentRate
   );
   const difference = roundRate(poolRate - allocatedRate);
 
@@ -74,11 +108,12 @@ export const validateGroupFixedRateStructure = (
   }
 
   return {
+    seller_group_type: normalizedGroupType,
     seller_group_pool_rate: poolRate,
-    bnm_override_rate: bnmOverrideRate,
-    broker_override_rate: brokerOverrideRate,
-    manager_override_rate: managerOverrideRate,
-    agent_rate: agentRate,
+    division_manager_rate: divisionManagerRate,
+    sales_director_rate: salesDirectorRate,
+    unit_manager_rate: unitManagerRate,
+    sales_agent_rate: salesAgentRate,
     allocated_rate: allocatedRate,
     remaining_rate: difference,
   };
@@ -86,10 +121,11 @@ export const validateGroupFixedRateStructure = (
 
 export const getGroupFixedRateForRole = (role, rates = {}) => {
   const roleRates = {
-    broker_network_manager: rates.bnm_override_rate ?? rates.bnmOverrideRate,
-    broker: rates.broker_override_rate ?? rates.brokerOverrideRate,
-    manager: rates.manager_override_rate ?? rates.managerOverrideRate,
-    agent: rates.agent_rate ?? rates.agentRate,
+    division_manager: rates.division_manager_rate ?? rates.divisionManagerRate,
+    sales_director: rates.sales_director_rate ?? rates.salesDirectorRate,
+    unit_manager: rates.unit_manager_rate ?? rates.unitManagerRate,
+    sales_agent: rates.sales_agent_rate ?? rates.salesAgentRate,
+    external_group: rates.seller_group_pool_rate ?? rates.poolRate,
   };
   return roundRate(roleRates[String(role || '')] || 0);
 };
@@ -105,11 +141,13 @@ export const loadGroupFixedCommissionRates = async (
         rate.seller_group_id,
         rate.lot_project_id,
         rate.seller_group_pool_rate,
-        rate.bnm_override_rate,
-        rate.broker_override_rate,
-        rate.manager_override_rate,
-        rate.agent_rate,
+        rate.division_manager_rate,
+        rate.sales_director_rate,
+        rate.unit_manager_rate,
+        rate.sales_agent_rate,
         rate.seller_group_lot_project_rate_status,
+        group_row.seller_group_type,
+        group_row.seller_group_external_account_user_id,
         head_user.role AS group_head_role
       FROM seller_group_lot_project_rates rate
       INNER JOIN seller_groups group_row
@@ -128,35 +166,48 @@ export const loadGroupFixedCommissionRates = async (
   const row = rows[0];
   if (!row) return null;
 
+  const groupType = normalizeSellerGroupType(row.seller_group_type);
   const validated = validateGroupFixedRateStructure(row, {
-    groupHeadRole: row.group_head_role || 'broker_network_manager',
+    groupHeadRole: row.group_head_role || 'division_manager',
     projectName: 'Group project',
+    groupType,
   });
 
   return {
     sellerGroupId: Number(row.seller_group_id),
     lotProjectId: Number(row.lot_project_id),
+    groupType,
+    externalAccountUserId: row.seller_group_external_account_user_id
+      ? Number(row.seller_group_external_account_user_id)
+      : null,
     groupHeadRole: row.group_head_role || null,
     poolRate: validated.seller_group_pool_rate,
-    bnmOverrideRate: validated.bnm_override_rate,
-    brokerOverrideRate: validated.broker_override_rate,
-    managerOverrideRate: validated.manager_override_rate,
-    agentRate: validated.agent_rate,
+    divisionManagerRate: validated.division_manager_rate,
+    salesDirectorRate: validated.sales_director_rate,
+    unitManagerRate: validated.unit_manager_rate,
+    salesAgentRate: validated.sales_agent_rate,
     allocatedRate: validated.allocated_rate,
     status: row.seller_group_lot_project_rate_status,
   };
 };
 
-export const summarizeGroupFixedRates = (rates = {}) => ({
-  poolRate: roundRate(rates.seller_group_pool_rate ?? rates.poolRate),
-  bnmOverrideRate: roundRate(rates.bnm_override_rate ?? rates.bnmOverrideRate),
-  brokerOverrideRate: roundRate(rates.broker_override_rate ?? rates.brokerOverrideRate),
-  managerOverrideRate: roundRate(rates.manager_override_rate ?? rates.managerOverrideRate),
-  agentRate: roundRate(rates.agent_rate ?? rates.agentRate),
-  allocatedRate: roundRate(
-    Number(rates.bnm_override_rate ?? rates.bnmOverrideRate ?? 0)
-      + Number(rates.broker_override_rate ?? rates.brokerOverrideRate ?? 0)
-      + Number(rates.manager_override_rate ?? rates.managerOverrideRate ?? 0)
-      + Number(rates.agent_rate ?? rates.agentRate ?? 0)
-  ),
-});
+export const summarizeGroupFixedRates = (rates = {}) => {
+  const groupType = normalizeSellerGroupType(rates.seller_group_type ?? rates.groupType);
+  const poolRate = roundRate(rates.seller_group_pool_rate ?? rates.poolRate);
+  const divisionManagerRate = roundRate(rates.division_manager_rate ?? rates.divisionManagerRate);
+  const salesDirectorRate = roundRate(rates.sales_director_rate ?? rates.salesDirectorRate);
+  const unitManagerRate = roundRate(rates.unit_manager_rate ?? rates.unitManagerRate);
+  const salesAgentRate = roundRate(rates.sales_agent_rate ?? rates.salesAgentRate);
+
+  return {
+    groupType,
+    poolRate,
+    divisionManagerRate,
+    salesDirectorRate,
+    unitManagerRate,
+    salesAgentRate,
+    allocatedRate: groupType === 'external'
+      ? poolRate
+      : roundRate(divisionManagerRate + salesDirectorRate + unitManagerRate + salesAgentRate),
+  };
+};

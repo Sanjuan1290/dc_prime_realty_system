@@ -18,19 +18,19 @@ test('seller group accreditation keeps only explicitly selected projects', () =>
       {
         lot_project_id: 2,
         seller_group_pool_rate: 9,
-        bnm_override_rate: 1,
-        broker_override_rate: 1,
-        manager_override_rate: 1,
-        agent_rate: 6,
+        division_manager_rate: 1,
+        sales_director_rate: 1,
+        unit_manager_rate: 1,
+        sales_agent_rate: 6,
       },
     ], projects),
     [{
       lot_project_id: 2,
       seller_group_pool_rate: 9,
-      bnm_override_rate: 1,
-      broker_override_rate: 1,
-      manager_override_rate: 1,
-      agent_rate: 6,
+      division_manager_rate: 1,
+      sales_director_rate: 1,
+      unit_manager_rate: 1,
+      sales_agent_rate: 6,
       allocated_rate: 9,
       remaining_rate: 0,
     }]
@@ -45,11 +45,11 @@ test('seller group accreditation requires a project and validates pool rates', (
     /select at least one accredited project/i
   );
   assert.throws(
-    () => normalizeGroupProjectRates([{ lot_project_id: 1, seller_group_pool_rate: 5, bnm_override_rate: 1, broker_override_rate: 1, manager_override_rate: 1, agent_rate: 2 }], projects),
+    () => normalizeGroupProjectRates([{ lot_project_id: 1, seller_group_pool_rate: 5, division_manager_rate: 1, sales_director_rate: 1, unit_manager_rate: 1, sales_agent_rate: 2 }], projects),
     /between 6%? and 15%?/i
   );
   assert.throws(
-    () => normalizeGroupProjectRates([{ lot_project_id: 99, seller_group_pool_rate: 8, bnm_override_rate: 1, broker_override_rate: 1, manager_override_rate: 1, agent_rate: 5 }], projects),
+    () => normalizeGroupProjectRates([{ lot_project_id: 99, seller_group_pool_rate: 8, division_manager_rate: 1, sales_director_rate: 1, unit_manager_rate: 1, sales_agent_rate: 5 }], projects),
     /unavailable or inactive/i
   );
 });
@@ -63,10 +63,10 @@ test('fixed Realty project rates must equal the project pool', () => {
     () => normalizeGroupProjectRates([{
       lot_project_id: 1,
       seller_group_pool_rate: 8,
-      bnm_override_rate: 1,
-      broker_override_rate: 1,
-      manager_override_rate: 1,
-      agent_rate: 4,
+      division_manager_rate: 1,
+      sales_director_rate: 1,
+      unit_manager_rate: 1,
+      sales_agent_rate: 4,
     }], projects),
     /under the 8\.00% pool/i
   );
@@ -75,10 +75,10 @@ test('fixed Realty project rates must equal the project pool', () => {
     () => normalizeGroupProjectRates([{
       lot_project_id: 1,
       seller_group_pool_rate: 8,
-      bnm_override_rate: 1,
-      broker_override_rate: 2,
-      manager_override_rate: 2,
-      agent_rate: 4,
+      division_manager_rate: 1,
+      sales_director_rate: 2,
+      unit_manager_rate: 2,
+      sales_agent_rate: 4,
     }], projects),
     /over the 8\.00% pool/i
   );
@@ -91,11 +91,11 @@ test('Broker-headed Realty requires a zero BNM override', () => {
     () => normalizeGroupProjectRates([{
       lot_project_id: 1,
       seller_group_pool_rate: 8,
-      bnm_override_rate: 1,
-      broker_override_rate: 2,
-      manager_override_rate: 1,
-      agent_rate: 4,
-    }], projects, { groupHeadRole: 'broker' }),
+      division_manager_rate: 1,
+      sales_director_rate: 2,
+      unit_manager_rate: 1,
+      sales_agent_rate: 4,
+    }], projects, { groupHeadRole: 'sales_director' }),
     /BNM override must be 0%/i
   );
 });
@@ -168,8 +168,8 @@ test('seller group project selection rejects duplicate accreditations', () => {
   const projects = [{ lot_project_id: 1, lot_project_name: 'Bailen Project' }];
   assert.throws(
     () => normalizeGroupProjectRates([
-      { lot_project_id: 1, seller_group_pool_rate: 8, bnm_override_rate: 1, broker_override_rate: 1, manager_override_rate: 1, agent_rate: 5 },
-      { lot_project_id: 1, seller_group_pool_rate: 9, bnm_override_rate: 1, broker_override_rate: 1, manager_override_rate: 1, agent_rate: 6 },
+      { lot_project_id: 1, seller_group_pool_rate: 8, division_manager_rate: 1, sales_director_rate: 1, unit_manager_rate: 1, sales_agent_rate: 5 },
+      { lot_project_id: 1, seller_group_pool_rate: 9, division_manager_rate: 1, sales_director_rate: 1, unit_manager_rate: 1, sales_agent_rate: 6 },
     ], projects),
     /selected more than once/i
   );

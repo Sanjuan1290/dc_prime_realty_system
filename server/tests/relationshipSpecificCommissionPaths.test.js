@@ -4,21 +4,19 @@ import { readFile } from 'node:fs/promises';
 
 const readSource = async (path) => readFile(new URL(path, import.meta.url), 'utf8');
 
-test('fixed Realty rates are stored once per project and legacy individual rates are disabled', async () => {
-  const migration = await readSource('../migrations/20260720_group_fixed_project_commission_rates.sql');
+test('group rates are stored once per project and legacy individual rates remain disabled', async () => {
+  const migration = await readSource('../migrations/20260725_in_house_external_groups_and_role_rename.sql');
 
-  assert.match(migration, /bnm_override_rate/);
-  assert.match(migration, /broker_override_rate/);
-  assert.match(migration, /manager_override_rate/);
-  assert.match(migration, /agent_rate/);
-  assert.match(migration, /chk_group_fixed_role_rates_total/);
-  assert.match(migration, /UPDATE accredited_seller_lot_project_rates[\s\S]*'inactive'/);
-  assert.match(migration, /UPDATE agent_lot_project_direct_rates[\s\S]*'inactive'/);
-  assert.match(migration, /UPDATE seller_hierarchy_lot_project_overrides[\s\S]*'inactive'/);
-  assert.doesNotMatch(migration, /UPDATE lot_project_commissions/);
+  assert.match(migration, /division_manager_rate/);
+  assert.match(migration, /sales_director_rate/);
+  assert.match(migration, /unit_manager_rate/);
+  assert.match(migration, /sales_agent_rate/);
+  assert.match(migration, /chk_group_commission_structure_rates/);
+  assert.match(migration, /UPDATE lot_project_commissions[\s\S]*commission_role/);
+  assert.doesNotMatch(migration, /UPDATE lot_project_commissions[\s\S]*gross_commission_amount/);
 });
 
-test('seller group controller updates only the fixed Realty + Project rate structure', async () => {
+test('group controller updates the shared group and project rate structure', async () => {
   const [controller, router] = await Promise.all([
     readSource('../controllers/System/sellerGroup.controller.js'),
     readSource('../routers/System/sellerGroup.routers.js'),
@@ -26,30 +24,31 @@ test('seller group controller updates only the fixed Realty + Project rate struc
 
   assert.match(controller, /validateGroupFixedRateStructure/);
   assert.match(controller, /seller_group_pool_rate = \?/);
-  assert.match(controller, /bnm_override_rate = \?/);
-  assert.match(controller, /broker_override_rate = \?/);
-  assert.match(controller, /manager_override_rate = \?/);
-  assert.match(controller, /agent_rate = \?/);
+  assert.match(controller, /division_manager_rate = \?/);
+  assert.match(controller, /sales_director_rate = \?/);
+  assert.match(controller, /unit_manager_rate = \?/);
+  assert.match(controller, /sales_agent_rate = \?/);
   assert.match(router, /projects\/:projectId\/pool/);
   assert.doesNotMatch(router, /direct-rate/);
   assert.doesNotMatch(router, /agents\/:agentId\/path/);
   assert.doesNotMatch(controller, /upsertHierarchyOverride/);
 });
 
-test('seller group UI shows one fixed project structure and does not render commission paths', async () => {
+test('group UI shows type-aware project structures and no commission path editor', async () => {
   const [page, projectFields] = await Promise.all([
     readSource('../../client/src/pages/System/SellerGroupDetails.jsx'),
     readSource('../../client/src/components/System/sellerGroupComponents/ProjectAccreditationFields.jsx'),
   ]);
 
-  assert.match(page, /Fixed Project Commission Structure/);
-  assert.match(page, /Rates are not repeated per seller/);
+  assert.match(page, /Project Commission Structure/);
+  assert.match(page, /Each member inherits the fixed project rate for their position/);
   assert.doesNotMatch(page, /Commission Paths/);
   assert.doesNotMatch(page, /Edit Path/);
-  assert.match(projectFields, /BNM Override/);
-  assert.match(projectFields, /Broker Override/);
-  assert.match(projectFields, /Manager Override/);
-  assert.match(projectFields, /Agent Sales Rate/);
+  assert.match(projectFields, /Division Manager Rate/);
+  assert.match(projectFields, /Sales Director Rate/);
+  assert.match(projectFields, /Unit Manager Rate/);
+  assert.match(projectFields, /Sales Agent Rate/);
+  assert.match(projectFields, /External Group Commission/);
 });
 
 test('account history uses the same listing alias emitted by the lookup helper', async () => {

@@ -129,10 +129,11 @@ const applyActualPaymentStateToListing = (listing = {}, soaRows = []) => {
 
 
 const commissionRoleOrder = {
-  agent: 1,
-  manager: 2,
-  broker: 3,
-  broker_network_manager: 4,
+  external_group: 0,
+  sales_agent: 1,
+  unit_manager: 2,
+  sales_director: 3,
+  division_manager: 4,
 };
 
 const formatCommissionRole = (role = '') =>
@@ -174,7 +175,7 @@ const loadListingCommissionSnapshot = async (
         AND (? = 0 OR c.lot_project_client_profile_id = ?)
         AND (? = 0 OR c.lot_project_account_id = ?)
       ORDER BY
-        FIELD(c.commission_role, 'agent', 'manager', 'broker', 'broker_network_manager'),
+        FIELD(c.commission_role, 'sales_agent', 'unit_manager', 'sales_director', 'division_manager'),
         c.lot_project_commission_id
       ${lock ? 'FOR UPDATE' : ''}
     `,

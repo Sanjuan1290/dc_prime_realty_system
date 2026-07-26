@@ -242,7 +242,7 @@ const SystemLayout = () => {
                   D&amp;C Prime
                 </p>
                 <p className="truncate text-sm text-slate-500">
-                  Realty management
+                  Group management
                 </p>
               </div>
             </div>

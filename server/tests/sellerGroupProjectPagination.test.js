@@ -19,21 +19,21 @@ const sellerGroupController = fs.readFileSync(
   'utf8'
 )
 
-test('Realty project accreditation editor displays at most five projects per page', () => {
+test('group project accreditation editor displays at most five projects per page', () => {
   assert.match(projectFields, /const PROJECTS_PER_PAGE = 5/)
   assert.match(projectFields, /filteredProjects\.slice\(pageStart, pageStart \+ PROJECTS_PER_PAGE\)/)
   assert.match(projectFields, /Page \{page\} of \{totalPages\}/)
 })
 
-test('Realty Records supports project filtering and compact all-project summaries', () => {
+test('group records support project filtering and compact all-project summaries', () => {
   assert.match(sellerGroupPage, /All Projects/)
   assert.match(sellerGroupPage, /project: projectFilter/)
   assert.match(sellerGroupPage, /View all projects/)
   assert.match(sellerGroupPage, /selectedProjectId=\{projectFilter\}/)
 })
 
-test('seller group API filters paginated Realty records by active project accreditation', () => {
+test('group API filters paginated records by active project accreditation', () => {
   assert.match(sellerGroupController, /const projectId = Math\.max\(Number\(req\.query\.project\) \|\| 0, 0\)/)
-  assert.match(sellerGroupController, /FROM seller_group_lot_project_rates project_filter/)
-  assert.match(sellerGroupController, /project_filter\.seller_group_lot_project_rate_status = 'active'/)
+  assert.match(sellerGroupController, /EXISTS \(\s*SELECT 1 FROM seller_group_lot_project_rates filter_rate/)
+  assert.match(sellerGroupController, /filter_rate\.seller_group_lot_project_rate_status = 'active'/)
 })

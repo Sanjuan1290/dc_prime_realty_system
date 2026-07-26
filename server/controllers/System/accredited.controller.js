@@ -107,10 +107,11 @@ const hydrateSellerRates = async (sellers) => {
         project.lot_project_slug,
         project.lot_project_location_code,
         rate.seller_group_pool_rate,
-        rate.bnm_override_rate,
-        rate.broker_override_rate,
-        rate.manager_override_rate,
-        rate.agent_rate,
+        rate.commission_structure_type,
+        rate.division_manager_rate,
+        rate.sales_director_rate,
+        rate.unit_manager_rate,
+        rate.sales_agent_rate,
         rate.seller_group_lot_project_rate_status
       FROM seller_group_lot_project_rates rate
       INNER JOIN lot_projects project
@@ -132,7 +133,7 @@ const hydrateSellerRates = async (sellers) => {
   return sellers.map((seller) => ({
     ...seller,
     // Individual rates are intentionally empty. Every seller inherits the fixed
-    // commission rate for their role from the Realty + Project configuration.
+    // commission rate for their position from the Group + Project configuration.
     project_rates: [],
     group_project_rates: groupRateMap.get(Number(seller.seller_group_id)) || [],
   }));
@@ -147,7 +148,7 @@ export const getAccredited = async (req, res) => {
     const role = String(req.query.role || 'all');
     const status = String(req.query.status || 'all');
 
-    // System direct-sales agents stay inside Seller Group configuration and
+    // System direct-sales agents stay inside In-House Group configuration and
     // are hidden from the normal accreditation directory.
     const where = ['COALESCE(a.is_system_dummy, 0) = 0'];
     const params = [];
@@ -210,6 +211,7 @@ export const getAccredited = async (req, res) => {
           ${fullNameSql('parent')} AS reports_under_name,
           a.seller_group_id,
           sg.seller_group_name,
+          sg.seller_group_type,
           a.accredited_seller_accreditation_date,
           a.accredited_seller_status,
           a.accredited_seller_updated_at
@@ -231,10 +233,11 @@ export const getAccredited = async (req, res) => {
         COUNT(*) AS total,
         SUM(a.accredited_seller_status = 'active') AS active,
         SUM(a.accredited_seller_status = 'inactive') AS inactive,
-        SUM(u.role = 'broker_network_manager') AS broker_network_manager,
-        SUM(u.role = 'broker') AS broker,
-        SUM(u.role = 'manager') AS manager,
-        SUM(u.role = 'agent') AS agent
+        SUM(u.role = 'division_manager') AS division_manager,
+        SUM(u.role = 'sales_director') AS sales_director,
+        SUM(u.role = 'unit_manager') AS unit_manager,
+        SUM(u.role = 'sales_agent') AS sales_agent,
+        SUM(u.role = 'external_group') AS external_group
       FROM accredited_sellers a
       INNER JOIN users u ON u.id = a.user_id
       WHERE COALESCE(a.is_system_dummy, 0) = 0
@@ -247,10 +250,11 @@ export const getAccredited = async (req, res) => {
         active: Number(summaryRows[0]?.active || 0),
         inactive: Number(summaryRows[0]?.inactive || 0),
         roleBreakdown: {
-          broker_network_manager: Number(summaryRows[0]?.broker_network_manager || 0),
-          broker: Number(summaryRows[0]?.broker || 0),
-          manager: Number(summaryRows[0]?.manager || 0),
-          agent: Number(summaryRows[0]?.agent || 0),
+          division_manager: Number(summaryRows[0]?.division_manager || 0),
+          sales_director: Number(summaryRows[0]?.sales_director || 0),
+          unit_manager: Number(summaryRows[0]?.unit_manager || 0),
+          sales_agent: Number(summaryRows[0]?.sales_agent || 0),
+          external_group: Number(summaryRows[0]?.external_group || 0),
         },
       },
       pagination: {
@@ -281,8 +285,8 @@ export const getParentSellers = async (req, res) => {
       WHERE u.status = 'active'
         AND a.accredited_seller_status = 'active'
         AND COALESCE(a.is_system_dummy, 0) = 0
-        AND u.role IN ('broker_network_manager', 'broker', 'manager')
-      ORDER BY FIELD(u.role, 'broker_network_manager', 'broker', 'manager'), full_name ASC
+        AND u.role IN ('division_manager', 'sales_director', 'unit_manager')
+      ORDER BY FIELD(u.role, 'division_manager', 'sales_director', 'unit_manager'), full_name ASC
     `);
 
     return res.json({ data: rows });
@@ -799,6 +803,7 @@ const getSellerReceiptIdentity = async (connection, sellerId) => {
         u.role,
         a.seller_group_id,
         sg.seller_group_name,
+        sg.seller_group_type,
         a.accredited_seller_status
       FROM accredited_sellers a
       INNER JOIN users u ON u.id = a.user_id
@@ -1301,4 +1306,3 @@ export const createAccreditedSellerProofOfIncomeReceipt = async (req, res) => {
     connection.release();
   }
 };
-

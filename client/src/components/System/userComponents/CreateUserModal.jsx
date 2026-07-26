@@ -14,21 +14,21 @@ import StatusAlert from "../../Shared/StatusAlert";
 import { ADMIN_TYPES } from "../../../config/permissions";
 import { useFetch as fetchApi, useFetchPost as postApi } from "../../../utils/useFetch";
 
-const sellerRoles = ["broker_network_manager", "broker", "manager", "agent"];
+const sellerRoles = ["division_manager", "sales_director", "unit_manager", "sales_agent"];
 
 const roleLabels = {
   super_admin: "Super Admin",
   admin: "Admin",
-  broker_network_manager: "Broker Network Manager",
-  broker: "Broker",
-  manager: "Manager",
-  agent: "Agent",
+  division_manager: "Division Manager",
+  sales_director: "Sales Director",
+  unit_manager: "Unit Manager",
+  sales_agent: "Sales Agent",
 };
 
 const getRequiredParentRole = (role) => ({
-  broker: "broker_network_manager",
-  manager: "broker",
-  agent: "manager",
+  sales_director: "division_manager",
+  unit_manager: "sales_director",
+  sales_agent: "unit_manager",
 }[role] || "");
 
 const SearchableSelect = ({
@@ -178,7 +178,7 @@ const CreateUserModal = ({
   title = "Create User",
 }) => {
   const queryClient = useQueryClient();
-  const initialRole = allowedRoles.includes("agent") ? "agent" : (allowedRoles[0] || "agent");
+  const initialRole = allowedRoles.includes("sales_agent") ? "sales_agent" : (allowedRoles[0] || "sales_agent");
   const availableRoleEntries = useMemo(() => Object.entries(roleLabels).filter(([value]) => allowedRoles.includes(value)), [allowedRoles]);
   const [activeStep, setActiveStep] = useState(1);
   const [warning, setWarning] = useState("");
@@ -202,7 +202,7 @@ const CreateUserModal = ({
 
   const { data: groupData, isLoading: isGroupsLoading, isError: isGroupsError, error: groupsError } = useQuery({
     queryKey: ["seller-group-options"],
-    queryFn: () => fetchApi("/seller-groups/options"),
+    queryFn: () => fetchApi("/seller-groups/options?groupType=in_house"),
   });
 
   const { data: parentData, isLoading: isParentsLoading, isError: isParentsError, error: parentsError } = useQuery({
@@ -222,7 +222,7 @@ const CreateUserModal = ({
 
 
   const allowedParents = useMemo(() => {
-    if (!isSellerRole || form.role === "broker_network_manager") return [];
+    if (!isSellerRole || form.role === "division_manager") return [];
 
     return parentSellers.filter((seller) => {
       if (!form.seller_group_id || Number(seller.seller_group_id) !== Number(form.seller_group_id)) {
@@ -235,12 +235,12 @@ const CreateUserModal = ({
 
   const groupHasHead = Boolean(selectedGroup?.seller_group_head_user_id);
   const groupHeadRole = selectedGroup?.seller_group_head_role || '';
-  const canReplaceBrokerHead = form.role === "broker_network_manager" && groupHeadRole === "broker";
-  const roleConflictsWithGroupHead = form.role === "broker_network_manager"
+  const canReplaceBrokerHead = form.role === "division_manager" && groupHeadRole === "sales_director";
+  const roleConflictsWithGroupHead = form.role === "division_manager"
     && groupHasHead
     && !canReplaceBrokerHead;
-  const canLeaveParentEmpty = (form.role === "broker_network_manager" && (!groupHasHead || canReplaceBrokerHead))
-    || (form.role === "broker" && !groupHasHead);
+  const canLeaveParentEmpty = (form.role === "division_manager" && (!groupHasHead || canReplaceBrokerHead))
+    || (form.role === "sales_director" && !groupHasHead);
   const parentIsRequired = isSellerRole && !canLeaveParentEmpty;
 
   const groupOptions = useMemo(
@@ -258,7 +258,7 @@ const CreateUserModal = ({
         value: String(seller.user_id),
         label: seller.full_name,
         description: `${roleLabels[seller.role] || seller.role}${
-          seller.seller_group_id ? " · Same seller group" : ""
+          seller.seller_group_id ? " · Same In-House Group" : ""
         }`,
       })),
     [allowedParents]
@@ -317,12 +317,12 @@ const CreateUserModal = ({
     if (!isSellerRole) return true;
 
     if (!form.seller_group_id) {
-      setWarning("Select a seller group.");
+      setWarning("Select a In-House Group.");
       return false;
     }
 
     if (roleConflictsWithGroupHead) {
-      setWarning("This group already has a Broker Network Manager as its head.");
+      setWarning("This group already has a Division Manager as its head.");
       return false;
     }
 
@@ -371,7 +371,7 @@ const CreateUserModal = ({
             <p className="text-sm text-slate-500">
               {activeStep === 1
                 ? "Add account and contact information."
-                : "Assign the seller group and reporting line. Commission rates are inherited from the Realty."}
+                : "Assign the In-House Group and reporting line. Commission rates are inherited from the group."}
             </p>
           </div>
 
@@ -422,7 +422,7 @@ const CreateUserModal = ({
                   <FiUserCheck className="h-4 w-4" />
                 </span>
                 <span>
-                  <span className="block text-sm font-black text-slate-950">2. Seller Hierarchy</span>
+                  <span className="block text-sm font-black text-slate-950">2. In-House Hierarchy</span>
                   <span className="block text-xs font-semibold text-slate-500">Group and reporting line</span>
                 </span>
               </button>
@@ -436,10 +436,10 @@ const CreateUserModal = ({
               <StatusAlert type="loading" message="Creating user account..." />
             ) : null}
             {isGroupsLoading || isParentsLoading ? (
-              <StatusAlert type="loading" message="Loading seller groups and reporting options..." />
+              <StatusAlert type="loading" message="Loading In-House Groups and reporting options..." />
             ) : null}
             {isGroupsError ? (
-              <StatusAlert type="error" message={groupsError?.message || "Failed to load seller groups."} />
+              <StatusAlert type="error" message={groupsError?.message || "Failed to load In-House Groups."} />
             ) : null}
             {isParentsError ? (
               <StatusAlert type="error" message={parentsError?.message || "Failed to load parent sellers."} />
@@ -547,7 +547,7 @@ const CreateUserModal = ({
                 <div className="mb-5 flex items-center gap-3">
                   <FiUserCheck className="h-5 w-5 text-blue-700" />
                   <div>
-                    <h4 className="font-bold text-slate-950">Seller Hierarchy</h4>
+                    <h4 className="font-bold text-slate-950">In-House Hierarchy</h4>
                     <p className="text-sm text-slate-500">
                       Search the group and reporting list instead of scrolling through every record.
                     </p>
@@ -556,7 +556,7 @@ const CreateUserModal = ({
 
                 <div className="grid gap-4 md:grid-cols-3">
                   <SearchableSelect
-                    label="Seller Group"
+                    label="In-House Group"
                     value={form.seller_group_id}
                     options={groupOptions}
                     onChange={(value) => {
@@ -567,9 +567,9 @@ const CreateUserModal = ({
                       }));
                       setWarning("");
                     }}
-                    placeholder="Select seller group"
-                    searchPlaceholder="Search seller groups..."
-                    emptyText="No seller groups match your search."
+                    placeholder="Select In-House Group"
+                    searchPlaceholder="Search In-House Groups..."
+                    emptyText="No In-House Groups match your search."
                     required
                     disabled={lockSellerGroup}
                   />
@@ -579,15 +579,15 @@ const CreateUserModal = ({
                     value={form.reports_under_user_id}
                     options={parentOptions}
                     onChange={(value) => updateForm("reports_under_user_id", value)}
-                    placeholder={form.role === "broker_network_manager" ? "Direct to Developer" : `Select ${roleLabels[getRequiredParentRole(form.role)] || "parent seller"}`}
+                    placeholder={form.role === "division_manager" ? "Direct to Developer" : `Select ${roleLabels[getRequiredParentRole(form.role)] || "parent seller"}`}
                     searchPlaceholder="Search name or role..."
-                    emptyOptionLabel={canLeaveParentEmpty && form.role !== "broker_network_manager" ? "Direct to Developer / None" : undefined}
+                    emptyOptionLabel={canLeaveParentEmpty && form.role !== "division_manager" ? "Direct to Developer / None" : undefined}
                     emptyText={
                       form.seller_group_id
                         ? "No eligible parent seller matches your search."
-                        : "Select a seller group first."
+                        : "Select a In-House Group first."
                     }
-                    disabled={!form.seller_group_id || form.role === "broker_network_manager"}
+                    disabled={!form.seller_group_id || form.role === "division_manager"}
                     required={parentIsRequired}
                   />
 
@@ -600,7 +600,7 @@ const CreateUserModal = ({
                 <div className="mt-5 rounded-xl border border-blue-200 bg-white px-4 py-3">
                   <h5 className="text-sm font-black text-slate-900">Inherited Commission Rates</h5>
                   <p className="mt-1 text-xs font-semibold text-slate-500">
-                    This seller automatically uses the fixed BNM, Broker, Manager, or Agent rate configured for the selected Realty and project. Individual seller rates cannot be edited.
+                    This seller automatically uses the fixed Division Manager, Sales Director, Unit Manager, or Sales Agent rate configured for the selected In-House Group and project. Individual seller rates cannot be edited.
                   </p>
                 </div>
               </div>
@@ -625,7 +625,7 @@ const CreateUserModal = ({
 
             {activeStep === 1 && isSellerRole ? (
               <button type="button" onClick={goNext} disabled={createMutation.isPending} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300">
-                Next: Seller Hierarchy
+                Next: In-House Hierarchy
                 <FiArrowRight className="h-4 w-4" />
               </button>
             ) : (
@@ -641,4 +641,3 @@ const CreateUserModal = ({
 };
 
 export default CreateUserModal;
-

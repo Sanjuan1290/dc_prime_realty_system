@@ -804,7 +804,14 @@ export const mapProfileListing = (row = {}, project = {}, documents = []) => {
     seller_status: row.seller_status || '-',
     seller_accreditation_date: row.seller_accreditation_date ? plainDate(row.seller_accreditation_date) : '-',
     reports_under: row.reports_under || '-',
-    sale_channel: row.sale_channel || '-',
+    sale_channel_raw: row.sale_channel || '-',
+    sale_channel: row.sale_channel === 'external_group'
+      ? 'External Group'
+      : row.sale_channel === 'distributed'
+        ? 'In-House Group'
+        : row.sale_channel === 'direct_to_developer'
+          ? 'Direct to Developer'
+          : row.sale_channel || '-',
     commission_rate: row.commission_rate ? `${Number(row.commission_rate)}%` : '-',
     commission_amount: money(row.gross_commission_amount || 0),
     released_amount: money(row.released_amount || 0),
@@ -1884,30 +1891,32 @@ export const getReserveSellerOptions = async (
 ) => {
   if (!(await tableExists(connection, 'accredited_sellers'))) return [];
 
-  const hasFixedGroupRates = await columnExists(
-    connection,
-    'seller_group_lot_project_rates',
-    'agent_rate'
-  );
-  if (!hasFixedGroupRates) {
-    throw new Error('Run the group fixed commission rate migration before loading reservation agents.');
+  const requiredColumns = [
+    'commission_structure_type',
+    'division_manager_rate',
+    'sales_director_rate',
+    'unit_manager_rate',
+    'sales_agent_rate',
+  ];
+  for (const columnName of requiredColumns) {
+    if (!(await columnExists(connection, 'seller_group_lot_project_rates', columnName))) {
+      throw new Error('Run the In-House and External Groups migration before loading reservation seller options.');
+    }
   }
 
   const hasDummyColumns = await columnExists(connection, 'accredited_sellers', 'is_system_dummy');
-  const hasSystemUserColumns = await columnExists(connection, 'users', 'is_system_account');
   const keyword = String(search || '').trim();
   const searchSql = keyword
     ? `AND (
          TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) LIKE ?
          OR IFNULL(sg.seller_group_name, '') LIKE ?
          OR TRIM(CONCAT_WS(' ', parent_user.first_name, parent_user.middle_name, parent_user.last_name)) LIKE ?
-         OR TRIM(CONCAT_WS(' ', owner_user.first_name, owner_user.middle_name, owner_user.last_name)) LIKE ?
        )`
     : '';
   const params = [lotProjectId];
   if (keyword) {
     const like = `%${keyword}%`;
-    params.push(like, like, like, like);
+    params.push(like, like, like);
   }
   params.push(Math.min(Math.max(Number(limit) || 100, 1), 200));
 
@@ -1917,20 +1926,24 @@ export const getReserveSellerOptions = async (
         acs.accredited_seller_id AS id,
         acs.accredited_seller_id,
         acs.user_id,
-        TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS name,
+        TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS representative_name,
+        CASE
+          WHEN sg.seller_group_type = 'external' THEN sg.seller_group_name
+          ELSE TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name))
+        END AS name,
         u.role,
-        group_rate.agent_rate AS rate,
+        sg.seller_group_type,
+        CASE
+          WHEN sg.seller_group_type = 'external' THEN group_rate.seller_group_pool_rate
+          ELSE group_rate.sales_agent_rate
+        END AS rate,
         group_rate.seller_group_pool_rate AS pool_rate,
         sg.seller_group_id,
         sg.seller_group_name,
         parent_acs.accredited_seller_id AS reports_under_accredited_seller_id,
         parent_user.id AS reports_under_user_id,
         TRIM(CONCAT_WS(' ', parent_user.first_name, parent_user.middle_name, parent_user.last_name)) AS reports_under_name,
-        ${hasDummyColumns ? 'acs.is_system_dummy' : '0'} AS is_system_dummy,
-        ${hasDummyColumns ? 'acs.dummy_owner_accredited_seller_id' : 'NULL'} AS dummy_owner_accredited_seller_id,
-        TRIM(CONCAT_WS(' ', owner_user.first_name, owner_user.middle_name, owner_user.last_name)) AS owner_name,
-        owner_user.role AS owner_role,
-        ${hasSystemUserColumns ? 'u.is_system_account' : '0'} AS is_system_account
+        ${hasDummyColumns ? 'acs.is_system_dummy' : '0'} AS is_system_dummy
       FROM accredited_sellers acs
       INNER JOIN users u ON u.id = acs.user_id
       INNER JOIN seller_groups sg
@@ -1940,57 +1953,80 @@ export const getReserveSellerOptions = async (
         ON group_rate.seller_group_id = sg.seller_group_id
        AND group_rate.lot_project_id = ?
        AND group_rate.seller_group_lot_project_rate_status = 'active'
+       AND group_rate.commission_structure_type = sg.seller_group_type
       LEFT JOIN accredited_sellers parent_acs
         ON parent_acs.user_id = acs.accredited_seller_reports_under_user_id
       LEFT JOIN users parent_user ON parent_user.id = parent_acs.user_id
-      LEFT JOIN accredited_sellers owner_acs
-        ON owner_acs.accredited_seller_id = ${hasDummyColumns ? 'acs.dummy_owner_accredited_seller_id' : 'NULL'}
-      LEFT JOIN users owner_user ON owner_user.id = owner_acs.user_id
       WHERE acs.accredited_seller_status = 'active'
         AND u.status = 'active'
-        AND u.role = 'agent'
         ${hasDummyColumns ? 'AND COALESCE(acs.is_system_dummy, 0) = 0' : ''}
-        AND group_rate.agent_rate > 0
-        AND ROUND(
-          group_rate.bnm_override_rate
-          + group_rate.broker_override_rate
-          + group_rate.manager_override_rate
-          + group_rate.agent_rate,
-          2
-        ) = ROUND(group_rate.seller_group_pool_rate, 2)
+        AND (
+          (
+            sg.seller_group_type = 'in_house'
+            AND u.role = 'sales_agent'
+            AND group_rate.sales_agent_rate > 0
+            AND ROUND(
+              group_rate.division_manager_rate
+              + group_rate.sales_director_rate
+              + group_rate.unit_manager_rate
+              + group_rate.sales_agent_rate,
+              2
+            ) = ROUND(group_rate.seller_group_pool_rate, 2)
+          )
+          OR
+          (
+            sg.seller_group_type = 'external'
+            AND u.role = 'external_group'
+            AND u.id = sg.seller_group_external_account_user_id
+            AND group_rate.seller_group_pool_rate > 0
+            AND group_rate.division_manager_rate = 0
+            AND group_rate.sales_director_rate = 0
+            AND group_rate.unit_manager_rate = 0
+            AND group_rate.sales_agent_rate = 0
+          )
+        )
         ${searchSql}
-      ORDER BY name ASC
+      ORDER BY sg.seller_group_type ASC, name ASC
       LIMIT ?
     `,
     params
   );
 
-  return rows.map((row) => ({
-    id: Number(row.id),
-    accredited_seller_id: Number(row.accredited_seller_id),
-    user_id: Number(row.user_id),
-    name: row.name || 'Unnamed Agent',
-    role: 'Agent',
-    roleValue: 'agent',
-    rate: `${Number(row.rate || 0).toFixed(2)}%`,
-    rateValue: Number(row.rate || 0),
-    directRate: Number(row.rate || 0),
-    poolRate: Number(row.pool_rate || 0),
-    rateSource: 'seller_group_project',
-    groupId: Number(row.seller_group_id),
-    groupName: row.seller_group_name || '-',
-    reportsUnderId: row.reports_under_accredited_seller_id
-      ? Number(row.reports_under_accredited_seller_id)
-      : null,
-    reportsUnderName: row.reports_under_name || '-',
-    isSystemDummy: false,
-    ownerId: null,
-    ownerName: null,
-    ownerRole: null,
-    allocation: row.reports_under_name
-      ? `Fixed group rate · Agent under ${row.reports_under_name}`
-      : 'Fixed seller-group project rate',
-  }));
+  return rows.map((row) => {
+    const isExternalGroup = row.seller_group_type === 'external';
+    const rateValue = Number(row.rate || 0);
+    return {
+      id: Number(row.id),
+      accredited_seller_id: Number(row.accredited_seller_id),
+      user_id: Number(row.user_id),
+      name: row.name || (isExternalGroup ? 'External Group' : 'Unnamed Sales Agent'),
+      representativeName: row.representative_name || null,
+      role: isExternalGroup ? 'External Group' : 'Sales Agent',
+      roleValue: row.role,
+      groupType: row.seller_group_type,
+      isExternalGroup,
+      rate: `${rateValue.toFixed(2)}%`,
+      rateValue,
+      directRate: rateValue,
+      poolRate: Number(row.pool_rate || 0),
+      rateSource: isExternalGroup ? 'external_group_pool' : 'in_house_group_project',
+      groupId: Number(row.seller_group_id),
+      groupName: row.seller_group_name || '-',
+      reportsUnderId: row.reports_under_accredited_seller_id
+        ? Number(row.reports_under_accredited_seller_id)
+        : null,
+      reportsUnderName: isExternalGroup ? 'Direct to Developer' : row.reports_under_name || '-',
+      isSystemDummy: false,
+      ownerId: null,
+      ownerName: null,
+      ownerRole: null,
+      allocation: isExternalGroup
+        ? 'Full project Pool Rate paid to the External Group'
+        : row.reports_under_name
+          ? `Fixed In-House Group rate · Sales Agent under ${row.reports_under_name}`
+          : 'Fixed In-House Group project rate',
+    };
+  });
 };
 
 
