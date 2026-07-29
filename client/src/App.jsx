@@ -31,6 +31,12 @@ const WebsiteSiteCoordinator = lazy(() => import('./website/pages/SiteCoordinato
 const WebsiteSellers = lazy(() => import('./website/pages/Sellers'))
 const WebsiteContactUs = lazy(() => import('./website/pages/ContactUs'))
 const WebsiteNotFound = lazy(() => import('./website/pages/NotFound'))
+const WebsiteSavedProjects = lazy(() => import('./website/pages/SavedProjects'))
+const WebsiteVisitChecklist = lazy(() => import('./website/pages/VisitChecklistPage'))
+const WebsitePaymentEstimator = lazy(() => import('./website/pages/PaymentEstimator'))
+const WebsitePrivacyPolicy = lazy(() => import('./website/pages/PrivacyPolicy'))
+const WebsiteTermsOfUse = lazy(() => import('./website/pages/TermsOfUse'))
+const WebsiteDisclaimer = lazy(() => import('./website/pages/Disclaimer'))
 
 const Dashboard = lazy(() => import('./pages/System/Dashboard'))
 const Documents = lazy(() => import('./pages/System/Documents'))
@@ -98,6 +104,12 @@ const App = () => {
           <Route path="site-coordinator" element={<WebsiteSiteCoordinator />} />
           <Route path="sellers" element={<WebsiteSellers />} />
           <Route path="contact-us" element={<WebsiteContactUs />} />
+          <Route path="saved-projects" element={<WebsiteSavedProjects />} />
+          <Route path="visit-checklist" element={<WebsiteVisitChecklist />} />
+          <Route path="payment-estimator" element={<WebsitePaymentEstimator />} />
+          <Route path="privacy-policy" element={<WebsitePrivacyPolicy />} />
+          <Route path="terms-of-use" element={<WebsiteTermsOfUse />} />
+          <Route path="disclaimer" element={<WebsiteDisclaimer />} />
           <Route path="*" element={<WebsiteNotFound />} />
         </Route>
 

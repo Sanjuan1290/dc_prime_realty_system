@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 150" role="img" aria-labelledby="title desc">
+  <title id="title">D&amp;C Prime Realty</title>
+  <desc id="desc">D&amp;C Prime Realty logo with a gold property mark.</desc>
+  <g transform="translate(10 10)">
+    <path d="M17 52 62 13l45 39v57H17V52Z" fill="none" stroke="#c99a22" stroke-width="9" stroke-linejoin="round"/>
+    <path d="M36 105V57l26-23 26 23v48" fill="none" stroke="#c99a22" stroke-width="9" stroke-linejoin="round"/>
+    <path d="M17 111h90" stroke="#c99a22" stroke-width="9" stroke-linecap="round"/>
+  </g>
+  <text x="142" y="70" fill="#17130a" font-family="Inter, Arial, sans-serif" font-size="42" font-weight="750">D&amp;C Prime Realty</text>
+  <text x="145" y="105" fill="#8b6a1b" font-family="Inter, Arial, sans-serif" font-size="17" font-weight="600" letter-spacing="3">YOUR TRUSTED REAL ESTATE SOLUTIONS</text>
+</svg>

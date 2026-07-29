@@ -5,8 +5,12 @@ export const blogs = [
     title: 'What to Check Before Buying a Lot in Cavite',
     excerpt: 'Review the location, property documents, site conditions and complete payment breakdown before you reserve a lot.',
     image: '/website/images/bailen/site-road.jpg',
+    imageAlt: 'Cleared project road and open property area in Bailen, Cavite',
     date: 'July 29, 2026',
+    publishedAt: '2026-07-29',
+    updatedAt: '2026-07-29',
     readingTime: '5 min read',
+    relatedProject: 'Luntiang Aguinaldo',
     metaDescription: 'Review the property location, documents, payment terms and site conditions before buying a lot in Cavite.',
     sections: [
       {
@@ -45,8 +49,12 @@ export const blogs = [
     title: 'Bailen or Maragondon: Which Property Location Fits Your Plans?',
     excerpt: 'Compare the two current project locations based on your intended use, preferred surroundings and property goals.',
     image: '/website/images/bailen/aerial-greenery.jpg',
+    imageAlt: 'Aerial greenery and road network near the Bailen property project',
     date: 'July 29, 2026',
+    publishedAt: '2026-07-29',
+    updatedAt: '2026-07-29',
     readingTime: '4 min read',
+    relatedProject: 'Bailen and Maragondon',
     metaDescription: 'Compare property options in Bailen and Maragondon based on your goals, preferred environment and intended use.',
     sections: [
       {
@@ -78,8 +86,12 @@ export const blogs = [
     title: 'How to Prepare for a Property Tripping in Cavite',
     excerpt: 'Bring the right questions and review the road, unit location, property information and payment terms during your visit.',
     image: '/website/images/maragondon/access-road-visit.jpg',
+    imageAlt: 'Property visitors walking along a project access road in Maragondon',
     date: 'July 29, 2026',
+    publishedAt: '2026-07-29',
+    updatedAt: '2026-07-29',
     readingTime: '4 min read',
+    relatedProject: 'Prime Enclave',
     metaDescription: 'Prepare for a property tripping in Cavite with a list of questions, documents and site details to review.',
     sections: [
       {

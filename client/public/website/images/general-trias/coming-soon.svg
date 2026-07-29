@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">General Trias project coming soon</title>
+  <desc id="desc">Branded placeholder for an upcoming D&amp;C Prime Realty project in General Trias, Cavite.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#16130d"/>
+      <stop offset="1" stop-color="#40361f"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="75%" cy="20%" r="60%">
+      <stop offset="0" stop-color="#d6ae4b" stop-opacity=".34"/>
+      <stop offset="1" stop-color="#d6ae4b" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1280" height="720" fill="url(#bg)"/>
+  <rect width="1280" height="720" fill="url(#glow)"/>
+  <g opacity=".13" fill="none" stroke="#f2d06d" stroke-width="2">
+    <path d="M-80 640C160 470 335 520 520 390s380-130 840-360"/>
+    <path d="M-20 720C210 540 390 590 580 455s370-120 780-350"/>
+    <path d="M110 720C300 585 455 615 650 500s365-105 680-310"/>
+  </g>
+  <g transform="translate(96 105)">
+    <path d="M10 54 60 10l50 44v62H10V54Z" fill="none" stroke="#d5aa3e" stroke-width="9" stroke-linejoin="round"/>
+    <path d="M32 112V60l28-25 28 25v52" fill="none" stroke="#d5aa3e" stroke-width="9" stroke-linejoin="round"/>
+    <path d="M10 118h100" stroke="#d5aa3e" stroke-width="9" stroke-linecap="round"/>
+  </g>
+  <text x="96" y="340" fill="#f8f4ea" font-family="Libre Baskerville, Georgia, serif" font-size="76" font-weight="700">General Trias</text>
+  <text x="100" y="405" fill="#d6ae4b" font-family="Inter, Arial, sans-serif" font-size="24" font-weight="750" letter-spacing="8">NEW PROJECT • COMING SOON</text>
+  <text x="100" y="490" fill="#d8d2c5" font-family="Inter, Arial, sans-serif" font-size="24">Project information and availability will be announced soon.</text>
+</svg>

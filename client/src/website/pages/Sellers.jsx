@@ -1,9 +1,27 @@
-import { FiCalendar, FiCheckCircle, FiUser } from 'react-icons/fi'
+import { FiCalendar, FiCheckCircle, FiFileText, FiMap, FiUsers } from 'react-icons/fi'
 import { Link } from 'react-router-dom'
 import PageHero from '../components/PageHero'
 import SectionHeading from '../components/SectionHeading'
 import usePageMeta from '../hooks/usePageMeta'
-import { sellers } from '../data/sellers'
+import { guidanceServices } from '../data/sellers'
 
-const Sellers = () => { usePageMeta({ title: 'Property Sellers and Guides | D&C Prime Realty', description: 'Review the frontend property-guide options for the current Bailen and Maragondon projects.' }); return <><PageHero eyebrow="Sellers" title="Choose a property guide for your visit" description="The public team directory will help clients select a preferred seller or guide when requesting a property tripping." image="/website/images/company/office-team-collage.jpg" /><section className="px-5 py-20 lg:px-8 lg:py-24"><div className="mx-auto max-w-[1300px]"><SectionHeading eyebrow="Frontend directory" title="Property guidance team" description="The current entries are design placeholders. Public seller profiles can be connected to approved data later without exposing private system information." /><div className="mt-10 grid gap-6 md:grid-cols-2 lg:grid-cols-3">{sellers.map((seller) => <article key={seller.id} className="rounded-[24px] border border-[#e6dbc2] bg-white p-7 shadow-[0_18px_55px_rgba(93,69,14,0.07)]"><span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#fff0ba] text-[#9d7007]"><FiUser className="h-7 w-7" /></span><p className="mt-6 text-[11px] font-black uppercase tracking-[0.15em] text-[#9d7007]">{seller.position}</p><h2 className="mt-2 text-[22px] font-black tracking-[-0.03em]">{seller.name}</h2><p className="mt-2 flex items-center gap-2 text-[13px] font-bold text-[#4d6b4c]"><FiCheckCircle /> {seller.project}</p><p className="mt-4 text-[13px] leading-6 text-[#6b6251]">{seller.description}</p><Link to="/properties#book-tripping" className="mt-6 inline-flex items-center gap-2 text-[13px] font-black text-[#76550c]"><FiCalendar /> Choose for tripping</Link></article>)}</div></div></section></> }
+const serviceIcons = [FiMap, FiCalendar, FiFileText, FiCheckCircle]
+
+const Sellers = () => {
+  usePageMeta({ title: 'Property Guidance Team | D&C Prime Realty', description: 'Learn how the D&C Prime Realty property guidance team assists clients with project information and site visits.' })
+
+  return (
+    <>
+      <PageHero eyebrow="Property Guidance Team" title="Support for property inquiries and site visits" description="The D&C Prime Realty team helps clients review project information, arrange visits and understand the next steps before reservation." image="/website/images/company/office-team-collage.jpg" />
+      <section className="px-5 py-14 lg:px-8 lg:py-18">
+        <div className="mx-auto max-w-[1180px]">
+          <SectionHeading eyebrow="How the team can assist" title="Property guidance for each stage of your inquiry" description="An available team member can assist after your project, date and contact details are reviewed by the office." align="center" />
+          <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{guidanceServices.map((service, index) => { const Icon = serviceIcons[index]; return <article key={service.title} className="rounded-[16px] border border-[#ded9ce] bg-white p-5"><Icon className="h-5 w-5 text-[#806014]" /><h2 className="mt-4 text-[18px]">{service.title}</h2><p className="mt-2 text-[12px] leading-5 text-[#6d6960]">{service.description}</p></article> })}</div>
+        </div>
+      </section>
+      <section className="bg-[#f1ede3] px-5 py-14 lg:px-8 lg:py-18"><div className="mx-auto grid max-w-[1120px] items-center gap-8 lg:grid-cols-[1.05fr_0.95fr]"><img src="/website/images/maragondon/site-visit-collage.jpg" alt="D&C Prime Realty property guidance team during a site visit" className="rounded-[18px] border border-[#ded9ce]" /><div><SectionHeading eyebrow="Current project support" title="Assistance for Bailen, Maragondon and future projects" description="The team currently assists visitors for Luntiang Aguinaldo and Prime Enclave. General Trias updates will be posted when approved project information becomes available." /><div className="mt-5 space-y-2 text-[13px] text-[#5f5b53]"><p className="flex items-center gap-2"><FiUsers className="text-[#806014]" /> Bailen property assistance</p><p className="flex items-center gap-2"><FiUsers className="text-[#806014]" /> Maragondon property assistance</p><p className="flex items-center gap-2"><FiUsers className="text-[#a66a16]" /> General Trias project updates</p></div><Link to="/properties#book-tripping" className="website-button-dark mt-6"><FiCalendar /> Request a property guide</Link></div></div></section>
+    </>
+  )
+}
+
 export default Sellers
