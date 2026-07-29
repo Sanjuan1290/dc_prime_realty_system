@@ -121,5 +121,3 @@ export const canChangeUserRole = (userOrRole, currentRole, requestedRole, adminT
 };
 
 export const getRoleHome = (role) => role === 'admin' ? '/portal/admin/dashboard' : role === 'super_admin' ? '/portal/super_admin' : '/portal';
-
-

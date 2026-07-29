@@ -209,4 +209,3 @@ The actual remote Cloudinary conversion was not run while building this package 
 - Server JavaScript syntax checks completed
 
 The Vite build reports a chunk-size warning for some existing large pages. It does not stop the build.
-

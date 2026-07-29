@@ -16,6 +16,21 @@ import LotLayout from './layout/LotLayout'
 import ProtectedPermissionRoute from './components/Auth/ProtectedPermissionRoute'
 import RouteErrorPage from './components/Shared/RouteErrorPage'
 import { PERMISSIONS } from './config/permissions'
+import WebsiteLayout from './website/layouts/WebsiteLayout'
+import './website/styles/website.css'
+
+
+const WebsiteHome = lazy(() => import('./website/pages/Home'))
+const WebsiteAboutUs = lazy(() => import('./website/pages/AboutUs'))
+const WebsiteProperties = lazy(() => import('./website/pages/Properties'))
+const WebsitePropertyDetails = lazy(() => import('./website/pages/PropertyDetails'))
+const WebsiteBlog = lazy(() => import('./website/pages/Blog'))
+const WebsiteBlogDetails = lazy(() => import('./website/pages/BlogDetails'))
+const WebsiteFAQs = lazy(() => import('./website/pages/FAQs'))
+const WebsiteSiteCoordinator = lazy(() => import('./website/pages/SiteCoordinator'))
+const WebsiteSellers = lazy(() => import('./website/pages/Sellers'))
+const WebsiteContactUs = lazy(() => import('./website/pages/ContactUs'))
+const WebsiteNotFound = lazy(() => import('./website/pages/NotFound'))
 
 const Dashboard = lazy(() => import('./pages/System/Dashboard'))
 const Documents = lazy(() => import('./pages/System/Documents'))
@@ -72,8 +87,19 @@ const App = () => {
   const router = createBrowserRouter(
     createRoutesFromElements(
       <>
-        {/* Temporary redirect until the public website is added at /. */}
-        <Route path="/" element={<Navigate to="/portal" replace />} />
+        <Route path="/" element={<WebsiteLayout />} errorElement={<RouteErrorPage />}>
+          <Route index element={<WebsiteHome />} />
+          <Route path="about-us" element={<WebsiteAboutUs />} />
+          <Route path="properties" element={<WebsiteProperties />} />
+          <Route path="properties/:projectSlug" element={<WebsitePropertyDetails />} />
+          <Route path="blog" element={<WebsiteBlog />} />
+          <Route path="blog/:blogSlug" element={<WebsiteBlogDetails />} />
+          <Route path="faqs" element={<WebsiteFAQs />} />
+          <Route path="site-coordinator" element={<WebsiteSiteCoordinator />} />
+          <Route path="sellers" element={<WebsiteSellers />} />
+          <Route path="contact-us" element={<WebsiteContactUs />} />
+          <Route path="*" element={<WebsiteNotFound />} />
+        </Route>
 
         <Route path="/portal" element={<Login />} />
         <Route path="/portal/login" element={<Navigate to="/portal" replace />} />
@@ -276,5 +302,3 @@ const App = () => {
 }
 
 export default App
-
-

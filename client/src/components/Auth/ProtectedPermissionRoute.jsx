@@ -12,5 +12,3 @@ const ProtectedPermissionRoute = ({ permission, children }) => {
 }
 
 export default ProtectedPermissionRoute
-
-
