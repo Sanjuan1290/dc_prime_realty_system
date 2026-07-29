@@ -847,27 +847,29 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
         />
       ) : null}
 
-      {selectedMember ? <EditUserModal
-        key={selectedMember.id}
-        setShowEditUser={(open) => {
-          if (!open) setSelectedMember(null)
-        }}
-        selectedUser={selectedMember}
-        allowedRoles={[
-          'division_manager',
-          'sales_director',
-          'unit_manager',
-          'sales_agent',
-        ]}
-        actorRole={isAdmin ? 'admin' : 'super_admin'}
-        initialSellerGroupId={String(group.id || groupId)}
-        lockSellerGroup
-        onSaved={(message) => {
-          setSelectedMember(null)
-          setAlert({ type: 'success', message })
-          refresh()
-        }}
-        /> : null}
+      {selectedMember ? (
+        <EditUserModal
+          key={selectedMember.id}
+          setShowEditUser={(open) => {
+            if (!open) setSelectedMember(null)
+          }}
+          selectedUser={selectedMember}
+          allowedRoles={[
+            'division_manager',
+            'sales_director',
+            'unit_manager',
+            'sales_agent',
+          ]}
+          actorRole={isAdmin ? 'admin' : 'super_admin'}
+          initialSellerGroupId={String(group.id || groupId)}
+          lockSellerGroup
+          onSaved={(message) => {
+            setSelectedMember(null)
+            setAlert({ type: 'success', message })
+            refresh()
+          }}
+        />
+      ) : null}
 
       {showEditGroupModal ? (
         <EditGroupModal
