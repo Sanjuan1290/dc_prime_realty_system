@@ -42,6 +42,8 @@ const defaultRange = () => ({
   to: toDateInput(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0)),
 })
 
+const MEMBERS_PER_PAGE = 5
+
 const summaryToneClasses = {
   blue: 'bg-blue-50 text-blue-700 ring-blue-100',
   violet: 'bg-violet-50 text-violet-700 ring-violet-100',
@@ -73,25 +75,71 @@ const SummaryCard = ({ icon: Icon, label, value, helper, tone = 'blue' }) => (
   </article>
 )
 
-const RateCard = ({ label, value, helper, bgColor }) => (
-  <article className={`rounded-2xl border border-red-200 bg-${bgColor}-50/70 p-5`}>
-    <div className="flex items-start justify-between gap-4">
-      <div>
-        <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-blue-600">
-          {label}
-        </p>
-        <p className="mt-2 text-3xl font-bold tracking-tight text-blue-950">
-          {Number(value || 0).toFixed(2)}%
-        </p>
-        <p className="mt-1 text-xs font-medium text-blue-700">{helper}</p>
-      </div>
+const rateCardColorClasses = {
+  blue: {
+    card: 'border-blue-200 bg-blue-50/80',
+    label: 'text-blue-600',
+    value: 'text-blue-950',
+    helper: 'text-blue-700',
+    icon: 'text-blue-700 ring-blue-100',
+  },
+  purple: {
+    card: 'border-purple-200 bg-purple-50/80',
+    label: 'text-purple-600',
+    value: 'text-purple-950',
+    helper: 'text-purple-700',
+    icon: 'text-purple-700 ring-purple-100',
+  },
+  yellow: {
+    card: 'border-yellow-200 bg-yellow-50/80',
+    label: 'text-yellow-700',
+    value: 'text-yellow-950',
+    helper: 'text-yellow-700',
+    icon: 'text-yellow-700 ring-yellow-100',
+  },
+  gray: {
+    card: 'border-gray-200 bg-gray-50/80',
+    label: 'text-gray-600',
+    value: 'text-gray-950',
+    helper: 'text-gray-700',
+    icon: 'text-gray-700 ring-gray-200',
+  },
+  green: {
+    card: 'border-green-200 bg-green-50/80',
+    label: 'text-green-600',
+    value: 'text-green-950',
+    helper: 'text-green-700',
+    icon: 'text-green-700 ring-green-100',
+  },
+}
 
-      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-blue-700 shadow-sm ring-1 ring-blue-100">
-        <FiTrendingUp className="h-4 w-4" />
-      </span>
-    </div>
-  </article>
-)
+const RateCard = ({ label, value, helper, bgColor = 'blue' }) => {
+  const colors = rateCardColorClasses[bgColor] || rateCardColorClasses.blue
+
+  return (
+    <article className={`rounded-2xl border p-5 ${colors.card}`}>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p
+            className={`text-[11px] font-bold uppercase tracking-[0.08em] ${colors.label}`}
+          >
+            {label}
+          </p>
+          <p className={`mt-2 text-3xl font-bold tracking-tight ${colors.value}`}>
+            {Number(value || 0).toFixed(2)}%
+          </p>
+          <p className={`mt-1 text-xs font-medium ${colors.helper}`}>{helper}</p>
+        </div>
+
+        <span
+          className={`flex h-10 w-10 items-center justify-center rounded-xl bg-white shadow-sm ring-1 ${colors.icon}`}
+        >
+          <FiTrendingUp className="h-4 w-4" />
+        </span>
+      </div>
+    </article>
+  )
+}
 
 const ContactItem = ({ icon: Icon, label, value, wide = false }) => (
   <div className={`flex min-w-0 items-start gap-3 ${wide ? 'md:col-span-2 xl:col-span-1' : ''}`}>
@@ -138,6 +186,7 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
   const rootPath = isAdmin ? '/admin' : '/super_admin'
   const [alert, setAlert] = useState(null)
   const [memberSearch, setMemberSearch] = useState('')
+  const [memberPage, setMemberPage] = useState(1)
   const [showCreateUser, setShowCreateUser] = useState(false)
   const [selectedMember, setSelectedMember] = useState(null)
   const [showEditGroupModal, setShowEditGroupModal] = useState(false)
@@ -236,6 +285,25 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
         )
       : members
   }, [members, memberSearch])
+
+  const memberTotalPages = Math.max(
+    Math.ceil(filteredMembers.length / MEMBERS_PER_PAGE),
+    1
+  )
+  const memberPageStart = (memberPage - 1) * MEMBERS_PER_PAGE
+  const memberPageEnd = Math.min(
+    memberPageStart + MEMBERS_PER_PAGE,
+    filteredMembers.length
+  )
+  const paginatedMembers = filteredMembers.slice(memberPageStart, memberPageEnd)
+
+  useEffect(() => {
+    setMemberPage((currentPage) => Math.min(currentPage, memberTotalPages))
+  }, [memberTotalPages])
+
+  useEffect(() => {
+    setMemberPage(1)
+  }, [selectedProjectId, groupId])
 
   const refresh = () => {
     queryClient.invalidateQueries({
@@ -459,7 +527,7 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
                 label="Pool Rate"
                 value={fixedRates.poolRate}
                 helper={project.lot_project_name || 'Selected project'}
-                bgColor={'blue'}
+                bgColor="blue"
               />
 
               {!isExternal ? (
@@ -468,25 +536,25 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
                     label="Division Manager Rate"
                     value={fixedRates.divisionManagerRate}
                     helper="Top in-house position"
-                    bgColor={'purple'}
+                    bgColor="purple"
                   />
                   <RateCard
                     label="Sales Director Rate"
                     value={fixedRates.salesDirectorRate}
                     helper="Fixed override"
-                    bgColor={'yellow'}
+                    bgColor="yellow"
                   />
                   <RateCard
                     label="Unit Manager Rate"
                     value={fixedRates.unitManagerRate}
                     helper="Fixed override"
-                    bgColor={'gray'}
+                    bgColor="gray"
                   />
                   <RateCard
                     label="Sales Agent Rate"
                     value={fixedRates.salesAgentRate}
                     helper="Direct sales rate"
-                    bgColor={'green'}
+                    bgColor="green"
                   />
                 </>
               ) : null}
@@ -630,7 +698,10 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
                     <FiSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                     <input
                       value={memberSearch}
-                      onChange={(event) => setMemberSearch(event.target.value)}
+                      onChange={(event) => {
+                        setMemberSearch(event.target.value)
+                        setMemberPage(1)
+                      }}
                       placeholder="Search member, role, or parent..."
                       className="h-10 w-full rounded-xl border border-slate-200 pl-10 pr-4 text-sm font-medium outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
                     />
@@ -655,7 +726,7 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {filteredMembers.map((member) => (
+                    {paginatedMembers.map((member) => (
                       <tr
                         key={member.accredited_seller_id}
                         className="transition hover:bg-slate-50/60"
@@ -680,18 +751,16 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
                         <td className="px-5 py-4">
                           <button
                             type="button"
-                            onClick={() =>
-                              setSelectedMember({
-                                ...member,
-                                id: Number(member.user_id),
-                                status:
-                                  member.user_status ||
-                                  member.accredited_seller_status,
-                                seller_group_id: Number(group.id || groupId),
-                                reports_under_user_id:
-                                  member.accredited_seller_reports_under_user_id || '',
-                              })
-                            }
+                            onClick={() => setSelectedMember({
+                              ...member,
+                              id: Number(member.user_id),
+                              status:
+                                member.user_status ||
+                                member.accredited_seller_status,
+                              seller_group_id: Number(group.id || groupId),
+                              reports_under_user_id:
+                                member.accredited_seller_reports_under_user_id || '',
+                            })}
                             className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
                           >
                             <FiEdit2 />
@@ -714,6 +783,45 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
                   </tbody>
                 </table>
               </div>
+
+              {filteredMembers.length ? (
+                <div className="flex flex-col gap-3 border-t border-slate-100 bg-slate-50/50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm font-medium text-slate-500">
+                    Showing {memberPageStart + 1}-{memberPageEnd} of{' '}
+                    {filteredMembers.length} members
+                  </p>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setMemberPage((currentPage) => Math.max(currentPage - 1, 1))
+                      }
+                      disabled={memberPage === 1}
+                      className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Previous
+                    </button>
+
+                    <span className="min-w-[96px] text-center text-xs font-bold text-slate-600">
+                      Page {memberPage} of {memberTotalPages}
+                    </span>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setMemberPage((currentPage) =>
+                          Math.min(currentPage + 1, memberTotalPages)
+                        )
+                      }
+                      disabled={memberPage === memberTotalPages}
+                      className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              ) : null}
             </section>
           )}
         </>
@@ -739,29 +847,27 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
         />
       ) : null}
 
-      {selectedMember ? (
-        <EditUserModal
-          key={selectedMember.id}
-          setShowEditUser={(open) => {
-            if (!open) setSelectedMember(null)
-          }}
-          selectedUser={selectedMember}
-          allowedRoles={[
-            'division_manager',
-            'sales_director',
-            'unit_manager',
-            'sales_agent',
-          ]}
-          actorRole={isAdmin ? 'admin' : 'super_admin'}
-          initialSellerGroupId={String(group.id || groupId)}
-          lockSellerGroup
-          onSaved={(message) => {
-            setSelectedMember(null)
-            setAlert({ type: 'success', message })
-            refresh()
-          }}
-        />
-      ) : null}
+      {selectedMember ? <EditUserModal
+        key={selectedMember.id}
+        setShowEditUser={(open) => {
+          if (!open) setSelectedMember(null)
+        }}
+        selectedUser={selectedMember}
+        allowedRoles={[
+          'division_manager',
+          'sales_director',
+          'unit_manager',
+          'sales_agent',
+        ]}
+        actorRole={isAdmin ? 'admin' : 'super_admin'}
+        initialSellerGroupId={String(group.id || groupId)}
+        lockSellerGroup
+        onSaved={(message) => {
+          setSelectedMember(null)
+          setAlert({ type: 'success', message })
+          refresh()
+        }}
+        /> : null}
 
       {showEditGroupModal ? (
         <EditGroupModal

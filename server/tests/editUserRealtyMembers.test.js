@@ -23,10 +23,24 @@ test('Edit User modal defines and uses a complete initial form mapper', () => {
 
 test('In-House Members can open the shared Edit User modal', () => {
   assert.match(sellerGroupDetails, /import EditUserModal/)
-  assert.match(sellerGroupDetails, /onClick=\{\(\) => setSelectedMember\(/)
+
+  assert.match(
+    sellerGroupDetails,
+    /onClick=\{\(\)\s*=>\s*setSelectedMember\(/
+  )
+
   assert.match(sellerGroupDetails, /Edit User/)
-  assert.match(sellerGroupDetails, /selectedMember \? <EditUserModal/)
-  assert.match(sellerGroupDetails, /initialSellerGroupId=\{String\(group\.id \|\| groupId\)\}/)
+
+  assert.match(
+    sellerGroupDetails,
+    /selectedMember\s*\?\s*\(\s*<EditUserModal/
+  )
+
+  assert.match(
+    sellerGroupDetails,
+    /initialSellerGroupId=\{String\(group\.id \|\| groupId\)\}/
+  )
+
   assert.match(sellerGroupDetails, /lockSellerGroup/)
 })
 
