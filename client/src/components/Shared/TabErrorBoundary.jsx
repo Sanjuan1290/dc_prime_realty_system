@@ -57,4 +57,3 @@ class TabErrorBoundary extends Component {
 }
 
 export default TabErrorBoundary
-

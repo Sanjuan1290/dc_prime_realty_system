@@ -50,7 +50,7 @@ const PayrollPreviewModal = ({ releaseDate, canFinalize, onClose, onFinalized })
 
   const printRelease = (employeeId) => {
     window.open(
-      `/employee-payroll/release/print?employeeId=${employeeId}&releaseDate=${selectedReleaseDate}`,
+      `/portal/employee-payroll/release/print?employeeId=${employeeId}&releaseDate=${selectedReleaseDate}`,
       '_blank',
       'noopener,noreferrer'
     )
@@ -158,4 +158,5 @@ const PayrollPreviewModal = ({ releaseDate, canFinalize, onClose, onFinalized })
 }
 
 export default PayrollPreviewModal
+
 

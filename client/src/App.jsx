@@ -5,6 +5,7 @@ import {
   createRoutesFromElements,
   Navigate,
   Route,
+  useLocation,
 } from 'react-router-dom'
 
 import Login from './auth/Login'
@@ -49,6 +50,18 @@ import ProjectPriceListPrintPage from './components/Lot_Projects/ListingProfileC
 import EmployeeSalaryReleasePrintPage from './components/System/employeeComponents/prints/EmployeeSalaryReleasePrintPage'
 import EmployeeLogbookPrintPage from './components/System/employeeComponents/prints/EmployeeLogbookPrintPage'
 
+
+const LegacyPortalRedirect = () => {
+  const location = useLocation()
+
+  return (
+    <Navigate
+      to={`/portal${location.pathname}${location.search}${location.hash}`}
+      replace
+    />
+  )
+}
+
 const protect = (permission, element) => (
   <ProtectedPermissionRoute permission={permission}>
     {element}
@@ -59,11 +72,25 @@ const App = () => {
   const router = createBrowserRouter(
     createRoutesFromElements(
       <>
-        <Route path="/" element={<Login />} />
-        <Route path="/change-password" element={<ChangePassword />} />
+        {/* Temporary redirect until the public website is added at /. */}
+        <Route path="/" element={<Navigate to="/portal" replace />} />
+
+        <Route path="/portal" element={<Login />} />
+        <Route path="/portal/login" element={<Navigate to="/portal" replace />} />
+        <Route path="/portal/change-password" element={<ChangePassword />} />
+
+        {/* Public client form stays outside the internal portal. */}
         <Route path="/buyer-form/:token" element={<BuyerForm />} />
 
-        <Route path="/super_admin" element={<SystemLayout />} errorElement={<RouteErrorPage />}>
+        {/* Keep old bookmarks working while all internal URLs move to /portal. */}
+        <Route path="/change-password" element={<LegacyPortalRedirect />} />
+        <Route path="/admin/*" element={<LegacyPortalRedirect />} />
+        <Route path="/super_admin/*" element={<LegacyPortalRedirect />} />
+        <Route path="/lot-projects/*" element={<LegacyPortalRedirect />} />
+        <Route path="/house-lot-projects/*" element={<LegacyPortalRedirect />} />
+        <Route path="/employee-payroll/*" element={<LegacyPortalRedirect />} />
+
+        <Route path="/portal/super_admin" element={<SystemLayout />} errorElement={<RouteErrorPage />}>
           <Route index element={<Dashboard />} />
 
           <Route path="projects" element={<Projects />} />
@@ -81,7 +108,7 @@ const App = () => {
           <Route path="documents" element={<Documents />} />
           <Route path="users" element={<Users />} />
           <Route path="accredited" element={<Accredited />} />
-          <Route path="users/seller_group" element={<Navigate to="/super_admin/users/groups/in-house" replace />} />
+          <Route path="users/seller_group" element={<Navigate to="/portal/super_admin/users/groups/in-house" replace />} />
           <Route path="users/groups/in-house" element={<SellerGroup groupType="in_house" />} />
           <Route path="users/groups/in-house/:groupId" element={<SellerGroupDetails expectedGroupType="in_house" />} />
           <Route path="users/groups/external" element={<SellerGroup groupType="external" />} />
@@ -105,7 +132,7 @@ const App = () => {
           <Route path="settings" element={<Settings />} />
         </Route>
 
-        <Route path="/admin" element={<SystemLayout />} errorElement={<RouteErrorPage />}>
+        <Route path="/portal/admin" element={<SystemLayout />} errorElement={<RouteErrorPage />}>
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<Dashboard />} />
 
@@ -123,7 +150,7 @@ const App = () => {
 
           <Route path="documents" element={<Documents />} />
           <Route path="users" element={<Users />} />
-          <Route path="users/seller_group" element={<Navigate to="/admin/users/groups/in-house" replace />} />
+          <Route path="users/seller_group" element={<Navigate to="/portal/admin/users/groups/in-house" replace />} />
           <Route path="users/groups/in-house" element={<SellerGroup groupType="in_house" />} />
           <Route path="users/groups/in-house/:groupId" element={<SellerGroupDetails expectedGroupType="in_house" />} />
           <Route path="users/groups/external" element={<SellerGroup groupType="external" />} />
@@ -137,7 +164,7 @@ const App = () => {
           <Route path="settings" element={<Settings />} />
         </Route>
 
-        <Route path="/lot-projects/:projectSlug" element={<LotLayout />} errorElement={<RouteErrorPage />}>
+        <Route path="/portal/lot-projects/:projectSlug" element={<LotLayout />} errorElement={<RouteErrorPage />}>
           <Route
             index
             element={protect(
@@ -190,42 +217,42 @@ const App = () => {
         </Route>
 
         <Route
-          path="/lot-projects/:projectSlug/printouts/offer-to-buy"
+          path="/portal/lot-projects/:projectSlug/printouts/offer-to-buy"
           element={<OfferToBuyPrintPage />}
         />
         <Route
-          path="/lot-projects/:projectSlug/printouts/statement-of-account"
+          path="/portal/lot-projects/:projectSlug/printouts/statement-of-account"
           element={<SOAPrintPage />}
         />
         <Route
-          path="/lot-projects/:projectSlug/printouts/acknowledgement-receipts"
+          path="/portal/lot-projects/:projectSlug/printouts/acknowledgement-receipts"
           element={<PaymentAcknowledgementReceiptsPrintPage />}
         />
         <Route
-          path="/super_admin/accredited/proof-of-income/print"
+          path="/portal/super_admin/accredited/proof-of-income/print"
           element={<AccreditedSellerProofOfIncomePrintPage />}
         />
         <Route
-          path="/super_admin/accredited/proof-of-income/range/print"
+          path="/portal/super_admin/accredited/proof-of-income/range/print"
           element={<AccreditedSellerIncomeRangePrintPage />}
         />
         <Route
-          path="/lot-projects/:projectSlug/printouts/documents"
+          path="/portal/lot-projects/:projectSlug/printouts/documents"
           element={<DocumentsPrintPage />}
         />
         <Route
-          path="/lot-projects/:projectSlug/price-list/print"
+          path="/portal/lot-projects/:projectSlug/price-list/print"
           element={<ProjectPriceListPrintPage />}
         />
         <Route
-          path="/employee-payroll/release/print"
+          path="/portal/employee-payroll/release/print"
           element={protect(
             PERMISSIONS.PAYROLL_VIEW,
             <EmployeeSalaryReleasePrintPage />
           )}
         />
         <Route
-          path="/employee-payroll/logbook/print"
+          path="/portal/employee-payroll/logbook/print"
           element={protect(
             PERMISSIONS.ATTENDANCE_VIEW,
             <EmployeeLogbookPrintPage />
@@ -249,4 +276,5 @@ const App = () => {
 }
 
 export default App
+
 

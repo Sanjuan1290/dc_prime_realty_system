@@ -26,7 +26,7 @@ test('lot project workspace option exposes raw and normalized location fields', 
   assert.equal(option.lot_project_location, 'Pantihan, Cavite');
   assert.equal(option.location, 'Pantihan, Cavite');
   assert.equal(option.locationCode, 'LA');
-  assert.equal(option.routePath, '/lot-projects/bailen-project');
+  assert.equal(option.routePath, '/portal/lot-projects/bailen-project');
 });
 
 test('lot project workspace options endpoint returns the database location', async () => {
@@ -68,4 +68,5 @@ test('lot project workspace options endpoint returns the database location', asy
   assert.equal(responseBody.data[0].location, 'Maragondon, Cavite');
   assert.equal(responseBody.data[0].lot_project_location, 'Maragondon, Cavite');
 });
+
 

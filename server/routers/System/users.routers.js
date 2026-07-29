@@ -33,4 +33,3 @@ router.patch('/toggleUserStatus/:id', authenticateUser, requirePermission(PERMIS
 router.patch('/resetPassword/:id', authenticateUser, requirePermission(PERMISSIONS.SYSTEM_USERS_RESET_PASSWORD), resetUserPassword);
 
 export default router;
-

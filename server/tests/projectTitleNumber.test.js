@@ -40,4 +40,3 @@ test('migration adds the optional lot_project_title_number column', async () => 
   assert.match(migration, /ADD COLUMN lot_project_title_number VARCHAR\(150\) NULL/);
   assert.match(migration, /information_schema\.columns/);
 });
-

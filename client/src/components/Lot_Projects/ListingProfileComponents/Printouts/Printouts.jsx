@@ -62,7 +62,7 @@ const Printouts = ({
     )
 
     window.open(
-      `/lot-projects/${projectSlug}/printouts/${item.path}?printKey=${encodeURIComponent(printKey)}`,
+      `/portal/lot-projects/${projectSlug}/printouts/${item.path}?printKey=${encodeURIComponent(printKey)}`,
       '_blank'
     )
   }
@@ -123,4 +123,5 @@ const Printouts = ({
 }
 
 export default Printouts
+
 

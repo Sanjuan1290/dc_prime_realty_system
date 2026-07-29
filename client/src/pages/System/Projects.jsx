@@ -89,7 +89,7 @@ const normalizeProject = (project) => ({
   status: project.status || project.lot_project_status,
   routePath:
     project.routePath ||
-    `/lot-projects/${project.slug || project.lot_project_slug}`,
+    `/portal/lot-projects/${project.slug || project.lot_project_slug}`,
 })
 
 const Projects = () => {
@@ -642,7 +642,7 @@ const Projects = () => {
                   <td className="px-4 py-4 font-semibold text-amber-700">{unit.awaitingApprovalDocuments}</td>
                   <td className="px-4 py-4 font-semibold text-red-700">{unit.pendingRequiredDocuments}</td>
                   <td className="px-4 py-4"><div className="flex items-center gap-2"><div className="h-2 w-24 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-blue-600" style={{ width: `${Math.min(Number(unit.completionPercentage || 0), 100)}%` }} /></div><span className="text-xs font-black text-slate-600">{Number(unit.completionPercentage || 0).toFixed(0)}%</span></div></td>
-                  <td className="px-4 py-4"><button type="button" onClick={() => navigate(`/lot-projects/${unit.projectSlug}/listings/${unit.listingId}`)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 hover:bg-slate-50"><FiEye /> Open</button></td>
+                  <td className="px-4 py-4"><button type="button" onClick={() => navigate(`/portal/lot-projects/${unit.projectSlug}/listings/${unit.listingId}`)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 hover:bg-slate-50"><FiEye /> Open</button></td>
                 </tr>
               )) : <tr><td colSpan={10} className="px-4 py-10 text-center font-semibold text-slate-500">No incomplete unit document records for the selected project scope.</td></tr>}
             </tbody>
@@ -683,4 +683,5 @@ const Projects = () => {
 }
 
 export default Projects
+
 

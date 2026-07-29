@@ -185,7 +185,7 @@ const IncomeRangeReportPanel = ({ seller, sellerId, receipts = EMPTY_LIST, recei
         generatedAt: report.generatedAt,
       })
     );
-    window.open("/super_admin/accredited/proof-of-income/range/print", "_blank");
+    window.open("/portal/super_admin/accredited/proof-of-income/range/print", "_blank");
   };
 
   return (
@@ -392,7 +392,7 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
       "accredited_seller_proof_payload",
       JSON.stringify({ seller: receiptSeller, receipt })
     );
-    window.open("/super_admin/accredited/proof-of-income/print", "_blank");
+    window.open("/portal/super_admin/accredited/proof-of-income/print", "_blank");
   };
 
 
@@ -733,4 +733,5 @@ const Accredited = () => {
 };
 
 export default Accredited;
+
 

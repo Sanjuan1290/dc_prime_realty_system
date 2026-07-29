@@ -48,20 +48,20 @@ const AdminLayout = () => {
       if (!response.ok) throw new Error(result.message || 'Logout failed.')
       return result
     },
-    onSuccess: () => { queryClient.clear(); navigate('/', { replace: true }) },
+    onSuccess: () => { queryClient.clear(); navigate('/portal', { replace: true }) },
     onError: (error) => setLayoutAlert({ type: 'error', message: error?.message || 'Logout failed.' }),
   })
 
   const lotProjectItems = useMemo(() => (lotProjectsData?.data || []).map((project) => ({
     label: project.lot_project_name || project.label,
-    pathname: `/lot-projects/${project.lot_project_slug || project.slug}/listings`,
+    pathname: `/portal/lot-projects/${project.lot_project_slug || project.slug}/listings`,
     icon: FiMap,
     absolute: true,
   })), [lotProjectsData])
 
   const groups = useMemo(() => [
-    { title: 'OVERVIEW', items: [{ label: 'Dashboard', pathname: '/admin/dashboard', icon: FiHome, absolute: true }] },
-    { title: 'PROJECTS', items: [{ label: 'Projects', pathname: '/admin/projects', icon: FiMap, absolute: true }] },
+    { title: 'OVERVIEW', items: [{ label: 'Dashboard', pathname: '/portal/admin/dashboard', icon: FiHome, absolute: true }] },
+    { title: 'PROJECTS', items: [{ label: 'Projects', pathname: '/portal/admin/projects', icon: FiMap, absolute: true }] },
     {
       title: 'LOT PROJECTS',
       items: lotProjectItems,
@@ -69,28 +69,28 @@ const AdminLayout = () => {
       isError: isProjectsError,
       errorMessage: projectsError?.message || 'Failed to load lot projects.',
     },
-    { title: 'HOUSE & LOT PROJECTS', items: [{ label: 'House & Lot Projects', pathname: '/admin/house-lot-projects', icon: FiHome, absolute: true }] },
-    { title: 'MANAGEMENT', items: [{ label: 'Accredited Sellers', pathname: '/admin/accredited', icon: FiUsers, absolute: true }] },
+    { title: 'HOUSE & LOT PROJECTS', items: [{ label: 'House & Lot Projects', pathname: '/portal/admin/house-lot-projects', icon: FiHome, absolute: true }] },
+    { title: 'MANAGEMENT', items: [{ label: 'Accredited Sellers', pathname: '/portal/admin/accredited', icon: FiUsers, absolute: true }] },
     {
       title: 'COMPLIANCE',
       items: [
-        { label: 'Documents', pathname: '/admin/documents', icon: FiFileText, absolute: true },
-        { label: 'Notifications', pathname: '/admin/notifications', icon: FiBell, absolute: true },
-        { label: 'Audit Logs', pathname: '/admin/audit-logs', icon: FiActivity, absolute: true },
+        { label: 'Documents', pathname: '/portal/admin/documents', icon: FiFileText, absolute: true },
+        { label: 'Notifications', pathname: '/portal/admin/notifications', icon: FiBell, absolute: true },
+        { label: 'Audit Logs', pathname: '/portal/admin/audit-logs', icon: FiActivity, absolute: true },
       ],
     },
     {
       title: 'EMPLOYEES',
       items: [
-        { label: 'Employees', pathname: '/admin/employees', icon: FiUsers, absolute: true },
-        { label: 'Attendance', pathname: '/admin/attendance', icon: FiClock, absolute: true },
+        { label: 'Employees', pathname: '/portal/admin/employees', icon: FiUsers, absolute: true },
+        { label: 'Attendance', pathname: '/portal/admin/attendance', icon: FiClock, absolute: true },
       ],
     },
     {
       title: 'ADMINISTRATION',
       items: [
-        { label: 'Users', pathname: '/admin/users', icon: FiShield, absolute: true },
-        { label: 'Settings', pathname: '/admin/settings', icon: FiSettings, absolute: true },
+        { label: 'Users', pathname: '/portal/admin/users', icon: FiShield, absolute: true },
+        { label: 'Settings', pathname: '/portal/admin/settings', icon: FiSettings, absolute: true },
       ],
     },
   ], [isProjectsError, isProjectsLoading, lotProjectItems, projectsError?.message])
@@ -104,9 +104,9 @@ const AdminLayout = () => {
   }, [groups, location.pathname])
 
   if (isLoading) return <div className="flex min-h-screen items-center justify-center bg-slate-50"><StatusAlert type="loading" message="Loading Admin access..." /></div>
-  if (isError || !user) return <Navigate to="/" replace />
-  if (user.must_change_password) return <Navigate to="/change-password" replace />
-  if (user.role !== 'admin') return <Navigate to={user.role === 'super_admin' ? '/super_admin' : '/'} replace />
+  if (isError || !user) return <Navigate to="/portal" replace />
+  if (user.must_change_password) return <Navigate to="/portal/change-password" replace />
+  if (user.role !== 'admin') return <Navigate to={user.role === 'super_admin' ? '/portal/super_admin' : '/portal'} replace />
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-950">
@@ -172,4 +172,5 @@ const AdminLayout = () => {
 }
 
 export default AdminLayout
+
 

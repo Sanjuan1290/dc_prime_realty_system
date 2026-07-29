@@ -23,4 +23,3 @@ DELIMITER ;
 
 CALL add_lot_project_title_number_if_missing();
 DROP PROCEDURE IF EXISTS add_lot_project_title_number_if_missing;
-

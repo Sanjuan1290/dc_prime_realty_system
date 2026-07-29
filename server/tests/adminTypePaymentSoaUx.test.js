@@ -13,8 +13,8 @@ test('Admin uses the same SystemLayout and full navigation as Super Admin', () =
   const systemLayout = read('client/src/layout/SystemLayout.jsx');
   const lotLayout = read('client/src/layout/LotLayout.jsx');
 
-  assert.match(app, /<Route path="\/admin" element=\{<SystemLayout \/>\}/);
-  assert.doesNotMatch(app, /<Route path="\/admin" element=\{<AdminLayout \/>\}/);
+  assert.match(app, /<Route path="\/portal\/admin" element=\{<SystemLayout \/>\}/);
+  assert.doesNotMatch(app, /<Route path="\/portal\/admin" element=\{<AdminLayout \/>\}/);
   assert.match(systemLayout, /isFullAccessAdministrator\(user\)/);
   assert.match(systemLayout, /Admin 1/);
   assert.match(lotLayout, /isFullAccessAdministrator\(user\)/);
@@ -67,4 +67,5 @@ test('Penalty adjustment wording is understandable without technical correction 
   assert.doesNotMatch(modal, />Reset Correction</);
   assert.doesNotMatch(modal, />Waive Penalty</);
 });
+
 

@@ -47,7 +47,7 @@ const ResetPasswordConfirmModal = ({ user, onClose, onConfirm, isSaving }) => {
           <div className="min-w-0">
             <h2 className="text-xl font-black text-amber-950">Reset Password?</h2>
             <p className="mt-1 text-sm font-semibold leading-6 text-amber-800">
-              This will set the temporary password to <span className="font-black">password</span> and force the user to open /change-password on next login.
+              This will set the temporary password to <span className="font-black">password</span> and force the user to open /portal/change-password on next login.
             </p>
           </div>
         </div>
@@ -401,4 +401,5 @@ const Users = () => {
 };
 
 export default Users;
+
 

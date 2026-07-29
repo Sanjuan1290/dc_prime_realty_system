@@ -680,4 +680,3 @@ export const getMonthRange = (monthValue) => {
     }).format(toUtcDate(bounds.start)),
   };
 };
-

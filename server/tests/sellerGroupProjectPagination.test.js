@@ -37,4 +37,3 @@ test('group API filters paginated records by active project accreditation', () =
   assert.match(sellerGroupController, /EXISTS \(\s*SELECT 1 FROM seller_group_lot_project_rates filter_rate/)
   assert.match(sellerGroupController, /filter_rate\.seller_group_lot_project_rate_status = 'active'/)
 })
-

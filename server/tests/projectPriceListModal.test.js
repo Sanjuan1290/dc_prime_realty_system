@@ -65,4 +65,3 @@ test('Add and Edit Lot Project use two separate floating document modals', async
   assert.match(projectModal, /onClick=\{handleSave\}/);
   assert.match(editModal, /mode="edit"/);
 });
-

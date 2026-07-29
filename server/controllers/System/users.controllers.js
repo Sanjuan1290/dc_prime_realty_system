@@ -1565,9 +1565,10 @@ export const resetUserPassword = async (req, res) => {
       description: 'User password was reset and must be changed on next login.',
     });
 
-    return res.json({ message: 'Password reset successfully. User must change password at /change-password on next login.' });
+    return res.json({ message: 'Password reset successfully. User must change password at /portal/change-password on next login.' });
   } catch (error) {
     return res.status(500).json({ message: getErrorMessage(error) });
   }
 };
+
 

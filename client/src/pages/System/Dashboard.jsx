@@ -317,7 +317,7 @@ const Dashboard = () => {
   const isAdmin = role === 'admin'
   const isAdmin1 = isAdmin && (!currentUser.admin_type || currentUser.admin_type === 'admin_1')
   const isSuperAdmin = role === 'super_admin'
-  const roleBasePath = isAdmin ? '/admin' : '/super_admin'
+  const roleBasePath = isAdmin ? '/portal/admin' : '/portal/super_admin'
   const houseLotEnabled = import.meta.env.VITE_FEATURE_HOUSE_LOT === 'true'
   const projectsPath = projectScope === 'lot'
     ? `${roleBasePath}/lot-projects`
@@ -674,4 +674,5 @@ const Dashboard = () => {
 }
 
 export default Dashboard
+
 

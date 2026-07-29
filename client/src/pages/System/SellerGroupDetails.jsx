@@ -182,8 +182,8 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
   const [searchParams, setSearchParams] = useSearchParams()
   const location = useLocation()
   const queryClient = useQueryClient()
-  const isAdmin = location.pathname.startsWith('/admin/')
-  const rootPath = isAdmin ? '/admin' : '/super_admin'
+  const isAdmin = location.pathname.startsWith('/portal/admin/')
+  const rootPath = isAdmin ? '/portal/admin' : '/portal/super_admin'
   const [alert, setAlert] = useState(null)
   const [memberSearch, setMemberSearch] = useState('')
   const [memberPage, setMemberPage] = useState(1)

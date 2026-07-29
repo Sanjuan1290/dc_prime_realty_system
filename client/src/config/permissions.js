@@ -120,5 +120,6 @@ export const canChangeUserRole = (userOrRole, currentRole, requestedRole, adminT
   return actor.role === 'super_admin' || isAdmin1(actor.role, actor.adminType);
 };
 
-export const getRoleHome = (role) => role === 'admin' ? '/admin/dashboard' : role === 'super_admin' ? '/super_admin' : '/';
+export const getRoleHome = (role) => role === 'admin' ? '/portal/admin/dashboard' : role === 'super_admin' ? '/portal/super_admin' : '/portal';
+
 

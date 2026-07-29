@@ -31,7 +31,7 @@ const AccountHistoryPanel = ({ projectSlug, listingId, isSuperAdmin = false }) =
   }
 
   const openAccount = (account) => {
-    const basePath = `/lot-projects/${projectSlug}/listings/${listingId}`
+    const basePath = `/portal/lot-projects/${projectSlug}/listings/${listingId}`
     navigate(account.isCurrent ? basePath : `${basePath}/accounts/${account.id}`)
   }
 
@@ -136,4 +136,5 @@ const AccountHistoryPanel = ({ projectSlug, listingId, isSuperAdmin = false }) =
 }
 
 export default AccountHistoryPanel
+
 

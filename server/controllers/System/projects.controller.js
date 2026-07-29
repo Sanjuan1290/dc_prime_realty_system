@@ -125,7 +125,7 @@ export const mapLotProjectOption = (project = {}) => ({
   slug: project.lot_project_slug,
   location: project.lot_project_location,
   locationCode: project.lot_project_location_code,
-  routePath: `/lot-projects/${project.lot_project_slug}`,
+  routePath: `/portal/lot-projects/${project.lot_project_slug}`,
 });
 
 export const getLotProjectOptions = async (req, res) => {
@@ -168,7 +168,7 @@ export const getLotProjectBySlug = async (req, res) => {
         titleNumber: project.lot_project_title_number,
         pin: project.lot_project_pin,
         status: project.lot_project_status,
-        routePath: `/lot-projects/${project.lot_project_slug}`,
+        routePath: `/portal/lot-projects/${project.lot_project_slug}`,
         cadastralLots,
         defaultDocuments,
       },
@@ -280,7 +280,7 @@ export const createLotProject = async (req, res) => {
       success: true,
       message: 'Lot project created successfully.',
       lot_project_id: lotProjectId,
-      routePath: `/lot-projects/${payload.slug}`,
+      routePath: `/portal/lot-projects/${payload.slug}`,
     });
   } catch (error) {
     await connection.rollback();
@@ -383,7 +383,7 @@ export const updateLotProject = async (req, res) => {
     return res.json({
       success: true,
       message: 'Lot project updated successfully.',
-      routePath: `/lot-projects/${payload.slug}`,
+      routePath: `/portal/lot-projects/${payload.slug}`,
     });
   } catch (error) {
     await connection.rollback();
@@ -671,4 +671,5 @@ export const getLotProjectDocumentCompliance = async (req, res) => {
     connection.release();
   }
 };
+
 

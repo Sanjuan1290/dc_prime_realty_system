@@ -641,4 +641,3 @@ const CreateUserModal = ({
 };
 
 export default CreateUserModal;
-

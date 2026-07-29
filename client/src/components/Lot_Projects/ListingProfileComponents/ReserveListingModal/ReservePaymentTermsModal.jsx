@@ -470,4 +470,3 @@ const ReservePaymentTermsModal = ({
 }
 
 export default ReservePaymentTermsModal
-

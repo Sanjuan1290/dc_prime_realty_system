@@ -110,7 +110,7 @@ const EmployeeLogbookModal = ({ employees = [], initialReleaseDate, onClose }) =
       setNotice({ type: 'warning', message: 'Select an employee and a release date on the 7th or 22nd.' })
       return
     }
-    window.open(`/employee-payroll/logbook/print?employeeId=${employeeId}&releaseDate=${releaseDate}`, '_blank', 'noopener,noreferrer')
+    window.open(`/portal/employee-payroll/logbook/print?employeeId=${employeeId}&releaseDate=${releaseDate}`, '_blank', 'noopener,noreferrer')
   }
 
   return (
@@ -200,4 +200,5 @@ const EmployeeLogbookModal = ({ employees = [], initialReleaseDate, onClose }) =
 }
 
 export default EmployeeLogbookModal
+
 

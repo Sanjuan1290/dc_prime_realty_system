@@ -520,14 +520,14 @@ const ListingProfile = () => {
               <p className="font-black">Read-only historical account</p>
               <p className="mt-0.5 text-blue-800">This page is locked to {account?.accountReference || 'the selected account'}. Payments, documents, SOA rows, and commissions are loaded only by its account ID.</p>
             </div>
-            <button type="button" onClick={() => navigate(`/lot-projects/${projectSlug}/listings/${listingId}`)} className="h-10 shrink-0 rounded-xl border border-blue-300 bg-white px-4 font-black text-blue-700 transition hover:bg-blue-100">Back to Current Listing</button>
+            <button type="button" onClick={() => navigate(`/portal/lot-projects/${projectSlug}/listings/${listingId}`)} className="h-10 shrink-0 rounded-xl border border-blue-300 bg-white px-4 font-black text-blue-700 transition hover:bg-blue-100">Back to Current Listing</button>
           </div>
         ) : null}
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex items-start gap-4">
             <button
               type="button"
-              onClick={() => navigate(readOnly ? `/lot-projects/${projectSlug}/listings/${listingId}` : `/lot-projects/${projectSlug}/listings`)}
+              onClick={() => navigate(readOnly ? `/portal/lot-projects/${projectSlug}/listings/${listingId}` : `/portal/lot-projects/${projectSlug}/listings`)}
               className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-950 active:scale-[0.98]"
               aria-label={readOnly ? 'Back to current listing' : 'Back to listings'}
             >
@@ -829,4 +829,5 @@ const ListingProfile = () => {
 }
 
 export default ListingProfile
+
 

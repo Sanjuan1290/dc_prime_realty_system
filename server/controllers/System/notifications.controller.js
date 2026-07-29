@@ -387,7 +387,7 @@ const mapNotificationRow = (row = {}) => {
     lastNotificationAt: row.last_notification_at ? toDateOnly(row.last_notification_at) : null,
     lastNotificationType: row.last_notification_type || null,
     listingPath: row.lot_project_slug && row.lot_project_listing_unit_id
-      ? `/lot-projects/${row.lot_project_slug}/listings/${row.lot_project_listing_unit_id}`
+      ? `/portal/lot-projects/${row.lot_project_slug}/listings/${row.lot_project_listing_unit_id}`
       : '',
   };
 };
@@ -1546,7 +1546,7 @@ export const getDocumentNotifications = async (req, res) => {
       pendingRequiredDocuments: Number(row.pending_required_documents || 0),
       missingRequiredDocuments: Number(row.missing_required_documents || 0),
       rejectedRequiredDocuments: Number(row.rejected_required_documents || 0),
-      listingPath: `/lot-projects/${row.lot_project_slug}/listings/${row.lot_project_listing_id}`,
+      listingPath: `/portal/lot-projects/${row.lot_project_slug}/listings/${row.lot_project_listing_id}`,
     }));
 
     const summary = notifications.reduce((totals, item) => {
@@ -1570,4 +1570,5 @@ export const getDocumentNotifications = async (req, res) => {
     connection.release();
   }
 };
+
 

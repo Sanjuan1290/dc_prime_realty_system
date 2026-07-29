@@ -84,7 +84,7 @@ const SystemLayout = () => {
     },
     onSuccess: () => {
       queryClient.clear();
-      navigate("/", { replace: true });
+      navigate("/portal", { replace: true });
     },
     onError: (error) => {
       setLayoutAlert({
@@ -94,7 +94,7 @@ const SystemLayout = () => {
 
       window.setTimeout(() => {
         queryClient.clear();
-        navigate("/", { replace: true });
+        navigate("/portal", { replace: true });
       }, 700);
     },
   });
@@ -103,7 +103,7 @@ const SystemLayout = () => {
 
 
 
-  const roleBasePath = `/${user?.role || "super_admin"}`;
+  const roleBasePath = `/portal/${user?.role || "super_admin"}`;
   const dashboardPathname = user?.role === "admin" ? "dashboard" : "";
 
   const navGroups = useMemo(
@@ -202,15 +202,15 @@ const SystemLayout = () => {
   }
 
   if (isCurrentUserError) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/portal" replace />;
   }
 
   if (user?.must_change_password) {
-    return <Navigate to="/change-password" replace />;
+    return <Navigate to="/portal/change-password" replace />;
   }
 
   if (!isFullAccessAdministrator(user)) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/portal" replace />;
   }
 
   return (
@@ -394,9 +394,9 @@ const SystemLayout = () => {
             </div>
 
             <p className="truncate text-xs text-gray-600 sm:text-sm">
-              {location.pathname.startsWith("/lot-projects/")
+              {location.pathname.startsWith("/portal/lot-projects/")
                 ? "Lot project workspace"
-                : location.pathname.startsWith("/house-lot-projects/")
+                : location.pathname.startsWith("/portal/house-lot-projects/")
                   ? "House and lot project workspace"
                   : location.pathname.startsWith(`${roleBasePath}/lot-projects`)
                     ? "Lot project list"
@@ -429,4 +429,5 @@ const SystemLayout = () => {
 };
 
 export default SystemLayout;
+
 

@@ -1324,4 +1324,3 @@ export const updateGroupProjectPool = async (req, res) => {
     connection.release();
   }
 };
-

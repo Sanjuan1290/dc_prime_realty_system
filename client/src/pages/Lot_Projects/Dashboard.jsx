@@ -539,7 +539,7 @@ const Dashboard = () => {
 
   const handlePrintPriceList = (straightPaymentMonths) => {
     const params = new URLSearchParams({ straightPaymentMonths: String(straightPaymentMonths) })
-    window.open(`/lot-projects/${projectSlug}/price-list/print?${params.toString()}`, '_blank')
+    window.open(`/portal/lot-projects/${projectSlug}/price-list/print?${params.toString()}`, '_blank')
     setShowPriceListModal(false)
   }
 
@@ -780,4 +780,5 @@ const Dashboard = () => {
 }
 
 export default Dashboard
+
 

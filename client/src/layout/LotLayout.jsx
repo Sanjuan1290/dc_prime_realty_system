@@ -61,7 +61,7 @@ const LotLayout = () => {
   })
 
   const project = data?.data
-  const basePath = `/lot-projects/${projectSlug}`
+  const basePath = `/portal/lot-projects/${projectSlug}`
 
   const navItems = useMemo(() => [
     { label: 'Dashboard', path: basePath, icon: FiBarChart2, end: true },
@@ -85,15 +85,15 @@ const LotLayout = () => {
   }
 
   if (isCurrentUserError || !user) {
-    return <Navigate to="/" replace />
+    return <Navigate to="/portal" replace />
   }
 
   if (user?.must_change_password) {
-    return <Navigate to="/change-password" replace />
+    return <Navigate to="/portal/change-password" replace />
   }
 
   if (!isFullAccessAdministrator(user)) {
-    return <Navigate to="/" replace />
+    return <Navigate to="/portal" replace />
   }
 
   if (isError) {
@@ -107,7 +107,7 @@ const LotLayout = () => {
 
           <button
             type="button"
-            onClick={() => navigate(user?.role === 'admin' ? '/admin/projects' : '/super_admin/projects')}
+            onClick={() => navigate(user?.role === 'admin' ? '/portal/admin/projects' : '/portal/super_admin/projects')}
             className="mt-4 h-11 rounded-xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700"
           >
             Back to Projects
@@ -204,7 +204,7 @@ const LotLayout = () => {
         <div className="border-t border-slate-200 p-4">
           <button
             type="button"
-            onClick={() => navigate(user?.role === 'admin' ? '/admin/projects' : '/super_admin/projects')}
+            onClick={() => navigate(user?.role === 'admin' ? '/portal/admin/projects' : '/portal/super_admin/projects')}
             className="flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 transition hover:bg-slate-50"
           >
             <FiChevronLeft className="h-4 w-4" />
@@ -254,4 +254,5 @@ const LotLayout = () => {
 }
 
 export default LotLayout
+
 

@@ -6,7 +6,7 @@ import StatusAlert from '../components/Shared/StatusAlert'
 import useCurrentUser from '../utils/useCurrentUser'
 import { useFetchPatch } from '../utils/useFetch'
 
-const getDefaultRoute = (role) => `/${role || 'super_admin'}`
+const getDefaultRoute = (role) => `/portal/${role || 'super_admin'}`
 
 const ChangePassword = () => {
   const [currentPassword, setCurrentPassword] = useState('')
@@ -87,7 +87,7 @@ const ChangePassword = () => {
   }
 
   if (isError || !user) {
-    return <Navigate to="/" replace />
+    return <Navigate to="/portal" replace />
   }
 
   if (!user.must_change_password) {
@@ -178,4 +178,5 @@ const ChangePassword = () => {
 }
 
 export default ChangePassword
+
 

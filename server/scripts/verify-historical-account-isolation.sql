@@ -94,4 +94,3 @@ LEFT JOIN lot_project_payment_schedules schedule
 WHERE relief.lot_project_account_id IS NULL
    OR schedule.lot_project_payment_schedule_id IS NULL
    OR relief.lot_project_account_id <> schedule.lot_project_account_id;
-

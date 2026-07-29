@@ -451,4 +451,3 @@ main().catch((error) => {
   console.error('[cloudinary-document-migration] FAILED:', error?.stack || error?.message || error);
   process.exitCode = 1;
 });
-

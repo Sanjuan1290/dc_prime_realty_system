@@ -317,4 +317,3 @@ export const closeCancelledAccountAndReleaseListing = async (
     closedByUserId,
   };
 };
-

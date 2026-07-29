@@ -25,7 +25,7 @@ const PROJECT_TYPES = {
     queryKey: "lot-project-workspace-options",
     icon: FiMap,
     emptyMessage: "No lot project workspaces are available.",
-    fallbackPath: (slug) => `/lot-projects/${slug}`,
+    fallbackPath: (slug) => `/portal/lot-projects/${slug}`,
     getName: (project) =>
       project.lot_project_name ||
       project.project_name ||
@@ -55,7 +55,7 @@ const PROJECT_TYPES = {
     queryKey: "house-lot-project-workspace-options",
     icon: FiHome,
     emptyMessage: "No house and lot project workspaces are available.",
-    fallbackPath: (slug) => `/house-lot-projects/${slug}`,
+    fallbackPath: (slug) => `/portal/house-lot-projects/${slug}`,
     getName: (project) =>
       project.house_lot_project_name ||
       project.project_name ||
@@ -241,4 +241,5 @@ const ProjectWorkspaceList = ({ type = "lot" }) => {
 };
 
 export default ProjectWorkspaceList;
+
 

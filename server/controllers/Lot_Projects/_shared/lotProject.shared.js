@@ -273,7 +273,7 @@ export const mapProjectRows = (projects = [], cadastralRows = []) => {
     titleNumber: project.lot_project_title_number,
     pin: project.lot_project_pin,
     status: project.lot_project_status,
-    routePath: `/lot-projects/${project.lot_project_slug}`,
+    routePath: `/portal/lot-projects/${project.lot_project_slug}`,
     cadastralLots: cadastralMap.get(project.lot_project_id) || [],
     defaultDocs: Number(project.default_documents_count || 0),
     requiredDocs: Number(project.required_documents_count || 0),
@@ -3911,4 +3911,5 @@ export const addIfColumnExists = async (connection, tableName, columns, values, 
     values.push(value);
   }
 };
+
 
