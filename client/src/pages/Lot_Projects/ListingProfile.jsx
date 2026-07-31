@@ -144,7 +144,7 @@ const ListingProfile = () => {
 
   const profile = profileQuery.data?.data || {}
   const account = profile.account || null
-  const readOnly = Boolean(isAccountRoute || profile.readOnly)
+  const readOnly = Boolean(profile.readOnly)
   const project = profile.project || {}
   const listing = profile.listing || emptyListing
   const client = profile.client || {}
@@ -514,15 +514,6 @@ const ListingProfile = () => {
       /> : null}
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        {readOnly ? (
-          <div className="mb-4 flex flex-col gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-900 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="font-black">Read-only historical account</p>
-              <p className="mt-0.5 text-blue-800">This page is locked to {account?.accountReference || 'the selected account'}. Payments, documents, SOA rows, and commissions are loaded only by its account ID.</p>
-            </div>
-            <button type="button" onClick={() => navigate(`/portal/lot-projects/${projectSlug}/listings/${listingId}`)} className="h-10 shrink-0 rounded-xl border border-blue-300 bg-white px-4 font-black text-blue-700 transition hover:bg-blue-100">Back to Current Listing</button>
-          </div>
-        ) : null}
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex items-start gap-4">
             <button

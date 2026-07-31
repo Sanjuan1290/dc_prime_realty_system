@@ -701,7 +701,9 @@ export const getLotProjectListingProfile = async (req, res) => {
     }
 
     const selectedAccountId = Number(row.lot_project_account_id || 0);
-    const readOnly = isAccountRoute;
+    const readOnly = Boolean(
+      isAccountRoute && Number(row.current_account_id || 0) !== selectedAccountId
+    );
     row.isHistoricalAccount = readOnly;
 
     const documents = await getListingDocuments(

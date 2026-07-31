@@ -1181,6 +1181,39 @@ export const getGroupProjectAnalytics = async (req, res) => {
        ORDER BY sales_amount DESC, sales_count DESC, seller_name ASC LIMIT 10`,
       [projectId, groupId, range.fromDate, range.toDate]
     );
+    const [recentSalesRows] = await connection.query(
+      `SELECT
+         profile.lot_project_client_profile_id AS profile_id,
+         account.lot_project_account_id AS account_id,
+         account.account_reference,
+         listing.lot_project_listing_id AS listing_id,
+         listing.lot_project_listing_unit_id AS unit_id,
+         COALESCE(
+           NULLIF(TRIM(account.buyer_name_snapshot), ''),
+           NULLIF(TRIM(CONCAT_WS(' ', profile.buyer_first_name, profile.buyer_middle_name, profile.buyer_last_name)), ''),
+           'Buyer'
+         ) AS buyer_name,
+         ${fullNameSql('assigned_user')} AS seller_name,
+         ${contractTcpExpr} AS contract_price,
+         COALESCE(account.account_status, profile.lot_project_client_profile_status) AS sale_status,
+         COALESCE(account.reservation_date, profile.lot_project_client_profile_created_at) AS sale_date
+       FROM lot_project_client_profiles profile
+       INNER JOIN lot_project_listings listing
+         ON listing.lot_project_listing_id = profile.lot_project_listing_id
+       INNER JOIN accredited_sellers assigned
+         ON assigned.accredited_seller_id = profile.assigned_accredited_seller_id
+       INNER JOIN users assigned_user ON assigned_user.id = assigned.user_id
+       LEFT JOIN lot_project_accounts account
+         ON account.lot_project_client_profile_id = profile.lot_project_client_profile_id
+       WHERE profile.lot_project_id = ?
+         AND assigned.seller_group_id = ?
+         AND profile.lot_project_client_profile_status <> 'cancelled'
+       ORDER BY
+         COALESCE(account.reservation_date, profile.lot_project_client_profile_created_at) DESC,
+         profile.lot_project_client_profile_id DESC
+       LIMIT 10`,
+      [projectId, groupId]
+    );
     const salesSummary = salesSummaryRows[0] || {};
     const commissionSummary = commissionSummaryRows[0] || {};
     return res.json({
@@ -1200,6 +1233,19 @@ export const getGroupProjectAnalytics = async (req, res) => {
         sellers: sellerRows.map((row) => ({
           sellerId: Number(row.seller_id || 0), sellerName: row.seller_name || 'Unassigned seller',
           salesCount: Number(row.sales_count || 0), salesAmount: Number(row.sales_amount || 0),
+        })),
+        recentSales: recentSalesRows.map((row) => ({
+          profileId: Number(row.profile_id || 0),
+          accountId: row.account_id ? Number(row.account_id) : null,
+          accountReference: row.account_reference || null,
+          listingId: Number(row.listing_id || 0),
+          unitId: row.unit_id || '-',
+          buyerName: row.buyer_name || 'Buyer',
+          sellerName: row.seller_name || 'Unassigned seller',
+          contractPrice: Number(row.contract_price || 0),
+          status: row.sale_status || 'active',
+          saleDate: row.sale_date || null,
+          projectSlug: group.lot_project_slug || null,
         })),
       },
     });

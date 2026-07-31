@@ -53,14 +53,18 @@ test('historical profile reads every child record by account id', () => {
   assert.match(accounts, /commission\.lot_project_account_id = account\.lot_project_account_id/);
 });
 
-test('historical account screens and writes stay read-only', () => {
+test('current account routes stay editable while older accounts stay protected', () => {
+  const controller = read('server/controllers/Lot_Projects/ListingProfile/ListingProfile.controller.js');
   const profile = read('client/src/pages/Lot_Projects/ListingProfile.jsx');
   const unit = read('client/src/components/Lot_Projects/ListingProfileComponents/UnitStatus/UnitStatus.jsx');
   const client = read('client/src/components/Lot_Projects/ListingProfileComponents/ClientProfile/ClientProfile.jsx');
   const payments = read('client/src/components/Lot_Projects/ListingProfileComponents/PaymentsSOA/Payments_SOA.jsx');
   const documents = read('client/src/components/Lot_Projects/ListingProfileComponents/Documents/Documents.jsx');
 
-  assert.match(profile, /const readOnly = Boolean\(isAccountRoute \|\| profile\.readOnly\)/);
+  assert.match(controller, /isAccountRoute && Number\(row\.current_account_id \|\| 0\) !== selectedAccountId/);
+  assert.match(profile, /const readOnly = Boolean\(profile\.readOnly\)/);
+  assert.doesNotMatch(profile, /Read-only historical account/);
+  assert.doesNotMatch(profile, /This page is locked to/);
   assert.match(profile, /!readOnly && showReserveModal/);
   assert.match(profile, /!readOnly && showBuyerFormLinkModal/);
   assert.match(unit, /!readOnly && canRecalculateCommission/);
