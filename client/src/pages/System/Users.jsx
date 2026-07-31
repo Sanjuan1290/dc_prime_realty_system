@@ -32,6 +32,8 @@ const roleLabels = {
   external_group: "External Group",
 };
 
+const sellerRoles = ["division_manager", "sales_director", "unit_manager", "sales_agent", "external_group"];
+const isSellerRecord = (user) => sellerRoles.includes(user?.role);
 
 const ResetPasswordConfirmModal = ({ user, onClose, onConfirm, isSaving }) => {
   if (!user) return null
@@ -98,6 +100,7 @@ const Users = () => {
   const createAllowedRoles = Object.keys(roleLabels).filter((role) => role !== "external_group" && (isSuperAdmin || role !== "super_admin"));
   const getEditAllowedRoles = (user) => user?.role === "external_group" ? ["external_group"] : Object.keys(roleLabels).filter((role) => role !== "external_group" && (isSuperAdmin || role !== "super_admin"));
   const canManageAccount = (user) => user?.role !== "external_group" && canManageUserRole(actorUser, user?.role);
+  const canResetUserPassword = (user) => canResetPasswords && !isSellerRecord(user);
   const queryClient = useQueryClient();
   const [showEditUser, setShowEditUser] = useState(false);
   const [showCreateUser, setShowCreateUser] = useState(false);
@@ -184,6 +187,7 @@ const Users = () => {
   ];
 
   const handleResetPassword = (user) => {
+    if (!canResetUserPassword(user)) return;
     setResetTarget(user);
     setAlert({ type: "warning", message: `Review and confirm password reset for ${user.full_name}.` });
   };
@@ -354,7 +358,7 @@ const Users = () => {
                       {canManageAccount(user) ? (
                         <>
                           {canEditUsers ? <button type="button" onClick={() => openEditModal(user)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:bg-slate-50"><FiEdit2 className="h-3.5 w-3.5" />Edit</button> : null}
-                          {canResetPasswords ? <button type="button" onClick={() => handleResetPassword(user)} disabled={resetPasswordMutation.isPending || toggleStatusMutation.isPending} className="inline-flex h-9 items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 text-xs font-bold text-amber-700 hover:bg-amber-100 disabled:opacity-60"><FiKey className="h-3.5 w-3.5" />{activeAction?.type === "reset" && activeAction?.userId === user.id ? "Resetting..." : "Reset"}</button> : null}
+                          {canResetUserPassword(user) ? <button type="button" onClick={() => handleResetPassword(user)} disabled={resetPasswordMutation.isPending || toggleStatusMutation.isPending} className="inline-flex h-9 items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 text-xs font-bold text-amber-700 hover:bg-amber-100 disabled:opacity-60"><FiKey className="h-3.5 w-3.5" />{activeAction?.type === "reset" && activeAction?.userId === user.id ? "Resetting..." : "Reset"}</button> : null}
                           {canChangeStatus ? <button type="button" onClick={() => handleToggleStatus(user)} disabled={resetPasswordMutation.isPending || toggleStatusMutation.isPending} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60">{activeAction?.type === "status" && activeAction?.userId === user.id ? "Updating..." : user.status === "active" ? "Deactivate" : "Activate"}</button> : null}
                         </>
                       ) : (

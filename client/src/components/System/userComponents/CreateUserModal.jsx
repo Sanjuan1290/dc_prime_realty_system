@@ -295,8 +295,8 @@ const CreateUserModal = ({
       return false;
     }
 
-    if (!form.password.trim()) {
-      setWarning("Temporary password is required.");
+    if (!isSellerRole && !form.password.trim()) {
+      setWarning("Temporary password is required for administrator accounts.");
       return false;
     }
 
@@ -482,15 +482,17 @@ const CreateUserModal = ({
                   </label>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-[2fr_1fr]">
+                <div className={`grid gap-4 ${isSellerRole ? "grid-cols-1" : "md:grid-cols-[2fr_1fr]"}`}>
                   <label className="flex flex-col gap-2">
                     <p className="text-sm font-bold text-slate-700">Address</p>
                     <input type="text" value={form.address} onChange={(event) => updateForm("address", event.target.value)} placeholder="Complete seller address" className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" />
                   </label>
-                  <label className="flex flex-col gap-2">
-                    <p className="text-sm font-bold text-slate-700">Temporary Password *</p>
-                    <input type="text" value={form.password} onChange={(event) => updateForm("password", event.target.value)} placeholder="Default: password" className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" />
-                  </label>
+                  {!isSellerRole ? (
+                    <label className="flex flex-col gap-2">
+                      <p className="text-sm font-bold text-slate-700">Temporary Password *</p>
+                      <input type="text" value={form.password} onChange={(event) => updateForm("password", event.target.value)} placeholder="Default: password" className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" />
+                    </label>
+                  ) : null}
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2">
