@@ -3,6 +3,7 @@ import { useEffect } from 'react'
 import WebsiteHeader from '../components/WebsiteHeader'
 import WebsiteFooter from '../components/WebsiteFooter'
 import MobileActionBar from '../components/MobileActionBar'
+import ScrollReveal from '../components/ScrollReveal'
 import { ProjectPreferencesProvider } from '../context/ProjectPreferencesContext'
 
 const WebsiteLayout = () => {
@@ -14,7 +15,8 @@ const WebsiteLayout = () => {
       <div className="website-shell min-h-screen bg-[#f8f6f0] text-[#302e29]">
         <a href="#main-content" className="sr-only z-[100] rounded-lg bg-white px-4 py-3 text-[#17130a] focus:not-sr-only focus:fixed focus:left-4 focus:top-4">Skip to main content</a>
         <WebsiteHeader />
-        <main id="main-content"><Outlet /></main>
+        <ScrollReveal />
+        <main id="main-content" key={location.pathname} className="website-page-enter"><Outlet /></main>
         <WebsiteFooter />
         <MobileActionBar />
       </div>

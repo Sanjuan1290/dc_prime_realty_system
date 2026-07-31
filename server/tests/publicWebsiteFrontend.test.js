@@ -133,3 +133,30 @@ test('public website includes search, save, sharing and background-video control
   assert.match(details, /markRecentlyViewed/);
   assert.match(blog, /Search buyer guides/);
 });
+
+
+test('public website avoids unsupported comparison icons and hides the portal entry point', () => {
+  const properties = read('client/src/website/pages/Properties.jsx');
+  const footer = read('client/src/website/components/WebsiteFooter.jsx');
+
+  assert.match(properties, /FiColumns/);
+  assert.doesNotMatch(properties, /FiGitCompare/);
+  assert.doesNotMatch(footer, /Authorized user portal/i);
+  assert.doesNotMatch(footer, /to="\/portal"/);
+});
+
+test('website pages include route transitions and scroll reveal animations', () => {
+  const layout = read('client/src/website/layouts/WebsiteLayout.jsx');
+  const reveal = read('client/src/website/components/ScrollReveal.jsx');
+  const css = read('client/src/website/styles/website.css');
+  const app = read('client/src/App.jsx');
+
+  assert.match(layout, /<ScrollReveal \/>/);
+  assert.match(layout, /website-page-enter/);
+  assert.match(reveal, /IntersectionObserver/);
+  assert.match(reveal, /website-scroll-reveal-visible/);
+  assert.match(css, /@keyframes website-page-enter/);
+  assert.match(css, /prefers-reduced-motion/);
+  assert.match(app, /import WebsitePrivacyPolicy from '\.\/website\/pages\/PrivacyPolicy'/);
+  assert.doesNotMatch(app, /const WebsitePrivacyPolicy = lazy/);
+});

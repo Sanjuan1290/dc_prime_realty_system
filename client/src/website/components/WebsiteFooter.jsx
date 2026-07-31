@@ -1,4 +1,4 @@
-import { FiFacebook, FiMail, FiMapPin, FiShield } from 'react-icons/fi'
+import { FiFacebook, FiMail, FiMapPin } from 'react-icons/fi'
 import { Link } from 'react-router-dom'
 import BrandLogo from './BrandLogo'
 import { company, flattenNavigation } from '../data/company'
@@ -40,7 +40,6 @@ const WebsiteFooter = () => (
           <Link to="/terms-of-use" className="text-[11px] text-[#9e9689] hover:text-white">Terms of Use</Link>
           <Link to="/disclaimer" className="text-[11px] text-[#9e9689] hover:text-white">Property Disclaimer</Link>
         </div>
-        <Link to="/portal" className="mt-6 inline-flex items-center gap-2 text-[11px] text-[#8f887b] hover:text-white"><FiShield /> Authorized user portal</Link>
       </div>
     </div>
     <div className="border-t border-white/10 px-5 py-4 text-center text-[11px] text-[#8f887b]">© 2026 D&amp;C Prime Realty. All rights reserved.</div>

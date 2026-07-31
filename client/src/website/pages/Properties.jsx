@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { FiFilter, FiGitCompare, FiX } from 'react-icons/fi'
+import { FiColumns, FiFilter, FiX } from 'react-icons/fi'
 import { useLocation } from 'react-router-dom'
 import PageHero from '../components/PageHero'
 import ProjectCard from '../components/ProjectCard'
@@ -68,7 +68,7 @@ const Properties = () => {
 
           <div className="mt-6 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
             <p className="flex items-center gap-2 text-[12px] text-[#6d6960]"><FiFilter /> Showing {filtered.length} of {projects.length} projects</p>
-            <button type="button" onClick={() => compareSlugs.length && setComparisonOpen(true)} disabled={!compareSlugs.length} className="website-button-light disabled:cursor-not-allowed disabled:opacity-50"><FiGitCompare /> Compare selected ({compareSlugs.length}/3)</button>
+            <button type="button" onClick={() => compareSlugs.length && setComparisonOpen(true)} disabled={!compareSlugs.length} className="website-button-light disabled:cursor-not-allowed disabled:opacity-50"><FiColumns /> Compare selected ({compareSlugs.length}/3)</button>
           </div>
 
           {compareSlugs.length === 3 ? <p className="mt-3 text-[11px] text-[#a66a16]">You can compare up to three projects. Remove one before selecting another.</p> : null}
