@@ -306,7 +306,7 @@ const mergeCancellationTrend = (projectReports = []) => {
 }
 
 const Dashboard = () => {
-  const [dateRange, setDateRange] = useState('3_months')
+  const [dateRange, setDateRange] = useState('this_month')
   const [fromDate, setFromDate] = useState(() => defaultDateRange().from)
   const [toDate, setToDate] = useState(() => defaultDateRange().to)
   const [approvedLongRangeKey, setApprovedLongRangeKey] = useState('')
