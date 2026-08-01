@@ -51,15 +51,46 @@ const EditGroupModal = ({ setShowEditGroupModal, selectedGroup, onSaved, groupTy
     seller_group_status: selectedGroup?.seller_group_status || 'active',
     project_rates: normalizeRates(selectedGroup?.project_rates || [], groupType),
     external_account: {
-      user_id: selectedGroup?.external_account_user_id || selectedGroup?.seller_group_external_account_user_id || '',
-      first_name: selectedGroup?.external_account_first_name || '',
-      middle_name: selectedGroup?.external_account_middle_name || '',
-      last_name: selectedGroup?.external_account_last_name || '',
-      email: selectedGroup?.external_account_email || '',
-      contact_no: selectedGroup?.external_account_contact_no || '',
-      tin_no: selectedGroup?.external_account_tin_no || '',
-      prc_no: selectedGroup?.external_account_prc_no || '',
-      address: selectedGroup?.external_account_address || '',
+      user_id:
+        selectedGroup?.external_account?.user_id ||
+        selectedGroup?.external_account_user_id ||
+        selectedGroup?.seller_group_external_account_user_id ||
+        '',
+      first_name:
+        selectedGroup?.external_account?.first_name ||
+        selectedGroup?.external_account_first_name ||
+        selectedGroup?.external_first_name ||
+        '',
+      middle_name:
+        selectedGroup?.external_account?.middle_name ||
+        selectedGroup?.external_account_middle_name ||
+        selectedGroup?.external_middle_name ||
+        '',
+      last_name:
+        selectedGroup?.external_account?.last_name ||
+        selectedGroup?.external_account_last_name ||
+        selectedGroup?.external_last_name ||
+        '',
+      email:
+        selectedGroup?.external_account?.email ||
+        selectedGroup?.external_account_email ||
+        '',
+      contact_no:
+        selectedGroup?.external_account?.contact_no ||
+        selectedGroup?.external_account_contact_no ||
+        '',
+      tin_no:
+        selectedGroup?.external_account?.tin_no ||
+        selectedGroup?.external_account_tin_no ||
+        '',
+      prc_no:
+        selectedGroup?.external_account?.prc_no ||
+        selectedGroup?.external_account_prc_no ||
+        '',
+      address:
+        selectedGroup?.external_account?.address ||
+        selectedGroup?.external_account_address ||
+        '',
     },
   })
 

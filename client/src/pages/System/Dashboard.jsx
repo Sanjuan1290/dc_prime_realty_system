@@ -114,7 +114,7 @@ const resolvePresetDateRange = (range, today = new Date()) => {
   }
 }
 
-const defaultDateRange = () => resolvePresetDateRange('3_months')
+const defaultDateRange = () => resolvePresetDateRange('this_month')
 
 const inclusiveDaySpan = (fromDate, toDate) => {
   const from = parseDateInput(fromDate)
