@@ -15,6 +15,8 @@ import SystemLayout from './layout/SystemLayout'
 import LotLayout from './layout/LotLayout'
 import ProtectedPermissionRoute from './components/Auth/ProtectedPermissionRoute'
 import RouteErrorPage from './components/Shared/RouteErrorPage'
+import Maintenance from './pages/System/Maintenance'
+import ServerDown from './pages/System/ServerDown'
 import { PERMISSIONS } from './config/permissions'
 import WebsiteLayout from './website/layouts/WebsiteLayout'
 import WebsiteSavedProjects from './website/pages/SavedProjects'
@@ -112,6 +114,9 @@ const App = () => {
           <Route path="disclaimer" element={<WebsiteDisclaimer />} />
           <Route path="*" element={<WebsiteNotFound />} />
         </Route>
+
+        <Route path="/maintenance" element={<Maintenance />} />
+        <Route path="/server-down" element={<ServerDown />} />
 
         <Route path="/portal" element={<Login />} />
         <Route path="/portal/login" element={<Navigate to="/portal" replace />} />
@@ -314,3 +319,4 @@ const App = () => {
 }
 
 export default App
+

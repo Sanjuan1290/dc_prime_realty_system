@@ -1,18 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { FiArrowLeft, FiKey, FiLock, FiMail, FiRefreshCw, FiShield, FiX } from 'react-icons/fi'
 import StatusAlert from '../components/Shared/StatusAlert'
+import { requestApi } from '../utils/apiClient'
 
-const apiRequest = async (path, payload) => {
-  const response = await fetch(`${import.meta.env.VITE_API_URL}/user${path}`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  })
-  const data = await response.json().catch(() => ({}))
-  if (!response.ok) throw new Error(data.message || 'Request failed.')
-  return data
-}
+const apiRequest = (path, payload) => requestApi(`/user${path}`, {
+  method: 'POST',
+  body: JSON.stringify(payload),
+})
 
 const StepIcon = ({ step }) => {
   const Icon = step === 'email' ? FiMail : step === 'code' ? FiShield : FiLock

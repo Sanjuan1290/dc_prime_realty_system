@@ -527,6 +527,7 @@ export const requestForgotPasswordCode = async (req, res) => {
         SELECT user_password_reset_code_id
         FROM user_password_reset_codes
         WHERE user_id = ?
+          AND status IN ('pending', 'verified')
           AND created_at >= DATE_SUB(NOW(), INTERVAL ? SECOND)
         ORDER BY user_password_reset_code_id DESC
         LIMIT 1
@@ -595,6 +596,11 @@ export const requestForgotPasswordCode = async (req, res) => {
         `UPDATE user_password_reset_codes SET status = 'expired', updated_at = NOW() WHERE user_password_reset_code_id = ?`,
         [resetCodeId]
       );
+      console.error('Password reset email failed:', {
+        name: emailError?.name,
+        message: emailError?.message,
+        statusCode: emailError?.statusCode,
+      });
       throw emailError;
     }
 
@@ -868,15 +874,34 @@ export const logout = async (req, res) => {
 };
 
 export const getMe = async (req, res) => {
+  const token = req.cookies?.token
+
+  if (!token) {
+    return res.status(401).json({
+      code: 'NOT_AUTHENTICATED',
+      message: 'Not authenticated',
+    })
+  }
+
+  let decoded
+
   try {
-    const token = req.cookies.token;
+    decoded = jwt.verify(token, process.env.JWT_SECRET)
+  } catch (error) {
+    console.warn('getMe JWT verification failed:', {
+      name: error.name,
+      message: error.message,
+    })
 
-    if (!token) {
-      return res.status(401).json({ message: 'Not authenticated' });
-    }
+    clearAuthCookie(res)
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    return res.status(401).json({
+      code: 'INVALID_SESSION',
+      message: 'Invalid or expired token',
+    })
+  }
 
+  try {
     const [rows] = await db.query(
       `
         SELECT
@@ -900,20 +925,55 @@ export const getMe = async (req, res) => {
         LIMIT 1
       `,
       [decoded.id]
-    );
+    )
 
-    const user = rows[0];
+    const user = rows[0]
 
-    if (!user) return res.status(404).json({ message: 'User not found' });
-    if (Number(decoded.authVersion ?? 0) !== Number(user.auth_version || 0)) {
-      return res.status(401).json({ message: 'Invalid or expired token' });
+    if (!user) {
+      clearAuthCookie(res)
+
+      return res.status(401).json({
+        code: 'USER_NOT_FOUND',
+        message: 'User account was not found',
+      })
     }
 
-    return res.json({ user, message: 'Successfully getMe :3' });
-  } catch {
-    return res.status(401).json({ message: 'Invalid or expired token' });
+    const tokenAuthVersion = Number(decoded.authVersion ?? 0)
+    const databaseAuthVersion = Number(user.auth_version || 0)
+
+    if (tokenAuthVersion !== databaseAuthVersion) {
+      console.warn('getMe auth version mismatch:', {
+        userId: user.id,
+        tokenAuthVersion,
+        databaseAuthVersion,
+      })
+
+      clearAuthCookie(res)
+
+      return res.status(401).json({
+        code: 'INVALID_SESSION',
+        message: 'Your session is no longer valid. Please sign in again.',
+      })
+    }
+
+    return res.json({
+      user,
+      message: 'Authenticated successfully',
+    })
+  } catch (error) {
+    console.error('getMe database failure:', {
+      code: error.code,
+      message: error.message,
+      sqlMessage: error.sqlMessage,
+    })
+
+    return res.status(503).json({
+      code: 'SERVER_UNAVAILABLE',
+      message: 'The server is temporarily unavailable.',
+    })
   }
-};
+}
+
 
 
 export const changePassword = async (req, res) => {

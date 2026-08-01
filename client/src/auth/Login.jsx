@@ -1,9 +1,10 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import useCurrentUser from '../utils/useCurrentUser'
 import StatusAlert from '../components/Shared/StatusAlert'
 import ForgotPasswordModal from './ForgotPasswordModal'
+import { requestApi } from '../utils/apiClient'
 
 const REMEMBERED_EMAIL_KEY = 'dc_prime_remembered_email'
 
@@ -26,20 +27,19 @@ const Login = () => {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const { data: currentUser, isLoading } = useCurrentUser()
+  const { data: systemStatus } = useQuery({
+    queryKey: ['public-system-status'],
+    queryFn: () => requestApi('/system-status'),
+    staleTime: 30_000,
+    retry: false,
+  })
 
   const signinMutation = useMutation({
     mutationKey: ['currentUser'],
-    mutationFn: async () => {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/user/login`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, rememberMe }),
-      })
-      const data = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(data.message || 'Request failed.')
-      return data
-    },
+    mutationFn: () => requestApi('/user/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password, rememberMe }),
+    }),
     onSuccess: (data) => {
       try {
         if (rememberMe) window.localStorage.setItem(REMEMBERED_EMAIL_KEY, email.trim())
@@ -48,8 +48,16 @@ const Login = () => {
         // The secure HTTP-only cookie still controls the authenticated session.
       }
 
-      queryClient.invalidateQueries({ queryKey: ['currentUser'] })
       const user = data?.user
+      queryClient.setQueryData(['currentUser'], { user })
+
+      if (systemStatus?.status === 'maintenance' && user?.role !== 'super_admin') {
+        navigate('/maintenance', {
+          replace: true,
+          state: { message: systemStatus.maintenanceMessage },
+        })
+        return
+      }
       if (user?.must_change_password) {
         navigate('/portal/change-password', { replace: true })
         return
@@ -63,6 +71,20 @@ const Login = () => {
       <main className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
         <StatusAlert type="loading" message="Checking your session..." />
       </main>
+    )
+  }
+
+  if (
+    systemStatus?.status === 'maintenance'
+    && currentUser?.user
+    && currentUser.user.role !== 'super_admin'
+  ) {
+    return (
+      <Navigate
+        to="/maintenance"
+        replace
+        state={{ message: systemStatus.maintenanceMessage }}
+      />
     )
   }
 
@@ -116,6 +138,12 @@ const Login = () => {
                 }}
                 className="flex flex-col justify-center p-6 sm:p-8 lg:p-10"
               >
+                {systemStatus?.status === 'maintenance' ? (
+                  <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold leading-6 text-amber-800">
+                    {systemStatus.maintenanceMessage || 'The system is under scheduled maintenance. Only the Super Admin can continue.'}
+                  </div>
+                ) : null}
+
                 <div className="mb-8 space-y-2">
                   <p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-700">Welcome back</p>
                   <h2 className="text-2xl font-bold text-slate-950 sm:text-3xl">Sign in</h2>
@@ -176,3 +204,4 @@ const Login = () => {
 }
 
 export default Login
+
