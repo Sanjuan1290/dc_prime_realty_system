@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
@@ -23,15 +24,21 @@ import employeeCashAdvancesRouter from './routers/System/employeeCashAdvances.ro
 import publicBuyerFormsRouter from './routers/publicBuyerForms.router.js';
 
 const app = express();
+app.disable('x-powered-by');
+
 const trustProxySetting = parseTrustProxySetting(process.env.TRUST_PROXY);
-if (trustProxySetting !== false) app.set('trust proxy', trustProxySetting);
+if (trustProxySetting !== false) {
+  app.set('trust proxy', trustProxySetting);
+}
+
+const normalizeOrigin = (value) => String(value || '').trim().replace(/\/$/, '');
 
 const allowedOrigins = new Set([
   'http://localhost:5173',
   'http://localhost:5174',
   ...(process.env.CORS_ORIGIN || '')
     .split(',')
-    .map((origin) => origin.trim())
+    .map(normalizeOrigin)
     .filter(Boolean),
 ]);
 
@@ -42,7 +49,9 @@ app.use(cookieParser());
 app.use(
   cors({
     origin(origin, callback) {
-      if (!origin || allowedOrigins.has(origin)) {
+      // Requests such as Render health checks and server-to-server calls may
+      // have no Origin header. Browser requests must match CORS_ORIGIN.
+      if (!origin || allowedOrigins.has(normalizeOrigin(origin))) {
         callback(null, true);
         return;
       }
@@ -53,11 +62,11 @@ app.use(
   })
 );
 
-app.get('/', (req, res) => {
-  res.json({ message: '✅ Server is running' });
+app.get('/', (_req, res) => {
+  res.json({ message: 'Server is running' });
 });
 
-app.get('/api/v1/health', (req, res) => {
+app.get('/api/v1/health', (_req, res) => {
   res.json({ status: 'success', message: 'API is healthy' });
 });
 
@@ -75,25 +84,35 @@ app.use('/api/v1/employees', employeesRouter);
 app.use('/api/v1/attendance', attendanceRouter);
 app.use('/api/v1/employee-cash-advances', employeeCashAdvancesRouter);
 
-app.use((err, req, res, next) => {
+app.use((err, _req, res, _next) => {
   console.error(err);
-  const isDatabaseError = String(err?.code || '').startsWith('ER_') || err?.sqlMessage || err?.sql;
-  res.status(500).json({ message: isDatabaseError ? 'Database operation failed. Please try again.' : err.message || 'Internal server error' });
+
+  const isDatabaseError =
+    String(err?.code || '').startsWith('ER_') ||
+    err?.sqlMessage ||
+    err?.sql;
+
+  res.status(500).json({
+    message: isDatabaseError
+      ? 'Database operation failed. Please try again.'
+      : err.message || 'Internal server error',
+  });
 });
 
-const PORT = process.env.PORT || 5001;
+const PORT = Number(process.env.PORT || 5001);
+const HOST = '0.0.0.0';
 
 const startServer = async () => {
   try {
     await db.query('SELECT 1');
-    console.log('✅ MySQL connected');
+    console.log('TiDB connected');
 
-    app.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
+    app.listen(PORT, HOST, () => {
+      console.log(`Server running on ${HOST}:${PORT}`);
       startDailyPenaltyJob();
     });
   } catch (error) {
-    console.error('❌ Failed to start server:', error.message);
+    console.error('Failed to start server:', error.message);
     process.exit(1);
   }
 };

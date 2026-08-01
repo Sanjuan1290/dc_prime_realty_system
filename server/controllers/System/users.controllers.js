@@ -1,6 +1,7 @@
 import { db } from '../../db/connect.js';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
+import { clearAuthCookie, getAuthCookieOptions } from '../../utils/authCookie.js';
 import { writeAuditLog } from './auditLogs.controller.js';
 import {
   canActorChangeUserRole,
@@ -424,14 +425,11 @@ export const login = async (req, res) => {
     { expiresIn: session.expiresInSeconds }
   );
 
-  const cookieOptions = {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    path: '/',
-  };
-  if (session.cookieMaxAge) cookieOptions.maxAge = session.cookieMaxAge;
-  res.cookie('token', token, cookieOptions);
+  res.cookie(
+    'token',
+    token,
+    getAuthCookieOptions({ maxAge: session.cookieMaxAge })
+  );
 
   await db.query(`UPDATE users SET last_login = NOW() WHERE id = ?`, [user.id]);
 
@@ -841,12 +839,7 @@ export const resetForgottenPassword = async (req, res) => {
     });
 
     await connection.commit();
-    res.clearCookie('token', {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/',
-    });
+    clearAuthCookie(res);
 
     return res.json({ message: 'Password reset successfully. Sign in with your new password.' });
   } catch (error) {
@@ -866,12 +859,7 @@ export const logout = async (req, res) => {
       description: 'User ended the current session.',
     });
 
-    res.clearCookie('token', {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/',
-    });
+    clearAuthCookie(res);
 
     return res.status(200).json({ message: 'Logged out successfully' });
   } catch {
