@@ -550,9 +550,6 @@ const ListingProfile = () => {
                   </div>
                 ) : null}
 
-              <p className="mt-1 text-xs font-semibold text-slate-400">
-                Database route id: {listingId || '-'}{readOnly && account?.accountReference ? ` • ${account.accountReference}` : ''}
-              </p>
             </div>
           </div>
 
