@@ -1060,9 +1060,23 @@ export const reserveLotProjectListing = async (req, res) => {
       unit_id: listing.lot_project_listing_unit_id,
       buyer_form_submission_id: buyerFormSubmissionId,
     });
-  } catch (error) {
-    try { await connection.rollback(); } catch {}
-    return res.status(error?.statusCode || 500).json({ message: getErrorMessage(error) });
+    } catch (error) {
+      try {
+        await connection.rollback();
+      } catch {}
+
+      console.error('Reserve listing failed:', {
+        message: error?.message,
+        code: error?.code,
+        errno: error?.errno,
+        sqlState: error?.sqlState,
+        sqlMessage: error?.sqlMessage,
+        sql: error?.sql,
+      });
+
+      return res.status(error?.statusCode || 500).json({
+        message: getErrorMessage(error),
+      });
   } finally {
     connection.release();
   }
