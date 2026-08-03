@@ -298,12 +298,12 @@ const PenaltySummaryCard = ({ paid, outstanding, isLoading = false }) => (
         <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Penalty Summary</p>
         <div className="mt-4 grid grid-cols-2 overflow-hidden rounded-2xl border border-red-100 bg-white/80">
           <div className="min-w-0 p-3">
-            <p className="text-[11px] font-black uppercase tracking-wide text-emerald-700">Paid Penalties</p>
-            <p className="mt-1 break-words text-xl font-black text-emerald-700">{isLoading ? '...' : money(paid)}</p>
+            <p className="text-[8px] font-black uppercase tracking-wide text-emerald-700">Paid Penalties</p>
+            <p className="mt-1 break-words text-[8px] font-black text-emerald-700">{isLoading ? '...' : money(paid)}</p>
           </div>
           <div className="min-w-0 border-l border-red-100 p-3">
-            <p className="text-[11px] font-black uppercase tracking-wide text-red-700">Outstanding Penalties</p>
-            <p className="mt-1 break-words text-xl font-black text-red-700">{isLoading ? '...' : money(outstanding)}</p>
+            <p className="text-[8px] font-black uppercase tracking-wide text-red-700">Outstanding Penalties</p>
+            <p className="mt-1 break-words text-[8px] font-black text-red-700">{isLoading ? '...' : money(outstanding)}</p>
           </div>
         </div>
         <p className="mt-2 text-xs font-semibold text-slate-500">For the selected reservation accounts.</p>
