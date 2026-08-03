@@ -33,15 +33,28 @@ test('reservation and editable due dates use Manila time with controlled histori
   assert.match(paymentController, /Historical First Due Date must be from/);
 });
 
-test('paid penalty remains accumulated and visible in SOA and dashboards', () => {
+test('paid and outstanding penalties remain available separately in SOA and dashboards', () => {
   const shared = read('server/controllers/Lot_Projects/_shared/lotProject.shared.js');
   const dashboard = read('server/controllers/Lot_Projects/Dashboard/Dashboard.controller.js');
   const soa = read('client/src/components/Lot_Projects/ListingProfileComponents/PaymentsSOA/Payments_SOA.jsx');
   const systemDashboard = read('client/src/pages/System/Dashboard.jsx');
+  const lotDashboard = read('client/src/pages/Lot_Projects/Dashboard.jsx');
 
   assert.match(shared, /event\.kind === 'payment'[\s\S]*addCalendarDays\(event\.date, 1\)/);
   assert.match(dashboard, /GREATEST\(s\.paid_penalty_amount, 0\) \+ GREATEST\(s\.penalty_amount - s\.paid_penalty_amount, 0\)/);
   assert.match(soa, /Paid \{money\(row\.paidPenaltyAmount\)\}/);
   assert.match(soa, /Outstanding \{money\(row\.outstandingPenaltyAmount\)\}/);
-  assert.match(systemDashboard, /Paid penalties \+ outstanding penalties/);
+
+  // Dashboard UI intentionally separates the two figures instead of showing a combined formula.
+  assert.match(systemDashboard, /Penalty Summary/);
+  assert.match(systemDashboard, /Paid Penalties/);
+  assert.match(systemDashboard, /Outstanding Penalties/);
+  assert.match(systemDashboard, /summary\.penaltyPaid/);
+  assert.match(systemDashboard, /summary\.penaltyOutstanding/);
+
+  assert.match(lotDashboard, /Penalty Summary/);
+  assert.match(lotDashboard, /Paid Penalties/);
+  assert.match(lotDashboard, /Outstanding Penalties/);
+  assert.match(lotDashboard, /stats\.totalPenaltyPaid/);
+  assert.match(lotDashboard, /stats\.totalPenaltyOutstanding/);
 });

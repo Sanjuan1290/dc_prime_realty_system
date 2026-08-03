@@ -56,7 +56,7 @@ test('Lot Project Business Snapshot matches the System Dashboard metric definiti
   for (const label of [
     'Total Gross Sales',
     'Cash Collected',
-    'Penalty Accumulated',
+    'Penalty Summary',
     'Cash Collectibles − Discount',
     'Total Number of Reservations',
     'Total Net Sales',

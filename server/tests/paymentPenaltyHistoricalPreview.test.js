@@ -2,13 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-const read = (path) => readFileSync(path, 'utf8');
+const read = (url) => readFileSync(url, 'utf8');
 
-const controller = read('server/controllers/Lot_Projects/ListingProfile/PaymentsSOA.controller.js');
-const shared = read('server/controllers/Lot_Projects/_shared/lotProject.shared.js');
-const router = read('server/routers/System/projects.routers.js');
-const modal = read('client/src/components/Lot_Projects/ListingProfileComponents/PaymentsSOA/AddSOAPaymentModal.jsx');
-const payments = read('client/src/components/Lot_Projects/ListingProfileComponents/PaymentsSOA/Payments_SOA.jsx');
+const controller = read(new URL('../controllers/Lot_Projects/ListingProfile/PaymentsSOA.controller.js', import.meta.url));
+const shared = read(new URL('../controllers/Lot_Projects/_shared/lotProject.shared.js', import.meta.url));
+const router = read(new URL('../routers/System/projects.routers.js', import.meta.url));
+const modal = read(new URL('../../client/src/components/Lot_Projects/ListingProfileComponents/PaymentsSOA/AddSOAPaymentModal.jsx', import.meta.url));
+const payments = read(new URL('../../client/src/components/Lot_Projects/ListingProfileComponents/PaymentsSOA/Payments_SOA.jsx', import.meta.url));
 
 test('payment preview route calculates using selected payment date', () => {
   assert.match(router, /payments\/preview/);

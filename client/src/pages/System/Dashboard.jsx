@@ -213,6 +213,30 @@ const MetricCard = ({ label, value, formula, helper, icon: Icon, tone = 'blue' }
   )
 }
 
+const PenaltySummaryCard = ({ paid, outstanding, isLoading = false }) => (
+  <div className="rounded-3xl border border-red-100 bg-red-50 p-5 shadow-sm">
+    <div className="flex items-start justify-between gap-4">
+      <div className="min-w-0 flex-1">
+        <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Penalty Summary</p>
+        <div className="mt-4 grid grid-cols-2 overflow-hidden rounded-2xl border border-red-100 bg-white/80">
+          <div className="min-w-0 p-3">
+            <p className="text-[11px] font-black uppercase tracking-wide text-emerald-700">Paid Penalties</p>
+            <p className="mt-1 break-words text-xl font-black text-emerald-700">{isLoading ? '...' : money(paid)}</p>
+          </div>
+          <div className="min-w-0 border-l border-red-100 p-3">
+            <p className="text-[11px] font-black uppercase tracking-wide text-red-700">Outstanding Penalties</p>
+            <p className="mt-1 break-words text-xl font-black text-red-700">{isLoading ? '...' : money(outstanding)}</p>
+          </div>
+        </div>
+        <p className="mt-2 text-xs font-semibold text-slate-500">For the selected reservation accounts.</p>
+      </div>
+      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/80 text-red-700 shadow-sm">
+        <FiAlertTriangle className="h-5 w-5" />
+      </div>
+    </div>
+  </div>
+)
+
 const DateRangeFilter = ({
   range,
   onRangeChange,
@@ -601,7 +625,7 @@ const Dashboard = () => {
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
         <MetricCard label="Total Gross Sales" value={isLoading ? '...' : money(summary.totalGrossSales)} formula="Cash Collected + Gross Cash Collectibles" helper="Active and pending-cancellation reservation contracts in the selected range." icon={FiTrendingUp} tone="blue" />
         <MetricCard label="Cash Collected" value={isLoading ? '...' : money(summary.cashCollected)} formula="Verified payments from current buyer accounts" helper="Includes active and pending-cancellation accounts only. Finalized cancelled-account cash stays in the cancellation totals." icon={FiActivity} tone="green" />
-        <MetricCard label="Penalty Accumulated" value={isLoading ? '...' : money(summary.penaltyAccumulated)} formula="Paid penalties + outstanding penalties after approved waivers" helper={`Paid ${money(summary.penaltyPaid)} · Outstanding ${money(summary.penaltyOutstanding)} for the selected reservation accounts.`} icon={FiAlertTriangle} tone="red" />
+        <PenaltySummaryCard paid={summary.penaltyPaid} outstanding={summary.penaltyOutstanding} isLoading={isLoading} />
         <MetricCard label="Cash Collectibles − Discount" value={isLoading ? '...' : money(summary.netCashCollectibles)} formula="Gross Cash Collectibles − Discount Applied" helper={`${money(summary.grossCashCollectibles)} gross collectibles less ${money(summary.discountApplied)} discount.`} icon={FiGrid} tone="amber" />
         <MetricCard label="Total Number of Reservations" value={isLoading ? '...' : number(summary.reservationCount)} formula="Reservation-history records created in range" helper="Includes active, pending, and later-cancelled reservation events." icon={FiUsers} tone="indigo" />
         <MetricCard label="Total Net Sales" value={isLoading ? '...' : money(summary.totalNetSales)} formula="Total Gross Sales − Discount Applied" helper="Finalized cancellations are reported separately." icon={FiLayers} tone="slate" />

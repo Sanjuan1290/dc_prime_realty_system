@@ -291,6 +291,30 @@ const MetricCard = ({ label, value, formula, helper, tone = 'slate', icon: Icon 
   )
 }
 
+const PenaltySummaryCard = ({ paid, outstanding, isLoading = false }) => (
+  <div className="rounded-3xl border border-red-100 bg-red-50 p-5 shadow-sm">
+    <div className="flex items-start justify-between gap-4">
+      <div className="min-w-0 flex-1">
+        <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">Penalty Summary</p>
+        <div className="mt-4 grid grid-cols-2 overflow-hidden rounded-2xl border border-red-100 bg-white/80">
+          <div className="min-w-0 p-3">
+            <p className="text-[11px] font-black uppercase tracking-wide text-emerald-700">Paid Penalties</p>
+            <p className="mt-1 break-words text-xl font-black text-emerald-700">{isLoading ? '...' : money(paid)}</p>
+          </div>
+          <div className="min-w-0 border-l border-red-100 p-3">
+            <p className="text-[11px] font-black uppercase tracking-wide text-red-700">Outstanding Penalties</p>
+            <p className="mt-1 break-words text-xl font-black text-red-700">{isLoading ? '...' : money(outstanding)}</p>
+          </div>
+        </div>
+        <p className="mt-2 text-xs font-semibold text-slate-500">For the selected reservation accounts.</p>
+      </div>
+      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/80 text-red-700 shadow-sm">
+        <FiAlertTriangle className="h-5 w-5" />
+      </div>
+    </div>
+  </div>
+)
+
 const SectionHeader = ({ title, description }) => (
   <div>
     <h2 className="text-lg font-black text-slate-950">{title}</h2>
@@ -546,7 +570,6 @@ const Dashboard = () => {
   const primarySnapshotStats = [
     { label: 'Total Gross Sales', value: isLoading ? '...' : money(stats.totalGrossSales ?? stats.totalSales), formula: 'Cash Collected + Gross Cash Collectibles', helper: 'Active and pending-cancellation reservation contracts in the selected range.', tone: 'blue', icon: FiTrendingUp },
     { label: 'Cash Collected', value: isLoading ? '...' : money(stats.totalCashCollected ?? stats.totalCollected), formula: 'Verified payments from current buyer accounts', helper: 'Includes active and pending-cancellation accounts only. Finalized cancelled-account cash stays in the cancellation totals.', tone: 'green', icon: FiActivity },
-    { label: 'Penalty Accumulated', value: isLoading ? '...' : money(stats.totalPenaltyAccumulated), formula: 'Paid penalties + outstanding penalties after approved waivers', helper: `Paid ${money(stats.totalPenaltyPaid)} · Outstanding ${money(stats.totalPenaltyOutstanding)} for the selected reservation accounts.`, tone: 'red', icon: FiAlertTriangle },
     { label: 'Cash Collectibles − Discount', value: isLoading ? '...' : money(stats.netCashCollectibles), formula: 'Gross Cash Collectibles − Discount Applied', helper: `${money(stats.grossCashCollectibles ?? stats.cashCollectibles)} gross collectibles less ${money(stats.discountApplied)} discount.`, tone: 'amber', icon: FiGrid },
     { label: 'Total Number of Reservations', value: isLoading ? '...' : number(stats.reservationCount), formula: 'Reservation-history records created in range', helper: 'Includes active, pending, and later-cancelled reservation events.', tone: 'indigo', icon: FiUsers },
     { label: 'Total Net Sales', value: isLoading ? '...' : money(stats.totalNetSales), formula: 'Total Gross Sales − Discount Applied', helper: 'Finalized cancellations are reported separately.', tone: 'slate', icon: FiLayers },
@@ -627,7 +650,9 @@ const Dashboard = () => {
         </div>
 
         <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
-          {primarySnapshotStats.map((item) => <MetricCard key={item.label} {...item} />)}
+          {primarySnapshotStats.slice(0, 2).map((item) => <MetricCard key={item.label} {...item} />)}
+          <PenaltySummaryCard paid={stats.totalPenaltyPaid} outstanding={stats.totalPenaltyOutstanding} isLoading={isLoading} />
+          {primarySnapshotStats.slice(2).map((item) => <MetricCard key={item.label} {...item} />)}
         </div>
 
         <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
