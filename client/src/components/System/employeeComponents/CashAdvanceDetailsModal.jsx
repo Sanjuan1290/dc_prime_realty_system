@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FiDollarSign, FiX } from 'react-icons/fi'
 import StatusAlert from '../../Shared/StatusAlert'
@@ -7,6 +8,7 @@ const money = (value) => new Intl.NumberFormat('en-PH', { style: 'currency', cur
 
 const CashAdvanceDetailsModal = ({ advanceId, canManage, onClose, onUpdated }) => {
   const queryClient = useQueryClient()
+  const lastDeductionRequestRef = useRef(null)
   const query = useQuery({ queryKey: ['employee-cash-advance', advanceId], queryFn: () => useFetch(`/employee-cash-advances/${advanceId}`), enabled: Boolean(advanceId) })
   const data = query.data?.data
   const statusMutation = useMutation({
@@ -14,8 +16,8 @@ const CashAdvanceDetailsModal = ({ advanceId, canManage, onClose, onUpdated }) =
     onSuccess: (result) => { queryClient.invalidateQueries({ queryKey: ['employee-cash-advances'] }); queryClient.invalidateQueries({ queryKey: ['employee-cash-advance', advanceId] }); onUpdated?.(result?.message || 'Cash advance updated.') },
   })
   const deductionMutation = useMutation({
-    mutationFn: ({ amount, date }) => useFetchPost(`/employee-cash-advances/${advanceId}/deductions`, { amount, deduction_date: date, notes: 'Manual salary deduction' }),
-    onSuccess: (result) => { queryClient.invalidateQueries({ queryKey: ['employee-cash-advances'] }); queryClient.invalidateQueries({ queryKey: ['employee-cash-advance', advanceId] }); onUpdated?.(result?.message || 'Deduction recorded.') },
+    mutationFn: ({ amount, date, requestKey }) => useFetchPost(`/employee-cash-advances/${advanceId}/deductions`, { amount, deduction_date: date, notes: 'Manual salary deduction', requestKey }),
+    onSuccess: (result) => { lastDeductionRequestRef.current = null; queryClient.invalidateQueries({ queryKey: ['employee-cash-advances'] }); queryClient.invalidateQueries({ queryKey: ['employee-cash-advance', advanceId] }); onUpdated?.(result?.message || 'Deduction recorded.') },
   })
   const act = (action, label) => { if (window.confirm(`${label} ${data?.reference_number}?`)) statusMutation.mutate(action) }
   const manualDeduction = () => {
@@ -23,7 +25,13 @@ const CashAdvanceDetailsModal = ({ advanceId, canManage, onClose, onUpdated }) =
     if (!amount) return
     const date = window.prompt('Deduction date (YYYY-MM-DD)', new Date().toISOString().slice(0, 10))
     if (!date) return
-    deductionMutation.mutate({ amount: Number(amount), date })
+    const numericAmount = Number(amount)
+    const previous = lastDeductionRequestRef.current
+    const requestKey = previous?.amount === numericAmount && previous?.date === date
+      ? previous.requestKey
+      : (globalThis.crypto?.randomUUID?.() || `deduction-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+    lastDeductionRequestRef.current = { amount: numericAmount, date, requestKey }
+    deductionMutation.mutate({ amount: numericAmount, date, requestKey })
   }
 
   return <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm"><div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">

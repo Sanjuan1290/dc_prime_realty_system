@@ -1178,14 +1178,38 @@ export const updateLotProjectListing = async (req, res) => {
         );
       }
 
+      const hasPaymentAccountId = await columnExists(connection, 'lot_project_payments', 'lot_project_account_id');
+      const paymentAccountId = Number(currentAccount?.lot_project_account_id || 0);
+      const paymentScopeSql = hasPaymentAccountId && paymentAccountId
+        ? 'lot_project_account_id = ?'
+        : 'lot_project_client_profile_id = ?';
+      const paymentScopeValue = hasPaymentAccountId && paymentAccountId
+        ? paymentAccountId
+        : currentClientProfileId;
+
+      // Batch 1 payment writes lock the listing/account before changing money.
+      // Lock the same verified payment rows here so cancellation always settles
+      // against one stable collection total.
+      await connection.query(
+        `
+          SELECT lot_project_payment_id
+          FROM lot_project_payments
+          WHERE ${paymentScopeSql}
+            AND lot_project_payment_status = 'Verified'
+          ORDER BY lot_project_payment_id
+          FOR UPDATE
+        `,
+        [paymentScopeValue]
+      );
+
       const [cashRows] = await connection.query(
         `
           SELECT COALESCE(SUM(lot_project_payment_amount), 0) AS cash_collected
           FROM lot_project_payments
-          WHERE lot_project_client_profile_id = ?
+          WHERE ${paymentScopeSql}
             AND lot_project_payment_status = 'Verified'
         `,
-        [currentClientProfileId]
+        [paymentScopeValue]
       );
 
       cancellationSettlement = calculateCancellationSettlement({
@@ -1390,6 +1414,25 @@ export const updateLotProjectListing = async (req, res) => {
           cancellationSettlement.refundAmount + cancellationSettlement.discontinuedAmount
         );
         const cancellationReason = toNullable(req.body.cancellationReason || req.body.cancellation_reason);
+        const hasHistoryAccountId = await columnExists(connection, 'lot_project_reservation_history', 'lot_project_account_id');
+        const historyScopeSql = hasHistoryAccountId && currentAccount?.lot_project_account_id
+          ? 'lot_project_account_id = ?'
+          : 'lot_project_client_profile_id = ?';
+        const historyScopeValue = hasHistoryAccountId && currentAccount?.lot_project_account_id
+          ? currentAccount.lot_project_account_id
+          : currentClientProfileId;
+        const [settlementHistoryRows] = await connection.query(
+          `
+            SELECT lot_project_reservation_history_id, reservation_status
+            FROM lot_project_reservation_history
+            WHERE ${historyScopeSql}
+            ORDER BY lot_project_reservation_history_id DESC
+            LIMIT 1
+            FOR UPDATE
+          `,
+          [historyScopeValue]
+        );
+        const settlementHistory = settlementHistoryRows[0] || null;
 
         const [releasedCommissionRows] = await connection.query(
           `
@@ -1406,45 +1449,55 @@ export const updateLotProjectListing = async (req, res) => {
           releasedCommissionRows[0]?.released_commission || 0
         );
 
-        const [historyResult] = await connection.query(
-          `
-            UPDATE lot_project_reservation_history
-            SET reservation_status = 'cancelled',
-                cancelled_at = NOW(),
-                cancellation_type = ?,
-                cancellation_refund_type = ?,
-                cancellation_reason = ?,
-                cancelled_value = ?,
-                cash_collected_at_cancellation = ?,
-                refund_amount = ?,
-                discontinued_amount = ?,
-                refund_date = ?,
-                refund_reference = ?,
-                cancellation_settlement_notes = ?,
-                released_commission_amount_at_cancellation = ?,
-                cancelled_by_user_id = ?,
-                updated_at = NOW()
-            WHERE lot_project_client_profile_id = ?
-              AND reservation_status IN ('pending_for_cancellation', 'active')
-            ORDER BY lot_project_reservation_history_id DESC
-            LIMIT 1
-          `,
-          [
-            cancellationSettlement.legacyCancellationType,
-            cancellationSettlement.refundType,
-            cancellationReason,
-            cancelledValue,
-            cashCollectedAtCancellation,
-            cancellationSettlement.refundAmount,
-            cancellationSettlement.discontinuedAmount,
-            cancellationSettlement.refundDate,
-            cancellationSettlement.refundReference,
-            cancellationSettlement.settlementNotes,
-            releasedCommissionAmount,
-            req.authUser?.id || null,
-            currentClientProfileId,
-          ]
-        );
+        let historyResult = { affectedRows: 0 };
+        if (settlementHistory) {
+          if (!['pending_for_cancellation', 'active'].includes(settlementHistory.reservation_status)) {
+            throw Object.assign(new Error('This cancellation settlement has already been completed.'), { statusCode: 409 });
+          }
+
+          [historyResult] = await connection.query(
+            `
+              UPDATE lot_project_reservation_history
+              SET reservation_status = 'cancelled',
+                  cancelled_at = NOW(),
+                  cancellation_type = ?,
+                  cancellation_refund_type = ?,
+                  cancellation_reason = ?,
+                  cancelled_value = ?,
+                  cash_collected_at_cancellation = ?,
+                  refund_amount = ?,
+                  discontinued_amount = ?,
+                  refund_date = ?,
+                  refund_reference = ?,
+                  cancellation_settlement_notes = ?,
+                  released_commission_amount_at_cancellation = ?,
+                  cancelled_by_user_id = ?,
+                  updated_at = NOW()
+              WHERE lot_project_reservation_history_id = ?
+                AND reservation_status = ?
+            `,
+            [
+              cancellationSettlement.legacyCancellationType,
+              cancellationSettlement.refundType,
+              cancellationReason,
+              cancelledValue,
+              cashCollectedAtCancellation,
+              cancellationSettlement.refundAmount,
+              cancellationSettlement.discontinuedAmount,
+              cancellationSettlement.refundDate,
+              cancellationSettlement.refundReference,
+              cancellationSettlement.settlementNotes,
+              releasedCommissionAmount,
+              req.authUser?.id || null,
+              settlementHistory.lot_project_reservation_history_id,
+              settlementHistory.reservation_status,
+            ]
+          );
+
+          if (historyResult.affectedRows !== 1) {
+            throw Object.assign(new Error('Cancellation history changed while settlement was being saved. Please retry.'), { statusCode: 409 });
+          }
+        }
 
         if (historyResult.affectedRows === 0) {
           const [profileRows] = await connection.query(
@@ -1548,7 +1601,7 @@ export const updateLotProjectListing = async (req, res) => {
         });
 
         if (currentAccount?.lot_project_account_id) {
-          await connection.query(
+          const [accountUpdate] = await connection.query(
             `
               UPDATE lot_project_accounts
               SET account_status = 'cancelled',
@@ -1562,6 +1615,7 @@ export const updateLotProjectListing = async (req, res) => {
                   settlement_notes = ?,
                   updated_at = NOW()
               WHERE lot_project_account_id = ?
+                AND account_status IN ('active', 'pending_cancellation')
             `,
             [
               cashCollectedAtCancellation,
@@ -1574,6 +1628,9 @@ export const updateLotProjectListing = async (req, res) => {
               currentAccount.lot_project_account_id,
             ]
           );
+          if (accountUpdate.affectedRows !== 1) {
+            throw Object.assign(new Error('Buyer account changed while cancellation was being settled. Please retry.'), { statusCode: 409 });
+          }
         }
       }
     }

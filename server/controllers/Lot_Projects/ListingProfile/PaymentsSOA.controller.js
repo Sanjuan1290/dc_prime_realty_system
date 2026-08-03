@@ -211,17 +211,41 @@ const shiftDateYears = (value, years = 0) => {
   return new Date(Date.UTC(year + Number(years || 0), month - 1, day)).toISOString().slice(0, 10);
 };
 
-const getPenaltyReliefContext = async (connection, project, listing, scheduleId, asOfDate = todayDateOnly()) => {
+const getPenaltyReliefContext = async (connection, project, listing, scheduleId, asOfDate = todayDateOnly(), { forUpdate = false } = {}) => {
   if (!(await tableExists(connection, 'lot_project_penalty_reliefs'))) {
     throw createHttpError(500, 'Penalty relief table is missing. Run server/migrations/20260711_add_daily_penalty_reliefs.sql first.');
   }
 
+  if (forUpdate) {
+    // Use the same parent lock order as payment mutations so a payment,
+    // cancellation, waiver, correction, or extension cannot mutate one buyer
+    // account from different financial paths at the same time.
+    const [listingLockRows] = await connection.query(
+      `
+        SELECT lot_project_listing_id
+        FROM lot_project_listings
+        WHERE lot_project_id = ?
+          AND lot_project_listing_id = ?
+        LIMIT 1
+        FOR UPDATE
+      `,
+      [project.lot_project_id, listing.lot_project_listing_id]
+    );
+    if (!listingLockRows[0]) throw createHttpError(404, 'Listing not found.');
+
+    await lockPaymentAccountForListing(connection, listing);
+  }
+
   const [profileRows] = await connection.query(
-    `SELECT * FROM lot_project_client_profiles WHERE lot_project_client_profile_id = ? LIMIT 1`,
+    `SELECT * FROM lot_project_client_profiles WHERE lot_project_client_profile_id = ? LIMIT 1 ${forUpdate ? 'FOR UPDATE' : ''}`,
     [listing.lot_project_client_profile_id]
   );
   const clientProfile = { ...(listing || {}), ...(profileRows[0] || {}) };
   if (!profileRows[0]) throw createHttpError(404, 'Buyer payment terms were not found.');
+
+  if (forUpdate) {
+    await lockPaymentSchedulesForListing(connection, listing);
+  }
 
   const [scheduleRows] = await connection.query(
     `
@@ -232,11 +256,27 @@ const getPenaltyReliefContext = async (connection, project, listing, scheduleId,
         AND lot_project_listing_id = ?
         AND lot_project_client_profile_id = ?
       LIMIT 1
+      ${forUpdate ? 'FOR UPDATE' : ''}
     `,
     [scheduleId, project.lot_project_id, listing.lot_project_listing_id, listing.lot_project_client_profile_id]
   );
   const schedule = scheduleRows[0];
   if (!schedule) throw createHttpError(404, 'SOA row was not found.');
+
+  if (forUpdate) {
+    // All penalty-relief mutations serialize through the SOA row, then lock
+    // existing relief rows in a stable order before recomputing the snapshot.
+    await connection.query(
+      `
+        SELECT penalty_relief_id
+        FROM lot_project_penalty_reliefs
+        WHERE lot_project_payment_schedule_id = ?
+        ORDER BY penalty_relief_id
+        FOR UPDATE
+      `,
+      [scheduleId]
+    );
+  }
 
   const snapshots = await getListingPenaltySnapshots(
     connection,
@@ -1387,12 +1427,14 @@ export const grantPaymentSchedulePenaltyExtension = async (req, res) => {
     const listing = await getListingForPayment(connection, project, listingLookup);
     if (!listing) throw createHttpError(404, 'Listing not found.');
 
+    await connection.beginTransaction();
     const { schedule, snapshot } = await getPenaltyReliefContext(
       connection,
       project,
       listing,
       scheduleId,
-      today
+      today,
+      { forUpdate: true }
     );
 
     const scheduleDueDate = dateOrNull(schedule.due_date);
@@ -1405,7 +1447,6 @@ export const grantPaymentSchedulePenaltyExtension = async (req, res) => {
     if (snapshot.unpaidBaseAmount <= 0.009) {
       throw createHttpError(400, 'This SOA row has no unpaid installment balance.');
     }
-    await connection.beginTransaction();
 
     const [result] = await connection.query(
       `
@@ -1499,18 +1540,19 @@ export const updatePaymentSchedulePenaltyExtension = async (req, res) => {
     const listing = await getListingForPayment(connection, project, listingLookup);
     if (!listing) throw createHttpError(404, 'Listing not found.');
 
+    await connection.beginTransaction();
     const { schedule, snapshot } = await getPenaltyReliefContext(
       connection,
       project,
       listing,
       scheduleId,
-      today
+      today,
+      { forUpdate: true }
     );
     if (snapshot.activeExtension?.status !== 'active' || Number(snapshot.activeExtension.penaltyReliefId) !== reliefId) {
       throw createHttpError(400, 'Only the current active penalty-free extension can be edited.');
     }
 
-    await connection.beginTransaction();
     const [result] = await connection.query(
       `
         UPDATE lot_project_penalty_reliefs
@@ -1589,17 +1631,17 @@ export const correctPaymentSchedulePenalty = async (req, res) => {
     if (!listing) throw createHttpError(404, 'Listing not found.');
 
     const today = todayDateOnly();
-    await refreshListingPenaltyCache(connection, listing, today);
+    await connection.beginTransaction();
     const { schedule, snapshot } = await getPenaltyReliefContext(
       connection,
       project,
       listing,
       scheduleId,
-      today
+      today,
+      { forUpdate: true }
     );
     const correctedAmount = roundMoneyValue(snapshot.calculatedPenaltyAmount || 0);
 
-    await connection.beginTransaction();
     const [result] = await connection.query(
       `
         INSERT INTO lot_project_penalty_reliefs (
@@ -1686,13 +1728,14 @@ export const waivePaymentSchedulePenalty = async (req, res) => {
     const listing = await getListingForPayment(connection, project, listingLookup);
     if (!listing) throw createHttpError(404, 'Listing not found.');
 
-    await refreshListingPenaltyCache(connection, listing, todayDateOnly());
+    await connection.beginTransaction();
     const { schedule, snapshot } = await getPenaltyReliefContext(
       connection,
       project,
       listing,
       scheduleId,
-      todayDateOnly()
+      todayDateOnly(),
+      { forUpdate: true }
     );
 
     const outstandingPenalty = roundMoneyValue(snapshot.outstandingPenaltyAmount || 0);
@@ -1710,8 +1753,6 @@ export const waivePaymentSchedulePenalty = async (req, res) => {
     if (requestedAmount > outstandingPenalty + 0.009) {
       throw createHttpError(400, 'Waiver amount cannot exceed the outstanding penalty.');
     }
-
-    await connection.beginTransaction();
 
     const [result] = await connection.query(
       `
@@ -1801,9 +1842,11 @@ export const restorePaymentSchedulePenaltyWaiver = async (req, res) => {
       throw createHttpError(500, 'Penalty relief table is missing. Run the penalty relief migration first.');
     }
 
-    const [reliefRows] = await connection.query(
+    // Read only the immutable schedule key before the transaction. All business
+    // validation is repeated under the schedule + relief-row locks below.
+    const [targetRows] = await connection.query(
       `
-        SELECT *
+        SELECT lot_project_payment_schedule_id
         FROM lot_project_penalty_reliefs
         WHERE penalty_relief_id = ?
           AND lot_project_id = ?
@@ -1819,6 +1862,45 @@ export const restorePaymentSchedulePenaltyWaiver = async (req, res) => {
         listing.lot_project_listing_id,
         listing.lot_project_client_profile_id,
         listing.lot_project_account_id,
+      ]
+    );
+    const scheduleId = Number(targetRows[0]?.lot_project_payment_schedule_id || 0);
+    if (!scheduleId) throw createHttpError(404, 'Penalty relief record was not found.');
+
+    await connection.beginTransaction();
+
+    // Keep the same lock order as every other penalty-relief mutation:
+    // buyer profile -> SOA schedule -> all relief rows for that schedule.
+    await getPenaltyReliefContext(
+      connection,
+      project,
+      listing,
+      scheduleId,
+      todayDateOnly(),
+      { forUpdate: true }
+    );
+
+    const [reliefRows] = await connection.query(
+      `
+        SELECT *
+        FROM lot_project_penalty_reliefs
+        WHERE penalty_relief_id = ?
+          AND lot_project_id = ?
+          AND lot_project_listing_id = ?
+          AND lot_project_client_profile_id = ?
+          AND lot_project_account_id = ?
+          AND lot_project_payment_schedule_id = ?
+          AND relief_type IN ('full_waiver', 'partial_waiver', 'penalty_correction')
+        LIMIT 1
+        FOR UPDATE
+      `,
+      [
+        reliefId,
+        project.lot_project_id,
+        listing.lot_project_listing_id,
+        listing.lot_project_client_profile_id,
+        listing.lot_project_account_id,
+        scheduleId,
       ]
     );
     const relief = reliefRows[0];
@@ -1860,8 +1942,6 @@ export const restorePaymentSchedulePenaltyWaiver = async (req, res) => {
       throw createHttpError(400, 'Restore amount must be greater than 0 and cannot exceed the remaining waived amount.');
     }
 
-    await connection.beginTransaction();
-
     const [result] = await connection.query(
       `
         INSERT INTO lot_project_penalty_reliefs (
@@ -1884,7 +1964,7 @@ export const restorePaymentSchedulePenaltyWaiver = async (req, res) => {
         listing.lot_project_listing_id,
         listing.lot_project_client_profile_id,
         listing.lot_project_account_id,
-        relief.lot_project_payment_schedule_id,
+        scheduleId,
         roundMoneyValue(requestedAmount),
         reliefId,
         reason,
@@ -1895,10 +1975,18 @@ export const restorePaymentSchedulePenaltyWaiver = async (req, res) => {
 
     const totalRestored = roundMoneyValue(alreadyRestored + requestedAmount);
     if (isCorrection || totalRestored + 0.009 >= Number(relief.relief_amount || 0)) {
-      await connection.query(
-        `UPDATE lot_project_penalty_reliefs SET status = 'restored' WHERE penalty_relief_id = ?`,
+      const [restoreResult] = await connection.query(
+        `
+          UPDATE lot_project_penalty_reliefs
+          SET status = 'restored'
+          WHERE penalty_relief_id = ?
+            AND status <> 'cancelled'
+        `,
         [reliefId]
       );
+      if (restoreResult.affectedRows !== 1) {
+        throw createHttpError(409, 'The penalty relief changed while it was being restored. Please refresh and try again.');
+      }
     }
 
     await refreshListingPenaltyCache(connection, listing, todayDateOnly());
@@ -1916,7 +2004,7 @@ export const restorePaymentSchedulePenaltyWaiver = async (req, res) => {
         : `Restored ${money(requestedAmount)} from penalty waiver #${reliefId}.`,
       metadata: {
         listingId: listing.lot_project_listing_id,
-        scheduleId: relief.lot_project_payment_schedule_id,
+        scheduleId,
         reliefId,
         restorationId: result.insertId,
         amount: roundMoneyValue(requestedAmount),

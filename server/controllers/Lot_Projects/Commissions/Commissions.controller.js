@@ -814,6 +814,26 @@ export const updateLotProjectCommission = async (req, res) => {
 
       await connection.beginTransaction();
 
+      // Serialize every stage mutation through the parent commission row first.
+      // This prevents two different release stages from racing while both
+      // recompute released/remaining totals on the same commission.
+      const [commissionLockRows] = await connection.query(
+        `
+          SELECT lot_project_commission_id
+          FROM lot_project_commissions
+          WHERE lot_project_commission_id = ?
+            AND lot_project_id = ?
+          LIMIT 1
+          FOR UPDATE
+        `,
+        [commissionId, project.lot_project_id]
+      );
+
+      if (!commissionLockRows[0]) {
+        await connection.rollback();
+        return res.status(404).json({ success: false, message: 'Commission record not found.' });
+      }
+
       const [releaseRows] = await connection.query(
         `
           SELECT
@@ -864,6 +884,19 @@ export const updateLotProjectCommission = async (req, res) => {
       let actualReleaseDate = release.actual_release_date;
 
       if (action === 'release_stage') {
+        // A network retry after a successful commit must not create another
+        // financial event or duplicate audit entry. Return the committed state.
+        if (computedStatus === 'Released') {
+          const data = await recomputeCommissionFromReleases(connection, commissionId, project.lot_project_id);
+          await connection.commit();
+          return res.json({
+            success: true,
+            message: `${release.release_stage} was already released.`,
+            data,
+            alreadyApplied: true,
+          });
+        }
+
         const settings = await getProjectReleaseSettings(connection, project.lot_project_id);
         const releaseDateInfo = getReleaseDateWarning(settings);
         if (!releaseDateInfo.isReleaseDate) {
@@ -910,7 +943,7 @@ export const updateLotProjectCommission = async (req, res) => {
         message = `${release.release_stage} hold removed.`;
       }
 
-      await connection.query(
+      const [releaseUpdateResult] = await connection.query(
         `
           UPDATE lot_project_commission_releases
           SET
@@ -918,9 +951,14 @@ export const updateLotProjectCommission = async (req, res) => {
             actual_release_date = ?,
             released_by_user_id = ?
           WHERE lot_project_commission_release_id = ?
+            AND release_status = ?
         `,
-        [nextStatus, actualReleaseDate, releasedByUserId, releaseId]
+        [nextStatus, actualReleaseDate, releasedByUserId, releaseId, release.release_status]
       );
+
+      if (releaseUpdateResult.affectedRows !== 1) {
+        throw Object.assign(new Error('Commission release stage changed while it was being updated. Please retry.'), { statusCode: 409 });
+      }
 
       const data = await recomputeCommissionFromReleases(connection, commissionId, project.lot_project_id);
 
@@ -978,7 +1016,10 @@ export const updateLotProjectCommission = async (req, res) => {
     }
 
     // Fallback for old actions when the release table is unavailable.
+    // Keep the legacy path serialized as well so two releases cannot read the
+    // same remaining balance and both apply it.
     const amount = toNumber(req.body.amount);
+    await connection.beginTransaction();
     const [rows] = await connection.query(
       `
         SELECT *
@@ -986,12 +1027,14 @@ export const updateLotProjectCommission = async (req, res) => {
         WHERE lot_project_id = ?
           AND lot_project_commission_id = ?
         LIMIT 1
+        FOR UPDATE
       `,
       [project.lot_project_id, commissionId]
     );
 
     const commission = rows[0];
     if (!commission) {
+      await connection.rollback();
       return res.status(404).json({ success: false, message: 'Commission record not found.' });
     }
 
@@ -1003,11 +1046,13 @@ export const updateLotProjectCommission = async (req, res) => {
 
     if (action === 'release') {
       if (amount <= 0) {
+        await connection.rollback();
         return res.status(400).json({ success: false, message: 'Release amount must be greater than zero.' });
       }
 
       const remaining = Math.max(gross - currentReleased, 0);
       if (amount > remaining) {
+        await connection.rollback();
         return res.status(400).json({ success: false, message: 'Release amount cannot be greater than the net remaining commission.' });
       }
 
@@ -1021,12 +1066,11 @@ export const updateLotProjectCommission = async (req, res) => {
       nextStatus = toNumber(commission.payment_percent) > 0 ? 'Eligible' : 'Pending';
       message = 'Commission hold removed.';
     } else {
+      await connection.rollback();
       return res.status(400).json({ success: false, message: 'Invalid commission action.' });
     }
 
     const nextRemaining = Math.max(gross - nextReleased, 0);
-
-    await connection.beginTransaction();
 
     await connection.query(
       `
@@ -1102,7 +1146,7 @@ export const updateLotProjectCommission = async (req, res) => {
     });
   } catch (error) {
     try { await connection.rollback(); } catch {}
-    return res.status(500).json({ success: false, message: getErrorMessage(error) });
+    return res.status(error?.statusCode || 500).json({ success: false, message: getErrorMessage(error) });
   } finally {
     connection.release();
   }

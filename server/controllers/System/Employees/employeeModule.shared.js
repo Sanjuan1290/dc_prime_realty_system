@@ -239,9 +239,12 @@ const cashAdvanceDeductionTableSql = `
     amount DECIMAL(14,2) NOT NULL,
     remaining_balance_after DECIMAL(14,2) NOT NULL,
     notes VARCHAR(255) NULL,
+    request_key VARCHAR(80) NULL,
     created_by_user_id INT UNSIGNED NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (employee_cash_advance_deduction_id),
+    UNIQUE KEY uq_employee_cash_advance_request_key (employee_cash_advance_id, request_key),
+    UNIQUE KEY uq_employee_cash_advance_payroll_deduction (employee_cash_advance_id, employee_payroll_id),
     KEY idx_employee_cash_advance_deduction_advance (employee_cash_advance_id),
     CONSTRAINT fk_employee_cash_advance_deduction_advance FOREIGN KEY (employee_cash_advance_id) REFERENCES employee_cash_advances(employee_cash_advance_id) ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT fk_employee_cash_advance_deduction_payroll FOREIGN KEY (employee_payroll_id) REFERENCES employee_payrolls(employee_payroll_id) ON DELETE SET NULL ON UPDATE CASCADE,
@@ -310,6 +313,18 @@ export const ensureEmployeeModuleTables = async (connection = db) => {
   await addColumnIfMissing(connection, 'employee_payroll_periods', 'release_notes', `TEXT NULL AFTER witness_name`);
   if (!(await indexExists(connection, 'employee_payroll_periods', 'uq_employee_payroll_release_date'))) {
     await connection.query(`ALTER TABLE employee_payroll_periods ADD UNIQUE KEY uq_employee_payroll_release_date (release_date)`);
+  }
+
+  await addColumnIfMissing(
+    connection,
+    'employee_cash_advance_deductions',
+    'request_key',
+    `VARCHAR(80) NULL AFTER notes`
+  );
+  if (!(await indexExists(connection, 'employee_cash_advance_deductions', 'uq_employee_cash_advance_request_key'))) {
+    await connection.query(
+      `ALTER TABLE employee_cash_advance_deductions ADD UNIQUE KEY uq_employee_cash_advance_request_key (employee_cash_advance_id, request_key)`
+    );
   }
 
   const payrollColumns = [

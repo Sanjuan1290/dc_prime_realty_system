@@ -1,5 +1,7 @@
+import crypto from 'node:crypto';
 import { db } from '../../../db/connect.js';
 import { writeAuditLog } from '../auditLogs.controller.js';
+import { runExistingConnectionTransactionWithRetry } from '../../../utils/transactionRetry.js';
 import {
   buildEmployeeNameSql,
   cleanText,
@@ -20,11 +22,9 @@ const omitLegacyRepaymentFields = (row = {}) => {
   return publicRow;
 };
 
-const generateReference = async (connection, requestDate) => {
+const createReferenceFromId = (advanceId, requestDate) => {
   const cleanDate = dateOnly(requestDate) || new Date().toISOString().slice(0, 10);
-  const prefix = `ECA-${cleanDate.replace(/-/g, '')}`;
-  const [rows] = await connection.query('SELECT COUNT(*) + 1 AS sequence_no FROM employee_cash_advances WHERE reference_number LIKE ?', [`${prefix}-%`]);
-  return `${prefix}-${String(Number(rows[0]?.sequence_no || 1)).padStart(4, '0')}`;
+  return `ECA-${cleanDate.replace(/-/g, '')}-${String(Number(advanceId || 0)).padStart(6, '0')}`;
 };
 
 const normalizePayload = (body = {}) => ({
@@ -142,29 +142,74 @@ export const createEmployeeCashAdvance = async (req, res) => {
     if (!payload.employeeId || !payload.requestDate || payload.amount <= 0) {
       return res.status(400).json({ message: 'Employee, request date, and advance amount are required.' });
     }
-    const [employeeRows] = await connection.query(`SELECT employee_code, ${buildEmployeeNameSql('employees')} AS full_name FROM employees WHERE employee_id = ? AND employee_status <> 'archived' LIMIT 1`, [payload.employeeId]);
-    if (!employeeRows[0]) return res.status(404).json({ message: 'Employee not found.' });
-    const reference = await generateReference(connection, payload.requestDate);
-    const [result] = await connection.query(
-      `
-        INSERT INTO employee_cash_advances (
-          employee_id, reference_number, request_date, amount, installment_count, deduction_per_payroll,
-          start_deduction_date, remaining_balance, cash_advance_status, notes, created_by_user_id, updated_by_user_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
-      `,
-      // Legacy repayment columns are populated automatically for compatibility with existing databases.
-      [payload.employeeId, reference, payload.requestDate, payload.amount, 1, payload.amount, payload.requestDate, payload.amount, payload.notes, req.authUser?.id || null, req.authUser?.id || null]
-    );
-    await writeAuditLog(connection, req, {
-      actor: req.authUser,
-      action: 'create', module: 'Employee Cash Advances', entityType: 'employee_cash_advance', entityId: String(result.insertId),
-      entityLabel: reference, title: 'Created employee cash advance request',
-      description: `Created ${reference} for ${employeeRows[0].full_name}.`,
-      metadata: { employeeId: payload.employeeId, amount: payload.amount, deductionMode: 'next_salary_release' },
+
+    const result = await runExistingConnectionTransactionWithRetry(connection, async (tx) => {
+      const [employeeRows] = await tx.query(
+        `SELECT employee_code, ${buildEmployeeNameSql('employees')} AS full_name FROM employees WHERE employee_id = ? AND employee_status <> 'archived' LIMIT 1`,
+        [payload.employeeId]
+      );
+      if (!employeeRows[0]) {
+        throw Object.assign(new Error('Employee not found.'), { statusCode: 404 });
+      }
+
+      // Never derive a financial reference from COUNT(*). Use a temporary unique
+      // value for the insert, then replace it with a deterministic primary-key reference.
+      const temporaryReference = `TMP-ECA-${crypto.randomUUID()}`;
+      const [insertResult] = await tx.query(
+        `
+          INSERT INTO employee_cash_advances (
+            employee_id, reference_number, request_date, amount, installment_count, deduction_per_payroll,
+            start_deduction_date, remaining_balance, cash_advance_status, notes, created_by_user_id, updated_by_user_id
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+        `,
+        [
+          payload.employeeId,
+          temporaryReference,
+          payload.requestDate,
+          payload.amount,
+          1,
+          payload.amount,
+          payload.requestDate,
+          payload.amount,
+          payload.notes,
+          req.authUser?.id || null,
+          req.authUser?.id || null,
+        ]
+      );
+
+      const advanceId = Number(insertResult.insertId || 0);
+      if (!advanceId) throw new Error('Employee cash advance was not created.');
+      const reference = createReferenceFromId(advanceId, payload.requestDate);
+
+      const [referenceUpdate] = await tx.query(
+        'UPDATE employee_cash_advances SET reference_number = ? WHERE employee_cash_advance_id = ?',
+        [reference, advanceId]
+      );
+      if (referenceUpdate.affectedRows !== 1) throw new Error('Employee cash advance reference was not finalized.');
+
+      await writeAuditLog(tx, req, {
+        actor: req.authUser,
+        action: 'create',
+        module: 'Employee Cash Advances',
+        entityType: 'employee_cash_advance',
+        entityId: String(advanceId),
+        entityLabel: reference,
+        title: 'Created employee cash advance request',
+        description: `Created ${reference} for ${employeeRows[0].full_name}.`,
+        metadata: { employeeId: payload.employeeId, amount: payload.amount, deductionMode: 'next_salary_release' },
+      });
+
+      return { advanceId, reference };
+    }, { label: 'Create employee cash advance' });
+
+    return res.status(201).json({
+      success: true,
+      message: 'Employee cash advance request added.',
+      advanceId: result.advanceId,
+      referenceNumber: result.reference,
     });
-    return res.status(201).json({ success: true, message: 'Employee cash advance request added.', advanceId: result.insertId, referenceNumber: reference });
   } catch (error) {
-    return res.status(500).json({ message: getErrorMessage(error) });
+    return res.status(error?.statusCode || 500).json({ message: getErrorMessage(error) });
   } finally {
     connection.release();
   }
@@ -176,24 +221,65 @@ export const updateEmployeeCashAdvance = async (req, res) => {
     await ensureEmployeeModuleTables(connection);
     const advanceId = Number(req.params.advanceId);
     const payload = normalizePayload(req.body);
-    const [rows] = await connection.query('SELECT * FROM employee_cash_advances WHERE employee_cash_advance_id = ? LIMIT 1', [advanceId]);
-    if (!rows[0]) return res.status(404).json({ message: 'Employee cash advance not found.' });
-    if (rows[0].cash_advance_status !== 'pending') return res.status(409).json({ message: 'Only pending cash advances can be edited.' });
-    if (!payload.employeeId || !payload.requestDate || payload.amount <= 0) return res.status(400).json({ message: 'Employee, request date, and advance amount are required.' });
-    await connection.query(
-      `UPDATE employee_cash_advances SET employee_id = ?, request_date = ?, amount = ?, installment_count = ?, deduction_per_payroll = ?, start_deduction_date = ?, remaining_balance = ?, notes = ?, updated_by_user_id = ? WHERE employee_cash_advance_id = ?`,
-      // The full outstanding balance is eligible for the next salary release after approval.
-      [payload.employeeId, payload.requestDate, payload.amount, 1, payload.amount, payload.requestDate, payload.amount, payload.notes, req.authUser?.id || null, advanceId]
-    );
-    await writeAuditLog(connection, req, {
-      actor: req.authUser,
-      action: 'update', module: 'Employee Cash Advances', entityType: 'employee_cash_advance', entityId: String(advanceId),
-      entityLabel: rows[0].reference_number, title: 'Updated employee cash advance request',
-      description: `Updated ${rows[0].reference_number}.`, metadata: { amount: payload.amount, deductionMode: 'next_salary_release' },
-    });
+    if (!payload.employeeId || !payload.requestDate || payload.amount <= 0) {
+      return res.status(400).json({ message: 'Employee, request date, and advance amount are required.' });
+    }
+
+    await runExistingConnectionTransactionWithRetry(connection, async (tx) => {
+      const [rows] = await tx.query(
+        'SELECT * FROM employee_cash_advances WHERE employee_cash_advance_id = ? LIMIT 1 FOR UPDATE',
+        [advanceId]
+      );
+      const advance = rows[0];
+      if (!advance) throw Object.assign(new Error('Employee cash advance not found.'), { statusCode: 404 });
+      if (advance.cash_advance_status !== 'pending') {
+        throw Object.assign(new Error('Only pending cash advances can be edited.'), { statusCode: 409 });
+      }
+
+      const [employeeRows] = await tx.query(
+        'SELECT employee_id FROM employees WHERE employee_id = ? AND employee_status <> \'archived\' LIMIT 1',
+        [payload.employeeId]
+      );
+      if (!employeeRows[0]) throw Object.assign(new Error('Employee not found.'), { statusCode: 404 });
+
+      const [updateResult] = await tx.query(
+        `UPDATE employee_cash_advances
+         SET employee_id = ?, request_date = ?, amount = ?, installment_count = ?, deduction_per_payroll = ?,
+             start_deduction_date = ?, remaining_balance = ?, notes = ?, updated_by_user_id = ?
+         WHERE employee_cash_advance_id = ? AND cash_advance_status = 'pending'`,
+        [
+          payload.employeeId,
+          payload.requestDate,
+          payload.amount,
+          1,
+          payload.amount,
+          payload.requestDate,
+          payload.amount,
+          payload.notes,
+          req.authUser?.id || null,
+          advanceId,
+        ]
+      );
+      if (updateResult.affectedRows !== 1) {
+        throw Object.assign(new Error('Cash advance changed while it was being edited. Please retry.'), { statusCode: 409 });
+      }
+
+      await writeAuditLog(tx, req, {
+        actor: req.authUser,
+        action: 'update',
+        module: 'Employee Cash Advances',
+        entityType: 'employee_cash_advance',
+        entityId: String(advanceId),
+        entityLabel: advance.reference_number,
+        title: 'Updated employee cash advance request',
+        description: `Updated ${advance.reference_number}.`,
+        metadata: { amount: payload.amount, deductionMode: 'next_salary_release' },
+      });
+    }, { label: 'Update employee cash advance' });
+
     return res.json({ success: true, message: 'Employee cash advance saved.' });
   } catch (error) {
-    return res.status(500).json({ message: getErrorMessage(error) });
+    return res.status(error?.statusCode || 500).json({ message: getErrorMessage(error) });
   } finally {
     connection.release();
   }
@@ -204,53 +290,84 @@ const changeStatus = async (req, res, nextStatus) => {
   try {
     await ensureEmployeeModuleTables(connection);
     const advanceId = Number(req.params.advanceId);
-    const [rows] = await connection.query(
-      `SELECT ca.*, e.employee_code, ${buildEmployeeNameSql('e')} AS full_name FROM employee_cash_advances ca INNER JOIN employees e ON e.employee_id = ca.employee_id WHERE ca.employee_cash_advance_id = ? LIMIT 1`,
-      [advanceId]
-    );
-    const advance = rows[0];
-    if (!advance) return res.status(404).json({ message: 'Employee cash advance not found.' });
-    const currentStatus = advance.cash_advance_status;
-    const allowed = {
-      approved: ['pending'],
-      rejected: ['pending'],
-      cancelled: ['pending', 'approved', 'active'],
-    };
-    if (!allowed[nextStatus]?.includes(currentStatus)) return res.status(409).json({ message: `A ${currentStatus} cash advance cannot be changed to ${nextStatus}.` });
-    if (nextStatus === 'cancelled' && Number(advance.remaining_balance) < Number(advance.amount)) {
-      return res.status(409).json({ message: 'This cash advance already has deductions and cannot be cancelled.' });
-    }
-    const storedStatus = nextStatus === 'approved' ? 'active' : nextStatus;
-    await connection.query(
-      `UPDATE employee_cash_advances
-       SET cash_advance_status = ?,
-           approved_by_user_id = ?,
-           approved_at = ?,
-           start_deduction_date = CASE WHEN ? = 'approved' THEN CURRENT_DATE ELSE start_deduction_date END,
-           deduction_per_payroll = CASE WHEN ? = 'approved' THEN remaining_balance ELSE deduction_per_payroll END,
-           installment_count = 1,
-           updated_by_user_id = ?
-       WHERE employee_cash_advance_id = ?`,
-      [
-        storedStatus,
-        nextStatus === 'approved' ? req.authUser?.id || null : advance.approved_by_user_id,
-        nextStatus === 'approved' ? new Date() : advance.approved_at,
-        nextStatus,
-        nextStatus,
-        req.authUser?.id || null,
-        advanceId,
-      ]
-    );
-    await writeAuditLog(connection, req, {
-      actor: req.authUser,
-      action: 'update', module: 'Employee Cash Advances', entityType: 'employee_cash_advance', entityId: String(advanceId),
-      entityLabel: advance.reference_number, title: `${nextStatus.charAt(0).toUpperCase() + nextStatus.slice(1)} employee cash advance`,
-      description: `${advance.reference_number} for ${advance.full_name} changed from ${currentStatus} to ${storedStatus}.`,
-      metadata: { previousStatus: currentStatus, status: storedStatus },
+    const result = await runExistingConnectionTransactionWithRetry(connection, async (tx) => {
+      const [rows] = await tx.query(
+        `SELECT ca.*, e.employee_code, ${buildEmployeeNameSql('e')} AS full_name
+         FROM employee_cash_advances ca
+         INNER JOIN employees e ON e.employee_id = ca.employee_id
+         WHERE ca.employee_cash_advance_id = ?
+         LIMIT 1 FOR UPDATE`,
+        [advanceId]
+      );
+      const advance = rows[0];
+      if (!advance) throw Object.assign(new Error('Employee cash advance not found.'), { statusCode: 404 });
+
+      const currentStatus = advance.cash_advance_status;
+      const storedStatus = nextStatus === 'approved' ? 'active' : nextStatus;
+      if (currentStatus === storedStatus) {
+        return { storedStatus, alreadyApplied: true };
+      }
+
+      const allowed = {
+        approved: ['pending'],
+        rejected: ['pending'],
+        cancelled: ['pending', 'approved', 'active'],
+      };
+      if (!allowed[nextStatus]?.includes(currentStatus)) {
+        throw Object.assign(new Error(`A ${currentStatus} cash advance cannot be changed to ${nextStatus}.`), { statusCode: 409 });
+      }
+      if (nextStatus === 'cancelled' && Number(advance.remaining_balance) < Number(advance.amount)) {
+        throw Object.assign(new Error('This cash advance already has deductions and cannot be cancelled.'), { statusCode: 409 });
+      }
+
+      const [updateResult] = await tx.query(
+        `UPDATE employee_cash_advances
+         SET cash_advance_status = ?,
+             approved_by_user_id = ?,
+             approved_at = ?,
+             start_deduction_date = CASE WHEN ? = 'approved' THEN CURRENT_DATE ELSE start_deduction_date END,
+             deduction_per_payroll = CASE WHEN ? = 'approved' THEN remaining_balance ELSE deduction_per_payroll END,
+             installment_count = 1,
+             updated_by_user_id = ?
+         WHERE employee_cash_advance_id = ? AND cash_advance_status = ?`,
+        [
+          storedStatus,
+          nextStatus === 'approved' ? req.authUser?.id || null : advance.approved_by_user_id,
+          nextStatus === 'approved' ? new Date() : advance.approved_at,
+          nextStatus,
+          nextStatus,
+          req.authUser?.id || null,
+          advanceId,
+          currentStatus,
+        ]
+      );
+      if (updateResult.affectedRows !== 1) {
+        throw Object.assign(new Error('Cash advance status changed while it was being updated. Please retry.'), { statusCode: 409 });
+      }
+
+      await writeAuditLog(tx, req, {
+        actor: req.authUser,
+        action: 'update',
+        module: 'Employee Cash Advances',
+        entityType: 'employee_cash_advance',
+        entityId: String(advanceId),
+        entityLabel: advance.reference_number,
+        title: `${nextStatus.charAt(0).toUpperCase() + nextStatus.slice(1)} employee cash advance`,
+        description: `${advance.reference_number} for ${advance.full_name} changed from ${currentStatus} to ${storedStatus}.`,
+        metadata: { previousStatus: currentStatus, status: storedStatus },
+      });
+
+      return { storedStatus, alreadyApplied: false };
+    }, { label: 'Change employee cash advance status' });
+
+    return res.json({
+      success: true,
+      message: result.alreadyApplied ? `Employee cash advance is already ${result.storedStatus}.` : `Employee cash advance ${nextStatus}.`,
+      status: result.storedStatus,
+      alreadyApplied: result.alreadyApplied,
     });
-    return res.json({ success: true, message: `Employee cash advance ${nextStatus}.`, status: storedStatus });
   } catch (error) {
-    return res.status(500).json({ message: getErrorMessage(error) });
+    return res.status(error?.statusCode || 500).json({ message: getErrorMessage(error) });
   } finally {
     connection.release();
   }
@@ -260,6 +377,11 @@ export const approveEmployeeCashAdvance = (req, res) => changeStatus(req, res, '
 export const rejectEmployeeCashAdvance = (req, res) => changeStatus(req, res, 'rejected');
 export const cancelEmployeeCashAdvance = (req, res) => changeStatus(req, res, 'cancelled');
 
+const normalizeRequestKey = (value) => {
+  const key = String(value || '').trim();
+  return key ? key.slice(0, 80) : null;
+};
+
 export const recordEmployeeCashAdvanceDeduction = async (req, res) => {
   const connection = await db.getConnection();
   try {
@@ -267,39 +389,94 @@ export const recordEmployeeCashAdvanceDeduction = async (req, res) => {
     const advanceId = Number(req.params.advanceId);
     const amount = roundMoney(positiveNumber(req.body.amount));
     const deductionDate = dateOnly(req.body.deduction_date);
-    if (amount <= 0 || !deductionDate) return res.status(400).json({ message: 'Deduction date and amount are required.' });
-    await connection.beginTransaction();
-    const [rows] = await connection.query('SELECT * FROM employee_cash_advances WHERE employee_cash_advance_id = ? FOR UPDATE', [advanceId]);
-    const advance = rows[0];
-    if (!advance) {
-      await connection.rollback();
-      return res.status(404).json({ message: 'Employee cash advance not found.' });
-    }
-    if (!['approved', 'active'].includes(advance.cash_advance_status)) {
-      await connection.rollback();
-      return res.status(409).json({ message: 'Only active cash advances can receive deductions.' });
-    }
-    if (amount > Number(advance.remaining_balance || 0)) {
-      await connection.rollback();
-      return res.status(400).json({ message: 'Deduction cannot exceed the remaining balance.' });
-    }
-    const remaining = roundMoney(Number(advance.remaining_balance) - amount);
-    await connection.query('UPDATE employee_cash_advances SET remaining_balance = ?, cash_advance_status = ?, updated_by_user_id = ? WHERE employee_cash_advance_id = ?', [remaining, remaining <= 0 ? 'paid' : 'active', req.authUser?.id || null, advanceId]);
-    await connection.query(
-      `INSERT INTO employee_cash_advance_deductions (employee_cash_advance_id, deduction_date, amount, remaining_balance_after, notes, created_by_user_id) VALUES (?, ?, ?, ?, ?, ?)`,
-      [advanceId, deductionDate, amount, remaining, nullableText(req.body.notes), req.authUser?.id || null]
+    const requestKey = normalizeRequestKey(
+      req.body.requestKey || req.body.request_key || req.get?.('Idempotency-Key')
     );
-    await writeAuditLog(connection, req, {
-      actor: req.authUser,
-      action: 'create', module: 'Employee Cash Advances', entityType: 'employee_cash_advance_deduction', entityId: String(advanceId),
-      entityLabel: advance.reference_number, title: 'Recorded employee cash advance deduction',
-      description: `Recorded a ${amount.toFixed(2)} deduction for ${advance.reference_number}.`, metadata: { amount, remaining },
+    if (amount <= 0 || !deductionDate) {
+      return res.status(400).json({ message: 'Deduction date and amount are required.' });
+    }
+
+    const result = await runExistingConnectionTransactionWithRetry(connection, async (tx) => {
+      const [rows] = await tx.query(
+        'SELECT * FROM employee_cash_advances WHERE employee_cash_advance_id = ? FOR UPDATE',
+        [advanceId]
+      );
+      const advance = rows[0];
+      if (!advance) throw Object.assign(new Error('Employee cash advance not found.'), { statusCode: 404 });
+
+      if (requestKey) {
+        const [existingRows] = await tx.query(
+          `SELECT * FROM employee_cash_advance_deductions
+           WHERE employee_cash_advance_id = ? AND request_key = ?
+           LIMIT 1 FOR UPDATE`,
+          [advanceId, requestKey]
+        );
+        const existing = existingRows[0];
+        if (existing) {
+          if (roundMoney(existing.amount) !== amount || dateOnly(existing.deduction_date) !== deductionDate) {
+            throw Object.assign(new Error('This deduction request key was already used for different values.'), { statusCode: 409 });
+          }
+          return {
+            remainingBalance: Number(existing.remaining_balance_after || 0),
+            deductionId: Number(existing.employee_cash_advance_deduction_id),
+            alreadyApplied: true,
+          };
+        }
+      }
+
+      if (!['approved', 'active'].includes(advance.cash_advance_status)) {
+        throw Object.assign(new Error('Only active cash advances can receive deductions.'), { statusCode: 409 });
+      }
+      if (amount > Number(advance.remaining_balance || 0)) {
+        throw Object.assign(new Error('Deduction cannot exceed the remaining balance.'), { statusCode: 400 });
+      }
+
+      const remaining = roundMoney(Number(advance.remaining_balance) - amount);
+      const [advanceUpdate] = await tx.query(
+        `UPDATE employee_cash_advances
+         SET remaining_balance = ?, cash_advance_status = ?, updated_by_user_id = ?
+         WHERE employee_cash_advance_id = ? AND remaining_balance = ?`,
+        [remaining, remaining <= 0 ? 'paid' : 'active', req.authUser?.id || null, advanceId, advance.remaining_balance]
+      );
+      if (advanceUpdate.affectedRows !== 1) {
+        throw Object.assign(new Error('Cash advance balance changed while the deduction was being recorded. Please retry.'), { statusCode: 409 });
+      }
+
+      const [deductionResult] = await tx.query(
+        `INSERT INTO employee_cash_advance_deductions
+          (employee_cash_advance_id, deduction_date, amount, remaining_balance_after, notes, request_key, created_by_user_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [advanceId, deductionDate, amount, remaining, nullableText(req.body.notes), requestKey, req.authUser?.id || null]
+      );
+
+      await writeAuditLog(tx, req, {
+        actor: req.authUser,
+        action: 'create',
+        module: 'Employee Cash Advances',
+        entityType: 'employee_cash_advance_deduction',
+        entityId: String(deductionResult.insertId || advanceId),
+        entityLabel: advance.reference_number,
+        title: 'Recorded employee cash advance deduction',
+        description: `Recorded a ${amount.toFixed(2)} deduction for ${advance.reference_number}.`,
+        metadata: { amount, remaining, requestKey },
+      });
+
+      return {
+        remainingBalance: remaining,
+        deductionId: Number(deductionResult.insertId || 0),
+        alreadyApplied: false,
+      };
+    }, { label: 'Record employee cash advance deduction' });
+
+    return res.json({
+      success: true,
+      message: result.alreadyApplied ? 'Cash advance deduction was already recorded.' : 'Cash advance deduction recorded.',
+      remainingBalance: result.remainingBalance,
+      deductionId: result.deductionId,
+      alreadyApplied: result.alreadyApplied,
     });
-    await connection.commit();
-    return res.json({ success: true, message: 'Cash advance deduction recorded.', remainingBalance: remaining });
   } catch (error) {
-    await connection.rollback();
-    return res.status(500).json({ message: getErrorMessage(error) });
+    return res.status(error?.statusCode || 500).json({ message: getErrorMessage(error) });
   } finally {
     connection.release();
   }

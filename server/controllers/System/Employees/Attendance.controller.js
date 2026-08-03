@@ -1,5 +1,6 @@
 import { db } from '../../../db/connect.js';
 import { writeAuditLog } from '../auditLogs.controller.js';
+import { runExistingConnectionTransactionWithRetry } from '../../../utils/transactionRetry.js';
 import {
   buildEmployeeNameSql,
   calculateAttendanceMetrics,
@@ -105,7 +106,7 @@ const getAttendanceByEmployee = async (connection, employeeIds, start, end) => {
   return result;
 };
 
-const getEligibleAdvancesByEmployee = async (connection, releaseDate) => {
+const getEligibleAdvancesByEmployee = async (connection, releaseDate, { forUpdate = false } = {}) => {
   const [rows] = await connection.query(
     `
       SELECT *
@@ -114,6 +115,7 @@ const getEligibleAdvancesByEmployee = async (connection, releaseDate) => {
         AND remaining_balance > 0
         AND COALESCE(DATE(approved_at), request_date) <= ?
       ORDER BY employee_id, request_date, employee_cash_advance_id
+      ${forUpdate ? 'FOR UPDATE' : ''}
     `,
     [releaseDate]
   );
@@ -480,7 +482,23 @@ const summarizePayroll = (data) => ({
   netPayroll: roundMoney(data.reduce((sum, item) => sum + Number(item.netPay || 0), 0)),
 });
 
-const getPayrollPeriodRow = async (connection, period) => {
+const getPayrollPeriodRow = async (connection, period, { forUpdate = false } = {}) => {
+  if (forUpdate) {
+    // Lock only the payroll-period row. Keeping the nullable users join out of
+    // the locking query makes the lock target explicit and portable.
+    const [rows] = await connection.query(
+      `
+        SELECT pp.*
+        FROM employee_payroll_periods pp
+        WHERE pp.release_date = ? OR (pp.period_start = ? AND pp.period_end = ?)
+        LIMIT 1
+        FOR UPDATE
+      `,
+      [period.releaseDate, period.start, period.end]
+    );
+    return rows[0] || null;
+  }
+
   const [rows] = await connection.query(
     `
       SELECT pp.*, ${buildEmployeeNameSql('u')} AS finalized_by_name
@@ -494,7 +512,69 @@ const getPayrollPeriodRow = async (connection, period) => {
   return rows[0] || null;
 };
 
-const calculateLivePayroll = async (connection, releaseDateValue) => {
+const lockAttendancePayrollDate = async (connection, attendanceDate) => {
+  const [rows] = await connection.query(
+    `
+      SELECT employee_payroll_period_id, period_label, payroll_status
+      FROM employee_payroll_periods
+      WHERE ? BETWEEN period_start AND period_end
+      ORDER BY employee_payroll_period_id
+      FOR UPDATE
+    `,
+    [attendanceDate]
+  );
+
+  const finalized = rows.find((row) => row.payroll_status === 'finalized');
+  if (finalized) {
+    throw Object.assign(
+      new Error(`Attendance for ${attendanceDate} is locked because ${finalized.period_label || 'that payroll period'} is already finalized.`),
+      { statusCode: 409 }
+    );
+  }
+};
+
+const lockEmployeeRows = async (connection, employeeIds = []) => {
+  const ids = [...new Set(employeeIds.map(Number).filter(Boolean))].sort((a, b) => a - b);
+  if (!ids.length) return;
+  await connection.query(
+    `SELECT employee_id FROM employees WHERE employee_id IN (${ids.map(() => '?').join(',')}) ORDER BY employee_id FOR UPDATE`,
+    ids
+  );
+};
+
+const lockPayrollEmployees = async (connection, periodEnd) => {
+  const [rows] = await connection.query(
+    `
+      SELECT employee_id
+      FROM employees
+      WHERE employee_status <> 'archived'
+        AND hire_date <= ?
+      ORDER BY employee_id
+      FOR UPDATE
+    `,
+    [periodEnd]
+  );
+  return rows.map((row) => Number(row.employee_id)).filter(Boolean);
+};
+
+const ensureLockedPayrollPeriod = async (connection, period) => {
+  await connection.query(
+    `
+      INSERT INTO employee_payroll_periods (
+        period_label, period_start, period_end, release_date, release_day, period_type, payroll_status
+      ) VALUES (?, ?, ?, ?, ?, ?, 'draft')
+      ON DUPLICATE KEY UPDATE
+        employee_payroll_period_id = LAST_INSERT_ID(employee_payroll_period_id)
+    `,
+    [period.shortLabel, period.start, period.end, period.releaseDate, period.releaseDay, period.periodType]
+  );
+
+  const row = await getPayrollPeriodRow(connection, period, { forUpdate: true });
+  if (!row) throw new Error('Payroll period could not be locked.');
+  return row;
+};
+
+const calculateLivePayroll = async (connection, releaseDateValue, { lockFinancialRows = false } = {}) => {
   const period = getPayrollReleasePeriod(releaseDateValue);
   const [employees] = await connection.query(
     `
@@ -511,7 +591,7 @@ const calculateLivePayroll = async (connection, releaseDateValue) => {
   const schedulesByEmployee = await getSchedulesByEmployee(connection, employeeIds);
   const attendanceStart = period.includesAttendanceBonus ? period.bonusEvaluationStart : period.start;
   const attendanceByEmployee = await getAttendanceByEmployee(connection, employeeIds, attendanceStart, period.end);
-  const advancesByEmployee = await getEligibleAdvancesByEmployee(connection, period.releaseDate);
+  const advancesByEmployee = await getEligibleAdvancesByEmployee(connection, period.releaseDate, { forUpdate: lockFinancialRows });
 
   const data = employees.map((employee) => {
     const allAttendance = attendanceByEmployee.get(Number(employee.employee_id)) || [];
@@ -678,8 +758,55 @@ const saveAttendance = async ({ req, res, isUpdate }) => {
       return res.status(400).json({ message: 'Time in is required for present, late, and half-day records.' });
     }
 
+    let originalAttendance = null;
+    if (isUpdate) {
+      const [originalRows] = await connection.query(
+        'SELECT employee_id, attendance_date FROM employee_attendance_records WHERE employee_attendance_id = ? LIMIT 1',
+        [attendanceId]
+      );
+      originalAttendance = originalRows[0] || null;
+      if (!originalAttendance) return res.status(404).json({ message: 'Attendance record not found.' });
+    }
+
+    await connection.beginTransaction();
+
+    // Keep the same lock order as payroll finalization: payroll period first,
+    // then employee. Updating an old attendance row locks both its original and
+    // requested dates/employees so finalized payroll history cannot be bypassed
+    // by moving the record to another date or employee.
+    const datesToLock = [...new Set([
+      originalAttendance ? dateOnly(originalAttendance.attendance_date) : null,
+      payload.attendanceDate,
+    ].filter(Boolean))].sort();
+    for (const attendanceDate of datesToLock) {
+      await lockAttendancePayrollDate(connection, attendanceDate);
+    }
+
+    await lockEmployeeRows(connection, [originalAttendance?.employee_id, payload.employeeId]);
+
+    if (isUpdate) {
+      const [lockedRows] = await connection.query(
+        `
+          SELECT employee_id, attendance_date
+          FROM employee_attendance_records
+          WHERE employee_attendance_id = ?
+          LIMIT 1
+          FOR UPDATE
+        `,
+        [attendanceId]
+      );
+      const lockedAttendance = lockedRows[0];
+      if (!lockedAttendance) throw Object.assign(new Error('Attendance record not found.'), { statusCode: 404 });
+      if (
+        Number(lockedAttendance.employee_id) !== Number(originalAttendance.employee_id) ||
+        dateOnly(lockedAttendance.attendance_date) !== dateOnly(originalAttendance.attendance_date)
+      ) {
+        throw Object.assign(new Error('Attendance changed while it was being edited. Please refresh and try again.'), { statusCode: 409 });
+      }
+    }
+
     const employee = await getEmployeeForAttendance(connection, payload.employeeId);
-    if (!employee) return res.status(404).json({ message: 'Employee not found.' });
+    if (!employee) throw Object.assign(new Error('Employee not found.'), { statusCode: 404 });
 
     const schedule = await getEmployeeScheduleForDate(connection, payload.employeeId, payload.attendanceDate);
     const schedules = await getEmployeeSchedules(connection, payload.employeeId);
@@ -699,8 +826,6 @@ const saveAttendance = async ({ req, res, isUpdate }) => {
       monthWorkDays,
     });
     const resolvedStatus = resolveStatus(payload.status, metrics, schedule);
-
-    await connection.beginTransaction();
     let savedId = attendanceId;
 
     const values = [
@@ -737,9 +862,8 @@ const saveAttendance = async ({ req, res, isUpdate }) => {
         `,
         [...values, req.authUser?.id || null, attendanceId]
       );
-      if (!result.affectedRows) {
-        await connection.rollback();
-        return res.status(404).json({ message: 'Attendance record not found.' });
+      if (result.affectedRows !== 1) {
+        throw Object.assign(new Error('Attendance record changed while it was being saved. Please retry.'), { statusCode: 409 });
       }
     } else {
       const [result] = await connection.query(
@@ -782,8 +906,8 @@ const saveAttendance = async ({ req, res, isUpdate }) => {
       data: { id: savedId, status: resolvedStatus, ...metrics },
     });
   } catch (error) {
-    await connection.rollback();
-    return res.status(500).json({ message: getErrorMessage(error) });
+    try { await connection.rollback(); } catch {}
+    return res.status(error?.statusCode || 500).json({ message: getErrorMessage(error) });
   } finally {
     connection.release();
   }
@@ -797,27 +921,62 @@ export const deleteAttendanceRecord = async (req, res) => {
   try {
     await ensureEmployeeModuleTables(connection);
     const attendanceId = Number(req.params.attendanceId);
-    const [rows] = await connection.query(
-      `SELECT a.*, e.employee_code, ${buildEmployeeNameSql('e')} AS full_name FROM employee_attendance_records a INNER JOIN employees e ON e.employee_id = a.employee_id WHERE a.employee_attendance_id = ? LIMIT 1`,
+
+    const [previewRows] = await connection.query(
+      'SELECT employee_id, attendance_date FROM employee_attendance_records WHERE employee_attendance_id = ? LIMIT 1',
       [attendanceId]
     );
-    if (!rows[0]) return res.status(404).json({ message: 'Attendance record not found.' });
+    const preview = previewRows[0];
+    if (!preview) return res.status(404).json({ message: 'Attendance record not found.' });
 
-    await connection.query('DELETE FROM employee_attendance_records WHERE employee_attendance_id = ?', [attendanceId]);
+    await connection.beginTransaction();
+
+    // Match payroll finalization lock order before taking the attendance-row lock.
+    await lockAttendancePayrollDate(connection, dateOnly(preview.attendance_date));
+    await lockEmployeeRows(connection, [preview.employee_id]);
+
+    const [rows] = await connection.query(
+      `SELECT a.*, e.employee_code, ${buildEmployeeNameSql('e')} AS full_name
+       FROM employee_attendance_records a
+       INNER JOIN employees e ON e.employee_id = a.employee_id
+       WHERE a.employee_attendance_id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [attendanceId]
+    );
+    const attendance = rows[0];
+    if (!attendance) throw Object.assign(new Error('Attendance record not found.'), { statusCode: 404 });
+    if (
+      Number(attendance.employee_id) !== Number(preview.employee_id) ||
+      dateOnly(attendance.attendance_date) !== dateOnly(preview.attendance_date)
+    ) {
+      throw Object.assign(new Error('Attendance changed while it was being deleted. Please refresh and try again.'), { statusCode: 409 });
+    }
+
+    const [deleteResult] = await connection.query(
+      'DELETE FROM employee_attendance_records WHERE employee_attendance_id = ?',
+      [attendanceId]
+    );
+    if (deleteResult.affectedRows !== 1) {
+      throw Object.assign(new Error('Attendance record changed while it was being deleted. Please retry.'), { statusCode: 409 });
+    }
+
     await writeAuditLog(connection, req, {
       actor: req.authUser,
       action: 'delete',
       module: 'Attendance',
       entityType: 'employee_attendance',
       entityId: String(attendanceId),
-      entityLabel: `${rows[0].employee_code} - ${rows[0].attendance_date}`,
+      entityLabel: `${attendance.employee_code} - ${attendance.attendance_date}`,
       title: 'Deleted attendance record',
-      description: `Deleted attendance for ${rows[0].full_name} on ${rows[0].attendance_date}.`,
+      description: `Deleted attendance for ${attendance.full_name} on ${attendance.attendance_date}.`,
     });
 
+    await connection.commit();
     return res.json({ success: true, message: 'Attendance record deleted.' });
   } catch (error) {
-    return res.status(500).json({ message: getErrorMessage(error) });
+    try { await connection.rollback(); } catch {}
+    return res.status(error?.statusCode || 500).json({ message: getErrorMessage(error) });
   } finally {
     connection.release();
   }
@@ -955,25 +1114,37 @@ export const finalizePayroll = async (req, res) => {
     const releaseDate = dateOnly(req.body.releaseDate || req.body.release_date);
     if (!releaseDate) return res.status(400).json({ message: 'Payroll release date is required.' });
 
-    const preview = await calculateLivePayroll(connection, releaseDate);
+    const requestedPeriod = getPayrollReleasePeriod(releaseDate);
     const witnessName = nullableText(req.body.witnessName || req.body.witness_name);
     const releaseNotes = nullableText(req.body.releaseNotes || req.body.release_notes);
 
-    await connection.beginTransaction();
-    const existingPeriod = await getPayrollPeriodRow(connection, preview.period);
-    if (existingPeriod?.payroll_status === 'finalized') {
-      await connection.rollback();
-      return res.status(409).json({ message: `${preview.period.releaseLabel} payroll is already finalized.` });
-    }
+    const result = await runExistingConnectionTransactionWithRetry(connection, async (tx) => {
+      // Materialize the period first. The unique period/release-date keys make
+      // every concurrent finalizer converge on one row, which is then locked.
+      const periodRow = await ensureLockedPayrollPeriod(tx, requestedPeriod);
+      if (periodRow.payroll_status === 'finalized') {
+        const existing = await getPayrollData(tx, releaseDate);
+        return {
+          alreadyApplied: true,
+          periodId: Number(periodRow.employee_payroll_period_id),
+          range: existing.period,
+          summary: existing.summary,
+        };
+      }
 
-    let periodId = existingPeriod?.employee_payroll_period_id;
-    if (!periodId) {
-      const [periodResult] = await connection.query(
+      // Attendance writes lock the same employee rows. This gives payroll a
+      // stable attendance snapshot and prevents edits from landing mid-finalize.
+      await lockPayrollEmployees(tx, requestedPeriod.end);
+      const preview = await calculateLivePayroll(tx, releaseDate, { lockFinancialRows: true });
+      const periodId = Number(periodRow.employee_payroll_period_id);
+
+      const [periodUpdate] = await tx.query(
         `
-          INSERT INTO employee_payroll_periods (
-            period_label, period_start, period_end, release_date, release_day, period_type,
-            witness_name, release_notes, payroll_status, finalized_by_user_id, finalized_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'finalized', ?, NOW())
+          UPDATE employee_payroll_periods SET
+            period_label = ?, period_start = ?, period_end = ?, release_date = ?, release_day = ?, period_type = ?,
+            witness_name = ?, release_notes = ?, payroll_status = 'finalized', finalized_by_user_id = ?, finalized_at = NOW()
+          WHERE employee_payroll_period_id = ?
+            AND payroll_status <> 'finalized'
         `,
         [
           preview.period.shortLabel,
@@ -985,137 +1156,140 @@ export const finalizePayroll = async (req, res) => {
           witnessName,
           releaseNotes,
           req.authUser?.id || null,
-        ]
-      );
-      periodId = periodResult.insertId;
-    } else {
-      await connection.query(
-        `
-          UPDATE employee_payroll_periods SET
-            period_label = ?, release_date = ?, release_day = ?, period_type = ?, witness_name = ?,
-            release_notes = ?, payroll_status = 'finalized', finalized_by_user_id = ?, finalized_at = NOW()
-          WHERE employee_payroll_period_id = ?
-        `,
-        [
-          preview.period.shortLabel,
-          preview.period.releaseDate,
-          preview.period.releaseDay,
-          preview.period.periodType,
-          witnessName,
-          releaseNotes,
-          req.authUser?.id || null,
           periodId,
         ]
       );
-      await connection.query('DELETE FROM employee_payrolls WHERE employee_payroll_period_id = ?', [periodId]);
-    }
+      if (periodUpdate.affectedRows !== 1) {
+        throw Object.assign(new Error('Payroll period changed while it was being finalized. Please retry.'), { statusCode: 409 });
+      }
 
-    for (const item of preview.data) {
-      const [payrollResult] = await connection.query(
-        `
-          INSERT INTO employee_payrolls (
-            employee_payroll_period_id, employee_id, monthly_salary_snapshot, payroll_divisor_snapshot,
-            month_work_days_snapshot, period_work_days, hourly_rate_snapshot, base_salary,
-            scheduled_regular_seconds, regular_attended_seconds, paid_time_off_seconds,
-            regular_holiday_seconds, special_holiday_seconds, late_seconds, late_deduction,
-            undertime_seconds, undertime_deduction, absent_days, absence_deduction,
-            overtime_seconds, overtime_pay, night_differential_seconds, night_differential_pay,
-            rice_allowance, transportation_allowance, attendance_bonus, attendance_bonus_eligible,
-            attendance_bonus_note, cash_advance_deduction, other_adjustments, gross_pay, net_pay,
-            payroll_status
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'finalized')
-        `,
-        [
-          periodId,
-          item.employeeId,
-          item.monthlySalary,
-          0,
-          item.monthWorkDays,
-          item.periodWorkDays,
-          item.hourlyRate,
-          item.regularPayAfterAttendance + item.lateDeduction + item.undertimeDeduction + item.absenceDeduction,
-          item.scheduledRegularSeconds,
-          item.regularAttendedSeconds,
-          item.paidTimeOffSeconds,
-          item.regularHolidaySeconds,
-          item.specialHolidaySeconds,
-          item.lateSeconds,
-          item.lateDeduction,
-          item.undertimeSeconds,
-          item.undertimeDeduction,
-          item.absentDays,
-          item.absenceDeduction,
-          item.overtimeSeconds,
-          item.overtimePay,
-          item.nightDifferentialSeconds,
-          item.nightDifferentialPay,
-          item.riceAllowance,
-          item.transportationAllowance,
-          item.attendanceBonus,
-          item.attendanceBonusEligible ? 1 : 0,
-          item.attendanceBonusNote,
-          item.cashAdvanceDeduction,
-          item.otherAdjustments,
-          item.grossPay,
-          item.netPay,
-        ]
-      );
+      // Draft rows can exist from an interrupted/manual preview workflow. They
+      // are replaced only while this period row is exclusively locked.
+      await tx.query('DELETE FROM employee_payrolls WHERE employee_payroll_period_id = ?', [periodId]);
 
-      let remainingDeduction = item.cashAdvanceDeduction;
-      for (const advance of item.activeAdvances) {
-        if (remainingDeduction <= 0) break;
-        const amount = roundMoney(Math.min(advance.suggestedDeduction, remainingDeduction, advance.remainingBalance));
-        if (amount <= 0) continue;
-
-        const newBalance = roundMoney(advance.remainingBalance - amount);
-        await connection.query(
-          `UPDATE employee_cash_advances SET remaining_balance = ?, cash_advance_status = ?, updated_by_user_id = ? WHERE employee_cash_advance_id = ?`,
-          [newBalance, newBalance <= 0 ? 'paid' : 'active', req.authUser?.id || null, advance.id]
-        );
-        await connection.query(
+      for (const item of preview.data) {
+        const [payrollResult] = await tx.query(
           `
-            INSERT INTO employee_cash_advance_deductions (
-              employee_cash_advance_id, employee_payroll_id, deduction_date, amount,
-              remaining_balance_after, notes, created_by_user_id
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO employee_payrolls (
+              employee_payroll_period_id, employee_id, monthly_salary_snapshot, payroll_divisor_snapshot,
+              month_work_days_snapshot, period_work_days, hourly_rate_snapshot, base_salary,
+              scheduled_regular_seconds, regular_attended_seconds, paid_time_off_seconds,
+              regular_holiday_seconds, special_holiday_seconds, late_seconds, late_deduction,
+              undertime_seconds, undertime_deduction, absent_days, absence_deduction,
+              overtime_seconds, overtime_pay, night_differential_seconds, night_differential_pay,
+              rice_allowance, transportation_allowance, attendance_bonus, attendance_bonus_eligible,
+              attendance_bonus_note, cash_advance_deduction, other_adjustments, gross_pay, net_pay,
+              payroll_status
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'finalized')
           `,
           [
-            advance.id,
-            payrollResult.insertId,
-            preview.period.releaseDate,
-            amount,
-            newBalance,
-            `${preview.period.shortLabel} salary release deduction`,
-            req.authUser?.id || null,
+            periodId,
+            item.employeeId,
+            item.monthlySalary,
+            0,
+            item.monthWorkDays,
+            item.periodWorkDays,
+            item.hourlyRate,
+            item.regularPayAfterAttendance + item.lateDeduction + item.undertimeDeduction + item.absenceDeduction,
+            item.scheduledRegularSeconds,
+            item.regularAttendedSeconds,
+            item.paidTimeOffSeconds,
+            item.regularHolidaySeconds,
+            item.specialHolidaySeconds,
+            item.lateSeconds,
+            item.lateDeduction,
+            item.undertimeSeconds,
+            item.undertimeDeduction,
+            item.absentDays,
+            item.absenceDeduction,
+            item.overtimeSeconds,
+            item.overtimePay,
+            item.nightDifferentialSeconds,
+            item.nightDifferentialPay,
+            item.riceAllowance,
+            item.transportationAllowance,
+            item.attendanceBonus,
+            item.attendanceBonusEligible ? 1 : 0,
+            item.attendanceBonusNote,
+            item.cashAdvanceDeduction,
+            item.otherAdjustments,
+            item.grossPay,
+            item.netPay,
           ]
         );
-        remainingDeduction = roundMoney(remainingDeduction - amount);
+
+        let remainingDeduction = item.cashAdvanceDeduction;
+        for (const advance of item.activeAdvances) {
+          if (remainingDeduction <= 0) break;
+          const amount = roundMoney(Math.min(advance.suggestedDeduction, remainingDeduction, advance.remainingBalance));
+          if (amount <= 0) continue;
+
+          const newBalance = roundMoney(advance.remainingBalance - amount);
+          const [advanceUpdate] = await tx.query(
+            `UPDATE employee_cash_advances
+             SET remaining_balance = ?, cash_advance_status = ?, updated_by_user_id = ?
+             WHERE employee_cash_advance_id = ?
+               AND remaining_balance = ?
+               AND cash_advance_status IN ('approved','active')`,
+            [newBalance, newBalance <= 0 ? 'paid' : 'active', req.authUser?.id || null, advance.id, advance.remainingBalance]
+          );
+          if (advanceUpdate.affectedRows !== 1) {
+            throw Object.assign(new Error(`Cash advance ${advance.referenceNumber || advance.id} changed during payroll finalization. Please retry.`), { statusCode: 409 });
+          }
+
+          await tx.query(
+            `
+              INSERT INTO employee_cash_advance_deductions (
+                employee_cash_advance_id, employee_payroll_id, deduction_date, amount,
+                remaining_balance_after, notes, created_by_user_id
+              ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            `,
+            [
+              advance.id,
+              payrollResult.insertId,
+              preview.period.releaseDate,
+              amount,
+              newBalance,
+              `${preview.period.shortLabel} salary release deduction`,
+              req.authUser?.id || null,
+            ]
+          );
+          remainingDeduction = roundMoney(remainingDeduction - amount);
+        }
       }
-    }
 
-    await writeAuditLog(connection, req, {
-      actor: req.authUser,
-      action: 'create',
-      module: 'Payroll',
-      entityType: 'employee_payroll_period',
-      entityId: String(periodId),
-      entityLabel: preview.period.releaseLabel,
-      title: 'Finalized employee salary release',
-      description: `Finalized the ${preview.period.shortLabel} payroll for release on ${preview.period.releaseLabel}.`,
-      metadata: { ...preview.summary, releaseDate: preview.period.releaseDate, periodStart: preview.period.start, periodEnd: preview.period.end },
-    });
+      await writeAuditLog(tx, req, {
+        actor: req.authUser,
+        action: 'create',
+        module: 'Payroll',
+        entityType: 'employee_payroll_period',
+        entityId: String(periodId),
+        entityLabel: preview.period.releaseLabel,
+        title: 'Finalized employee salary release',
+        description: `Finalized the ${preview.period.shortLabel} payroll for release on ${preview.period.releaseLabel}.`,
+        metadata: { ...preview.summary, releaseDate: preview.period.releaseDate, periodStart: preview.period.start, periodEnd: preview.period.end },
+      });
 
-    await connection.commit();
+      return {
+        alreadyApplied: false,
+        periodId,
+        range: preview.period,
+        summary: preview.summary,
+      };
+    }, { label: 'Finalize payroll' });
+
     return res.json({
       success: true,
-      message: `${preview.period.releaseLabel} salary release finalized successfully.`,
-      periodId,
-      range: preview.period,
-      summary: preview.summary,
+      message: result.alreadyApplied
+        ? `${result.range.releaseLabel} salary release was already finalized.`
+        : `${result.range.releaseLabel} salary release finalized successfully.`,
+      periodId: result.periodId,
+      range: result.range,
+      summary: result.summary,
+      alreadyApplied: result.alreadyApplied,
     });
   } catch (error) {
-    await connection.rollback();
-    return res.status(400).json({ message: getErrorMessage(error) });
+    return res.status(error?.statusCode || 400).json({ message: getErrorMessage(error) });
   } finally {
     connection.release();
   }

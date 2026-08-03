@@ -152,6 +152,7 @@ export const settleCancellationCommissionStages = async (
       FROM lot_project_commissions
       WHERE lot_project_listing_id = ?
         AND lot_project_client_profile_id = ?
+      ORDER BY lot_project_commission_id
       FOR UPDATE
     `,
     [listingId, clientProfileId]
@@ -173,6 +174,7 @@ export const settleCancellationCommissionStages = async (
         SELECT lot_project_commission_release_id, release_trigger_percent, release_status, net_release_amount
         FROM lot_project_commission_releases
         WHERE lot_project_commission_id = ?
+        ORDER BY lot_project_commission_release_id
         FOR UPDATE
       `,
       [commission.lot_project_commission_id]
@@ -186,7 +188,7 @@ export const settleCancellationCommissionStages = async (
       if (earned) earnedStages += 1;
       else forfeitedStages += 1;
 
-      await connection.query(
+      const [releaseUpdate] = await connection.query(
         `
           UPDATE lot_project_commission_releases
           SET release_status = ?,
@@ -195,6 +197,7 @@ export const settleCancellationCommissionStages = async (
               cancellation_settled_at = NOW(),
               updated_at = NOW()
           WHERE lot_project_commission_release_id = ?
+            AND release_status = ?
         `,
         [
           nextStatus,
@@ -203,8 +206,12 @@ export const settleCancellationCommissionStages = async (
             ? `Retained commissionable payments reached ${Number(release.release_trigger_percent || 0)}%.`
             : `Retained commissionable payments ended at ${rowPercent}%, below the ${Number(release.release_trigger_percent || 0)}% trigger.`,
           release.lot_project_commission_release_id,
+          release.release_status,
         ]
       );
+      if (releaseUpdate.affectedRows !== 1) {
+        throw Object.assign(new Error('Commission release changed while cancellation was being settled. Please retry.'), { statusCode: 409 });
+      }
     }
 
     const [[summary]] = await connection.query(
