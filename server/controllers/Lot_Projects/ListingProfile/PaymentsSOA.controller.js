@@ -54,6 +54,8 @@ import {
   getAuthenticatedUser,
   getUserFullName,
   getListingForPayment,
+  lockPaymentAccountForListing,
+  lockPaymentSchedulesForListing,
   normalizePaymentType,
   getPaymentTypeLabel,
   getRemainingUnpaidScheduleBalance,
@@ -78,11 +80,38 @@ import {
 } from '../_shared/lotProject.shared.js';
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
 import { isFullAccessAdministrator } from '../../../config/permissions.js';
+import { runTransactionWithRetry } from '../../../utils/transactionRetry.js';
 
 const createHttpError = (statusCode, message) => {
   const error = new Error(message);
   error.statusCode = statusCode;
   return error;
+};
+
+const normalizePaymentRequestKey = (value) => {
+  const clean = String(value || '').trim();
+  if (!clean) return null;
+  if (!/^[a-zA-Z0-9_-]{16,80}$/.test(clean)) {
+    throw createHttpError(400, 'Invalid payment request key.');
+  }
+  return clean;
+};
+
+const getPaymentByRequestKey = async (connection, requestKey) => {
+  if (!requestKey || !(await columnExists(connection, 'lot_project_payments', 'lot_project_payment_request_key'))) {
+    return null;
+  }
+
+  const [rows] = await connection.query(
+    `
+      SELECT *
+      FROM lot_project_payments
+      WHERE lot_project_payment_request_key = ?
+      LIMIT 1
+    `,
+    [requestKey]
+  );
+  return rows[0] || null;
 };
 
 const getExactFullPaymentAmount = async (connection, listing) => {
@@ -224,8 +253,6 @@ const getPenaltyReliefContext = async (connection, project, listing, scheduleId,
 };
 
 export const createLotProjectListingPayment = async (req, res) => {
-  const connection = await db.getConnection();
-
   try {
     const user = await getAuthenticatedUser(req);
     const slug = String(req.params.projectSlug || '').trim();
@@ -234,15 +261,6 @@ export const createLotProjectListingPayment = async (req, res) => {
 
     if (!project) return res.status(404).json({ message: 'Lot project not found.' });
     if (!listingLookup) return res.status(400).json({ message: 'Listing id is required.' });
-    if (!(await tableExists(connection, 'lot_project_payments'))) {
-      return res.status(500).json({ message: 'lot_project_payments table does not exist.' });
-    }
-
-    const listing = await getListingForPayment(connection, project, listingLookup);
-    if (!listing) return res.status(404).json({ message: 'Listing not found.' });
-    if (!listing.lot_project_client_profile_id) {
-      return res.status(400).json({ message: 'This listing has no buyer profile yet.' });
-    }
 
     const amount = parseMoneyValue(req.body.amount);
     const paymentDate = dateOrNull(req.body.paymentDate || req.body.payment_date) || new Date().toISOString().slice(0, 10);
@@ -258,54 +276,99 @@ export const createLotProjectListingPayment = async (req, res) => {
     const scheduleId = paymentType === 'full_payment' || paymentType === 'balloon'
       ? null
       : toNullableNumber(requestedScheduleId);
+    const requestKey = normalizePaymentRequestKey(
+      req.body.requestKey || req.body.request_key || req.get?.('Idempotency-Key')
+    );
 
     if (amount <= 0) return res.status(400).json({ message: 'Payment amount must be greater than 0.' });
-
-    const referenceId = paymentMethod === 'Cash'
-      ? await getNextCashReference(connection, listing.lot_project_listing_unit_id)
-      : toNullable(req.body.referenceId || req.body.reference_id);
-
     if (paymentMethod !== 'Cash' && !bankName) {
       return res.status(400).json({ message: 'Bank / payment provider is required for non-cash payments.' });
     }
     if (paymentMethod !== 'Cash' && !accountNumber) {
       return res.status(400).json({ message: 'Account No. / wallet number is required for non-cash payments.' });
     }
-    if (paymentMethod !== 'Cash' && !referenceId) {
+
+    const requestedReferenceId = paymentMethod === 'Cash'
+      ? null
+      : toNullable(req.body.referenceId || req.body.reference_id);
+    if (paymentMethod !== 'Cash' && !requestedReferenceId) {
       return res.status(400).json({ message: 'Reference ID is required for non-cash payments.' });
     }
 
-    await connection.beginTransaction();
+    const result = await runTransactionWithRetry(db, async (connection) => {
+      if (!(await tableExists(connection, 'lot_project_payments'))) {
+        throw createHttpError(500, 'lot_project_payments table does not exist.');
+      }
 
-    if (await tableExists(connection, 'lot_project_payment_schedules')) {
-      await recomputeListingScheduleBalances(connection, listing);
-      await refreshListingPenaltyCache(connection, listing, paymentDate);
-      await recomputeListingScheduleBalances(connection, listing);
-      await validateFullPaymentAmount(connection, listing, paymentType, amount);
-      await validateBalloonPaymentAmount(connection, listing, paymentType, amount);
-    }
+      const listing = await getListingForPayment(connection, project, listingLookup, { forUpdate: true });
+      if (!listing) throw createHttpError(404, 'Listing not found.');
+      await lockPaymentAccountForListing(connection, listing);
+      if (!listing.lot_project_client_profile_id) {
+        throw createHttpError(400, 'This listing has no buyer profile yet.');
+      }
 
-    const [paymentResult] = await connection.query(
-      `
-        INSERT INTO lot_project_payments (
-          lot_project_id,
-          lot_project_listing_id,
-          lot_project_client_profile_id,
-          lot_project_account_id,
-          lot_project_payment_schedule_id,
-          lot_project_payment_type,
-          lot_project_payment_method,
-          lot_project_payment_bank_name,
-          lot_project_payment_account_number,
-          lot_project_payment_amount,
-          lot_project_payment_date,
-          lot_project_payment_reference_id,
-          lot_project_payment_status,
-          lot_project_payment_verified_by_user_id,
-          lot_project_payment_verified_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Verified', ?, NOW())
-      `,
-      [
+      // Lock the full active SOA set in one stable order before reading balances.
+      const hasSchedules = await tableExists(connection, 'lot_project_payment_schedules');
+      if (hasSchedules) await lockPaymentSchedulesForListing(connection, listing);
+
+      const existingRequest = await getPaymentByRequestKey(connection, requestKey);
+      if (existingRequest) {
+        const belongsToSameAccount =
+          Number(existingRequest.lot_project_id) === Number(project.lot_project_id) &&
+          Number(existingRequest.lot_project_listing_id) === Number(listing.lot_project_listing_id) &&
+          Number(existingRequest.lot_project_account_id || 0) === Number(listing.lot_project_account_id || 0);
+        const samePaymentRequest =
+          belongsToSameAccount &&
+          existingRequest.lot_project_payment_status === 'Verified' &&
+          Math.abs(Number(existingRequest.lot_project_payment_amount || 0) - Number(amount || 0)) <= 0.009 &&
+          plainDate(existingRequest.lot_project_payment_date) === paymentDate &&
+          String(existingRequest.lot_project_payment_type || '') === paymentType &&
+          String(existingRequest.lot_project_payment_method || '') === paymentMethod &&
+          Number(existingRequest.lot_project_payment_schedule_id || 0) === Number(scheduleId || 0);
+
+        if (!samePaymentRequest) {
+          throw createHttpError(409, 'This payment request key was already used for a different payment request.');
+        }
+
+        return {
+          paymentId: existingRequest.lot_project_payment_id,
+          referenceId: existingRequest.lot_project_payment_reference_id,
+          idempotentReplay: true,
+        };
+      }
+
+      if (hasSchedules) {
+        await recomputeListingScheduleBalances(connection, listing);
+        await refreshListingPenaltyCache(connection, listing, paymentDate);
+        await recomputeListingScheduleBalances(connection, listing);
+        await validateFullPaymentAmount(connection, listing, paymentType, amount);
+        await validateBalloonPaymentAmount(connection, listing, paymentType, amount);
+      }
+
+      const hasRequestKeyColumn = await columnExists(
+        connection,
+        'lot_project_payments',
+        'lot_project_payment_request_key'
+      );
+
+      const paymentColumns = [
+        'lot_project_id',
+        'lot_project_listing_id',
+        'lot_project_client_profile_id',
+        'lot_project_account_id',
+        'lot_project_payment_schedule_id',
+        'lot_project_payment_type',
+        'lot_project_payment_method',
+        'lot_project_payment_bank_name',
+        'lot_project_payment_account_number',
+        'lot_project_payment_amount',
+        'lot_project_payment_date',
+        'lot_project_payment_reference_id',
+        'lot_project_payment_status',
+        'lot_project_payment_verified_by_user_id',
+        'lot_project_payment_verified_at',
+      ];
+      const paymentValues = [
         project.lot_project_id,
         listing.lot_project_listing_id,
         listing.lot_project_client_profile_id,
@@ -317,73 +380,107 @@ export const createLotProjectListingPayment = async (req, res) => {
         accountNumber,
         amount,
         paymentDate,
-        referenceId,
+        requestedReferenceId,
+        'Verified',
         user?.id || null,
-      ]
-    );
+      ];
+      const valueSql = [
+        '?', '?', '?', '?', '?', '?', '?', '?', '?', '?', '?', '?', '?', '?', 'NOW()',
+      ];
 
-    const paymentId = paymentResult.insertId;
+      if (hasRequestKeyColumn) {
+        paymentColumns.push('lot_project_payment_request_key');
+        paymentValues.push(requestKey);
+        valueSql.push('?');
+      }
 
-    await connection.query(
-      `
-        INSERT INTO lot_project_payment_logs (
-          lot_project_payment_id,
-          action_type,
-          action_description,
-          action_by_user_id
-        ) VALUES (?, 'created', ?, ?)
-      `,
-      [paymentId, `${getPaymentTypeLabel(paymentType)} payment created and verified for ${listing.lot_project_listing_unit_id}.`, user?.id || null]
-    );
+      const [paymentResult] = await connection.query(
+        `
+          INSERT INTO lot_project_payments (${paymentColumns.join(', ')})
+          VALUES (${valueSql.join(', ')})
+        `,
+        paymentValues
+      );
 
-    if (await tableExists(connection, 'lot_project_payment_schedules')) {
-      await applyPaymentToSchedules(connection, listing, paymentId, scheduleId, amount, paymentDate, referenceId, paymentType);
-      await refreshListingPenaltyCache(connection, listing, paymentDate);
-      await recomputeListingScheduleBalances(connection, listing);
-    }
+      const paymentId = paymentResult.insertId;
+      const referenceId = paymentMethod === 'Cash'
+        ? await getNextCashReference(
+            connection,
+            listing.lot_project_listing_unit_id,
+            paymentId
+          )
+        : requestedReferenceId;
 
-    await writeAuditLog(connection, req, {
-      action: 'create',
-      module: 'Payments',
-      entityType: 'lot_project_payment',
-      entityId: String(paymentId),
-      entityLabel: `${referenceId || `Payment #${paymentId}`} — ${listing.buyer_full_name || listing.lot_project_listing_unit_id}`,
-      title: 'Recorded SOA payment',
-      description: `Recorded ${getPaymentTypeLabel(paymentType)} payment for ${listing.buyer_full_name || listing.lot_project_listing_unit_id}.`,
-      metadata: {
-        listingId: listing.lot_project_listing_id,
-        unitId: listing.lot_project_listing_unit_id,
-        clientName: listing.buyer_full_name || null,
-        amount,
-        paymentDate,
-        paymentType,
-        paymentMethod,
-        bankName,
-        accountNumber,
-        referenceId,
-        scheduleId,
-      },
+      if (paymentMethod === 'Cash') {
+        await connection.query(
+          `
+            UPDATE lot_project_payments
+            SET lot_project_payment_reference_id = ?
+            WHERE lot_project_payment_id = ?
+          `,
+          [referenceId, paymentId]
+        );
+      }
+
+      await connection.query(
+        `
+          INSERT INTO lot_project_payment_logs (
+            lot_project_payment_id,
+            action_type,
+            action_description,
+            action_by_user_id
+          ) VALUES (?, 'created', ?, ?)
+        `,
+        [paymentId, `${getPaymentTypeLabel(paymentType)} payment created and verified for ${listing.lot_project_listing_unit_id}.`, user?.id || null]
+      );
+
+      if (hasSchedules) {
+        await applyPaymentToSchedules(connection, listing, paymentId, scheduleId, amount, paymentDate, referenceId, paymentType);
+        await refreshListingPenaltyCache(connection, listing, paymentDate);
+        await recomputeListingScheduleBalances(connection, listing);
+      }
+
+      await writeAuditLog(connection, req, {
+        action: 'create',
+        module: 'Payments',
+        entityType: 'lot_project_payment',
+        entityId: String(paymentId),
+        entityLabel: `${referenceId || `Payment #${paymentId}`} — ${listing.buyer_full_name || listing.lot_project_listing_unit_id}`,
+        title: 'Recorded SOA payment',
+        description: `Recorded ${getPaymentTypeLabel(paymentType)} payment for ${listing.buyer_full_name || listing.lot_project_listing_unit_id}.`,
+        metadata: {
+          listingId: listing.lot_project_listing_id,
+          unitId: listing.lot_project_listing_unit_id,
+          clientName: listing.buyer_full_name || null,
+          amount,
+          paymentDate,
+          paymentType,
+          paymentMethod,
+          bankName,
+          accountNumber,
+          referenceId,
+          scheduleId,
+        },
+      });
+
+      return { paymentId, referenceId, idempotentReplay: false };
     });
 
-    await connection.commit();
-
-    return res.status(201).json({
+    return res.status(result.idempotentReplay ? 200 : 201).json({
       success: true,
-      message: `${getPaymentTypeLabel(paymentType)} payment saved and verified successfully.`,
-      payment_id: paymentId,
-      reference_id: referenceId,
+      message: result.idempotentReplay
+        ? 'This payment was already saved. The existing verified payment was returned.'
+        : `${getPaymentTypeLabel(paymentType)} payment saved and verified successfully.`,
+      payment_id: result.paymentId,
+      reference_id: result.referenceId,
+      idempotent_replay: result.idempotentReplay,
     });
   } catch (error) {
-    await connection.rollback();
     return res.status(error?.statusCode || 500).json({ message: getErrorMessage(error) });
-  } finally {
-    connection.release();
   }
 };
 
 export const updateLotProjectListingPayment = async (req, res) => {
-  const connection = await db.getConnection();
-
   try {
     const user = await getAuthenticatedUser(req);
     const slug = String(req.params.projectSlug || '').trim();
@@ -394,135 +491,152 @@ export const updateLotProjectListingPayment = async (req, res) => {
     if (!project) return res.status(404).json({ message: 'Lot project not found.' });
     if (!paymentId) return res.status(400).json({ message: 'Payment id is required.' });
 
-    const listing = await getListingForPayment(connection, project, listingLookup);
-    if (!listing) return res.status(404).json({ message: 'Listing not found.' });
+    const result = await runTransactionWithRetry(db, async (connection) => {
+      const listing = await getListingForPayment(connection, project, listingLookup, { forUpdate: true });
+      if (!listing) throw createHttpError(404, 'Listing not found.');
+      await lockPaymentAccountForListing(connection, listing);
 
-    const existingPayment = await getPaymentById(connection, project, listing, paymentId);
-    if (!existingPayment) return res.status(404).json({ message: 'Payment not found.' });
+      const hasSchedules = await tableExists(connection, 'lot_project_payment_schedules');
+      if (hasSchedules) await lockPaymentSchedulesForListing(connection, listing);
 
-    const amount = parseMoneyValue(req.body.amount);
-    const paymentDate = dateOrNull(req.body.paymentDate || req.body.payment_date) || plainDate(existingPayment.lot_project_payment_date);
-    const paymentType = normalizePaymentType(req.body.paymentType || req.body.payment_type || existingPayment.lot_project_payment_type);
-    const paymentMethod = normalizePaymentMethod(req.body.method || req.body.paymentMethod || req.body.payment_method || existingPayment.lot_project_payment_method);
-    const bankName = paymentMethod === 'Cash'
-      ? null
-      : toNullable(
-          req.body.bankName ||
-          req.body.bank_name ||
-          req.body.paymentBank ||
-          req.body.payment_bank ||
-          existingPayment.lot_project_payment_bank_name
-        );
-    const accountNumber = paymentMethod === 'Cash'
-      ? null
-      : toNullable(
-          req.body.accountNumber ||
-          req.body.account_number ||
-          req.body.accountNo ||
-          req.body.account_no ||
-          existingPayment.lot_project_payment_account_number
-        );
-    const requestedScheduleId = req.body.soaRowId ?? req.body.paymentScheduleId ?? req.body.lot_project_payment_schedule_id;
-    const scheduleId = paymentType === 'full_payment' || paymentType === 'balloon'
-      ? null
-      : toNullableNumber(requestedScheduleId ?? existingPayment.lot_project_payment_schedule_id);
+      const existingPayment = await getPaymentById(connection, project, listing, paymentId, { forUpdate: true });
+      if (!existingPayment) throw createHttpError(404, 'Payment not found.');
+      if (existingPayment.lot_project_payment_status !== 'Verified') {
+        throw createHttpError(409, 'Only a verified payment can be edited.');
+      }
 
-    if (amount <= 0) return res.status(400).json({ message: 'Payment amount must be greater than 0.' });
+      const amount = parseMoneyValue(req.body.amount);
+      const paymentDate = dateOrNull(req.body.paymentDate || req.body.payment_date) || plainDate(existingPayment.lot_project_payment_date);
+      const paymentType = normalizePaymentType(req.body.paymentType || req.body.payment_type || existingPayment.lot_project_payment_type);
+      const paymentMethod = normalizePaymentMethod(req.body.method || req.body.paymentMethod || req.body.payment_method || existingPayment.lot_project_payment_method);
+      const bankName = paymentMethod === 'Cash'
+        ? null
+        : toNullable(
+            req.body.bankName ||
+            req.body.bank_name ||
+            req.body.paymentBank ||
+            req.body.payment_bank ||
+            existingPayment.lot_project_payment_bank_name
+          );
+      const accountNumber = paymentMethod === 'Cash'
+        ? null
+        : toNullable(
+            req.body.accountNumber ||
+            req.body.account_number ||
+            req.body.accountNo ||
+            req.body.account_no ||
+            existingPayment.lot_project_payment_account_number
+          );
+      const requestedScheduleId = req.body.soaRowId ?? req.body.paymentScheduleId ?? req.body.lot_project_payment_schedule_id;
+      const scheduleId = paymentType === 'full_payment' || paymentType === 'balloon'
+        ? null
+        : toNullableNumber(requestedScheduleId ?? existingPayment.lot_project_payment_schedule_id);
 
-    const referenceId = paymentMethod === 'Cash'
-      ? (
-          existingPayment.lot_project_payment_method === 'Cash' && existingPayment.lot_project_payment_reference_id
-            ? existingPayment.lot_project_payment_reference_id
-            : await getNextCashReference(connection, listing.lot_project_listing_unit_id)
-        )
-      : toNullable(req.body.referenceId || req.body.reference_id);
+      if (amount <= 0) throw createHttpError(400, 'Payment amount must be greater than 0.');
 
-    if (paymentMethod !== 'Cash' && !referenceId) {
-      return res.status(400).json({ message: 'Reference ID is required for non-cash payments.' });
-    }
+      const referenceId = paymentMethod === 'Cash'
+        ? (
+            existingPayment.lot_project_payment_method === 'Cash' && existingPayment.lot_project_payment_reference_id
+              ? existingPayment.lot_project_payment_reference_id
+              : await getNextCashReference(
+                  connection,
+                  listing.lot_project_listing_unit_id,
+                  paymentId
+                )
+          )
+        : toNullable(req.body.referenceId || req.body.reference_id);
 
-    await connection.beginTransaction();
+      if (paymentMethod !== 'Cash' && !bankName) {
+        throw createHttpError(400, 'Bank / payment provider is required for non-cash payments.');
+      }
+      if (paymentMethod !== 'Cash' && !accountNumber) {
+        throw createHttpError(400, 'Account No. / wallet number is required for non-cash payments.');
+      }
+      if (paymentMethod !== 'Cash' && !referenceId) {
+        throw createHttpError(400, 'Reference ID is required for non-cash payments.');
+      }
 
-    await reversePaymentAllocations(connection, listing, paymentId);
-    if (await tableExists(connection, 'lot_project_payment_schedules')) {
-      await refreshListingPenaltyCache(connection, listing, paymentDate);
-      await validateFullPaymentAmount(connection, listing, paymentType, amount);
-      await validateBalloonPaymentAmount(connection, listing, paymentType, amount, paymentId);
-    }
+      await reversePaymentAllocations(connection, listing, paymentId);
+      if (hasSchedules) {
+        await refreshListingPenaltyCache(connection, listing, paymentDate);
+        await validateFullPaymentAmount(connection, listing, paymentType, amount);
+        await validateBalloonPaymentAmount(connection, listing, paymentType, amount, paymentId);
+      }
 
-    await connection.query(
-      `
-        UPDATE lot_project_payments
-        SET lot_project_payment_schedule_id = ?,
-            lot_project_payment_type = ?,
-            lot_project_payment_method = ?,
-            lot_project_payment_bank_name = ?,
-            lot_project_payment_account_number = ?,
-            lot_project_payment_amount = ?,
-            lot_project_payment_date = ?,
-            lot_project_payment_reference_id = ?,
-            lot_project_payment_status = 'Verified',
-            lot_project_payment_verified_by_user_id = ?,
-            lot_project_payment_verified_at = NOW()
-        WHERE lot_project_payment_id = ?
-          AND lot_project_id = ?
-          AND lot_project_listing_id = ?
-          AND lot_project_client_profile_id = ?
-          AND lot_project_account_id = ?
-      `,
-      [
-        scheduleId,
-        paymentType,
-        paymentMethod,
-        bankName,
-        accountNumber,
-        amount,
-        paymentDate,
-        referenceId,
-        user?.id || null,
-        paymentId,
-        project.lot_project_id,
-        listing.lot_project_listing_id,
-        listing.lot_project_client_profile_id,
-        listing.lot_project_account_id,
-      ]
-    );
+      const [updateResult] = await connection.query(
+        `
+          UPDATE lot_project_payments
+          SET lot_project_payment_schedule_id = ?,
+              lot_project_payment_type = ?,
+              lot_project_payment_method = ?,
+              lot_project_payment_bank_name = ?,
+              lot_project_payment_account_number = ?,
+              lot_project_payment_amount = ?,
+              lot_project_payment_date = ?,
+              lot_project_payment_reference_id = ?,
+              lot_project_payment_status = 'Verified',
+              lot_project_payment_verified_by_user_id = ?,
+              lot_project_payment_verified_at = NOW()
+          WHERE lot_project_payment_id = ?
+            AND lot_project_id = ?
+            AND lot_project_listing_id = ?
+            AND lot_project_client_profile_id = ?
+            AND lot_project_account_id = ?
+        `,
+        [
+          scheduleId,
+          paymentType,
+          paymentMethod,
+          bankName,
+          accountNumber,
+          amount,
+          paymentDate,
+          referenceId,
+          user?.id || null,
+          paymentId,
+          project.lot_project_id,
+          listing.lot_project_listing_id,
+          listing.lot_project_client_profile_id,
+          listing.lot_project_account_id,
+        ]
+      );
 
-    await connection.query(
-      `
-        INSERT INTO lot_project_payment_logs (
-          lot_project_payment_id,
-          action_type,
-          action_description,
-          action_by_user_id
-        ) VALUES (?, 'updated', ?, ?)
-      `,
-      [paymentId, `${getPaymentTypeLabel(paymentType)} payment updated by ${getUserFullName(user)}.`, user?.id || null]
-    );
+      if (!Number(updateResult?.affectedRows || 0)) {
+        throw createHttpError(409, 'Payment changed before it could be updated. Please refresh and try again.');
+      }
 
-    if (await tableExists(connection, 'lot_project_payment_schedules')) {
-      await recomputeListingScheduleBalances(connection, listing);
-      await applyPaymentToSchedules(connection, listing, paymentId, scheduleId, amount, paymentDate, referenceId, paymentType);
-      await refreshListingPenaltyCache(connection, listing, paymentDate);
-      await recomputeListingScheduleBalances(connection, listing);
-    }
+      await connection.query(
+        `
+          INSERT INTO lot_project_payment_logs (
+            lot_project_payment_id,
+            action_type,
+            action_description,
+            action_by_user_id
+          ) VALUES (?, 'updated', ?, ?)
+        `,
+        [paymentId, `${getPaymentTypeLabel(paymentType)} payment updated by ${getUserFullName(user)}.`, user?.id || null]
+      );
 
-    await connection.commit();
+      if (hasSchedules) {
+        await recomputeListingScheduleBalances(connection, listing);
+        await applyPaymentToSchedules(connection, listing, paymentId, scheduleId, amount, paymentDate, referenceId, paymentType);
+        await refreshListingPenaltyCache(connection, listing, paymentDate);
+        await recomputeListingScheduleBalances(connection, listing);
+      }
+
+      return { paymentId, referenceId, paymentType };
+    });
 
     return res.json({
       success: true,
-      message: `${getPaymentTypeLabel(paymentType)} payment updated successfully.`,
-      payment_id: paymentId,
-      reference_id: referenceId,
+      message: `${getPaymentTypeLabel(result.paymentType)} payment updated successfully.`,
+      payment_id: result.paymentId,
+      reference_id: result.referenceId,
     });
   } catch (error) {
-    await connection.rollback();
     return res.status(error?.statusCode || 500).json({ message: getErrorMessage(error) });
-  } finally {
-    connection.release();
   }
 };
-
 
 export const updateLotProjectListingSoaTerms = async (req, res) => {
   const connection = await db.getConnection();
@@ -1140,7 +1254,7 @@ const verifySuperAdminPassword = async (connection, user, password) => {
 };
 
 export const deleteLotProjectListingPayment = async (req, res) => {
-  const connection = await db.getConnection();
+  let actionUser = null;
 
   try {
     const user = await getAuthenticatedUser(req);
@@ -1150,81 +1264,98 @@ export const deleteLotProjectListingPayment = async (req, res) => {
     const project = await getProjectBySlug(slug);
     const superAdminPassword = String(req.body.superAdminPassword || req.body.password || '').trim();
 
-    const superAdminCheck = await verifySuperAdminPassword(connection, user, superAdminPassword);
-    if (!superAdminCheck.ok) {
-      return res.status(user ? 403 : 401).json({ message: superAdminCheck.message });
+    const authConnection = await db.getConnection();
+    try {
+      const superAdminCheck = await verifySuperAdminPassword(authConnection, user, superAdminPassword);
+      if (!superAdminCheck.ok) {
+        return res.status(user ? 403 : 401).json({ message: superAdminCheck.message });
+      }
+      actionUser = user || superAdminCheck.superAdmin;
+    } finally {
+      authConnection.release();
     }
-    const actionUser = user || superAdminCheck.superAdmin;
 
     if (!project) return res.status(404).json({ message: 'Lot project not found.' });
     if (!paymentId) return res.status(400).json({ message: 'Payment id is required.' });
 
-    const listing = await getListingForPayment(connection, project, listingLookup);
-    if (!listing) return res.status(404).json({ message: 'Listing not found.' });
+    const result = await runTransactionWithRetry(db, async (connection) => {
+      const listing = await getListingForPayment(connection, project, listingLookup, { forUpdate: true });
+      if (!listing) throw createHttpError(404, 'Listing not found.');
+      await lockPaymentAccountForListing(connection, listing);
 
-    const existingPayment = await getPaymentById(connection, project, listing, paymentId);
-    if (!existingPayment) return res.status(404).json({ message: 'Payment not found.' });
+      const hasSchedules = await tableExists(connection, 'lot_project_payment_schedules');
+      if (hasSchedules) await lockPaymentSchedulesForListing(connection, listing);
 
-    await connection.beginTransaction();
+      const existingPayment = await getPaymentById(connection, project, listing, paymentId, { forUpdate: true });
+      if (!existingPayment) throw createHttpError(404, 'Payment not found.');
+      if (existingPayment.lot_project_payment_status !== 'Verified') {
+        throw createHttpError(409, 'This payment is no longer verified and cannot be deleted again.');
+      }
 
-    await reversePaymentAllocations(connection, listing, paymentId);
+      await reversePaymentAllocations(connection, listing, paymentId);
 
-    await connection.query(
-      `
-        UPDATE lot_project_payments
-        SET lot_project_payment_status = 'Cancelled',
-            lot_project_payment_updated_at = NOW()
-        WHERE lot_project_payment_id = ?
-          AND lot_project_id = ?
-          AND lot_project_listing_id = ?
-          AND lot_project_client_profile_id = ?
-          AND lot_project_account_id = ?
-      `,
-      [
+      const [deleteResult] = await connection.query(
+        `
+          UPDATE lot_project_payments
+          SET lot_project_payment_status = 'Cancelled',
+              lot_project_payment_updated_at = NOW()
+          WHERE lot_project_payment_id = ?
+            AND lot_project_id = ?
+            AND lot_project_listing_id = ?
+            AND lot_project_client_profile_id = ?
+            AND lot_project_account_id = ?
+            AND lot_project_payment_status = 'Verified'
+        `,
+        [
+          paymentId,
+          project.lot_project_id,
+          listing.lot_project_listing_id,
+          listing.lot_project_client_profile_id,
+          listing.lot_project_account_id,
+        ]
+      );
+
+      if (!Number(deleteResult?.affectedRows || 0)) {
+        throw createHttpError(409, 'Payment changed before it could be deleted. Please refresh and try again.');
+      }
+
+      if (hasSchedules) {
+        await recomputeListingScheduleBalances(connection, listing);
+        await refreshListingPenaltyCache(connection, listing, todayDateOnly());
+        await recomputeListingScheduleBalances(connection, listing);
+      }
+
+      await connection.query(
+        `
+          INSERT INTO lot_project_payment_logs (
+            lot_project_payment_id,
+            action_type,
+            action_description,
+            action_by_user_id
+          ) VALUES (?, 'deleted', ?, ?)
+        `,
+        [
+          paymentId,
+          `Payment ${existingPayment.lot_project_payment_reference_id || paymentId} deleted by ${getUserFullName(actionUser)}.`,
+          actionUser?.id || null,
+        ]
+      );
+
+      return {
         paymentId,
-        project.lot_project_id,
-        listing.lot_project_listing_id,
-        listing.lot_project_client_profile_id,
-        listing.lot_project_account_id,
-      ]
-    );
-
-    if (await tableExists(connection, 'lot_project_payment_schedules')) {
-      await recomputeListingScheduleBalances(connection, listing);
-      await refreshListingPenaltyCache(connection, listing, todayDateOnly());
-      await recomputeListingScheduleBalances(connection, listing);
-    }
-
-    await connection.query(
-      `
-        INSERT INTO lot_project_payment_logs (
-          lot_project_payment_id,
-          action_type,
-          action_description,
-          action_by_user_id
-        ) VALUES (?, 'deleted', ?, ?)
-      `,
-      [
-        paymentId,
-        `Payment ${existingPayment.lot_project_payment_reference_id || paymentId} deleted by ${getUserFullName(actionUser)}.`,
-        actionUser?.id || null,
-      ]
-    );
-
-    await connection.commit();
+        referenceId: existingPayment.lot_project_payment_reference_id || null,
+      };
+    });
 
     return res.json({
       success: true,
-      message: `Payment ${existingPayment.lot_project_payment_reference_id || paymentId} deleted successfully.`,
+      message: 'Payment deleted successfully and SOA balances were recalculated.',
+      payment_id: result.paymentId,
     });
   } catch (error) {
-    await connection.rollback();
-    return res.status(500).json({ message: getErrorMessage(error) });
-  } finally {
-    connection.release();
+    return res.status(error?.statusCode || 500).json({ message: getErrorMessage(error) });
   }
 };
-
 
 export const grantPaymentSchedulePenaltyExtension = async (req, res) => {
   const connection = await db.getConnection();

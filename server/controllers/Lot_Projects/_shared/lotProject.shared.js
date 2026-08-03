@@ -2910,7 +2910,7 @@ export const getUserFullName = (user = {}) => {
   return name || safeUser.email || '-';
 };
 
-export const getListingForPayment = async (connection, project, listingLookup) => {
+export const getListingForPayment = async (connection, project, listingLookup, { forUpdate = false } = {}) => {
   const lookup = getListingLookupWhere(listingLookup);
   const [rows] = await connection.query(
     `
@@ -2932,11 +2932,65 @@ export const getListingForPayment = async (connection, project, listingLookup) =
       WHERE l.lot_project_id = ?
         AND ${lookup.sql}
       LIMIT 1
+      ${forUpdate ? 'FOR UPDATE' : ''}
     `,
     [project.lot_project_id, ...lookup.params]
   );
 
   return rows[0] || null;
+};
+
+
+export const lockPaymentAccountForListing = async (connection, listing) => {
+  const accountId = Number(listing?.lot_project_account_id || 0);
+  if (!accountId) return null;
+
+  const [rows] = await connection.query(
+    `
+      SELECT lot_project_account_id, account_status
+      FROM lot_project_accounts
+      WHERE lot_project_account_id = ?
+        AND lot_project_id = ?
+        AND lot_project_listing_id = ?
+      LIMIT 1
+      FOR UPDATE
+    `,
+    [accountId, listing.lot_project_id, listing.lot_project_listing_id]
+  );
+
+  if (!rows[0]) {
+    throw Object.assign(new Error('The current buyer account changed before the payment could be processed.'), { statusCode: 409 });
+  }
+
+  return rows[0];
+};
+
+export const lockPaymentSchedulesForListing = async (connection, listing) => {
+  if (!(await tableExists(connection, 'lot_project_payment_schedules'))) return [];
+
+  const [rows] = await connection.query(
+    `
+      SELECT s.lot_project_payment_schedule_id
+      FROM lot_project_payment_schedules s
+      WHERE s.lot_project_id = ?
+        AND s.lot_project_listing_id = ?
+        AND (? = 0 OR s.lot_project_client_profile_id = ?)
+        AND (? = 0 OR s.lot_project_account_id = ?)
+        AND ${getLatestActiveScheduleGenerationPredicate('s')}
+      ORDER BY s.lot_project_payment_schedule_id ASC
+      FOR UPDATE
+    `,
+    [
+      listing.lot_project_id,
+      listing.lot_project_listing_id,
+      Number(listing.lot_project_client_profile_id || 0),
+      Number(listing.lot_project_client_profile_id || 0),
+      Number(listing.lot_project_account_id || 0),
+      Number(listing.lot_project_account_id || 0),
+    ]
+  );
+
+  return rows;
 };
 
 export const normalizePaymentType = (value = '') => {
@@ -2977,22 +3031,15 @@ export const normalizePaymentMethod = (value = '') => {
   return 'Other';
 };
 
-export const getNextCashReference = async (connection, unitCode) => {
+export const getNextCashReference = async (_connection, unitCode, paymentId) => {
+  const numericPaymentId = Number(paymentId || 0);
+  if (!numericPaymentId) {
+    throw new Error('Payment ID is required before a cash reference can be generated.');
+  }
+
   const dateKey = todayDateOnly().replaceAll('-', '');
   const cleanUnit = String(unitCode || 'UNIT').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-  const prefix = `CASH-${dateKey}-${cleanUnit}`;
-
-  const [rows] = await connection.query(
-    `
-      SELECT COUNT(*) AS total
-      FROM lot_project_payments
-      WHERE lot_project_payment_reference_id LIKE ?
-    `,
-    [`${prefix}-%`]
-  );
-
-  const nextNumber = String(Number(rows[0]?.total || 0) + 1).padStart(4, '0');
-  return `${prefix}-${nextNumber}`;
+  return `CASH-${dateKey}-${cleanUnit}-${String(numericPaymentId).padStart(4, '0')}`;
 };
 
 export const mapPaymentRow = (row = {}) => ({
@@ -3724,14 +3771,24 @@ export const applyPaymentToSchedules = async (connection, listing, paymentId, pr
       WHERE s.lot_project_id = ?
         AND s.lot_project_listing_id = ?
         AND (? = 0 OR s.lot_project_client_profile_id = ?)
+        AND (? = 0 OR s.lot_project_account_id = ?)
         AND ${getLatestActiveScheduleGenerationPredicate('s')}
       ORDER BY
         CASE WHEN lot_project_payment_schedule_id = ? THEN 0 ELSE 1 END,
         CASE WHEN due_date IS NULL THEN 1 ELSE 0 END,
         due_date ASC,
         lot_project_payment_schedule_id ASC
+      FOR UPDATE
     `,
-    [listing.lot_project_id, listing.lot_project_listing_id, Number(listing.lot_project_client_profile_id || 0), Number(listing.lot_project_client_profile_id || 0), preferredScheduleId || 0]
+    [
+      listing.lot_project_id,
+      listing.lot_project_listing_id,
+      Number(listing.lot_project_client_profile_id || 0),
+      Number(listing.lot_project_client_profile_id || 0),
+      Number(listing.lot_project_account_id || 0),
+      Number(listing.lot_project_account_id || 0),
+      preferredScheduleId || 0,
+    ]
   );
 
   if (!scheduleRows.length) {
@@ -3815,30 +3872,38 @@ export const reversePaymentAllocations = async (connection, listing, paymentId) 
 
   const [allocations] = await connection.query(
     `
-      SELECT lot_project_payment_schedule_id, applied_amount
-      FROM lot_project_payment_allocations
-      WHERE lot_project_payment_id = ?
+      SELECT
+        allocation.lot_project_payment_schedule_id,
+        allocation.applied_amount,
+        schedule.*
+      FROM lot_project_payment_allocations allocation
+      INNER JOIN lot_project_payment_schedules schedule
+        ON schedule.lot_project_payment_schedule_id = allocation.lot_project_payment_schedule_id
+      WHERE allocation.lot_project_payment_id = ?
+        AND schedule.lot_project_id = ?
+        AND schedule.lot_project_listing_id = ?
+        AND (? = 0 OR schedule.lot_project_client_profile_id = ?)
+        AND (? = 0 OR schedule.lot_project_account_id = ?)
+      ORDER BY allocation.lot_project_payment_schedule_id ASC
+      FOR UPDATE
     `,
-    [paymentId]
+    [
+      paymentId,
+      listing.lot_project_id,
+      listing.lot_project_listing_id,
+      Number(listing.lot_project_client_profile_id || 0),
+      Number(listing.lot_project_client_profile_id || 0),
+      Number(listing.lot_project_account_id || 0),
+      Number(listing.lot_project_account_id || 0),
+    ]
   );
 
   for (const allocation of allocations) {
-    const [scheduleRows] = await connection.query(
-      `
-        SELECT *
-        FROM lot_project_payment_schedules
-        WHERE lot_project_payment_schedule_id = ?
-        LIMIT 1
-      `,
-      [allocation.lot_project_payment_schedule_id]
+    const nextPaid = roundMoneyValue(
+      Math.max(Number(allocation.amount_paid || 0) - Number(allocation.applied_amount || 0), 0)
     );
-
-    const schedule = scheduleRows[0];
-    if (!schedule) continue;
-
-    const nextPaid = roundMoneyValue(Math.max(Number(schedule.amount_paid || 0) - Number(allocation.applied_amount || 0), 0));
-    const totalDue = getStoredRowTotalDue(schedule, clientProfile);
-    const paidBeforeDue = schedule.date_paid && schedule.due_date && String(schedule.date_paid).slice(0, 10) < String(schedule.due_date).slice(0, 10);
+    const totalDue = getStoredRowTotalDue(allocation, clientProfile);
+    const paidBeforeDue = allocation.date_paid && allocation.due_date && String(allocation.date_paid).slice(0, 10) < String(allocation.due_date).slice(0, 10);
     const nextStatus = nextPaid <= 0
       ? 'Unpaid'
       : nextPaid + 0.009 >= totalDue
@@ -3866,7 +3931,13 @@ export const reversePaymentAllocations = async (connection, listing, paymentId) 
   await recomputeListingScheduleBalances(connection, listing);
 };
 
-export const getPaymentById = async (connection, project, listing, paymentId) => {
+export const getPaymentById = async (
+  connection,
+  project,
+  listing,
+  paymentId,
+  { forUpdate = false } = {}
+) => {
   const [rows] = await connection.query(
     `
       SELECT *
@@ -3875,9 +3946,19 @@ export const getPaymentById = async (connection, project, listing, paymentId) =>
         AND lot_project_id = ?
         AND lot_project_listing_id = ?
         AND (? = 0 OR lot_project_client_profile_id = ?)
+        AND (? = 0 OR lot_project_account_id = ?)
       LIMIT 1
+      ${forUpdate ? 'FOR UPDATE' : ''}
     `,
-    [paymentId, project.lot_project_id, listing.lot_project_listing_id, Number(listing.lot_project_client_profile_id || 0), Number(listing.lot_project_client_profile_id || 0)]
+    [
+      paymentId,
+      project.lot_project_id,
+      listing.lot_project_listing_id,
+      Number(listing.lot_project_client_profile_id || 0),
+      Number(listing.lot_project_client_profile_id || 0),
+      Number(listing.lot_project_account_id || 0),
+      Number(listing.lot_project_account_id || 0),
+    ]
   );
 
   return rows[0] || null;

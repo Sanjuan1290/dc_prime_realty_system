@@ -93,7 +93,6 @@ test('homepage header is transparent over the video and becomes solid after the 
   assert.match(dropdown, /light = false/);
 });
 
-
 test('buyer tools, saved projects, comparison and legal pages are routed as frontend features', () => {
   const app = read('client/src/App.jsx');
   const properties = read('client/src/website/pages/Properties.jsx');
@@ -134,7 +133,6 @@ test('public website includes search, save, sharing and background-video control
   assert.match(blog, /Search buyer guides/);
 });
 
-
 test('public website avoids unsupported comparison icons and hides the portal entry point', () => {
   const properties = read('client/src/website/pages/Properties.jsx');
   const footer = read('client/src/website/components/WebsiteFooter.jsx');
@@ -157,6 +155,10 @@ test('website pages include route transitions and scroll reveal animations', () 
   assert.match(reveal, /website-scroll-reveal-visible/);
   assert.match(css, /@keyframes website-page-enter/);
   assert.match(css, /prefers-reduced-motion/);
-  assert.match(app, /import WebsitePrivacyPolicy from '\.\/website\/pages\/PrivacyPolicy'/);
-  assert.doesNotMatch(app, /const WebsitePrivacyPolicy = lazy/);
+
+  assert.match(
+    app,
+    /import WebsitePrivacyNotice\s+from '\.\/website\/pages\/PrivacyNotice'/
+  );
+  assert.doesNotMatch(app, /const WebsitePrivacyNotice\s*=\s*lazy/);
 });

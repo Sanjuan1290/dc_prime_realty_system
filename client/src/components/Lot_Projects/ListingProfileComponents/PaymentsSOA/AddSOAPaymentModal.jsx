@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { FiAlertCircle, FiCreditCard, FiX } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
 import {
@@ -17,6 +17,15 @@ const money = (value) =>
   }).format(Number(value || 0))
 
 const todayISO = () => new Date().toISOString().slice(0, 10)
+
+
+const createPaymentRequestKey = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID().replaceAll('-', '')
+  }
+
+  return `payment_${Date.now()}_${Math.random().toString(36).slice(2, 14)}`
+}
 
 const paymentTypes = [
   'Reservation',
@@ -162,6 +171,8 @@ const AddSOAPaymentModal = ({
   onSave,
 }) => {
   const isEdit = Boolean(mode === 'edit' && initialPayment)
+  const submitLockRef = useRef(false)
+  const requestKeyRef = useRef(isEdit ? null : createPaymentRequestKey())
   const suggestedRow = isEdit
     ? rows.find((row) => String(row.id) === String(initialPayment.soaRowId)) || getSuggestedRow(rows)
     : getSuggestedRow(rows)
@@ -323,6 +334,7 @@ const AddSOAPaymentModal = ({
 
   const handleSubmit = async (event) => {
     event.preventDefault()
+    if (submitLockRef.current || isSaving || alert?.type === 'loading') return
 
     const paymentAmount = isFullPayment
       ? fullPaymentAmount
@@ -384,6 +396,7 @@ const AddSOAPaymentModal = ({
     }
 
     try {
+      submitLockRef.current = true
       setAlert({ type: 'loading', message: isEdit ? 'Updating payment...' : 'Saving payment...' })
 
       await onSave({
@@ -399,8 +412,10 @@ const AddSOAPaymentModal = ({
         bankName: form.method === 'Cash' ? null : form.bankName.trim(),
         accountNumber: form.method === 'Cash' ? null : form.accountNumber.trim(),
         referenceId: form.method === 'Cash' ? form.referenceId : form.referenceId.trim(),
+        requestKey: isEdit ? undefined : requestKeyRef.current,
       })
     } catch (error) {
+      submitLockRef.current = false
       setAlert({ type: 'error', message: error?.message || 'Failed to save payment.' })
     }
   }
