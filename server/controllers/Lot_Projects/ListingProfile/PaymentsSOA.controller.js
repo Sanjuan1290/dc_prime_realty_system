@@ -60,6 +60,7 @@ import {
   getPaymentTypeLabel,
   getRemainingUnpaidScheduleBalance,
   getBalloonPrincipalCapacity,
+  rebuildListingPaymentAllocationsChronologically,
   normalizePaymentMethod,
   getNextCashReference,
   mapPaymentRow,
@@ -292,6 +293,124 @@ const getPenaltyReliefContext = async (connection, project, listing, scheduleId,
   return { clientProfile, schedule, snapshot };
 };
 
+
+export const previewLotProjectListingPayment = async (req, res) => {
+  const connection = await db.getConnection();
+
+  try {
+    const slug = String(req.params.projectSlug || '').trim();
+    const listingLookup = String(req.params.listingId || '').trim();
+    const project = await getProjectBySlug(slug);
+    if (!project) return res.status(404).json({ message: 'Lot project not found.' });
+
+    const paymentDate = dateOrNull(req.body.paymentDate || req.body.payment_date) || todayDateOnly();
+    if (paymentDate > todayDateOnly()) {
+      return res.status(400).json({ message: 'Future payment dates are blocked.' });
+    }
+
+    const paymentType = normalizePaymentType(req.body.paymentType || req.body.payment_type);
+    const requestedScheduleId = req.body.soaRowId ?? req.body.paymentScheduleId ?? req.body.lot_project_payment_schedule_id;
+    const scheduleId = paymentType === 'full_payment' || paymentType === 'balloon'
+      ? null
+      : toNullableNumber(requestedScheduleId);
+    const excludePaymentId = Number(req.body.excludePaymentId || req.body.paymentId || 0);
+
+    const listing = await getListingForPayment(connection, project, listingLookup);
+    if (!listing) return res.status(404).json({ message: 'Listing not found.' });
+    if (!listing.lot_project_client_profile_id) {
+      return res.status(400).json({ message: 'This listing has no buyer profile yet.' });
+    }
+
+    const [profileRows] = await connection.query(
+      `SELECT * FROM lot_project_client_profiles WHERE lot_project_client_profile_id = ? LIMIT 1`,
+      [listing.lot_project_client_profile_id]
+    );
+    const clientProfile = { ...(listing || {}), ...(profileRows[0] || {}) };
+    const scheduleRows = await getExistingSoaScheduleRows(
+      connection,
+      project.lot_project_id,
+      listing.lot_project_listing_id,
+      listing.lot_project_client_profile_id,
+      listing.lot_project_account_id
+    );
+
+    const snapshots = await getListingPenaltySnapshots(
+      connection,
+      project.lot_project_id,
+      listing.lot_project_listing_id,
+      clientProfile,
+      scheduleRows,
+      paymentDate,
+      { excludePaymentId }
+    );
+
+    const summarizeRow = (row) => {
+      const rowId = Number(row.lot_project_payment_schedule_id || 0);
+      const snapshot = snapshots.get(rowId) || {};
+      const unpaidBase = roundMoneyValue(Math.max(Number(snapshot.unpaidBaseAmount || 0), 0));
+      const baseDue = roundMoneyValue(Math.max(Number(snapshot.baseDueAmount || 0), 0));
+      const scheduledInterest = roundMoneyValue(Math.max(Number(row.interest_amount || 0), 0));
+      const basePaid = roundMoneyValue(Math.max(baseDue - unpaidBase, 0));
+      const interestPaid = roundMoneyValue(Math.min(basePaid, scheduledInterest));
+      const interestOutstanding = roundMoneyValue(Math.max(scheduledInterest - interestPaid, 0));
+      const principalOutstanding = roundMoneyValue(Math.max(unpaidBase - interestOutstanding, 0));
+      const penaltyOutstanding = roundMoneyValue(Math.max(Number(snapshot.outstandingPenaltyAmount || 0), 0));
+
+      return {
+        scheduleId: rowId,
+        description: row.description || '-',
+        dueDate: plainDate(row.due_date, null),
+        principalOutstanding,
+        interestOutstanding,
+        baseOutstanding: unpaidBase,
+        penaltyOutstanding,
+        totalPayable: roundMoneyValue(unpaidBase + penaltyOutstanding),
+        penaltyDays: Number(snapshot.penaltyDays || 0),
+        penaltyStartDate: snapshot.penaltyStartDate || null,
+        penaltyCalculatedThrough: snapshot.penaltyCalculatedThrough || paymentDate,
+        penaltyRatePercent: Number(snapshot.ratePercent || 0),
+        penaltyGraceDays: Number(snapshot.graceDays || 0),
+      };
+    };
+
+    const activeSummaries = scheduleRows
+      .filter((row) => String(row.schedule_status || '').toLowerCase() !== 'cancelled')
+      .map(summarizeRow);
+    const fullSummary = activeSummaries.reduce((summary, row) => ({
+      principalOutstanding: roundMoneyValue(summary.principalOutstanding + Number(row.principalOutstanding || 0)),
+      interestOutstanding: roundMoneyValue(summary.interestOutstanding + Number(row.interestOutstanding || 0)),
+      penaltyOutstanding: roundMoneyValue(summary.penaltyOutstanding + Number(row.penaltyOutstanding || 0)),
+      totalPayable: roundMoneyValue(summary.totalPayable + Number(row.totalPayable || 0)),
+    }), { principalOutstanding: 0, interestOutstanding: 0, penaltyOutstanding: 0, totalPayable: 0 });
+    const fullPaymentAmount = fullSummary.totalPayable;
+    const selectedRow = scheduleId
+      ? activeSummaries.find((row) => Number(row.scheduleId) === Number(scheduleId)) || null
+      : null;
+
+    if (scheduleId && !selectedRow) {
+      return res.status(404).json({ message: 'The selected SOA row is not available.' });
+    }
+
+    const balloonPrincipalCapacity = paymentType === 'balloon'
+      ? await getBalloonPrincipalCapacity(connection, listing, { excludePaymentId })
+      : 0;
+
+    return res.json({
+      success: true,
+      paymentDate,
+      paymentType: getPaymentTypeLabel(paymentType),
+      selectedRow,
+      fullSummary,
+      fullPaymentAmount,
+      balloonPrincipalCapacity: roundMoneyValue(balloonPrincipalCapacity),
+    });
+  } catch (error) {
+    return res.status(error?.statusCode || 500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
 export const createLotProjectListingPayment = async (req, res) => {
   try {
     const user = await getAuthenticatedUser(req);
@@ -303,7 +422,7 @@ export const createLotProjectListingPayment = async (req, res) => {
     if (!listingLookup) return res.status(400).json({ message: 'Listing id is required.' });
 
     const amount = parseMoneyValue(req.body.amount);
-    const paymentDate = dateOrNull(req.body.paymentDate || req.body.payment_date) || new Date().toISOString().slice(0, 10);
+    const paymentDate = dateOrNull(req.body.paymentDate || req.body.payment_date) || todayDateOnly();
     const paymentType = normalizePaymentType(req.body.paymentType || req.body.payment_type);
     const paymentMethod = normalizePaymentMethod(req.body.method || req.body.paymentMethod || req.body.payment_method);
     const bankName = paymentMethod === 'Cash'
@@ -320,6 +439,7 @@ export const createLotProjectListingPayment = async (req, res) => {
       req.body.requestKey || req.body.request_key || req.get?.('Idempotency-Key')
     );
 
+    if (paymentDate > todayDateOnly()) return res.status(400).json({ message: 'Future payment dates are blocked.' });
     if (amount <= 0) return res.status(400).json({ message: 'Payment amount must be greater than 0.' });
     if (paymentMethod !== 'Cash' && !bankName) {
       return res.status(400).json({ message: 'Bank / payment provider is required for non-cash payments.' });
@@ -475,9 +595,7 @@ export const createLotProjectListingPayment = async (req, res) => {
       );
 
       if (hasSchedules) {
-        await applyPaymentToSchedules(connection, listing, paymentId, scheduleId, amount, paymentDate, referenceId, paymentType);
-        await refreshListingPenaltyCache(connection, listing, paymentDate);
-        await recomputeListingScheduleBalances(connection, listing);
+        await rebuildListingPaymentAllocationsChronologically(connection, listing, { finalAsOfDate: todayDateOnly() });
       }
 
       await writeAuditLog(connection, req, {
@@ -572,6 +690,7 @@ export const updateLotProjectListingPayment = async (req, res) => {
         ? null
         : toNullableNumber(requestedScheduleId ?? existingPayment.lot_project_payment_schedule_id);
 
+      if (paymentDate > todayDateOnly()) throw createHttpError(400, 'Future payment dates are blocked.');
       if (amount <= 0) throw createHttpError(400, 'Payment amount must be greater than 0.');
 
       const referenceId = paymentMethod === 'Cash'
@@ -658,10 +777,7 @@ export const updateLotProjectListingPayment = async (req, res) => {
       );
 
       if (hasSchedules) {
-        await recomputeListingScheduleBalances(connection, listing);
-        await applyPaymentToSchedules(connection, listing, paymentId, scheduleId, amount, paymentDate, referenceId, paymentType);
-        await refreshListingPenaltyCache(connection, listing, paymentDate);
-        await recomputeListingScheduleBalances(connection, listing);
+        await rebuildListingPaymentAllocationsChronologically(connection, listing, { finalAsOfDate: todayDateOnly() });
       }
 
       return { paymentId, referenceId, paymentType };
@@ -1360,9 +1476,7 @@ export const deleteLotProjectListingPayment = async (req, res) => {
       }
 
       if (hasSchedules) {
-        await recomputeListingScheduleBalances(connection, listing);
-        await refreshListingPenaltyCache(connection, listing, todayDateOnly());
-        await recomputeListingScheduleBalances(connection, listing);
+        await rebuildListingPaymentAllocationsChronologically(connection, listing, { finalAsOfDate: todayDateOnly() });
       }
 
       await connection.query(

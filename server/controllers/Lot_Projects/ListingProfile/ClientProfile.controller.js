@@ -103,7 +103,8 @@ export const updateLotProjectClientProfile = async (req, res) => {
         SELECT
           l.lot_project_listing_id,
           l.lot_project_listing_unit_id,
-          l.lot_project_listing_status
+          l.lot_project_listing_status,
+          l.current_account_id
         FROM lot_project_listings l
         WHERE l.lot_project_id = ?
           AND ${lookup.sql}
@@ -190,8 +191,6 @@ export const updateLotProjectClientProfile = async (req, res) => {
 
     const tableName = 'lot_project_client_profiles';
     const columns = [
-      'lot_project_id',
-      'lot_project_listing_id',
       'buyer_type',
       'buyer_first_name',
       'buyer_middle_name',
@@ -235,12 +234,9 @@ export const updateLotProjectClientProfile = async (req, res) => {
       'second_buyer_nature_of_work_business',
       'second_buyer_occupation_position',
       'second_buyer_monthly_income',
-      'lot_project_client_profile_status',
     ];
 
     const values = [
-      project.lot_project_id,
-      listing.lot_project_listing_id,
       buyerType,
       toNullable(buyerFirstName),
       toNullable(buyerMiddleName),
@@ -284,7 +280,6 @@ export const updateLotProjectClientProfile = async (req, res) => {
       hasSecondBuyer ? toNullable(toFormalTitleCase(req.body.secondBuyerNatureOfWorkBusiness || req.body.second_buyer_nature_of_work_business, 255)) : null,
       hasSecondBuyer ? toNullable(toFormalTitleCase(req.body.secondBuyerOccupationPositionTitle || req.body.second_buyer_occupation_position, 255)) : null,
       hasSecondBuyer ? parseMoneyValue(req.body.secondBuyerMonthlyIncome || req.body.second_buyer_monthly_income) : 0,
-      'active',
     ];
 
     await addIfColumnExists(connection, tableName, columns, values, 'buyer_residence_phone_number', toNullable(req.body.residencePhoneNumber));
@@ -297,32 +292,107 @@ export const updateLotProjectClientProfile = async (req, res) => {
     await addIfColumnExists(connection, tableName, columns, values, 'second_buyer_permanent_zip_code', hasSecondBuyer ? toNullable(req.body.secondBuyerPermanentZipCode) : null);
     await addIfColumnExists(connection, tableName, columns, values, 'second_buyer_employer_zip_code', hasSecondBuyer ? toNullable(req.body.secondBuyerEmployerZipCode) : null);
 
-    const updateAssignments = columns
-      .filter((column) => !['lot_project_id', 'lot_project_listing_id'].includes(column))
-      .map((column) => `${column} = VALUES(${column})`);
+    const updateAssignments = columns.map((column) => `${column} = ?`);
 
     await connection.beginTransaction();
 
-    await connection.query(
+    // Lock the listing first, then follow current_account_id to the one buyer
+    // profile that owns the current sale. Editing a buyer profile must never
+    // create a second profile row for the same reservation.
+    const [lockedListingRows] = await connection.query(
       `
-        INSERT INTO lot_project_client_profiles (${columns.join(', ')})
-        VALUES (${columns.map(() => '?').join(', ')})
-        ON DUPLICATE KEY UPDATE ${updateAssignments.join(', ')}
+        SELECT
+          lot_project_listing_id,
+          lot_project_listing_unit_id,
+          lot_project_listing_status,
+          current_account_id
+        FROM lot_project_listings
+        WHERE lot_project_id = ?
+          AND lot_project_listing_id = ?
+        LIMIT 1
+        FOR UPDATE
       `,
-      values
+      [project.lot_project_id, listing.lot_project_listing_id]
     );
 
-    const [profileRows] = await connection.query(
+    const lockedListing = lockedListingRows[0];
+    if (!lockedListing) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Listing not found.' });
+    }
+    if (!canEditBuyerProfileForListing(lockedListing.lot_project_listing_status)) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Reserve this unit first before editing the buyer profile.' });
+    }
+
+    const currentAccountId = Number(lockedListing.current_account_id || 0);
+    if (!currentAccountId) {
+      await connection.rollback();
+      return res.status(409).json({
+        message: 'This reserved listing has no current buyer account. Repair the listing account link before editing the buyer profile.',
+      });
+    }
+
+    if (!(await tableExists(connection, 'lot_project_accounts'))) {
+      await connection.rollback();
+      return res.status(500).json({ message: 'lot_project_accounts table does not exist.' });
+    }
+
+    const [accountRows] = await connection.query(
+      `
+        SELECT
+          lot_project_account_id,
+          lot_project_client_profile_id
+        FROM lot_project_accounts
+        WHERE lot_project_account_id = ?
+          AND lot_project_id = ?
+          AND lot_project_listing_id = ?
+        LIMIT 1
+        FOR UPDATE
+      `,
+      [currentAccountId, project.lot_project_id, listing.lot_project_listing_id]
+    );
+
+    const currentAccount = accountRows[0];
+    const clientProfileId = Number(currentAccount?.lot_project_client_profile_id || 0);
+    if (!clientProfileId) {
+      await connection.rollback();
+      return res.status(409).json({
+        message: 'The current buyer account is not linked to a buyer profile.',
+      });
+    }
+
+    const [currentProfileRows] = await connection.query(
       `
         SELECT lot_project_client_profile_id
         FROM lot_project_client_profiles
-        WHERE lot_project_listing_id = ?
+        WHERE lot_project_client_profile_id = ?
+          AND lot_project_id = ?
+          AND lot_project_listing_id = ?
         LIMIT 1
+        FOR UPDATE
       `,
-      [listing.lot_project_listing_id]
+      [clientProfileId, project.lot_project_id, listing.lot_project_listing_id]
     );
 
-    const clientProfileId = profileRows[0]?.lot_project_client_profile_id;
+    if (!currentProfileRows[0]) {
+      await connection.rollback();
+      return res.status(409).json({
+        message: 'The buyer profile linked to the current account could not be found.',
+      });
+    }
+
+    await connection.query(
+      `
+        UPDATE lot_project_client_profiles
+        SET ${updateAssignments.join(', ')},
+            lot_project_client_profile_updated_at = NOW()
+        WHERE lot_project_client_profile_id = ?
+          AND lot_project_id = ?
+          AND lot_project_listing_id = ?
+      `,
+      [...values, clientProfileId, project.lot_project_id, listing.lot_project_listing_id]
+    );
 
     await writeAuditLog(connection, req, {
       action: 'update',

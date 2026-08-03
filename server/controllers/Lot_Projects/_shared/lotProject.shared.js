@@ -1327,19 +1327,27 @@ export const calculateScheduleDailyPenalty = ({
   const cleanAsOfDate = plainDate(asOfDate);
   const penaltyStartDate = row.due_date ? addCalendarDays(row.due_date, graceDays + 1) : null;
   const sortedAllocations = [...allocations]
-    .filter((allocation) => allocation.payment_date && Number(allocation.applied_amount || 0) > 0)
+    .filter((allocation) =>
+      allocation.payment_date &&
+      Number(allocation.applied_amount || 0) > 0 &&
+      plainDate(allocation.payment_date) <= cleanAsOfDate
+    )
     .sort((a, b) => {
       const dateCompare = plainDate(a.payment_date).localeCompare(plainDate(b.payment_date));
       if (dateCompare !== 0) return dateCompare;
       return Number(a.lot_project_payment_id || 0) - Number(b.lot_project_payment_id || 0);
     });
+  const effectiveReliefs = [...reliefs].filter((relief) => {
+    const reliefDate = plainDate(relief.created_at, null);
+    return !reliefDate || reliefDate <= cleanAsOfDate;
+  });
   const activeExtension = getEffectiveExtensionState({
-    reliefs,
+    reliefs: effectiveReliefs,
     allocations: sortedAllocations,
     baseDue,
     asOfDate: cleanAsOfDate,
   });
-  const mappedReliefs = reliefs.map((relief) => {
+  const mappedReliefs = effectiveReliefs.map((relief) => {
     const mapped = mapPenaltyReliefRow(relief);
     if (relief.relief_type === 'penalty_free_extension') {
       const extensionState = getEffectiveExtensionState({
@@ -1378,6 +1386,7 @@ export const calculateScheduleDailyPenalty = ({
       outstandingPenaltyAmount: 0,
       penaltyStartDate,
       penaltyCalculatedThrough: cleanAsOfDate,
+      penaltyDays: 0,
       reliefs: mappedReliefs,
       activeExtension,
       canGrantExtension: false,
@@ -1387,12 +1396,12 @@ export const calculateScheduleDailyPenalty = ({
 
   if (method !== 'daily') {
     const correctionIdsRestored = new Set(
-      reliefs
+      effectiveReliefs
         .filter((relief) => relief.relief_type === 'restoration' && isPenaltyReliefActive(relief))
         .map((relief) => Number(relief.restores_penalty_relief_id || 0))
         .filter(Boolean)
     );
-    const hasActiveCorrection = reliefs.some(
+    const hasActiveCorrection = effectiveReliefs.some(
       (relief) => relief.relief_type === 'penalty_correction' &&
         isPenaltyReliefActive(relief) &&
         !correctionIdsRestored.has(Number(relief.penalty_relief_id || 0))
@@ -1401,17 +1410,17 @@ export const calculateScheduleDailyPenalty = ({
       ? 0
       : roundMoneyValue(row.calculated_penalty_amount ?? row.penalty_amount ?? 0);
     const waiverIds = new Set(
-      reliefs
+      effectiveReliefs
         .filter((relief) => ['full_waiver', 'partial_waiver'].includes(relief.relief_type))
         .map((relief) => Number(relief.penalty_relief_id || 0))
     );
     const waiverTotal = roundMoneyValue(
-      reliefs
+      effectiveReliefs
         .filter((relief) => ['full_waiver', 'partial_waiver'].includes(relief.relief_type) && isPenaltyReliefActive(relief))
         .reduce((sum, relief) => sum + Number(relief.relief_amount || 0), 0)
     );
     const restoredTotal = roundMoneyValue(
-      reliefs
+      effectiveReliefs
         .filter((relief) => relief.relief_type === 'restoration' &&
           isPenaltyReliefActive(relief) &&
           waiverIds.has(Number(relief.restores_penalty_relief_id || 0)))
@@ -1435,6 +1444,7 @@ export const calculateScheduleDailyPenalty = ({
       outstandingPenaltyAmount: roundMoneyValue(Math.max(penaltyAmount - paidPenalty, 0)),
       penaltyStartDate,
       penaltyCalculatedThrough: cleanAsOfDate,
+      penaltyDays: 0,
       reliefs: mappedReliefs,
       activeExtension,
       canGrantExtension: false,
@@ -1457,6 +1467,7 @@ export const calculateScheduleDailyPenalty = ({
       outstandingPenaltyAmount: 0,
       penaltyStartDate,
       penaltyCalculatedThrough: cleanAsOfDate,
+      penaltyDays: 0,
       reliefs: mappedReliefs,
       activeExtension,
       canGrantExtension: false,
@@ -1465,16 +1476,16 @@ export const calculateScheduleDailyPenalty = ({
   }
 
   const reliefById = new Map(
-    reliefs.map((relief) => [Number(relief.penalty_relief_id || 0), relief])
+    effectiveReliefs.map((relief) => [Number(relief.penalty_relief_id || 0), relief])
   );
   const restoredCorrectionIds = new Set(
-    reliefs
+    effectiveReliefs
       .filter((relief) => relief.relief_type === 'restoration' && isPenaltyReliefActive(relief))
       .filter((relief) => reliefById.get(Number(relief.restores_penalty_relief_id || 0))?.relief_type === 'penalty_correction')
       .map((relief) => Number(relief.restores_penalty_relief_id || 0))
   );
 
-  const reliefEvents = reliefs
+  const reliefEvents = effectiveReliefs
     .filter(isPenaltyReliefActive)
     .filter((relief) => {
       if (['full_waiver', 'partial_waiver'].includes(relief.relief_type)) return true;
@@ -1509,6 +1520,7 @@ export const calculateScheduleDailyPenalty = ({
 
   let currentBase = baseDue;
   let calculatedPenalty = 0;
+  let chargeablePenaltyDays = 0;
   let waiverBalance = 0;
   let paidPenalty = 0;
   let cursorDate = penaltyStartDate;
@@ -1536,6 +1548,7 @@ export const calculateScheduleDailyPenalty = ({
     if (!cursorDate || currentBase <= 0 || eventDate <= cursorDate) return;
     const days = countChargeableDays(cursorDate, eventDate);
     if (days > 0) {
+      chargeablePenaltyDays += days;
       calculatedPenalty = roundMoneyValue(calculatedPenalty + (currentBase * dailyRate * days));
     }
     cursorDate = eventDate;
@@ -1610,6 +1623,7 @@ export const calculateScheduleDailyPenalty = ({
     outstandingPenaltyAmount: outstandingPenalty,
     penaltyStartDate,
     penaltyCalculatedThrough: cleanAsOfDate,
+    penaltyDays: chargeablePenaltyDays,
     reliefs: mappedReliefs,
     activeExtension,
     canGrantExtension:
@@ -1627,7 +1641,8 @@ export const getListingPenaltySnapshots = async (
   listingId,
   clientProfile = {},
   scheduleRows = [],
-  asOfDate = todayDateOnly()
+  asOfDate = todayDateOnly(),
+  { excludePaymentId = 0 } = {}
 ) => {
   if (!scheduleRows.length) return new Map();
 
@@ -1651,9 +1666,10 @@ export const getListingPenaltySnapshots = async (
           ON p.lot_project_payment_id = pa.lot_project_payment_id
         WHERE pa.lot_project_payment_schedule_id IN (${placeholders})
           AND p.lot_project_payment_status = 'Verified'
+          AND (? = 0 OR p.lot_project_payment_id <> ?)
         ORDER BY p.lot_project_payment_date ASC, p.lot_project_payment_id ASC
       `,
-      scheduleIds
+      [...scheduleIds, Number(excludePaymentId || 0), Number(excludePaymentId || 0)]
     );
     allocations = allocationRows;
   }
@@ -2812,6 +2828,7 @@ export const getListingSoaRows = async (
         penaltyGraceDays: Number(snapshot.graceDays ?? clientProfile.soa_penalty_grace_days ?? 0),
         penaltyStartDate: snapshot.penaltyStartDate || null,
         penaltyCalculatedThrough: snapshot.penaltyCalculatedThrough || null,
+        penaltyDays: Number(snapshot.penaltyDays || 0),
         penaltyReliefs: snapshot.reliefs || [],
         activePenaltyExtension: snapshot.activeExtension || null,
         canGrantPenaltyExtension: Boolean(snapshot.canGrantExtension),
@@ -3059,6 +3076,7 @@ export const mapPaymentRow = (row = {}) => ({
   verifiedBy: row.verified_by_name || '-',
   verifiedAt: formatDateTime(row.lot_project_payment_verified_at),
   status: row.lot_project_payment_status || 'Verified',
+  paymentProofCount: Number(row.payment_proof_count || 0),
   createdAt: formatDateTime(row.lot_project_payment_created_at),
   updatedAt: formatDateTime(row.lot_project_payment_updated_at),
 });
@@ -3077,11 +3095,17 @@ export const getListingPayments = async (
     throw Object.assign(new Error('Buyer-account payment migration is incomplete.'), { statusCode: 500 });
   }
 
+  const hasPaymentProofs = await tableExists(connection, 'lot_project_payment_proofs');
+  const proofCountSelect = hasPaymentProofs
+    ? `(SELECT COUNT(*) FROM lot_project_payment_proofs proof WHERE proof.lot_project_payment_id = p.lot_project_payment_id AND proof.proof_status = 'active') AS payment_proof_count,`
+    : `0 AS payment_proof_count,`;
+
   const [rows] = await connection.query(
     `
       SELECT
         p.*,
         ps.description AS schedule_description,
+        ${proofCountSelect}
         TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS verified_by_name
       FROM lot_project_payments p
       LEFT JOIN lot_project_payment_schedules ps
@@ -3248,7 +3272,7 @@ export const buildBalloonAdjustedMonthlyRows = (
 export const getVerifiedBalloonPayments = async (
   connection,
   listing,
-  { excludePaymentId = 0 } = {}
+  { excludePaymentId = 0, throughDate = null } = {}
 ) => {
   if (!(await tableExists(connection, 'lot_project_payments'))) return [];
 
@@ -3267,6 +3291,7 @@ export const getVerifiedBalloonPayments = async (
         AND lot_project_payment_type = 'balloon'
         AND lot_project_payment_status = 'Verified'
         AND (? = 0 OR lot_project_payment_id <> ?)
+        AND (? IS NULL OR lot_project_payment_date <= ?)
       ORDER BY lot_project_payment_date ASC, lot_project_payment_id ASC
     `,
     [
@@ -3278,6 +3303,8 @@ export const getVerifiedBalloonPayments = async (
       Number(listing.lot_project_account_id || 0),
       Number(excludePaymentId || 0),
       Number(excludePaymentId || 0),
+      throughDate ? plainDate(throughDate, null) : null,
+      throughDate ? plainDate(throughDate, null) : null,
     ]
   );
 
@@ -3474,7 +3501,7 @@ export const getBalloonPrincipalCapacity = async (
   );
 };
 
-export const recomputeListingScheduleBalances = async (connection, listing) => {
+export const recomputeListingScheduleBalances = async (connection, listing, { asOfDate = todayDateOnly() } = {}) => {
   await removeLegacyBalloonAllocations(connection, listing);
 
   const [rows] = await connection.query(
@@ -3507,7 +3534,8 @@ export const recomputeListingScheduleBalances = async (connection, listing) => {
 
   const clientProfile = { ...(listing || {}), ...(clientProfileRows[0] || {}) };
   const terms = getComputedSoaTerms(clientProfile, rows);
-  const balloonPayments = await getVerifiedBalloonPayments(connection, listing);
+  const cleanAsOfDate = plainDate(asOfDate, todayDateOnly());
+  const balloonPayments = await getVerifiedBalloonPayments(connection, listing, { throughDate: cleanAsOfDate });
   const balloonPrincipal = roundMoneyValue(
     balloonPayments.reduce(
       (sum, payment) => sum + Number(payment.lot_project_payment_amount || 0),
@@ -3530,7 +3558,7 @@ export const recomputeListingScheduleBalances = async (connection, listing) => {
   let runningBalance = roundMoneyValue(terms.principalTcp ?? terms.tcp ?? 0);
   let monthlyIndex = 0;
   let balloonApplied = false;
-  const today = todayDateOnly();
+  const today = cleanAsOfDate;
   const hasPaidColumns = await columnExists(
     connection,
     'lot_project_payment_schedules',
@@ -3749,7 +3777,7 @@ export const applyPaymentToSchedules = async (connection, listing, paymentId, pr
   if (String(paymentType || '').toLowerCase() === 'balloon') {
     // Balloon payments are principal reductions. They must never be spread over
     // monthly SOA rows or mark future installments as paid/advance.
-    await recomputeListingScheduleBalances(connection, listing);
+    await recomputeListingScheduleBalances(connection, listing, { asOfDate: paymentDate });
     return;
   }
 
@@ -3853,7 +3881,114 @@ export const applyPaymentToSchedules = async (connection, listing, paymentId, pr
     throw new Error('Payment amount exceeds the remaining unpaid SOA balance for this payment type.');
   }
 
-  await recomputeListingScheduleBalances(connection, listing);
+  await recomputeListingScheduleBalances(connection, listing, { asOfDate: paymentDate });
+};
+
+
+/**
+ * Rebuilds all derived allocations from verified payment records in effective-date order.
+ * This makes historical encoding deterministic even when old payments are entered out of order.
+ * Payment records are source-of-truth; allocation/schedule state is derived.
+ */
+export const rebuildListingPaymentAllocationsChronologically = async (
+  connection,
+  listing,
+  { finalAsOfDate = todayDateOnly() } = {}
+) => {
+  if (!(await tableExists(connection, 'lot_project_payment_allocations'))) return;
+  if (!(await tableExists(connection, 'lot_project_payments'))) return;
+  if (!(await tableExists(connection, 'lot_project_payment_schedules'))) return;
+
+  const projectId = Number(listing.lot_project_id || 0);
+  const listingId = Number(listing.lot_project_listing_id || 0);
+  const profileId = Number(listing.lot_project_client_profile_id || 0);
+  const accountId = Number(listing.lot_project_account_id || 0);
+
+  const [verifiedPayments] = await connection.query(
+    `
+      SELECT *
+      FROM lot_project_payments
+      WHERE lot_project_id = ?
+        AND lot_project_listing_id = ?
+        AND (? = 0 OR lot_project_client_profile_id = ?)
+        AND (? = 0 OR lot_project_account_id = ?)
+        AND lot_project_payment_status = 'Verified'
+      ORDER BY lot_project_payment_date ASC, lot_project_payment_id ASC
+      FOR UPDATE
+    `,
+    [projectId, listingId, profileId, profileId, accountId, accountId]
+  );
+
+  const paymentIds = verifiedPayments.map((row) => Number(row.lot_project_payment_id || 0)).filter(Boolean);
+  if (paymentIds.length) {
+    const placeholders = paymentIds.map(() => '?').join(', ');
+    await connection.query(
+      `DELETE FROM lot_project_payment_allocations WHERE lot_project_payment_id IN (${placeholders})`,
+      paymentIds
+    );
+  }
+
+  const paidColumns = [];
+  if (await columnExists(connection, 'lot_project_payment_schedules', 'paid_penalty_amount')) paidColumns.push('paid_penalty_amount = 0');
+  if (await columnExists(connection, 'lot_project_payment_schedules', 'paid_interest_amount')) paidColumns.push('paid_interest_amount = 0');
+  if (await columnExists(connection, 'lot_project_payment_schedules', 'paid_principal_amount')) paidColumns.push('paid_principal_amount = 0');
+
+  await connection.query(
+    `
+      UPDATE lot_project_payment_schedules s
+      SET amount_paid = 0,
+          date_paid = NULL,
+          reference_id = NULL,
+          schedule_status = CASE
+            WHEN LOWER(COALESCE(s.description, '')) LIKE '%monthly%' THEN 'Unpaid'
+            WHEN s.schedule_status = 'Cancelled' THEN 'Cancelled'
+            ELSE 'Unpaid'
+          END
+          ${paidColumns.length ? `, ${paidColumns.join(', ')}` : ''}
+      WHERE s.lot_project_id = ?
+        AND s.lot_project_listing_id = ?
+        AND (? = 0 OR s.lot_project_client_profile_id = ?)
+        AND (? = 0 OR s.lot_project_account_id = ?)
+        AND ${getLatestActiveScheduleGenerationPredicate('s')}
+    `,
+    [projectId, listingId, profileId, profileId, accountId, accountId]
+  );
+
+  const firstPaymentDate = verifiedPayments[0]?.lot_project_payment_date
+    ? plainDate(verifiedPayments[0].lot_project_payment_date)
+    : plainDate(finalAsOfDate, todayDateOnly());
+
+  await recomputeListingScheduleBalances(connection, listing, { asOfDate: firstPaymentDate });
+  await refreshListingPenaltyCache(connection, listing, firstPaymentDate);
+  await recomputeListingScheduleBalances(connection, listing, { asOfDate: firstPaymentDate });
+
+  for (const payment of verifiedPayments) {
+    const paymentDate = plainDate(payment.lot_project_payment_date, firstPaymentDate);
+    const paymentType = String(payment.lot_project_payment_type || '').toLowerCase();
+
+    await recomputeListingScheduleBalances(connection, listing, { asOfDate: paymentDate });
+    await refreshListingPenaltyCache(connection, listing, paymentDate);
+    await recomputeListingScheduleBalances(connection, listing, { asOfDate: paymentDate });
+
+    if (paymentType !== 'balloon') {
+      await applyPaymentToSchedules(
+        connection,
+        listing,
+        Number(payment.lot_project_payment_id),
+        payment.lot_project_payment_schedule_id,
+        Number(payment.lot_project_payment_amount || 0),
+        paymentDate,
+        payment.lot_project_payment_reference_id,
+        paymentType
+      );
+    } else {
+      await recomputeListingScheduleBalances(connection, listing, { asOfDate: paymentDate });
+    }
+  }
+
+  const finalDate = plainDate(finalAsOfDate, todayDateOnly());
+  await refreshListingPenaltyCache(connection, listing, finalDate);
+  await recomputeListingScheduleBalances(connection, listing, { asOfDate: finalDate });
 };
 
 export const reversePaymentAllocations = async (connection, listing, paymentId) => {
@@ -3992,3 +4127,4 @@ export const addIfColumnExists = async (connection, tableName, columns, values, 
     values.push(value);
   }
 };
+

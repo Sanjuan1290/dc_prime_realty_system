@@ -186,6 +186,10 @@ const WorkBusinessCard = ({ title, data, prefix = '' }) => {
             { value: 'Professional', label: 'Professional' },
             { value: 'OFW', label: 'OFW' },
             { value: 'Other', label: 'Other' },
+            { value: 'Unemployed', label: 'Unemployed' },
+            { value: 'Retired', label: 'Retired' },
+            { value: 'Student', label: 'Student' },
+            { value: 'Not Applicable', label: 'Not Applicable' },
           ]}
         />
 

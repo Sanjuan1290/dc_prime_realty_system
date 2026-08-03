@@ -1,0 +1,382 @@
+import { useEffect, useMemo, useState } from 'react'
+import {
+  FiExternalLink,
+  FiFileText,
+  FiImage,
+  FiLoader,
+  FiPaperclip,
+  FiShield,
+  FiTrash2,
+  FiUploadCloud,
+  FiX,
+} from 'react-icons/fi'
+import StatusAlert from '../../../Shared/StatusAlert'
+import { useFetch, useFetchPost } from '../../../../utils/useFetch'
+
+const MAX_FILE_BYTES = 15 * 1024 * 1024
+const MAX_FILES = 5
+const allowedTypes = new Set(['image/jpeg', 'image/png', 'application/pdf'])
+
+const money = (value) =>
+  new Intl.NumberFormat('en-PH', {
+    style: 'currency',
+    currency: 'PHP',
+    minimumFractionDigits: 2,
+  }).format(Number(value || 0))
+
+const formatDate = (value) => {
+  if (!value || value === '-') return '-'
+  const text = String(value).slice(0, 10)
+  const [year, month, day] = text.split('-').map(Number)
+  if (!year || !month || !day) return text
+  return new Intl.DateTimeFormat('en-PH', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'UTC',
+  }).format(new Date(Date.UTC(year, month - 1, day)))
+}
+
+const formatDateTime = (value) => {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return String(value)
+  return new Intl.DateTimeFormat('en-PH', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZone: 'Asia/Manila',
+  }).format(date)
+}
+
+const formatBytes = (bytes = 0) => {
+  const value = Number(bytes || 0)
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`
+}
+
+const isPdf = (proof = {}) =>
+  String(proof.fileType || '').toLowerCase() === 'application/pdf' ||
+  String(proof.fileName || '').toLowerCase().endsWith('.pdf')
+
+const PaymentProofModal = ({
+  projectSlug,
+  listingId,
+  payment,
+  readOnly = false,
+  canDelete = false,
+  onClose,
+  onChanged,
+  onCountChange,
+}) => {
+  const paymentId = Number(payment?.paymentId || payment?.id || 0)
+  const basePath = `/projects/lot-projects/${projectSlug}/listings/${listingId}/payments/${paymentId}/proofs`
+
+  const [proofs, setProofs] = useState([])
+  const [paymentDetails, setPaymentDetails] = useState(payment || {})
+  const [files, setFiles] = useState([])
+  const [note, setNote] = useState('')
+  const [notice, setNotice] = useState(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isUploading, setIsUploading] = useState(false)
+  const [progress, setProgress] = useState({ current: 0, total: 0 })
+  const [preview, setPreview] = useState(null)
+  const [openingProofId, setOpeningProofId] = useState(0)
+  const [deletingProofId, setDeletingProofId] = useState(0)
+
+  const invalidFiles = useMemo(
+    () => files.filter((file) => !allowedTypes.has(file.type) || file.size <= 0 || file.size > MAX_FILE_BYTES),
+    [files]
+  )
+
+  const remainingSlots = Math.max(MAX_FILES - proofs.length, 0)
+  const isBusy = isLoading || isUploading || Boolean(deletingProofId)
+
+  const loadProofs = async ({ quiet = false } = {}) => {
+    if (!paymentId) return
+    if (!quiet) setIsLoading(true)
+    try {
+      const result = await useFetch(basePath)
+      const data = result?.data || {}
+      const nextProofs = Array.isArray(data.proofs) ? data.proofs : []
+      setProofs(nextProofs)
+      setPaymentDetails((current) => ({ ...current, ...(data.payment || {}) }))
+      onCountChange?.(nextProofs.length)
+      if (!quiet) setNotice(null)
+    } catch (error) {
+      setNotice({ type: 'error', message: error?.message || 'Failed to load payment proof files.' })
+    } finally {
+      if (!quiet) setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadProofs()
+    // Payment ID identifies the modal contents. Parent callbacks are intentionally excluded.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paymentId])
+
+  const uploadOne = async (file) => {
+    const signatureResponse = await useFetchPost(`${basePath}/upload-signature`, {
+      fileName: file.name,
+      fileType: file.type,
+      fileSize: file.size,
+    })
+    const signed = signatureResponse?.data || {}
+    if (!signed.uploadUrl || !signed.signature || !signed.apiKey) {
+      throw new Error('The server did not return a valid protected upload signature.')
+    }
+
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('api_key', signed.apiKey)
+    formData.append('timestamp', String(signed.timestamp))
+    formData.append('signature', signed.signature)
+    formData.append('public_id', signed.publicId)
+    formData.append('asset_folder', signed.folder)
+    formData.append('type', signed.type || 'authenticated')
+    formData.append('tags', signed.tags || 'dc_prime,payment_proof,authenticated')
+    formData.append('context', signed.context || '')
+
+    const response = await fetch(signed.uploadUrl, { method: 'POST', body: formData })
+    const result = await response.json().catch(() => null)
+    if (!response.ok) throw new Error(result?.error?.message || `Cloudinary upload failed for ${file.name}.`)
+
+    return {
+      fileName: file.name,
+      fileSize: Number(result?.bytes || file.size),
+      fileType: file.type,
+      cloudinaryAssetId: result?.asset_id || null,
+      cloudinaryPublicId: result?.public_id || null,
+      cloudinaryResourceType: result?.resource_type || (file.type === 'application/pdf' ? 'raw' : 'image'),
+      cloudinaryDeliveryType: result?.type || 'authenticated',
+      cloudinaryVersion: Number(result?.version || 0) || null,
+      cloudinaryFolder: result?.asset_folder || signed.folder,
+      cloudinaryAssetFolder: result?.asset_folder || signed.folder,
+      cloudinaryFormat: result?.format || null,
+    }
+  }
+
+  const handleUpload = async () => {
+    if (!files.length || isBusy || readOnly) return
+    if (invalidFiles.length) {
+      setNotice({ type: 'error', message: 'Only PDF, JPG, and PNG files up to 15 MB are accepted.' })
+      return
+    }
+    if (files.length > remainingSlots) {
+      setNotice({ type: 'error', message: `You can add only ${remainingSlots} more proof file(s) to this payment.` })
+      return
+    }
+
+    setIsUploading(true)
+    setProgress({ current: 0, total: files.length })
+    setNotice({ type: 'loading', message: 'Preparing protected payment proof upload...' })
+
+    try {
+      const uploadedFiles = []
+      for (let index = 0; index < files.length; index += 1) {
+        setProgress({ current: index + 1, total: files.length })
+        setNotice({ type: 'loading', message: `Uploading ${index + 1} of ${files.length}: ${files[index].name}` })
+        uploadedFiles.push(await uploadOne(files[index]))
+      }
+
+      setNotice({ type: 'loading', message: 'Saving protected payment proof records...' })
+      const result = await useFetchPost(basePath, { files: uploadedFiles, note: note.trim() })
+      setFiles([])
+      setNote('')
+      setNotice({ type: 'success', message: result?.message || 'Payment proof uploaded successfully.' })
+      await loadProofs({ quiet: true })
+      await onChanged?.()
+    } catch (error) {
+      setNotice({ type: 'error', message: error?.message || 'Payment proof upload failed.' })
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  const openProof = async (proof) => {
+    setOpeningProofId(proof.proofId)
+    try {
+      const result = await useFetch(proof.accessPath)
+      const url = result?.data?.url || result?.url || ''
+      if (!url) throw new Error('The server did not return a protected proof link.')
+      if (isPdf(proof)) {
+        window.open(url, '_blank', 'noopener,noreferrer')
+      } else {
+        setPreview({ ...proof, url })
+      }
+    } catch (error) {
+      setNotice({ type: 'error', message: error?.message || 'Failed to open payment proof.' })
+    } finally {
+      setOpeningProofId(0)
+    }
+  }
+
+  const removeProof = async (proof) => {
+    if (!canDelete || readOnly || deletingProofId) return
+    const confirmed = window.confirm(`Remove ${proof.fileName}? The payment record itself will not be changed.`)
+    if (!confirmed) return
+
+    setDeletingProofId(proof.proofId)
+    setNotice({ type: 'loading', message: `Removing ${proof.fileName}...` })
+    try {
+      const result = await useFetchPost(`${basePath}/${proof.proofId}/delete`, {})
+      setNotice({ type: 'success', message: result?.message || 'Payment proof removed successfully.' })
+      await loadProofs({ quiet: true })
+      await onChanged?.()
+    } catch (error) {
+      setNotice({ type: 'error', message: error?.message || 'Failed to remove payment proof.' })
+    } finally {
+      setDeletingProofId(0)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/65 p-4">
+      <div className="flex max-h-[94vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+        <header className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
+          <div>
+            <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-blue-700">
+              <FiShield /> Protected payment evidence
+            </div>
+            <h2 className="mt-1 text-xl font-black text-slate-950">Payment Proof</h2>
+            <p className="mt-1 text-sm font-semibold text-slate-500">
+              Screenshots or PDF confirmations sent by the client. These are supporting files, not official receipts.
+            </p>
+          </div>
+          <button type="button" onClick={onClose} disabled={isUploading} className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 disabled:opacity-50" aria-label="Close payment proof">
+            <FiX className="h-5 w-5" />
+          </button>
+        </header>
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-6">
+          {notice ? <StatusAlert type={notice.type} message={notice.message} onClose={notice.type === 'loading' ? undefined : () => setNotice(null)} className="mb-4" /> : null}
+
+          <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2 xl:grid-cols-6">
+            <div><p className="text-xs font-black uppercase text-slate-500">Buyer</p><p className="mt-1 text-sm font-black text-slate-950">{paymentDetails.buyerName || payment?.client || '-'}</p></div>
+            <div><p className="text-xs font-black uppercase text-slate-500">Unit</p><p className="mt-1 text-sm font-black text-slate-950">{paymentDetails.unitId || payment?.unit || '-'}</p></div>
+            <div><p className="text-xs font-black uppercase text-slate-500">Amount</p><p className="mt-1 text-sm font-black text-slate-950">{money(paymentDetails.amount ?? payment?.amount)}</p></div>
+            <div><p className="text-xs font-black uppercase text-slate-500">Payment Date</p><p className="mt-1 text-sm font-black text-slate-950">{formatDate(paymentDetails.paymentDate || payment?.paymentDate)}</p></div>
+            <div><p className="text-xs font-black uppercase text-slate-500">Method</p><p className="mt-1 text-sm font-black text-slate-950">{paymentDetails.method || payment?.method || '-'}</p></div>
+            <div><p className="text-xs font-black uppercase text-slate-500">Reference</p><p className="mt-1 break-all text-sm font-black text-slate-950">{paymentDetails.referenceId || payment?.referenceId || '-'}</p></div>
+          </div>
+
+          <section className="mt-5 overflow-hidden rounded-2xl border border-slate-200">
+            <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3">
+              <div>
+                <h3 className="text-sm font-black text-slate-950">Saved Proof Files</h3>
+                <p className="text-xs font-semibold text-slate-500">{proofs.length} of {MAX_FILES} file slots used</p>
+              </div>
+              <span className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-black text-blue-700"><FiPaperclip /> {proofs.length}</span>
+            </div>
+
+            {isLoading ? (
+              <div className="flex items-center justify-center gap-2 p-8 text-sm font-black text-slate-500"><FiLoader className="animate-spin" /> Loading payment proof...</div>
+            ) : proofs.length ? (
+              <div className="divide-y divide-slate-100">
+                {proofs.map((proof) => (
+                  <div key={proof.proofId} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
+                      {isPdf(proof) ? <FiFileText className="h-5 w-5" /> : <FiImage className="h-5 w-5" />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-black text-slate-950">{proof.fileName}</p>
+                      <p className="mt-0.5 text-xs font-semibold text-slate-500">{formatBytes(proof.fileSize)} · Uploaded by {proof.uploadedBy} · {formatDateTime(proof.uploadedAt)}</p>
+                      {proof.note ? <p className="mt-1 text-xs font-semibold text-slate-600">Note: {proof.note}</p> : null}
+                    </div>
+                    <div className="flex shrink-0 gap-2">
+                      <button type="button" onClick={() => openProof(proof)} disabled={openingProofId === proof.proofId} className="inline-flex h-9 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-700 transition hover:bg-blue-100 disabled:opacity-50">
+                        {openingProofId === proof.proofId ? <FiLoader className="animate-spin" /> : <FiExternalLink />}
+                        View
+                      </button>
+                      {!readOnly && canDelete ? (
+                        <button type="button" onClick={() => removeProof(proof)} disabled={deletingProofId === proof.proofId} className="inline-flex h-9 items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 text-xs font-black text-red-700 transition hover:bg-red-100 disabled:opacity-50">
+                          {deletingProofId === proof.proofId ? <FiLoader className="animate-spin" /> : <FiTrash2 />}
+                          Remove
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="p-8 text-center">
+                <FiPaperclip className="mx-auto h-8 w-8 text-slate-300" />
+                <p className="mt-3 text-sm font-black text-slate-700">No payment proof uploaded yet</p>
+                <p className="mt-1 text-sm font-semibold text-slate-500">Attach the screenshot or PDF sent by the client.</p>
+              </div>
+            )}
+          </section>
+
+          {!readOnly && remainingSlots > 0 ? (
+            <section className="mt-5 rounded-2xl border border-slate-200 p-4">
+              <h3 className="text-sm font-black text-slate-950">Add Payment Proof</h3>
+              <p className="mt-1 text-xs font-semibold text-slate-500">PDF, JPG, or PNG · up to 15 MB per file · {remainingSlots} slot(s) remaining</p>
+
+              <label className="mt-4 flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-blue-200 bg-blue-50 p-6 text-center transition hover:bg-blue-100/60">
+                <FiUploadCloud className="h-8 w-8 text-blue-600" />
+                <span className="mt-2 text-sm font-black text-blue-900">Choose payment screenshot or PDF</span>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,application/pdf,.jpg,.jpeg,.png,.pdf"
+                  multiple
+                  disabled={isBusy}
+                  className="hidden"
+                  onChange={(event) => {
+                    setNotice(null)
+                    setFiles(Array.from(event.target.files || []).slice(0, remainingSlots))
+                  }}
+                />
+              </label>
+
+              {files.length ? (
+                <div className="mt-3 space-y-2">
+                  {files.map((file, index) => {
+                    const invalid = !allowedTypes.has(file.type) || file.size <= 0 || file.size > MAX_FILE_BYTES
+                    return (
+                      <div key={`${file.name}-${file.size}-${index}`} className={`flex items-center gap-3 rounded-xl border px-3 py-2 ${invalid ? 'border-red-200 bg-red-50' : 'border-slate-200 bg-slate-50'}`}>
+                        <FiFileText className={invalid ? 'text-red-600' : 'text-blue-600'} />
+                        <div className="min-w-0 flex-1"><p className="truncate text-sm font-black text-slate-900">{file.name}</p><p className="text-xs font-semibold text-slate-500">{formatBytes(file.size)}</p></div>
+                        {isUploading && progress.current === index + 1 ? <FiLoader className="animate-spin text-blue-600" /> : null}
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : null}
+
+              <label className="mt-4 block">
+                <span className="text-xs font-black uppercase text-slate-500">Optional Note</span>
+                <textarea value={note} onChange={(event) => setNote(event.target.value.slice(0, 500))} disabled={isBusy} rows={3} placeholder="Example: Client sent this through Messenger." className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100" />
+                <span className="mt-1 block text-right text-xs font-semibold text-slate-400">{note.length}/500</span>
+              </label>
+
+              <div className="mt-4 flex justify-end">
+                <button type="button" onClick={handleUpload} disabled={!files.length || Boolean(invalidFiles.length) || isBusy} className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300">
+                  {isUploading ? <FiLoader className="animate-spin" /> : <FiShield />}
+                  {isUploading ? `Uploading ${progress.current}/${progress.total}` : 'Upload Securely'}
+                </button>
+              </div>
+            </section>
+          ) : null}
+        </div>
+
+        <footer className="flex shrink-0 justify-end border-t border-slate-200 bg-slate-50 px-6 py-4">
+          <button type="button" onClick={onClose} disabled={isUploading} className="h-10 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-100 disabled:opacity-50">Close</button>
+        </footer>
+      </div>
+
+      {preview ? (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/80 p-4" onClick={() => setPreview(null)}>
+          <div className="relative max-h-[94vh] max-w-[94vw]" onClick={(event) => event.stopPropagation()}>
+            <button type="button" onClick={() => setPreview(null)} className="absolute right-2 top-2 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-700 shadow-lg"><FiX /></button>
+            <img src={preview.url} alt={preview.fileName || 'Payment proof'} className="max-h-[94vh] max-w-[94vw] rounded-2xl bg-white object-contain shadow-2xl" />
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+export default PaymentProofModal

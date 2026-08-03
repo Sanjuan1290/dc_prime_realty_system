@@ -56,6 +56,15 @@ export const buildBuyerDocumentFolder = ({ projectSlug, listingId, unitId, accou
   return `${root}/${project}/${listing}/${account}/${document}`;
 };
 
+export const buildPaymentProofFolder = ({ projectSlug, listingId, unitId, accountReference, paymentId }) => {
+  const root = sanitizeCloudinarySegment(process.env.CLOUDINARY_UPLOAD_FOLDER || 'dc_prime', 'dc_prime');
+  const project = sanitizeCloudinarySegment(projectSlug, 'project');
+  const listing = `listing_${Number(listingId)}_${sanitizeCloudinarySegment(unitId, 'unit')}`;
+  const account = sanitizeCloudinarySegment(accountReference, 'account');
+  const payment = `payment_${Number(paymentId)}`;
+  return `${root}/${project}/${listing}/${account}/payments/${payment}/proofs`;
+};
+
 export const createAuthenticatedUploadSignature = ({ folder, accountId, documentId, fileName }) => {
   const { cloudName, apiKey, apiSecret } = configureSecureCloudinary();
   const timestamp = Math.floor(Date.now() / 1000);
@@ -67,6 +76,35 @@ export const createAuthenticatedUploadSignature = ({ folder, accountId, document
     asset_folder: folder,
     type: 'authenticated',
     tags: 'dc_prime,buyer_document,authenticated',
+    context,
+  };
+  const signature = cloudinary.utils.api_sign_request(params, apiSecret);
+
+  return {
+    cloudName,
+    apiKey,
+    timestamp,
+    signature,
+    publicId,
+    folder,
+    type: 'authenticated',
+    tags: params.tags,
+    context,
+    uploadUrl: `https://api.cloudinary.com/v1_1/${encodeURIComponent(cloudName)}/auto/upload`,
+  };
+};
+
+export const createAuthenticatedPaymentProofUploadSignature = ({ folder, accountId, paymentId, fileName }) => {
+  const { cloudName, apiKey, apiSecret } = configureSecureCloudinary();
+  const timestamp = Math.floor(Date.now() / 1000);
+  const publicId = crypto.randomUUID();
+  const context = `account_id=${Number(accountId || 0)}|payment_id=${Number(paymentId)}|original_name=${encodeURIComponent(clean(fileName).slice(0, 180))}`;
+  const params = {
+    timestamp,
+    public_id: publicId,
+    asset_folder: folder,
+    type: 'authenticated',
+    tags: 'dc_prime,payment_proof,authenticated',
     context,
   };
   const signature = cloudinary.utils.api_sign_request(params, apiSecret);

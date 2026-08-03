@@ -1,5 +1,5 @@
-import { useMemo, useRef, useState } from 'react'
-import { FiAlertCircle, FiCreditCard, FiX } from 'react-icons/fi'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { FiCreditCard, FiX } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
 import {
   cleanPaymentNumber,
@@ -16,7 +16,12 @@ const money = (value) =>
     minimumFractionDigits: 2,
   }).format(Number(value || 0))
 
-const todayISO = () => new Date().toISOString().slice(0, 10)
+const todayISO = () => new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Manila',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+}).format(new Date())
 
 
 const createPaymentRequestKey = () => {
@@ -167,11 +172,13 @@ const AddSOAPaymentModal = ({
   initialPayment = null,
   mode = 'add',
   isSaving = false,
+  onPreview,
   onClose,
   onSave,
 }) => {
   const isEdit = Boolean(mode === 'edit' && initialPayment)
   const submitLockRef = useRef(false)
+  const previewRequestRef = useRef(0)
   const requestKeyRef = useRef(isEdit ? null : createPaymentRequestKey())
   const suggestedRow = isEdit
     ? rows.find((row) => String(row.id) === String(initialPayment.soaRowId)) || getSuggestedRow(rows)
@@ -209,6 +216,9 @@ const AddSOAPaymentModal = ({
         : '',
   })
   const [amountManuallyEdited, setAmountManuallyEdited] = useState(Boolean(isEdit && initialPayment?.amount))
+  const [paymentPreview, setPaymentPreview] = useState(null)
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false)
+  const [previewError, setPreviewError] = useState('')
 
   const isBalloonPayment = form.paymentType === 'Balloon'
   const isFullPayment = form.paymentType === 'Full Payment'
@@ -219,12 +229,75 @@ const AddSOAPaymentModal = ({
     [rows, form.soaRowId]
   )
 
-  const fullPaymentAmount = useMemo(
+  useEffect(() => {
+    if (typeof onPreview !== 'function' || !form.paymentDate || (requiresSoaRow && !form.soaRowId)) {
+      setPaymentPreview(null)
+      setPreviewError('')
+      setIsPreviewLoading(false)
+      return undefined
+    }
+
+    const requestId = previewRequestRef.current + 1
+    previewRequestRef.current = requestId
+    let cancelled = false
+
+    const timer = window.setTimeout(async () => {
+      setIsPreviewLoading(true)
+      setPreviewError('')
+
+      try {
+        const result = await onPreview({
+          soaRowId: requiresSoaRow ? form.soaRowId : null,
+          paymentType: form.paymentType,
+          paymentDate: form.paymentDate,
+          excludePaymentId: isEdit ? Number(initialPayment?.paymentId || initialPayment?.id || 0) : 0,
+        })
+
+        if (cancelled || previewRequestRef.current !== requestId) return
+        setPaymentPreview(result || null)
+
+        const previewAmount = form.paymentType === 'Full Payment'
+          ? Number(result?.fullPaymentAmount || 0)
+          : form.paymentType === 'Balloon'
+            ? 0
+            : Number(result?.selectedRow?.totalPayable || 0)
+
+        if (previewAmount > 0 && (form.paymentType === 'Full Payment' || (!amountManuallyEdited && !isEdit))) {
+          setForm((current) => ({
+            ...current,
+            amount: formatPaymentAmountInput(previewAmount),
+          }))
+        }
+      } catch (error) {
+        if (cancelled || previewRequestRef.current !== requestId) return
+        setPaymentPreview(null)
+        setPreviewError(error?.message || 'Could not calculate the payment amount for this date.')
+      } finally {
+        if (!cancelled && previewRequestRef.current === requestId) setIsPreviewLoading(false)
+      }
+    }, 180)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [
+    amountManuallyEdited,
+    form.paymentDate,
+    form.paymentType,
+    form.soaRowId,
+    initialPayment,
+    isEdit,
+    onPreview,
+    requiresSoaRow,
+  ])
+
+  const fallbackFullPaymentAmount = useMemo(
     () => getFullPaymentAmount(rows, isEdit ? initialPayment?.amount : 0),
     [rows, isEdit, initialPayment?.amount]
   )
 
-  const balloonPrincipalCapacity = useMemo(() => {
+  const fallbackBalloonPrincipalCapacity = useMemo(() => {
     const remainingMonthlyPrincipal = rows.reduce((sum, row) => {
       const description = String(row.description || '').toLowerCase()
       const status = String(row.status || '').toLowerCase()
@@ -244,29 +317,43 @@ const AddSOAPaymentModal = ({
     return Math.max(remainingMonthlyPrincipal + editingBalloonAmount, 0)
   }, [initialPayment, isEdit, rows])
 
+  const fullPaymentAmount = Number(paymentPreview?.fullPaymentAmount || fallbackFullPaymentAmount || 0)
+  const balloonPrincipalCapacity = Number(paymentPreview?.balloonPrincipalCapacity || fallbackBalloonPrincipalCapacity || 0)
+  const previewRow = paymentPreview?.selectedRow || null
+  const fullSummary = paymentPreview?.fullSummary || null
+
   const suggestedAmount = useMemo(() => {
     if (isFullPayment) return fullPaymentAmount
-    if (isBalloonPayment || !selectedRow) return 0
+    if (isBalloonPayment) return 0
+    if (previewRow) return Number(previewRow.totalPayable || 0)
+    if (!selectedRow) return 0
     return getRowUnpaidAmount(selectedRow)
-  }, [fullPaymentAmount, isBalloonPayment, isFullPayment, selectedRow])
+  }, [fullPaymentAmount, isBalloonPayment, isFullPayment, previewRow, selectedRow])
+
+  const baseOutstanding = isFullPayment
+    ? Number(fullSummary?.principalOutstanding || Math.max(fullPaymentAmount - Number(fullSummary?.interestOutstanding || 0) - Number(fullSummary?.penaltyOutstanding || 0), 0))
+    : isBalloonPayment
+      ? balloonPrincipalCapacity
+      : Number(previewRow?.principalOutstanding ?? Math.max(Number(selectedRow?.dueAmount || 0) - Number(selectedRow?.discountAmount || 0) - Number(selectedRow?.interest || 0), 0))
 
   const automaticInterest = isFullPayment
-    ? rows.reduce(
-        (sum, row) =>
-          sum + Math.max(Number(row.interest || 0) - Number(row.paidInterestAmount || 0), 0),
-        0
-      )
-    : Number(selectedRow?.interest || 0)
-  const automaticPenalty = isFullPayment
-    ? rows.reduce(
-        (sum, row) =>
-          sum + Math.max(Number(row.penalty || 0) - Number(row.paidPenaltyAmount || 0), 0),
-        0
-      )
-    : Number(selectedRow?.penalty || 0)
+    ? Number(fullSummary?.interestOutstanding || 0)
+    : isBalloonPayment
+      ? 0
+      : Number(previewRow?.interestOutstanding ?? selectedRow?.interest ?? 0)
 
-  // Full Payment uses a derived amount so refreshed SOA rows are reflected
-  // immediately without copying server data into another state value.
+  const automaticPenalty = isFullPayment
+    ? Number(fullSummary?.penaltyOutstanding || 0)
+    : isBalloonPayment
+      ? 0
+      : Number(previewRow?.penaltyOutstanding ?? selectedRow?.outstandingPenaltyAmount ?? selectedRow?.penalty ?? 0)
+
+  const totalPayable = isFullPayment
+    ? fullPaymentAmount
+    : isBalloonPayment
+      ? balloonPrincipalCapacity
+      : Number(previewRow?.totalPayable || suggestedAmount || 0)
+
   const displayedAmount = isFullPayment
     ? formatPaymentAmountInput(fullPaymentAmount)
     : form.amount
@@ -335,6 +422,21 @@ const AddSOAPaymentModal = ({
   const handleSubmit = async (event) => {
     event.preventDefault()
     if (submitLockRef.current || isSaving || alert?.type === 'loading') return
+
+    if (typeof onPreview === 'function' && isPreviewLoading) {
+      setAlert({ type: 'error', message: 'Wait for the payment-date calculation to finish.' })
+      return
+    }
+
+    if (typeof onPreview === 'function' && previewError) {
+      setAlert({ type: 'error', message: previewError })
+      return
+    }
+
+    if (typeof onPreview === 'function' && !paymentPreview) {
+      setAlert({ type: 'error', message: 'Payment-date calculation is required before saving.' })
+      return
+    }
 
     const paymentAmount = isFullPayment
       ? fullPaymentAmount
@@ -490,28 +592,38 @@ const AddSOAPaymentModal = ({
             </div>
           </div>
 
-          <div className="mb-5 grid gap-3 md:grid-cols-3">
+          {isPreviewLoading ? (
+            <p className="mb-4 text-xs font-black text-blue-600">Calculating the amount as of {form.paymentDate}...</p>
+          ) : previewError ? (
+            <StatusAlert type="error" message={previewError} className="mb-4" />
+          ) : null}
+
+          <div className="mb-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
               <p className="text-xs font-black uppercase text-slate-500">
-                {isFullPayment ? 'Full Remaining Amount' : isBalloonPayment ? 'Available Monthly Principal' : 'Due Amount'}
+                {isFullPayment ? 'Base Outstanding' : isBalloonPayment ? 'Available Monthly Principal' : 'Base Outstanding'}
               </p>
-              <p className="mt-1 text-lg font-black text-slate-950">
-                {money(isFullPayment ? fullPaymentAmount : isBalloonPayment ? balloonPrincipalCapacity : getRowTotalDue(selectedRow))}
-              </p>
+              <p className="mt-1 text-lg font-black text-slate-950">{money(baseOutstanding)}</p>
             </div>
 
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
               <p className="text-xs font-black uppercase text-amber-700">Interest</p>
-              <p className="mt-1 text-lg font-black text-amber-900">
-                {money(automaticInterest)}
-              </p>
+              <p className="mt-1 text-lg font-black text-amber-900">{money(automaticInterest)}</p>
             </div>
 
             <div className="rounded-xl border border-red-200 bg-red-50 p-4">
               <p className="text-xs font-black uppercase text-red-700">Penalty</p>
-              <p className="mt-1 text-lg font-black text-red-900">
-                {money(automaticPenalty)}
-              </p>
+              <p className="mt-1 text-lg font-black text-red-900">{money(automaticPenalty)}</p>
+              {!isFullPayment && !isBalloonPayment && previewRow ? (
+                <p className="mt-1 text-[11px] font-bold text-red-700">
+                  As of {paymentPreview?.paymentDate || form.paymentDate} · {Number(previewRow.penaltyDays || 0)} penalty day(s)
+                </p>
+              ) : null}
+            </div>
+
+            <div className="rounded-xl border border-violet-200 bg-violet-50 p-4">
+              <p className="text-xs font-black uppercase text-violet-700">Total Payable</p>
+              <p className="mt-1 text-lg font-black text-violet-900">{money(totalPayable)}</p>
             </div>
           </div>
 
@@ -569,7 +681,7 @@ const AddSOAPaymentModal = ({
                   ? `Auto-filled from the complete unpaid SOA balance: ${money(fullPaymentAmount)}.`
                   : isBalloonPayment
                     ? `Direct principal reduction. Maximum available: ${money(balloonPrincipalCapacity)}. The regular monthly amount stays the same while the final monthly rows are removed.`
-                    : `Suggested unpaid amount: ${money(suggestedAmount)}`
+                    : `Suggested amount as of ${form.paymentDate}: ${money(suggestedAmount)}`
               }
               disabled={isFullPayment}
               required
@@ -581,7 +693,7 @@ const AddSOAPaymentModal = ({
               value={form.paymentDate}
               max={todayISO()}
               onChange={(value) => updateField('paymentDate', value)}
-              helper="Future dates are blocked."
+              helper="Penalty and outstanding balance are recalculated using this payment date. Future dates are blocked."
               required
             />
 
@@ -638,14 +750,6 @@ const AddSOAPaymentModal = ({
             />
           </div>
 
-          <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <div className="flex items-start gap-3 text-sm font-semibold text-slate-600">
-              <FiAlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-slate-400" />
-              <p>
-                Payment status is removed here because admin-added payments are saved as verified automatically.
-              </p>
-            </div>
-          </div>
         </div>
 
         <div className="flex shrink-0 justify-end gap-2 border-t border-slate-200 bg-white px-5 py-4">
@@ -659,7 +763,7 @@ const AddSOAPaymentModal = ({
 
           <button
             type="submit"
-            disabled={isSaving || alert?.type === 'loading'}
+            disabled={isSaving || isPreviewLoading || alert?.type === 'loading'}
             className="h-10 rounded-lg bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
           >
             {isSaving || alert?.type === 'loading'

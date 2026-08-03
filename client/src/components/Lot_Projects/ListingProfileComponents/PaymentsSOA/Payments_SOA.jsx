@@ -8,6 +8,7 @@ import {
   FiCreditCard,
   FiEdit2,
   FiPlus,
+  FiPaperclip,
   FiSettings,
   FiTrash2,
   FiX,
@@ -17,6 +18,7 @@ import { useFetchPost, useFetchPut } from '../../../../utils/useFetch'
 import useCurrentUser from '../../../../utils/useCurrentUser'
 import AddSOAPaymentModal from './AddSOAPaymentModal'
 import PenaltyReliefModal from './PenaltyReliefModal'
+import PaymentProofModal from './PaymentProofModal'
 import { isFullAccessAdministrator } from '../../../../config/permissions'
 
 const money = (value) =>
@@ -141,6 +143,7 @@ const normalizePayments = (payments = [], listing = {}) => {
     verifiedBy: payment.verifiedBy || payment.verified_by || '-',
     verifiedAt: payment.verifiedAt || payment.verified_at || '',
     status: payment.status || payment.lot_project_payment_status || 'Verified',
+    paymentProofCount: Number(payment.paymentProofCount ?? payment.payment_proof_count ?? 0),
     scheduleDescription: payment.scheduleDescription || payment.schedule_description || '-',
   }))
 }
@@ -679,6 +682,7 @@ const PaymentsSOA = ({
   const canManagePenaltyRelief = !readOnly && isFullAccessAdministrator(currentUserData?.user)
   const canCorrectPenalty = canManagePenaltyRelief
   const canWaiveLmf = canManagePenaltyRelief
+  const canDeletePaymentProof = !readOnly && isFullAccessAdministrator(currentUserData?.user)
 
   const rows = useMemo(() => normalizeRows(soaRows), [soaRows])
   const paymentRecords = useMemo(() => normalizePayments(payments, listing), [payments, listing])
@@ -722,6 +726,8 @@ const PaymentsSOA = ({
   const [showSoaTermsModal, setShowSoaTermsModal] = useState(false)
   const [editingPayment, setEditingPayment] = useState(null)
   const [deletePayment, setDeletePayment] = useState(null)
+  const [paymentProof, setPaymentProof] = useState(null)
+  const [paymentProofCounts, setPaymentProofCounts] = useState({})
   const [deletePassword, setDeletePassword] = useState('')
   const [deleteAlert, setDeleteAlert] = useState(null)
   const [penaltyReliefRow, setPenaltyReliefRow] = useState(null)
@@ -970,6 +976,9 @@ const PaymentsSOA = ({
     setEditingPayment(payment)
     setShowPaymentModal(true)
   }
+
+  const handlePreviewPayment = (payload) =>
+    useFetchPost(`/projects/lot-projects/${projectSlug}/listings/${listingId}/payments/preview`, payload)
 
   const handleSavePayment = async (payload) => {
     if (payload.paymentId) {
@@ -1232,29 +1241,40 @@ const PaymentsSOA = ({
                   </td>
 
                   <td className="px-4 py-4">
-                    {readOnly ? (
-                      <span className="text-xs font-black text-slate-400">Read-only</span>
-                    ) : (
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => openEditModal(payment)}
-                          className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 transition hover:bg-slate-50"
-                        >
-                          <FiEdit2 className="h-3.5 w-3.5" />
-                          Edit
-                        </button>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setPaymentProof(payment)}
+                        className="inline-flex h-9 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-700 transition hover:bg-blue-100"
+                      >
+                        <FiPaperclip className="h-3.5 w-3.5" />
+                        {Number(paymentProofCounts[payment.paymentId || payment.id] ?? payment.paymentProofCount ?? 0) > 0
+                          ? `Proof (${paymentProofCounts[payment.paymentId || payment.id] ?? payment.paymentProofCount})`
+                          : 'Upload Proof'}
+                      </button>
 
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteClick(payment)}
-                          className="inline-flex h-9 items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 text-xs font-black text-red-700 transition hover:bg-red-100"
-                        >
-                          <FiTrash2 className="h-3.5 w-3.5" />
-                          Delete
-                        </button>
-                      </div>
-                    )}
+                      {!readOnly ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(payment)}
+                            className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 transition hover:bg-slate-50"
+                          >
+                            <FiEdit2 className="h-3.5 w-3.5" />
+                            Edit
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteClick(payment)}
+                            className="inline-flex h-9 items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 text-xs font-black text-red-700 transition hover:bg-red-100"
+                          >
+                            <FiTrash2 className="h-3.5 w-3.5" />
+                            Delete
+                          </button>
+                        </>
+                      ) : null}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -1545,6 +1565,7 @@ const PaymentsSOA = ({
           initialPayment={editingPayment}
           mode={editingPayment ? 'edit' : 'add'}
           isSaving={createPaymentMutation.isPending || updatePaymentMutation.isPending}
+          onPreview={handlePreviewPayment}
           onClose={() => {
             setShowPaymentModal(false)
             setEditingPayment(null)
@@ -1584,6 +1605,22 @@ const PaymentsSOA = ({
         }}
         onConfirm={(payload) => waiveLmfMutation.mutate(payload)}
       /> : null}
+
+      {paymentProof ? (
+        <PaymentProofModal
+          projectSlug={projectSlug}
+          listingId={listingId}
+          payment={paymentProof}
+          readOnly={readOnly}
+          canDelete={canDeletePaymentProof}
+          onClose={() => setPaymentProof(null)}
+          onChanged={refreshProfile}
+          onCountChange={(count) => setPaymentProofCounts((current) => ({
+            ...current,
+            [paymentProof.paymentId || paymentProof.id]: Number(count || 0),
+          }))}
+        />
+      ) : null}
 
       {!readOnly ? <DeletePaymentModal
         payment={deletePayment}

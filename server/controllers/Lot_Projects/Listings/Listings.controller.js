@@ -108,6 +108,8 @@ export const getLotProjectListings = async (req, res) => {
     const hasListings = await tableExists(connection, 'lot_project_listings');
     const hasListingDocuments = await tableExists(connection, 'lot_project_listing_documents');
     const hasListingCadastralLinks = await tableExists(connection, 'lot_project_listing_cadastral_lots');
+    const hasAccounts = await tableExists(connection, 'lot_project_accounts');
+    const hasCurrentAccountId = hasAccounts && await columnExists(connection, 'lot_project_listings', 'current_account_id');
     const cadastralLots = await getProjectCadastralLots(project.lot_project_id);
     const defaultDocuments = await getProjectDefaultDocuments(project.lot_project_id);
 
@@ -175,6 +177,28 @@ export const getLotProjectListings = async (req, res) => {
         `
       : `LEFT JOIN (SELECT NULL AS lot_project_listing_id, 0 AS listing_document_count) ldoc ON 1 = 0`;
 
+    // A listing can retain several historical buyer profiles. The inventory must
+    // show only the profile attached to current_account_id, otherwise one listing
+    // is repeated once for every profile that is still marked active.
+    const currentBuyerJoin = hasCurrentAccountId
+      ? `
+          LEFT JOIN lot_project_accounts current_account
+            ON current_account.lot_project_account_id = l.current_account_id
+          LEFT JOIN lot_project_client_profiles cp
+            ON cp.lot_project_client_profile_id = current_account.lot_project_client_profile_id
+        `
+      : `
+          LEFT JOIN lot_project_client_profiles cp
+            ON cp.lot_project_client_profile_id = (
+              SELECT cp_current.lot_project_client_profile_id
+              FROM lot_project_client_profiles cp_current
+              WHERE cp_current.lot_project_listing_id = l.lot_project_listing_id
+                AND cp_current.lot_project_client_profile_status = 'active'
+              ORDER BY cp_current.lot_project_client_profile_id DESC
+              LIMIT 1
+            )
+        `;
+
     const [rows] = await connection.query(
       `
         SELECT
@@ -185,8 +209,7 @@ export const getLotProjectListings = async (req, res) => {
           COALESCE(pdoc.project_default_document_count, 0) AS project_default_document_count,
           COALESCE(pdoc.project_required_document_count, 0) AS project_required_document_count
         FROM lot_project_listings l
-        LEFT JOIN lot_project_client_profiles cp
-          ON cp.lot_project_listing_id = l.lot_project_listing_id AND cp.lot_project_client_profile_status = 'active'
+        ${currentBuyerJoin}
         ${listingDocumentJoin}
         LEFT JOIN (
           SELECT
