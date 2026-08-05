@@ -30,6 +30,10 @@ test('Reserve Listing supports an exact downpayment amount and sends it to the A
   assert.match(modal, /downpaymentAmount: paymentCalculations\.downpaymentAmount/);
   assert.match(utils, /usesActualDownpaymentAmount/);
   assert.match(utils, /dpTarget = isCash[\s\S]*requestedDownpaymentAmount/);
+  assert.match(
+    controller,
+    /import\s*\{[\s\S]*?roundMoneyValue[\s\S]*?\}\s*from '\.\.\/_shared\/lotProject\.shared\.js'/
+  );
   assert.match(controller, /soa_downpayment_input_mode/);
   assert.match(controller, /soa_downpayment_amount/);
   assert.match(shared, /downpaymentInputMode === 'amount'[\s\S]*savedDownpaymentAmount/);
