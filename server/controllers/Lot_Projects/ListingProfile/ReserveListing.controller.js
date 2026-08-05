@@ -137,6 +137,8 @@ const replaceReservationSchedules = async (connection, projectId, listing, clien
     soa_starting_date: profileTerms.startingDate,
     soa_first_due_date: profileTerms.firstDueDate,
     soa_downpayment_percentage: profileTerms.downpaymentPercentage,
+    soa_downpayment_input_mode: profileTerms.downpaymentInputMode,
+    soa_downpayment_amount: profileTerms.downpaymentAmount,
     soa_downpayment_terms: profileTerms.downpaymentTerms,
     soa_monthly_terms: profileTerms.monthlyTerms,
     soa_annual_interest_rate: profileTerms.annualInterestRate,
@@ -463,11 +465,47 @@ export const reserveLotProjectListing = async (req, res) => {
     listing.lot_project_listing_tcp = contractPricing.tcp;
 
     const reservationFee = parseMoneyValue(terms.reservationFee || listing.lot_project_listing_reservation_fee || 0);
+    const legalMiscFeeMode = String(terms.legalMiscFeeMode || terms.legalMiscFee || 'include_in_monthly') === 'separate_soa_row'
+      ? 'separate_soa_row'
+      : 'include_in_monthly';
+    const legalMiscFeeAmount = contractPricing.lmfAmount;
+    const downpaymentPrincipalBase = roundMoneyValue(
+      legalMiscFeeMode === 'separate_soa_row'
+        ? Math.max(contractPricing.tcp - legalMiscFeeAmount, 0)
+        : contractPricing.tcp
+    );
+    const downpaymentInputMode = !isCash && (
+      String(terms.downpaymentInputMode || '').toLowerCase() === 'amount' ||
+      String(terms.downpaymentPercentageMode || '').toLowerCase() === 'amount'
+    ) ? 'amount' : 'percentage';
+    const requestedDownpaymentAmount = downpaymentInputMode === 'amount'
+      ? parseMoneyValue(terms.downpaymentAmount ?? terms.customDownpaymentAmount ?? 0)
+      : null;
+    if (
+      downpaymentInputMode === 'amount' &&
+      (!Number.isFinite(requestedDownpaymentAmount) || requestedDownpaymentAmount < 0 || requestedDownpaymentAmount > downpaymentPrincipalBase)
+    ) {
+      return res.status(400).json({
+        message: 'Actual downpayment amount must be between 0 and the contract principal balance.',
+      });
+    }
+    const downpaymentAmount = isCash
+      ? null
+      : downpaymentInputMode === 'amount'
+        ? roundMoneyValue(requestedDownpaymentAmount)
+        : null;
     const downpaymentPercentage = isCash
       ? 0
-      : Number(
-          terms.downpaymentPercentage ?? normalizeNumberOption(terms.downpaymentPercentageMode, terms.customDownpaymentPercentage, 30)
-        );
+      : downpaymentInputMode === 'amount'
+        ? downpaymentPrincipalBase > 0
+          ? (downpaymentAmount / downpaymentPrincipalBase) * 100
+          : 0
+        : Number(
+            terms.downpaymentPercentage ?? normalizeNumberOption(terms.downpaymentPercentageMode, terms.customDownpaymentPercentage, 30)
+          );
+    if (!Number.isFinite(downpaymentPercentage) || downpaymentPercentage < 0 || downpaymentPercentage > 100) {
+      return res.status(400).json({ message: 'Downpayment percentage must be between 0 and 100.' });
+    }
     const downpaymentTerms = isCash
       ? 0
       : Number(
@@ -487,10 +525,6 @@ export const reserveLotProjectListing = async (req, res) => {
       terms.reservationFeeAppliedToDownpayment === true ||
       Number(terms.reservationFeeAppliedToDownpayment || terms.soa_reservation_fee_applied_to_downpayment || 0) === 1
     );
-    const legalMiscFeeMode = String(terms.legalMiscFeeMode || terms.legalMiscFee || 'include_in_monthly') === 'separate_soa_row'
-      ? 'separate_soa_row'
-      : 'include_in_monthly';
-    const legalMiscFeeAmount = contractPricing.lmfAmount;
     const today = todayDateOnly();
     const historicalMinimum = shiftDateYears(today, -1);
     const isHistoricalEntry = terms.isHistoricalEntry === true || Number(terms.isHistoricalEntry || 0) === 1;
@@ -578,6 +612,15 @@ export const reserveLotProjectListing = async (req, res) => {
     }
 
     const tableName = 'lot_project_client_profiles';
+    if (
+      downpaymentInputMode === 'amount' &&
+      (!(await columnExists(connection, tableName, 'soa_downpayment_input_mode')) ||
+        !(await columnExists(connection, tableName, 'soa_downpayment_amount')))
+    ) {
+      return res.status(400).json({
+        message: 'Actual downpayment amount needs the latest database migration.',
+      });
+    }
     if (reservationFeeAppliedToDownpayment && !(await columnExists(connection, tableName, 'soa_reservation_fee_applied_to_downpayment'))) {
       return res.status(400).json({
         message: 'Reservation fee deduction from downpayment needs the latest database migration.',
@@ -732,6 +775,8 @@ export const reserveLotProjectListing = async (req, res) => {
     await addIfColumnExists(connection, tableName, columns, values, 'soa_selected_net_selling_price', contractPricing.netSellingPrice);
     await addIfColumnExists(connection, tableName, columns, values, 'soa_selected_lmf_amount', contractPricing.lmfAmount);
     await addIfColumnExists(connection, tableName, columns, values, 'soa_selected_tcp', contractPricing.tcp);
+    await addIfColumnExists(connection, tableName, columns, values, 'soa_downpayment_input_mode', downpaymentInputMode);
+    await addIfColumnExists(connection, tableName, columns, values, 'soa_downpayment_amount', downpaymentAmount);
     await addIfColumnExists(connection, tableName, columns, values, 'soa_reservation_fee_applied_to_downpayment', reservationFeeAppliedToDownpayment ? 1 : 0);
     await addIfColumnExists(connection, tableName, columns, values, 'soa_legal_misc_fee_mode', legalMiscFeeMode);
     await addIfColumnExists(connection, tableName, columns, values, 'soa_legal_misc_fee_amount', legalMiscFeeAmount);
@@ -866,6 +911,8 @@ export const reserveLotProjectListing = async (req, res) => {
         soa_reservation_fee: reservationFee,
         soa_reservation_fee_applied_to_downpayment: reservationFeeAppliedToDownpayment ? 1 : 0,
         soa_downpayment_percentage: Number.isNaN(downpaymentPercentage) ? 30 : downpaymentPercentage,
+        soa_downpayment_input_mode: downpaymentInputMode,
+        soa_downpayment_amount: downpaymentAmount,
         soa_downpayment_terms: Number.isNaN(downpaymentTerms) ? 3 : downpaymentTerms,
         soa_monthly_terms: Number.isNaN(monthlyTerms) ? 36 : monthlyTerms,
         soa_annual_interest_rate: selectedInterestRate,
@@ -946,6 +993,8 @@ export const reserveLotProjectListing = async (req, res) => {
       startingDate: startingDate,
       firstDueDate: firstDueDate,
       downpaymentPercentage: Number.isNaN(downpaymentPercentage) ? 30 : downpaymentPercentage,
+      downpaymentInputMode,
+      downpaymentAmount,
       downpaymentTerms: Number.isNaN(downpaymentTerms) ? 3 : downpaymentTerms,
       monthlyTerms: Number.isNaN(monthlyTerms) ? 36 : monthlyTerms,
       annualInterestRate: selectedInterestRate,
@@ -1081,3 +1130,6 @@ export const reserveLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
+
+
+

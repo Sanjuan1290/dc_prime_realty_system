@@ -18,6 +18,7 @@ export const LISTING_STATUS_ACTIONS = Object.freeze({
   SETTLE_CANCELLATION: 'settle_cancellation',
   CANCEL_CANCELLATION: 'cancel_cancellation',
   RESET_TO_AVAILABLE: 'reset_to_available',
+  VOID_UNPAID_CANCELLATION: 'void_unpaid_cancellation',
 });
 
 export const validateListingStatusTransition = ({
@@ -62,6 +63,26 @@ export const validateListingStatusTransition = ({
     return { currentStatus: current, nextStatus: next, resetToAvailable: false };
   }
 
+  // An unpaid reservation may be voided without creating Buyer Account History.
+  // The service layer independently verifies that there are no payments,
+  // uploaded files, or released commissions before deleting the current account.
+  if (
+    current === 'pending_for_cancellation' &&
+    next === 'available' &&
+    transitionAction === LISTING_STATUS_ACTIONS.VOID_UNPAID_CANCELLATION
+  ) {
+    if (confirmSaleDataDeletion !== true) {
+      throw transitionError('Confirm the permanent removal of the unpaid buyer account before voiding the reservation.');
+    }
+
+    return {
+      currentStatus: current,
+      nextStatus: next,
+      resetToAvailable: false,
+      voidUnpaidAccount: true,
+    };
+  }
+
   // Active sale data may only be archived and cleared after cancellation has been
   // settled and the dedicated Change to Available action confirms the reset.
   if (current === 'cancelled' && next === 'available') {
@@ -87,3 +108,6 @@ export const validateListingStatusTransition = ({
     `Listing status cannot be changed directly from ${current.replaceAll('_', ' ')} to ${next.replaceAll('_', ' ')}.`
   );
 };
+
+
+

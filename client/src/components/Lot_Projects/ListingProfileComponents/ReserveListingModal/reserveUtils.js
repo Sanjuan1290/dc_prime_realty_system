@@ -138,12 +138,6 @@ export const getPaymentCalculations = (tcp, paymentForm) => {
   const modeOfPayment = String(paymentForm.modeOfPayment || 'installment').toLowerCase()
   const isCash = modeOfPayment === 'cash'
 
-  const downpaymentPercentage = isCash
-    ? 0
-    : paymentForm.downpaymentPercentageMode === 'custom'
-      ? Number(paymentForm.customDownpaymentPercentage || 0)
-      : Number(paymentForm.downpaymentPercentageMode || 0)
-
   const downpaymentTerms = isCash
     ? 0
     : paymentForm.downpaymentTermsMode === 'custom'
@@ -166,6 +160,20 @@ export const getPaymentCalculations = (tcp, paymentForm) => {
     0
   )
 
+  const usesActualDownpaymentAmount = !isCash && paymentForm.downpaymentPercentageMode === 'amount'
+  const requestedDownpaymentAmount = usesActualDownpaymentAmount
+    ? roundMoney(Math.max(Number(paymentForm.customDownpaymentAmount || 0), 0))
+    : null
+  const downpaymentPercentage = isCash
+    ? 0
+    : usesActualDownpaymentAmount
+      ? principalBase > 0
+        ? (requestedDownpaymentAmount / principalBase) * 100
+        : 0
+      : paymentForm.downpaymentPercentageMode === 'custom'
+        ? Number(paymentForm.customDownpaymentPercentage || 0)
+        : Number(paymentForm.downpaymentPercentageMode || 0)
+
   const reservationFeeTreatment = isCash
     ? 'separate'
     : paymentForm.reservationFeeTreatment === 'apply_to_downpayment'
@@ -178,7 +186,9 @@ export const getPaymentCalculations = (tcp, paymentForm) => {
   // requirement. This keeps the SOA aligned with the approved contract terms.
   const dpTarget = isCash
     ? 0
-    : roundMoney(principalBase * (downpaymentPercentage / 100))
+    : usesActualDownpaymentAmount
+      ? roundMoney(Math.min(requestedDownpaymentAmount, principalBase))
+      : roundMoney(principalBase * (downpaymentPercentage / 100))
   const dpDiscountAmount = isCash
     ? 0
     : roundMoney(dpTarget * (Number(paymentForm.dpDiscountPercentage || 0) / 100))
@@ -209,6 +219,8 @@ export const getPaymentCalculations = (tcp, paymentForm) => {
     modeOfPayment,
     isCash,
     downpaymentPercentage,
+    downpaymentInputMode: usesActualDownpaymentAmount ? 'amount' : 'percentage',
+    downpaymentAmount: usesActualDownpaymentAmount ? dpTarget : null,
     downpaymentTerms,
     monthlyTerms,
     reservationFeeTreatment,
@@ -234,3 +246,6 @@ export const getPaymentCalculations = (tcp, paymentForm) => {
     },
   }
 }
+
+
+

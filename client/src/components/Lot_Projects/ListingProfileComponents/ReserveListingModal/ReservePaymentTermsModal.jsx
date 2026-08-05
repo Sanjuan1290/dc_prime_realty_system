@@ -275,8 +275,9 @@ const ReservePaymentTermsModal = ({
           <TextInput label="Sale Discount %" type="number" value={paymentForm.saleDiscountPercentage} onChange={(value) => updatePaymentField('saleDiscountPercentage', value)} min="0" max="100" step="0.01" placeholder="0" helper="Applied to the selected base selling price. LMF remains based on the original base selling price." />
 
           {!isCash ? <>
-            <SelectInput label="Downpayment Percentage" value={paymentForm.downpaymentPercentageMode} onChange={(value) => updatePaymentField('downpaymentPercentageMode', value)} helper="Choose 15%, 30%, or custom percentage. Custom may be 0%." required><option value="15">15%</option><option value="30">30%</option><option value="custom">Custom</option></SelectInput>
-            {paymentForm.downpaymentPercentageMode === 'custom' ? <TextInput label="Custom Downpayment Percentage" type="number" value={paymentForm.customDownpaymentPercentage} onChange={(value) => updatePaymentField('customDownpaymentPercentage', value)} placeholder="Enter 0 to 100" helper="Enter a value from 0 to 100." required /> : null}
+            <SelectInput label="Downpayment" value={paymentForm.downpaymentPercentageMode} onChange={(value) => updatePaymentField('downpaymentPercentageMode', value)} helper="Choose a standard percentage, enter a custom percentage, or enter the exact downpayment amount." required><option value="15">15%</option><option value="30">30%</option><option value="custom">Custom Percentage</option><option value="amount">Actual Amount</option></SelectInput>
+            {paymentForm.downpaymentPercentageMode === 'custom' ? <TextInput label="Custom Downpayment Percentage" type="number" value={paymentForm.customDownpaymentPercentage} onChange={(value) => updatePaymentField('customDownpaymentPercentage', value)} min="0" max="100" step="0.000001" placeholder="Enter 0 to 100" helper="Enter a value from 0 to 100." required /> : null}
+            {paymentForm.downpaymentPercentageMode === 'amount' ? <TextInput label="Actual Downpayment Amount" type="number" value={paymentForm.customDownpaymentAmount} onChange={(value) => updatePaymentField('customDownpaymentAmount', value)} min="0" max={paymentPreview.principalBase} step="0.01" placeholder="Example: 400000" helper={`Enter the exact downpayment amount up to ${money(paymentPreview.principalBase)}.`} required /> : null}
             <SelectInput label="Downpayment Terms" value={paymentForm.downpaymentTermsMode} onChange={(value) => updatePaymentField('downpaymentTermsMode', value)} helper="Choose spot cash, 1–12 months, or custom." required><option value="spot_cash">Spot Cash</option>{downpaymentTermOptions.map((value) => <option key={value} value={value}>{value} month{value === '1' ? '' : 's'}</option>)}<option value="custom">Custom</option></SelectInput>
             {paymentForm.downpaymentTermsMode === 'custom' ? <TextInput label="Custom Downpayment Terms" type="number" value={paymentForm.customDownpaymentTerms} onChange={(value) => updatePaymentField('customDownpaymentTerms', value)} placeholder="Number of months" required /> : null}
             <SelectInput label="Reservation Fee Treatment" value={paymentForm.reservationFeeTreatment || 'separate'} onChange={(value) => updatePaymentField('reservationFeeTreatment', value)} helper="Choose if the reservation fee stays separate or counts toward the required downpayment." required><option value="separate">Separate from Downpayment</option><option value="apply_to_downpayment">Deduct Reservation Fee from Downpayment</option></SelectInput>
@@ -470,3 +471,6 @@ const ReservePaymentTermsModal = ({
 }
 
 export default ReservePaymentTermsModal
+
+
+

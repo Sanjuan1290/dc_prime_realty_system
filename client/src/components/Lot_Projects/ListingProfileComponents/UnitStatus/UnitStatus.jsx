@@ -211,6 +211,7 @@ const UnitStatus = ({
   }
 
   const handleSettleCancellation = async (settlement) => {
+    const voidWithoutHistory = settlement?.cancellationAccountHistoryTreatment === 'discard'
     await handleSave({
       ...unitData,
       ...settlement,
@@ -228,8 +229,9 @@ const UnitStatus = ({
         .split(',')
         .map((item) => item.trim())
         .filter(Boolean),
-      status: 'cancelled',
-      statusTransitionAction: 'settle_cancellation',
+      status: voidWithoutHistory ? 'available' : 'cancelled',
+      statusTransitionAction: voidWithoutHistory ? 'void_unpaid_cancellation' : 'settle_cancellation',
+      confirmSaleDataDeletion: voidWithoutHistory,
     })
     setShowSettlementModal(false)
   }
@@ -446,7 +448,12 @@ const UnitStatus = ({
               <div className="mt-4 border-t border-violet-200 pt-4">
                 <h4 className="text-sm font-black text-violet-950">Downpayment Computation</h4>
                 <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  <DetailBox label={`DP Target (${Number(unitData.soaDownpaymentPercentage || 0)}%)`} value={money(unitData.soaDpTarget)} />
+                  <DetailBox
+                    label={unitData.soaDownpaymentInputMode === 'amount'
+                      ? 'DP Target (Actual Amount)'
+                      : `DP Target (${Number(unitData.soaDownpaymentPercentage || 0)}%)`}
+                    value={money(unitData.soaDpTarget)}
+                  />
                   <DetailBox label={`DP Discount (${Number(unitData.soaDpDiscountPercentage || 0)}%)`} value={money(unitData.soaDpDiscountAmount)} />
                   <DetailBox label="DP After Discount" value={money(unitData.soaDpAfterDiscount)} />
                   <DetailBox label="Reservation Applied to DP" value={money(unitData.soaReservationDpCredit)} />
@@ -602,3 +609,6 @@ const UnitStatus = ({
 }
 
 export default UnitStatus
+
+
+

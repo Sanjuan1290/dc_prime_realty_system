@@ -66,6 +66,29 @@ test('pending cancellation cannot return to sold without the Cancel Cancellation
   );
 });
 
+test('an unpaid pending cancellation may be voided directly to available with explicit confirmation', () => {
+  const result = validateListingStatusTransition({
+    currentStatus: 'pending_for_cancellation',
+    nextStatus: 'available',
+    action: LISTING_STATUS_ACTIONS.VOID_UNPAID_CANCELLATION,
+    confirmSaleDataDeletion: true,
+  });
+  assert.equal(result.nextStatus, 'available');
+  assert.equal(result.resetToAvailable, false);
+  assert.equal(result.voidUnpaidAccount, true);
+});
+
+test('voiding an unpaid reservation requires explicit deletion confirmation', () => {
+  assert.throws(
+    () => validateListingStatusTransition({
+      currentStatus: 'pending_for_cancellation',
+      nextStatus: 'available',
+      action: LISTING_STATUS_ACTIONS.VOID_UNPAID_CANCELLATION,
+    }),
+    /permanent removal/i
+  );
+});
+
 test('cancelled cannot reset without the dedicated action and deletion confirmation', () => {
   assert.throws(
     () => validateListingStatusTransition({
@@ -105,3 +128,6 @@ test('available, hold, pending, and cancelled operational transitions are blocke
     );
   }
 });
+
+
+

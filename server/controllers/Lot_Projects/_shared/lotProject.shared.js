@@ -644,9 +644,15 @@ export const mapProfileListing = (row = {}, project = {}, documents = []) => {
   );
   const soaReservationFee = Number(row.soa_reservation_fee || reservationFee || 0);
   const soaDownpaymentPercentage = Number(row.soa_downpayment_percentage || 0);
+  const soaDownpaymentInputMode = String(row.soa_downpayment_input_mode || 'percentage') === 'amount'
+    ? 'amount'
+    : 'percentage';
+  const soaDownpaymentAmount = roundMoneyValue(Number(row.soa_downpayment_amount || 0));
   const soaDownpaymentTerms = Number(row.soa_downpayment_terms || 0);
   const soaDpDiscountPercentage = Number(row.soa_dp_discount_percentage || 0);
-  const soaDpTarget = roundMoneyValue(principalTcp * (soaDownpaymentPercentage / 100));
+  const soaDpTarget = soaDownpaymentInputMode === 'amount'
+    ? roundMoneyValue(Math.min(Math.max(soaDownpaymentAmount, 0), principalTcp))
+    : roundMoneyValue(principalTcp * (soaDownpaymentPercentage / 100));
   const soaDpDiscountAmount = roundMoneyValue(soaDpTarget * (soaDpDiscountPercentage / 100));
   const soaDpAfterDiscount = roundMoneyValue(Math.max(soaDpTarget - soaDpDiscountAmount, 0));
   const soaReservationAppliedToDp = Number(row.soa_reservation_fee_applied_to_downpayment || 0) === 1;
@@ -736,6 +742,8 @@ export const mapProfileListing = (row = {}, project = {}, documents = []) => {
     soaFirstDueDate: row.soa_first_due_date ? plainDate(row.soa_first_due_date) : '-',
     soaIsHistoricalEntry: Number(row.soa_is_historical_entry || 0) === 1,
     soaDownpaymentPercentage,
+    soaDownpaymentInputMode,
+    soaDownpaymentAmount: soaDownpaymentInputMode === 'amount' ? soaDpTarget : null,
     soaDownpaymentTerms,
     soaDpTarget,
     soaDpDiscountAmount,
@@ -1106,14 +1114,23 @@ const getExpectedDownpaymentRowAmounts = (row = {}, clientProfile = {}) => {
       : tcp
   );
   const downpaymentPercentage = Number(clientProfile.soa_downpayment_percentage || 0);
+  const downpaymentInputMode = String(clientProfile.soa_downpayment_input_mode || 'percentage') === 'amount'
+    ? 'amount'
+    : 'percentage';
+  const savedDownpaymentAmount = roundMoneyValue(Number(clientProfile.soa_downpayment_amount || 0));
   const dpDiscountPercentage = Number(clientProfile.soa_dp_discount_percentage || 0);
   const downpaymentTerms = Math.max(Number(clientProfile.soa_downpayment_terms || 0), 1);
 
-  if (principalTcp <= 0 || downpaymentPercentage <= 0) {
+  if (
+    principalTcp <= 0 ||
+    (downpaymentInputMode === 'amount' ? savedDownpaymentAmount <= 0 : downpaymentPercentage <= 0)
+  ) {
     return { grossAmount: 0, discountAmount: 0, cashAmount: 0 };
   }
 
-  const targetTotal = roundMoneyValue(principalTcp * (downpaymentPercentage / 100));
+  const targetTotal = downpaymentInputMode === 'amount'
+    ? roundMoneyValue(Math.min(savedDownpaymentAmount, principalTcp))
+    : roundMoneyValue(principalTcp * (downpaymentPercentage / 100));
   const discountTotal = roundMoneyValue(targetTotal * (dpDiscountPercentage / 100));
   const discountedTarget = roundMoneyValue(Math.max(targetTotal - discountTotal, 0));
   const reservationFee = roundMoneyValue(
@@ -2126,6 +2143,14 @@ export const getComputedSoaTerms = (listingRow = {}, existingScheduleRows = []) 
   const downpaymentPercentage = Number(
     listingRow.downpayment_percentage || listingRow.soa_downpayment_percentage || 30
   );
+  const downpaymentInputMode = String(
+    listingRow.downpayment_input_mode || listingRow.soa_downpayment_input_mode || 'percentage'
+  ) === 'amount'
+    ? 'amount'
+    : 'percentage';
+  const savedDownpaymentAmount = roundMoneyValue(Number(
+    listingRow.downpayment_amount || listingRow.soa_downpayment_amount || 0
+  ));
   const dpDiscountPercentage = Number(
     listingRow.dp_discount_percentage || listingRow.soa_dp_discount_percentage || 0
   );
@@ -2137,7 +2162,9 @@ export const getComputedSoaTerms = (listingRow = {}, existingScheduleRows = []) 
   const hasSavedDownpaymentTerms =
     listingRow.soa_downpayment_percentage !== undefined &&
     listingRow.soa_downpayment_percentage !== null;
-  const downpaymentTargetTotal = roundMoneyValue(principalTcp * (downpaymentPercentage / 100));
+  const downpaymentTargetTotal = downpaymentInputMode === 'amount'
+    ? roundMoneyValue(Math.min(Math.max(savedDownpaymentAmount, 0), principalTcp))
+    : roundMoneyValue(principalTcp * (downpaymentPercentage / 100));
   const downpaymentDiscountTotal = roundMoneyValue(
     downpaymentTargetTotal * (dpDiscountPercentage / 100)
   );
@@ -2210,6 +2237,8 @@ export const getComputedSoaTerms = (listingRow = {}, existingScheduleRows = []) 
     legalMiscFeeAmount: existingLegalMiscRow?.due_amount ? Number(existingLegalMiscRow.due_amount) : legalMiscFeeAmount,
     reservationFee,
     downpaymentPercentage,
+    downpaymentInputMode,
+    downpaymentAmount: downpaymentInputMode === 'amount' ? downpaymentTargetTotal : null,
     dpDiscountPercentage,
     downpaymentTargetTotal,
     reservationFeeAppliedToDownpayment,
@@ -4127,4 +4156,7 @@ export const addIfColumnExists = async (connection, tableName, columns, values, 
     values.push(value);
   }
 };
+
+
+
 

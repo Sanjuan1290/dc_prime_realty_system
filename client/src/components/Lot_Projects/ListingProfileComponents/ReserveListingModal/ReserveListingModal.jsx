@@ -105,6 +105,7 @@ const ReserveListingModal = ({
     legalMiscFeeAmount: String(listing?.lmfAmount || listing?.legalMiscFeeAmount || 0),
     downpaymentPercentageMode: '30',
     customDownpaymentPercentage: '',
+    customDownpaymentAmount: '',
     downpaymentTermsMode: 'spot_cash',
     customDownpaymentTerms: '',
     reservationFeeTreatment: 'separate',
@@ -433,6 +434,20 @@ const ReserveListingModal = ({
         return false
       }
     }
+    if (!isCash && paymentForm.downpaymentPercentageMode === 'amount') {
+      const rawValue = String(paymentForm.customDownpaymentAmount ?? '').trim()
+      const value = Number(rawValue)
+      const paymentCalculations = getPaymentCalculations(tcp, effectivePaymentForm)
+      const principalBase = Number(paymentCalculations.preview?.principalBase || 0)
+      if (rawValue === '' || !Number.isFinite(value) || value < 0) {
+        setAlert({ type: 'error', message: 'Actual downpayment amount must be zero or greater.' })
+        return false
+      }
+      if (value > principalBase) {
+        setAlert({ type: 'error', message: `Actual downpayment amount cannot exceed the principal base of ${new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(principalBase)}.` })
+        return false
+      }
+    }
     if (!isCash && paymentForm.downpaymentTermsMode === 'custom' && Number(paymentForm.customDownpaymentTerms || 0) <= 0) {
       setAlert({ type: 'error', message: 'Custom downpayment terms are required.' })
       return false
@@ -503,6 +518,8 @@ const ReserveListingModal = ({
           selectedPricing: contractPricing,
           saleDiscountPercentage: Number(paymentForm.saleDiscountPercentage || 0),
           downpaymentPercentage: paymentCalculations.downpaymentPercentage,
+          downpaymentInputMode: paymentCalculations.downpaymentInputMode,
+          downpaymentAmount: paymentCalculations.downpaymentAmount,
           downpaymentTerms: paymentCalculations.downpaymentTerms,
           monthlyTerms: paymentCalculations.monthlyTerms,
           reservationFeeTreatment: paymentCalculations.reservationFeeTreatment,
@@ -579,3 +596,6 @@ const ReserveListingModal = ({
 }
 
 export default ReserveListingModal
+
+
+

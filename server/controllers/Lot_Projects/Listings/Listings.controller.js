@@ -81,6 +81,7 @@ import {
   closeCancelledAccountAndReleaseListing,
   getCurrentLotProjectAccount,
   settleCancellationCommissionStages,
+  voidUnpaidLotProjectAccount,
 } from '../../../services/lotProjectAccount.service.js';
 import {
   applyCloudinaryMoveToEntry,
@@ -1191,6 +1192,7 @@ export const updateLotProjectListing = async (req, res) => {
       action: statusTransitionAction,
       confirmSaleDataDeletion: req.body.confirmSaleDataDeletion === true,
     });
+    const voidUnpaidAccount = statusTransition.voidUnpaidAccount === true;
 
     let cancellationSettlement = null;
     if (statusTransitionAction === LISTING_STATUS_ACTIONS.SETTLE_CANCELLATION) {
@@ -1314,7 +1316,10 @@ export const updateLotProjectListing = async (req, res) => {
     );
 
     if (hasCancellationType) {
-      if (req.body.statusTransitionAction === LISTING_STATUS_ACTIONS.CANCEL_CANCELLATION) {
+      if (
+        req.body.statusTransitionAction === LISTING_STATUS_ACTIONS.CANCEL_CANCELLATION ||
+        req.body.statusTransitionAction === LISTING_STATUS_ACTIONS.VOID_UNPAID_CANCELLATION
+      ) {
         updateColumns.push('lot_project_listing_cancellation_type = NULL');
       } else if (
         listingStatus.status === 'pending_for_cancellation'
@@ -1354,7 +1359,14 @@ export const updateLotProjectListing = async (req, res) => {
     const buyerFormSchemaAvailable = await hasBuyerFormSchema(connection);
     let saleArchiveResult = null;
 
-    if (hasReservationHistory) {
+    if (voidUnpaidAccount) {
+      saleArchiveResult = await voidUnpaidLotProjectAccount(connection, {
+        projectId: project.lot_project_id,
+        listingId: existingListing.lot_project_listing_id,
+      });
+    }
+
+    if (hasReservationHistory && !voidUnpaidAccount) {
       if (
         existingListing.lot_project_listing_status === 'sold'
         && listingStatus.status === 'pending_for_cancellation'
@@ -1664,7 +1676,7 @@ export const updateLotProjectListing = async (req, res) => {
         listingId: existingListing.lot_project_listing_id,
         archivedByUserId: req.authUser?.id || null,
       });
-    } else if (buyerFormSchemaAvailable && (unitIdChanged || listingStatus.status !== 'available')) {
+    } else if (!voidUnpaidAccount && buyerFormSchemaAvailable && (unitIdChanged || listingStatus.status !== 'available')) {
       await revokeOpenBuyerFormLinks(connection, existingListing.lot_project_listing_id, { status: 'superseded' });
       await connection.query(
         `UPDATE lot_project_listings SET buyer_form_generation = buyer_form_generation + 1 WHERE lot_project_listing_id = ?`,
@@ -1714,12 +1726,16 @@ export const updateLotProjectListing = async (req, res) => {
       ? await syncListingInterestToUnlockedSoa(connection, project.lot_project_id, existingListing.lot_project_listing_id, annualInterestRate)
       : { synced: 0, skipped: 0 };
 
-    const auditTitle = statusTransitionAction === LISTING_STATUS_ACTIONS.CANCEL_CANCELLATION
+    const auditTitle = statusTransitionAction === LISTING_STATUS_ACTIONS.VOID_UNPAID_CANCELLATION
+      ? 'Voided unpaid reservation'
+      : statusTransitionAction === LISTING_STATUS_ACTIONS.CANCEL_CANCELLATION
       ? 'Cancelled pending cancellation'
       : statusTransitionAction === LISTING_STATUS_ACTIONS.SETTLE_CANCELLATION
         ? 'Settled listing cancellation'
         : 'Updated listing details';
-    const auditDescription = statusTransitionAction === LISTING_STATUS_ACTIONS.CANCEL_CANCELLATION
+    const auditDescription = statusTransitionAction === LISTING_STATUS_ACTIONS.VOID_UNPAID_CANCELLATION
+      ? `Returned ${unitCode} to Available and removed the unpaid buyer account without creating Buyer Account History.`
+      : statusTransitionAction === LISTING_STATUS_ACTIONS.CANCEL_CANCELLATION
       ? `Returned ${unitCode} to Sold / Active without removing sale records.`
       : statusTransitionAction === LISTING_STATUS_ACTIONS.SETTLE_CANCELLATION
         ? `Completed cancellation settlement for ${unitCode}.`
@@ -1741,6 +1757,7 @@ export const updateLotProjectListing = async (req, res) => {
         soldSubstatus: listingStatus.soldSubstatus,
         statusTransitionAction,
         resetToAvailable,
+        voidUnpaidAccount,
         saleArchiveResult,
         cancellationSettlement,
         soaSyncResult,
@@ -1752,7 +1769,9 @@ export const updateLotProjectListing = async (req, res) => {
 
     return res.json({
       success: true,
-      message: resetToAvailable
+      message: voidUnpaidAccount
+        ? `${unitCode} returned to Available. The unpaid reservation was voided and was not saved to Buyer Account History.`
+        : resetToAvailable
         ? `${unitCode} changed to Available. The cancelled buyer account and all payment, SOA, document, commission, receipt, and audit records were retained in Account History.`
         : statusTransitionAction === LISTING_STATUS_ACTIONS.CANCEL_CANCELLATION
           ? `${unitCode} returned to Sold / Active. Existing buyer, payment, SOA, document, and commission records were kept.`
@@ -2128,3 +2147,6 @@ export const deleteLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
+
+
+

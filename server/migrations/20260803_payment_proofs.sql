@@ -1,4 +1,4 @@
-np-- D&C Prime Realty
+-- D&C Prime Realty
 -- Payment proof attachments for verified lot-project payments.
 -- TiDB/MySQL compatible: uses a normal CREATE TABLE statement only.
 

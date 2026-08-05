@@ -1182,7 +1182,7 @@ const PaymentsSOA = ({
                 ].map((head) => (
                   <th
                     key={head}
-                    className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500"
+                    className="whitespace-nowrap px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500"
                   >
                     {head}
                   </th>
@@ -1379,7 +1379,7 @@ const PaymentsSOA = ({
                 ].map((head) => (
                   <th
                     key={head}
-                    className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500"
+                    className="whitespace-nowrap px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500"
                   >
                     {head}
                   </th>
@@ -1390,7 +1390,7 @@ const PaymentsSOA = ({
             <tbody className="divide-y divide-slate-100">
               {rows.map((row) => (
                 <tr key={row.id} className="transition hover:bg-slate-50">
-                  <td className="px-4 py-3 font-semibold text-slate-600">
+                  <td className="min-w-[108px] whitespace-nowrap px-4 py-3 font-semibold text-slate-600">
                     {formatDate(row.dueDate)}
                   </td>
 
@@ -1450,7 +1450,7 @@ const PaymentsSOA = ({
                     )}
                   </td>
 
-                  <td className="px-4 py-3 font-semibold text-slate-600">
+                  <td className="min-w-[108px] whitespace-nowrap px-4 py-3 font-semibold text-slate-600">
                     {formatDate(row.datePaid)}
                   </td>
 
@@ -1640,3 +1640,6 @@ const PaymentsSOA = ({
 }
 
 export default PaymentsSOA
+
+
+
