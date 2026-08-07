@@ -465,7 +465,7 @@ const OfferToBuyForm = ({ listing = {}, client = {}, soaRows = [] }) => {
         }
 
         .otb-agent-title {
-          background: #ffffff;
+          background: #d9d9d9;
           text-align: center;
           font-size: 10px;
           font-weight: 800;
