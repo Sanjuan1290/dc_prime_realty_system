@@ -161,7 +161,7 @@ const ListingProfile = () => {
   const reserveDocumentsQuery = useQuery({
     queryKey: ['documents'],
     queryFn: () => useFetch('/documents/getDocuments'),
-    enabled: !readOnly && (showReserveModal || activeTab === 'documents'),
+    enabled: !readOnly,
     staleTime: 1000 * 60 * 5,
   })
 
@@ -202,7 +202,30 @@ const ListingProfile = () => {
 
   const updateListingMutation = useMutation({
     mutationFn: (payload) =>
-      useFetchPut(`/projects/lot-projects/${projectSlug}/listings/${listingId}`, payload),
+      useFetchPut(`/projects/lot-projects/${projectSlug}/listings/${listingId}`, payload, {
+        review: {
+          title: 'Review Listing Changes',
+          confirmLabel: 'Confirm & Save Listing',
+          description: 'Review the current listing beside the values you are about to save, including the listing-specific document requirements.',
+          summary: `${project?.name || project?.lot_project_name || 'Project'} · ${listing?.unit_id || listing?.unitCode || listingId}`,
+          payload: {
+            currentListing: {
+              unit: listing?.unit_id || listing?.unitCode,
+              cadastralLot: listing?.cadastral_lot_no,
+              lotType: listing?.lot_type || listing?.lotType,
+              areaSqm: listing?.lotAreaSqm || listing?.lot_project_listing_area_sqm,
+              installmentPricePerSqm: listing?.installmentPricePerSqm || listing?.pricePerSqm,
+              cashPricePerSqm: listing?.cashPricePerSqm,
+              legalMiscRate: listing?.legalMiscRate,
+              annualInterestRate: listing?.annualInterestRate,
+              reservationFee: listing?.reservationFee,
+              status: listing?.listing_status || listing?.status,
+              documentRequirements: documents || [],
+            },
+            newValues: payload,
+          },
+        },
+      }),
     onMutate: (payload) => {
       setAlert({ type: 'loading', message: `Saving ${payload.unitCode || payload.unit_id || 'listing'}...` })
     },
@@ -252,7 +275,30 @@ const ListingProfile = () => {
 
   const reserveListingMutation = useMutation({
     mutationFn: (payload) =>
-      useFetchPost(`/projects/lot-projects/${projectSlug}/listings/${listingId}/reserve`, payload),
+      useFetchPost(`/projects/lot-projects/${projectSlug}/listings/${listingId}/reserve`, payload, {
+        review: {
+          title: 'Final Reservation Review',
+          confirmLabel: 'Confirm & Reserve Listing',
+          description: 'This is the final checkpoint before the reservation transaction creates/updates the buyer account, listing status, document checklist, SOA schedule, seller assignment, and commission records.',
+          summary: `${project?.name || project?.lot_project_name || 'Project'} · ${listing?.unit_id || listing?.unitCode || listingId}`,
+          payload: {
+            listing: {
+              project: project?.name || project?.lot_project_name || listing?.project_name || '-',
+              unit: listing?.unit_id || listing?.unitCode || listingId,
+              lotType: listing?.lot_type || listing?.lotType || '-',
+              areaSqm: listing?.lotAreaSqm || listing?.lot_project_listing_area_sqm || listing?.area || '-',
+              reservationFee: payload?.reservation?.paymentTerms?.reservationFee,
+              modeOfPayment: payload?.reservation?.modeOfPayment,
+              selectedPricing: payload?.reservation?.paymentTerms?.selectedPricing,
+            },
+            buyerProfile: payload?.clientProfile || {},
+            documentRequirements: payload?.documents || [],
+            paymentTerms: payload?.reservation?.paymentTerms || {},
+            sellerAssignment: payload?.reservation?.seller || {},
+            buyerFormSubmissionId: payload?.buyerFormSubmissionId || null,
+          },
+        },
+      }),
     onMutate: (payload) => {
       setAlert({ type: 'loading', message: `Reserving ${payload?.clientProfile?.buyerName || 'listing'}...` })
     },
@@ -683,6 +729,9 @@ const ListingProfile = () => {
         <UnitStatus
           listing={listing}
           project={project}
+          listingDocuments={documents}
+          libraryDocuments={documentLibrary}
+          projectDefaultDocuments={project.defaultDocuments || []}
           onSave={(payload) => updateListingMutation.mutateAsync(payload)}
           canRecalculateCommission={canRecalculateCommission}
           onRecalculateCommission={(payload) => recalculateCommissionMutation.mutateAsync(payload)}
@@ -782,6 +831,7 @@ const ListingProfile = () => {
           }}
           project={project}
           documentLibrary={documentLibrary}
+          listingDocuments={documents}
           projectDefaultDocuments={project.defaultDocuments || []}
           documentTemplates={documentTemplates}
           templateDocuments={templateDocuments}

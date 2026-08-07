@@ -1,3 +1,5 @@
+import { buildMutationReviewRequest, requestMutationReview, shouldReviewMutation } from './mutationReview'
+
 const DEFAULT_API_BASE_URL = '/api/v1'
 const DEFAULT_TIMEOUT_MS = 75_000
 
@@ -65,15 +67,38 @@ export const requestApi = async (
     timeoutMs = DEFAULT_TIMEOUT_MS,
     redirectOnUnavailable = true,
     headers,
+    skipReview = false,
+    review = null,
     ...options
   } = {}
 ) => {
   const apiBaseUrl = normalizeBaseUrl(import.meta.env.VITE_API_URL)
-  const url = `${apiBaseUrl}${normalizePath(path)}`
-  const controller = new AbortController()
-  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs)
+  const normalizedPath = normalizePath(path)
+  const url = `${apiBaseUrl}${normalizedPath}`
+  const method = String(options.method || 'GET').toUpperCase()
+  let controller = null
+  let timeoutId = null
 
   try {
+    if (shouldReviewMutation(normalizedPath, method, { skipReview })) {
+      const confirmed = await requestMutationReview(buildMutationReviewRequest({
+        path: normalizedPath,
+        method,
+        body: options.body,
+        review,
+      }))
+
+      if (!confirmed) {
+        throw new ApiError('Review cancelled — you can continue editing. Nothing was saved.', {
+          status: 499,
+          code: 'REVIEW_CANCELLED',
+        })
+      }
+    }
+
+    controller = new AbortController()
+    timeoutId = window.setTimeout(() => controller.abort(), timeoutMs)
+
     const response = await fetch(url, {
       credentials: 'include',
       ...options,
@@ -134,6 +159,6 @@ export const requestApi = async (
 
     throw apiError
   } finally {
-    window.clearTimeout(timeoutId)
+    if (timeoutId) window.clearTimeout(timeoutId)
   }
 }

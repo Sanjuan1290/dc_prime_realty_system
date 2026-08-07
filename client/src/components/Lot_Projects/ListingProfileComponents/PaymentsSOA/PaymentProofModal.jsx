@@ -12,6 +12,7 @@ import {
 } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
 import { useFetch, useFetchPost } from '../../../../utils/useFetch'
+import { requestMutationReview } from '../../../../utils/mutationReview'
 
 const MAX_FILE_BYTES = 15 * 1024 * 1024
 const MAX_FILES = 5
@@ -170,6 +171,30 @@ const PaymentProofModal = ({
       return
     }
 
+    const confirmed = await requestMutationReview({
+      title: 'Review Payment Proof Upload',
+      confirmLabel: 'Confirm & Upload Proof',
+      description: 'Verify the payment, note, and selected proof files before any protected upload begins.',
+      method: 'UPLOAD',
+      path: basePath,
+      payload: {
+        payment: {
+          buyer: paymentDetails.buyerName || payment?.client || '-',
+          unit: paymentDetails.unitId || payment?.unit || '-',
+          amount: paymentDetails.amount ?? payment?.amount ?? 0,
+          paymentDate: paymentDetails.paymentDate || payment?.paymentDate || '-',
+          method: paymentDetails.method || payment?.method || '-',
+          reference: paymentDetails.referenceId || payment?.referenceId || '-',
+        },
+        note: note.trim(),
+        files: files.map((file) => ({ fileName: file.name, fileType: file.type, fileSize: formatBytes(file.size) })),
+      },
+    })
+    if (!confirmed) {
+      setNotice({ type: 'info', message: 'Payment proof review cancelled. No files were uploaded or saved.' })
+      return
+    }
+
     setIsUploading(true)
     setProgress({ current: 0, total: files.length })
     setNotice({ type: 'loading', message: 'Preparing protected payment proof upload...' })
@@ -183,7 +208,7 @@ const PaymentProofModal = ({
       }
 
       setNotice({ type: 'loading', message: 'Saving protected payment proof records...' })
-      const result = await useFetchPost(basePath, { files: uploadedFiles, note: note.trim() })
+      const result = await useFetchPost(basePath, { files: uploadedFiles, note: note.trim(), __reviewConfirmed: true })
       setFiles([])
       setNote('')
       setNotice({ type: 'success', message: result?.message || 'Payment proof uploaded successfully.' })
@@ -355,7 +380,7 @@ const PaymentProofModal = ({
               <div className="mt-4 flex justify-end">
                 <button type="button" onClick={handleUpload} disabled={!files.length || Boolean(invalidFiles.length) || isBusy} className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300">
                   {isUploading ? <FiLoader className="animate-spin" /> : <FiShield />}
-                  {isUploading ? `Uploading ${progress.current}/${progress.total}` : 'Upload Securely'}
+                  {isUploading ? `Uploading ${progress.current}/${progress.total}` : 'Proceed to Review'}
                 </button>
               </div>
             </section>

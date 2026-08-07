@@ -20,6 +20,7 @@ import AddSOAPaymentModal from './AddSOAPaymentModal'
 import PenaltyReliefModal from './PenaltyReliefModal'
 import PaymentProofModal from './PaymentProofModal'
 import { isFullAccessAdministrator } from '../../../../config/permissions'
+import { DAILY_PENALTY_RATE_OPTIONS, DEFAULT_DAILY_PENALTY_RATE, formatDailyPenaltyRateOption } from '../../../../config/paymentTerms'
 
 const money = (value) =>
   new Intl.NumberFormat('en-PH', {
@@ -384,7 +385,6 @@ const LmfWaiverModal = ({ row, alert, isSaving, onClose, onConfirm }) => {
   )
 }
 
-const dailyPenaltyRateOptions = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 2, 3, 4, 5]
 const todayManila = () => new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Asia/Manila',
   year: 'numeric',
@@ -399,7 +399,7 @@ const shiftIsoYears = (value, years) => {
 const penaltyGraceDayOptions = Array.from({ length: 32 }, (_, index) => index)
 
 const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, onSave }) => {
-  const initialDailyPenaltyRate = String(getListingValue(listing, ['soaPenaltyRatePercent'], 0.1))
+  const initialDailyPenaltyRate = String(getListingValue(listing, ['soaPenaltyRatePercent'], DEFAULT_DAILY_PENALTY_RATE))
   const [form, setForm] = useState(() => ({
     dpDiscountPercentage: String(getListingValue(listing, ['soaDpDiscountPercentage'], 0)),
     downpaymentPercentage: String(getListingValue(listing, ['soaDownpaymentPercentage'], 30)),
@@ -419,7 +419,7 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
     penaltyGraceDays: String(getListingValue(listing, ['soaPenaltyGraceDays'], 1)),
   }))
   const [penaltyRateMode, setPenaltyRateMode] = useState(() =>
-    dailyPenaltyRateOptions.includes(Number(initialDailyPenaltyRate)) ? 'preset' : 'custom'
+    DAILY_PENALTY_RATE_OPTIONS.includes(Number(initialDailyPenaltyRate)) ? 'preset' : 'custom'
   )
   const [modalAlert, setModalAlert] = useState({
     type: 'info',
@@ -632,10 +632,10 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
                 disabled={isSaving}
                 className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100"
               >
-                {dailyPenaltyRateOptions.map((rate) => <option key={rate} value={rate}>{rate}% per day</option>)}
+                {DAILY_PENALTY_RATE_OPTIONS.map((rate) => <option key={rate} value={rate}>{formatDailyPenaltyRateOption(rate)}</option>)}
                 <option value="custom">Custom</option>
               </select>
-              <span className="text-xs font-semibold text-slate-500">Choose a preset or enter a custom rate from 0% to 100% per day.</span>
+              <span className="text-xs font-semibold text-slate-500">Choose 0.01% to 0.10% per day (default 0.05%), or use Custom for another approved rate.</span>
             </label>
             {isCustomPenaltyRate ? (
               <Field
@@ -763,7 +763,23 @@ const PaymentsSOA = ({
 
   const createPaymentMutation = useMutation({
     mutationFn: (payload) =>
-      useFetchPost(`/projects/lot-projects/${projectSlug}/listings/${listingId}/payments`, payload),
+      useFetchPost(`/projects/lot-projects/${projectSlug}/listings/${listingId}/payments`, payload, {
+        review: {
+          title: 'Review SOA Payment',
+          confirmLabel: 'Confirm & Add Payment',
+          description: 'Verify the account, SOA row, payment amount, date, method, bank/account information, and reference before posting the payment.',
+          summary: `${getListingValue(listing, ['buyer_name', 'buyerName', 'clientName'], 'Client')} · ${getListingValue(listing, ['unit_id', 'unitCode', 'unitNo'], 'Unit')}`,
+          payload: {
+            account: {
+              project: getListingValue(listing, ['project_name', 'projectName'], projectSlug),
+              unit: getListingValue(listing, ['unit_id', 'unitCode', 'unitNo'], listingId),
+              buyer: getListingValue(listing, ['buyer_name', 'buyerName', 'clientName'], '-'),
+              accountReference: getListingValue(listing, ['accountReference', 'account_reference'], '-'),
+            },
+            payment: payload,
+          },
+        },
+      }),
     onSuccess: async (result) => {
       setShowPaymentModal(false)
       setEditingPayment(null)
@@ -776,7 +792,19 @@ const PaymentsSOA = ({
     mutationFn: (payload) =>
       useFetchPut(
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/payments/${payload.paymentId}`,
-        payload
+        payload,
+        {
+          review: {
+            title: 'Review Payment Changes',
+            confirmLabel: 'Confirm & Save Payment Changes',
+            description: 'Verify the edited payment details before replacing the saved payment values.',
+            summary: `${getListingValue(listing, ['buyer_name', 'buyerName', 'clientName'], 'Client')} · ${getListingValue(listing, ['unit_id', 'unitCode', 'unitNo'], 'Unit')}`,
+            payload: {
+              currentPayment: editingPayment || {},
+              newPaymentValues: payload,
+            },
+          },
+        }
       ),
     onSuccess: async (result) => {
       setShowPaymentModal(false)
@@ -806,7 +834,15 @@ const PaymentsSOA = ({
 
   const updateSoaTermsMutation = useMutation({
     mutationFn: (payload) =>
-      useFetchPut(`/projects/lot-projects/${projectSlug}/listings/${listingId}/soa-terms`, payload),
+      useFetchPut(`/projects/lot-projects/${projectSlug}/listings/${listingId}/soa-terms`, payload, {
+        review: {
+          title: 'Review SOA Terms',
+          confirmLabel: 'Confirm & Save SOA Terms',
+          description: 'Verify downpayment, terms, dates, interest treatment, daily penalty rate, and grace period before rebuilding or updating the SOA schedule.',
+          summary: `${getListingValue(listing, ['buyer_name', 'buyerName', 'clientName'], 'Client')} · ${getListingValue(listing, ['unit_id', 'unitCode', 'unitNo'], 'Unit')}`,
+          payload: { account: { projectSlug, listingId }, soaTerms: payload },
+        },
+      }),
     onSuccess: async (result) => {
       setShowSoaTermsModal(false)
       setAlert({ type: 'success', message: result?.message || 'SOA terms saved successfully.' })
@@ -821,7 +857,8 @@ const PaymentsSOA = ({
     mutationFn: ({ scheduleId, ...payload }) =>
       useFetchPost(
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/payment-schedules/${scheduleId}/lmf-waiver`,
-        payload
+        payload,
+        { review: { title: 'Review LMF Waiver', confirmLabel: 'Confirm & Waive LMF', description: 'Verify the selected SOA row, waiver amount/reason, reference, and notes before saving.', payload: { soaRow: lmfWaiverRow || { scheduleId }, waiver: payload } } }
       ),
     onSuccess: async (result) => {
       setLmfWaiverRow(null)
@@ -836,7 +873,8 @@ const PaymentsSOA = ({
     mutationFn: ({ scheduleId, ...payload }) =>
       useFetchPost(
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/payment-schedules/${scheduleId}/penalty-extension`,
-        payload
+        payload,
+        { review: { title: 'Review Penalty-Free Extension', confirmLabel: 'Confirm & Save New Payment Date', description: 'Verify the installment, promised payment date, and reason before applying the penalty-free extension.', payload: { soaRow: penaltyReliefRow || { scheduleId }, extension: payload } } }
       ),
     onSuccess: async (result) => {
       setPenaltyReliefRow(null)
@@ -851,7 +889,8 @@ const PaymentsSOA = ({
     mutationFn: ({ scheduleId, reliefId, ...payload }) =>
       useFetchPut(
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/payment-schedules/${scheduleId}/penalty-extension/${reliefId}`,
-        payload
+        payload,
+        { review: { title: 'Review Extension Changes', confirmLabel: 'Confirm & Save Extension', description: 'Verify the installment and revised penalty-free payment date before saving.', payload: { soaRow: penaltyReliefRow || { scheduleId, reliefId }, extension: payload } } }
       ),
     onSuccess: async (result) => {
       setPenaltyReliefRow(null)
@@ -866,7 +905,8 @@ const PaymentsSOA = ({
     mutationFn: ({ scheduleId, ...payload }) =>
       useFetchPost(
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/payment-schedules/${scheduleId}/penalty-correction`,
-        payload
+        payload,
+        { review: { title: 'Review Penalty Correction', confirmLabel: 'Confirm & Correct Penalty', description: 'Verify the installment, corrected amount, reason, and reference before saving the correction.', payload: { soaRow: penaltyReliefRow || { scheduleId }, correction: payload } } }
       ),
     onSuccess: async (result) => {
       setPenaltyReliefRow(null)
@@ -881,7 +921,8 @@ const PaymentsSOA = ({
     mutationFn: ({ scheduleId, ...payload }) =>
       useFetchPost(
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/payment-schedules/${scheduleId}/penalty-waiver`,
-        payload
+        payload,
+        { review: { title: 'Review Penalty Reduction', confirmLabel: 'Confirm & Reduce Penalty', description: 'Verify the installment, reduction amount, reason, and reference before saving.', payload: { soaRow: penaltyReliefRow || { scheduleId }, reduction: payload } } }
       ),
     onSuccess: async (result) => {
       setPenaltyReliefRow(null)
@@ -896,7 +937,8 @@ const PaymentsSOA = ({
     mutationFn: ({ reliefId, ...payload }) =>
       useFetchPost(
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/penalty-reliefs/${reliefId}/restore`,
-        payload
+        payload,
+        { review: { title: 'Review Penalty Restore', confirmLabel: 'Confirm & Restore Penalty', description: 'Verify the penalty adjustment being restored before adding the penalty back.', payload: { soaRow: penaltyReliefRow || { reliefId }, restore: payload } } }
       ),
     onSuccess: async (result) => {
       setPenaltyReliefRow(null)
@@ -1640,6 +1682,3 @@ const PaymentsSOA = ({
 }
 
 export default PaymentsSOA
-
-
-

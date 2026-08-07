@@ -92,6 +92,85 @@ import {
   renameCloudinaryAsset,
 } from '../../../services/cloudinaryUnitFolder.service.js';
 
+const normalizeListingDocumentRequirements = (documents = []) => {
+  const documentMap = new Map();
+
+  documents.forEach((document) => {
+    const documentId = Number(document?.document_id || document?.documentId || document?.id || 0);
+    if (!documentId) return;
+
+    documentMap.set(documentId, {
+      document_id: documentId,
+      is_required:
+        String(document?.requirement || '').trim().toLowerCase() === 'optional' ||
+        document?.is_required === false
+          ? 0
+          : 1,
+      status: String(document?.status || 'active').trim().toLowerCase() === 'inactive'
+        ? 'inactive'
+        : 'active',
+    });
+  });
+
+  return [...documentMap.values()];
+};
+
+const replaceListingDocumentRequirements = async (connection, projectId, listingId, documents = []) => {
+  if (!(await tableExists(connection, 'lot_project_listing_documents'))) {
+    return { count: 0, skipped: true };
+  }
+
+  const cleanDocuments = normalizeListingDocumentRequirements(documents);
+
+  if (cleanDocuments.length > 0) {
+    await connection.query(
+      `
+        UPDATE lot_project_listing_documents
+        SET lot_project_listing_document_status = 'inactive'
+        WHERE lot_project_id = ?
+          AND lot_project_listing_id = ?
+          AND document_id NOT IN (${cleanDocuments.map(() => '?').join(', ')})
+      `,
+      [projectId, listingId, ...cleanDocuments.map((document) => document.document_id)]
+    );
+
+    await connection.query(
+      `
+        INSERT INTO lot_project_listing_documents (
+          lot_project_id,
+          lot_project_listing_id,
+          document_id,
+          lot_project_listing_document_is_required,
+          lot_project_listing_document_status
+        ) VALUES ${cleanDocuments.map(() => '(?, ?, ?, ?, ?)').join(', ')}
+        ON DUPLICATE KEY UPDATE
+          lot_project_listing_document_is_required = VALUES(lot_project_listing_document_is_required),
+          lot_project_listing_document_status = VALUES(lot_project_listing_document_status),
+          lot_project_listing_document_updated_at = NOW()
+      `,
+      cleanDocuments.flatMap((document) => [
+        projectId,
+        listingId,
+        document.document_id,
+        document.is_required,
+        document.status,
+      ])
+    );
+  } else {
+    await connection.query(
+      `
+        UPDATE lot_project_listing_documents
+        SET lot_project_listing_document_status = 'inactive'
+        WHERE lot_project_id = ?
+          AND lot_project_listing_id = ?
+      `,
+      [projectId, listingId]
+    );
+  }
+
+  return { count: cleanDocuments.filter((document) => document.status === 'active').length, skipped: false };
+};
+
 export const getLotProjectListings = async (req, res) => {
   const connection = await db.getConnection();
 
@@ -1722,6 +1801,20 @@ export const updateLotProjectListing = async (req, res) => {
       }
     }
 
+    let listingDocumentSyncResult = { count: null, skipped: true };
+    if (Array.isArray(req.body.documentRequirements)) {
+      const requestedListingDocuments = req.body.documentRequirements.length
+        ? req.body.documentRequirements
+        : await getProjectDefaultDocuments(project.lot_project_id);
+
+      listingDocumentSyncResult = await replaceListingDocumentRequirements(
+        connection,
+        project.lot_project_id,
+        existingListing.lot_project_listing_id,
+        requestedListingDocuments
+      );
+    }
+
     const soaSyncResult = hasAnnualInterestRate
       ? await syncListingInterestToUnlockedSoa(connection, project.lot_project_id, existingListing.lot_project_listing_id, annualInterestRate)
       : { synced: 0, skipped: 0 };
@@ -1762,6 +1855,7 @@ export const updateLotProjectListing = async (req, res) => {
         cancellationSettlement,
         soaSyncResult,
         cloudinarySyncResult,
+        listingDocumentSyncResult,
       },
     });
 
@@ -1968,39 +2062,19 @@ export const createLotProjectListing = async (req, res) => {
       }
     }
 
-    const requestedDocuments = Array.isArray(req.body.documentRequirements) ? req.body.documentRequirements : [];
-    const fallbackDefaults = requestedDocuments.length ? requestedDocuments : await getProjectDefaultDocuments(project.lot_project_id);
+    const requestedDocuments = Array.isArray(req.body.documentRequirements)
+      ? req.body.documentRequirements
+      : [];
+    const listingDocuments = requestedDocuments.length
+      ? requestedDocuments
+      : await getProjectDefaultDocuments(project.lot_project_id);
 
-    if (await tableExists(connection, 'lot_project_listing_documents')) {
-      const cleanDocuments = fallbackDefaults
-        .map((document) => ({
-          document_id: Number(document.document_id || document.id),
-          is_required: document.requirement === 'optional' || document.is_required === false ? 0 : 1,
-          status: document.status === 'inactive' ? 'inactive' : 'active',
-        }))
-        .filter((document) => document.document_id);
-
-      if (cleanDocuments.length > 0) {
-        await connection.query(
-          `
-            INSERT INTO lot_project_listing_documents (
-              lot_project_id,
-              lot_project_listing_id,
-              document_id,
-              lot_project_listing_document_is_required,
-              lot_project_listing_document_status
-            ) VALUES ${cleanDocuments.map(() => '(?, ?, ?, ?, ?)').join(', ')}
-          `,
-          cleanDocuments.flatMap((document) => [
-            project.lot_project_id,
-            listingId,
-            document.document_id,
-            document.is_required,
-            document.status,
-          ])
-        );
-      }
-    }
+    await replaceListingDocumentRequirements(
+      connection,
+      project.lot_project_id,
+      listingId,
+      listingDocuments
+    );
 
     await writeAuditLog(connection, req, {
       action: 'create',
@@ -2147,6 +2221,3 @@ export const deleteLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
-
-
-

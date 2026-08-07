@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { FiFileText, FiLoader, FiShield, FiUploadCloud, FiX } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
 import { useFetchPost } from '../../../../utils/useFetch'
+import { requestMutationReview } from '../../../../utils/mutationReview'
 
 const MAX_FILE_BYTES = 15 * 1024 * 1024
 const allowedTypes = new Set(['image/jpeg', 'image/png', 'application/pdf'])
@@ -77,6 +78,29 @@ const UploadDocumentModal = ({ document, signaturePath, isSaving = false, onClos
       return
     }
 
+    const confirmed = await requestMutationReview({
+      title: 'Review Document Upload',
+      confirmLabel: 'Confirm & Upload Files',
+      description: 'Verify the target document and every selected file before any protected upload starts. The final document record will be saved only after the upload succeeds.',
+      method: 'UPLOAD',
+      path: signaturePath,
+      payload: {
+        targetDocument: {
+          name: document?.name || 'Buyer document',
+          documentId: document?.id || document?.document_id || null,
+        },
+        files: files.map((file) => ({
+          fileName: file.name,
+          fileType: file.type,
+          fileSize: formatBytes(file.size),
+        })),
+      },
+    })
+    if (!confirmed) {
+      setNotice({ type: 'info', message: 'Upload review cancelled. No files were uploaded or saved.' })
+      return
+    }
+
     setIsUploading(true)
     setProgress({ current: 0, total: files.length })
     setNotice({ type: 'loading', message: 'Preparing protected uploads...' })
@@ -90,7 +114,7 @@ const UploadDocumentModal = ({ document, signaturePath, isSaving = false, onClos
       }
 
       setNotice({ type: 'loading', message: 'Verifying uploaded files and saving document records...' })
-      await onSave?.({ files: uploadedFiles })
+      await onSave?.({ files: uploadedFiles, __reviewConfirmed: true })
     } catch (error) {
       setNotice({ type: 'error', message: error?.message || 'Protected upload failed.' })
     } finally {
@@ -161,7 +185,7 @@ const UploadDocumentModal = ({ document, signaturePath, isSaving = false, onClos
           <button type="button" onClick={onClose} disabled={isBusy} className="h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 disabled:opacity-50">Cancel</button>
           <button type="button" onClick={handleSave} disabled={!files.length || Boolean(invalidFiles.length) || isBusy} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300">
             {isBusy ? <FiLoader className="h-4 w-4 animate-spin" /> : <FiShield className="h-4 w-4" />}
-            {isUploading ? `Uploading ${progress.current}/${progress.total}` : isSaving ? 'Saving...' : 'Upload Securely'}
+            {isUploading ? `Uploading ${progress.current}/${progress.total}` : isSaving ? 'Saving...' : 'Proceed to Review'}
           </button>
         </footer>
       </div>

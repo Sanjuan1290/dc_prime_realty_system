@@ -867,7 +867,7 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
       req.body.dailyPenaltyRate ??
       req.body.soa_penalty_rate_percent ??
       listing.soa_penalty_rate_percent ??
-      0
+      0.05
     );
     const penaltyGraceDays = Number(
       req.body.penaltyGraceDays ??

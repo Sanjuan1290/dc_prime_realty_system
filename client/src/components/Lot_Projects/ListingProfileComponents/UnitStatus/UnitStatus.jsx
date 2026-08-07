@@ -178,6 +178,9 @@ const SectionBlock = ({
 const UnitStatus = ({
   listing = fallbackListing,
   project = {},
+  listingDocuments = [],
+  libraryDocuments = [],
+  projectDefaultDocuments = [],
   onSave,
   canRecalculateCommission = false,
   onRecalculateCommission,
@@ -589,6 +592,9 @@ const UnitStatus = ({
         <EditUnitStatusModal
           listing={unitData}
           project={project}
+          listingDocuments={listingDocuments}
+          libraryDocuments={libraryDocuments}
+          projectDefaultDocuments={projectDefaultDocuments}
           onClose={() => setShowEditModal(false)}
           onSave={handleSave}
           isSaving={isSaving}
@@ -609,6 +615,3 @@ const UnitStatus = ({
 }
 
 export default UnitStatus
-
-
-

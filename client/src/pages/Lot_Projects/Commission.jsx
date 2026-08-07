@@ -112,10 +112,32 @@ const Commission = () => {
   })
 
   const updateCommissionMutation = useMutation({
-    mutationFn: ({ commissionId, payload }) => patchJson(
-      `/projects/lot-projects/${projectSlug}/commissions/${commissionId}`,
-      payload
-    ),
+    mutationFn: ({ commissionId, payload }) => {
+      const commissionForReview = (selected?.sellers || []).find((seller) => Number(seller.commissionId || seller.id) === Number(commissionId)) || {};
+      const releaseForReview = (commissionForReview.releaseMilestones || []).find((stage) => Number(stage.releaseId) === Number(payload?.releaseId)) || {};
+      return patchJson(
+        `/projects/lot-projects/${projectSlug}/commissions/${commissionId}`,
+        payload,
+        {
+          review: {
+            title: String(payload?.action || '').includes('release') ? 'Review Commission Release' : 'Review Commission Action',
+            confirmLabel: String(payload?.action || '').includes('release') ? 'Confirm & Release Commission' : 'Confirm & Save Commission Action',
+            description: 'Double-check the property, seller/beneficiary, commission base, selected milestone, gross/net amounts, and requested action before saving.',
+            summary: `${selected?.unit || '-'} · ${commissionForReview.seller || 'Seller'} · ${releaseForReview.stage || payload?.action || 'Commission action'}`,
+            payload: {
+              property: {
+                project: project?.name || project?.lot_project_name || projectSlug,
+                unit: selected?.unit || '-',
+                buyer: selected?.client || '-',
+              },
+              seller: commissionForReview,
+              selectedMilestone: releaseForReview,
+              action: payload,
+            },
+          },
+        }
+      );
+    },
     onMutate: ({ payload }) => {
       const actionLabel = String(payload?.action || '').includes('release')
         ? 'Saving commission release...'

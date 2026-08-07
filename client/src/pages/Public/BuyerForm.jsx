@@ -5,8 +5,8 @@ import StatusAlert from '../../components/Shared/StatusAlert'
 import ReserveClientProfileModal from '../../components/Lot_Projects/ListingProfileComponents/ReserveListingModal/ReserveClientProfileModal'
 import { getInitialClientForm, money } from '../../components/Lot_Projects/ListingProfileComponents/ReserveListingModal/reserveUtils'
 import { getBuyerProfileValidationError } from '../../utils/buyerProfileValidation'
+import { requestApi } from '../../utils/apiClient'
 
-const apiUrl = (path) => `${import.meta.env.VITE_API_URL}${path}`
 
 const formatDateTime = (value) => {
   if (!value) return '-'
@@ -36,11 +36,10 @@ const BuyerForm = () => {
     const load = async () => {
       setNotice({ type: 'loading', message: 'Loading buyer form...' })
       try {
-        const response = await fetch(apiUrl(`/public/buyer-forms/${encodeURIComponent(token || '')}`), {
+        const data = await requestApi(`/public/buyer-forms/${encodeURIComponent(token || '')}`, {
           headers: { Accept: 'application/json' },
+          redirectOnUnavailable: false,
         })
-        const data = await response.json().catch(() => ({}))
-        if (!response.ok) throw new Error(data.message || 'This buyer form could not be loaded.')
         if (cancelled) return
         if (data.data?.alreadySubmitted) {
           setSubmitted(data.data)
@@ -94,16 +93,17 @@ const BuyerForm = () => {
     setNotice({ type: 'loading', message: 'Submitting your buyer information...' })
 
     try {
-      const response = await fetch(apiUrl(`/public/buyer-forms/${encodeURIComponent(token || '')}/submit`), {
+      const data = await requestApi(`/public/buyer-forms/${encodeURIComponent(token || '')}/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ clientProfile: clientForm, privacyConsent, website }),
+        redirectOnUnavailable: false,
+        review: {
+          title: 'Review Buyer Information',
+          confirmLabel: 'Confirm & Submit Buyer Information',
+          description: 'Nothing has been submitted yet. Double-check the buyer profile and privacy consent before sending it to D&C Prime Realty.',
+        },
       })
-      const data = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        if (data.field) setInvalidField(data.field)
-        throw new Error(data.message || 'Your buyer information could not be submitted.')
-      }
       setSubmitted(data.data || { unitId: formInfo?.unitId })
       setNotice(null)
       window.scrollTo({ top: 0, behavior: 'smooth' })

@@ -124,6 +124,38 @@ const normalizeDocumentPayload = (documents = []) =>
     }))
     .filter((document) => document.document_id);
 
+const getSavedListingDocumentRequirements = async (connection, projectId, listingId) => {
+  if (!(await tableExists(connection, 'lot_project_listing_documents'))) return [];
+
+  const [rows] = await connection.query(
+    `
+      SELECT
+        lpd.document_id,
+        lpd.lot_project_listing_document_is_required,
+        lpd.lot_project_listing_document_status,
+        d.document_name,
+        d.document_description
+      FROM lot_project_listing_documents lpd
+      INNER JOIN documents d ON d.document_id = lpd.document_id
+      WHERE lpd.lot_project_id = ?
+        AND lpd.lot_project_listing_id = ?
+        AND lpd.lot_project_listing_document_status = 'active'
+      ORDER BY lpd.lot_project_listing_document_is_required DESC, d.document_name ASC
+    `,
+    [projectId, listingId]
+  );
+
+  return rows.map((document) => ({
+    ...document,
+    id: document.document_id,
+    name: document.document_name,
+    description: document.document_description || 'Listing Requirement',
+    source: 'Listing Requirement',
+    requirement: document.lot_project_listing_document_is_required ? 'required' : 'optional',
+    status: 'active',
+  }));
+};
+
 
 const replaceReservationSchedules = async (connection, projectId, listing, clientProfileId, profileTerms) => {
   if (!(await tableExists(connection, 'lot_project_payment_schedules'))) return;
@@ -226,14 +258,18 @@ const replaceReservationSchedules = async (connection, projectId, listing, clien
   );
 };
 
-const insertReservationDocuments = async (connection, projectId, listingId, clientProfileId, requestedDocuments) => {
+const insertReservationDocuments = async (connection, projectId, listingId, clientProfileId, requestedDocuments = null) => {
   if (!(await tableExists(connection, 'lot_project_listing_documents'))) return;
 
-  const fallbackDefaults = requestedDocuments.length
+  let sourceDocuments = Array.isArray(requestedDocuments) && requestedDocuments.length
     ? requestedDocuments
-    : await getProjectDefaultDocuments(projectId);
+    : await getSavedListingDocumentRequirements(connection, projectId, listingId);
 
-  const cleanDocuments = normalizeDocumentPayload(fallbackDefaults);
+  // The listing-specific checklist is the first fallback. Project defaults are
+  // used only when the listing itself does not have saved requirements.
+  if (!sourceDocuments.length) sourceDocuments = await getProjectDefaultDocuments(projectId);
+
+  const cleanDocuments = normalizeDocumentPayload(sourceDocuments);
 
   await connection.query(
     `DELETE FROM lot_project_listing_documents WHERE lot_project_listing_id = ?`,
@@ -553,7 +589,7 @@ export const reserveLotProjectListing = async (req, res) => {
     if (firstDueDate < startingDate) {
       return res.status(400).json({ message: 'First Due Date cannot be before the Starting Date.' });
     }
-    const dailyPenaltyRate = Number(terms.dailyPenaltyRate ?? terms.penaltyRatePercent ?? 0.1);
+    const dailyPenaltyRate = Number(terms.dailyPenaltyRate ?? terms.penaltyRatePercent ?? 0.05);
     const penaltyGraceDays = Number(terms.penaltyGraceDays ?? 1);
     if (!Number.isFinite(dailyPenaltyRate) || dailyPenaltyRate < 0 || dailyPenaltyRate > 100) {
       return res.status(400).json({ message: 'Daily penalty rate must be between 0 and 100.' });
@@ -984,7 +1020,7 @@ export const reserveLotProjectListing = async (req, res) => {
       project.lot_project_id,
       listing.lot_project_listing_id,
       clientProfileId,
-      Array.isArray(req.body.documents) ? req.body.documents : []
+      Array.isArray(req.body.documents) ? req.body.documents : null
     );
 
     await replaceReservationSchedules(connection, project.lot_project_id, listing, clientProfileId, {
@@ -1131,6 +1167,3 @@ export const reserveLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
-
-
-

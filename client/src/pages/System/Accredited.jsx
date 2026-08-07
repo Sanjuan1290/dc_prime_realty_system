@@ -397,7 +397,39 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
 
 
   const createReceiptMutation = useMutation({
-    mutationFn: (body) => postApi(`/accredited/${sellerId}/proof-of-income-receipts`, body),
+    mutationFn: (body) => {
+      const selectedReleaseSet = new Set((body.releaseIds || []).map(Number));
+      const selectedReleases = (selectedGroup?.releases || []).filter((release) => selectedReleaseSet.has(Number(release.releaseId)));
+      return postApi(`/accredited/${sellerId}/proof-of-income-receipts`, body, {
+        review: {
+          title: 'Review Proof of Income Receipt',
+          confirmLabel: 'Confirm, Generate & Print',
+          description: 'This creates a permanent proof-of-income receipt record before opening the print page. Verify the seller, property, released stages, amount, bank details, date, reference, and witness.',
+          summary: `${getAccreditedDisplayName(receiptSeller)} · ${selectedGroup?.unitId || selectedGroup?.unitCode || selectedGroup?.property || 'Selected property'} · ${money(selectedAmount)}`,
+          payload: {
+            seller: {
+              name: getAccreditedDisplayName(receiptSeller),
+              sellerId,
+            },
+            property: {
+              project: selectedGroup?.projectName || selectedGroup?.project || '-',
+              unit: selectedGroup?.unitId || selectedGroup?.unitCode || '-',
+              buyer: selectedGroup?.buyerName || selectedGroup?.buyer || '-',
+              commissionId: Number(selectedGroup?.commissionId || 0),
+            },
+            selectedReleases,
+            totalAmount: selectedAmount,
+            receiptDetails: {
+              bankName: body.bankName,
+              accountNumber: body.accountNumber,
+              receiptDate: body.receiptDate,
+              referenceNumber: body.referenceNumber,
+              witnessName: body.witnessName,
+            },
+          },
+        },
+      });
+    },
     onMutate: () => setLocalAlert({ type: "loading", message: "Generating proof of income receipt..." }),
     onSuccess: (result) => {
       setLocalAlert({ type: "success", message: result?.message || "Proof of income receipt generated." });
@@ -570,7 +602,7 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
 
                   <button type="button" onClick={handleGenerate} disabled={!selectedGroup || !effectiveReleaseIds.length || createReceiptMutation.isPending} className="mt-5 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300">
                     {createReceiptMutation.isPending ? <FiLoader className="h-4 w-4 animate-spin" /> : <FiPrinter className="h-4 w-4" />}
-                    {createReceiptMutation.isPending ? "Generating..." : `Generate & Print ${money(selectedAmount)}`}
+                    {createReceiptMutation.isPending ? "Generating..." : `Proceed to Review — ${money(selectedAmount)}`}
                   </button>
                 </div>
               </section>

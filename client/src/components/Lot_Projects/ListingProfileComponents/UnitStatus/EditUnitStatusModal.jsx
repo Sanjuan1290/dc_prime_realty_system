@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
-import { FiSave, FiX } from 'react-icons/fi'
+import { FiFileText, FiSave, FiX } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
+import EditListingDocumentsModal from '../../ListingComponents/EditListingDocumentsModal/EditListingDocumentsModal'
 import { calculateContractPricing } from '../../../../utils/listingPricing.js'
 
 const statusOptions = [
@@ -63,6 +64,33 @@ const splitLots = (value) =>
 
 const getLotNumberValue = (lot) =>
   String(lot?.lotNumber || lot?.lot_project_cadastral_lot_number || lot?.value || lot || '').trim()
+
+const normalizeDocumentRequirement = (value, fallback = 'required') =>
+  String(value || fallback).trim().toLowerCase() === 'optional' ? 'optional' : 'required'
+
+const normalizeListingDocument = (document = {}) => ({
+  ...document,
+  id: Number(document.document_id || document.id),
+  document_id: Number(document.document_id || document.id),
+  name: document.name || document.document_name,
+  description: document.description || document.document_description || 'Document requirement',
+  source: document.source || 'Listing Requirement',
+  requirement: normalizeDocumentRequirement(
+    document.requirement,
+    document.lot_project_listing_document_is_required === false ||
+    document.lot_project_default_document_is_required === false ||
+    document.document_is_required === false
+      ? 'optional'
+      : 'required'
+  ),
+  status: String(
+    document.lot_project_listing_document_status ||
+    document.lot_project_default_document_status ||
+    document.document_status ||
+    document.status ||
+    'active'
+  ).toLowerCase() === 'inactive' ? 'inactive' : 'active',
+})
 
 const Field = ({
   label,
@@ -127,7 +155,7 @@ const BreakdownCard = ({ label, value, highlight = false }) => (
   </div>
 )
 
-const EditUnitStatusModal = ({ listing, project = {}, onClose, onSave, isSaving = false }) => {
+const EditUnitStatusModal = ({ listing, project = {}, listingDocuments = [], libraryDocuments = [], projectDefaultDocuments = [], onClose, onSave, isSaving = false }) => {
   const locationCode = project.locationCode || project.lot_project_location_code || listing?.locationCode || 'LA'
   const selectedLotNumber = Array.isArray(listing?.cadastralLots)
     ? getLotNumberValue(listing.cadastralLots[0])
@@ -187,6 +215,16 @@ const EditUnitStatusModal = ({ listing, project = {}, onClose, onSave, isSaving 
     status: currentStatus,
   })
 
+  const [documentRequirements, setDocumentRequirements] = useState(() => {
+    const sourceDocuments = listingDocuments.length ? listingDocuments : projectDefaultDocuments
+    return sourceDocuments
+      .map((document) => normalizeListingDocument({
+        ...document,
+        source: listingDocuments.length ? 'Listing Requirement' : 'Project Default',
+      }))
+      .filter((document) => document.id && document.status === 'active')
+  })
+  const [showEditDocumentsModal, setShowEditDocumentsModal] = useState(false)
   const [alert, setAlert] = useState(null)
   const originalUnitCode = String(listing?.unit_id || listing?.unitCode || '').trim().toUpperCase()
 
@@ -217,9 +255,19 @@ const EditUnitStatusModal = ({ listing, project = {}, onClose, onSave, isSaving 
     }
   }, [form])
 
+  const requiredDocumentCount = useMemo(
+    () => documentRequirements.filter((document) => document.requirement === 'required' && document.status === 'active').length,
+    [documentRequirements]
+  )
+
   const updateField = (key, value) => {
     setForm((current) => ({ ...current, [key]: value }))
     if (alert?.type === 'error') setAlert(null)
+  }
+
+  const handleDocumentsChange = (nextDocuments) => {
+    setDocumentRequirements(nextDocuments.map(normalizeListingDocument))
+    setAlert({ type: 'success', message: 'Listing document requirements updated. Save Changes to apply them.' })
   }
 
   const handleSubmit = async (event) => {
@@ -273,6 +321,7 @@ const EditUnitStatusModal = ({ listing, project = {}, onClose, onSave, isSaving 
       legalMiscRate: Number(form.legalMiscRate || 0),
       annualInterestRate: Number(form.annualInterestRate || 0),
       reservationFee: Number(form.reservationFee || 0),
+      documentRequirements,
     }
 
     try {
@@ -468,6 +517,30 @@ const EditUnitStatusModal = ({ listing, project = {}, onClose, onSave, isSaving 
             </SelectField>
           </section>
 
+          <section className="mt-5 rounded-xl border border-blue-200 bg-blue-50 p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="text-sm font-black text-slate-950">Listing Document Requirements</h3>
+                <p className="mt-1 text-xs font-semibold text-slate-600">These are the saved requirements used automatically by Review Buyer Form &amp; Reserve. Edit them here, then click Save Changes.</p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowEditDocumentsModal(true)}
+                disabled={isSaving}
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <FiFileText className="h-4 w-4" />
+                Edit Documents
+              </button>
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-black text-blue-700">{documentRequirements.filter((document) => document.status === 'active').length} docs</span>
+              <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-black text-emerald-700">{requiredDocumentCount} required</span>
+            </div>
+          </section>
+
           <section className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
             <h3 className="text-sm font-black text-slate-950">Live Price Breakdown</h3>
 
@@ -511,6 +584,20 @@ const EditUnitStatusModal = ({ listing, project = {}, onClose, onSave, isSaving 
             {isSaving ? 'Saving...' : 'Save Changes'}
           </button>
         </div>
+
+        {showEditDocumentsModal ? (
+          <EditListingDocumentsModal
+            selectedDocuments={documentRequirements}
+            setSelectedDocuments={handleDocumentsChange}
+            libraryDocuments={libraryDocuments}
+            projectDefaultDocuments={projectDefaultDocuments}
+            title="Edit Listing Document Requirements"
+            subtitle="Changes stay in this Edit Listing form until you click Save Changes. Reset to project defaults only when you intentionally want to replace the listing-specific checklist."
+            saveLabel="Apply to Listing"
+            isSaving={isSaving}
+            onClose={() => setShowEditDocumentsModal(false)}
+          />
+        ) : null}
       </form>
     </div>
   )

@@ -3,9 +3,9 @@ import { FiAlertCircle, FiCheckCircle, FiLoader, FiSearch, FiUser } from 'react-
 import { getPaymentCalculations, money } from './reserveUtils'
 import { SectionCard, SelectInput, TextInput } from './ReserveShared'
 import { getSellerRoleLabel } from '../../../../config/sellerRoles'
+import { DAILY_PENALTY_RATE_OPTIONS, formatDailyPenaltyRateOption } from '../../../../config/paymentTerms'
 
 const downpaymentTermOptions = Array.from({ length: 12 }, (_, index) => String(index + 1))
-const dailyPenaltyRateOptions = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 2, 3, 4, 5]
 const penaltyGraceDayOptions = Array.from({ length: 32 }, (_, index) => String(index))
 
 const shiftIsoYears = (value, years) => {
@@ -145,7 +145,7 @@ const ReservePaymentTermsModal = ({
   previewError = null,
 }) => {
   const [penaltyRateMode, setPenaltyRateMode] = useState(() =>
-    dailyPenaltyRateOptions.includes(Number(paymentForm.dailyPenaltyRate)) ? 'preset' : 'custom'
+    DAILY_PENALTY_RATE_OPTIONS.includes(Number(paymentForm.dailyPenaltyRate)) ? 'preset' : 'custom'
   )
   const today = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Manila',
@@ -310,10 +310,10 @@ const ReservePaymentTermsModal = ({
                 updatePaymentField('dailyPenaltyRate', value)
               }
             }}
-            helper="Choose a preset or enter a custom rate from 0% to 100% per day."
+            helper="Choose 0.01% to 0.10% per day (default 0.05%), or use Custom for another approved rate."
             required
           >
-            {dailyPenaltyRateOptions.map((value) => <option key={value} value={String(value)}>{value}% per day</option>)}
+            {DAILY_PENALTY_RATE_OPTIONS.map((value) => <option key={value} value={String(value)}>{formatDailyPenaltyRateOption(value)}</option>)}
             <option value="custom">Custom</option>
           </SelectInput>
           {isCustomPenaltyRate ? (
@@ -471,6 +471,3 @@ const ReservePaymentTermsModal = ({
 }
 
 export default ReservePaymentTermsModal
-
-
-

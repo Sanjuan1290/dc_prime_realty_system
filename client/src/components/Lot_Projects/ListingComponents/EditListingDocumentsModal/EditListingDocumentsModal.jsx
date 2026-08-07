@@ -91,12 +91,12 @@ const EditListingDocumentsModal = ({ selectedDocuments = [], setSelectedDocument
 
   const loadProjectDefaults = () => {
     setIsLoadingDefaults(true)
-    setAlert({ type: 'loading', message: 'Loading project default requirements...' })
+    setAlert({ type: 'loading', message: 'Resetting to project default requirements...' })
 
     window.setTimeout(() => {
       setDocuments(projectDefaultDocuments.map(normalizeDocument))
       setIsLoadingDefaults(false)
-      setAlert({ type: 'success', message: 'Project default documents loaded.' })
+      setAlert({ type: 'success', message: 'Checklist reset to project defaults.' })
     }, 650)
   }
 
@@ -157,7 +157,7 @@ const EditListingDocumentsModal = ({ selectedDocuments = [], setSelectedDocument
 
               <button type="button" onClick={loadProjectDefaults} disabled={isBusy} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">
                 {isLoadingDefaults ? <FiLoader className="h-4 w-4 animate-spin" /> : <FiFileText className="h-4 w-4" />}
-                Load Project Defaults
+                Reset to Project Defaults
               </button>
             </div>
 
@@ -197,13 +197,13 @@ const EditListingDocumentsModal = ({ selectedDocuments = [], setSelectedDocument
               })}
             </section>
           ) : (
-            <div className="mt-4 rounded-xl border border-dashed border-slate-300 bg-white p-5 text-sm font-semibold text-slate-500">No custom document requirements selected. Saving the listing will use project defaults.</div>
+            <div className="mt-4 rounded-xl border border-dashed border-slate-300 bg-white p-5 text-sm font-semibold text-slate-500">No listing-specific requirements selected. Project defaults will be used only when this listing has no saved requirements.</div>
           )}
         </div>
 
         <div className="flex shrink-0 justify-end border-t border-slate-200 bg-slate-50 px-5 py-4">
           <button type="button" onClick={handleDone} disabled={isBusy} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">
-            {isSavingDraft ? <><FiLoader className="h-4 w-4 animate-spin" />Saving...</> : <><FiCheckCircle className="h-4 w-4" />{saveLabel}</>}
+            {isSavingDraft ? <><FiLoader className="h-4 w-4 animate-spin" />Saving...</> : <><FiCheckCircle className="h-4 w-4" />{onSave ? 'Proceed to Review' : saveLabel}</>}
           </button>
         </div>
       </div>

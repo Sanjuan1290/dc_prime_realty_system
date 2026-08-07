@@ -32,14 +32,31 @@ const shiftIsoYears = (value, years) => {
   return new Date(Date.UTC(year + years, month - 1, day)).toISOString().slice(0, 10)
 }
 
+const normalizeRequirement = (value, fallback = 'required') =>
+  String(value || fallback).trim().toLowerCase() === 'optional' ? 'optional' : 'required'
+
 const normalizeLibraryDocument = (document) => ({
   ...document,
   id: Number(document.document_id || document.id),
   document_id: Number(document.document_id || document.id),
   name: document.name || document.document_name,
   description: document.description || document.document_description || 'No description',
-  requirement: document.requirement || (document.document_is_required ? 'required' : 'optional'),
-  status: document.status || document.document_status || 'active',
+  source: document.source || 'Document Library',
+  requirement: normalizeRequirement(
+    document.requirement,
+    document.lot_project_listing_document_is_required === false ||
+    document.lot_project_default_document_is_required === false ||
+    document.document_is_required === false
+      ? 'optional'
+      : 'required'
+  ),
+  status: String(
+    document.lot_project_listing_document_status ||
+    document.lot_project_default_document_status ||
+    document.document_status ||
+    document.status ||
+    'active'
+  ).toLowerCase() === 'inactive' ? 'inactive' : 'active',
 })
 
 const normalizeAgent = (agent = {}) => ({
@@ -65,6 +82,7 @@ const ReserveListingModal = ({
   project,
   client,
   documentLibrary: documentLibraryProp = [],
+  listingDocuments: listingDocumentsProp = [],
   projectDefaultDocuments: projectDefaultDocumentsProp = [],
   documentTemplates = [],
   templateDocuments = [],
@@ -77,7 +95,17 @@ const ReserveListingModal = ({
 }) => {
   const [activeStep, setActiveStep] = useState(1)
   const [clientForm, setClientForm] = useState(() => getInitialClientForm(client))
-  const [selectedDocuments, setSelectedDocuments] = useState([])
+  const [selectedDocuments, setSelectedDocuments] = useState(() => {
+    const savedListingDocuments = listingDocumentsProp
+      .map((document) => normalizeLibraryDocument({ ...document, source: 'Listing Requirement' }))
+      .filter((document) => document.id && document.status === 'active')
+
+    if (savedListingDocuments.length) return savedListingDocuments
+
+    return projectDefaultDocumentsProp
+      .map((document) => normalizeLibraryDocument({ ...document, source: 'Project Default' }))
+      .filter((document) => document.id && document.status === 'active')
+  })
   const [searchDocument, setSearchDocument] = useState('')
   const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [agentSearch, setAgentSearch] = useState('')
@@ -118,7 +146,7 @@ const ReserveListingModal = ({
       listing?.annual_interest_rate ??
       0
     ),
-    dailyPenaltyRate: '0.1',
+    dailyPenaltyRate: '0.05',
     penaltyGraceDays: '1',
   })
 
@@ -141,12 +169,14 @@ const ReserveListingModal = ({
   const listingLookup = listing?.id || listing?.listing_id || listing?.lot_project_listing_id || listing?.unit_id || listing?.unitCode || ''
 
   const documentLibrary = useMemo(
-    () => documentLibraryProp.map(normalizeLibraryDocument).filter((document) => document.id),
+    () => documentLibraryProp.map(normalizeLibraryDocument).filter((document) => document.id && document.status === 'active'),
     [documentLibraryProp]
   )
 
   const projectDefaultDocuments = useMemo(
-    () => projectDefaultDocumentsProp.map(normalizeLibraryDocument).filter((document) => document.id),
+    () => projectDefaultDocumentsProp
+      .map((document) => normalizeLibraryDocument({ ...document, source: 'Project Default' }))
+      .filter((document) => document.id && document.status === 'active'),
     [projectDefaultDocumentsProp]
   )
 
@@ -298,6 +328,15 @@ const ReserveListingModal = ({
     setAlert({ type: 'warning', message: 'Document removed from the reservation checklist.' })
   }
 
+  const updateDocumentRequirement = (documentId, requirement) => {
+    setSelectedDocuments((current) => current.map((document) =>
+      Number(document.document_id || document.id) === Number(documentId)
+        ? { ...document, requirement: normalizeRequirement(requirement) }
+        : document
+    ))
+    if (alert?.type === 'error') setAlert(null)
+  }
+
   const loadProjectDefaults = () => {
     if (isLoadingDocuments) {
       setAlert({ type: 'loading', message: 'Loading project default documents...' })
@@ -308,8 +347,8 @@ const ReserveListingModal = ({
       return
     }
 
-    mergeSelectedDocuments(projectDefaultDocuments)
-    setAlert({ type: 'success', message: 'Project default documents loaded.' })
+    setSelectedDocuments(projectDefaultDocuments)
+    setAlert({ type: 'success', message: 'Checklist reset to the project default documents.' })
   }
 
   const validateClientStep = () => {
@@ -577,7 +616,7 @@ const ReserveListingModal = ({
 
           {activeStep === 1 ? <ReserveClientProfileModal clientForm={clientForm} setClientForm={setClientForm} hasSecondBuyer={hasSecondBuyer} updateBuyerType={updateBuyerType} invalidField={invalidClientField} onFieldChange={handleClientFieldChange} title={mode === 'submission-review' ? 'Submitted Buyer Profile' : 'Client Profile'} description={mode === 'submission-review' ? 'Review the information submitted by the buyer. Admin corrections will be saved with the final reservation.' : undefined} /> : null}
 
-          {activeStep === 2 ? <ReserveDocumentChecklistModal filteredDocuments={filteredDocuments} searchDocument={searchDocument} setSearchDocument={setSearchDocument} selectedDocuments={selectedDocuments} isSaving={isSaving} isLoadingDefaults={isLoadingDocuments} deletingDocId={null} isDocumentAdded={isDocumentAdded} addDocument={addDocument} removeDocument={removeDocument} loadProjectDefaults={loadProjectDefaults} documentTemplates={activeDocumentTemplates} selectedTemplateId={selectedTemplateId} setSelectedTemplateId={setSelectedTemplateId} /> : null}
+          {activeStep === 2 ? <ReserveDocumentChecklistModal filteredDocuments={filteredDocuments} searchDocument={searchDocument} setSearchDocument={setSearchDocument} selectedDocuments={selectedDocuments} isSaving={isSaving} isLoadingDefaults={isLoadingDocuments} deletingDocId={null} isDocumentAdded={isDocumentAdded} addDocument={addDocument} removeDocument={removeDocument} updateDocumentRequirement={updateDocumentRequirement} loadProjectDefaults={loadProjectDefaults} documentTemplates={activeDocumentTemplates} selectedTemplateId={selectedTemplateId} setSelectedTemplateId={setSelectedTemplateId} /> : null}
 
           {activeStep === 3 ? <ReservePaymentTermsModal listing={listing} project={project} tcp={tcp} contractPricing={contractPricing} paymentForm={effectivePaymentForm} updatePaymentField={updatePaymentField} agents={fetchedAgents} selectedAgent={selectedAgent} agentSearch={agentSearch} setAgentSearch={setAgentSearch} isLoadingAgents={agentsQuery.isLoading || agentsQuery.isFetching} agentsError={!projectSlug ? 'Project information is missing.' : agentsQuery.isError ? agentsQuery.error?.message || 'Failed to load Seller / Group options.' : null} commissionPreview={commissionPreview} isLoadingPreview={previewQuery.isLoading || previewQuery.isFetching} previewError={previewQuery.isError ? previewQuery.error?.message || 'Failed to load the commission structure.' : null} /> : null}
         </div>
@@ -587,7 +626,7 @@ const ReserveListingModal = ({
           <div className="grid gap-2 sm:flex sm:justify-end">
             <button type="button" onClick={onClose} disabled={isSaving} className="h-11 rounded-lg border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">Cancel</button>
             {activeStep > 1 ? <button type="button" onClick={goBack} disabled={isSaving} className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"><FiChevronLeft className="h-4 w-4" />Back</button> : null}
-            {activeStep < 3 ? <button type="button" onClick={goNext} disabled={isSaving} className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">Next<FiChevronRight className="h-4 w-4" /></button> : <button type="button" onClick={handleReserve} disabled={reservationBlocked} className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300">{isSaving ? <FiLoader className="h-4 w-4 animate-spin" /> : <FiUserCheck className="h-4 w-4" />}{isSaving ? (mode === 'submission-review' ? 'Approving...' : 'Reserving...') : previewQuery.isFetching ? 'Calculating...' : (mode === 'submission-review' ? 'Approve & Reserve Unit' : 'Reserve Listing')}</button>}
+            {activeStep < 3 ? <button type="button" onClick={goNext} disabled={isSaving} className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">Next<FiChevronRight className="h-4 w-4" /></button> : <button type="button" onClick={handleReserve} disabled={reservationBlocked} className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300">{isSaving ? <FiLoader className="h-4 w-4 animate-spin" /> : <FiUserCheck className="h-4 w-4" />}{isSaving ? (mode === 'submission-review' ? 'Approving...' : 'Reserving...') : previewQuery.isFetching ? 'Calculating...' : 'Proceed to Final Review'}</button>}
           </div>
         </div>
       </div>
@@ -596,6 +635,3 @@ const ReserveListingModal = ({
 }
 
 export default ReserveListingModal
-
-
-
