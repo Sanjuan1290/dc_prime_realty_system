@@ -117,7 +117,7 @@ const App = () => {
 
         <Route path="/maintenance" element={<Maintenance />} />
         <Route path="/server-down" element={<ServerDown />} />
-
+      
         <Route path="/portal" element={<Login />} />
         <Route path="/portal/login" element={<Navigate to="/portal" replace />} />
         <Route path="/portal/change-password" element={<ChangePassword />} />

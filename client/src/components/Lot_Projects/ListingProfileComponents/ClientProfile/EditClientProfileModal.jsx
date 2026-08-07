@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { FiAlertCircle, FiSave, FiX } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
+import {
+  EMPLOYMENT_STATUS_OPTIONS,
+  EMPLOYMENT_STATUS_OTHER_VALUE,
+  resolveEmploymentStatus,
+} from '../../../../utils/employmentStatus'
 
 const principalRequiredFields = [
   ['buyerLastName', 'Principal buyer last name'],
@@ -617,6 +622,7 @@ const WorkBusinessForm = ({ title, form, setForm, second = false }) => {
   }
 
   const value = (field) => form[key(field)] || ''
+  const employment = resolveEmploymentStatus(value('employmentStatus'))
 
   return (
     <section className="rounded-xl border border-slate-200 bg-slate-50 p-4">
@@ -628,28 +634,40 @@ const WorkBusinessForm = ({ title, form, setForm, second = false }) => {
       <div className="grid gap-4 md:grid-cols-2">
         <Select
           label="Employment Status"
-          value={value('employmentStatus')}
-          onChange={(nextValue) => update('employmentStatus', nextValue)}
+          value={employment.selectedValue}
+          onChange={(nextValue) => update('employmentStatus', nextValue === EMPLOYMENT_STATUS_OTHER_VALUE ? 'Other' : nextValue)}
           required
         >
           <option value="">Select status</option>
-          <option value="Employed - Private">Employed - Private</option>
-          <option value="Self-Employed">Self-Employed</option>
-          <option value="Employed - Government">Employed - Government</option>
-          <option value="Professional">Professional</option>
-          <option value="OFW">OFW</option>
-          <option value="Other">Other</option>
-          <option value="Unemployed">Unemployed</option>
-          <option value="Retired">Retired</option>
-          <option value="Student">Student</option>
-          <option value="Not Applicable">Not Applicable</option>
+          {EMPLOYMENT_STATUS_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+          <option value={EMPLOYMENT_STATUS_OTHER_VALUE}>Other</option>
         </Select>
 
-        <Input
-          label="Employer / Business Name"
-          value={value('employerBusinessName')}
-          onChange={(nextValue) => update('employerBusinessName', nextValue)}
-        />
+        {employment.selectedValue === EMPLOYMENT_STATUS_OTHER_VALUE ? (
+          <Input
+            label="Other Employment Status"
+            value={employment.otherText}
+            onChange={(nextValue) => update('employmentStatus', nextValue || 'Other')}
+            placeholder="Specify employment status"
+            helper="This text appears beside Other on the Offer to Buy form."
+          />
+        ) : (
+          <Input
+            label="Employer / Business Name"
+            value={value('employerBusinessName')}
+            onChange={(nextValue) => update('employerBusinessName', nextValue)}
+          />
+        )}
+
+        {employment.selectedValue === EMPLOYMENT_STATUS_OTHER_VALUE ? (
+          <Input
+            label="Employer / Business Name"
+            value={value('employerBusinessName')}
+            onChange={(nextValue) => update('employerBusinessName', nextValue)}
+          />
+        ) : null}
 
         <Input
           label="Employer ZIP Code"
@@ -884,3 +902,6 @@ const EditClientProfileModal = ({ client, onClose, onSave, isParentSaving = fals
 }
 
 export default EditClientProfileModal
+
+
+

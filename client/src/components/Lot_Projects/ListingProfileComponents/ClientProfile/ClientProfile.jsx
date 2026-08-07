@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { FiAlertCircle, FiEdit3, FiLock } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
 import EditClientProfileModal, { normalizeClientProfile } from './EditClientProfileModal'
+import { EMPLOYMENT_STATUS_OPTIONS, resolveEmploymentStatus } from '../../../../utils/employmentStatus'
 
 const fallbackClient = {
   profileStatus: 'incomplete',
@@ -132,27 +133,28 @@ const Field = ({ label, value, placeholder = '', type = 'text', disabled = true 
   </label>
 )
 
-const SelectPreview = ({ label, value, placeholder = 'Select', options = [] }) => (
-  <label className="flex flex-col gap-1.5">
-    <span className="text-xs font-black text-slate-600">{label}</span>
-    <select
-      value={value || ''}
-      disabled
-      className="h-10 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-500 outline-none"
-    >
-      <option value="">{placeholder}</option>
-      {options.length > 0
-        ? options.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))
-        : value
-          ? <option value={value}>{value}</option>
-          : null}
-    </select>
-  </label>
-)
+const SelectPreview = ({ label, value, placeholder = 'Select', options = [] }) => {
+  const hasValueOption = options.some((option) => option.value === value)
+
+  return (
+    <label className="flex flex-col gap-1.5">
+      <span className="text-xs font-black text-slate-600">{label}</span>
+      <select
+        value={value || ''}
+        disabled
+        className="h-10 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-500 outline-none"
+      >
+        <option value="">{placeholder}</option>
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+        {value && !hasValueOption ? <option value={value}>{value}</option> : null}
+      </select>
+    </label>
+  )
+}
 
 const Section = ({ title, children, right }) => (
   <section className="rounded-xl border border-slate-200 bg-white p-4">
@@ -177,20 +179,9 @@ const WorkBusinessCard = ({ title, data, prefix = '' }) => {
       <div className="grid gap-4 md:grid-cols-2">
         <SelectPreview
           label="Employment Status"
-          value={get('EmploymentStatus')}
+          value={resolveEmploymentStatus(get('EmploymentStatus')).displayValue}
           placeholder="Select status"
-          options={[
-            { value: 'Employed - Private', label: 'Employed - Private' },
-            { value: 'Self-Employed', label: 'Self-Employed' },
-            { value: 'Employed - Government', label: 'Employed - Government' },
-            { value: 'Professional', label: 'Professional' },
-            { value: 'OFW', label: 'OFW' },
-            { value: 'Other', label: 'Other' },
-            { value: 'Unemployed', label: 'Unemployed' },
-            { value: 'Retired', label: 'Retired' },
-            { value: 'Student', label: 'Student' },
-            { value: 'Not Applicable', label: 'Not Applicable' },
-          ]}
+          options={EMPLOYMENT_STATUS_OPTIONS}
         />
 
         <Field label="Employer / Business Name" value={get('EmployerBusinessName')} />
@@ -485,3 +476,6 @@ const ClientProfile = ({ client = fallbackClient, listing = {}, onSave, isSaving
 }
 
 export default ClientProfile
+
+
+

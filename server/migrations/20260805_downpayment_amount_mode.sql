@@ -1,7 +1,7 @@
 -- TiDB-compatible migration: adds an exact-amount option for reservation downpayments.
 -- Existing reservations continue to use percentage mode.
 -- Safe to run more than once because TiDB supports ADD COLUMN IF NOT EXISTS.
--- Run these as two separate ALTER TABLE statements; no DELIMITER or stored procedure is used.
+-- Run these as ordinary ALTER TABLE statements. Do not use DELIMITER or stored procedures.
 
 ALTER TABLE `lot_project_client_profiles`
   ADD COLUMN IF NOT EXISTS `soa_downpayment_input_mode`

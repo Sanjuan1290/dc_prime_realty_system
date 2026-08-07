@@ -1,5 +1,10 @@
 import { SectionCard, SelectInput, TextInput } from './ReserveShared'
 import { buildDisplayName, computeAge } from './reserveUtils'
+import {
+  EMPLOYMENT_STATUS_OPTIONS,
+  EMPLOYMENT_STATUS_OTHER_VALUE,
+  resolveEmploymentStatus,
+} from '../../../../utils/employmentStatus'
 
 const PersonFields = ({ title, form, setForm, second = false, invalidField = '', onFieldChange }) => {
   const nameKey = second ? 'secondBuyerName' : 'buyerName'
@@ -116,27 +121,43 @@ const WorkBusinessFields = ({ title, form, setForm, second = false, invalidField
     setForm((current) => ({ ...current, [key]: value }))
   }
 
+  const employment = resolveEmploymentStatus(form[employmentKey])
+
   return (
     <section className="rounded-xl border border-slate-200 bg-slate-50 p-4">
       <h4 className="text-sm font-black text-slate-800">{title}</h4>
       <p className="mb-4 mt-1 text-xs font-semibold text-slate-500">Fields marked * are required. Leave optional fields blank when they do not apply.</p>
 
       <div className="grid gap-4 md:grid-cols-2">
-        <SelectInput label="Employment Status" value={form[employmentKey]} onChange={(value) => update(employmentKey, value)} error={invalidField === employmentKey} required>
+        <SelectInput
+          label="Employment Status"
+          value={employment.selectedValue}
+          onChange={(value) => update(employmentKey, value === EMPLOYMENT_STATUS_OTHER_VALUE ? 'Other' : value)}
+          error={invalidField === employmentKey}
+          required
+        >
           <option value="">Select status</option>
-          <option value="Employed - Private">Employed - Private</option>
-          <option value="Self-Employed">Self-Employed</option>
-          <option value="Employed - Government">Employed - Government</option>
-          <option value="Professional">Professional</option>
-          <option value="OFW">OFW</option>
-          <option value="Other">Other</option>
-          <option value="Unemployed">Unemployed</option>
-          <option value="Retired">Retired</option>
-          <option value="Student">Student</option>
-          <option value="Not Applicable">Not Applicable</option>
+          {EMPLOYMENT_STATUS_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+          <option value={EMPLOYMENT_STATUS_OTHER_VALUE}>Other</option>
         </SelectInput>
 
-        <TextInput label="Employer / Business Name" value={form[employerKey]} onChange={(value) => update(employerKey, value)} />
+        {employment.selectedValue === EMPLOYMENT_STATUS_OTHER_VALUE ? (
+          <TextInput
+            label="Other Employment Status"
+            value={employment.otherText}
+            onChange={(value) => update(employmentKey, value || 'Other')}
+            placeholder="Specify employment status"
+            helper="This text appears beside Other on the Offer to Buy form."
+          />
+        ) : (
+          <TextInput label="Employer / Business Name" value={form[employerKey]} onChange={(value) => update(employerKey, value)} />
+        )}
+
+        {employment.selectedValue === EMPLOYMENT_STATUS_OTHER_VALUE ? (
+          <TextInput label="Employer / Business Name" value={form[employerKey]} onChange={(value) => update(employerKey, value)} />
+        ) : null}
         <TextInput label="Employer ZIP Code" value={form[zipKey]} onChange={(value) => update(zipKey, value)} />
         <TextInput label="Nature of Work / Business" value={form[natureKey]} onChange={(value) => update(natureKey, value)} />
         <TextInput label="Occupation / Position / Title" value={form[occupationKey]} onChange={(value) => update(occupationKey, value)} />
@@ -218,3 +239,6 @@ const ReserveClientProfileModal = ({
 )
 
 export default ReserveClientProfileModal
+
+
+

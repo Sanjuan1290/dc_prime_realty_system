@@ -10,7 +10,7 @@ const root = path.resolve(dirname, '..', '..');
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
 
 test('Offer to Buy print does not stretch the form with a forced blank bottom area', () => {
-  const page = read('client/src/components/Lot_Projects/ListingProfileComponents/Printouts/OfferToBuyPrintPage.jsx');
+  const page = read('client/src/components/Lot_Projects/ListingProfileComponents/Printouts/OfferToBuyForm.jsx');
   assert.doesNotMatch(page, /min-height:\s*276mm/);
   assert.match(page, /\.otb-form\s*\{[\s\S]*min-height:\s*0\s*!important;[\s\S]*height:\s*auto\s*!important;/);
 });
@@ -92,3 +92,6 @@ test('Missing-document numbering continues across both PDF columns', () => {
   assert.match(pdfText, /\(8\.\) Tj/);
   assert.match(pdfText, /\(14\.\) Tj/);
 });
+
+
+
