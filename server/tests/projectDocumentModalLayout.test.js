@@ -21,7 +21,8 @@ test('selected documents render as readable cards without the old cramped row gr
   const modal = await read('../../client/src/components/System/projectComponents/AddLotProjectModal.jsx');
 
   assert.match(modal, /selectedDocuments\.map\(\(document\) =>/);
-  assert.match(modal, /Review the final checklist and edit each document before saving\./);
+  assert.match(modal, /Review the checklist, then proceed to the final double-check before anything is saved\./);
+  assert.match(modal, /Proceed to Final Review/);
   assert.match(modal, /mt-3 grid gap-3 sm:grid-cols-2/);
   assert.match(modal, /break-words text-sm font-black text-slate-950/);
   assert.doesNotMatch(modal, /md:grid-cols-\[1fr_130px_130px_auto\]/);

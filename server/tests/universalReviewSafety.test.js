@@ -24,7 +24,13 @@ test('all requestApi mutations are gated by the final review service before fetc
   assert.match(review, /\/preview/);
   assert.match(provider, /Nothing has been saved yet\./);
   assert.match(provider, /Back to Edit/);
-  assert.match(provider, /Final confirmation writes to the database/);
+  assert.match(provider, /Nothing is saved until you confirm/);
+  assert.doesNotMatch(provider, /System action details/);
+  assert.doesNotMatch(provider, /Method:<\/span>/);
+  assert.doesNotMatch(provider, /Endpoint:<\/span>/);
+  assert.match(provider, /Not provided \(\{rows\.length\}\).*hidden to keep this review focused/);
+  assert.match(provider, /Review what matters most/);
+  assert.match(provider, /Payment Terms & Financials/);
 });
 
 test('portal form controls get universal examples and Proceed submit treatment', () => {
@@ -79,4 +85,15 @@ test('reservation and proof-of-income use explicit final review wording', () => 
   assert.match(accredited, /Confirm, Generate & Print/);
   assert.match(accredited, /Proceed to Review/);
   assert.match(commission, /Proceed to Final Review/);
+});
+
+
+test('project checklist proceeds to the final review instead of claiming it already saves', () => {
+  const projectModal = read('client/src/components/System/projectComponents/AddLotProjectModal.jsx');
+
+  assert.match(projectModal, /Proceed to Final Review/);
+  assert.match(projectModal, /Opening Review\.\.\./);
+  assert.match(projectModal, /Preparing the final double-check/);
+  assert.match(projectModal, /Final review closed\. You can continue editing; nothing was saved\./);
+  assert.doesNotMatch(projectModal, /\{isEdit \? 'Save Changes' : 'Add Lot Project'\}/);
 });

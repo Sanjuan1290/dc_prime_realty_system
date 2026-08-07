@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { FiArrowLeft, FiArrowRight, FiCheckCircle, FiSearch, FiX } from 'react-icons/fi'
+import { FiArrowLeft, FiArrowRight, FiSearch, FiX } from 'react-icons/fi'
 import StatusAlert from '../../Shared/StatusAlert'
 
 const Field = ({
@@ -383,7 +383,7 @@ const AddLotProjectModal = ({
     setIsSubmitting(true)
     setAlert({
       type: 'loading',
-      message: isEdit ? 'Saving project changes...' : 'Adding lot project...',
+      message: 'Preparing the final double-check...',
     })
 
     try {
@@ -406,9 +406,16 @@ const AddLotProjectModal = ({
       })
     } catch (error) {
       setIsSubmitting(false)
+      if (/review cancelled/i.test(String(error?.message || ''))) {
+        setAlert({
+          type: 'info',
+          message: 'Final review closed. You can continue editing; nothing was saved.',
+        })
+        return
+      }
       setAlert({
         type: 'error',
-        message: error.message || (isEdit ? 'Failed to save project changes.' : 'Failed to add lot project.'),
+        message: error.message || (isEdit ? 'Failed to prepare project changes.' : 'Failed to prepare the lot project.'),
       })
     }
   }
@@ -884,7 +891,7 @@ const AddLotProjectModal = ({
                   Documents Added
                 </h2>
                 <p className="mt-1 text-xs font-semibold text-slate-500">
-                  Review the final checklist and edit each document before saving.
+                  Review the checklist, then proceed to the final double-check before anything is saved.
                 </p>
               </div>
 
@@ -1003,7 +1010,7 @@ const AddLotProjectModal = ({
 
             <div className="flex shrink-0 flex-col gap-2 border-t border-slate-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-xs font-bold text-slate-500">
-                Review requirement and status before saving.
+                Review requirement and status, then continue to the final double-check.
               </p>
 
               <div className="flex flex-col gap-2 sm:flex-row">
@@ -1025,12 +1032,12 @@ const AddLotProjectModal = ({
                   {isSaving ? (
                     <>
                       <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-                      Saving...
+                      Opening Review...
                     </>
                   ) : (
                     <>
-                      <FiCheckCircle className="h-4 w-4" />
-                      {isEdit ? 'Save Changes' : 'Add Lot Project'}
+                      Proceed to Final Review
+                      <FiArrowRight className="h-4 w-4" />
                     </>
                   )}
                 </button>
