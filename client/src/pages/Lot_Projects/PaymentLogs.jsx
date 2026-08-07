@@ -122,7 +122,7 @@ const PaymentLogs = () => {
                 setSearch(event.target.value)
                 setPage(1)
               }}
-              placeholder="Search account, unit, buyer, reference, encoded by..."
+              placeholder="Search account, unit, buyer, reference ID, encoded by..."
               className="h-11 w-full rounded-xl border border-slate-300 bg-white pl-11 pr-3 text-sm font-semibold text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
             />
           </label>

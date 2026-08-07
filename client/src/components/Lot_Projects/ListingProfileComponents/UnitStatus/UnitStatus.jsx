@@ -472,7 +472,7 @@ const UnitStatus = ({
         <DetailBox label="Email" value={unitData.email} />
         <DetailBox label="Contact No." value={unitData.contact_no} />
         <DetailBox label="Address" value={unitData.address} long />
-        <DetailBox label="Assigned User" value={unitData.assigned_user} />
+        <DetailBox label="Assigned Seller" value={unitData.assigned_user} />
         <DetailBox label="First Due Date" value={unitData.due_day} />
       </SectionBlock>
 

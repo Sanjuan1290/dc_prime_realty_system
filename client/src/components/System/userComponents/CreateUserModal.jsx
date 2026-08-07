@@ -520,7 +520,6 @@ const CreateUserModal = ({
                         <option key={value} value={value}>{label}</option>
                       ))}
                     </select>
-                    <p className="text-xs font-semibold text-slate-500">Admin 1 has full operational access. Super Admin accounts and owner-only destructive actions remain protected. Admin 2 and Admin 3 are reserved for later.</p>
                   </label>
 
                   {form.role === "admin" ? (
