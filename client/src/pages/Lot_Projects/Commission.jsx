@@ -169,10 +169,11 @@ const Commission = () => {
       )
     },
     onMutate: ({ payload }) => {
-      const actionLabel = String(payload?.action || '').includes('release')
-        ? 'Saving commission release...'
-        : 'Updating commission status...'
-      const notice = { type: 'loading', title: 'Saving', message: actionLabel }
+      const action = String(payload?.action || '')
+      const isRelease = action === 'release_stage'
+      const notice = isRelease
+        ? { type: 'loading', title: 'Final review', message: 'Preparing commission release review...' }
+        : { type: 'loading', title: 'Updating', message: 'Updating commission status...' }
       if (selected) setModalNotice(notice)
       else setAlert(notice)
     },
@@ -203,11 +204,20 @@ const Commission = () => {
       })
     },
     onError: (mutationError) => {
-      const notice = {
-        type: 'error',
-        title: 'Commission error',
-        message: mutationError?.message || 'Failed to update commission.',
-      }
+      const reviewCancelled = Number(mutationError?.status || 0) === 499
+        || String(mutationError?.code || '').toUpperCase() === 'REVIEW_CANCELLED'
+        || /review cancelled/i.test(String(mutationError?.message || ''))
+      const notice = reviewCancelled
+        ? {
+            type: 'info',
+            title: 'Final review closed',
+            message: 'You can continue reviewing the commission. Nothing was released.',
+          }
+        : {
+            type: 'error',
+            title: 'Commission error',
+            message: mutationError?.message || 'Failed to update commission.',
+          }
       if (selected) setModalNotice(notice)
       else setAlert(notice)
     },
@@ -474,3 +484,4 @@ const Commission = () => {
 }
 
 export default Commission
+

@@ -40,6 +40,15 @@ test('commission release review is curated to beneficiary and selected release o
   assert.doesNotMatch(source, /action:\s*payload/)
 })
 
+test('commission release does not claim it is saving before final confirmation and treats review cancellation as informational', () => {
+  const source = read('client/src/pages/Lot_Projects/Commission.jsx')
+  assert.match(source, /Preparing commission release review\.\.\./)
+  assert.doesNotMatch(source, /Saving commission release\.\.\./)
+  assert.match(source, /REVIEW_CANCELLED/)
+  assert.match(source, /Final review closed/)
+  assert.match(source, /Nothing was released\./)
+})
+
 test('commission hold and unhold use compact confirmation and skip the global review wizard', () => {
   const page = read('client/src/pages/Lot_Projects/Commission.jsx')
   const modal = read('client/src/components/Lot_Projects/CommissionComponents/ReleaseDetailsModal/ReleaseDetailsModal.jsx')
@@ -56,3 +65,4 @@ test('future cash references clearly mark the payment database id', () => {
   assert.match(shared, /-P\$\{String\(numericPaymentId\)\.padStart\(4, '0'\)\}/)
   assert.match(modal, /CASH-YYYYMMDD-UNIT-P60001/)
 })
+
