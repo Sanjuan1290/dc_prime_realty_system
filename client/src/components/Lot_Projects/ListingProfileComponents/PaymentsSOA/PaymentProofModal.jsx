@@ -58,6 +58,15 @@ const formatBytes = (bytes = 0) => {
   return `${(value / (1024 * 1024)).toFixed(1)} MB`
 }
 
+const createLocalPreviewUrl = (file) => (typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function' ? URL.createObjectURL(file) : '')
+const revokeLocalPreviewUrl = (url) => { if (url && typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(url) }
+const previewLocalFile = (file) => {
+  const url = createLocalPreviewUrl(file)
+  if (!url) return
+  window.open(url, '_blank', 'noopener,noreferrer')
+  window.setTimeout(() => revokeLocalPreviewUrl(url), 60_000)
+}
+
 const isPdf = (proof = {}) =>
   String(proof.fileType || '').toLowerCase() === 'application/pdf' ||
   String(proof.fileName || '').toLowerCase().endsWith('.pdf')
@@ -171,25 +180,36 @@ const PaymentProofModal = ({
       return
     }
 
-    const confirmed = await requestMutationReview({
-      title: 'Review Payment Proof Upload',
-      confirmLabel: 'Confirm & Upload Proof',
-      description: 'Verify the payment, note, and selected proof files before any protected upload begins.',
-      method: 'UPLOAD',
-      path: basePath,
-      payload: {
-        payment: {
-          buyer: paymentDetails.buyerName || payment?.client || '-',
-          unit: paymentDetails.unitId || payment?.unit || '-',
-          amount: paymentDetails.amount ?? payment?.amount ?? 0,
-          paymentDate: paymentDetails.paymentDate || payment?.paymentDate || '-',
-          method: paymentDetails.method || payment?.method || '-',
-          reference: paymentDetails.referenceId || payment?.referenceId || '-',
+    const reviewFiles = files.map((file) => ({
+      fileName: file.name,
+      fileType: file.type,
+      fileSize: formatBytes(file.size),
+      previewUrl: createLocalPreviewUrl(file),
+    }))
+    let confirmed = false
+    try {
+      confirmed = await requestMutationReview({
+        title: 'Review Payment Proof Upload',
+        confirmLabel: 'Confirm & Upload Proof',
+        description: 'Verify the payment, optional note, and preview every selected proof file before any protected upload begins.',
+        method: 'UPLOAD',
+        path: basePath,
+        payload: {
+          payment: {
+            buyer: paymentDetails.buyerName || payment?.client || '-',
+            unit: paymentDetails.unitId || payment?.unit || '-',
+            amount: paymentDetails.amount ?? payment?.amount ?? 0,
+            paymentDate: paymentDetails.paymentDate || payment?.paymentDate || '-',
+            method: paymentDetails.method || payment?.method || '-',
+            reference: paymentDetails.referenceId || payment?.referenceId || '-',
+          },
+          uploadNote: { note: note.trim() },
+          files: reviewFiles,
         },
-        note: note.trim(),
-        files: files.map((file) => ({ fileName: file.name, fileType: file.type, fileSize: formatBytes(file.size) })),
-      },
-    })
+      })
+    } finally {
+      reviewFiles.forEach((file) => window.setTimeout(() => revokeLocalPreviewUrl(file.previewUrl), 60_000))
+    }
     if (!confirmed) {
       setNotice({ type: 'info', message: 'Payment proof review cancelled. No files were uploaded or saved.' })
       return
@@ -364,6 +384,7 @@ const PaymentProofModal = ({
                       <div key={`${file.name}-${file.size}-${index}`} className={`flex items-center gap-3 rounded-xl border px-3 py-2 ${invalid ? 'border-red-200 bg-red-50' : 'border-slate-200 bg-slate-50'}`}>
                         <FiFileText className={invalid ? 'text-red-600' : 'text-blue-600'} />
                         <div className="min-w-0 flex-1"><p className="truncate text-sm font-black text-slate-900">{file.name}</p><p className="text-xs font-semibold text-slate-500">{formatBytes(file.size)}</p></div>
+                        <button type="button" onClick={() => previewLocalFile(file)} disabled={isBusy || invalid} className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 text-[11px] font-black text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"><FiExternalLink /> Preview</button>
                         {isUploading && progress.current === index + 1 ? <FiLoader className="animate-spin text-blue-600" /> : null}
                       </div>
                     )

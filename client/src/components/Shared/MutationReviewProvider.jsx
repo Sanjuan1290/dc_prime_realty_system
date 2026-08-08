@@ -3,6 +3,7 @@ import {
   FiArrowLeft,
   FiArrowRight,
   FiCheckCircle,
+  FiExternalLink,
   FiFileText,
   FiShield,
   FiX,
@@ -56,6 +57,38 @@ const SECTION_META = {
     accent: 'border-l-violet-500',
     step: 'bg-violet-600 text-white ring-violet-100',
   },
+  commissionbeneficiary: {
+    title: 'Commission & Beneficiary',
+    helper: 'Verify the property, beneficiary, commission base, total commission, and remaining balance before release.',
+    header: 'border-violet-200 bg-violet-50',
+    badge: 'bg-violet-100 text-violet-700',
+    accent: 'border-l-violet-500',
+    step: 'bg-violet-600 text-white ring-violet-100',
+  },
+  selectedrelease: {
+    title: 'Selected Release',
+    helper: 'Verify only the milestone you selected, including its percentage, gross amount, deduction, net amount, status, and release date.',
+    header: 'border-emerald-200 bg-emerald-50',
+    badge: 'bg-emerald-100 text-emerald-700',
+    accent: 'border-l-emerald-500',
+    step: 'bg-emerald-600 text-white ring-emerald-100',
+  },
+  targetdocument: {
+    title: 'Target Document',
+    helper: 'Verify which buyer document these files will be attached to.',
+    header: 'border-blue-200 bg-blue-50',
+    badge: 'bg-blue-100 text-blue-700',
+    accent: 'border-l-blue-500',
+    step: 'bg-blue-600 text-white ring-blue-100',
+  },
+  files: {
+    title: 'Files',
+    helper: 'Preview each selected file and verify its name, type, and size before upload.',
+    header: 'border-emerald-200 bg-emerald-50',
+    badge: 'bg-emerald-100 text-emerald-700',
+    accent: 'border-l-emerald-500',
+    step: 'bg-emerald-600 text-white ring-emerald-100',
+  },
   details: {
     title: 'Information Review',
     helper: 'Verify every user-facing field before continuing.',
@@ -95,7 +128,7 @@ const getSectionMeta = (label) => SECTION_META[normalizeSectionKey(label)] || {
 const isSensitiveKey = (key) => /password|secret|token|signature|authorization|cookie/i.test(String(key || ''))
 const isTechnicalKey = (key) => {
   const value = String(key || '')
-  return /request.?key|cloudinary|asset.?id|public.?id|website$|buyer.?form.?submission.?id/i.test(value)
+  return /request.?key|cloudinary|asset.?id|public.?id|preview.?url|website$|buyer.?form.?submission.?id/i.test(value)
     || /(^|[._-])(id|ids)$/i.test(value)
     || /(?:_id|Id)$/.test(value)
 }
@@ -261,7 +294,7 @@ const ReviewRows = ({ object, sectionLabel = '' }) => {
 
 const getItemTitle = (item, index) => {
   if (!item || typeof item !== 'object') return `Item ${index + 1}`
-  return item.name || item.document_name || item.documentName || item.full_name || item.fullName || item.label || `Item ${index + 1}`
+  return item.fileName || item.name || item.document_name || item.documentName || item.full_name || item.fullName || item.label || `Item ${index + 1}`
 }
 
 const ArrayReview = ({ label, value }) => (
@@ -273,7 +306,14 @@ const ArrayReview = ({ label, value }) => (
             <FiFileText className="h-4 w-4 shrink-0 text-blue-600" />
             <p className="truncate text-sm font-black text-slate-950">{getItemTitle(item, index)}</p>
           </div>
-          <span className="shrink-0 rounded-full bg-slate-100 px-2 py-1 text-[10px] font-black text-slate-500">{index + 1}/{value.length}</span>
+          <div className="flex shrink-0 items-center gap-2">
+            {item && typeof item === 'object' && item.previewUrl ? (
+              <a href={item.previewUrl} target="_blank" rel="noopener noreferrer" className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 text-[11px] font-black text-blue-700 transition hover:bg-blue-100">
+                <FiExternalLink className="h-3.5 w-3.5" /> Preview File
+              </a>
+            ) : null}
+            <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-black text-slate-500">{index + 1}/{value.length}</span>
+          </div>
         </div>
         {item && typeof item === 'object'
           ? <ReviewRows object={item} sectionLabel={label} />

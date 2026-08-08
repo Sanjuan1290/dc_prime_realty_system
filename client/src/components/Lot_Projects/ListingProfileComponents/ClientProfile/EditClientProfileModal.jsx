@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { FiAlertCircle, FiSave, FiX } from 'react-icons/fi'
+import { FiAlertCircle, FiArrowRight, FiX } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
 import {
   EMPLOYMENT_STATUS_OPTIONS,
@@ -761,7 +761,7 @@ const EditClientProfileModal = ({ client, onClose, onSave, isParentSaving = fals
     }
 
     setIsSaving(true)
-    setAlert({ type: 'loading', message: 'Saving buyer profile to database...' })
+    setAlert({ type: 'info', message: 'Preparing buyer profile for the final double-check...' })
 
     try {
       await onSave?.({
@@ -769,7 +769,10 @@ const EditClientProfileModal = ({ client, onClose, onSave, isParentSaving = fals
         profileStatus: status,
       })
     } catch (error) {
-      setAlert({ type: 'error', message: error?.message || 'Failed to save buyer profile.' })
+      const reviewCancelled = Number(error?.status || 0) === 499 || /review cancelled/i.test(String(error?.message || ''))
+      setAlert(reviewCancelled
+        ? { type: 'info', message: 'Final review closed. You can continue editing; nothing was saved.' }
+        : { type: 'error', message: error?.message || 'Failed to save buyer profile.' })
     } finally {
       setIsSaving(false)
     }
@@ -892,8 +895,8 @@ const EditClientProfileModal = ({ client, onClose, onSave, isParentSaving = fals
             disabled={saving}
             className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            <FiSave className="h-4 w-4" />
-            {saving ? 'Saving...' : 'Save Buyer Profile'}
+            <FiArrowRight className="h-4 w-4" />
+            {saving ? 'Processing...' : 'Proceed to Final Review'}
           </button>
         </div>
       </div>
@@ -902,6 +905,3 @@ const EditClientProfileModal = ({ client, onClose, onSave, isParentSaving = fals
 }
 
 export default EditClientProfileModal
-
-
-

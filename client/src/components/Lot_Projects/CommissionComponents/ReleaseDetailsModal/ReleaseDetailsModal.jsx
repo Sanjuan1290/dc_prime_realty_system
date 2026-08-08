@@ -88,6 +88,16 @@ const ConfirmDialog = ({ action, stage, isSaving, onCancel, onConfirm }) => {
     hold_stage: 'hold this stage',
     unhold_stage: 'unhold this stage',
   }
+  const confirmLabels = {
+    release_stage: 'Proceed to Final Review',
+    hold_stage: 'Hold Stage',
+    unhold_stage: 'Unhold Stage',
+  }
+  const titles = {
+    release_stage: 'Release Commission Stage?',
+    hold_stage: 'Hold Commission Stage?',
+    unhold_stage: 'Unhold Commission Stage?',
+  }
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/50 p-4">
@@ -96,7 +106,7 @@ const ConfirmDialog = ({ action, stage, isSaving, onCancel, onConfirm }) => {
           <FiAlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
 
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-black">Confirm Action</p>
+            <p className="text-sm font-black">{titles[action] || 'Confirm Action'}</p>
             <p className="mt-1 text-sm font-semibold leading-relaxed">
               Are you sure you want to {labels[action] || action} for {stage.stage}?
             </p>
@@ -110,7 +120,7 @@ const ConfirmDialog = ({ action, stage, isSaving, onCancel, onConfirm }) => {
 
           <button type="button" onClick={onConfirm} disabled={isSaving} className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">
             {isSaving ? <FiLoader className="h-4 w-4 animate-spin" /> : null}
-            Proceed to Final Review
+            {confirmLabels[action] || 'Confirm'}
           </button>
         </div>
       </div>

@@ -113,30 +113,60 @@ const Commission = () => {
 
   const updateCommissionMutation = useMutation({
     mutationFn: ({ commissionId, payload }) => {
-      const commissionForReview = (selected?.sellers || []).find((seller) => Number(seller.commissionId || seller.id) === Number(commissionId)) || {};
-      const releaseForReview = (commissionForReview.releaseMilestones || []).find((stage) => Number(stage.releaseId) === Number(payload?.releaseId)) || {};
+      const action = String(payload?.action || '')
+      const commissionForReview = (selected?.sellers || []).find((seller) => Number(seller.commissionId || seller.id) === Number(commissionId)) || {}
+      const releaseForReview = (commissionForReview.releaseMilestones || []).find((stage) => Number(stage.releaseId) === Number(payload?.releaseId)) || {}
+
+      if (['hold_stage', 'unhold_stage'].includes(action)) {
+        return patchJson(
+          `/projects/lot-projects/${projectSlug}/commissions/${commissionId}`,
+          payload,
+          { skipReview: true }
+        )
+      }
+
+      const releaseDate = releaseForReview.actualReleaseDate
+        || releaseForReview.scheduledReleaseDate
+        || commissionForReview.releaseDateInfo?.nextReleaseDateISO
+        || '-'
+
       return patchJson(
         `/projects/lot-projects/${projectSlug}/commissions/${commissionId}`,
         payload,
         {
           review: {
-            title: String(payload?.action || '').includes('release') ? 'Review Commission Release' : 'Review Commission Action',
-            confirmLabel: String(payload?.action || '').includes('release') ? 'Confirm & Release Commission' : 'Confirm & Save Commission Action',
-            description: 'Double-check the property, seller/beneficiary, commission base, selected milestone, gross/net amounts, and requested action before saving.',
-            summary: `${selected?.unit || '-'} · ${commissionForReview.seller || 'Seller'} · ${releaseForReview.stage || payload?.action || 'Commission action'}`,
+            title: 'Review Commission Release',
+            confirmLabel: 'Confirm & Release Commission',
+            description: 'Double-check the beneficiary and only the selected commission milestone before posting this release.',
+            summary: `${selected?.unit || '-'} · ${commissionForReview.seller || 'Seller'} · ${releaseForReview.stage || 'Selected release'}`,
             payload: {
-              property: {
+              commissionBeneficiary: {
                 project: project?.name || project?.lot_project_name || projectSlug,
                 unit: selected?.unit || '-',
                 buyer: selected?.client || '-',
+                beneficiary: commissionForReview.seller || '-',
+                role: commissionForReview.role || '-',
+                group: commissionForReview.sellerGroup || '-',
+                commissionBase: Number(commissionForReview.commissionBase || 0),
+                commissionRate: Number(commissionForReview.rate || 0),
+                grossCommission: Number(commissionForReview.grossCommission || 0),
+                previouslyReleased: Number(commissionForReview.released || 0),
+                remainingBeforeRelease: Number(commissionForReview.netRemaining || 0),
               },
-              seller: commissionForReview,
-              selectedMilestone: releaseForReview,
-              action: payload,
+              selectedRelease: {
+                releaseStage: releaseForReview.stage || '-',
+                triggerPercent: Number(releaseForReview.triggerPercent || 0),
+                releasePercent: Number(releaseForReview.releasePercent || 0),
+                grossReleaseAmount: Number(releaseForReview.grossAmount || 0),
+                deductionAmount: Number(releaseForReview.deductionAmount || 0),
+                netReleaseAmount: Number(releaseForReview.netAmount || 0),
+                currentStatus: releaseForReview.status || '-',
+                releaseDate,
+              },
             },
           },
         }
-      );
+      )
     },
     onMutate: ({ payload }) => {
       const actionLabel = String(payload?.action || '').includes('release')

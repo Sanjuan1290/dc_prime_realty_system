@@ -744,7 +744,7 @@ const AddSOAPaymentModal = ({
               disabled={form.method === 'Cash'}
               helper={
                 form.method === 'Cash'
-                  ? 'Cash payments will get a reference like CASH-YYYYMMDD-UNIT-0001.'
+                  ? 'Cash payments use the payment record ID, for example CASH-YYYYMMDD-UNIT-P60001.'
                   : 'Required for bank, online, check, and other payment methods.'
               }
             />

@@ -3085,7 +3085,7 @@ export const getNextCashReference = async (_connection, unitCode, paymentId) => 
 
   const dateKey = todayDateOnly().replaceAll('-', '');
   const cleanUnit = String(unitCode || 'UNIT').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-  return `CASH-${dateKey}-${cleanUnit}-${String(numericPaymentId).padStart(4, '0')}`;
+  return `CASH-${dateKey}-${cleanUnit}-P${String(numericPaymentId).padStart(4, '0')}`;
 };
 
 export const mapPaymentRow = (row = {}) => ({
@@ -4160,3 +4160,7 @@ export const addIfColumnExists = async (connection, tableName, columns, values, 
 
 
 
+
+
+
+--------------------------------------------------------------------------------

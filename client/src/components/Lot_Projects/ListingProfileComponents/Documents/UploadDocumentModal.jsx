@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { FiFileText, FiLoader, FiShield, FiUploadCloud, FiX } from 'react-icons/fi'
+import { FiExternalLink, FiFileText, FiLoader, FiShield, FiUploadCloud, FiX } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
 import { useFetchPost } from '../../../../utils/useFetch'
 import { requestMutationReview } from '../../../../utils/mutationReview'
@@ -11,6 +11,15 @@ const formatBytes = (bytes = 0) => {
   const value = Number(bytes || 0)
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`
   return `${(value / (1024 * 1024)).toFixed(1)} MB`
+}
+
+const createLocalPreviewUrl = (file) => (typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function' ? URL.createObjectURL(file) : '')
+const revokeLocalPreviewUrl = (url) => { if (url && typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(url) }
+const previewLocalFile = (file) => {
+  const url = createLocalPreviewUrl(file)
+  if (!url) return
+  window.open(url, '_blank', 'noopener,noreferrer')
+  window.setTimeout(() => revokeLocalPreviewUrl(url), 60_000)
 }
 
 const UploadDocumentModal = ({ document, signaturePath, isSaving = false, onClose, onSave }) => {
@@ -78,24 +87,31 @@ const UploadDocumentModal = ({ document, signaturePath, isSaving = false, onClos
       return
     }
 
-    const confirmed = await requestMutationReview({
-      title: 'Review Document Upload',
-      confirmLabel: 'Confirm & Upload Files',
-      description: 'Verify the target document and every selected file before any protected upload starts. The final document record will be saved only after the upload succeeds.',
-      method: 'UPLOAD',
-      path: signaturePath,
-      payload: {
-        targetDocument: {
-          name: document?.name || 'Buyer document',
-          documentId: document?.id || document?.document_id || null,
+    const reviewFiles = files.map((file) => ({
+      fileName: file.name,
+      fileType: file.type,
+      fileSize: formatBytes(file.size),
+      previewUrl: createLocalPreviewUrl(file),
+    }))
+    let confirmed = false
+    try {
+      confirmed = await requestMutationReview({
+        title: 'Review Document Upload',
+        confirmLabel: 'Confirm & Upload Files',
+        description: 'Verify the target document and preview every selected file before any protected upload starts. The final document record will be saved only after the upload succeeds.',
+        method: 'UPLOAD',
+        path: signaturePath,
+        payload: {
+          targetDocument: {
+            name: document?.name || 'Buyer document',
+            documentId: document?.id || document?.document_id || null,
+          },
+          files: reviewFiles,
         },
-        files: files.map((file) => ({
-          fileName: file.name,
-          fileType: file.type,
-          fileSize: formatBytes(file.size),
-        })),
-      },
-    })
+      })
+    } finally {
+      reviewFiles.forEach((file) => window.setTimeout(() => revokeLocalPreviewUrl(file.previewUrl), 60_000))
+    }
     if (!confirmed) {
       setNotice({ type: 'info', message: 'Upload review cancelled. No files were uploaded or saved.' })
       return
@@ -169,6 +185,9 @@ const UploadDocumentModal = ({ document, signaturePath, isSaving = false, onClos
                       <p className="truncate text-sm font-black text-slate-900">{file.name}</p>
                       <p className="text-xs font-semibold text-slate-500">{file.type || 'Unknown file type'} · {formatBytes(file.size)}</p>
                     </div>
+                    <button type="button" onClick={() => previewLocalFile(file)} disabled={isBusy || invalid} className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 text-[11px] font-black text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50">
+                      <FiExternalLink className="h-3.5 w-3.5" /> Preview
+                    </button>
                     {isUploading && progress.current === index + 1 ? <FiLoader className="h-4 w-4 animate-spin text-blue-600" /> : null}
                   </div>
                 )
