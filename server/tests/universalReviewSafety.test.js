@@ -38,13 +38,24 @@ test('all requestApi mutations are gated by the final review service before fetc
   assert.match(provider, /Seller Assignment/);
 });
 
-test('portal form controls get universal examples and Proceed submit treatment', () => {
+test('only free-form text, number, and textarea controls get examples while Proceed treatment remains global', () => {
   const provider = read('client/src/components/Shared/MutationReviewProvider.jsx');
   const css = read('client/src/index.css');
+  const reserveTerms = read('client/src/components/Lot_Projects/ListingProfileComponents/ReserveListingModal/ReservePaymentTermsModal.jsx');
 
   assert.match(provider, /dc-input-example/);
   assert.match(provider, /`ex\. \$\{example\}`/);
-  assert.match(provider, /inferExample/);
+  assert.match(provider, /const canShowInputExample = \(control\) =>/);
+  assert.match(provider, /tagName === 'TEXTAREA'/);
+  assert.match(provider, /\['text', 'number'\]\.includes\(inputType\)/);
+  assert.match(provider, /document\.querySelectorAll\('input, textarea'\)/);
+  assert.doesNotMatch(provider, /document\.querySelectorAll\('input, select, textarea'\)/);
+  assert.match(provider, /custom\.\*daily\.\*penalty\.\*rate[\s\S]*?return '0\.15%'/);
+  assert.match(provider, /custom\.\*monthly\.\*term[\s\S]*?return '30 months'/);
+  assert.match(reserveTerms, /<option value="custom">Custom<\/option>/);
+  assert.match(reserveTerms, /Custom Daily Penalty Rate \(%\)[\s\S]*?type="number"/);
+  assert.match(css, /\.dc-input-example[\s\S]*?font-size: 10px/);
+  assert.match(css, /font-style: italic/);
   assert.match(provider, /form button\[type="submit"\]/);
   assert.match(provider, /dc-proceed-submit/);
   assert.match(css, /content: 'Proceed'/);

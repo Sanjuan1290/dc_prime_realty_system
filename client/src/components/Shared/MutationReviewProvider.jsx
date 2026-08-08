@@ -384,18 +384,40 @@ const exampleFromPlaceholder = (placeholder) => {
   return clean && clean.length <= 70 ? clean : ''
 }
 
+const getExampleControlKind = (control) => {
+  if (!control) return ''
+  const tagName = String(control.tagName || '').toUpperCase()
+  if (tagName === 'TEXTAREA') return 'textarea'
+  if (tagName !== 'INPUT') return ''
+  return String(control.type || control.getAttribute?.('type') || 'text').toLowerCase()
+}
+
+const canShowInputExample = (control) => {
+  if (!control || control.disabled || control.readOnly) return false
+  const inputType = getExampleControlKind(control)
+  return inputType === 'textarea' || ['text', 'number'].includes(inputType)
+}
+
 const inferExample = (labelText, control) => {
   const label = String(labelText || '').toLowerCase()
-  const type = String(control?.getAttribute('type') || control?.tagName || '').toLowerCase()
+  const type = getExampleControlKind(control)
   const placeholder = exampleFromPlaceholder(control?.getAttribute('placeholder'))
 
-  if (/password|pin/.test(label) || type === 'password') return '8+ characters'
-  if (/email/.test(label) || type === 'email') return 'juan@email.com'
-  if (/contact|mobile|phone|telephone/.test(label) || type === 'tel') return '0917 123 4567'
+  // Custom follow-up inputs should demonstrate values outside the normal preset choices.
+  if (/custom.*daily.*penalty.*rate/.test(label)) return '0.15%'
+  if (/custom.*downpayment.*percentage/.test(label)) return '20%'
+  if (/actual.*downpayment.*amount/.test(label)) return '₱400,000'
+  if (/custom.*downpayment.*term/.test(label)) return '18 months'
+  if (/custom.*monthly.*term/.test(label)) return '30 months'
+  if (/custom/.test(label) && /month|term/.test(label)) return '18 months'
+  if (/custom/.test(label) && /rate|percentage|percent|\(%\)|\b%\b/.test(label)) return '12.5%'
+
   if (/first name/.test(label)) return 'Juan'
   if (/middle name/.test(label)) return 'Santos'
   if (/last name|surname/.test(label)) return 'Dela Cruz'
   if (/full name|buyer name|client name|seller name|employee name|witness name|representative name/.test(label)) return 'Juan Dela Cruz'
+  if (/email/.test(label)) return 'juan@email.com'
+  if (/contact|mobile|phone|telephone/.test(label)) return '0917 123 4567'
   if (/address/.test(label)) return '123 Aguinaldo Hwy, Cavite'
   if (/tin/.test(label)) return '123-456-789-000'
   if (/prc/.test(label)) return '0123456'
@@ -406,8 +428,8 @@ const inferExample = (labelText, control) => {
   if (/cadastral|lot.*(no|number)/.test(label)) return '1306'
   if (/sqm|area/.test(label)) return '300'
   if (/month|term/.test(label) && !/payment term/.test(label)) return '36 months'
-  if (/date|birthday|birth date|due date/.test(label) || type === 'date') return 'Aug 7, 2026'
-  if (/time/.test(label) || type === 'time') return '9:00 AM'
+  if (/date|birthday|birth date|due date/.test(label)) return 'Aug 7, 2026'
+  if (/time/.test(label)) return '9:00 AM'
   if (/rate|percentage|percent|\(%\)|\b%\b/.test(label)) return '0.05%'
   if (/amount|fee|price|tcp|commission|salary|payment|cash|balance|income|advance/.test(label)) return '₱50,000'
   if (/status/.test(label)) return 'Active'
@@ -415,14 +437,7 @@ const inferExample = (labelText, control) => {
   if (/type/.test(label)) return 'Installment'
   if (/method/.test(label)) return 'Bank Transfer'
   if (/description|notes|remarks|reason|purpose/.test(label)) return 'Short clear description'
-  if (type === 'file') return 'PDF, JPG, or PNG'
   if (placeholder) return placeholder
-
-  if (control?.tagName === 'SELECT') {
-    const option = Array.from(control.options || []).find((item) => item.value && !/select|choose/i.test(item.textContent || ''))
-    if (option?.textContent?.trim()) return option.textContent.trim()
-  }
-
   if (type === 'number') return '100'
   return 'sample value'
 }
@@ -449,16 +464,20 @@ const decorateInputs = () => {
   const shouldUseProceed = !isAuthRoute
 
   document.querySelectorAll('label').forEach((label) => {
-    if (label.querySelector('.dc-input-example')) return
     const control = getControlForLabel(label)
-    if (!control || control.type === 'hidden') return
+    const existingExamples = Array.from(label.querySelectorAll('.dc-input-example'))
+    if (!canShowInputExample(control)) {
+      existingExamples.forEach((node) => node.remove())
+      return
+    }
+    if (existingExamples.length) return
     const labelText = cleanLabelText(label)
     if (!labelText || /search|filter|rows per page|page size/i.test(labelText)) return
 
     const example = inferExample(labelText, control)
     if (!example) return
     const span = document.createElement('span')
-    span.className = 'dc-input-example ml-2 text-[11px] font-medium italic text-slate-400'
+    span.className = 'dc-input-example ml-2'
     span.textContent = `ex. ${example}`
     span.setAttribute('aria-hidden', 'true')
 
@@ -472,8 +491,8 @@ const decorateInputs = () => {
     }
   })
 
-  document.querySelectorAll('input, select, textarea').forEach((control) => {
-    if (control.type === 'hidden') return
+  document.querySelectorAll('input, textarea').forEach((control) => {
+    if (!canShowInputExample(control)) return
     const placeholderText = String(control.getAttribute('placeholder') || '').toLowerCase()
     if (/search|filter/.test(placeholderText)) return
     const wrappedLabel = control.closest('label')
@@ -500,7 +519,7 @@ const decorateInputs = () => {
     const example = inferExample(labelText, control)
     if (!example) return
     const span = document.createElement('span')
-    span.className = 'dc-input-example ml-2 text-[11px] font-medium italic text-slate-400'
+    span.className = 'dc-input-example ml-2'
     span.textContent = `ex. ${example}`
     span.setAttribute('aria-hidden', 'true')
     candidate.appendChild(span)

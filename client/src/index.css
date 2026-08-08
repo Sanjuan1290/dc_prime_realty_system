@@ -25,6 +25,11 @@ html {
 }
 .dc-input-example {
   white-space: normal;
+  font-size: 10px;
+  line-height: 1.15;
+  font-weight: 500;
+  font-style: italic;
+  color: #94a3b8;
 }
 .dc-proceed-submit:not(:disabled) > span,
 .dc-proceed-submit:not(:disabled) > p,
