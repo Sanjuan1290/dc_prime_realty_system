@@ -4,15 +4,21 @@ import { readFile } from 'node:fs/promises';
 
 const readSource = async (path) => readFile(new URL(path, import.meta.url), 'utf8');
 
-test('reservation template selection filters the document library without loading the full template', async () => {
+test('reservation checklist visibly shows templates and adds missing template documents without replacing saved listing requirements', async () => {
   const [modalSource, reservationSource] = await Promise.all([
     readSource('../../client/src/components/Lot_Projects/ListingProfileComponents/ReserveListingModal/ReserveDocumentChecklistModal.jsx'),
     readSource('../../client/src/components/Lot_Projects/ListingProfileComponents/ReserveListingModal/ReserveListingModal.jsx'),
   ]);
 
-  assert.match(modalSource, /<option value="">All documents<\/option>/);
-  assert.doesNotMatch(modalSource, /Load from Template/);
-  assert.match(reservationSource, /selectedTemplateDocumentIds/);
+  assert.match(modalSource, /Document Templates/);
+  assert.match(modalSource, /Add Template/);
+  assert.match(modalSource, /already selected/);
+  assert.match(modalSource, /Existing document requirements stay unchanged/);
+  assert.match(reservationSource, /reservationDocumentTemplates/);
+  assert.match(reservationSource, /normalizeTemplateRequirement/);
+  assert.match(reservationSource, /const addTemplateDocuments = \(template\) =>/);
+  assert.match(reservationSource, /filter\(\(document\) => !isDocumentAdded/);
+  assert.doesNotMatch(reservationSource, /selectedTemplateDocumentIds/);
 });
 
 test('in-house group details can add a member directly into the current group', async () => {

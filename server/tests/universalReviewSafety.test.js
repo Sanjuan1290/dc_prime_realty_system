@@ -22,15 +22,20 @@ test('all requestApi mutations are gated by the final review service before fetc
   assert.match(review, /new Set\(\['POST', 'PUT', 'PATCH', 'DELETE'\]\)/);
   assert.match(review, /upload-signature/);
   assert.match(review, /\/preview/);
-  assert.match(provider, /Nothing has been saved yet\./);
   assert.match(provider, /Back to Edit/);
-  assert.match(provider, /Nothing is saved until you confirm/);
+  assert.match(provider, /Nothing is saved until the last step is confirmed/);
   assert.doesNotMatch(provider, /System action details/);
   assert.doesNotMatch(provider, /Method:<\/span>/);
   assert.doesNotMatch(provider, /Endpoint:<\/span>/);
-  assert.match(provider, /Not provided \(\{rows\.length\}\).*hidden to keep this review focused/);
-  assert.match(provider, /Review what matters most/);
+  assert.doesNotMatch(provider, /hidden to keep this review focused/);
+  assert.match(provider, /Every user-facing field in this step is shown/);
+  assert.match(provider, /Blank values stay visible as “Not provided\.”/);
+  assert.match(provider, /buildReviewSections/);
+  assert.match(provider, /Final double-check · Step/);
+  assert.match(provider, /Next: \{reviewSections/);
+  assert.match(provider, /Previous/);
   assert.match(provider, /Payment Terms & Financials/);
+  assert.match(provider, /Seller Assignment/);
 });
 
 test('portal form controls get universal examples and Proceed submit treatment', () => {

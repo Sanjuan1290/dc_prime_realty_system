@@ -35,6 +35,13 @@ const shiftIsoYears = (value, years) => {
 const normalizeRequirement = (value, fallback = 'required') =>
   String(value || fallback).trim().toLowerCase() === 'optional' ? 'optional' : 'required'
 
+const normalizeTemplateRequirement = (document = {}) => {
+  const value = document.template_document_list_is_required ?? document.document_is_required ?? document.is_required
+  return value === false || value === 0 || value === '0' || String(value || '').trim().toLowerCase() === 'optional'
+    ? 'optional'
+    : 'required'
+}
+
 const normalizeLibraryDocument = (document) => ({
   ...document,
   id: Number(document.document_id || document.id),
@@ -107,7 +114,6 @@ const ReserveListingModal = ({
       .filter((document) => document.id && document.status === 'active')
   })
   const [searchDocument, setSearchDocument] = useState('')
-  const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const [agentSearch, setAgentSearch] = useState('')
   const [debouncedAgentSearch, setDebouncedAgentSearch] = useState('')
   const [selectedAgentSnapshot, setSelectedAgentSnapshot] = useState(null)
@@ -185,6 +191,32 @@ const ReserveListingModal = ({
     [documentTemplates]
   )
 
+  const reservationDocumentTemplates = useMemo(
+    () => activeDocumentTemplates.map((template) => {
+      const documents = (templateDocuments || [])
+        .filter((row) => String(row.template_id) === String(template.template_id))
+        .map((row) => {
+          const libraryDocument = documentLibrary.find((document) => Number(document.document_id || document.id) === Number(row.document_id))
+          if (!libraryDocument) return null
+          return {
+            ...libraryDocument,
+            source: `Template · ${template.template_name}`,
+            requirement: normalizeTemplateRequirement(row),
+            status: 'active',
+          }
+        })
+        .filter(Boolean)
+
+      return {
+        ...template,
+        documents,
+        totalDocuments: documents.length,
+        requiredDocuments: documents.filter((document) => document.requirement === 'required').length,
+      }
+    }),
+    [activeDocumentTemplates, documentLibrary, templateDocuments]
+  )
+
   // Delay seller/group searches slightly so typing does not issue one request per key.
   useEffect(() => {
     const timeoutId = window.setTimeout(() => setDebouncedAgentSearch(agentSearch.trim()), 300)
@@ -242,24 +274,15 @@ const ReserveListingModal = ({
 
   const filteredDocuments = useMemo(() => {
     const keyword = searchDocument.trim().toLowerCase()
-    const selectedTemplateDocumentIds = selectedTemplateId
-      ? new Set(
-          templateDocuments
-            .filter((document) => String(document.template_id) === String(selectedTemplateId))
-            .map((document) => Number(document.document_id))
-        )
-      : null
+    if (!keyword) return documentLibrary
 
-    return documentLibrary.filter((document) => {
-      const documentId = Number(document.document_id || document.id)
-      if (selectedTemplateDocumentIds && !selectedTemplateDocumentIds.has(documentId)) return false
-      if (!keyword) return true
-
-      return `${document.name || ''} ${document.description || ''}`
+    return documentLibrary.filter((document) =>
+      `${document.name || ''} ${document.description || ''}`
         .toLowerCase()
         .includes(keyword)
-    })
-  }, [documentLibrary, searchDocument, selectedTemplateId, templateDocuments])
+    )
+  }, [documentLibrary, searchDocument])
+
 
   const updatePaymentField = (key, value) => {
     // Clear the old commission preview immediately when another seller or group is selected.
@@ -318,6 +341,26 @@ const ReserveListingModal = ({
         .map(normalizeLibraryDocument)
         .filter((document) => document.id && !existingIds.has(Number(document.id)))
       return [...current, ...additions]
+    })
+  }
+
+  const addTemplateDocuments = (template) => {
+    const templateRows = Array.isArray(template?.documents) ? template.documents : []
+    if (!templateRows.length) {
+      setAlert({ type: 'warning', message: `${template?.template_name || 'This template'} has no active library documents to add.` })
+      return
+    }
+
+    const additions = templateRows.filter((document) => !isDocumentAdded(document.document_id || document.id))
+    if (!additions.length) {
+      setAlert({ type: 'info', message: `All documents from ${template.template_name} are already in the reservation checklist.` })
+      return
+    }
+
+    mergeSelectedDocuments(additions)
+    setAlert({
+      type: 'success',
+      message: `${template.template_name}: ${additions.length} document${additions.length === 1 ? '' : 's'} added to the reservation checklist.`,
     })
   }
 
@@ -616,7 +659,7 @@ const ReserveListingModal = ({
 
           {activeStep === 1 ? <ReserveClientProfileModal clientForm={clientForm} setClientForm={setClientForm} hasSecondBuyer={hasSecondBuyer} updateBuyerType={updateBuyerType} invalidField={invalidClientField} onFieldChange={handleClientFieldChange} title={mode === 'submission-review' ? 'Submitted Buyer Profile' : 'Client Profile'} description={mode === 'submission-review' ? 'Review the information submitted by the buyer. Admin corrections will be saved with the final reservation.' : undefined} /> : null}
 
-          {activeStep === 2 ? <ReserveDocumentChecklistModal filteredDocuments={filteredDocuments} searchDocument={searchDocument} setSearchDocument={setSearchDocument} selectedDocuments={selectedDocuments} isSaving={isSaving} isLoadingDefaults={isLoadingDocuments} deletingDocId={null} isDocumentAdded={isDocumentAdded} addDocument={addDocument} removeDocument={removeDocument} updateDocumentRequirement={updateDocumentRequirement} loadProjectDefaults={loadProjectDefaults} documentTemplates={activeDocumentTemplates} selectedTemplateId={selectedTemplateId} setSelectedTemplateId={setSelectedTemplateId} /> : null}
+          {activeStep === 2 ? <ReserveDocumentChecklistModal filteredDocuments={filteredDocuments} searchDocument={searchDocument} setSearchDocument={setSearchDocument} selectedDocuments={selectedDocuments} isSaving={isSaving} isLoadingDefaults={isLoadingDocuments} deletingDocId={null} isDocumentAdded={isDocumentAdded} addDocument={addDocument} addTemplateDocuments={addTemplateDocuments} removeDocument={removeDocument} updateDocumentRequirement={updateDocumentRequirement} loadProjectDefaults={loadProjectDefaults} documentTemplates={reservationDocumentTemplates} /> : null}
 
           {activeStep === 3 ? <ReservePaymentTermsModal listing={listing} project={project} tcp={tcp} contractPricing={contractPricing} paymentForm={effectivePaymentForm} updatePaymentField={updatePaymentField} agents={fetchedAgents} selectedAgent={selectedAgent} agentSearch={agentSearch} setAgentSearch={setAgentSearch} isLoadingAgents={agentsQuery.isLoading || agentsQuery.isFetching} agentsError={!projectSlug ? 'Project information is missing.' : agentsQuery.isError ? agentsQuery.error?.message || 'Failed to load Seller / Group options.' : null} commissionPreview={commissionPreview} isLoadingPreview={previewQuery.isLoading || previewQuery.isFetching} previewError={previewQuery.isError ? previewQuery.error?.message || 'Failed to load the commission structure.' : null} /> : null}
         </div>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   FiArrowLeft,
+  FiArrowRight,
   FiCheckCircle,
   FiFileText,
   FiShield,
@@ -17,38 +18,59 @@ const ABBREVIATIONS = new Map([
 const SECTION_META = {
   listing: {
     title: 'Listing & Pricing',
-    helper: 'Confirm the exact project, unit, area, pricing choice, and reservation fee.',
-    header: 'border-blue-200 bg-blue-50/80',
+    helper: 'Verify the project, unit, property details, pricing choice, and reservation amount.',
+    header: 'border-blue-200 bg-blue-50',
     badge: 'bg-blue-100 text-blue-700',
     accent: 'border-l-blue-500',
+    step: 'bg-blue-600 text-white ring-blue-100',
   },
   buyerprofile: {
     title: 'Buyer Information',
-    helper: 'Review the buyer identity and only the contact, employment, and second-buyer details that were actually entered.',
-    header: 'border-indigo-200 bg-indigo-50/80',
+    helper: 'Verify every buyer field, including fields intentionally left blank.',
+    header: 'border-indigo-200 bg-indigo-50',
     badge: 'bg-indigo-100 text-indigo-700',
     accent: 'border-l-indigo-500',
+    step: 'bg-indigo-600 text-white ring-indigo-100',
   },
   documentrequirements: {
     title: 'Document Checklist',
-    helper: 'Confirm each selected document and whether it is Required or Optional.',
-    header: 'border-emerald-200 bg-emerald-50/80',
+    helper: 'Verify every selected document and whether it is Required or Optional.',
+    header: 'border-emerald-200 bg-emerald-50',
     badge: 'bg-emerald-100 text-emerald-700',
     accent: 'border-l-emerald-500',
+    step: 'bg-emerald-600 text-white ring-emerald-100',
   },
   paymentterms: {
     title: 'Payment Terms & Financials',
-    helper: 'Pay special attention to amounts, dates, rates, discounts, and installment terms.',
-    header: 'border-amber-200 bg-amber-50/80',
+    helper: 'Verify every amount, discount, date, rate, penalty, and installment term.',
+    header: 'border-amber-200 bg-amber-50',
     badge: 'bg-amber-100 text-amber-800',
     accent: 'border-l-amber-500',
+    step: 'bg-amber-500 text-white ring-amber-100',
   },
   sellerassignment: {
     title: 'Seller Assignment',
-    helper: 'Confirm the seller, group, role, and assignment details.',
-    header: 'border-violet-200 bg-violet-50/80',
+    helper: 'Verify the seller, group, role, commission preview details, and assignment information.',
+    header: 'border-violet-200 bg-violet-50',
     badge: 'bg-violet-100 text-violet-700',
     accent: 'border-l-violet-500',
+    step: 'bg-violet-600 text-white ring-violet-100',
+  },
+  details: {
+    title: 'Information Review',
+    helper: 'Verify every user-facing field before continuing.',
+    header: 'border-blue-200 bg-blue-50',
+    badge: 'bg-blue-100 text-blue-700',
+    accent: 'border-l-blue-500',
+    step: 'bg-blue-600 text-white ring-blue-100',
+  },
+  items: {
+    title: 'Items Review',
+    helper: 'Verify every item and field before continuing.',
+    header: 'border-blue-200 bg-blue-50',
+    badge: 'bg-blue-100 text-blue-700',
+    accent: 'border-l-blue-500',
+    step: 'bg-blue-600 text-white ring-blue-100',
   },
 }
 
@@ -63,14 +85,20 @@ const humanizeKey = (value) => String(value || '')
 const normalizeSectionKey = (value) => String(value || '').replace(/[^a-z0-9]/gi, '').toLowerCase()
 const getSectionMeta = (label) => SECTION_META[normalizeSectionKey(label)] || {
   title: humanizeKey(label),
-  helper: 'Review the populated values in this section.',
+  helper: 'Verify every user-facing field in this section.',
   header: 'border-slate-200 bg-slate-50',
   badge: 'bg-slate-100 text-slate-700',
   accent: 'border-l-slate-400',
+  step: 'bg-slate-700 text-white ring-slate-200',
 }
 
 const isSensitiveKey = (key) => /password|secret|token|signature|authorization|cookie/i.test(String(key || ''))
-const isTechnicalKey = (key) => /request.?key|cloudinary|asset.?id|public.?id|website$|buyer.?form.?submission.?id/i.test(String(key || ''))
+const isTechnicalKey = (key) => {
+  const value = String(key || '')
+  return /request.?key|cloudinary|asset.?id|public.?id|website$|buyer.?form.?submission.?id/i.test(value)
+    || /(^|[._-])(id|ids)$/i.test(value)
+    || /(?:_id|Id)$/.test(value)
+}
 const isCriticalKey = (key) => /amount|fee|price|tcp|lmf|downpayment|discount|balance|income|salary|cash|payment|commission|rate|percentage|percent|interest|penalty|date|due|term/i.test(String(key || ''))
 
 const isEmptyScalar = (value) => {
@@ -81,8 +109,8 @@ const isEmptyScalar = (value) => {
 }
 
 const formatScalar = (value, key = '') => {
-  if (isSensitiveKey(key)) return value ? '••••••••' : '—'
-  if (isEmptyScalar(value)) return '—'
+  if (isSensitiveKey(key)) return value ? '••••••••' : 'Not provided'
+  if (isEmptyScalar(value)) return 'Not provided'
   if (typeof value === 'boolean') return value ? 'Yes' : 'No'
 
   const keyText = String(key || '').toLowerCase()
@@ -103,14 +131,13 @@ const flattenObject = (object = {}, prefix = '') => {
   const rows = []
   Object.entries(object || {}).forEach(([key, value]) => {
     const path = prefix ? `${prefix}.${key}` : key
-    if (Array.isArray(value) || (value && typeof value === 'object')) return
+    if (isTechnicalKey(key) || Array.isArray(value) || (value && typeof value === 'object')) return
     rows.push({
       key: path,
       sourceKey: key,
       label: humanizeKey(key),
       value: formatScalar(value, key),
       empty: isEmptyScalar(value),
-      technical: isTechnicalKey(key),
       critical: isCriticalKey(key),
     })
   })
@@ -118,20 +145,22 @@ const flattenObject = (object = {}, prefix = '') => {
 }
 
 const countReviewValues = (value, key = '') => {
-  if (isTechnicalKey(key)) return { provided: 0, blank: 0 }
+  if (isTechnicalKey(key)) return { provided: 0, blank: 0, total: 0 }
   if (Array.isArray(value)) {
     return value.reduce((total, item) => {
       const next = countReviewValues(item)
-      return { provided: total.provided + next.provided, blank: total.blank + next.blank }
-    }, { provided: 0, blank: 0 })
+      return { provided: total.provided + next.provided, blank: total.blank + next.blank, total: total.total + next.total }
+    }, { provided: 0, blank: 0, total: 0 })
   }
   if (value && typeof value === 'object') {
     return Object.entries(value).reduce((total, [childKey, childValue]) => {
       const next = countReviewValues(childValue, childKey)
-      return { provided: total.provided + next.provided, blank: total.blank + next.blank }
-    }, { provided: 0, blank: 0 })
+      return { provided: total.provided + next.provided, blank: total.blank + next.blank, total: total.total + next.total }
+    }, { provided: 0, blank: 0, total: 0 })
   }
-  return isEmptyScalar(value) ? { provided: 0, blank: 1 } : { provided: 1, blank: 0 }
+  return isEmptyScalar(value)
+    ? { provided: 0, blank: 1, total: 1 }
+    : { provided: 1, blank: 0, total: 1 }
 }
 
 const getRowGroup = (sectionLabel, row) => {
@@ -155,6 +184,11 @@ const getRowGroup = (sectionLabel, row) => {
   return ''
 }
 
+const GROUP_ORDER = {
+  buyerprofile: ['Primary Buyer', 'Contact & Address', 'Employment & Income', 'Second Buyer'],
+  paymentterms: ['Amounts & Pricing', 'Schedule & Dates', 'Rates & Penalties', 'Other Terms'],
+}
+
 const groupRows = (rows, sectionLabel) => {
   const grouped = new Map()
   rows.forEach((row) => {
@@ -162,74 +196,65 @@ const groupRows = (rows, sectionLabel) => {
     if (!grouped.has(group)) grouped.set(group, [])
     grouped.get(group).push(row)
   })
-  return Array.from(grouped.entries()).map(([title, items]) => ({ title, rows: items }))
-}
-
-const EmptyFieldsDisclosure = ({ rows }) => {
-  if (!rows.length) return null
-  return (
-    <details className="mt-3 rounded-xl border border-dashed border-slate-300 bg-slate-50/70">
-      <summary className="cursor-pointer select-none px-4 py-3 text-xs font-black text-slate-500">
-        Not provided ({rows.length}) — hidden to keep this review focused
-      </summary>
-      <div className="flex flex-wrap gap-2 border-t border-dashed border-slate-300 px-4 py-3">
-        {rows.map((row) => (
-          <span key={row.key} className="rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-slate-500 ring-1 ring-slate-200">
-            {row.label}
-          </span>
-        ))}
-      </div>
-    </details>
-  )
+  const groups = Array.from(grouped.entries()).map(([title, items]) => ({ title, rows: items }))
+  const order = GROUP_ORDER[normalizeSectionKey(sectionLabel)] || []
+  return groups.sort((a, b) => {
+    const ai = order.indexOf(a.title)
+    const bi = order.indexOf(b.title)
+    if (ai === -1 && bi === -1) return 0
+    if (ai === -1) return 1
+    if (bi === -1) return -1
+    return ai - bi
+  })
 }
 
 const ReviewRows = ({ object, sectionLabel = '' }) => {
   const rows = useMemo(() => flattenObject(object), [object])
-  const visibleRows = rows.filter((row) => !row.technical && !row.empty)
-  const emptyRows = rows.filter((row) => !row.technical && row.empty)
-  const groups = groupRows(visibleRows, sectionLabel)
+  const groups = groupRows(rows, sectionLabel)
 
-  if (!visibleRows.length && !emptyRows.length) return null
+  if (!rows.length) {
+    return <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-4 text-sm font-semibold text-slate-500">No user-facing fields are available in this section.</div>
+  }
 
   return (
-    <div>
-      {visibleRows.length ? (
-        <div className="space-y-4">
-          {groups.map((group, groupIndex) => (
-            <div key={`${sectionLabel || 'details'}-${group.title || groupIndex}`}>
-              {group.title ? (
-                <div className="mb-2 flex items-center gap-2">
-                  <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
-                  <h4 className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">{group.title}</h4>
-                </div>
-              ) : null}
-              <dl className="grid gap-2 md:grid-cols-2">
-                {group.rows.map((row) => (
-                  <div
-                    key={row.key}
-                    className={row.critical
-                      ? 'rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3'
-                      : 'rounded-xl border border-slate-200 bg-white px-4 py-3'}
-                  >
-                    <dt className={row.critical
-                      ? 'text-[10px] font-black uppercase tracking-[0.08em] text-amber-700'
-                      : 'text-[10px] font-black uppercase tracking-[0.08em] text-slate-500'}
-                    >
-                      {row.label}
-                    </dt>
-                    <dd className="mt-1.5 break-words text-sm font-black leading-5 text-slate-950">{row.value}</dd>
-                  </div>
-                ))}
-              </dl>
+    <div className="space-y-5">
+      {groups.map((group, groupIndex) => (
+        <section key={`${sectionLabel || 'details'}-${group.title || groupIndex}`}>
+          {group.title ? (
+            <div className="mb-2 flex items-center gap-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
+              <h4 className="text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">{group.title}</h4>
             </div>
-          ))}
-        </div>
-      ) : (
-        <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-4 text-sm font-semibold text-slate-500">
-          No values were entered in this section.
-        </div>
-      )}
-      <EmptyFieldsDisclosure rows={emptyRows} />
+          ) : null}
+          <dl className="grid gap-2 md:grid-cols-2">
+            {group.rows.map((row) => (
+              <div
+                key={row.key}
+                className={row.empty
+                  ? 'rounded-xl border border-slate-200 bg-slate-50 px-4 py-3'
+                  : row.critical
+                    ? 'rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3'
+                    : 'rounded-xl border border-slate-200 bg-white px-4 py-3'}
+              >
+                <dt className={row.empty
+                  ? 'text-[10px] font-black uppercase tracking-[0.08em] text-slate-400'
+                  : row.critical
+                    ? 'text-[10px] font-black uppercase tracking-[0.08em] text-amber-700'
+                    : 'text-[10px] font-black uppercase tracking-[0.08em] text-slate-500'}
+                >
+                  {row.label}
+                </dt>
+                <dd className={row.empty
+                  ? 'mt-1.5 break-words text-sm font-bold italic leading-5 text-slate-400'
+                  : 'mt-1.5 break-words text-sm font-black leading-5 text-slate-950'}
+                >
+                  {row.value}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      ))}
     </div>
   )
 }
@@ -239,122 +264,99 @@ const getItemTitle = (item, index) => {
   return item.name || item.document_name || item.documentName || item.full_name || item.fullName || item.label || `Item ${index + 1}`
 }
 
-const ArrayReview = ({ label, value }) => {
-  const meta = getSectionMeta(label)
-  const counts = countReviewValues(value)
-  return (
-    <section className={`overflow-hidden rounded-2xl border border-l-4 bg-white shadow-sm ${meta.accent}`}>
-      <header className={`flex items-start justify-between gap-3 border-b px-4 py-3.5 ${meta.header}`}>
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-base font-black text-slate-950">{meta.title}</h3>
-            <span className={`rounded-full px-2.5 py-1 text-[10px] font-black ${meta.badge}`}>{value.length} item{value.length === 1 ? '' : 's'}</span>
+const ArrayReview = ({ label, value }) => (
+  <div className="space-y-3">
+    {value.length ? value.map((item, index) => (
+      <article key={`${label}-${index}`} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="mb-3 flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <FiFileText className="h-4 w-4 shrink-0 text-blue-600" />
+            <p className="truncate text-sm font-black text-slate-950">{getItemTitle(item, index)}</p>
           </div>
-          <p className="mt-1 text-xs font-semibold leading-5 text-slate-600">{meta.helper}</p>
+          <span className="shrink-0 rounded-full bg-slate-100 px-2 py-1 text-[10px] font-black text-slate-500">{index + 1}/{value.length}</span>
         </div>
-        <FiFileText className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
-      </header>
-      <div className="space-y-2.5 p-3 sm:p-4">
-        {value.length ? value.map((item, index) => (
-          <article key={`${label}-${index}`} className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
-            <div className="mb-2 flex items-center justify-between gap-3">
-              <p className="min-w-0 truncate text-sm font-black text-slate-900">{getItemTitle(item, index)}</p>
-              <span className="shrink-0 rounded-full bg-white px-2 py-1 text-[10px] font-black text-slate-500 ring-1 ring-slate-200">{index + 1}/{value.length}</span>
-            </div>
-            {item && typeof item === 'object'
-              ? <ReviewRows object={item} sectionLabel={label} />
-              : <p className="text-sm font-bold text-slate-800">{formatScalar(item, label)}</p>}
-          </article>
-        )) : (
-          <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm font-semibold text-slate-500">No items selected.</div>
-        )}
-        {counts.blank > 0 && counts.provided === 0 && value.length ? (
-          <p className="text-xs font-semibold text-slate-500">The selected items do not contain populated review values.</p>
-        ) : null}
-      </div>
-    </section>
-  )
-}
+        {item && typeof item === 'object'
+          ? <ReviewRows object={item} sectionLabel={label} />
+          : <p className="text-sm font-bold text-slate-800">{formatScalar(item, label)}</p>}
+      </article>
+    )) : (
+      <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-5 text-sm font-semibold text-slate-500">No items selected.</div>
+    )}
+  </div>
+)
 
-const ObjectReview = ({ label, value }) => {
-  const meta = getSectionMeta(label)
+const NestedObjectReview = ({ label, value }) => {
   const nestedEntries = Object.entries(value || {}).filter(([key, child]) => !isTechnicalKey(key) && (Array.isArray(child) || (child && typeof child === 'object')))
-  const counts = countReviewValues(value)
-
   return (
-    <section className={`overflow-hidden rounded-2xl border border-l-4 bg-white shadow-sm ${meta.accent}`}>
-      <header className={`border-b px-4 py-3.5 ${meta.header}`}>
-        <div className="flex flex-wrap items-center gap-2">
-          <h3 className="text-base font-black text-slate-950">{meta.title}</h3>
-          <span className={`rounded-full px-2.5 py-1 text-[10px] font-black ${meta.badge}`}>{counts.provided} entered</span>
+    <div className="space-y-4">
+      <ReviewRows object={value} sectionLabel={label} />
+      {nestedEntries.map(([childKey, childValue]) => (
+        <section key={childKey} className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+          <h4 className="mb-3 text-xs font-black uppercase tracking-[0.1em] text-slate-500">{humanizeKey(childKey)}</h4>
+          {Array.isArray(childValue)
+            ? <ArrayReview label={childKey} value={childValue} />
+            : <NestedObjectReview label={childKey} value={childValue} />}
+        </section>
+      ))}
+    </div>
+  )
+}
+
+const buildReviewSections = (payload) => {
+  if (payload === null || payload === undefined || payload === '') {
+    return [{ key: 'details', label: 'details', value: {}, kind: 'object', ...getSectionMeta('details') }]
+  }
+  if (Array.isArray(payload)) {
+    return [{ key: 'items', label: 'items', value: payload, kind: 'array', ...getSectionMeta('items') }]
+  }
+  if (typeof payload !== 'object') {
+    return [{ key: 'details', label: 'details', value: { value: payload }, kind: 'object', ...getSectionMeta('details') }]
+  }
+
+  const sections = []
+  const scalarEntries = Object.entries(payload).filter(([key, value]) => !isTechnicalKey(key) && !Array.isArray(value) && !(value && typeof value === 'object'))
+  if (scalarEntries.length) {
+    sections.push({ key: 'details', label: 'details', value: Object.fromEntries(scalarEntries), kind: 'object', ...getSectionMeta('details') })
+  }
+
+  Object.entries(payload).forEach(([key, value]) => {
+    if (isTechnicalKey(key) || (!Array.isArray(value) && !(value && typeof value === 'object'))) return
+    sections.push({
+      key,
+      label: key,
+      value,
+      kind: Array.isArray(value) ? 'array' : 'object',
+      ...getSectionMeta(key),
+    })
+  })
+
+  return sections.length
+    ? sections
+    : [{ key: 'details', label: 'details', value: payload, kind: 'object', ...getSectionMeta('details') }]
+}
+
+const ReviewSection = ({ section }) => {
+  const counts = useMemo(() => countReviewValues(section.value), [section.value])
+  return (
+    <section className={`overflow-hidden rounded-2xl border border-l-4 bg-white shadow-sm ${section.accent}`}>
+      <header className={`border-b px-5 py-4 ${section.header}`}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-black text-slate-950">{section.title}</h3>
+            <p className="mt-1 max-w-3xl text-xs font-semibold leading-5 text-slate-600">{section.helper}</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <span className={`rounded-full px-2.5 py-1 text-[10px] font-black ${section.badge}`}>{counts.total} fields</span>
+            {counts.blank ? <span className="rounded-full bg-white/80 px-2.5 py-1 text-[10px] font-black text-slate-600 ring-1 ring-slate-200">{counts.blank} not provided</span> : null}
+          </div>
         </div>
-        <p className="mt-1 text-xs font-semibold leading-5 text-slate-600">{meta.helper}</p>
       </header>
-      <div className="space-y-3 p-3 sm:p-4">
-        <ReviewRows object={value} sectionLabel={label} />
-        {nestedEntries.map(([childKey, childValue]) => (
-          Array.isArray(childValue)
-            ? <ArrayReview key={childKey} label={childKey} value={childValue} />
-            : <ObjectReview key={childKey} label={childKey} value={childValue} />
-        ))}
+      <div className="p-4 sm:p-5">
+        {section.kind === 'array'
+          ? <ArrayReview label={section.label} value={section.value} />
+          : <NestedObjectReview label={section.label} value={section.value} />}
       </div>
     </section>
-  )
-}
-
-const ReviewOverview = ({ payload }) => {
-  const counts = useMemo(() => countReviewValues(payload), [payload])
-  const sectionLabels = useMemo(() => {
-    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return []
-    return Object.entries(payload)
-      .filter(([key, value]) => !isTechnicalKey(key) && (Array.isArray(value) || (value && typeof value === 'object')))
-      .map(([key]) => getSectionMeta(key).title)
-  }, [payload])
-
-  return (
-    <div className="mb-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <p className="text-sm font-black text-slate-950">Review what matters most</p>
-          <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
-            Populated values stay visible. Blank fields are collapsed so important names, amounts, dates, rates, and requirements are easier to spot.
-          </p>
-        </div>
-        <div className="flex shrink-0 flex-wrap gap-2">
-          {sectionLabels.length ? <span className="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-black text-blue-700">{sectionLabels.length} sections</span> : null}
-          <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-black text-emerald-700">{counts.provided} entered</span>
-          {counts.blank ? <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-black text-slate-600">{counts.blank} blank hidden</span> : null}
-        </div>
-      </div>
-      {sectionLabels.length ? (
-        <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
-          {sectionLabels.map((label) => <span key={label} className="rounded-lg bg-slate-50 px-2.5 py-1 text-[11px] font-bold text-slate-600 ring-1 ring-slate-200">{label}</span>)}
-        </div>
-      ) : null}
-    </div>
-  )
-}
-
-const PayloadReview = ({ payload }) => {
-  if (payload === null || payload === undefined || payload === '') {
-    return <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-5 text-sm font-semibold text-slate-500">This action has no editable information to review.</div>
-  }
-  if (Array.isArray(payload)) return <><ReviewOverview payload={payload} /><ArrayReview label="Items" value={payload} /></>
-  if (typeof payload !== 'object') return <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm font-bold text-slate-900">{formatScalar(payload)}</div>
-
-  const nestedEntries = Object.entries(payload).filter(([key, value]) => !isTechnicalKey(key) && (Array.isArray(value) || (value && typeof value === 'object')))
-  return (
-    <div>
-      <ReviewOverview payload={payload} />
-      <div className="space-y-4">
-        <ReviewRows object={payload} sectionLabel="details" />
-        {nestedEntries.map(([key, value]) => (
-          Array.isArray(value)
-            ? <ArrayReview key={key} label={key} value={value} />
-            : <ObjectReview key={key} label={key} value={value} />
-        ))}
-      </div>
-    </div>
   )
 }
 
@@ -387,7 +389,6 @@ const inferExample = (labelText, control) => {
   const type = String(control?.getAttribute('type') || control?.tagName || '').toLowerCase()
   const placeholder = exampleFromPlaceholder(control?.getAttribute('placeholder'))
 
-  if (type === 'checkbox' || type === 'radio') return 'check if applicable'
   if (/password|pin/.test(label) || type === 'password') return '8+ characters'
   if (/email/.test(label) || type === 'email') return 'juan@email.com'
   if (/contact|mobile|phone|telephone/.test(label) || type === 'tel') return '0917 123 4567'
@@ -518,10 +519,12 @@ const decorateInputs = () => {
 
 const MutationReviewProvider = ({ children }) => {
   const [request, setRequest] = useState(null)
+  const [reviewStep, setReviewStep] = useState(0)
   const resolverRef = useRef(null)
 
   useEffect(() => setMutationReviewHandler((nextRequest) => new Promise((resolve) => {
     resolverRef.current = resolve
+    setReviewStep(0)
     setRequest(nextRequest)
   })), [])
 
@@ -542,60 +545,83 @@ const MutationReviewProvider = ({ children }) => {
     }
   }, [])
 
+  const reviewSections = useMemo(() => buildReviewSections(request?.payload), [request?.payload])
+  const safeStep = Math.min(reviewStep, Math.max(reviewSections.length - 1, 0))
+  const currentSection = reviewSections[safeStep]
+  const isFirstStep = safeStep === 0
+  const isLastStep = safeStep === reviewSections.length - 1
+
   const finish = (confirmed) => {
     const resolve = resolverRef.current
     resolverRef.current = null
     setRequest(null)
+    setReviewStep(0)
     resolve?.(confirmed)
   }
-
-  const isDangerous = /delete|purge|remove|cancel/i.test(String(request?.confirmLabel || ''))
-  const confirmClass = isDangerous
-    ? 'bg-red-600 hover:bg-red-700 focus:ring-red-100'
-    : 'bg-blue-600 hover:bg-blue-700 focus:ring-blue-100'
 
   return (
     <>
       {children}
       {request ? (
-        <div className="fixed inset-0 z-[250] flex items-center justify-center bg-slate-950/70 p-2.5 backdrop-blur-sm sm:p-5">
-          <div role="dialog" aria-modal="true" aria-labelledby="mutation-review-title" className="flex max-h-[95vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-slate-100 shadow-2xl">
-            <div className="h-1.5 shrink-0 bg-gradient-to-r from-blue-600 via-indigo-500 to-cyan-500" />
-            <header className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 bg-white px-5 py-4 sm:px-6 sm:py-5">
-              <div className="flex min-w-0 items-start gap-3.5">
-                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-700 ring-1 ring-blue-100"><FiShield className="h-5 w-5" /></span>
-                <div className="min-w-0">
-                  <p className="text-[11px] font-black uppercase tracking-[0.18em] text-blue-700">Final double-check</p>
-                  <h2 id="mutation-review-title" className="mt-1 text-xl font-black tracking-tight text-slate-950 sm:text-2xl">{request.title}</h2>
-                  <p className="mt-1 max-w-3xl text-sm font-semibold leading-6 text-slate-600">{request.description}</p>
+        <div className="fixed inset-0 z-[250] flex items-center justify-center bg-slate-950/65 p-3 backdrop-blur-sm sm:p-5">
+          <div role="dialog" aria-modal="true" aria-labelledby="mutation-review-title" className="flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-2xl">
+            <header className="shrink-0 border-b border-slate-200 bg-white px-5 py-4 sm:px-6">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex min-w-0 items-start gap-3">
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700"><FiShield className="h-5 w-5" /></span>
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-black uppercase tracking-[0.16em] text-blue-700">Final double-check · Step {safeStep + 1} of {reviewSections.length}</p>
+                    <h2 id="mutation-review-title" className="mt-1 text-xl font-black text-slate-950">{request.title}</h2>
+                    <p className="mt-1 max-w-4xl text-sm font-semibold leading-6 text-slate-600">{request.description}</p>
+                  </div>
+                </div>
+                <button type="button" onClick={() => finish(false)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900" aria-label="Back to edit"><FiX className="h-5 w-5" /></button>
+              </div>
+
+              <div className="mt-4 overflow-x-auto pb-1">
+                <div className="flex min-w-max items-center gap-2">
+                  {reviewSections.map((section, index) => {
+                    const active = index === safeStep
+                    const complete = index < safeStep
+                    return (
+                      <div key={section.key} className={`flex items-center gap-2 rounded-xl border px-3 py-2 ${active ? 'border-blue-200 bg-blue-50' : complete ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50'}`}>
+                        <span className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-black ring-4 ${active ? section.step : complete ? 'bg-emerald-600 text-white ring-emerald-100' : 'bg-white text-slate-400 ring-slate-100'}`}>
+                          {complete ? <FiCheckCircle className="h-3.5 w-3.5" /> : index + 1}
+                        </span>
+                        <span className={`text-xs font-black ${active ? 'text-slate-950' : complete ? 'text-emerald-800' : 'text-slate-400'}`}>{section.title}</span>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
-              <button type="button" onClick={() => finish(false)} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-900" aria-label="Back to edit"><FiX className="h-5 w-5" /></button>
             </header>
 
-            <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-5">
-              <div className="mb-4 flex items-start gap-3 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3.5 text-blue-950 shadow-sm">
-                <FiShield className="mt-0.5 h-5 w-5 shrink-0 text-blue-700" />
+            <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
+              <div className="mb-4 flex flex-col gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-blue-950 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="text-sm font-black">Nothing has been saved yet.</p>
-                  <p className="mt-1 text-xs font-semibold leading-5 text-blue-800">Scan each colored section, especially the amber financial fields. Use Back to Edit if anything looks wrong.</p>
+                  <p className="text-sm font-black">Every user-facing field in this step is shown.</p>
+                  <p className="mt-1 text-xs font-semibold leading-5 text-blue-800">Blank values stay visible as “Not provided.” Nothing is saved until the last step is confirmed.</p>
                 </div>
+                {request.summary ? <span className="shrink-0 rounded-full bg-white px-3 py-1.5 text-xs font-black text-blue-800 ring-1 ring-blue-200">{request.summary}</span> : null}
               </div>
 
-              {request.summary ? (
-                <div className="mb-4 rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-black text-indigo-900 shadow-sm">
-                  {request.summary}
-                </div>
-              ) : null}
-
-              <PayloadReview payload={request.payload} />
+              {currentSection ? <ReviewSection section={currentSection} /> : null}
             </div>
 
-            <footer className="flex shrink-0 flex-col-reverse gap-3 border-t border-slate-200 bg-white/95 px-5 py-4 backdrop-blur sm:flex-row sm:items-center sm:justify-between sm:px-6">
-              <div className="flex items-center gap-2 text-xs font-bold text-slate-500"><FiShield className="text-blue-600" /> Nothing is saved until you confirm.</div>
+            <footer className="flex shrink-0 flex-col gap-3 border-t border-slate-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+              <div className="flex items-center justify-between gap-3 sm:justify-start">
+                <button type="button" onClick={() => finish(false)} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-xs font-black text-slate-700 transition hover:bg-slate-50"><FiArrowLeft /> Back to Edit</button>
+                <span className="text-xs font-semibold text-slate-500">All fields shown · Step {safeStep + 1} of {reviewSections.length}</span>
+              </div>
               <div className="flex flex-col-reverse gap-2 sm:flex-row">
-                <button type="button" onClick={() => finish(false)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50"><FiArrowLeft /> Back to Edit</button>
-                <button type="button" onClick={() => finish(true)} className={`inline-flex h-11 items-center justify-center gap-2 rounded-xl px-6 text-sm font-black text-white shadow-sm transition focus:outline-none focus:ring-4 active:scale-[0.99] ${confirmClass}`}><FiCheckCircle /> {request.confirmLabel}</button>
+                {!isFirstStep ? (
+                  <button type="button" onClick={() => setReviewStep((current) => Math.max(current - 1, 0))} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50"><FiArrowLeft /> Previous</button>
+                ) : null}
+                {!isLastStep ? (
+                  <button type="button" onClick={() => setReviewStep((current) => Math.min(current + 1, reviewSections.length - 1))} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 text-sm font-black text-white transition hover:bg-blue-700 active:scale-[0.99]">Next: {reviewSections[safeStep + 1]?.title || 'Review'} <FiArrowRight /></button>
+                ) : (
+                  <button type="button" onClick={() => finish(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-6 text-sm font-black text-white shadow-sm transition hover:bg-emerald-700 active:scale-[0.99]"><FiCheckCircle /> {request.confirmLabel}</button>
+                )}
               </div>
             </footer>
           </div>
