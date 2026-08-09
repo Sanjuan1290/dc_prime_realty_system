@@ -590,7 +590,7 @@ export const reserveLotProjectListing = async (req, res) => {
       return res.status(400).json({ message: 'First Due Date cannot be before the Starting Date.' });
     }
     const dailyPenaltyRate = Number(terms.dailyPenaltyRate ?? terms.penaltyRatePercent ?? 0.05);
-    const penaltyGraceDays = Number(terms.penaltyGraceDays ?? 1);
+    const penaltyGraceDays = Number(terms.penaltyGraceDays ?? 0);
     if (!Number.isFinite(dailyPenaltyRate) || dailyPenaltyRate < 0 || dailyPenaltyRate > 100) {
       return res.status(400).json({ message: 'Daily penalty rate must be between 0 and 100.' });
     }
@@ -1167,4 +1167,3 @@ export const reserveLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
-

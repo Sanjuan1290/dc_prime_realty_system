@@ -45,7 +45,7 @@ test('reservation preview and save pass the before-discount base into commission
 });
 
 test('commission screens identify the saved amount as the before-discount base', () => {
-  const preview = read('client/src/components/Lot_Projects/ListingProfileComponents/ReserveListingModal/ReservePaymentTermsModal.jsx');
+  const preview = read('client/src/components/Lot_Projects/ListingProfileComponents/ReserveListingModal/ReservationPreviewPanels.jsx');
   const commissionPage = read('client/src/pages/Lot_Projects/Commission.jsx');
   const distribution = read('client/src/components/Lot_Projects/ListingProfileComponents/UnitStatus/CommissionDistribution.jsx');
   const details = read('client/src/components/Lot_Projects/CommissionComponents/ReleaseDetailsModal/ReleaseDetailsModal.jsx');
@@ -107,4 +107,3 @@ test('commission payment progress credits the full DP discount and reports a ful
   assert.match(dashboardController, /const principalTcpExpr = hasClientProfiles[\s\S]*separate_soa_row/);
   assert.match(dashboardController, /const totalDiscountExpr = hasClientProfiles[\s\S]*downpaymentTargetExpr[\s\S]*soa_dp_discount_percentage/);
 });
-

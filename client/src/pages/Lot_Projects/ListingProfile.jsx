@@ -276,8 +276,10 @@ const ListingProfile = () => {
   })
 
   const reserveListingMutation = useMutation({
-    mutationFn: (payload) =>
-      useFetchPost(`/projects/lot-projects/${projectSlug}/listings/${listingId}/reserve`, payload, {
+    mutationFn: (payload) => {
+      const { reviewData = {}, ...requestPayload } = payload || {}
+
+      return useFetchPost(`/projects/lot-projects/${projectSlug}/listings/${listingId}/reserve`, requestPayload, {
         doubleCheck: {
           type: 'reservation',
           summary: `${project?.name || project?.lot_project_name || 'Project'} · ${listing?.unit_id || listing?.unitCode || listingId}`,
@@ -287,32 +289,20 @@ const ListingProfile = () => {
               unit: listing?.unit_id || listing?.unitCode || listingId,
               lotType: listing?.lot_type || listing?.lotType || '-',
               areaSqm: listing?.lotAreaSqm || listing?.lot_project_listing_area_sqm || listing?.area || '-',
-              reservationFee: payload?.reservation?.paymentTerms?.reservationFee,
-              modeOfPayment: payload?.reservation?.modeOfPayment,
-              selectedPricePerSqm: payload?.reservation?.paymentTerms?.selectedPricing?.pricePerSqm,
-              baseSellingPrice: payload?.reservation?.paymentTerms?.selectedPricing?.baseSellingPrice,
-              saleDiscountAmount: payload?.reservation?.paymentTerms?.selectedPricing?.saleDiscountAmount,
-              netSellingPrice: payload?.reservation?.paymentTerms?.selectedPricing?.netSellingPrice,
-              tcp: payload?.reservation?.paymentTerms?.tcp,
             },
-            buyerProfile: payload?.clientProfile || {},
-            documentRequirements: (payload?.documents || []).map((document) => ({
+            buyerProfile: requestPayload?.clientProfile || {},
+            documentRequirements: (requestPayload?.documents || []).map((document) => ({
               name: document?.name || document?.document_name || 'Document',
               source: document?.source || 'Document Library',
               requirement: document?.requirement || 'required',
               status: document?.status || 'active',
             })),
-            paymentTerms: payload?.reservation?.paymentTerms || {},
-            sellerAssignment: {
-              sellerName: payload?.reservation?.seller?.name || payload?.reservation?.seller?.full_name || '-',
-              role: payload?.reservation?.seller?.roleValue || payload?.reservation?.seller?.role || '-',
-              groupName: payload?.reservation?.seller?.groupName || payload?.reservation?.seller?.group_name || '-',
-              commissionRate: payload?.reservation?.seller?.directRate ?? payload?.reservation?.seller?.rateValue ?? payload?.reservation?.seller?.rate,
-              commissionBase: payload?.reservation?.paymentTerms?.selectedPricing?.baseSellingPrice,
-            },
+            paymentTerms: requestPayload?.reservation?.paymentTerms || {},
+            commissionPreview: reviewData?.commissionPreview || null,
           },
         },
-      }),
+      })
+    },
     onMutate: (payload) => {
       setAlert({ type: 'loading', message: `Preparing reservation review for ${payload?.clientProfile?.buyerName || 'listing'}...` })
     },
@@ -901,4 +891,3 @@ const ListingProfile = () => {
 }
 
 export default ListingProfile
-

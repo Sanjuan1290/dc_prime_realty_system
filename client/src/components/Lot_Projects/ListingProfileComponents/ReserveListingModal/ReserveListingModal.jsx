@@ -152,7 +152,7 @@ const ReserveListingModal = ({
       0
     ),
     dailyPenaltyRate: '0.05',
-    penaltyGraceDays: '1',
+    penaltyGraceDays: '0',
   })
 
   const contractPricing = useMemo(
@@ -579,6 +579,9 @@ const ReserveListingModal = ({
     // The selected account now represents either an In-House Sales Agent or an External Group.
     const payload = {
       listing,
+      reviewData: {
+        commissionPreview,
+      },
       buyerFormSubmissionId: buyerFormSubmissionId || undefined,
       clientProfile: { ...clientForm, profileStatus: 'complete' },
       documents: selectedDocuments,
@@ -677,4 +680,3 @@ const ReserveListingModal = ({
 }
 
 export default ReserveListingModal
-

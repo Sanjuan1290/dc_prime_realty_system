@@ -915,7 +915,7 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
       Number(isHistoricalEntry) !== Number(currentHistoricalEntry);
     const penaltyTermsChanged =
       !sameNumber(dailyPenaltyRate, listing.soa_penalty_rate_percent) ||
-      Number(penaltyGraceDays) !== Number(listing.soa_penalty_grace_days ?? 1) ||
+      Number(penaltyGraceDays) !== Number(listing.soa_penalty_grace_days ?? 0) ||
       String(listing.soa_penalty_calculation_method || 'daily').toLowerCase() !== 'daily';
 
     if (firstDueDate !== currentFirstDueDate || isHistoricalEntry !== currentHistoricalEntry) {
@@ -2141,4 +2141,3 @@ export const restorePaymentSchedulePenaltyWaiver = async (req, res) => {
     connection.release();
   }
 };
-

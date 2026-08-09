@@ -1,5 +1,11 @@
 import { FiCheckCircle } from 'react-icons/fi'
 
+const FieldLabel = ({ label, required = false, error = false }) => (
+  <span className={`flex min-h-5 flex-wrap items-baseline text-xs font-black md:min-h-7 ${error ? 'text-red-700' : 'text-slate-700'}`}>
+    {label} {required ? <span className="text-red-500">*</span> : null}
+  </span>
+)
+
 export const TextInput = ({
   label,
   value,
@@ -16,9 +22,7 @@ export const TextInput = ({
   example,
 }) => (
   <label className="flex flex-col gap-1.5">
-    <span className={`text-xs font-black ${error ? 'text-red-700' : 'text-slate-700'}`}>
-      {label} {required ? <span className="text-red-500">*</span> : null}
-    </span>
+    <FieldLabel label={label} required={required} error={error} />
 
     <input
       type={type}
@@ -56,9 +60,7 @@ export const SelectInput = ({
   error = false,
 }) => (
   <label className="flex flex-col gap-1.5">
-    <span className={`text-xs font-black ${error ? 'text-red-700' : 'text-slate-700'}`}>
-      {label} {required ? <span className="text-red-500">*</span> : null}
-    </span>
+    <FieldLabel label={label} required={required} error={error} />
 
     <select
       value={value || ''}
@@ -130,4 +132,3 @@ export const StepPill = ({ step, activeStep, completed }) => {
     </div>
   )
 }
-

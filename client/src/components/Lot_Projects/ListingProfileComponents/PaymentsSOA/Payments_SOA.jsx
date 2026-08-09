@@ -416,7 +416,7 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
       })()
     ),
     dailyPenaltyRate: initialDailyPenaltyRate,
-    penaltyGraceDays: String(getListingValue(listing, ['soaPenaltyGraceDays'], 1)),
+    penaltyGraceDays: String(getListingValue(listing, ['soaPenaltyGraceDays'], 0)),
   }))
   const [penaltyRateMode, setPenaltyRateMode] = useState(() =>
     DAILY_PENALTY_RATE_OPTIONS.includes(Number(initialDailyPenaltyRate)) ? 'preset' : 'custom'
@@ -652,7 +652,7 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
               />
             ) : null}
             <label className="flex flex-col gap-1.5">
-              <span className="text-sm font-black text-slate-700">Penalty-Free Grace Period</span>
+              <span className="text-sm font-black text-slate-700">Penalty-Free Grace Period (Days)</span>
               <select value={form.penaltyGraceDays} onChange={(event) => updateForm('penaltyGraceDays', event.target.value)} disabled={isSaving} className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100">
                 {penaltyGraceDayOptions.map((days) => <option key={days} value={days}>{days === 0 ? 'No grace period (0 days)' : `${days} day${days === 1 ? '' : 's'}`}</option>)}
               </select>
@@ -1694,4 +1694,3 @@ const PaymentsSOA = ({
 }
 
 export default PaymentsSOA
-
