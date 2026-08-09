@@ -89,6 +89,22 @@ const SECTION_META = {
     accent: 'border-l-emerald-500',
     step: 'bg-emerald-600 text-white ring-emerald-100',
   },
+  templateinformation: {
+    title: 'Template Information',
+    helper: 'Verify the template name, description, and status before continuing.',
+    header: 'border-blue-200 bg-blue-50',
+    badge: 'bg-blue-100 text-blue-700',
+    accent: 'border-l-blue-500',
+    step: 'bg-blue-600 text-white ring-blue-100',
+  },
+  templatedocuments: {
+    title: 'Template Documents',
+    helper: 'Verify every selected document and whether it is Required or Optional.',
+    header: 'border-emerald-200 bg-emerald-50',
+    badge: 'bg-emerald-100 text-emerald-700',
+    accent: 'border-l-emerald-500',
+    step: 'bg-emerald-600 text-white ring-emerald-100',
+  },
   details: {
     title: 'Information Review',
     helper: 'Verify every user-facing field before continuing.',
@@ -129,6 +145,7 @@ const isSensitiveKey = (key) => /password|secret|token|signature|authorization|c
 const isTechnicalKey = (key) => {
   const value = String(key || '')
   return /request.?key|cloudinary|asset.?id|public.?id|preview.?url|website$|buyer.?form.?submission.?id/i.test(value)
+    || /^review.?title$/i.test(value)
     || /(^|[._-])(id|ids)$/i.test(value)
     || /(?:_id|Id)$/.test(value)
 }
@@ -241,12 +258,13 @@ const groupRows = (rows, sectionLabel) => {
   })
 }
 
-const ReviewRows = ({ object, sectionLabel = '' }) => {
+const ReviewRows = ({ object, sectionLabel = '', hideWhenEmpty = false }) => {
   const rows = useMemo(() => flattenObject(object), [object])
   const groups = groupRows(rows, sectionLabel)
 
   if (!rows.length) {
-    return <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-4 text-sm font-semibold text-slate-500">No user-facing fields are available in this section.</div>
+    if (hideWhenEmpty) return null
+    return <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-4 text-sm font-semibold text-slate-500">There are no additional details to review in this section.</div>
   }
 
   return (
@@ -294,7 +312,14 @@ const ReviewRows = ({ object, sectionLabel = '' }) => {
 
 const getItemTitle = (item, index) => {
   if (!item || typeof item !== 'object') return `Item ${index + 1}`
-  return item.fileName || item.name || item.document_name || item.documentName || item.full_name || item.fullName || item.label || `Item ${index + 1}`
+  return item.reviewTitle || item.fileName || item.name || item.document_name || item.documentName || item.full_name || item.fullName || item.label || `Item ${index + 1}`
+}
+
+const getEmptyArrayMessage = (label) => {
+  const section = normalizeSectionKey(label)
+  if (section === 'templatedocuments') return 'No documents are selected for this template.'
+  if (section === 'files') return 'No files are selected.'
+  return 'No items are selected for this section.'
 }
 
 const ArrayReview = ({ label, value }) => (
@@ -320,7 +345,7 @@ const ArrayReview = ({ label, value }) => (
           : <p className="text-sm font-bold text-slate-800">{formatScalar(item, label)}</p>}
       </article>
     )) : (
-      <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-5 text-sm font-semibold text-slate-500">No items selected.</div>
+      <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-5 text-sm font-semibold text-slate-500">{getEmptyArrayMessage(label)}</div>
     )}
   </div>
 )
@@ -329,7 +354,7 @@ const NestedObjectReview = ({ label, value }) => {
   const nestedEntries = Object.entries(value || {}).filter(([key, child]) => !isTechnicalKey(key) && (Array.isArray(child) || (child && typeof child === 'object')))
   return (
     <div className="space-y-4">
-      <ReviewRows object={value} sectionLabel={label} />
+      <ReviewRows object={value} sectionLabel={label} hideWhenEmpty={nestedEntries.length > 0} />
       {nestedEntries.map(([childKey, childValue]) => (
         <section key={childKey} className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
           <h4 className="mb-3 text-xs font-black uppercase tracking-[0.1em] text-slate-500">{humanizeKey(childKey)}</h4>
