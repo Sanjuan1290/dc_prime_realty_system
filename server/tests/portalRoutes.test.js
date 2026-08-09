@@ -50,3 +50,4 @@ test('server-generated frontend links include the portal prefix', () => {
   assert.match(notifications, /`\/portal\/lot-projects\/\$\{row\.lot_project_slug\}\/listings\//);
   assert.match(users, /\/portal\/change-password on next login/);
 });
+

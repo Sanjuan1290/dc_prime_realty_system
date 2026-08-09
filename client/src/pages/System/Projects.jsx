@@ -17,12 +17,7 @@ import ReadOnlyNotice from '../../components/Shared/ReadOnlyNotice'
 import useCurrentUser from '../../utils/useCurrentUser'
 import AddLotProjectModal from '../../components/System/projectComponents/AddLotProjectModal'
 import HouseLotProjectModal from '../../components/System/projectComponents/HouseLotProjectModal'
-import {
-  useFetch,
-  useFetchDelete,
-  useFetchPatch,
-  useFetchPost,
-} from '../../utils/useFetch'
+import { useFetch, useFetchDelete, useFetchPatch, useFetchPost, getDoubleCheckNotice } from '../../utils/useFetch'
 import { isFullAccessAdministrator } from '../../config/permissions'
 
 const StatCard = ({ label, value }) => (
@@ -207,9 +202,11 @@ const Projects = () => {
   const templateDocuments = templatesResponse?.template_documents || []
 
   const addProjectMutation = useMutation({
-    mutationFn: (payload) => useFetchPost('/projects/lot-projects', payload),
+    mutationFn: ({ payload, reviewData }) => useFetchPost('/projects/lot-projects', payload, {
+      doubleCheck: { type: 'project', mode: 'create', data: reviewData },
+    }),
     onMutate: () => {
-      setAlert({ type: 'loading', message: 'Saving lot project...' })
+      setAlert({ type: 'loading', message: 'Preparing project review...' })
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['lot-projects'] })
@@ -218,7 +215,7 @@ const Projects = () => {
       setAlert({ type: 'success', message: data?.message || 'Lot project added successfully.' })
     },
     onError: (error) => {
-      setAlert({ type: 'error', message: error.message || 'Failed to save lot project.' })
+      setAlert(getDoubleCheckNotice(error, 'Failed to save lot project.'))
     },
   })
 
@@ -226,7 +223,7 @@ const Projects = () => {
     mutationFn: (projectId) =>
       useFetchPatch(`/projects/lot-projects/${projectId}/status`, {
         status: 'inactive',
-      }),
+      }, { confirmationHandled: 'compact' }),
     onMutate: () => {
       setAlert({ type: 'loading', message: 'Changing project status to inactive...' })
     },
@@ -241,7 +238,7 @@ const Projects = () => {
   })
 
   const deleteProjectMutation = useMutation({
-    mutationFn: (project) => useFetchDelete(`/projects/lot-projects/${project.id}`),
+    mutationFn: (project) => useFetchDelete(`/projects/lot-projects/${project.id}`, { confirmationHandled: 'compact' }),
     onMutate: (project) => {
       setDeletingProjectId(project.id)
       setAlert({ type: 'loading', message: `Deleting ${project.name}...` })
@@ -307,8 +304,8 @@ const Projects = () => {
     setAlert({ type: 'info', message: 'Filters reset.' })
   }
 
-  const handleAddLotProject = async (project) => {
-    await addProjectMutation.mutateAsync(project)
+  const handleAddLotProject = async (payload, reviewData) => {
+    await addProjectMutation.mutateAsync({ payload, reviewData })
   }
 
   const handleOpenProject = (project) => {
@@ -683,3 +680,4 @@ const Projects = () => {
 }
 
 export default Projects
+

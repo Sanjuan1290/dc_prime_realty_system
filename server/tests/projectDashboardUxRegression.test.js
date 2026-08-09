@@ -18,8 +18,8 @@ test('Lot Project dashboard initializes to This Month and View Details print ope
 });
 
 test('commission rate examples are field-authored instead of inheriting the daily penalty sample', async () => {
-  const [provider, projectRates] = await Promise.all([
-    read('../../client/src/components/Shared/MutationReviewProvider.jsx'),
+  const [decorator, projectRates] = await Promise.all([
+    read('../../client/src/components/Shared/InputExampleDecorator.jsx'),
     read('../../client/src/components/System/sellerGroupComponents/ProjectAccreditationFields.jsx'),
   ]);
 
@@ -27,7 +27,8 @@ test('commission rate examples are field-authored instead of inheriting the dail
   assert.match(projectRates, /'division_manager_rate', 'Division Manager Rate', '1%'/);
   assert.match(projectRates, /'sales_agent_rate', 'Sales Agent Rate', '5%'/);
   assert.match(projectRates, /data-example=\{example\}/);
-  assert.match(provider, /getAttribute\('data-example'\)/);
-  assert.doesNotMatch(provider, /if \(\/rate\|percentage\|percent[\s\S]*?return '0\.05%'/);
-  assert.doesNotMatch(provider, /custom\.\*daily\.\*penalty\.\*rate/);
+  assert.match(decorator, /getAttribute\('data-example'\)/);
+  assert.doesNotMatch(decorator, /if \(\/rate\|percentage\|percent[\s\S]*?return '0\.05%'/);
+  assert.doesNotMatch(decorator, /custom\.\*daily\.\*penalty\.\*rate/);
 });
+

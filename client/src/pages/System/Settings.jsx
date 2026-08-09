@@ -7,7 +7,7 @@ import ReadOnlyNotice from '../../components/Shared/ReadOnlyNotice'
 import useCurrentUser from '../../utils/useCurrentUser'
 import SystemSettingsForm from '../../components/System/settingsComponents/SystemSettingsForm'
 import { formatDateTime } from '../../utils/formatDateTime'
-import { useFetch, useFetchPut } from '../../utils/useFetch'
+import {useFetch, useFetchPut, getDoubleCheckNotice} from '../../utils/useFetch'
 import { isFullAccessAdministrator } from '../../config/permissions'
 
 const defaultForm = {
@@ -60,15 +60,17 @@ const Settings = () => {
   }, [settings, isEditing])
 
   const saveMutation = useMutation({
-    mutationFn: (payload) => useFetchPut('/system-settings', payload),
-    onMutate: () => setAlert({ type: 'loading', message: 'Saving system settings...' }),
+    mutationFn: (payload) => useFetchPut('/system-settings', payload, {
+      doubleCheck: { type: 'settings', scope: 'system', data: payload, summary: 'System Settings' },
+    }),
+    onMutate: () => setAlert({ type: 'loading', message: 'Preparing settings review...' }),
     onSuccess: (result) => {
       setAlert({ type: 'success', message: result?.message || 'System settings saved.' })
       setIsEditing(false)
       queryClient.invalidateQueries({ queryKey: ['system-settings'] })
       queryClient.invalidateQueries({ queryKey: ['audit-logs'] })
     },
-    onError: (mutationError) => setAlert({ type: 'error', message: mutationError?.message || 'Failed to save settings.' }),
+    onError: (mutationError) => setAlert(getDoubleCheckNotice(mutationError, 'Failed to save settings.')),
   })
 
   const handleSubmit = (event) => {
@@ -151,3 +153,4 @@ const Settings = () => {
 }
 
 export default Settings
+

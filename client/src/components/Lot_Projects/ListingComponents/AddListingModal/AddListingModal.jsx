@@ -47,15 +47,16 @@ const money = (value) =>
     minimumFractionDigits: 2,
   }).format(Number(value || 0))
 
-const normalizeDocument = (document) => ({
-  ...document,
-  id: document.id || document.document_id,
-  document_id: document.document_id || document.id,
-  name: document.name || document.document_name,
-  description: document.description || document.document_description || 'Project Default',
+const normalizeDocument = (document = {}) => ({
+  id: Number(document.document_id || document.id || 0) || null,
+  document_id: Number(document.document_id || document.id || 0) || null,
+  name: document.name || document.document_name || 'Document',
+  description: document.description || document.document_description || '',
   source: document.source || 'Project Default',
-  requirement: document.requirement || (document.lot_project_default_document_is_required ? 'required' : 'optional'),
-  status: document.status || document.lot_project_default_document_status || document.document_status || 'active',
+  requirement: String(
+    document.requirement || (document.lot_project_default_document_is_required === false || document.document_is_required === false ? 'optional' : 'required')
+  ).toLowerCase() === 'optional' ? 'optional' : 'required',
+  status: String(document.status || document.lot_project_default_document_status || document.document_status || 'active').toLowerCase() === 'inactive' ? 'inactive' : 'active',
 })
 
 const AddListingModal = ({ project = {}, projectDefaultDocuments = [], libraryDocuments = [], isLoadingDefaults = false, onClose, onSave, isSaving = false }) => {
@@ -328,3 +329,4 @@ const AddListingModal = ({ project = {}, projectDefaultDocuments = [], libraryDo
 }
 
 export default AddListingModal
+

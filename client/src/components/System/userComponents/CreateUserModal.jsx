@@ -12,7 +12,7 @@ import {
 } from "react-icons/fi";
 import StatusAlert from "../../Shared/StatusAlert";
 import { ADMIN_TYPES } from "../../../config/permissions";
-import { useFetch as fetchApi, useFetchPost as postApi } from "../../../utils/useFetch";
+import { useFetch as fetchApi, useFetchPost as postApi, getDoubleCheckNotice } from "../../../utils/useFetch";
 
 const sellerRoles = ["division_manager", "sales_director", "unit_manager", "sales_agent"];
 
@@ -182,6 +182,7 @@ const CreateUserModal = ({
   const availableRoleEntries = useMemo(() => Object.entries(roleLabels).filter(([value]) => allowedRoles.includes(value)), [allowedRoles]);
   const [activeStep, setActiveStep] = useState(1);
   const [warning, setWarning] = useState("");
+  const [reviewNotice, setReviewNotice] = useState(null);
   const [form, setForm] = useState({
     first_name: "",
     middle_name: "",
@@ -266,7 +267,17 @@ const CreateUserModal = ({
 
   const createMutation = useMutation({
     mutationFn: () =>
-      postApi("/user/createUser", form),
+      postApi("/user/createUser", form, {
+        doubleCheck: {
+          type: 'user',
+          mode: 'create',
+          data: form,
+          meta: {
+            sellerGroupName: selectedGroup?.seller_group_name || '',
+            reportsUnderName: parentOptions.find((option) => String(option.value) === String(form.reports_under_user_id))?.label || '',
+          },
+        },
+      }),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["users"] });
       queryClient.invalidateQueries({ queryKey: ["accredited"] });
@@ -275,11 +286,17 @@ const CreateUserModal = ({
       setShowCreateUser(false);
       onSaved?.(data.message || "User created successfully.");
     },
-    onError: (error) => setWarning(error.message),
+    onError: (error) => {
+      const notice = getDoubleCheckNotice(error, 'Failed to save user.');
+      if (notice.type === 'info') { setWarning(''); setReviewNotice(notice); return; }
+      setReviewNotice(null);
+      setWarning(notice.message);
+    },
   });
 
   const updateForm = (field, value) => {
     setWarning("");
+    setReviewNotice(null);
     setForm((currentForm) => ({ ...currentForm, [field]: value }));
   };
 
@@ -344,6 +361,7 @@ const CreateUserModal = ({
 
   const handleSubmit = () => {
     setWarning("");
+    setReviewNotice(null);
 
     if (!validateAccountStep()) {
       setActiveStep(1);
@@ -364,7 +382,7 @@ const CreateUserModal = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
-      <div className="flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+      <div className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
           <div>
             <h3 className="text-xl font-bold text-slate-950">{title}</h3>
@@ -433,7 +451,7 @@ const CreateUserModal = ({
         <div className=" h-fit px-6 py-5">
           <div className="grid gap-5">
             {createMutation.isPending ? (
-              <StatusAlert type="loading" message="Creating user account..." />
+              <StatusAlert type="loading" message="Preparing user review..." />
             ) : null}
             {isGroupsLoading || isParentsLoading ? (
               <StatusAlert type="loading" message="Loading In-House Groups and reporting options..." />
@@ -444,48 +462,49 @@ const CreateUserModal = ({
             {isParentsError ? (
               <StatusAlert type="error" message={parentsError?.message || "Failed to load parent sellers."} />
             ) : null}
+{reviewNotice ? <StatusAlert type={reviewNotice.type} message={reviewNotice.message} /> : null}
 {warning ? <StatusAlert type="warning" message={warning} /> : null}
 
             {activeStep === 1 ? (
               <>
                 <div className="grid gap-4 md:grid-cols-3">
                   <label className="flex flex-col gap-2">
-                    <p className="text-sm font-bold text-slate-700">First Name *</p>
-                    <input type="text" value={form.first_name} onChange={(event) => updateForm("first_name", event.target.value)} placeholder="Enter first name" className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" />
+                    <p className="min-h-5 text-sm font-bold text-slate-700">First Name *</p>
+                    <input type="text" data-example="Juan" value={form.first_name} onChange={(event) => updateForm("first_name", event.target.value)} placeholder="Enter first name" className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" />
                   </label>
                   <label className="flex flex-col gap-2">
-                    <p className="text-sm font-bold text-slate-700">Middle Name</p>
-                    <input type="text" value={form.middle_name} onChange={(event) => updateForm("middle_name", event.target.value)} placeholder="Optional middle name" className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" />
+                    <p className="min-h-5 text-sm font-bold text-slate-700">Middle Name</p>
+                    <input type="text" data-example="Santos" value={form.middle_name} onChange={(event) => updateForm("middle_name", event.target.value)} placeholder="Optional middle name" className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" />
                   </label>
                   <label className="flex flex-col gap-2">
-                    <p className="text-sm font-bold text-slate-700">Last Name *</p>
-                    <input type="text" value={form.last_name} onChange={(event) => updateForm("last_name", event.target.value)} placeholder="Enter last name" className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" />
+                    <p className="min-h-5 text-sm font-bold text-slate-700">Last Name *</p>
+                    <input type="text" data-example="Dela Cruz" value={form.last_name} onChange={(event) => updateForm("last_name", event.target.value)} placeholder="Enter last name" className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" />
                   </label>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                   <label className="flex flex-col gap-2">
-                    <p className="text-sm font-bold text-slate-700">Email *</p>
+                    <p className="min-h-10 text-sm font-bold leading-5 text-slate-700">Email *</p>
                     <input type="email" value={form.email} onChange={(event) => updateForm("email", event.target.value)} placeholder="user@example.com" className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" />
                   </label>
                   <label className="flex flex-col gap-2">
-                    <p className="text-sm font-bold text-slate-700">Contact No.</p>
-                    <input type="text" value={form.contact_no} onChange={(event) => updateForm("contact_no", event.target.value)} placeholder="09XXXXXXXXX" className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" />
+                    <p className="min-h-10 text-sm font-bold leading-5 text-slate-700">Contact No.</p>
+                    <input type="text" data-example="0917 123 4567" value={form.contact_no} onChange={(event) => updateForm("contact_no", event.target.value)} placeholder="09XXXXXXXXX" className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" />
                   </label>
                   <label className="flex flex-col gap-2">
-                    <p className="text-sm font-bold text-slate-700">TIN No.</p>
-                    <input type="text" value={form.tin_no} onChange={(event) => updateForm("tin_no", event.target.value)} placeholder="000-000-000-000" className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" />
+                    <p className="min-h-10 text-sm font-bold leading-5 text-slate-700">TIN No.</p>
+                    <input type="text" data-example="123-456-789-000" value={form.tin_no} onChange={(event) => updateForm("tin_no", event.target.value)} placeholder="000-000-000-000" className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" />
                   </label>
                   <label className="flex flex-col gap-2">
-                    <p className="text-sm font-bold text-slate-700">PRC No. <span className="font-medium text-slate-400">(optional)</span></p>
-                    <input type="text" value={form.prc_no} onChange={(event) => updateForm("prc_no", event.target.value)} placeholder="PRC registration number" className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" />
+                    <p className="min-h-10 text-sm font-bold leading-5 text-slate-700">PRC No. <span className="font-medium text-slate-400">(optional)</span></p>
+                    <input type="text" data-example="0123456" value={form.prc_no} onChange={(event) => updateForm("prc_no", event.target.value)} placeholder="PRC registration number" className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" />
                   </label>
                 </div>
 
                 <div className={`grid gap-4 ${isSellerRole ? "grid-cols-1" : "md:grid-cols-[2fr_1fr]"}`}>
                   <label className="flex flex-col gap-2">
                     <p className="text-sm font-bold text-slate-700">Address</p>
-                    <input type="text" value={form.address} onChange={(event) => updateForm("address", event.target.value)} placeholder="Complete seller address" className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" />
+                    <input type="text" data-example="123 Aguinaldo Hwy, Cavite" value={form.address} onChange={(event) => updateForm("address", event.target.value)} placeholder="Complete seller address" className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" />
                   </label>
                   {!isSellerRole ? (
                     <label className="flex flex-col gap-2">
@@ -631,7 +650,7 @@ const CreateUserModal = ({
               </button>
             ) : (
               <button type="button" disabled={createMutation.isPending} onClick={handleSubmit} className="h-11 rounded-xl bg-blue-600 px-5 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300">
-                {createMutation.isPending ? "Creating..." : "Create User"}
+                {createMutation.isPending ? "Opening Review..." : "Proceed to Final Review"}
               </button>
             )}
           </div>
@@ -642,3 +661,4 @@ const CreateUserModal = ({
 };
 
 export default CreateUserModal;
+

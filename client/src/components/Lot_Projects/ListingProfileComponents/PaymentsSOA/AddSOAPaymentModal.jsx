@@ -499,7 +499,7 @@ const AddSOAPaymentModal = ({
 
     try {
       submitLockRef.current = true
-      setAlert({ type: 'loading', message: isEdit ? 'Updating payment...' : 'Saving payment...' })
+      setAlert({ type: 'loading', message: 'Preparing payment review...' })
 
       await onSave({
         paymentId: initialPayment?.paymentId || initialPayment?.id,
@@ -768,8 +768,8 @@ const AddSOAPaymentModal = ({
           >
             {isSaving || alert?.type === 'loading'
               ? isEdit
-                ? 'Updating...'
-                : 'Saving...'
+                ? 'Opening Review...'
+                : 'Opening Review...'
               : isEdit
                 ? 'Save Changes'
                 : 'Add Payment'}
@@ -781,3 +781,4 @@ const AddSOAPaymentModal = ({
 }
 
 export default AddSOAPaymentModal
+

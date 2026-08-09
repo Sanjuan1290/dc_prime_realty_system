@@ -5,8 +5,7 @@ import StatusAlert from '../../Shared/StatusAlert'
 import ConfirmActionModal from '../../Shared/ConfirmActionModal'
 import ProjectAccreditationFields from './ProjectAccreditationFields'
 import { getSellerRoleLabel } from '../../../config/sellerRoles'
-import { useFetch as fetchJson, useFetchPost as postJson } from '../../../utils/useFetch'
-import { buildSellerGroupReviewPayload } from './groupReview'
+import {useFetch as fetchJson, useFetchPost as postJson, getDoubleCheckNotice} from '../../../utils/useFetch'
 
 const validateProjectRates = (projectRates, groupHeadRole, groupType) => {
   if (!projectRates.length) return 'Select at least one accredited project.'
@@ -99,17 +98,20 @@ const NewGroupModal = ({ setShowNewGroupModal, onSaved, groupType = 'in_house' }
 
   const mutation = useMutation({
     mutationFn: () => postJson('/seller-groups/create', form, {
-      review: {
-        title: `Review New ${groupLabel}`,
-        confirmLabel: `Confirm & Add ${groupLabel}`,
-        description: 'Verify the group information, each accredited project by name, and the exact commission rates before saving.',
-        summary: form.seller_group_name || groupLabel,
-        payload: buildSellerGroupReviewPayload({
-          form,
-          projects,
-          groupHeadName: selectedGroupHead?.full_name || '',
-          groupType,
-        }),
+      doubleCheck: {
+        type: 'seller-group',
+        mode: 'create',
+        data: {
+          ...form,
+          seller_group_head_name: selectedGroupHead?.full_name || '',
+          seller_group_head_role: groupHeadRole,
+          project_rates: (form.project_rates || []).map((rate) => ({
+            ...rate,
+            projectName: projects.find((project) => Number(project.lot_project_id || project.id) === Number(rate.lot_project_id || rate.project_id))?.lot_project_name
+              || projects.find((project) => Number(project.lot_project_id || project.id) === Number(rate.lot_project_id || rate.project_id))?.name
+              || `Project ${rate.lot_project_id || rate.project_id || ''}`,
+          })),
+        },
       },
     }),
     onMutate: () => setNotice({ type: 'loading', message: `Preparing ${groupLabel} review...` }),
@@ -121,13 +123,7 @@ const NewGroupModal = ({ setShowNewGroupModal, onSaved, groupType = 'in_house' }
       setShowNewGroupModal(false)
       onSaved?.(data?.message || `${groupLabel} created successfully.`)
     },
-    onError: (error) => {
-      if (/review cancelled/i.test(String(error?.message || ''))) {
-        setNotice({ type: 'info', message: `Final review closed. You can continue editing the ${groupLabel.toLowerCase()}; nothing was saved.` })
-        return
-      }
-      setNotice({ type: 'error', message: error?.message || `Failed to create ${groupLabel}.` })
-    },
+    onError: (error) => setNotice(getDoubleCheckNotice(error, `Failed to create ${groupLabel}.`)),
   })
 
   const updateForm = (field, value) => {
@@ -261,7 +257,7 @@ const NewGroupModal = ({ setShowNewGroupModal, onSaved, groupType = 'in_house' }
 
         <footer className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4 sm:flex-row sm:justify-end">
           <button type="button" onClick={() => setShowNewGroupModal(false)} disabled={mutation.isPending} className="h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 hover:bg-slate-100 disabled:opacity-50">Cancel</button>
-          <button type="submit" disabled={mutation.isPending || isLoadingOptions} className="inline-flex h-11 items-center justify-center rounded-xl bg-blue-600 px-6 text-sm font-black text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">{mutation.isPending ? 'Opening Review...' : 'Add Group'}</button>
+          <button type="submit" disabled={mutation.isPending || isLoadingOptions} className="inline-flex h-11 items-center justify-center rounded-xl bg-blue-600 px-6 text-sm font-black text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">{mutation.isPending ? 'Opening Review...' : 'Proceed to Final Review'}</button>
         </footer>
       </form>
 
@@ -271,3 +267,4 @@ const NewGroupModal = ({ setShowNewGroupModal, onSaved, groupType = 'in_house' }
 }
 
 export default NewGroupModal
+

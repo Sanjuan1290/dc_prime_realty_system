@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { FiClock, FiSave, FiSearch, FiX } from 'react-icons/fi'
 import StatusAlert from '../../Shared/StatusAlert'
-import { useFetchPost, useFetchPut } from '../../../utils/useFetch'
+import {useFetchPost, useFetchPut, getDoubleCheckNotice} from '../../../utils/useFetch'
 
 const inputClass = 'h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500'
 const statuses = [
@@ -59,11 +59,11 @@ const AttendanceModal = ({ record, employees = [], onClose, onSaved }) => {
 
   const mutation = useMutation({
     mutationFn: () => isEdit
-      ? useFetchPut(`/attendance/${record.employee_attendance_id}`, form)
-      : useFetchPost('/attendance', form),
+      ? useFetchPut(`/attendance/${record.employee_attendance_id}`, form, { doubleCheck: { type: 'attendance', mode: 'edit', data: form, meta: { employeeName: employees.find((item) => Number(item.employee_id) === Number(form.employee_id))?.full_name || '' } } })
+      : useFetchPost('/attendance', form, { doubleCheck: { type: 'attendance', mode: 'create', data: form, meta: { employeeName: employees.find((item) => Number(item.employee_id) === Number(form.employee_id))?.full_name || '' } } }),
     onMutate: () => setNotice({
       type: 'loading',
-      message: isEdit ? 'Saving attendance changes...' : 'Recording attendance...',
+      message: 'Preparing attendance review...',
     }),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['attendance'] })
@@ -72,10 +72,7 @@ const AttendanceModal = ({ record, employees = [], onClose, onSaved }) => {
       onSaved?.(result?.message || 'Attendance saved.')
       onClose()
     },
-    onError: (error) => setNotice({
-      type: 'error',
-      message: error?.message || 'Failed to save attendance.',
-    }),
+    onError: (error) => setNotice(getDoubleCheckNotice(error, 'Failed to save attendance.')),
   })
 
   const setValue = (field, value) => {
@@ -183,7 +180,7 @@ const AttendanceModal = ({ record, employees = [], onClose, onSaved }) => {
 
         <footer className="flex flex-col-reverse gap-2 border-t border-slate-200 p-4 sm:flex-row sm:justify-end">
           <button type="button" onClick={onClose} disabled={mutation.isPending} className="h-11 rounded-xl border border-slate-300 px-5 text-sm font-black text-slate-700 disabled:opacity-50">Cancel</button>
-          <button type="submit" disabled={mutation.isPending || !employees.length} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"><FiSave />{mutation.isPending ? 'Saving...' : 'Save Attendance'}</button>
+          <button type="submit" disabled={mutation.isPending || !employees.length} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"><FiSave />{mutation.isPending ? 'Opening Review...' : 'Proceed to Final Review'}</button>
         </footer>
       </form>
     </div>
@@ -191,3 +188,4 @@ const AttendanceModal = ({ record, employees = [], onClose, onSaved }) => {
 }
 
 export default AttendanceModal
+

@@ -146,7 +146,7 @@ const Users = () => {
   };
 
   const toggleStatusMutation = useMutation({
-    mutationFn: (user) => patchApi(`/user/toggleUserStatus/${user.id}`),
+    mutationFn: (user) => patchApi(`/user/toggleUserStatus/${user.id}`, {}, { confirmationHandled: 'compact' }),
     onMutate: (user) => {
       setActiveAction({ type: "status", userId: user.id });
       setAlert({ type: "loading", message: `${user.status === "active" ? "Deactivating" : "Activating"} user...` });
@@ -163,7 +163,7 @@ const Users = () => {
   });
 
   const resetPasswordMutation = useMutation({
-    mutationFn: (user) => patchApi(`/user/resetPassword/${user.id}`, { password: "password" }),
+    mutationFn: (user) => patchApi(`/user/resetPassword/${user.id}`, { password: "password" }, { confirmationHandled: 'compact' }),
     onMutate: (user) => {
       setActiveAction({ type: "reset", userId: user.id });
       setAlert({ type: "loading", message: "Resetting password..." });
@@ -405,3 +405,4 @@ const Users = () => {
 };
 
 export default Users;
+

@@ -89,12 +89,10 @@ const EditDocumentTemplate = ({ template, documents = [], templateDocuments = []
         })),
       },
       {
-        review: {
-          title: 'Review Template Changes',
-          confirmLabel: 'Confirm & Save Template',
-          description: 'Verify the template information and every selected document before saving the changes.',
-          summary: formData.template_name || template?.template_name || 'Document template',
-          payload: buildTemplateReviewPayload(formData, selectedDocuments),
+        doubleCheck: {
+          type: 'document-template',
+          mode: 'edit',
+          data: buildTemplateReviewPayload(formData, selectedDocuments),
         },
       }
     ),
@@ -148,7 +146,7 @@ const EditDocumentTemplate = ({ template, documents = [], templateDocuments = []
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <label className="flex flex-col gap-2">
               <span className="text-sm font-semibold text-slate-700">Template Name</span>
-              <input type="text" value={formData.template_name} onChange={(event) => handleChange("template_name", event.target.value)} placeholder="Example: Standard Lot Buyer Checklist" className="h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 shadow-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
+              <input type="text" data-example="Standard Lot Buyer Checklist" value={formData.template_name} onChange={(event) => handleChange("template_name", event.target.value)} placeholder="Example: Standard Lot Buyer Checklist" className="h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 shadow-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
             </label>
             <label className="flex flex-col gap-2">
               <span className="text-sm font-semibold text-slate-700">Status</span>
@@ -159,7 +157,7 @@ const EditDocumentTemplate = ({ template, documents = [], templateDocuments = []
             </label>
             <label className="flex flex-col gap-2 md:col-span-2">
               <span className="text-sm font-semibold text-slate-700">Template Description</span>
-              <textarea rows={4} value={formData.template_description} onChange={(event) => handleChange("template_description", event.target.value)} placeholder="Example: Standard requirements for residential lot buyers" className="resize-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
+              <textarea rows={4} data-example="Standard requirements for residential lot buyers" value={formData.template_description} onChange={(event) => handleChange("template_description", event.target.value)} placeholder="Example: Standard requirements for residential lot buyers" className="resize-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
             </label>
           </div>
 
@@ -171,7 +169,7 @@ const EditDocumentTemplate = ({ template, documents = [], templateDocuments = []
 
         <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-white px-6 py-4">
           <button type="button" onClick={onClose} disabled={mutation.isPending} className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60">Cancel</button>
-          <button type="submit" disabled={mutation.isPending} className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-blue-300">{mutation.isPending ? "Opening Review..." : "Save Changes"}</button>
+          <button type="submit" disabled={mutation.isPending} className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-blue-300">{mutation.isPending ? "Opening Review..." : "Proceed to Final Review"}</button>
         </div>
       </form>
     </div>
@@ -251,3 +249,4 @@ const TemplateDocuments = ({ documents, selectedDocuments, search, setSearch, se
 };
 
 export default EditDocumentTemplate;
+

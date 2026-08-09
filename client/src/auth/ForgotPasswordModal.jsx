@@ -6,6 +6,7 @@ import { requestApi } from '../utils/apiClient'
 const apiRequest = (path, payload) => requestApi(`/user${path}`, {
   method: 'POST',
   body: JSON.stringify(payload),
+  confirmationHandled: 'technical',
 })
 
 const StepIcon = ({ step }) => {
@@ -193,3 +194,4 @@ const ForgotPasswordModal = ({ initialEmail = '', onClose, onComplete }) => {
 }
 
 export default ForgotPasswordModal
+

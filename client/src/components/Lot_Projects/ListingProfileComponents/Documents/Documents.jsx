@@ -155,6 +155,8 @@ const Documents = ({
       return
     }
 
+    if (!window.confirm(`Approve ${document.name}?`)) return
+
     setActiveDocumentId(document.id)
     setAlert({ type: 'loading', message: `Approving ${document.name}...` })
 
@@ -429,3 +431,4 @@ const Documents = ({
 }
 
 export default Documents
+

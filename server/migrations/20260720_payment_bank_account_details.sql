@@ -46,3 +46,4 @@ CALL add_payment_bank_column_if_missing(
 );
 
 DROP PROCEDURE IF EXISTS add_payment_bank_column_if_missing;
+

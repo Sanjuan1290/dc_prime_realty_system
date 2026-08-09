@@ -15,7 +15,7 @@ const Document_Library = ({ documents = [], onEditDocument, canManage = true }) 
   const [deletingDocumentId, setDeletingDocumentId] = useState(null);
 
   const deleteMutation = useMutation({
-    mutationFn: (documentId) => useFetchDelete(`/documents/deleteDocument/${documentId}`),
+    mutationFn: (documentId) => useFetchDelete(`/documents/deleteDocument/${documentId}`, { confirmationHandled: 'compact' }),
     onMutate: (documentId) => {
       setDeletingDocumentId(documentId);
       setAlert({ type: "loading", message: "Deleting document..." });
@@ -157,3 +157,4 @@ const Document_Library = ({ documents = [], onEditDocument, canManage = true }) 
 };
 
 export default Document_Library;
+

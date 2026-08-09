@@ -21,6 +21,7 @@ import {
 import useCurrentUser from "../utils/useCurrentUser";
 import StatusAlert from "../components/Shared/StatusAlert";
 import { isFullAccessAdministrator } from "../config/permissions";
+import { requestApi } from '../utils/apiClient'
 
 const getFullName = (user) => {
   const name = [user?.first_name, user?.middle_name, user?.last_name]
@@ -65,22 +66,11 @@ const SystemLayout = () => {
         message: "Logging out of the system...",
       });
 
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/user/logout`, {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-        },
+      return requestApi('/user/logout', {
+        method: 'POST',
         body: JSON.stringify({}),
+        confirmationHandled: 'technical',
       });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.message || "Logout failed.");
-      }
-
-      return data;
     },
     onSuccess: () => {
       queryClient.clear();
@@ -429,3 +419,4 @@ const SystemLayout = () => {
 };
 
 export default SystemLayout;
+

@@ -42,12 +42,11 @@ const normalizeTemplateRequirement = (document = {}) => {
     : 'required'
 }
 
-const normalizeLibraryDocument = (document) => ({
-  ...document,
-  id: Number(document.document_id || document.id),
-  document_id: Number(document.document_id || document.id),
-  name: document.name || document.document_name,
-  description: document.description || document.document_description || 'No description',
+const normalizeLibraryDocument = (document = {}) => ({
+  id: Number(document.document_id || document.id || 0) || null,
+  document_id: Number(document.document_id || document.id || 0) || null,
+  name: document.name || document.document_name || 'Document',
+  description: document.description || document.document_description || '',
   source: document.source || 'Document Library',
   requirement: normalizeRequirement(
     document.requirement,
@@ -615,8 +614,8 @@ const ReserveListingModal = ({
     setAlert({
       type: 'loading',
       message: mode === 'submission-review'
-        ? 'Approving the buyer form and creating the reservation...'
-        : 'Saving the reservation and commission records...',
+        ? 'Preparing the submitted buyer form and reservation review...'
+        : 'Preparing the final reservation review...',
     })
 
     try {
@@ -678,3 +677,4 @@ const ReserveListingModal = ({
 }
 
 export default ReserveListingModal
+

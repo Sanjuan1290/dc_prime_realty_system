@@ -42,7 +42,7 @@ const Employees = () => {
   })
 
   const statusMutation = useMutation({
-    mutationFn: ({ employeeId, employeeStatus }) => useFetchPatch(`/employees/${employeeId}/status`, { employee_status: employeeStatus }),
+    mutationFn: ({ employeeId, employeeStatus }) => useFetchPatch(`/employees/${employeeId}/status`, { employee_status: employeeStatus }, { confirmationHandled: 'compact' }),
     onMutate: () => setAlert({ type: 'loading', message: 'Changing employee status...' }),
     onSuccess: (result) => { setAlert({ type: 'success', message: result?.message || 'Employee status updated.' }); queryClient.invalidateQueries({ queryKey: ['employees'] }) },
     onError: (mutationError) => setAlert({ type: 'error', message: mutationError?.message || 'Failed to change employee status.' }),
@@ -124,3 +124,4 @@ const Employees = () => {
 }
 
 export default Employees
+

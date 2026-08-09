@@ -132,7 +132,7 @@ const SellerGroup = ({ groupType = 'in_house' }) => {
   }
 
   const toggleMutation = useMutation({
-    mutationFn: (group) => patchJson(`/seller-groups/toggle-status/${group.seller_group_id}`, { status: group.seller_group_status === 'active' ? 'inactive' : 'active' }),
+    mutationFn: (group) => patchJson(`/seller-groups/toggle-status/${group.seller_group_id}`, { status: group.seller_group_status === 'active' ? 'inactive' : 'active' }, { confirmationHandled: 'compact' }),
     onMutate: (group) => setModalNotice({ type: 'loading', message: `${group.seller_group_status === 'active' ? 'Deactivating' : 'Activating'} group...` }),
     onSuccess: (result) => { setConfirmGroup(null); setModalNotice(null); setAlert({ type: 'success', message: result?.message || 'Group status updated.' }); queryClient.invalidateQueries({ queryKey: ['seller-groups'] }); queryClient.invalidateQueries({ queryKey: ['seller-group-options'] }) },
     onError: (error) => setModalNotice({ type: 'error', message: error?.message || 'Failed to update group.' }),
@@ -184,3 +184,4 @@ const SellerGroup = ({ groupType = 'in_house' }) => {
 }
 
 export default SellerGroup
+

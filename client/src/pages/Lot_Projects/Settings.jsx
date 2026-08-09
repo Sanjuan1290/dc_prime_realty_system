@@ -5,7 +5,7 @@ import { FiEdit2, FiRefreshCw, FiSettings } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
 import EditSettingsModal from '../../components/Lot_Projects/SettingsComponents/EditSettingsModal/EditSettingsModal'
-import { useFetch, useFetchPut } from '../../utils/useFetch'
+import {useFetch, useFetchPut, getDoubleCheckNotice} from '../../utils/useFetch'
 
 const daySuffix = (value) => {
   const number = Number(value || 0)
@@ -57,9 +57,16 @@ const Settings = () => {
   const canEdit = Boolean(data?.canEdit)
 
   const updateSettingsMutation = useMutation({
-    mutationFn: (payload) => useFetchPut(`/projects/lot-projects/${projectSlug}/settings`, payload),
+    mutationFn: (payload) => useFetchPut(`/projects/lot-projects/${projectSlug}/settings`, payload, {
+      doubleCheck: {
+        type: 'settings',
+        scope: 'project',
+        data: payload,
+        summary: project?.name || project?.lot_project_name || projectSlug,
+      },
+    }),
     onMutate: () => {
-      setAlert({ type: 'loading', message: 'Saving project settings...' })
+      setAlert({ type: 'loading', message: 'Preparing settings review...' })
     },
     onSuccess: (result) => {
       setShowEdit(false)
@@ -68,7 +75,7 @@ const Settings = () => {
       queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] })
     },
     onError: (mutationError) => {
-      setAlert({ type: 'error', message: mutationError?.message || 'Failed to save settings.' })
+      setAlert(getDoubleCheckNotice(mutationError, 'Failed to save settings.'))
     },
   })
 
@@ -190,3 +197,4 @@ const Settings = () => {
 }
 
 export default Settings
+

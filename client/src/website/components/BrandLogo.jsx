@@ -11,3 +11,4 @@ const BrandLogo = ({ light = false, compact = false }) => (
 )
 
 export default BrandLogo
+

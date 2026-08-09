@@ -13,16 +13,7 @@ html {
 
 
 
-/* Global data-entry safety UX. Submit buttons show Proceed until the mutation enters its saving state. */
-.dc-proceed-submit:not(:disabled) {
-  font-size: 0 !important;
-}
-.dc-proceed-submit:not(:disabled)::after {
-  content: 'Proceed';
-  font-size: 0.825rem;
-  line-height: 1.25rem;
-  font-weight: 900;
-}
+/* Explicit field examples. Values come only from authored data-example attributes. */
 .dc-input-example {
   white-space: normal;
   font-size: 10px;
@@ -30,9 +21,4 @@ html {
   font-weight: 500;
   font-style: italic;
   color: #94a3b8;
-}
-.dc-proceed-submit:not(:disabled) > span,
-.dc-proceed-submit:not(:disabled) > p,
-.dc-proceed-submit:not(:disabled) > strong {
-  display: none !important;
 }

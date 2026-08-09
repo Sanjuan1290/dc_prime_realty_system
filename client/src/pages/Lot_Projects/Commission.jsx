@@ -121,7 +121,7 @@ const Commission = () => {
         return patchJson(
           `/projects/lot-projects/${projectSlug}/commissions/${commissionId}`,
           payload,
-          { skipReview: true }
+          { confirmationHandled: 'compact' }
         )
       }
 
@@ -134,12 +134,10 @@ const Commission = () => {
         `/projects/lot-projects/${projectSlug}/commissions/${commissionId}`,
         payload,
         {
-          review: {
-            title: 'Review Commission Release',
-            confirmLabel: 'Confirm & Release Commission',
-            description: 'Double-check the beneficiary and only the selected commission milestone before posting this release.',
+          doubleCheck: {
+            type: 'commission-release',
             summary: `${selected?.unit || '-'} · ${commissionForReview.seller || 'Seller'} · ${releaseForReview.stage || 'Selected release'}`,
-            payload: {
+            data: {
               commissionBeneficiary: {
                 project: project?.name || project?.lot_project_name || projectSlug,
                 unit: selected?.unit || '-',
@@ -484,4 +482,5 @@ const Commission = () => {
 }
 
 export default Commission
+
 

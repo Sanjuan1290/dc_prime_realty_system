@@ -96,3 +96,4 @@ test('historical SOA keeps the selected account final schedule generation read-o
   assert.match(shared, /if \(readOnly\) \{[\s\S]*totalDue: getScheduleTotalDue\(row\)/);
   assert.match(shared, /if \(!readOnly && existingScheduleRows\.length/);
 });
+

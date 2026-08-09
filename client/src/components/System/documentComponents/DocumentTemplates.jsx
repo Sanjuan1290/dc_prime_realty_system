@@ -15,7 +15,7 @@ const DocumentTemplates = ({ templates = [], templateDocuments = [], onEditTempl
   const [deletingTemplateId, setDeletingTemplateId] = useState(null);
 
   const deleteMutation = useMutation({
-    mutationFn: (templateId) => useFetchDelete(`/documents/deleteTemplate/${templateId}`),
+    mutationFn: (templateId) => useFetchDelete(`/documents/deleteTemplate/${templateId}`, { confirmationHandled: 'compact' }),
     onMutate: (templateId) => {
       setDeletingTemplateId(templateId);
       setAlert({ type: "loading", message: "Deleting template..." });
@@ -151,3 +151,4 @@ const DocumentTemplates = ({ templates = [], templateDocuments = [], onEditTempl
 };
 
 export default DocumentTemplates;
+

@@ -6,6 +6,7 @@ import ReserveClientProfileModal from '../../components/Lot_Projects/ListingProf
 import { getInitialClientForm, money } from '../../components/Lot_Projects/ListingProfileComponents/ReserveListingModal/reserveUtils'
 import { getBuyerProfileValidationError } from '../../utils/buyerProfileValidation'
 import { requestApi } from '../../utils/apiClient'
+import { getDoubleCheckNotice } from '../../utils/doubleCheck'
 
 
 const formatDateTime = (value) => {
@@ -90,7 +91,7 @@ const BuyerForm = () => {
 
     setInvalidField('')
     setIsSubmitting(true)
-    setNotice({ type: 'loading', message: 'Submitting your buyer information...' })
+    setNotice({ type: 'loading', message: 'Preparing your final review...' })
 
     try {
       const data = await requestApi(`/public/buyer-forms/${encodeURIComponent(token || '')}/submit`, {
@@ -98,7 +99,10 @@ const BuyerForm = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ clientProfile: clientForm, privacyConsent, website }),
         redirectOnUnavailable: false,
-        review: {
+        doubleCheck: {
+          type: 'buyer-form',
+          variant: 'submission',
+          data: { clientProfile: clientForm, privacyConsent },
           title: 'Review Buyer Information',
           confirmLabel: 'Confirm & Submit Buyer Information',
           description: 'Nothing has been submitted yet. Double-check the buyer profile and privacy consent before sending it to D&C Prime Realty.',
@@ -108,7 +112,7 @@ const BuyerForm = () => {
       setNotice(null)
       window.scrollTo({ top: 0, behavior: 'smooth' })
     } catch (error) {
-      setNotice({ type: 'error', message: error.message || 'Your buyer information could not be submitted.' })
+      setNotice(getDoubleCheckNotice(error, 'Your buyer information could not be submitted.'))
     } finally {
       setIsSubmitting(false)
     }
@@ -217,7 +221,7 @@ const BuyerForm = () => {
                 </p>
                 <button type="submit" disabled={isSubmitting} className="inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-xl bg-blue-600 px-6 text-sm font-black text-white shadow-lg shadow-blue-600/20 hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">
                   {isSubmitting ? <FiLoader className="h-4 w-4 animate-spin" /> : <FiCheckCircle className="h-4 w-4" />}
-                  {isSubmitting ? 'Submitting...' : 'Review & Submit Information'}
+                  {isSubmitting ? 'Opening Review...' : 'Proceed to Final Review'}
                 </button>
               </div>
             </section>
@@ -229,3 +233,4 @@ const BuyerForm = () => {
 }
 
 export default BuyerForm
+

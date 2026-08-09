@@ -113,7 +113,7 @@ const Notifications = () => {
   })
 
   const sendMutation = useMutation({
-    mutationFn: ({ scheduleId }) => useFetchPost(`/notifications/payment-dues/${scheduleId}/send`, {}),
+    mutationFn: ({ scheduleId }) => useFetchPost(`/notifications/payment-dues/${scheduleId}/send`, {}, { confirmationHandled: 'compact' }),
     onMutate: () => setAlert({ type: 'loading', message: 'Sending payment notification email...' }),
     onSuccess: (response) => {
       setAlert({ type: 'success', message: response?.message || 'Notification email sent successfully.' })
@@ -124,7 +124,7 @@ const Notifications = () => {
 
   const documentSendMutation = useMutation({
     mutationFn: ({ listingId, clientProfileId }) =>
-      useFetchPost(`/notifications/documents/${listingId}/${clientProfileId}/send`, {}),
+      useFetchPost(`/notifications/documents/${listingId}/${clientProfileId}/send`, {}, { confirmationHandled: 'compact' }),
     onMutate: () => setAlert({ type: 'loading', message: 'Sending document requirements email...' }),
     onSuccess: (response) => {
       setAlert({ type: 'success', message: response?.message || 'Document requirements email sent successfully.' })
@@ -134,7 +134,7 @@ const Notifications = () => {
   })
 
   const contactedMutation = useMutation({
-    mutationFn: ({ scheduleId }) => useFetchPost(`/notifications/payment-dues/${scheduleId}/contacted`, { message: 'Marked as contacted from System Notifications.' }),
+    mutationFn: ({ scheduleId }) => useFetchPost(`/notifications/payment-dues/${scheduleId}/contacted`, { message: 'Marked as contacted from System Notifications.' }, { confirmationHandled: 'compact' }),
     onMutate: () => setAlert({ type: 'loading', message: 'Marking schedule as contacted...' }),
     onSuccess: (response) => {
       setAlert({ type: 'success', message: response?.message || 'Schedule marked as contacted.' })
@@ -250,3 +250,4 @@ const Notifications = () => {
 }
 
 export default Notifications
+

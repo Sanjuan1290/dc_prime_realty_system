@@ -28,3 +28,4 @@ export const faqs = [
     answer: 'No. The form prepares your request for email or Facebook. The office still needs to confirm the schedule and assigned property guide.',
   },
 ]
+

@@ -7,18 +7,19 @@ const normalizeRequirement = (value, fallback = 'required') => {
   return clean === 'optional' ? 'optional' : 'required'
 }
 
-const normalizeDocument = (document) => ({
-  ...document,
-  id: document.id || document.document_id,
-  document_id: document.document_id || document.id,
-  name: document.name || document.document_name,
-  description: document.description || document.document_description || 'Project Default',
+const normalizeDocument = (document = {}) => ({
+  id: Number(document.document_id || document.id || 0) || null,
+  document_id: Number(document.document_id || document.id || 0) || null,
+  name: document.name || document.document_name || 'Document',
+  description: document.description || document.document_description || '',
   source: document.source || 'Project Default',
   requirement: normalizeRequirement(
     document.requirement,
-    document.lot_project_default_document_is_required === false ? 'optional' : 'required'
+    document.lot_project_listing_document_is_required === false ||
+    document.lot_project_default_document_is_required === false ||
+    document.document_is_required === false ? 'optional' : 'required'
   ),
-  status: String(document.status || document.lot_project_default_document_status || document.document_status || 'active').toLowerCase() === 'inactive'
+  status: String(document.status || document.lot_project_listing_document_status || document.lot_project_default_document_status || document.document_status || 'active').toLowerCase() === 'inactive'
     ? 'inactive'
     : 'active',
 })
@@ -67,7 +68,7 @@ const EditListingDocumentsModal = ({ selectedDocuments = [], setSelectedDocument
 
     setDocuments((current) => [
       ...current,
-      normalizeDocument({ ...document, description: document.description || 'Custom Listing Requirement', source: 'Document Library', requirement: 'required', status: 'active' }),
+      normalizeDocument({ ...document, source: 'Document Library', requirement: 'required', status: 'active' }),
     ])
 
     setAlert({ type: 'success', message: `${document.name} added to listing requirements.` })
@@ -212,3 +213,4 @@ const EditListingDocumentsModal = ({ selectedDocuments = [], setSelectedDocument
 }
 
 export default EditListingDocumentsModal
+

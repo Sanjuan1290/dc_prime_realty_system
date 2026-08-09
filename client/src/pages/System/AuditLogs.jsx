@@ -105,7 +105,7 @@ const AuditLogs = () => {
   })
 
   const requestArchiveMutation = useMutation({
-    mutationFn: (payload) => useFetchPost('/audit-logs/archive/request', payload),
+    mutationFn: (payload) => useFetchPost('/audit-logs/archive/request', payload, { confirmationHandled: 'technical' }),
     onMutate: () => setArchiveError(''),
     onSuccess: (result) => {
       setArchiveRequest(result?.data || null)
@@ -120,6 +120,16 @@ const AuditLogs = () => {
     mutationFn: (code) => useFetchPost('/audit-logs/archive/confirm', {
       verificationId: archiveRequest?.verificationId,
       code,
+    }, {
+      doubleCheck: {
+        type: 'audit-archive',
+        data: {
+          eligibleCount: archiveRequest?.eligibleCount,
+          retentionDays: archiveRequest?.retentionDays,
+          cutoffAt: archiveRequest?.cutoffAt,
+          maskedEmail: archiveRequest?.maskedEmail,
+        },
+      },
     }),
     onMutate: () => setArchiveError(''),
     onSuccess: async (result) => {
@@ -294,3 +304,4 @@ const AuditLogs = () => {
 }
 
 export default AuditLogs
+

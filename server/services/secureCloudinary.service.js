@@ -170,3 +170,4 @@ export const destroyCloudinaryAsset = async ({ publicId, resourceType = 'image',
 export const destroyAuthenticatedCloudinaryAsset = (payload) => destroyCloudinaryAsset({ ...payload, deliveryType: 'authenticated' });
 
 export const DOCUMENT_UPLOAD_LIMIT_BYTES = MAX_DOCUMENT_BYTES;
+

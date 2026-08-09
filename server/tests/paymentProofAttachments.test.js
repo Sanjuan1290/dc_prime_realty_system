@@ -40,3 +40,4 @@ test('payments UI exposes proof management separately from payment editing', () 
   assert.match(modal, /MAX_FILES = 5/);
   assert.match(modal, /MAX_FILE_BYTES = 15 \* 1024 \* 1024/);
 });
+

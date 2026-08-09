@@ -12,11 +12,11 @@ const CashAdvanceDetailsModal = ({ advanceId, canManage, onClose, onUpdated }) =
   const query = useQuery({ queryKey: ['employee-cash-advance', advanceId], queryFn: () => useFetch(`/employee-cash-advances/${advanceId}`), enabled: Boolean(advanceId) })
   const data = query.data?.data
   const statusMutation = useMutation({
-    mutationFn: (action) => useFetchPatch(`/employee-cash-advances/${advanceId}/${action}`, {}),
+    mutationFn: (action) => useFetchPatch(`/employee-cash-advances/${advanceId}/${action}`, {}, { confirmationHandled: 'compact' }),
     onSuccess: (result) => { queryClient.invalidateQueries({ queryKey: ['employee-cash-advances'] }); queryClient.invalidateQueries({ queryKey: ['employee-cash-advance', advanceId] }); onUpdated?.(result?.message || 'Cash advance updated.') },
   })
   const deductionMutation = useMutation({
-    mutationFn: ({ amount, date, requestKey }) => useFetchPost(`/employee-cash-advances/${advanceId}/deductions`, { amount, deduction_date: date, notes: 'Manual salary deduction', requestKey }),
+    mutationFn: ({ amount, date, requestKey }) => useFetchPost(`/employee-cash-advances/${advanceId}/deductions`, { amount, deduction_date: date, notes: 'Manual salary deduction', requestKey }, { doubleCheck: { type: 'cash-advance', variant: 'deduction', data: { employee_name: data?.full_name, amount, deduction_date: date, notes: 'Manual salary deduction' } } }),
     onSuccess: (result) => { lastDeductionRequestRef.current = null; queryClient.invalidateQueries({ queryKey: ['employee-cash-advances'] }); queryClient.invalidateQueries({ queryKey: ['employee-cash-advance', advanceId] }); onUpdated?.(result?.message || 'Deduction recorded.') },
   })
   const act = (action, label) => { if (window.confirm(`${label} ${data?.reference_number}?`)) statusMutation.mutate(action) }
@@ -56,3 +56,4 @@ const CashAdvanceDetailsModal = ({ advanceId, canManage, onClose, onUpdated }) =
 }
 
 export default CashAdvanceDetailsModal
+

@@ -39,6 +39,7 @@ const Login = () => {
     mutationFn: () => requestApi('/user/login', {
       method: 'POST',
       body: JSON.stringify({ email, password, rememberMe }),
+      confirmationHandled: 'technical',
     }),
     onSuccess: (data) => {
       try {
@@ -204,4 +205,5 @@ const Login = () => {
 }
 
 export default Login
+
 

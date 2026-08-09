@@ -62,11 +62,10 @@ const getDocumentId = (document = {}) =>
   Number(document.document_id || document.id || 0)
 
 const normalizeDocument = (document = {}, fallbackRequirement = 'required') => ({
-  ...document,
   id: getDocumentId(document),
   document_id: getDocumentId(document),
   name: document.name || document.document_name || 'Unnamed document',
-  description: document.description || document.document_description || 'No description',
+  description: document.description || document.document_description || '',
   requirement: normalizeRequirement(
     document.requirement ??
       document.template_document_list_is_required ??
@@ -387,7 +386,7 @@ const AddLotProjectModal = ({
     })
 
     try {
-      await onSave({
+      const apiPayload = {
         name: form.name.trim(),
         location: form.location.trim(),
         locationCode: form.locationCode.trim().toUpperCase(),
@@ -399,11 +398,22 @@ const AddLotProjectModal = ({
         cadastralLots,
         defaultDocuments: selectedDocuments.map((document) => ({
           document_id: document.id,
-          reviewTitle: document.name || document.document_name || 'Document',
           requirement: document.requirement,
           status: document.status,
         })),
-      })
+      }
+
+      const reviewData = {
+        ...apiPayload,
+        defaultDocuments: selectedDocuments.map((document) => ({
+          name: document.name || 'Document',
+          description: document.description || '',
+          requirement: document.requirement,
+          status: document.status,
+        })),
+      }
+
+      await onSave(apiPayload, reviewData)
     } catch (error) {
       setIsSubmitting(false)
       if (/review cancelled/i.test(String(error?.message || ''))) {
@@ -1051,3 +1061,4 @@ const AddLotProjectModal = ({
 }
 
 export default AddLotProjectModal
+

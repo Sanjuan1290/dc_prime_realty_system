@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FiCheckCircle, FiDollarSign, FiPrinter, FiX } from 'react-icons/fi'
 import StatusAlert from '../../Shared/StatusAlert'
-import { useFetch, useFetchPost } from '../../../utils/useFetch'
+import {useFetch, useFetchPost, getDoubleCheckNotice} from '../../../utils/useFetch'
 import { formatPayrollReleaseDate, isPayrollReleaseDate } from '../../../utils/payrollDates'
 
 const money = (value) => new Intl.NumberFormat('en-PH', {
@@ -30,8 +30,13 @@ const PayrollPreviewModal = ({ releaseDate, canFinalize, onClose, onFinalized })
       releaseDate: selectedReleaseDate,
       witnessName,
       releaseNotes,
+    }, {
+      doubleCheck: {
+        type: 'payroll-release',
+        data: { releaseDate: selectedReleaseDate, witnessName, releaseNotes, summary },
+      },
     }),
-    onMutate: () => setNotice({ type: 'loading', message: 'Finalizing salary release and posting cash-advance deductions...' }),
+    onMutate: () => setNotice({ type: 'loading', message: 'Preparing salary release review...' }),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['payroll-preview'] })
       queryClient.invalidateQueries({ queryKey: ['payroll-periods'] })
@@ -40,7 +45,7 @@ const PayrollPreviewModal = ({ releaseDate, canFinalize, onClose, onFinalized })
       onFinalized?.(result?.message || 'Salary release finalized successfully.')
       query.refetch()
     },
-    onError: (error) => setNotice({ type: 'error', message: error?.message || 'Failed to finalize the salary release.' }),
+    onError: (error) => setNotice(getDoubleCheckNotice(error, 'Failed to finalize the salary release.')),
   })
 
   const summary = query.data?.summary || {}
@@ -61,7 +66,6 @@ const PayrollPreviewModal = ({ releaseDate, canFinalize, onClose, onFinalized })
       setNotice({ type: 'warning', message: 'Salary releases are only available on the 7th and 22nd.' })
       return
     }
-    if (!window.confirm(`Finalize the ${formatPayrollReleaseDate(selectedReleaseDate)} salary release? Cash-advance deductions will be posted and the payroll values will be saved as a snapshot.`)) return
     mutation.mutate()
   }
 
@@ -150,7 +154,7 @@ const PayrollPreviewModal = ({ releaseDate, canFinalize, onClose, onFinalized })
 
         <footer className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-white p-4 sm:flex-row sm:justify-end">
           <button type="button" onClick={onClose} disabled={mutation.isPending} className="h-11 rounded-xl border border-slate-300 px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:opacity-50">Close</button>
-          {canFinalize && !isFinalized && !query.isLoading && !query.isError ? <button type="button" onClick={finalize} disabled={mutation.isPending || !isPayrollReleaseDate(selectedReleaseDate)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 text-sm font-black text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"><FiCheckCircle />{mutation.isPending ? 'Finalizing...' : 'Finalize & Release Payroll'}</button> : null}
+          {canFinalize && !isFinalized && !query.isLoading && !query.isError ? <button type="button" onClick={finalize} disabled={mutation.isPending || !isPayrollReleaseDate(selectedReleaseDate)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 text-sm font-black text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"><FiCheckCircle />{mutation.isPending ? 'Opening Review...' : 'Proceed to Final Review'}</button> : null}
         </footer>
       </div>
     </div>
@@ -158,3 +162,4 @@ const PayrollPreviewModal = ({ releaseDate, canFinalize, onClose, onFinalized })
 }
 
 export default PayrollPreviewModal
+

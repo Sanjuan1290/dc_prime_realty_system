@@ -17,3 +17,4 @@ router.post('/archive/confirm', requirePermission(PERMISSIONS.AUDIT_LOGS_ARCHIVE
 router.get('/archive/exports/:batchId', requirePermission(PERMISSIONS.AUDIT_LOGS_ARCHIVE), downloadAuditLogArchiveExport);
 
 export default router;
+

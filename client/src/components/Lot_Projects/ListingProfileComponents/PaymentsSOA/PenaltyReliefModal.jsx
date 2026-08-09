@@ -272,7 +272,7 @@ const PenaltyReliefModal = ({
                 <label className="flex flex-col gap-1.5"><span className="text-sm font-black text-slate-700">Private Notes</span><input value={internalNotes} onChange={(event) => setInternalNotes(event.target.value)} placeholder="Optional notes for staff" disabled={isSaving} className="h-11 rounded-xl border border-slate-300 px-3 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100" /></label>
               </div>
 
-              <div className="mt-4 flex justify-end"><button type="submit" disabled={isSaving || (action === 'extension' && !extensionAvailable) || (action === 'waiver' && !row?.canWaivePenalty)} className={`h-10 rounded-lg px-5 text-sm font-black text-white transition disabled:cursor-not-allowed ${action === 'correction' ? 'bg-red-600 hover:bg-red-700 disabled:bg-red-300' : 'bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300'}`}>{isSaving ? 'Saving...' : action === 'extension' ? activeExtension ? 'Save New Payment Date' : 'Give More Time' : action === 'correction' ? 'Correct Penalty to ₱0.00' : 'Apply Penalty Reduction'}</button></div>
+              <div className="mt-4 flex justify-end"><button type="submit" disabled={isSaving || (action === 'extension' && !extensionAvailable) || (action === 'waiver' && !row?.canWaivePenalty)} className={`h-10 rounded-lg px-5 text-sm font-black text-white transition disabled:cursor-not-allowed ${action === 'correction' ? 'bg-red-600 hover:bg-red-700 disabled:bg-red-300' : 'bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300'}`}>{isSaving ? 'Opening Review...' : 'Proceed to Final Review'}</button></div>
             </form>
           ) : null}
 
@@ -302,7 +302,7 @@ const PenaltyReliefModal = ({
                 {restoreRelief.reliefType !== 'penalty_correction' ? <label className="flex flex-col gap-1.5"><span className="text-sm font-black text-amber-950">Amount to Add Back</span><input type="number" min="0.01" step="0.01" value={restoreAmount} onChange={(event) => setRestoreAmount(event.target.value)} max={getRestorableAmount(restoreRelief)} placeholder={`Up to ${money(getRestorableAmount(restoreRelief))}`} disabled={isSaving} className="h-11 rounded-xl border border-amber-300 bg-white px-3 text-sm font-semibold outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-100" /></label> : null}
                 <label className="flex flex-col gap-1.5"><span className="text-sm font-black text-amber-950">Reason</span><input value={restoreReason} onChange={(event) => setRestoreReason(event.target.value)} placeholder="Why should this penalty be added back?" disabled={isSaving} className="h-11 rounded-xl border border-amber-300 bg-white px-3 text-sm font-semibold outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-100" /></label>
               </div>
-              <div className="mt-4 flex justify-end"><button type="submit" disabled={isSaving} className="h-10 rounded-lg bg-amber-600 px-5 text-sm font-black text-white transition hover:bg-amber-700 disabled:bg-amber-300">{isSaving ? 'Restoring...' : 'Add Penalty Back'}</button></div>
+              <div className="mt-4 flex justify-end"><button type="submit" disabled={isSaving} className="h-10 rounded-lg bg-amber-600 px-5 text-sm font-black text-white transition hover:bg-amber-700 disabled:bg-amber-300">{isSaving ? 'Opening Review...' : 'Proceed to Final Review'}</button></div>
             </form>
           ) : null}
         </div>
@@ -314,3 +314,4 @@ const PenaltyReliefModal = ({
 }
 
 export default PenaltyReliefModal
+

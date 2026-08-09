@@ -2,11 +2,12 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { RxCross2 } from "react-icons/rx";
 import StatusAlert from "../../Shared/StatusAlert";
-import { useFetchPost } from "../../../utils/useFetch";
+import { useFetchPost, getDoubleCheckNotice } from "../../../utils/useFetch";
 
 const AddDocument = ({ setShowAddDocumentModal, onSaved }) => {
   const queryClient = useQueryClient();
   const [errorMessage, setErrorMessage] = useState("");
+  const [reviewNotice, setReviewNotice] = useState(null);
   const [formData, setFormData] = useState({
     document_name: "",
     document_description: "",
@@ -19,23 +20,41 @@ const AddDocument = ({ setShowAddDocumentModal, onSaved }) => {
       useFetchPost("/documents/addDocument", {
         ...formData,
         document_is_required: formData.document_is_required === "required",
+      }, {
+        doubleCheck: {
+          type: 'document',
+          mode: 'create',
+          data: {
+            document_name: formData.document_name,
+            document_description: formData.document_description,
+            document_status: formData.document_status,
+            document_is_required: formData.document_is_required === 'required',
+          },
+        },
       }),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["documents"] });
       setShowAddDocumentModal(false);
       onSaved?.(data?.message || "Document added successfully.");
     },
-    onError: (error) => setErrorMessage(error.message),
+    onError: (error) => {
+      const notice = getDoubleCheckNotice(error, 'Failed to save document.');
+      if (notice.type === 'info') { setErrorMessage(''); setReviewNotice(notice); return; }
+      setReviewNotice(null);
+      setErrorMessage(notice.message);
+    },
   });
 
   const handleChange = (field, value) => {
     setErrorMessage("");
+    setReviewNotice(null);
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleSubmit = (event) => {
     event.preventDefault();
     setErrorMessage("");
+    setReviewNotice(null);
 
     if (!formData.document_name.trim()) {
       setErrorMessage("Document name is required.");
@@ -59,17 +78,18 @@ const AddDocument = ({ setShowAddDocumentModal, onSaved }) => {
         </div>
 
         <div className="flex flex-col gap-5 px-6 py-5">
-          {mutation.isPending ? <StatusAlert type="loading" message="Adding document..." /> : null}
+          {mutation.isPending ? <StatusAlert type="loading" message="Preparing document review..." /> : null}
+          {reviewNotice ? <StatusAlert type={reviewNotice.type} message={reviewNotice.message} /> : null}
           {errorMessage ? <StatusAlert type="error" message={errorMessage} /> : null}
 
           <label className="flex flex-col gap-2">
             <span className="text-sm font-semibold text-slate-700">Document Name</span>
-            <input type="text" value={formData.document_name} onChange={(event) => handleChange("document_name", event.target.value)} placeholder="Example: Valid Government ID" className="h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
+            <input type="text" data-example="Valid Government ID" value={formData.document_name} onChange={(event) => handleChange("document_name", event.target.value)} placeholder="Example: Valid Government ID" className="h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
           </label>
 
           <label className="flex flex-col gap-2">
             <span className="text-sm font-semibold text-slate-700">Description</span>
-            <textarea rows={4} value={formData.document_description} onChange={(event) => handleChange("document_description", event.target.value)} placeholder="Example: Government-issued valid ID, two copies" className="resize-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
+            <textarea rows={4} data-example="Short clear description" value={formData.document_description} onChange={(event) => handleChange("document_description", event.target.value)} placeholder="Example: Government-issued valid ID, two copies" className="resize-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
           </label>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -93,7 +113,7 @@ const AddDocument = ({ setShowAddDocumentModal, onSaved }) => {
 
         <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50 px-6 py-4">
           <button type="button" onClick={() => setShowAddDocumentModal(false)} disabled={mutation.isPending} className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60">Cancel</button>
-          <button type="submit" disabled={mutation.isPending} className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-blue-300">{mutation.isPending ? "Adding..." : "Add Document"}</button>
+          <button type="submit" disabled={mutation.isPending} className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-blue-300">{mutation.isPending ? "Opening Review..." : "Proceed to Final Review"}</button>
         </div>
       </form>
     </div>
@@ -101,3 +121,4 @@ const AddDocument = ({ setShowAddDocumentModal, onSaved }) => {
 };
 
 export default AddDocument;
+

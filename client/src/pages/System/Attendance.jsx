@@ -97,7 +97,7 @@ const Attendance = () => {
   })
 
   const deleteMutation = useMutation({
-    mutationFn: (record) => useFetchDelete(`/attendance/${record.employee_attendance_id}`),
+    mutationFn: (record) => useFetchDelete(`/attendance/${record.employee_attendance_id}`, { confirmationHandled: 'compact' }),
     onMutate: () => setAlert({ type: 'loading', message: 'Deleting attendance record...' }),
     onSuccess: (result) => {
       setAlert({ type: 'success', message: result?.message || 'Attendance record deleted.' })
@@ -323,3 +323,4 @@ const Attendance = () => {
 }
 
 export default Attendance
+

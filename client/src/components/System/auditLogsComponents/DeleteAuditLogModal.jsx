@@ -49,3 +49,4 @@ const DeleteAuditLogModal = ({ log, onClose, onConfirm, isDeleting }) => {
 }
 
 export default DeleteAuditLogModal
+

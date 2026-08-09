@@ -24,7 +24,7 @@ const ChangePassword = () => {
       current_password: currentPassword,
       new_password: newPassword,
       confirm_password: confirmPassword,
-    }),
+    }, { confirmationHandled: 'technical' }),
     onMutate: () => {
       setNotice({ type: 'loading', message: 'Changing password...' })
     },
@@ -178,3 +178,4 @@ const ChangePassword = () => {
 }
 
 export default ChangePassword
+

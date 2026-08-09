@@ -33,7 +33,7 @@ const DeleteAccountRecordsModal = ({ projectSlug, account, onClose, onDeleted })
         password,
         deletionReason: reason.trim(),
         confirmationText: confirmationText.trim(),
-      })
+      }, { confirmationHandled: 'technical' })
       setRequestData(result?.data || null)
       setPassword('')
       setNotice({ type: 'success', message: result?.message || 'Verification code sent.' })
@@ -53,7 +53,7 @@ const DeleteAccountRecordsModal = ({ projectSlug, account, onClose, onDeleted })
       const result = await useFetchPost(`/projects/lot-projects/${projectSlug}/accounts/${account.id}/purge`, {
         verificationId: requestData.verificationId,
         code,
-      })
+      }, { confirmationHandled: 'compact' })
       setNotice({ type: 'success', message: result?.message || 'Account records permanently deleted.' })
       await onDeleted?.(result)
     } catch (error) {
@@ -154,3 +154,4 @@ const DeleteAccountRecordsModal = ({ projectSlug, account, onClose, onDeleted })
 }
 
 export default DeleteAccountRecordsModal
+

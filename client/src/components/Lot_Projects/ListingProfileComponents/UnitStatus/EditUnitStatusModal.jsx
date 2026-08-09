@@ -69,11 +69,10 @@ const normalizeDocumentRequirement = (value, fallback = 'required') =>
   String(value || fallback).trim().toLowerCase() === 'optional' ? 'optional' : 'required'
 
 const normalizeListingDocument = (document = {}) => ({
-  ...document,
-  id: Number(document.document_id || document.id),
-  document_id: Number(document.document_id || document.id),
-  name: document.name || document.document_name,
-  description: document.description || document.document_description || 'Document requirement',
+  id: Number(document.document_id || document.id || 0) || null,
+  document_id: Number(document.document_id || document.id || 0) || null,
+  name: document.name || document.document_name || 'Document',
+  description: document.description || document.document_description || '',
   source: document.source || 'Listing Requirement',
   requirement: normalizeDocumentRequirement(
     document.requirement,
@@ -604,3 +603,4 @@ const EditUnitStatusModal = ({ listing, project = {}, listingDocuments = [], lib
 }
 
 export default EditUnitStatusModal
+

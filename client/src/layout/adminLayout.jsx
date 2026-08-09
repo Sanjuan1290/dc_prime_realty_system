@@ -17,6 +17,7 @@ import {
   FiX,
 } from 'react-icons/fi'
 import useCurrentUser from '../utils/useCurrentUser'
+import { requestApi } from '../utils/apiClient'
 import { useFetch } from '../utils/useFetch'
 import StatusAlert from '../components/Shared/StatusAlert'
 
@@ -41,12 +42,11 @@ const AdminLayout = () => {
   const logoutMutation = useMutation({
     mutationFn: async () => {
       setLayoutAlert({ type: 'loading', message: 'Logging out...' })
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/user/logout`, {
-        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}),
+      return requestApi('/user/logout', {
+        method: 'POST',
+        body: JSON.stringify({}),
+        confirmationHandled: 'technical',
       })
-      const result = await response.json()
-      if (!response.ok) throw new Error(result.message || 'Logout failed.')
-      return result
     },
     onSuccess: () => { queryClient.clear(); navigate('/portal', { replace: true }) },
     onError: (error) => setLayoutAlert({ type: 'error', message: error?.message || 'Logout failed.' }),
@@ -172,3 +172,4 @@ const AdminLayout = () => {
 }
 
 export default AdminLayout
+

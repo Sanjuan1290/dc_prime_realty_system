@@ -72,3 +72,4 @@ test('group member counts exclude system dummy sellers and use type-specific acc
   assert.match(controller, /COALESCE\(member\.is_system_dummy, 0\) = 0/);
   assert.match(controller, /COUNT\(DISTINCT sg\.seller_group_external_account_user_id\) AS total_accounts/);
 });
+

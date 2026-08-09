@@ -14,7 +14,7 @@ import {
   FiX,
 } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
-import { useFetchPost, useFetchPut } from '../../../../utils/useFetch'
+import {useFetchPost, useFetchPut, getDoubleCheckNotice} from '../../../../utils/useFetch'
 import useCurrentUser from '../../../../utils/useCurrentUser'
 import AddSOAPaymentModal from './AddSOAPaymentModal'
 import PenaltyReliefModal from './PenaltyReliefModal'
@@ -377,7 +377,7 @@ const LmfWaiverModal = ({ row, alert, isSaving, onClose, onConfirm }) => {
         <div className="flex justify-end gap-2 border-t border-slate-200 px-5 py-4">
           <button type="button" onClick={onClose} disabled={isSaving} className="h-10 rounded-lg border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">Cancel</button>
           <button type="submit" disabled={isSaving} className="h-10 rounded-lg bg-amber-600 px-5 text-sm font-black text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:bg-amber-300">
-            {isSaving ? 'Waiving LMF...' : 'Waive LMF'}
+            {isSaving ? 'Opening Review...' : 'Proceed to Final Review'}
           </button>
         </div>
       </form>
@@ -507,7 +507,7 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
       return
     }
 
-    setModalAlert({ type: 'loading', message: 'Saving SOA and penalty settings...' })
+    setModalAlert({ type: 'loading', message: 'Preparing SOA terms review...' })
     onSave({
       dpDiscountPercentage,
       downpaymentPercentage,
@@ -663,7 +663,7 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
         <div className="flex justify-end gap-2 border-t border-slate-200 bg-white px-5 py-4">
           <button type="button" onClick={onClose} disabled={isSaving} className="h-10 rounded-lg border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">Cancel</button>
           <button type="submit" disabled={isSaving} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300">
-            {isSaving ? 'Saving...' : 'Save SOA Terms'}
+            {isSaving ? 'Opening Review...' : 'Proceed to Final Review'}
           </button>
         </div>
       </form>
@@ -766,12 +766,11 @@ const PaymentsSOA = ({
   const createPaymentMutation = useMutation({
     mutationFn: (payload) =>
       useFetchPost(`/projects/lot-projects/${projectSlug}/listings/${listingId}/payments`, payload, {
-        review: {
-          title: 'Review SOA Payment',
-          confirmLabel: 'Confirm & Add Payment',
-          description: 'Verify the account, SOA row, payment amount, date, method, bank/account information, and reference before posting the payment.',
+        doubleCheck: {
+          type: 'payment',
+          mode: 'create',
           summary: `${getListingValue(listing, ['buyer_name', 'buyerName', 'clientName'], 'Client')} · ${getListingValue(listing, ['unit_id', 'unitCode', 'unitNo'], 'Unit')}`,
-          payload: {
+          data: {
             account: {
               project: getListingValue(listing, ['project_name', 'projectName'], projectSlug),
               unit: getListingValue(listing, ['unit_id', 'unitCode', 'unitNo'], listingId),
@@ -796,12 +795,17 @@ const PaymentsSOA = ({
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/payments/${payload.paymentId}`,
         payload,
         {
-          review: {
-            title: 'Review Payment Changes',
-            confirmLabel: 'Confirm & Save Payment Changes',
-            description: 'Verify the edited payment details before replacing the saved payment values.',
+          doubleCheck: {
+            type: 'payment',
+            mode: 'edit',
             summary: `${getListingValue(listing, ['buyer_name', 'buyerName', 'clientName'], 'Client')} · ${getListingValue(listing, ['unit_id', 'unitCode', 'unitNo'], 'Unit')}`,
-            payload: {
+            data: {
+              account: {
+                project: getListingValue(listing, ['project_name', 'projectName'], projectSlug),
+                unit: getListingValue(listing, ['unit_id', 'unitCode', 'unitNo'], listingId),
+                buyer: getListingValue(listing, ['buyer_name', 'buyerName', 'clientName'], '-'),
+                accountReference: getListingValue(listing, ['accountReference', 'account_reference'], '-'),
+              },
               currentPayment: editingPayment || {},
               newPaymentValues: payload,
             },
@@ -820,7 +824,8 @@ const PaymentsSOA = ({
     mutationFn: ({ paymentId, superAdminPassword }) =>
       useFetchPost(
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/payments/${paymentId}/delete`,
-        { superAdminPassword }
+        { superAdminPassword },
+        { confirmationHandled: 'compact' }
       ),
     onSuccess: async (result) => {
       setDeletePayment(null)
@@ -830,19 +835,24 @@ const PaymentsSOA = ({
       await refreshProfile()
     },
     onError: (error) => {
-      setDeleteAlert({ type: 'error', message: error?.message || 'Failed to delete payment.' })
+      setDeleteAlert(getDoubleCheckNotice(error, 'Failed to delete payment.'))
     },
   })
 
   const updateSoaTermsMutation = useMutation({
     mutationFn: (payload) =>
       useFetchPut(`/projects/lot-projects/${projectSlug}/listings/${listingId}/soa-terms`, payload, {
-        review: {
-          title: 'Review SOA Terms',
-          confirmLabel: 'Confirm & Save SOA Terms',
-          description: 'Verify downpayment, terms, dates, interest treatment, daily penalty rate, and grace period before rebuilding or updating the SOA schedule.',
+        doubleCheck: {
+          type: 'soa-terms',
           summary: `${getListingValue(listing, ['buyer_name', 'buyerName', 'clientName'], 'Client')} · ${getListingValue(listing, ['unit_id', 'unitCode', 'unitNo'], 'Unit')}`,
-          payload: { account: { projectSlug, listingId }, soaTerms: payload },
+          data: {
+            account: {
+              project: getListingValue(listing, ['project_name', 'projectName'], projectSlug),
+              unit: getListingValue(listing, ['unit_id', 'unitCode', 'unitNo'], listingId),
+              buyer: getListingValue(listing, ['buyer_name', 'buyerName', 'clientName'], '-'),
+            },
+            soaTerms: payload,
+          },
         },
       }),
     onSuccess: async (result) => {
@@ -851,7 +861,7 @@ const PaymentsSOA = ({
       await refreshProfile()
     },
     onError: (error) => {
-      setAlert({ type: 'error', message: error?.message || 'Failed to save SOA terms.' })
+      setAlert(getDoubleCheckNotice(error, 'Failed to save SOA terms.'))
     },
   })
 
@@ -860,7 +870,7 @@ const PaymentsSOA = ({
       useFetchPost(
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/payment-schedules/${scheduleId}/lmf-waiver`,
         payload,
-        { review: { title: 'Review LMF Waiver', confirmLabel: 'Confirm & Waive LMF', description: 'Verify the selected SOA row, waiver amount/reason, reference, and notes before saving.', payload: { soaRow: lmfWaiverRow || { scheduleId }, waiver: payload } } }
+        { doubleCheck: { type: 'penalty-adjustment', title: 'Review LMF Waiver', confirmLabel: 'Confirm & Waive LMF', actionLabel: 'Waive Legal / Misc Fee', data: { soaRow: lmfWaiverRow || { scheduleId }, waiver: payload } } }
       ),
     onSuccess: async (result) => {
       setLmfWaiverRow(null)
@@ -868,7 +878,7 @@ const PaymentsSOA = ({
       setAlert({ type: 'success', message: result?.message || 'Legal / Misc Fee waived successfully.' })
       await refreshProfile()
     },
-    onError: (error) => setLmfWaiverAlert({ type: 'error', message: error?.message || 'The Legal / Misc Fee could not be waived.' }),
+    onError: (error) => setLmfWaiverAlert(getDoubleCheckNotice(error, 'The Legal / Misc Fee could not be waived.')),
   })
 
   const grantPenaltyExtensionMutation = useMutation({
@@ -876,7 +886,7 @@ const PaymentsSOA = ({
       useFetchPost(
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/payment-schedules/${scheduleId}/penalty-extension`,
         payload,
-        { review: { title: 'Review Penalty-Free Extension', confirmLabel: 'Confirm & Save New Payment Date', description: 'Verify the installment, promised payment date, and reason before applying the penalty-free extension.', payload: { soaRow: penaltyReliefRow || { scheduleId }, extension: payload } } }
+        { doubleCheck: { type: 'penalty-adjustment', title: 'Review Penalty-Free Extension', confirmLabel: 'Confirm & Save New Payment Date', actionLabel: 'Penalty-Free Extension', data: { soaRow: penaltyReliefRow || { scheduleId }, extension: payload } } }
       ),
     onSuccess: async (result) => {
       setPenaltyReliefRow(null)
@@ -884,7 +894,7 @@ const PaymentsSOA = ({
       setAlert({ type: 'success', message: result?.message || 'The new penalty-free payment date was saved.' })
       await refreshProfile()
     },
-    onError: (error) => setPenaltyReliefAlert({ type: 'error', message: error?.message || 'The new payment date could not be saved.' }),
+    onError: (error) => setPenaltyReliefAlert(getDoubleCheckNotice(error, 'The new payment date could not be saved.')),
   })
 
   const editPenaltyExtensionMutation = useMutation({
@@ -892,7 +902,7 @@ const PaymentsSOA = ({
       useFetchPut(
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/payment-schedules/${scheduleId}/penalty-extension/${reliefId}`,
         payload,
-        { review: { title: 'Review Extension Changes', confirmLabel: 'Confirm & Save Extension', description: 'Verify the installment and revised penalty-free payment date before saving.', payload: { soaRow: penaltyReliefRow || { scheduleId, reliefId }, extension: payload } } }
+        { doubleCheck: { type: 'penalty-adjustment', title: 'Review Extension Changes', confirmLabel: 'Confirm & Save Extension', actionLabel: 'Edit Penalty-Free Extension', data: { soaRow: penaltyReliefRow || { scheduleId, reliefId }, extension: payload } } }
       ),
     onSuccess: async (result) => {
       setPenaltyReliefRow(null)
@@ -900,7 +910,7 @@ const PaymentsSOA = ({
       setAlert({ type: 'success', message: result?.message || 'The penalty-free payment date was updated.' })
       await refreshProfile()
     },
-    onError: (error) => setPenaltyReliefAlert({ type: 'error', message: error?.message || 'The payment-date extension could not be updated.' }),
+    onError: (error) => setPenaltyReliefAlert(getDoubleCheckNotice(error, 'The payment-date extension could not be updated.')),
   })
 
   const correctPenaltyMutation = useMutation({
@@ -908,7 +918,7 @@ const PaymentsSOA = ({
       useFetchPost(
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/payment-schedules/${scheduleId}/penalty-correction`,
         payload,
-        { review: { title: 'Review Penalty Correction', confirmLabel: 'Confirm & Correct Penalty', description: 'Verify the installment, corrected amount, reason, and reference before saving the correction.', payload: { soaRow: penaltyReliefRow || { scheduleId }, correction: payload } } }
+        { doubleCheck: { type: 'penalty-adjustment', title: 'Review Penalty Correction', confirmLabel: 'Confirm & Correct Penalty', actionLabel: 'Correct Penalty', data: { soaRow: penaltyReliefRow || { scheduleId }, correction: payload } } }
       ),
     onSuccess: async (result) => {
       setPenaltyReliefRow(null)
@@ -916,7 +926,7 @@ const PaymentsSOA = ({
       setAlert({ type: 'success', message: result?.message || 'The incorrect penalty was cleared.' })
       await refreshProfile()
     },
-    onError: (error) => setPenaltyReliefAlert({ type: 'error', message: error?.message || 'The penalty could not be corrected.' }),
+    onError: (error) => setPenaltyReliefAlert(getDoubleCheckNotice(error, 'The penalty could not be corrected.')),
   })
 
   const waivePenaltyMutation = useMutation({
@@ -924,7 +934,7 @@ const PaymentsSOA = ({
       useFetchPost(
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/payment-schedules/${scheduleId}/penalty-waiver`,
         payload,
-        { review: { title: 'Review Penalty Reduction', confirmLabel: 'Confirm & Reduce Penalty', description: 'Verify the installment, reduction amount, reason, and reference before saving.', payload: { soaRow: penaltyReliefRow || { scheduleId }, reduction: payload } } }
+        { doubleCheck: { type: 'penalty-adjustment', title: 'Review Penalty Reduction', confirmLabel: 'Confirm & Reduce Penalty', actionLabel: 'Reduce Penalty', data: { soaRow: penaltyReliefRow || { scheduleId }, reduction: payload } } }
       ),
     onSuccess: async (result) => {
       setPenaltyReliefRow(null)
@@ -932,7 +942,7 @@ const PaymentsSOA = ({
       setAlert({ type: 'success', message: result?.message || 'The penalty reduction was saved.' })
       await refreshProfile()
     },
-    onError: (error) => setPenaltyReliefAlert({ type: 'error', message: error?.message || 'The penalty reduction could not be saved.' }),
+    onError: (error) => setPenaltyReliefAlert(getDoubleCheckNotice(error, 'The penalty reduction could not be saved.')),
   })
 
   const restorePenaltyMutation = useMutation({
@@ -940,7 +950,7 @@ const PaymentsSOA = ({
       useFetchPost(
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/penalty-reliefs/${reliefId}/restore`,
         payload,
-        { review: { title: 'Review Penalty Restore', confirmLabel: 'Confirm & Restore Penalty', description: 'Verify the penalty adjustment being restored before adding the penalty back.', payload: { soaRow: penaltyReliefRow || { reliefId }, restore: payload } } }
+        { doubleCheck: { type: 'penalty-adjustment', title: 'Review Penalty Restore', confirmLabel: 'Confirm & Restore Penalty', actionLabel: 'Restore Penalty', data: { soaRow: penaltyReliefRow || { reliefId }, restore: payload } } }
       ),
     onSuccess: async (result) => {
       setPenaltyReliefRow(null)
@@ -948,7 +958,7 @@ const PaymentsSOA = ({
       setAlert({ type: 'success', message: result?.message || 'The removed penalty was added back.' })
       await refreshProfile()
     },
-    onError: (error) => setPenaltyReliefAlert({ type: 'error', message: error?.message || 'The penalty could not be added back.' }),
+    onError: (error) => setPenaltyReliefAlert(getDoubleCheckNotice(error, 'The penalty could not be added back.')),
   })
 
   const handleSaveSoaTerms = (payload) => {
@@ -1022,7 +1032,7 @@ const PaymentsSOA = ({
   }
 
   const handlePreviewPayment = (payload) =>
-    useFetchPost(`/projects/lot-projects/${projectSlug}/listings/${listingId}/payments/preview`, payload)
+    useFetchPost(`/projects/lot-projects/${projectSlug}/listings/${listingId}/payments/preview`, payload, { confirmationHandled: 'technical' })
 
   const handleSavePayment = async (payload) => {
     if (payload.paymentId) {
@@ -1684,3 +1694,4 @@ const PaymentsSOA = ({
 }
 
 export default PaymentsSOA
+

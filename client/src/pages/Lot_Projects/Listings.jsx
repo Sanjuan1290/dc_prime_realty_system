@@ -6,7 +6,7 @@ import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
 import ConfirmActionModal from '../../components/Shared/ConfirmActionModal'
 import AddListingModal from '../../components/Lot_Projects/ListingComponents/AddListingModal/AddListingModal'
-import { useFetch, useFetchDelete, useFetchPost } from '../../utils/useFetch'
+import {useFetch, useFetchDelete, useFetchPost, getDoubleCheckNotice} from '../../utils/useFetch'
 
 const money = (value) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value || 0))
 
@@ -47,9 +47,11 @@ const Listings = () => {
   })
 
   const addListingMutation = useMutation({
-    mutationFn: (payload) => useFetchPost(`/projects/lot-projects/${projectSlug}/listings`, payload),
+    mutationFn: (payload) => useFetchPost(`/projects/lot-projects/${projectSlug}/listings`, payload, {
+      doubleCheck: { type: 'listing', mode: 'create', data: payload, meta: { projectName: project?.name || project?.lot_project_name || projectSlug } },
+    }),
     onMutate: (payload) => {
-      setAlert({ type: 'loading', message: `Saving ${payload.unitCode || 'listing'}...` })
+      setAlert({ type: 'loading', message: `Preparing ${payload.unitCode || 'listing'} review...` })
     },
     onSuccess: (result) => {
       setShowAddModal(false)
@@ -58,12 +60,12 @@ const Listings = () => {
       queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] })
     },
     onError: (mutationError) => {
-      setAlert({ type: 'error', message: mutationError?.message || 'Failed to add listing.' })
+      setAlert(getDoubleCheckNotice(mutationError, 'Failed to add listing.'))
     },
   })
 
   const deleteListingMutation = useMutation({
-    mutationFn: (listingId) => useFetchDelete(`/projects/lot-projects/${projectSlug}/listings/${listingId}`),
+    mutationFn: (listingId) => useFetchDelete(`/projects/lot-projects/${projectSlug}/listings/${listingId}`, { confirmationHandled: 'compact' }),
     onMutate: () => {
       setAlert({ type: 'loading', message: 'Deleting listing...' })
     },
@@ -188,3 +190,4 @@ const Listings = () => {
 }
 
 export default Listings
+

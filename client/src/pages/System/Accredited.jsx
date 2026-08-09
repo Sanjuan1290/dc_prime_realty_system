@@ -7,7 +7,7 @@ import useCurrentUser from "../../utils/useCurrentUser";
 import { FaUserPlus } from "react-icons/fa";
 import { FiCalendar, FiFileText, FiLoader, FiPrinter, FiRefreshCw, FiSearch, FiUsers, FiX } from "react-icons/fi";
 import { formatDateTime } from "../../utils/formatDateTime";
-import { useFetch as fetchApi, useFetchPost as postApi } from "../../utils/useFetch";
+import {useFetch as fetchApi, useFetchPost as postApi, getDoubleCheckNotice} from "../../utils/useFetch";
 import { isFullAccessAdministrator } from "../../config/permissions";
 
 const EMPTY_LIST = [];
@@ -401,21 +401,15 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
       const selectedReleaseSet = new Set((body.releaseIds || []).map(Number));
       const selectedReleases = (selectedGroup?.releases || []).filter((release) => selectedReleaseSet.has(Number(release.releaseId)));
       return postApi(`/accredited/${sellerId}/proof-of-income-receipts`, body, {
-        review: {
-          title: 'Review Proof of Income Receipt',
-          confirmLabel: 'Confirm, Generate & Print',
-          description: 'This creates a permanent proof-of-income receipt record before opening the print page. Verify the seller, property, released stages, amount, bank details, date, reference, and witness.',
+        doubleCheck: {
+          type: 'proof-of-income',
           summary: `${getAccreditedDisplayName(receiptSeller)} · ${selectedGroup?.unitId || selectedGroup?.unitCode || selectedGroup?.property || 'Selected property'} · ${money(selectedAmount)}`,
-          payload: {
-            seller: {
-              name: getAccreditedDisplayName(receiptSeller),
-              sellerId,
-            },
+          data: {
+            seller: { name: getAccreditedDisplayName(receiptSeller) },
             property: {
               project: selectedGroup?.projectName || selectedGroup?.project || '-',
               unit: selectedGroup?.unitId || selectedGroup?.unitCode || '-',
               buyer: selectedGroup?.buyerName || selectedGroup?.buyer || '-',
-              commissionId: Number(selectedGroup?.commissionId || 0),
             },
             selectedReleases,
             totalAmount: selectedAmount,
@@ -430,7 +424,7 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
         },
       });
     },
-    onMutate: () => setLocalAlert({ type: "loading", message: "Generating proof of income receipt..." }),
+    onMutate: () => setLocalAlert({ type: "loading", message: "Preparing proof of income review..." }),
     onSuccess: (result) => {
       setLocalAlert({ type: "success", message: result?.message || "Proof of income receipt generated." });
       queryClient.setQueryData(["seller-proof-of-income-receipts", sellerId], result?.data ? { success: true, data: result.data } : undefined);
@@ -440,7 +434,7 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
       if (result?.receipt) printReceipt(result.receipt);
     },
     onError: (error) => {
-      setLocalAlert({ type: "error", message: error?.message || "Failed to generate proof of income receipt." });
+      setLocalAlert(getDoubleCheckNotice(error, "Failed to generate proof of income receipt."));
     },
   });
 
@@ -602,7 +596,7 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
 
                   <button type="button" onClick={handleGenerate} disabled={!selectedGroup || !effectiveReleaseIds.length || createReceiptMutation.isPending} className="mt-5 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300">
                     {createReceiptMutation.isPending ? <FiLoader className="h-4 w-4 animate-spin" /> : <FiPrinter className="h-4 w-4" />}
-                    {createReceiptMutation.isPending ? "Generating..." : `Proceed to Review — ${money(selectedAmount)}`}
+                    {createReceiptMutation.isPending ? "Opening Review..." : `Proceed to Final Review — ${money(selectedAmount)}`}
                   </button>
                 </div>
               </section>
@@ -765,3 +759,4 @@ const Accredited = () => {
 };
 
 export default Accredited;
+

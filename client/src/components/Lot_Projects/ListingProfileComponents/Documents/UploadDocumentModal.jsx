@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { FiExternalLink, FiFileText, FiLoader, FiShield, FiUploadCloud, FiX } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
 import { useFetchPost } from '../../../../utils/useFetch'
-import { requestMutationReview } from '../../../../utils/mutationReview'
+import { requestDoubleCheck } from '../../../../utils/doubleCheck'
 
 const MAX_FILE_BYTES = 15 * 1024 * 1024
 const allowedTypes = new Set(['image/jpeg', 'image/png', 'application/pdf'])
@@ -39,7 +39,7 @@ const UploadDocumentModal = ({ document, signaturePath, isSaving = false, onClos
       fileName: file.name,
       fileType: file.type,
       fileSize: file.size,
-    })
+    }, { confirmationHandled: 'technical' })
     const signed = signatureResponse?.data || {}
     if (!signed.uploadUrl || !signed.signature || !signed.apiKey) {
       throw new Error('The server did not return a valid protected upload signature.')
@@ -93,26 +93,19 @@ const UploadDocumentModal = ({ document, signaturePath, isSaving = false, onClos
       fileSize: formatBytes(file.size),
       previewUrl: createLocalPreviewUrl(file),
     }))
-    let confirmed = false
+    let reviewResult = { confirmed: false, token: '' }
     try {
-      confirmed = await requestMutationReview({
-        title: 'Review Document Upload',
-        confirmLabel: 'Confirm & Upload Files',
-        description: 'Verify the target document and preview every selected file before any protected upload starts. The final document record will be saved only after the upload succeeds.',
-        method: 'UPLOAD',
-        path: signaturePath,
-        payload: {
-          targetDocument: {
-            name: document?.name || 'Buyer document',
-            documentId: document?.id || document?.document_id || null,
-          },
+      reviewResult = await requestDoubleCheck({
+        type: 'document-upload',
+        data: {
+          targetDocument: { name: document?.name || 'Buyer document' },
           files: reviewFiles,
         },
       })
     } finally {
       reviewFiles.forEach((file) => window.setTimeout(() => revokeLocalPreviewUrl(file.previewUrl), 60_000))
     }
-    if (!confirmed) {
+    if (!reviewResult.confirmed) {
       setNotice({ type: 'info', message: 'Upload review cancelled. No files were uploaded or saved.' })
       return
     }
@@ -130,7 +123,7 @@ const UploadDocumentModal = ({ document, signaturePath, isSaving = false, onClos
       }
 
       setNotice({ type: 'loading', message: 'Verifying uploaded files and saving document records...' })
-      await onSave?.({ files: uploadedFiles, __reviewConfirmed: true })
+      await onSave?.({ files: uploadedFiles, confirmationToken: reviewResult.token })
     } catch (error) {
       setNotice({ type: 'error', message: error?.message || 'Protected upload failed.' })
     } finally {
@@ -213,3 +206,4 @@ const UploadDocumentModal = ({ document, signaturePath, isSaving = false, onClos
 }
 
 export default UploadDocumentModal
+

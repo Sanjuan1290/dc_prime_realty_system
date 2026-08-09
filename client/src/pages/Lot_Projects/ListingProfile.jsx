@@ -27,7 +27,7 @@ import AccountHistoryPanel from '../../components/Lot_Projects/ListingProfileCom
 import ReserveListingModal from '../../components/Lot_Projects/ListingProfileComponents/ReserveListingModal/ReserveListingModal'
 import BuyerFormLinkModal from '../../components/Lot_Projects/ListingProfileComponents/BuyerForm/BuyerFormLinkModal'
 import BuyerFormStatusBanner from '../../components/Lot_Projects/ListingProfileComponents/BuyerForm/BuyerFormStatusBanner'
-import { useFetch, useFetchPatch, useFetchPost, useFetchPut } from '../../utils/useFetch'
+import {useFetch, useFetchPatch, useFetchPost, useFetchPut, getDoubleCheckNotice} from '../../utils/useFetch'
 import useCurrentUser from '../../utils/useCurrentUser'
 import { isFullAccessAdministrator } from '../../config/permissions'
 
@@ -203,12 +203,11 @@ const ListingProfile = () => {
   const updateListingMutation = useMutation({
     mutationFn: (payload) =>
       useFetchPut(`/projects/lot-projects/${projectSlug}/listings/${listingId}`, payload, {
-        review: {
-          title: 'Review Listing Changes',
-          confirmLabel: 'Confirm & Save Listing',
-          description: 'Review the current listing beside the values you are about to save, including the listing-specific document requirements.',
+        doubleCheck: {
+          type: 'listing',
+          mode: 'edit',
           summary: `${project?.name || project?.lot_project_name || 'Project'} · ${listing?.unit_id || listing?.unitCode || listingId}`,
-          payload: {
+          data: {
             currentListing: {
               unit: listing?.unit_id || listing?.unitCode,
               cadastralLot: listing?.cadastral_lot_no,
@@ -220,14 +219,16 @@ const ListingProfile = () => {
               annualInterestRate: listing?.annualInterestRate,
               reservationFee: listing?.reservationFee,
               status: listing?.listing_status || listing?.status,
-              documentRequirements: documents || [],
             },
-            newValues: payload,
+            newValues: {
+              ...payload,
+              projectName: project?.name || project?.lot_project_name || listing?.project_name || projectSlug,
+            },
           },
         },
       }),
     onMutate: (payload) => {
-      setAlert({ type: 'loading', message: `Saving ${payload.unitCode || payload.unit_id || 'listing'}...` })
+      setAlert({ type: 'loading', message: `Preparing ${payload.unitCode || payload.unit_id || 'listing'} review...` })
     },
     onSuccess: (result) => {
       setAlert({ type: 'success', message: result?.message || 'Listing updated successfully.' })
@@ -237,7 +238,7 @@ const ListingProfile = () => {
       queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] })
     },
     onError: (error) => {
-      setAlert({ type: 'error', message: error?.message || 'Failed to update listing.' })
+      setAlert(getDoubleCheckNotice(error, 'Failed to update listing.'))
     },
   })
 
@@ -247,7 +248,8 @@ const ListingProfile = () => {
     mutationFn: (payload) =>
       useFetchPost(
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/recalculate-commission`,
-        payload
+        payload,
+        { confirmationHandled: 'compact' }
       ),
     onMutate: () => {
       setAlert({
@@ -276,12 +278,10 @@ const ListingProfile = () => {
   const reserveListingMutation = useMutation({
     mutationFn: (payload) =>
       useFetchPost(`/projects/lot-projects/${projectSlug}/listings/${listingId}/reserve`, payload, {
-        review: {
-          title: 'Final Reservation Review',
-          confirmLabel: 'Confirm & Reserve Listing',
-          description: 'This is the final checkpoint before the reservation transaction creates/updates the buyer account, listing status, document checklist, SOA schedule, seller assignment, and commission records.',
+        doubleCheck: {
+          type: 'reservation',
           summary: `${project?.name || project?.lot_project_name || 'Project'} · ${listing?.unit_id || listing?.unitCode || listingId}`,
-          payload: {
+          data: {
             listing: {
               project: project?.name || project?.lot_project_name || listing?.project_name || '-',
               unit: listing?.unit_id || listing?.unitCode || listingId,
@@ -289,18 +289,32 @@ const ListingProfile = () => {
               areaSqm: listing?.lotAreaSqm || listing?.lot_project_listing_area_sqm || listing?.area || '-',
               reservationFee: payload?.reservation?.paymentTerms?.reservationFee,
               modeOfPayment: payload?.reservation?.modeOfPayment,
-              selectedPricing: payload?.reservation?.paymentTerms?.selectedPricing,
+              selectedPricePerSqm: payload?.reservation?.paymentTerms?.selectedPricing?.pricePerSqm,
+              baseSellingPrice: payload?.reservation?.paymentTerms?.selectedPricing?.baseSellingPrice,
+              saleDiscountAmount: payload?.reservation?.paymentTerms?.selectedPricing?.saleDiscountAmount,
+              netSellingPrice: payload?.reservation?.paymentTerms?.selectedPricing?.netSellingPrice,
+              tcp: payload?.reservation?.paymentTerms?.tcp,
             },
             buyerProfile: payload?.clientProfile || {},
-            documentRequirements: payload?.documents || [],
+            documentRequirements: (payload?.documents || []).map((document) => ({
+              name: document?.name || document?.document_name || 'Document',
+              source: document?.source || 'Document Library',
+              requirement: document?.requirement || 'required',
+              status: document?.status || 'active',
+            })),
             paymentTerms: payload?.reservation?.paymentTerms || {},
-            sellerAssignment: payload?.reservation?.seller || {},
-            buyerFormSubmissionId: payload?.buyerFormSubmissionId || null,
+            sellerAssignment: {
+              sellerName: payload?.reservation?.seller?.name || payload?.reservation?.seller?.full_name || '-',
+              role: payload?.reservation?.seller?.roleValue || payload?.reservation?.seller?.role || '-',
+              groupName: payload?.reservation?.seller?.groupName || payload?.reservation?.seller?.group_name || '-',
+              commissionRate: payload?.reservation?.seller?.directRate ?? payload?.reservation?.seller?.rateValue ?? payload?.reservation?.seller?.rate,
+              commissionBase: payload?.reservation?.paymentTerms?.selectedPricing?.baseSellingPrice,
+            },
           },
         },
       }),
     onMutate: (payload) => {
-      setAlert({ type: 'loading', message: `Reserving ${payload?.clientProfile?.buyerName || 'listing'}...` })
+      setAlert({ type: 'loading', message: `Preparing reservation review for ${payload?.clientProfile?.buyerName || 'listing'}...` })
     },
     onSuccess: (result) => {
       setShowReserveModal(false)
@@ -311,13 +325,19 @@ const ListingProfile = () => {
       queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] })
     },
     onError: (error) => {
-      setAlert({ type: 'error', message: error?.message || 'Failed to reserve listing.' })
+      setAlert(getDoubleCheckNotice(error, 'Failed to reserve listing.'))
     },
   })
 
   const createBuyerFormLinkMutation = useMutation({
     mutationFn: (payload) =>
-      useFetchPost(`/projects/lot-projects/${projectSlug}/listings/${listingId}/buyer-form-links`, payload),
+      useFetchPost(`/projects/lot-projects/${projectSlug}/listings/${listingId}/buyer-form-links`, payload, {
+        doubleCheck: {
+          type: 'buyer-form',
+          variant: 'link',
+          data: { ...payload, unit: listing?.unit_id || listing?.unitCode || listingId },
+        },
+      }),
     onMutate: () => {
       setBuyerFormNotice({ type: 'loading', message: 'Generating a secure buyer form link...' })
       setGeneratedBuyerFormUrl('')
@@ -330,7 +350,7 @@ const ListingProfile = () => {
       queryClient.invalidateQueries({ queryKey: ['lot-listings', projectSlug] })
     },
     onError: (error) => {
-      setBuyerFormNotice({ type: 'error', message: error?.message || 'Failed to generate buyer form link.' })
+      setBuyerFormNotice(getDoubleCheckNotice(error, 'Failed to generate buyer form link.'))
     },
   })
 
@@ -338,7 +358,8 @@ const ListingProfile = () => {
     mutationFn: (link) =>
       useFetchPost(
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/buyer-form-links/${link.id}/revoke`,
-        {}
+        {},
+        { confirmationHandled: 'compact' }
       ),
     onMutate: () => setBuyerFormNotice({ type: 'loading', message: 'Revoking buyer form link...' }),
     onSuccess: (result) => {
@@ -347,14 +368,15 @@ const ListingProfile = () => {
       queryClient.invalidateQueries({ queryKey: ['lot-listing-profile', projectSlug, listingId] })
       queryClient.invalidateQueries({ queryKey: ['lot-buyer-form-state', projectSlug, listingId] })
     },
-    onError: (error) => setBuyerFormNotice({ type: 'error', message: error?.message || 'Failed to revoke buyer form link.' }),
+    onError: (error) => setBuyerFormNotice(getDoubleCheckNotice(error, 'Failed to revoke buyer form link.')),
   })
 
   const rejectBuyerFormSubmissionMutation = useMutation({
     mutationFn: ({ submission, reason }) =>
       useFetchPost(
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/buyer-form-submissions/${submission.id}/reject`,
-        { reason }
+        { reason },
+        { confirmationHandled: 'compact' }
       ),
     onMutate: () => setAlert({ type: 'loading', message: 'Rejecting buyer form submission...' }),
     onSuccess: (result) => {
@@ -364,12 +386,12 @@ const ListingProfile = () => {
       queryClient.invalidateQueries({ queryKey: ['lot-listings', projectSlug] })
       queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] })
     },
-    onError: (error) => setAlert({ type: 'error', message: error?.message || 'Failed to reject buyer form submission.' }),
+    onError: (error) => setAlert(getDoubleCheckNotice(error, 'Failed to reject buyer form submission.')),
   })
 
   const holdListingMutation = useMutation({
     mutationFn: (payload) =>
-      useFetchPatch(`/projects/lot-projects/${projectSlug}/listings/${listingId}/hold`, payload),
+      useFetchPatch(`/projects/lot-projects/${projectSlug}/listings/${listingId}/hold`, payload, { confirmationHandled: 'compact' }),
     onMutate: (payload) => {
       setAlert({ type: 'loading', message: `Holding unit for ${payload.clientName || 'client'}...` })
     },
@@ -382,13 +404,13 @@ const ListingProfile = () => {
       queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] })
     },
     onError: (error) => {
-      setAlert({ type: 'error', message: error?.message || 'Failed to hold listing.' })
+      setAlert(getDoubleCheckNotice(error, 'Failed to hold listing.'))
     },
   })
 
   const unholdListingMutation = useMutation({
     mutationFn: () =>
-      useFetchPatch(`/projects/lot-projects/${projectSlug}/listings/${listingId}/unhold`, {}),
+      useFetchPatch(`/projects/lot-projects/${projectSlug}/listings/${listingId}/unhold`, {}, { confirmationHandled: 'compact' }),
     onMutate: () => {
       setAlert({ type: 'loading', message: 'Returning listing to available...' })
     },
@@ -400,7 +422,7 @@ const ListingProfile = () => {
       queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] })
     },
     onError: (error) => {
-      setAlert({ type: 'error', message: error?.message || 'Failed to unhold listing.' })
+      setAlert(getDoubleCheckNotice(error, 'Failed to unhold listing.'))
     },
   })
 
@@ -408,7 +430,8 @@ const ListingProfile = () => {
     mutationFn: ({ document, payload }) =>
       useFetchPut(
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/documents/${document.id}/upload`,
-        payload
+        payload,
+        { confirmationToken: payload?.confirmationToken }
       ),
     onMutate: ({ document }) => {
       setAlert({ type: 'loading', message: `Uploading ${document?.name || 'document'}...` })
@@ -419,7 +442,7 @@ const ListingProfile = () => {
       queryClient.invalidateQueries({ queryKey: ['lot-buyer-form-state', projectSlug, listingId] })
     },
     onError: (error) => {
-      setAlert({ type: 'error', message: error?.message || 'Failed to upload document.' })
+      setAlert(getDoubleCheckNotice(error, 'Failed to upload document.'))
     },
   })
 
@@ -427,7 +450,8 @@ const ListingProfile = () => {
     mutationFn: (document) =>
       useFetchPatch(
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/documents/${document.id}/approve`,
-        {}
+        {},
+        { confirmationHandled: 'compact' }
       ),
     onMutate: (document) => {
       setAlert({ type: 'loading', message: `Approving ${document?.name || 'document'}...` })
@@ -438,7 +462,7 @@ const ListingProfile = () => {
       queryClient.invalidateQueries({ queryKey: ['lot-buyer-form-state', projectSlug, listingId] })
     },
     onError: (error) => {
-      setAlert({ type: 'error', message: error?.message || 'Failed to approve document.' })
+      setAlert(getDoubleCheckNotice(error, 'Failed to approve document.'))
     },
   })
 
@@ -446,7 +470,8 @@ const ListingProfile = () => {
     mutationFn: (document) =>
       useFetchPatch(
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/documents/${document.id}/clear`,
-        {}
+        {},
+        { confirmationHandled: 'compact' }
       ),
     onMutate: (document) => {
       setAlert({ type: 'loading', message: `Clearing ${document?.name || 'document'}...` })
@@ -457,7 +482,7 @@ const ListingProfile = () => {
       queryClient.invalidateQueries({ queryKey: ['lot-buyer-form-state', projectSlug, listingId] })
     },
     onError: (error) => {
-      setAlert({ type: 'error', message: error?.message || 'Failed to clear document.' })
+      setAlert(getDoubleCheckNotice(error, 'Failed to clear document.'))
     },
   })
 
@@ -465,10 +490,17 @@ const ListingProfile = () => {
     mutationFn: (nextDocuments) =>
       useFetchPut(
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/document-requirements`,
-        { documents: nextDocuments }
+        { documents: nextDocuments },
+        {
+          doubleCheck: {
+            type: 'listing-documents',
+            data: { documents: nextDocuments },
+            summary: `${project?.name || project?.lot_project_name || 'Project'} · ${listing?.unit_id || listing?.unitCode || listingId}`,
+          },
+        }
       ),
     onMutate: () => {
-      setAlert({ type: 'loading', message: 'Saving document requirements...' })
+      setAlert({ type: 'loading', message: 'Preparing document checklist review...' })
     },
     onSuccess: (result) => {
       setAlert({ type: 'success', message: result?.message || 'Document requirements updated successfully.' })
@@ -478,15 +510,17 @@ const ListingProfile = () => {
       queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] })
     },
     onError: (error) => {
-      setAlert({ type: 'error', message: error?.message || 'Failed to update document requirements.' })
+      setAlert(getDoubleCheckNotice(error, 'Failed to update document requirements.'))
     },
   })
 
   const updateClientProfileMutation = useMutation({
     mutationFn: (payload) =>
-      useFetchPut(`/projects/lot-projects/${projectSlug}/listings/${listingId}/client-profile`, payload),
+      useFetchPut(`/projects/lot-projects/${projectSlug}/listings/${listingId}/client-profile`, payload, {
+        doubleCheck: { type: 'buyer-profile', mode: 'edit', data: payload },
+      }),
     onMutate: (payload) => {
-      setAlert({ type: 'loading', message: `Saving ${payload.buyerName || 'buyer profile'}...` })
+      setAlert({ type: 'loading', message: `Preparing ${payload.buyerName || 'buyer profile'} review...` })
     },
     onSuccess: (result) => {
       setAlert({ type: 'success', message: result?.message || 'Buyer profile updated successfully.' })
@@ -495,7 +529,7 @@ const ListingProfile = () => {
       queryClient.invalidateQueries({ queryKey: ['lot-listings', projectSlug] })
     },
     onError: (error) => {
-      setAlert({ type: 'error', message: error?.message || 'Failed to update buyer profile.' })
+      setAlert(getDoubleCheckNotice(error, 'Failed to update buyer profile.'))
     },
   })
 
@@ -867,3 +901,4 @@ const ListingProfile = () => {
 }
 
 export default ListingProfile
+

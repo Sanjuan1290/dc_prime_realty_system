@@ -36,7 +36,7 @@ import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
 import ProjectDetailsModal from '../../components/Lot_Projects/DashboardComponents/ProjectDetailsModal/ProjectDetailsModal'
 import EditProjectModal from '../../components/Lot_Projects/DashboardComponents/EditProjectModal/EditProjectModal'
-import { useFetch, useFetchPut } from '../../utils/useFetch'
+import {useFetch, useFetchPut, getDoubleCheckNotice} from '../../utils/useFetch'
 import useCurrentUser from '../../utils/useCurrentUser'
 
 const money = (value) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 2 }).format(Number(value || 0))
@@ -404,6 +404,7 @@ const PriceListPrintModal = ({ projectName, onClose, onPrint }) => {
               min="1"
               max="120"
               step="1"
+              data-example="20 months"
               value={months}
               onChange={(event) => { setMonths(event.target.value); setErrorMessage('') }}
               className="h-12 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-800 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
@@ -538,8 +539,10 @@ const Dashboard = () => {
   const stats = data?.data?.stats || {}
 
   const updateProjectMutation = useMutation({
-    mutationFn: (payload) => useFetchPut(`/projects/lot-projects/${project.project_bailen_id}`, payload),
-    onMutate: () => setAlert({ type: 'loading', message: 'Saving project changes...' }),
+    mutationFn: ({ payload, reviewData }) => useFetchPut(`/projects/lot-projects/${project.project_bailen_id}`, payload, {
+      doubleCheck: { type: 'project', mode: 'edit', data: reviewData },
+    }),
+    onMutate: () => setAlert({ type: 'loading', message: 'Preparing project review...' }),
     onSuccess: (result) => {
       setShowEdit(false)
       setAlert({ type: 'success', message: result?.message || 'Project updated successfully.' })
@@ -549,11 +552,11 @@ const Dashboard = () => {
       queryClient.invalidateQueries({ queryKey: ['lot-projects'] })
     },
     onError: (mutationError) => {
-      setAlert({ type: 'error', message: mutationError?.message || 'Failed to save project changes.' })
+      setAlert(getDoubleCheckNotice(mutationError, 'Failed to save project changes.'))
     },
   })
 
-  const handleSaveProject = (updatedProject) => updateProjectMutation.mutateAsync(updatedProject)
+  const handleSaveProject = (payload, reviewData) => updateProjectMutation.mutateAsync({ payload, reviewData })
 
   const handleRefresh = () => {
     if (!canLoadDateRange) return
@@ -805,3 +808,4 @@ const Dashboard = () => {
 }
 
 export default Dashboard
+

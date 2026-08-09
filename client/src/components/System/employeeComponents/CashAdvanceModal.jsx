@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { FiDollarSign, FiSave, FiX } from 'react-icons/fi'
 import StatusAlert from '../../Shared/StatusAlert'
-import { useFetchPost, useFetchPut } from '../../../utils/useFetch'
+import {useFetchPost, useFetchPut, getDoubleCheckNotice} from '../../../utils/useFetch'
 
 const inputClass = 'h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50'
 
@@ -20,15 +20,15 @@ const CashAdvanceModal = ({ advance, employees, onClose, onSaved }) => {
 
   const mutation = useMutation({
     mutationFn: () => isEdit
-      ? useFetchPut(`/employee-cash-advances/${advance.employee_cash_advance_id}`, form)
-      : useFetchPost('/employee-cash-advances', form),
-    onMutate: () => setNotice({ type: 'loading', message: isEdit ? 'Saving cash advance changes...' : 'Adding cash advance request...' }),
+      ? useFetchPut(`/employee-cash-advances/${advance.employee_cash_advance_id}`, form, { doubleCheck: { type: 'cash-advance', mode: 'edit', data: form, meta: { employeeName: employees.find((item) => Number(item.employee_id) === Number(form.employee_id))?.full_name || '' } } })
+      : useFetchPost('/employee-cash-advances', form, { doubleCheck: { type: 'cash-advance', mode: 'create', data: form, meta: { employeeName: employees.find((item) => Number(item.employee_id) === Number(form.employee_id))?.full_name || '' } } }),
+    onMutate: () => setNotice({ type: 'loading', message: 'Preparing cash advance review...' }),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['employee-cash-advances'] })
       onSaved?.(result?.message || 'Cash advance saved.')
       onClose()
     },
-    onError: (error) => setNotice({ type: 'error', message: error?.message || 'Failed to save cash advance.' }),
+    onError: (error) => setNotice(getDoubleCheckNotice(error, 'Failed to save cash advance.')),
   })
 
   const setValue = (field, value) => { setNotice(null); setForm((current) => ({ ...current, [field]: value })) }
@@ -52,8 +52,9 @@ const CashAdvanceModal = ({ advance, employees, onClose, onSaved }) => {
       </div>
       <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">The request starts as Pending. After approval, the outstanding balance is deducted automatically from the next salary release. If the available salary is not enough, the remaining balance continues to the following release.</div>
     </div>
-    <footer className="flex flex-col-reverse gap-2 border-t border-slate-200 p-4 sm:flex-row sm:justify-end"><button type="button" onClick={onClose} disabled={mutation.isPending} className="h-11 rounded-xl border border-slate-300 px-5 text-sm font-black">Cancel</button><button type="submit" disabled={mutation.isPending} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white hover:bg-blue-700 disabled:bg-blue-300"><FiSave />{mutation.isPending ? 'Saving...' : 'Save Cash Advance'}</button></footer>
+    <footer className="flex flex-col-reverse gap-2 border-t border-slate-200 p-4 sm:flex-row sm:justify-end"><button type="button" onClick={onClose} disabled={mutation.isPending} className="h-11 rounded-xl border border-slate-300 px-5 text-sm font-black">Cancel</button><button type="submit" disabled={mutation.isPending} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white hover:bg-blue-700 disabled:bg-blue-300"><FiSave />{mutation.isPending ? 'Opening Review...' : 'Proceed to Final Review'}</button></footer>
   </form></div>
 }
 
 export default CashAdvanceModal
+

@@ -75,7 +75,7 @@ const EditSettingsModal = ({ settings, onClose, onSave, isSaving = false }) => {
       return
     }
 
-    setAlert({ type: 'loading', message: 'Saving settings to database...' })
+    setAlert({ type: 'loading', message: 'Preparing settings review...' })
     onSave({
       ...form,
       releaseDayOne: String(releaseDayOne),
@@ -141,7 +141,7 @@ const EditSettingsModal = ({ settings, onClose, onSave, isSaving = false }) => {
           <button type="button" onClick={onClose} disabled={isSaving} className="h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">Cancel</button>
           <button type="submit" disabled={isSaving} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">
             {isSaving ? <FiLoader className="h-4 w-4 animate-spin" /> : <FiSave className="h-4 w-4" />}
-            {isSaving ? 'Saving...' : 'Save Settings'}
+            {isSaving ? 'Opening Review...' : 'Proceed to Final Review'}
           </button>
         </div>
       </form>
@@ -150,3 +150,4 @@ const EditSettingsModal = ({ settings, onClose, onSave, isSaving = false }) => {
 }
 
 export default EditSettingsModal
+

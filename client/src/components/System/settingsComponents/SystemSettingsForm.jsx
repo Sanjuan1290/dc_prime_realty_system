@@ -117,7 +117,7 @@ const SystemSettingsForm = ({ form, setForm, onSubmit, isSaving, disabled = fals
             className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-6 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <FiSave className="h-4 w-4" />
-            {isSaving ? 'Saving Changes...' : 'Save Changes'}
+            {isSaving ? 'Opening Review...' : 'Proceed to Final Review'}
           </button>
         </div>
       ) : null}
@@ -126,3 +126,4 @@ const SystemSettingsForm = ({ form, setForm, onSubmit, isSaving, disabled = fals
 }
 
 export default SystemSettingsForm
+
