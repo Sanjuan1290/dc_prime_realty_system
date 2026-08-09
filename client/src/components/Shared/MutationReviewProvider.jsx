@@ -129,6 +129,54 @@ const SECTION_META = {
     accent: 'border-l-emerald-500',
     step: 'bg-emerald-600 text-white ring-emerald-100',
   },
+  groupinformation: {
+    title: 'Group Information',
+    helper: 'Verify the group name, type, head, description, and status.',
+    header: 'border-blue-200 bg-blue-50',
+    badge: 'bg-blue-100 text-blue-700',
+    accent: 'border-l-blue-500',
+    step: 'bg-blue-600 text-white ring-blue-100',
+  },
+  projectrates: {
+    title: 'Project Rates',
+    helper: 'Verify each accredited project by name and its exact commission-rate allocation.',
+    header: 'border-amber-200 bg-amber-50',
+    badge: 'bg-amber-100 text-amber-800',
+    accent: 'border-l-amber-500',
+    step: 'bg-amber-500 text-white ring-amber-100',
+  },
+  externalrepresentative: {
+    title: 'External Representative',
+    helper: 'Verify the representative identity and contact information for this External Group.',
+    header: 'border-violet-200 bg-violet-50',
+    badge: 'bg-violet-100 text-violet-700',
+    accent: 'border-l-violet-500',
+    step: 'bg-violet-600 text-white ring-violet-100',
+  },
+  employeeinformation: {
+    title: 'Employee Information',
+    helper: 'Verify the employee identity, contact details, department, position, employment type, and status.',
+    header: 'border-blue-200 bg-blue-50',
+    badge: 'bg-blue-100 text-blue-700',
+    accent: 'border-l-blue-500',
+    step: 'bg-blue-600 text-white ring-blue-100',
+  },
+  compensationandbenefits: {
+    title: 'Compensation & Benefits',
+    helper: 'Verify salary, allowances, bonus, overtime multiplier, and night differential.',
+    header: 'border-amber-200 bg-amber-50',
+    badge: 'bg-amber-100 text-amber-800',
+    accent: 'border-l-amber-500',
+    step: 'bg-amber-500 text-white ring-amber-100',
+  },
+  workschedule: {
+    title: 'Work Schedule',
+    helper: 'Verify shift times, break duration, and every selected work day.',
+    header: 'border-emerald-200 bg-emerald-50',
+    badge: 'bg-emerald-100 text-emerald-700',
+    accent: 'border-l-emerald-500',
+    step: 'bg-emerald-600 text-white ring-emerald-100',
+  },
   details: {
     title: 'Information Review',
     helper: 'Verify every user-facing field before continuing.',
@@ -339,7 +387,10 @@ const ARRAY_ITEM_NOUNS = {
   defaultdocuments: 'Default Document',
   templatedocuments: 'Document',
   documentrequirements: 'Document',
+  documents: 'Document',
   selectedreleases: 'Release',
+  projectrates: 'Project',
+  workdays: 'Work Day',
   files: 'File',
   items: 'Entry',
 }
@@ -349,17 +400,6 @@ const getArrayItemNoun = (label) => {
   if (ARRAY_ITEM_NOUNS[normalized]) return ARRAY_ITEM_NOUNS[normalized]
   const humanized = humanizeKey(label)
   return humanized && humanized !== 'Items' ? humanized : 'Entry'
-}
-
-const getMeaningfulItemScalar = (item = {}) => {
-  const ignoredFallbackKeys = /^(?:status|isrequired|required|requirement|active|inactive|enabled|disabled)$/i
-  return Object.entries(item).find(([key, value]) =>
-    !isTechnicalKey(key)
-    && !ignoredFallbackKeys.test(String(key || '').replace(/[^a-z0-9]/gi, ''))
-    && !Array.isArray(value)
-    && !(value && typeof value === 'object')
-    && !isEmptyScalar(value)
-  )
 }
 
 const getItemTitle = (item, index, label = '') => {
@@ -374,18 +414,32 @@ const getItemTitle = (item, index, label = '') => {
     item.reviewTitle,
     item.reviewLabel,
     item.fileName,
+    item.file_name,
     item.name,
     item.title,
     item.document_name,
     item.documentName,
+    item.document_title,
+    item.documentTitle,
     item.full_name,
     item.fullName,
+    item.employee_name,
+    item.employeeName,
+    item.buyer_name,
+    item.buyerName,
+    item.client_name,
+    item.clientName,
+    item.seller_group_name,
+    item.sellerGroupName,
+    item.group_name,
+    item.groupName,
     item.label,
     item.releaseStage,
     item.release_stage,
     item.stage,
     item.milestone,
     item.unitCode,
+    item.unit_code,
     item.unit_id,
     item.unit,
     item.lotNumber,
@@ -395,17 +449,16 @@ const getItemTitle = (item, index, label = '') => {
     item.referenceId,
     item.reference_id,
     item.projectName,
+    item.project_name,
+    item.lot_project_name,
+    item.project,
     item.property,
   ].find((value) => !isEmptyScalar(value))
 
   if (semanticTitle !== undefined && semanticTitle !== null) return String(semanticTitle)
 
-  const fallback = getMeaningfulItemScalar(item)
-  if (fallback) {
-    const [key, value] = fallback
-    return `${humanizeKey(key)}: ${formatScalar(value, key)}`
-  }
-
+  // Never promote an arbitrary amount, rate, status, or other business value into a card title.
+  // If a payload does not preserve a real display label, use a neutral contextual fallback instead.
   return `${noun} ${index + 1}`
 }
 
@@ -416,6 +469,8 @@ const getEmptyArrayMessage = (label) => {
   if (section === 'documentrequirements') return 'No documents are selected for this checklist.'
   if (section === 'cadastrallots') return 'No cadastral lot numbers were added.'
   if (section === 'selectedreleases') return 'No commission release stages are selected.'
+  if (section === 'projectrates') return 'No accredited projects are selected for this group.'
+  if (section === 'workdays') return 'No work days are selected for this employee.'
   if (section === 'files') return 'No files are selected.'
   return `No ${getArrayItemNoun(label).toLowerCase()} records are selected for this section.`
 }

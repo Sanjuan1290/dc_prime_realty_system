@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { FiSave, FiUser, FiX } from 'react-icons/fi'
 import StatusAlert from '../../Shared/StatusAlert'
 import { useFetchPost, useFetchPut } from '../../../utils/useFetch'
+import { buildEmployeeReviewPayload } from './employeeReview'
 
 const weekdays = [
   ['0', 'Sunday'], ['1', 'Monday'], ['2', 'Tuesday'], ['3', 'Wednesday'],
@@ -66,17 +67,32 @@ const EmployeeModal = ({ employee, onClose, onSaved }) => {
   }), [form])
 
   const mutation = useMutation({
-    mutationFn: () => isEdit
-      ? useFetchPut(`/employees/${employee.employee_id}`, payload)
-      : useFetchPost('/employees', payload),
-    onMutate: () => setNotice({ type: 'loading', message: isEdit ? 'Saving employee changes...' : 'Adding employee...' }),
+    mutationFn: () => {
+      const review = {
+        title: isEdit ? 'Review Employee Changes' : 'Review New Employee',
+        confirmLabel: isEdit ? 'Confirm & Save Employee' : 'Confirm & Add Employee',
+        description: 'Verify the employee profile, compensation, and work schedule before saving.',
+        summary: [payload.first_name, payload.middle_name, payload.last_name].filter(Boolean).join(' ') || 'Employee',
+        payload: buildEmployeeReviewPayload(payload),
+      }
+      return isEdit
+        ? useFetchPut(`/employees/${employee.employee_id}`, payload, { review })
+        : useFetchPost('/employees', payload, { review })
+    },
+    onMutate: () => setNotice({ type: 'loading', message: 'Preparing employee review...' }),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['employees'] })
       queryClient.invalidateQueries({ queryKey: ['employee-options'] })
       onSaved?.(result?.message || 'Employee saved.')
       onClose()
     },
-    onError: (error) => setNotice({ type: 'error', message: error?.message || 'Failed to save employee.' }),
+    onError: (error) => {
+      if (/review cancelled/i.test(String(error?.message || ''))) {
+        setNotice({ type: 'info', message: 'Final review closed. You can continue editing the employee; nothing was saved.' })
+        return
+      }
+      setNotice({ type: 'error', message: error?.message || 'Failed to save employee.' })
+    },
   })
 
   const setValue = (field, value) => { setNotice(null); setForm((current) => ({ ...current, [field]: value })) }
@@ -140,7 +156,7 @@ const EmployeeModal = ({ employee, onClose, onSaved }) => {
 
         <footer className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-white px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
           <button type="button" onClick={onClose} disabled={mutation.isPending} className="h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 hover:bg-slate-50 disabled:opacity-50">Cancel</button>
-          <button type="submit" disabled={mutation.isPending} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"><FiSave />{mutation.isPending ? 'Saving...' : isEdit ? 'Save Employee' : 'Add Employee'}</button>
+          <button type="submit" disabled={mutation.isPending} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"><FiSave />{mutation.isPending ? 'Opening Review...' : isEdit ? 'Save Employee' : 'Add Employee'}</button>
         </footer>
       </form>
     </div>

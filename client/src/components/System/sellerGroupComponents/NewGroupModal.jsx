@@ -6,6 +6,7 @@ import ConfirmActionModal from '../../Shared/ConfirmActionModal'
 import ProjectAccreditationFields from './ProjectAccreditationFields'
 import { getSellerRoleLabel } from '../../../config/sellerRoles'
 import { useFetch as fetchJson, useFetchPost as postJson } from '../../../utils/useFetch'
+import { buildSellerGroupReviewPayload } from './groupReview'
 
 const validateProjectRates = (projectRates, groupHeadRole, groupType) => {
   if (!projectRates.length) return 'Select at least one accredited project.'
@@ -97,8 +98,21 @@ const NewGroupModal = ({ setShowNewGroupModal, onSaved, groupType = 'in_house' }
   const groupHeadRole = selectedGroupHead?.role || 'division_manager'
 
   const mutation = useMutation({
-    mutationFn: () => postJson('/seller-groups/create', form),
-    onMutate: () => setNotice({ type: 'loading', message: `Creating ${groupLabel}...` }),
+    mutationFn: () => postJson('/seller-groups/create', form, {
+      review: {
+        title: `Review New ${groupLabel}`,
+        confirmLabel: `Confirm & Add ${groupLabel}`,
+        description: 'Verify the group information, each accredited project by name, and the exact commission rates before saving.',
+        summary: form.seller_group_name || groupLabel,
+        payload: buildSellerGroupReviewPayload({
+          form,
+          projects,
+          groupHeadName: selectedGroupHead?.full_name || '',
+          groupType,
+        }),
+      },
+    }),
+    onMutate: () => setNotice({ type: 'loading', message: `Preparing ${groupLabel} review...` }),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['seller-groups'] })
       queryClient.invalidateQueries({ queryKey: ['seller-group-options'] })
@@ -107,7 +121,13 @@ const NewGroupModal = ({ setShowNewGroupModal, onSaved, groupType = 'in_house' }
       setShowNewGroupModal(false)
       onSaved?.(data?.message || `${groupLabel} created successfully.`)
     },
-    onError: (error) => setNotice({ type: 'error', message: error?.message || `Failed to create ${groupLabel}.` }),
+    onError: (error) => {
+      if (/review cancelled/i.test(String(error?.message || ''))) {
+        setNotice({ type: 'info', message: `Final review closed. You can continue editing the ${groupLabel.toLowerCase()}; nothing was saved.` })
+        return
+      }
+      setNotice({ type: 'error', message: error?.message || `Failed to create ${groupLabel}.` })
+    },
   })
 
   const updateForm = (field, value) => {
@@ -241,7 +261,7 @@ const NewGroupModal = ({ setShowNewGroupModal, onSaved, groupType = 'in_house' }
 
         <footer className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4 sm:flex-row sm:justify-end">
           <button type="button" onClick={() => setShowNewGroupModal(false)} disabled={mutation.isPending} className="h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 hover:bg-slate-100 disabled:opacity-50">Cancel</button>
-          <button type="submit" disabled={mutation.isPending || isLoadingOptions} className="inline-flex h-11 items-center justify-center rounded-xl bg-blue-600 px-6 text-sm font-black text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">{mutation.isPending ? 'Saving...' : 'Add Group'}</button>
+          <button type="submit" disabled={mutation.isPending || isLoadingOptions} className="inline-flex h-11 items-center justify-center rounded-xl bg-blue-600 px-6 text-sm font-black text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">{mutation.isPending ? 'Opening Review...' : 'Add Group'}</button>
         </footer>
       </form>
 

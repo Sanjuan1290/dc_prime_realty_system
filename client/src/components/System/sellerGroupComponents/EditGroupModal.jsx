@@ -6,6 +6,7 @@ import ConfirmActionModal from '../../Shared/ConfirmActionModal'
 import ProjectAccreditationFields from './ProjectAccreditationFields'
 import { getSellerRoleLabel } from '../../../config/sellerRoles'
 import { useFetch as fetchJson, useFetchPut as putJson } from '../../../utils/useFetch'
+import { buildSellerGroupReviewPayload } from './groupReview'
 
 const normalizeRates = (rates = [], groupType = 'in_house') => rates.map((rate) => ({
   lot_project_id: Number(rate.lot_project_id),
@@ -103,8 +104,21 @@ const EditGroupModal = ({ setShowEditGroupModal, selectedGroup, onSaved, groupTy
   const projects = projectsQuery.data?.data || []
 
   const mutation = useMutation({
-    mutationFn: () => putJson(`/seller-groups/edit/${selectedGroup.seller_group_id}`, form),
-    onMutate: () => setNotice({ type: 'loading', message: `Saving ${groupLabel}...` }),
+    mutationFn: () => putJson(`/seller-groups/edit/${selectedGroup.seller_group_id}`, form, {
+      review: {
+        title: `Review ${groupLabel} Changes`,
+        confirmLabel: `Confirm & Save ${groupLabel}`,
+        description: 'Verify the group information, each accredited project by name, and the exact commission rates before saving the changes.',
+        summary: form.seller_group_name || groupLabel,
+        payload: buildSellerGroupReviewPayload({
+          form,
+          projects,
+          groupHeadName: selectedHead?.full_name || selectedGroup?.seller_group_head_name || '',
+          groupType,
+        }),
+      },
+    }),
+    onMutate: () => setNotice({ type: 'loading', message: `Preparing ${groupLabel} review...` }),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['seller-groups'] })
       queryClient.invalidateQueries({ queryKey: ['seller-group-options'] })
@@ -114,7 +128,13 @@ const EditGroupModal = ({ setShowEditGroupModal, selectedGroup, onSaved, groupTy
       setShowEditGroupModal(false)
       onSaved?.(data?.message || `${groupLabel} updated successfully.`)
     },
-    onError: (error) => setNotice({ type: 'error', message: error?.message || `Failed to update ${groupLabel}.` }),
+    onError: (error) => {
+      if (/review cancelled/i.test(String(error?.message || ''))) {
+        setNotice({ type: 'info', message: `Final review closed. You can continue editing the ${groupLabel.toLowerCase()}; nothing was saved.` })
+        return
+      }
+      setNotice({ type: 'error', message: error?.message || `Failed to update ${groupLabel}.` })
+    },
   })
 
   const updateForm = (field, value) => { setNotice(null); setForm((current) => ({ ...current, [field]: value })) }
@@ -159,7 +179,7 @@ const EditGroupModal = ({ setShowEditGroupModal, selectedGroup, onSaved, groupTy
           <ProjectAccreditationFields projects={projects} projectRates={form.project_rates} onChange={(rates) => updateForm('project_rates', rates)} groupHeadRole={groupHeadRole} groupType={groupType} disabled={mutation.isPending || isLoadingOptions} onRequestRemove={setProjectPendingRemoval} />
         </div></div>
 
-        <footer className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4 sm:flex-row sm:justify-end"><button type="button" onClick={() => setShowEditGroupModal(false)} disabled={mutation.isPending} className="h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700">Cancel</button><button type="submit" disabled={mutation.isPending || isLoadingOptions} className="h-11 rounded-xl bg-blue-600 px-6 text-sm font-black text-white disabled:opacity-60">{mutation.isPending ? 'Saving...' : 'Save Changes'}</button></footer>
+        <footer className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4 sm:flex-row sm:justify-end"><button type="button" onClick={() => setShowEditGroupModal(false)} disabled={mutation.isPending} className="h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700">Cancel</button><button type="submit" disabled={mutation.isPending || isLoadingOptions} className="h-11 rounded-xl bg-blue-600 px-6 text-sm font-black text-white disabled:opacity-60">{mutation.isPending ? 'Opening Review...' : 'Save Changes'}</button></footer>
       </form>
       <ConfirmActionModal open={Boolean(projectPendingRemoval)} title="Remove Project Accreditation?" message={`${projectPendingRemoval?.lot_project_name || 'This project'} will no longer accept new sales for this group. Historical commission records remain.`} confirmLabel="Remove Project" tone="danger" onClose={() => setProjectPendingRemoval(null)} onConfirm={() => { const id = Number(projectPendingRemoval?.lot_project_id); updateForm('project_rates', form.project_rates.filter((rate) => Number(rate.lot_project_id) !== id)); setProjectPendingRemoval(null) }} />
     </div>
