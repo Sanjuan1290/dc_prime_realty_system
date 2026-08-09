@@ -399,9 +399,9 @@ const AddLotProjectModal = ({
         cadastralLots,
         defaultDocuments: selectedDocuments.map((document) => ({
           document_id: document.id,
+          reviewTitle: document.name || document.document_name || 'Document',
           requirement: document.requirement,
           status: document.status,
-          is_required: document.requirement === 'required',
         })),
       })
     } catch (error) {

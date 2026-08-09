@@ -21,8 +21,9 @@ test('document template final review uses real document names instead of Item 1 
     assert.match(source, /payload:\s*buildTemplateReviewPayload/)
   }
 
-  assert.match(provider, /item\.reviewTitle \|\| item\.fileName/)
-  assert.match(provider, /\^review\.\?title\$/i)
+  assert.match(provider, /item\.reviewTitle/)
+  assert.match(provider, /item\.fileName/)
+  assert.match(provider, /review\.\?\(\?:title\|label\)/)
   assert.match(provider, /title: 'Template Documents'/)
   assert.match(provider, /Verify every selected document and whether it is Required or Optional\./)
 })

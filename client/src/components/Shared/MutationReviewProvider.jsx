@@ -105,6 +105,30 @@ const SECTION_META = {
     accent: 'border-l-emerald-500',
     step: 'bg-emerald-600 text-white ring-emerald-100',
   },
+  cadastrallots: {
+    title: 'Cadastral Lots',
+    helper: 'Verify every cadastral lot number assigned to this project or listing.',
+    header: 'border-cyan-200 bg-cyan-50',
+    badge: 'bg-cyan-100 text-cyan-700',
+    accent: 'border-l-cyan-500',
+    step: 'bg-cyan-600 text-white ring-cyan-100',
+  },
+  defaultdocuments: {
+    title: 'Default Documents',
+    helper: 'Verify each default document and its Required / Optional and Active / Inactive settings.',
+    header: 'border-emerald-200 bg-emerald-50',
+    badge: 'bg-emerald-100 text-emerald-700',
+    accent: 'border-l-emerald-500',
+    step: 'bg-emerald-600 text-white ring-emerald-100',
+  },
+  selectedreleases: {
+    title: 'Selected Releases',
+    helper: 'Verify only the commission release stages selected for this action.',
+    header: 'border-emerald-200 bg-emerald-50',
+    badge: 'bg-emerald-100 text-emerald-700',
+    accent: 'border-l-emerald-500',
+    step: 'bg-emerald-600 text-white ring-emerald-100',
+  },
   details: {
     title: 'Information Review',
     helper: 'Verify every user-facing field before continuing.',
@@ -145,7 +169,7 @@ const isSensitiveKey = (key) => /password|secret|token|signature|authorization|c
 const isTechnicalKey = (key) => {
   const value = String(key || '')
   return /request.?key|cloudinary|asset.?id|public.?id|preview.?url|website$|buyer.?form.?submission.?id/i.test(value)
-    || /^review.?title$/i.test(value)
+    || /^review.?(?:title|label)$/i.test(value)
     || /(^|[._-])(id|ids)$/i.test(value)
     || /(?:_id|Id)$/.test(value)
 }
@@ -310,41 +334,116 @@ const ReviewRows = ({ object, sectionLabel = '', hideWhenEmpty = false }) => {
   )
 }
 
-const getItemTitle = (item, index) => {
-  if (!item || typeof item !== 'object') return `Item ${index + 1}`
-  return item.reviewTitle || item.fileName || item.name || item.document_name || item.documentName || item.full_name || item.fullName || item.label || `Item ${index + 1}`
+const ARRAY_ITEM_NOUNS = {
+  cadastrallots: 'Cadastral Lot',
+  defaultdocuments: 'Default Document',
+  templatedocuments: 'Document',
+  documentrequirements: 'Document',
+  selectedreleases: 'Release',
+  files: 'File',
+  items: 'Entry',
+}
+
+const getArrayItemNoun = (label) => {
+  const normalized = normalizeSectionKey(label)
+  if (ARRAY_ITEM_NOUNS[normalized]) return ARRAY_ITEM_NOUNS[normalized]
+  const humanized = humanizeKey(label)
+  return humanized && humanized !== 'Items' ? humanized : 'Entry'
+}
+
+const getMeaningfulItemScalar = (item = {}) => {
+  const ignoredFallbackKeys = /^(?:status|isrequired|required|requirement|active|inactive|enabled|disabled)$/i
+  return Object.entries(item).find(([key, value]) =>
+    !isTechnicalKey(key)
+    && !ignoredFallbackKeys.test(String(key || '').replace(/[^a-z0-9]/gi, ''))
+    && !Array.isArray(value)
+    && !(value && typeof value === 'object')
+    && !isEmptyScalar(value)
+  )
+}
+
+const getItemTitle = (item, index, label = '') => {
+  const noun = getArrayItemNoun(label)
+
+  if (!item || typeof item !== 'object') {
+    const value = formatScalar(item, label)
+    return value && value !== 'Not provided' ? `${noun} ${value}` : `${noun} ${index + 1}`
+  }
+
+  const semanticTitle = [
+    item.reviewTitle,
+    item.reviewLabel,
+    item.fileName,
+    item.name,
+    item.title,
+    item.document_name,
+    item.documentName,
+    item.full_name,
+    item.fullName,
+    item.label,
+    item.releaseStage,
+    item.release_stage,
+    item.stage,
+    item.milestone,
+    item.unitCode,
+    item.unit_id,
+    item.unit,
+    item.lotNumber,
+    item.cadastralLotNo,
+    item.cadastral_lot_no,
+    item.referenceNumber,
+    item.referenceId,
+    item.reference_id,
+    item.projectName,
+    item.property,
+  ].find((value) => !isEmptyScalar(value))
+
+  if (semanticTitle !== undefined && semanticTitle !== null) return String(semanticTitle)
+
+  const fallback = getMeaningfulItemScalar(item)
+  if (fallback) {
+    const [key, value] = fallback
+    return `${humanizeKey(key)}: ${formatScalar(value, key)}`
+  }
+
+  return `${noun} ${index + 1}`
 }
 
 const getEmptyArrayMessage = (label) => {
   const section = normalizeSectionKey(label)
   if (section === 'templatedocuments') return 'No documents are selected for this template.'
+  if (section === 'defaultdocuments') return 'No default documents are selected for this project.'
+  if (section === 'documentrequirements') return 'No documents are selected for this checklist.'
+  if (section === 'cadastrallots') return 'No cadastral lot numbers were added.'
+  if (section === 'selectedreleases') return 'No commission release stages are selected.'
   if (section === 'files') return 'No files are selected.'
-  return 'No items are selected for this section.'
+  return `No ${getArrayItemNoun(label).toLowerCase()} records are selected for this section.`
 }
 
 const ArrayReview = ({ label, value }) => (
   <div className="space-y-3">
-    {value.length ? value.map((item, index) => (
-      <article key={`${label}-${index}`} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="mb-3 flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
-          <div className="flex min-w-0 items-center gap-2">
-            <FiFileText className="h-4 w-4 shrink-0 text-blue-600" />
-            <p className="truncate text-sm font-black text-slate-950">{getItemTitle(item, index)}</p>
+    {value.length ? value.map((item, index) => {
+      const isObjectItem = Boolean(item && typeof item === 'object')
+      return (
+        <article key={`${label}-${index}`} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className={`flex items-center justify-between gap-3 ${isObjectItem ? 'mb-3 border-b border-slate-100 pb-3' : ''}`}>
+            <div className="flex min-w-0 items-center gap-2">
+              <FiFileText className="h-4 w-4 shrink-0 text-blue-600" />
+              <p className="truncate text-sm font-black text-slate-950">{getItemTitle(item, index, label)}</p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {isObjectItem && item.previewUrl ? (
+                <a href={item.previewUrl} target="_blank" rel="noopener noreferrer" className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 text-[11px] font-black text-blue-700 transition hover:bg-blue-100">
+                  <FiExternalLink className="h-3.5 w-3.5" /> Preview File
+                </a>
+              ) : null}
+              <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-black text-slate-500">{index + 1}/{value.length}</span>
+            </div>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
-            {item && typeof item === 'object' && item.previewUrl ? (
-              <a href={item.previewUrl} target="_blank" rel="noopener noreferrer" className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 text-[11px] font-black text-blue-700 transition hover:bg-blue-100">
-                <FiExternalLink className="h-3.5 w-3.5" /> Preview File
-              </a>
-            ) : null}
-            <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-black text-slate-500">{index + 1}/{value.length}</span>
-          </div>
-        </div>
-        {item && typeof item === 'object'
-          ? <ReviewRows object={item} sectionLabel={label} />
-          : <p className="text-sm font-bold text-slate-800">{formatScalar(item, label)}</p>}
-      </article>
-    )) : (
+          {isObjectItem ? <ReviewRows object={item} sectionLabel={label} /> : null}
+        </article>
+      )
+    }) : (
       <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-5 text-sm font-semibold text-slate-500">{getEmptyArrayMessage(label)}</div>
     )}
   </div>
