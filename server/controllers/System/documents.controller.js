@@ -1,4 +1,4 @@
-import { db } from '../../db/connect.js';
+  import { db } from '../../db/connect.js';
 
 const getErrorMessage = (error) => {
   if (String(error?.code || '').startsWith('ER_') || error?.sqlMessage || error?.sql) return 'Database operation failed. Please try again.';
@@ -183,7 +183,6 @@ export const addDocument = async (req, res) => {
     const {
       document_name,
       document_description,
-      document_is_reusable = true,
       document_status = 'active',
       document_is_required = true,
     } = req.body;
@@ -205,7 +204,7 @@ export const addDocument = async (req, res) => {
       [
         document_name.trim(),
         document_description?.trim() || null,
-        Boolean(document_is_reusable) ? 1 : 0,
+        1,
         document_status,
         Boolean(document_is_required) ? 1 : 0,
       ]
@@ -402,7 +401,6 @@ export const editDocument = async (req, res) => {
     const {
       document_name,
       document_description,
-      document_is_reusable = true,
       document_status = 'active',
       document_is_required = true,
     } = req.body;
@@ -425,7 +423,7 @@ export const editDocument = async (req, res) => {
       [
         document_name.trim(),
         document_description?.trim() || null,
-        Boolean(document_is_reusable) ? 1 : 0,
+        1,
         document_status,
         Boolean(document_is_required) ? 1 : 0,
         documentId,
