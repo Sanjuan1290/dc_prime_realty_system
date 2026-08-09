@@ -17,7 +17,7 @@ const LotBadge = ({ lot }) => (
   </div>
 )
 
-const ProjectDetailsModal = ({ project, onClose, onEdit }) => {
+const ProjectDetailsModal = ({ project, onClose, onEdit, onPrintPriceList }) => {
   const lots = project.cadastral_lots || []
 
   return (
@@ -50,7 +50,7 @@ const ProjectDetailsModal = ({ project, onClose, onEdit }) => {
         </div>
 
         <div className="flex flex-col gap-2 border-t border-slate-200 px-6 py-4 sm:flex-row sm:justify-end">
-          <button type="button" className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 transition hover:bg-slate-50"><FiPrinter className="h-4 w-4" />Print Price List</button>
+          <button type="button" onClick={onPrintPriceList} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 transition hover:bg-slate-50"><FiPrinter className="h-4 w-4" />Print Price List</button>
           <button type="button" onClick={onEdit} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 text-sm font-black text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-700"><FiEdit3 className="h-4 w-4" />Edit Project</button>
         </div>
       </div>

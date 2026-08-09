@@ -530,7 +530,7 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
     : String(Number(form.dailyPenaltyRate))
   const isCustomPenaltyRate = penaltyRateMode === 'custom'
 
-  const Field = ({ label, value, onChange, type = 'number', placeholder = '', helper, disabled = false, min, max, step }) => (
+  const Field = ({ label, value, onChange, type = 'number', placeholder = '', example = '', helper, disabled = false, min, max, step }) => (
     <label className="flex flex-col gap-1.5">
       <span className="text-sm font-black text-slate-700">{label}</span>
       <input
@@ -541,6 +541,7 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
         min={min}
         max={max}
         step={step}
+        data-example={example || undefined}
         disabled={isSaving || disabled}
         className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
       />
@@ -643,6 +644,7 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
                 value={form.dailyPenaltyRate}
                 onChange={(value) => updateForm('dailyPenaltyRate', value)}
                 placeholder="Enter 0 to 100"
+                example="0.15%"
                 helper="This rate remains editable even after payments are recorded."
                 min="0"
                 max="100"

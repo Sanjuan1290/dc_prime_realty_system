@@ -39,6 +39,18 @@ test('Super Admin may load more than 12 months and receives a warning flag', () 
   assert.equal(range.longRangeWarning, true);
 });
 
+
+
+test('Lot Project dashboard defaults to the current calendar month when range is omitted', () => {
+  const range = resolveDashboardDateRange({}, admin1);
+  const today = new Date();
+  const expectedMonth = String(today.getMonth() + 1).padStart(2, '0');
+  const expectedYear = String(today.getFullYear());
+  assert.equal(range.from, `${expectedYear}-${expectedMonth}-01`);
+  assert.equal(range.to.slice(0, 7), `${expectedYear}-${expectedMonth}`);
+  assert.equal(range.spanMonths, 1);
+});
+
 test('preset ranges resolve to complete calendar months', () => {
   const range = resolveDashboardDateRange({ range: 'last_month' }, admin1);
   assert.match(range.from, /^\d{4}-\d{2}-01$/);

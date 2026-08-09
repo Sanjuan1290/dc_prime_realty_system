@@ -5,7 +5,10 @@ import { readFile } from 'node:fs/promises';
 const read = (relativePath) => readFile(new URL(relativePath, import.meta.url), 'utf8');
 
 test('Price List button opens a month-setting modal before printing', async () => {
-  const dashboard = await read('../../client/src/pages/Lot_Projects/Dashboard.jsx');
+  const [dashboard, details] = await Promise.all([
+    read('../../client/src/pages/Lot_Projects/Dashboard.jsx'),
+    read('../../client/src/components/Lot_Projects/DashboardComponents/ProjectDetailsModal/ProjectDetailsModal.jsx'),
+  ]);
 
   assert.match(dashboard, /const PriceListPrintModal/);
   assert.match(dashboard, /Straight Payment \(Months\)/);
@@ -14,6 +17,8 @@ test('Price List button opens a month-setting modal before printing', async () =
   assert.match(dashboard, /setShowPriceListModal\(true\)/);
   assert.match(dashboard, /new URLSearchParams\(\{ straightPaymentMonths:/);
   assert.match(dashboard, /Print Price List/);
+  assert.match(details, /onClick=\{onPrintPriceList\}[\s\S]*?Print Price List/);
+  assert.match(dashboard, /onPrintPriceList=\{\(\) => \{ setShowDetails\(false\); setShowPriceListModal\(true\) \}\}/);
 });
 
 test('Straight Payment Months is not stored in Add or Edit Project data', async () => {

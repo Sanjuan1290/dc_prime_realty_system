@@ -565,24 +565,29 @@ const canShowInputExample = (control) => {
 const inferExample = (labelText, control) => {
   const label = String(labelText || '').toLowerCase()
   const type = getExampleControlKind(control)
+  const explicitExample = exampleFromPlaceholder(control?.getAttribute('data-example'))
   const placeholder = exampleFromPlaceholder(control?.getAttribute('placeholder'))
 
-  // Custom follow-up inputs should demonstrate values outside the normal preset choices.
-  if (/custom.*daily.*penalty.*rate/.test(label)) return '0.15%'
-  if (/custom.*downpayment.*percentage/.test(label)) return '20%'
-  if (/actual.*downpayment.*amount/.test(label)) return '₱400,000'
-  if (/custom.*downpayment.*term/.test(label)) return '18 months'
-  if (/custom.*monthly.*term/.test(label)) return '30 months'
-  if (/custom/.test(label) && /month|term/.test(label)) return '18 months'
-  if (/custom/.test(label) && /rate|percentage|percent|\(%\)|\b%\b/.test(label)) return '12.5%'
+  // The control type only decides whether an example is allowed. The actual
+  // example should come from the field itself whenever the value is business-specific.
+  if (explicitExample) return explicitExample
 
+  // An authored placeholder is safer than a global keyword guess.
+  if (placeholder) return placeholder
+
+  // Keep only high-confidence semantic examples for common free-form identity fields.
+  // Ambiguous concepts such as rates, percentages, terms, status, roles, and methods
+  // intentionally receive no guessed example unless the field supplies one.
   if (/first name/.test(label)) return 'Juan'
   if (/middle name/.test(label)) return 'Santos'
   if (/last name|surname/.test(label)) return 'Dela Cruz'
   if (/full name|buyer name|client name|seller name|employee name|witness name|representative name/.test(label)) return 'Juan Dela Cruz'
+  if (/place of birth/.test(label)) return 'Quezon City'
+  if (/citizenship|nationality/.test(label)) return 'Filipino'
   if (/email/.test(label)) return 'juan@email.com'
   if (/contact|mobile|phone|telephone/.test(label)) return '0917 123 4567'
   if (/address/.test(label)) return '123 Aguinaldo Hwy, Cavite'
+  if (/zip|postal/.test(label)) return '4100'
   if (/tin/.test(label)) return '123-456-789-000'
   if (/prc/.test(label)) return '0123456'
   if (/bank/.test(label) && !/account/.test(label)) return 'BDO'
@@ -591,21 +596,19 @@ const inferExample = (labelText, control) => {
   if (/unit.*(id|no|number)|unit code/.test(label)) return '0208'
   if (/cadastral|lot.*(no|number)/.test(label)) return '1306'
   if (/sqm|area/.test(label)) return '300'
-  if (/month|term/.test(label) && !/payment term/.test(label)) return '36 months'
-  if (/date|birthday|birth date|due date/.test(label)) return 'Aug 7, 2026'
-  if (/time/.test(label)) return '9:00 AM'
-  if (/rate|percentage|percent|\(%\)|\b%\b/.test(label)) return '0.05%'
-  if (/amount|fee|price|tcp|commission|salary|payment|cash|balance|income|advance/.test(label)) return '₱50,000'
-  if (/status/.test(label)) return 'Active'
-  if (/role/.test(label)) return 'Sales Agent'
-  if (/type/.test(label)) return 'Installment'
-  if (/method/.test(label)) return 'Bank Transfer'
   if (/description|notes|remarks|reason|purpose/.test(label)) return 'Short clear description'
-  if (placeholder) return placeholder
-  if (type === 'number') return '100'
-  return 'sample value'
-}
 
+  // Currency examples are generic enough to be useful, but respect a finite max
+  // so the helper never suggests a number that the browser would reject.
+  if (type === 'number' && /amount|fee|price|tcp|commission|salary|payment|cash|balance|income|advance/.test(label)) {
+    const maxAttribute = control?.getAttribute('max')
+    const max = maxAttribute === null || maxAttribute === '' ? Number.NaN : Number(maxAttribute)
+    const bounded = Number.isFinite(max) && max > 0 ? Math.min(max, 50000) : 50000
+    return new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', maximumFractionDigits: 2 }).format(bounded)
+  }
+
+  return ''
+}
 const findLabelAnchor = (label, control) => {
   const directLabelNodes = Array.from(label.children || []).filter((child) =>
     ['SPAN', 'P'].includes(child.tagName) &&

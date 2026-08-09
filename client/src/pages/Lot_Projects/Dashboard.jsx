@@ -99,7 +99,7 @@ const resolvePresetDateRange = (range, today = new Date()) => {
   return { from: toDateInput(start), to: toDateInput(end) }
 }
 
-const defaultDateRange = () => resolvePresetDateRange('3_months')
+const defaultDateRange = () => resolvePresetDateRange('this_month')
 
 const shortLabel = (value = '', max = 18) => {
   const text = String(value || '-')
@@ -486,7 +486,7 @@ const Dashboard = () => {
   const [showEdit, setShowEdit] = useState(false)
   const [showPriceListModal, setShowPriceListModal] = useState(false)
   const [alert, setAlert] = useState(null)
-  const [dateRange, setDateRange] = useState('3_months')
+  const [dateRange, setDateRange] = useState('this_month')
   const [dateFrom, setDateFrom] = useState(() => defaultDateRange().from)
   const [dateTo, setDateTo] = useState(() => defaultDateRange().to)
   const [sellerPage, setSellerPage] = useState(1)
@@ -798,7 +798,7 @@ const Dashboard = () => {
 
 
       {showPriceListModal ? <PriceListPrintModal projectName={project.project_bailen_name} onClose={() => setShowPriceListModal(false)} onPrint={handlePrintPriceList} /> : null}
-      {showDetails ? <ProjectDetailsModal project={project} onClose={() => setShowDetails(false)} onEdit={() => { setShowDetails(false); setShowEdit(true) }} /> : null}
+      {showDetails ? <ProjectDetailsModal project={project} onClose={() => setShowDetails(false)} onEdit={() => { setShowDetails(false); setShowEdit(true) }} onPrintPriceList={() => { setShowDetails(false); setShowPriceListModal(true) }} /> : null}
       {showEdit ? <EditProjectModal project={project} documents={documentsData?.documents || []} templates={templatesData?.templates || []} templateDocuments={templatesData?.template_documents || []} onClose={() => setShowEdit(false)} onSave={handleSaveProject} isSaving={updateProjectMutation.isPending} /> : null}
     </main>
   )

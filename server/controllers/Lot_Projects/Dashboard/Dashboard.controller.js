@@ -90,7 +90,7 @@ const exceedsOneYear = (fromDate, toDate) => {
 
 export const resolveDashboardDateRange = (query = {}, userOrRole = '', adminType = '') => {
   const today = new Date();
-  const requestedPreset = String(query.range || query.dateRange || '3_months').toLowerCase();
+  const requestedPreset = String(query.range || query.dateRange || 'this_month').toLowerCase();
   const allowedPresets = new Set([
     'this_month',
     'last_month',
@@ -100,7 +100,7 @@ export const resolveDashboardDateRange = (query = {}, userOrRole = '', adminType
     '12_months',
     'custom',
   ]);
-  const preset = allowedPresets.has(requestedPreset) ? requestedPreset : '3_months';
+  const preset = allowedPresets.has(requestedPreset) ? requestedPreset : 'this_month';
 
   let fromDate;
   let toDate;
@@ -123,7 +123,7 @@ export const resolveDashboardDateRange = (query = {}, userOrRole = '', adminType
       '6_months': 6,
       '12_months': 12,
     };
-    const months = presetMonths[preset] || 3;
+    const months = presetMonths[preset] || 1;
     fromDate = startOfMonth(addMonths(today, -(months - 1)));
     toDate = endOfMonth(today);
   }

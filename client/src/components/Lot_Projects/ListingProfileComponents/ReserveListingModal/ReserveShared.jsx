@@ -13,6 +13,7 @@ export const TextInput = ({
   min,
   max,
   step,
+  example,
 }) => (
   <label className="flex flex-col gap-1.5">
     <span className={`text-xs font-black ${error ? 'text-red-700' : 'text-slate-700'}`}>
@@ -29,6 +30,7 @@ export const TextInput = ({
       min={min}
       max={max}
       step={step}
+      data-example={example || undefined}
       aria-invalid={error || undefined}
       className={`h-10 rounded-lg border px-3 text-sm font-semibold text-slate-700 outline-none transition placeholder:text-slate-400 ${
         disabled
