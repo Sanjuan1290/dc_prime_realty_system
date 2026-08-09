@@ -85,3 +85,11 @@ test('document template and upload reviews preserve meaningful names and local f
   assert.match(upload, /previewUrl/)
   assert.match(listCard, /Preview File/)
 })
+
+test('payment review omits redundant SOA row labels while retaining account and payment values', () => {
+  const payment = read('client/src/components/Shared/DoubleCheckComponents/PaymentDoubleCheck.jsx')
+  assert.doesNotMatch(payment, /Apply To SOA Row|label: ['"]SOA Row['"]/)
+  assert.match(payment, /Account Reference/)
+  assert.match(payment, /Payment Type/)
+  assert.match(payment, /Payment Date/)
+})

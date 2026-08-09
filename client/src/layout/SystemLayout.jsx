@@ -22,6 +22,7 @@ import useCurrentUser from "../utils/useCurrentUser";
 import StatusAlert from "../components/Shared/StatusAlert";
 import { isFullAccessAdministrator } from "../config/permissions";
 import { requestApi } from '../utils/apiClient'
+import useNotificationBadge from '../utils/useNotificationBadge'
 
 const getFullName = (user) => {
   const name = [user?.first_name, user?.middle_name, user?.last_name]
@@ -90,8 +91,7 @@ const SystemLayout = () => {
   });
 
   const user = currentUser?.user;
-
-
+  const { totalCount: notificationCount } = useNotificationBadge(user);
 
   const roleBasePath = `/portal/${user?.role || "super_admin"}`;
   const dashboardPathname = user?.role === "admin" ? "dashboard" : "";
@@ -132,7 +132,7 @@ const SystemLayout = () => {
         description: "Documents and system records",
         items: [
           { label: "Documents", pathname: "documents", icon: FiFileText },
-          { label: "Notifications", pathname: "notifications", icon: FiBell },
+          { label: "Notifications", pathname: "notifications", icon: FiBell, badge: notificationCount },
           { label: "Audit Logs", pathname: "audit-logs", icon: FiActivity },
         ],
       },
@@ -158,7 +158,7 @@ const SystemLayout = () => {
         ],
       },
     ],
-    [dashboardPathname]
+    [dashboardPathname, notificationCount]
   );
 
   const activeItem = useMemo(() => {
@@ -321,7 +321,12 @@ const SystemLayout = () => {
                             <Icon className="h-4 w-4" />
                           </span>
 
-                          <span className="truncate">{item.label}</span>
+                          <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                          {Number(item.badge || 0) > 0 ? (
+                            <span title={`${item.badge} pending notifications`} className="inline-flex min-w-6 shrink-0 items-center justify-center rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-black text-white">
+                              {Number(item.badge) > 99 ? '99+' : item.badge}
+                            </span>
+                          ) : null}
                         </>
                       )}
                     </NavLink>
@@ -419,4 +424,3 @@ const SystemLayout = () => {
 };
 
 export default SystemLayout;
-

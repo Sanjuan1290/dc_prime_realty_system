@@ -4,7 +4,6 @@ import DoubleCheckFields from './core/DoubleCheckFields'
 import { formatDate, money, pick, titleCase } from './core/doubleCheckFormatters'
 
 const paymentFields = (payment = {}) => [
-  { label: 'Apply To SOA Row', value: pick(payment, 'soaRowLabel', 'scheduleDescription') },
   { label: 'Payment Type', value: pick(payment, 'paymentType', 'type'), formatter: titleCase },
   { label: 'Amount', value: pick(payment, 'amount'), formatter: money, tone: 'financial' },
   { label: 'Payment Date', value: pick(payment, 'paymentDate'), formatter: formatDate },
@@ -20,12 +19,11 @@ const PaymentDoubleCheck = ({ request, onConfirm, onCancel }) => {
   const current = data.currentPayment || null
   const payment = data.newPaymentValues || data.payment || data
   const steps = [
-    { key: 'account', title: 'Account & SOA', content: <DoubleCheckSection title="Account & SOA" helper="Verify the buyer account and target SOA row." tone="blue"><DoubleCheckFields fields={[
+    { key: 'account', title: 'Account', content: <DoubleCheckSection title="Account" helper="Verify the buyer account for this payment." tone="blue"><DoubleCheckFields fields={[
       { label: 'Project', value: pick(account, 'project') },
       { label: 'Unit', value: pick(account, 'unit') },
       { label: 'Buyer', value: pick(account, 'buyer'), wide: true },
       { label: 'Account Reference', value: pick(account, 'accountReference'), wide: true },
-      { label: 'SOA Row', value: pick(payment, 'soaRowLabel', 'scheduleDescription'), wide: true },
     ]} /></DoubleCheckSection> },
     { key: 'payment', title: current ? 'Payment Changes' : 'Payment Details', content: <div className="space-y-4">{current ? <DoubleCheckSection title="Currently Saved Payment" helper="Use this only to compare with the edited values." tone="slate"><DoubleCheckFields fields={paymentFields(current)} /></DoubleCheckSection> : null}<DoubleCheckSection title={current ? 'New Payment Values' : 'Payment Details'} helper="Verify every payment value that will be posted." tone="amber"><DoubleCheckFields fields={paymentFields(payment)} /></DoubleCheckSection></div> },
   ]

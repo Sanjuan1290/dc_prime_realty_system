@@ -313,6 +313,8 @@ const ListingProfile = () => {
       queryClient.invalidateQueries({ queryKey: ['lot-buyer-form-state', projectSlug, listingId] })
       queryClient.invalidateQueries({ queryKey: ['lot-listings', projectSlug] })
       queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] })
+      queryClient.invalidateQueries({ queryKey: ['system-payment-notifications'] })
+      queryClient.invalidateQueries({ queryKey: ['system-document-notifications'] })
     },
     onError: (error) => {
       setAlert(getDoubleCheckNotice(error, 'Failed to reserve listing.'))
@@ -430,6 +432,7 @@ const ListingProfile = () => {
       setAlert({ type: 'success', message: result?.message || 'Document uploaded successfully.' })
       queryClient.invalidateQueries({ queryKey: ['lot-listing-profile', projectSlug, listingId] })
       queryClient.invalidateQueries({ queryKey: ['lot-buyer-form-state', projectSlug, listingId] })
+      queryClient.invalidateQueries({ queryKey: ['system-document-notifications'] })
     },
     onError: (error) => {
       setAlert(getDoubleCheckNotice(error, 'Failed to upload document.'))
@@ -450,6 +453,7 @@ const ListingProfile = () => {
       setAlert({ type: 'success', message: result?.message || 'Document approved successfully.' })
       queryClient.invalidateQueries({ queryKey: ['lot-listing-profile', projectSlug, listingId] })
       queryClient.invalidateQueries({ queryKey: ['lot-buyer-form-state', projectSlug, listingId] })
+      queryClient.invalidateQueries({ queryKey: ['system-document-notifications'] })
     },
     onError: (error) => {
       setAlert(getDoubleCheckNotice(error, 'Failed to approve document.'))
@@ -470,6 +474,7 @@ const ListingProfile = () => {
       setAlert({ type: 'warning', message: result?.message || 'Document cleared successfully.' })
       queryClient.invalidateQueries({ queryKey: ['lot-listing-profile', projectSlug, listingId] })
       queryClient.invalidateQueries({ queryKey: ['lot-buyer-form-state', projectSlug, listingId] })
+      queryClient.invalidateQueries({ queryKey: ['system-document-notifications'] })
     },
     onError: (error) => {
       setAlert(getDoubleCheckNotice(error, 'Failed to clear document.'))
@@ -496,6 +501,7 @@ const ListingProfile = () => {
       setAlert({ type: 'success', message: result?.message || 'Document requirements updated successfully.' })
       queryClient.invalidateQueries({ queryKey: ['lot-listing-profile', projectSlug, listingId] })
       queryClient.invalidateQueries({ queryKey: ['lot-buyer-form-state', projectSlug, listingId] })
+      queryClient.invalidateQueries({ queryKey: ['system-document-notifications'] })
       queryClient.invalidateQueries({ queryKey: ['lot-listings', projectSlug] })
       queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] })
     },

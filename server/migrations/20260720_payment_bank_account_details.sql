@@ -39,7 +39,6 @@ CALL add_payment_bank_column_if_missing(
   'lot_project_payment_bank_name',
   'VARCHAR(150) NULL AFTER `lot_project_payment_method`'
 );
-
 CALL add_payment_bank_column_if_missing(
   'lot_project_payment_account_number',
   'VARCHAR(100) NULL AFTER `lot_project_payment_bank_name`'

@@ -19,6 +19,7 @@ import {
 import useCurrentUser from '../utils/useCurrentUser'
 import { requestApi } from '../utils/apiClient'
 import { useFetch } from '../utils/useFetch'
+import useNotificationBadge from '../utils/useNotificationBadge'
 import StatusAlert from '../components/Shared/StatusAlert'
 
 const getFullName = (user) => [user?.first_name, user?.middle_name, user?.last_name].filter(Boolean).join(' ').trim() || 'Admin'
@@ -32,6 +33,7 @@ const AdminLayout = () => {
   const queryClient = useQueryClient()
   const { data: currentUser, isLoading, isError } = useCurrentUser()
   const user = currentUser?.user
+  const { totalCount: notificationCount } = useNotificationBadge(user)
 
   const { data: lotProjectsData, isLoading: isProjectsLoading, isFetching: isProjectsFetching, isError: isProjectsError, error: projectsError } = useQuery({
     queryKey: ['lot-project-options'],
@@ -75,7 +77,7 @@ const AdminLayout = () => {
       title: 'COMPLIANCE',
       items: [
         { label: 'Documents', pathname: '/portal/admin/documents', icon: FiFileText, absolute: true },
-        { label: 'Notifications', pathname: '/portal/admin/notifications', icon: FiBell, absolute: true },
+        { label: 'Notifications', pathname: '/portal/admin/notifications', icon: FiBell, absolute: true, badge: notificationCount },
         { label: 'Audit Logs', pathname: '/portal/admin/audit-logs', icon: FiActivity, absolute: true },
       ],
     },
@@ -93,7 +95,7 @@ const AdminLayout = () => {
         { label: 'Settings', pathname: '/portal/admin/settings', icon: FiSettings, absolute: true },
       ],
     },
-  ], [isProjectsError, isProjectsLoading, lotProjectItems, projectsError?.message])
+  ], [isProjectsError, isProjectsLoading, lotProjectItems, notificationCount, projectsError?.message])
 
   const activeLabel = useMemo(() => {
     for (const group of groups) {
@@ -141,7 +143,8 @@ const AdminLayout = () => {
                   return (
                     <NavLink key={item.pathname} to={item.pathname} onClick={() => setIsSidebarOpen(false)} className={({ isActive }) => `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition ${isActive ? 'bg-blue-100 text-blue-700' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'}`}>
                       <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100"><Icon className="h-4 w-4" /></span>
-                      <span className="truncate">{item.label}</span>
+                      <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                      {Number(item.badge || 0) > 0 ? <span title={`${item.badge} pending notifications`} className="inline-flex min-w-6 shrink-0 items-center justify-center rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-black text-white">{Number(item.badge) > 99 ? '99+' : item.badge}</span> : null}
                     </NavLink>
                   )
                 })}
@@ -172,4 +175,3 @@ const AdminLayout = () => {
 }
 
 export default AdminLayout
-
