@@ -20,10 +20,11 @@ const dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(dirname, '..', '..');
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
 
-test('storage codes use stable recognizable business prefixes', () => {
-  assert.equal(createProjectStorageCode(1, 'LA'), 'PRJ-LA-001');
-  assert.equal(createProjectStorageCode(12, 'Bailen West'), 'PRJ-BAILEN-WEST-012');
-  assert.equal(createListingStorageCode(42), 'LST-000042');
+test('project and listing storage codes use immutable database primary keys only', () => {
+  assert.equal(createProjectStorageCode(1, 'LA'), 'PRJ-1');
+  assert.equal(createProjectStorageCode(30003, 'PE'), 'PRJ-30003');
+  assert.equal(createProjectStorageCode(1, 'LAE'), 'PRJ-1');
+  assert.equal(createListingStorageCode(42), 'LST-42');
   assert.equal(createPaymentStorageCode(61, '2026-08-10'), 'PAY-2026-000061');
 });
 
@@ -96,6 +97,8 @@ test('database migration adds permanent unique storage codes and canonical file 
   assert.match(migration, /file_sequence INT UNSIGNED/i);
   assert.match(migration, /stored_file_name VARCHAR\(255\)/i);
   assert.match(migration, /proof_sequence INT UNSIGNED/i);
+  assert.match(migration, /CONCAT\('PRJ-', lot_project_id\)/i);
+  assert.match(migration, /CONCAT\('LST-', lot_project_listing_id\)/i);
 });
 
 test('existing Cloudinary migration is still dry-run by default and upgrades assets to storage-code paths', () => {
@@ -108,4 +111,27 @@ test('existing Cloudinary migration is still dry-run by default and upgrades ass
   assert.match(script, /buildDocumentStoredFileName/);
   assert.match(script, /buildPaymentProofStoredFileName/);
   assert.match(script, /Run 20260810_storage_codes_and_canonical_file_names\.sql first/);
+});
+
+
+
+
+test('storage-id v3 migration is dry-run first and updates database codes only after Cloudinary moves succeed', () => {
+  const script = read('server/scripts/migrate-cloudinary-storage-ids-v3.js');
+  assert.match(script, /const apply = args\.has\('--apply'\)/);
+  assert.match(script, /createProjectStorageCode\(row\.lot_project_id\)/);
+  assert.match(script, /createListingStorageCode\(row\.lot_project_listing_id\)/);
+  assert.match(script, /if \(summary\.failed > 0\)/);
+  assert.match(script, /UPDATE lot_projects[\s\S]*lot_project_storage_code = CONCAT\('PRJ-', lot_project_id\)/i);
+  assert.match(script, /UPDATE lot_project_listings[\s\S]*lot_project_listing_storage_code = CONCAT\('LST-', lot_project_listing_id\)/i);
+});
+
+test('project and listing screens expose Cloudinary folder references beside human-readable identity', () => {
+  const projectDetails = read('client/src/components/Lot_Projects/DashboardComponents/ProjectDetailsModal/ProjectDetailsModal.jsx');
+  const unitStatus = read('client/src/components/Lot_Projects/ListingProfileComponents/UnitStatus/UnitStatus.jsx');
+  assert.match(projectDetails, /Cloudinary Project Folder/);
+  assert.match(unitStatus, /Cloudinary Project Folder/);
+  assert.match(unitStatus, /Cloudinary Listing Folder/);
+  assert.match(unitStatus, /Current Account Folder/);
+  assert.match(unitStatus, /Unit ID/);
 });

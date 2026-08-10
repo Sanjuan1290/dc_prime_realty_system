@@ -213,7 +213,7 @@ export const createLotProject = async (req, res) => {
     );
 
     const lotProjectId = projectResult.insertId;
-    const storageCode = createProjectStorageCode(lotProjectId, payload.locationCode);
+    const storageCode = createProjectStorageCode(lotProjectId);
     if (await columnExists(connection, 'lot_projects', 'lot_project_storage_code')) {
       await connection.query(
         `UPDATE lot_projects SET lot_project_storage_code = ? WHERE lot_project_id = ?`,
@@ -683,5 +683,7 @@ export const getLotProjectDocumentCompliance = async (req, res) => {
     connection.release();
   }
 };
+
+
 
 

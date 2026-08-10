@@ -16,6 +16,7 @@ test('Project Details shows Title Number and hides Project ID and Document Templ
   const details = await read('../../client/src/components/Lot_Projects/DashboardComponents/ProjectDetailsModal/ProjectDetailsModal.jsx');
 
   assert.match(details, /label="Title Number"/);
+  assert.match(details, /label="Cloudinary Project Folder"/);
   assert.doesNotMatch(details, /label="Project ID"/);
   assert.doesNotMatch(details, /label="Document Template"/);
 });
@@ -40,5 +41,7 @@ test('migration adds the optional lot_project_title_number column', async () => 
   assert.match(migration, /ADD COLUMN lot_project_title_number VARCHAR\(150\) NULL/);
   assert.match(migration, /information_schema\.columns/);
 });
+
+
 
 

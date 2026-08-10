@@ -376,12 +376,13 @@ const UnitStatus = ({
         icon={FiHome}
       >
         <DetailBox label="Project" value={unitData.project_name} />
-        <DetailBox label="Project Storage Code" value={project?.storageCode || project?.lot_project_storage_code || '-'} />
+        <DetailBox label="Cloudinary Project Folder" value={project?.storageCode || project?.lot_project_storage_code || '-'} />
         <DetailBox label="Project Location" value={unitData.project_location} />
         <DetailBox label="Administrator" value={unitData.administrator} />
         <DetailBox label="Cadastral Lot No." value={unitData.cadastral_lot_no} />
         <DetailBox label="Unit ID" value={unitData.unit_id || unitData.unitCode} highlight />
-        <DetailBox label="Listing Storage Code" value={unitData.storageCode || unitData.lot_project_listing_storage_code || '-'} />
+        <DetailBox label="Cloudinary Listing Folder" value={unitData.storageCode || unitData.lot_project_listing_storage_code || '-'} />
+        <DetailBox label="Current Account Folder" value={unitData.accountReference || unitData.account_reference || '-'} />
         <DetailBox label="Old Unit IDs" value={unitData.old_unit_ids} />
         <DetailBox label="Lot Type" value={unitData.lot_type} />
         <DetailBox label="Listing Status" value={unitData.listing_status} highlight />
@@ -617,5 +618,7 @@ const UnitStatus = ({
 }
 
 export default UnitStatus
+
+
 
 

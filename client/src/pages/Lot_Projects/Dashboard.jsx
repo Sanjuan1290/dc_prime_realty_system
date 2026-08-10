@@ -448,6 +448,7 @@ const PaginationControls = ({ page, pageSize, totalItems, onPageChange, onPageSi
 const toProjectView = (project = {}) => ({
   ...project,
   project_bailen_id: project.lot_project_id || project.id,
+  project_bailen_storage_code: project.lot_project_storage_code || project.storageCode || project.storage_code || null,
   project_bailen_name: project.lot_project_name || project.name,
   project_bailen_location: project.lot_project_location || project.location,
   project_bailen_location_code: project.lot_project_location_code || project.locationCode,
@@ -808,5 +809,7 @@ const Dashboard = () => {
 }
 
 export default Dashboard
+
+
 
 

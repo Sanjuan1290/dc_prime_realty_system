@@ -30,10 +30,17 @@ export const validateDocumentCode = (value) => {
   return { valid: true, code, message: '' };
 };
 
-export const createProjectStorageCode = (projectId, locationCode) =>
-  `PRJ-${sanitizeStorageCodePart(locationCode, 'PROJECT')}-${pad(projectId, 3)}`;
+const permanentIdPart = (value) => {
+  const id = Number(value);
+  return Number.isInteger(id) && id > 0 ? String(id) : '0';
+};
 
-export const createListingStorageCode = (listingId) => `LST-${pad(listingId, 6)}`;
+// Cloudinary storage identities must depend only on immutable database primary keys.
+// Project names, location codes, and Unit IDs are intentionally excluded because
+// those business-facing values may be corrected later without moving stored assets.
+export const createProjectStorageCode = (projectId) => `PRJ-${permanentIdPart(projectId)}`;
+
+export const createListingStorageCode = (listingId) => `LST-${permanentIdPart(listingId)}`;
 
 export const createPaymentStorageCode = (paymentId, createdAt = new Date()) => {
   const date = new Date(createdAt || Date.now());
@@ -43,10 +50,7 @@ export const createPaymentStorageCode = (paymentId, createdAt = new Date()) => {
 
 export const resolveProjectStorageCode = (project = {}) => clean(
   project.lot_project_storage_code || project.storageCode || project.storage_code
-) || createProjectStorageCode(
-  project.lot_project_id || project.id,
-  project.lot_project_location_code || project.locationCode || project.location_code
-);
+) || createProjectStorageCode(project.lot_project_id || project.id);
 
 export const resolveListingStorageCode = (listing = {}) => clean(
   listing.lot_project_listing_storage_code || listing.storageCode || listing.storage_code
@@ -115,3 +119,5 @@ export const parsePaymentProofSequenceFromName = (storedFileName) => {
   const match = clean(storedFileName).match(/__PROOF-(\d{1,6})\./i);
   return match ? Number(match[1]) : 1;
 };
+
+

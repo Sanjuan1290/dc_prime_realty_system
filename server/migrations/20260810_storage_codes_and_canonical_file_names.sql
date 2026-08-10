@@ -34,12 +34,7 @@ ALTER TABLE lot_projects
   ADD COLUMN IF NOT EXISTS lot_project_storage_code VARCHAR(40) NULL AFTER lot_project_id;
 
 UPDATE lot_projects
-SET lot_project_storage_code = CONCAT(
-  'PRJ-',
-  UPPER(REPLACE(TRIM(COALESCE(NULLIF(lot_project_location_code, ''), 'PROJECT')), ' ', '-')),
-  '-',
-  LPAD(lot_project_id, 3, '0')
-)
+SET lot_project_storage_code = CONCAT('PRJ-', lot_project_id)
 WHERE lot_project_storage_code IS NULL OR TRIM(lot_project_storage_code) = '';
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_lot_project_storage_code
@@ -52,7 +47,7 @@ ALTER TABLE lot_project_listings
   ADD COLUMN IF NOT EXISTS lot_project_listing_storage_code VARCHAR(40) NULL AFTER lot_project_listing_id;
 
 UPDATE lot_project_listings
-SET lot_project_listing_storage_code = CONCAT('LST-', LPAD(lot_project_listing_id, 6, '0'))
+SET lot_project_listing_storage_code = CONCAT('LST-', lot_project_listing_id)
 WHERE lot_project_listing_storage_code IS NULL OR TRIM(lot_project_listing_storage_code) = '';
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_lot_project_listing_storage_code
@@ -115,3 +110,4 @@ ORDER BY lot_project_listing_id;
 SELECT lot_project_payment_id, lot_project_payment_created_at, lot_project_payment_storage_code
 FROM lot_project_payments
 ORDER BY lot_project_payment_id;
+

@@ -33,6 +33,7 @@ const ProjectDetailsModal = ({ project, onClose, onEdit, onPrintPriceList }) => 
             <DetailItem label="Project Name" value={project.project_bailen_name} wide />
             <DetailItem label="Location" value={project.project_bailen_location} />
             <DetailItem label="Location Code" value={project.project_bailen_location_code} />
+            <DetailItem label="Cloudinary Project Folder" value={project.project_bailen_storage_code || project.storageCode || project.lot_project_storage_code} />
             <DetailItem label="Administrator" value={project.project_bailen_administrator_name} />
             <DetailItem label="Tax Declaration No." value={project.project_bailen_tax_declaration_no} />
             <DetailItem label="Title Number" value={project.project_bailen_title_number} />
@@ -59,5 +60,7 @@ const ProjectDetailsModal = ({ project, onClose, onEdit, onPrintPriceList }) => 
 }
 
 export default ProjectDetailsModal
+
+
 
 
