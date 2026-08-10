@@ -3,7 +3,7 @@ import { FiAlertCircle, FiCheckCircle, FiClock, FiFileText, FiLoader, FiMapPin }
 import { useParams } from 'react-router-dom'
 import StatusAlert from '../../components/Shared/StatusAlert'
 import ReserveClientProfileModal from '../../components/Lot_Projects/ListingProfileComponents/ReserveListingModal/ReserveClientProfileModal'
-import { getInitialClientForm, money } from '../../components/Lot_Projects/ListingProfileComponents/ReserveListingModal/reserveUtils'
+import { getInitialClientForm } from '../../components/Lot_Projects/ListingProfileComponents/ReserveListingModal/reserveUtils'
 import { getBuyerProfileValidationError } from '../../utils/buyerProfileValidation'
 import { requestApi } from '../../utils/apiClient'
 import { getDoubleCheckNotice } from '../../utils/doubleCheck'
@@ -62,7 +62,6 @@ const BuyerForm = () => {
   const unitSummary = useMemo(() => formInfo ? [
     { label: 'Unit', value: formInfo.unitId },
     { label: 'Area', value: `${Number(formInfo.areaSqm || 0).toLocaleString('en-PH')} sqm` },
-    { label: 'TCP', value: money(formInfo.tcp) },
   ] : [], [formInfo])
 
   const updateBuyerType = (buyerType) => {
@@ -150,7 +149,7 @@ const BuyerForm = () => {
           </div>
 
           {formInfo ? (
-            <div className="grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-4 sm:p-7">
+            <div className="grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-3 sm:p-7">
               <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 sm:col-span-2 lg:col-span-1">
                 <p className="flex items-center gap-2 text-xs font-black uppercase text-blue-700"><FiMapPin /> Project</p>
                 <p className="mt-2 text-base font-black text-slate-950">{formInfo.projectName}</p>
@@ -162,7 +161,7 @@ const BuyerForm = () => {
                   <p className="mt-2 text-base font-black text-slate-950">{item.value}</p>
                 </div>
               ))}
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:col-span-2 lg:col-span-4">
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:col-span-2 lg:col-span-3">
                 <p className="flex items-center gap-2 text-xs font-black uppercase text-amber-800"><FiClock /> Link expiry</p>
                 <p className="mt-1 text-sm font-semibold text-amber-900">Submit before {formatDateTime(formInfo.expiresAt)}.</p>
               </div>
@@ -233,5 +232,3 @@ const BuyerForm = () => {
 }
 
 export default BuyerForm
-
-
