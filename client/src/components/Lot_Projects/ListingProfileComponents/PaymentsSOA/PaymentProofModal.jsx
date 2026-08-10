@@ -250,7 +250,7 @@ const PaymentProofModal = ({
       }
 
       setNotice({ type: 'loading', message: 'Saving protected payment proof records...' })
-      const result = await useFetchPost(basePath, { files: completed, note: note.trim() }, { confirmationToken })
+      const result = await useFetchPost(basePath, { files: completed, note: note.trim() }, { confirmationToken: confirmationToken })
       setFiles([])
       setNote('')
       setScanFallback(null)
