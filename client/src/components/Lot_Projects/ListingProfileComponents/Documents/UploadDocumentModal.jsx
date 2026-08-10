@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { FiExternalLink, FiFileText, FiLoader, FiShield, FiUploadCloud, FiX } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
 import { useFetchPost } from '../../../../utils/useFetch'
 import { requestDoubleCheck } from '../../../../utils/doubleCheck'
+import { useUploadSecurity } from '../../../Shared/UploadSecurityCenter/UploadSecurityProvider.jsx'
 import {
   appendCloudinarySecurityFields,
   createCloudinaryMalwareQuotaError,
@@ -35,12 +36,61 @@ const UploadDocumentModal = ({ document, signaturePath, isSaving = false, onClos
   const [notice, setNotice] = useState(null)
   const [progress, setProgress] = useState({ current: 0, total: 0 })
   const [scanFallback, setScanFallback] = useState(null)
+  const taskIdsRef = useRef([])
+  const {
+    addUpload,
+    updateUpload,
+    beginSecurityScan,
+    failUpload,
+  } = useUploadSecurity()
 
   const isBusy = isSaving || isUploading
   const invalidFiles = useMemo(
     () => files.filter((file) => !allowedTypes.has(file.type) || file.size <= 0 || file.size > MAX_FILE_BYTES),
     [files]
   )
+
+  const createStatusTasks = () => {
+    const taskIds = files.map((file) => addUpload({
+      fileName: file.name,
+      category: 'Buyer document',
+      detail: document?.name || 'Document',
+    }))
+    taskIdsRef.current = taskIds
+    return taskIds
+  }
+
+  const updateTaskAt = (index, patch) => {
+    const taskId = taskIdsRef.current[index]
+    if (taskId) updateUpload(taskId, patch)
+  }
+
+  const failBatchTasks = (error, fallbackMessage = 'Protected upload failed.') => {
+    taskIdsRef.current.forEach((taskId) => {
+      if (taskId) failUpload(taskId, error, fallbackMessage)
+    })
+  }
+
+  const startSavedFileScans = (completed = [], saveResult = {}) => {
+    const entries = saveResult?.imageEntries || saveResult?.data?.imageEntries || []
+
+    completed.forEach((file, index) => {
+      const taskId = taskIdsRef.current[index]
+      if (!taskId) return
+
+      const savedEntry = entries.find((entry) => {
+        const assetId = entry?.cloudinaryAssetId || entry?.cloudinary_asset_id || ''
+        const publicId = entry?.cloudinaryPublicId || entry?.cloudinary_public_id || ''
+        return (file.cloudinaryAssetId && assetId === file.cloudinaryAssetId)
+          || (file.cloudinaryPublicId && publicId === file.cloudinaryPublicId)
+      }) || {}
+
+      beginSecurityScan(taskId, {
+        accessPath: savedEntry.accessPath || savedEntry.access_path || '',
+        malwareScanStatus: savedEntry.malwareScanStatus || savedEntry.malware_scan_status || file.malwareScanStatus || 'pending',
+      })
+    })
+  }
 
   const uploadOne = async (file, uploadIndex, uploadCount, { allowUnscanned = false, fallbackToken = '' } = {}) => {
     const signatureResponse = await useFetchPost(signaturePath, {
@@ -129,6 +179,12 @@ const UploadDocumentModal = ({ document, signaturePath, isSaving = false, onClos
           type: 'loading',
           message: `${allowUnscanned ? 'Uploading without security scan' : 'Uploading and requesting security scan'} ${index + 1} of ${files.length}: ${files[index].name}`,
         })
+        updateTaskAt(index, {
+          status: 'uploading',
+          message: allowUnscanned
+            ? 'Uploading without malware scanning after your confirmation.'
+            : 'Uploading securely to Cloudinary and requesting malware scanning.',
+        })
 
         try {
           const upload = await uploadOne(files[index], index + 1, files.length, {
@@ -137,8 +193,18 @@ const UploadDocumentModal = ({ document, signaturePath, isSaving = false, onClos
           })
           activeFallbackToken = upload.fallbackToken || activeFallbackToken
           completed.push(upload.uploadedFile)
+          updateTaskAt(index, {
+            status: 'saving',
+            message: allowUnscanned
+              ? 'Upload complete. Saving the file as not security scanned.'
+              : 'Upload complete. Saving the protected file before the security result is tracked.',
+          })
         } catch (error) {
           if (!allowUnscanned && isMalwareQuotaFallbackError(error)) {
+            updateTaskAt(index, {
+              status: 'waiting_confirmation',
+              message: 'The malware-scanning quota is unavailable. Choose Cancel or Upload Without Scan in the upload window.',
+            })
             setScanFallback({
               startIndex: index,
               uploadedFiles: completed,
@@ -148,15 +214,18 @@ const UploadDocumentModal = ({ document, signaturePath, isSaving = false, onClos
             setNotice(null)
             return false
           }
+          failUpload(taskIdsRef.current[index], error, `Upload failed for ${files[index].name}.`)
           throw error
         }
       }
 
       setNotice({ type: 'loading', message: 'Verifying uploaded files and saving document records...' })
-      await onSave?.({ files: completed, confirmationToken })
+      const saveResult = await onSave?.({ files: completed, confirmationToken })
+      startSavedFileScans(completed, saveResult || {})
       setScanFallback(null)
       return true
     } catch (error) {
+      failBatchTasks(error, 'Protected upload failed before the file record could be saved.')
       setNotice({ type: 'error', message: error?.message || 'Protected upload failed.' })
       return false
     } finally {
@@ -199,6 +268,7 @@ const UploadDocumentModal = ({ document, signaturePath, isSaving = false, onClos
     }
 
     setScanFallback(null)
+    createStatusTasks()
     await runUploadBatch({ confirmationToken: reviewResult.token })
   }
 
@@ -216,6 +286,14 @@ const UploadDocumentModal = ({ document, signaturePath, isSaving = false, onClos
   }
 
   const cancelUnscannedUpload = () => {
+    taskIdsRef.current.forEach((taskId) => {
+      if (taskId) {
+        updateUpload(taskId, {
+          status: 'cancelled',
+          message: 'Upload was cancelled because security scanning was unavailable.',
+        })
+      }
+    })
     setScanFallback(null)
     setNotice({ type: 'info', message: 'Upload without security scanning was cancelled.' })
   }

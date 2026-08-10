@@ -159,8 +159,8 @@ const ProjectAccreditationFields = ({
               {checked ? (
                 <div className="mt-4 border-t border-slate-100 pt-4">
                   <div className={`grid gap-3 sm:grid-cols-2 ${isExternal ? 'xl:grid-cols-2' : 'xl:grid-cols-5'}`}>
-                    <label className="grid gap-1.5">
-                      <span className="text-xs font-black text-slate-700">Pool Rate</span>
+                    <label className="flex flex-col gap-1.5">
+                      <span className="min-h-9 text-xs font-black leading-4 text-slate-700">Pool Rate</span>
                       <div className="relative">
                         <input type="number" min="6" max="15" step="0.01" data-example="8%" value={selectedRate.seller_group_pool_rate} onChange={(event) => updateRate(projectId, 'seller_group_pool_rate', event.target.value)} disabled={disabled} className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 pr-8 text-sm font-black outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100" />
                         <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm font-black text-slate-400">%</span>
@@ -174,8 +174,8 @@ const ProjectAccreditationFields = ({
                         <p className="mt-1 text-xs font-semibold text-blue-700">No in-house position breakdown is saved.</p>
                       </div>
                     ) : rateFields.map(([field, label, example]) => (
-                      <label key={field} className="grid gap-1.5">
-                        <span className="text-xs font-black text-slate-700">{label}</span>
+                      <label key={field} className="flex flex-col gap-1.5">
+                        <span className="min-h-9 text-xs font-black leading-4 text-slate-700">{label}</span>
                         <div className="relative">
                           <input type="number" min="0" max="15" step="0.01" data-example={example} value={selectedRate[field]} onChange={(event) => updateRate(projectId, field, event.target.value)} disabled={disabled || (field === 'division_manager_rate' && groupHeadRole === 'sales_director')} className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 pr-8 text-sm font-black outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100" />
                           <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm font-black text-slate-400">%</span>
@@ -210,5 +210,3 @@ const ProjectAccreditationFields = ({
 }
 
 export default ProjectAccreditationFields
-
-

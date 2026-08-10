@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   FiExternalLink,
   FiFileText,
@@ -13,6 +13,7 @@ import {
 import StatusAlert from '../../../Shared/StatusAlert'
 import { useFetch, useFetchPost } from '../../../../utils/useFetch'
 import { requestDoubleCheck } from '../../../../utils/doubleCheck'
+import { useUploadSecurity } from '../../../Shared/UploadSecurityCenter/UploadSecurityProvider.jsx'
 import {
   appendCloudinarySecurityFields,
   canOpenMalwareScannedFile,
@@ -106,6 +107,13 @@ const PaymentProofModal = ({
   const [openingProofId, setOpeningProofId] = useState(0)
   const [deletingProofId, setDeletingProofId] = useState(0)
   const [scanFallback, setScanFallback] = useState(null)
+  const taskIdsRef = useRef([])
+  const {
+    addUpload,
+    updateUpload,
+    beginSecurityScan,
+    failUpload,
+  } = useUploadSecurity()
 
   const invalidFiles = useMemo(
     () => files.filter((file) => !allowedTypes.has(file.type) || file.size <= 0 || file.size > MAX_FILE_BYTES),
@@ -114,6 +122,48 @@ const PaymentProofModal = ({
 
   const remainingSlots = Math.max(MAX_FILES - proofs.length, 0)
   const isBusy = isLoading || isUploading || Boolean(deletingProofId)
+
+  const createStatusTasks = () => {
+    const taskIds = files.map((file) => addUpload({
+      fileName: file.name,
+      category: 'Payment proof',
+      detail: paymentDetails.referenceId || payment?.referenceId || `Payment #${paymentId}`,
+    }))
+    taskIdsRef.current = taskIds
+    return taskIds
+  }
+
+  const updateTaskAt = (index, patch) => {
+    const taskId = taskIdsRef.current[index]
+    if (taskId) updateUpload(taskId, patch)
+  }
+
+  const failBatchTasks = (error, fallbackMessage = 'Payment proof upload failed.') => {
+    taskIdsRef.current.forEach((taskId) => {
+      if (taskId) failUpload(taskId, error, fallbackMessage)
+    })
+  }
+
+  const startSavedProofScans = (completed = [], result = {}) => {
+    const proofIds = Array.isArray(result?.proofIds)
+      ? result.proofIds
+      : Array.isArray(result?.data?.proofIds)
+        ? result.data.proofIds
+        : []
+
+    completed.forEach((file, index) => {
+      const taskId = taskIdsRef.current[index]
+      if (!taskId) return
+      const proofId = Number(proofIds[index] || 0)
+      beginSecurityScan(taskId, {
+        accessPath: proofId ? `${basePath}/${proofId}/access-url` : '',
+        malwareScanStatus: file.malwareScanStatus || 'pending',
+        message: proofId
+          ? ''
+          : 'Upload succeeded, but the saved proof status reference was not returned.',
+      })
+    })
+  }
 
   const loadProofs = async ({ quiet = false } = {}) => {
     if (!paymentId) return
@@ -226,6 +276,12 @@ const PaymentProofModal = ({
           type: 'loading',
           message: `${allowUnscanned ? 'Uploading without security scan' : 'Uploading and requesting security scan'} ${index + 1} of ${files.length}: ${files[index].name}`,
         })
+        updateTaskAt(index, {
+          status: 'uploading',
+          message: allowUnscanned
+            ? 'Uploading without malware scanning after your confirmation.'
+            : 'Uploading securely to Cloudinary and requesting malware scanning.',
+        })
 
         try {
           const upload = await uploadOne(files[index], index + 1, files.length, {
@@ -234,8 +290,18 @@ const PaymentProofModal = ({
           })
           activeFallbackToken = upload.fallbackToken || activeFallbackToken
           completed.push(upload.uploadedFile)
+          updateTaskAt(index, {
+            status: 'saving',
+            message: allowUnscanned
+              ? 'Upload complete. Saving the proof as not security scanned.'
+              : 'Upload complete. Saving the protected proof before the security result is tracked.',
+          })
         } catch (error) {
           if (!allowUnscanned && isMalwareQuotaFallbackError(error)) {
+            updateTaskAt(index, {
+              status: 'waiting_confirmation',
+              message: 'The malware-scanning quota is unavailable. Choose Cancel or Upload Without Scan in the payment proof window.',
+            })
             setScanFallback({
               startIndex: index,
               uploadedFiles: completed,
@@ -245,12 +311,14 @@ const PaymentProofModal = ({
             setNotice(null)
             return false
           }
+          failUpload(taskIdsRef.current[index], error, `Upload failed for ${files[index].name}.`)
           throw error
         }
       }
 
       setNotice({ type: 'loading', message: 'Saving protected payment proof records...' })
       const result = await useFetchPost(basePath, { files: completed, note: note.trim() }, { confirmationToken: confirmationToken })
+      startSavedProofScans(completed, result || {})
       setFiles([])
       setNote('')
       setScanFallback(null)
@@ -259,6 +327,7 @@ const PaymentProofModal = ({
       await onChanged?.()
       return true
     } catch (error) {
+      failBatchTasks(error, 'Payment proof upload failed before the secure record could be saved.')
       setNotice({ type: 'error', message: error?.message || 'Payment proof upload failed.' })
       return false
     } finally {
@@ -309,6 +378,7 @@ const PaymentProofModal = ({
     }
 
     setScanFallback(null)
+    createStatusTasks()
     await runUploadBatch({ confirmationToken: reviewResult.token })
   }
 
@@ -326,6 +396,14 @@ const PaymentProofModal = ({
   }
 
   const cancelUnscannedUpload = () => {
+    taskIdsRef.current.forEach((taskId) => {
+      if (taskId) {
+        updateUpload(taskId, {
+          status: 'cancelled',
+          message: 'Upload was cancelled because security scanning was unavailable.',
+        })
+      }
+    })
     setScanFallback(null)
     setNotice({ type: 'info', message: 'Upload without security scanning was cancelled.' })
   }

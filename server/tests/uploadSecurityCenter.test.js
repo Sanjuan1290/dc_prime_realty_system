@@ -1,0 +1,67 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const dirname = path.dirname(fileURLToPath(import.meta.url));
+const root = path.resolve(dirname, '..', '..');
+const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
+
+test('global upload security center is mounted once around the app', () => {
+  const main = read('client/src/main.jsx');
+  const center = read('client/src/components/Shared/UploadSecurityCenter/UploadSecurityProvider.jsx');
+
+  assert.match(main, /UploadSecurityProvider/);
+  assert.match(main, /<UploadSecurityProvider>[\s\S]*<App \/>[\s\S]*<\/UploadSecurityProvider>/);
+  assert.match(center, /fixed bottom-4 right-4/);
+  assert.match(center, /Uploads &amp; Security/);
+  assert.match(center, /Clear completed/);
+});
+
+test('security center shows upload, scan, malware, and unscanned outcomes', () => {
+  const center = read('client/src/components/Shared/UploadSecurityCenter/UploadSecurityProvider.jsx');
+
+  assert.match(center, /Uploading\.\.\./);
+  assert.match(center, /Security scan in progress/);
+  assert.match(center, /Security scan passed/);
+  assert.match(center, /Security scan failed · Malware detected/);
+  assert.match(center, /Upload failed/);
+  assert.match(center, /Not security scanned/);
+});
+
+test('pending scans poll existing protected access endpoints and resume after reload', () => {
+  const center = read('client/src/components/Shared/UploadSecurityCenter/UploadSecurityProvider.jsx');
+
+  assert.match(center, /requestApi\(task\.accessPath/);
+  assert.match(center, /MALWARE_SCAN_PENDING/);
+  assert.match(center, /MALWARE_DETECTED/);
+  assert.match(center, /MALWARE_SCAN_ERROR/);
+  assert.match(center, /sessionStorage/);
+  assert.match(center, /POLL_INTERVAL_MS = 3_000/);
+});
+
+test('buyer document upload registers files with the global status center', () => {
+  const upload = read('client/src/components/Lot_Projects/ListingProfileComponents/Documents/UploadDocumentModal.jsx');
+  const documents = read('client/src/components/Lot_Projects/ListingProfileComponents/Documents/Documents.jsx');
+
+  assert.match(upload, /useUploadSecurity/);
+  assert.match(upload, /createStatusTasks/);
+  assert.match(upload, /beginSecurityScan/);
+  assert.match(upload, /waiting_confirmation/);
+  assert.match(upload, /startSavedFileScans/);
+  assert.match(documents, /const result = await onUploadDocument/);
+  assert.match(documents, /return result/);
+  assert.match(documents, /throw error/);
+});
+
+test('payment proof upload registers saved proof ids for background security polling', () => {
+  const proof = read('client/src/components/Lot_Projects/ListingProfileComponents/PaymentsSOA/PaymentProofModal.jsx');
+
+  assert.match(proof, /useUploadSecurity/);
+  assert.match(proof, /createStatusTasks/);
+  assert.match(proof, /startSavedProofScans/);
+  assert.match(proof, /proofIds/);
+  assert.match(proof, /\/access-url/);
+  assert.match(proof, /beginSecurityScan/);
+});

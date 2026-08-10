@@ -113,11 +113,13 @@ const Documents = ({
     setAlert({ type: 'loading', message: `Saving ${uploadDoc.name}...` })
 
     try {
-      await onUploadDocument?.(uploadDoc, payload)
+      const result = await onUploadDocument?.(uploadDoc, payload)
       setUploadDoc(null)
       setAlert({ type: 'success', message: `${uploadDoc.name} submitted successfully.` })
+      return result
     } catch (error) {
       setAlert({ type: 'error', message: error?.message || 'Failed to upload document.' })
+      throw error
     } finally {
       setActiveDocumentId(null)
     }
@@ -431,5 +433,3 @@ const Documents = ({
 }
 
 export default Documents
-
-
