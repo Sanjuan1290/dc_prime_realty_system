@@ -14,6 +14,10 @@ import {
   destroyAuthenticatedCloudinaryAsset,
   validateDocumentUploadRequest,
   verifyAuthenticatedCloudinaryAsset,
+  getCloudinaryMalwareScanState,
+  getPerceptionPointQuotaState,
+  authorizeMalwareQuotaFallback,
+  buildMalwareQuotaError,
 } from '../../../services/secureCloudinary.service.js';
 import {
   buildPaymentProofStoredFileName,
@@ -122,6 +126,10 @@ const mapProof = (req, row = {}) => ({
   protected: true,
   uploadedBy: row.uploaded_by_name || '-',
   uploadedAt: row.created_at || null,
+  malwareScanStatus: clean(row.malware_scan_status || 'not_scanned').toLowerCase(),
+  malwareScanProvider: row.malware_scan_provider || null,
+  malwareScanReason: row.malware_scan_reason || null,
+  malwareScannedAt: row.malware_scanned_at || null,
   accessPath: `/projects/lot-projects/${encodeURIComponent(req.params.projectSlug)}/listings/${encodeURIComponent(req.params.listingId)}/payments/${Number(row.lot_project_payment_id || 0)}/proofs/${Number(row.lot_project_payment_proof_id || 0)}/access-url`,
 });
 
@@ -191,6 +199,37 @@ export const createLotProjectPaymentProofUploadSignature = async (req, res) => {
       return res.status(400).json({ message: `A payment can have up to ${MAX_PROOFS_PER_PAYMENT} proof files.` });
     }
 
+    const allowUnscanned = req.body?.allowUnscanned === true;
+    const fallbackToken = clean(req.body?.fallbackToken);
+    const subjectId = `payment:${Number(context.payment.lot_project_account_id || 0)}:${Number(context.payment.lot_project_payment_id)}`;
+    let authorizedFallbackToken = fallbackToken;
+
+    if (allowUnscanned) {
+      const fallback = await authorizeMalwareQuotaFallback({
+        token: fallbackToken,
+        scope: 'payment_proof',
+        subjectId,
+        uploadCount,
+      });
+      authorizedFallbackToken = fallback.token;
+    } else if (uploadIndex === 1) {
+      const quota = await getPerceptionPointQuotaState({ requiredScans: uploadCount });
+      if (!quota.configured) {
+        const error = new Error('Security scanning is not configured. Set CLOUDINARY_MALWARE_NOTIFICATION_URL before accepting uploads.');
+        error.statusCode = 503;
+        error.code = 'MALWARE_SCAN_NOT_CONFIGURED';
+        throw error;
+      }
+      if (quota.known && quota.insufficient) {
+        throw buildMalwareQuotaError({
+          quota,
+          scope: 'payment_proof',
+          subjectId,
+          uploadCount,
+        });
+      }
+    }
+
     const [sequenceRows] = await connection.query(
       `SELECT COALESCE(MAX(proof_sequence), 0) AS max_sequence FROM lot_project_payment_proofs WHERE lot_project_payment_id = ?`,
       [context.payment.lot_project_payment_id]
@@ -218,6 +257,8 @@ export const createLotProjectPaymentProofUploadSignature = async (req, res) => {
       accountId: context.payment.lot_project_account_id,
       paymentId: context.payment.lot_project_payment_id,
       storedFileName,
+      scanRequested: !allowUnscanned,
+      fallbackToken: authorizedFallbackToken,
     });
 
     return res.json({
@@ -230,7 +271,11 @@ export const createLotProjectPaymentProofUploadSignature = async (req, res) => {
       },
     });
   } catch (error) {
-    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
+    return res.status(error.statusCode || 500).json({
+      code: error.code || undefined,
+      message: getErrorMessage(error),
+      ...(error.data ? { data: error.data } : {}),
+    });
   } finally {
     connection.release();
   }
@@ -277,12 +322,27 @@ export const saveLotProjectPaymentProofs = async (req, res) => {
         resourceType: file.cloudinaryResourceType || 'image',
         expectedFolder,
       });
+      const malwareScan = getCloudinaryMalwareScanState(asset);
+      if (malwareScan.status === 'rejected') {
+        const error = new Error(`${file.fileName} was rejected because malware or malicious content was detected.`);
+        error.statusCode = 422;
+        error.code = 'MALWARE_DETECTED';
+        throw error;
+      }
       const storedFileName = deriveStoredFileNameFromPublicId(
         asset.public_id,
         getFileExtension({ fileName: file.fileName, fileType: file.fileType })
       );
       verified.push({
-        file: { ...file, storedFileName, proofSequence: parsePaymentProofSequenceFromName(storedFileName) },
+        file: {
+          ...file,
+          storedFileName,
+          proofSequence: parsePaymentProofSequenceFromName(storedFileName),
+          malwareScanStatus: malwareScan.status,
+          malwareScanProvider: malwareScan.provider,
+          malwareScanReason: malwareScan.reason,
+          malwareScannedAt: malwareScan.status === 'approved' ? new Date().toISOString() : null,
+        },
         asset,
       });
     }
@@ -310,10 +370,14 @@ export const saveLotProjectPaymentProofs = async (req, res) => {
             cloudinary_version,
             cloudinary_asset_folder,
             cloudinary_format,
+            malware_scan_status,
+            malware_scan_provider,
+            malware_scan_reason,
+            malware_scanned_at,
             note,
             uploaded_by_user_id,
             proof_status
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
         `,
         [
           context.project.lot_project_id,
@@ -333,6 +397,10 @@ export const saveLotProjectPaymentProofs = async (req, res) => {
           Number(asset.version || file.cloudinaryVersion || 0) || null,
           asset.asset_folder || expectedFolder,
           asset.format || file.cloudinaryFormat || null,
+          file.malwareScanStatus || 'not_scanned',
+          file.malwareScanProvider || null,
+          file.malwareScanReason || null,
+          file.malwareScannedAt ? new Date(file.malwareScannedAt) : null,
           note,
           user?.id || null,
         ]
@@ -360,7 +428,7 @@ export const saveLotProjectPaymentProofs = async (req, res) => {
     return res.status(201).json({ success: true, message: `${insertedIds.length} payment proof file(s) uploaded successfully.`, proofIds: insertedIds });
   } catch (error) {
     try { await connection.rollback(); } catch {}
-    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
+    return res.status(error.statusCode || 500).json({ code: error.code || undefined, message: getErrorMessage(error) });
   } finally {
     connection.release();
   }
@@ -389,13 +457,43 @@ export const getLotProjectPaymentProofAccessUrl = async (req, res) => {
     const proof = rows[0];
     if (!proof) return res.status(404).json({ message: 'Payment proof not found.' });
 
+    const malwareScanStatus = clean(proof.malware_scan_status || 'not_scanned').toLowerCase();
+    if (malwareScanStatus === 'pending') {
+      return res.status(423).json({
+        code: 'MALWARE_SCAN_PENDING',
+        message: 'This payment proof is still being scanned for security threats. Try again shortly.',
+      });
+    }
+    if (malwareScanStatus === 'rejected') {
+      return res.status(403).json({
+        code: 'MALWARE_DETECTED',
+        message: 'This payment proof was blocked because the security scan detected malicious content.',
+      });
+    }
+    if (malwareScanStatus === 'error') {
+      return res.status(503).json({
+        code: 'MALWARE_SCAN_ERROR',
+        message: 'The security scan did not complete successfully. This payment proof is temporarily unavailable.',
+      });
+    }
+
     const url = createAuthenticatedAccessUrl({
       publicId: proof.cloudinary_public_id,
       format: proof.cloudinary_format,
       resourceType: proof.cloudinary_resource_type,
       expiresInSeconds: 600,
     });
-    return res.json({ success: true, data: { url, expiresInSeconds: 600 } });
+    return res.json({
+      success: true,
+      data: {
+        url,
+        expiresInSeconds: 600,
+        malwareScanStatus,
+        securityWarning: malwareScanStatus === 'not_scanned'
+          ? 'This payment proof was uploaded without malware scanning because the scanning quota was unavailable.'
+          : null,
+      },
+    });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
   } finally {
@@ -467,5 +565,3 @@ export const deleteLotProjectPaymentProof = async (req, res) => {
     connection.release();
   }
 };
-
-

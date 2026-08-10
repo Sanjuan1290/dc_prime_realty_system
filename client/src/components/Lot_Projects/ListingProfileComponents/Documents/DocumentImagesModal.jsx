@@ -3,6 +3,11 @@ import { FiExternalLink, FiEye, FiFileText, FiImage, FiLoader, FiLock, FiSearch,
 import StatusAlert from '../../../Shared/StatusAlert'
 import { useFetch } from '../../../../utils/useFetch'
 import { getDocumentFiles, isPdfLike } from './documentFileUtils'
+import {
+  canOpenMalwareScannedFile,
+  getMalwareScanStatus,
+  malwareScanLabel,
+} from '../../../../utils/cloudinaryUploadSecurity'
 
 const statusStyles = {
   Approved: 'border-emerald-200 bg-emerald-50 text-emerald-700',
@@ -44,7 +49,7 @@ const DocumentImagesModal = ({ documents = [], onClose }) => {
 
   useEffect(() => {
     let cancelled = false
-    const protectedImages = documentFiles.filter(({ file }) => file.protected && !isPdfLike(file) && file.accessPath)
+    const protectedImages = documentFiles.filter(({ file }) => file.protected && !isPdfLike(file) && file.accessPath && getMalwareScanStatus(file) === 'approved')
 
     if (!protectedImages.length) {
       setPreviewStatus({ loading: false, failed: 0 })
@@ -118,6 +123,19 @@ const DocumentImagesModal = ({ documents = [], onClose }) => {
   }
 
   const openFile = async (file, document, index) => {
+    const scanStatus = getMalwareScanStatus(file)
+    if (!canOpenMalwareScannedFile(file)) {
+      setNotice({
+        type: scanStatus === 'rejected' || scanStatus === 'error' ? 'error' : 'warning',
+        message: `${malwareScanLabel(file)}. This file cannot be opened right now.`,
+      })
+      return
+    }
+    if (scanStatus === 'not_scanned') {
+      const confirmed = window.confirm('This file was not malware scanned. Open it only if you trust the source. Continue?')
+      if (!confirmed) return
+    }
+
     const key = getFileKey(document, file, index)
     try {
       const url = await resolveFileUrl(file, key)
@@ -175,7 +193,12 @@ const DocumentImagesModal = ({ documents = [], onClose }) => {
                           const key = getFileKey(document, file, index)
                           const isPdf = isPdfLike(file)
                           const isLoading = loadingKey === key
-                          const previewUrl = !isPdf ? (file.protected ? resolvedUrls[key] : file.url) : ''
+                          const scanStatus = getMalwareScanStatus(file)
+                          const previewUrl = !isPdf
+                            ? (file.protected
+                              ? (scanStatus === 'approved' ? resolvedUrls[key] : '')
+                              : file.url)
+                            : ''
 
                           return (
                             <button key={key} type="button" onClick={() => openFile(file, document, index)} disabled={Boolean(loadingKey)} className="group overflow-hidden rounded-xl border border-slate-200 bg-slate-50 text-left transition hover:border-blue-300 hover:ring-4 hover:ring-blue-50 disabled:opacity-60">
@@ -193,9 +216,22 @@ const DocumentImagesModal = ({ documents = [], onClose }) => {
                                 )}
                                 {!previewUrl ? <span className="mt-2 text-xs font-black">{isLoading ? 'Opening...' : file.protected ? 'Protected file' : isPdf ? 'Open PDF' : 'Preview image'}</span> : null}
                               </div>
-                              <div className="flex items-center justify-between gap-3 p-3">
-                                <span className="truncate text-xs font-black text-slate-700">{file.fileName || `File ${index + 1}`}</span>
-                                <span className="inline-flex items-center gap-1 text-xs font-black text-blue-700">{isPdf ? <FiExternalLink /> : <FiEye />} Open</span>
+                              <div className="p-3">
+                                <div className="flex items-center justify-between gap-3">
+                                  <span className="truncate text-xs font-black text-slate-700">{file.fileName || `File ${index + 1}`}</span>
+                                  <span className="inline-flex items-center gap-1 text-xs font-black text-blue-700">{isPdf ? <FiExternalLink /> : <FiEye />} Open</span>
+                                </div>
+                                <p className={`mt-1 text-[10px] font-black ${
+                                  scanStatus === 'approved'
+                                    ? 'text-emerald-700'
+                                    : scanStatus === 'pending'
+                                      ? 'text-amber-700'
+                                      : scanStatus === 'rejected' || scanStatus === 'error'
+                                        ? 'text-red-700'
+                                        : 'text-amber-700'
+                                }`}>
+                                  {malwareScanLabel(file)}
+                                </p>
                               </div>
                             </button>
                           )
@@ -247,5 +283,3 @@ const DocumentImagesModal = ({ documents = [], onClose }) => {
 }
 
 export default DocumentImagesModal
-
-

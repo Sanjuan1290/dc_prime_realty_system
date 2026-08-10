@@ -24,6 +24,7 @@ import attendanceRouter from './routers/System/attendance.routers.js'
 import employeeCashAdvancesRouter from './routers/System/employeeCashAdvances.routers.js'
 import publicBuyerFormsRouter from './routers/publicBuyerForms.router.js'
 import publicSystemStatusRouter from './routers/publicSystemStatus.router.js'
+import cloudinaryWebhookRouter from './routers/cloudinaryWebhook.router.js'
 
 const app = express()
 app.disable('x-powered-by')
@@ -49,7 +50,12 @@ const allowedOrigins = new Set([
 ])
 
 app.use(helmet())
-app.use(express.json({ limit: '10mb' }))
+app.use(express.json({
+  limit: '10mb',
+  verify(req, _res, buffer) {
+    req.rawBody = buffer.toString('utf8')
+  },
+}))
 app.use(cookieParser())
 
 app.use(
@@ -81,6 +87,10 @@ app.get('/api/v1/health', (_req, res) => {
 
 // Public status must remain available during planned maintenance.
 app.use('/api/v1/system-status', publicSystemStatusRouter)
+
+// Cloudinary malware callbacks are public machine-to-machine requests. The
+// signature is verified inside the webhook controller and must work during maintenance.
+app.use('/api/v1/webhooks/cloudinary', cloudinaryWebhookRouter)
 
 // Blocks non-Super-Admin API traffic only while maintenance mode is enabled.
 app.use('/api/v1', maintenanceGuard)
@@ -137,5 +147,3 @@ const startServer = async () => {
 }
 
 startServer()
-
-

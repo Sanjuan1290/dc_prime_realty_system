@@ -3,6 +3,13 @@ import { FiExternalLink, FiFileText, FiLoader, FiShield, FiUploadCloud, FiX } fr
 import StatusAlert from '../../../Shared/StatusAlert'
 import { useFetchPost } from '../../../../utils/useFetch'
 import { requestDoubleCheck } from '../../../../utils/doubleCheck'
+import {
+  appendCloudinarySecurityFields,
+  createCloudinaryMalwareQuotaError,
+  getMalwareFallbackToken,
+  isCloudinaryMalwareQuotaError,
+  isMalwareQuotaFallbackError,
+} from '../../../../utils/cloudinaryUploadSecurity'
 
 const MAX_FILE_BYTES = 15 * 1024 * 1024
 const allowedTypes = new Set(['image/jpeg', 'image/png', 'application/pdf'])
@@ -27,6 +34,7 @@ const UploadDocumentModal = ({ document, signaturePath, isSaving = false, onClos
   const [isUploading, setIsUploading] = useState(false)
   const [notice, setNotice] = useState(null)
   const [progress, setProgress] = useState({ current: 0, total: 0 })
+  const [scanFallback, setScanFallback] = useState(null)
 
   const isBusy = isSaving || isUploading
   const invalidFiles = useMemo(
@@ -34,13 +42,14 @@ const UploadDocumentModal = ({ document, signaturePath, isSaving = false, onClos
     [files]
   )
 
-  const uploadOne = async (file, uploadIndex, uploadCount) => {
+  const uploadOne = async (file, uploadIndex, uploadCount, { allowUnscanned = false, fallbackToken = '' } = {}) => {
     const signatureResponse = await useFetchPost(signaturePath, {
       fileName: file.name,
       fileType: file.type,
       fileSize: file.size,
       uploadIndex,
       uploadCount,
+      ...(allowUnscanned ? { allowUnscanned: true, fallbackToken } : {}),
     }, { confirmationHandled: 'technical' })
     const signed = signatureResponse?.data || {}
     if (!signed.uploadUrl || !signed.signature || !signed.apiKey) {
@@ -57,27 +66,101 @@ const UploadDocumentModal = ({ document, signaturePath, isSaving = false, onClos
     formData.append('type', signed.type || 'authenticated')
     formData.append('tags', signed.tags || 'dc_prime,buyer_document,authenticated')
     formData.append('context', signed.context || '')
+    appendCloudinarySecurityFields(formData, signed)
 
     const response = await fetch(signed.uploadUrl, { method: 'POST', body: formData })
     const result = await response.json().catch(() => null)
-    if (!response.ok) throw new Error(result?.error?.message || `Cloudinary upload failed for ${file.name}.`)
+    if (!response.ok) {
+      if (isCloudinaryMalwareQuotaError({ response, result, scanRequested: signed.malwareScanRequested })) {
+        throw createCloudinaryMalwareQuotaError({
+          result,
+          fallbackToken: signed.fallbackToken || fallbackToken,
+        })
+      }
+      throw new Error(result?.error?.message || `Cloudinary upload failed for ${file.name}.`)
+    }
 
     return {
-      fileName: file.name,
-      storedFileName: signed.storedFileName || null,
-      fileVersion: Number(signed.fileVersion || 0) || null,
-      fileSequence: Number(signed.fileSequence || uploadIndex || 1),
-      fileUrl: result?.secure_url || '',
-      fileSize: Number(result?.bytes || file.size),
-      fileType: file.type,
-      cloudinaryAssetId: result?.asset_id || null,
-      cloudinaryPublicId: result?.public_id || null,
-      cloudinaryResourceType: result?.resource_type || (file.type === 'application/pdf' ? 'raw' : 'image'),
-      cloudinaryDeliveryType: result?.type || 'authenticated',
-      cloudinaryVersion: Number(result?.version || 0) || null,
-      cloudinaryFolder: result?.asset_folder || signed.folder,
-      cloudinaryAssetFolder: result?.asset_folder || signed.folder,
-      cloudinaryFormat: result?.format || null,
+      fallbackToken: signed.fallbackToken || fallbackToken,
+      uploadedFile: {
+        fileName: file.name,
+        storedFileName: signed.storedFileName || null,
+        fileVersion: Number(signed.fileVersion || 0) || null,
+        fileSequence: Number(signed.fileSequence || uploadIndex || 1),
+        fileUrl: result?.secure_url || '',
+        fileSize: Number(result?.bytes || file.size),
+        fileType: file.type,
+        cloudinaryAssetId: result?.asset_id || null,
+        cloudinaryPublicId: result?.public_id || null,
+        cloudinaryResourceType: result?.resource_type || (file.type === 'application/pdf' ? 'raw' : 'image'),
+        cloudinaryDeliveryType: result?.type || 'authenticated',
+        cloudinaryVersion: Number(result?.version || 0) || null,
+        cloudinaryFolder: result?.asset_folder || signed.folder,
+        cloudinaryAssetFolder: result?.asset_folder || signed.folder,
+        cloudinaryFormat: result?.format || null,
+        malwareScanStatus: signed.malwareScanStatus || (signed.malwareScanRequested ? 'pending' : 'not_scanned'),
+        malwareScanProvider: signed.malwareScanProvider || null,
+        malwareScanReason: signed.malwareScanReason || null,
+      },
+    }
+  }
+
+  const runUploadBatch = async ({
+    startIndex = 0,
+    uploadedFiles = [],
+    allowUnscanned = false,
+    fallbackToken = '',
+    confirmationToken = '',
+  } = {}) => {
+    setIsUploading(true)
+    setProgress({ current: startIndex, total: files.length })
+    setNotice({
+      type: 'loading',
+      message: allowUnscanned ? 'Preparing unscanned protected uploads...' : 'Preparing protected uploads and security scanning...',
+    })
+
+    const completed = [...uploadedFiles]
+    let activeFallbackToken = fallbackToken
+
+    try {
+      for (let index = startIndex; index < files.length; index += 1) {
+        setProgress({ current: index + 1, total: files.length })
+        setNotice({
+          type: 'loading',
+          message: `${allowUnscanned ? 'Uploading without security scan' : 'Uploading and requesting security scan'} ${index + 1} of ${files.length}: ${files[index].name}`,
+        })
+
+        try {
+          const upload = await uploadOne(files[index], index + 1, files.length, {
+            allowUnscanned,
+            fallbackToken: activeFallbackToken,
+          })
+          activeFallbackToken = upload.fallbackToken || activeFallbackToken
+          completed.push(upload.uploadedFile)
+        } catch (error) {
+          if (!allowUnscanned && isMalwareQuotaFallbackError(error)) {
+            setScanFallback({
+              startIndex: index,
+              uploadedFiles: completed,
+              fallbackToken: getMalwareFallbackToken(error) || error?.fallbackToken || '',
+              confirmationToken,
+            })
+            setNotice(null)
+            return false
+          }
+          throw error
+        }
+      }
+
+      setNotice({ type: 'loading', message: 'Verifying uploaded files and saving document records...' })
+      await onSave?.({ files: completed, confirmationToken })
+      setScanFallback(null)
+      return true
+    } catch (error) {
+      setNotice({ type: 'error', message: error?.message || 'Protected upload failed.' })
+      return false
+    } finally {
+      setIsUploading(false)
     }
   }
 
@@ -115,25 +198,26 @@ const UploadDocumentModal = ({ document, signaturePath, isSaving = false, onClos
       return
     }
 
-    setIsUploading(true)
-    setProgress({ current: 0, total: files.length })
-    setNotice({ type: 'loading', message: 'Preparing protected uploads...' })
+    setScanFallback(null)
+    await runUploadBatch({ confirmationToken: reviewResult.token })
+  }
 
-    try {
-      const uploadedFiles = []
-      for (let index = 0; index < files.length; index += 1) {
-        setProgress({ current: index + 1, total: files.length })
-        setNotice({ type: 'loading', message: `Uploading ${index + 1} of ${files.length}: ${files[index].name}` })
-        uploadedFiles.push(await uploadOne(files[index], index + 1, files.length))
-      }
+  const uploadWithoutScan = async () => {
+    if (!scanFallback || isBusy) return
+    const pending = scanFallback
+    setScanFallback(null)
+    await runUploadBatch({
+      startIndex: pending.startIndex,
+      uploadedFiles: pending.uploadedFiles,
+      allowUnscanned: true,
+      fallbackToken: pending.fallbackToken,
+      confirmationToken: pending.confirmationToken,
+    })
+  }
 
-      setNotice({ type: 'loading', message: 'Verifying uploaded files and saving document records...' })
-      await onSave?.({ files: uploadedFiles, confirmationToken: reviewResult.token })
-    } catch (error) {
-      setNotice({ type: 'error', message: error?.message || 'Protected upload failed.' })
-    } finally {
-      setIsUploading(false)
-    }
+  const cancelUnscannedUpload = () => {
+    setScanFallback(null)
+    setNotice({ type: 'info', message: 'Upload without security scanning was cancelled.' })
   }
 
   return (
@@ -155,6 +239,28 @@ const UploadDocumentModal = ({ document, signaturePath, isSaving = false, onClos
         <div className="min-h-0 flex-1 overflow-y-auto p-6">
           {notice ? <StatusAlert type={notice.type} message={notice.message} onClose={notice.type === 'loading' ? undefined : () => setNotice(null)} className="mb-4" /> : null}
 
+          {scanFallback ? (
+            <div className="mb-4 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950">
+              <div className="flex items-start gap-3">
+                <FiShield className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
+                <div>
+                  <h3 className="text-sm font-black">Security scanning is temporarily unavailable.</h3>
+                  <p className="mt-1 text-xs font-semibold leading-5">
+                    This file will be uploaded without malware scanning. Only continue if you trust the source of this file.
+                  </p>
+                </div>
+              </div>
+              <div className="mt-4 flex flex-wrap justify-end gap-2">
+                <button type="button" onClick={cancelUnscannedUpload} className="h-9 rounded-lg border border-amber-300 bg-white px-4 text-xs font-black text-amber-900">
+                  Cancel
+                </button>
+                <button type="button" onClick={uploadWithoutScan} className="h-9 rounded-lg bg-amber-700 px-4 text-xs font-black text-white hover:bg-amber-800">
+                  Upload Without Scan
+                </button>
+              </div>
+            </div>
+          ) : null}
+
           <label className="flex cursor-pointer flex-col items-center justify-center rounded-3xl border-2 border-dashed border-blue-200 bg-blue-50 p-8 text-center transition hover:bg-blue-100/60">
             <FiUploadCloud className="h-10 w-10 text-blue-600" />
             <span className="mt-3 text-sm font-black text-blue-900">Choose PDF, JPG, or PNG files</span>
@@ -167,6 +273,7 @@ const UploadDocumentModal = ({ document, signaturePath, isSaving = false, onClos
               className="hidden"
               onChange={(event) => {
                 setNotice(null)
+                setScanFallback(null)
                 setFiles(Array.from(event.target.files || []))
               }}
             />
@@ -194,13 +301,13 @@ const UploadDocumentModal = ({ document, signaturePath, isSaving = false, onClos
           ) : null}
 
           <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-xs font-semibold leading-5 text-slate-600">
-            The server assigns the buyer account folder and signs each upload. Files use authenticated Cloudinary delivery and open through short-lived access links.
+            The server signs each protected upload and requests malware scanning when quota is available. If the monthly scanner quota is exhausted, uploading without a scan requires your explicit confirmation. Files still use authenticated Cloudinary delivery and short-lived access links.
           </div>
         </div>
 
         <footer className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50 px-6 py-4 sm:flex-row sm:justify-end">
           <button type="button" onClick={onClose} disabled={isBusy} className="h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 disabled:opacity-50">Cancel</button>
-          <button type="button" onClick={handleSave} disabled={!files.length || Boolean(invalidFiles.length) || isBusy} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300">
+          <button type="button" onClick={handleSave} disabled={!files.length || Boolean(invalidFiles.length) || isBusy || Boolean(scanFallback)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300">
             {isBusy ? <FiLoader className="h-4 w-4 animate-spin" /> : <FiShield className="h-4 w-4" />}
             {isUploading ? `Uploading ${progress.current}/${progress.total}` : isSaving ? 'Saving...' : 'Proceed to Review'}
           </button>
@@ -211,5 +318,3 @@ const UploadDocumentModal = ({ document, signaturePath, isSaving = false, onClos
 }
 
 export default UploadDocumentModal
-
-

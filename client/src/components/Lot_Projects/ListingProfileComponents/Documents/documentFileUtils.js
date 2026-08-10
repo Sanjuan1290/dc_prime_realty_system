@@ -53,6 +53,9 @@ export const normalizeDocumentFileEntry = (file, document = {}, index = 0) => {
       resourceType: url.toLowerCase().includes('.pdf') ? 'raw' : 'image',
       protected: false,
       accessPath: '',
+      malwareScanStatus: 'not_scanned',
+      malwareScanProvider: null,
+      malwareScanReason: 'legacy_or_unknown',
     }
   }
 
@@ -82,6 +85,10 @@ export const normalizeDocumentFileEntry = (file, document = {}, index = 0) => {
     accessPath,
     protected: protectedFile,
     cloudinaryPublicId,
+    malwareScanStatus: String(file.malwareScanStatus || file.malware_scan_status || 'not_scanned').trim().toLowerCase(),
+    malwareScanProvider: file.malwareScanProvider || file.malware_scan_provider || null,
+    malwareScanReason: file.malwareScanReason || file.malware_scan_reason || null,
+    malwareScannedAt: file.malwareScannedAt || file.malware_scanned_at || null,
     fileName:
       file.fileName ||
       file.file_name ||
@@ -124,5 +131,3 @@ export const isPdfLike = (file = {}) => `${
 } ${file.fileName || ''} ${file.fileType || file.file_type || ''} ${file.resourceType || ''} ${file.format || file.cloudinaryFormat || file.cloudinary_format || ''}`
   .toLowerCase()
   .includes('pdf')
-
-

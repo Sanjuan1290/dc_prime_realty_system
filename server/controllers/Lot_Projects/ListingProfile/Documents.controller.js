@@ -16,6 +16,10 @@ import {
   createAuthenticatedUploadSignature,
   validateDocumentUploadRequest,
   verifyAuthenticatedCloudinaryAsset,
+  getCloudinaryMalwareScanState,
+  getPerceptionPointQuotaState,
+  authorizeMalwareQuotaFallback,
+  buildMalwareQuotaError,
 } from '../../../services/secureCloudinary.service.js';
 import {
   buildDocumentStoredFileName,
@@ -338,6 +342,37 @@ export const createLotProjectDocumentUploadSignature = async (req, res) => {
       return res.status(400).json({ message: 'Too many files were requested in one document upload.' });
     }
 
+    const allowUnscanned = req.body?.allowUnscanned === true;
+    const fallbackToken = String(req.body?.fallbackToken || '').trim();
+    const subjectId = `document:${Number(context.listing.lot_project_account_id)}:${Number(context.document.document_id)}`;
+    let authorizedFallbackToken = fallbackToken;
+
+    if (allowUnscanned) {
+      const fallback = await authorizeMalwareQuotaFallback({
+        token: fallbackToken,
+        scope: 'buyer_document',
+        subjectId,
+        uploadCount,
+      });
+      authorizedFallbackToken = fallback.token;
+    } else if (uploadIndex === 1) {
+      const quota = await getPerceptionPointQuotaState({ requiredScans: uploadCount });
+      if (!quota.configured) {
+        const error = new Error('Security scanning is not configured. Set CLOUDINARY_MALWARE_NOTIFICATION_URL before accepting uploads.');
+        error.statusCode = 503;
+        error.code = 'MALWARE_SCAN_NOT_CONFIGURED';
+        throw error;
+      }
+      if (quota.known && quota.insufficient) {
+        throw buildMalwareQuotaError({
+          quota,
+          scope: 'buyer_document',
+          subjectId,
+          uploadCount,
+        });
+      }
+    }
+
     const fileVersion = await getNextDocumentFileVersion(
       connection,
       context.listing.lot_project_account_id,
@@ -367,6 +402,8 @@ export const createLotProjectDocumentUploadSignature = async (req, res) => {
       accountId: context.listing.lot_project_account_id,
       documentId: context.document.document_id,
       storedFileName,
+      scanRequested: !allowUnscanned,
+      fallbackToken: authorizedFallbackToken,
     });
 
     return res.json({
@@ -379,7 +416,11 @@ export const createLotProjectDocumentUploadSignature = async (req, res) => {
       },
     });
   } catch (error) {
-    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
+    return res.status(error.statusCode || 500).json({
+      code: error.code || undefined,
+      message: getErrorMessage(error),
+      ...(error.data ? { data: error.data } : {}),
+    });
   } finally {
     connection.release();
   }
@@ -419,8 +460,19 @@ export const uploadLotProjectListingDocument = async (req, res) => {
         resourceType: file.cloudinaryResourceType || 'image',
         expectedFolder,
       });
+      const malwareScan = getCloudinaryMalwareScanState(asset);
+      if (malwareScan.status === 'rejected') {
+        const error = new Error(`${file.fileName} was rejected because malware or malicious content was detected.`);
+        error.statusCode = 422;
+        error.code = 'MALWARE_DETECTED';
+        throw error;
+      }
       verifiedFiles.push({
         ...file,
+        malwareScanStatus: malwareScan.status,
+        malwareScanProvider: malwareScan.provider,
+        malwareScanReason: malwareScan.reason,
+        malwareScannedAt: malwareScan.status === 'approved' ? new Date().toISOString() : null,
         url: '',
         protected: true,
         cloudinaryAssetId: asset.asset_id || file.cloudinaryAssetId || null,
@@ -516,11 +568,19 @@ export const uploadLotProjectListingDocument = async (req, res) => {
             file_format,
             file_mime_type,
             file_size_bytes,
+            malware_scan_status,
+            malware_scan_provider,
+            malware_scan_reason,
+            malware_scanned_at,
             file_status,
             uploaded_by_user_id
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)
           ON DUPLICATE KEY UPDATE
             lot_project_client_document_id = VALUES(lot_project_client_document_id),
+            malware_scan_status = VALUES(malware_scan_status),
+            malware_scan_provider = VALUES(malware_scan_provider),
+            malware_scan_reason = VALUES(malware_scan_reason),
+            malware_scanned_at = VALUES(malware_scanned_at),
             file_status = 'active',
             removed_at = NULL,
             removal_reason = NULL,
@@ -542,6 +602,10 @@ export const uploadLotProjectListingDocument = async (req, res) => {
           file.cloudinaryFormat,
           file.fileType,
           file.fileSize,
+          file.malwareScanStatus || 'not_scanned',
+          file.malwareScanProvider || null,
+          file.malwareScanReason || null,
+          file.malwareScannedAt ? new Date(file.malwareScannedAt) : null,
           user?.id || null,
         ]
       );
@@ -637,13 +701,44 @@ export const getLotProjectDocumentFileAccessUrl = async (req, res) => {
     const file = rows[0];
     if (!file) return res.status(404).json({ message: 'Document file not found.' });
 
+    const malwareScanStatus = String(file.malware_scan_status || 'not_scanned').toLowerCase();
+    if (malwareScanStatus === 'pending') {
+      return res.status(423).json({
+        code: 'MALWARE_SCAN_PENDING',
+        message: 'This file is still being scanned for security threats. Try again shortly.',
+      });
+    }
+    if (malwareScanStatus === 'rejected') {
+      return res.status(403).json({
+        code: 'MALWARE_DETECTED',
+        message: 'This file was blocked because the security scan detected malicious content.',
+      });
+    }
+    if (malwareScanStatus === 'error') {
+      return res.status(503).json({
+        code: 'MALWARE_SCAN_ERROR',
+        message: 'The security scan did not complete successfully. This file is temporarily unavailable.',
+      });
+    }
+
     const url = createAuthenticatedAccessUrl({
       publicId: file.cloudinary_public_id,
       format: file.file_format,
       resourceType: file.cloudinary_resource_type,
       expiresInSeconds: 600,
     });
-    return res.json({ success: true, data: { url, expiresInSeconds: 600, accountStatus: file.account_status } });
+    return res.json({
+      success: true,
+      data: {
+        url,
+        expiresInSeconds: 600,
+        accountStatus: file.account_status,
+        malwareScanStatus,
+        securityWarning: malwareScanStatus === 'not_scanned'
+          ? 'This file was uploaded without malware scanning because the scanning quota was unavailable.'
+          : null,
+      },
+    });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
   } finally {
@@ -673,6 +768,40 @@ export const approveLotProjectListingDocument = async (req, res) => {
     const clientDocument = rows[0];
     if (!clientDocument?.lot_project_client_document_file_name) {
       return res.status(400).json({ message: `Upload ${context.document.document_name} before approving it.` });
+    }
+
+    if (await tableExists(connection, 'lot_project_client_document_files')) {
+      const [scanRows] = await connection.query(
+        `
+          SELECT malware_scan_status, COUNT(*) AS total
+          FROM lot_project_client_document_files
+          WHERE lot_project_client_document_id = ?
+            AND file_status = 'active'
+          GROUP BY malware_scan_status
+        `,
+        [clientDocument.lot_project_client_document_id]
+      );
+      const scanCounts = Object.fromEntries(
+        scanRows.map((row) => [String(row.malware_scan_status || 'not_scanned').toLowerCase(), Number(row.total || 0)])
+      );
+      if (Number(scanCounts.pending || 0) > 0) {
+        return res.status(409).json({
+          code: 'MALWARE_SCAN_PENDING',
+          message: 'Wait for the security scan to finish before approving this document.',
+        });
+      }
+      if (Number(scanCounts.rejected || 0) > 0) {
+        return res.status(409).json({
+          code: 'MALWARE_DETECTED',
+          message: 'This document contains a file rejected by the security scan. Remove it before approving the document.',
+        });
+      }
+      if (Number(scanCounts.error || 0) > 0) {
+        return res.status(409).json({
+          code: 'MALWARE_SCAN_ERROR',
+          message: 'A file has an incomplete security scan. Resolve or replace it before approving the document.',
+        });
+      }
     }
 
     await connection.query(
@@ -756,5 +885,3 @@ export const clearLotProjectListingDocument = async (req, res) => {
     connection.release();
   }
 };
-
-

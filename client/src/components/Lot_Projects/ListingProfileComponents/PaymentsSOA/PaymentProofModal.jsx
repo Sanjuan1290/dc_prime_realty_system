@@ -13,6 +13,16 @@ import {
 import StatusAlert from '../../../Shared/StatusAlert'
 import { useFetch, useFetchPost } from '../../../../utils/useFetch'
 import { requestDoubleCheck } from '../../../../utils/doubleCheck'
+import {
+  appendCloudinarySecurityFields,
+  canOpenMalwareScannedFile,
+  createCloudinaryMalwareQuotaError,
+  getMalwareFallbackToken,
+  getMalwareScanStatus,
+  isCloudinaryMalwareQuotaError,
+  isMalwareQuotaFallbackError,
+  malwareScanLabel,
+} from '../../../../utils/cloudinaryUploadSecurity'
 
 const MAX_FILE_BYTES = 15 * 1024 * 1024
 const MAX_FILES = 5
@@ -95,6 +105,7 @@ const PaymentProofModal = ({
   const [preview, setPreview] = useState(null)
   const [openingProofId, setOpeningProofId] = useState(0)
   const [deletingProofId, setDeletingProofId] = useState(0)
+  const [scanFallback, setScanFallback] = useState(null)
 
   const invalidFiles = useMemo(
     () => files.filter((file) => !allowedTypes.has(file.type) || file.size <= 0 || file.size > MAX_FILE_BYTES),
@@ -128,13 +139,14 @@ const PaymentProofModal = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paymentId])
 
-  const uploadOne = async (file, uploadIndex, uploadCount) => {
+  const uploadOne = async (file, uploadIndex, uploadCount, { allowUnscanned = false, fallbackToken = '' } = {}) => {
     const signatureResponse = await useFetchPost(`${basePath}/upload-signature`, {
       fileName: file.name,
       fileType: file.type,
       fileSize: file.size,
       uploadIndex,
       uploadCount,
+      ...(allowUnscanned ? { allowUnscanned: true, fallbackToken } : {}),
     }, { confirmationHandled: 'technical' })
     const signed = signatureResponse?.data || {}
     if (!signed.uploadUrl || !signed.signature || !signed.apiKey) {
@@ -151,25 +163,106 @@ const PaymentProofModal = ({
     formData.append('type', signed.type || 'authenticated')
     formData.append('tags', signed.tags || 'dc_prime,payment_proof,authenticated')
     formData.append('context', signed.context || '')
+    appendCloudinarySecurityFields(formData, signed)
 
     const response = await fetch(signed.uploadUrl, { method: 'POST', body: formData })
     const result = await response.json().catch(() => null)
-    if (!response.ok) throw new Error(result?.error?.message || `Cloudinary upload failed for ${file.name}.`)
+    if (!response.ok) {
+      if (isCloudinaryMalwareQuotaError({ response, result, scanRequested: signed.malwareScanRequested })) {
+        throw createCloudinaryMalwareQuotaError({
+          result,
+          fallbackToken: signed.fallbackToken || fallbackToken,
+        })
+      }
+      throw new Error(result?.error?.message || `Cloudinary upload failed for ${file.name}.`)
+    }
 
     return {
-      fileName: file.name,
-      storedFileName: signed.storedFileName || null,
-      proofSequence: Number(signed.proofSequence || uploadIndex || 1),
-      fileSize: Number(result?.bytes || file.size),
-      fileType: file.type,
-      cloudinaryAssetId: result?.asset_id || null,
-      cloudinaryPublicId: result?.public_id || null,
-      cloudinaryResourceType: result?.resource_type || (file.type === 'application/pdf' ? 'raw' : 'image'),
-      cloudinaryDeliveryType: result?.type || 'authenticated',
-      cloudinaryVersion: Number(result?.version || 0) || null,
-      cloudinaryFolder: result?.asset_folder || signed.folder,
-      cloudinaryAssetFolder: result?.asset_folder || signed.folder,
-      cloudinaryFormat: result?.format || null,
+      fallbackToken: signed.fallbackToken || fallbackToken,
+      uploadedFile: {
+        fileName: file.name,
+        storedFileName: signed.storedFileName || null,
+        proofSequence: Number(signed.proofSequence || uploadIndex || 1),
+        fileSize: Number(result?.bytes || file.size),
+        fileType: file.type,
+        cloudinaryAssetId: result?.asset_id || null,
+        cloudinaryPublicId: result?.public_id || null,
+        cloudinaryResourceType: result?.resource_type || (file.type === 'application/pdf' ? 'raw' : 'image'),
+        cloudinaryDeliveryType: result?.type || 'authenticated',
+        cloudinaryVersion: Number(result?.version || 0) || null,
+        cloudinaryFolder: result?.asset_folder || signed.folder,
+        cloudinaryAssetFolder: result?.asset_folder || signed.folder,
+        cloudinaryFormat: result?.format || null,
+        malwareScanStatus: signed.malwareScanStatus || (signed.malwareScanRequested ? 'pending' : 'not_scanned'),
+        malwareScanProvider: signed.malwareScanProvider || null,
+        malwareScanReason: signed.malwareScanReason || null,
+      },
+    }
+  }
+
+  const runUploadBatch = async ({
+    startIndex = 0,
+    uploadedFiles = [],
+    allowUnscanned = false,
+    fallbackToken = '',
+    confirmationToken = '',
+  } = {}) => {
+    setIsUploading(true)
+    setProgress({ current: startIndex, total: files.length })
+    setNotice({
+      type: 'loading',
+      message: allowUnscanned
+        ? 'Preparing payment proof upload without security scanning...'
+        : 'Preparing protected payment proof upload and security scanning...',
+    })
+
+    const completed = [...uploadedFiles]
+    let activeFallbackToken = fallbackToken
+
+    try {
+      for (let index = startIndex; index < files.length; index += 1) {
+        setProgress({ current: index + 1, total: files.length })
+        setNotice({
+          type: 'loading',
+          message: `${allowUnscanned ? 'Uploading without security scan' : 'Uploading and requesting security scan'} ${index + 1} of ${files.length}: ${files[index].name}`,
+        })
+
+        try {
+          const upload = await uploadOne(files[index], index + 1, files.length, {
+            allowUnscanned,
+            fallbackToken: activeFallbackToken,
+          })
+          activeFallbackToken = upload.fallbackToken || activeFallbackToken
+          completed.push(upload.uploadedFile)
+        } catch (error) {
+          if (!allowUnscanned && isMalwareQuotaFallbackError(error)) {
+            setScanFallback({
+              startIndex: index,
+              uploadedFiles: completed,
+              fallbackToken: getMalwareFallbackToken(error) || error?.fallbackToken || '',
+              confirmationToken,
+            })
+            setNotice(null)
+            return false
+          }
+          throw error
+        }
+      }
+
+      setNotice({ type: 'loading', message: 'Saving protected payment proof records...' })
+      const result = await useFetchPost(basePath, { files: completed, note: note.trim() }, { confirmationToken })
+      setFiles([])
+      setNote('')
+      setScanFallback(null)
+      setNotice({ type: 'success', message: result?.message || 'Payment proof uploaded successfully.' })
+      await loadProofs({ quiet: true })
+      await onChanged?.()
+      return true
+    } catch (error) {
+      setNotice({ type: 'error', message: error?.message || 'Payment proof upload failed.' })
+      return false
+    } finally {
+      setIsUploading(false)
     }
   }
 
@@ -215,33 +308,41 @@ const PaymentProofModal = ({
       return
     }
 
-    setIsUploading(true)
-    setProgress({ current: 0, total: files.length })
-    setNotice({ type: 'loading', message: 'Preparing protected payment proof upload...' })
+    setScanFallback(null)
+    await runUploadBatch({ confirmationToken: reviewResult.token })
+  }
 
-    try {
-      const uploadedFiles = []
-      for (let index = 0; index < files.length; index += 1) {
-        setProgress({ current: index + 1, total: files.length })
-        setNotice({ type: 'loading', message: `Uploading ${index + 1} of ${files.length}: ${files[index].name}` })
-        uploadedFiles.push(await uploadOne(files[index], index + 1, files.length))
-      }
+  const uploadWithoutScan = async () => {
+    if (!scanFallback || isBusy) return
+    const pending = scanFallback
+    setScanFallback(null)
+    await runUploadBatch({
+      startIndex: pending.startIndex,
+      uploadedFiles: pending.uploadedFiles,
+      allowUnscanned: true,
+      fallbackToken: pending.fallbackToken,
+      confirmationToken: pending.confirmationToken,
+    })
+  }
 
-      setNotice({ type: 'loading', message: 'Saving protected payment proof records...' })
-      const result = await useFetchPost(basePath, { files: uploadedFiles, note: note.trim() }, { confirmationToken: reviewResult.token })
-      setFiles([])
-      setNote('')
-      setNotice({ type: 'success', message: result?.message || 'Payment proof uploaded successfully.' })
-      await loadProofs({ quiet: true })
-      await onChanged?.()
-    } catch (error) {
-      setNotice({ type: 'error', message: error?.message || 'Payment proof upload failed.' })
-    } finally {
-      setIsUploading(false)
-    }
+  const cancelUnscannedUpload = () => {
+    setScanFallback(null)
+    setNotice({ type: 'info', message: 'Upload without security scanning was cancelled.' })
   }
 
   const openProof = async (proof) => {
+    if (!canOpenMalwareScannedFile(proof)) {
+      setNotice({
+        type: getMalwareScanStatus(proof) === 'rejected' ? 'error' : 'warning',
+        message: `${malwareScanLabel(proof)}. This file cannot be opened right now.`,
+      })
+      return
+    }
+    if (getMalwareScanStatus(proof) === 'not_scanned') {
+      const confirmed = window.confirm('This file was not malware scanned. Open it only if you trust the source. Continue?')
+      if (!confirmed) return
+    }
+
     setOpeningProofId(proof.proofId)
     try {
       const result = await useFetch(proof.accessPath)
@@ -299,6 +400,28 @@ const PaymentProofModal = ({
         <div className="min-h-0 flex-1 overflow-y-auto p-6">
           {notice ? <StatusAlert type={notice.type} message={notice.message} onClose={notice.type === 'loading' ? undefined : () => setNotice(null)} className="mb-4" /> : null}
 
+          {scanFallback ? (
+            <div className="mb-4 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950">
+              <div className="flex items-start gap-3">
+                <FiShield className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
+                <div>
+                  <h3 className="text-sm font-black">Security scanning is temporarily unavailable.</h3>
+                  <p className="mt-1 text-xs font-semibold leading-5">
+                    This file will be uploaded without malware scanning. Only continue if you trust the source of this file.
+                  </p>
+                </div>
+              </div>
+              <div className="mt-4 flex flex-wrap justify-end gap-2">
+                <button type="button" onClick={cancelUnscannedUpload} className="h-9 rounded-lg border border-amber-300 bg-white px-4 text-xs font-black text-amber-900">
+                  Cancel
+                </button>
+                <button type="button" onClick={uploadWithoutScan} className="h-9 rounded-lg bg-amber-700 px-4 text-xs font-black text-white hover:bg-amber-800">
+                  Upload Without Scan
+                </button>
+              </div>
+            </div>
+          ) : null}
+
           <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2 xl:grid-cols-7">
             <div><p className="text-xs font-black uppercase text-slate-500">Buyer</p><p className="mt-1 text-sm font-black text-slate-950">{paymentDetails.buyerName || payment?.client || '-'}</p></div>
             <div><p className="text-xs font-black uppercase text-slate-500">Unit</p><p className="mt-1 text-sm font-black text-slate-950">{paymentDetails.unitId || payment?.unit || '-'}</p></div>
@@ -331,6 +454,17 @@ const PaymentProofModal = ({
                       <p className="truncate text-sm font-black text-slate-950">{proof.fileName}</p>
                       <p className="mt-0.5 text-xs font-semibold text-slate-500">{formatBytes(proof.fileSize)} · Uploaded by {proof.uploadedBy} · {formatDateTime(proof.uploadedAt)}</p>
                       {proof.storedFileName ? <p className="mt-1 truncate font-mono text-[11px] font-bold text-slate-500">Cloudinary: {proof.storedFileName}</p> : null}
+                      <p className={`mt-1 text-[11px] font-black ${
+                        getMalwareScanStatus(proof) === 'approved'
+                          ? 'text-emerald-700'
+                          : getMalwareScanStatus(proof) === 'pending'
+                            ? 'text-amber-700'
+                            : getMalwareScanStatus(proof) === 'rejected' || getMalwareScanStatus(proof) === 'error'
+                              ? 'text-red-700'
+                              : 'text-amber-700'
+                      }`}>
+                        {malwareScanLabel(proof)}
+                      </p>
                       {proof.note ? <p className="mt-1 text-xs font-semibold text-slate-600">Note: {proof.note}</p> : null}
                     </div>
                     <div className="flex shrink-0 gap-2">
@@ -373,6 +507,7 @@ const PaymentProofModal = ({
                   className="hidden"
                   onChange={(event) => {
                     setNotice(null)
+                    setScanFallback(null)
                     setFiles(Array.from(event.target.files || []).slice(0, remainingSlots))
                   }}
                 />
@@ -401,7 +536,7 @@ const PaymentProofModal = ({
               </label>
 
               <div className="mt-4 flex justify-end">
-                <button type="button" onClick={handleUpload} disabled={!files.length || Boolean(invalidFiles.length) || isBusy} className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300">
+                <button type="button" onClick={handleUpload} disabled={!files.length || Boolean(invalidFiles.length) || isBusy || Boolean(scanFallback)} className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300">
                   {isUploading ? <FiLoader className="animate-spin" /> : <FiShield />}
                   {isUploading ? `Uploading ${progress.current}/${progress.total}` : 'Proceed to Review'}
                 </button>
@@ -428,5 +563,3 @@ const PaymentProofModal = ({
 }
 
 export default PaymentProofModal
-
-
