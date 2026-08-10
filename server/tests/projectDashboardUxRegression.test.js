@@ -32,3 +32,4 @@ test('commission rate examples are field-authored instead of inheriting the dail
   assert.doesNotMatch(decorator, /custom\.\*daily\.\*penalty\.\*rate/);
 });
 
+

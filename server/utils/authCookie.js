@@ -19,3 +19,4 @@ export const clearAuthCookie = (res) => {
   res.clearCookie('token', getAuthCookieOptions())
 }
 
+

@@ -82,6 +82,7 @@ import {
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
 import { isFullAccessAdministrator } from '../../../config/permissions.js';
 import { runTransactionWithRetry } from '../../../utils/transactionRetry.js';
+import { createPaymentStorageCode } from '../../../services/storageCodes.service.js';
 
 const createHttpError = (statusCode, message) => {
   const error = new Error(message);
@@ -493,6 +494,7 @@ export const createLotProjectListingPayment = async (req, res) => {
         return {
           paymentId: existingRequest.lot_project_payment_id,
           referenceId: existingRequest.lot_project_payment_reference_id,
+          storageCode: existingRequest.lot_project_payment_storage_code || createPaymentStorageCode(existingRequest.lot_project_payment_id, existingRequest.lot_project_payment_created_at),
           idempotentReplay: true,
         };
       }
@@ -563,6 +565,13 @@ export const createLotProjectListingPayment = async (req, res) => {
       );
 
       const paymentId = paymentResult.insertId;
+      const storageCode = createPaymentStorageCode(paymentId, new Date());
+      if (await columnExists(connection, 'lot_project_payments', 'lot_project_payment_storage_code')) {
+        await connection.query(
+          `UPDATE lot_project_payments SET lot_project_payment_storage_code = ? WHERE lot_project_payment_id = ?`,
+          [storageCode, paymentId]
+        );
+      }
       const referenceId = paymentMethod === 'Cash'
         ? await getNextCashReference(
             connection,
@@ -617,11 +626,12 @@ export const createLotProjectListingPayment = async (req, res) => {
           bankName,
           accountNumber,
           referenceId,
+          storageCode,
           scheduleId,
         },
       });
 
-      return { paymentId, referenceId, idempotentReplay: false };
+      return { paymentId, referenceId, storageCode, idempotentReplay: false };
     });
 
     return res.status(result.idempotentReplay ? 200 : 201).json({
@@ -631,6 +641,7 @@ export const createLotProjectListingPayment = async (req, res) => {
         : `${getPaymentTypeLabel(paymentType)} payment saved and verified successfully.`,
       payment_id: result.paymentId,
       reference_id: result.referenceId,
+      storage_code: result.storageCode,
       idempotent_replay: result.idempotentReplay,
     });
   } catch (error) {
@@ -2141,3 +2152,4 @@ export const restorePaymentSchedulePenaltyWaiver = async (req, res) => {
     connection.release();
   }
 };
+

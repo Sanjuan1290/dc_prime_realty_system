@@ -3,13 +3,16 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { RxCross2 } from "react-icons/rx";
 import StatusAlert from "../../Shared/StatusAlert";
 import { useFetchPost, getDoubleCheckNotice } from "../../../utils/useFetch";
+import { isValidDocumentCode, normalizeDocumentCodeInput, suggestDocumentCode } from "../../../utils/documentCode";
 
 const AddDocument = ({ setShowAddDocumentModal, onSaved }) => {
   const queryClient = useQueryClient();
   const [errorMessage, setErrorMessage] = useState("");
   const [reviewNotice, setReviewNotice] = useState(null);
+  const [documentCodeTouched, setDocumentCodeTouched] = useState(false);
   const [formData, setFormData] = useState({
     document_name: "",
+    document_code: "",
     document_description: "",
     document_status: "active",
     document_is_required: "required",
@@ -26,6 +29,7 @@ const AddDocument = ({ setShowAddDocumentModal, onSaved }) => {
           mode: 'create',
           data: {
             document_name: formData.document_name,
+            document_code: formData.document_code,
             document_description: formData.document_description,
             document_status: formData.document_status,
             document_is_required: formData.document_is_required === 'required',
@@ -48,6 +52,22 @@ const AddDocument = ({ setShowAddDocumentModal, onSaved }) => {
   const handleChange = (field, value) => {
     setErrorMessage("");
     setReviewNotice(null);
+
+    if (field === "document_name") {
+      setFormData((prev) => ({
+        ...prev,
+        document_name: value,
+        document_code: documentCodeTouched ? prev.document_code : suggestDocumentCode(value),
+      }));
+      return;
+    }
+
+    if (field === "document_code") {
+      setDocumentCodeTouched(true);
+      setFormData((prev) => ({ ...prev, document_code: normalizeDocumentCodeInput(value) }));
+      return;
+    }
+
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
@@ -58,6 +78,16 @@ const AddDocument = ({ setShowAddDocumentModal, onSaved }) => {
 
     if (!formData.document_name.trim()) {
       setErrorMessage("Document name is required.");
+      return;
+    }
+
+    if (!formData.document_code.trim()) {
+      setErrorMessage("Document code is required.");
+      return;
+    }
+
+    if (!isValidDocumentCode(formData.document_code)) {
+      setErrorMessage("Document code must start with DOC- and contain only letters, numbers, and hyphens.");
       return;
     }
 
@@ -85,6 +115,12 @@ const AddDocument = ({ setShowAddDocumentModal, onSaved }) => {
           <label className="flex flex-col gap-2">
             <span className="text-sm font-semibold text-slate-700">Document Name</span>
             <input type="text" data-example="Valid Government ID" value={formData.document_name} onChange={(event) => handleChange("document_name", event.target.value)} placeholder="Example: Valid Government ID" className="h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
+          </label>
+
+          <label className="flex flex-col gap-2">
+            <span className="text-sm font-semibold text-slate-700">Document Code</span>
+            <input type="text" data-example="DOC-GOV-ID" value={formData.document_code} onChange={(event) => handleChange("document_code", event.target.value)} placeholder="Example: DOC-GOV-ID" maxLength={80} className="h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold uppercase tracking-wide text-slate-900 shadow-sm outline-none transition placeholder:font-normal placeholder:normal-case placeholder:tracking-normal placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
+            <span className="text-xs font-medium text-slate-500">Permanent unique storage code. You can edit the suggestion before creating the document; it is locked after creation.</span>
           </label>
 
           <label className="flex flex-col gap-2">
@@ -121,4 +157,5 @@ const AddDocument = ({ setShowAddDocumentModal, onSaved }) => {
 };
 
 export default AddDocument;
+
 

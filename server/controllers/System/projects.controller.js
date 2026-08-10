@@ -69,6 +69,7 @@ import {
   addIfColumnExists,
 } from '../Lot_Projects/_shared/lotProject.shared.js';
 import { writeAuditLog } from './auditLogs.controller.js';
+import { createProjectStorageCode } from '../../services/storageCodes.service.js';
 
 export const getLotProjects = async (req, res) => {
   try {
@@ -107,6 +108,7 @@ export const getLotProjects = async (req, res) => {
 export const LOT_PROJECT_OPTIONS_QUERY = `
   SELECT
     lot_project_id,
+    lot_project_storage_code,
     lot_project_name,
     lot_project_slug,
     lot_project_location,
@@ -122,6 +124,7 @@ export const mapLotProjectOption = (project = {}) => ({
   id: project.lot_project_id,
   label: project.lot_project_name,
   value: project.lot_project_id,
+  storageCode: project.lot_project_storage_code || null,
   slug: project.lot_project_slug,
   location: project.lot_project_location,
   locationCode: project.lot_project_location_code,
@@ -158,6 +161,7 @@ export const getLotProjectBySlug = async (req, res) => {
       data: {
         ...project,
         id: project.lot_project_id,
+        storageCode: project.lot_project_storage_code || null,
         type: 'lot',
         name: project.lot_project_name,
         slug: project.lot_project_slug,
@@ -209,6 +213,13 @@ export const createLotProject = async (req, res) => {
     );
 
     const lotProjectId = projectResult.insertId;
+    const storageCode = createProjectStorageCode(lotProjectId, payload.locationCode);
+    if (await columnExists(connection, 'lot_projects', 'lot_project_storage_code')) {
+      await connection.query(
+        `UPDATE lot_projects SET lot_project_storage_code = ? WHERE lot_project_id = ?`,
+        [storageCode, lotProjectId]
+      );
+    }
 
     if (payload.cadastralLots.length > 0) {
       await connection.query(
@@ -271,7 +282,7 @@ export const createLotProject = async (req, res) => {
       entityLabel: payload.name,
       title: 'Created lot project',
       description: `Created lot project ${payload.name}.`,
-      metadata: { slug: payload.slug, locationCode: payload.locationCode, status: payload.status },
+      metadata: { slug: payload.slug, locationCode: payload.locationCode, storageCode, status: payload.status },
     });
 
     await connection.commit();
@@ -280,6 +291,7 @@ export const createLotProject = async (req, res) => {
       success: true,
       message: 'Lot project created successfully.',
       lot_project_id: lotProjectId,
+      storage_code: storageCode,
       routePath: `/portal/lot-projects/${payload.slug}`,
     });
   } catch (error) {
@@ -671,4 +683,5 @@ export const getLotProjectDocumentCompliance = async (req, res) => {
     connection.release();
   }
 };
+
 

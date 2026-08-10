@@ -34,11 +34,13 @@ const UploadDocumentModal = ({ document, signaturePath, isSaving = false, onClos
     [files]
   )
 
-  const uploadOne = async (file) => {
+  const uploadOne = async (file, uploadIndex, uploadCount) => {
     const signatureResponse = await useFetchPost(signaturePath, {
       fileName: file.name,
       fileType: file.type,
       fileSize: file.size,
+      uploadIndex,
+      uploadCount,
     }, { confirmationHandled: 'technical' })
     const signed = signatureResponse?.data || {}
     if (!signed.uploadUrl || !signed.signature || !signed.apiKey) {
@@ -62,6 +64,9 @@ const UploadDocumentModal = ({ document, signaturePath, isSaving = false, onClos
 
     return {
       fileName: file.name,
+      storedFileName: signed.storedFileName || null,
+      fileVersion: Number(signed.fileVersion || 0) || null,
+      fileSequence: Number(signed.fileSequence || uploadIndex || 1),
       fileUrl: result?.secure_url || '',
       fileSize: Number(result?.bytes || file.size),
       fileType: file.type,
@@ -119,7 +124,7 @@ const UploadDocumentModal = ({ document, signaturePath, isSaving = false, onClos
       for (let index = 0; index < files.length; index += 1) {
         setProgress({ current: index + 1, total: files.length })
         setNotice({ type: 'loading', message: `Uploading ${index + 1} of ${files.length}: ${files[index].name}` })
-        uploadedFiles.push(await uploadOne(files[index]))
+        uploadedFiles.push(await uploadOne(files[index], index + 1, files.length))
       }
 
       setNotice({ type: 'loading', message: 'Verifying uploaded files and saving document records...' })
@@ -206,4 +211,5 @@ const UploadDocumentModal = ({ document, signaturePath, isSaving = false, onClos
 }
 
 export default UploadDocumentModal
+
 

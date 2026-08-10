@@ -7,6 +7,7 @@ const DocumentDoubleCheck = ({ request, onConfirm, onCancel }) => {
   const data = request.data || {}
   const steps = [{ key: 'document', title: 'Document Information', content: <DoubleCheckSection title="Document Information" helper="Verify the reusable Document Library item and its default requirement." tone="blue"><DoubleCheckFields fields={[
     { label: 'Document Name', value: pick(data, 'document_name', 'name'), wide: true },
+    { label: 'Document Code', value: pick(data, 'document_code', 'code'), wide: true },
     { label: 'Description', value: pick(data, 'document_description', 'description'), wide: true },
     { label: 'Requirement', value: pick(data, 'document_is_required', 'requirement'), formatter: requirementLabel },
     { label: 'Status', value: pick(data, 'document_status', 'status'), formatter: statusLabel },
@@ -15,3 +16,4 @@ const DocumentDoubleCheck = ({ request, onConfirm, onCancel }) => {
 }
 
 export default DocumentDoubleCheck
+

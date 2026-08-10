@@ -15,6 +15,15 @@ import {
   validateDocumentUploadRequest,
   verifyAuthenticatedCloudinaryAsset,
 } from '../../../services/secureCloudinary.service.js';
+import {
+  buildPaymentProofStoredFileName,
+  deriveStoredFileNameFromPublicId,
+  getFileExtension,
+  parsePaymentProofSequenceFromName,
+  resolveListingStorageCode,
+  resolvePaymentStorageCode,
+  resolveProjectStorageCode,
+} from '../../../services/storageCodes.service.js';
 
 const MAX_PROOFS_PER_PAYMENT = 5;
 
@@ -28,6 +37,8 @@ const normalizeUploadedProofs = (body = {}) => {
       if (!file || typeof file !== 'object') return null;
       return {
         fileName: clean(file.fileName || file.file_name || file.originalFilename || file.original_filename),
+        storedFileName: clean(file.storedFileName || file.stored_file_name) || null,
+        proofSequence: Number(file.proofSequence || file.proof_sequence || 0) || null,
         fileType: clean(file.fileType || file.file_type || file.mimeType || file.mime_type),
         fileSize: Number(file.fileSize || file.file_size || file.bytes || 0),
         cloudinaryAssetId: file.cloudinaryAssetId || file.cloudinary_asset_id || file.asset_id || null,
@@ -61,8 +72,11 @@ const getPaymentProofContext = async (connection, req) => {
     `
       SELECT
         l.lot_project_listing_id,
+        l.lot_project_listing_storage_code,
         l.lot_project_listing_unit_id,
         p.lot_project_payment_id,
+        p.lot_project_payment_storage_code,
+        p.lot_project_payment_created_at,
         p.lot_project_client_profile_id,
         p.lot_project_account_id,
         p.lot_project_payment_amount,
@@ -100,6 +114,8 @@ const mapProof = (req, row = {}) => ({
   proofId: Number(row.lot_project_payment_proof_id || 0),
   paymentId: Number(row.lot_project_payment_id || 0),
   fileName: row.file_name || 'Payment proof',
+  storedFileName: row.stored_file_name || null,
+  proofSequence: Number(row.proof_sequence || 0) || null,
   fileType: row.file_mime_type || '',
   fileSize: Number(row.file_size_bytes || 0),
   note: row.note || '',
@@ -134,6 +150,7 @@ export const getLotProjectPaymentProofs = async (req, res) => {
       data: {
         payment: {
           paymentId: context.payment.lot_project_payment_id,
+          storageCode: resolvePaymentStorageCode(context.payment),
           buyerName: context.payment.buyer_full_name || '-',
           unitId: context.payment.lot_project_listing_unit_id,
           amount: Number(context.payment.lot_project_payment_amount || 0),
@@ -168,11 +185,31 @@ export const createLotProjectPaymentProofUploadSignature = async (req, res) => {
     }
 
     const file = validateDocumentUploadRequest(req.body || {});
+    const uploadIndex = Math.max(1, Number(req.body?.uploadIndex || 1));
+    const uploadCount = Math.max(uploadIndex, Number(req.body?.uploadCount || 1));
+    if (uploadIndex > MAX_PROOFS_PER_PAYMENT || uploadCount > MAX_PROOFS_PER_PAYMENT) {
+      return res.status(400).json({ message: `A payment can have up to ${MAX_PROOFS_PER_PAYMENT} proof files.` });
+    }
+
+    const [sequenceRows] = await connection.query(
+      `SELECT COALESCE(MAX(proof_sequence), 0) AS max_sequence FROM lot_project_payment_proofs WHERE lot_project_payment_id = ?`,
+      [context.payment.lot_project_payment_id]
+    );
+    const proofSequence = Number(sequenceRows[0]?.max_sequence || 0) + uploadIndex;
+    const paymentStorageCode = resolvePaymentStorageCode(context.payment);
+    const storedFileName = buildPaymentProofStoredFileName({
+      paymentStorageCode,
+      sequence: proofSequence,
+      extension: getFileExtension(file),
+    });
     const folder = buildPaymentProofFolder({
-      projectSlug: context.project.lot_project_slug || req.params.projectSlug,
+      projectStorageCode: resolveProjectStorageCode(context.project),
+      projectId: context.project.lot_project_id,
+      projectLocationCode: context.project.lot_project_location_code,
+      listingStorageCode: resolveListingStorageCode(context.payment),
       listingId: context.payment.lot_project_listing_id,
-      unitId: context.payment.lot_project_listing_unit_id,
-      accountReference: context.payment.account_reference || `account_${context.payment.lot_project_account_id || 0}`,
+      accountReference: context.payment.account_reference || `ACC-${String(Number(context.payment.lot_project_account_id || 0)).padStart(6, '0')}`,
+      paymentStorageCode,
       paymentId: context.payment.lot_project_payment_id,
     });
 
@@ -180,10 +217,18 @@ export const createLotProjectPaymentProofUploadSignature = async (req, res) => {
       folder,
       accountId: context.payment.lot_project_account_id,
       paymentId: context.payment.lot_project_payment_id,
-      fileName: file.fileName,
+      storedFileName,
     });
 
-    return res.json({ success: true, data: { ...signature, maxFileBytes: 15 * 1024 * 1024, maxProofs: MAX_PROOFS_PER_PAYMENT } });
+    return res.json({
+      success: true,
+      data: {
+        ...signature,
+        proofSequence,
+        maxFileBytes: 15 * 1024 * 1024,
+        maxProofs: MAX_PROOFS_PER_PAYMENT,
+      },
+    });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
   } finally {
@@ -211,11 +256,15 @@ export const saveLotProjectPaymentProofs = async (req, res) => {
       return res.status(400).json({ message: `A payment can have up to ${MAX_PROOFS_PER_PAYMENT} proof files. ${existingCount} already exist.` });
     }
 
+    const paymentStorageCode = resolvePaymentStorageCode(context.payment);
     const expectedFolder = buildPaymentProofFolder({
-      projectSlug: context.project.lot_project_slug || req.params.projectSlug,
+      projectStorageCode: resolveProjectStorageCode(context.project),
+      projectId: context.project.lot_project_id,
+      projectLocationCode: context.project.lot_project_location_code,
+      listingStorageCode: resolveListingStorageCode(context.payment),
       listingId: context.payment.lot_project_listing_id,
-      unitId: context.payment.lot_project_listing_unit_id,
-      accountReference: context.payment.account_reference || `account_${context.payment.lot_project_account_id || 0}`,
+      accountReference: context.payment.account_reference || `ACC-${String(Number(context.payment.lot_project_account_id || 0)).padStart(6, '0')}`,
+      paymentStorageCode,
       paymentId: context.payment.lot_project_payment_id,
     });
 
@@ -228,7 +277,14 @@ export const saveLotProjectPaymentProofs = async (req, res) => {
         resourceType: file.cloudinaryResourceType || 'image',
         expectedFolder,
       });
-      verified.push({ file, asset });
+      const storedFileName = deriveStoredFileNameFromPublicId(
+        asset.public_id,
+        getFileExtension({ fileName: file.fileName, fileType: file.fileType })
+      );
+      verified.push({
+        file: { ...file, storedFileName, proofSequence: parsePaymentProofSequenceFromName(storedFileName) },
+        asset,
+      });
     }
 
     await connection.beginTransaction();
@@ -243,6 +299,8 @@ export const saveLotProjectPaymentProofs = async (req, res) => {
             lot_project_account_id,
             lot_project_payment_id,
             file_name,
+            stored_file_name,
+            proof_sequence,
             file_mime_type,
             file_size_bytes,
             cloudinary_asset_id,
@@ -255,7 +313,7 @@ export const saveLotProjectPaymentProofs = async (req, res) => {
             note,
             uploaded_by_user_id,
             proof_status
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
         `,
         [
           context.project.lot_project_id,
@@ -264,6 +322,8 @@ export const saveLotProjectPaymentProofs = async (req, res) => {
           context.payment.lot_project_account_id || null,
           context.payment.lot_project_payment_id,
           file.fileName,
+          file.storedFileName || file.fileName,
+          Number(file.proofSequence || parsePaymentProofSequenceFromName(file.storedFileName) || 1),
           file.fileType,
           Number(asset.bytes || file.fileSize || 0),
           asset.asset_id || file.cloudinaryAssetId || null,
@@ -407,4 +467,5 @@ export const deleteLotProjectPaymentProof = async (req, res) => {
     connection.release();
   }
 };
+
 

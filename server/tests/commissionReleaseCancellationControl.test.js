@@ -37,3 +37,4 @@ test('automatic cancellation settlement statuses remain supported as historical 
   assert.match(modal, /Forfeited on Cancellation/);
 });
 
+

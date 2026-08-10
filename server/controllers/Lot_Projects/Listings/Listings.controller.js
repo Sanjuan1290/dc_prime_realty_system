@@ -91,6 +91,7 @@ import {
   moveCloudinaryDynamicAssetFolder,
   renameCloudinaryAsset,
 } from '../../../services/cloudinaryUnitFolder.service.js';
+import { createListingStorageCode } from '../../../services/storageCodes.service.js';
 
 const normalizeListingDocumentRequirements = (documents = []) => {
   const documentMap = new Map();
@@ -2032,6 +2033,13 @@ export const createLotProjectListing = async (req, res) => {
     );
 
     const listingId = listingResult.insertId;
+    const storageCode = createListingStorageCode(listingId);
+    if (await columnExists(connection, 'lot_project_listings', 'lot_project_listing_storage_code')) {
+      await connection.query(
+        `UPDATE lot_project_listings SET lot_project_listing_storage_code = ? WHERE lot_project_listing_id = ?`,
+        [storageCode, listingId]
+      );
+    }
 
     const hasListingCadastralLinks = await tableExists(connection, 'lot_project_listing_cadastral_lots');
     const requestedCadastralLots = Array.isArray(req.body.cadastralLots)
@@ -2084,7 +2092,7 @@ export const createLotProjectListing = async (req, res) => {
       entityLabel: `Unit ${unitCode} — ${project.lot_project_name}`,
       title: 'Added new listing',
       description: `Added ${unitCode} to ${project.lot_project_name}.`,
-      metadata: { unitCode, status: listingStatus.status, soldSubstatus: listingStatus.soldSubstatus },
+      metadata: { unitCode, storageCode, status: listingStatus.status, soldSubstatus: listingStatus.soldSubstatus },
     });
 
     await connection.commit();
@@ -2093,6 +2101,7 @@ export const createLotProjectListing = async (req, res) => {
       success: true,
       message: `${unitCode} added successfully.`,
       listing_id: listingId,
+      storage_code: storageCode,
       unit_id: unitCode,
     });
   } catch (error) {
@@ -2221,4 +2230,5 @@ export const deleteLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
+
 

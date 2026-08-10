@@ -36,6 +36,7 @@ const Document_Library = ({ documents = [], onEditDocument, canManage = true }) 
     return documents.filter(
       (document) =>
         document.document_name?.toLowerCase().includes(keyword) ||
+        document.document_code?.toLowerCase().includes(keyword) ||
         document.document_description?.toLowerCase().includes(keyword) ||
         document.document_status?.toLowerCase().includes(keyword)
     );
@@ -73,7 +74,7 @@ const Document_Library = ({ documents = [], onEditDocument, canManage = true }) 
               setSearch(event.target.value);
               setPage(1);
             }}
-            placeholder="Search document name or description..."
+            placeholder="Search document name, code, or description..."
             className="w-full rounded-xl border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-4 text-sm text-gray-900 outline-none transition focus:border-gray-400 focus:bg-white focus:ring-2 focus:ring-gray-100"
           />
         </div>
@@ -100,6 +101,7 @@ const Document_Library = ({ documents = [], onEditDocument, canManage = true }) 
               <div key={document.document_id} className="grid gap-4 border-b border-gray-100 px-5 py-4 text-sm text-gray-700 last:border-b-0 md:grid-cols-5 md:items-center">
                 <div className="col-span-2 flex flex-col gap-1">
                   <h3 className="font-bold text-gray-900">{document.document_name}</h3>
+                  <p className="w-fit rounded-md bg-slate-100 px-2 py-0.5 font-mono text-[11px] font-bold tracking-wide text-slate-600">{document.document_code || `DOC-${String(document.document_id).padStart(6, "0")}`}</p>
                   <p className="text-gray-500">{document.document_description || "No description"}</p>
                 </div>
                 <p className={`flex w-fit items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold ${document.document_status === "active" ? "border-green-500 bg-green-100 text-green-800" : "border-red-500 bg-red-100 text-red-800"}`}>
@@ -157,4 +159,5 @@ const Document_Library = ({ documents = [], onEditDocument, canManage = true }) 
 };
 
 export default Document_Library;
+
 

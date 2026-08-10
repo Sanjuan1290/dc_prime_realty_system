@@ -215,6 +215,7 @@ export const mapListingRow = (row = {}) => {
   return {
     ...row,
     id: row.lot_project_listing_id,
+    storageCode: row.lot_project_listing_storage_code || null,
     unitCode: row.lot_project_listing_unit_id,
     oldUnitIds: row.lot_project_listing_old_unit_ids || '-',
     lotType: lotTypeLabel(row.lot_project_listing_unit_type),
@@ -263,6 +264,7 @@ export const mapProjectRows = (projects = [], cadastralRows = []) => {
   return projects.map((project) => ({
     ...project,
     id: project.lot_project_id,
+    storageCode: project.lot_project_storage_code || null,
     type: 'lot',
     name: project.lot_project_name,
     slug: project.lot_project_slug,
@@ -304,6 +306,7 @@ export const getProjectDefaultDocuments = async (lotProjectId) => {
         lpdd.lot_project_default_document_is_required,
         lpdd.lot_project_default_document_status,
         d.document_name,
+        d.document_code,
         d.document_description,
         d.document_status
       FROM lot_project_default_documents lpdd
@@ -318,6 +321,7 @@ export const getProjectDefaultDocuments = async (lotProjectId) => {
     ...document,
     id: document.document_id,
     name: document.document_name,
+    code: document.document_code || null,
     description: document.document_description || 'Project Default',
     source: 'Project Default',
     requirement: document.lot_project_default_document_is_required ? 'required' : 'optional',
@@ -945,6 +949,7 @@ export const getListingDocuments = async (
           cd.document_id,
           COALESCE(lpd.lot_project_listing_document_is_required, 1) AS lot_project_listing_document_is_required,
           d.document_name,
+          d.document_code,
           d.document_description,
           cd.lot_project_client_document_file_name,
           cd.lot_project_client_document_file_url,
@@ -972,6 +977,7 @@ export const getListingDocuments = async (
           lpd.document_id,
           lpd.lot_project_listing_document_is_required,
           d.document_name,
+          d.document_code,
           d.document_description,
           NULL AS lot_project_client_document_file_name,
           NULL AS lot_project_client_document_file_url,
@@ -1000,6 +1006,7 @@ export const getListingDocuments = async (
       id: document.lot_project_listing_document_id,
       document_id: document.document_id,
       name: document.document_name,
+      code: document.document_code || null,
       description: document.document_description || 'Document requirement',
       requirement: document.lot_project_listing_document_is_required ? 'Required' : 'Optional',
       status: document.lot_project_client_document_status || 'Missing',
@@ -3091,6 +3098,7 @@ export const getNextCashReference = async (_connection, unitCode, paymentId) => 
 export const mapPaymentRow = (row = {}) => ({
   id: row.lot_project_payment_id,
   paymentId: row.lot_project_payment_id,
+  storageCode: row.lot_project_payment_storage_code || null,
   soaRowId: row.lot_project_payment_schedule_id,
   paymentType: getPaymentTypeLabel(row.lot_project_payment_type),
   paymentTypeValue: row.lot_project_payment_type,
@@ -4158,4 +4166,5 @@ export const addIfColumnExists = async (connection, tableName, columns, values, 
 };
 
 // End of lotProject.shared.js — verified complete.
+
 

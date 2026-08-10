@@ -13,3 +13,4 @@ ALTER TABLE `lot_project_client_profiles`
     DECIMAL(14,2) NULL
     AFTER `soa_downpayment_input_mode`;
 
+

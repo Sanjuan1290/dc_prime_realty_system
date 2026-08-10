@@ -1545,3 +1545,4 @@ export const getLotProjectPriceList = async (req, res) => {
   }
 };
 
+

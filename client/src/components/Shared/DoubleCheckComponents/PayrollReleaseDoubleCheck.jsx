@@ -26,3 +26,4 @@ const PayrollReleaseDoubleCheck = ({ request, onConfirm, onCancel }) => {
 }
 
 export default PayrollReleaseDoubleCheck
+

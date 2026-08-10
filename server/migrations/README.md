@@ -26,3 +26,16 @@ That script checks the downpayment amount-mode schema and does not modify data.
 ## Final Double-Check refactor
 
 The client Final Double-Check refactor does not require a database migration.
+
+## Storage-code and canonical-file migration
+
+`20260810_storage_codes_and_canonical_file_names.sql` adds permanent storage identifiers used by protected Cloudinary assets:
+
+- project storage codes such as `PRJ-LA-001`
+- listing storage codes such as `LST-000042`
+- permanent Document Library codes such as `DOC-ITB`
+- payment storage codes such as `PAY-2026-000061`
+- canonical document version/sequence metadata and payment-proof sequence metadata
+
+Apply this SQL migration before running `npm run migrate:cloudinary-documents`. The Cloudinary script is dry-run by default; only `--apply` changes remote assets/database file metadata.
+

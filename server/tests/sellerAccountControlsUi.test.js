@@ -20,3 +20,4 @@ test('seller rows do not show the reset-password action', async () => {
   assert.match(source, /\{canResetUserPassword\(user\) \? <button[\s\S]*Reset/);
 });
 
+

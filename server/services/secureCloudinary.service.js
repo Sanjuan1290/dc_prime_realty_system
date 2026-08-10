@@ -1,5 +1,11 @@
-import crypto from 'node:crypto';
 import { v2 as cloudinary } from 'cloudinary';
+import {
+  createReadableCloudinaryPublicId,
+  createListingStorageCode,
+  createProjectStorageCode,
+  normalizeDocumentCode,
+  sanitizeStorageCodePart,
+} from './storageCodes.service.js';
 
 const clean = (value) => String(value ?? '').trim();
 const MAX_DOCUMENT_BYTES = 15 * 1024 * 1024;
@@ -47,29 +53,59 @@ export const validateDocumentUploadRequest = ({ fileName, fileType, fileSize }) 
   return { fileName: name, fileType: type, fileSize: size };
 };
 
-export const buildBuyerDocumentFolder = ({ projectSlug, listingId, unitId, accountReference, buyerName, documentName }) => {
+export const buildBuyerDocumentFolder = ({
+  projectStorageCode,
+  projectId,
+  projectLocationCode,
+  listingStorageCode,
+  listingId,
+  accountReference,
+  documentCode,
+  documentId,
+}) => {
   const root = sanitizeCloudinarySegment(process.env.CLOUDINARY_UPLOAD_FOLDER || 'dc_prime', 'dc_prime');
-  const project = sanitizeCloudinarySegment(projectSlug, 'project');
-  const listing = `listing_${Number(listingId)}_${sanitizeCloudinarySegment(unitId, 'unit')}`;
-  const account = `${sanitizeCloudinarySegment(accountReference, 'account')}_${sanitizeCloudinarySegment(buyerName, 'buyer')}`;
-  const document = sanitizeCloudinarySegment(documentName, 'document');
-  return `${root}/${project}/${listing}/${account}/${document}`;
+  const project = sanitizeStorageCodePart(
+    projectStorageCode || createProjectStorageCode(projectId, projectLocationCode),
+    'PRJ-PROJECT-000'
+  );
+  const listing = sanitizeStorageCodePart(
+    listingStorageCode || createListingStorageCode(listingId),
+    'LST-000000'
+  );
+  const account = sanitizeStorageCodePart(accountReference, 'ACC-UNKNOWN');
+  const document = normalizeDocumentCode(documentCode) || `DOC-${String(Number(documentId || 0)).padStart(6, '0')}`;
+  return `${root}/protected/${project}/${listing}/${account}/documents/${document}/files`;
 };
 
-export const buildPaymentProofFolder = ({ projectSlug, listingId, unitId, accountReference, paymentId }) => {
+export const buildPaymentProofFolder = ({
+  projectStorageCode,
+  projectId,
+  projectLocationCode,
+  listingStorageCode,
+  listingId,
+  accountReference,
+  paymentStorageCode,
+  paymentId,
+}) => {
   const root = sanitizeCloudinarySegment(process.env.CLOUDINARY_UPLOAD_FOLDER || 'dc_prime', 'dc_prime');
-  const project = sanitizeCloudinarySegment(projectSlug, 'project');
-  const listing = `listing_${Number(listingId)}_${sanitizeCloudinarySegment(unitId, 'unit')}`;
-  const account = sanitizeCloudinarySegment(accountReference, 'account');
-  const payment = `payment_${Number(paymentId)}`;
-  return `${root}/${project}/${listing}/${account}/payments/${payment}/proofs`;
+  const project = sanitizeStorageCodePart(
+    projectStorageCode || createProjectStorageCode(projectId, projectLocationCode),
+    'PRJ-PROJECT-000'
+  );
+  const listing = sanitizeStorageCodePart(
+    listingStorageCode || createListingStorageCode(listingId),
+    'LST-000000'
+  );
+  const account = sanitizeStorageCodePart(accountReference, 'ACC-UNKNOWN');
+  const payment = sanitizeStorageCodePart(paymentStorageCode || `PAY-${String(Number(paymentId || 0)).padStart(6, '0')}`, 'PAY-UNKNOWN');
+  return `${root}/protected/${project}/${listing}/${account}/payments/${payment}/proofs`;
 };
 
-export const createAuthenticatedUploadSignature = ({ folder, accountId, documentId, fileName }) => {
+export const createAuthenticatedUploadSignature = ({ folder, accountId, documentId, storedFileName }) => {
   const { cloudName, apiKey, apiSecret } = configureSecureCloudinary();
   const timestamp = Math.floor(Date.now() / 1000);
-  const publicId = crypto.randomUUID();
-  const context = `account_id=${Number(accountId)}|document_id=${Number(documentId)}|original_name=${encodeURIComponent(clean(fileName).slice(0, 180))}`;
+  const publicId = createReadableCloudinaryPublicId(storedFileName);
+  const context = `account_id=${Number(accountId)}|document_id=${Number(documentId)}|stored_name=${encodeURIComponent(clean(storedFileName).slice(0, 180))}`;
   const params = {
     timestamp,
     public_id: publicId,
@@ -90,15 +126,16 @@ export const createAuthenticatedUploadSignature = ({ folder, accountId, document
     type: 'authenticated',
     tags: params.tags,
     context,
+    storedFileName,
     uploadUrl: `https://api.cloudinary.com/v1_1/${encodeURIComponent(cloudName)}/auto/upload`,
   };
 };
 
-export const createAuthenticatedPaymentProofUploadSignature = ({ folder, accountId, paymentId, fileName }) => {
+export const createAuthenticatedPaymentProofUploadSignature = ({ folder, accountId, paymentId, storedFileName }) => {
   const { cloudName, apiKey, apiSecret } = configureSecureCloudinary();
   const timestamp = Math.floor(Date.now() / 1000);
-  const publicId = crypto.randomUUID();
-  const context = `account_id=${Number(accountId || 0)}|payment_id=${Number(paymentId)}|original_name=${encodeURIComponent(clean(fileName).slice(0, 180))}`;
+  const publicId = createReadableCloudinaryPublicId(storedFileName);
+  const context = `account_id=${Number(accountId || 0)}|payment_id=${Number(paymentId)}|stored_name=${encodeURIComponent(clean(storedFileName).slice(0, 180))}`;
   const params = {
     timestamp,
     public_id: publicId,
@@ -119,6 +156,7 @@ export const createAuthenticatedPaymentProofUploadSignature = ({ folder, account
     type: 'authenticated',
     tags: params.tags,
     context,
+    storedFileName,
     uploadUrl: `https://api.cloudinary.com/v1_1/${encodeURIComponent(cloudName)}/auto/upload`,
   };
 };
@@ -170,4 +208,5 @@ export const destroyCloudinaryAsset = async ({ publicId, resourceType = 'image',
 export const destroyAuthenticatedCloudinaryAsset = (payload) => destroyCloudinaryAsset({ ...payload, deliveryType: 'authenticated' });
 
 export const DOCUMENT_UPLOAD_LIMIT_BYTES = MAX_DOCUMENT_BYTES;
+
 

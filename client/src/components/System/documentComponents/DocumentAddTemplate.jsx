@@ -228,3 +228,4 @@ const TemplateDocuments = ({ documents, selectedDocuments, search, setSearch, se
 
 export default DocumentAddTemplate;
 
+

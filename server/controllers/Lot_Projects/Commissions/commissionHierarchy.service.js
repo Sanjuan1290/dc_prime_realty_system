@@ -659,3 +659,4 @@ export const hasReleasedCommissionActivity = ({
   Number(releasedStageCount || 0) > 0 ||
   Number(receiptCount || 0) > 0;
 
+

@@ -1,4 +1,5 @@
-  import { db } from '../../db/connect.js';
+import { db } from '../../db/connect.js';
+import { validateDocumentCode } from '../../services/storageCodes.service.js';
 
 const getErrorMessage = (error) => {
   if (String(error?.code || '').startsWith('ER_') || error?.sqlMessage || error?.sql) return 'Database operation failed. Please try again.';
@@ -119,6 +120,7 @@ export const getDocuments = async (req, res) => {
       SELECT
         document_id,
         document_name,
+        document_code,
         document_description,
         document_is_reusable,
         document_status,
@@ -155,6 +157,7 @@ export const getTemplates = async (req, res) => {
         tdl.template_id,
         tdl.document_id,
         d.document_name,
+        d.document_code,
         d.document_description,
         d.document_is_reusable,
         tdl.template_document_list_is_required,
@@ -182,6 +185,7 @@ export const addDocument = async (req, res) => {
   try {
     const {
       document_name,
+      document_code,
       document_description,
       document_status = 'active',
       document_is_required = true,
@@ -191,18 +195,33 @@ export const addDocument = async (req, res) => {
       return res.status(400).json({ message: 'Document name is required.' });
     }
 
+    const documentCodeValidation = validateDocumentCode(document_code);
+    if (!documentCodeValidation.valid) {
+      return res.status(400).json({ message: documentCodeValidation.message });
+    }
+    const normalizedDocumentCode = documentCodeValidation.code;
+    const [existingCodeRows] = await db.query(
+      `SELECT document_id FROM documents WHERE document_code = ? LIMIT 1`,
+      [normalizedDocumentCode]
+    );
+    if (existingCodeRows.length) {
+      return res.status(409).json({ message: `Document code ${normalizedDocumentCode} is already in use.` });
+    }
+
     const [result] = await db.query(
       `
         INSERT INTO documents (
           document_name,
+          document_code,
           document_description,
           document_is_reusable,
           document_status,
           document_is_required
-        ) VALUES (?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?)
       `,
       [
         document_name.trim(),
+        normalizedDocumentCode,
         document_description?.trim() || null,
         1,
         document_status,
@@ -213,6 +232,7 @@ export const addDocument = async (req, res) => {
     return res.status(201).json({
       message: 'Document added successfully.',
       document_id: result.insertId,
+      document_code: normalizedDocumentCode,
     });
   } catch (error) {
     return res.status(500).json({ message: getErrorMessage(error) });
@@ -502,4 +522,5 @@ export const editTemplate = async (req, res) => {
     connection.release();
   }
 };
+
 

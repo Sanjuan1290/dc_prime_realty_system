@@ -128,11 +128,13 @@ const PaymentProofModal = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paymentId])
 
-  const uploadOne = async (file) => {
+  const uploadOne = async (file, uploadIndex, uploadCount) => {
     const signatureResponse = await useFetchPost(`${basePath}/upload-signature`, {
       fileName: file.name,
       fileType: file.type,
       fileSize: file.size,
+      uploadIndex,
+      uploadCount,
     }, { confirmationHandled: 'technical' })
     const signed = signatureResponse?.data || {}
     if (!signed.uploadUrl || !signed.signature || !signed.apiKey) {
@@ -156,6 +158,8 @@ const PaymentProofModal = ({
 
     return {
       fileName: file.name,
+      storedFileName: signed.storedFileName || null,
+      proofSequence: Number(signed.proofSequence || uploadIndex || 1),
       fileSize: Number(result?.bytes || file.size),
       fileType: file.type,
       cloudinaryAssetId: result?.asset_id || null,
@@ -220,7 +224,7 @@ const PaymentProofModal = ({
       for (let index = 0; index < files.length; index += 1) {
         setProgress({ current: index + 1, total: files.length })
         setNotice({ type: 'loading', message: `Uploading ${index + 1} of ${files.length}: ${files[index].name}` })
-        uploadedFiles.push(await uploadOne(files[index]))
+        uploadedFiles.push(await uploadOne(files[index], index + 1, files.length))
       }
 
       setNotice({ type: 'loading', message: 'Saving protected payment proof records...' })
@@ -295,13 +299,14 @@ const PaymentProofModal = ({
         <div className="min-h-0 flex-1 overflow-y-auto p-6">
           {notice ? <StatusAlert type={notice.type} message={notice.message} onClose={notice.type === 'loading' ? undefined : () => setNotice(null)} className="mb-4" /> : null}
 
-          <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2 xl:grid-cols-6">
+          <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:grid-cols-2 xl:grid-cols-7">
             <div><p className="text-xs font-black uppercase text-slate-500">Buyer</p><p className="mt-1 text-sm font-black text-slate-950">{paymentDetails.buyerName || payment?.client || '-'}</p></div>
             <div><p className="text-xs font-black uppercase text-slate-500">Unit</p><p className="mt-1 text-sm font-black text-slate-950">{paymentDetails.unitId || payment?.unit || '-'}</p></div>
             <div><p className="text-xs font-black uppercase text-slate-500">Amount</p><p className="mt-1 text-sm font-black text-slate-950">{money(paymentDetails.amount ?? payment?.amount)}</p></div>
             <div><p className="text-xs font-black uppercase text-slate-500">Payment Date</p><p className="mt-1 text-sm font-black text-slate-950">{formatDate(paymentDetails.paymentDate || payment?.paymentDate)}</p></div>
             <div><p className="text-xs font-black uppercase text-slate-500">Method</p><p className="mt-1 text-sm font-black text-slate-950">{paymentDetails.method || payment?.method || '-'}</p></div>
             <div><p className="text-xs font-black uppercase text-slate-500">Reference</p><p className="mt-1 break-all text-sm font-black text-slate-950">{paymentDetails.referenceId || payment?.referenceId || '-'}</p></div>
+            <div><p className="text-xs font-black uppercase text-slate-500">Storage Code</p><p className="mt-1 font-mono text-sm font-black text-slate-950">{paymentDetails.storageCode || payment?.storageCode || '-'}</p></div>
           </div>
 
           <section className="mt-5 overflow-hidden rounded-2xl border border-slate-200">
@@ -325,6 +330,7 @@ const PaymentProofModal = ({
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-black text-slate-950">{proof.fileName}</p>
                       <p className="mt-0.5 text-xs font-semibold text-slate-500">{formatBytes(proof.fileSize)} · Uploaded by {proof.uploadedBy} · {formatDateTime(proof.uploadedAt)}</p>
+                      {proof.storedFileName ? <p className="mt-1 truncate font-mono text-[11px] font-bold text-slate-500">Cloudinary: {proof.storedFileName}</p> : null}
                       {proof.note ? <p className="mt-1 text-xs font-semibold text-slate-600">Note: {proof.note}</p> : null}
                     </div>
                     <div className="flex shrink-0 gap-2">
@@ -422,4 +428,5 @@ const PaymentProofModal = ({
 }
 
 export default PaymentProofModal
+
 

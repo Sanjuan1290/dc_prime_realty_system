@@ -51,3 +51,4 @@ test('server-generated frontend links include the portal prefix', () => {
   assert.match(users, /\/portal\/change-password on next login/);
 });
 
+

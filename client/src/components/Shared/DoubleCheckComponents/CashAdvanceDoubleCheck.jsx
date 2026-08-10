@@ -15,3 +15,4 @@ const CashAdvanceDoubleCheck = ({ request, onConfirm, onCancel }) => {
 }
 
 export default CashAdvanceDoubleCheck
+

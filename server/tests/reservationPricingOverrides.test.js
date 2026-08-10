@@ -66,3 +66,4 @@ test('reservation API validates and saves the selected LMF and interest rates', 
   assert.match(controller, /soa_interest_rate_overridden: profileTerms\.interestRateOverridden \? 1 : 0/);
 });
 
+

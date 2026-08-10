@@ -282,3 +282,4 @@ test('verified recalculation password is removed before the controller runs', as
   assert.equal(request.body.acknowledgement, true);
 });
 
+

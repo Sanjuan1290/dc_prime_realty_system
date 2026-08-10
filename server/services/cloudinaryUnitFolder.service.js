@@ -24,7 +24,14 @@ const joinCloudinaryPath = (segments) => segments.filter(Boolean).join('/');
 
 const getUnitSegmentIndex = (segments) => {
   const rootIndex = segments.findIndex((segment) => segment === CLOUDINARY_ROOT_FOLDER);
-  if (rootIndex >= 0 && segments.length > rootIndex + 2) return rootIndex + 2;
+  if (rootIndex < 0) return -1;
+
+  // V2 protected storage uses immutable storage codes:
+  // dc_prime/protected/PRJ-.../LST-.../ACC-.../...
+  // Unit ID edits must never rewrite any segment in this structure.
+  if (String(segments[rootIndex + 1] || '').toLowerCase() === 'protected') return -1;
+
+  if (segments.length > rootIndex + 2) return rootIndex + 2;
   return -1;
 };
 
@@ -356,4 +363,5 @@ export const applyCloudinaryMoveToEntry = (entry, move, renameResult = {}, folde
     cloudinaryAssetFolder: nextAssetFolder || null,
   };
 };
+
 

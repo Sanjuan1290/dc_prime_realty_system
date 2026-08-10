@@ -75,6 +75,23 @@ test('Saving can repair a stale old folder even when the database already has th
   assert.match(move.toPublicId, /\/la_0201\//);
 });
 
+
+test('V2 protected storage-code paths are immutable when a Unit ID changes', () => {
+  const folder = 'dc_prime/protected/PRJ-LA-001/LST-000042/ACC-2026-000018/documents/DOC-ITB/files';
+  const publicId = 'DOC-ITB__ACC-2026-000018__V01__A1B2C3D4';
+
+  assert.equal(replaceCloudinaryUnitSegment(folder, 'LA-9999', 'LA-0102'), folder);
+  assert.deepEqual(getCloudinaryFolderCleanupPaths(folder), []);
+  assert.equal(
+    buildCloudinaryUnitAssetMove({
+      cloudinaryPublicId: publicId,
+      cloudinaryFolder: folder,
+      cloudinaryResourceType: 'image',
+    }, 'LA-9999', 'LA-0102'),
+    null
+  );
+});
+
 test('Public ID can be recovered from older Cloudinary URL-only document entries', () => {
   assert.equal(
     getCloudinaryPublicIdFromUrl(
@@ -170,4 +187,5 @@ test('Cloudinary signature is stable regardless of object key order', () => {
   assert.equal(first, second);
   assert.equal(first.length, 40);
 });
+
 

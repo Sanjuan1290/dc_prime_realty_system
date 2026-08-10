@@ -10,6 +10,7 @@ const EditDocument = ({ document, onClose, onSaved }) => {
   const [reviewNotice, setReviewNotice] = useState(null);
   const [formData, setFormData] = useState({
     document_name: document?.document_name || "",
+    document_code: document?.document_code || "",
     document_description: document?.document_description || "",
     document_status: document?.document_status || "active",
     document_is_required: document?.document_is_required ? "required" : "optional",
@@ -26,6 +27,7 @@ const EditDocument = ({ document, onClose, onSaved }) => {
           mode: 'edit',
           data: {
             document_name: formData.document_name,
+            document_code: formData.document_code,
             document_description: formData.document_description,
             document_status: formData.document_status,
             document_is_required: formData.document_is_required === 'required',
@@ -88,6 +90,12 @@ const EditDocument = ({ document, onClose, onSaved }) => {
           </label>
 
           <label className="flex flex-col gap-2">
+            <span className="text-sm font-semibold text-slate-700">Document Code</span>
+            <input type="text" value={formData.document_code} readOnly aria-readonly="true" className="h-11 cursor-not-allowed rounded-xl border border-slate-200 bg-slate-100 px-4 text-sm font-bold uppercase tracking-wide text-slate-600 shadow-sm outline-none" />
+            <span className="text-xs font-medium text-slate-500">Permanent storage code. It cannot be changed after the document is created.</span>
+          </label>
+
+          <label className="flex flex-col gap-2">
             <span className="text-sm font-semibold text-slate-700">Description</span>
             <textarea rows={4} data-example="Short clear description" value={formData.document_description} onChange={(event) => handleChange("document_description", event.target.value)} placeholder="Example: Government-issued valid ID, two copies" className="resize-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
           </label>
@@ -121,4 +129,5 @@ const EditDocument = ({ document, onClose, onSaved }) => {
 };
 
 export default EditDocument;
+
 

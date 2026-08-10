@@ -125,3 +125,4 @@ export const isPdfLike = (file = {}) => `${
   .toLowerCase()
   .includes('pdf')
 
+

@@ -189,3 +189,4 @@ const AttendanceModal = ({ record, employees = [], onClose, onSaved }) => {
 
 export default AttendanceModal
 
+

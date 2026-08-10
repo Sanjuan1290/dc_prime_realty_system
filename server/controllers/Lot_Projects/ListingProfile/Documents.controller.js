@@ -17,6 +17,15 @@ import {
   validateDocumentUploadRequest,
   verifyAuthenticatedCloudinaryAsset,
 } from '../../../services/secureCloudinary.service.js';
+import {
+  buildDocumentStoredFileName,
+  deriveStoredFileNameFromPublicId,
+  getFileExtension,
+  parseDocumentFileSequenceFromName,
+  parseDocumentFileVersionFromName,
+  resolveListingStorageCode,
+  resolveProjectStorageCode,
+} from '../../../services/storageCodes.service.js';
 
 
 const normalizeUploadedDocumentFiles = (body = {}) => {
@@ -35,6 +44,9 @@ const normalizeUploadedDocumentFiles = (body = {}) => {
       return {
         url,
         fileName: String(file.fileName || file.file_name || file.originalFilename || file.original_filename || `Document Image ${index + 1}`).trim(),
+        storedFileName: String(file.storedFileName || file.stored_file_name || '').trim() || null,
+        fileVersion: Number(file.fileVersion || file.file_version || 0) || null,
+        fileSequence: Number(file.fileSequence || file.file_sequence || 0) || null,
         fileSize: Number(file.fileSize || file.file_size || file.bytes || 0),
         fileType: String(file.fileType || file.file_type || file.format || '').trim(),
         cloudinaryPublicId: file.cloudinaryPublicId || file.cloudinary_public_id || file.public_id || null,
@@ -57,6 +69,9 @@ const normalizeUploadedDocumentFiles = (body = {}) => {
     normalizedFiles.push({
       url: singleUrl,
       fileName: singleName || 'Document Image 1',
+      storedFileName: String(body.storedFileName || body.stored_file_name || '').trim() || null,
+      fileVersion: Number(body.fileVersion || body.file_version || 0) || null,
+      fileSequence: Number(body.fileSequence || body.file_sequence || 0) || null,
       fileSize: Number(body.fileSize || body.file_size || 0),
       fileType: String(body.fileType || body.file_type || '').trim(),
       cloudinaryPublicId: body.cloudinaryPublicId || body.cloudinary_public_id || body.public_id || null,
@@ -125,6 +140,7 @@ const getDocumentContext = async (connection, req) => {
     `
       SELECT
         l.lot_project_listing_id,
+        l.lot_project_listing_storage_code,
         l.lot_project_listing_unit_id,
         l.lot_project_listing_status,
         ${accountSelect}
@@ -153,6 +169,7 @@ const getDocumentContext = async (connection, req) => {
       SELECT
         lpd.lot_project_listing_document_id,
         lpd.document_id,
+        d.document_code,
         d.document_name
       FROM lot_project_listing_documents lpd
       INNER JOIN documents d ON d.document_id = lpd.document_id
@@ -287,6 +304,24 @@ export const updateLotProjectListingDocumentRequirements = async (req, res) => {
   }
 };
 
+const getNextDocumentFileVersion = async (connection, accountId, documentId) => {
+  if (!(await tableExists(connection, 'lot_project_client_document_files'))) return 1;
+  if (!(await columnExists(connection, 'lot_project_client_document_files', 'file_version'))) return 1;
+
+  const [rows] = await connection.query(
+    `
+      SELECT COALESCE(MAX(file_row.file_version), 0) AS max_version
+      FROM lot_project_client_document_files file_row
+      INNER JOIN lot_project_client_documents document_row
+        ON document_row.lot_project_client_document_id = file_row.lot_project_client_document_id
+      WHERE file_row.lot_project_account_id = ?
+        AND document_row.document_id = ?
+    `,
+    [accountId, documentId]
+  );
+  return Number(rows[0]?.max_version || 0) + 1;
+};
+
 export const createLotProjectDocumentUploadSignature = async (req, res) => {
   const connection = await db.getConnection();
   try {
@@ -297,22 +332,52 @@ export const createLotProjectDocumentUploadSignature = async (req, res) => {
     }
 
     const file = validateDocumentUploadRequest(req.body || {});
-    const folder = buildBuyerDocumentFolder({
-      projectSlug: context.project.lot_project_slug || req.params.projectSlug,
-      listingId: context.listing.lot_project_listing_id,
-      unitId: context.listing.lot_project_listing_unit_id,
+    const uploadIndex = Math.max(1, Number(req.body?.uploadIndex || 1));
+    const uploadCount = Math.max(uploadIndex, Number(req.body?.uploadCount || 1));
+    if (uploadIndex > 50 || uploadCount > 50) {
+      return res.status(400).json({ message: 'Too many files were requested in one document upload.' });
+    }
+
+    const fileVersion = await getNextDocumentFileVersion(
+      connection,
+      context.listing.lot_project_account_id,
+      context.document.document_id
+    );
+    const fileSequence = uploadIndex;
+    const storedFileName = buildDocumentStoredFileName({
+      documentCode: context.document.document_code,
       accountReference: context.listing.account_reference,
-      buyerName: context.listing.buyer_full_name,
-      documentName: context.document.document_name,
+      version: fileVersion,
+      sequence: fileSequence,
+      totalFiles: uploadCount,
+      extension: getFileExtension(file),
+    });
+    const folder = buildBuyerDocumentFolder({
+      projectStorageCode: resolveProjectStorageCode(context.project),
+      projectId: context.project.lot_project_id,
+      projectLocationCode: context.project.lot_project_location_code,
+      listingStorageCode: resolveListingStorageCode(context.listing),
+      listingId: context.listing.lot_project_listing_id,
+      accountReference: context.listing.account_reference,
+      documentCode: context.document.document_code,
+      documentId: context.document.document_id,
     });
     const signature = createAuthenticatedUploadSignature({
       folder,
       accountId: context.listing.lot_project_account_id,
       documentId: context.document.document_id,
-      fileName: file.fileName,
+      storedFileName,
     });
 
-    return res.json({ success: true, data: { ...signature, maxFileBytes: 15 * 1024 * 1024 } });
+    return res.json({
+      success: true,
+      data: {
+        ...signature,
+        fileVersion,
+        fileSequence,
+        maxFileBytes: 15 * 1024 * 1024,
+      },
+    });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
   } finally {
@@ -335,12 +400,14 @@ export const uploadLotProjectListingDocument = async (req, res) => {
     }
 
     const expectedFolder = buildBuyerDocumentFolder({
-      projectSlug: context.project.lot_project_slug || req.params.projectSlug,
+      projectStorageCode: resolveProjectStorageCode(context.project),
+      projectId: context.project.lot_project_id,
+      projectLocationCode: context.project.lot_project_location_code,
+      listingStorageCode: resolveListingStorageCode(context.listing),
       listingId: context.listing.lot_project_listing_id,
-      unitId: context.listing.lot_project_listing_unit_id,
       accountReference: context.listing.account_reference,
-      buyerName: context.listing.buyer_full_name,
-      documentName: context.document.document_name,
+      documentCode: context.document.document_code,
+      documentId: context.document.document_id,
     });
 
     const verifiedFiles = [];
@@ -365,6 +432,10 @@ export const uploadLotProjectListingDocument = async (req, res) => {
         cloudinaryFolder: asset.asset_folder || expectedFolder,
         cloudinaryFormat: asset.format || file.cloudinaryFormat || null,
         fileSize: Number(asset.bytes || file.fileSize || 0),
+        storedFileName: deriveStoredFileNameFromPublicId(
+          asset.public_id,
+          getFileExtension({ fileName: file.fileName, fileType: file.fileType })
+        ),
       });
     }
 
@@ -440,12 +511,14 @@ export const uploadLotProjectListingDocument = async (req, res) => {
             cloudinary_asset_folder,
             original_file_name,
             stored_file_name,
+            file_version,
+            file_sequence,
             file_format,
             file_mime_type,
             file_size_bytes,
             file_status,
             uploaded_by_user_id
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)
           ON DUPLICATE KEY UPDATE
             lot_project_client_document_id = VALUES(lot_project_client_document_id),
             file_status = 'active',
@@ -463,7 +536,9 @@ export const uploadLotProjectListingDocument = async (req, res) => {
           file.cloudinaryVersion,
           file.cloudinaryAssetFolder,
           file.fileName,
-          file.fileName,
+          file.storedFileName || file.fileName,
+          parseDocumentFileVersionFromName(file.storedFileName),
+          parseDocumentFileSequenceFromName(file.storedFileName),
           file.cloudinaryFormat,
           file.fileType,
           file.fileSize,
@@ -681,4 +756,5 @@ export const clearLotProjectListingDocument = async (req, res) => {
     connection.release();
   }
 };
+
 

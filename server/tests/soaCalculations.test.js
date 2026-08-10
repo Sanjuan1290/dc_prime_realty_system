@@ -236,3 +236,4 @@ test('paying a separate Legal Misc Fee does not reduce the lot principal', () =>
   assert.equal(legalMisc.status, 'Paid');
 });
 
+

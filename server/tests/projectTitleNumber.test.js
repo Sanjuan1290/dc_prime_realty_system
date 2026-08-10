@@ -41,3 +41,4 @@ test('migration adds the optional lot_project_title_number column', async () => 
   assert.match(migration, /information_schema\.columns/);
 });
 
+

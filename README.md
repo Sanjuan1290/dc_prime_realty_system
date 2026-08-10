@@ -55,13 +55,31 @@ Normal listing deletion cannot bypass this flow. A listing can only be deleted w
 
 The client no longer uses an unsigned upload preset. Upload parameters are signed by the server and files use Cloudinary's `authenticated` delivery type.
 
-Folder format:
+Folder format for new protected uploads:
 
 ```text
-{root}/{project}/listing_{listing_id}_{unit}/{account_reference}_{buyer}/{document}/{uuid}
+{root}/protected/{project_storage_code}/{listing_storage_code}/{account_reference}/documents/{document_code}/files
+{root}/protected/{project_storage_code}/{listing_storage_code}/{account_reference}/payments/{payment_storage_code}/proofs
 ```
 
-The browser cannot choose another buyer's folder. The server verifies the uploaded asset, folder, type, format, and size before saving it. Document viewers request short-lived access URLs from the API.
+Examples:
+
+```text
+dc_prime/protected/PRJ-LA-001/LST-000042/ACC-2026-000018/documents/DOC-ITB/files
+dc_prime/protected/PRJ-LA-001/LST-000042/ACC-2026-000018/payments/PAY-2026-000061/proofs
+```
+
+The storage codes are permanent once created. Project names, Unit IDs, buyer names, and document display names may change without moving the protected Cloudinary folders. Document codes are chosen when a Document Library item is created and are locked afterward.
+
+Canonical stored file names remain readable in Cloudinary while the original upload filename is retained separately in the database, for example:
+
+```text
+DOC-ITB__ACC-2026-000018__V01.pdf
+DOC-GOV-ID__ACC-2026-000018__V01-02.jpg
+PAY-2026-000061__PROOF-01.png
+```
+
+The browser cannot choose another buyer's folder. The server verifies the uploaded asset, folder, authenticated delivery type, format, and size before saving it. Document viewers request short-lived access URLs from the API.
 
 Supported files:
 
@@ -174,23 +192,25 @@ The migration script is dry-run only unless `--apply` is supplied.
 
 ```bash
 cd server
-npm run migrate:cloudinary-documents
+npm run migrate:cloudinary-storage
 ```
+
+(`migrate:cloudinary-documents` remains as a backwards-compatible alias.)
 
 Review the output, then apply:
 
 ```bash
-npm run migrate:cloudinary-documents -- --apply
+npm run migrate:cloudinary-storage -- --apply
 ```
 
 Optional controls:
 
 ```bash
-npm run migrate:cloudinary-documents -- --limit=25
-npm run migrate:cloudinary-documents -- --apply --skip-archives
+npm run migrate:cloudinary-storage -- --limit=25
+npm run migrate:cloudinary-storage -- --apply --skip-archives
 ```
 
-The script converts live and archived buyer-document assets to authenticated delivery, moves them to account-specific folders, and updates the stored metadata. It performs database updates incrementally so the process can be rerun.
+Before running the Cloudinary migration, apply `server/migrations/20260810_storage_codes_and_canonical_file_names.sql`. The script converts live and archived buyer documents plus active payment proofs to authenticated delivery when needed, moves them into the permanent storage-code hierarchy, assigns readable canonical file names/public IDs, and updates stored metadata. It is dry-run by default and performs applied database updates incrementally so it can be rerun.
 
 After the applied migration is verified in your Cloudinary account:
 
@@ -209,4 +229,5 @@ The actual remote Cloudinary conversion was not run while building this package 
 - Server JavaScript syntax checks completed
 
 The Vite build reports a chunk-size warning for some existing large pages. It does not stop the build.
+
 

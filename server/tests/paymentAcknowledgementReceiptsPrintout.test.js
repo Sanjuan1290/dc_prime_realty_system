@@ -30,3 +30,4 @@ test('listing printouts expose one acknowledgement receipt page per verified pay
   assert.doesNotMatch(receiptPage, /getBrokerDetails|payment\.verifiedBy/)
 })
 
+

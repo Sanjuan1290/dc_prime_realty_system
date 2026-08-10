@@ -102,3 +102,4 @@ export const projects = [
 
 export const getProjectBySlug = (slug) => projects.find((project) => project.slug === slug)
 
+

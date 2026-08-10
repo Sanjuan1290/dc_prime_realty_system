@@ -57,3 +57,4 @@ test('penalty-free grace period defaults to zero across reservation and SOA fall
   assert.match(soaController, /listing\.soa_penalty_grace_days \?\? 0/)
   assert.match(soa, /Penalty-Free Grace Period \(Days\)/)
 })
+

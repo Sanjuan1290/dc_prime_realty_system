@@ -31,3 +31,4 @@ test('System Dashboard aggregates and charts commission comparison totals from e
   assert.match(dashboard, /label: 'Remaining'[\s\S]*summary\.netRemainingCommission/)
 })
 
+
