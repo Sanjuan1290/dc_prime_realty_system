@@ -7,6 +7,12 @@ import {
   createAccreditedSellerProofOfIncomeReceipt,
   uploadAccreditedSellerProofOfIncome,
 } from '../../controllers/System/accredited.controller.js';
+import {
+  getAccreditedSellerProofOfIncomeSignedCopy,
+  createAccreditedSellerProofOfIncomeSignedCopyUploadSignature,
+  saveAccreditedSellerProofOfIncomeSignedCopy,
+  getAccreditedSellerProofOfIncomeSignedCopyAccessUrl,
+} from '../../controllers/System/ProofOfIncomeSignedCopies.controller.js';
 import { authenticateUser, requirePermission } from '../../middleware/auth.middleware.js';
 import { PERMISSIONS } from '../../config/permissions.js';
 
@@ -18,8 +24,10 @@ router.get('/parents', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_VIEW), ge
 router.get('/:sellerId/proof-of-income-receipts', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_VIEW), getAccreditedSellerProofOfIncomeData);
 router.get('/:sellerId/income-range', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_VIEW), getAccreditedSellerIncomeRangeReport);
 router.post('/:sellerId/proof-of-income-receipts', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_MANAGE), createAccreditedSellerProofOfIncomeReceipt);
+router.get('/:sellerId/proof-of-income-receipts/:receiptId/signed-copy', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_VIEW), getAccreditedSellerProofOfIncomeSignedCopy);
+router.post('/:sellerId/proof-of-income-receipts/:receiptId/signed-copy/upload-signature', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_MANAGE), createAccreditedSellerProofOfIncomeSignedCopyUploadSignature);
+router.post('/:sellerId/proof-of-income-receipts/:receiptId/signed-copy', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_MANAGE), saveAccreditedSellerProofOfIncomeSignedCopy);
+router.get('/:sellerId/proof-of-income-receipts/:receiptId/signed-copy/access-url', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_VIEW), getAccreditedSellerProofOfIncomeSignedCopyAccessUrl);
 router.post('/:sellerId/proof-of-income', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_MANAGE), uploadAccreditedSellerProofOfIncome);
 
 export default router;
-
-

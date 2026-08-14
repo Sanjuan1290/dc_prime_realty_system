@@ -518,6 +518,39 @@ export const buildPaymentProofFolder = ({
   return `${root}/protected/${project}/${listing}/${account}/payments/${payment}/proofs`;
 };
 
+export const buildCommissionReceiptSignedCopyFolder = ({
+  projectStorageCode,
+  projectId,
+  listingStorageCode,
+  listingId,
+  accountReference,
+  receiptId,
+}) => {
+  const root = sanitizeCloudinarySegment(process.env.CLOUDINARY_UPLOAD_FOLDER || 'dc_prime', 'dc_prime');
+  const project = sanitizeStorageCodePart(projectStorageCode || createProjectStorageCode(projectId), 'PRJ-0');
+  const listing = sanitizeStorageCodePart(listingStorageCode || createListingStorageCode(listingId), 'LST-0');
+  const account = sanitizeStorageCodePart(accountReference, 'ACC-UNKNOWN');
+  const receipt = sanitizeStorageCodePart(`POI-${String(Number(receiptId || 0)).padStart(6, '0')}`, 'POI-UNKNOWN');
+  return `${root}/protected/${project}/${listing}/${account}/commission-receipts/${receipt}/signed`;
+};
+
+export const buildPaymentAcknowledgementSignedCopyFolder = ({
+  projectStorageCode,
+  projectId,
+  listingStorageCode,
+  listingId,
+  accountReference,
+  paymentStorageCode,
+  paymentId,
+}) => {
+  const root = sanitizeCloudinarySegment(process.env.CLOUDINARY_UPLOAD_FOLDER || 'dc_prime', 'dc_prime');
+  const project = sanitizeStorageCodePart(projectStorageCode || createProjectStorageCode(projectId), 'PRJ-0');
+  const listing = sanitizeStorageCodePart(listingStorageCode || createListingStorageCode(listingId), 'LST-0');
+  const account = sanitizeStorageCodePart(accountReference, 'ACC-UNKNOWN');
+  const payment = sanitizeStorageCodePart(paymentStorageCode || `PAY-${String(Number(paymentId || 0)).padStart(6, '0')}`, 'PAY-UNKNOWN');
+  return `${root}/protected/${project}/${listing}/${account}/payments/${payment}/acknowledgement/signed`;
+};
+
 export const createAuthenticatedUploadSignature = ({
   folder,
   accountId,
@@ -572,6 +605,47 @@ export const createAuthenticatedPaymentProofUploadSignature = ({
   const tags = scanRequested
     ? 'dc_prime,payment_proof,authenticated,malware_scan_requested'
     : 'dc_prime,payment_proof,authenticated,malware_unscanned';
+  const params = buildUploadParams({
+    timestamp,
+    publicId,
+    folder,
+    tags,
+    context: appendSecurityContext(baseContext, scanRequested),
+    scanRequested,
+  });
+  const signature = cloudinary.utils.api_sign_request(params, apiSecret);
+
+  return buildSignatureResponse({
+    cloudName,
+    apiKey,
+    timestamp,
+    signature,
+    publicId,
+    folder,
+    params,
+    storedFileName,
+    scanRequested,
+    fallbackToken,
+  });
+};
+
+export const createAuthenticatedSignedCopyUploadSignature = ({
+  folder,
+  accountId,
+  parentType,
+  parentId,
+  storedFileName,
+  scanRequested = true,
+  fallbackToken = '',
+}) => {
+  const { cloudName, apiKey, apiSecret } = configureSecureCloudinary();
+  const timestamp = Math.floor(Date.now() / 1000);
+  const publicId = createReadableCloudinaryPublicId(storedFileName);
+  const cleanParentType = sanitizeCloudinarySegment(parentType, 'signed_copy');
+  const baseContext = `account_id=${Number(accountId || 0)}|parent_type=${cleanParentType}|parent_id=${Number(parentId || 0)}|stored_name=${encodeURIComponent(clean(storedFileName).slice(0, 180))}`;
+  const tags = scanRequested
+    ? `dc_prime,signed_copy,${cleanParentType},authenticated,malware_scan_requested`
+    : `dc_prime,signed_copy,${cleanParentType},authenticated,malware_unscanned`;
   const params = buildUploadParams({
     timestamp,
     publicId,

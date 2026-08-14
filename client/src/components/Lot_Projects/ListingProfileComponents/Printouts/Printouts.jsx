@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { FiFileText, FiImage, FiPrinter } from 'react-icons/fi'
+import AcknowledgementReceiptsModal from './AcknowledgementReceiptsModal'
 
 const printItems = [
   {
@@ -18,7 +20,7 @@ const printItems = [
   {
     title: 'Acknowledgement Receipts',
     type: 'acknowledgement-receipts',
-    desc: 'One printable acknowledgement receipt per verified payment, one payment per A4 page.',
+    desc: 'Print the unsigned receipt for each verified payment and manage its uploaded signed copy.',
     icon: FiFileText,
     path: 'acknowledgement-receipts',
   },
@@ -41,7 +43,9 @@ const Printouts = ({
   documents = [],
   account = null,
 }) => {
-  const handlePreview = (item) => {
+  const [showAcknowledgementReceipts, setShowAcknowledgementReceipts] = useState(false)
+
+  const handlePreview = (item, extraPayload = {}) => {
     const printKey = window.crypto?.randomUUID?.()
       || `${Date.now()}-${Math.random().toString(36).slice(2)}`
     const storageKey = `lot_project_print_payload:${printKey}`
@@ -58,6 +62,7 @@ const Printouts = ({
         documents,
         account,
         readOnly: Boolean(account),
+        ...extraPayload,
       })
     )
 
@@ -89,7 +94,7 @@ const Printouts = ({
             <button
               key={item.type}
               type="button"
-              onClick={() => handlePreview(item)}
+              onClick={() => item.type === 'acknowledgement-receipts' ? setShowAcknowledgementReceipts(true) : handlePreview(item)}
               className="group rounded-3xl border border-slate-200 bg-slate-50 p-5 text-left transition hover:border-blue-200 hover:bg-blue-50 active:scale-[0.99]"
             >
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-blue-600 shadow-sm transition group-hover:bg-blue-600 group-hover:text-white">
@@ -112,16 +117,26 @@ const Printouts = ({
 
               <span className="mt-4 inline-flex items-center gap-2 text-sm font-black text-blue-700">
                 <FiPrinter className="h-4 w-4" />
-                Preview
+                {item.type === 'acknowledgement-receipts' ? 'Manage / Print' : 'Preview'}
               </span>
             </button>
           )
         })}
       </div>
+
+      {showAcknowledgementReceipts ? (
+        <AcknowledgementReceiptsModal
+          projectSlug={projectSlug}
+          listingId={listing?.id || listing?.listingId || listing?.lot_project_listing_id || listing?.unitId || listing?.unitCode}
+          payments={payments}
+          readOnly={Boolean(account)}
+          onClose={() => setShowAcknowledgementReceipts(false)}
+          onPrintAllUnsigned={() => handlePreview(printItems.find((item) => item.type === 'acknowledgement-receipts'))}
+          onPrintUnsigned={(paymentId) => handlePreview(printItems.find((item) => item.type === 'acknowledgement-receipts'), { selectedPaymentId: Number(paymentId) })}
+        />
+      ) : null}
     </section>
   )
 }
 
 export default Printouts
-
-

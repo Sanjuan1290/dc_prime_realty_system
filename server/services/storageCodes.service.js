@@ -92,6 +92,12 @@ export const buildPaymentProofStoredFileName = ({ paymentStorageCode, sequence =
   return `${payment}__PROOF-${pad(sequence, 2)}.${clean(extension).replace(/^\./, '').toLowerCase() || 'bin'}`;
 };
 
+export const buildSignedCopyStoredFileName = ({ prefix, version = 1, extension }) => {
+  const record = sanitizeStorageCodePart(prefix, 'SIGNED');
+  const ext = clean(extension).replace(/^\./, '').toLowerCase() || 'bin';
+  return `${record}__SIGNED-V${pad(version, 2)}.${ext}`;
+};
+
 export const createReadableCloudinaryPublicId = (storedFileName) => {
   const base = clean(storedFileName).replace(/\.[^.]+$/, '') || 'protected-file';
   return `${base}__${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
@@ -119,5 +125,3 @@ export const parsePaymentProofSequenceFromName = (storedFileName) => {
   const match = clean(storedFileName).match(/__PROOF-(\d{1,6})\./i);
   return match ? Number(match[1]) : 1;
 };
-
-

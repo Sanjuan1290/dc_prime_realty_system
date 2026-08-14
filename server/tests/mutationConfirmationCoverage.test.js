@@ -40,11 +40,10 @@ test('direct browser mutations are limited to signed external upload URLs', () =
     const pattern = /fetch\(([^,\n]+),\s*\{[\s\S]{0,500}?method:\s*['\"](POST|PUT|PATCH|DELETE)['\"]/g
     for (const match of source.matchAll(pattern)) mutations.push({ rel, target: match[1].trim(), method: match[2] })
   }
-  assert.equal(mutations.length, 2)
+  assert.equal(mutations.length, 3)
   for (const mutation of mutations) {
-    assert.match(mutation.rel, /UploadDocumentModal\.jsx|PaymentProofModal\.jsx/)
+    assert.match(mutation.rel, /UploadDocumentModal\.jsx|PaymentProofModal\.jsx|SignedCopyUploadModal\.jsx/)
     assert.equal(mutation.target, 'signed.uploadUrl')
     assert.equal(mutation.method, 'POST')
   }
 })
-

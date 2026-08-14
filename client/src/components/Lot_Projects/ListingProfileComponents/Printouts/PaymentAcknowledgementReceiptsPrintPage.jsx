@@ -331,9 +331,13 @@ const PaymentAcknowledgementReceiptsPrintPage = () => {
     listing = {},
     client = {},
     payments = [],
+    selectedPaymentId = 0,
   } = readPrintPayload()
 
   const verifiedPayments = [...payments]
+    .filter(
+      (payment) => !Number(selectedPaymentId || 0) || Number(payment.paymentId || payment.id || 0) === Number(selectedPaymentId)
+    )
     .filter(
       (payment) =>
         String(payment?.status || 'Verified').toLowerCase() === 'verified'
@@ -349,7 +353,7 @@ const PaymentAcknowledgementReceiptsPrintPage = () => {
 
   return (
     <PrintPageShell
-      title={`Acknowledgement Receipts${verifiedPayments.length ? ` (${verifiedPayments.length})` : ''}`}
+      title={Number(selectedPaymentId || 0) ? 'Acknowledgement Receipt' : `Acknowledgement Receipts${verifiedPayments.length ? ` (${verifiedPayments.length})` : ''}`}
       printDisabled={!verifiedPayments.length}
       printDisabledMessage="No verified payments are available for acknowledgement receipts."
     >
@@ -382,5 +386,3 @@ const PaymentAcknowledgementReceiptsPrintPage = () => {
 }
 
 export default PaymentAcknowledgementReceiptsPrintPage
-
-

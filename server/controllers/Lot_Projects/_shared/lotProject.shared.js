@@ -3124,6 +3124,16 @@ export const mapPaymentRow = (row = {}) => ({
   verifiedAt: formatDateTime(row.lot_project_payment_verified_at),
   status: row.lot_project_payment_status || 'Verified',
   paymentProofCount: Number(row.payment_proof_count || 0),
+  acknowledgementSignedCopy: row.ack_signed_copy_id ? {
+    id: Number(row.ack_signed_copy_id),
+    signedCopyId: Number(row.ack_signed_copy_id),
+    fileName: row.ack_signed_copy_file_name || 'Signed acknowledgement receipt',
+    fileType: row.ack_signed_copy_file_type || '',
+    fileSize: Number(row.ack_signed_copy_file_size || 0),
+    version: Number(row.ack_signed_copy_version || 1),
+    malwareScanStatus: String(row.ack_signed_copy_scan_status || 'not_scanned').toLowerCase(),
+    uploadedAt: formatDateTime(row.ack_signed_copy_uploaded_at),
+  } : null,
   createdAt: formatDateTime(row.lot_project_payment_created_at),
   updatedAt: formatDateTime(row.lot_project_payment_updated_at),
 });
@@ -3143,9 +3153,34 @@ export const getListingPayments = async (
   }
 
   const hasPaymentProofs = await tableExists(connection, 'lot_project_payment_proofs');
+  const hasAcknowledgementSignedCopies = await tableExists(connection, 'lot_project_payment_acknowledgement_files');
   const proofCountSelect = hasPaymentProofs
     ? `(SELECT COUNT(*) FROM lot_project_payment_proofs proof WHERE proof.lot_project_payment_id = p.lot_project_payment_id AND proof.proof_status = 'active') AS payment_proof_count,`
     : `0 AS payment_proof_count,`;
+  const acknowledgementSignedSelect = hasAcknowledgementSignedCopies
+    ? `ack_file.lot_project_payment_acknowledgement_file_id AS ack_signed_copy_id,
+       ack_file.file_name AS ack_signed_copy_file_name,
+       ack_file.file_mime_type AS ack_signed_copy_file_type,
+       ack_file.file_size_bytes AS ack_signed_copy_file_size,
+       ack_file.file_version AS ack_signed_copy_version,
+       ack_file.malware_scan_status AS ack_signed_copy_scan_status,
+       ack_file.created_at AS ack_signed_copy_uploaded_at,`
+    : `NULL AS ack_signed_copy_id,
+       NULL AS ack_signed_copy_file_name,
+       NULL AS ack_signed_copy_file_type,
+       0 AS ack_signed_copy_file_size,
+       NULL AS ack_signed_copy_version,
+       NULL AS ack_signed_copy_scan_status,
+       NULL AS ack_signed_copy_uploaded_at,`;
+  const acknowledgementSignedJoin = hasAcknowledgementSignedCopies
+    ? `LEFT JOIN lot_project_payment_acknowledgement_files ack_file
+         ON ack_file.lot_project_payment_acknowledgement_file_id = (
+           SELECT MAX(active_ack.lot_project_payment_acknowledgement_file_id)
+           FROM lot_project_payment_acknowledgement_files active_ack
+           WHERE active_ack.lot_project_payment_id = p.lot_project_payment_id
+             AND active_ack.file_status = 'active'
+         )`
+    : '';
 
   const [rows] = await connection.query(
     `
@@ -3153,11 +3188,13 @@ export const getListingPayments = async (
         p.*,
         ps.description AS schedule_description,
         ${proofCountSelect}
+        ${acknowledgementSignedSelect}
         TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS verified_by_name
       FROM lot_project_payments p
       LEFT JOIN lot_project_payment_schedules ps
         ON ps.lot_project_payment_schedule_id = p.lot_project_payment_schedule_id
        AND (? = 0 OR ps.lot_project_account_id = ?)
+      ${acknowledgementSignedJoin}
       LEFT JOIN users u
         ON u.id = p.lot_project_payment_verified_by_user_id
       WHERE p.lot_project_id = ?
@@ -4176,6 +4213,3 @@ export const addIfColumnExists = async (connection, tableName, columns, values, 
 };
 
 // End of lotProject.shared.js — verified complete.
-
-
-

@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 
-import { db, getErrorMessage } from '../Lot_Projects/_shared/lotProject.shared.js';
+import { db, getErrorMessage, tableExists } from '../Lot_Projects/_shared/lotProject.shared.js';
 
 const clean = (value) => String(value ?? '').trim();
 const MAX_WEBHOOK_AGE_SECONDS = 2 * 60 * 60;
@@ -158,6 +158,36 @@ export const handleCloudinaryMalwareWebhook = async (req, res) => {
       `,
       [scanState.status, scanState.reason, publicId]
     );
+
+    if (await tableExists(connection, 'lot_project_commission_receipt_files')) {
+      await connection.query(
+        `
+          UPDATE lot_project_commission_receipt_files
+          SET malware_scan_status = ?,
+              malware_scan_provider = 'perception_point',
+              malware_scan_reason = ?,
+              malware_scanned_at = NOW(),
+              updated_at = NOW()
+          WHERE cloudinary_public_id = ?
+        `,
+        [scanState.status, scanState.reason, publicId]
+      );
+    }
+
+    if (await tableExists(connection, 'lot_project_payment_acknowledgement_files')) {
+      await connection.query(
+        `
+          UPDATE lot_project_payment_acknowledgement_files
+          SET malware_scan_status = ?,
+              malware_scan_provider = 'perception_point',
+              malware_scan_reason = ?,
+              malware_scanned_at = NOW(),
+              updated_at = NOW()
+          WHERE cloudinary_public_id = ?
+        `,
+        [scanState.status, scanState.reason, publicId]
+      );
+    }
 
     await updateClientDocumentSnapshots(connection, publicId, scanState);
     await connection.commit();

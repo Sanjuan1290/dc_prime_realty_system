@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import PageHeader from "../../components/Shared/PageHeader";
 import StatusAlert from "../../components/Shared/StatusAlert";
 import ReadOnlyNotice from "../../components/Shared/ReadOnlyNotice";
+import SignedCopyUploadModal from "../../components/Shared/SignedCopyUploadModal";
 import useCurrentUser from "../../utils/useCurrentUser";
 import { FaUserPlus } from "react-icons/fa";
 import { FiCalendar, FiFileText, FiLoader, FiPrinter, FiRefreshCw, FiSearch, FiUsers, FiX } from "react-icons/fi";
@@ -355,6 +356,7 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
   });
   const [localAlert, setLocalAlert] = useState(null);
   const [activeMode, setActiveMode] = useState("receipt");
+  const [signedReceipt, setSignedReceipt] = useState(null);
 
   const receiptQuery = useQuery({
     queryKey: ["seller-proof-of-income-receipts", sellerId],
@@ -625,7 +627,7 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
                         <td className="px-4 py-3"><p className="font-black text-slate-800">{receipt.projectName} · {receipt.unitId}</p><p className="text-xs font-semibold text-slate-500">{receipt.buyerName || "-"}</p>{receipt.isArchived ? <span className="mt-1 inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-slate-600">Archived cancelled sale</span> : null}</td>
                         <td className="px-4 py-3"><div className="flex flex-wrap gap-1">{(receipt.releases || []).map((release) => <span key={release.releaseId} className="rounded-lg bg-blue-50 px-2 py-1 text-[11px] font-black text-blue-700">{release.stage} · {Number(release.triggerPercent || 0).toFixed(0)}% cumulative</span>)}</div></td>
                         <td className="px-4 py-3 text-right font-black text-emerald-700">{money(receipt.totalAmount)}</td>
-                        <td className="px-4 py-3 text-right"><button type="button" onClick={() => printReceipt(receipt)} className="inline-flex h-9 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-700 transition hover:bg-blue-100"><FiPrinter className="h-4 w-4" />Print</button></td>
+                        <td className="px-4 py-3 text-right"><div className="flex flex-wrap justify-end gap-2"><button type="button" onClick={() => printReceipt(receipt)} className="inline-flex h-9 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-700 transition hover:bg-blue-100"><FiPrinter className="h-4 w-4" />Print Unsigned</button>{!receipt.isArchived ? <button type="button" onClick={() => setSignedReceipt(receipt)} className={`inline-flex h-9 items-center gap-2 rounded-xl border px-3 text-xs font-black transition ${receipt.signedCopy ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}><FiFileText className="h-4 w-4" />{receipt.signedCopy ? 'Signed Copy' : 'Upload Signed'}</button> : null}</div>{receipt.signedCopy ? <p className={`mt-1 text-[10px] font-black ${receipt.signedCopy.malwareScanStatus === 'approved' ? 'text-emerald-700' : receipt.signedCopy.malwareScanStatus === 'rejected' || receipt.signedCopy.malwareScanStatus === 'error' ? 'text-red-700' : 'text-amber-700'}`}>{receipt.signedCopy.malwareScanStatus === 'approved' ? 'Signed copy ready' : receipt.signedCopy.malwareScanStatus === 'pending' ? 'Security scan in progress' : receipt.signedCopy.malwareScanStatus === 'rejected' ? 'Signed copy blocked' : receipt.signedCopy.malwareScanStatus === 'error' ? 'Security scan error' : 'Not security scanned'}</p> : null}</td>
                       </tr>
                     )) : <tr><td colSpan="5" className="px-4 py-8 text-center font-semibold text-slate-500">No generated receipts yet.</td></tr>}
                   </tbody>
@@ -641,6 +643,20 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
           <button type="button" onClick={onClose} disabled={createReceiptMutation.isPending} className="h-10 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:opacity-50">Close</button>
         </div>
       </div>
+
+      {signedReceipt ? (
+        <SignedCopyUploadModal
+          title="Signed Proof of Income"
+          description={`Upload or view the physically signed copy for ${signedReceipt.referenceNumber || `receipt #${signedReceipt.receiptId}`}. The system-generated print remains available as the unsigned original.`}
+          recordLabel={`Proof of Income · ${signedReceipt.referenceNumber || `Receipt #${signedReceipt.receiptId}`}`}
+          category="Signed Proof of Income"
+          basePath={`/accredited/${sellerId}/proof-of-income-receipts/${signedReceipt.receiptId}/signed-copy`}
+          onClose={() => setSignedReceipt(null)}
+          onChanged={() => {
+            queryClient.invalidateQueries({ queryKey: ["seller-proof-of-income-receipts", sellerId] });
+          }}
+        />
+      ) : null}
     </div>
   );
 };
@@ -759,5 +775,3 @@ const Accredited = () => {
 };
 
 export default Accredited;
-
-

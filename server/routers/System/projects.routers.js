@@ -78,6 +78,12 @@ import {
   updateLotProjectCommission,
 } from '../../controllers/Lot_Projects/Commissions/Commissions.controller.js';
 import {
+  getLotProjectPaymentAcknowledgementSignedCopy,
+  createLotProjectPaymentAcknowledgementSignedCopyUploadSignature,
+  saveLotProjectPaymentAcknowledgementSignedCopy,
+  getLotProjectPaymentAcknowledgementSignedCopyAccessUrl,
+} from '../../controllers/Lot_Projects/ListingProfile/SignedAcknowledgement.controller.js';
+import {
   getReservationAgents,
   getReservationCommissionPreviewController,
 } from '../../controllers/Lot_Projects/Commissions/CommissionConfiguration.controller.js';
@@ -156,6 +162,10 @@ router.post('/lot-projects/:projectSlug/listings/:listingId/payments/:paymentId/
 router.post('/lot-projects/:projectSlug/listings/:listingId/payments/:paymentId/proofs', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), saveLotProjectPaymentProofs);
 router.get('/lot-projects/:projectSlug/listings/:listingId/payments/:paymentId/proofs/:proofId/access-url', requirePermission(PERMISSIONS.LOT_LISTINGS_VIEW), getLotProjectPaymentProofAccessUrl);
 router.post('/lot-projects/:projectSlug/listings/:listingId/payments/:paymentId/proofs/:proofId/delete', requirePermission(PERMISSIONS.LOT_PAYMENT_DELETE), deleteLotProjectPaymentProof);
+router.get('/lot-projects/:projectSlug/listings/:listingId/payments/:paymentId/acknowledgement-signed-copy', requirePermission(PERMISSIONS.LOT_LISTINGS_VIEW), getLotProjectPaymentAcknowledgementSignedCopy);
+router.post('/lot-projects/:projectSlug/listings/:listingId/payments/:paymentId/acknowledgement-signed-copy/upload-signature', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), createLotProjectPaymentAcknowledgementSignedCopyUploadSignature);
+router.post('/lot-projects/:projectSlug/listings/:listingId/payments/:paymentId/acknowledgement-signed-copy', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), saveLotProjectPaymentAcknowledgementSignedCopy);
+router.get('/lot-projects/:projectSlug/listings/:listingId/payments/:paymentId/acknowledgement-signed-copy/access-url', requirePermission(PERMISSIONS.LOT_LISTINGS_VIEW), getLotProjectPaymentAcknowledgementSignedCopyAccessUrl);
 router.post('/lot-projects/:projectSlug/listings/:listingId/payment-schedules/:scheduleId/lmf-waiver', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), waiveSeparateLegalMiscFee);
 router.post('/lot-projects/:projectSlug/listings/:listingId/payment-schedules/:scheduleId/penalty-extension', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), grantPaymentSchedulePenaltyExtension);
 router.put('/lot-projects/:projectSlug/listings/:listingId/payment-schedules/:scheduleId/penalty-extension/:reliefId', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), updatePaymentSchedulePenaltyExtension);
@@ -164,6 +174,3 @@ router.post('/lot-projects/:projectSlug/listings/:listingId/payment-schedules/:s
 router.post('/lot-projects/:projectSlug/listings/:listingId/penalty-reliefs/:reliefId/restore', requirePermission(PERMISSIONS.LOT_PENALTY_CORRECT), restorePaymentSchedulePenaltyWaiver);
 
 export default router;
-
-
-

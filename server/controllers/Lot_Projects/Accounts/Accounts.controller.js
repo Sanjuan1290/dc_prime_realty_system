@@ -413,6 +413,24 @@ const collectCloudinaryAssets = async (connection, account) => {
     });
   }
 
+  for (const tableName of ['lot_project_commission_receipt_files', 'lot_project_payment_acknowledgement_files']) {
+    if (!(await tableExists(connection, tableName))) continue;
+    const [rows] = await connection.query(
+      `SELECT cloudinary_public_id, cloudinary_resource_type, cloudinary_delivery_type FROM ${tableName} WHERE lot_project_account_id = ?`,
+      [account.lot_project_account_id]
+    );
+    rows.forEach((row) => {
+      if (!row.cloudinary_public_id) return;
+      const resourceType = row.cloudinary_resource_type || 'image';
+      const deliveryType = row.cloudinary_delivery_type || 'authenticated';
+      assets.set(`${resourceType}:${deliveryType}:${row.cloudinary_public_id}`, {
+        publicId: row.cloudinary_public_id,
+        resourceType,
+        deliveryType,
+      });
+    });
+  }
+
   // Old versions stored the last cancelled buyer's document rows only inside
   // the compatibility archive. Include those assets during a verified purge.
   if (
@@ -458,6 +476,9 @@ const deleteAccountDatabaseRows = async (connection, account) => {
     const [result] = await connection.query(sql, params);
     counts[name] = Number(result.affectedRows || 0);
   };
+
+  await execute('lot_project_commission_receipt_files', 'DELETE FROM lot_project_commission_receipt_files WHERE lot_project_account_id = ?', [accountId]);
+  await execute('lot_project_payment_acknowledgement_files', 'DELETE FROM lot_project_payment_acknowledgement_files WHERE lot_project_account_id = ?', [accountId]);
 
   if (await tableExists(connection, 'lot_project_commission_receipt_items')) {
     await execute('lot_project_commission_receipt_items', `DELETE item FROM lot_project_commission_receipt_items item INNER JOIN lot_project_commission_receipts receipt ON receipt.lot_project_commission_receipt_id = item.lot_project_commission_receipt_id WHERE receipt.lot_project_client_profile_id = ?`, [profileId]);
@@ -641,5 +662,3 @@ export const purgeLotProjectAccount = async (req, res) => {
     connection.release();
   }
 };
-
-

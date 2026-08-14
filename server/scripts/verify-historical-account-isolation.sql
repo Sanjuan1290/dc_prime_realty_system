@@ -95,4 +95,47 @@ WHERE relief.lot_project_account_id IS NULL
    OR schedule.lot_project_payment_schedule_id IS NULL
    OR relief.lot_project_account_id <> schedule.lot_project_account_id;
 
+-- Signed Proof of Income files must match their receipt and buyer account.
+SELECT
+  file_row.lot_project_commission_receipt_file_id,
+  file_row.lot_project_commission_receipt_id,
+  file_row.lot_project_account_id,
+  file_row.lot_project_id,
+  file_row.lot_project_listing_id,
+  file_row.lot_project_client_profile_id
+FROM lot_project_commission_receipt_files file_row
+LEFT JOIN lot_project_accounts account
+  ON account.lot_project_account_id = file_row.lot_project_account_id
+LEFT JOIN lot_project_commission_receipts receipt
+  ON receipt.lot_project_commission_receipt_id = file_row.lot_project_commission_receipt_id
+WHERE account.lot_project_account_id IS NULL
+   OR receipt.lot_project_commission_receipt_id IS NULL
+   OR file_row.lot_project_id <> account.lot_project_id
+   OR file_row.lot_project_listing_id <> account.lot_project_listing_id
+   OR file_row.lot_project_client_profile_id <> account.lot_project_client_profile_id
+   OR receipt.lot_project_id <> file_row.lot_project_id
+   OR receipt.lot_project_listing_id <> file_row.lot_project_listing_id
+   OR receipt.lot_project_client_profile_id <> file_row.lot_project_client_profile_id;
 
+-- Signed buyer acknowledgement receipts must match their payment and buyer account.
+SELECT
+  file_row.lot_project_payment_acknowledgement_file_id,
+  file_row.lot_project_payment_id,
+  file_row.lot_project_account_id,
+  file_row.lot_project_id,
+  file_row.lot_project_listing_id,
+  file_row.lot_project_client_profile_id
+FROM lot_project_payment_acknowledgement_files file_row
+LEFT JOIN lot_project_accounts account
+  ON account.lot_project_account_id = file_row.lot_project_account_id
+LEFT JOIN lot_project_payments payment
+  ON payment.lot_project_payment_id = file_row.lot_project_payment_id
+WHERE account.lot_project_account_id IS NULL
+   OR payment.lot_project_payment_id IS NULL
+   OR file_row.lot_project_id <> account.lot_project_id
+   OR file_row.lot_project_listing_id <> account.lot_project_listing_id
+   OR file_row.lot_project_client_profile_id <> account.lot_project_client_profile_id
+   OR payment.lot_project_account_id <> file_row.lot_project_account_id
+   OR payment.lot_project_id <> file_row.lot_project_id
+   OR payment.lot_project_listing_id <> file_row.lot_project_listing_id
+   OR payment.lot_project_client_profile_id <> file_row.lot_project_client_profile_id;

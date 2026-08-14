@@ -399,6 +399,7 @@ const commissionReceiptTableSql = `
     lot_project_id INT UNSIGNED NOT NULL,
     lot_project_listing_id INT UNSIGNED NOT NULL,
     lot_project_client_profile_id INT UNSIGNED NOT NULL,
+    lot_project_account_id BIGINT UNSIGNED NULL,
     lot_project_commission_id INT UNSIGNED NOT NULL,
     accredited_seller_id INT UNSIGNED NOT NULL,
     bank_name VARCHAR(150) NOT NULL,
@@ -415,6 +416,7 @@ const commissionReceiptTableSql = `
     KEY idx_commission_receipt_seller (accredited_seller_id),
     KEY idx_commission_receipt_commission (lot_project_commission_id),
     KEY idx_commission_receipt_listing (lot_project_listing_id),
+    KEY idx_commission_receipt_account (lot_project_account_id),
     KEY idx_commission_receipt_date (receipt_date),
     KEY idx_commission_receipt_creator (created_by_user_id),
     CONSTRAINT fk_commission_receipt_project
@@ -426,6 +428,9 @@ const commissionReceiptTableSql = `
     CONSTRAINT fk_commission_receipt_client
       FOREIGN KEY (lot_project_client_profile_id) REFERENCES lot_project_client_profiles (lot_project_client_profile_id)
       ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT fk_commission_receipt_account
+      FOREIGN KEY (lot_project_account_id) REFERENCES lot_project_accounts (lot_project_account_id)
+      ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT fk_commission_receipt_commission
       FOREIGN KEY (lot_project_commission_id) REFERENCES lot_project_commissions (lot_project_commission_id)
       ON DELETE CASCADE ON UPDATE CASCADE,
@@ -780,6 +785,16 @@ const mapReceiptRows = (receiptRows = [], itemRows = []) => {
       createdAt: row.created_at,
       createdByName: row.created_by_name,
       isArchived: Number(row.is_archived || 0) === 1,
+      signedCopy: row.signed_copy_id ? {
+        id: Number(row.signed_copy_id),
+        signedCopyId: Number(row.signed_copy_id),
+        fileName: row.signed_copy_file_name || 'Signed Proof of Income',
+        fileType: row.signed_copy_file_type || '',
+        fileSize: Number(row.signed_copy_file_size || 0),
+        version: Number(row.signed_copy_version || 1),
+        malwareScanStatus: String(row.signed_copy_scan_status || 'not_scanned').toLowerCase(),
+        uploadedAt: row.signed_copy_uploaded_at || null,
+      } : null,
       releases,
     };
   });
@@ -903,10 +918,37 @@ const loadSellerReceiptData = async (connection, sellerId) => {
     group.totalAmount = roundMoney(group.totalAmount + release.amount);
   });
 
+  const hasSignedReceiptFiles = await tableExists(connection, 'lot_project_commission_receipt_files');
+  const signedReceiptSelect = hasSignedReceiptFiles
+    ? `signed_file.lot_project_commission_receipt_file_id AS signed_copy_id,
+       signed_file.file_name AS signed_copy_file_name,
+       signed_file.file_mime_type AS signed_copy_file_type,
+       signed_file.file_size_bytes AS signed_copy_file_size,
+       signed_file.file_version AS signed_copy_version,
+       signed_file.malware_scan_status AS signed_copy_scan_status,
+       signed_file.created_at AS signed_copy_uploaded_at,`
+    : `NULL AS signed_copy_id,
+       NULL AS signed_copy_file_name,
+       NULL AS signed_copy_file_type,
+       0 AS signed_copy_file_size,
+       NULL AS signed_copy_version,
+       NULL AS signed_copy_scan_status,
+       NULL AS signed_copy_uploaded_at,`;
+  const signedReceiptJoin = hasSignedReceiptFiles
+    ? `LEFT JOIN lot_project_commission_receipt_files signed_file
+         ON signed_file.lot_project_commission_receipt_file_id = (
+           SELECT MAX(active_file.lot_project_commission_receipt_file_id)
+           FROM lot_project_commission_receipt_files active_file
+           WHERE active_file.lot_project_commission_receipt_id = receipt.lot_project_commission_receipt_id
+             AND active_file.file_status = 'active'
+         )`
+    : '';
+
   const [receiptRows] = await connection.query(
     `
       SELECT
         receipt.*,
+        ${signedReceiptSelect}
         lp.lot_project_name,
         lp.lot_project_location,
         l.lot_project_listing_unit_id,
@@ -920,6 +962,7 @@ const loadSellerReceiptData = async (connection, sellerId) => {
       INNER JOIN lot_project_listings l ON l.lot_project_listing_id = receipt.lot_project_listing_id
       INNER JOIN lot_project_client_profiles cp ON cp.lot_project_client_profile_id = receipt.lot_project_client_profile_id
       INNER JOIN lot_project_commissions c ON c.lot_project_commission_id = receipt.lot_project_commission_id
+      ${signedReceiptJoin}
       LEFT JOIN users creator ON creator.id = receipt.created_by_user_id
       WHERE receipt.accredited_seller_id = ?
       ORDER BY receipt.receipt_date DESC, receipt.lot_project_commission_receipt_id DESC
@@ -985,6 +1028,13 @@ const loadSellerReceiptData = async (connection, sellerId) => {
           MAX(COALESCE(archived.receipt_status, 'active')) AS receipt_status,
           MAX(archived.archived_at) AS created_at,
           MAX(archived.receipt_created_by_name) AS created_by_name,
+          NULL AS signed_copy_id,
+          NULL AS signed_copy_file_name,
+          NULL AS signed_copy_file_type,
+          0 AS signed_copy_file_size,
+          NULL AS signed_copy_version,
+          NULL AS signed_copy_scan_status,
+          NULL AS signed_copy_uploaded_at,
           1 AS is_archived
         FROM lot_project_archived_commission_releases archived
         WHERE archived.accredited_seller_id = ?
@@ -1158,6 +1208,7 @@ export const createAccreditedSellerProofOfIncomeReceipt = async (req, res) => {
           c.lot_project_id,
           c.lot_project_listing_id,
           c.lot_project_client_profile_id,
+          c.lot_project_account_id,
           c.accredited_seller_id,
           c.sale_owner_accredited_seller_id,
           c.commission_rate_type,
@@ -1226,6 +1277,7 @@ export const createAccreditedSellerProofOfIncomeReceipt = async (req, res) => {
           lot_project_id,
           lot_project_listing_id,
           lot_project_client_profile_id,
+          lot_project_account_id,
           lot_project_commission_id,
           accredited_seller_id,
           bank_name,
@@ -1236,12 +1288,13 @@ export const createAccreditedSellerProofOfIncomeReceipt = async (req, res) => {
           total_amount,
           receipt_status,
           created_by_user_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)
       `,
       [
         first.lot_project_id,
         first.lot_project_listing_id,
         first.lot_project_client_profile_id,
+        first.lot_project_account_id || null,
         commissionId,
         sellerId,
         bankName,
@@ -1306,5 +1359,3 @@ export const createAccreditedSellerProofOfIncomeReceipt = async (req, res) => {
     connection.release();
   }
 };
-
-
