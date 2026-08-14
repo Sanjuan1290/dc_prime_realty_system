@@ -13,7 +13,7 @@ const LotBadge = ({ lot }) => (
       <p className="font-black text-slate-950">{lot.lotNumber}</p>
       <span className={`rounded-full px-2.5 py-1 text-xs font-black ${lot.status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>{lot.status}</span>
     </div>
-    <p className="mt-2 text-xs font-semibold text-slate-500">{lot.usedCount ? `Used by ${lot.usedByUnits}` : 'Not linked to any unit yet'}</p>
+    <p className="mt-2 text-xs font-semibold text-slate-500">{lot.usedCount ? `Assigned to ${lot.usedCount} listing${lot.usedCount === 1 ? '' : 's'}` : 'Not linked to any listing yet'}</p>
   </div>
 )
 
@@ -60,6 +60,7 @@ const ProjectDetailsModal = ({ project, onClose, onEdit, onPrintPriceList }) => 
 }
 
 export default ProjectDetailsModal
+
 
 
 

@@ -267,7 +267,6 @@ export const mapProjectRows = (projects = [], cadastralRows = []) => {
       id: row.lot_project_cadastral_lot_number_id || row.id || null,
       lotNumber,
       usedCount: Number(row.usedCount ?? row.used_count ?? 0),
-      usedByUnits: row.usedByUnits || row.used_by_units || '',
       status: 'active',
     });
   });
@@ -369,7 +368,6 @@ export const getProjectCadastralLots = async (lotProjectId) => {
         lotNumber: lot.lot_project_cadastral_lot_number,
         status: 'active',
         usedCount: 0,
-        usedByUnits: '',
       }));
     }
 
@@ -379,8 +377,7 @@ export const getProjectCadastralLots = async (lotProjectId) => {
           c.lot_project_cadastral_lot_number_id,
           c.lot_project_id,
           c.lot_project_cadastral_lot_number,
-          COALESCE(COUNT(l.lot_project_listing_id), 0) AS usedCount,
-          GROUP_CONCAT(l.lot_project_listing_unit_id ORDER BY l.lot_project_listing_unit_id SEPARATOR ', ') AS usedByUnits
+          COALESCE(COUNT(DISTINCT l.lot_project_listing_id), 0) AS usedCount
         FROM lot_project_cadastral_lot_numbers c
         LEFT JOIN lot_project_listing_cadastral_lots lcl
           ON lcl.lot_project_cadastral_lot_number_id = c.lot_project_cadastral_lot_number_id
@@ -399,7 +396,6 @@ export const getProjectCadastralLots = async (lotProjectId) => {
       lotNumber: lot.lot_project_cadastral_lot_number,
       status: 'active',
       usedCount: Number(lot.usedCount || 0),
-      usedByUnits: lot.usedByUnits || '',
     }));
   } finally {
     connection.release();

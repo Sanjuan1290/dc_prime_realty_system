@@ -55,16 +55,40 @@ test('unit-id edits recommend previous id and require explicit skip confirmation
   assert.doesNotMatch(modal, /Existing Cloudinary document assets will be moved/);
 });
 
-test('project edits protect location codes and assigned cadastral master rows', () => {
+test('project edits preflight guaranteed errors and keep cadastral usage compact', () => {
   const source = read('server/controllers/System/projects.controller.js');
+  const router = read('server/routers/System/projects.routers.js');
   const modal = read('client/src/components/System/projectComponents/AddLotProjectModal.jsx');
+  const shared = read('server/controllers/Lot_Projects/_shared/lotProject.shared.js');
+  const details = read('client/src/components/Lot_Projects/DashboardComponents/ProjectDetailsModal/ProjectDetailsModal.jsx');
+  const apiClient = read('client/src/utils/apiClient.js');
+
+  assert.match(source, /export const preflightLotProjectUpdate/);
+  assert.match(source, /buildLotProjectEditGuardState/);
   assert.match(source, /PROJECT_LOCATION_CODE_LOCKED/);
-  assert.match(source, /const stableSlug = slugWasSubmitted \? payload\.slug : existingProject\.lot_project_slug/);
+  assert.match(source, /Location Code can't be changed because this project already has listings/);
   assert.match(source, /CADASTRAL_LOT_IN_USE/);
-  assert.match(source, /used_by_units/);
+  assert.match(source, /Cadastral Lot \${cadastralLotNumber} can't be removed because it is currently assigned to a listing/);
+  assert.match(source, /const stableSlug = slugWasSubmitted \? payload\.slug : existingProject\.lot_project_slug/);
+  assert.doesNotMatch(source, /used_by_units|usedByUnits/);
   assert.doesNotMatch(source, /DELETE FROM lot_project_cadastral_lot_numbers WHERE lot_project_id = \?`/);
-  assert.match(modal, /locationCodeLocked/);
-  assert.match(modal, /cannot be edited or deleted/);
+
+  assert.match(router, /router\.post\('\/lot-projects\/:id\/edit-preflight'/);
+  assert.match(router, /preflightLotProjectUpdate/);
+  assert.match(modal, /Checking project changes before final review/);
+  assert.match(modal, /useFetchPost\([\s\S]*edit-preflight[\s\S]*confirmationHandled: 'technical'/);
+  assert.match(modal, /\{lot\} \{isAssigned \? '🔒' : '×'\}/);
+  assert.doesNotMatch(modal, /usedByUnits|used_by_units/);
+
+  const cadastralHelper = shared.slice(
+    shared.indexOf('export const getProjectCadastralLots'),
+    shared.indexOf('export const getListingLookupWhere')
+  );
+  assert.match(cadastralHelper, /usedCount/);
+  assert.doesNotMatch(cadastralHelper, /GROUP_CONCAT|usedByUnits|used_by_units/);
+  assert.match(details, /Assigned to \${lot\.usedCount} listing/);
+  assert.doesNotMatch(details, /usedByUnits|used_by_units/);
+  assert.match(apiClient, /projects\\\/lot-projects\\\/\\d\+\\\/edit-preflight/);
 });
 
 test('database migration backfills account ids and changes cadastral delete to RESTRICT', () => {

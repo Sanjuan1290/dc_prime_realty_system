@@ -10,6 +10,7 @@ const TECHNICAL_MUTATION_PATTERNS = [
   /\/user\/forgot-password(?:\/|$)/i,
   /\/upload-signature(?:\/|$)/i,
   /\/payments\/preview$/i,
+  /\/projects\/lot-projects\/\d+\/edit-preflight$/i,
   /\/purge-code$/i,
   /\/audit-logs\/archive\/request$/i,
 ]
@@ -205,4 +206,5 @@ export const requestApi = async (
     }
   }
 }
+
 

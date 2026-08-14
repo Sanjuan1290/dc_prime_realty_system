@@ -14,6 +14,7 @@ import {
   getLotProjectDocumentCompliance,
   getLotProjectBySlug,
   createLotProject,
+  preflightLotProjectUpdate,
   updateLotProject,
   toggleLotProjectStatus,
   deleteLotProject,
@@ -124,6 +125,7 @@ router.post(
 router.get('/lot-projects/:projectSlug', requirePermission(PERMISSIONS.LOT_PROJECT_VIEW), getLotProjectBySlug);
 
 router.post('/lot-projects', requirePermission(PERMISSIONS.SYSTEM_PROJECTS_MANAGE), createLotProject);
+router.post('/lot-projects/:id/edit-preflight', requirePermission(PERMISSIONS.SYSTEM_PROJECTS_MANAGE), preflightLotProjectUpdate);
 router.put('/lot-projects/:id', requirePermission(PERMISSIONS.SYSTEM_PROJECTS_MANAGE), updateLotProject);
 router.patch('/lot-projects/:id/status', requirePermission(PERMISSIONS.SYSTEM_PROJECTS_MANAGE), toggleLotProjectStatus);
 router.delete('/lot-projects/:id', requirePermission(PERMISSIONS.SYSTEM_PROJECTS_MANAGE), deleteLotProject);
@@ -162,5 +164,6 @@ router.post('/lot-projects/:projectSlug/listings/:listingId/payment-schedules/:s
 router.post('/lot-projects/:projectSlug/listings/:listingId/penalty-reliefs/:reliefId/restore', requirePermission(PERMISSIONS.LOT_PENALTY_CORRECT), restorePaymentSchedulePenaltyWaiver);
 
 export default router;
+
 
 

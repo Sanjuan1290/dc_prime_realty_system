@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { FiArrowLeft, FiArrowRight, FiSearch, FiX } from 'react-icons/fi'
 import StatusAlert from '../../Shared/StatusAlert'
+import { useFetchPost } from '../../../utils/useFetch'
 
 const Field = ({
   label,
@@ -101,7 +102,6 @@ const normalizeCadastralUsage = (project = {}) =>
         const lotNumber = String(lot?.lotNumber || lot?.lot_project_cadastral_lot_number || lot || '').trim()
         return [lotNumber, {
           usedCount: Number(lot?.usedCount ?? lot?.used_count ?? 0),
-          usedByUnits: String(lot?.usedByUnits || lot?.used_by_units || '').trim(),
         }]
       })
       .filter(([lotNumber]) => Boolean(lotNumber))
@@ -154,6 +154,8 @@ const AddLotProjectModal = ({
   const isEdit = mode === 'edit' || Boolean(project)
   const listingCount = Number(project?.listing_count ?? project?.listingCount ?? 0)
   const locationCodeLocked = isEdit && listingCount > 0
+  const projectId = Number(project?.project_bailen_id || project?.lot_project_id || project?.id || 0)
+  const originalLocationCode = String(project?.project_bailen_location_code || project?.lot_project_location_code || project?.locationCode || '').trim().toUpperCase()
   const cadastralUsage = useMemo(() => normalizeCadastralUsage(project || {}), [project])
 
   const [form, setForm] = useState(() => ({
@@ -280,7 +282,7 @@ const AddLotProjectModal = ({
     if (Number(usage?.usedCount || 0) > 0) {
       setAlert({
         type: 'error',
-        message: `Cadastral Lot ${lot} is assigned to ${usage.usedByUnits || 'an existing listing'} and cannot be edited or deleted. Reassign the listing first.`,
+        message: `Cadastral Lot ${lot} can't be removed because it is currently assigned to a listing. Reassign the listing first.`,
       })
       return
     }
@@ -391,6 +393,14 @@ const AddLotProjectModal = ({
       return false
     }
 
+    if (locationCodeLocked && form.locationCode.trim().toUpperCase() !== originalLocationCode) {
+      setAlert({
+        type: 'error',
+        message: "Location Code can't be changed because this project already has listings. Existing Unit IDs use this location code as their prefix.",
+      })
+      return false
+    }
+
     return true
   }
 
@@ -406,40 +416,63 @@ const AddLotProjectModal = ({
       return
     }
 
+    const apiPayload = {
+      name: form.name.trim(),
+      location: form.location.trim(),
+      locationCode: form.locationCode.trim().toUpperCase(),
+      administrator: form.administrator.trim(),
+      taxDeclarationNo: form.taxDeclarationNo.trim(),
+      titleNumber: form.titleNumber.trim(),
+      pin: form.pin.trim(),
+      status: form.status,
+      cadastralLots,
+      defaultDocuments: selectedDocuments.map((document) => ({
+        document_id: document.id,
+        requirement: document.requirement,
+        status: document.status,
+      })),
+    }
+
+    const reviewData = {
+      ...apiPayload,
+      defaultDocuments: selectedDocuments.map((document) => ({
+        name: document.name || 'Document',
+        description: document.description || '',
+        requirement: document.requirement,
+        status: document.status,
+      })),
+    }
+
     setIsSubmitting(true)
-    setAlert({
-      type: 'loading',
-      message: 'Preparing the final double-check...',
-    })
+    let reviewStarted = false
 
     try {
-      const apiPayload = {
-        name: form.name.trim(),
-        location: form.location.trim(),
-        locationCode: form.locationCode.trim().toUpperCase(),
-        administrator: form.administrator.trim(),
-        taxDeclarationNo: form.taxDeclarationNo.trim(),
-        titleNumber: form.titleNumber.trim(),
-        pin: form.pin.trim(),
-        status: form.status,
-        cadastralLots,
-        defaultDocuments: selectedDocuments.map((document) => ({
-          document_id: document.id,
-          requirement: document.requirement,
-          status: document.status,
-        })),
+      if (isEdit) {
+        if (!projectId) {
+          throw new Error('Project ID is unavailable. Refresh the page and try again.')
+        }
+
+        setAlert({
+          type: 'loading',
+          message: 'Checking project changes before final review...',
+        })
+
+        await useFetchPost(
+          `/projects/lot-projects/${projectId}/edit-preflight`,
+          {
+            locationCode: apiPayload.locationCode,
+            cadastralLots: apiPayload.cadastralLots,
+          },
+          { confirmationHandled: 'technical' }
+        )
       }
 
-      const reviewData = {
-        ...apiPayload,
-        defaultDocuments: selectedDocuments.map((document) => ({
-          name: document.name || 'Document',
-          description: document.description || '',
-          requirement: document.requirement,
-          status: document.status,
-        })),
-      }
+      setAlert({
+        type: 'loading',
+        message: 'Opening the final double-check...',
+      })
 
+      reviewStarted = true
       await onSave(apiPayload, reviewData)
     } catch (error) {
       setIsSubmitting(false)
@@ -450,6 +483,7 @@ const AddLotProjectModal = ({
         })
         return
       }
+      if (isEdit && !reviewStarted) setStep(1)
       setAlert({
         type: 'error',
         message: error.message || (isEdit ? 'Failed to prepare project changes.' : 'Failed to prepare the lot project.'),
@@ -627,12 +661,12 @@ const AddLotProjectModal = ({
                                 type="button"
                                 onClick={() => removeCadastralLot(lot)}
                                 disabled={isAssigned}
-                                title={isAssigned ? `Assigned to ${usage.usedByUnits || 'an existing listing'}` : `Remove ${lot}`}
+                                title={isAssigned ? 'Assigned to an existing listing. Reassign it before removing this cadastral lot.' : `Remove ${lot}`}
                                 className={`rounded-full border px-3 py-1 text-xs font-black transition ${isAssigned
                                   ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-500'
                                   : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
                               >
-                                {lot} {isAssigned ? `🔒 ${usage.usedByUnits || 'In use'}` : '×'}
+                                {lot} {isAssigned ? '🔒' : '×'}
                               </button>
                             )
                           })}

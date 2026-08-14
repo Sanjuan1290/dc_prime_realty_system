@@ -94,8 +94,7 @@ export const getLotProjects = async (req, res) => {
         c.lot_project_cadastral_lot_number_id,
         c.lot_project_id,
         c.lot_project_cadastral_lot_number,
-        COUNT(DISTINCT listing.lot_project_listing_id) AS usedCount,
-        GROUP_CONCAT(DISTINCT listing.lot_project_listing_unit_id ORDER BY listing.lot_project_listing_unit_id SEPARATOR ', ') AS usedByUnits
+        COUNT(DISTINCT listing.lot_project_listing_id) AS usedCount
       FROM lot_project_cadastral_lot_numbers c
       LEFT JOIN lot_project_listing_cadastral_lots link
         ON link.lot_project_cadastral_lot_number_id = c.lot_project_cadastral_lot_number_id
@@ -320,6 +319,128 @@ export const createLotProject = async (req, res) => {
   }
 };
 
+const normalizeRequestedCadastralLots = (values = []) =>
+  Array.from(new Set(
+    (Array.isArray(values) ? values : [])
+      .map((lot) => String(lot ?? '').trim())
+      .filter(Boolean)
+  ));
+
+const buildLotProjectEditGuardState = async (
+  connection,
+  lotProjectId,
+  existingProject,
+  { locationCode = '', cadastralLots = [] } = {}
+) => {
+  const [listingCountRows] = await connection.query(
+    `SELECT COUNT(*) AS listing_count FROM lot_project_listings WHERE lot_project_id = ?`,
+    [lotProjectId]
+  );
+  const listingCount = Number(listingCountRows[0]?.listing_count || 0);
+  const normalizedLocationCode = String(locationCode || '').trim().toUpperCase();
+  const existingLocationCode = String(existingProject?.lot_project_location_code || '').trim().toUpperCase();
+  const locationCodeChanged = normalizedLocationCode !== existingLocationCode;
+
+  const [existingCadastralRows] = await connection.query(
+    `
+      SELECT
+        c.lot_project_cadastral_lot_number_id,
+        c.lot_project_cadastral_lot_number,
+        COUNT(DISTINCT listing.lot_project_listing_id) AS used_count
+      FROM lot_project_cadastral_lot_numbers c
+      LEFT JOIN lot_project_listing_cadastral_lots link
+        ON link.lot_project_cadastral_lot_number_id = c.lot_project_cadastral_lot_number_id
+      LEFT JOIN lot_project_listings listing
+        ON listing.lot_project_listing_id = link.lot_project_listing_id
+      WHERE c.lot_project_id = ?
+      GROUP BY c.lot_project_cadastral_lot_number_id, c.lot_project_cadastral_lot_number
+    `,
+    [lotProjectId]
+  );
+
+  const requestedCadastralLots = normalizeRequestedCadastralLots(cadastralLots);
+  const requestedCadastralSet = new Set(requestedCadastralLots);
+  const removedCadastralRows = existingCadastralRows.filter(
+    (row) => !requestedCadastralSet.has(String(row.lot_project_cadastral_lot_number))
+  );
+  const inUseRemoval = removedCadastralRows.find((row) => Number(row.used_count || 0) > 0) || null;
+
+  return {
+    listingCount,
+    locationCodeChanged,
+    existingCadastralRows,
+    requestedCadastralLots,
+    removedCadastralRows,
+    inUseRemoval,
+  };
+};
+
+const getLotProjectEditGuardError = ({ listingCount, locationCodeChanged, inUseRemoval } = {}) => {
+  if (locationCodeChanged && Number(listingCount || 0) > 0) {
+    return {
+      status: 409,
+      body: {
+        code: 'PROJECT_LOCATION_CODE_LOCKED',
+        listingCount: Number(listingCount || 0),
+        message: "Location Code can't be changed because this project already has listings. Existing Unit IDs use this location code as their prefix.",
+      },
+    };
+  }
+
+  if (inUseRemoval) {
+    const cadastralLotNumber = String(inUseRemoval.lot_project_cadastral_lot_number || '').trim();
+    return {
+      status: 409,
+      body: {
+        code: 'CADASTRAL_LOT_IN_USE',
+        cadastralLotNumber,
+        usedCount: Number(inUseRemoval.used_count || 0),
+        message: `Cadastral Lot ${cadastralLotNumber} can't be removed because it is currently assigned to a listing. Reassign the listing first.`,
+      },
+    };
+  }
+
+  return null;
+};
+
+export const preflightLotProjectUpdate = async (req, res) => {
+  try {
+    const lotProjectId = Number(req.params.id);
+    const locationCode = String(req.body?.locationCode || '').trim().toUpperCase();
+    const cadastralLots = normalizeRequestedCadastralLots(req.body?.cadastralLots);
+
+    if (!lotProjectId) return res.status(400).json({ message: 'Invalid lot project id.' });
+    if (!locationCode) return res.status(400).json({ message: 'Location code is required.' });
+    if (!Array.isArray(req.body?.cadastralLots)) {
+      return res.status(400).json({ message: 'Cadastral lot validation data is invalid. Refresh the page and try again.' });
+    }
+
+    const [projectRows] = await db.query(
+      `SELECT * FROM lot_projects WHERE lot_project_id = ? LIMIT 1`,
+      [lotProjectId]
+    );
+    const existingProject = projectRows[0];
+    if (!existingProject) return res.status(404).json({ message: 'Lot project not found.' });
+
+    const guardState = await buildLotProjectEditGuardState(db, lotProjectId, existingProject, {
+      locationCode,
+      cadastralLots,
+    });
+    const guardError = getLotProjectEditGuardError(guardState);
+    if (guardError) return res.status(guardError.status).json(guardError.body);
+
+    return res.json({
+      success: true,
+      data: {
+        valid: true,
+        listingCount: guardState.listingCount,
+      },
+    });
+  } catch (error) {
+    return res.status(Number(error?.statusCode || 500)).json({ message: error?.message || getErrorMessage(error) });
+  }
+};
+
 export const updateLotProject = async (req, res) => {
   const connection = await db.getConnection();
 
@@ -351,20 +472,20 @@ export const updateLotProject = async (req, res) => {
       || Object.prototype.hasOwnProperty.call(req.body, 'lot_project_slug');
     const stableSlug = slugWasSubmitted ? payload.slug : existingProject.lot_project_slug;
 
-    const [listingCountRows] = await connection.query(
-      `SELECT COUNT(*) AS listing_count FROM lot_project_listings WHERE lot_project_id = ?`,
-      [lotProjectId]
-    );
-    const listingCount = Number(listingCountRows[0]?.listing_count || 0);
-    const locationCodeChanged = payload.locationCode !== String(existingProject.lot_project_location_code || '').trim().toUpperCase();
-    if (locationCodeChanged && listingCount > 0) {
+    const guardState = await buildLotProjectEditGuardState(connection, lotProjectId, existingProject, payload);
+    const guardError = getLotProjectEditGuardError(guardState);
+    if (guardError) {
       await connection.rollback();
-      return res.status(409).json({
-        code: 'PROJECT_LOCATION_CODE_LOCKED',
-        listingCount,
-        message: `Location Code cannot be changed because this project already has ${listingCount} listing(s). Unit prefixes must remain stable once listings exist.`,
-      });
+      return res.status(guardError.status).json(guardError.body);
     }
+
+    const {
+      listingCount,
+      locationCodeChanged,
+      existingCadastralRows,
+      requestedCadastralLots,
+      removedCadastralRows,
+    } = guardState;
 
     await connection.query(
       `
@@ -386,37 +507,9 @@ export const updateLotProject = async (req, res) => {
 
     // Cadastral master rows are stable identifiers. Keep unchanged rows in place,
     // insert only new values, and refuse to remove any value used by a listing.
-    const [existingCadastralRows] = await connection.query(
-      `
-        SELECT
-          c.lot_project_cadastral_lot_number_id,
-          c.lot_project_cadastral_lot_number,
-          COUNT(DISTINCT listing.lot_project_listing_id) AS used_count,
-          GROUP_CONCAT(DISTINCT listing.lot_project_listing_unit_id ORDER BY listing.lot_project_listing_unit_id SEPARATOR ', ') AS used_by_units
-        FROM lot_project_cadastral_lot_numbers c
-        LEFT JOIN lot_project_listing_cadastral_lots link
-          ON link.lot_project_cadastral_lot_number_id = c.lot_project_cadastral_lot_number_id
-        LEFT JOIN lot_project_listings listing
-          ON listing.lot_project_listing_id = link.lot_project_listing_id
-        WHERE c.lot_project_id = ?
-        GROUP BY c.lot_project_cadastral_lot_number_id, c.lot_project_cadastral_lot_number
-      `,
-      [lotProjectId]
+    const existingCadastralMap = new Map(
+      existingCadastralRows.map((row) => [String(row.lot_project_cadastral_lot_number), row])
     );
-    const requestedCadastralLots = Array.from(new Set(payload.cadastralLots.map((lot) => String(lot).trim()).filter(Boolean)));
-    const requestedCadastralSet = new Set(requestedCadastralLots);
-    const existingCadastralMap = new Map(existingCadastralRows.map((row) => [String(row.lot_project_cadastral_lot_number), row]));
-    const removedCadastralRows = existingCadastralRows.filter((row) => !requestedCadastralSet.has(String(row.lot_project_cadastral_lot_number)));
-    const inUseRemoval = removedCadastralRows.find((row) => Number(row.used_count || 0) > 0);
-    if (inUseRemoval) {
-      await connection.rollback();
-      return res.status(409).json({
-        code: 'CADASTRAL_LOT_IN_USE',
-        cadastralLotNumber: inUseRemoval.lot_project_cadastral_lot_number,
-        usedByUnits: inUseRemoval.used_by_units || '',
-        message: `Cadastral Lot ${inUseRemoval.lot_project_cadastral_lot_number} cannot be edited or deleted because it is assigned to ${inUseRemoval.used_by_units || 'an existing listing'}. Reassign the listing first.`,
-      });
-    }
 
     const removableIds = removedCadastralRows.map((row) => Number(row.lot_project_cadastral_lot_number_id)).filter(Boolean);
     if (removableIds.length) {

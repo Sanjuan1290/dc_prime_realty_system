@@ -469,7 +469,6 @@ const toProjectView = (project = {}) => ({
     lotNumber: lot.lotNumber || lot.lot_project_cadastral_lot_number || lot,
     status: lot.status || 'active',
     usedCount: Number(lot.usedCount || 0),
-    usedByUnits: lot.usedByUnits || '',
   })),
 })
 
