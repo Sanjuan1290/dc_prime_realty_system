@@ -70,6 +70,7 @@ import {
 } from '../Lot_Projects/_shared/lotProject.shared.js';
 import { writeAuditLog } from './auditLogs.controller.js';
 import { createProjectStorageCode } from '../../services/storageCodes.service.js';
+import { resolveDocumentRequiredFlag } from '../../utils/documentRequirement.js';
 
 export const getLotProjects = async (req, res) => {
   try {
@@ -254,7 +255,7 @@ export const createLotProject = async (req, res) => {
     const cleanDocuments = payload.defaultDocuments
       .map((document) => ({
         document_id: Number(document.document_id || document.id),
-        is_required: document.requirement === 'optional' || document.is_required === false ? 0 : 1,
+        is_required: resolveDocumentRequiredFlag(document),
         status: document.status === 'inactive' ? 'inactive' : 'active',
       }))
       .filter((document) => document.document_id);
@@ -536,7 +537,7 @@ export const updateLotProject = async (req, res) => {
     const cleanDocuments = payload.defaultDocuments
       .map((document) => ({
         document_id: Number(document.document_id || document.id),
-        is_required: document.requirement === 'optional' || document.is_required === false ? 0 : 1,
+        is_required: resolveDocumentRequiredFlag(document),
         status: document.status === 'inactive' ? 'inactive' : 'active',
       }))
       .filter((document) => document.document_id);
@@ -877,6 +878,7 @@ export const getLotProjectDocumentCompliance = async (req, res) => {
     connection.release();
   }
 };
+
 
 
 

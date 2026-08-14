@@ -92,6 +92,7 @@ import {
   renameCloudinaryAsset,
 } from '../../../services/cloudinaryUnitFolder.service.js';
 import { createListingStorageCode } from '../../../services/storageCodes.service.js';
+import { resolveDocumentRequiredFlag } from '../../../utils/documentRequirement.js';
 
 const normalizeListingDocumentRequirements = (documents = []) => {
   const documentMap = new Map();
@@ -102,11 +103,7 @@ const normalizeListingDocumentRequirements = (documents = []) => {
 
     documentMap.set(documentId, {
       document_id: documentId,
-      is_required:
-        String(document?.requirement || '').trim().toLowerCase() === 'optional' ||
-        document?.is_required === false
-          ? 0
-          : 1,
+      is_required: resolveDocumentRequiredFlag(document),
       status: String(document?.status || 'active').trim().toLowerCase() === 'inactive'
         ? 'inactive'
         : 'active',
@@ -2367,6 +2364,7 @@ export const deleteLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
+
 
 
 

@@ -3,6 +3,7 @@ import { FiFileText, FiSave, FiX } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
 import EditListingDocumentsModal from '../../ListingComponents/EditListingDocumentsModal/EditListingDocumentsModal'
 import { calculateContractPricing } from '../../../../utils/listingPricing.js'
+import { resolveDocumentRequirement } from '../../../../utils/documentRequirement.js'
 
 const statusOptions = [
   { value: 'available', label: 'Available' },
@@ -65,23 +66,13 @@ const splitLots = (value) =>
 const getLotNumberValue = (lot) =>
   String(lot?.lotNumber || lot?.lot_project_cadastral_lot_number || lot?.value || lot || '').trim()
 
-const normalizeDocumentRequirement = (value, fallback = 'required') =>
-  String(value || fallback).trim().toLowerCase() === 'optional' ? 'optional' : 'required'
-
 const normalizeListingDocument = (document = {}) => ({
   id: Number(document.document_id || document.id || 0) || null,
   document_id: Number(document.document_id || document.id || 0) || null,
   name: document.name || document.document_name || 'Document',
   description: document.description || document.document_description || '',
   source: document.source || 'Listing Requirement',
-  requirement: normalizeDocumentRequirement(
-    document.requirement,
-    document.lot_project_listing_document_is_required === false ||
-    document.lot_project_default_document_is_required === false ||
-    document.document_is_required === false
-      ? 'optional'
-      : 'required'
-  ),
+  requirement: resolveDocumentRequirement(document),
   status: String(
     document.lot_project_listing_document_status ||
     document.lot_project_default_document_status ||
@@ -719,6 +710,7 @@ const EditUnitStatusModal = ({ listing, project = {}, listingDocuments = [], lib
 }
 
 export default EditUnitStatusModal
+
 
 
 

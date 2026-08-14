@@ -30,7 +30,7 @@ import {
   resolveListingStorageCode,
   resolveProjectStorageCode,
 } from '../../../services/storageCodes.service.js';
-
+import { resolveDocumentRequiredFlag } from '../../../utils/documentRequirement.js';
 
 const normalizeUploadedDocumentFiles = (body = {}) => {
   const rawFiles = Array.isArray(body.files)
@@ -238,7 +238,7 @@ export const updateLotProjectListingDocumentRequirements = async (req, res) => {
 
       documentMap.set(documentId, {
         document_id: documentId,
-        is_required: String(document.requirement || '').toLowerCase() === 'optional' || document.is_required === false ? 0 : 1,
+        is_required: resolveDocumentRequiredFlag(document),
         status: String(document.status || 'active').toLowerCase() === 'inactive' ? 'inactive' : 'active',
       });
     });
@@ -885,3 +885,4 @@ export const clearLotProjectListingDocument = async (req, res) => {
     connection.release();
   }
 };
+

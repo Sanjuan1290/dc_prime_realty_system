@@ -1,11 +1,7 @@
 import { useMemo, useState } from 'react'
 import { FiCheckCircle, FiFileText, FiLoader, FiSearch, FiTrash2, FiX } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
-
-const normalizeRequirement = (value, fallback = 'required') => {
-  const clean = String(value || fallback).trim().toLowerCase()
-  return clean === 'optional' ? 'optional' : 'required'
-}
+import { resolveDocumentRequirement } from '../../../../utils/documentRequirement.js'
 
 const normalizeDocument = (document = {}) => ({
   id: Number(document.document_id || document.id || 0) || null,
@@ -13,12 +9,7 @@ const normalizeDocument = (document = {}) => ({
   name: document.name || document.document_name || 'Document',
   description: document.description || document.document_description || '',
   source: document.source || 'Project Default',
-  requirement: normalizeRequirement(
-    document.requirement,
-    document.lot_project_listing_document_is_required === false ||
-    document.lot_project_default_document_is_required === false ||
-    document.document_is_required === false ? 'optional' : 'required'
-  ),
+  requirement: resolveDocumentRequirement(document),
   status: String(document.status || document.lot_project_listing_document_status || document.lot_project_default_document_status || document.document_status || 'active').toLowerCase() === 'inactive'
     ? 'inactive'
     : 'active',
@@ -68,7 +59,7 @@ const EditListingDocumentsModal = ({ selectedDocuments = [], setSelectedDocument
 
     setDocuments((current) => [
       ...current,
-      normalizeDocument({ ...document, source: 'Document Library', requirement: 'required', status: 'active' }),
+      normalizeDocument({ ...document, source: 'Document Library', status: 'active' }),
     ])
 
     setAlert({ type: 'success', message: `${document.name} added to listing requirements.` })
@@ -213,5 +204,6 @@ const EditListingDocumentsModal = ({ selectedDocuments = [], setSelectedDocument
 }
 
 export default EditListingDocumentsModal
+
 
 

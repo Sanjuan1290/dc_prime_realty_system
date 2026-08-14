@@ -30,6 +30,7 @@ import {
   assertBuyerFormSchema,
   revokeOpenBuyerFormLinks,
 } from '../BuyerForms/buyerForm.shared.js';
+import { resolveDocumentRequiredFlag } from '../../../utils/documentRequirement.js';
 
 const cleanNamePart = (value) => toFormalTitleCase(value, 255);
 
@@ -114,12 +115,7 @@ const normalizeDocumentPayload = (documents = []) =>
   documents
     .map((document) => ({
       document_id: Number(document.document_id || document.id),
-      is_required:
-        document.requirement === 'optional' ||
-        document.requirement === 'Optional' ||
-        document.is_required === false
-          ? 0
-          : 1,
+      is_required: resolveDocumentRequiredFlag(document),
       status: document.status === 'inactive' ? 'inactive' : 'active',
     }))
     .filter((document) => document.document_id);
@@ -1169,5 +1165,6 @@ export const reserveLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
+
 
 

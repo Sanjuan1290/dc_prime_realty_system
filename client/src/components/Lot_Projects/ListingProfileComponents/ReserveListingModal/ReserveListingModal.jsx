@@ -15,6 +15,7 @@ import ReservePaymentTermsModal from './ReservePaymentTermsModal'
 import { reserveSteps } from './reserveData'
 import { getInitialClientForm, getPaymentCalculations } from './reserveUtils'
 import { getListingPricingForMode } from '../../../../utils/listingPricing.js'
+import { normalizeDocumentRequirement, resolveDocumentRequirement } from '../../../../utils/documentRequirement.js'
 import { StepPill } from './ReserveShared'
 import { getBuyerProfileValidationError } from '../../../../utils/buyerProfileValidation'
 import { useFetch as fetchApi } from '../../../../utils/useFetch'
@@ -32,9 +33,6 @@ const shiftIsoYears = (value, years) => {
   return new Date(Date.UTC(year + years, month - 1, day)).toISOString().slice(0, 10)
 }
 
-const normalizeRequirement = (value, fallback = 'required') =>
-  String(value || fallback).trim().toLowerCase() === 'optional' ? 'optional' : 'required'
-
 const normalizeTemplateRequirement = (document = {}) => {
   const value = document.template_document_list_is_required ?? document.document_is_required ?? document.is_required
   return value === false || value === 0 || value === '0' || String(value || '').trim().toLowerCase() === 'optional'
@@ -48,14 +46,7 @@ const normalizeLibraryDocument = (document = {}) => ({
   name: document.name || document.document_name || 'Document',
   description: document.description || document.document_description || '',
   source: document.source || 'Document Library',
-  requirement: normalizeRequirement(
-    document.requirement,
-    document.lot_project_listing_document_is_required === false ||
-    document.lot_project_default_document_is_required === false ||
-    document.document_is_required === false
-      ? 'optional'
-      : 'required'
-  ),
+  requirement: resolveDocumentRequirement(document),
   status: String(
     document.lot_project_listing_document_status ||
     document.lot_project_default_document_status ||
@@ -373,7 +364,7 @@ const ReserveListingModal = ({
   const updateDocumentRequirement = (documentId, requirement) => {
     setSelectedDocuments((current) => current.map((document) =>
       Number(document.document_id || document.id) === Number(documentId)
-        ? { ...document, requirement: normalizeRequirement(requirement) }
+        ? { ...document, requirement: normalizeDocumentRequirement(requirement) }
         : document
     ))
     if (alert?.type === 'error') setAlert(null)
@@ -680,4 +671,5 @@ const ReserveListingModal = ({
 }
 
 export default ReserveListingModal
+
 

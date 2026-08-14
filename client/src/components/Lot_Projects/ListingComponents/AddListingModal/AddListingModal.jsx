@@ -3,6 +3,7 @@ import { FiFileText, FiSave, FiX } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
 import EditListingDocumentsModal from '../EditListingDocumentsModal/EditListingDocumentsModal'
 import { calculateContractPricing } from '../../../../utils/listingPricing.js'
+import { resolveDocumentRequirement } from '../../../../utils/documentRequirement.js'
 
 const Field = ({ label, value, onChange, placeholder, type = 'text', helper, required = false }) => (
   <label className="flex flex-col gap-1.5">
@@ -53,9 +54,7 @@ const normalizeDocument = (document = {}) => ({
   name: document.name || document.document_name || 'Document',
   description: document.description || document.document_description || '',
   source: document.source || 'Project Default',
-  requirement: String(
-    document.requirement || (document.lot_project_default_document_is_required === false || document.document_is_required === false ? 'optional' : 'required')
-  ).toLowerCase() === 'optional' ? 'optional' : 'required',
+  requirement: resolveDocumentRequirement(document),
   status: String(document.status || document.lot_project_default_document_status || document.document_status || 'active').toLowerCase() === 'inactive' ? 'inactive' : 'active',
 })
 
@@ -329,5 +328,6 @@ const AddListingModal = ({ project = {}, projectDefaultDocuments = [], libraryDo
 }
 
 export default AddListingModal
+
 
 
