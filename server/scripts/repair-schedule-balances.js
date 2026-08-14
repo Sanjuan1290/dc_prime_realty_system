@@ -12,8 +12,8 @@ import {
 
 const rebuildListingSchedules = async (connection, listing) => {
   await connection.query(
-    `DELETE FROM lot_project_payment_schedules WHERE lot_project_id = ? AND lot_project_listing_id = ?`,
-    [listing.lot_project_id, listing.lot_project_listing_id]
+    `DELETE FROM lot_project_payment_schedules WHERE lot_project_id = ? AND lot_project_listing_id = ? AND lot_project_client_profile_id = ? AND lot_project_account_id = ?`,
+    [listing.lot_project_id, listing.lot_project_listing_id, listing.lot_project_client_profile_id, listing.lot_project_account_id]
   );
 
   const terms = getComputedSoaTerms(listing, []);
@@ -26,6 +26,7 @@ const rebuildListingSchedules = async (connection, listing) => {
     'lot_project_id',
     'lot_project_listing_id',
     'lot_project_client_profile_id',
+    'lot_project_account_id',
     'due_date',
     'description',
     'beginning_balance',
@@ -57,6 +58,7 @@ const rebuildListingSchedules = async (connection, listing) => {
       listing.lot_project_id,
       listing.lot_project_listing_id,
       listing.lot_project_client_profile_id,
+      listing.lot_project_account_id,
       row.dueDate,
       row.description,
       Number(row.beginningBalance || 0),
@@ -94,17 +96,29 @@ const rebuildListingSchedules = async (connection, listing) => {
 };
 
 const syncFullyPaidSubstatus = async (connection, listing) => {
+  // Historical accounts are repaired too, but only the listing's CURRENT account
+  // is allowed to change the listing-level sold substatus.
+  if (Number(listing.current_account_id || 0) !== Number(listing.lot_project_account_id || 0)) return;
+
   const [rows] = await connection.query(
     `
       SELECT COALESCE(MAX(ending_balance), 0) AS remaining_balance
       FROM lot_project_payment_schedules
       WHERE lot_project_id = ?
         AND lot_project_listing_id = ?
+        AND lot_project_client_profile_id = ?
+        AND lot_project_account_id = ?
+        AND schedule_status <> 'Cancelled'
         AND LOWER(description) NOT LIKE '%legal%'
         AND LOWER(description) NOT LIKE '%misc%'
         AND LOWER(description) NOT LIKE '%lmf%'
     `,
-    [listing.lot_project_id, listing.lot_project_listing_id]
+    [
+      listing.lot_project_id,
+      listing.lot_project_listing_id,
+      listing.lot_project_client_profile_id,
+      listing.lot_project_account_id,
+    ]
   );
 
   if (Number(rows[0]?.remaining_balance || 0) <= 0.009) {
@@ -114,9 +128,10 @@ const syncFullyPaidSubstatus = async (connection, listing) => {
         SET lot_project_listing_sold_substatus = 'fully_paid'
         WHERE lot_project_id = ?
           AND lot_project_listing_id = ?
+          AND current_account_id = ?
           AND lot_project_listing_status = 'sold'
       `,
-      [listing.lot_project_id, listing.lot_project_listing_id]
+      [listing.lot_project_id, listing.lot_project_listing_id, listing.lot_project_account_id]
     );
   }
 };
@@ -129,10 +144,12 @@ const getVerifiedPayments = async (connection, listing) => {
       FROM lot_project_payments
       WHERE lot_project_id = ?
         AND lot_project_listing_id = ?
+        AND lot_project_client_profile_id = ?
+        AND lot_project_account_id = ?
         AND lot_project_payment_status = 'Verified'
       ORDER BY lot_project_payment_date ASC, lot_project_payment_id ASC
     `,
-    [listing.lot_project_id, listing.lot_project_listing_id]
+    [listing.lot_project_id, listing.lot_project_listing_id, listing.lot_project_client_profile_id, listing.lot_project_account_id]
   );
 
   return rows;
@@ -169,10 +186,13 @@ const run = async () => {
 
     const [listings] = await connection.query(
       `
-        SELECT l.*, cp.*
-        FROM lot_project_listings l
+        SELECT l.*, cp.*, account.lot_project_account_id, account.account_reference, account.account_status
+        FROM lot_project_accounts account
+        INNER JOIN lot_project_listings l
+          ON l.lot_project_listing_id = account.lot_project_listing_id
+         AND l.lot_project_id = account.lot_project_id
         INNER JOIN lot_project_client_profiles cp
-          ON cp.lot_project_listing_id = l.lot_project_listing_id
+          ON cp.lot_project_client_profile_id = account.lot_project_client_profile_id
       `
     );
 
@@ -185,8 +205,10 @@ const run = async () => {
             ON p.lot_project_payment_id = pa.lot_project_payment_id
           WHERE p.lot_project_id = ?
             AND p.lot_project_listing_id = ?
+            AND p.lot_project_client_profile_id = ?
+            AND p.lot_project_account_id = ?
         `,
-        [listing.lot_project_id, listing.lot_project_listing_id]
+        [listing.lot_project_id, listing.lot_project_listing_id, listing.lot_project_client_profile_id, listing.lot_project_account_id]
       );
 
       await rebuildListingSchedules(connection, listing);
@@ -207,7 +229,7 @@ const run = async () => {
 
       await recomputeListingScheduleBalances(connection, listing);
       await syncFullyPaidSubstatus(connection, listing);
-      console.log(`Repaired ${listing.lot_project_listing_unit_id}: rebuilt schedule and replayed ${payments.length} verified payment(s).`);
+      console.log(`Repaired ${listing.lot_project_listing_unit_id} / ${listing.account_reference}: rebuilt the account-scoped schedule and replayed ${payments.length} verified payment(s).`);
     }
 
     await connection.commit();
@@ -223,5 +245,6 @@ const run = async () => {
 };
 
 run();
+
 
 

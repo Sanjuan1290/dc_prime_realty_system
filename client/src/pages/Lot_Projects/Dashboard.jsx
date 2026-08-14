@@ -463,7 +463,8 @@ const toProjectView = (project = {}) => ({
   project_bailen_optional_documents: project.defaultDocuments?.filter((document) => document.requirement === 'optional' || document.lot_project_default_document_is_required === 0).length || 0,
   project_bailen_created_at: project.lot_project_created_at || project.created_at,
   project_bailen_updated_at: project.lot_project_updated_at || project.updated_at,
-  cadastral_lots: (project.cadastralLots || project.cadastral_lots || []).map((lot) => ({
+  listingCount: Number(project.listingCount ?? project.listing_count ?? 0),
+  cadastral_lots: (project.cadastralLotDetails || project.cadastral_lot_details || project.cadastralLots || project.cadastral_lots || []).map((lot) => ({
     id: lot.id || lot.lot_project_cadastral_lot_number_id || lot.lotNumber || lot,
     lotNumber: lot.lotNumber || lot.lot_project_cadastral_lot_number || lot,
     status: lot.status || 'active',
@@ -809,6 +810,7 @@ const Dashboard = () => {
 }
 
 export default Dashboard
+
 
 
 

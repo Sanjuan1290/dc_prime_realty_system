@@ -8,6 +8,8 @@ import {
   nullableText,
   positiveNumber,
   roundMoney,
+  getEmployeeSchedules,
+  timeOnly,
   upsertEmployeeSchedules,
 } from './employeeModule.shared.js';
 
@@ -48,6 +50,35 @@ const normalizePayload = (body = {}) => ({
   shift_end: body.shift_end,
   break_minutes: body.break_minutes,
 });
+
+const buildRequestedScheduleSignature = (payload = {}) => {
+  const workDays = new Set((Array.isArray(payload.work_days) ? payload.work_days : [1, 2, 3, 4, 5]).map(Number));
+  const customSchedules = Array.isArray(payload.schedules) ? payload.schedules : [];
+  const defaultStart = timeOnly(payload.shift_start) || '08:00:00';
+  const defaultEnd = timeOnly(payload.shift_end) || '17:00:00';
+  const defaultBreak = Math.min(Math.max(Math.trunc(positiveNumber(payload.break_minutes, 60)), 0), 480);
+
+  return Array.from({ length: 7 }, (_, weekday) => {
+    const custom = customSchedules.find((item) => Number(item.weekday) === weekday) || {};
+    const isWorkDay = custom.is_work_day === undefined ? workDays.has(weekday) : Boolean(custom.is_work_day);
+    const start = isWorkDay ? (timeOnly(custom.shift_start) || defaultStart) : null;
+    const end = isWorkDay ? (timeOnly(custom.shift_end) || defaultEnd) : null;
+    const breakMinutes = Math.min(Math.max(Math.trunc(positiveNumber(custom.break_minutes, defaultBreak)), 0), 480);
+    return `${weekday}:${isWorkDay ? 1 : 0}:${start || ''}:${end || ''}:${breakMinutes}`;
+  }).join('|');
+};
+
+const buildExistingScheduleSignature = (schedules = []) => {
+  const byWeekday = new Map(schedules.map((schedule) => [Number(schedule.weekday), schedule]));
+  return Array.from({ length: 7 }, (_, weekday) => {
+    const schedule = byWeekday.get(weekday) || {};
+    const isWorkDay = Boolean(schedule.is_work_day);
+    const start = isWorkDay ? (timeOnly(schedule.shift_start) || '') : '';
+    const end = isWorkDay ? (timeOnly(schedule.shift_end) || '') : '';
+    const breakMinutes = Math.min(Math.max(Math.trunc(positiveNumber(schedule.break_minutes, 60)), 0), 480);
+    return `${weekday}:${isWorkDay ? 1 : 0}:${start}:${end}:${breakMinutes}`;
+  }).join('|');
+};
 
 const getNextEmployeeCode = async (connection) => {
   const [rows] = await connection.query('SELECT COALESCE(MAX(employee_id), 0) + 1 AS next_id FROM employees');
@@ -272,7 +303,11 @@ export const updateEmployee = async (req, res) => {
         payload.status, req.authUser?.id || null, employeeId,
       ]
     );
-    await upsertEmployeeSchedules(connection, employeeId, payload);
+    const existingSchedules = await getEmployeeSchedules(connection, employeeId);
+    const scheduleChanged = buildRequestedScheduleSignature(payload) !== buildExistingScheduleSignature(existingSchedules);
+    if (scheduleChanged) {
+      await upsertEmployeeSchedules(connection, employeeId, payload);
+    }
     await writeAuditLog(connection, req, {
       actor: req.authUser,
       action: 'update', module: 'Employees', entityType: 'employee', entityId: String(employeeId),
@@ -282,6 +317,7 @@ export const updateEmployee = async (req, res) => {
         previousMonthlySalary: Number(currentRows[0].monthly_salary || 0),
         monthlySalary: payload.monthlySalary,
         status: payload.status,
+        scheduleChanged,
       },
     });
     await connection.commit();
@@ -318,5 +354,6 @@ export const updateEmployeeStatus = async (req, res) => {
     connection.release();
   }
 };
+
 
 

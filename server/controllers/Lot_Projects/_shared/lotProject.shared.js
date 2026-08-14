@@ -252,13 +252,24 @@ export const mapListingRow = (row = {}) => {
 
 export const mapProjectRows = (projects = [], cadastralRows = []) => {
   const cadastralMap = new Map();
+  const cadastralDetailMap = new Map();
 
   cadastralRows.forEach((row) => {
     if (!cadastralMap.has(row.lot_project_id)) {
       cadastralMap.set(row.lot_project_id, []);
+      cadastralDetailMap.set(row.lot_project_id, []);
     }
 
-    cadastralMap.get(row.lot_project_id).push(row.lot_project_cadastral_lot_number);
+    const lotNumber = row.lot_project_cadastral_lot_number || row.lotNumber || '';
+    cadastralMap.get(row.lot_project_id).push(lotNumber);
+    cadastralDetailMap.get(row.lot_project_id).push({
+      ...row,
+      id: row.lot_project_cadastral_lot_number_id || row.id || null,
+      lotNumber,
+      usedCount: Number(row.usedCount ?? row.used_count ?? 0),
+      usedByUnits: row.usedByUnits || row.used_by_units || '',
+      status: 'active',
+    });
   });
 
   return projects.map((project) => ({
@@ -277,6 +288,9 @@ export const mapProjectRows = (projects = [], cadastralRows = []) => {
     status: project.lot_project_status,
     routePath: `/portal/lot-projects/${project.lot_project_slug}`,
     cadastralLots: cadastralMap.get(project.lot_project_id) || [],
+    cadastralLotDetails: cadastralDetailMap.get(project.lot_project_id) || [],
+    listingCount: Number(project.listing_count || 0),
+    listing_count: Number(project.listing_count || 0),
     defaultDocs: Number(project.default_documents_count || 0),
     requiredDocs: Number(project.required_documents_count || 0),
   }));
@@ -4166,5 +4180,6 @@ export const addIfColumnExists = async (connection, tableName, columns, values, 
 };
 
 // End of lotProject.shared.js — verified complete.
+
 
 

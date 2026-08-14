@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { FiFileText, FiSave, FiX } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
 import EditListingDocumentsModal from '../../ListingComponents/EditListingDocumentsModal/EditListingDocumentsModal'
@@ -90,6 +90,30 @@ const normalizeListingDocument = (document = {}) => ({
     'active'
   ).toLowerCase() === 'inactive' ? 'inactive' : 'active',
 })
+
+const normalizeOldUnitIds = (value = '') =>
+  String(value || '')
+    .split(/[,;\n]+/)
+    .map((item) => item.trim().toUpperCase())
+    .filter(Boolean)
+
+const hasOldUnitId = (value, unitId) =>
+  Boolean(unitId) && normalizeOldUnitIds(value).includes(String(unitId).trim().toUpperCase())
+
+const appendOldUnitId = (value, unitId) => {
+  const cleanUnitId = String(unitId || '').trim().toUpperCase()
+  if (!cleanUnitId || hasOldUnitId(value, cleanUnitId)) return String(value || '').trim()
+  const current = String(value || '').trim()
+  return current ? `${current}, ${cleanUnitId}` : cleanUnitId
+}
+
+const documentRequirementSignature = (documents = []) =>
+  documents
+    .map(normalizeListingDocument)
+    .filter((document) => document.id)
+    .map((document) => `${document.id}:${document.requirement}:${document.status}`)
+    .sort()
+    .join('|')
 
 const Field = ({
   label,
@@ -214,7 +238,7 @@ const EditUnitStatusModal = ({ listing, project = {}, listingDocuments = [], lib
     status: currentStatus,
   })
 
-  const [documentRequirements, setDocumentRequirements] = useState(() => {
+  const initialDocumentRequirements = useMemo(() => {
     const sourceDocuments = listingDocuments.length ? listingDocuments : projectDefaultDocuments
     return sourceDocuments
       .map((document) => normalizeListingDocument({
@@ -222,8 +246,11 @@ const EditUnitStatusModal = ({ listing, project = {}, listingDocuments = [], lib
         source: listingDocuments.length ? 'Listing Requirement' : 'Project Default',
       }))
       .filter((document) => document.id && document.status === 'active')
-  })
+  }, [listingDocuments, projectDefaultDocuments])
+  const [documentRequirements, setDocumentRequirements] = useState(() => initialDocumentRequirements)
   const [showEditDocumentsModal, setShowEditDocumentsModal] = useState(false)
+  const [showOldUnitIdConfirm, setShowOldUnitIdConfirm] = useState(false)
+  const [lastSuggestedUnitCode, setLastSuggestedUnitCode] = useState('')
   const [alert, setAlert] = useState(null)
   const originalUnitCode = String(listing?.unit_id || listing?.unitCode || '').trim().toUpperCase()
 
@@ -233,6 +260,18 @@ const EditUnitStatusModal = ({ listing, project = {}, listingDocuments = [], lib
   }, [form.unitNumber, locationCode])
 
   const unitIdChanged = Boolean(originalUnitCode && unitCode !== originalUnitCode)
+  const cadastralChanged = String(form.cadastralLotNo || '') !== String(selectedLotNumber || '')
+  const documentsChanged = documentRequirementSignature(documentRequirements) !== documentRequirementSignature(initialDocumentRequirements)
+  const previousUnitIdRetained = !unitIdChanged || hasOldUnitId(form.oldUnitIds, originalUnitCode)
+
+  useEffect(() => {
+    if (!unitIdChanged || !originalUnitCode || lastSuggestedUnitCode === unitCode) return
+    setForm((current) => ({
+      ...current,
+      oldUnitIds: appendOldUnitId(current.oldUnitIds, originalUnitCode),
+    }))
+    setLastSuggestedUnitCode(unitCode)
+  }, [lastSuggestedUnitCode, originalUnitCode, unitCode, unitIdChanged])
 
   const priceBreakdown = useMemo(() => {
     const shared = {
@@ -269,27 +308,25 @@ const EditUnitStatusModal = ({ listing, project = {}, listingDocuments = [], lib
     setAlert({ type: 'success', message: 'Listing document requirements updated. Save Changes to apply them.' })
   }
 
-  const handleSubmit = async (event) => {
-    event.preventDefault()
-
+  const validateForm = () => {
     if (!form.unitNumber.trim()) {
       setAlert({ type: 'error', message: 'Unit number is required.' })
-      return
+      return false
     }
 
     if (Number(form.installmentPricePerSqm || 0) <= 0) {
       setAlert({ type: 'error', message: 'Installment price per SQM must be greater than 0.' })
-      return
+      return false
     }
 
     if (Number(form.cashPricePerSqm || 0) <= 0) {
       setAlert({ type: 'error', message: 'Cash price per SQM must be greater than 0.' })
-      return
+      return false
     }
 
     if (Number(form.lotAreaSqm || 0) <= 0) {
       setAlert({ type: 'error', message: 'Lot area SQM must be greater than 0.' })
-      return
+      return false
     }
 
     const allowedStatusValues = new Set(allowedStatusOptions.map((status) => status.value))
@@ -298,18 +335,20 @@ const EditUnitStatusModal = ({ listing, project = {}, listingDocuments = [], lib
         type: 'error',
         message: 'This status change is blocked. Follow the cancellation and settlement process instead.',
       })
-      return
+      return false
     }
 
-    const lotTypeLabel = lotTypes.find((item) => item.value === form.lotType)?.label || 'Inner'
+    return true
+  }
 
+  const saveChanges = async ({ confirmSkipPreviousUnitId = false, oldUnitIdsOverride } = {}) => {
+    const lotTypeLabel = lotTypes.find((item) => item.value === form.lotType)?.label || 'Inner'
+    const oldUnitIds = oldUnitIdsOverride ?? form.oldUnitIds
     const payload = {
       unitCode,
       unit_id: unitCode,
-      cadastralLots: form.cadastralLotNo ? [form.cadastralLotNo] : [],
-      cadastral_lot_no: form.cadastralLotNo,
-      oldUnitIds: form.oldUnitIds,
-      old_unit_ids: form.oldUnitIds,
+      oldUnitIds,
+      old_unit_ids: oldUnitIds,
       lotType: lotTypeLabel,
       lot_type: lotTypeLabel,
       status: form.status,
@@ -320,14 +359,25 @@ const EditUnitStatusModal = ({ listing, project = {}, listingDocuments = [], lib
       legalMiscRate: Number(form.legalMiscRate || 0),
       annualInterestRate: Number(form.annualInterestRate || 0),
       reservationFee: Number(form.reservationFee || 0),
-      documentRequirements,
+      confirmSkipPreviousUnitId,
+    }
+
+    // Relationship arrays are submitted only when the user actually changed them.
+    // The backend independently verifies the diff before mutating anything.
+    if (cadastralChanged) {
+      payload.cadastralLots = form.cadastralLotNo ? [form.cadastralLotNo] : []
+      payload.cadastral_lot_no = form.cadastralLotNo
+    }
+    if (documentsChanged) {
+      payload.documentRequirements = documentRequirements
     }
 
     try {
+      setShowOldUnitIdConfirm(false)
       setAlert({
         type: 'loading',
         message: unitIdChanged
-          ? `Saving ${unitCode} and moving existing document assets from the ${originalUnitCode} folder...`
+          ? `Updating Unit ID from ${originalUnitCode} to ${unitCode}...`
           : 'Saving unit details to database...',
       })
       await onSave?.(payload)
@@ -335,6 +385,29 @@ const EditUnitStatusModal = ({ listing, project = {}, listingDocuments = [], lib
       setAlert({ type: 'error', message: error?.message || 'Failed to save unit details.' })
     }
   }
+
+  const handleSubmit = async (event) => {
+    event.preventDefault()
+    if (!validateForm()) return
+
+    if (unitIdChanged && !hasOldUnitId(form.oldUnitIds, originalUnitCode)) {
+      setShowOldUnitIdConfirm(true)
+      return
+    }
+
+    await saveChanges()
+  }
+
+  const addPreviousUnitIdAndContinue = async () => {
+    const nextOldUnitIds = appendOldUnitId(form.oldUnitIds, originalUnitCode)
+    setForm((current) => ({ ...current, oldUnitIds: nextOldUnitIds }))
+    await saveChanges({ oldUnitIdsOverride: nextOldUnitIds })
+  }
+
+  const continueWithoutPreviousUnitId = async () => {
+    await saveChanges({ confirmSkipPreviousUnitId: true })
+  }
+
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/45 p-4">
@@ -412,19 +485,29 @@ const EditUnitStatusModal = ({ listing, project = {}, listingDocuments = [], lib
                 Project code is locked. Type only the unit number after the prefix.
               </p>
 
-              {unitIdChanged ? (
-                <p className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold leading-5 text-blue-800">
-                  Existing Cloudinary document assets will be moved from <strong>{originalUnitCode}</strong> to <strong>{unitCode}</strong>. Future uploads will use the renamed unit folder instead of creating a separate folder.
-                </p>
-              ) : null}
             </label>
 
-            <Field
-              label="Old Unit IDs"
-              value={form.oldUnitIds}
-              onChange={(value) => updateField('oldUnitIds', value)}
-              placeholder="Example: LA-204, Lot 204 old survey ID"
-            />
+            <div className="flex flex-col gap-1.5">
+              <Field
+                label="Old Unit IDs"
+                value={form.oldUnitIds}
+                onChange={(value) => updateField('oldUnitIds', value)}
+                placeholder="Example: LA-204, Lot 204 old survey ID"
+                helper={unitIdChanged
+                  ? `Recommended: keep ${originalUnitCode} so the previous Unit ID remains searchable in listing history.`
+                  : 'Optional historical Unit IDs or survey references for this listing.'}
+              />
+              {unitIdChanged && previousUnitIdRetained ? (
+                <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">
+                  {originalUnitCode} was recommended automatically because the Unit ID changed.
+                </p>
+              ) : null}
+              {unitIdChanged && !previousUnitIdRetained ? (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+                  The previous Unit ID {originalUnitCode} is not being retained. You will be asked to confirm this before saving.
+                </p>
+              ) : null}
+            </div>
 
             <SelectField label="Lot Type" value={form.lotType} onChange={(value) => updateField('lotType', value)}>
               {lotTypes.map((type) => (
@@ -597,11 +680,45 @@ const EditUnitStatusModal = ({ listing, project = {}, listingDocuments = [], lib
             onClose={() => setShowEditDocumentsModal(false)}
           />
         ) : null}
+
+
+        {showOldUnitIdConfirm ? (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/55 p-4">
+            <div role="dialog" aria-modal="true" className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl">
+              <h3 className="text-lg font-black text-slate-950">No Old Unit ID Recorded</h3>
+              <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">
+                You changed the Unit ID from <strong className="text-slate-950">{originalUnitCode}</strong> to <strong className="text-slate-950">{unitCode}</strong>, but the previous Unit ID is not in Old Unit IDs.
+              </p>
+              <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">
+                Keeping it helps preserve listing history and makes older records easier to identify. You can still continue without it if the old value was simply incorrect.
+              </p>
+              <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={continueWithoutPreviousUnitId}
+                  disabled={isSaving}
+                  className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+                >
+                  Continue Without Old Unit ID
+                </button>
+                <button
+                  type="button"
+                  onClick={addPreviousUnitIdAndContinue}
+                  disabled={isSaving}
+                  className="h-11 rounded-xl bg-blue-600 px-4 text-sm font-black text-white transition hover:bg-blue-700 disabled:opacity-60"
+                >
+                  Add {originalUnitCode} &amp; Continue
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </form>
     </div>
   )
 }
 
 export default EditUnitStatusModal
+
 
 

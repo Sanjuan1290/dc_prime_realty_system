@@ -354,12 +354,33 @@ export const getLotProjectListings = async (req, res) => {
 const replaceListingSchedulesForProfile = async (connection, projectId, listingRow) => {
   if (!(await tableExists(connection, 'lot_project_payment_schedules'))) return;
 
+  const accountId = Number(listingRow.current_account_id || listingRow.lot_project_account_id || 0);
+  const clientProfileId = Number(listingRow.lot_project_client_profile_id || 0);
+  if (!clientProfileId) {
+    throw Object.assign(new Error('Cannot rebuild SOA without a buyer profile.'), { statusCode: 409 });
+  }
+  if (!accountId) {
+    throw Object.assign(new Error('Cannot rebuild SOA without the current buyer account.'), { statusCode: 409 });
+  }
+
   const terms = getComputedSoaTerms(listingRow, []);
   const computedRows = recomputeComputedSoaBalances(createComputedSoaRows(terms), terms);
 
+  // Keep the previous zero-payment generation as immutable account history.
+  // Never delete schedules by listing id alone because one listing can have
+  // several buyer accounts over its lifetime.
   await connection.query(
-    `DELETE FROM lot_project_payment_schedules WHERE lot_project_listing_id = ?`,
-    [listingRow.lot_project_listing_id]
+    `
+      UPDATE lot_project_payment_schedules
+      SET schedule_status = 'Cancelled',
+          updated_at = NOW()
+      WHERE lot_project_id = ?
+        AND lot_project_listing_id = ?
+        AND lot_project_client_profile_id = ?
+        AND lot_project_account_id = ?
+        AND schedule_status <> 'Cancelled'
+    `,
+    [projectId, listingRow.lot_project_listing_id, clientProfileId, accountId]
   );
 
   if (!computedRows.length) return;
@@ -368,6 +389,7 @@ const replaceListingSchedulesForProfile = async (connection, projectId, listingR
     'lot_project_id',
     'lot_project_listing_id',
     'lot_project_client_profile_id',
+    'lot_project_account_id',
     'due_date',
     'description',
     'beginning_balance',
@@ -385,6 +407,7 @@ const replaceListingSchedulesForProfile = async (connection, projectId, listingR
   };
 
   await addOptionalColumn('interest_amount');
+  await addOptionalColumn('discount_amount');
   await addOptionalColumn('principal_amount');
   await addOptionalColumn('monthly_amortization_amount');
   await addOptionalColumn('paid_interest_amount');
@@ -396,7 +419,8 @@ const replaceListingSchedulesForProfile = async (connection, projectId, listingR
     const baseValues = [
       projectId,
       listingRow.lot_project_listing_id,
-      listingRow.lot_project_client_profile_id,
+      clientProfileId,
+      accountId,
       row.dueDate,
       row.description,
       roundMoneyValue(row.beginningBalance || 0),
@@ -410,7 +434,8 @@ const replaceListingSchedulesForProfile = async (connection, projectId, listingR
     ];
     const optionalValues = optionalColumns.map((column) => {
       if (column === 'interest_amount') return roundMoneyValue(row.interest || 0);
-      if (column === 'principal_amount') return roundMoneyValue(row.principalAmount || 0);
+      if (column === 'discount_amount') return roundMoneyValue(row.discountAmount || row.discount_amount || 0);
+      if (column === 'principal_amount') return roundMoneyValue(row.principalAmount || row.principal_amount || 0);
       if (column === 'monthly_amortization_amount') return roundMoneyValue(row.monthlyAmortizationAmount || row.dueAmount || 0);
       if (column === 'paid_interest_amount') return roundMoneyValue(row.paidInterestAmount || 0);
       if (column === 'paid_principal_amount') return roundMoneyValue(row.paidPrincipalAmount || 0);
@@ -877,10 +902,14 @@ const syncListingInterestToUnlockedSoa = async (connection, projectId, listingId
   const hasOverrideColumn = await columnExists(connection, 'lot_project_client_profiles', 'soa_interest_rate_overridden');
   const [profileRows] = await connection.query(
     `
-      SELECT l.*, cp.*
+      SELECT l.*, cp.*, account.lot_project_account_id
       FROM lot_project_listings l
+      INNER JOIN lot_project_accounts account
+        ON account.lot_project_account_id = l.current_account_id
+       AND account.lot_project_id = l.lot_project_id
+       AND account.lot_project_listing_id = l.lot_project_listing_id
       INNER JOIN lot_project_client_profiles cp
-        ON cp.lot_project_listing_id = l.lot_project_listing_id
+        ON cp.lot_project_client_profile_id = account.lot_project_client_profile_id
        AND cp.lot_project_client_profile_status = 'active'
       WHERE l.lot_project_id = ?
         AND l.lot_project_listing_id = ?
@@ -905,9 +934,10 @@ const syncListingInterestToUnlockedSoa = async (connection, projectId, listingId
             WHERE lot_project_id = ?
               AND lot_project_listing_id = ?
               AND lot_project_client_profile_id = ?
+              AND lot_project_account_id = ?
               AND lot_project_payment_status <> 'Cancelled'
           `,
-          [projectId, listingId, profile.lot_project_client_profile_id]
+          [projectId, listingId, profile.lot_project_client_profile_id, profile.lot_project_account_id]
         ))[0][0]?.total
       : 0;
 
@@ -1187,7 +1217,7 @@ export const updateLotProjectListing = async (req, res) => {
     const legalMiscRate = Number(req.body.legalMiscRate ?? req.body.lmfRate ?? 0);
     const reservationFee = Number(req.body.reservationFee ?? 0);
     const annualInterestRate = Number(req.body.annualInterestRate ?? 0);
-    const listingStatus = normalizeListingStatusPayload(req.body.status || req.body.rawStatus || req.body.listing_status);
+    let listingStatus = normalizeListingStatusPayload(req.body.status || req.body.rawStatus || req.body.listing_status);
 
     if (!unitCode) return res.status(400).json({ message: 'Unit ID is required.' });
     if (!unitCode.startsWith(`${project.lot_project_location_code}-`)) {
@@ -1232,8 +1262,20 @@ export const updateLotProjectListing = async (req, res) => {
         SELECT
           lot_project_listing_id,
           lot_project_listing_status,
+          lot_project_listing_sold_substatus,
+          lot_project_listing_unit_type,
           lot_project_listing_unit_id,
+          lot_project_listing_old_unit_ids,
+          lot_project_listing_area_sqm,
+          lot_project_listing_price_per_sqm,
+          lot_project_listing_installment_price_per_sqm,
+          lot_project_listing_cash_price_per_sqm,
+          lot_project_listing_lmf_rate,
+          lot_project_listing_lmf_amount,
           lot_project_listing_tcp,
+          lot_project_listing_reservation_fee,
+          annual_interest_rate,
+          current_account_id,
           (
             SELECT cp.soa_selected_tcp
             FROM lot_project_client_profiles cp
@@ -1264,6 +1306,47 @@ export const updateLotProjectListing = async (req, res) => {
       { forUpdate: true }
     );
     const currentClientProfileId = Number(currentAccount?.lot_project_client_profile_id || 0);
+
+    // A generic Edit Listing form submits raw status values such as "sold".
+    // Preserve the existing sold substatus (especially fully_paid) unless the
+    // request explicitly changes status/substatus through a business action.
+    const requestedStatusToken = String(req.body.status || req.body.rawStatus || req.body.listing_status || '').trim().toLowerCase();
+    const explicitlyRequestedSoldSubstatus = ['fully_paid', 'sold_active', 'sold / active'].includes(requestedStatusToken);
+    if (
+      listingStatus.status === 'sold'
+      && existingListing.lot_project_listing_status === 'sold'
+      && !explicitlyRequestedSoldSubstatus
+      && !req.body.statusTransitionAction
+    ) {
+      listingStatus = {
+        ...listingStatus,
+        soldSubstatus: existingListing.lot_project_listing_sold_substatus || 'active',
+      };
+    }
+
+    const sameNumber = (left, right) => Math.abs(Number(left || 0) - Number(right || 0)) < 0.000001;
+    const unitIdChanged = unitCode !== String(existingListing.lot_project_listing_unit_id || '').trim().toUpperCase();
+    const statusChanged = listingStatus.status !== existingListing.lot_project_listing_status
+      || String(listingStatus.soldSubstatus || '') !== String(existingListing.lot_project_listing_sold_substatus || '');
+    const annualInterestChanged = hasAnnualInterestRate
+      && !sameNumber(annualInterestRate, existingListing.annual_interest_rate);
+    const oldUnitIdsValue = req.body.oldUnitIds ?? req.body.old_unit_ids ?? existingListing.lot_project_listing_old_unit_ids ?? '';
+    const oldUnitIdAliases = String(oldUnitIdsValue || '')
+      .split(/[,;\n]+/)
+      .map((value) => value.trim().toUpperCase())
+      .filter(Boolean);
+    const previousUnitId = String(existingListing.lot_project_listing_unit_id || '').trim().toUpperCase();
+    const keepsPreviousUnitId = oldUnitIdAliases.includes(previousUnitId);
+
+    if (unitIdChanged && previousUnitId && !keepsPreviousUnitId && req.body.confirmSkipPreviousUnitId !== true) {
+      await connection.rollback();
+      return res.status(409).json({
+        code: 'PREVIOUS_UNIT_ID_CONFIRMATION_REQUIRED',
+        previousUnitId,
+        nextUnitId: unitCode,
+        message: `The Unit ID is changing from ${previousUnitId} to ${unitCode}. Add ${previousUnitId} to Old Unit IDs or explicitly confirm that it should not be retained.`,
+      });
+    }
 
     const statusTransitionAction = req.body.statusTransitionAction || null;
     const statusTransition = validateListingStatusTransition({
@@ -1340,13 +1423,15 @@ export const updateLotProjectListing = async (req, res) => {
       return res.status(409).json({ message: `${unitCode} already exists in ${project.lot_project_name}.` });
     }
 
-    const cloudinarySyncResult = await syncListingDocumentCloudinaryUnitFolder(
-      connection,
-      existingListing.lot_project_listing_id,
-      existingListing.lot_project_listing_unit_id,
-      unitCode,
-      completedCloudinaryMoves
-    );
+    const cloudinarySyncResult = unitIdChanged
+      ? await syncListingDocumentCloudinaryUnitFolder(
+          connection,
+          existingListing.lot_project_listing_id,
+          existingListing.lot_project_listing_unit_id,
+          unitCode,
+          completedCloudinaryMoves
+        )
+      : { movedAssets: 0, updatedDocumentRows: 0, repairedMetadata: 0, deletedFolders: 0, cleanupWarnings: [] };
 
     const updateColumns = [
       'lot_project_listing_unit_type = ?',
@@ -1368,7 +1453,7 @@ export const updateLotProjectListing = async (req, res) => {
     const updateParams = [
       normalizeLotType(req.body.lotType || req.body.lot_type),
       unitCode,
-      toNullable(req.body.oldUnitIds || req.body.old_unit_ids),
+      toNullable(oldUnitIdsValue),
       lotAreaSqm,
       installmentPricePerSqm,
       installmentPricePerSqm,
@@ -1382,7 +1467,7 @@ export const updateLotProjectListing = async (req, res) => {
       listingStatus.soldSubstatus,
     ];
 
-    if (hasAnnualInterestRate) {
+    if (annualInterestChanged) {
       updateColumns.push('annual_interest_rate = ?');
       updateParams.push(annualInterestRate);
     }
@@ -1410,7 +1495,7 @@ export const updateLotProjectListing = async (req, res) => {
       }
     }
 
-    if (listingStatus.status !== 'hold') {
+    if (statusChanged && listingStatus.status !== 'hold') {
       const holdColumns = ['hold_client_name', 'hold_note', 'hold_created_at', 'hold_created_by_user_id'];
       for (const column of holdColumns) {
         if (await columnExists(connection, 'lot_project_listings', column)) {
@@ -1435,7 +1520,6 @@ export const updateLotProjectListing = async (req, res) => {
     }
 
     const resetToAvailable = statusTransition.resetToAvailable;
-    const unitIdChanged = unitCode !== existingListing.lot_project_listing_unit_id;
     const buyerFormSchemaAvailable = await hasBuyerFormSchema(connection);
     let saleArchiveResult = null;
 
@@ -1756,7 +1840,7 @@ export const updateLotProjectListing = async (req, res) => {
         listingId: existingListing.lot_project_listing_id,
         archivedByUserId: req.authUser?.id || null,
       });
-    } else if (!voidUnpaidAccount && buyerFormSchemaAvailable && (unitIdChanged || listingStatus.status !== 'available')) {
+    } else if (!voidUnpaidAccount && buyerFormSchemaAvailable && (unitIdChanged || statusChanged)) {
       await revokeOpenBuyerFormLinks(connection, existingListing.lot_project_listing_id, { status: 'superseded' });
       await connection.query(
         `UPDATE lot_project_listings SET buyer_form_generation = buyer_form_generation + 1 WHERE lot_project_listing_id = ?`,
@@ -1764,42 +1848,76 @@ export const updateLotProjectListing = async (req, res) => {
       );
     }
 
-    if (hasListingCadastralLinks) {
-      await connection.query(
-        `DELETE FROM lot_project_listing_cadastral_lots WHERE lot_project_listing_id = ?`,
-        [existingListing.lot_project_listing_id]
-      );
+    let cadastralSyncResult = { added: 0, removed: 0, skipped: true };
+    const cadastralWasSubmitted = Array.isArray(req.body.cadastralLots)
+      || Object.prototype.hasOwnProperty.call(req.body, 'cadastral_lot_no');
+    if (hasListingCadastralLinks && cadastralWasSubmitted) {
+      const requestedCadastralLots = Array.from(new Set(
+        (Array.isArray(req.body.cadastralLots)
+          ? req.body.cadastralLots
+          : String(req.body.cadastral_lot_no || '').split(','))
+          .map((item) => String(item).trim())
+          .filter(Boolean)
+      ));
 
-      const requestedCadastralLots = Array.isArray(req.body.cadastralLots)
-        ? req.body.cadastralLots.map((item) => String(item).trim()).filter(Boolean)
-        : String(req.body.cadastral_lot_no || '')
-          .split(',')
-          .map((item) => item.trim())
-          .filter(Boolean);
+      const [currentLotRows] = await connection.query(
+        `
+          SELECT
+            c.lot_project_cadastral_lot_number_id,
+            c.lot_project_cadastral_lot_number
+          FROM lot_project_listing_cadastral_lots lcl
+          INNER JOIN lot_project_cadastral_lot_numbers c
+            ON c.lot_project_cadastral_lot_number_id = lcl.lot_project_cadastral_lot_number_id
+          WHERE lcl.lot_project_listing_id = ?
+            AND c.lot_project_id = ?
+        `,
+        [existingListing.lot_project_listing_id, project.lot_project_id]
+      );
+      const currentByNumber = new Map(currentLotRows.map((row) => [String(row.lot_project_cadastral_lot_number), Number(row.lot_project_cadastral_lot_number_id)]));
+      let requestedByNumber = new Map();
 
       if (requestedCadastralLots.length > 0) {
-        const [lotRows] = await connection.query(
+        const [requestedLotRows] = await connection.query(
           `
-            SELECT lot_project_cadastral_lot_number_id
+            SELECT lot_project_cadastral_lot_number_id, lot_project_cadastral_lot_number
             FROM lot_project_cadastral_lot_numbers
             WHERE lot_project_id = ?
               AND lot_project_cadastral_lot_number IN (${requestedCadastralLots.map(() => '?').join(', ')})
           `,
           [project.lot_project_id, ...requestedCadastralLots]
         );
-
-        if (lotRows.length > 0) {
-          await connection.query(
-            `
-              INSERT INTO lot_project_listing_cadastral_lots (
-                lot_project_listing_id,
-                lot_project_cadastral_lot_number_id
-              ) VALUES ${lotRows.map(() => '(?, ?)').join(', ')}
-            `,
-            lotRows.flatMap((lot) => [existingListing.lot_project_listing_id, lot.lot_project_cadastral_lot_number_id])
-          );
+        requestedByNumber = new Map(requestedLotRows.map((row) => [String(row.lot_project_cadastral_lot_number), Number(row.lot_project_cadastral_lot_number_id)]));
+        const missingLots = requestedCadastralLots.filter((lotNumber) => !requestedByNumber.has(lotNumber));
+        if (missingLots.length) {
+          throw Object.assign(new Error(`Unknown cadastral lot number(s): ${missingLots.join(', ')}.`), { statusCode: 400 });
         }
       }
+
+      const removedIds = [...currentByNumber.entries()]
+        .filter(([lotNumber]) => !requestedByNumber.has(lotNumber))
+        .map(([, id]) => id);
+      const addedIds = [...requestedByNumber.entries()]
+        .filter(([lotNumber]) => !currentByNumber.has(lotNumber))
+        .map(([, id]) => id);
+
+      if (removedIds.length) {
+        await connection.query(
+          `DELETE FROM lot_project_listing_cadastral_lots WHERE lot_project_listing_id = ? AND lot_project_cadastral_lot_number_id IN (${removedIds.map(() => '?').join(', ')})`,
+          [existingListing.lot_project_listing_id, ...removedIds]
+        );
+      }
+      if (addedIds.length) {
+        await connection.query(
+          `
+            INSERT INTO lot_project_listing_cadastral_lots (
+              lot_project_listing_id,
+              lot_project_cadastral_lot_number_id
+            ) VALUES ${addedIds.map(() => '(?, ?)').join(', ')}
+          `,
+          addedIds.flatMap((id) => [existingListing.lot_project_listing_id, id])
+        );
+      }
+      cadastralSyncResult = { added: addedIds.length, removed: removedIds.length, skipped: addedIds.length === 0 && removedIds.length === 0 };
     }
 
     let listingDocumentSyncResult = { count: null, skipped: true };
@@ -1807,16 +1925,33 @@ export const updateLotProjectListing = async (req, res) => {
       const requestedListingDocuments = req.body.documentRequirements.length
         ? req.body.documentRequirements
         : await getProjectDefaultDocuments(project.lot_project_id);
-
-      listingDocumentSyncResult = await replaceListingDocumentRequirements(
-        connection,
-        project.lot_project_id,
-        existingListing.lot_project_listing_id,
-        requestedListingDocuments
+      const requestedClean = normalizeListingDocumentRequirements(requestedListingDocuments);
+      const [currentDocumentRows] = await connection.query(
+        `
+          SELECT document_id, lot_project_listing_document_is_required, lot_project_listing_document_status
+          FROM lot_project_listing_documents
+          WHERE lot_project_id = ? AND lot_project_listing_id = ?
+        `,
+        [project.lot_project_id, existingListing.lot_project_listing_id]
       );
+      const signature = (rows) => rows
+        .map((row) => `${Number(row.document_id)}:${Number((row.is_required ?? row.lot_project_listing_document_is_required) || 0)}:${String((row.status ?? row.lot_project_listing_document_status) || 'active').toLowerCase()}`)
+        .sort()
+        .join('|');
+      const currentSignature = signature(currentDocumentRows);
+      const requestedSignature = signature(requestedClean);
+
+      if (currentSignature !== requestedSignature) {
+        listingDocumentSyncResult = await replaceListingDocumentRequirements(
+          connection,
+          project.lot_project_id,
+          existingListing.lot_project_listing_id,
+          requestedListingDocuments
+        );
+      }
     }
 
-    const soaSyncResult = hasAnnualInterestRate
+    const soaSyncResult = annualInterestChanged
       ? await syncListingInterestToUnlockedSoa(connection, project.lot_project_id, existingListing.lot_project_listing_id, annualInterestRate)
       : { synced: 0, skipped: 0 };
 
@@ -1857,6 +1992,12 @@ export const updateLotProjectListing = async (req, res) => {
         soaSyncResult,
         cloudinarySyncResult,
         listingDocumentSyncResult,
+        cadastralSyncResult,
+        changes: {
+          unitIdChanged,
+          statusChanged,
+          annualInterestChanged,
+        },
       },
     });
 
@@ -1872,11 +2013,7 @@ export const updateLotProjectListing = async (req, res) => {
           ? `${unitCode} returned to Sold / Active. Existing buyer, payment, SOA, document, and commission records were kept.`
           : statusTransitionAction === LISTING_STATUS_ACTIONS.SETTLE_CANCELLATION
             ? `${unitCode} cancellation settlement completed.`
-            : cloudinarySyncResult.movedAssets > 0
-          ? cloudinarySyncResult.cleanupWarnings?.length
-            ? `${unitCode} updated and ${cloudinarySyncResult.movedAssets} document asset(s) were moved. Some old Cloudinary folders still contain untracked items and were kept.`
-            : `${unitCode} updated successfully. ${cloudinarySyncResult.movedAssets} uploaded document asset(s) were moved into the ${unitCode} folder and the empty old folder was removed.`
-          : soaSyncResult.synced > 0
+            : soaSyncResult.synced > 0
             ? `${unitCode} updated successfully. SOA interest was synced and recomputed for ${soaSyncResult.synced} buyer account(s).`
             : soaSyncResult.skipped > 0
               ? `${unitCode} updated successfully. Existing SOA was not changed because it has payments or a custom SOA rate.`
@@ -2230,5 +2367,6 @@ export const deleteLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
+
 
 

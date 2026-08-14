@@ -73,6 +73,8 @@ const normalizeProject = (project) => ({
   location: project.location || project.lot_project_location,
   locationCode: project.locationCode || project.lot_project_location_code,
   cadastralLots: project.cadastralLots || [],
+  cadastralLotDetails: project.cadastralLotDetails || project.cadastral_lot_details || [],
+  listingCount: Number(project.listingCount ?? project.listing_count ?? 0),
   defaultDocs: Number(project.defaultDocs || project.default_documents_count || 0),
   requiredDocs: Number(project.requiredDocs || project.required_documents_count || 0),
   totalAccounts: Number(project.totalAccounts || 0),
@@ -680,5 +682,6 @@ const Projects = () => {
 }
 
 export default Projects
+
 
 

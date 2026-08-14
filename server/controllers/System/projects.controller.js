@@ -77,21 +77,32 @@ export const getLotProjects = async (req, res) => {
       SELECT
         lp.*,
         COUNT(DISTINCT lpdd.lot_project_default_document_id) AS default_documents_count,
-        COALESCE(SUM(lpdd.lot_project_default_document_is_required = 1), 0) AS required_documents_count
+        COUNT(DISTINCT CASE WHEN lpdd.lot_project_default_document_is_required = 1 THEN lpdd.lot_project_default_document_id END) AS required_documents_count,
+        COUNT(DISTINCT listing.lot_project_listing_id) AS listing_count
       FROM lot_projects lp
       LEFT JOIN lot_project_default_documents lpdd
         ON lpdd.lot_project_id = lp.lot_project_id
         AND lpdd.lot_project_default_document_status = 'active'
+      LEFT JOIN lot_project_listings listing
+        ON listing.lot_project_id = lp.lot_project_id
       GROUP BY lp.lot_project_id
       ORDER BY lp.lot_project_created_at DESC, lp.lot_project_id DESC
     `);
 
     const [cadastralRows] = await db.query(`
       SELECT
-        lot_project_id,
-        lot_project_cadastral_lot_number
-      FROM lot_project_cadastral_lot_numbers
-      ORDER BY lot_project_cadastral_lot_number ASC
+        c.lot_project_cadastral_lot_number_id,
+        c.lot_project_id,
+        c.lot_project_cadastral_lot_number,
+        COUNT(DISTINCT listing.lot_project_listing_id) AS usedCount,
+        GROUP_CONCAT(DISTINCT listing.lot_project_listing_unit_id ORDER BY listing.lot_project_listing_unit_id SEPARATOR ', ') AS usedByUnits
+      FROM lot_project_cadastral_lot_numbers c
+      LEFT JOIN lot_project_listing_cadastral_lots link
+        ON link.lot_project_cadastral_lot_number_id = c.lot_project_cadastral_lot_number_id
+      LEFT JOIN lot_project_listings listing
+        ON listing.lot_project_listing_id = link.lot_project_listing_id
+      GROUP BY c.lot_project_cadastral_lot_number_id, c.lot_project_id, c.lot_project_cadastral_lot_number
+      ORDER BY c.lot_project_cadastral_lot_number ASC
     `);
 
     return res.json({
@@ -155,6 +166,11 @@ export const getLotProjectBySlug = async (req, res) => {
 
     const cadastralLots = await getProjectCadastralLots(project.lot_project_id);
     const defaultDocuments = await getProjectDefaultDocuments(project.lot_project_id);
+    const [listingCountRows] = await db.query(
+      `SELECT COUNT(*) AS listing_count FROM lot_project_listings WHERE lot_project_id = ?`,
+      [project.lot_project_id]
+    );
+    const listingCount = Number(listingCountRows[0]?.listing_count || 0);
 
     return res.json({
       success: true,
@@ -173,6 +189,8 @@ export const getLotProjectBySlug = async (req, res) => {
         pin: project.lot_project_pin,
         status: project.lot_project_status,
         routePath: `/portal/lot-projects/${project.lot_project_slug}`,
+        listing_count: listingCount,
+        listingCount,
         cadastralLots,
         defaultDocuments,
       },
@@ -316,7 +334,39 @@ export const updateLotProject = async (req, res) => {
 
     await connection.beginTransaction();
 
-    const [result] = await connection.query(
+    const [projectRows] = await connection.query(
+      `SELECT * FROM lot_projects WHERE lot_project_id = ? LIMIT 1 FOR UPDATE`,
+      [lotProjectId]
+    );
+    const existingProject = projectRows[0];
+    if (!existingProject) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Lot project not found.' });
+    }
+
+    // Project name is descriptive data; changing it must not silently rename the
+    // route slug. Preserve the existing slug unless the API explicitly receives
+    // a slug field for a deliberate route migration.
+    const slugWasSubmitted = Object.prototype.hasOwnProperty.call(req.body, 'slug')
+      || Object.prototype.hasOwnProperty.call(req.body, 'lot_project_slug');
+    const stableSlug = slugWasSubmitted ? payload.slug : existingProject.lot_project_slug;
+
+    const [listingCountRows] = await connection.query(
+      `SELECT COUNT(*) AS listing_count FROM lot_project_listings WHERE lot_project_id = ?`,
+      [lotProjectId]
+    );
+    const listingCount = Number(listingCountRows[0]?.listing_count || 0);
+    const locationCodeChanged = payload.locationCode !== String(existingProject.lot_project_location_code || '').trim().toUpperCase();
+    if (locationCodeChanged && listingCount > 0) {
+      await connection.rollback();
+      return res.status(409).json({
+        code: 'PROJECT_LOCATION_CODE_LOCKED',
+        listingCount,
+        message: `Location Code cannot be changed because this project already has ${listingCount} listing(s). Unit prefixes must remain stable once listings exist.`,
+      });
+    }
+
+    await connection.query(
       `
         UPDATE lot_projects
         SET
@@ -331,31 +381,65 @@ export const updateLotProject = async (req, res) => {
           lot_project_status = ?
         WHERE lot_project_id = ?
       `,
-      [payload.name, payload.slug, payload.location, payload.locationCode, payload.administrator, payload.taxDeclarationNo, payload.titleNumber, payload.pin, payload.status, lotProjectId]
+      [payload.name, stableSlug, payload.location, payload.locationCode, payload.administrator, payload.taxDeclarationNo, payload.titleNumber, payload.pin, payload.status, lotProjectId]
     );
 
-    if (result.affectedRows === 0) {
+    // Cadastral master rows are stable identifiers. Keep unchanged rows in place,
+    // insert only new values, and refuse to remove any value used by a listing.
+    const [existingCadastralRows] = await connection.query(
+      `
+        SELECT
+          c.lot_project_cadastral_lot_number_id,
+          c.lot_project_cadastral_lot_number,
+          COUNT(DISTINCT listing.lot_project_listing_id) AS used_count,
+          GROUP_CONCAT(DISTINCT listing.lot_project_listing_unit_id ORDER BY listing.lot_project_listing_unit_id SEPARATOR ', ') AS used_by_units
+        FROM lot_project_cadastral_lot_numbers c
+        LEFT JOIN lot_project_listing_cadastral_lots link
+          ON link.lot_project_cadastral_lot_number_id = c.lot_project_cadastral_lot_number_id
+        LEFT JOIN lot_project_listings listing
+          ON listing.lot_project_listing_id = link.lot_project_listing_id
+        WHERE c.lot_project_id = ?
+        GROUP BY c.lot_project_cadastral_lot_number_id, c.lot_project_cadastral_lot_number
+      `,
+      [lotProjectId]
+    );
+    const requestedCadastralLots = Array.from(new Set(payload.cadastralLots.map((lot) => String(lot).trim()).filter(Boolean)));
+    const requestedCadastralSet = new Set(requestedCadastralLots);
+    const existingCadastralMap = new Map(existingCadastralRows.map((row) => [String(row.lot_project_cadastral_lot_number), row]));
+    const removedCadastralRows = existingCadastralRows.filter((row) => !requestedCadastralSet.has(String(row.lot_project_cadastral_lot_number)));
+    const inUseRemoval = removedCadastralRows.find((row) => Number(row.used_count || 0) > 0);
+    if (inUseRemoval) {
       await connection.rollback();
-      return res.status(404).json({ message: 'Lot project not found.' });
+      return res.status(409).json({
+        code: 'CADASTRAL_LOT_IN_USE',
+        cadastralLotNumber: inUseRemoval.lot_project_cadastral_lot_number,
+        usedByUnits: inUseRemoval.used_by_units || '',
+        message: `Cadastral Lot ${inUseRemoval.lot_project_cadastral_lot_number} cannot be edited or deleted because it is assigned to ${inUseRemoval.used_by_units || 'an existing listing'}. Reassign the listing first.`,
+      });
     }
 
-    await connection.query(`DELETE FROM lot_project_cadastral_lot_numbers WHERE lot_project_id = ?`, [lotProjectId]);
+    const removableIds = removedCadastralRows.map((row) => Number(row.lot_project_cadastral_lot_number_id)).filter(Boolean);
+    if (removableIds.length) {
+      await connection.query(
+        `DELETE FROM lot_project_cadastral_lot_numbers WHERE lot_project_id = ? AND lot_project_cadastral_lot_number_id IN (${removableIds.map(() => '?').join(', ')})`,
+        [lotProjectId, ...removableIds]
+      );
+    }
 
-    if (payload.cadastralLots.length > 0) {
+    const addedCadastralLots = requestedCadastralLots.filter((lot) => !existingCadastralMap.has(lot));
+    if (addedCadastralLots.length) {
       await connection.query(
         `
           INSERT INTO lot_project_cadastral_lot_numbers (
             lot_project_id,
             lot_project_cadastral_lot_number
-          )
-          VALUES ${payload.cadastralLots.map(() => '(?, ?)').join(', ')}
+          ) VALUES ${addedCadastralLots.map(() => '(?, ?)').join(', ')}
         `,
-        payload.cadastralLots.flatMap((lot) => [lotProjectId, lot])
+        addedCadastralLots.flatMap((lot) => [lotProjectId, lot])
       );
     }
 
-    await connection.query(`DELETE FROM lot_project_default_documents WHERE lot_project_id = ?`, [lotProjectId]);
-
+    // Default-document rows are also diffed/upserted instead of delete-all/reinsert.
     const cleanDocuments = payload.defaultDocuments
       .map((document) => ({
         document_id: Number(document.document_id || document.id),
@@ -366,17 +450,26 @@ export const updateLotProject = async (req, res) => {
 
     if (cleanDocuments.length > 0) {
       await connection.query(
+        `DELETE FROM lot_project_default_documents WHERE lot_project_id = ? AND document_id NOT IN (${cleanDocuments.map(() => '?').join(', ')})`,
+        [lotProjectId, ...cleanDocuments.map((document) => document.document_id)]
+      );
+      await connection.query(
         `
           INSERT INTO lot_project_default_documents (
             lot_project_id,
             document_id,
             lot_project_default_document_is_required,
             lot_project_default_document_status
-          )
-          VALUES ${cleanDocuments.map(() => '(?, ?, ?, ?)').join(', ')}
+          ) VALUES ${cleanDocuments.map(() => '(?, ?, ?, ?)').join(', ')}
+          ON DUPLICATE KEY UPDATE
+            lot_project_default_document_is_required = VALUES(lot_project_default_document_is_required),
+            lot_project_default_document_status = VALUES(lot_project_default_document_status),
+            lot_project_default_document_updated_at = NOW()
         `,
         cleanDocuments.flatMap((document) => [lotProjectId, document.document_id, document.is_required, document.status])
       );
+    } else {
+      await connection.query(`DELETE FROM lot_project_default_documents WHERE lot_project_id = ?`, [lotProjectId]);
     }
 
     await writeAuditLog(connection, req, {
@@ -387,7 +480,15 @@ export const updateLotProject = async (req, res) => {
       entityLabel: payload.name,
       title: 'Updated lot project',
       description: `Updated lot project ${payload.name}.`,
-      metadata: { slug: payload.slug, locationCode: payload.locationCode, status: payload.status },
+      metadata: {
+        slug: stableSlug,
+        locationCode: payload.locationCode,
+        status: payload.status,
+        listingCount,
+        locationCodeChanged,
+        cadastralAdded: addedCadastralLots,
+        cadastralRemoved: removedCadastralRows.map((row) => row.lot_project_cadastral_lot_number),
+      },
     });
 
     await connection.commit();
@@ -395,11 +496,11 @@ export const updateLotProject = async (req, res) => {
     return res.json({
       success: true,
       message: 'Lot project updated successfully.',
-      routePath: `/portal/lot-projects/${payload.slug}`,
+      routePath: `/portal/lot-projects/${stableSlug}`,
     });
   } catch (error) {
-    await connection.rollback();
-    return res.status(500).json({ message: getErrorMessage(error) });
+    try { await connection.rollback(); } catch {}
+    return res.status(error?.statusCode || 500).json({ message: getErrorMessage(error) });
   } finally {
     connection.release();
   }
@@ -683,6 +784,7 @@ export const getLotProjectDocumentCompliance = async (req, res) => {
     connection.release();
   }
 };
+
 
 
 

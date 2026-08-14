@@ -10,6 +10,7 @@ const Field = ({
   type = 'text',
   required = false,
   helper,
+  disabled = false,
 }) => (
   <label className="flex flex-col gap-1.5">
     <span className="text-xs font-black text-slate-700">
@@ -19,9 +20,10 @@ const Field = ({
     <input
       type={type}
       value={value}
+      disabled={disabled}
       onChange={(event) => onChange(event.target.value)}
       placeholder={placeholder}
-      className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
+      className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
     />
 
     {helper ? <p className="text-xs font-semibold text-slate-500">{helper}</p> : null}
@@ -86,11 +88,24 @@ const normalizeProjectDocuments = (project = {}) =>
     .filter((document) => document.id)
 
 const normalizeCadastralLots = (project = {}) =>
-  (project.cadastral_lots || project.cadastralLots || project.cadastralLots || [])
+  (project.cadastral_lots || project.cadastralLotDetails || project.cadastralLots || [])
     .map((lot) =>
       String(lot?.lotNumber || lot?.lot_project_cadastral_lot_number || lot || '').trim()
     )
     .filter(Boolean)
+
+const normalizeCadastralUsage = (project = {}) =>
+  new Map(
+    (project.cadastralLotDetails || project.cadastral_lots || project.cadastralLots || [])
+      .map((lot) => {
+        const lotNumber = String(lot?.lotNumber || lot?.lot_project_cadastral_lot_number || lot || '').trim()
+        return [lotNumber, {
+          usedCount: Number(lot?.usedCount ?? lot?.used_count ?? 0),
+          usedByUnits: String(lot?.usedByUnits || lot?.used_by_units || '').trim(),
+        }]
+      })
+      .filter(([lotNumber]) => Boolean(lotNumber))
+  )
 
 const mergeDocumentLists = (currentDocuments = [], incomingDocuments = []) => {
   const merged = new Map(
@@ -137,6 +152,9 @@ const AddLotProjectModal = ({
   onSave,
 }) => {
   const isEdit = mode === 'edit' || Boolean(project)
+  const listingCount = Number(project?.listing_count ?? project?.listingCount ?? 0)
+  const locationCodeLocked = isEdit && listingCount > 0
+  const cadastralUsage = useMemo(() => normalizeCadastralUsage(project || {}), [project])
 
   const [form, setForm] = useState(() => ({
     name: project?.project_bailen_name || project?.lot_project_name || project?.name || '',
@@ -258,6 +276,15 @@ const AddLotProjectModal = ({
   }
 
   const removeCadastralLot = (lot) => {
+    const usage = cadastralUsage.get(lot)
+    if (Number(usage?.usedCount || 0) > 0) {
+      setAlert({
+        type: 'error',
+        message: `Cadastral Lot ${lot} is assigned to ${usage.usedByUnits || 'an existing listing'} and cannot be edited or deleted. Reassign the listing first.`,
+      })
+      return
+    }
+
     setCadastralLots((current) => current.filter((item) => item !== lot))
     setAlert({ type: 'warning', message: `${lot} removed from cadastral lots.` })
   }
@@ -532,7 +559,10 @@ const AddLotProjectModal = ({
                       value={form.locationCode}
                       onChange={(value) => updateForm('locationCode', value)}
                       placeholder="ex. LA, PE"
-                      helper="This becomes the unit prefix."
+                      helper={locationCodeLocked
+                        ? `Locked because this project already has ${listingCount} listing${listingCount === 1 ? '' : 's'}. Unit prefixes must remain stable.`
+                        : 'This becomes the unit prefix. It will be locked after the first listing is created.'}
+                      disabled={locationCodeLocked}
                       required
                     />
 
@@ -588,16 +618,24 @@ const AddLotProjectModal = ({
 
                       {cadastralLots.length ? (
                         <div className="mt-2 flex flex-wrap gap-2">
-                          {cadastralLots.map((lot) => (
-                            <button
-                              key={lot}
-                              type="button"
-                              onClick={() => removeCadastralLot(lot)}
-                              className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-black text-blue-700 transition hover:bg-blue-100"
-                            >
-                              {lot} ×
-                            </button>
-                          ))}
+                          {cadastralLots.map((lot) => {
+                            const usage = cadastralUsage.get(lot)
+                            const isAssigned = Number(usage?.usedCount || 0) > 0
+                            return (
+                              <button
+                                key={lot}
+                                type="button"
+                                onClick={() => removeCadastralLot(lot)}
+                                disabled={isAssigned}
+                                title={isAssigned ? `Assigned to ${usage.usedByUnits || 'an existing listing'}` : `Remove ${lot}`}
+                                className={`rounded-full border px-3 py-1 text-xs font-black transition ${isAssigned
+                                  ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-500'
+                                  : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'}`}
+                              >
+                                {lot} {isAssigned ? `🔒 ${usage.usedByUnits || 'In use'}` : '×'}
+                              </button>
+                            )
+                          })}
                         </div>
                       ) : (
                         <div className="mt-2 rounded-lg border border-dashed border-blue-200 bg-blue-50 p-3 text-xs font-semibold text-blue-700">
@@ -1061,5 +1099,6 @@ const AddLotProjectModal = ({
 }
 
 export default AddLotProjectModal
+
 
 

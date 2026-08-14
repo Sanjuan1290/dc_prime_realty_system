@@ -157,7 +157,7 @@ const getSavedListingDocumentRequirements = async (connection, projectId, listin
 };
 
 
-const replaceReservationSchedules = async (connection, projectId, listing, clientProfileId, profileTerms) => {
+const replaceReservationSchedules = async (connection, projectId, listing, clientProfileId, accountId, profileTerms) => {
   if (!(await tableExists(connection, 'lot_project_payment_schedules'))) return;
 
   const listingTermsRow = {
@@ -196,6 +196,7 @@ const replaceReservationSchedules = async (connection, projectId, listing, clien
     'lot_project_id',
     'lot_project_listing_id',
     'lot_project_client_profile_id',
+    'lot_project_account_id',
     'due_date',
     'description',
     'beginning_balance',
@@ -226,6 +227,7 @@ const replaceReservationSchedules = async (connection, projectId, listing, clien
       projectId,
       listing.lot_project_listing_id,
       clientProfileId,
+      accountId,
       row.dueDate,
       row.description,
       Number(row.beginningBalance || 0),
@@ -1023,7 +1025,7 @@ export const reserveLotProjectListing = async (req, res) => {
       Array.isArray(req.body.documents) ? req.body.documents : null
     );
 
-    await replaceReservationSchedules(connection, project.lot_project_id, listing, clientProfileId, {
+    await replaceReservationSchedules(connection, project.lot_project_id, listing, clientProfileId, account.accountId, {
       buyerName,
       modeOfPayment,
       reservationFee,
@@ -1167,4 +1169,5 @@ export const reserveLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
+
 
