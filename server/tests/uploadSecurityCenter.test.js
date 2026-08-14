@@ -16,7 +16,11 @@ test('global upload security center is mounted once around the app', () => {
   assert.match(main, /<UploadSecurityProvider>[\s\S]*<App \/>[\s\S]*<\/UploadSecurityProvider>/);
   assert.match(center, /fixed bottom-4 right-4/);
   assert.match(center, /Uploads &amp; Security/);
-  assert.match(center, /Clear completed/);
+  assert.doesNotMatch(center, /Clear completed/);
+  assert.match(center, /AUTO_DISMISS_DELAY_MS = 1_500/);
+  assert.match(center, /FADE_DURATION_MS = 300/);
+  assert.match(center, /allPassed/);
+  assert.match(center, /transition-opacity duration-300/);
 });
 
 test('security center shows upload, scan, malware, and unscanned outcomes', () => {
@@ -39,6 +43,17 @@ test('pending scans poll existing protected access endpoints and resume after re
   assert.match(center, /MALWARE_SCAN_ERROR/);
   assert.match(center, /sessionStorage/);
   assert.match(center, /POLL_INTERVAL_MS = 3_000/);
+});
+
+test('successful batches auto-dismiss while warnings and failures require whole-panel acknowledgement', () => {
+  const center = read('client/src/components/Shared/UploadSecurityCenter/UploadSecurityProvider.jsx');
+
+  assert.match(center, /attentionStatuses/);
+  assert.match(center, /const canDismissAll = allFinished && hasAttention/);
+  assert.match(center, /sameCompletedBatch/);
+  assert.match(center, /Dismiss upload security status/);
+  assert.match(center, /Review required/);
+  assert.doesNotMatch(center, /aria-label={`Dismiss \$\{task\.fileName\}`}/);
 });
 
 test('buyer document upload registers files with the global status center', () => {

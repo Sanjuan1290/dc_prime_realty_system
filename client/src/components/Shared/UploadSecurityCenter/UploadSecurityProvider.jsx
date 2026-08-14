@@ -16,9 +16,19 @@ const UploadSecurityContext = createContext(null)
 const STORAGE_KEY = 'dc_prime_upload_security_tasks_v1'
 const MAX_SAVED_TASKS = 30
 const POLL_INTERVAL_MS = 3_000
+const AUTO_DISMISS_DELAY_MS = 1_500
+const FADE_DURATION_MS = 300
 
 const terminalStatuses = new Set([
   'passed',
+  'unscanned',
+  'failed',
+  'rejected',
+  'scan_error',
+  'cancelled',
+])
+
+const attentionStatuses = new Set([
   'unscanned',
   'failed',
   'rejected',
@@ -148,6 +158,7 @@ const resolveFinalScanStatus = (value) => {
 const UploadSecurityProvider = ({ children }) => {
   const [tasks, setTasks] = useState(loadStoredTasks)
   const [collapsed, setCollapsed] = useState(false)
+  const [isClosing, setIsClosing] = useState(false)
   const pollingIds = useRef(new Set())
 
   const updateUpload = useCallback((id, patch = {}) => {
@@ -236,12 +247,10 @@ const UploadSecurityProvider = ({ children }) => {
     })
   }, [updateUpload])
 
-  const dismissUpload = useCallback((id) => {
-    setTasks((current) => current.filter((task) => task.id !== id))
-  }, [])
-
-  const clearCompleted = useCallback(() => {
-    setTasks((current) => current.filter((task) => !terminalStatuses.has(task.status)))
+  const dismissAll = useCallback(() => {
+    setIsClosing(false)
+    setCollapsed(false)
+    setTasks([])
   }, [])
 
   useEffect(() => {
@@ -252,6 +261,45 @@ const UploadSecurityProvider = ({ children }) => {
       // The status center still works when browser storage is unavailable.
     }
   }, [tasks])
+
+  const allFinished = tasks.length > 0 && tasks.every((task) => terminalStatuses.has(task.status))
+  const allPassed = allFinished && tasks.every((task) => task.status === 'passed')
+  const hasAttention = tasks.some((task) => attentionStatuses.has(task.status))
+  const canDismissAll = allFinished && hasAttention
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined
+
+    if (!allPassed) {
+      setIsClosing(false)
+      return undefined
+    }
+
+    setIsClosing(false)
+
+    const completedTaskIds = new Set(tasks.map((task) => task.id))
+    let removeTimer
+
+    const fadeTimer = window.setTimeout(() => {
+      setIsClosing(true)
+
+      removeTimer = window.setTimeout(() => {
+        setTasks((current) => {
+          const sameCompletedBatch =
+            current.length === completedTaskIds.size &&
+            current.every((task) => completedTaskIds.has(task.id) && task.status === 'passed')
+
+          return sameCompletedBatch ? [] : current
+        })
+        setIsClosing(false)
+      }, FADE_DURATION_MS)
+    }, AUTO_DISMISS_DELAY_MS)
+
+    return () => {
+      window.clearTimeout(fadeTimer)
+      if (removeTimer) window.clearTimeout(removeTimer)
+    }
+  }, [allPassed, tasks])
 
   useEffect(() => {
     const scanTasks = tasks.filter((task) => task.status === 'scanning' && task.accessPath)
@@ -346,27 +394,24 @@ const UploadSecurityProvider = ({ children }) => {
     updateUpload,
     beginSecurityScan,
     failUpload,
-    dismissUpload,
-    clearCompleted,
+    dismissAll,
   }), [
     tasks,
     addUpload,
     updateUpload,
     beginSecurityScan,
     failUpload,
-    dismissUpload,
-    clearCompleted,
+    dismissAll,
   ])
 
   const activeCount = tasks.filter((task) => !terminalStatuses.has(task.status)).length
-  const hasCompleted = tasks.some((task) => terminalStatuses.has(task.status))
 
   return (
     <UploadSecurityContext.Provider value={value}>
       {children}
 
       {tasks.length ? (
-        <aside className="fixed bottom-4 right-4 z-[95] w-[calc(100vw-2rem)] max-w-[410px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-950/20">
+        <aside className={`fixed bottom-4 right-4 z-[95] w-[calc(100vw-2rem)] max-w-[410px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-950/20 transition-opacity duration-300 ${isClosing ? 'pointer-events-none opacity-0' : 'opacity-100'}`}>
           <header className="flex items-center justify-between gap-3 bg-slate-950 px-4 py-3 text-white">
             <button
               type="button"
@@ -380,19 +425,33 @@ const UploadSecurityProvider = ({ children }) => {
               <span className="min-w-0">
                 <span className="block truncate text-sm font-black">Uploads &amp; Security</span>
                 <span className="block text-[11px] font-semibold text-slate-300">
-                  {activeCount ? `${activeCount} in progress` : `${tasks.length} recent upload${tasks.length === 1 ? '' : 's'}`}
+                  {activeCount ? `${activeCount} in progress` : allPassed ? 'All uploads passed security scan' : hasAttention ? 'Review required' : `${tasks.length} recent upload${tasks.length === 1 ? '' : 's'}`}
                 </span>
               </span>
             </button>
 
-            <button
-              type="button"
-              onClick={() => setCollapsed((current) => !current)}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-300 hover:bg-white/10 hover:text-white"
-              aria-label={collapsed ? 'Expand upload status' : 'Minimize upload status'}
-            >
-              {collapsed ? <FiChevronUp /> : <FiChevronDown />}
-            </button>
+            <div className="flex items-center gap-1">
+              {canDismissAll ? (
+                <button
+                  type="button"
+                  onClick={dismissAll}
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-300 hover:bg-white/10 hover:text-white"
+                  aria-label="Dismiss upload security status"
+                  title="Dismiss"
+                >
+                  <FiX />
+                </button>
+              ) : null}
+
+              <button
+                type="button"
+                onClick={() => setCollapsed((current) => !current)}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-300 hover:bg-white/10 hover:text-white"
+                aria-label={collapsed ? 'Expand upload status' : 'Minimize upload status'}
+              >
+                {collapsed ? <FiChevronUp /> : <FiChevronDown />}
+              </button>
+            </div>
           </header>
 
           {!collapsed ? (
@@ -401,8 +460,6 @@ const UploadSecurityProvider = ({ children }) => {
                 {[...tasks].reverse().map((task) => {
                   const meta = statusMeta(task)
                   const Icon = meta.icon
-                  const terminal = terminalStatuses.has(task.status)
-
                   return (
                     <div key={task.id} className="flex gap-3 border-b border-slate-100 px-4 py-3 last:border-b-0">
                       <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-50">
@@ -418,16 +475,6 @@ const UploadSecurityProvider = ({ children }) => {
                             </p>
                           </div>
 
-                          {terminal ? (
-                            <button
-                              type="button"
-                              onClick={() => dismissUpload(task.id)}
-                              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                              aria-label={`Dismiss ${task.fileName}`}
-                            >
-                              <FiX />
-                            </button>
-                          ) : null}
                         </div>
 
                         <p className={`mt-1 text-xs font-black ${meta.textClass}`}>{meta.title}</p>
@@ -440,17 +487,6 @@ const UploadSecurityProvider = ({ children }) => {
                 })}
               </div>
 
-              {hasCompleted ? (
-                <footer className="flex justify-end border-t border-slate-200 bg-slate-50 px-4 py-2.5">
-                  <button
-                    type="button"
-                    onClick={clearCompleted}
-                    className="text-[11px] font-black text-slate-600 hover:text-slate-950"
-                  >
-                    Clear completed
-                  </button>
-                </footer>
-              ) : null}
             </>
           ) : null}
         </aside>

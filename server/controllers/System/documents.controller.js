@@ -6,6 +6,17 @@ const getErrorMessage = (error) => {
   return error?.message || 'Something went wrong.';
 };
 
+const normalizeDocumentName = (value) => String(value ?? '').trim();
+
+const isDuplicateDocumentNameError = (error) => {
+  const text = `${error?.message || ''} ${error?.sqlMessage || ''} ${error?.constraint || ''}`;
+  return String(error?.code || '') === 'ER_DUP_ENTRY'
+    && /uq_documents_document_name|document_name/i.test(text);
+};
+
+const duplicateDocumentNameMessage = (documentName) =>
+  `A document named "${documentName}" already exists. Document names must be unique.`;
+
 const tableExists = async (connection, tableName) => {
   const [rows] = await connection.query(
     `
@@ -191,8 +202,17 @@ export const addDocument = async (req, res) => {
       document_is_required = true,
     } = req.body;
 
-    if (!document_name?.trim()) {
+    const normalizedDocumentName = normalizeDocumentName(document_name);
+    if (!normalizedDocumentName) {
       return res.status(400).json({ message: 'Document name is required.' });
+    }
+
+    const [existingNameRows] = await db.query(
+      `SELECT document_id FROM documents WHERE TRIM(document_name) = ? LIMIT 1`,
+      [normalizedDocumentName]
+    );
+    if (existingNameRows.length) {
+      return res.status(409).json({ message: duplicateDocumentNameMessage(normalizedDocumentName) });
     }
 
     const documentCodeValidation = validateDocumentCode(document_code);
@@ -220,7 +240,7 @@ export const addDocument = async (req, res) => {
         ) VALUES (?, ?, ?, ?, ?, ?)
       `,
       [
-        document_name.trim(),
+        normalizedDocumentName,
         normalizedDocumentCode,
         document_description?.trim() || null,
         1,
@@ -235,6 +255,9 @@ export const addDocument = async (req, res) => {
       document_code: normalizedDocumentCode,
     });
   } catch (error) {
+    if (isDuplicateDocumentNameError(error)) {
+      return res.status(409).json({ message: duplicateDocumentNameMessage(normalizeDocumentName(req.body?.document_name)) });
+    }
     return res.status(500).json({ message: getErrorMessage(error) });
   }
 };
@@ -425,8 +448,17 @@ export const editDocument = async (req, res) => {
       document_is_required = true,
     } = req.body;
 
-    if (!document_name?.trim()) {
+    const normalizedDocumentName = normalizeDocumentName(document_name);
+    if (!normalizedDocumentName) {
       return res.status(400).json({ message: 'Document name is required.' });
+    }
+
+    const [existingNameRows] = await db.query(
+      `SELECT document_id FROM documents WHERE TRIM(document_name) = ? AND document_id <> ? LIMIT 1`,
+      [normalizedDocumentName, documentId]
+    );
+    if (existingNameRows.length) {
+      return res.status(409).json({ message: duplicateDocumentNameMessage(normalizedDocumentName) });
     }
 
     await db.query(
@@ -441,7 +473,7 @@ export const editDocument = async (req, res) => {
         WHERE document_id = ?
       `,
       [
-        document_name.trim(),
+        normalizedDocumentName,
         document_description?.trim() || null,
         1,
         document_status,
@@ -452,6 +484,9 @@ export const editDocument = async (req, res) => {
 
     return res.json({ message: 'Document updated successfully.' });
   } catch (error) {
+    if (isDuplicateDocumentNameError(error)) {
+      return res.status(409).json({ message: duplicateDocumentNameMessage(normalizeDocumentName(req.body?.document_name)) });
+    }
     return res.status(500).json({ message: getErrorMessage(error) });
   }
 };
@@ -522,5 +557,3 @@ export const editTemplate = async (req, res) => {
     connection.release();
   }
 };
-
-
