@@ -57,6 +57,9 @@ test('acknowledgement signed copies attach to the exact verified payment', () =>
   assert.match(router, /payments\/:paymentId\/acknowledgement-signed-copy\/upload-signature/);
   assert.match(router, /payments\/:paymentId\/acknowledgement-signed-copy\/access-url/);
   assert.match(shared, /acknowledgementSignedCopy: row\.ack_signed_copy_id/);
+  assert.match(shared, /GROUP BY lot_project_payment_id/);
+  assert.match(shared, /latest_ack_file\.lot_project_payment_id = p\.lot_project_payment_id/);
+  assert.doesNotMatch(shared, /WHERE active_ack\.lot_project_payment_id = p\.lot_project_payment_id/);
 });
 
 test('signed copy malware webhook and account purge cover both new protected file tables', () => {

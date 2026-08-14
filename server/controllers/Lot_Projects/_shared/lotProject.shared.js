@@ -3172,14 +3172,21 @@ export const getListingPayments = async (
        NULL AS ack_signed_copy_version,
        NULL AS ack_signed_copy_scan_status,
        NULL AS ack_signed_copy_uploaded_at,`;
+  // Keep this TiDB-safe: do not use an outer-reference scalar subquery inside
+  // the JOIN condition. Pre-aggregate the latest active file per payment, then
+  // join the concrete file row by its primary key.
   const acknowledgementSignedJoin = hasAcknowledgementSignedCopies
-    ? `LEFT JOIN lot_project_payment_acknowledgement_files ack_file
-         ON ack_file.lot_project_payment_acknowledgement_file_id = (
-           SELECT MAX(active_ack.lot_project_payment_acknowledgement_file_id)
-           FROM lot_project_payment_acknowledgement_files active_ack
-           WHERE active_ack.lot_project_payment_id = p.lot_project_payment_id
-             AND active_ack.file_status = 'active'
-         )`
+    ? `LEFT JOIN (
+         SELECT
+           lot_project_payment_id,
+           MAX(lot_project_payment_acknowledgement_file_id) AS latest_file_id
+         FROM lot_project_payment_acknowledgement_files
+         WHERE file_status = 'active'
+         GROUP BY lot_project_payment_id
+       ) latest_ack_file
+         ON latest_ack_file.lot_project_payment_id = p.lot_project_payment_id
+       LEFT JOIN lot_project_payment_acknowledgement_files ack_file
+         ON ack_file.lot_project_payment_acknowledgement_file_id = latest_ack_file.latest_file_id`
     : '';
 
   const [rows] = await connection.query(
