@@ -10,6 +10,7 @@ import { FiCalendar, FiFileText, FiLoader, FiPrinter, FiRefreshCw, FiSearch, FiU
 import { formatDateTime } from "../../utils/formatDateTime";
 import {useFetch as fetchApi, useFetchPost as postApi, getDoubleCheckNotice} from "../../utils/useFetch";
 import { isFullAccessAdministrator } from "../../config/permissions";
+import { canOpenMalwareScannedFile, getMalwareScanStatus, malwareScanLabel } from "../../utils/cloudinaryUploadSecurity";
 
 const EMPTY_LIST = [];
 
@@ -118,6 +119,14 @@ const IncomeRangeReportPanel = ({ seller, sellerId, receipts = EMPTY_LIST, recei
     ),
     [matchingReceiptIds, receipts]
   );
+  const printableSignedReceiptsInRange = useMemo(
+    () => receiptsInRange.filter((receipt) =>
+      !receipt?.isArchived &&
+      receipt?.signedCopy &&
+      getMalwareScanStatus(receipt.signedCopy) === "approved"
+    ),
+    [receiptsInRange]
+  );
   const unreceiptedReleaseCount = Math.max(
     Number(summary.releaseCount || 0) - Number(summary.receiptedReleaseCount || 0),
     0
@@ -161,7 +170,7 @@ const IncomeRangeReportPanel = ({ seller, sellerId, receipts = EMPTY_LIST, recei
     else setAppliedRange(nextRange);
   };
 
-  const printRangeReport = () => {
+  const printAllUnsignedReceipts = () => {
     if (!report || !entries.length) {
       setRangeAlert({ type: "warning", message: "There are no released income entries in this date range." });
       return;
@@ -170,12 +179,12 @@ const IncomeRangeReportPanel = ({ seller, sellerId, receipts = EMPTY_LIST, recei
     if (!receiptsInRange.length) {
       setRangeAlert({
         type: "warning",
-        message: "No generated acknowledgement receipts are available in this date range. Generate the receipts first, then use Print All.",
+        message: "No generated acknowledgement receipts are available in this date range. Generate the receipts first, then use Print All Unsigned Receipts.",
       });
       return;
     }
 
-    // Print All reuses the exact single-receipt layout. Every generated receipt
+    // Print All Unsigned reuses the exact single-receipt layout. Every generated receipt
     // starts on its own A4 page, so one print job can be saved as one PDF.
     localStorage.setItem(
       "accredited_seller_income_range_payload",
@@ -189,6 +198,61 @@ const IncomeRangeReportPanel = ({ seller, sellerId, receipts = EMPTY_LIST, recei
     window.open("/portal/super_admin/accredited/proof-of-income/range/print", "_blank");
   };
 
+  const printAllSignedReceipts = async () => {
+    if (!printableSignedReceiptsInRange.length) {
+      setRangeAlert({
+        type: "warning",
+        message: "No security-approved signed receipts are available in this date range.",
+      });
+      return;
+    }
+
+    // Signed originals may be PDF or image files, so keep each original intact.
+    // Pre-open the tabs synchronously from the click to reduce popup blocking, then
+    // resolve each protected Cloudinary URL and navigate its matching tab.
+    const targets = printableSignedReceiptsInRange.map((receipt) => ({
+      receipt,
+      tab: window.open("about:blank", "_blank"),
+    }));
+    const openedTargets = targets.filter((target) => target.tab);
+
+    if (!openedTargets.length) {
+      setRangeAlert({ type: "error", message: "Your browser blocked the signed receipt tabs. Allow pop-ups for this site and try again." });
+      return;
+    }
+
+    try {
+      await Promise.all(openedTargets.map(async ({ receipt, tab }) => {
+        tab.document.title = "Loading signed receipt...";
+        tab.document.body.innerHTML = '<p style="font-family:Arial,sans-serif;padding:24px">Loading signed receipt...</p>';
+        try {
+          const result = await fetchApi(`/accredited/${sellerId}/proof-of-income-receipts/${receipt.receiptId}/signed-copy/access-url`);
+          const data = result?.data || {};
+          if (!data.url) throw new Error("Signed receipt URL was not returned.");
+          tab.location.replace(data.url);
+        } catch (error) {
+          tab.document.body.textContent = String(error?.message || "Failed to open signed receipt.");
+          tab.document.body.style.cssText = "font-family:Arial,sans-serif;padding:24px;color:#b91c1c";
+          throw error;
+        }
+      }));
+
+      if (openedTargets.length < printableSignedReceiptsInRange.length) {
+        setRangeAlert({
+          type: "warning",
+          message: `Opened ${openedTargets.length} of ${printableSignedReceiptsInRange.length} signed receipts. Your browser blocked the remaining tab(s).`,
+        });
+      } else {
+        setRangeAlert({
+          type: "success",
+          message: `${openedTargets.length} signed receipt${openedTargets.length === 1 ? "" : "s"} opened in separate tabs for printing.`,
+        });
+      }
+    } catch (error) {
+      setRangeAlert({ type: "error", message: error?.message || "Failed to open all signed receipts." });
+    }
+  };
+
   return (
     <section aria-busy={rangeQuery.isFetching}>
       <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
@@ -196,7 +260,7 @@ const IncomeRangeReportPanel = ({ seller, sellerId, receipts = EMPTY_LIST, recei
           <div>
             <h3 className="text-base font-black text-slate-950">Income date range</h3>
             <p className="mt-1 text-sm font-semibold text-slate-500">
-              Income is based on each commission stage’s actual release date. Print All repeats the generated acknowledgement receipt layout for matching receipts.
+              Income is based on each commission stage’s actual release date. Print unsigned generated receipts together, or open all security-approved signed originals for printing.
             </p>
           </div>
 
@@ -227,12 +291,12 @@ const IncomeRangeReportPanel = ({ seller, sellerId, receipts = EMPTY_LIST, recei
       {rangeQuery.isLoading ? <StatusAlert type="loading" message="Loading released income for the selected date range..." className="mt-4" /> : null}
       {rangeQuery.isError ? <StatusAlert type="error" message={rangeQuery.error?.message || "Failed to load the income range report."} className="mt-4" /> : null}
       {rangeQuery.isFetching && !rangeQuery.isLoading ? <StatusAlert type="loading" message="Refreshing income entries..." className="mt-4" /> : null}
-      {receiptsLoading ? <StatusAlert type="loading" message="Loading generated acknowledgement receipts for Print All..." className="mt-4" /> : null}
+      {receiptsLoading ? <StatusAlert type="loading" message="Loading generated acknowledgement receipts for printing..." className="mt-4" /> : null}
       {receiptsError ? <StatusAlert type="error" message={receiptsError?.message || "Failed to load generated acknowledgement receipts."} className="mt-4" /> : null}
       {!receiptsLoading && !receiptsError && report && unreceiptedReleaseCount > 0 ? (
         <StatusAlert
           type="warning"
-          message={`${unreceiptedReleaseCount} released income entr${unreceiptedReleaseCount === 1 ? "y has" : "ies have"} no generated acknowledgement receipt and will not be included in Print All.`}
+          message={`${unreceiptedReleaseCount} released income entr${unreceiptedReleaseCount === 1 ? "y has" : "ies have"} no generated acknowledgement receipt and will not be included in bulk printing.`}
           className="mt-4"
         />
       ) : null}
@@ -262,16 +326,28 @@ const IncomeRangeReportPanel = ({ seller, sellerId, receipts = EMPTY_LIST, recei
                 {reportSeller.full_name || seller?.full_name || "Seller"} · {appliedRange.startDate} to {appliedRange.endDate}
               </p>
             </div>
-            <button
-              type="button"
-              onClick={printRangeReport}
-              disabled={!entries.length || !receiptsInRange.length || receiptsLoading}
-              title={!receiptsInRange.length ? "Generate acknowledgement receipts before printing them together." : "Print all matching acknowledgement receipts in one PDF."}
-              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 text-sm font-black text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
-            >
-              {receiptsLoading ? <FiLoader className="h-4 w-4 animate-spin" /> : <FiPrinter className="h-4 w-4" />}
-              {receiptsLoading ? "Loading Receipts..." : `Print All Receipts (${receiptsInRange.length})`}
-            </button>
+            <div className="flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                onClick={printAllUnsignedReceipts}
+                disabled={!entries.length || !receiptsInRange.length || receiptsLoading}
+                title={!receiptsInRange.length ? "Generate acknowledgement receipts before printing them together." : "Print all matching unsigned acknowledgement receipts in one PDF."}
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+              >
+                {receiptsLoading ? <FiLoader className="h-4 w-4 animate-spin" /> : <FiPrinter className="h-4 w-4" />}
+                {receiptsLoading ? "Loading Receipts..." : `Print All Unsigned Receipts (${receiptsInRange.length})`}
+              </button>
+              <button
+                type="button"
+                onClick={printAllSignedReceipts}
+                disabled={!entries.length || !printableSignedReceiptsInRange.length || receiptsLoading}
+                title={!printableSignedReceiptsInRange.length ? "No security-approved signed receipts are available in this date range." : "Open all security-approved signed receipt originals for printing."}
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 text-sm font-black text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
+              >
+                <FiPrinter className="h-4 w-4" />
+                {`Print All Signed Receipts (${printableSignedReceiptsInRange.length})`}
+              </button>
+            </div>
           </div>
 
           {entries.length ? (
@@ -357,6 +433,8 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
   const [localAlert, setLocalAlert] = useState(null);
   const [activeMode, setActiveMode] = useState("receipt");
   const [signedReceipt, setSignedReceipt] = useState(null);
+  const [printChoiceReceipt, setPrintChoiceReceipt] = useState(null);
+  const [openingSignedReceiptId, setOpeningSignedReceiptId] = useState(0);
 
   const receiptQuery = useQuery({
     queryKey: ["seller-proof-of-income-receipts", sellerId],
@@ -395,6 +473,48 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
       JSON.stringify({ seller: receiptSeller, receipt })
     );
     window.open("/portal/super_admin/accredited/proof-of-income/print", "_blank");
+  };
+
+  const openSignedReceiptForPrint = async (receipt) => {
+    const signedCopy = receipt?.signedCopy || null;
+    if (!signedCopy || !canOpenMalwareScannedFile(signedCopy)) {
+      setLocalAlert({ type: "warning", message: signedCopy ? malwareScanLabel(signedCopy) : "No signed receipt has been uploaded yet." });
+      return;
+    }
+
+    if (getMalwareScanStatus(signedCopy) === "not_scanned") {
+      const confirmed = window.confirm("This signed receipt was not malware scanned. Open it only if you trust the source. Continue?");
+      if (!confirmed) return;
+    }
+
+    const receiptId = Number(receipt?.receiptId || 0);
+    const printTab = window.open("about:blank", "_blank");
+    if (!printTab) {
+      setLocalAlert({ type: "error", message: "Your browser blocked the signed receipt tab. Allow pop-ups for this site and try again." });
+      return;
+    }
+
+    setOpeningSignedReceiptId(receiptId);
+    printTab.document.title = "Loading signed receipt...";
+    printTab.document.body.textContent = "Loading signed receipt...";
+    printTab.document.body.style.cssText = "font-family:Arial,sans-serif;padding:24px";
+    try {
+      const result = await fetchApi(`/accredited/${sellerId}/proof-of-income-receipts/${receiptId}/signed-copy/access-url`);
+      const data = result?.data || {};
+      if (data.securityWarning && !window.confirm(`${data.securityWarning}\n\nOpen this signed receipt anyway?`)) {
+        printTab.close();
+        return;
+      }
+      if (!data.url) throw new Error("The server did not return a signed-receipt access URL.");
+      printTab.location.replace(data.url);
+      setPrintChoiceReceipt(null);
+    } catch (error) {
+      printTab.document.body.textContent = String(error?.message || "Failed to open signed receipt.");
+      printTab.document.body.style.cssText = "font-family:Arial,sans-serif;padding:24px;color:#b91c1c";
+      setLocalAlert({ type: "error", message: error?.message || "Failed to open signed receipt." });
+    } finally {
+      setOpeningSignedReceiptId(0);
+    }
   };
 
 
@@ -627,7 +747,7 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
                         <td className="px-4 py-3"><p className="font-black text-slate-800">{receipt.projectName} · {receipt.unitId}</p><p className="text-xs font-semibold text-slate-500">{receipt.buyerName || "-"}</p>{receipt.isArchived ? <span className="mt-1 inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-slate-600">Archived cancelled sale</span> : null}</td>
                         <td className="px-4 py-3"><div className="flex flex-wrap gap-1">{(receipt.releases || []).map((release) => <span key={release.releaseId} className="rounded-lg bg-blue-50 px-2 py-1 text-[11px] font-black text-blue-700">{release.stage} · {Number(release.triggerPercent || 0).toFixed(0)}% cumulative</span>)}</div></td>
                         <td className="px-4 py-3 text-right font-black text-emerald-700">{money(receipt.totalAmount)}</td>
-                        <td className="px-4 py-3 text-right"><div className="flex flex-wrap justify-end gap-2"><button type="button" onClick={() => printReceipt(receipt)} className="inline-flex h-9 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-700 transition hover:bg-blue-100"><FiPrinter className="h-4 w-4" />Print Unsigned</button>{!receipt.isArchived ? <button type="button" onClick={() => setSignedReceipt(receipt)} className={`inline-flex h-9 items-center gap-2 rounded-xl border px-3 text-xs font-black transition ${receipt.signedCopy ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}><FiFileText className="h-4 w-4" />{receipt.signedCopy ? 'Signed Copy' : 'Upload Signed'}</button> : null}</div>{receipt.signedCopy ? <p className={`mt-1 text-[10px] font-black ${receipt.signedCopy.malwareScanStatus === 'approved' ? 'text-emerald-700' : receipt.signedCopy.malwareScanStatus === 'rejected' || receipt.signedCopy.malwareScanStatus === 'error' ? 'text-red-700' : 'text-amber-700'}`}>{receipt.signedCopy.malwareScanStatus === 'approved' ? 'Signed copy ready' : receipt.signedCopy.malwareScanStatus === 'pending' ? 'Security scan in progress' : receipt.signedCopy.malwareScanStatus === 'rejected' ? 'Signed copy blocked' : receipt.signedCopy.malwareScanStatus === 'error' ? 'Security scan error' : 'Not security scanned'}</p> : null}</td>
+                        <td className="px-4 py-3 text-right"><div className="flex flex-wrap justify-end gap-2"><button type="button" onClick={() => setPrintChoiceReceipt(receipt)} className="inline-flex h-9 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-700 transition hover:bg-blue-100"><FiPrinter className="h-4 w-4" />Print</button>{!receipt.isArchived ? <button type="button" onClick={() => setSignedReceipt(receipt)} className={`inline-flex h-9 items-center gap-2 rounded-xl border px-3 text-xs font-black transition ${receipt.signedCopy ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}><FiFileText className="h-4 w-4" />{receipt.signedCopy ? 'Signed Copy' : 'Upload Signed'}</button> : null}</div>{receipt.signedCopy ? <p className={`mt-1 text-[10px] font-black ${receipt.signedCopy.malwareScanStatus === 'approved' ? 'text-emerald-700' : receipt.signedCopy.malwareScanStatus === 'rejected' || receipt.signedCopy.malwareScanStatus === 'error' ? 'text-red-700' : 'text-amber-700'}`}>{receipt.signedCopy.malwareScanStatus === 'approved' ? 'Signed copy ready' : receipt.signedCopy.malwareScanStatus === 'pending' ? 'Security scan in progress' : receipt.signedCopy.malwareScanStatus === 'rejected' ? 'Signed copy blocked' : receipt.signedCopy.malwareScanStatus === 'error' ? 'Security scan error' : 'Not security scanned'}</p> : null}</td>
                       </tr>
                     )) : <tr><td colSpan="5" className="px-4 py-8 text-center font-semibold text-slate-500">No generated receipts yet.</td></tr>}
                   </tbody>
@@ -643,6 +763,45 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
           <button type="button" onClick={onClose} disabled={createReceiptMutation.isPending} className="h-10 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:opacity-50">Close</button>
         </div>
       </div>
+
+      {printChoiceReceipt ? (
+        <div className="fixed inset-0 z-[95] flex items-center justify-center bg-slate-950/65 p-4">
+          <div className="w-full max-w-lg overflow-hidden rounded-3xl bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
+              <div>
+                <h2 className="text-xl font-black text-slate-950">Print Receipt</h2>
+                <p className="mt-1 text-sm font-semibold text-slate-500">
+                  {printChoiceReceipt.referenceNumber || `Receipt #${printChoiceReceipt.receiptId}`} · Choose which version to print.
+                </p>
+              </div>
+              <button type="button" onClick={() => setPrintChoiceReceipt(null)} disabled={openingSignedReceiptId > 0} className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 disabled:opacity-50" aria-label="Close print receipt choice"><FiX /></button>
+            </div>
+            <div className="grid gap-3 p-6 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => { const receipt = printChoiceReceipt; setPrintChoiceReceipt(null); printReceipt(receipt); }}
+                className="rounded-2xl border border-blue-200 bg-blue-50 p-5 text-left transition hover:bg-blue-100"
+              >
+                <FiPrinter className="h-6 w-6 text-blue-700" />
+                <p className="mt-3 text-sm font-black text-blue-950">Unsigned Receipt</p>
+                <p className="mt-1 text-xs font-semibold leading-5 text-blue-700">Print the system-generated receipt.</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => openSignedReceiptForPrint(printChoiceReceipt)}
+                disabled={!printChoiceReceipt.signedCopy || !canOpenMalwareScannedFile(printChoiceReceipt.signedCopy) || openingSignedReceiptId > 0}
+                className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-left transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:opacity-60"
+              >
+                {openingSignedReceiptId === Number(printChoiceReceipt.receiptId) ? <FiLoader className="h-6 w-6 animate-spin text-emerald-700" /> : <FiFileText className="h-6 w-6 text-emerald-700" />}
+                <p className="mt-3 text-sm font-black text-emerald-950">Signed Receipt</p>
+                <p className="mt-1 text-xs font-semibold leading-5 text-emerald-700">
+                  {printChoiceReceipt.signedCopy ? malwareScanLabel(printChoiceReceipt.signedCopy) : "No signed copy uploaded yet."}
+                </p>
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {signedReceipt ? (
         <SignedCopyUploadModal
