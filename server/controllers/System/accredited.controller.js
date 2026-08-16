@@ -934,14 +934,21 @@ const loadSellerReceiptData = async (connection, sellerId) => {
        NULL AS signed_copy_version,
        NULL AS signed_copy_scan_status,
        NULL AS signed_copy_uploaded_at,`;
+  // Keep this TiDB-safe: pre-aggregate the latest active file per receipt, then
+  // join the concrete signed-file row by primary key. Avoid an outer-reference
+  // scalar subquery inside the JOIN condition.
   const signedReceiptJoin = hasSignedReceiptFiles
-    ? `LEFT JOIN lot_project_commission_receipt_files signed_file
-         ON signed_file.lot_project_commission_receipt_file_id = (
-           SELECT MAX(active_file.lot_project_commission_receipt_file_id)
-           FROM lot_project_commission_receipt_files active_file
-           WHERE active_file.lot_project_commission_receipt_id = receipt.lot_project_commission_receipt_id
-             AND active_file.file_status = 'active'
-         )`
+    ? `LEFT JOIN (
+         SELECT
+           lot_project_commission_receipt_id,
+           MAX(lot_project_commission_receipt_file_id) AS latest_file_id
+         FROM lot_project_commission_receipt_files
+         WHERE file_status = 'active'
+         GROUP BY lot_project_commission_receipt_id
+       ) latest_signed_file
+         ON latest_signed_file.lot_project_commission_receipt_id = receipt.lot_project_commission_receipt_id
+       LEFT JOIN lot_project_commission_receipt_files signed_file
+         ON signed_file.lot_project_commission_receipt_file_id = latest_signed_file.latest_file_id`
     : '';
 
   const [receiptRows] = await connection.query(

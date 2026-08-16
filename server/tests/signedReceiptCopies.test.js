@@ -44,6 +44,9 @@ test('proof of income signed copies are receipt-specific, scanned, versioned, an
   assert.match(router, /proof-of-income-receipts\/:receiptId\/signed-copy\/access-url/);
   assert.match(accredited, /signedCopy: row\.signed_copy_id/);
   assert.match(accredited, /lot_project_account_id,/);
+  assert.match(accredited, /GROUP BY lot_project_commission_receipt_id/);
+  assert.match(accredited, /latest_signed_file\.lot_project_commission_receipt_id = receipt\.lot_project_commission_receipt_id/);
+  assert.doesNotMatch(accredited, /WHERE active_file\.lot_project_commission_receipt_id = receipt\.lot_project_commission_receipt_id/);
 });
 
 test('acknowledgement signed copies attach to the exact verified payment', () => {
@@ -83,7 +86,9 @@ test('proof and acknowledgement UI clearly separates unsigned printing from sign
   assert.match(manager, /Print Unsigned/);
   assert.match(manager, /Upload Signed Copy/);
   assert.match(manager, /View \/ Signed Copy/);
-  assert.match(signedModal, /View \/ Print/);
+  assert.doesNotMatch(manager, /Unsigned only/i);
+  assert.match(manager, /viewLabel="View"/);
+  assert.match(signedModal, /viewLabel = 'View \/ Print'/);
   assert.match(signedModal, /Upload Without Scan/);
   assert.match(ackPrint, /selectedPaymentId/);
 });

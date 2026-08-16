@@ -50,6 +50,7 @@ const SignedCopyUploadModal = ({
   category = 'Signed copy',
   basePath,
   readOnly = false,
+  viewLabel = 'View / Print',
   onClose,
   onChanged,
 }) => {
@@ -237,7 +238,7 @@ const SignedCopyUploadModal = ({
               <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div><p className="text-xs font-black uppercase tracking-wide text-slate-500">Current signed copy</p>{signedCopy ? <><p className="mt-1 break-words text-sm font-black text-slate-950">{signedCopy.fileName}</p><p className="mt-1 text-xs font-semibold text-slate-500">Version {signedCopy.version || 1} · {formatBytes(signedCopy.fileSize)} · {formatDateTime(signedCopy.uploadedAt)}</p><p className={`mt-1 text-xs font-black ${getMalwareScanStatus(signedCopy) === 'approved' ? 'text-emerald-700' : getMalwareScanStatus(signedCopy) === 'rejected' || getMalwareScanStatus(signedCopy) === 'error' ? 'text-red-700' : 'text-amber-700'}`}>{malwareScanLabel(signedCopy)}</p></> : <p className="mt-1 text-sm font-semibold text-slate-500">No signed copy uploaded yet.</p>}</div>
-                  {signedCopy ? <button type="button" onClick={openSignedCopy} disabled={isOpening || !canOpenMalwareScannedFile(signedCopy)} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 text-sm font-black text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50">{isOpening ? <FiLoader className="animate-spin" /> : <FiExternalLink />}View / Print</button> : null}
+                  {signedCopy ? <button type="button" onClick={openSignedCopy} disabled={isOpening || !canOpenMalwareScannedFile(signedCopy)} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 text-sm font-black text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50">{isOpening ? <FiLoader className="animate-spin" /> : <FiExternalLink />}{viewLabel}</button> : null}
                 </div>
               </section>
 

@@ -52,7 +52,7 @@ const AcknowledgementReceiptsModal = ({
               const scanStatus = String(signedCopy?.malwareScanStatus || '').toLowerCase()
               return <div key={paymentId} className="grid gap-3 p-4 md:grid-cols-[1fr_auto] md:items-center">
                 <div>
-                  <div className="flex flex-wrap items-center gap-2"><p className="text-sm font-black text-slate-950">{payment.referenceId || `Payment #${paymentId}`}</p>{signedCopy ? <span className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${scanStatus === 'approved' ? 'bg-emerald-100 text-emerald-700' : scanStatus === 'rejected' || scanStatus === 'error' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>{scanStatus === 'approved' ? 'Signed copy ready' : scanStatus === 'pending' ? 'Scan pending' : scanStatus === 'rejected' ? 'Blocked' : scanStatus === 'error' ? 'Scan error' : 'Not scanned'}</span> : <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black uppercase text-slate-500">Unsigned only</span>}</div>
+                  <div className="flex flex-wrap items-center gap-2"><p className="text-sm font-black text-slate-950">{payment.referenceId || `Payment #${paymentId}`}</p>{signedCopy ? <span className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase ${scanStatus === 'approved' ? 'bg-emerald-100 text-emerald-700' : scanStatus === 'rejected' || scanStatus === 'error' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>{scanStatus === 'approved' ? 'Signed copy ready' : scanStatus === 'pending' ? 'Scan pending' : scanStatus === 'rejected' ? 'Blocked' : scanStatus === 'error' ? 'Scan error' : 'Not scanned'}</span> : null}</div>
                   <p className="mt-1 text-xs font-semibold text-slate-500">{payment.paymentDate || '-'} · {payment.method || '-'} · {money(payment.amount)}</p>
                 </div>
                 <div className="flex flex-wrap justify-end gap-2">
@@ -74,6 +74,7 @@ const AcknowledgementReceiptsModal = ({
         category="Signed Acknowledgement Receipt"
         basePath={`/projects/lot-projects/${projectSlug}/listings/${listingId}/payments/${selectedPayment.paymentId || selectedPayment.id}/acknowledgement-signed-copy`}
         readOnly={readOnly}
+        viewLabel="View"
         onClose={() => setSelectedPayment(null)}
         onChanged={(result) => updateSignedCopy(selectedPayment.paymentId || selectedPayment.id, result)}
       /> : null}
