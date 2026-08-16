@@ -835,6 +835,7 @@ const ListingProfile = () => {
           payments={payments}
           documents={documents}
           account={account}
+          readOnly={readOnly}
         />
       ) : null}
       </TabErrorBoundary>
@@ -897,4 +898,3 @@ const ListingProfile = () => {
 }
 
 export default ListingProfile
-

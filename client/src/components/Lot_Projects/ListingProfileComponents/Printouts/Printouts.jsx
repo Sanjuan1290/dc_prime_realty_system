@@ -42,6 +42,7 @@ const Printouts = ({
   payments = [],
   documents = [],
   account = null,
+  readOnly = false,
 }) => {
   const [showAcknowledgementReceipts, setShowAcknowledgementReceipts] = useState(false)
 
@@ -61,7 +62,7 @@ const Printouts = ({
         payments,
         documents,
         account,
-        readOnly: Boolean(account),
+        readOnly: Boolean(readOnly),
         ...extraPayload,
       })
     )
@@ -77,7 +78,7 @@ const Printouts = ({
       <div>
         <h2 className="text-xl font-black text-slate-950">Printouts</h2>
         <p className="mt-1 text-sm font-semibold text-slate-500">
-          {account
+          {readOnly
             ? `Print retained records for ${account.accountReference || 'this historical account'}.`
             : 'Open complete printable pages before printing.'}
         </p>
@@ -129,7 +130,7 @@ const Printouts = ({
           projectSlug={projectSlug}
           listingId={listing?.id || listing?.listingId || listing?.lot_project_listing_id || listing?.unitId || listing?.unitCode}
           payments={payments}
-          readOnly={Boolean(account)}
+          readOnly={readOnly}
           onClose={() => setShowAcknowledgementReceipts(false)}
           onPrintAllUnsigned={() => handlePreview(printItems.find((item) => item.type === 'acknowledgement-receipts'))}
           onPrintUnsigned={(paymentId) => handlePreview(printItems.find((item) => item.type === 'acknowledgement-receipts'), { selectedPaymentId: Number(paymentId) })}
