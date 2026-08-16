@@ -99,6 +99,20 @@ test('proof and acknowledgement UI clearly separates unsigned printing from sign
 });
 
 
+test('proof of income search filters unrecepted groups and receipt history by unit, old unit id, or buyer', () => {
+  const accreditedUi = read('client/src/pages/System/Accredited.jsx');
+  const accreditedController = read('server/controllers/System/accredited.controller.js');
+
+  assert.match(accreditedUi, /Search Unit ID, Old Unit ID, or Buyer Name/);
+  assert.match(accreditedUi, /matchesProofOfIncomeSearch/);
+  assert.match(accreditedUi, /record\.unitId, record\.oldUnitIds, record\.buyerName/);
+  assert.match(accreditedUi, /filteredAvailableGroups/);
+  assert.match(accreditedUi, /filteredReceipts/);
+  assert.match(accreditedUi, /Filters both unrecepted commissions and generated receipt history/);
+  assert.match(accreditedController, /l\.lot_project_listing_old_unit_ids/);
+  assert.match(accreditedController, /oldUnitIds: row\.lot_project_listing_old_unit_ids \|\| ''/);
+});
+
 test('bulk signed receipt printing uses one combined internal preview instead of one popup per signed file', () => {
   const accredited = read('client/src/pages/System/Accredited.jsx');
   const printouts = read('client/src/components/Lot_Projects/ListingProfileComponents/Printouts/Printouts.jsx');

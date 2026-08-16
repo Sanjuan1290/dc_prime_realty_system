@@ -766,6 +766,7 @@ const mapReceiptRows = (receiptRows = [], itemRows = []) => {
       projectName: row.lot_project_name,
       projectLocation: row.lot_project_location,
       unitId: row.lot_project_listing_unit_id,
+      oldUnitIds: row.lot_project_listing_old_unit_ids || '',
       buyerName: row.buyer_full_name,
       commissionRole: row.commission_role,
       commissionRate: Number(row.commission_rate || 0),
@@ -851,6 +852,7 @@ const loadSellerReceiptData = async (connection, sellerId) => {
         lp.lot_project_name,
         lp.lot_project_location,
         l.lot_project_listing_unit_id,
+        l.lot_project_listing_old_unit_ids,
         cp.buyer_full_name,
         r.lot_project_commission_release_id,
         r.release_stage,
@@ -906,6 +908,7 @@ const loadSellerReceiptData = async (connection, sellerId) => {
         projectName: row.lot_project_name,
         projectLocation: row.lot_project_location,
         unitId: row.lot_project_listing_unit_id,
+        oldUnitIds: row.lot_project_listing_old_unit_ids || '',
         buyerName: row.buyer_full_name,
         releases: [],
         totalAmount: 0,
@@ -959,6 +962,7 @@ const loadSellerReceiptData = async (connection, sellerId) => {
         lp.lot_project_name,
         lp.lot_project_location,
         l.lot_project_listing_unit_id,
+        l.lot_project_listing_old_unit_ids,
         cp.buyer_full_name,
         c.commission_role,
         c.commission_rate,
@@ -1022,6 +1026,7 @@ const loadSellerReceiptData = async (connection, sellerId) => {
           archived.project_name_snapshot AS lot_project_name,
           archived.project_location_snapshot AS lot_project_location,
           archived.unit_id_snapshot AS lot_project_listing_unit_id,
+          NULL AS lot_project_listing_old_unit_ids,
           archived.buyer_name_snapshot AS buyer_full_name,
           archived.commission_role,
           archived.commission_rate,
@@ -1366,3 +1371,4 @@ export const createAccreditedSellerProofOfIncomeReceipt = async (req, res) => {
     connection.release();
   }
 };
+

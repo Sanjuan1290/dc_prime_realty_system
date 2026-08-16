@@ -85,6 +85,24 @@ const releaseMilestoneLabel = (release = {}) => {
   return `${tranchePercent.toFixed(2)}% tranche`;
 };
 
+const normalizeProofSearch = (value) =>
+  String(value ?? "")
+    .trim()
+    .toLowerCase();
+
+const matchesProofOfIncomeSearch = (record = {}, search = "") => {
+  const query = normalizeProofSearch(search);
+  if (!query) return true;
+
+  return [record.unitId, record.oldUnitIds, record.buyerName]
+    .some((value) => normalizeProofSearch(value).includes(query));
+};
+
+const displayOldUnitIds = (value) => {
+  const text = String(value ?? "").trim();
+  return text && text !== "-" ? text : "";
+};
+
 const IncomeRangeReportPanel = ({ seller, sellerId, receipts = EMPTY_LIST, receiptsLoading = false, receiptsError = null }) => {
   const defaultRange = useMemo(() => getIncomeRangePreset("last12"), []);
   const [rangeForm, setRangeForm] = useState(defaultRange);
@@ -403,6 +421,7 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
     witnessName: "",
   });
   const [localAlert, setLocalAlert] = useState(null);
+  const [receiptSearch, setReceiptSearch] = useState("");
   const [activeMode, setActiveMode] = useState("receipt");
   const [signedReceipt, setSignedReceipt] = useState(null);
   const [printChoiceReceipt, setPrintChoiceReceipt] = useState(null);
@@ -417,12 +436,20 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
   const availableGroups = payload.availableGroups || EMPTY_LIST;
   const receipts = payload.receipts || EMPTY_LIST;
   const receiptSeller = payload.seller || seller || {};
+  const filteredAvailableGroups = useMemo(
+    () => availableGroups.filter((group) => matchesProofOfIncomeSearch(group, receiptSearch)),
+    [availableGroups, receiptSearch]
+  );
+  const filteredReceipts = useMemo(
+    () => receipts.filter((receipt) => matchesProofOfIncomeSearch(receipt, receiptSearch)),
+    [receiptSearch, receipts]
+  );
 
   const explicitlySelectedGroup = useMemo(
-    () => availableGroups.find((group) => String(group.commissionId) === String(selectedCommissionId)) || null,
-    [availableGroups, selectedCommissionId]
+    () => filteredAvailableGroups.find((group) => String(group.commissionId) === String(selectedCommissionId)) || null,
+    [filteredAvailableGroups, selectedCommissionId]
   );
-  const selectedGroup = explicitlySelectedGroup || availableGroups[0] || null;
+  const selectedGroup = explicitlySelectedGroup || filteredAvailableGroups[0] || null;
   const effectiveReleaseIds = useMemo(
     () => explicitlySelectedGroup
       ? selectedReleaseIds
@@ -605,6 +632,30 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
           {localAlert ? <StatusAlert type={localAlert.type} message={localAlert.message} onClose={localAlert.type === "loading" ? undefined : () => setLocalAlert(null)} className="mb-4" /> : null}
 
           {!receiptQuery.isLoading && !receiptQuery.isError ? (
+            <div className="mb-5">
+              <label className="block">
+                <span className="text-xs font-black uppercase tracking-wide text-slate-500">Search sales / receipts</span>
+                <div className="relative mt-1.5">
+                  <FiSearch className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="search"
+                    value={receiptSearch}
+                    onChange={(event) => setReceiptSearch(event.target.value)}
+                    placeholder="Search Unit ID, Old Unit ID, or Buyer Name"
+                    className="h-11 w-full rounded-xl border border-slate-300 bg-white pl-10 pr-10 text-sm font-semibold text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
+                  />
+                  {receiptSearch ? (
+                    <button type="button" onClick={() => setReceiptSearch("")} className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Clear Proof of Income search">
+                      <FiX className="h-4 w-4" />
+                    </button>
+                  ) : null}
+                </div>
+              </label>
+              <p className="mt-1.5 text-xs font-semibold text-slate-500">Filters both unrecepted commissions and generated receipt history.</p>
+            </div>
+          ) : null}
+
+          {!receiptQuery.isLoading && !receiptQuery.isError ? (
             <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
               <section>
                 <div className="flex items-end justify-between gap-3">
@@ -612,17 +663,18 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
                     <h3 className="text-base font-black text-slate-950">Released commissions not yet receipted</h3>
                     <p className="mt-1 text-sm font-semibold text-slate-500">Each card represents one seller commission for one buyer and unit.</p>
                   </div>
-                  <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700">{availableGroups.length} group{availableGroups.length === 1 ? "" : "s"}</span>
+                  <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700">{receiptSearch.trim() ? `${filteredAvailableGroups.length} of ${availableGroups.length} groups` : `${availableGroups.length} group${availableGroups.length === 1 ? "" : "s"}`}</span>
                 </div>
 
                 <div className="mt-4 grid gap-3">
-                  {availableGroups.length ? availableGroups.map((group) => {
-                    const active = String(group.commissionId) === String(selectedCommissionId);
+                  {filteredAvailableGroups.length ? filteredAvailableGroups.map((group) => {
+                    const active = String(group.commissionId) === String(selectedGroup?.commissionId);
                     return (
                       <button key={group.commissionId} type="button" onClick={() => chooseGroup(group)} className={`rounded-2xl border p-4 text-left transition ${active ? "border-blue-400 bg-blue-50 ring-4 ring-blue-50" : "border-slate-200 bg-white hover:border-blue-200 hover:bg-slate-50"}`}>
                         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                           <div>
                             <p className="font-black text-slate-950">{group.projectName} · {group.unitId}</p>
+                            {displayOldUnitIds(group.oldUnitIds) ? <p className="mt-1 text-xs font-semibold text-slate-500">Old Unit ID: {displayOldUnitIds(group.oldUnitIds)}</p> : null}
                             <p className="mt-1 text-sm font-semibold text-slate-600">Buyer: {group.buyerName || "-"}</p>
                             <p className="mt-1 text-xs font-semibold text-slate-500">{roleLabels[group.commissionRole] || group.commissionRole} · {Number(group.commissionRate || 0).toFixed(2)}%</p>
                           </div>
@@ -635,7 +687,7 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
                     );
                   }) : (
                     <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-10 text-center text-sm font-semibold text-slate-500">
-                      No released commission stages are waiting for a receipt.
+                      {receiptSearch.trim() ? "No unrecepted commissions match this search." : "No released commission stages are waiting for a receipt."}
                     </div>
                   )}
                 </div>
@@ -698,7 +750,7 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
                   <h3 className="text-base font-black text-slate-950">Generated receipt history</h3>
                   <p className="mt-1 text-sm font-semibold text-slate-500">A released stage cannot be placed on another receipt.</p>
                 </div>
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">{receipts.length} receipt{receipts.length === 1 ? "" : "s"}</span>
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">{receiptSearch.trim() ? `${filteredReceipts.length} of ${receipts.length} receipts` : `${receipts.length} receipt${receipts.length === 1 ? "" : "s"}`}</span>
               </div>
 
               <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200">
@@ -707,15 +759,15 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
                     <tr><th className="px-4 py-3">Date / Reference</th><th className="px-4 py-3">Property</th><th className="px-4 py-3">Included Releases</th><th className="px-4 py-3 text-right">Amount</th><th className="px-4 py-3 text-right">Action</th></tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {receipts.length ? receipts.map((receipt) => (
+                    {filteredReceipts.length ? filteredReceipts.map((receipt) => (
                       <tr key={receipt.receiptId}>
                         <td className="px-4 py-3"><p className="font-black text-slate-900">{receipt.receiptDate}</p><p className="text-xs font-semibold text-slate-500">{receipt.referenceNumber}</p></td>
-                        <td className="px-4 py-3"><p className="font-black text-slate-800">{receipt.projectName} · {receipt.unitId}</p><p className="text-xs font-semibold text-slate-500">{receipt.buyerName || "-"}</p>{receipt.isArchived ? <span className="mt-1 inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-slate-600">Archived cancelled sale</span> : null}</td>
+                        <td className="px-4 py-3"><p className="font-black text-slate-800">{receipt.projectName} · {receipt.unitId}</p>{displayOldUnitIds(receipt.oldUnitIds) ? <p className="text-[11px] font-semibold text-slate-400">Old Unit ID: {displayOldUnitIds(receipt.oldUnitIds)}</p> : null}<p className="text-xs font-semibold text-slate-500">{receipt.buyerName || "-"}</p>{receipt.isArchived ? <span className="mt-1 inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-slate-600">Archived cancelled sale</span> : null}</td>
                         <td className="px-4 py-3"><div className="flex flex-wrap gap-1">{(receipt.releases || []).map((release) => <span key={release.releaseId} className="rounded-lg bg-blue-50 px-2 py-1 text-[11px] font-black text-blue-700">{release.stage} · {Number(release.triggerPercent || 0).toFixed(0)}% cumulative</span>)}</div></td>
                         <td className="px-4 py-3 text-right font-black text-emerald-700">{money(receipt.totalAmount)}</td>
                         <td className="px-4 py-3 text-right"><div className="flex flex-wrap justify-end gap-2"><button type="button" onClick={() => setPrintChoiceReceipt(receipt)} className="inline-flex h-9 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-700 transition hover:bg-blue-100"><FiPrinter className="h-4 w-4" />Print</button>{!receipt.isArchived ? <button type="button" onClick={() => setSignedReceipt(receipt)} className={`inline-flex h-9 items-center gap-2 rounded-xl border px-3 text-xs font-black transition ${receipt.signedCopy ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}><FiFileText className="h-4 w-4" />{receipt.signedCopy ? 'Signed Copy' : 'Upload Signed'}</button> : null}</div>{receipt.signedCopy ? <p className={`mt-1 text-[10px] font-black ${receipt.signedCopy.malwareScanStatus === 'approved' ? 'text-emerald-700' : receipt.signedCopy.malwareScanStatus === 'rejected' || receipt.signedCopy.malwareScanStatus === 'error' ? 'text-red-700' : 'text-amber-700'}`}>{receipt.signedCopy.malwareScanStatus === 'approved' ? 'Signed copy ready' : receipt.signedCopy.malwareScanStatus === 'pending' ? 'Security scan in progress' : receipt.signedCopy.malwareScanStatus === 'rejected' ? 'Signed copy blocked' : receipt.signedCopy.malwareScanStatus === 'error' ? 'Security scan error' : 'Not security scanned'}</p> : null}</td>
                       </tr>
-                    )) : <tr><td colSpan="5" className="px-4 py-8 text-center font-semibold text-slate-500">No generated receipts yet.</td></tr>}
+                    )) : <tr><td colSpan="5" className="px-4 py-8 text-center font-semibold text-slate-500">{receiptSearch.trim() && receipts.length ? "No generated receipts match this search." : "No generated receipts yet."}</td></tr>}
                   </tbody>
                 </table>
               </div>
