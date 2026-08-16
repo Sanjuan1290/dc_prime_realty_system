@@ -67,6 +67,7 @@ import OfferToBuyPrintPage from './components/Lot_Projects/ListingProfileCompone
 import SOAPrintPage from './components/Lot_Projects/ListingProfileComponents/Printouts/SOAPrintPage'
 import PaymentAcknowledgementReceiptsPrintPage from './components/Lot_Projects/ListingProfileComponents/Printouts/PaymentAcknowledgementReceiptsPrintPage'
 import DocumentsPrintPage from './components/Lot_Projects/ListingProfileComponents/Printouts/DocumentsPrintPage'
+import SignedReceiptsPrintPage from './components/Lot_Projects/ListingProfileComponents/Printouts/SignedReceiptsPrintPage'
 import AccreditedSellerProofOfIncomePrintPage from './components/Lot_Projects/ListingProfileComponents/Printouts/AccreditedSellerProofOfIncomePrintPage'
 import AccreditedSellerIncomeRangePrintPage from './components/Lot_Projects/ListingProfileComponents/Printouts/AccreditedSellerIncomeRangePrintPage'
 import ProjectPriceListPrintPage from './components/Lot_Projects/ListingProfileComponents/Printouts/ProjectPriceListPrintPage'
@@ -284,6 +285,10 @@ const App = () => {
           element={<DocumentsPrintPage />}
         />
         <Route
+          path="/portal/printouts/signed-receipts"
+          element={<SignedReceiptsPrintPage />}
+        />
+        <Route
           path="/portal/lot-projects/:projectSlug/price-list/print"
           element={<ProjectPriceListPrintPage />}
         />
@@ -319,3 +324,4 @@ const App = () => {
 }
 
 export default App
+

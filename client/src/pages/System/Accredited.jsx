@@ -10,6 +10,7 @@ import { FiCalendar, FiFileText, FiLoader, FiPrinter, FiRefreshCw, FiSearch, FiU
 import { formatDateTime } from "../../utils/formatDateTime";
 import {useFetch as fetchApi, useFetchPost as postApi, getDoubleCheckNotice} from "../../utils/useFetch";
 import { isFullAccessAdministrator } from "../../config/permissions";
+import { openSignedReceiptPrintPreview } from "../../components/Lot_Projects/ListingProfileComponents/Printouts/signedReceiptPrint";
 import { canOpenMalwareScannedFile, getMalwareScanStatus, malwareScanLabel } from "../../utils/cloudinaryUploadSecurity";
 
 const EMPTY_LIST = [];
@@ -198,7 +199,7 @@ const IncomeRangeReportPanel = ({ seller, sellerId, receipts = EMPTY_LIST, recei
     window.open("/portal/super_admin/accredited/proof-of-income/range/print", "_blank");
   };
 
-  const printAllSignedReceipts = async () => {
+  const printAllSignedReceipts = () => {
     if (!printableSignedReceiptsInRange.length) {
       setRangeAlert({
         type: "warning",
@@ -207,50 +208,21 @@ const IncomeRangeReportPanel = ({ seller, sellerId, receipts = EMPTY_LIST, recei
       return;
     }
 
-    // Signed originals may be PDF or image files, so keep each original intact.
-    // Pre-open the tabs synchronously from the click to reduce popup blocking, then
-    // resolve each protected Cloudinary URL and navigate its matching tab.
-    const targets = printableSignedReceiptsInRange.map((receipt) => ({
-      receipt,
-      tab: window.open("about:blank", "_blank"),
-    }));
-    const openedTargets = targets.filter((target) => target.tab);
+    const opened = openSignedReceiptPrintPreview({
+      title: `Signed Proof of Income Receipts · ${getAccreditedDisplayName(reportSeller)}`,
+      files: printableSignedReceiptsInRange.map((receipt) => ({
+        key: `proof-income-${Number(receipt.receiptId)}-${Number(receipt.signedCopy?.signedCopyId || receipt.signedCopy?.id || 0)}`,
+        name: `Proof of Income · ${receipt.referenceNumber || `Receipt #${receipt.receiptId}`}`,
+        fileName: receipt.signedCopy?.fileName || 'Signed Proof of Income',
+        fileType: receipt.signedCopy?.fileType || '',
+        malwareScanStatus: receipt.signedCopy?.malwareScanStatus || '',
+        accessPath: `/accredited/${sellerId}/proof-of-income-receipts/${Number(receipt.receiptId)}/signed-copy/access-url`,
+      })),
+    });
 
-    if (!openedTargets.length) {
-      setRangeAlert({ type: "error", message: "Your browser blocked the signed receipt tabs. Allow pop-ups for this site and try again." });
-      return;
-    }
-
-    try {
-      await Promise.all(openedTargets.map(async ({ receipt, tab }) => {
-        tab.document.title = "Loading signed receipt...";
-        tab.document.body.innerHTML = '<p style="font-family:Arial,sans-serif;padding:24px">Loading signed receipt...</p>';
-        try {
-          const result = await fetchApi(`/accredited/${sellerId}/proof-of-income-receipts/${receipt.receiptId}/signed-copy/access-url`);
-          const data = result?.data || {};
-          if (!data.url) throw new Error("Signed receipt URL was not returned.");
-          tab.location.replace(data.url);
-        } catch (error) {
-          tab.document.body.textContent = String(error?.message || "Failed to open signed receipt.");
-          tab.document.body.style.cssText = "font-family:Arial,sans-serif;padding:24px;color:#b91c1c";
-          throw error;
-        }
-      }));
-
-      if (openedTargets.length < printableSignedReceiptsInRange.length) {
-        setRangeAlert({
-          type: "warning",
-          message: `Opened ${openedTargets.length} of ${printableSignedReceiptsInRange.length} signed receipts. Your browser blocked the remaining tab(s).`,
-        });
-      } else {
-        setRangeAlert({
-          type: "success",
-          message: `${openedTargets.length} signed receipt${openedTargets.length === 1 ? "" : "s"} opened in separate tabs for printing.`,
-        });
-      }
-    } catch (error) {
-      setRangeAlert({ type: "error", message: error?.message || "Failed to open all signed receipts." });
-    }
+    setRangeAlert(opened
+      ? { type: "success", message: `${printableSignedReceiptsInRange.length} signed receipt${printableSignedReceiptsInRange.length === 1 ? "" : "s"} prepared in one combined print preview.` }
+      : { type: "error", message: "Your browser blocked the signed receipt print preview. Allow pop-ups for this site and try again." });
   };
 
   return (
@@ -260,7 +232,7 @@ const IncomeRangeReportPanel = ({ seller, sellerId, receipts = EMPTY_LIST, recei
           <div>
             <h3 className="text-base font-black text-slate-950">Income date range</h3>
             <p className="mt-1 text-sm font-semibold text-slate-500">
-              Income is based on each commission stage’s actual release date. Print unsigned generated receipts together, or open all security-approved signed originals for printing.
+              Income is based on each commission stage’s actual release date. Print unsigned generated receipts together, or print all security-approved signed originals in one combined preview.
             </p>
           </div>
 
@@ -341,7 +313,7 @@ const IncomeRangeReportPanel = ({ seller, sellerId, receipts = EMPTY_LIST, recei
                 type="button"
                 onClick={printAllSignedReceipts}
                 disabled={!entries.length || !printableSignedReceiptsInRange.length || receiptsLoading}
-                title={!printableSignedReceiptsInRange.length ? "No security-approved signed receipts are available in this date range." : "Open all security-approved signed receipt originals for printing."}
+                title={!printableSignedReceiptsInRange.length ? "No security-approved signed receipts are available in this date range." : "Print all security-approved signed receipt originals in one combined preview."}
                 className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 text-sm font-black text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
               >
                 <FiPrinter className="h-4 w-4" />
@@ -434,7 +406,6 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
   const [activeMode, setActiveMode] = useState("receipt");
   const [signedReceipt, setSignedReceipt] = useState(null);
   const [printChoiceReceipt, setPrintChoiceReceipt] = useState(null);
-  const [openingSignedReceiptId, setOpeningSignedReceiptId] = useState(0);
 
   const receiptQuery = useQuery({
     queryKey: ["seller-proof-of-income-receipts", sellerId],
@@ -475,46 +446,41 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
     window.open("/portal/super_admin/accredited/proof-of-income/print", "_blank");
   };
 
-  const openSignedReceiptForPrint = async (receipt) => {
+  const openSignedReceiptForPrint = (receipt) => {
     const signedCopy = receipt?.signedCopy || null;
     if (!signedCopy || !canOpenMalwareScannedFile(signedCopy)) {
       setLocalAlert({ type: "warning", message: signedCopy ? malwareScanLabel(signedCopy) : "No signed receipt has been uploaded yet." });
       return;
     }
 
-    if (getMalwareScanStatus(signedCopy) === "not_scanned") {
-      const confirmed = window.confirm("This signed receipt was not malware scanned. Open it only if you trust the source. Continue?");
+    const scanStatus = getMalwareScanStatus(signedCopy);
+    let allowUnscanned = false;
+    if (scanStatus === "not_scanned") {
+      const confirmed = window.confirm("This signed receipt was not malware scanned. Print it only if you trust the source. Continue?");
       if (!confirmed) return;
+      allowUnscanned = true;
     }
 
     const receiptId = Number(receipt?.receiptId || 0);
-    const printTab = window.open("about:blank", "_blank");
-    if (!printTab) {
-      setLocalAlert({ type: "error", message: "Your browser blocked the signed receipt tab. Allow pop-ups for this site and try again." });
+    const opened = openSignedReceiptPrintPreview({
+      title: `Signed Proof of Income · ${receipt.referenceNumber || `Receipt #${receiptId}`}`,
+      files: [{
+        key: `proof-income-${receiptId}-${Number(signedCopy.signedCopyId || signedCopy.id || 0)}`,
+        name: `Proof of Income · ${receipt.referenceNumber || `Receipt #${receiptId}`}`,
+        fileName: signedCopy.fileName || 'Signed Proof of Income',
+        fileType: signedCopy.fileType || '',
+        malwareScanStatus: scanStatus,
+        allowUnscanned,
+        accessPath: `/accredited/${sellerId}/proof-of-income-receipts/${receiptId}/signed-copy/access-url`,
+      }],
+    });
+
+    if (!opened) {
+      setLocalAlert({ type: "error", message: "Your browser blocked the signed receipt print preview. Allow pop-ups for this site and try again." });
       return;
     }
 
-    setOpeningSignedReceiptId(receiptId);
-    printTab.document.title = "Loading signed receipt...";
-    printTab.document.body.textContent = "Loading signed receipt...";
-    printTab.document.body.style.cssText = "font-family:Arial,sans-serif;padding:24px";
-    try {
-      const result = await fetchApi(`/accredited/${sellerId}/proof-of-income-receipts/${receiptId}/signed-copy/access-url`);
-      const data = result?.data || {};
-      if (data.securityWarning && !window.confirm(`${data.securityWarning}\n\nOpen this signed receipt anyway?`)) {
-        printTab.close();
-        return;
-      }
-      if (!data.url) throw new Error("The server did not return a signed-receipt access URL.");
-      printTab.location.replace(data.url);
-      setPrintChoiceReceipt(null);
-    } catch (error) {
-      printTab.document.body.textContent = String(error?.message || "Failed to open signed receipt.");
-      printTab.document.body.style.cssText = "font-family:Arial,sans-serif;padding:24px;color:#b91c1c";
-      setLocalAlert({ type: "error", message: error?.message || "Failed to open signed receipt." });
-    } finally {
-      setOpeningSignedReceiptId(0);
-    }
+    setPrintChoiceReceipt(null);
   };
 
 
@@ -774,7 +740,7 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
                   {printChoiceReceipt.referenceNumber || `Receipt #${printChoiceReceipt.receiptId}`} · Choose which version to print.
                 </p>
               </div>
-              <button type="button" onClick={() => setPrintChoiceReceipt(null)} disabled={openingSignedReceiptId > 0} className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 disabled:opacity-50" aria-label="Close print receipt choice"><FiX /></button>
+              <button type="button" onClick={() => setPrintChoiceReceipt(null)} className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 disabled:opacity-50" aria-label="Close print receipt choice"><FiX /></button>
             </div>
             <div className="grid gap-3 p-6 sm:grid-cols-2">
               <button
@@ -789,10 +755,10 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
               <button
                 type="button"
                 onClick={() => openSignedReceiptForPrint(printChoiceReceipt)}
-                disabled={!printChoiceReceipt.signedCopy || !canOpenMalwareScannedFile(printChoiceReceipt.signedCopy) || openingSignedReceiptId > 0}
+                disabled={!printChoiceReceipt.signedCopy || !canOpenMalwareScannedFile(printChoiceReceipt.signedCopy)}
                 className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-left transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:opacity-60"
               >
-                {openingSignedReceiptId === Number(printChoiceReceipt.receiptId) ? <FiLoader className="h-6 w-6 animate-spin text-emerald-700" /> : <FiFileText className="h-6 w-6 text-emerald-700" />}
+                <FiFileText className="h-6 w-6 text-emerald-700" />
                 <p className="mt-3 text-sm font-black text-emerald-950">Signed Receipt</p>
                 <p className="mt-1 text-xs font-semibold leading-5 text-emerald-700">
                   {printChoiceReceipt.signedCopy ? malwareScanLabel(printChoiceReceipt.signedCopy) : "No signed copy uploaded yet."}
@@ -934,3 +900,4 @@ const Accredited = () => {
 };
 
 export default Accredited;
+

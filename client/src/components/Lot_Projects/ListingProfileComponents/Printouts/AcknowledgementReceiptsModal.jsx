@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { FiFileText, FiPrinter, FiX } from 'react-icons/fi'
 import SignedCopyUploadModal from '../../../Shared/SignedCopyUploadModal'
+import StatusAlert from '../../../Shared/StatusAlert'
 
 const money = (value) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 2 }).format(Number(value || 0))
 
@@ -11,11 +12,17 @@ const AcknowledgementReceiptsModal = ({
   readOnly = false,
   onClose,
   onPrintAllUnsigned,
+  onPrintAllSigned,
   onPrintUnsigned,
 }) => {
   const [localPayments, setLocalPayments] = useState(() => payments)
   const [selectedPayment, setSelectedPayment] = useState(null)
+  const [printNotice, setPrintNotice] = useState(null)
   const verifiedPayments = useMemo(() => localPayments.filter((payment) => String(payment?.status || 'Verified').toLowerCase() === 'verified'), [localPayments])
+  const printableSignedPayments = useMemo(() => verifiedPayments.filter((payment) => {
+    const signedCopy = payment?.acknowledgementSignedCopy || null
+    return signedCopy && String(signedCopy.malwareScanStatus || '').toLowerCase() === 'approved'
+  }), [verifiedPayments])
 
   const updateSignedCopy = (paymentId, result) => {
     const signedCopy = result?.data?.signedCopy || null
@@ -27,6 +34,14 @@ const AcknowledgementReceiptsModal = ({
       ? { ...current, acknowledgementSignedCopy: signedCopy }
       : current)
   }
+  const handlePrintAllSigned = () => {
+    if (!printableSignedPayments.length) return
+    const opened = onPrintAllSigned?.(printableSignedPayments)
+    setPrintNotice(opened === false
+      ? { type: 'error', message: 'Your browser blocked the signed receipt print preview. Allow pop-ups for this site and try again.' }
+      : { type: 'success', message: `${printableSignedPayments.length} signed receipt${printableSignedPayments.length === 1 ? '' : 's'} prepared in one combined print preview.` })
+  }
+
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/65 p-4">
@@ -42,8 +57,13 @@ const AcknowledgementReceiptsModal = ({
         <div className="min-h-0 flex-1 overflow-y-auto p-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div><p className="text-sm font-black text-slate-950">{verifiedPayments.length} verified payment{verifiedPayments.length === 1 ? '' : 's'}</p><p className="text-xs font-semibold text-slate-500">Each payment has its own acknowledgement receipt and signed-copy record.</p></div>
-            <button type="button" onClick={onPrintAllUnsigned} disabled={!verifiedPayments.length} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-black text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"><FiPrinter />Print All Unsigned</button>
+            <div className="flex flex-wrap justify-end gap-2">
+              <button type="button" onClick={onPrintAllUnsigned} disabled={!verifiedPayments.length} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-black text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"><FiPrinter />Print All Unsigned</button>
+              <button type="button" onClick={handlePrintAllSigned} disabled={!printableSignedPayments.length} title={!printableSignedPayments.length ? 'No security-approved signed acknowledgement receipts are available.' : 'Print all security-approved signed acknowledgement receipts in one combined preview.'} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-black text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"><FiPrinter />Print All Signed ({printableSignedPayments.length})</button>
+            </div>
           </div>
+
+          {printNotice ? <StatusAlert type={printNotice.type} message={printNotice.message} onClose={() => setPrintNotice(null)} className="mt-4" /> : null}
 
           <div className="mt-5 overflow-hidden rounded-2xl border border-slate-200">
             {verifiedPayments.length ? <div className="divide-y divide-slate-100">{verifiedPayments.map((payment) => {
@@ -83,3 +103,4 @@ const AcknowledgementReceiptsModal = ({
 }
 
 export default AcknowledgementReceiptsModal
+

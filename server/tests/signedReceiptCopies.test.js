@@ -87,6 +87,7 @@ test('proof and acknowledgement UI clearly separates unsigned printing from sign
   assert.match(accredited, /Signed Receipt/);
   assert.match(accredited, /Signed Proof of Income/);
   assert.match(manager, /Print All Unsigned/);
+  assert.match(manager, /Print All Signed/);
   assert.match(manager, /Print Unsigned/);
   assert.match(manager, /Upload Signed Copy/);
   assert.match(manager, /View \/ Signed Copy/);
@@ -97,6 +98,28 @@ test('proof and acknowledgement UI clearly separates unsigned printing from sign
   assert.match(ackPrint, /selectedPaymentId/);
 });
 
+
+test('bulk signed receipt printing uses one combined internal preview instead of one popup per signed file', () => {
+  const accredited = read('client/src/pages/System/Accredited.jsx');
+  const printouts = read('client/src/components/Lot_Projects/ListingProfileComponents/Printouts/Printouts.jsx');
+  const manager = read('client/src/components/Lot_Projects/ListingProfileComponents/Printouts/AcknowledgementReceiptsModal.jsx');
+  const signedPrintPage = read('client/src/components/Lot_Projects/ListingProfileComponents/Printouts/SignedReceiptsPrintPage.jsx');
+  const signedPrintHelper = read('client/src/components/Lot_Projects/ListingProfileComponents/Printouts/signedReceiptPrint.js');
+  const app = read('client/src/App.jsx');
+
+  assert.doesNotMatch(accredited, /window\.open\(["']about:blank/);
+  assert.match(accredited, /openSignedReceiptPrintPreview/);
+  assert.match(printouts, /openSignedReceiptPrintPreview/);
+  assert.match(manager, /Print All Signed/);
+  assert.match(signedPrintHelper, /portal\/printouts\/signed-receipts/);
+  assert.match(app, /SignedReceiptsPrintPage/);
+  assert.match(app, /portal\/printouts\/signed-receipts/);
+  assert.match(signedPrintPage, /Promise\.allSettled/);
+  assert.match(signedPrintPage, /useFetch\(file\.accessPath\)/);
+  assert.match(signedPrintPage, /PdfPrintPages/);
+  assert.match(signedPrintPage, /malwareScanStatus/);
+});
+
 test('signed copy verification script checks ownership and duplicate active versions', () => {
   const verify = read('server/scripts/verify-signed-receipt-copies.sql');
   assert.match(verify, /lot_project_commission_receipt_files/);
@@ -104,3 +127,4 @@ test('signed copy verification script checks ownership and duplicate active vers
   assert.match(verify, /HAVING COUNT\(\*\) > 1/);
   assert.match(verify, /lot_project_payment_status <> 'Verified'/);
 });
+

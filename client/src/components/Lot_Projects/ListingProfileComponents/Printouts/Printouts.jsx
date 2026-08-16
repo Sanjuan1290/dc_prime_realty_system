@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { FiFileText, FiImage, FiPrinter } from 'react-icons/fi'
 import AcknowledgementReceiptsModal from './AcknowledgementReceiptsModal'
+import { openSignedReceiptPrintPreview } from './signedReceiptPrint'
 
 const printItems = [
   {
@@ -45,6 +46,7 @@ const Printouts = ({
   readOnly = false,
 }) => {
   const [showAcknowledgementReceipts, setShowAcknowledgementReceipts] = useState(false)
+  const listingLookup = listing?.id || listing?.listingId || listing?.lot_project_listing_id || listing?.unitId || listing?.unitCode
 
   const handlePreview = (item, extraPayload = {}) => {
     const printKey = window.crypto?.randomUUID?.()
@@ -71,6 +73,26 @@ const Printouts = ({
       `/portal/lot-projects/${projectSlug}/printouts/${item.path}?printKey=${encodeURIComponent(printKey)}`,
       '_blank'
     )
+  }
+
+  const handlePrintAllSignedAcknowledgements = (signedPayments = []) => {
+    const files = signedPayments.map((payment) => {
+      const paymentId = Number(payment?.paymentId || payment?.id || 0)
+      const signedCopy = payment?.acknowledgementSignedCopy || null
+      return {
+        key: `acknowledgement-${paymentId}-${Number(signedCopy?.signedCopyId || signedCopy?.id || 0)}`,
+        name: `Acknowledgement Receipt · ${payment?.referenceId || `Payment #${paymentId}`}`,
+        fileName: signedCopy?.fileName || 'Signed acknowledgement receipt',
+        fileType: signedCopy?.fileType || '',
+        malwareScanStatus: signedCopy?.malwareScanStatus || '',
+        accessPath: signedCopy?.accessPath || `/projects/lot-projects/${encodeURIComponent(projectSlug)}/listings/${encodeURIComponent(listingLookup)}/payments/${paymentId}/acknowledgement-signed-copy/access-url`,
+      }
+    })
+
+    return openSignedReceiptPrintPreview({
+      title: `Signed Acknowledgement Receipts · ${listing?.unitId || listing?.unitCode || listingLookup || 'Listing'}`,
+      files,
+    })
   }
 
   return (
@@ -128,11 +150,12 @@ const Printouts = ({
       {showAcknowledgementReceipts ? (
         <AcknowledgementReceiptsModal
           projectSlug={projectSlug}
-          listingId={listing?.id || listing?.listingId || listing?.lot_project_listing_id || listing?.unitId || listing?.unitCode}
+          listingId={listingLookup}
           payments={payments}
           readOnly={readOnly}
           onClose={() => setShowAcknowledgementReceipts(false)}
           onPrintAllUnsigned={() => handlePreview(printItems.find((item) => item.type === 'acknowledgement-receipts'))}
+          onPrintAllSigned={handlePrintAllSignedAcknowledgements}
           onPrintUnsigned={(paymentId) => handlePreview(printItems.find((item) => item.type === 'acknowledgement-receipts'), { selectedPaymentId: Number(paymentId) })}
         />
       ) : null}
@@ -141,3 +164,4 @@ const Printouts = ({
 }
 
 export default Printouts
+
