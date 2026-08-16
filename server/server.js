@@ -6,7 +6,7 @@ import helmet from 'helmet'
 import 'express-async-errors'
 
 import { db } from './db/connect.js'
-import { startDailyPenaltyJob } from './jobs/dailyPenalty.job.js'
+import { startDailyPenaltyScheduler } from './jobs/dailyPenalty.job.js'
 import { parseTrustProxySetting } from './utils/requestIp.js'
 import { maintenanceGuard } from './middleware/maintenance.middleware.js'
 
@@ -138,7 +138,7 @@ const startServer = async () => {
 
     app.listen(PORT, HOST, () => {
       console.log(`Server running on ${HOST}:${PORT}`)
-      startDailyPenaltyJob()
+      startDailyPenaltyScheduler()
     })
   } catch (error) {
     console.error('Failed to start server:', error.message)
