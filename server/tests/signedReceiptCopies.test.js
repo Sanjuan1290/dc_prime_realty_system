@@ -80,7 +80,11 @@ test('proof and acknowledgement UI clearly separates unsigned printing from sign
   const manager = read('client/src/components/Lot_Projects/ListingProfileComponents/Printouts/AcknowledgementReceiptsModal.jsx');
   const signedModal = read('client/src/components/Shared/SignedCopyUploadModal.jsx');
   const ackPrint = read('client/src/components/Lot_Projects/ListingProfileComponents/Printouts/PaymentAcknowledgementReceiptsPrintPage.jsx');
-  assert.match(accredited, /Print Unsigned/);
+  assert.match(accredited, /Print All Unsigned Receipts/);
+  assert.match(accredited, /Print All Signed Receipts/);
+  assert.match(accredited, />Print<\/button>/);
+  assert.match(accredited, /Unsigned Receipt/);
+  assert.match(accredited, /Signed Receipt/);
   assert.match(accredited, /Signed Proof of Income/);
   assert.match(manager, /Print All Unsigned/);
   assert.match(manager, /Print Unsigned/);
