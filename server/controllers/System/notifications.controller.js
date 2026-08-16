@@ -15,6 +15,7 @@ import {
 } from '../../services/paymentSoaPdf.service.js';
 import { writeAuditLog } from './auditLogs.controller.js';
 import { isFullAccessAdministrator } from '../../config/permissions.js';
+import { getCompanyContactEmail, sendEmail } from '../../services/email.service.js';
 
 const toDateOnly = (value) => {
   if (!value) return '-';
@@ -69,53 +70,9 @@ const fullName = (row = {}) => {
 
 const canManageNotifications = (user = {}) => isFullAccessAdministrator(user);
 
-const EMAIL_LOGO_CID = 'dc-prime-logo@dcprime';
 const DEFAULT_EMAIL_LOGO_URL = 'https://res.cloudinary.com/dvazrmgq9/image/upload/v1784705909/logo-mobile_2_i0damo.png';
-const emailLogoCache = {
-  url: '',
-  expiresAt: 0,
-  attachment: null,
-};
 
 const getEmailLogoUrl = () => String(process.env.EMAIL_LOGO_URL || DEFAULT_EMAIL_LOGO_URL).trim();
-
-const getEmailLogoAttachment = async () => {
-  const url = getEmailLogoUrl();
-  if (!url) return null;
-
-  if (emailLogoCache.url === url && emailLogoCache.attachment && emailLogoCache.expiresAt > Date.now()) {
-    return emailLogoCache.attachment;
-  }
-
-  try {
-    const response = await fetch(url, {
-      headers: { Accept: 'image/*' },
-      signal: AbortSignal.timeout(10000),
-    });
-    if (!response.ok) return null;
-
-    const contentType = String(response.headers.get('content-type') || 'image/png').split(';')[0].trim();
-    if (!contentType.startsWith('image/')) return null;
-
-    const extension = contentType.split('/')[1]?.replace('jpeg', 'jpg').replace(/[^a-z0-9]/gi, '') || 'png';
-    const content = Buffer.from(await response.arrayBuffer());
-    if (!content.length) return null;
-
-    const attachment = {
-      filename: `dc-prime-email-logo.${extension}`,
-      content,
-      contentType,
-      cid: EMAIL_LOGO_CID,
-      contentDisposition: 'inline',
-    };
-    emailLogoCache.url = url;
-    emailLogoCache.attachment = attachment;
-    emailLogoCache.expiresAt = Date.now() + (60 * 60 * 1000);
-    return attachment;
-  } catch {
-    return null;
-  }
-};
 
 const pdfLogoCache = {
   url: '',
@@ -174,7 +131,7 @@ const buildBrandedEmailHtml = ({
   <div style="margin:0;background:#f1f5f9;padding:28px 14px;font-family:Arial,Helvetica,sans-serif;color:#0f172a;line-height:1.6">
     <div style="max-width:640px;margin:0 auto;overflow:hidden;border:1px solid #dbe3ee;border-radius:16px;background:#ffffff">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;border-bottom:1px solid #e2e8f0;padding:20px 24px">
-        <img src="cid:${EMAIL_LOGO_CID}" alt="${escapeHtml(companyName)}" width="92" style="display:block;width:92px;max-width:92px;height:auto;border:0">
+        ${getEmailLogoUrl() ? `<img src="${escapeHtml(getEmailLogoUrl())}" alt="${escapeHtml(companyName)}" width="92" style="display:block;width:92px;max-width:92px;height:auto;border:0">` : '<div></div>'}
         <div style="font-size:13px;font-weight:700;color:#64748b;text-align:right">${escapeHtml(companyName)}</div>
       </div>
       <div style="padding:26px 24px">
@@ -368,7 +325,7 @@ const mapNotificationRow = (row = {}) => {
     totalContractPrice: toMoneyNumber(row.lot_project_listing_tcp),
     legalMiscFee: toMoneyNumber(row.lot_project_listing_lmf_amount),
     companyName: row.company_name || 'D&C Prime Realty',
-    companyEmail: row.company_email || process.env.SMTP_USER || 'dcprimegold@gmail.com',
+    companyEmail: row.company_email || getCompanyContactEmail('dcprimegold@gmail.com'),
     companyContactNumber: row.company_contact_number || row.reservation_contact_number || '(046) 866 0616',
     buyerName: fullName(row),
     buyerEmail: row.buyer_email || '',
@@ -672,55 +629,6 @@ const buildNotificationMessage = (notification, statement) => {
   });
 
   return { subject, textMessage, htmlMessage };
-};
-
-const sendEmail = async ({ to, subject, text, html, attachments = [] }) => {
-  const requiredEnv = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS'];
-  const missing = requiredEnv.filter((key) => !String(process.env[key] || '').trim());
-
-  if (missing.length > 0) {
-    throw new Error(`SMTP is not configured. Missing: ${missing.join(', ')}`);
-  }
-
-  let nodemailer;
-  try {
-    nodemailer = await import('nodemailer');
-  } catch {
-    throw new Error('Email package is missing. Run npm install in the server folder first.');
-  }
-
-  const transporter = nodemailer.default.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT || 587),
-    secure: String(process.env.SMTP_SECURE || '').toLowerCase() === 'true',
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-  });
-
-  let finalHtml = String(html || '');
-  const finalAttachments = [...attachments];
-  if (finalHtml.includes(`cid:${EMAIL_LOGO_CID}`)) {
-    const logoAttachment = await getEmailLogoAttachment();
-    if (logoAttachment) {
-      finalAttachments.unshift(logoAttachment);
-    } else {
-      const fallbackLogoUrl = getEmailLogoUrl();
-      finalHtml = fallbackLogoUrl
-        ? finalHtml.replaceAll(`cid:${EMAIL_LOGO_CID}`, escapeHtml(fallbackLogoUrl))
-        : finalHtml.replace(/<img[^>]+dc-prime-logo@dcprime[^>]*>/gi, '');
-    }
-  }
-
-  await transporter.sendMail({
-    from: process.env.SMTP_FROM || process.env.SMTP_USER,
-    to,
-    subject,
-    text,
-    html: finalHtml,
-    attachments: finalAttachments,
-  });
 };
 
 export const getPaymentDueNotifications = async (req, res) => {
@@ -1163,7 +1071,7 @@ const getDocumentNotificationContext = async (connection, listingId, clientProfi
     buyerEmail: context.buyer_email || '',
     buyerContactNumber: context.buyer_contact_number || '',
     companyName: context.company_name || 'D&C Prime Realty',
-    companyEmail: context.company_email || process.env.SMTP_USER || 'dcprimerealty@gmail.com',
+    companyEmail: context.company_email || getCompanyContactEmail('dcprimerealty@gmail.com'),
     companyContactNumber: context.company_contact_number || context.reservation_contact_number || '(046) 866-0616',
     missingDocuments: documentRows
       .filter((row) => String(row.document_status || '').toLowerCase() === 'missing')
@@ -1570,5 +1478,3 @@ export const getDocumentNotifications = async (req, res) => {
     connection.release();
   }
 };
-
-

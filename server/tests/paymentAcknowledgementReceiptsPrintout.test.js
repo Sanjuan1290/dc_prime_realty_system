@@ -29,5 +29,3 @@ test('listing printouts expose one acknowledgement receipt page per verified pay
   assert.match(receiptPage, /&nbsp;<\/div>[\s\S]*<p className="mt-2">Witness<\/p>/)
   assert.doesNotMatch(receiptPage, /getBrokerDetails|payment\.verifiedBy/)
 })
-
-

@@ -146,7 +146,7 @@ const BuyerFormLinkModal = ({
             <label className="mt-4 flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
               <input type="checkbox" checked={sendEmail} onChange={(event) => setSendEmail(event.target.checked)} disabled={!recipientEmail.trim()} className="mt-0.5 h-4 w-4" />
               <span className="text-xs font-semibold text-slate-600">
-                Send the generated link by email. SMTP must be configured. You can still copy the link manually.
+                Send the generated link by email through Resend. You can still copy the link manually.
               </span>
             </label>
           </section>
@@ -174,5 +174,3 @@ const BuyerFormLinkModal = ({
 }
 
 export default BuyerFormLinkModal
-
-

@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import jwt from 'jsonwebtoken';
-import nodemailer from 'nodemailer';
+import { assertResendConfigured, sendEmail } from '../../services/email.service.js';
 import { getRequestIpAddress } from '../../utils/requestIp.js';
 
 export const LOGIN_SESSION_SECONDS = 12 * 60 * 60;
@@ -103,30 +103,7 @@ export const validatePasswordResetValue = ({ newPassword, confirmPassword }) => 
 
 export { getRequestIpAddress };
 
-const emailRequestTimeoutMs = Math.max(
-  5_000,
-  Number(process.env.EMAIL_REQUEST_TIMEOUT_MS || 15_000)
-);
-
-const hasResendConfiguration = () => Boolean(
-  String(process.env.RESEND_API_KEY || '').trim()
-  && String(process.env.EMAIL_FROM || '').trim()
-);
-
-const hasSmtpConfiguration = () => (
-  ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS']
-    .every((key) => String(process.env[key] || '').trim())
-);
-
-export const assertPasswordResetEmailConfigured = () => {
-  if (hasResendConfiguration() || hasSmtpConfiguration()) return;
-
-  const error = new Error(
-    'Password reset email is unavailable. Configure RESEND_API_KEY and EMAIL_FROM, or configure all SMTP settings.'
-  );
-  error.statusCode = 503;
-  throw error;
-};
+export const assertPasswordResetEmailConfigured = () => assertResendConfigured();
 
 export const buildPasswordResetEmail = ({ name, code }) => {
   const companyName = String(process.env.COMPANY_NAME || 'D&C Prime Realty').trim();
@@ -164,80 +141,10 @@ export const buildPasswordResetEmail = ({ name, code }) => {
   return { subject, text, html };
 };
 
-const sendPasswordResetWithResend = async ({ to, message }) => {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), emailRequestTimeoutMs);
-
-  try {
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${String(process.env.RESEND_API_KEY).trim()}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: String(process.env.EMAIL_FROM).trim(),
-        to: [to],
-        subject: message.subject,
-        text: message.text,
-        html: message.html,
-      }),
-      signal: controller.signal,
-    });
-
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      const error = new Error(
-        result?.message
-          || result?.error?.message
-          || 'The email provider rejected the password reset message.'
-      );
-      error.statusCode = 502;
-      throw error;
-    }
-  } catch (error) {
-    if (error?.name === 'AbortError') {
-      const timeoutError = new Error('The email provider took too long to respond. Please try again.');
-      timeoutError.statusCode = 504;
-      throw timeoutError;
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeoutId);
-  }
-};
-
-const sendPasswordResetWithSmtp = async ({ to, message }) => {
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT || 587),
-    secure: String(process.env.SMTP_SECURE || '').toLowerCase() === 'true',
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-    connectionTimeout: emailRequestTimeoutMs,
-    greetingTimeout: emailRequestTimeoutMs,
-    socketTimeout: emailRequestTimeoutMs,
-  });
-
-  await transporter.sendMail({
-    from: process.env.SMTP_FROM || process.env.SMTP_USER,
-    to,
-    ...message,
-  });
-};
-
 export const sendPasswordResetCodeEmail = async ({ to, name, code }) => {
   assertPasswordResetEmailConfigured();
   const message = buildPasswordResetEmail({ name, code });
-
-  if (hasResendConfiguration()) {
-    await sendPasswordResetWithResend({ to, message });
-    return;
-  }
-
-  await sendPasswordResetWithSmtp({ to, message });
+  await sendEmail({ to, ...message });
 };
 
 export const createPasswordResetToken = ({ userId, resetCodeId, authVersion = 0 }) => (
@@ -310,5 +217,3 @@ export const ensurePasswordResetSchema = async (connection) => {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci
   `);
 };
-
-

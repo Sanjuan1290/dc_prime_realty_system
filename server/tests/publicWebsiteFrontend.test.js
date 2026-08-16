@@ -162,4 +162,3 @@ test('website pages include route transitions and scroll reveal animations', () 
   );
   assert.doesNotMatch(app, /const WebsitePrivacyNotice\s*=\s*lazy/);
 });
-

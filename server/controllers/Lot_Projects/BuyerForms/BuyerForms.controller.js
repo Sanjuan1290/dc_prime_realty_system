@@ -1,4 +1,4 @@
-import nodemailer from 'nodemailer';
+import { isResendConfigured, sendEmail } from '../../../services/email.service.js';
 import {
   db,
   getErrorMessage,
@@ -53,29 +53,15 @@ const getListingForAdmin = async (connection, projectId, listingLookup, { lock =
 };
 
 const sendBuyerFormEmail = async ({ recipientEmail, publicUrl, projectName, unitId, expiresAt }) => {
-  const required = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS'];
-  const missing = required.filter((key) => !String(process.env[key] || '').trim());
-  if (missing.length) {
-    return { sent: false, message: `Email was not sent because SMTP settings are missing: ${missing.join(', ')}.` };
+  if (!isResendConfigured()) {
+    return { sent: false, message: 'Email was not sent because Resend is not configured. Set RESEND_API_KEY and EMAIL_FROM.' };
   }
 
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT),
-    secure: String(process.env.SMTP_SECURE || '').toLowerCase() === 'true',
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-  });
-
   const companyName = String(process.env.COMPANY_NAME || 'D&C Prime Realty').trim();
-  const from = String(process.env.SMTP_FROM || process.env.SMTP_USER).trim();
   const subject = `Buyer Information Form — ${unitId}`;
   const expirationLabel = expiresAt ? new Date(expiresAt).toLocaleString('en-PH', { timeZone: 'Asia/Manila' }) : 'the stated expiry time';
 
-  await transporter.sendMail({
-    from,
+  await sendEmail({
     to: recipientEmail,
     subject,
     text: [
@@ -680,5 +666,3 @@ export const resetBuyerFormDataForAvailable = resetBuyerFormsForAvailable;
 export const supersedeBuyerFormLinks = revokeOpenBuyerFormLinks;
 export const readBuyerFormStateForProfile = getBuyerFormAdminState;
 export const decodeBuyerSubmissionPayload = parseJsonObject;
-
-

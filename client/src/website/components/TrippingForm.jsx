@@ -97,5 +97,3 @@ const TrippingForm = ({ initialProject = '' }) => {
 }
 
 export default TrippingForm
-
-

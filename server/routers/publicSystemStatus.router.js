@@ -6,5 +6,3 @@ const router = express.Router()
 router.get('/', getPublicSystemStatus)
 
 export default router
-
-

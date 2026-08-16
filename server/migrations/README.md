@@ -38,4 +38,3 @@ The client Final Double-Check refactor does not require a database migration.
 - canonical document version/sequence metadata and payment-proof sequence metadata
 
 Apply this SQL migration before running `npm run migrate:cloudinary-documents`. The Cloudinary script is dry-run by default; only `--apply` changes remote assets/database file metadata.
-

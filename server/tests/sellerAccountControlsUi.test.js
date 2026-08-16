@@ -19,5 +19,3 @@ test('seller rows do not show the reset-password action', async () => {
   assert.match(source, /const canResetUserPassword = \(user\) => canResetPasswords && !isSellerRecord\(user\)/);
   assert.match(source, /\{canResetUserPassword\(user\) \? <button[\s\S]*Reset/);
 });
-
-

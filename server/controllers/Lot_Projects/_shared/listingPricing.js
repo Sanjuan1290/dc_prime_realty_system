@@ -94,5 +94,3 @@ export const getListingPricingForMode = (
 
   return { pricingMode, ...pricing };
 };
-
-

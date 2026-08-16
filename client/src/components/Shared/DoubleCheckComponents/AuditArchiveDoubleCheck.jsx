@@ -15,4 +15,3 @@ const AuditArchiveDoubleCheck = ({ request, onConfirm, onCancel }) => {
 }
 
 export default AuditArchiveDoubleCheck
-

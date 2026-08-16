@@ -49,5 +49,3 @@ test('Admin 1 is limited to 12 months in System and Lot dashboards', () => {
   assert.match(lotDashboard, /adminRangeBlocked = isAdmin1 && exceedsTwelveMonths\(dateFrom, dateTo\)/);
   assert.match(lotDashboard, /enabled: Boolean\(projectSlug\) && canLoadDateRange/);
 });
-
-

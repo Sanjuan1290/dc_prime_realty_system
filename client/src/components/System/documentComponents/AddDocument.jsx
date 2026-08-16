@@ -157,5 +157,3 @@ const AddDocument = ({ setShowAddDocumentModal, onSaved }) => {
 };
 
 export default AddDocument;
-
-

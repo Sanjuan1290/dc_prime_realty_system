@@ -515,5 +515,3 @@ export const buildMissingDocumentsPdfBuffer = ({
     author: companyName,
   }, normalizedLogo);
 };
-
-

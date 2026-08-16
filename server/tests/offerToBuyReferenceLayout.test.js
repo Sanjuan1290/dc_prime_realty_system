@@ -73,5 +73,3 @@ test('unlisted employment statuses appear only on the Other line', () => {
   assert.equal(resolveEmploymentStatus('Government Consultant').checkedKey, '');
   assert.equal(getEmploymentStatusOtherText('Government Consultant'), 'Government Consultant');
 });
-
-

@@ -249,5 +249,3 @@ const TemplateDocuments = ({ documents, selectedDocuments, search, setSearch, se
 };
 
 export default EditDocumentTemplate;
-
-

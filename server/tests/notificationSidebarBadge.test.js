@@ -36,4 +36,3 @@ test('reservation and document actions refresh notification badge queries immedi
   const documentInvalidations = profile.match(/system-document-notifications/g) || []
   assert.ok(documentInvalidations.length >= 5, 'expected reservation and document mutations to refresh document notification counts')
 })
-

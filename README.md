@@ -150,12 +150,10 @@ DESTRUCTIVE_ACTION_MAX_ATTEMPTS=5
 
 NODE_ENV=development
 
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_SECURE=false
-SMTP_USER=
-SMTP_PASS=
-SMTP_FROM=
+RESEND_API_KEY=
+EMAIL_FROM=D&C Prime Realty <noreply@example.com>
+EMAIL_REQUEST_TIMEOUT_MS=15000
+COMPANY_EMAIL=
 EMAIL_LOGO_URL=
 
 CLOUDINARY_CLOUD_NAME=
@@ -166,6 +164,8 @@ CLOUDINARY_UPLOAD_FOLDER=dc_prime
 PUBLIC_APP_URL=http://localhost:5173
 COMPANY_NAME=D&C Prime Realty
 ```
+
+All backend email flows use the Resend HTTPS API. Verify the sending domain in Resend and set `RESEND_API_KEY` plus `EMAIL_FROM`.
 
 Use different long random values for `JWT_SECRET`, `AUDIT_DELETE_CODE_SECRET`, and `DESTRUCTIVE_ACTION_CODE_SECRET`.
 
@@ -229,5 +229,3 @@ The actual remote Cloudinary conversion was not run while building this package 
 - Server JavaScript syntax checks completed
 
 The Vite build reports a chunk-size warning for some existing large pages. It does not stop the build.
-
-

@@ -11,7 +11,7 @@ import {
   buildPaymentProofFolder,
   createAuthenticatedAccessUrl,
   createAuthenticatedPaymentProofUploadSignature,
-  destroyAuthenticatedCloudinaryAsset,
+  destroyCloudinaryAssets,
   validateDocumentUploadRequest,
   verifyAuthenticatedCloudinaryAsset,
   getCloudinaryMalwareScanState,
@@ -503,6 +503,8 @@ export const getLotProjectPaymentProofAccessUrl = async (req, res) => {
 
 export const deleteLotProjectPaymentProof = async (req, res) => {
   const connection = await db.getConnection();
+  let transactionStarted = false;
+
   try {
     const context = await getPaymentProofContext(connection, req);
     if (context.errorStatus) return res.status(context.errorStatus).json({ message: context.errorMessage });
@@ -511,6 +513,8 @@ export const deleteLotProjectPaymentProof = async (req, res) => {
     if (!proofId) return res.status(400).json({ message: 'Payment proof id is required.' });
 
     await connection.beginTransaction();
+    transactionStarted = true;
+
     const [rows] = await connection.query(
       `SELECT * FROM lot_project_payment_proofs WHERE lot_project_payment_proof_id = ? AND lot_project_payment_id = ? AND proof_status = 'active' LIMIT 1 FOR UPDATE`,
       [proofId, context.payment.lot_project_payment_id]
@@ -518,8 +522,15 @@ export const deleteLotProjectPaymentProof = async (req, res) => {
     const proof = rows[0];
     if (!proof) {
       await connection.rollback();
+      transactionStarted = false;
       return res.status(404).json({ message: 'Payment proof not found.' });
     }
+
+    const cloudinaryCleanup = await destroyCloudinaryAssets([{
+      publicId: proof.cloudinary_public_id,
+      resourceType: proof.cloudinary_resource_type || 'image',
+      deliveryType: proof.cloudinary_delivery_type || 'authenticated',
+    }]);
 
     await connection.query(
       `
@@ -540,27 +551,36 @@ export const deleteLotProjectPaymentProof = async (req, res) => {
       entityId: String(proofId),
       entityLabel: `${proof.file_name} — ${context.payment.lot_project_listing_unit_id}`,
       title: 'Removed payment proof',
-      description: `Removed payment proof ${proof.file_name} from payment ${context.payment.lot_project_payment_reference_id || context.payment.lot_project_payment_id}.`,
-      metadata: { paymentId: context.payment.lot_project_payment_id, proofId, fileName: proof.file_name },
+      description: `Removed payment proof ${proof.file_name} from payment ${context.payment.lot_project_payment_reference_id || context.payment.lot_project_payment_id} and deleted its Cloudinary asset.`,
+      metadata: {
+        paymentId: context.payment.lot_project_payment_id,
+        proofId,
+        fileName: proof.file_name,
+        cloudinaryPublicId: proof.cloudinary_public_id,
+        cloudinaryDeletedCount: cloudinaryCleanup.deletedCount,
+        cloudinaryAlreadyMissingCount: cloudinaryCleanup.alreadyMissingCount,
+      },
     });
 
     await connection.commit();
+    transactionStarted = false;
 
-    try {
-      if (proof.cloudinary_public_id) {
-        await destroyAuthenticatedCloudinaryAsset({
-          publicId: proof.cloudinary_public_id,
-          resourceType: proof.cloudinary_resource_type || 'image',
-        });
-      }
-    } catch (cloudinaryError) {
-      console.error('Payment proof Cloudinary cleanup failed:', cloudinaryError.message);
-    }
-
-    return res.json({ success: true, message: 'Payment proof removed successfully.' });
+    return res.json({
+      success: true,
+      message: 'Payment proof removed successfully and deleted from Cloudinary.',
+      data: {
+        cloudinaryDeletedCount: cloudinaryCleanup.deletedCount,
+        cloudinaryAlreadyMissingCount: cloudinaryCleanup.alreadyMissingCount,
+      },
+    });
   } catch (error) {
-    try { await connection.rollback(); } catch {}
-    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
+    if (transactionStarted) {
+      try { await connection.rollback(); } catch {}
+    }
+    return res.status(error.statusCode || 500).json({
+      code: error.code || undefined,
+      message: getErrorMessage(error),
+    });
   } finally {
     connection.release();
   }

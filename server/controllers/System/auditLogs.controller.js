@@ -8,6 +8,8 @@ import {
 } from '../Lot_Projects/_shared/lotProject.shared.js';
 import { getRequestIpAddress, normalizeIpAddress } from '../../utils/requestIp.js';
 import { isFullAccessAdministrator } from '../../config/permissions.js';
+import { sendEmail } from '../../services/email.service.js';
+
 const allowedActions = new Set([
   'create',
   'update',
@@ -411,34 +413,6 @@ const verificationCodeMatches = (code, expectedHash) => {
 };
 
 const sendAuditArchiveCodeEmail = async ({ to, name, code, retentionDays, cutoffAt, eligibleCount }) => {
-  const requiredEnv = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS'];
-  const missing = requiredEnv.filter((key) => !String(process.env[key] || '').trim());
-
-  if (missing.length > 0) {
-    const error = new Error(`SMTP is not configured. Missing: ${missing.join(', ')}`);
-    error.statusCode = 500;
-    throw error;
-  }
-
-  let nodemailer;
-  try {
-    nodemailer = await import('nodemailer');
-  } catch {
-    const error = new Error('Email package is missing. Run npm install in the server folder first.');
-    error.statusCode = 500;
-    throw error;
-  }
-
-  const transporter = nodemailer.default.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT || 587),
-    secure: String(process.env.SMTP_SECURE || '').toLowerCase() === 'true',
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-  });
-
   const safeName = cleanText(name, 'Super Admin');
   const safeHtmlName = escapeHtml(safeName);
   const safeCutoff = cleanText(cutoffAt);
@@ -470,13 +444,7 @@ const sendAuditArchiveCodeEmail = async ({ to, name, code, retentionDays, cutoff
     </div>
   `;
 
-  await transporter.sendMail({
-    from: process.env.SMTP_FROM || process.env.SMTP_USER,
-    to,
-    subject,
-    text,
-    html,
-  });
+  await sendEmail({ to, subject, text, html });
 };
 
 const csvEscape = (value) => {
@@ -1138,5 +1106,3 @@ export const downloadAuditLogArchiveExport = async (req, res) => {
     connection.release();
   }
 };
-
-

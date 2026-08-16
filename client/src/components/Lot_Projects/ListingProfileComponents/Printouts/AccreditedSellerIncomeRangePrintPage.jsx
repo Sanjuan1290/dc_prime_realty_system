@@ -40,5 +40,3 @@ const AccreditedSellerIncomeRangePrintPage = () => {
 }
 
 export default AccreditedSellerIncomeRangePrintPage
-
-

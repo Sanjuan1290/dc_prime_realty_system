@@ -97,5 +97,3 @@ const WebsiteHeader = () => {
 }
 
 export default WebsiteHeader
-
-

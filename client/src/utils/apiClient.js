@@ -206,5 +206,3 @@ export const requestApi = async (
     }
   }
 }
-
-

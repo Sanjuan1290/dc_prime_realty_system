@@ -440,7 +440,7 @@ const PaymentProofModal = ({
 
   const removeProof = async (proof) => {
     if (!canDelete || readOnly || deletingProofId) return
-    const confirmed = window.confirm(`Remove ${proof.fileName}? The payment record itself will not be changed.`)
+    const confirmed = window.confirm(`Remove ${proof.fileName}? This permanently deletes the proof file from Cloudinary. The payment record itself will not be changed.`)
     if (!confirmed) return
 
     setDeletingProofId(proof.proofId)

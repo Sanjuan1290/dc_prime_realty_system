@@ -67,4 +67,3 @@ WHERE table_schema = DATABASE()
   AND table_name = 'lot_project_commission_releases'
   AND index_name = 'uq_commission_release_stage'
 GROUP BY index_name;
-

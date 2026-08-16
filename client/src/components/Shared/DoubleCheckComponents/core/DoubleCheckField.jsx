@@ -22,4 +22,3 @@ const DoubleCheckField = ({ label, value, formatter, tone = 'default', wide = fa
 }
 
 export default DoubleCheckField
-

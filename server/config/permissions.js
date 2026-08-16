@@ -123,5 +123,3 @@ export const roleHasPermission = (userOrRole, permission, adminType = '') => {
   if (isAdmin1(actor.role, actor.adminType)) return allPermissions.has(permission);
   return false;
 };
-
-

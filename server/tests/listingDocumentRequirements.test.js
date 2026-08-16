@@ -64,5 +64,3 @@ test('reservation backend falls back to listing requirements before project defa
   assert.match(controller, /await getSavedListingDocumentRequirements\(connection, projectId, listingId\)/);
   assert.match(controller, /if \(!sourceDocuments\.length\) sourceDocuments = await getProjectDefaultDocuments\(projectId\)/);
 });
-
-

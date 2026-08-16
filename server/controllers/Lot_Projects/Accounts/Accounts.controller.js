@@ -13,6 +13,7 @@ import {
 } from '../_shared/lotProject.shared.js';
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
 import { destroyCloudinaryAsset } from '../../../services/secureCloudinary.service.js';
+import { sendEmail } from '../../../services/email.service.js';
 
 const CODE_EXPIRY_MINUTES = Math.max(5, Math.min(Number(process.env.DESTRUCTIVE_ACTION_CODE_EXPIRY_MINUTES || 10), 30));
 const CODE_MAX_ATTEMPTS = Math.max(3, Math.min(Number(process.env.DESTRUCTIVE_ACTION_MAX_ATTEMPTS || 5), 10));
@@ -48,25 +49,13 @@ const payloadHash = ({ accountId, accountReference, reason, userId }) => crypto
   .digest('hex');
 
 const sendDeletionCodeEmail = async ({ to, name, code, accountReference, unitId, buyerName }) => {
-  const required = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS'];
-  const missing = required.filter((key) => !clean(process.env[key]));
-  if (missing.length) throw Object.assign(new Error(`SMTP is not configured. Missing: ${missing.join(', ')}`), { statusCode: 500 });
-
-  const nodemailer = await import('nodemailer');
-  const transporter = nodemailer.default.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT),
-    secure: String(process.env.SMTP_SECURE).toLowerCase() === 'true',
-    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-  });
-
   const companyName = clean(process.env.COMPANY_NAME) || 'D&C Prime Realty';
   const safeCompanyName = escapeHtml(companyName);
   const safeName = escapeHtml(name || 'Super Admin');
   const safeAccountReference = escapeHtml(accountReference);
   const safeUnitId = escapeHtml(unitId);
-  await transporter.sendMail({
-    from: clean(process.env.SMTP_FROM) || process.env.SMTP_USER,
+
+  await sendEmail({
     to,
     subject: `Permanent account deletion code - ${accountReference}`,
     text: [

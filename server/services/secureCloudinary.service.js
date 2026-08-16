@@ -719,4 +719,50 @@ export const destroyCloudinaryAsset = async ({ publicId, resourceType = 'image',
 
 export const destroyAuthenticatedCloudinaryAsset = (payload) => destroyCloudinaryAsset({ ...payload, deliveryType: 'authenticated' });
 
+export const isSuccessfulCloudinaryDestroyResult = (result) => (
+  ['ok', 'not found'].includes(clean(result?.result).toLowerCase())
+);
+
+export const destroyCloudinaryAssets = async (assets = []) => {
+  const normalizedAssets = (Array.isArray(assets) ? assets : [assets]).filter(Boolean);
+  const results = [];
+
+  for (const asset of normalizedAssets) {
+    const publicId = clean(asset.publicId || asset.cloudinaryPublicId || asset.cloudinary_public_id);
+    if (!publicId) {
+      const error = new Error('Cloudinary public ID is missing, so the uploaded file cannot be safely removed.');
+      error.statusCode = 409;
+      error.code = 'CLOUDINARY_PUBLIC_ID_MISSING';
+      throw error;
+    }
+
+    const resourceType = clean(asset.resourceType || asset.cloudinaryResourceType || asset.cloudinary_resource_type) || 'image';
+    const deliveryType = clean(asset.deliveryType || asset.cloudinaryDeliveryType || asset.cloudinary_delivery_type) || 'authenticated';
+    const result = await destroyCloudinaryAsset({ publicId, resourceType, deliveryType });
+
+    if (!isSuccessfulCloudinaryDestroyResult(result)) {
+      const error = new Error(`Cloudinary could not delete ${publicId}.`);
+      error.statusCode = 502;
+      error.code = 'CLOUDINARY_DELETE_FAILED';
+      error.cloudinaryResult = result?.result || null;
+      throw error;
+    }
+
+    results.push({
+      publicId,
+      resourceType,
+      deliveryType,
+      result: clean(result?.result).toLowerCase(),
+    });
+  }
+
+  return {
+    success: true,
+    assetCount: results.length,
+    deletedCount: results.filter((item) => item.result === 'ok').length,
+    alreadyMissingCount: results.filter((item) => item.result === 'not found').length,
+    results,
+  };
+};
+
 export const DOCUMENT_UPLOAD_LIMIT_BYTES = MAX_DOCUMENT_BYTES;

@@ -28,13 +28,14 @@ test('Document Notifications exposes a send email action backed by an authentica
   assert.match(controller, /contentType:\s*'application\/pdf'/);
 });
 
-test('Payment and document notification emails use the configured Cloudinary logo as an inline image', () => {
+test('Payment and document notification emails use the configured hosted Cloudinary logo', () => {
   const controller = read('server/controllers/System/notifications.controller.js');
   const envExample = read('server/.env.example');
 
-  assert.match(controller, /EMAIL_LOGO_CID/);
   assert.match(controller, /process\.env\.EMAIL_LOGO_URL/);
-  assert.match(controller, /cid:\s*EMAIL_LOGO_CID/);
+  assert.match(controller, /getEmailLogoUrl\(\)/);
+  assert.match(controller, /<img src=\"\$\{escapeHtml\(getEmailLogoUrl\(\)\)\}/);
+  assert.doesNotMatch(controller, /EMAIL_LOGO_CID/);
   assert.match(controller, /buildBrandedEmailHtml/);
   assert.match(envExample, /EMAIL_LOGO_URL=https:\/\/res\.cloudinary\.com\/dvazrmgq9\/image\/upload\/v1784705909\/logo-mobile_2_i0damo\.png/);
 });
@@ -92,8 +93,3 @@ test('Missing-document numbering continues across both PDF columns', () => {
   assert.match(pdfText, /\(8\.\) Tj/);
   assert.match(pdfText, /\(14\.\) Tj/);
 });
-
-
-
-
-

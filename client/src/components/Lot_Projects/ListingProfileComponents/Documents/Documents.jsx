@@ -131,14 +131,14 @@ const Documents = ({
       return
     }
 
-    if (!window.confirm(`Clear ${document.name} and mark it as missing?`)) return
+    if (!window.confirm(`Clear ${document.name}? This permanently deletes its uploaded files from Cloudinary and marks the document as missing.`)) return
 
     setActiveDocumentId(document.id)
     setAlert({ type: 'loading', message: `Clearing ${document.name}...` })
 
     try {
-      await onClearDocument?.(document)
-      setAlert({ type: 'warning', message: `${document.name} was cleared and marked as missing.` })
+      const result = await onClearDocument?.(document)
+      setAlert({ type: 'warning', message: result?.message || `${document.name} was cleared, deleted from Cloudinary, and marked as missing.` })
     } catch (error) {
       setAlert({ type: 'error', message: error?.message || 'Failed to clear document.' })
     } finally {

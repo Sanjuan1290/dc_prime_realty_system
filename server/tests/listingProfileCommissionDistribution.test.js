@@ -26,5 +26,3 @@ test('listing profile exposes saved commission distribution details', async () =
   assert.match(controllerSource, /commissionType/);
   assert.match(controllerSource, /commissionSnapshot\.releaseRows/);
 });
-
-

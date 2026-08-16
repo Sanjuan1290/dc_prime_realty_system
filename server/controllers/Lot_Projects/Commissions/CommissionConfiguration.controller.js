@@ -126,5 +126,3 @@ export const getReservationCommissionPreviewController = async (req, res) => {
     connection.release();
   }
 };
-
-

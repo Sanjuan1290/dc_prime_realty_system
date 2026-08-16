@@ -98,4 +98,3 @@ const ListingDoubleCheck = ({ request, onConfirm, onCancel }) => {
 }
 
 export default ListingDoubleCheck
-

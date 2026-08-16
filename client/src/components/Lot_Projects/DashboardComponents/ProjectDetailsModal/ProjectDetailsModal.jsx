@@ -60,8 +60,3 @@ const ProjectDetailsModal = ({ project, onClose, onEdit, onPrintPriceList }) => 
 }
 
 export default ProjectDetailsModal
-
-
-
-
-

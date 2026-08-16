@@ -13,5 +13,3 @@ const OfferToBuyPrintPage = () => {
 }
 
 export default OfferToBuyPrintPage
-
-

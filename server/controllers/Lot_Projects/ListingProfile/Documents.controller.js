@@ -20,6 +20,7 @@ import {
   getPerceptionPointQuotaState,
   authorizeMalwareQuotaFallback,
   buildMalwareQuotaError,
+  destroyCloudinaryAssets,
 } from '../../../services/secureCloudinary.service.js';
 import {
   buildDocumentStoredFileName,
@@ -828,12 +829,70 @@ export const approveLotProjectListingDocument = async (req, res) => {
 
 export const clearLotProjectListingDocument = async (req, res) => {
   const connection = await db.getConnection();
+  let transactionStarted = false;
 
   try {
     const context = await getDocumentContext(connection, req);
     if (context.errorStatus) return res.status(context.errorStatus).json({ message: context.errorMessage });
 
-    if (await tableExists(connection, 'lot_project_client_document_files')) {
+    const user = await getAuthenticatedUser(req);
+    const hasFileTable = await tableExists(connection, 'lot_project_client_document_files');
+    const [documentRows] = await connection.query(
+      `
+        SELECT
+          lot_project_client_document_id,
+          lot_project_client_document_file_name,
+          lot_project_client_document_file_url
+        FROM lot_project_client_documents
+        WHERE lot_project_client_profile_id = ?
+          AND document_id = ?
+        LIMIT 1
+      `,
+      [context.listing.lot_project_client_profile_id, context.document.document_id]
+    );
+    const currentDocument = documentRows[0] || null;
+
+    if (!hasFileTable && (currentDocument?.lot_project_client_document_file_name || currentDocument?.lot_project_client_document_file_url)) {
+      const error = new Error('Run the protected document storage migration before clearing uploaded files so Cloudinary assets can be removed safely.');
+      error.statusCode = 409;
+      throw error;
+    }
+
+    await connection.beginTransaction();
+    transactionStarted = true;
+
+    let activeFiles = [];
+    if (hasFileTable) {
+      const [fileRows] = await connection.query(
+        `
+          SELECT
+            file_row.lot_project_client_document_file_id,
+            file_row.original_file_name,
+            file_row.cloudinary_public_id,
+            file_row.cloudinary_resource_type,
+            file_row.cloudinary_delivery_type
+          FROM lot_project_client_document_files file_row
+          INNER JOIN lot_project_client_documents document_row
+            ON document_row.lot_project_client_document_id = file_row.lot_project_client_document_id
+          WHERE document_row.lot_project_client_profile_id = ?
+            AND document_row.document_id = ?
+            AND file_row.file_status = 'active'
+          FOR UPDATE
+        `,
+        [context.listing.lot_project_client_profile_id, context.document.document_id]
+      );
+      activeFiles = fileRows;
+    }
+
+    const cloudinaryCleanup = await destroyCloudinaryAssets(
+      activeFiles.map((file) => ({
+        publicId: file.cloudinary_public_id,
+        resourceType: file.cloudinary_resource_type || 'image',
+        deliveryType: file.cloudinary_delivery_type || 'authenticated',
+      }))
+    );
+
+    if (hasFileTable && activeFiles.length) {
       await connection.query(
         `
           UPDATE lot_project_client_document_files file_row
@@ -841,7 +900,7 @@ export const clearLotProjectListingDocument = async (req, res) => {
             ON document_row.lot_project_client_document_id = file_row.lot_project_client_document_id
           SET file_row.file_status = 'removed',
               file_row.removed_at = NOW(),
-              file_row.removal_reason = 'Cleared from the active document checklist'
+              file_row.removal_reason = 'Cleared from the active document checklist after Cloudinary deletion'
           WHERE document_row.lot_project_client_profile_id = ?
             AND document_row.document_id = ?
             AND file_row.file_status = 'active'
@@ -875,14 +934,49 @@ export const clearLotProjectListingDocument = async (req, res) => {
       ]
     );
 
+    await writeAuditLog(connection, req, {
+      action: 'delete',
+      module: 'Documents',
+      entityType: 'lot_project_client_document',
+      entityId: String(currentDocument?.lot_project_client_document_id || context.document.document_id),
+      entityLabel: `${context.document.document_name} — ${context.listing.lot_project_listing_unit_id}`,
+      title: 'Cleared protected client document',
+      description: `Cleared ${context.document.document_name} and removed ${activeFiles.length} uploaded file(s) from Cloudinary.`,
+      metadata: {
+        accountId: context.listing.lot_project_account_id || null,
+        listingId: context.listing.lot_project_listing_id,
+        unitId: context.listing.lot_project_listing_unit_id,
+        clientProfileId: context.listing.lot_project_client_profile_id,
+        documentId: context.document.document_id,
+        documentName: context.document.document_name,
+        removedFileCount: activeFiles.length,
+        cloudinaryDeletedCount: cloudinaryCleanup.deletedCount,
+        cloudinaryAlreadyMissingCount: cloudinaryCleanup.alreadyMissingCount,
+        removedByUserId: user?.id || null,
+      },
+    });
+
+    await connection.commit();
+    transactionStarted = false;
+
     return res.json({
       success: true,
-      message: `${context.document.document_name} cleared and marked as missing.`,
+      message: `${context.document.document_name} cleared, marked as missing, and ${activeFiles.length} uploaded file(s) removed from Cloudinary.`,
+      data: {
+        removedFileCount: activeFiles.length,
+        cloudinaryDeletedCount: cloudinaryCleanup.deletedCount,
+        cloudinaryAlreadyMissingCount: cloudinaryCleanup.alreadyMissingCount,
+      },
     });
   } catch (error) {
-    return res.status(500).json({ message: getErrorMessage(error) });
+    if (transactionStarted) {
+      try { await connection.rollback(); } catch {}
+    }
+    return res.status(error.statusCode || 500).json({
+      code: error.code || undefined,
+      message: getErrorMessage(error),
+    });
   } finally {
     connection.release();
   }
 };
-

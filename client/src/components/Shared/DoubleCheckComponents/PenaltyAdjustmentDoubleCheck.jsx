@@ -29,4 +29,3 @@ const PenaltyAdjustmentDoubleCheck = ({ request, onConfirm, onCancel }) => {
 }
 
 export default PenaltyAdjustmentDoubleCheck
-
