@@ -26,7 +26,7 @@ const Login = () => {
 
   const queryClient = useQueryClient()
   const navigate = useNavigate()
-  const { data: currentUser, isLoading } = useCurrentUser()
+  const { data: currentUser, isLoading, isFetched } = useCurrentUser()
   const { data: systemStatus } = useQuery({
     queryKey: ['public-system-status'],
     queryFn: () => requestApi('/system-status'),
@@ -67,7 +67,10 @@ const Login = () => {
     },
   })
 
-  if (isLoading) {
+  // Only replace the login page during the very first session check.
+  // Background refetches (for example, when returning from an email tab) must
+  // not unmount an active forgot-password flow and reset its local step state.
+  if (isLoading && !isFetched) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
         <StatusAlert type="loading" message="Checking your session..." />
@@ -205,3 +208,4 @@ const Login = () => {
 }
 
 export default Login
+

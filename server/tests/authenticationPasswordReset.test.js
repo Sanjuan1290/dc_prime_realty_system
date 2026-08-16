@@ -79,6 +79,8 @@ test('public password reset routes and Login UI are connected', () => {
   assert.match(login, /rememberMe/);
   assert.match(login, /Remember me for 30 days/);
   assert.match(login, /ForgotPasswordModal/);
+  assert.match(login, /isLoading, isFetched/);
+  assert.match(login, /if \(isLoading && !isFetched\)/);
   assert.match(modal, /6-digit verification code/);
   assert.match(modal, /resetToken/);
 });
@@ -95,3 +97,4 @@ test('migration creates reset-code storage and auth versioning', () => {
   assert.match(controller, /auth_version = COALESCE\(auth_version, 0\) \+ 1/i);
   assert.match(sharedAuth, /decoded\.authVersion/);
 });
+
