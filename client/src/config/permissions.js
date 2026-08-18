@@ -11,6 +11,7 @@ export const PERMISSIONS = Object.freeze({
   SYSTEM_DOCUMENTS_MANAGE: 'system.documents.manage',
   SYSTEM_NOTIFICATIONS_VIEW: 'system.notifications.view',
   SYSTEM_NOTIFICATIONS_MANAGE: 'system.notifications.manage',
+  SYSTEM_DATA_INTEGRITY_VIEW: 'system.data_integrity.view',
   AUDIT_LOGS_VIEW: 'audit.logs.view',
   AUDIT_LOGS_ARCHIVE: 'audit.logs.archive',
   SYSTEM_USERS_VIEW: 'system.users.view',
@@ -121,3 +122,4 @@ export const canChangeUserRole = (userOrRole, currentRole, requestedRole, adminT
 };
 
 export const getRoleHome = (role) => role === 'admin' ? '/portal/admin/dashboard' : role === 'super_admin' ? '/portal/super_admin' : '/portal';
+

@@ -10,11 +10,12 @@ import {
   FiPrinter,
   FiPauseCircle,
   FiRefreshCw,
+  FiShield,
   FiUnlock,
   FiUser,
   FiUserCheck,
 } from 'react-icons/fi'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import StatusAlert from '../../components/Shared/StatusAlert'
 import TabErrorBoundary from '../../components/Shared/TabErrorBoundary'
@@ -29,7 +30,7 @@ import BuyerFormLinkModal from '../../components/Lot_Projects/ListingProfileComp
 import BuyerFormStatusBanner from '../../components/Lot_Projects/ListingProfileComponents/BuyerForm/BuyerFormStatusBanner'
 import {useFetch, useFetchPatch, useFetchPost, useFetchPut, getDoubleCheckNotice} from '../../utils/useFetch'
 import useCurrentUser from '../../utils/useCurrentUser'
-import { isFullAccessAdministrator } from '../../config/permissions'
+import { hasPermission, isFullAccessAdministrator, PERMISSIONS } from '../../config/permissions'
 
 const money = (value) =>
   new Intl.NumberFormat('en-PH', {
@@ -144,6 +145,15 @@ const ListingProfile = () => {
 
   const profile = profileQuery.data?.data || {}
   const account = profile.account || null
+  const integrityAccountId = Number(account?.id || 0)
+  const canViewDataIntegrity = hasPermission(currentUserData?.user, PERMISSIONS.SYSTEM_DATA_INTEGRITY_VIEW)
+  const integritySummaryQuery = useQuery({
+    queryKey: ['data-integrity-account-summary', integrityAccountId],
+    queryFn: () => useFetch(`/data-integrity/summary?accountId=${integrityAccountId}`),
+    enabled: Boolean(canViewDataIntegrity && integrityAccountId),
+    retry: false,
+    staleTime: 60_000,
+  })
   const readOnly = Boolean(profile.readOnly)
   const project = profile.project || {}
   const listing = profile.listing || emptyListing
@@ -552,6 +562,7 @@ const ListingProfile = () => {
   const handleRefresh = () => {
     profileQuery.refetch()
     if (!readOnly) buyerFormStateQuery.refetch()
+    if (canViewDataIntegrity && integrityAccountId) integritySummaryQuery.refetch()
   }
 
   const isHeld = listing.rawStatus === 'hold' || listing.listing_status === 'Hold'
@@ -729,6 +740,45 @@ const ListingProfile = () => {
         </div>
       </section>
 
+      {canViewDataIntegrity && integrityAccountId ? (() => {
+        const integrity = integritySummaryQuery.data?.summary || {}
+        const status = integrity.overallStatus || 'balanced'
+        const affectedAccounts = Number(integrity.review || 0) + Number(integrity.critical || 0)
+        const tone = status === 'critical'
+          ? 'border-red-200 bg-red-50 text-red-900'
+          : status === 'review'
+            ? 'border-amber-200 bg-amber-50 text-amber-900'
+            : 'border-emerald-200 bg-emerald-50 text-emerald-900'
+        const label = status === 'critical' ? 'Critical' : status === 'review' ? 'Needs Review' : 'Balanced'
+        const role = currentUserData?.user?.role || 'super_admin'
+        const integrityPath = `/portal/${role}/data-integrity?accountId=${integrityAccountId}`
+        return (
+          <section className={`rounded-2xl border p-4 shadow-sm ${tone}`}>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/70"><FiShield className="h-5 w-5" /></div>
+                <div>
+                  <p className="text-xs font-black uppercase tracking-wide">Account Integrity</p>
+                  {integritySummaryQuery.isLoading ? (
+                    <p className="mt-1 text-sm font-semibold opacity-80">Checking this buyer account...</p>
+                  ) : integritySummaryQuery.isError ? (
+                    <p className="mt-1 text-sm font-semibold">Integrity summary could not be loaded. Open the report to retry.</p>
+                  ) : (
+                    <>
+                      <p className="mt-1 text-lg font-black">{label}</p>
+                      <p className="text-sm font-semibold opacity-80">{affectedAccounts ? `${affectedAccounts} account check requires review.` : 'No inconsistencies detected by the current read-only checks.'}</p>
+                    </>
+                  )}
+                </div>
+              </div>
+              <Link to={integrityPath} className="inline-flex h-10 items-center justify-center rounded-xl border border-current/20 bg-white/70 px-4 text-sm font-black transition hover:bg-white">
+                View Breakdown
+              </Link>
+            </div>
+          </section>
+        )
+      })() : null}
+
       <section className="overflow-x-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
         <div className="flex min-w-max gap-2">
           {tabs.map((tab) => {
@@ -898,3 +948,4 @@ const ListingProfile = () => {
 }
 
 export default ListingProfile
+

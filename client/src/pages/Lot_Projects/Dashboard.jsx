@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Area,
@@ -27,6 +27,7 @@ import {
   FiMapPin,
   FiPrinter,
   FiRefreshCw,
+  FiShield,
   FiTrendingDown,
   FiTrendingUp,
   FiUsers,
@@ -38,6 +39,7 @@ import ProjectDetailsModal from '../../components/Lot_Projects/DashboardComponen
 import EditProjectModal from '../../components/Lot_Projects/DashboardComponents/EditProjectModal/EditProjectModal'
 import {useFetch, useFetchPut, getDoubleCheckNotice} from '../../utils/useFetch'
 import useCurrentUser from '../../utils/useCurrentUser'
+import { hasPermission, PERMISSIONS } from '../../config/permissions'
 
 const money = (value) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 2 }).format(Number(value || 0))
 const compactMoney = (value) => new Intl.NumberFormat('en-PH', { notation: 'compact', maximumFractionDigits: 1 }).format(Number(value || 0))
@@ -498,6 +500,7 @@ const Dashboard = () => {
   const { data: currentUserData } = useCurrentUser()
   const currentUser = currentUserData?.user || {}
   const isAdmin1 = currentUser.role === 'admin' && (!currentUser.admin_type || currentUser.admin_type === 'admin_1')
+  const canViewDataIntegrity = hasPermission(currentUser, PERMISSIONS.SYSTEM_DATA_INTEGRITY_VIEW)
   const hasInvalidDateRange = dateRange === 'custom' && (!dateFrom || !dateTo || dateFrom > dateTo)
   const adminRangeBlocked = isAdmin1 && exceedsTwelveMonths(dateFrom, dateTo)
   const canLoadDateRange = !hasInvalidDateRange && !adminRangeBlocked
@@ -530,6 +533,14 @@ const Dashboard = () => {
   const { data: templatesData, isLoading: isTemplatesLoading } = useQuery({
     queryKey: ['templates'],
     queryFn: () => useFetch('/documents/getTemplates'),
+  })
+
+  const integrityQuery = useQuery({
+    queryKey: ['data-integrity-project-summary', projectSlug],
+    queryFn: () => useFetch(`/data-integrity/summary?projectSlug=${encodeURIComponent(projectSlug)}`),
+    enabled: Boolean(projectSlug && canViewDataIntegrity),
+    retry: false,
+    staleTime: 60_000,
   })
 
   const project = useMemo(() => toProjectView(data?.data?.project || {}), [data])
@@ -646,6 +657,46 @@ const Dashboard = () => {
 
       {hasInvalidDateRange ? <StatusAlert type="error" message="The From date must be earlier than or equal to the To date." /> : null}
       {adminRangeBlocked ? <StatusAlert type="error" message="Admin 1 dashboard reports are limited to 12 months (1 year). Select a shorter custom date range." /> : null}
+
+      {canViewDataIntegrity ? (() => {
+        const integrity = integrityQuery.data?.summary || {}
+        const integrityStatus = integrity.overallStatus || 'balanced'
+        const affectedAccounts = Number(integrity.review || 0) + Number(integrity.critical || 0)
+        const tone = integrityStatus === 'critical'
+          ? 'border-red-200 bg-red-50 text-red-900'
+          : integrityStatus === 'review'
+            ? 'border-amber-200 bg-amber-50 text-amber-900'
+            : 'border-emerald-200 bg-emerald-50 text-emerald-900'
+        const label = integrityStatus === 'critical' ? 'Critical Issues' : integrityStatus === 'review' ? 'Needs Review' : 'Healthy'
+        const integrityPath = `/portal/${currentUser.role || 'super_admin'}/data-integrity?project=${encodeURIComponent(projectSlug)}`
+        return (
+          <section className={`rounded-2xl border p-4 shadow-sm ${tone}`}>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/70"><FiShield className="h-5 w-5" /></div>
+                <div>
+                  <p className="text-xs font-black uppercase tracking-wide">Data Integrity</p>
+                  {integrityQuery.isLoading ? (
+                    <p className="mt-1 text-sm font-semibold opacity-80">Checking this project's financial and account records...</p>
+                  ) : integrityQuery.isError ? (
+                    <p className="mt-1 text-sm font-semibold">Integrity summary could not be loaded. Open the report to run a full check.</p>
+                  ) : (
+                    <>
+                      <p className="mt-1 text-lg font-black">{label}</p>
+                      <p className="text-sm font-semibold opacity-80">
+                        {Number(integrity.totalAccounts || 0)} account{Number(integrity.totalAccounts || 0) === 1 ? '' : 's'} checked · {affectedAccounts ? `${affectedAccounts} need review` : 'no inconsistencies detected'}
+                      </p>
+                    </>
+                  )}
+                </div>
+              </div>
+              <Link to={integrityPath} className="inline-flex h-10 items-center justify-center rounded-xl border border-current/20 bg-white/70 px-4 text-sm font-black transition hover:bg-white">
+                View Integrity Report
+              </Link>
+            </div>
+          </section>
+        )
+      })() : null}
 
       <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -809,3 +860,4 @@ const Dashboard = () => {
 }
 
 export default Dashboard
+

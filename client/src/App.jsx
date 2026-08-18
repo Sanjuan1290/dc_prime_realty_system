@@ -50,6 +50,7 @@ const Projects = lazy(() => import('./pages/System/Projects'))
 const ProjectWorkspaceList = lazy(() => import('./pages/System/ProjectWorkspaceList'))
 const Notifications = lazy(() => import('./pages/System/Notifications'))
 const AuditLogs = lazy(() => import('./pages/System/AuditLogs'))
+const DataIntegrity = lazy(() => import('./pages/System/DataIntegrity'))
 const Settings = lazy(() => import('./pages/System/Settings'))
 const Employees = lazy(() => import('./pages/System/Employees'))
 const Attendance = lazy(() => import('./pages/System/Attendance'))
@@ -159,6 +160,7 @@ const App = () => {
           <Route path="users/groups/external/:groupId" element={<SellerGroupDetails expectedGroupType="external" />} />
           <Route path="notifications" element={<Notifications />} />
           <Route path="audit-logs" element={<AuditLogs />} />
+          <Route path="data-integrity" element={protect(PERMISSIONS.SYSTEM_DATA_INTEGRITY_VIEW, <DataIntegrity />)} />
           {/* <Route path="employees" element={<Employees />} />
           <Route path="attendance" element={<Attendance />} />
           <Route path="cash-advances" element={<EmployeeCashAdvances />} /> */}
@@ -202,6 +204,7 @@ const App = () => {
           <Route path="accredited" element={<Accredited />} />
           <Route path="notifications" element={<Notifications />} />
           <Route path="audit-logs" element={<AuditLogs />} />
+          <Route path="data-integrity" element={protect(PERMISSIONS.SYSTEM_DATA_INTEGRITY_VIEW, <DataIntegrity />)} />
           <Route path="employees" element={<Employees />} />
           <Route path="attendance" element={<Attendance />} />
           <Route path="cash-advances" element={<EmployeeCashAdvances />} />
@@ -324,4 +327,5 @@ const App = () => {
 }
 
 export default App
+
 
