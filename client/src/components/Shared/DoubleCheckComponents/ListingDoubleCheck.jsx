@@ -3,12 +3,14 @@ import DoubleCheckSection from './core/DoubleCheckSection'
 import DoubleCheckFields from './core/DoubleCheckFields'
 import DoubleCheckListCard from './core/DoubleCheckListCard'
 import { money, percent, pick, requirementLabel, statusLabel, titleCase } from './core/doubleCheckFormatters'
+import { getDocumentResponsiblePartyLabel } from '../../../utils/documentRequirement'
 
 const cleanDocument = (document = {}) => ({
   name: document.name || 'Document',
   description: document.description || '',
   source: document.source || 'Document Library',
   requirement: document.requirement,
+  responsibleParty: document.responsibleParty || document.responsible_party || 'client',
   status: document.status || 'active',
 })
 
@@ -81,6 +83,7 @@ const ListingDoubleCheck = ({ request, onConfirm, onCancel }) => {
         <DoubleCheckSection title="Document Checklist" helper="Project-default and manually added documents use the same review format." tone="emerald" badge={`${documents.length} document${documents.length === 1 ? '' : 's'}`}>
           {documents.length ? <div className="space-y-3">{documents.map((document, index) => <DoubleCheckListCard key={`${document.name}-${index}`} title={document.name} subtitle={document.source} index={index} total={documents.length} fields={[
             { label: 'Requirement', value: document.requirement, formatter: requirementLabel },
+            { label: 'Responsible Party', value: document.responsibleParty, formatter: getDocumentResponsiblePartyLabel },
             { label: 'Status', value: document.status, formatter: statusLabel },
             ...(document.description ? [{ label: 'Description', value: document.description, wide: true }] : []),
           ]} />)}</div> : <p className="rounded-xl border border-dashed border-slate-300 p-4 text-sm font-semibold text-slate-500">No documents are selected for this listing.</p>}
@@ -98,3 +101,4 @@ const ListingDoubleCheck = ({ request, onConfirm, onCancel }) => {
 }
 
 export default ListingDoubleCheck
+

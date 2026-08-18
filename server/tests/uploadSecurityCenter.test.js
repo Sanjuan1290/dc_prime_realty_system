@@ -34,7 +34,7 @@ test('security center shows upload, scan, malware, and unscanned outcomes', () =
   assert.match(center, /Not security scanned/);
 });
 
-test('pending scans poll existing protected access endpoints and resume after reload', () => {
+test('pending scans poll every 3 seconds for at most 5 minutes, then switch to manual status checks', () => {
   const center = read('client/src/components/Shared/UploadSecurityCenter/UploadSecurityProvider.jsx');
 
   assert.match(center, /requestApi\(task\.accessPath/);
@@ -43,6 +43,15 @@ test('pending scans poll existing protected access endpoints and resume after re
   assert.match(center, /MALWARE_SCAN_ERROR/);
   assert.match(center, /sessionStorage/);
   assert.match(center, /POLL_INTERVAL_MS = 3_000/);
+  assert.match(center, /AUTO_POLL_TIMEOUT_MS = 5 \* 60_000/);
+  assert.match(center, /setInterval\(poll, POLL_INTERVAL_MS\)/);
+  assert.match(center, /elapsed >= AUTO_POLL_TIMEOUT_MS/);
+  assert.match(center, /status: 'scan_delayed'/);
+  assert.match(center, /Automatic checks stopped after 5 minutes\./);
+  assert.match(center, /Check Scan Status/);
+  assert.match(center, /checkScanStatus\(task, \{ manual: true \}\)/);
+  assert.doesNotMatch(center, /LONG_RUNNING_SCAN_NOTICE_MS/);
+  assert.doesNotMatch(center, /keep checking every 3 seconds/);
 });
 
 test('successful batches auto-dismiss while warnings and failures require whole-panel acknowledgement', () => {

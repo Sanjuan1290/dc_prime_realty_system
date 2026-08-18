@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { FiArrowLeft, FiArrowRight, FiSearch, FiX } from 'react-icons/fi'
 import StatusAlert from '../../Shared/StatusAlert'
 import { useFetchPost } from '../../../utils/useFetch'
+import { normalizeDocumentResponsibleParty } from '../../../utils/documentRequirement'
 
 const Field = ({
   label,
@@ -75,6 +76,14 @@ const normalizeDocument = (document = {}, fallbackRequirement = 'required') => (
       document.lot_project_default_document_is_required ??
       document.document_is_required,
     fallbackRequirement
+  ),
+  responsibleParty: normalizeDocumentResponsibleParty(
+    document.responsibleParty ??
+      document.responsible_party ??
+      document.template_document_list_responsible_party ??
+      document.lot_project_default_document_responsible_party ??
+      document.document_responsible_party,
+    'client'
   ),
   status: normalizeStatus(
     document.status ||
@@ -200,6 +209,10 @@ const AddLotProjectModal = ({
               requirement: normalizeRequirement(
                 item.template_document_list_is_required ?? item.document_is_required,
                 'required'
+              ),
+              responsibleParty: normalizeDocumentResponsibleParty(
+                item.template_document_list_responsible_party ?? item.document_responsible_party,
+                'client'
               ),
               status: normalizeStatus(item.document_status),
             }))
@@ -330,6 +343,7 @@ const AddLotProjectModal = ({
           return {
             ...libraryDocument,
             requirement: templateDocument.requirement,
+            responsibleParty: templateDocument.responsibleParty,
             status: templateDocument.status,
           }
         })
@@ -429,6 +443,7 @@ const AddLotProjectModal = ({
       defaultDocuments: selectedDocuments.map((document) => ({
         document_id: document.id,
         requirement: document.requirement,
+        responsibleParty: document.responsibleParty,
         status: document.status,
       })),
     }
@@ -439,6 +454,7 @@ const AddLotProjectModal = ({
         name: document.name || 'Document',
         description: document.description || '',
         requirement: document.requirement,
+        responsibleParty: document.responsibleParty,
         status: document.status,
       })),
     }
@@ -1049,7 +1065,7 @@ const AddLotProjectModal = ({
                       </button>
                     </div>
 
-                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <div className="mt-3 grid gap-3 sm:grid-cols-3">
                       <SelectField
                         label="Requirement"
                         value={document.requirement}
@@ -1059,6 +1075,18 @@ const AddLotProjectModal = ({
                       >
                         <option value="required">Required</option>
                         <option value="optional">Optional</option>
+                      </SelectField>
+
+                      <SelectField
+                        label="Responsible Party"
+                        value={document.responsibleParty}
+                        onChange={(value) =>
+                          updateDocument(document.id, 'responsibleParty', value)
+                        }
+                      >
+                        <option value="client">Client</option>
+                        <option value="internal">Company / Internal</option>
+                        <option value="seller">Seller / Agent</option>
                       </SelectField>
 
                       <SelectField
@@ -1092,7 +1120,7 @@ const AddLotProjectModal = ({
 
             <div className="flex shrink-0 flex-col gap-2 border-t border-slate-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-xs font-bold text-slate-500">
-                Review requirement and status, then continue to the final double-check.
+                Review requirement, responsible party, and status, then continue to the final double-check.
               </p>
 
               <div className="flex flex-col gap-2 sm:flex-row">
@@ -1133,3 +1161,4 @@ const AddLotProjectModal = ({
 }
 
 export default AddLotProjectModal
+

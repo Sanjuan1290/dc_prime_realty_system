@@ -15,6 +15,7 @@ import UploadDocumentModal from './UploadDocumentModal'
 import DocumentImagesModal from './DocumentImagesModal'
 import EditListingDocumentsModal from '../../ListingComponents/EditListingDocumentsModal/EditListingDocumentsModal'
 import { getDocumentFiles, getDocumentImageUrl, isPdfLike, isProtectedDocumentFile } from './documentFileUtils'
+import { getDocumentResponsiblePartyLabel, normalizeDocumentResponsibleParty } from '../../../../utils/documentRequirement'
 
 const statusStyles = {
   Approved: 'border-emerald-200 bg-emerald-50 text-emerald-700',
@@ -29,14 +30,14 @@ const requirementStyles = {
   Optional: 'border-slate-200 bg-slate-100 text-slate-600',
 }
 
-const StatusPill = ({ value }) => (
+const StatusPill = ({ value, requirement }) => (
   <span
     className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-black ${
       statusStyles[value] || 'border-slate-200 bg-slate-100 text-slate-600'
     }`}
   >
     <span className="h-1.5 w-1.5 rounded-full bg-current" />
-    {value || 'Missing'}
+    {value === 'Missing' && requirement === 'Optional' ? 'Missing / Optional' : (value || 'Missing')}
   </span>
 )
 
@@ -49,6 +50,21 @@ const RequirementPill = ({ value }) => (
     {value || 'Optional'}
   </span>
 )
+
+const ResponsibilityPill = ({ value }) => {
+  const responsibleParty = normalizeDocumentResponsibleParty(value)
+  const styles = {
+    client: 'border-blue-200 bg-blue-50 text-blue-700',
+    internal: 'border-violet-200 bg-violet-50 text-violet-700',
+    seller: 'border-amber-200 bg-amber-50 text-amber-700',
+  }
+
+  return (
+    <span className={`inline-flex w-fit rounded-full border px-3 py-1 text-xs font-black ${styles[responsibleParty]}`}>
+      {getDocumentResponsiblePartyLabel(responsibleParty)}
+    </span>
+  )
+}
 
 const Documents = ({
   documents = [],
@@ -95,6 +111,13 @@ const Documents = ({
     () => rows.filter((row) => row.requirement === 'Required').length,
     [rows]
   )
+
+  const actionCounts = useMemo(() => rows.reduce((counts, row) => {
+    if (row.requirement !== 'Required' || !['Missing', 'Rejected'].includes(row.status)) return counts
+    const responsibleParty = normalizeDocumentResponsibleParty(row.responsibleParty || row.responsible_party)
+    counts[responsibleParty] += 1
+    return counts
+  }, { client: 0, internal: 0, seller: 0 }), [rows])
 
   const handleUploadClick = (document) => {
     if (!canManage) {
@@ -234,6 +257,18 @@ const Documents = ({
             <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">
               {requiredCount} required
             </span>
+
+            <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700">
+              {actionCounts.client} client action
+            </span>
+
+            <span className="rounded-full bg-violet-50 px-3 py-1 text-xs font-black text-violet-700">
+              {actionCounts.internal} internal action
+            </span>
+
+            <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-black text-amber-700">
+              {actionCounts.seller} seller action
+            </span>
           </div>
 
           {!readOnly ? (
@@ -260,10 +295,10 @@ const Documents = ({
       </div>
 
       <div className="mt-5 overflow-x-auto rounded-2xl border border-slate-200">
-        <table className="min-w-[900px] w-full divide-y divide-slate-200 text-sm">
+        <table className="min-w-[1100px] w-full divide-y divide-slate-200 text-sm">
           <thead className="bg-slate-50">
             <tr>
-              {['Document', 'Requirement', 'Status', 'File', 'Actions'].map(
+              {['Document', 'Requirement', 'Responsible Party', 'Status', 'File', 'Actions'].map(
                 (head) => (
                   <th
                     key={head}
@@ -300,7 +335,11 @@ const Documents = ({
                   </td>
 
                   <td className="px-4 py-4">
-                    <StatusPill value={row.status} />
+                    <ResponsibilityPill value={row.responsibleParty || row.responsible_party} />
+                  </td>
+
+                  <td className="px-4 py-4">
+                    <StatusPill value={row.status} requirement={row.requirement} />
                   </td>
 
                   <td className="px-4 py-4">
@@ -378,7 +417,7 @@ const Documents = ({
 
             {!rows.length ? (
               <tr>
-                <td colSpan={5} className="px-4 py-10 text-center">
+                <td colSpan={6} className="px-4 py-10 text-center">
                   <FiImage className="mx-auto h-8 w-8 text-slate-300" />
 
                   <p className="mt-3 text-sm font-black text-slate-700">
@@ -433,3 +472,4 @@ const Documents = ({
 }
 
 export default Documents
+

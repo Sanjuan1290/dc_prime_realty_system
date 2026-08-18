@@ -15,7 +15,7 @@ import ReservePaymentTermsModal from './ReservePaymentTermsModal'
 import { reserveSteps } from './reserveData'
 import { getInitialClientForm, getPaymentCalculations } from './reserveUtils'
 import { getListingPricingForMode } from '../../../../utils/listingPricing.js'
-import { normalizeDocumentRequirement, resolveDocumentRequirement } from '../../../../utils/documentRequirement.js'
+import { normalizeDocumentRequirement, normalizeDocumentResponsibleParty, resolveDocumentRequirement, resolveDocumentResponsibleParty } from '../../../../utils/documentRequirement.js'
 import { StepPill } from './ReserveShared'
 import { getBuyerProfileValidationError } from '../../../../utils/buyerProfileValidation'
 import { useFetch as fetchApi } from '../../../../utils/useFetch'
@@ -47,6 +47,7 @@ const normalizeLibraryDocument = (document = {}) => ({
   description: document.description || document.document_description || '',
   source: document.source || 'Document Library',
   requirement: resolveDocumentRequirement(document),
+  responsibleParty: resolveDocumentResponsibleParty(document),
   status: String(
     document.lot_project_listing_document_status ||
     document.lot_project_default_document_status ||
@@ -192,6 +193,9 @@ const ReserveListingModal = ({
             ...libraryDocument,
             source: `Template · ${template.template_name}`,
             requirement: normalizeTemplateRequirement(row),
+            responsibleParty: normalizeDocumentResponsibleParty(
+              row.template_document_list_responsible_party ?? row.document_responsible_party ?? libraryDocument.responsibleParty
+            ),
             status: 'active',
           }
         })
@@ -319,6 +323,7 @@ const ReserveListingModal = ({
       id: documentId,
       document_id: documentId,
       requirement: document.requirement || 'required',
+      responsibleParty: resolveDocumentResponsibleParty(document),
       status: 'active',
     }])
     setAlert({ type: 'success', message: `${document.name} added to the reservation checklist.` })
@@ -365,6 +370,15 @@ const ReserveListingModal = ({
     setSelectedDocuments((current) => current.map((document) =>
       Number(document.document_id || document.id) === Number(documentId)
         ? { ...document, requirement: normalizeDocumentRequirement(requirement) }
+        : document
+    ))
+    if (alert?.type === 'error') setAlert(null)
+  }
+
+  const updateDocumentResponsibleParty = (documentId, responsibleParty) => {
+    setSelectedDocuments((current) => current.map((document) =>
+      Number(document.document_id || document.id) === Number(documentId)
+        ? { ...document, responsibleParty: normalizeDocumentResponsibleParty(responsibleParty) }
         : document
     ))
     if (alert?.type === 'error') setAlert(null)
@@ -652,7 +666,7 @@ const ReserveListingModal = ({
 
           {activeStep === 1 ? <ReserveClientProfileModal clientForm={clientForm} setClientForm={setClientForm} hasSecondBuyer={hasSecondBuyer} updateBuyerType={updateBuyerType} invalidField={invalidClientField} onFieldChange={handleClientFieldChange} title={mode === 'submission-review' ? 'Submitted Buyer Profile' : 'Client Profile'} description={mode === 'submission-review' ? 'Review the information submitted by the buyer. Admin corrections will be saved with the final reservation.' : undefined} /> : null}
 
-          {activeStep === 2 ? <ReserveDocumentChecklistModal filteredDocuments={filteredDocuments} searchDocument={searchDocument} setSearchDocument={setSearchDocument} selectedDocuments={selectedDocuments} isSaving={isSaving} isLoadingDefaults={isLoadingDocuments} deletingDocId={null} isDocumentAdded={isDocumentAdded} addDocument={addDocument} addTemplateDocuments={addTemplateDocuments} removeDocument={removeDocument} updateDocumentRequirement={updateDocumentRequirement} loadProjectDefaults={loadProjectDefaults} documentTemplates={reservationDocumentTemplates} /> : null}
+          {activeStep === 2 ? <ReserveDocumentChecklistModal filteredDocuments={filteredDocuments} searchDocument={searchDocument} setSearchDocument={setSearchDocument} selectedDocuments={selectedDocuments} isSaving={isSaving} isLoadingDefaults={isLoadingDocuments} deletingDocId={null} isDocumentAdded={isDocumentAdded} addDocument={addDocument} addTemplateDocuments={addTemplateDocuments} removeDocument={removeDocument} updateDocumentRequirement={updateDocumentRequirement} updateDocumentResponsibleParty={updateDocumentResponsibleParty} loadProjectDefaults={loadProjectDefaults} documentTemplates={reservationDocumentTemplates} /> : null}
 
           {activeStep === 3 ? <ReservePaymentTermsModal listing={listing} project={project} tcp={tcp} contractPricing={contractPricing} paymentForm={effectivePaymentForm} updatePaymentField={updatePaymentField} agents={fetchedAgents} selectedAgent={selectedAgent} agentSearch={agentSearch} setAgentSearch={setAgentSearch} isLoadingAgents={agentsQuery.isLoading || agentsQuery.isFetching} agentsError={!projectSlug ? 'Project information is missing.' : agentsQuery.isError ? agentsQuery.error?.message || 'Failed to load Seller / Group options.' : null} commissionPreview={commissionPreview} isLoadingPreview={previewQuery.isLoading || previewQuery.isFetching} previewError={previewQuery.isError ? previewQuery.error?.message || 'Failed to load the commission structure.' : null} /> : null}
         </div>
@@ -671,3 +685,4 @@ const ReserveListingModal = ({
 }
 
 export default ReserveListingModal
+

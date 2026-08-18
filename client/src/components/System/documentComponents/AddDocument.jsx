@@ -16,6 +16,7 @@ const AddDocument = ({ setShowAddDocumentModal, onSaved }) => {
     document_description: "",
     document_status: "active",
     document_is_required: "required",
+    document_responsible_party: "client",
   });
 
   const mutation = useMutation({
@@ -23,6 +24,7 @@ const AddDocument = ({ setShowAddDocumentModal, onSaved }) => {
       useFetchPost("/documents/addDocument", {
         ...formData,
         document_is_required: formData.document_is_required === "required",
+        document_responsible_party: formData.document_responsible_party,
       }, {
         doubleCheck: {
           type: 'document',
@@ -33,6 +35,7 @@ const AddDocument = ({ setShowAddDocumentModal, onSaved }) => {
             document_description: formData.document_description,
             document_status: formData.document_status,
             document_is_required: formData.document_is_required === 'required',
+            document_responsible_party: formData.document_responsible_party,
           },
         },
       }),
@@ -128,7 +131,7 @@ const AddDocument = ({ setShowAddDocumentModal, onSaved }) => {
             <textarea rows={4} data-example="Short clear description" value={formData.document_description} onChange={(event) => handleChange("document_description", event.target.value)} placeholder="Example: Government-issued valid ID, two copies" className="resize-none rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
           </label>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <label className="flex flex-col gap-2">
               <span className="text-sm font-semibold text-slate-700">Status</span>
               <select value={formData.document_status} onChange={(event) => handleChange("document_status", event.target.value)} className="h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 shadow-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100">
@@ -144,6 +147,15 @@ const AddDocument = ({ setShowAddDocumentModal, onSaved }) => {
                 <option value="optional">Optional</option>
               </select>
             </label>
+
+            <label className="flex flex-col gap-2">
+              <span className="text-sm font-semibold text-slate-700">Default Responsible Party</span>
+              <select value={formData.document_responsible_party} onChange={(event) => handleChange("document_responsible_party", event.target.value)} className="h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-900 shadow-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100">
+                <option value="client">Client</option>
+                <option value="internal">Company / Internal</option>
+                <option value="seller">Seller / Agent</option>
+              </select>
+            </label>
           </div>
         </div>
 
@@ -157,3 +169,4 @@ const AddDocument = ({ setShowAddDocumentModal, onSaved }) => {
 };
 
 export default AddDocument;
+

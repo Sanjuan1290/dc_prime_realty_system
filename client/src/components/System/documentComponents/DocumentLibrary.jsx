@@ -5,6 +5,7 @@ import { FaCircle } from "react-icons/fa6";
 import StatusAlert from "../../Shared/StatusAlert";
 import { formatDateTime } from "../../../utils/formatDateTime";
 import { useFetchDelete } from "../../../utils/useFetch";
+import { getDocumentResponsiblePartyLabel } from "../../../utils/documentRequirement";
 
 const Document_Library = ({ documents = [], onEditDocument, canManage = true }) => {
   const queryClient = useQueryClient();
@@ -38,7 +39,8 @@ const Document_Library = ({ documents = [], onEditDocument, canManage = true }) 
         document.document_name?.toLowerCase().includes(keyword) ||
         document.document_code?.toLowerCase().includes(keyword) ||
         document.document_description?.toLowerCase().includes(keyword) ||
-        document.document_status?.toLowerCase().includes(keyword)
+        document.document_status?.toLowerCase().includes(keyword) ||
+        getDocumentResponsiblePartyLabel(document.document_responsible_party).toLowerCase().includes(keyword)
     );
   }, [documents, search]);
 
@@ -59,7 +61,7 @@ const Document_Library = ({ documents = [], onEditDocument, canManage = true }) 
     <div className="flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
       <div className="flex flex-col gap-1">
         <h3 className="text-xl font-bold text-gray-900">Document Library</h3>
-        <p className="max-w-2xl text-sm leading-6 text-gray-600">Master list of reusable documents. Required/optional is decided in templates, projects, and listings.</p>
+        <p className="max-w-2xl text-sm leading-6 text-gray-600">Master list of reusable documents. Set the default responsible party here; requirement and responsibility can still be overridden in templates, projects, and listings.</p>
       </div>
 
       {alert ? <StatusAlert type={alert.type} message={alert.message} onClose={alert.type === "loading" ? undefined : () => setAlert(null)} /> : null}
@@ -84,8 +86,9 @@ const Document_Library = ({ documents = [], onEditDocument, canManage = true }) 
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-        <div className="hidden grid-cols-5 border-b border-gray-200 bg-gray-50 px-5 py-3 text-sm font-bold text-gray-700 md:grid">
+        <div className="hidden grid-cols-6 border-b border-gray-200 bg-gray-50 px-5 py-3 text-sm font-bold text-gray-700 md:grid">
           <p className="col-span-2">Document</p>
+          <p>Responsible</p>
           <p>Status</p>
           <p>Updated</p>
           <p className="text-right">Actions</p>
@@ -98,12 +101,13 @@ const Document_Library = ({ documents = [], onEditDocument, canManage = true }) 
             const isDeleting = deleteMutation.isPending && deletingDocumentId === document.document_id;
 
             return (
-              <div key={document.document_id} className="grid gap-4 border-b border-gray-100 px-5 py-4 text-sm text-gray-700 last:border-b-0 md:grid-cols-5 md:items-center">
+              <div key={document.document_id} className="grid gap-4 border-b border-gray-100 px-5 py-4 text-sm text-gray-700 last:border-b-0 md:grid-cols-6 md:items-center">
                 <div className="col-span-2 flex flex-col gap-1">
                   <h3 className="font-bold text-gray-900">{document.document_name}</h3>
                   <p className="w-fit rounded-md bg-slate-100 px-2 py-0.5 font-mono text-[11px] font-bold tracking-wide text-slate-600">{document.document_code || `DOC-${String(document.document_id).padStart(6, "0")}`}</p>
                   <p className="text-gray-500">{document.document_description || "No description"}</p>
                 </div>
+                <p className="text-xs font-bold text-slate-600">{getDocumentResponsiblePartyLabel(document.document_responsible_party)}</p>
                 <p className={`flex w-fit items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold ${document.document_status === "active" ? "border-green-500 bg-green-100 text-green-800" : "border-red-500 bg-red-100 text-red-800"}`}>
                   <FaCircle className="h-2 w-2" />
                   {document.document_status}
@@ -159,3 +163,4 @@ const Document_Library = ({ documents = [], onEditDocument, canManage = true }) 
 };
 
 export default Document_Library;
+

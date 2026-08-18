@@ -3,6 +3,7 @@ import DoubleCheckSection from './core/DoubleCheckSection'
 import DoubleCheckFields from './core/DoubleCheckFields'
 import DoubleCheckListCard from './core/DoubleCheckListCard'
 import { formatDate, money, percent, pick, requirementLabel, statusLabel, titleCase } from './core/doubleCheckFormatters'
+import { getDocumentResponsiblePartyLabel } from '../../../utils/documentRequirement'
 import { buyerEmploymentReviewFields, hasSecondBuyerReviewData, principalBuyerReviewFields, secondBuyerReviewFields } from './BuyerProfileDoubleCheck'
 import {
   ReservationCommissionPreview,
@@ -74,6 +75,7 @@ const ReservationDoubleCheck = ({ request, onConfirm, onCancel }) => {
                   total={documents.length}
                   fields={[
                     { label: 'Requirement', value: pick(document, 'requirement', 'is_required'), formatter: requirementLabel },
+                    { label: 'Responsible Party', value: pick(document, 'responsibleParty', 'responsible_party'), formatter: getDocumentResponsiblePartyLabel },
                     { label: 'Status', value: pick(document, 'status', 'document_status') || 'active', formatter: statusLabel },
                   ]}
                 />
@@ -138,3 +140,4 @@ const ReservationDoubleCheck = ({ request, onConfirm, onCancel }) => {
 }
 
 export default ReservationDoubleCheck
+

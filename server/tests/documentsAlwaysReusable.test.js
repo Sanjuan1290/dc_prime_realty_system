@@ -15,7 +15,7 @@ test('add and edit document forms do not expose reusable as a user choice', () =
   for (const source of [add, edit]) {
     assert.doesNotMatch(source, /Reusable Across Units/)
     assert.doesNotMatch(source, /document_is_reusable/)
-    assert.match(source, /sm:grid-cols-2/)
+    assert.match(source, /sm:grid-cols-3/)
   }
 })
 
@@ -23,7 +23,7 @@ test('document library does not display a redundant reusable column', () => {
   const source = read('client/src/components/System/documentComponents/DocumentLibrary.jsx')
   assert.doesNotMatch(source, />Reusable</)
   assert.doesNotMatch(source, /document\.document_is_reusable/)
-  assert.match(source, /md:grid-cols-5/)
+  assert.match(source, /md:grid-cols-6/)
 })
 
 test('document API always stores documents as reusable regardless of request payload', () => {

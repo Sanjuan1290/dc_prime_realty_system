@@ -394,6 +394,8 @@ export const buildMissingDocumentsPdfBuffer = ({
   generatedDate = getManilaDateOnly(),
   missingDocuments = [],
   rejectedDocuments = [],
+  optionalMissingDocuments = [],
+  optionalRejectedDocuments = [],
   logoImage = null,
 } = {}) => {
   const builder = createContentBuilder();
@@ -404,6 +406,8 @@ export const buildMissingDocumentsPdfBuffer = ({
   const contentWidth = right - left;
   const safeMissing = Array.isArray(missingDocuments) ? missingDocuments.filter(Boolean) : [];
   const safeRejected = Array.isArray(rejectedDocuments) ? rejectedDocuments.filter(Boolean) : [];
+  const safeOptionalMissing = Array.isArray(optionalMissingDocuments) ? optionalMissingDocuments.filter(Boolean) : [];
+  const safeOptionalRejected = Array.isArray(optionalRejectedDocuments) ? optionalRejectedDocuments.filter(Boolean) : [];
   const totalPending = safeMissing.length + safeRejected.length;
 
   if (normalizedLogo) {
@@ -415,7 +419,7 @@ export const buildMissingDocumentsPdfBuffer = ({
     text('PRIME', left, 66, { size: 6.5, bold: true, width: 50, align: 'center', fill: [0.95, 0.72, 0.18] });
   }
   text(companyName, left + 66, 40, { size: 15, bold: true });
-  text('MISSING DOCUMENT REQUIREMENTS', left + 66, 61, { size: 11, bold: true, fill: [0.12, 0.29, 0.58] });
+  text('DOCUMENTS REQUIRED FROM YOU', left + 66, 61, { size: 11, bold: true, fill: [0.12, 0.29, 0.58] });
   text(`Generated: ${longDate(generatedDate)}`, right - 190, 42, { size: 8.5, width: 190, align: 'right' });
   line(left, 96, right, 96, { width: 1.2, stroke: [0.2, 0.32, 0.5] });
 
@@ -424,7 +428,7 @@ export const buildMissingDocumentsPdfBuffer = ({
     ['Client', buyerName || 'Buyer'],
     ['Project', projectName || 'Lot Project'],
     ['Unit No.', unitId || '-'],
-    ['Pending Required Documents', String(totalPending)],
+    ['Required Documents From You', String(totalPending)],
   ];
   const labelWidth = 185;
   const rowHeight = 24;
@@ -438,7 +442,7 @@ export const buildMissingDocumentsPdfBuffer = ({
 
   let cursorTop = infoTop + infoRows.length * rowHeight + 18;
   const introHeight = wrappedText(
-    'Please submit the documents listed below so we can continue processing your account. Documents marked RESUBMIT were previously rejected and need a corrected copy.',
+    'Please submit the required client documents listed below so we can continue processing your account. Documents marked RESUBMIT were previously rejected and need a corrected copy. Optional documents do not block your checklist.',
     left,
     cursorTop,
     contentWidth,
@@ -447,7 +451,7 @@ export const buildMissingDocumentsPdfBuffer = ({
   cursorTop += introHeight + 12;
 
   rect(left, cursorTop, contentWidth, 24, { fill: [0.92, 0.95, 1], stroke: [0.75, 0.82, 0.9] });
-  text('DOCUMENTS REQUIRING ACTION', left + 10, cursorTop + 7, { size: 10, bold: true, fill: [0.12, 0.29, 0.58] });
+  text('REQUIRED DOCUMENTS FROM YOU', left + 10, cursorTop + 7, { size: 10, bold: true, fill: [0.12, 0.29, 0.58] });
   cursorTop += 24;
 
   const actionItems = [
@@ -457,7 +461,7 @@ export const buildMissingDocumentsPdfBuffer = ({
 
   if (!actionItems.length) {
     rect(left, cursorTop, contentWidth, 30, { stroke: [0.82, 0.85, 0.9] });
-    text('No missing or rejected required documents.', left + 14, cursorTop + 10, { size: 9, fill: [0.38, 0.45, 0.55] });
+    text('No missing or rejected required client documents.', left + 14, cursorTop + 10, { size: 9, fill: [0.38, 0.45, 0.55] });
     cursorTop += 30;
   } else {
     const columnGap = 12;
@@ -495,6 +499,32 @@ export const buildMissingDocumentsPdfBuffer = ({
     cursorTop = Math.max(leftBottom, rightBottom);
   }
 
+  const optionalItems = [
+    ...safeOptionalMissing.map((name) => ({ name, status: 'MISSING / OPTIONAL' })),
+    ...safeOptionalRejected.map((name) => ({ name, status: 'RESUBMIT / OPTIONAL' })),
+  ];
+
+  if (optionalItems.length) {
+    cursorTop += 16;
+    rect(left, cursorTop, contentWidth, 24, { fill: [0.96, 0.97, 0.99], stroke: [0.8, 0.84, 0.9] });
+    text('OPTIONAL CLIENT DOCUMENTS', left + 10, cursorTop + 7, { size: 10, bold: true, fill: [0.32, 0.4, 0.52] });
+    cursorTop += 24;
+
+    optionalItems.forEach((item, index) => {
+      const labelWidth = item.status === 'MISSING / OPTIONAL' ? 104 : 106;
+      const nameLines = wrapText(item.name, contentWidth - labelWidth - 30, 7.8);
+      const height = Math.max(19, 7 + nameLines.length * 9);
+      rect(left, cursorTop, contentWidth, height, { stroke: [0.84, 0.87, 0.91] });
+      rect(left, cursorTop, labelWidth, height, { fill: [0.97, 0.97, 0.98], stroke: false });
+      text(item.status, left + 6, cursorTop + 6, { size: 7, bold: true, fill: [0.38, 0.43, 0.5] });
+      text(`${index + 1}.`, left + labelWidth + 7, cursorTop + 6, { size: 7.8, bold: true });
+      nameLines.forEach((lineText, lineIndex) => {
+        text(lineText, left + labelWidth + 22, cursorTop + 6 + lineIndex * 9, { size: 7.8 });
+      });
+      cursorTop += height;
+    });
+  }
+
   const footerTop = Math.min(Math.max(cursorTop + 18, 500), 545);
   line(left, footerTop, right, footerTop, { width: 0.7, stroke: [0.75, 0.8, 0.87] });
   text(
@@ -511,7 +541,8 @@ export const buildMissingDocumentsPdfBuffer = ({
   );
 
   return buildPdfBuffer(builder.commands.join('\n'), {
-    title: `Missing Document Requirements - ${unitId || 'Unit'}`,
+    title: `Client Document Requirements - ${unitId || 'Unit'}`,
     author: companyName,
   }, normalizedLogo);
 };
+

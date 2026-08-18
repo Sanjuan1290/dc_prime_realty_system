@@ -125,12 +125,12 @@ const Notifications = () => {
   const documentSendMutation = useMutation({
     mutationFn: ({ listingId, clientProfileId }) =>
       useFetchPost(`/notifications/documents/${listingId}/${clientProfileId}/send`, {}, { confirmationHandled: 'compact' }),
-    onMutate: () => setAlert({ type: 'loading', message: 'Sending document requirements email...' }),
+    onMutate: () => setAlert({ type: 'loading', message: 'Sending client document requirements email...' }),
     onSuccess: (response) => {
-      setAlert({ type: 'success', message: response?.message || 'Document requirements email sent successfully.' })
+      setAlert({ type: 'success', message: response?.message || 'Client document requirements email sent successfully.' })
       queryClient.invalidateQueries({ queryKey: ['system-document-notifications'] })
     },
-    onError: (error) => setAlert({ type: 'error', message: error?.message || 'Failed to send document requirements email.' }),
+    onError: (error) => setAlert({ type: 'error', message: error?.message || 'Failed to send client document requirements email.' }),
   })
 
   const contactedMutation = useMutation({
@@ -170,7 +170,7 @@ const Notifications = () => {
 
   const handleDocumentSend = (item) => {
     const recipient = item.buyerEmail || item.buyerName
-    if (window.confirm(`Send the missing document requirements PDF to ${recipient}?`)) {
+    if (window.confirm(`Send the client document requirements PDF to ${recipient}?`)) {
       documentSendMutation.mutate({
         listingId: item.listingId,
         clientProfileId: item.clientProfileId,
@@ -185,7 +185,7 @@ const Notifications = () => {
   return (
     <main className="flex flex-col gap-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <PageHeader title="Notifications" description="Payment reminders and incomplete required-document records across all lot projects." icon={FiBell} />
+        <PageHeader title="Notifications" description="Payment reminders and client-action document records across all lot projects." icon={FiBell} />
         <button type="button" onClick={() => activeQuery.refetch()} disabled={activeQuery.isFetching} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 text-sm font-black text-slate-700 shadow-sm hover:bg-blue-50 disabled:opacity-60">
           {activeQuery.isFetching ? <FiLoader className="animate-spin" /> : <FiRefreshCw />} {activeQuery.isFetching ? 'Refreshing...' : 'Refresh'}
         </button>
@@ -210,9 +210,9 @@ const Notifications = () => {
       ) : (
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           <SummaryCard label="Client Units" value={documentSummary.totalUnits} icon={FiFileText} helper="Active, fully paid, or pending cancellation" />
-          <SummaryCard label="Pending Required" value={documentSummary.pendingRequired} icon={FiAlertTriangle} tone="red" helper="Missing + rejected" />
-          <SummaryCard label="Missing Required" value={documentSummary.missingRequired} icon={FiClock} tone="amber" helper="Not uploaded" />
-          <SummaryCard label="Rejected Required" value={documentSummary.rejectedRequired} icon={FiAlertTriangle} tone="red" helper="Needs resubmission" />
+          <SummaryCard label="Pending Client Required" value={documentSummary.pendingRequired} icon={FiAlertTriangle} tone="red" helper="Missing + rejected" />
+          <SummaryCard label="Missing Client Required" value={documentSummary.missingRequired} icon={FiClock} tone="amber" helper="Not uploaded" />
+          <SummaryCard label="Rejected Client Required" value={documentSummary.rejectedRequired} icon={FiAlertTriangle} tone="red" helper="Needs resubmission" />
           <SummaryCard label="Awaiting Approval" value={documentSummary.awaitingApproval} icon={FiCheckCircle} tone="blue" helper="Submitted but not approved" />
         </section>
       )}
@@ -221,12 +221,12 @@ const Notifications = () => {
         <div className="flex flex-col gap-4 border-b border-slate-200 p-5 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h2 className="text-lg font-black text-slate-950">{tab === 'payments' ? 'Payment Notifications' : 'Document Notifications'}</h2>
-            <p className="mt-1 text-sm font-semibold text-slate-500">{tab === 'payments' ? 'Send reminders for dues within 7 days and overdue schedules.' : 'Review pending required documents and submitted files waiting for approval.'}</p>
+            <p className="mt-1 text-sm font-semibold text-slate-500">{tab === 'payments' ? 'Send reminders for dues within 7 days and overdue schedules.' : 'Review client-responsibility documents and submitted client files waiting for approval.'}</p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row">
             <label className="relative min-w-[270px]"><FiSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} placeholder="Search project, unit, buyer, email..." className="h-11 w-full rounded-2xl border border-slate-200 pl-11 pr-3 text-sm font-semibold outline-none focus:border-blue-300 focus:ring-4 focus:ring-blue-50" /></label>
             <select value={category} onChange={(event) => { setCategory(event.target.value); setPage(1) }} className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 outline-none focus:border-blue-300 focus:ring-4 focus:ring-blue-50">
-              {tab === 'payments' ? <><option value="all">All Notices</option><option value="due_soon">Due Within 7 Days</option><option value="overdue">Overdue</option></> : <><option value="all">All Document Records</option><option value="pending">Pending Required</option><option value="missing">Missing Required</option><option value="rejected">Rejected Required</option><option value="awaiting">Awaiting Approval</option></>}
+              {tab === 'payments' ? <><option value="all">All Notices</option><option value="due_soon">Due Within 7 Days</option><option value="overdue">Overdue</option></> : <><option value="all">All Document Records</option><option value="pending">Pending Client Required</option><option value="missing">Missing Client Required</option><option value="rejected">Rejected Client Required</option><option value="awaiting">Awaiting Approval</option></>}
             </select>
           </div>
         </div>
@@ -240,7 +240,7 @@ const Notifications = () => {
           </>
         ) : (
           <>
-            <div className="overflow-x-auto"><table className="min-w-[1380px] w-full divide-y divide-slate-200 text-sm"><thead className="bg-slate-50"><tr>{['Project', 'Unit', 'Buyer', 'Email / Contact', 'Submitted / Total', 'Approved', 'Awaiting', 'Missing Required', 'Rejected Required', 'Status', 'Last Email', 'Actions'].map((header) => <th key={header} className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">{header}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{paginatedRecords.map((item) => <tr key={item.listingId} className="align-top hover:bg-slate-50"><td className="px-4 py-4 font-black">{item.projectName}</td><td className="px-4 py-4 font-black text-blue-700">{item.unitId}</td><td className="px-4 py-4 font-semibold text-slate-700">{item.buyerName}</td><td className="px-4 py-4 font-semibold text-slate-600"><p>{item.buyerEmail || '-'}</p><p className="text-xs">{item.buyerContactNumber || '-'}</p></td><td className="px-4 py-4 font-black text-blue-700">{item.submittedDocuments} / {item.totalDocuments}</td><td className="px-4 py-4 font-black text-emerald-700">{item.approvedDocuments}</td><td className="px-4 py-4 font-black text-amber-700">{item.awaitingApprovalDocuments}</td><td className="px-4 py-4 font-black text-red-700">{item.missingRequiredDocuments}</td><td className="px-4 py-4 font-black text-red-700">{item.rejectedRequiredDocuments}</td><td className="px-4 py-4"><span className={`inline-flex rounded-full px-3 py-1 text-xs font-black ${item.pendingRequiredDocuments > 0 ? 'bg-red-50 text-red-700' : item.awaitingApprovalDocuments > 0 ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>{item.pendingRequiredDocuments > 0 ? 'Incomplete' : item.awaitingApprovalDocuments > 0 ? 'For Review' : 'Complete'}</span></td><td className="px-4 py-4"><span className={`inline-flex rounded-full border px-3 py-1 text-xs font-black ${statusStyles[item.lastDocumentNotificationStatus] || 'border-slate-200 bg-slate-50 text-slate-600'}`}>{getLastStatusLabel(item.lastDocumentNotificationStatus)}</span>{item.lastDocumentNotificationAt ? <p className="mt-1 text-xs font-semibold text-slate-500">{item.lastDocumentNotificationAt}</p> : null}</td><td className="px-4 py-4"><div className="flex flex-wrap gap-2">{canManage ? <button type="button" onClick={() => handleDocumentSend(item)} disabled={isBusy || !item.buyerEmail || item.pendingRequiredDocuments <= 0} className="inline-flex h-9 items-center gap-2 rounded-lg bg-blue-600 px-3 text-xs font-black text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"><FiMail /> Send Email</button> : null}<Link to={item.listingPath} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 hover:bg-slate-50"><FiFileText /> Review</Link></div></td></tr>)}</tbody></table></div>
+            <div className="overflow-x-auto"><table className="min-w-[1380px] w-full divide-y divide-slate-200 text-sm"><thead className="bg-slate-50"><tr>{['Project', 'Unit', 'Buyer', 'Email / Contact', 'Submitted / Total', 'Approved', 'Awaiting', 'Missing Client', 'Rejected Client', 'Status', 'Last Email', 'Actions'].map((header) => <th key={header} className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">{header}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{paginatedRecords.map((item) => <tr key={item.listingId} className="align-top hover:bg-slate-50"><td className="px-4 py-4 font-black">{item.projectName}</td><td className="px-4 py-4 font-black text-blue-700">{item.unitId}</td><td className="px-4 py-4 font-semibold text-slate-700">{item.buyerName}</td><td className="px-4 py-4 font-semibold text-slate-600"><p>{item.buyerEmail || '-'}</p><p className="text-xs">{item.buyerContactNumber || '-'}</p></td><td className="px-4 py-4 font-black text-blue-700">{item.submittedDocuments} / {item.totalDocuments}</td><td className="px-4 py-4 font-black text-emerald-700">{item.approvedDocuments}</td><td className="px-4 py-4 font-black text-amber-700">{item.awaitingApprovalDocuments}</td><td className="px-4 py-4 font-black text-red-700">{item.missingRequiredDocuments}</td><td className="px-4 py-4 font-black text-red-700">{item.rejectedRequiredDocuments}</td><td className="px-4 py-4"><span className={`inline-flex rounded-full px-3 py-1 text-xs font-black ${item.pendingRequiredDocuments > 0 ? 'bg-red-50 text-red-700' : item.awaitingApprovalDocuments > 0 ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>{item.pendingRequiredDocuments > 0 ? 'Incomplete' : item.awaitingApprovalDocuments > 0 ? 'For Review' : 'Complete'}</span></td><td className="px-4 py-4"><span className={`inline-flex rounded-full border px-3 py-1 text-xs font-black ${statusStyles[item.lastDocumentNotificationStatus] || 'border-slate-200 bg-slate-50 text-slate-600'}`}>{getLastStatusLabel(item.lastDocumentNotificationStatus)}</span>{item.lastDocumentNotificationAt ? <p className="mt-1 text-xs font-semibold text-slate-500">{item.lastDocumentNotificationAt}</p> : null}</td><td className="px-4 py-4"><div className="flex flex-wrap gap-2">{canManage ? <button type="button" onClick={() => handleDocumentSend(item)} disabled={isBusy || !item.buyerEmail || item.pendingRequiredDocuments <= 0} className="inline-flex h-9 items-center gap-2 rounded-lg bg-blue-600 px-3 text-xs font-black text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"><FiMail /> Send Email</button> : null}<Link to={item.listingPath} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 hover:bg-slate-50"><FiFileText /> Review</Link></div></td></tr>)}</tbody></table></div>
             <Pagination total={records.length} page={currentPage} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1) }} />
           </>
         )}

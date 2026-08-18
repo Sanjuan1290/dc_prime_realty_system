@@ -14,13 +14,14 @@ const ReserveDocumentChecklistModal = ({
   addTemplateDocuments,
   removeDocument,
   updateDocumentRequirement,
+  updateDocumentResponsibleParty,
   loadProjectDefaults,
   documentTemplates = [],
 }) => (
   <div className="flex flex-col gap-4">
     <SectionCard
       title="Reservation Document Checklist"
-      description="This listing's saved document requirements are selected automatically. Add templates or individual documents, then confirm Required / Optional before reserving."
+      description="This listing's saved document requirements are selected automatically. Add templates or individual documents, then confirm Required / Optional and who is responsible before reserving."
       right={
         <div className="flex flex-wrap gap-2">
           <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700">
@@ -186,6 +187,20 @@ const ReserveDocumentChecklistModal = ({
                     </select>
                   </label>
 
+                  <label className="flex min-w-[175px] flex-col gap-1.5">
+                    <span className="text-xs font-black text-slate-600">Responsible Party</span>
+                    <select
+                      value={document.responsibleParty || 'client'}
+                      onChange={(event) => updateDocumentResponsibleParty(documentId, event.target.value)}
+                      disabled={isDeleting || isSaving}
+                      className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <option value="client">Client</option>
+                      <option value="internal">Company / Internal</option>
+                      <option value="seller">Seller / Agent</option>
+                    </select>
+                  </label>
+
                   <button
                     type="button"
                     onClick={() => removeDocument(documentId)}
@@ -210,3 +225,4 @@ const ReserveDocumentChecklistModal = ({
 )
 
 export default ReserveDocumentChecklistModal
+

@@ -36,3 +36,27 @@ test('reservation and document actions refresh notification badge queries immedi
   const documentInvalidations = profile.match(/system-document-notifications/g) || []
   assert.ok(documentInvalidations.length >= 5, 'expected reservation and document mutations to refresh document notification counts')
 })
+
+test('marking a payment notification contacted records the clicking user in Audit Logs', () => {
+  const controller = read('server/controllers/System/notifications.controller.js')
+  const start = controller.indexOf('export const markPaymentDueContacted')
+  const end = controller.indexOf('const getDocumentNotificationContext', start)
+  const contactedHandler = controller.slice(start, end)
+
+  assert.ok(start >= 0 && end > start, 'expected markPaymentDueContacted handler')
+  assert.match(contactedHandler, /sent_by_user_id/)
+  assert.match(contactedHandler, /const \[contactLogResult\] = await connection\.query/)
+  assert.match(contactedHandler, /writeAuditLog\(connection, req, \{/)
+  assert.match(contactedHandler, /actor: user/)
+  assert.match(contactedHandler, /action: 'update'/)
+  assert.match(contactedHandler, /module: 'Notifications'/)
+  assert.match(contactedHandler, /title: 'Marked payment notification as contacted'/)
+  assert.match(contactedHandler, /contactedBy: actorName/)
+
+  const backfill = read('server/migrations/20260818_notification_contact_audit_backfill.sql')
+  assert.match(backfill, /WHERE notification_log\.send_status = 'contacted'/)
+  assert.match(backfill, /existing_audit\.audit_log_id IS NULL/)
+  assert.match(backfill, /Marked payment notification as contacted/)
+  assert.match(backfill, /notification_log\.sent_by_user_id/)
+})
+

@@ -17,10 +17,10 @@ const statusStyles = {
   Pending: 'border-amber-200 bg-amber-50 text-amber-700',
 }
 
-const StatusPill = ({ value }) => (
+const StatusPill = ({ value, requirement }) => (
   <span className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-black ${statusStyles[value] || 'border-slate-200 bg-slate-100 text-slate-600'}`}>
     <span className="h-1.5 w-1.5 rounded-full bg-current" />
-    {value || 'Missing'}
+    {value === 'Missing' && requirement === 'Optional' ? 'Missing / Optional' : (value || 'Missing')}
   </span>
 )
 
@@ -183,7 +183,7 @@ const DocumentImagesModal = ({ documents = [], onClose }) => {
                       <h3 className="text-base font-black text-slate-950">{document.name}</h3>
                       <p className="mt-1 text-xs font-semibold text-slate-500">{files.length ? `${files.length} uploaded file(s)` : 'No file uploaded'}</p>
                     </div>
-                    <StatusPill value={document.status} />
+                    <StatusPill value={document.status} requirement={document.requirement} />
                   </div>
 
                   <div className="p-4">
@@ -283,3 +283,4 @@ const DocumentImagesModal = ({ documents = [], onClose }) => {
 }
 
 export default DocumentImagesModal
+

@@ -70,7 +70,7 @@ import {
 } from '../Lot_Projects/_shared/lotProject.shared.js';
 import { writeAuditLog } from './auditLogs.controller.js';
 import { createProjectStorageCode } from '../../services/storageCodes.service.js';
-import { resolveDocumentRequiredFlag } from '../../utils/documentRequirement.js';
+import { resolveDocumentRequiredFlag, resolveDocumentResponsibleParty } from '../../utils/documentRequirement.js';
 
 export const getLotProjects = async (req, res) => {
   try {
@@ -256,6 +256,7 @@ export const createLotProject = async (req, res) => {
       .map((document) => ({
         document_id: Number(document.document_id || document.id),
         is_required: resolveDocumentRequiredFlag(document),
+        responsible_party: resolveDocumentResponsibleParty(document),
         status: document.status === 'inactive' ? 'inactive' : 'active',
       }))
       .filter((document) => document.document_id);
@@ -267,11 +268,12 @@ export const createLotProject = async (req, res) => {
             lot_project_id,
             document_id,
             lot_project_default_document_is_required,
+            lot_project_default_document_responsible_party,
             lot_project_default_document_status
           )
-          VALUES ${cleanDocuments.map(() => '(?, ?, ?, ?)').join(', ')}
+          VALUES ${cleanDocuments.map(() => '(?, ?, ?, ?, ?)').join(', ')}
         `,
-        cleanDocuments.flatMap((document) => [lotProjectId, document.document_id, document.is_required, document.status])
+        cleanDocuments.flatMap((document) => [lotProjectId, document.document_id, document.is_required, document.responsible_party, document.status])
       );
     }
 
@@ -538,6 +540,7 @@ export const updateLotProject = async (req, res) => {
       .map((document) => ({
         document_id: Number(document.document_id || document.id),
         is_required: resolveDocumentRequiredFlag(document),
+        responsible_party: resolveDocumentResponsibleParty(document),
         status: document.status === 'inactive' ? 'inactive' : 'active',
       }))
       .filter((document) => document.document_id);
@@ -553,14 +556,16 @@ export const updateLotProject = async (req, res) => {
             lot_project_id,
             document_id,
             lot_project_default_document_is_required,
+            lot_project_default_document_responsible_party,
             lot_project_default_document_status
-          ) VALUES ${cleanDocuments.map(() => '(?, ?, ?, ?)').join(', ')}
+          ) VALUES ${cleanDocuments.map(() => '(?, ?, ?, ?, ?)').join(', ')}
           ON DUPLICATE KEY UPDATE
             lot_project_default_document_is_required = VALUES(lot_project_default_document_is_required),
+            lot_project_default_document_responsible_party = VALUES(lot_project_default_document_responsible_party),
             lot_project_default_document_status = VALUES(lot_project_default_document_status),
             lot_project_default_document_updated_at = NOW()
         `,
-        cleanDocuments.flatMap((document) => [lotProjectId, document.document_id, document.is_required, document.status])
+        cleanDocuments.flatMap((document) => [lotProjectId, document.document_id, document.is_required, document.responsible_party, document.status])
       );
     } else {
       await connection.query(`DELETE FROM lot_project_default_documents WHERE lot_project_id = ?`, [lotProjectId]);
@@ -878,3 +883,4 @@ export const getLotProjectDocumentCompliance = async (req, res) => {
     connection.release();
   }
 };
+

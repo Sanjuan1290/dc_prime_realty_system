@@ -4,6 +4,7 @@ import { FiSearch } from "react-icons/fi";
 import { RxCross2 } from "react-icons/rx";
 import StatusAlert from "../../Shared/StatusAlert";
 import { useFetchPost } from "../../../utils/useFetch";
+import { getDocumentResponsiblePartyLabel } from "../../../utils/documentRequirement";
 
 const toRequiredBoolean = (value) =>
   value === true || value === 1 || value === '1' || value === 'required'
@@ -23,6 +24,7 @@ const buildTemplateReviewPayload = (formData, selectedDocuments) => ({
   templateDocuments: selectedDocuments.map((document) => ({
     reviewTitle: document.document_name || 'Document',
     requirement: toRequiredBoolean(document.document_is_required) ? 'Required' : 'Optional',
+    responsibleParty: getDocumentResponsiblePartyLabel(document.document_responsible_party),
     status: getDocumentStatusLabel(document.document_status),
   })),
 })
@@ -60,6 +62,7 @@ const DocumentAddTemplate = ({ setShowAddTemplateModal, documents = [], onSaved 
         template_documents: selectedDocuments.map((document) => ({
           document_id: document.document_id,
           is_required: toRequiredBoolean(document.document_is_required),
+          responsible_party: document.document_responsible_party || 'client',
         })),
       },
       {
@@ -202,7 +205,7 @@ const TemplateDocuments = ({ documents, selectedDocuments, search, setSearch, se
       ) : (
         <div className="flex flex-col gap-3">
           {selectedDocuments.map((document) => (
-            <div key={document.document_id} className="grid grid-cols-1 gap-3 rounded-2xl border border-slate-200 bg-white p-4 md:grid-cols-5 md:items-center">
+            <div key={document.document_id} className="grid grid-cols-1 gap-3 rounded-2xl border border-slate-200 bg-white p-4 md:grid-cols-6 md:items-center">
               <div className="flex min-w-0 flex-col gap-1 md:col-span-2">
                 <h3 className="truncate text-sm font-bold text-slate-950">{document.document_name}</h3>
                 <p className="line-clamp-1 text-xs text-slate-500">{document.document_description || "No description"}</p>
@@ -210,6 +213,10 @@ const TemplateDocuments = ({ documents, selectedDocuments, search, setSearch, se
               <div className="flex flex-col gap-1">
                 <span className="text-xs font-semibold text-slate-500">Requirement</span>
                 <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">{document.document_is_required ? "Required" : "Optional"}</p>
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-semibold text-slate-500">Responsible</span>
+                <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">{getDocumentResponsiblePartyLabel(document.document_responsible_party)}</p>
               </div>
               <div className="flex flex-col gap-1">
                 <span className="text-xs font-semibold text-slate-500">Status</span>
@@ -227,3 +234,4 @@ const TemplateDocuments = ({ documents, selectedDocuments, search, setSearch, se
 };
 
 export default DocumentAddTemplate;
+

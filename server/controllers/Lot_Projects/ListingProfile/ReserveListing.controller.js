@@ -30,7 +30,7 @@ import {
   assertBuyerFormSchema,
   revokeOpenBuyerFormLinks,
 } from '../BuyerForms/buyerForm.shared.js';
-import { resolveDocumentRequiredFlag } from '../../../utils/documentRequirement.js';
+import { resolveDocumentRequiredFlag, resolveDocumentResponsibleParty } from '../../../utils/documentRequirement.js';
 
 const cleanNamePart = (value) => toFormalTitleCase(value, 255);
 
@@ -116,6 +116,7 @@ const normalizeDocumentPayload = (documents = []) =>
     .map((document) => ({
       document_id: Number(document.document_id || document.id),
       is_required: resolveDocumentRequiredFlag(document),
+      responsible_party: resolveDocumentResponsibleParty(document),
       status: document.status === 'inactive' ? 'inactive' : 'active',
     }))
     .filter((document) => document.document_id);
@@ -128,6 +129,7 @@ const getSavedListingDocumentRequirements = async (connection, projectId, listin
       SELECT
         lpd.document_id,
         lpd.lot_project_listing_document_is_required,
+        lpd.lot_project_listing_document_responsible_party,
         lpd.lot_project_listing_document_status,
         d.document_name,
         d.document_description
@@ -148,6 +150,7 @@ const getSavedListingDocumentRequirements = async (connection, projectId, listin
     description: document.document_description || 'Listing Requirement',
     source: 'Listing Requirement',
     requirement: document.lot_project_listing_document_is_required ? 'required' : 'optional',
+    responsibleParty: document.lot_project_listing_document_responsible_party || 'client',
     status: 'active',
   }));
 };
@@ -283,14 +286,16 @@ const insertReservationDocuments = async (connection, projectId, listingId, clie
         lot_project_listing_id,
         document_id,
         lot_project_listing_document_is_required,
+        lot_project_listing_document_responsible_party,
         lot_project_listing_document_status
-      ) VALUES ${cleanDocuments.map(() => '(?, ?, ?, ?, ?)').join(', ')}
+      ) VALUES ${cleanDocuments.map(() => '(?, ?, ?, ?, ?, ?)').join(', ')}
     `,
     cleanDocuments.flatMap((document) => [
       projectId,
       listingId,
       document.document_id,
       document.is_required,
+      document.responsible_party,
       document.status,
     ])
   );
@@ -1165,3 +1170,4 @@ export const reserveLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
+

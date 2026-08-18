@@ -5,6 +5,7 @@ import {
   FiChevronDown,
   FiChevronUp,
   FiLoader,
+  FiRefreshCw,
   FiShield,
   FiX,
   FiXCircle,
@@ -16,6 +17,7 @@ const UploadSecurityContext = createContext(null)
 const STORAGE_KEY = 'dc_prime_upload_security_tasks_v1'
 const MAX_SAVED_TASKS = 30
 const POLL_INTERVAL_MS = 3_000
+const AUTO_POLL_TIMEOUT_MS = 5 * 60_000
 const AUTO_DISMISS_DELAY_MS = 1_500
 const FADE_DURATION_MS = 300
 
@@ -25,6 +27,7 @@ const terminalStatuses = new Set([
   'failed',
   'rejected',
   'scan_error',
+  'scan_delayed',
   'cancelled',
 ])
 
@@ -33,6 +36,7 @@ const attentionStatuses = new Set([
   'failed',
   'rejected',
   'scan_error',
+  'scan_delayed',
   'cancelled',
 ])
 
@@ -99,6 +103,13 @@ const statusMeta = (task = {}) => {
         icon: FiLoader,
         iconClass: 'animate-spin text-amber-600',
         title: 'Upload successful · Security scan in progress...',
+        textClass: 'text-amber-700',
+      }
+    case 'scan_delayed':
+      return {
+        icon: FiAlertTriangle,
+        iconClass: 'text-amber-600',
+        title: 'Security scanning is taking longer than expected.',
         textClass: 'text-amber-700',
       }
     case 'passed':
@@ -301,92 +312,127 @@ const UploadSecurityProvider = ({ children }) => {
     }
   }, [allPassed, tasks])
 
-  useEffect(() => {
-    const scanTasks = tasks.filter((task) => task.status === 'scanning' && task.accessPath)
-    if (!scanTasks.length) return undefined
+  const checkScanStatus = useCallback(async (task, { manual = false } = {}) => {
+    if (!task?.id || !clean(task.accessPath) || pollingIds.current.has(task.id)) return
 
-    let cancelled = false
+    pollingIds.current.add(task.id)
+    if (manual) {
+      updateUpload(task.id, {
+        checkingScanStatus: true,
+        message: 'Checking the current security scan status...',
+      })
+    }
 
-    const pollTask = async (task) => {
-      if (pollingIds.current.has(task.id)) return
-      pollingIds.current.add(task.id)
+    try {
+      const result = await requestApi(task.accessPath, {
+        method: 'GET',
+        redirectOnUnavailable: false,
+        timeoutMs: 12_000,
+        headers: { Accept: 'application/json' },
+      })
 
-      try {
-        const result = await requestApi(task.accessPath, {
-          method: 'GET',
-          redirectOnUnavailable: false,
-          timeoutMs: 12_000,
-          headers: { Accept: 'application/json' },
-        })
-        if (cancelled) return
+      const scanStatus = clean(
+        result?.data?.malwareScanStatus ||
+        result?.malwareScanStatus ||
+        'approved'
+      ).toLowerCase()
 
-        const scanStatus = clean(
-          result?.data?.malwareScanStatus ||
-          result?.malwareScanStatus ||
-          'approved'
-        ).toLowerCase()
-
-        beginSecurityScan(task.id, {
-          accessPath: task.accessPath,
-          malwareScanStatus: scanStatus,
-        })
-      } catch (error) {
-        if (cancelled) return
-
-        if (error?.code === 'MALWARE_SCAN_PENDING' || Number(error?.status || 0) === 423) {
-          const elapsed = Date.now() - Number(task.scanStartedAt || task.createdAt || Date.now())
+      beginSecurityScan(task.id, {
+        accessPath: task.accessPath,
+        malwareScanStatus: scanStatus,
+      })
+    } catch (error) {
+      if (error?.code === 'MALWARE_SCAN_PENDING' || Number(error?.status || 0) === 423) {
+        if (manual) {
           updateUpload(task.id, {
-            status: 'scanning',
-            message: elapsed >= 5 * 60_000
-              ? 'Security scanning is taking longer than expected. It is still running in the background.'
-              : 'The upload completed. Waiting for the malware scan result.',
+            status: 'scan_delayed',
+            message: 'Automatic checks stopped after 5 minutes.',
             pollFailures: 0,
           })
           return
         }
 
-        if (error?.code === 'MALWARE_DETECTED') {
-          updateUpload(task.id, {
-            status: 'rejected',
-            message: error?.message || 'Malware or malicious content was detected. The file is blocked.',
-          })
-          return
-        }
-
-        if (error?.code === 'MALWARE_SCAN_ERROR') {
-          updateUpload(task.id, {
-            status: 'scan_error',
-            message: error?.message || 'The security scan did not complete successfully.',
-          })
-          return
-        }
-
-        const nextFailures = Number(task.pollFailures || 0) + 1
+        const elapsed = Date.now() - Number(task.scanStartedAt || task.createdAt || Date.now())
         updateUpload(task.id, {
-          status: 'scanning',
-          pollFailures: nextFailures,
-          message: nextFailures >= 2
-            ? 'Security status is temporarily unavailable. Retrying automatically...'
-            : task.message,
+          status: elapsed >= AUTO_POLL_TIMEOUT_MS ? 'scan_delayed' : 'scanning',
+          message: elapsed >= AUTO_POLL_TIMEOUT_MS
+            ? 'Automatic checks stopped after 5 minutes.'
+            : 'The upload completed. Waiting for the malware scan result.',
+          pollFailures: 0,
         })
-      } finally {
-        pollingIds.current.delete(task.id)
+        return
       }
+
+      if (error?.code === 'MALWARE_DETECTED') {
+        updateUpload(task.id, {
+          status: 'rejected',
+          message: error?.message || 'Malware or malicious content was detected. The file is blocked.',
+        })
+        return
+      }
+
+      if (error?.code === 'MALWARE_SCAN_ERROR') {
+        updateUpload(task.id, {
+          status: 'scan_error',
+          message: error?.message || 'The security scan did not complete successfully.',
+        })
+        return
+      }
+
+      if (manual) {
+        updateUpload(task.id, {
+          status: 'scan_delayed',
+          message: error?.message || 'Could not check the scan status right now. Try again when ready.',
+        })
+        return
+      }
+
+      const elapsed = Date.now() - Number(task.scanStartedAt || task.createdAt || Date.now())
+      if (elapsed >= AUTO_POLL_TIMEOUT_MS) {
+        updateUpload(task.id, {
+          status: 'scan_delayed',
+          message: 'Automatic checks stopped after 5 minutes.',
+          pollFailures: 0,
+        })
+        return
+      }
+
+      const nextFailures = Number(task.pollFailures || 0) + 1
+      updateUpload(task.id, {
+        status: 'scanning',
+        pollFailures: nextFailures,
+        message: nextFailures >= 2
+          ? 'Security status is temporarily unavailable. Retrying automatically...'
+          : task.message,
+      })
+    } finally {
+      pollingIds.current.delete(task.id)
+      if (manual) updateUpload(task.id, { checkingScanStatus: false })
     }
+  }, [beginSecurityScan, updateUpload])
+
+  useEffect(() => {
+    const scanTasks = tasks.filter((task) => task.status === 'scanning' && task.accessPath)
+    if (!scanTasks.length) return undefined
 
     const poll = () => {
       scanTasks.forEach((task) => {
-        void pollTask(task)
+        const elapsed = Date.now() - Number(task.scanStartedAt || task.createdAt || Date.now())
+        if (elapsed >= AUTO_POLL_TIMEOUT_MS) {
+          updateUpload(task.id, {
+            status: 'scan_delayed',
+            message: 'Automatic checks stopped after 5 minutes.',
+            pollFailures: 0,
+          })
+          return
+        }
+        void checkScanStatus(task)
       })
     }
 
     const intervalId = window.setInterval(poll, POLL_INTERVAL_MS)
-
-    return () => {
-      cancelled = true
-      window.clearInterval(intervalId)
-    }
-  }, [tasks, beginSecurityScan, updateUpload])
+    return () => window.clearInterval(intervalId)
+  }, [tasks, checkScanStatus, updateUpload])
 
   const value = useMemo(() => ({
     tasks,
@@ -480,6 +526,17 @@ const UploadSecurityProvider = ({ children }) => {
                         <p className={`mt-1 text-xs font-black ${meta.textClass}`}>{meta.title}</p>
                         {task.message ? (
                           <p className="mt-0.5 text-[11px] font-semibold leading-4 text-slate-500">{task.message}</p>
+                        ) : null}
+                        {task.status === 'scan_delayed' && task.accessPath ? (
+                          <button
+                            type="button"
+                            onClick={() => void checkScanStatus(task, { manual: true })}
+                            disabled={Boolean(task.checkingScanStatus)}
+                            className="mt-2 inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 text-[11px] font-black text-amber-800 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <FiRefreshCw className={task.checkingScanStatus ? 'animate-spin' : ''} />
+                            {task.checkingScanStatus ? 'Checking...' : 'Check Scan Status'}
+                          </button>
                         ) : null}
                       </div>
                     </div>

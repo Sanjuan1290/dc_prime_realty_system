@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { FiCheckCircle, FiFileText, FiLoader, FiSearch, FiTrash2, FiX } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
-import { resolveDocumentRequirement } from '../../../../utils/documentRequirement.js'
+import { resolveDocumentRequirement, resolveDocumentResponsibleParty } from '../../../../utils/documentRequirement.js'
 
 const normalizeDocument = (document = {}) => ({
   id: Number(document.document_id || document.id || 0) || null,
@@ -10,6 +10,7 @@ const normalizeDocument = (document = {}) => ({
   description: document.description || document.document_description || '',
   source: document.source || 'Project Default',
   requirement: resolveDocumentRequirement(document),
+  responsibleParty: resolveDocumentResponsibleParty(document),
   status: String(document.status || document.lot_project_listing_document_status || document.lot_project_default_document_status || document.document_status || 'active').toLowerCase() === 'inactive'
     ? 'inactive'
     : 'active',
@@ -179,9 +180,10 @@ const EditListingDocumentsModal = ({ selectedDocuments = [], setSelectedDocument
                 const documentKey = getDocumentKey(document)
                 const isDeleting = Number(deletingId) === Number(documentKey)
                 return (
-                  <div key={documentKey} className={`grid gap-4 rounded-xl border bg-white p-4 shadow-sm transition md:grid-cols-[1fr_140px_120px_auto] md:items-center ${isDeleting ? 'border-red-200 opacity-70' : 'border-slate-200 hover:border-blue-200'}`}>
+                  <div key={documentKey} className={`grid gap-4 rounded-xl border bg-white p-4 shadow-sm transition md:grid-cols-[1fr_140px_180px_120px_auto] md:items-center ${isDeleting ? 'border-red-200 opacity-70' : 'border-slate-200 hover:border-blue-200'}`}>
                     <div className="min-w-0"><p className="break-words text-base font-black text-slate-950">{document.name}</p><p className="mt-1 text-sm font-semibold text-slate-500">{document.description}</p><p className="mt-1 text-xs font-semibold text-slate-400">Source: {document.source}</p></div>
                     <label className="flex flex-col gap-1.5"><span className="text-sm font-black text-slate-700">Requirement</span><select value={document.requirement} onChange={(event) => updateDocument(documentKey, 'requirement', event.target.value)} disabled={isBusy || isDeleting} className="h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:opacity-60"><option value="required">Required</option><option value="optional">Optional</option></select></label>
+                    <label className="flex flex-col gap-1.5"><span className="text-sm font-black text-slate-700">Responsible Party</span><select value={document.responsibleParty} onChange={(event) => updateDocument(documentKey, 'responsibleParty', event.target.value)} disabled={isBusy || isDeleting} className="h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:opacity-60"><option value="client">Client</option><option value="internal">Company / Internal</option><option value="seller">Seller / Agent</option></select></label>
                     <label className="flex flex-col gap-1.5"><span className="text-sm font-black text-slate-700">Status</span><select value={document.status} onChange={(event) => updateDocument(documentKey, 'status', event.target.value)} disabled={isBusy || isDeleting} className="h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:opacity-60"><option value="active">Active</option><option value="inactive">Inactive</option></select></label>
                     <button type="button" onClick={() => removeDocument(documentKey)} disabled={isBusy || isDeleting} className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-red-600 px-4 text-sm font-black text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60">{isDeleting ? <FiLoader className="h-4 w-4 animate-spin" /> : <FiTrash2 className="h-4 w-4" />}{isDeleting ? 'Removing...' : 'Remove'}</button>
                   </div>
@@ -204,3 +206,4 @@ const EditListingDocumentsModal = ({ selectedDocuments = [], setSelectedDocument
 }
 
 export default EditListingDocumentsModal
+

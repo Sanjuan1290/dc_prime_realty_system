@@ -92,7 +92,7 @@ import {
   renameCloudinaryAsset,
 } from '../../../services/cloudinaryUnitFolder.service.js';
 import { createListingStorageCode } from '../../../services/storageCodes.service.js';
-import { resolveDocumentRequiredFlag } from '../../../utils/documentRequirement.js';
+import { resolveDocumentRequiredFlag, resolveDocumentResponsibleParty } from '../../../utils/documentRequirement.js';
 
 const normalizeListingDocumentRequirements = (documents = []) => {
   const documentMap = new Map();
@@ -104,6 +104,7 @@ const normalizeListingDocumentRequirements = (documents = []) => {
     documentMap.set(documentId, {
       document_id: documentId,
       is_required: resolveDocumentRequiredFlag(document),
+      responsible_party: resolveDocumentResponsibleParty(document),
       status: String(document?.status || 'active').trim().toLowerCase() === 'inactive'
         ? 'inactive'
         : 'active',
@@ -139,10 +140,12 @@ const replaceListingDocumentRequirements = async (connection, projectId, listing
           lot_project_listing_id,
           document_id,
           lot_project_listing_document_is_required,
+          lot_project_listing_document_responsible_party,
           lot_project_listing_document_status
-        ) VALUES ${cleanDocuments.map(() => '(?, ?, ?, ?, ?)').join(', ')}
+        ) VALUES ${cleanDocuments.map(() => '(?, ?, ?, ?, ?, ?)').join(', ')}
         ON DUPLICATE KEY UPDATE
           lot_project_listing_document_is_required = VALUES(lot_project_listing_document_is_required),
+          lot_project_listing_document_responsible_party = VALUES(lot_project_listing_document_responsible_party),
           lot_project_listing_document_status = VALUES(lot_project_listing_document_status),
           lot_project_listing_document_updated_at = NOW()
       `,
@@ -151,6 +154,7 @@ const replaceListingDocumentRequirements = async (connection, projectId, listing
         listingId,
         document.document_id,
         document.is_required,
+        document.responsible_party,
         document.status,
       ])
     );
@@ -1925,14 +1929,14 @@ export const updateLotProjectListing = async (req, res) => {
       const requestedClean = normalizeListingDocumentRequirements(requestedListingDocuments);
       const [currentDocumentRows] = await connection.query(
         `
-          SELECT document_id, lot_project_listing_document_is_required, lot_project_listing_document_status
+          SELECT document_id, lot_project_listing_document_is_required, lot_project_listing_document_responsible_party, lot_project_listing_document_status
           FROM lot_project_listing_documents
           WHERE lot_project_id = ? AND lot_project_listing_id = ?
         `,
         [project.lot_project_id, existingListing.lot_project_listing_id]
       );
       const signature = (rows) => rows
-        .map((row) => `${Number(row.document_id)}:${Number((row.is_required ?? row.lot_project_listing_document_is_required) || 0)}:${String((row.status ?? row.lot_project_listing_document_status) || 'active').toLowerCase()}`)
+        .map((row) => `${Number(row.document_id)}:${Number((row.is_required ?? row.lot_project_listing_document_is_required) || 0)}:${String((row.responsible_party ?? row.lot_project_listing_document_responsible_party) || 'client').toLowerCase()}:${String((row.status ?? row.lot_project_listing_document_status) || 'active').toLowerCase()}`)
         .sort()
         .join('|');
       const currentSignature = signature(currentDocumentRows);
@@ -2364,3 +2368,4 @@ export const deleteLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
+

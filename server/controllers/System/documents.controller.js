@@ -1,5 +1,6 @@
 import { db } from '../../db/connect.js';
 import { validateDocumentCode } from '../../services/storageCodes.service.js';
+import { normalizeDocumentResponsibleParty } from '../../utils/documentRequirement.js';
 
 const getErrorMessage = (error) => {
   if (String(error?.code || '').startsWith('ER_') || error?.sqlMessage || error?.sql) return 'Database operation failed. Please try again.';
@@ -83,6 +84,20 @@ const getTemplateDocumentRows = async (connection, documentIds = [], templateDoc
               document.document_is_required,
             true
           ),
+          responsible_party: (
+            document.responsibleParty ??
+            document.responsible_party ??
+            document.template_document_list_responsible_party ??
+            document.document_responsible_party
+          ) == null
+            ? null
+            : normalizeDocumentResponsibleParty(
+                document.responsibleParty ??
+                  document.responsible_party ??
+                  document.template_document_list_responsible_party ??
+                  document.document_responsible_party,
+                'client'
+              ),
         }))
         .filter((document) => document.document_id)
     : [];
@@ -98,7 +113,7 @@ const getTemplateDocumentRows = async (connection, documentIds = [], templateDoc
 
   const [libraryRows] = await connection.query(
     `
-      SELECT document_id, document_is_required
+      SELECT document_id, document_is_required, document_responsible_party
       FROM documents
       WHERE document_id IN (${requestedIds.map(() => '?').join(', ')})
     `,
@@ -111,8 +126,17 @@ const getTemplateDocumentRows = async (connection, documentIds = [], templateDoc
       normalizeRequiredValue(document.document_is_required, true),
     ])
   );
+  const libraryResponsibleParty = new Map(
+    libraryRows.map((document) => [
+      Number(document.document_id),
+      normalizeDocumentResponsibleParty(document.document_responsible_party, 'client'),
+    ])
+  );
   const explicitRequirement = new Map(
     explicitRows.map((document) => [document.document_id, document.is_required])
+  );
+  const explicitResponsibleParty = new Map(
+    explicitRows.filter((document) => document.responsible_party).map((document) => [document.document_id, document.responsible_party])
   );
 
   return requestedIds
@@ -122,6 +146,9 @@ const getTemplateDocumentRows = async (connection, documentIds = [], templateDoc
       is_required: explicitRequirement.has(documentId)
         ? explicitRequirement.get(documentId)
         : libraryRequirement.get(documentId),
+      responsible_party: explicitResponsibleParty.has(documentId)
+        ? explicitResponsibleParty.get(documentId)
+        : libraryResponsibleParty.get(documentId),
     }));
 };
 
@@ -136,6 +163,7 @@ export const getDocuments = async (req, res) => {
         document_is_reusable,
         document_status,
         document_is_required,
+        document_responsible_party,
         document_created_at,
         document_updated_at
       FROM documents
@@ -174,6 +202,9 @@ export const getTemplates = async (req, res) => {
         tdl.template_document_list_is_required,
         tdl.template_document_list_is_required AS document_is_required,
         d.document_is_required AS library_document_is_required,
+        tdl.template_document_list_responsible_party,
+        tdl.template_document_list_responsible_party AS document_responsible_party,
+        d.document_responsible_party AS library_document_responsible_party,
         d.document_status,
         tdl.template_document_list_created_at AS template_document_created_at,
         tdl.template_document_list_updated_at AS template_document_updated_at
@@ -200,6 +231,7 @@ export const addDocument = async (req, res) => {
       document_description,
       document_status = 'active',
       document_is_required = true,
+      document_responsible_party = 'client',
     } = req.body;
 
     const normalizedDocumentName = normalizeDocumentName(document_name);
@@ -236,8 +268,9 @@ export const addDocument = async (req, res) => {
           document_description,
           document_is_reusable,
           document_status,
-          document_is_required
-        ) VALUES (?, ?, ?, ?, ?, ?)
+          document_is_required,
+          document_responsible_party
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
       `,
       [
         normalizedDocumentName,
@@ -246,6 +279,7 @@ export const addDocument = async (req, res) => {
         1,
         document_status,
         Boolean(document_is_required) ? 1 : 0,
+        normalizeDocumentResponsibleParty(document_responsible_party, 'client'),
       ]
     );
 
@@ -304,14 +338,16 @@ export const addTemplate = async (req, res) => {
           INSERT INTO template_document_list (
             template_id,
             document_id,
-            template_document_list_is_required
+            template_document_list_is_required,
+            template_document_list_responsible_party
           )
-          VALUES ${templateDocumentRows.map(() => '(?, ?, ?)').join(', ')}
+          VALUES ${templateDocumentRows.map(() => '(?, ?, ?, ?)').join(', ')}
         `,
         templateDocumentRows.flatMap((document) => [
           templateId,
           document.document_id,
           document.is_required,
+          document.responsible_party,
         ])
       );
     }
@@ -446,6 +482,7 @@ export const editDocument = async (req, res) => {
       document_description,
       document_status = 'active',
       document_is_required = true,
+      document_responsible_party = 'client',
     } = req.body;
 
     const normalizedDocumentName = normalizeDocumentName(document_name);
@@ -469,7 +506,8 @@ export const editDocument = async (req, res) => {
           document_description = ?,
           document_is_reusable = ?,
           document_status = ?,
-          document_is_required = ?
+          document_is_required = ?,
+          document_responsible_party = ?
         WHERE document_id = ?
       `,
       [
@@ -478,6 +516,7 @@ export const editDocument = async (req, res) => {
         1,
         document_status,
         Boolean(document_is_required) ? 1 : 0,
+        normalizeDocumentResponsibleParty(document_responsible_party, 'client'),
         documentId,
       ]
     );
@@ -535,14 +574,16 @@ export const editTemplate = async (req, res) => {
           INSERT INTO template_document_list (
             template_id,
             document_id,
-            template_document_list_is_required
+            template_document_list_is_required,
+            template_document_list_responsible_party
           )
-          VALUES ${templateDocumentRows.map(() => '(?, ?, ?)').join(', ')}
+          VALUES ${templateDocumentRows.map(() => '(?, ?, ?, ?)').join(', ')}
         `,
         templateDocumentRows.flatMap((document) => [
           templateId,
           document.document_id,
           document.is_required,
+          document.responsible_party,
         ])
       );
     }
@@ -557,3 +598,4 @@ export const editTemplate = async (req, res) => {
     connection.release();
   }
 };
+

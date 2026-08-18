@@ -31,7 +31,7 @@ import {
   resolveListingStorageCode,
   resolveProjectStorageCode,
 } from '../../../services/storageCodes.service.js';
-import { resolveDocumentRequiredFlag } from '../../../utils/documentRequirement.js';
+import { resolveDocumentRequiredFlag, resolveDocumentResponsibleParty } from '../../../utils/documentRequirement.js';
 
 const normalizeUploadedDocumentFiles = (body = {}) => {
   const rawFiles = Array.isArray(body.files)
@@ -240,6 +240,7 @@ export const updateLotProjectListingDocumentRequirements = async (req, res) => {
       documentMap.set(documentId, {
         document_id: documentId,
         is_required: resolveDocumentRequiredFlag(document),
+        responsible_party: resolveDocumentResponsibleParty(document),
         status: String(document.status || 'active').toLowerCase() === 'inactive' ? 'inactive' : 'active',
       });
     });
@@ -267,10 +268,12 @@ export const updateLotProjectListingDocumentRequirements = async (req, res) => {
             lot_project_listing_id,
             document_id,
             lot_project_listing_document_is_required,
+            lot_project_listing_document_responsible_party,
             lot_project_listing_document_status
-          ) VALUES ${cleanDocuments.map(() => '(?, ?, ?, ?, ?)').join(', ')}
+          ) VALUES ${cleanDocuments.map(() => '(?, ?, ?, ?, ?, ?)').join(', ')}
           ON DUPLICATE KEY UPDATE
             lot_project_listing_document_is_required = VALUES(lot_project_listing_document_is_required),
+            lot_project_listing_document_responsible_party = VALUES(lot_project_listing_document_responsible_party),
             lot_project_listing_document_status = VALUES(lot_project_listing_document_status),
             lot_project_listing_document_updated_at = NOW()
         `,
@@ -279,6 +282,7 @@ export const updateLotProjectListingDocumentRequirements = async (req, res) => {
           listing.lot_project_listing_id,
           document.document_id,
           document.is_required,
+          document.responsible_party,
           document.status,
         ])
       );
@@ -980,3 +984,4 @@ export const clearLotProjectListingDocument = async (req, res) => {
     connection.release();
   }
 };
+

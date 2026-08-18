@@ -23,7 +23,8 @@ test('selected documents render as readable cards without the old cramped row gr
   assert.match(modal, /selectedDocuments\.map\(\(document\) =>/);
   assert.match(modal, /Review the checklist, then proceed to the final double-check before anything is saved\./);
   assert.match(modal, /Proceed to Final Review/);
-  assert.match(modal, /mt-3 grid gap-3 sm:grid-cols-2/);
+  assert.match(modal, /mt-3 grid gap-3 sm:grid-cols-3/);
+  assert.match(modal, /Responsible Party/);
   assert.match(modal, /break-words text-sm font-black text-slate-950/);
   assert.doesNotMatch(modal, /md:grid-cols-\[1fr_130px_130px_auto\]/);
 });
@@ -37,3 +38,4 @@ test('template and library lists have separate scrolling areas', async () => {
   assert.match(modal, /No matching library documents found\./);
   assert.match(modal, /Select a template or add documents from the library on the left\./);
 });
+

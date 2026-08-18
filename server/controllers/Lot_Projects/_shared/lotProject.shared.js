@@ -2,6 +2,7 @@ import { db } from '../../../db/connect.js';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import { calculateContractPricing, getListingPricingForMode } from './listingPricing.js';
+import { normalizeDocumentResponsibleParty } from '../../../utils/documentRequirement.js';
 
 export { db, jwt, bcrypt };
 
@@ -317,6 +318,7 @@ export const getProjectDefaultDocuments = async (lotProjectId) => {
         lpdd.lot_project_id,
         lpdd.document_id,
         lpdd.lot_project_default_document_is_required,
+        lpdd.lot_project_default_document_responsible_party,
         lpdd.lot_project_default_document_status,
         d.document_name,
         d.document_code,
@@ -338,6 +340,8 @@ export const getProjectDefaultDocuments = async (lotProjectId) => {
     description: document.document_description || 'Project Default',
     source: 'Project Default',
     requirement: document.lot_project_default_document_is_required ? 'required' : 'optional',
+    responsibleParty: normalizeDocumentResponsibleParty(document.lot_project_default_document_responsible_party, 'client'),
+    responsible_party: normalizeDocumentResponsibleParty(document.lot_project_default_document_responsible_party, 'client'),
     status: document.lot_project_default_document_status || document.document_status || 'active',
   }));
 };
@@ -958,6 +962,7 @@ export const getListingDocuments = async (
           COALESCE(lpd.lot_project_listing_document_id, cd.lot_project_client_document_id) AS lot_project_listing_document_id,
           cd.document_id,
           COALESCE(lpd.lot_project_listing_document_is_required, 1) AS lot_project_listing_document_is_required,
+          COALESCE(lpd.lot_project_listing_document_responsible_party, d.document_responsible_party, 'client') AS lot_project_listing_document_responsible_party,
           d.document_name,
           d.document_code,
           d.document_description,
@@ -986,6 +991,7 @@ export const getListingDocuments = async (
           lpd.lot_project_listing_document_id,
           lpd.document_id,
           lpd.lot_project_listing_document_is_required,
+          lpd.lot_project_listing_document_responsible_party,
           d.document_name,
           d.document_code,
           d.document_description,
@@ -1019,6 +1025,8 @@ export const getListingDocuments = async (
       code: document.document_code || null,
       description: document.document_description || 'Document requirement',
       requirement: document.lot_project_listing_document_is_required ? 'Required' : 'Optional',
+      responsibleParty: normalizeDocumentResponsibleParty(document.lot_project_listing_document_responsible_party, 'client'),
+      responsible_party: normalizeDocumentResponsibleParty(document.lot_project_listing_document_responsible_party, 'client'),
       status: document.lot_project_client_document_status || 'Missing',
       fileName: document.lot_project_client_document_file_name || (imageEntries.length ? `${imageEntries.length} file(s)` : '-'),
       fileUrl: imageUrls[0] || '',
@@ -4220,6 +4228,7 @@ export const addIfColumnExists = async (connection, tableName, columns, values, 
 };
 
 // End of lotProject.shared.js — verified complete.
+
 
 
 

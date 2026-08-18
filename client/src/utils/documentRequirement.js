@@ -22,3 +22,33 @@ export const resolveDocumentRequirement = (document = {}, fallback = 'required')
   const value = candidates.find((candidate) => candidate !== undefined && candidate !== null && candidate !== '')
   return normalizeDocumentRequirement(value, fallback)
 }
+
+export const normalizeDocumentResponsibleParty = (value, fallback = 'client') => {
+  const normalized = String(value ?? '').trim().toLowerCase()
+  if (['client', 'buyer', 'customer'].includes(normalized)) return 'client'
+  if (['internal', 'company', 'company_internal', 'company / internal'].includes(normalized)) return 'internal'
+  if (['seller', 'agent', 'seller_agent', 'seller / agent'].includes(normalized)) return 'seller'
+  return ['client', 'internal', 'seller'].includes(fallback) ? fallback : 'client'
+}
+
+export const resolveDocumentResponsibleParty = (document = {}, fallback = 'client') => {
+  const candidates = [
+    document.responsibleParty,
+    document.responsible_party,
+    document.lot_project_listing_document_responsible_party,
+    document.lot_project_default_document_responsible_party,
+    document.template_document_list_responsible_party,
+    document.document_responsible_party,
+  ]
+
+  const value = candidates.find((candidate) => candidate !== undefined && candidate !== null && candidate !== '')
+  return normalizeDocumentResponsibleParty(value, fallback)
+}
+
+export const getDocumentResponsiblePartyLabel = (value) => {
+  const responsibleParty = normalizeDocumentResponsibleParty(value)
+  if (responsibleParty === 'internal') return 'Company / Internal'
+  if (responsibleParty === 'seller') return 'Seller / Agent'
+  return 'Client'
+}
+

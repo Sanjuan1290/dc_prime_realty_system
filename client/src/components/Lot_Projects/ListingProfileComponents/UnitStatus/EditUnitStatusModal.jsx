@@ -3,7 +3,7 @@ import { FiFileText, FiSave, FiX } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
 import EditListingDocumentsModal from '../../ListingComponents/EditListingDocumentsModal/EditListingDocumentsModal'
 import { calculateContractPricing } from '../../../../utils/listingPricing.js'
-import { resolveDocumentRequirement } from '../../../../utils/documentRequirement.js'
+import { resolveDocumentRequirement, resolveDocumentResponsibleParty } from '../../../../utils/documentRequirement.js'
 
 const statusOptions = [
   { value: 'available', label: 'Available' },
@@ -73,6 +73,7 @@ const normalizeListingDocument = (document = {}) => ({
   description: document.description || document.document_description || '',
   source: document.source || 'Listing Requirement',
   requirement: resolveDocumentRequirement(document),
+  responsibleParty: resolveDocumentResponsibleParty(document),
   status: String(
     document.lot_project_listing_document_status ||
     document.lot_project_default_document_status ||
@@ -102,7 +103,7 @@ const documentRequirementSignature = (documents = []) =>
   documents
     .map(normalizeListingDocument)
     .filter((document) => document.id)
-    .map((document) => `${document.id}:${document.requirement}:${document.status}`)
+    .map((document) => `${document.id}:${document.requirement}:${document.responsibleParty}:${document.status}`)
     .sort()
     .join('|')
 
@@ -710,3 +711,4 @@ const EditUnitStatusModal = ({ listing, project = {}, listingDocuments = [], lib
 }
 
 export default EditUnitStatusModal
+

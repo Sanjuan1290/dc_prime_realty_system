@@ -948,9 +948,12 @@ export const markPaymentDueContacted = async (req, res) => {
 
     const notification = mapNotificationRow(row);
     const subject = `${notification.statusLabel} contacted - ${notification.projectName} ${notification.unitId}`;
-    const message = String(req.body?.message || `Marked as contacted by ${user.email}.`).trim();
+    const actorName = [user.first_name, user.middle_name, user.last_name].map((part) => String(part || '').trim()).filter(Boolean).join(' ') || user.email || 'User';
+    const actorIdentity = user.email && actorName !== user.email ? `${actorName} (${user.email})` : actorName;
+    const contactNote = String(req.body?.message || 'Marked as contacted from System Notifications.').trim();
+    const message = `${contactNote} Contacted by ${actorIdentity}.`;
 
-    await connection.query(
+    const [contactLogResult] = await connection.query(
       `
         INSERT INTO lot_project_notification_logs (
           lot_project_id,
@@ -981,9 +984,35 @@ export const markPaymentDueContacted = async (req, res) => {
       ]
     );
 
+    await writeAuditLog(connection, req, {
+      actor: user,
+      action: 'update',
+      module: 'Notifications',
+      entityType: 'lot_project_notification_log',
+      entityId: String(contactLogResult.insertId),
+      entityLabel: `${notification.projectName} ${notification.unitId} — ${notification.buyerName}`,
+      title: 'Marked payment notification as contacted',
+      description: `${actorName} marked the ${String(notification.statusLabel || 'payment').toLowerCase()} notification as contacted for ${notification.buyerName} on ${notification.projectName} ${notification.unitId}.`,
+      metadata: {
+        notificationLogId: Number(contactLogResult.insertId),
+        paymentScheduleId: scheduleId,
+        projectId: row.lot_project_id,
+        listingId: row.lot_project_listing_id,
+        clientProfileId: row.lot_project_client_profile_id,
+        accountId: row.lot_project_account_id || null,
+        notificationType: notification.notificationType,
+        buyerEmail: notification.buyerEmail || null,
+      },
+    });
+
     return res.json({
       success: true,
-      message: `${notification.projectName} ${notification.unitId} marked as contacted.`,
+      message: `${notification.projectName} ${notification.unitId} marked as contacted by ${actorName}.`,
+      data: {
+        contactedBy: actorName,
+        contactedByEmail: user.email || null,
+        notificationLogId: Number(contactLogResult.insertId),
+      },
     });
   } catch (error) {
     return res.status(500).json({ message: getErrorMessage(error) });
@@ -1035,6 +1064,8 @@ const getDocumentNotificationContext = async (connection, listingId, clientProfi
     `
       SELECT
         d.document_name,
+        ld.lot_project_listing_document_is_required AS is_required,
+        ld.lot_project_listing_document_responsible_party AS responsible_party,
         COALESCE(cd.lot_project_client_document_status, 'Missing') AS document_status
       FROM lot_project_listing_documents ld
       INNER JOIN documents d
@@ -1046,7 +1077,7 @@ const getDocumentNotificationContext = async (connection, listingId, clientProfi
       WHERE ld.lot_project_id = ?
         AND ld.lot_project_listing_id = ?
         AND ld.lot_project_listing_document_status = 'active'
-        AND ld.lot_project_listing_document_is_required = 1
+        AND ld.lot_project_listing_document_responsible_party = 'client'
         AND COALESCE(cd.lot_project_client_document_status, 'Missing') IN ('Missing', 'Rejected')
       ORDER BY
         CASE COALESCE(cd.lot_project_client_document_status, 'Missing')
@@ -1074,10 +1105,16 @@ const getDocumentNotificationContext = async (connection, listingId, clientProfi
     companyEmail: context.company_email || getCompanyContactEmail('dcprimerealty@gmail.com'),
     companyContactNumber: context.company_contact_number || context.reservation_contact_number || '(046) 866-0616',
     missingDocuments: documentRows
-      .filter((row) => String(row.document_status || '').toLowerCase() === 'missing')
+      .filter((row) => Number(row.is_required || 0) === 1 && String(row.document_status || '').toLowerCase() === 'missing')
       .map((row) => row.document_name),
     rejectedDocuments: documentRows
-      .filter((row) => String(row.document_status || '').toLowerCase() === 'rejected')
+      .filter((row) => Number(row.is_required || 0) === 1 && String(row.document_status || '').toLowerCase() === 'rejected')
+      .map((row) => row.document_name),
+    optionalMissingDocuments: documentRows
+      .filter((row) => Number(row.is_required || 0) !== 1 && String(row.document_status || '').toLowerCase() === 'missing')
+      .map((row) => row.document_name),
+    optionalRejectedDocuments: documentRows
+      .filter((row) => Number(row.is_required || 0) !== 1 && String(row.document_status || '').toLowerCase() === 'rejected')
       .map((row) => row.document_name),
   };
 };
@@ -1086,7 +1123,7 @@ const buildDocumentNotificationMessage = (context, attachmentFilename) => {
   const missingCount = context.missingDocuments.length;
   const rejectedCount = context.rejectedDocuments.length;
   const companyName = context.companyName || 'D&C Prime Realty';
-  const subject = `Missing Document Requirements - Unit ${context.unitId}`;
+  const subject = `Documents Required From You - Unit ${context.unitId}`;
   const summaryParts = [];
   if (missingCount > 0) summaryParts.push(`${missingCount} missing`);
   if (rejectedCount > 0) summaryParts.push(`${rejectedCount} for resubmission`);
@@ -1095,10 +1132,10 @@ const buildDocumentNotificationMessage = (context, attachmentFilename) => {
   const textMessage = [
     `Dear ${context.buyerName},`,
     '',
-    `Our records show ${summaryText} for Unit ${context.unitId}.`,
-    `The document requirements checklist is attached as ${attachmentFilename}.`,
+    `Our records show ${summaryText} that require your action for Unit ${context.unitId}.`,
+    `Your client document checklist is attached as ${attachmentFilename}.`,
     '',
-    'Please submit the required documents so we can continue processing your account.',
+    'Please submit the required client documents so we can continue processing your account. Optional client documents, when listed, do not block your checklist.',
     '',
     `For questions, contact ${companyName} at ${context.companyContactNumber} or ${context.companyEmail}.`,
     '',
@@ -1120,12 +1157,12 @@ const buildDocumentNotificationMessage = (context, attachmentFilename) => {
 
   const htmlMessage = buildBrandedEmailHtml({
     companyName,
-    title: `Missing Document Requirements - Unit ${context.unitId}`,
+    title: `Documents Required From You - Unit ${context.unitId}`,
     bodyHtml: `
       <p style="margin:0 0 16px">Dear ${escapeHtml(context.buyerName)},</p>
-      <p style="margin:0 0 16px">Our records show that some required documents for Unit <strong>${escapeHtml(context.unitId)}</strong> are still missing or need to be submitted again.</p>
-      <p style="margin:0 0 16px">A complete document requirements checklist is attached as a PDF.</p>
-      <p style="margin:0">Please submit the required documents so we can continue processing your account. For questions, contact ${escapeHtml(companyName)} at ${escapeHtml(context.companyContactNumber)} or ${escapeHtml(context.companyEmail)}.</p>
+      <p style="margin:0 0 16px">Our records show that some documents requiring your action for Unit <strong>${escapeHtml(context.unitId)}</strong> are still missing or need to be submitted again.</p>
+      <p style="margin:0 0 16px">Your client document checklist is attached as a PDF. Internal/company and seller/agent documents are not included.</p>
+      <p style="margin:0">Please submit the required client documents so we can continue processing your account. Optional client documents do not block completion. For questions, contact ${escapeHtml(companyName)} at ${escapeHtml(context.companyContactNumber)} or ${escapeHtml(context.companyEmail)}.</p>
     `,
     detailsHtml,
   });
@@ -1170,11 +1207,11 @@ export const sendDocumentNotification = async (req, res) => {
 
     const totalPending = context.missingDocuments.length + context.rejectedDocuments.length;
     if (totalPending <= 0) {
-      return res.status(400).json({ message: 'This buyer has no missing or rejected required documents.' });
+      return res.status(400).json({ message: 'This buyer has no missing or rejected required client documents.' });
     }
 
     const attachmentFilename = sanitizeAttachmentFileName(
-      `Missing-Document-Requirements-${context.projectName}-${context.unitId}`
+      `Client-Document-Requirements-${context.projectName}-${context.unitId}`
     );
     const pdfLogoImage = await getPdfLogoImage();
     const pdfBuffer = buildMissingDocumentsPdfBuffer({
@@ -1187,6 +1224,8 @@ export const sendDocumentNotification = async (req, res) => {
       generatedDate: getManilaDateOnly(),
       missingDocuments: context.missingDocuments,
       rejectedDocuments: context.rejectedDocuments,
+      optionalMissingDocuments: context.optionalMissingDocuments,
+      optionalRejectedDocuments: context.optionalRejectedDocuments,
       logoImage: pdfLogoImage,
     });
     const { subject, textMessage, htmlMessage } = buildDocumentNotificationMessage(context, attachmentFilename);
@@ -1243,21 +1282,23 @@ export const sendDocumentNotification = async (req, res) => {
         entityType: 'lot_project_client_document',
         entityId: String(context.clientProfileId),
         entityLabel: `${context.unitId} — ${context.buyerName}`,
-        title: 'Sent missing document requirements',
-        description: `Sent the missing document requirements PDF for ${context.unitId} to ${context.buyerEmail}.`,
+        title: 'Sent client document requirements',
+        description: `Sent the client-action document requirements PDF for ${context.unitId} to ${context.buyerEmail}.`,
         metadata: {
           projectId: context.projectId,
           listingId: context.listingId,
           clientProfileId: context.clientProfileId,
           missingCount: context.missingDocuments.length,
           rejectedCount: context.rejectedDocuments.length,
+          optionalMissingCount: context.optionalMissingDocuments.length,
+          optionalRejectedCount: context.optionalRejectedDocuments.length,
           attachmentFilename,
         },
       });
 
       return res.json({
         success: true,
-        message: `Document requirements email sent to ${context.buyerEmail} with ${attachmentFilename} attached.`,
+        message: `Client document requirements email sent to ${context.buyerEmail} with ${attachmentFilename} attached.`,
         data: { attachmentFilename },
       });
     } catch (emailError) {
@@ -1365,20 +1406,23 @@ export const getDocumentNotifications = async (req, res) => {
           latest_document_log.send_status AS last_document_notification_status,
           latest_document_log.sent_at AS last_document_notification_at,
           latest_document_log.attachment_filename AS last_document_attachment_filename,
-          COUNT(ld.lot_project_listing_document_id) AS total_documents,
-          COALESCE(SUM(COALESCE(cd.lot_project_client_document_status, 'Missing') IN ('Submitted', 'Approved')), 0) AS submitted_documents,
-          COALESCE(SUM(COALESCE(cd.lot_project_client_document_status, 'Missing') = 'Approved'), 0) AS approved_documents,
-          COALESCE(SUM(COALESCE(cd.lot_project_client_document_status, 'Missing') = 'Submitted'), 0) AS awaiting_approval_documents,
+          COALESCE(SUM(ld.lot_project_listing_document_responsible_party = 'client'), 0) AS total_documents,
+          COALESCE(SUM(ld.lot_project_listing_document_responsible_party = 'client' AND COALESCE(cd.lot_project_client_document_status, 'Missing') IN ('Submitted', 'Approved')), 0) AS submitted_documents,
+          COALESCE(SUM(ld.lot_project_listing_document_responsible_party = 'client' AND COALESCE(cd.lot_project_client_document_status, 'Missing') = 'Approved'), 0) AS approved_documents,
+          COALESCE(SUM(ld.lot_project_listing_document_responsible_party = 'client' AND COALESCE(cd.lot_project_client_document_status, 'Missing') = 'Submitted'), 0) AS awaiting_approval_documents,
           COALESCE(SUM(
             ld.lot_project_listing_document_is_required = 1
+            AND ld.lot_project_listing_document_responsible_party = 'client'
             AND COALESCE(cd.lot_project_client_document_status, 'Missing') IN ('Missing', 'Rejected')
           ), 0) AS pending_required_documents,
           COALESCE(SUM(
             ld.lot_project_listing_document_is_required = 1
+            AND ld.lot_project_listing_document_responsible_party = 'client'
             AND COALESCE(cd.lot_project_client_document_status, 'Missing') = 'Missing'
           ), 0) AS missing_required_documents,
           COALESCE(SUM(
             ld.lot_project_listing_document_is_required = 1
+            AND ld.lot_project_listing_document_responsible_party = 'client'
             AND COALESCE(cd.lot_project_client_document_status, 'Missing') = 'Rejected'
           ), 0) AS rejected_required_documents
         FROM lot_project_listings l
@@ -1478,3 +1522,4 @@ export const getDocumentNotifications = async (req, res) => {
     connection.release();
   }
 };
+
