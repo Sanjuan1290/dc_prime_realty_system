@@ -113,6 +113,7 @@ const PaymentProofModal = ({
     updateUpload,
     beginSecurityScan,
     failUpload,
+    removeUploadByAccessPath,
   } = useUploadSecurity()
 
   const invalidFiles = useMemo(
@@ -447,6 +448,7 @@ const PaymentProofModal = ({
     setNotice({ type: 'loading', message: `Removing ${proof.fileName}...` })
     try {
       const result = await useFetchPost(`${basePath}/${proof.proofId}/delete`, {}, { confirmationHandled: 'compact' })
+      removeUploadByAccessPath(proof.accessPath || `${basePath}/${proof.proofId}/access-url`)
       setNotice({ type: 'success', message: result?.message || 'Payment proof removed successfully.' })
       await loadProofs({ quiet: true })
       await onChanged?.()

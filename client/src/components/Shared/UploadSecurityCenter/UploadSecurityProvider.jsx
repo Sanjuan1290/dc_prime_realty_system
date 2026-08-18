@@ -187,6 +187,17 @@ const UploadSecurityProvider = ({ children }) => {
     )
   }, [])
 
+  const removeUpload = useCallback((id) => {
+    if (!id) return
+    setTasks((current) => current.filter((task) => task.id !== id))
+  }, [])
+
+  const removeUploadByAccessPath = useCallback((accessPath) => {
+    const targetPath = clean(accessPath)
+    if (!targetPath) return
+    setTasks((current) => current.filter((task) => clean(task.accessPath) !== targetPath))
+  }, [])
+
   const addUpload = useCallback(({ fileName, category = 'Protected file', detail = '' } = {}) => {
     const id = createTaskId()
     const now = Date.now()
@@ -342,7 +353,13 @@ const UploadSecurityProvider = ({ children }) => {
         malwareScanStatus: scanStatus,
       })
     } catch (error) {
-      if (error?.code === 'MALWARE_SCAN_PENDING' || Number(error?.status || 0) === 423) {
+      const httpStatus = Number(error?.status || 0)
+      if (httpStatus === 404 || httpStatus === 410) {
+        removeUpload(task.id)
+        return
+      }
+
+      if (error?.code === 'MALWARE_SCAN_PENDING' || httpStatus === 423) {
         if (manual) {
           updateUpload(task.id, {
             status: 'scan_delayed',
@@ -409,7 +426,7 @@ const UploadSecurityProvider = ({ children }) => {
       pollingIds.current.delete(task.id)
       if (manual) updateUpload(task.id, { checkingScanStatus: false })
     }
-  }, [beginSecurityScan, updateUpload])
+  }, [beginSecurityScan, removeUpload, updateUpload])
 
   useEffect(() => {
     const scanTasks = tasks.filter((task) => task.status === 'scanning' && task.accessPath)
@@ -440,6 +457,7 @@ const UploadSecurityProvider = ({ children }) => {
     updateUpload,
     beginSecurityScan,
     failUpload,
+    removeUploadByAccessPath,
     dismissAll,
   }), [
     tasks,
@@ -447,6 +465,7 @@ const UploadSecurityProvider = ({ children }) => {
     updateUpload,
     beginSecurityScan,
     failUpload,
+    removeUploadByAccessPath,
     dismissAll,
   ])
 

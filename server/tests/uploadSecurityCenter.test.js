@@ -89,3 +89,16 @@ test('payment proof upload registers saved proof ids for background security pol
   assert.match(proof, /\/access-url/);
   assert.match(proof, /beginSecurityScan/);
 });
+
+test('deleted payment proofs stop pending security polling and stale not-found checks', () => {
+  const center = read('client/src/components/Shared/UploadSecurityCenter/UploadSecurityProvider.jsx');
+  const paymentProof = read('client/src/components/Lot_Projects/ListingProfileComponents/PaymentsSOA/PaymentProofModal.jsx');
+
+  assert.match(center, /const removeUploadByAccessPath = useCallback/);
+  assert.match(center, /httpStatus === 404 \|\| httpStatus === 410/);
+  assert.match(center, /removeUpload\(task\.id\)/);
+  assert.match(center, /removeUploadByAccessPath,/);
+
+  assert.match(paymentProof, /removeUploadByAccessPath,/);
+  assert.match(paymentProof, /removeUploadByAccessPath\(proof\.accessPath \|\| `\$\{basePath\}\/\$\{proof\.proofId\}\/access-url`\)/);
+});
