@@ -52,37 +52,172 @@ const getListingForAdmin = async (connection, projectId, listingLookup, { lock =
   return rows[0] || null;
 };
 
+const escapeHtml = (value = '') => String(value).replace(/[&<>"']/g, (character) => ({
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#039;',
+})[character]);
+
 const sendBuyerFormEmail = async ({ recipientEmail, publicUrl, projectName, unitId, expiresAt }) => {
   if (!isResendConfigured()) {
     return { sent: false, message: 'Email was not sent because Resend is not configured. Set RESEND_API_KEY and EMAIL_FROM.' };
   }
 
   const companyName = String(process.env.COMPANY_NAME || 'D&C Prime Realty').trim();
+  const publicAppUrl = String(process.env.PUBLIC_APP_URL || '').trim().replace(/\/+$/, '');
+  const configuredLogoUrl = String(process.env.EMAIL_LOGO_URL || '').trim();
+  const logoUrl = configuredLogoUrl || (publicAppUrl
+    ? `${publicAppUrl}/website/images/brand/dc-prime-email-logo.png`
+    : '');
   const subject = `Buyer Information Form — ${unitId}`;
-  const expirationLabel = expiresAt ? new Date(expiresAt).toLocaleString('en-PH', { timeZone: 'Asia/Manila' }) : 'the stated expiry time';
+  const expirationLabel = expiresAt
+    ? new Intl.DateTimeFormat('en-PH', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZone: 'Asia/Manila',
+    }).format(new Date(expiresAt))
+    : 'the stated expiry time';
+
+  const safeCompanyName = escapeHtml(companyName);
+  const safeProjectName = escapeHtml(projectName);
+  const safeUnitId = escapeHtml(unitId);
+  const safePublicUrl = escapeHtml(publicUrl);
+  const safeExpirationLabel = escapeHtml(expirationLabel);
+  const safeLogoUrl = escapeHtml(logoUrl);
 
   await sendEmail({
     to: recipientEmail,
     subject,
     text: [
+      companyName,
+      '',
+      'Buyer Information Form',
+      '',
       `You were invited to complete the buyer information form for ${unitId} in ${projectName}.`,
       '',
+      'Open your buyer form:',
       publicUrl,
       '',
-      `This link expires on ${expirationLabel}.`,
-      'Submitting the form temporarily holds the unit for admin review. It does not complete the final reservation.',
+      `Please submit your information before ${expirationLabel}.`,
+      '',
+      'Submitting this form temporarily holds the unit for admin review.',
+      'It does not complete the final reservation.',
       '',
       companyName,
     ].join('\n'),
     html: `
-      <div style="font-family:Arial,Helvetica,sans-serif;line-height:1.5;color:#0f172a;max-width:640px;margin:0 auto">
-        <h2 style="margin:0 0 12px">Buyer Information Form</h2>
-        <p>You were invited to complete the buyer information form for <strong>${unitId}</strong> in <strong>${projectName}</strong>.</p>
-        <p style="margin:24px 0"><a href="${publicUrl}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:700">Open Buyer Form</a></p>
-        <p>This link expires on ${expirationLabel}.</p>
-        <p>Submitting the form temporarily holds the unit for admin review. It does not complete the final reservation.</p>
-        <p style="margin-top:28px;color:#64748b">${companyName}</p>
-      </div>
+      <!doctype html>
+      <html>
+        <body style="margin:0;padding:0;background:#f4f2ed;font-family:Arial,Helvetica,sans-serif;color:#17130a;">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:#f4f2ed;">
+            <tr>
+              <td align="center" style="padding:32px 16px;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:640px;background:#ffffff;border:1px solid #e6e0d3;border-radius:18px;overflow:hidden;">
+                  <tr>
+                    <td style="background:#05070d;padding:26px 32px;border-bottom:3px solid #c99a22;">
+                      ${safeLogoUrl ? `
+                        <img
+                          src="${safeLogoUrl}"
+                          width="300"
+                          alt="${safeCompanyName}"
+                          style="display:block;width:100%;max-width:300px;height:auto;border:0;"
+                        />
+                      ` : `
+                        <div style="color:#d8b85a;font-size:22px;font-weight:700;">
+                          ${safeCompanyName}
+                        </div>
+                      `}
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <td style="padding:36px 36px 12px;">
+                      <div style="color:#9a741d;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:10px;">
+                        Buyer Information
+                      </div>
+                      <h1 style="margin:0;color:#111111;font-size:28px;line-height:1.25;font-weight:800;">
+                        Buyer Information Form
+                      </h1>
+                      <p style="margin:14px 0 0;color:#5f5a50;font-size:15px;line-height:1.7;">
+                        You have been invited to complete your buyer information for the property below.
+                      </p>
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <td style="padding:16px 36px 8px;">
+                      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="border:1px solid #e7d7a4;border-radius:12px;background:#fbf8ef;">
+                        <tr>
+                          <td width="50%" style="padding:18px;border-right:1px solid #e7d7a4;">
+                            <div style="color:#8b6a1b;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Project</div>
+                            <div style="margin-top:6px;color:#17130a;font-size:15px;font-weight:700;">${safeProjectName}</div>
+                          </td>
+                          <td width="50%" style="padding:18px;">
+                            <div style="color:#8b6a1b;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Unit</div>
+                            <div style="margin-top:6px;color:#17130a;font-size:15px;font-weight:700;">${safeUnitId}</div>
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <td style="padding:24px 36px 8px;">
+                      <table role="presentation" cellspacing="0" cellpadding="0" border="0">
+                        <tr>
+                          <td bgcolor="#c99a22" style="border-radius:10px;background:#c99a22;">
+                            <a href="${safePublicUrl}" style="display:inline-block;padding:15px 24px;color:#080808;font-size:15px;font-weight:800;text-decoration:none;">
+                              Open Buyer Information Form &#8594;
+                            </a>
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <td style="padding:22px 36px 0;">
+                      <div style="border-left:4px solid #c99a22;background:#fbf8ef;padding:14px 16px;border-radius:0 8px 8px 0;">
+                        <div style="color:#8b6a1b;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Link Expiry</div>
+                        <div style="margin-top:5px;color:#3d3524;font-size:13px;font-weight:600;line-height:1.5;">
+                          Please submit your information before <strong>${safeExpirationLabel}</strong>.
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <td style="padding:22px 36px 34px;">
+                      <div style="border:1px solid #e7e2d7;background:#f8f7f4;border-radius:10px;padding:16px;color:#5c574e;font-size:13px;line-height:1.65;">
+                        <strong style="color:#17130a;">Important:</strong>
+                        Submitting the form temporarily holds the unit for D&amp;C Prime Realty's admin review.
+                        <strong>It does not complete the final reservation.</strong>
+                      </div>
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <td align="center" style="border-top:1px solid #e6e0d3;background:#faf9f6;padding:22px 30px;">
+                      <div style="color:#17130a;font-size:13px;font-weight:700;">${safeCompanyName}</div>
+                      <div style="margin-top:5px;color:#8e887c;font-size:11px;">Property information and reservation assistance</div>
+                    </td>
+                  </tr>
+                </table>
+
+                <div style="max-width:600px;margin:14px auto 0;color:#8e887c;font-size:10px;line-height:1.5;word-break:break-all;">
+                  If the button does not work, copy and paste this link into your browser:<br />
+                  <span style="color:#8b6a1b;">${safePublicUrl}</span>
+                </div>
+              </td>
+            </tr>
+          </table>
+        </body>
+      </html>
     `,
   });
 

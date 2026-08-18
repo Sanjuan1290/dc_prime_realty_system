@@ -22,3 +22,83 @@ html {
   font-style: italic;
   color: #94a3b8;
 }
+
+/* =========================================================
+   D&C PRIME REALTY
+   PUBLIC BUYER INFORMATION FORM THEME
+   Scoped to /buyer-form/:token so internal admin forms keep
+   their existing colors and behavior.
+   ========================================================= */
+
+.dc-buyer-form-theme {
+  --dc-black: #05070d;
+  --dc-ink: #17130a;
+  --dc-gold: #c99a22;
+  --dc-gold-dark: #8b6a1b;
+  --dc-gold-light: #fbf7ea;
+  --dc-border: #e4ded0;
+  --dc-muted: #716b5f;
+}
+
+.dc-buyer-form-theme section.rounded-2xl,
+.dc-buyer-form-theme section.rounded-xl {
+  border-color: var(--dc-border);
+}
+
+.dc-buyer-form-theme input:not([type='checkbox']):not([type='radio']),
+.dc-buyer-form-theme select,
+.dc-buyer-form-theme textarea {
+  border-color: #d8d1c2;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    background-color 160ms ease;
+}
+
+.dc-buyer-form-theme input:not([type='checkbox']):not([type='radio']):focus,
+.dc-buyer-form-theme select:focus,
+.dc-buyer-form-theme textarea:focus {
+  border-color: var(--dc-gold) !important;
+  box-shadow: 0 0 0 4px rgba(201, 154, 34, 0.13) !important;
+}
+
+.dc-buyer-form-theme input[type='checkbox'] {
+  accent-color: var(--dc-gold);
+}
+
+.dc-buyer-form-theme .bg-blue-50 {
+  background-color: var(--dc-gold-light) !important;
+}
+
+.dc-buyer-form-theme .border-blue-200,
+.dc-buyer-form-theme .border-blue-300,
+.dc-buyer-form-theme .border-blue-400 {
+  border-color: #e3cf8c !important;
+}
+
+.dc-buyer-form-theme .text-blue-300,
+.dc-buyer-form-theme .text-blue-600,
+.dc-buyer-form-theme .text-blue-700,
+.dc-buyer-form-theme .text-blue-800,
+.dc-buyer-form-theme .text-blue-900 {
+  color: var(--dc-gold-dark) !important;
+}
+
+.dc-buyer-form-theme .bg-slate-50 {
+  background-color: #faf9f6;
+}
+
+.dc-buyer-form-theme input:disabled,
+.dc-buyer-form-theme select:disabled,
+.dc-buyer-form-theme textarea:disabled {
+  background-color: #f1efe9;
+  border-color: #ddd8cc;
+  color: #7c776d;
+}
+
+.dc-buyer-form-theme input[aria-invalid='true'],
+.dc-buyer-form-theme select[aria-invalid='true'],
+.dc-buyer-form-theme textarea[aria-invalid='true'] {
+  border-color: #dc2626 !important;
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.1) !important;
+}
