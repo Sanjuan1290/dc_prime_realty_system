@@ -21,7 +21,7 @@ const AuditLogDetailsModal = ({ log, onClose }) => {
             </div>
             <div>
               <h2 className="text-xl font-black text-slate-950">Audit Log Details</h2>
-              <p className="mt-1 text-sm font-semibold text-slate-500">Activity, actor, request, and target information.</p>
+              <p className="mt-1 text-sm font-semibold text-slate-500">Activity, actor, and target information.</p>
             </div>
           </div>
           <button type="button" onClick={onClose} className="rounded-xl p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900">
@@ -37,8 +37,6 @@ const AuditLogDetailsModal = ({ log, onClose }) => {
             <DetailRow label="User Email" value={log.actorEmail} />
             <DetailRow label="Module" value={log.module} />
             <DetailRow label="Entity" value={log.entityLabel || (log.entityType ? `${log.entityType}${log.entityId ? ` #${log.entityId}` : ''}` : '-')} />
-            <DetailRow label="IP Address" value={log.ipAddress} />
-            <DetailRow label="User Agent" value={log.userAgent} />
           </div>
 
           <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
