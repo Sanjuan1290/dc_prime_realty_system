@@ -7,6 +7,8 @@ const CommissionReleaseDoubleCheck = ({ request, onConfirm, onCancel }) => {
   const data = request.data || {}
   const beneficiary = data.commissionBeneficiary || data.beneficiary || {}
   const release = data.selectedRelease || data.release || {}
+  const releaseMode = String(pick(release, 'releaseMode', 'release_mode') || 'live').toLowerCase()
+  const isHistorical = releaseMode === 'historical'
   const steps = [
     { key: 'beneficiary', title: 'Commission & Beneficiary', content: <DoubleCheckSection title="Commission & Beneficiary" helper="Verify the property, beneficiary, commission base, and remaining balance." tone="violet"><DoubleCheckFields fields={[
       { label: 'Project', value: pick(beneficiary, 'project') },
@@ -28,11 +30,15 @@ const CommissionReleaseDoubleCheck = ({ request, onConfirm, onCancel }) => {
       { label: 'Gross Release Amount', value: pick(release, 'grossReleaseAmount', 'grossAmount'), formatter: money, tone: 'financial' },
       { label: 'Deduction', value: pick(release, 'deductionAmount', 'deduction'), formatter: money, tone: 'financial' },
       { label: 'Net Amount to Release', value: pick(release, 'netReleaseAmount', 'netAmount'), formatter: money, tone: 'financial' },
-      { label: 'Status', value: pick(release, 'status'), formatter: titleCase },
-      { label: 'Release Date', value: pick(release, 'releaseDate'), formatter: formatDate },
+      { label: 'Status', value: pick(release, 'currentStatus', 'status'), formatter: titleCase },
+    ]} /></DoubleCheckSection> },
+    { key: 'recording', title: 'Release Recording', content: <DoubleCheckSection title="Release Recording" helper={isHistorical ? 'Historical mode records the real past payment date while the Audit Log keeps the current administrator and encoding time.' : 'Live mode records the server-verified current Manila date and follows the project release calendar.'} tone={isHistorical ? 'amber' : 'blue'}><DoubleCheckFields fields={[
+      { label: 'Release Type', value: isHistorical ? 'Historical Release' : 'Release Today', tone: 'important' },
+      { label: 'Actual Release Date', value: pick(release, 'actualReleaseDate', 'releaseDate'), formatter: formatDate, tone: 'important' },
+      ...(isHistorical ? [{ label: 'Historical Note', value: pick(release, 'historicalNote', 'historicalReleaseNote') || 'No note provided.', wide: true }] : []),
     ]} /></DoubleCheckSection> },
   ]
-  return <DoubleCheckShell title={request.title || 'Review Commission Release'} description={request.description || 'Verify the beneficiary and selected release before posting it.'} confirmLabel={request.confirmLabel || 'Confirm & Release Commission'} summary={request.summary || [pick(beneficiary, 'unit'), pick(beneficiary, 'beneficiary'), pick(release, 'releaseStage')].filter(Boolean).join(' · ')} steps={steps} onConfirm={onConfirm} onCancel={onCancel} />
+  return <DoubleCheckShell title={request.title || (isHistorical ? 'Review Historical Commission Release' : 'Review Commission Release')} description={request.description || (isHistorical ? 'Verify the historical actual release date carefully before recording this past financial event.' : 'Verify the beneficiary and selected release before posting it.')} confirmLabel={request.confirmLabel || (isHistorical ? 'Confirm Historical Release' : 'Confirm & Release Commission')} summary={request.summary || [pick(beneficiary, 'unit'), pick(beneficiary, 'beneficiary'), pick(release, 'releaseStage')].filter(Boolean).join(' · ')} steps={steps} onConfirm={onConfirm} onCancel={onCancel} />
 }
 
 export default CommissionReleaseDoubleCheck

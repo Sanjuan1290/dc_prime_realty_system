@@ -6,6 +6,7 @@ import {
   getLatestActiveScheduleGenerationPredicate,
   getAuthenticatedUser,
   getUserFullName,
+  todayDateOnly,
 } from '../_shared/lotProject.shared.js';
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
 import { isFullAccessAdministrator } from '../../../config/permissions.js';
@@ -171,6 +172,35 @@ const computedPaymentPercentSql = `
   END
 `;
 
+// Historical releases use payments that existed on or before the selected
+// actual release date. They intentionally do not use the listing's current
+// fully-paid shortcut, because that would make an old release appear eligible
+// based on payments received later.
+const historicalActualRemainingBalanceSql = `
+  GREATEST(ROUND((${effectiveTcpSql}) - (${paidValueWithDiscountSql}), 2), 0)
+`;
+const historicalUnpaidScheduledDueSql = historicalActualRemainingBalanceSql;
+const historicalComputedPaymentPercentSql = `
+  CASE
+    WHEN (${effectiveTcpSql}) <= 0 THEN 0
+    ELSE LEAST(100, ROUND(((${paidValueWithDiscountSql}) / NULLIF((${effectiveTcpSql}), 0)) * 100, 2))
+  END
+`;
+
+const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const normalizeIsoDateOnly = (value) => {
+  const text = String(value || '').trim();
+  if (!ISO_DATE_PATTERN.test(text)) return null;
+  const [year, month, day] = text.split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) return null;
+  return text;
+};
+
 const isPaymentComplete = (row = {}) => {
   const percent = getPaymentPercent(row);
   const remaining = toNumber(row.actual_remaining_balance ?? row.remainingBalance ?? row.remaining_balance);
@@ -218,29 +248,39 @@ const normalizeReleaseStatus = (release = {}, paymentPercent = 0, eligibility = 
 };
 
 const getReleaseDateWarning = (settings = {}) => {
-  const today = new Date();
-  const day = today.getDate();
-  const releaseDays = [Number(settings.release_day_one || 7), Number(settings.release_day_two || 22)]
+  const todayIso = todayDateOnly();
+  const [year, month, dateOfMonth] = todayIso.split('-').map(Number);
+  const today = new Date(Date.UTC(year, month - 1, dateOfMonth));
+  const configuredDays = [Number(settings.release_day_one || 7), Number(settings.release_day_two || 22)]
     .filter((item) => item >= 1 && item <= 31)
     .sort((a, b) => a - b);
+  const releaseDays = configuredDays.length ? [...new Set(configuredDays)] : [7, 22];
+  const isReleaseDate = releaseDays.includes(dateOfMonth);
 
-  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-
-  const nextDate = new Date(today);
-  const nextDay = releaseDays.find((releaseDay) => releaseDay >= day);
-
-  if (nextDay) {
-    nextDate.setDate(nextDay);
-  } else {
-    nextDate.setMonth(nextDate.getMonth() + 1);
-    nextDate.setDate(releaseDays[0] || 7);
+  let nextDate = today;
+  for (let offset = 0; offset <= 370; offset += 1) {
+    const candidate = new Date(today);
+    candidate.setUTCDate(candidate.getUTCDate() + offset);
+    if (releaseDays.includes(candidate.getUTCDate())) {
+      nextDate = candidate;
+      break;
+    }
   }
+
+  const nextReleaseDateISO = nextDate.toISOString().slice(0, 10);
+  const nextReleaseDate = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'UTC',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  }).format(nextDate);
 
   return {
     releaseDays,
-    isReleaseDate: releaseDays.includes(day),
-    nextReleaseDate: `${monthNames[nextDate.getMonth()]} ${nextDate.getDate()}, ${nextDate.getFullYear()}`,
-    nextReleaseDateISO: nextDate.toISOString().slice(0, 10),
+    isReleaseDate,
+    todayDateISO: todayIso,
+    nextReleaseDate,
+    nextReleaseDateISO,
   };
 };
 
@@ -262,9 +302,10 @@ const mapReleaseRow = (row = {}, paymentPercent = 0, releaseDateInfo = {}, commi
     scheduledReleaseDate: row.scheduled_release_date,
     actualReleaseDate: row.actual_release_date,
     releasedByUserId: row.released_by_user_id,
-    releaseButtonLabel: releaseDateInfo.isReleaseDate
-      ? 'Release Now'
-      : `Release on ${releaseDateInfo.nextReleaseDate}`,
+    releaseEntryMode: row.release_entry_mode || 'live',
+    releaseRecordedAt: row.release_recorded_at || null,
+    historicalReleaseNote: row.historical_release_note || '',
+    releaseButtonLabel: 'Release',
     isReleaseDate: releaseDateInfo.isReleaseDate,
     canRelease: ['Eligible', 'Earned on Cancellation'].includes(status),
     canHold: !['Released', 'On Hold', 'Cancelled', 'Earned on Cancellation', 'Forfeited on Cancellation'].includes(status),
@@ -309,7 +350,10 @@ const buildFallbackMilestones = (commission = {}, releaseDateInfo = {}) => {
       scheduledReleaseDate: releaseDateInfo.nextReleaseDateISO,
       actualReleaseDate: null,
       releasedByUserId: null,
-      releaseButtonLabel: releaseDateInfo.isReleaseDate ? 'Release Now' : `Release on ${releaseDateInfo.nextReleaseDate}`,
+      releaseEntryMode: 'live',
+      releaseRecordedAt: null,
+      historicalReleaseNote: '',
+      releaseButtonLabel: 'Release',
       isReleaseDate: releaseDateInfo.isReleaseDate,
       canRelease: status === 'Eligible',
       canHold: !['Released', 'On Hold', 'Cancelled', 'Earned on Cancellation', 'Forfeited on Cancellation'].includes(status),
@@ -786,6 +830,9 @@ export const updateLotProjectCommission = async (req, res) => {
     const commissionId = Number(req.params.commissionId || 0);
     const action = String(req.body.action || '').trim().toLowerCase();
     const releaseId = Number(req.body.releaseId || req.body.release_id || 0);
+    const requestedReleaseMode = String(req.body.releaseMode || req.body.release_mode || 'live').trim().toLowerCase();
+    const requestedActualReleaseDate = String(req.body.actualReleaseDate || req.body.actual_release_date || '').trim();
+    const requestedHistoricalNote = String(req.body.historicalNote || req.body.historical_release_note || '').trim();
     const project = await getProjectBySlug(slug);
 
     if (!project) {
@@ -803,6 +850,28 @@ export const updateLotProjectCommission = async (req, res) => {
 
     if (!isFullAccessAdministrator(currentUser)) {
       return res.status(403).json({ success: false, message: 'Admin access is required to update commission.' });
+    }
+
+    const isReleaseAction = action === 'release_stage';
+    const releaseMode = requestedReleaseMode || 'live';
+    const isHistoricalRelease = isReleaseAction && releaseMode === 'historical';
+    let historicalActualReleaseDate = null;
+
+    if (isReleaseAction && !['live', 'historical'].includes(releaseMode)) {
+      return res.status(400).json({ success: false, message: 'Release mode must be live or historical.' });
+    }
+
+    if (isHistoricalRelease) {
+      historicalActualReleaseDate = normalizeIsoDateOnly(requestedActualReleaseDate);
+      if (!historicalActualReleaseDate) {
+        return res.status(400).json({ success: false, message: 'Enter a valid historical actual release date.' });
+      }
+      if (historicalActualReleaseDate > todayDateOnly()) {
+        return res.status(400).json({ success: false, message: 'Historical actual release date cannot be in the future.' });
+      }
+      if (requestedHistoricalNote.length > 500) {
+        return res.status(400).json({ success: false, message: 'Historical release note cannot exceed 500 characters.' });
+      }
     }
 
     const hasReleaseTable = await tableExists(connection, 'lot_project_commission_releases');
@@ -834,17 +903,31 @@ export const updateLotProjectCommission = async (req, res) => {
         return res.status(404).json({ success: false, message: 'Commission record not found.' });
       }
 
+      const releaseActualRemainingBalanceSql = isHistoricalRelease
+        ? historicalActualRemainingBalanceSql
+        : actualRemainingBalanceSql;
+      const releaseUnpaidScheduledDueSql = isHistoricalRelease
+        ? historicalUnpaidScheduledDueSql
+        : unpaidScheduledDueSql;
+      const releaseComputedPaymentPercentSql = isHistoricalRelease
+        ? historicalComputedPaymentPercentSql
+        : computedPaymentPercentSql;
+      const historicalPaymentDateFilterSql = isHistoricalRelease
+        ? 'AND lot_project_payment_date <= ?'
+        : '';
+
       const [releaseRows] = await connection.query(
         `
           SELECT
             r.*,
             c.lot_project_id,
             c.payment_percent,
-            ${actualRemainingBalanceSql} AS actual_remaining_balance,
-            ${unpaidScheduledDueSql} AS unpaid_scheduled_due,
+            cp.soa_starting_date,
+            ${releaseActualRemainingBalanceSql} AS actual_remaining_balance,
+            ${releaseUnpaidScheduledDueSql} AS unpaid_scheduled_due,
             ${getRequiredDocumentCountSql('l')} AS required_document_count,
             ${getCompletedRequiredDocumentCountSql('l', 'c')} AS completed_required_document_count,
-            ${computedPaymentPercentSql} AS computed_payment_percent
+            ${releaseComputedPaymentPercentSql} AS computed_payment_percent
           FROM lot_project_commission_releases r
           INNER JOIN lot_project_commissions c
             ON c.lot_project_commission_id = r.lot_project_commission_id
@@ -859,6 +942,7 @@ export const updateLotProjectCommission = async (req, res) => {
               SUM(CASE WHEN lot_project_payment_type IN ('downpayment', 'down_payment') THEN lot_project_payment_amount ELSE 0 END) AS downpayment_paid
             FROM lot_project_payments
             WHERE lot_project_payment_status = 'Verified'
+              ${historicalPaymentDateFilterSql}
             GROUP BY lot_project_client_profile_id
           ) payment_summary ON payment_summary.lot_project_client_profile_id = c.lot_project_client_profile_id
           ${scheduleSummaryJoin}
@@ -868,7 +952,12 @@ export const updateLotProjectCommission = async (req, res) => {
           LIMIT 1
           FOR UPDATE
         `,
-        [releaseId, commissionId, project.lot_project_id]
+        [
+          ...(isHistoricalRelease ? [historicalActualReleaseDate] : []),
+          releaseId,
+          commissionId,
+          project.lot_project_id,
+        ]
       );
 
       const release = releaseRows[0];
@@ -882,6 +971,19 @@ export const updateLotProjectCommission = async (req, res) => {
       let message = 'Commission release stage updated successfully.';
       let releasedByUserId = release.released_by_user_id;
       let actualReleaseDate = release.actual_release_date;
+      let releaseEntryMode = release.release_entry_mode || 'live';
+      let historicalReleaseNote = release.historical_release_note || null;
+
+      const accountStartingDate = release.soa_starting_date instanceof Date
+        ? release.soa_starting_date.toISOString().slice(0, 10)
+        : String(release.soa_starting_date || '').slice(0, 10);
+      if (isHistoricalRelease && accountStartingDate && historicalActualReleaseDate < accountStartingDate) {
+        await connection.rollback();
+        return res.status(400).json({
+          success: false,
+          message: `Historical actual release date cannot be before the buyer account starting date (${accountStartingDate}).`,
+        });
+      }
 
       if (action === 'release_stage') {
         // A network retry after a successful commit must not create another
@@ -899,9 +1001,9 @@ export const updateLotProjectCommission = async (req, res) => {
 
         const settings = await getProjectReleaseSettings(connection, project.lot_project_id);
         const releaseDateInfo = getReleaseDateWarning(settings);
-        if (!releaseDateInfo.isReleaseDate) {
+        if (!isHistoricalRelease && !releaseDateInfo.isReleaseDate) {
           await connection.rollback();
-          return res.status(400).json({ success: false, message: `Commission releases are only allowed every ${releaseDateInfo.releaseDays.join(' and ')} of the month. Next release date: ${releaseDateInfo.nextReleaseDate}.` });
+          return res.status(400).json({ success: false, message: `Live commission releases are only allowed every ${releaseDateInfo.releaseDays.join(' and ')} of the month. Next release date: ${releaseDateInfo.nextReleaseDate}.` });
         }
 
         if (!['Eligible', 'Earned on Cancellation'].includes(computedStatus)) {
@@ -911,8 +1013,12 @@ export const updateLotProjectCommission = async (req, res) => {
 
         nextStatus = 'Released';
         releasedByUserId = currentUser.id;
-        actualReleaseDate = new Date().toISOString().slice(0, 10);
-        message = `${release.release_stage} released successfully.`;
+        releaseEntryMode = isHistoricalRelease ? 'historical' : 'live';
+        actualReleaseDate = isHistoricalRelease ? historicalActualReleaseDate : todayDateOnly();
+        historicalReleaseNote = isHistoricalRelease ? (requestedHistoricalNote || null) : null;
+        message = isHistoricalRelease
+          ? `${release.release_stage} historical release recorded successfully.`
+          : `${release.release_stage} released successfully.`;
       } else if (action === 'hold_stage') {
         if (computedStatus === 'Released') {
           await connection.rollback();
@@ -949,11 +1055,26 @@ export const updateLotProjectCommission = async (req, res) => {
           SET
             release_status = ?,
             actual_release_date = ?,
-            released_by_user_id = ?
+            released_by_user_id = ?,
+            release_entry_mode = ?,
+            release_recorded_at = CASE
+              WHEN ? = 'release_stage' THEN COALESCE(release_recorded_at, NOW())
+              ELSE release_recorded_at
+            END,
+            historical_release_note = ?
           WHERE lot_project_commission_release_id = ?
             AND release_status = ?
         `,
-        [nextStatus, actualReleaseDate, releasedByUserId, releaseId, release.release_status]
+        [
+          nextStatus,
+          actualReleaseDate,
+          releasedByUserId,
+          releaseEntryMode,
+          action,
+          historicalReleaseNote,
+          releaseId,
+          release.release_status,
+        ]
       );
 
       if (releaseUpdateResult.affectedRows !== 1) {
@@ -997,12 +1118,17 @@ export const updateLotProjectCommission = async (req, res) => {
           entityType: 'lot_project_commission',
           entityId: String(commissionId),
           entityLabel: `${sellerName} — ₱${releaseAmount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-          title: 'Released commission',
-          description: `Released ${release.release_stage} commission for ${sellerName}.`,
+          title: isHistoricalRelease ? 'Recorded historical commission release' : 'Released commission',
+          description: isHistoricalRelease
+            ? `Recorded ${release.release_stage} commission for ${sellerName} as historically released on ${actualReleaseDate}.`
+            : `Released ${release.release_stage} commission for ${sellerName}.`,
           metadata: {
             releaseId,
             releaseStage: release.release_stage,
             releaseAmount,
+            actualReleaseDate,
+            releaseMode: releaseEntryMode,
+            historicalReleaseNote,
             listingId: commissionContext.lot_project_listing_id || null,
             unitId: commissionContext.lot_project_listing_unit_id || null,
             clientName: commissionContext.buyer_full_name || null,

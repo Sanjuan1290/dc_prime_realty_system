@@ -21,10 +21,10 @@ const ProofOfIncomeDoubleCheck = ({ request, onConfirm, onCancel }) => {
     { key: 'releases', title: 'Selected Releases', content: <DoubleCheckSection title="Selected Releases" helper="Verify only the released commission stages included in this receipt." tone="emerald" badge={`${releases.length} release${releases.length === 1 ? '' : 's'}`}>{releases.length ? <div className="space-y-3">{releases.map((release, index) => <DoubleCheckListCard key={`${pick(release, 'releaseId', 'release_id') || index}`} title={pick(release, 'stage', 'releaseStage') || `Release ${index + 1}`} index={index} total={releases.length} fields={[
       { label: 'Release Percentage', value: pick(release, 'releasePercent', 'release_percent'), formatter: percent, tone: 'financial' },
       { label: 'Amount', value: pick(release, 'amount', 'netAmount', 'net_amount'), formatter: money, tone: 'financial' },
-      { label: 'Release Date', value: pick(release, 'releaseDate', 'actualReleaseDate'), formatter: formatDate },
+      { label: 'Actual Release Date', value: pick(release, 'releaseDate', 'actualReleaseDate'), formatter: formatDate },
       { label: 'Status', value: pick(release, 'status'), formatter: titleCase },
     ]} />)}</div> : <p className="rounded-xl border border-dashed border-slate-300 p-4 text-sm font-semibold text-slate-500">No commission release stages are selected.</p>}</DoubleCheckSection> },
-    { key: 'receipt', title: 'Receipt Details', content: <DoubleCheckSection title="Receipt Details" helper="Verify bank, date, reference, and witness information." tone="amber"><DoubleCheckFields fields={[
+    { key: 'receipt', title: 'Receipt Details', content: <DoubleCheckSection title="Receipt Details" helper="Receipt Date is the Proof of Income issue date and remains separate from each commission Actual Release Date." tone="amber"><DoubleCheckFields fields={[
       { label: 'Bank Name', value: pick(receipt, 'bankName') },
       { label: 'Account Number', value: pick(receipt, 'accountNumber') },
       { label: 'Receipt Date', value: pick(receipt, 'receiptDate'), formatter: formatDate },

@@ -1,6 +1,6 @@
 import { db } from '../../db/connect.js';
 import { writeAuditLog } from './auditLogs.controller.js';
-import { getAuthenticatedUser, tableExists } from '../Lot_Projects/_shared/lotProject.shared.js';
+import { getAuthenticatedUser, tableExists, todayDateOnly } from '../Lot_Projects/_shared/lotProject.shared.js';
 import { isFullAccessAdministrator } from '../../config/permissions.js';
 
 const getErrorMessage = (error) => {
@@ -553,6 +553,9 @@ export const mapSellerIncomeRangeRow = (row = {}) => ({
       (Number(row.release_trigger_percent || 0) / 100)
   ),
   releaseDate: row.actual_release_date,
+  releaseEntryMode: row.release_entry_mode || 'live',
+  releaseRecordedAt: row.release_recorded_at || null,
+  historicalReleaseNote: row.historical_release_note || '',
   grossAmount: roundMoney(row.gross_release_amount),
   deductionAmount: roundMoney(row.deduction_amount),
   netAmount: roundMoney(row.net_release_amount),
@@ -640,6 +643,9 @@ export const SELLER_INCOME_RANGE_QUERY = `
       r.deduction_amount,
       r.net_release_amount,
       r.actual_release_date,
+      r.release_entry_mode,
+      r.release_recorded_at,
+      r.historical_release_note,
       receipt.lot_project_commission_receipt_id,
       receipt.receipt_date,
       receipt.reference_number,
@@ -694,6 +700,9 @@ export const SELLER_INCOME_RANGE_QUERY = `
       archived.deduction_amount,
       archived.net_release_amount,
       archived.actual_release_date,
+      archived.release_entry_mode,
+      archived.release_recorded_at,
+      archived.historical_release_note,
       archived.source_commission_receipt_id AS lot_project_commission_receipt_id,
       archived.receipt_date,
       archived.receipt_reference_number AS reference_number,
@@ -733,6 +742,9 @@ const mapReleaseForReceipt = (row = {}) => {
     deductionAmount: roundMoney(row.deduction_amount),
     amount: roundMoney(row.net_release_amount ?? row.release_amount),
     actualReleaseDate: row.actual_release_date,
+    releaseEntryMode: row.release_entry_mode || 'live',
+    releaseRecordedAt: row.release_recorded_at || null,
+    historicalReleaseNote: row.historical_release_note || '',
   };
 };
 
@@ -861,7 +873,10 @@ const loadSellerReceiptData = async (connection, sellerId) => {
         r.gross_release_amount,
         r.deduction_amount,
         r.net_release_amount,
-        r.actual_release_date
+        r.actual_release_date,
+        r.release_entry_mode,
+        r.release_recorded_at,
+        r.historical_release_note
       FROM lot_project_commission_releases r
       INNER JOIN lot_project_commissions c
         ON c.lot_project_commission_id = r.lot_project_commission_id
@@ -997,7 +1012,10 @@ const loadSellerReceiptData = async (connection, sellerId) => {
           c.gross_commission_amount AS commission_gross_amount,
           r.deduction_amount,
           r.net_release_amount,
-          r.actual_release_date
+          r.actual_release_date,
+          r.release_entry_mode,
+          r.release_recorded_at,
+          r.historical_release_note
         FROM lot_project_commission_receipt_items item
         INNER JOIN lot_project_commission_releases r
           ON r.lot_project_commission_release_id = item.lot_project_commission_release_id
@@ -1083,7 +1101,10 @@ const loadSellerReceiptData = async (connection, sellerId) => {
           archived.gross_commission_amount AS commission_gross_amount,
           archived.deduction_amount,
           archived.net_release_amount,
-          archived.actual_release_date
+          archived.actual_release_date,
+          archived.release_entry_mode,
+          archived.release_recorded_at,
+          archived.historical_release_note
         FROM lot_project_archived_commission_releases archived
         WHERE archived.accredited_seller_id = ?
           AND archived.source_commission_receipt_id IS NOT NULL
@@ -1202,7 +1223,8 @@ export const createAccreditedSellerProofOfIncomeReceipt = async (req, res) => {
     if (!releaseIds.length) return res.status(400).json({ message: 'Select at least one released commission stage.' });
     if (!bankName) return res.status(400).json({ message: 'Bank is required.' });
     if (!accountNumber) return res.status(400).json({ message: 'Account number is required.' });
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(receiptDate)) return res.status(400).json({ message: 'Enter a valid receipt date.' });
+    if (!parseIsoDateOnly(receiptDate)) return res.status(400).json({ message: 'Enter a valid receipt date.' });
+    if (receiptDate > todayDateOnly()) return res.status(400).json({ message: 'Receipt date cannot be in the future.' });
     if (!referenceNumber) return res.status(400).json({ message: 'Reference number is required.' });
     if (!witnessName) return res.status(400).json({ message: 'Witness name is required.' });
 
@@ -1257,6 +1279,17 @@ export const createAccreditedSellerProofOfIncomeReceipt = async (req, res) => {
 
     if (releaseRows.length !== releaseIds.length) {
       throw Object.assign(new Error('One or more selected commission releases no longer exist.'), { statusCode: 400 });
+    }
+
+    const actualReleaseDates = releaseRows
+      .map((row) => String(row.actual_release_date || '').slice(0, 10))
+      .filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(value));
+    if (actualReleaseDates.length !== releaseRows.length) {
+      throw Object.assign(new Error('Every selected commission stage must have a valid actual release date before generating Proof of Income.'), { statusCode: 409 });
+    }
+    const latestActualReleaseDate = actualReleaseDates.sort().at(-1);
+    if (receiptDate < latestActualReleaseDate) {
+      throw Object.assign(new Error(`Receipt date cannot be before the latest selected commission release date (${latestActualReleaseDate}).`), { statusCode: 400 });
     }
 
     const invalidRow = releaseRows.find((row) => {
@@ -1371,4 +1404,3 @@ export const createAccreditedSellerProofOfIncomeReceipt = async (req, res) => {
     connection.release();
   }
 };
-

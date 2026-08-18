@@ -778,6 +778,9 @@ const archiveListingSaleDataForAvailable = async (
           deduction_amount,
           net_release_amount,
           actual_release_date,
+          release_entry_mode,
+          release_recorded_at,
+          historical_release_note,
           receipt_date,
           receipt_reference_number,
           receipt_bank_name,
@@ -814,6 +817,9 @@ const archiveListingSaleDataForAvailable = async (
           r.deduction_amount,
           r.net_release_amount,
           r.actual_release_date,
+          r.release_entry_mode,
+          r.release_recorded_at,
+          r.historical_release_note,
           receipt.receipt_date,
           receipt.reference_number,
           receipt.bank_name,
@@ -2368,4 +2374,3 @@ export const deleteLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
-

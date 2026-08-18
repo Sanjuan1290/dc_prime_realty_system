@@ -3,6 +3,13 @@ import { FiAlertCircle, FiLoader, FiPauseCircle, FiPlayCircle, FiSave, FiX } fro
 
 const money = (value) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 2 }).format(Number(value || 0))
 
+const todayManilaISO = () => new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Manila',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+}).format(new Date())
+
 const statusLabel = (status) => ({
   Pending: 'Not Eligible',
   Eligible: 'Eligible',
@@ -81,20 +88,17 @@ const ModalNotice = ({ notice, onClose }) => {
 }
 
 const ConfirmDialog = ({ action, stage, isSaving, onCancel, onConfirm }) => {
-  if (!action || !stage) return null
+  if (!action || !stage || action === 'release_stage') return null
 
   const labels = {
-    release_stage: 'release this stage',
     hold_stage: 'hold this stage',
     unhold_stage: 'unhold this stage',
   }
   const confirmLabels = {
-    release_stage: 'Proceed to Final Review',
     hold_stage: 'Hold Stage',
     unhold_stage: 'Unhold Stage',
   }
   const titles = {
-    release_stage: 'Release Commission Stage?',
     hold_stage: 'Hold Commission Stage?',
     unhold_stage: 'Unhold Commission Stage?',
   }
@@ -104,7 +108,6 @@ const ConfirmDialog = ({ action, stage, isSaving, onCancel, onConfirm }) => {
       <div className="w-full max-w-md rounded-2xl border border-blue-200 bg-blue-50 p-5 text-blue-900 shadow-2xl">
         <div className="flex items-start gap-3">
           <FiAlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
-
           <div className="min-w-0 flex-1">
             <p className="text-sm font-black">{titles[action] || 'Confirm Action'}</p>
             <p className="mt-1 text-sm font-semibold leading-relaxed">
@@ -117,10 +120,142 @@ const ConfirmDialog = ({ action, stage, isSaving, onCancel, onConfirm }) => {
           <button type="button" onClick={onCancel} className="h-10 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50">
             No
           </button>
-
           <button type="button" onClick={onConfirm} disabled={isSaving} className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">
             {isSaving ? <FiLoader className="h-4 w-4 animate-spin" /> : null}
             {confirmLabels[action] || 'Confirm'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const ReleaseConfirmDialog = ({
+  stage,
+  releaseDateInfo,
+  releaseMode,
+  historicalDate,
+  historicalNote,
+  isSaving,
+  onModeChange,
+  onHistoricalDateChange,
+  onHistoricalNoteChange,
+  onCancel,
+  onConfirm,
+}) => {
+  if (!stage) return null
+
+  const today = releaseDateInfo?.todayDateISO || todayManilaISO()
+  const liveAllowed = Boolean(stage.isReleaseDate)
+  const historicalSelected = releaseMode === 'historical'
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center overflow-y-auto bg-slate-950/55 p-4">
+      <div className="w-full max-w-xl rounded-3xl border border-slate-200 bg-white p-5 text-slate-900 shadow-2xl sm:p-6">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
+            <FiSave className="h-5 w-5" />
+          </div>
+          <div>
+            <h3 className="text-base font-black">Release {stage.stage}</h3>
+            <p className="mt-1 text-sm font-semibold text-slate-500">Choose how this commission release should be recorded before the final review.</p>
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-3">
+          <label className={`rounded-2xl border p-4 transition ${releaseMode === 'live' ? 'border-blue-400 bg-blue-50 ring-2 ring-blue-50' : 'border-slate-200 bg-white'} ${!liveAllowed ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}>
+            <span className="flex items-start gap-3">
+              <input
+                type="radio"
+                name="commission-release-mode"
+                value="live"
+                checked={releaseMode === 'live'}
+                disabled={!liveAllowed || isSaving}
+                onChange={() => onModeChange('live')}
+                className="mt-1 h-4 w-4"
+              />
+              <span>
+                <span className="block text-sm font-black text-slate-900">Release Today</span>
+                <span className="mt-1 block text-xs font-semibold leading-relaxed text-slate-500">
+                  Records the actual release date as {today}. Live releases follow this project's configured release days.
+                </span>
+                {!liveAllowed ? (
+                  <span className="mt-2 block text-xs font-black text-amber-700">
+                    Live release is unavailable today. Next regular release: {releaseDateInfo?.nextReleaseDate || '-'}.
+                  </span>
+                ) : null}
+              </span>
+            </span>
+          </label>
+
+          <label className={`cursor-pointer rounded-2xl border p-4 transition ${historicalSelected ? 'border-violet-400 bg-violet-50 ring-2 ring-violet-50' : 'border-slate-200 bg-white'}`}>
+            <span className="flex items-start gap-3">
+              <input
+                type="radio"
+                name="commission-release-mode"
+                value="historical"
+                checked={historicalSelected}
+                disabled={isSaving}
+                onChange={() => onModeChange('historical')}
+                className="mt-1 h-4 w-4"
+              />
+              <span>
+                <span className="block text-sm font-black text-slate-900">Record Historical Release</span>
+                <span className="mt-1 block text-xs font-semibold leading-relaxed text-slate-500">
+                  Use this only for a commission that was already paid before it was encoded in this system. The original payment milestone is validated as of the selected date.
+                </span>
+              </span>
+            </span>
+          </label>
+        </div>
+
+        {historicalSelected ? (
+          <div className="mt-4 rounded-2xl border border-violet-200 bg-violet-50/60 p-4">
+            <label className="grid gap-1.5">
+              <span className="text-xs font-black uppercase tracking-wide text-violet-800">Actual Release Date</span>
+              <input
+                type="date"
+                value={historicalDate}
+                max={today}
+                disabled={isSaving}
+                onChange={(event) => onHistoricalDateChange(event.target.value)}
+                className="h-11 rounded-xl border border-violet-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+              />
+              <span className="text-xs font-semibold leading-relaxed text-violet-700">Enter the date the seller actually received this commission. Future dates are not allowed.</span>
+            </label>
+
+            <label className="mt-4 grid gap-1.5">
+              <span className="text-xs font-black uppercase tracking-wide text-violet-800">Historical Note <span className="font-semibold normal-case text-violet-600">(optional)</span></span>
+              <textarea
+                value={historicalNote}
+                maxLength={500}
+                rows={3}
+                disabled={isSaving}
+                onChange={(event) => onHistoricalNoteChange(event.target.value)}
+                placeholder="Example: Encoded from the 2024 commission Excel record."
+                className="resize-none rounded-xl border border-violet-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-800 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+              />
+              <span className="text-right text-[11px] font-semibold text-violet-600">{historicalNote.length}/500</span>
+            </label>
+
+            <p className="mt-3 rounded-xl bg-white/80 p-3 text-xs font-semibold leading-relaxed text-violet-800">
+              The actual release date is backdated for business history only. The Audit Log will still record the current administrator and the real time this historical entry was encoded.
+            </p>
+          </div>
+        ) : null}
+
+        <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button type="button" onClick={onCancel} disabled={isSaving} className="h-10 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:opacity-60">
+            Back
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={isSaving || (historicalSelected && !historicalDate)}
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isSaving ? <FiLoader className="h-4 w-4 animate-spin" /> : null}
+            Proceed to Final Review
           </button>
         </div>
       </div>
@@ -141,6 +276,9 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, isSaving = fa
   const retentionBlockedMessage = 'Retention can only be unheld when all required documents are complete and the account is fully paid.'
   const [confirmAction, setConfirmAction] = useState(null)
   const [selectedStage, setSelectedStage] = useState(null)
+  const [releaseMode, setReleaseMode] = useState('live')
+  const [historicalDate, setHistoricalDate] = useState(releaseDateInfo.todayDateISO || todayManilaISO())
+  const [historicalNote, setHistoricalNote] = useState('')
   const [notice, setNotice] = useState(null)
   const activeNotice = notice || serverNotice
 
@@ -148,6 +286,9 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, isSaving = fa
     setSelectedCommissionId(event.target.value)
     setConfirmAction(null)
     setSelectedStage(null)
+    setReleaseMode('live')
+    setHistoricalDate(releaseDateInfo.todayDateISO || todayManilaISO())
+    setHistoricalNote('')
     setNotice(null)
     onClearServerNotice?.()
   }
@@ -155,15 +296,6 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, isSaving = fa
   const openConfirm = (action, stage) => {
     if (!stage?.releaseId) {
       setNotice({ type: 'error', title: 'Missing release stage', message: 'This release stage is missing a database id. Refresh the page first.' })
-      return
-    }
-
-    if (action === 'release_stage' && !stage.isReleaseDate) {
-      setNotice({
-        type: 'warning',
-        title: 'Release date locked',
-        message: `Eligible commissions can only be released every ${releaseDateInfo.releaseDays?.join(' and ') || '7 and 22'} of the month. Next release date: ${releaseDateInfo.nextReleaseDate || '-'}.`,
-      })
       return
     }
 
@@ -177,6 +309,12 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, isSaving = fa
       return
     }
 
+    if (action === 'release_stage') {
+      setReleaseMode(stage.isReleaseDate ? 'live' : 'historical')
+      setHistoricalDate(releaseDateInfo.todayDateISO || todayManilaISO())
+      setHistoricalNote('')
+    }
+
     setSelectedStage(stage)
     setConfirmAction(action)
   }
@@ -184,9 +322,26 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, isSaving = fa
   const submitAction = () => {
     if (!confirmAction || !selectedStage || isSaving) return
 
+    if (confirmAction === 'release_stage' && releaseMode === 'historical') {
+      const today = releaseDateInfo.todayDateISO || todayManilaISO()
+      if (!historicalDate || historicalDate > today) {
+        setNotice({ type: 'error', title: 'Invalid historical date', message: 'Select a valid actual release date that is not in the future.' })
+        return
+      }
+    }
+
     onAction?.(commission, {
       action: confirmAction,
       releaseId: selectedStage.releaseId,
+      ...(confirmAction === 'release_stage' ? {
+        releaseMode,
+        actualReleaseDate: releaseMode === 'historical'
+          ? historicalDate
+          : (releaseDateInfo.todayDateISO || todayManilaISO()),
+        ...(releaseMode === 'historical' ? {
+          historicalNote: historicalNote.trim(),
+        } : {}),
+      } : {}),
     })
     setConfirmAction(null)
     setSelectedStage(null)
@@ -287,11 +442,15 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, isSaving = fa
                         <td className="px-4 py-3 font-semibold text-slate-600">{Number(stage.releasePercent || 0)}%</td>
                         <td className="px-4 py-3 font-semibold text-slate-700">{money(stage.grossAmount)}</td>
                         <td className="px-4 py-3 font-black text-slate-900">{money(stage.netAmount)}</td>
-                        <td className="px-4 py-3"><StatusPill status={stage.status} /></td>
+                        <td className="px-4 py-3">
+                          <StatusPill status={stage.status} />
+                          {isReleased && stage.actualReleaseDate ? <p className="mt-1.5 text-[10px] font-bold text-slate-500">{stage.actualReleaseDate}</p> : null}
+                          {isReleased && stage.releaseEntryMode === 'historical' ? <span className="mt-1 inline-flex rounded-full bg-violet-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-violet-700">Historical</span> : null}
+                        </td>
                         <td className="px-4 py-3">
                           <div className="flex flex-wrap gap-2">
                             {['Eligible', 'Earned on Cancellation'].includes(stage.status) ? (
-                              <button type="button" onClick={() => openConfirm('release_stage', stage)} disabled={isSaving} title={!stage.isReleaseDate ? 'Release is locked until the next allowed release date.' : undefined} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-blue-600 px-3 text-[11px] font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">
+                              <button type="button" onClick={() => openConfirm('release_stage', stage)} disabled={isSaving} title={!stage.isReleaseDate ? 'Live release is unavailable today; use Historical Release only for a commission that was already paid.' : undefined} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-blue-600 px-3 text-[11px] font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">
                                 {isSaving ? <FiLoader className="h-3.5 w-3.5 animate-spin" /> : <FiSave className="h-3.5 w-3.5" />}
                                 {stage.releaseButtonLabel || 'Release'}
                               </button>
@@ -336,6 +495,25 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, isSaving = fa
           </button>
         </div>
       </div>
+
+      {confirmAction === 'release_stage' ? (
+        <ReleaseConfirmDialog
+          stage={selectedStage}
+          releaseDateInfo={releaseDateInfo}
+          releaseMode={releaseMode}
+          historicalDate={historicalDate}
+          historicalNote={historicalNote}
+          isSaving={isSaving}
+          onModeChange={setReleaseMode}
+          onHistoricalDateChange={setHistoricalDate}
+          onHistoricalNoteChange={setHistoricalNote}
+          onCancel={() => {
+            setConfirmAction(null)
+            setSelectedStage(null)
+          }}
+          onConfirm={submitAction}
+        />
+      ) : null}
 
       <ConfirmDialog
         action={confirmAction}

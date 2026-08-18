@@ -125,10 +125,15 @@ const Commission = () => {
         )
       }
 
-      const releaseDate = releaseForReview.actualReleaseDate
-        || releaseForReview.scheduledReleaseDate
-        || commissionForReview.releaseDateInfo?.nextReleaseDateISO
-        || '-'
+      const releaseMode = String(payload?.releaseMode || 'live').toLowerCase()
+      const releaseDate = releaseMode === 'historical'
+        ? payload?.actualReleaseDate || '-'
+        : payload?.actualReleaseDate
+          || commissionForReview.releaseDateInfo?.todayDateISO
+          || releaseForReview.actualReleaseDate
+          || releaseForReview.scheduledReleaseDate
+          || commissionForReview.releaseDateInfo?.nextReleaseDateISO
+          || '-'
 
       return patchJson(
         `/projects/lot-projects/${projectSlug}/commissions/${commissionId}`,
@@ -159,7 +164,10 @@ const Commission = () => {
                 deductionAmount: Number(releaseForReview.deductionAmount || 0),
                 netReleaseAmount: Number(releaseForReview.netAmount || 0),
                 currentStatus: releaseForReview.status || '-',
+                releaseMode,
+                actualReleaseDate: releaseDate,
                 releaseDate,
+                historicalNote: releaseMode === 'historical' ? String(payload?.historicalNote || '').trim() : '',
               },
             },
           },

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import PageHeader from "../../components/Shared/PageHeader";
 import StatusAlert from "../../components/Shared/StatusAlert";
@@ -420,6 +420,7 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
     referenceNumber: "",
     witnessName: "",
   });
+  const [receiptDateTouched, setReceiptDateTouched] = useState(false);
   const [localAlert, setLocalAlert] = useState(null);
   const [receiptSearch, setReceiptSearch] = useState("");
   const [activeMode, setActiveMode] = useState("receipt");
@@ -457,13 +458,30 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
     [explicitlySelectedGroup, selectedGroup, selectedReleaseIds]
   );
 
-  const selectedAmount = useMemo(() => {
-    if (!selectedGroup) return 0;
+  const selectedReleasesForReceipt = useMemo(() => {
+    if (!selectedGroup) return EMPTY_LIST;
     const ids = new Set(effectiveReleaseIds.map(Number));
-    return selectedGroup.releases
-      .filter((release) => ids.has(Number(release.releaseId)))
-      .reduce((sum, release) => sum + Number(release.amount || 0), 0);
+    return (selectedGroup.releases || []).filter((release) => ids.has(Number(release.releaseId)));
   }, [effectiveReleaseIds, selectedGroup]);
+
+  const selectedAmount = useMemo(
+    () => selectedReleasesForReceipt.reduce((sum, release) => sum + Number(release.amount || 0), 0),
+    [selectedReleasesForReceipt]
+  );
+
+  const selectedActualReleaseDates = useMemo(
+    () => [...new Set(selectedReleasesForReceipt.map((release) => String(release.actualReleaseDate || '').slice(0, 10)).filter(Boolean))],
+    [selectedReleasesForReceipt]
+  );
+  const latestSelectedActualReleaseDate = selectedActualReleaseDates.length
+    ? [...selectedActualReleaseDates].sort().at(-1)
+    : '';
+  const suggestedReceiptDate = selectedActualReleaseDates.length === 1 ? selectedActualReleaseDates[0] : todayISO();
+
+  useEffect(() => {
+    if (receiptDateTouched) return;
+    setForm((current) => current.receiptDate === suggestedReceiptDate ? current : { ...current, receiptDate: suggestedReceiptDate });
+  }, [receiptDateTouched, suggestedReceiptDate]);
 
   const printReceipt = (receipt) => {
     localStorage.setItem(
@@ -542,6 +560,7 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
     onMutate: () => setLocalAlert({ type: "loading", message: "Preparing proof of income review..." }),
     onSuccess: (result) => {
       setLocalAlert({ type: "success", message: result?.message || "Proof of income receipt generated." });
+      setReceiptDateTouched(false);
       queryClient.setQueryData(["seller-proof-of-income-receipts", sellerId], result?.data ? { success: true, data: result.data } : undefined);
       queryClient.invalidateQueries({ queryKey: ["seller-proof-of-income-receipts", sellerId] });
       queryClient.invalidateQueries({ queryKey: ["accredited"] });
@@ -561,6 +580,7 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
   const chooseGroup = (group) => {
     setSelectedCommissionId(String(group.commissionId));
     setSelectedReleaseIds(group.releases.map((release) => Number(release.releaseId)));
+    setReceiptDateTouched(false);
     setLocalAlert(null);
   };
 
@@ -729,7 +749,27 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
                   <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
                     <label className="grid gap-1.5"><span className="text-xs font-black uppercase tracking-wide text-slate-500">Bank</span><input value={form.bankName} onChange={(event) => updateForm("bankName", event.target.value)} className="h-11 rounded-xl border border-slate-300 px-3 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50" placeholder="BPI" /></label>
                     <label className="grid gap-1.5"><span className="text-xs font-black uppercase tracking-wide text-slate-500">Account No.</span><input value={form.accountNumber} onChange={(event) => updateForm("accountNumber", event.target.value)} className="h-11 rounded-xl border border-slate-300 px-3 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50" placeholder="Account number" /></label>
-                    <label className="grid gap-1.5"><span className="text-xs font-black uppercase tracking-wide text-slate-500">Date</span><input type="date" value={form.receiptDate} onChange={(event) => updateForm("receiptDate", event.target.value)} className="h-11 rounded-xl border border-slate-300 px-3 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50" /></label>
+                    <label className="grid gap-1.5">
+                      <span className="text-xs font-black uppercase tracking-wide text-slate-500">Receipt Date</span>
+                      <input
+                        type="date"
+                        value={form.receiptDate}
+                        min={latestSelectedActualReleaseDate || undefined}
+                        max={todayISO()}
+                        onChange={(event) => {
+                          setReceiptDateTouched(true);
+                          updateForm("receiptDate", event.target.value);
+                        }}
+                        className="h-11 rounded-xl border border-slate-300 px-3 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
+                      />
+                      {selectedActualReleaseDates.length === 1 ? (
+                        <span className="text-xs font-semibold leading-relaxed text-slate-500">Defaulted to the selected commission's actual release date ({selectedActualReleaseDates[0]}). Change it only if the Proof of Income was issued on another date.</span>
+                      ) : selectedActualReleaseDates.length > 1 ? (
+                        <span className="text-xs font-semibold leading-relaxed text-amber-700">Selected releases occurred on different actual release dates ({selectedActualReleaseDates.join(', ')}). This Receipt Date is the separate issue date for the combined Proof of Income and cannot be earlier than the latest selected release ({latestSelectedActualReleaseDate}).</span>
+                      ) : (
+                        <span className="text-xs font-semibold leading-relaxed text-slate-500">Receipt Date is the document issue date and cannot be in the future.</span>
+                      )}
+                    </label>
                     <label className="grid gap-1.5"><span className="text-xs font-black uppercase tracking-wide text-slate-500">Reference No.</span><input value={form.referenceNumber} onChange={(event) => updateForm("referenceNumber", event.target.value)} className="h-11 rounded-xl border border-slate-300 px-3 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50" placeholder="Bank reference" /></label>
                     <label className="grid gap-1.5 sm:col-span-2 xl:col-span-1"><span className="text-xs font-black uppercase tracking-wide text-slate-500">Witness Name</span><input value={form.witnessName} onChange={(event) => updateForm("witnessName", event.target.value)} className="h-11 rounded-xl border border-slate-300 px-3 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50" placeholder="Printed witness name" /></label>
                   </div>
@@ -952,4 +992,3 @@ const Accredited = () => {
 };
 
 export default Accredited;
-
