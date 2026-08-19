@@ -26,10 +26,12 @@ const SoaTermsDoubleCheck = ({ request, onConfirm, onCancel }) => {
       { label: 'Legal / Misc Fee Treatment', value: pick(terms, 'legalMiscFee', 'legal_misc_fee'), formatter: titleCase },
       { label: 'Interest Rate', value: pick(terms, 'interestRate', 'annualInterestRate', 'interest_rate'), formatter: percent, tone: 'financial' },
       { label: 'Daily Penalty Rate', value: pick(terms, 'dailyPenaltyRate', 'daily_penalty_rate'), formatter: percent, tone: 'financial' },
-      { label: 'Grace Period (Days)', value: pick(terms, 'gracePeriodDays', 'grace_period_days') },
+      { label: 'Grace Period (Days)', value: pick(terms, 'penaltyGraceDays', 'gracePeriodDays', 'grace_period_days') },
+      { label: 'Penalty Effective From', value: pick(terms, 'penaltyEffectiveFrom', 'penalty_effective_from'), formatter: formatDate },
     ]} /></DoubleCheckSection> },
   ]
   return <DoubleCheckShell title={request.title || 'Review SOA Terms'} description={request.description || 'Verify the schedule and financial terms before updating the SOA.'} confirmLabel={request.confirmLabel || 'Confirm & Save SOA Terms'} summary={request.summary} steps={steps} onConfirm={onConfirm} onCancel={onCancel} />
 }
 
 export default SoaTermsDoubleCheck
+

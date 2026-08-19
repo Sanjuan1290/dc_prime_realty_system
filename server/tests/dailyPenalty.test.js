@@ -301,3 +301,40 @@ test('restoring a penalty correction recalculates the full late period', () => {
 
   assert.equal(result.calculatedPenaltyAmount, 50);
 });
+
+
+test('penalty effective date prevents historical charges before the policy start date', () => {
+  const beforePolicy = calculateScheduleDailyPenalty({
+    row: { ...schedule, due_date: '2026-07-01' },
+    clientProfile: { ...profile, soa_penalty_grace_days: 0, soa_penalty_effective_from: '2026-07-05' },
+    asOfDate: '2026-07-04',
+  });
+  const afterPolicy = calculateScheduleDailyPenalty({
+    row: { ...schedule, due_date: '2026-07-01' },
+    clientProfile: { ...profile, soa_penalty_grace_days: 0, soa_penalty_effective_from: '2026-07-05' },
+    asOfDate: '2026-07-06',
+  });
+  assert.equal(beforePolicy.penaltyStartDate, '2026-07-05');
+  assert.equal(beforePolicy.calculatedPenaltyAmount, 0);
+  assert.equal(afterPolicy.penaltyStartDate, '2026-07-05');
+  assert.equal(afterPolicy.calculatedPenaltyAmount, 20);
+  assert.equal(afterPolicy.penaltyDays, 2);
+});
+
+test('payment-linked waiver uses its effective payment date even when encoded later', () => {
+  const result = calculateScheduleDailyPenalty({
+    row: schedule,
+    clientProfile: profile,
+    allocations: [{ lot_project_payment_id: 77, payment_date: '2026-07-05', applied_amount: 10000 }],
+    reliefs: [{
+      penalty_relief_id: 88, lot_project_payment_id: 77, relief_type: 'full_waiver', relief_amount: 30,
+      effective_date: '2026-07-05', created_at: '2026-08-19 15:00:00', status: 'active',
+      reason: 'Historical payment — penalty was not applicable at the time.',
+    }],
+    asOfDate: '2026-07-05',
+  });
+  assert.equal(result.calculatedPenaltyAmount, 30);
+  assert.equal(result.waivedPenaltyAmount, 30);
+  assert.equal(result.outstandingPenaltyAmount, 0);
+  assert.equal(result.unpaidBaseAmount, 0);
+});

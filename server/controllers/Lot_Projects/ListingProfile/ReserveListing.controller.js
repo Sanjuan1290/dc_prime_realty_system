@@ -76,6 +76,7 @@ const getMissingDailyPenaltySchemaItems = async (connection) => {
 
   const requiredColumns = [
     ['lot_project_client_profiles', 'soa_penalty_calculation_method'],
+    ['lot_project_client_profiles', 'soa_penalty_effective_from'],
     ['lot_project_payment_schedules', 'calculated_penalty_amount'],
     ['lot_project_payment_schedules', 'waived_penalty_amount'],
     ['lot_project_payment_schedules', 'penalty_calculated_through'],
@@ -596,6 +597,7 @@ export const reserveLotProjectListing = async (req, res) => {
     }
     const dailyPenaltyRate = Number(terms.dailyPenaltyRate ?? terms.penaltyRatePercent ?? 0.05);
     const penaltyGraceDays = Number(terms.penaltyGraceDays ?? 0);
+    const penaltyEffectiveFrom = dateOrNull(terms.penaltyEffectiveFrom ?? terms.soa_penalty_effective_from);
     if (!Number.isFinite(dailyPenaltyRate) || dailyPenaltyRate < 0 || dailyPenaltyRate > 100) {
       return res.status(400).json({ message: 'Daily penalty rate must be between 0 and 100.' });
     }
@@ -825,6 +827,7 @@ export const reserveLotProjectListing = async (req, res) => {
     await addIfColumnExists(connection, tableName, columns, values, 'soa_interest_rate_overridden', interestRateOverridden);
     await addIfColumnExists(connection, tableName, columns, values, 'soa_penalty_rate_percent', dailyPenaltyRate);
     await addIfColumnExists(connection, tableName, columns, values, 'soa_penalty_grace_days', penaltyGraceDays);
+    await addIfColumnExists(connection, tableName, columns, values, 'soa_penalty_effective_from', penaltyEffectiveFrom);
     await addIfColumnExists(connection, tableName, columns, values, 'soa_penalty_calculation_method', 'daily');
     await addIfColumnExists(connection, tableName, columns, values, 'soa_is_historical_entry', isHistoricalEntry ? 1 : 0);
 
@@ -1142,6 +1145,7 @@ export const reserveLotProjectListing = async (req, res) => {
         saleChannel,
         dailyPenaltyRate,
         penaltyGraceDays,
+        penaltyEffectiveFrom,
         penaltyCalculationMethod: 'daily',
         isHistoricalEntry,
         startingDate,
@@ -1183,3 +1187,4 @@ export const reserveLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
+

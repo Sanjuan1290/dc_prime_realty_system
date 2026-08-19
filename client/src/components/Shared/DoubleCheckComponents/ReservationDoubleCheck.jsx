@@ -110,6 +110,7 @@ const ReservationDoubleCheck = ({ request, onConfirm, onCancel }) => {
             { label: 'Annual Interest Rate', value: pick(terms, 'interestRate', 'annualInterestRate'), formatter: percent, tone: 'financial' },
             { label: 'Daily Penalty Rate', value: pick(terms, 'dailyPenaltyRate'), formatter: percent, tone: 'financial' },
             { label: 'Penalty-Free Grace Period (Days)', value: pick(terms, 'penaltyGraceDays') },
+            { label: 'Penalty Effective From', value: pick(terms, 'penaltyEffectiveFrom'), formatter: formatDate },
           ]} />
         </DoubleCheckSection>
       ),
@@ -140,4 +141,5 @@ const ReservationDoubleCheck = ({ request, onConfirm, onCancel }) => {
 }
 
 export default ReservationDoubleCheck
+
 

@@ -417,13 +417,14 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
     ),
     dailyPenaltyRate: initialDailyPenaltyRate,
     penaltyGraceDays: String(getListingValue(listing, ['soaPenaltyGraceDays'], 0)),
+    penaltyEffectiveFrom: String(getListingValue(listing, ['soaPenaltyEffectiveFrom'], '') || ''),
   }))
   const [penaltyRateMode, setPenaltyRateMode] = useState(() =>
     DAILY_PENALTY_RATE_OPTIONS.includes(Number(initialDailyPenaltyRate)) ? 'preset' : 'custom'
   )
   const [modalAlert, setModalAlert] = useState({
     type: 'info',
-    message: 'Payment schedule fields lock after a payment is recorded. Daily penalty rate and grace period stay editable.',
+    message: 'Payment schedule fields lock after a payment is recorded. Daily penalty rate, grace period, and penalty effective date stay editable.',
   })
 
   useEffect(() => {
@@ -506,6 +507,11 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
       setModalAlert({ type: 'error', message: 'Grace period must be from 0 to 31 days.' })
       return
     }
+    const penaltyEffectiveFrom = String(form.penaltyEffectiveFrom || '').trim()
+    if (penaltyEffectiveFrom && !/^\d{4}-\d{2}-\d{2}$/.test(penaltyEffectiveFrom)) {
+      setModalAlert({ type: 'error', message: 'Penalty Effective From must be a valid date.' })
+      return
+    }
 
     setModalAlert({ type: 'loading', message: 'Preparing SOA terms review...' })
     onSave({
@@ -520,6 +526,7 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
       isHistoricalEntry: Boolean(form.isHistoricalEntry),
       dailyPenaltyRate,
       penaltyGraceDays,
+      penaltyEffectiveFrom: penaltyEffectiveFrom || null,
     })
   }
 
@@ -657,6 +664,7 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
                 {penaltyGraceDayOptions.map((days) => <option key={days} value={days}>{days === 0 ? 'No grace period (0 days)' : `${days} day${days === 1 ? '' : 's'}`}</option>)}
               </select>
             </label>
+            <Field label="Penalty Effective From (Optional)" type="date" value={form.penaltyEffectiveFrom} onChange={(value) => updateForm('penaltyEffectiveFrom', value)} helper="No daily penalty is calculated before this date. Use this for historical accounts that existed before the penalty policy started. Leave blank to use the row due date plus grace period." />
           </div>
         </div>
 
@@ -1027,6 +1035,12 @@ const PaymentsSOA = ({
   }
 
   const openEditModal = (payment) => {
+    const linkedWaiver = payment?.penaltyWaiver
+    const hasActiveLinkedWaiver = linkedWaiver && !['cancelled', 'restored'].includes(String(linkedWaiver.status || '').toLowerCase())
+    if (hasActiveLinkedWaiver && !canManagePenaltyRelief) {
+      setAlert({ type: 'error', message: 'This payment has a linked penalty waiver. Only an admin or super admin can edit it.' })
+      return
+    }
     setEditingPayment(payment)
     setShowPaymentModal(true)
   }
@@ -1619,6 +1633,7 @@ const PaymentsSOA = ({
           initialPayment={editingPayment}
           mode={editingPayment ? 'edit' : 'add'}
           isSaving={createPaymentMutation.isPending || updatePaymentMutation.isPending}
+          canWaivePenalty={canManagePenaltyRelief}
           onPreview={handlePreviewPayment}
           onClose={() => {
             setShowPaymentModal(false)
@@ -1694,3 +1709,4 @@ const PaymentsSOA = ({
 }
 
 export default PaymentsSOA
+

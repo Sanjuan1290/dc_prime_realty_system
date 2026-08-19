@@ -282,6 +282,7 @@ const ReservePaymentTermsModal = ({
             />
           ) : null}
           <SelectInput label="Penalty-Free Grace Period (Days)" value={paymentForm.penaltyGraceDays} onChange={(value) => updatePaymentField('penaltyGraceDays', value)} helper="Choose when daily penalties begin." required>{penaltyGraceDayOptions.map((value) => <option key={value} value={value}>{value === '0' ? 'No grace period (0 days)' : `${value} day${value === '1' ? '' : 's'}`}</option>)}</SelectInput>
+          <TextInput label="Penalty Effective From (Optional)" type="date" value={paymentForm.penaltyEffectiveFrom || ''} onChange={(value) => updatePaymentField('penaltyEffectiveFrom', value)} helper="No daily penalty is calculated before this date. Useful for historical accounts created before the penalty policy started. Leave blank to use each SOA row's due date and grace period." />
           {!isCash ? <TextInput label="Monthly Amortization" value={money(paymentPreview.monthlyAmortization)} onChange={() => null} disabled helper="Calculated from the balance, interest rate, and monthly terms." /> : null}
         </div>
       </SectionCard>
@@ -304,3 +305,4 @@ const ReservePaymentTermsModal = ({
 }
 
 export default ReservePaymentTermsModal
+

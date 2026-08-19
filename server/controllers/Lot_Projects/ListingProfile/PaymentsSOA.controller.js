@@ -200,6 +200,83 @@ const requirePenaltyManager = async (req) => {
   return user;
 };
 
+const getPaymentLinkedPenaltyWaiver = async (connection, paymentId, { forUpdate = false } = {}) => {
+  if (!Number(paymentId || 0)) return null;
+  if (!(await tableExists(connection, 'lot_project_penalty_reliefs'))) return null;
+  if (!(await columnExists(connection, 'lot_project_penalty_reliefs', 'lot_project_payment_id'))) return null;
+  if (!(await columnExists(connection, 'lot_project_penalty_reliefs', 'effective_date'))) return null;
+
+  const [rows] = await connection.query(
+    `SELECT * FROM lot_project_penalty_reliefs
+     WHERE lot_project_payment_id = ?
+       AND relief_type IN ('full_waiver', 'partial_waiver')
+     ORDER BY penalty_relief_id DESC
+     LIMIT 1
+     ${forUpdate ? 'FOR UPDATE' : ''}`,
+    [Number(paymentId)]
+  );
+  return rows[0] || null;
+};
+
+const assertPaymentPenaltyWaiverSchema = async (connection) => {
+  if (!(await tableExists(connection, 'lot_project_penalty_reliefs'))) {
+    throw createHttpError(500, 'Penalty relief table is missing.');
+  }
+  const [hasPaymentId, hasEffectiveDate] = await Promise.all([
+    columnExists(connection, 'lot_project_penalty_reliefs', 'lot_project_payment_id'),
+    columnExists(connection, 'lot_project_penalty_reliefs', 'effective_date'),
+  ]);
+  if (!hasPaymentId || !hasEffectiveDate) {
+    throw createHttpError(500, 'Payment-linked penalty waiver migration is missing. Run server/migrations/20260819_payment_penalty_waiver_effective_date.sql first.');
+  }
+};
+
+const savePaymentLinkedPenaltyWaiver = async (connection, {
+  project, listing, scheduleId, paymentId, effectiveDate, waiverAmount,
+  reason, internalNotes, userId, existingRelief = null,
+}) => {
+  await assertPaymentPenaltyWaiverSchema(connection);
+  const cleanAmount = roundMoneyValue(waiverAmount || 0);
+  if (cleanAmount <= 0.009) throw createHttpError(400, 'There is no penalty to waive for this payment date.');
+
+  const canReuseExisting = existingRelief && !['cancelled', 'restored'].includes(String(existingRelief.status || '').toLowerCase());
+  if (canReuseExisting) {
+    await connection.query(
+      `UPDATE lot_project_penalty_reliefs
+       SET lot_project_payment_schedule_id = ?, relief_type = 'full_waiver', effective_date = ?,
+           relief_amount = ?, status = 'active', reason = ?, internal_notes = ?, approved_by_user_id = ?,
+           cancelled_at = NULL, updated_at = NOW()
+       WHERE penalty_relief_id = ? AND lot_project_id = ? AND lot_project_listing_id = ?
+         AND lot_project_client_profile_id = ? AND lot_project_account_id = ?`,
+      [scheduleId, effectiveDate, cleanAmount, reason, internalNotes, userId,
+       existingRelief.penalty_relief_id, project.lot_project_id, listing.lot_project_listing_id,
+       listing.lot_project_client_profile_id, listing.lot_project_account_id]
+    );
+    return Number(existingRelief.penalty_relief_id);
+  }
+
+  const [result] = await connection.query(
+    `INSERT INTO lot_project_penalty_reliefs (
+       lot_project_id, lot_project_listing_id, lot_project_client_profile_id, lot_project_account_id,
+       lot_project_payment_schedule_id, lot_project_payment_id, relief_type, effective_date,
+       relief_amount, status, reason, internal_notes, approved_by_user_id
+     ) VALUES (?, ?, ?, ?, ?, ?, 'full_waiver', ?, ?, 'active', ?, ?, ?)`,
+    [project.lot_project_id, listing.lot_project_listing_id, listing.lot_project_client_profile_id,
+     listing.lot_project_account_id, scheduleId, paymentId, effectiveDate, cleanAmount,
+     reason, internalNotes, userId]
+  );
+  return Number(result.insertId || 0);
+};
+
+const cancelPaymentLinkedPenaltyWaiver = async (connection, existingRelief) => {
+  if (!existingRelief || ['cancelled', 'restored'].includes(String(existingRelief.status || '').toLowerCase())) return;
+  await connection.query(
+    `UPDATE lot_project_penalty_reliefs SET status = 'cancelled', cancelled_at = NOW(), updated_at = NOW()
+     WHERE penalty_relief_id = ?`,
+    [existingRelief.penalty_relief_id]
+  );
+};
+
 const addDaysToDateOnly = (value, days = 0) => {
   const clean = dateOrNull(value);
   if (!clean) return null;
@@ -323,6 +400,10 @@ export const previewLotProjectListingPayment = async (req, res) => {
       return res.status(400).json({ message: 'This listing has no buyer profile yet.' });
     }
 
+    const linkedPenaltyWaiver = excludePaymentId
+      ? await getPaymentLinkedPenaltyWaiver(connection, excludePaymentId)
+      : null;
+
     const [profileRows] = await connection.query(
       `SELECT * FROM lot_project_client_profiles WHERE lot_project_client_profile_id = ? LIMIT 1`,
       [listing.lot_project_client_profile_id]
@@ -343,7 +424,7 @@ export const previewLotProjectListingPayment = async (req, res) => {
       clientProfile,
       scheduleRows,
       paymentDate,
-      { excludePaymentId }
+      { excludePaymentId, excludePenaltyReliefId: Number(linkedPenaltyWaiver?.penalty_relief_id || 0) }
     );
 
     const summarizeRow = (row) => {
@@ -405,6 +486,14 @@ export const previewLotProjectListingPayment = async (req, res) => {
       fullSummary,
       fullPaymentAmount,
       balloonPrincipalCapacity: roundMoneyValue(balloonPrincipalCapacity),
+      linkedPenaltyWaiver: linkedPenaltyWaiver ? {
+        penaltyReliefId: Number(linkedPenaltyWaiver.penalty_relief_id || 0),
+        reliefAmount: Number(linkedPenaltyWaiver.relief_amount || 0),
+        effectiveDate: plainDate(linkedPenaltyWaiver.effective_date || linkedPenaltyWaiver.created_at),
+        reason: linkedPenaltyWaiver.reason || '',
+        internalNotes: linkedPenaltyWaiver.internal_notes || '',
+        status: linkedPenaltyWaiver.status || 'active',
+      } : null,
     });
   } catch (error) {
     return res.status(error?.statusCode || 500).json({ message: getErrorMessage(error) });
@@ -440,6 +529,14 @@ export const createLotProjectListingPayment = async (req, res) => {
     const requestKey = normalizePaymentRequestKey(
       req.body.requestKey || req.body.request_key || req.get?.('Idempotency-Key')
     );
+    const penaltyHandling = String(req.body.penaltyHandling || req.body.penalty_handling || 'apply').trim().toLowerCase();
+    const penaltyWaiverReason = String(req.body.penaltyWaiverReason || req.body.penalty_waiver_reason || '').trim();
+    const penaltyWaiverInternalNotes = toNullable(req.body.penaltyWaiverInternalNotes || req.body.penalty_waiver_internal_notes);
+
+    if (!['apply', 'waive'].includes(penaltyHandling)) return res.status(400).json({ message: 'Penalty handling must be apply or waive.' });
+    if (penaltyHandling === 'waive' && !scheduleId) return res.status(400).json({ message: 'A specific SOA row is required to waive a payment penalty.' });
+    if (penaltyHandling === 'waive' && !penaltyWaiverReason) return res.status(400).json({ message: 'Reason is required when waiving the penalty for a payment.' });
+    if (penaltyHandling === 'waive' && !isFullAccessAdministrator(user)) return res.status(403).json({ message: 'Only an admin or super admin can waive a payment penalty.' });
 
     if (paymentDate > todayDateOnly()) return res.status(400).json({ message: 'Future payment dates are blocked.' });
     if (amount <= 0) return res.status(400).json({ message: 'Payment amount must be greater than 0.' });
@@ -472,9 +569,15 @@ export const createLotProjectListingPayment = async (req, res) => {
       // Lock the full active SOA set in one stable order before reading balances.
       const hasSchedules = await tableExists(connection, 'lot_project_payment_schedules');
       if (hasSchedules) await lockPaymentSchedulesForListing(connection, listing);
+      let paymentPenaltyWaiverAmount = 0;
 
       const existingRequest = await getPaymentByRequestKey(connection, requestKey);
       if (existingRequest) {
+        const existingRequestPenaltyWaiver = await getPaymentLinkedPenaltyWaiver(connection, existingRequest.lot_project_payment_id);
+        const existingPenaltyHandling = existingRequestPenaltyWaiver &&
+          !['cancelled', 'restored'].includes(String(existingRequestPenaltyWaiver.status || '').toLowerCase())
+          ? 'waive'
+          : 'apply';
         const belongsToSameAccount =
           Number(existingRequest.lot_project_id) === Number(project.lot_project_id) &&
           Number(existingRequest.lot_project_listing_id) === Number(listing.lot_project_listing_id) &&
@@ -486,7 +589,8 @@ export const createLotProjectListingPayment = async (req, res) => {
           plainDate(existingRequest.lot_project_payment_date) === paymentDate &&
           String(existingRequest.lot_project_payment_type || '') === paymentType &&
           String(existingRequest.lot_project_payment_method || '') === paymentMethod &&
-          Number(existingRequest.lot_project_payment_schedule_id || 0) === Number(scheduleId || 0);
+          Number(existingRequest.lot_project_payment_schedule_id || 0) === Number(scheduleId || 0) &&
+          existingPenaltyHandling === penaltyHandling;
 
         if (!samePaymentRequest) {
           throw createHttpError(409, 'This payment request key was already used for a different payment request.');
@@ -497,6 +601,7 @@ export const createLotProjectListingPayment = async (req, res) => {
           referenceId: existingRequest.lot_project_payment_reference_id,
           storageCode: existingRequest.lot_project_payment_storage_code || createPaymentStorageCode(existingRequest.lot_project_payment_id, existingRequest.lot_project_payment_created_at),
           idempotentReplay: true,
+          penaltyWaivedAmount: existingPenaltyHandling === 'waive' ? Number(existingRequestPenaltyWaiver?.relief_amount || 0) : 0,
         };
       }
 
@@ -506,6 +611,12 @@ export const createLotProjectListingPayment = async (req, res) => {
         await recomputeListingScheduleBalances(connection, listing);
         await validateFullPaymentAmount(connection, listing, paymentType, amount);
         await validateBalloonPaymentAmount(connection, listing, paymentType, amount);
+        if (penaltyHandling === 'waive') {
+          await assertPaymentPenaltyWaiverSchema(connection);
+          const { snapshot } = await getPenaltyReliefContext(connection, project, listing, scheduleId, paymentDate, { forUpdate: true });
+          paymentPenaltyWaiverAmount = roundMoneyValue(snapshot.outstandingPenaltyAmount || 0);
+          if (paymentPenaltyWaiverAmount <= 0.009) throw createHttpError(400, 'There is no calculated penalty to waive for this payment date.');
+        }
       }
 
       const hasRequestKeyColumn = await columnExists(
@@ -592,6 +703,15 @@ export const createLotProjectListingPayment = async (req, res) => {
         );
       }
 
+      let paymentPenaltyReliefId = null;
+      if (penaltyHandling === 'waive') {
+        paymentPenaltyReliefId = await savePaymentLinkedPenaltyWaiver(connection, {
+          project, listing, scheduleId, paymentId, effectiveDate: paymentDate,
+          waiverAmount: paymentPenaltyWaiverAmount, reason: penaltyWaiverReason,
+          internalNotes: penaltyWaiverInternalNotes, userId: user?.id || null,
+        });
+      }
+
       await connection.query(
         `
           INSERT INTO lot_project_payment_logs (
@@ -631,10 +751,14 @@ export const createLotProjectListingPayment = async (req, res) => {
           referenceId,
           storageCode,
           scheduleId,
+          penaltyHandling,
+          penaltyWaiverAmount: paymentPenaltyWaiverAmount,
+          paymentPenaltyReliefId,
+          penaltyWaiverReason: penaltyWaiverReason || null,
         },
       });
 
-      return { paymentId, referenceId, storageCode, idempotentReplay: false };
+      return { paymentId, referenceId, storageCode, idempotentReplay: false, penaltyWaivedAmount: paymentPenaltyWaiverAmount };
     });
 
     return res.status(result.idempotentReplay ? 200 : 201).json({
@@ -646,6 +770,7 @@ export const createLotProjectListingPayment = async (req, res) => {
       reference_id: result.referenceId,
       storage_code: result.storageCode,
       idempotent_replay: result.idempotentReplay,
+      penalty_waived_amount: Number(result.penaltyWaivedAmount || 0),
     });
   } catch (error) {
     return res.status(error?.statusCode || 500).json({ message: getErrorMessage(error) });
@@ -676,6 +801,12 @@ export const updateLotProjectListingPayment = async (req, res) => {
       if (existingPayment.lot_project_payment_status !== 'Verified') {
         throw createHttpError(409, 'Only a verified payment can be edited.');
       }
+      const existingPaymentPenaltyWaiver = await getPaymentLinkedPenaltyWaiver(connection, paymentId, { forUpdate: true });
+      const hasActivePaymentPenaltyWaiver = existingPaymentPenaltyWaiver &&
+        !['cancelled', 'restored'].includes(String(existingPaymentPenaltyWaiver.status || '').toLowerCase());
+      if (hasActivePaymentPenaltyWaiver && !isFullAccessAdministrator(user)) {
+        throw createHttpError(403, 'This payment has a linked penalty waiver. Only an admin or super admin can edit it.');
+      }
 
       const amount = parseMoneyValue(req.body.amount);
       const paymentDate = dateOrNull(req.body.paymentDate || req.body.payment_date) || plainDate(existingPayment.lot_project_payment_date);
@@ -703,6 +834,13 @@ export const updateLotProjectListingPayment = async (req, res) => {
       const scheduleId = paymentType === 'full_payment' || paymentType === 'balloon'
         ? null
         : toNullableNumber(requestedScheduleId ?? existingPayment.lot_project_payment_schedule_id);
+      const penaltyHandling = String(req.body.penaltyHandling || req.body.penalty_handling || 'apply').trim().toLowerCase();
+      const penaltyWaiverReason = String(req.body.penaltyWaiverReason || req.body.penalty_waiver_reason || '').trim();
+      const penaltyWaiverInternalNotes = toNullable(req.body.penaltyWaiverInternalNotes || req.body.penalty_waiver_internal_notes);
+      if (!['apply', 'waive'].includes(penaltyHandling)) throw createHttpError(400, 'Penalty handling must be apply or waive.');
+      if (penaltyHandling === 'waive' && !scheduleId) throw createHttpError(400, 'A specific SOA row is required to waive a payment penalty.');
+      if (penaltyHandling === 'waive' && !penaltyWaiverReason) throw createHttpError(400, 'Reason is required when waiving the penalty for a payment.');
+      if (penaltyHandling === 'waive' && !isFullAccessAdministrator(user)) throw createHttpError(403, 'Only an admin or super admin can waive a payment penalty.');
 
       if (paymentDate > todayDateOnly()) throw createHttpError(400, 'Future payment dates are blocked.');
       if (amount <= 0) throw createHttpError(400, 'Payment amount must be greater than 0.');
@@ -729,11 +867,28 @@ export const updateLotProjectListingPayment = async (req, res) => {
         throw createHttpError(400, 'Reference ID is required for non-cash payments.');
       }
 
+      // Remove the linked waiver from the live calculation first. The transaction
+      // will either keep it cancelled (Apply Penalty) or reactivate/update it below (Waive Penalty).
+      if (existingPaymentPenaltyWaiver) {
+        await cancelPaymentLinkedPenaltyWaiver(connection, existingPaymentPenaltyWaiver);
+      }
+
       await reversePaymentAllocations(connection, listing, paymentId);
+      let paymentPenaltyWaiverAmount = 0;
       if (hasSchedules) {
+        const [profileRows] = await connection.query(`SELECT * FROM lot_project_client_profiles WHERE lot_project_client_profile_id = ? LIMIT 1`, [listing.lot_project_client_profile_id]);
+        const clientProfile = { ...(listing || {}), ...(profileRows[0] || {}) };
+        const scheduleRows = await getExistingSoaScheduleRows(connection, project.lot_project_id, listing.lot_project_listing_id, listing.lot_project_client_profile_id, listing.lot_project_account_id);
+        const snapshots = await getListingPenaltySnapshots(connection, project.lot_project_id, listing.lot_project_listing_id, clientProfile, scheduleRows, paymentDate, {
+          excludePaymentId: paymentId,
+          excludePenaltyReliefId: Number(existingPaymentPenaltyWaiver?.penalty_relief_id || 0),
+        });
+        const targetSnapshot = scheduleId ? snapshots.get(Number(scheduleId)) : null;
+        paymentPenaltyWaiverAmount = roundMoneyValue(targetSnapshot?.outstandingPenaltyAmount || 0);
         await refreshListingPenaltyCache(connection, listing, paymentDate);
         await validateFullPaymentAmount(connection, listing, paymentType, amount);
         await validateBalloonPaymentAmount(connection, listing, paymentType, amount, paymentId);
+        if (penaltyHandling === 'waive' && paymentPenaltyWaiverAmount <= 0.009) throw createHttpError(400, 'There is no calculated penalty to waive for this payment date.');
       }
 
       const [updateResult] = await connection.query(
@@ -778,6 +933,16 @@ export const updateLotProjectListingPayment = async (req, res) => {
         throw createHttpError(409, 'Payment changed before it could be updated. Please refresh and try again.');
       }
 
+      let paymentPenaltyReliefId = Number(existingPaymentPenaltyWaiver?.penalty_relief_id || 0) || null;
+      if (penaltyHandling === 'waive') {
+        paymentPenaltyReliefId = await savePaymentLinkedPenaltyWaiver(connection, {
+          project, listing, scheduleId, paymentId, effectiveDate: paymentDate,
+          waiverAmount: paymentPenaltyWaiverAmount, reason: penaltyWaiverReason,
+          internalNotes: penaltyWaiverInternalNotes, userId: user?.id || null,
+          existingRelief: existingPaymentPenaltyWaiver,
+        });
+      }
+
       await connection.query(
         `
           INSERT INTO lot_project_payment_logs (
@@ -796,7 +961,9 @@ export const updateLotProjectListingPayment = async (req, res) => {
 
       await syncCommissionProgressForListing(connection, listing);
 
-      return { paymentId, referenceId, paymentType };
+      return { paymentId, referenceId, paymentType, penaltyHandling,
+        penaltyWaivedAmount: penaltyHandling === 'waive' ? paymentPenaltyWaiverAmount : 0,
+        paymentPenaltyReliefId };
     });
 
     return res.json({
@@ -804,6 +971,7 @@ export const updateLotProjectListingPayment = async (req, res) => {
       message: `${getPaymentTypeLabel(result.paymentType)} payment updated successfully.`,
       payment_id: result.paymentId,
       reference_id: result.referenceId,
+      penalty_waived_amount: Number(result.penaltyWaivedAmount || 0),
     });
   } catch (error) {
     return res.status(error?.statusCode || 500).json({ message: getErrorMessage(error) });
@@ -891,6 +1059,16 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
       listing.soa_penalty_grace_days ??
       1
     );
+    const penaltyEffectiveFromRaw = req.body.penaltyEffectiveFrom ?? req.body.soa_penalty_effective_from;
+    const currentPenaltyEffectiveFrom = dateOrNull(listing.soa_penalty_effective_from);
+    const penaltyEffectiveFrom = penaltyEffectiveFromRaw === undefined ? currentPenaltyEffectiveFrom : dateOrNull(penaltyEffectiveFromRaw);
+    if (penaltyEffectiveFromRaw !== undefined && penaltyEffectiveFromRaw !== null && String(penaltyEffectiveFromRaw).trim() !== '' &&
+        !/^\d{4}-\d{2}-\d{2}$/.test(String(penaltyEffectiveFromRaw).trim().slice(0, 10))) {
+      return res.status(400).json({ message: 'Penalty Effective From must be a valid date.' });
+    }
+    if (penaltyEffectiveFromRaw !== undefined && !(await columnExists(connection, 'lot_project_client_profiles', 'soa_penalty_effective_from'))) {
+      return res.status(500).json({ message: 'Penalty effective-date migration is missing. Run server/migrations/20260819_payment_penalty_waiver_effective_date.sql first.' });
+    }
     if (dpDiscountPercentage < 0 || dpDiscountPercentage > 100) {
       return res.status(400).json({ message: 'DP Discount % must be between 0 and 100.' });
     }
@@ -932,6 +1110,7 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
     const penaltyTermsChanged =
       !sameNumber(dailyPenaltyRate, listing.soa_penalty_rate_percent) ||
       Number(penaltyGraceDays) !== Number(listing.soa_penalty_grace_days ?? 0) ||
+      String(penaltyEffectiveFrom || '') !== String(currentPenaltyEffectiveFrom || '') ||
       String(listing.soa_penalty_calculation_method || 'daily').toLowerCase() !== 'daily';
 
     if (firstDueDate !== currentFirstDueDate || isHistoricalEntry !== currentHistoricalEntry) {
@@ -983,6 +1162,7 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
     await addProfileUpdate('soa_penalty_calculation_method', 'daily');
     await addProfileUpdate('soa_penalty_rate_percent', dailyPenaltyRate);
     await addProfileUpdate('soa_penalty_grace_days', penaltyGraceDays);
+    await addProfileUpdate('soa_penalty_effective_from', penaltyEffectiveFrom);
 
     await connection.beginTransaction();
 
@@ -1019,6 +1199,7 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
         soa_penalty_calculation_method: 'daily',
         soa_penalty_rate_percent: dailyPenaltyRate,
         soa_penalty_grace_days: penaltyGraceDays,
+        soa_penalty_effective_from: penaltyEffectiveFrom,
       };
       const terms = getComputedSoaTerms(updatedListing, []);
       const computedRows = recomputeComputedSoaBalances(createComputedSoaRows(terms), terms);
@@ -1116,6 +1297,7 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
         soa_penalty_calculation_method: 'daily',
         soa_penalty_rate_percent: dailyPenaltyRate,
         soa_penalty_grace_days: penaltyGraceDays,
+        soa_penalty_effective_from: penaltyEffectiveFrom,
       };
       await refreshListingPenaltyCache(connection, refreshedListing, todayDateOnly());
       await recomputeListingScheduleBalances(connection, refreshedListing);
@@ -1144,6 +1326,7 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
         isHistoricalEntry,
         dailyPenaltyRate,
         penaltyGraceDays,
+        penaltyEffectiveFrom,
         structuralTermsChanged,
         penaltyTermsChanged,
       },
@@ -1169,6 +1352,7 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
         isHistoricalEntry,
         dailyPenaltyRate,
         penaltyGraceDays,
+        penaltyEffectiveFrom,
       },
     });
   } catch (error) {
@@ -2165,4 +2349,5 @@ export const restorePaymentSchedulePenaltyWaiver = async (req, res) => {
     connection.release();
   }
 };
+
 

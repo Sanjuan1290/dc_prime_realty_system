@@ -3,15 +3,25 @@ import DoubleCheckSection from './core/DoubleCheckSection'
 import DoubleCheckFields from './core/DoubleCheckFields'
 import { formatDate, money, pick, titleCase } from './core/doubleCheckFormatters'
 
-const paymentFields = (payment = {}) => [
-  { label: 'Payment Type', value: pick(payment, 'paymentType', 'type'), formatter: titleCase },
-  { label: 'Amount', value: pick(payment, 'amount'), formatter: money, tone: 'financial' },
-  { label: 'Payment Date', value: pick(payment, 'paymentDate'), formatter: formatDate },
-  { label: 'Method', value: pick(payment, 'method'), formatter: titleCase },
-  { label: 'Bank / Provider', value: pick(payment, 'bankName') },
-  { label: 'Account No. / Wallet', value: pick(payment, 'accountNumber') },
-  { label: 'Reference ID / OR / Transaction No.', value: pick(payment, 'referenceId'), wide: true },
-]
+const paymentFields = (payment = {}) => {
+  const penaltyHandling = String(pick(payment, 'penaltyHandling', 'penalty_handling') || 'apply').toLowerCase()
+  const fields = [
+    { label: 'Payment Type', value: pick(payment, 'paymentType', 'type'), formatter: titleCase },
+    { label: 'Amount', value: pick(payment, 'amount'), formatter: money, tone: 'financial' },
+    { label: 'Payment Date', value: pick(payment, 'paymentDate'), formatter: formatDate },
+    { label: 'Method', value: pick(payment, 'method'), formatter: titleCase },
+    { label: 'Bank / Provider', value: pick(payment, 'bankName') },
+    { label: 'Account No. / Wallet', value: pick(payment, 'accountNumber') },
+    { label: 'Reference ID / OR / Transaction No.', value: pick(payment, 'referenceId'), wide: true },
+  ]
+  if (penaltyHandling === 'waive') fields.push(
+    { label: 'Penalty Handling', value: 'Waive penalty for this payment', wide: true },
+    { label: 'Calculated Penalty to Waive', value: pick(payment, 'penaltyPreviewAmount'), formatter: money, tone: 'financial' },
+    { label: 'Waiver Reason', value: pick(payment, 'penaltyWaiverReason'), wide: true },
+    { label: 'Internal Notes', value: pick(payment, 'penaltyWaiverInternalNotes'), wide: true },
+  )
+  return fields
+}
 
 const PaymentDoubleCheck = ({ request, onConfirm, onCancel }) => {
   const data = request.data || {}
@@ -31,3 +41,4 @@ const PaymentDoubleCheck = ({ request, onConfirm, onCancel }) => {
 }
 
 export default PaymentDoubleCheck
+

@@ -782,6 +782,7 @@ export const mapProfileListing = (row = {}, project = {}, documents = []) => {
     soaLmfWaivedAt: row.soa_lmf_waived_at ? formatDateTime(row.soa_lmf_waived_at) : '-',
     soaPenaltyRatePercent: Number(row.soa_penalty_rate_percent || 0),
     soaPenaltyGraceDays: Number(row.soa_penalty_grace_days || 0),
+    soaPenaltyEffectiveFrom: row.soa_penalty_effective_from ? plainDate(row.soa_penalty_effective_from) : '',
     soaPenaltyCalculationMethod: row.soa_penalty_calculation_method || (Number(row.soa_penalty_rate_percent || 0) > 0 ? 'monthly_started' : 'none'),
     buyer_name: row.buyer_full_name || '-',
     spouse_co_owner: row.second_buyer_full_name || '-',
@@ -1304,8 +1305,10 @@ const mapPenaltyReliefRow = (row = {}) => ({
   id: Number(row.penalty_relief_id || 0),
   penaltyReliefId: Number(row.penalty_relief_id || 0),
   scheduleId: Number(row.lot_project_payment_schedule_id || 0),
+  paymentId: row.lot_project_payment_id ? Number(row.lot_project_payment_id) : null,
   reliefType: row.relief_type,
   promisedPaymentDate: plainDate(row.promised_payment_date),
+  effectiveDate: plainDate(row.effective_date || row.created_at),
   reliefAmount: roundMoneyValue(row.relief_amount || 0),
   restoresPenaltyReliefId: row.restores_penalty_relief_id ? Number(row.restores_penalty_relief_id) : null,
   status: row.status || 'active',
@@ -1367,7 +1370,11 @@ export const calculateScheduleDailyPenalty = ({
   const graceDays = Math.max(Number(clientProfile.soa_penalty_grace_days || 0), 0);
   const baseDue = getPenaltyBaseDueAmount(row, clientProfile);
   const cleanAsOfDate = plainDate(asOfDate);
-  const penaltyStartDate = row.due_date ? addCalendarDays(row.due_date, graceDays + 1) : null;
+  const dueBasedPenaltyStartDate = row.due_date ? addCalendarDays(row.due_date, graceDays + 1) : null;
+  const penaltyEffectiveFrom = plainDate(clientProfile.soa_penalty_effective_from, null);
+  const penaltyStartDate = dueBasedPenaltyStartDate && penaltyEffectiveFrom
+    ? [dueBasedPenaltyStartDate, penaltyEffectiveFrom].sort().at(-1)
+    : dueBasedPenaltyStartDate || penaltyEffectiveFrom;
   const sortedAllocations = [...allocations]
     .filter((allocation) =>
       allocation.payment_date &&
@@ -1380,7 +1387,7 @@ export const calculateScheduleDailyPenalty = ({
       return Number(a.lot_project_payment_id || 0) - Number(b.lot_project_payment_id || 0);
     });
   const effectiveReliefs = [...reliefs].filter((relief) => {
-    const reliefDate = plainDate(relief.created_at, null);
+    const reliefDate = plainDate(relief.effective_date || relief.created_at, null);
     return !reliefDate || reliefDate <= cleanAsOfDate;
   });
   const activeExtension = getEffectiveExtensionState({
@@ -1419,6 +1426,7 @@ export const calculateScheduleDailyPenalty = ({
       method,
       ratePercent,
       graceDays,
+      penaltyEffectiveFrom,
       baseDueAmount: baseDue,
       unpaidBaseAmount: roundMoneyValue(Math.max(baseDue - totalApplied, 0)),
       calculatedPenaltyAmount: 0,
@@ -1477,6 +1485,7 @@ export const calculateScheduleDailyPenalty = ({
       method,
       ratePercent,
       graceDays,
+      penaltyEffectiveFrom,
       baseDueAmount: baseDue,
       unpaidBaseAmount: roundMoneyValue(Math.max(baseDue - Math.max(totalApplied - paidPenalty, 0), 0)),
       calculatedPenaltyAmount: calculated,
@@ -1500,6 +1509,7 @@ export const calculateScheduleDailyPenalty = ({
       method,
       ratePercent,
       graceDays,
+      penaltyEffectiveFrom,
       baseDueAmount: baseDue,
       unpaidBaseAmount: roundMoneyValue(Math.max(baseDue - totalApplied, 0)),
       calculatedPenaltyAmount: 0,
@@ -1542,7 +1552,7 @@ export const calculateScheduleDailyPenalty = ({
     })
     .map((relief) => ({
       kind: 'relief',
-      date: plainDate(relief.created_at || cleanAsOfDate),
+      date: plainDate(relief.effective_date || relief.created_at || cleanAsOfDate),
       relief,
     }));
   const paymentEvents = sortedAllocations.map((allocation) => ({
@@ -1656,6 +1666,7 @@ export const calculateScheduleDailyPenalty = ({
     method,
     ratePercent,
     graceDays,
+    penaltyEffectiveFrom,
     baseDueAmount: baseDue,
     unpaidBaseAmount: currentBase,
     calculatedPenaltyAmount: calculatedPenalty,
@@ -1684,7 +1695,7 @@ export const getListingPenaltySnapshots = async (
   clientProfile = {},
   scheduleRows = [],
   asOfDate = todayDateOnly(),
-  { excludePaymentId = 0 } = {}
+  { excludePaymentId = 0, excludePenaltyReliefId = 0 } = {}
 ) => {
   if (!scheduleRows.length) return new Map();
 
@@ -1728,9 +1739,10 @@ export const getListingPenaltySnapshots = async (
         WHERE pr.lot_project_id = ?
           AND pr.lot_project_listing_id = ?
           AND pr.lot_project_payment_schedule_id IN (${placeholders})
+          AND (? = 0 OR pr.penalty_relief_id <> ?)
         ORDER BY pr.created_at ASC, pr.penalty_relief_id ASC
       `,
-      [lotProjectId, listingId, ...scheduleIds]
+      [lotProjectId, listingId, ...scheduleIds, Number(excludePenaltyReliefId || 0), Number(excludePenaltyReliefId || 0)]
     );
     reliefRows = rows;
   }
@@ -3220,6 +3232,16 @@ export const mapPaymentRow = (row = {}) => ({
   verifiedAt: formatDateTime(row.lot_project_payment_verified_at),
   status: row.lot_project_payment_status || 'Verified',
   paymentProofCount: Number(row.payment_proof_count || 0),
+  penaltyWaiver: row.payment_penalty_relief_id ? {
+    id: Number(row.payment_penalty_relief_id),
+    penaltyReliefId: Number(row.payment_penalty_relief_id),
+    reliefType: row.payment_penalty_relief_type || 'full_waiver',
+    reliefAmount: Number(row.payment_penalty_relief_amount || 0),
+    effectiveDate: plainDate(row.payment_penalty_effective_date || row.lot_project_payment_date),
+    reason: row.payment_penalty_reason || '',
+    internalNotes: row.payment_penalty_internal_notes || '',
+    status: row.payment_penalty_status || 'active',
+  } : null,
   acknowledgementSignedCopy: row.ack_signed_copy_id ? {
     id: Number(row.ack_signed_copy_id),
     signedCopyId: Number(row.ack_signed_copy_id),
@@ -3250,9 +3272,28 @@ export const getListingPayments = async (
 
   const hasPaymentProofs = await tableExists(connection, 'lot_project_payment_proofs');
   const hasAcknowledgementSignedCopies = await tableExists(connection, 'lot_project_payment_acknowledgement_files');
+  const hasPenaltyReliefs = await tableExists(connection, 'lot_project_penalty_reliefs');
+  const hasPaymentLinkedPenaltyReliefs = hasPenaltyReliefs &&
+    await columnExists(connection, 'lot_project_penalty_reliefs', 'lot_project_payment_id') &&
+    await columnExists(connection, 'lot_project_penalty_reliefs', 'effective_date');
   const proofCountSelect = hasPaymentProofs
     ? `(SELECT COUNT(*) FROM lot_project_payment_proofs proof WHERE proof.lot_project_payment_id = p.lot_project_payment_id AND proof.proof_status = 'active') AS payment_proof_count,`
     : `0 AS payment_proof_count,`;
+  const penaltyWaiverSelect = hasPaymentLinkedPenaltyReliefs
+    ? `payment_relief.penalty_relief_id AS payment_penalty_relief_id,
+       payment_relief.relief_type AS payment_penalty_relief_type,
+       payment_relief.relief_amount AS payment_penalty_relief_amount,
+       payment_relief.effective_date AS payment_penalty_effective_date,
+       payment_relief.reason AS payment_penalty_reason,
+       payment_relief.internal_notes AS payment_penalty_internal_notes,
+       payment_relief.status AS payment_penalty_status,`
+    : `NULL AS payment_penalty_relief_id,
+       NULL AS payment_penalty_relief_type,
+       0 AS payment_penalty_relief_amount,
+       NULL AS payment_penalty_effective_date,
+       NULL AS payment_penalty_reason,
+       NULL AS payment_penalty_internal_notes,
+       NULL AS payment_penalty_status,`;
   const acknowledgementSignedSelect = hasAcknowledgementSignedCopies
     ? `ack_file.lot_project_payment_acknowledgement_file_id AS ack_signed_copy_id,
        ack_file.file_name AS ack_signed_copy_file_name,
@@ -3268,6 +3309,18 @@ export const getListingPayments = async (
        NULL AS ack_signed_copy_version,
        NULL AS ack_signed_copy_scan_status,
        NULL AS ack_signed_copy_uploaded_at,`;
+  const penaltyWaiverJoin = hasPaymentLinkedPenaltyReliefs
+    ? `LEFT JOIN (
+         SELECT lot_project_payment_id, MAX(penalty_relief_id) AS latest_relief_id
+         FROM lot_project_penalty_reliefs
+         WHERE relief_type IN ('full_waiver', 'partial_waiver')
+           AND lot_project_payment_id IS NOT NULL
+         GROUP BY lot_project_payment_id
+       ) latest_payment_relief
+         ON latest_payment_relief.lot_project_payment_id = p.lot_project_payment_id
+       LEFT JOIN lot_project_penalty_reliefs payment_relief
+         ON payment_relief.penalty_relief_id = latest_payment_relief.latest_relief_id`
+    : '';
   // Keep this TiDB-safe: do not use an outer-reference scalar subquery inside
   // the JOIN condition. Pre-aggregate the latest active file per payment, then
   // join the concrete file row by its primary key.
@@ -3291,12 +3344,14 @@ export const getListingPayments = async (
         p.*,
         ps.description AS schedule_description,
         ${proofCountSelect}
+        ${penaltyWaiverSelect}
         ${acknowledgementSignedSelect}
         TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS verified_by_name
       FROM lot_project_payments p
       LEFT JOIN lot_project_payment_schedules ps
         ON ps.lot_project_payment_schedule_id = p.lot_project_payment_schedule_id
        AND (? = 0 OR ps.lot_project_account_id = ?)
+      ${penaltyWaiverJoin}
       ${acknowledgementSignedJoin}
       LEFT JOIN users u
         ON u.id = p.lot_project_payment_verified_by_user_id
@@ -4316,3 +4371,4 @@ export const addIfColumnExists = async (connection, tableName, columns, values, 
 };
 
 // End of lotProject.shared.js — verified complete.
+

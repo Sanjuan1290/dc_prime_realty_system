@@ -172,6 +172,7 @@ const AddSOAPaymentModal = ({
   initialPayment = null,
   mode = 'add',
   isSaving = false,
+  canWaivePenalty = false,
   onPreview,
   onClose,
   onSave,
@@ -219,6 +220,10 @@ const AddSOAPaymentModal = ({
   const [paymentPreview, setPaymentPreview] = useState(null)
   const [isPreviewLoading, setIsPreviewLoading] = useState(false)
   const [previewError, setPreviewError] = useState('')
+  const linkedPenaltyWaiver = initialPayment?.penaltyWaiver || null
+  const [penaltyHandling, setPenaltyHandling] = useState(linkedPenaltyWaiver && !['cancelled', 'restored'].includes(String(linkedPenaltyWaiver.status || '').toLowerCase()) ? 'waive' : 'apply')
+  const [penaltyWaiverReason, setPenaltyWaiverReason] = useState(linkedPenaltyWaiver?.reason || '')
+  const [penaltyWaiverInternalNotes, setPenaltyWaiverInternalNotes] = useState(linkedPenaltyWaiver?.internalNotes || '')
 
   const isBalloonPayment = form.paymentType === 'Balloon'
   const isFullPayment = form.paymentType === 'Full Payment'
@@ -256,11 +261,12 @@ const AddSOAPaymentModal = ({
         if (cancelled || previewRequestRef.current !== requestId) return
         setPaymentPreview(result || null)
 
+        const previewPenalty = Number(result?.selectedRow?.penaltyOutstanding || 0)
         const previewAmount = form.paymentType === 'Full Payment'
           ? Number(result?.fullPaymentAmount || 0)
           : form.paymentType === 'Balloon'
             ? 0
-            : Number(result?.selectedRow?.totalPayable || 0)
+            : Math.max(Number(result?.selectedRow?.totalPayable || 0) - (penaltyHandling === 'waive' && canWaivePenalty ? previewPenalty : 0), 0)
 
         if (previewAmount > 0 && (form.paymentType === 'Full Payment' || (!amountManuallyEdited && !isEdit))) {
           setForm((current) => ({
@@ -289,6 +295,8 @@ const AddSOAPaymentModal = ({
     initialPayment,
     isEdit,
     onPreview,
+    penaltyHandling,
+    canWaivePenalty,
     requiresSoaRow,
   ])
 
@@ -353,6 +361,15 @@ const AddSOAPaymentModal = ({
     : isBalloonPayment
       ? balloonPrincipalCapacity
       : Number(previewRow?.totalPayable || suggestedAmount || 0)
+
+  const canOfferPenaltyWaiver = Boolean(canWaivePenalty && requiresSoaRow && automaticPenalty > 0.009)
+  const isPenaltyWaivedForPayment = canOfferPenaltyWaiver && penaltyHandling === 'waive'
+  const adjustedSuggestedAmount = isPenaltyWaivedForPayment ? Math.max(suggestedAmount - automaticPenalty, 0) : suggestedAmount
+  const payableAfterPenaltyHandling = isPenaltyWaivedForPayment ? Math.max(totalPayable - automaticPenalty, 0) : totalPayable
+
+  useEffect(() => {
+    if (!canOfferPenaltyWaiver && penaltyHandling === 'waive') setPenaltyHandling('apply')
+  }, [canOfferPenaltyWaiver, penaltyHandling])
 
   const displayedAmount = isFullPayment
     ? formatPaymentAmountInput(fullPaymentAmount)
@@ -473,6 +490,17 @@ const AddSOAPaymentModal = ({
       return
     }
 
+    if (penaltyHandling === 'waive') {
+      if (!canOfferPenaltyWaiver) {
+        setAlert({ type: 'error', message: 'There is no calculated penalty available to waive for this payment.' })
+        return
+      }
+      if (!penaltyWaiverReason.trim()) {
+        setAlert({ type: 'error', message: 'Reason is required when waiving the penalty for this payment.' })
+        return
+      }
+    }
+
     if (form.method !== 'Cash' && !form.bankName.trim()) {
       setAlert({
         type: 'error',
@@ -514,6 +542,10 @@ const AddSOAPaymentModal = ({
         bankName: form.method === 'Cash' ? null : form.bankName.trim(),
         accountNumber: form.method === 'Cash' ? null : form.accountNumber.trim(),
         referenceId: form.method === 'Cash' ? form.referenceId : form.referenceId.trim(),
+        penaltyHandling: isPenaltyWaivedForPayment ? 'waive' : 'apply',
+        penaltyPreviewAmount: isPenaltyWaivedForPayment ? automaticPenalty : 0,
+        penaltyWaiverReason: isPenaltyWaivedForPayment ? penaltyWaiverReason.trim() : '',
+        penaltyWaiverInternalNotes: isPenaltyWaivedForPayment ? penaltyWaiverInternalNotes.trim() : '',
         requestKey: isEdit ? undefined : requestKeyRef.current,
       })
     } catch (error) {
@@ -614,18 +646,39 @@ const AddSOAPaymentModal = ({
             <div className="rounded-xl border border-red-200 bg-red-50 p-4">
               <p className="text-xs font-black uppercase text-red-700">Penalty</p>
               <p className="mt-1 text-lg font-black text-red-900">{money(automaticPenalty)}</p>
-              {!isFullPayment && !isBalloonPayment && previewRow ? (
-                <p className="mt-1 text-[11px] font-bold text-red-700">
-                  As of {paymentPreview?.paymentDate || form.paymentDate} · {Number(previewRow.penaltyDays || 0)} penalty day(s)
-                </p>
-              ) : null}
+              {!isFullPayment && !isBalloonPayment && previewRow ? <p className="mt-1 text-[11px] font-bold text-red-700">As of {paymentPreview?.paymentDate || form.paymentDate} · {Number(previewRow.penaltyDays || 0)} penalty day(s)</p> : null}
+              {isPenaltyWaivedForPayment ? <p className="mt-1 text-[11px] font-black text-emerald-700">Waived for this payment · Penalty due {money(0)}</p> : null}
             </div>
 
             <div className="rounded-xl border border-violet-200 bg-violet-50 p-4">
               <p className="text-xs font-black uppercase text-violet-700">Total Payable</p>
-              <p className="mt-1 text-lg font-black text-violet-900">{money(totalPayable)}</p>
+              <p className="mt-1 text-lg font-black text-violet-900">{money(payableAfterPenaltyHandling)}</p>
+              {isPenaltyWaivedForPayment ? <p className="mt-1 text-[11px] font-bold text-violet-700">Calculated penalty removed from this payment.</p> : null}
             </div>
           </div>
+
+          {canOfferPenaltyWaiver ? (
+            <div className="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+              <p className="text-sm font-black text-emerald-950">Penalty Handling</p>
+              <p className="mt-1 text-xs font-semibold text-emerald-800">The selected payment date creates {money(automaticPenalty)} in penalty. Choose whether to collect it or formally waive it for this payment.</p>
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                <label className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 ${penaltyHandling === 'apply' ? 'border-red-300 bg-white' : 'border-emerald-200 bg-emerald-50/40'}`}>
+                  <input type="radio" name="penaltyHandling" value="apply" checked={penaltyHandling === 'apply'} onChange={() => { setPenaltyHandling('apply'); if (alert?.type === 'error') setAlert(null) }} disabled={isSaving} className="mt-1" />
+                  <span><span className="block text-sm font-black text-slate-900">Apply calculated penalty</span><span className="mt-1 block text-xs font-semibold text-slate-500">Buyer owes {money(automaticPenalty)} penalty.</span></span>
+                </label>
+                <label className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 ${penaltyHandling === 'waive' ? 'border-emerald-400 bg-white' : 'border-emerald-200 bg-emerald-50/40'}`}>
+                  <input type="radio" name="penaltyHandling" value="waive" checked={penaltyHandling === 'waive'} onChange={() => { setPenaltyHandling('waive'); if (alert?.type === 'error') setAlert(null) }} disabled={isSaving} className="mt-1" />
+                  <span><span className="block text-sm font-black text-slate-900">Waive penalty for this payment</span><span className="mt-1 block text-xs font-semibold text-slate-500">Keep the real payment date, but save the {money(automaticPenalty)} penalty as formally waived.</span></span>
+                </label>
+              </div>
+              {penaltyHandling === 'waive' ? (
+                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                  <label className="flex flex-col gap-1.5"><span className="text-sm font-black text-emerald-950">Waiver Reason *</span><input value={penaltyWaiverReason} onChange={(event) => { setPenaltyWaiverReason(event.target.value); if (alert?.type === 'error') setAlert(null) }} placeholder="Example: Historical payment — penalty was not applicable at the time." disabled={isSaving} className="h-11 rounded-xl border border-emerald-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100" /></label>
+                  <label className="flex flex-col gap-1.5"><span className="text-sm font-black text-emerald-950">Internal Notes</span><input value={penaltyWaiverInternalNotes} onChange={(event) => setPenaltyWaiverInternalNotes(event.target.value)} placeholder="Optional internal note" disabled={isSaving} className="h-11 rounded-xl border border-emerald-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100" /></label>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
 
           <div className="grid gap-4 md:grid-cols-2">
             {isBalloonPayment || isFullPayment ? (
@@ -681,7 +734,7 @@ const AddSOAPaymentModal = ({
                   ? `Auto-filled from the complete unpaid SOA balance: ${money(fullPaymentAmount)}.`
                   : isBalloonPayment
                     ? `Direct principal reduction. Maximum available: ${money(balloonPrincipalCapacity)}. The regular monthly amount stays the same while the final monthly rows are removed.`
-                    : `Suggested amount as of ${form.paymentDate}: ${money(suggestedAmount)}`
+                    : `Suggested amount as of ${form.paymentDate}: ${money(adjustedSuggestedAmount)}${isPenaltyWaivedForPayment ? ' after penalty waiver' : ''}`
               }
               disabled={isFullPayment}
               required
@@ -781,3 +834,4 @@ const AddSOAPaymentModal = ({
 }
 
 export default AddSOAPaymentModal
+

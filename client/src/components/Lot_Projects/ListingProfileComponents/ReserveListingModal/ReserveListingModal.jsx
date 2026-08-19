@@ -145,6 +145,7 @@ const ReserveListingModal = ({
     ),
     dailyPenaltyRate: '0.05',
     penaltyGraceDays: '0',
+    penaltyEffectiveFrom: '',
   })
 
   const contractPricing = useMemo(
@@ -554,6 +555,11 @@ const ReserveListingModal = ({
       setAlert({ type: 'error', message: 'Penalty grace period must be between 0 and 31 days.' })
       return false
     }
+    const penaltyEffectiveFrom = String(paymentForm.penaltyEffectiveFrom || '').trim()
+    if (penaltyEffectiveFrom && !/^\d{4}-\d{2}-\d{2}$/.test(penaltyEffectiveFrom)) {
+      setAlert({ type: 'error', message: 'Penalty Effective From must be a valid date.' })
+      return false
+    }
     return true
   }
 
@@ -685,4 +691,5 @@ const ReserveListingModal = ({
 }
 
 export default ReserveListingModal
+
 
