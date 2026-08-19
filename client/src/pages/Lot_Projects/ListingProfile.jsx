@@ -485,6 +485,7 @@ const ListingProfile = () => {
       queryClient.invalidateQueries({ queryKey: ['lot-listing-profile', projectSlug, listingId] })
       queryClient.invalidateQueries({ queryKey: ['lot-buyer-form-state', projectSlug, listingId] })
       queryClient.invalidateQueries({ queryKey: ['system-document-notifications'] })
+      queryClient.invalidateQueries({ queryKey: ['audit-logs'] })
     },
     onError: (error) => {
       setAlert(getDoubleCheckNotice(error, 'Failed to request document resubmission.'))
@@ -874,6 +875,8 @@ const ListingProfile = () => {
           client={client}
           libraryDocuments={documentLibrary}
           projectDefaultDocuments={project.defaultDocuments || []}
+          documentTemplates={documentTemplates}
+          templateDocuments={templateDocuments}
           onUploadDocument={(document, payload) => uploadDocumentMutation.mutateAsync({ document, payload })}
           onApproveDocument={(document) => approveDocumentMutation.mutateAsync(document)}
           onRequestResubmission={(document, payload) => requestDocumentResubmissionMutation.mutateAsync({ document, payload })}

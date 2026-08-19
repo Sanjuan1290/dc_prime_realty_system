@@ -46,6 +46,11 @@ const Listings = () => {
     queryFn: () => useFetch('/documents/getDocuments'),
   })
 
+  const { data: templatesData, isLoading: isTemplatesLoading } = useQuery({
+    queryKey: ['document-templates'],
+    queryFn: () => useFetch('/documents/getTemplates'),
+  })
+
   const addListingMutation = useMutation({
     mutationFn: (payload) => useFetchPost(`/projects/lot-projects/${projectSlug}/listings`, payload, {
       doubleCheck: { type: 'listing', mode: 'create', data: payload, meta: { projectName: project?.name || project?.lot_project_name || projectSlug } },
@@ -121,7 +126,7 @@ const Listings = () => {
     <main className="flex flex-col gap-6">
       <section className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <PageHeader title={`${project.name || project.lot_project_name || 'Lot Project'} Listings / Units`} description="Database-connected inventory table with price columns, document setup, and unit profile links." icon={FiGrid} />
-        <button type="button" onClick={() => setShowAddModal(true)} disabled={isLoading || isDocumentsLoading} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 text-sm font-black text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"><FiPlus className="h-4 w-4" />Add Listing</button>
+        <button type="button" onClick={() => setShowAddModal(true)} disabled={isLoading || isDocumentsLoading || isTemplatesLoading} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 text-sm font-black text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"><FiPlus className="h-4 w-4" />Add Listing</button>
       </section>
 
       {alert ? <StatusAlert type={alert.type} message={alert.message} onClose={alert.type === 'loading' ? undefined : () => setAlert(null)} /> : null}
@@ -171,7 +176,7 @@ const Listings = () => {
         </div>
       </section>
 
-      {showAddModal ? <AddListingModal project={project} projectDefaultDocuments={project.defaultDocuments || []} libraryDocuments={documentsData?.documents || []} isLoadingDefaults={isDocumentsLoading} onClose={() => setShowAddModal(false)} onSave={handleAddListing} isSaving={addListingMutation.isPending} /> : null}
+      {showAddModal ? <AddListingModal project={project} projectDefaultDocuments={project.defaultDocuments || []} libraryDocuments={documentsData?.documents || []} documentTemplates={templatesData?.templates || []} templateDocuments={templatesData?.template_documents || []} isLoadingDefaults={isDocumentsLoading || isTemplatesLoading} onClose={() => setShowAddModal(false)} onSave={handleAddListing} isSaving={addListingMutation.isPending} /> : null}
       <ConfirmActionModal
         open={Boolean(listingToDelete)}
         title={`Delete ${listingToDelete?.unitLabel || 'listing'}?`}
@@ -190,3 +195,4 @@ const Listings = () => {
 }
 
 export default Listings
+

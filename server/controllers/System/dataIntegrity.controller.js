@@ -984,7 +984,7 @@ const buildSummary = (reports = []) => {
     totalDifference: 0,
     categories: {
       accounts: { label: 'Buyer Accounts', checked: reports.length, issues: 0, status: 'balanced' },
-      paymentsSoa: { label: 'Payments & SOA', checked: reports.length, issues: 0, status: 'balanced' },
+      paymentsSoa: { label: 'Payments & SOA', checked: 0, soaChecked: 0, issues: 0, status: 'balanced' },
       adjustments: { label: 'Discounts & Adjustments', checked: 0, issues: 0, status: 'balanced' },
       commissions: { label: 'Commissions', checked: 0, issues: 0, status: 'balanced' },
       proofOfIncome: { label: 'Proof of Income', checked: 0, issues: 0, status: 'balanced' },
@@ -997,6 +997,8 @@ const buildSummary = (reports = []) => {
     if (report.adjustments?.hasAdjustments) summary.adjustedAccounts += 1;
     if (report.isHistorical) summary.historicalAccounts += 1;
     summary.totalDifference = roundMoney(summary.totalDifference + report.differenceAmount);
+    summary.categories.paymentsSoa.checked += Number(report.counts?.payments || 0);
+    summary.categories.paymentsSoa.soaChecked += Number(report.counts?.schedules || 0);
     summary.categories.adjustments.checked += report.adjustments?.hasAdjustments ? 1 : 0;
     summary.categories.commissions.checked += Number(report.counts?.commissions || 0);
     summary.categories.proofOfIncome.checked += Number(report.counts?.receipts || 0);
@@ -1170,3 +1172,4 @@ export const getDataIntegrityAccount = async (req, res) => {
     connection.release();
   }
 };
+

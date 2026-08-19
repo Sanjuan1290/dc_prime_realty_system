@@ -940,13 +940,13 @@ export const requestLotProjectListingDocumentResubmission = async (req, res) => 
     );
 
     await writeAuditLog(connection, req, {
-      action: 'update',
+      action: 'reject',
       module: 'Documents',
       entityType: 'lot_project_client_document',
       entityId: String(clientDocument.lot_project_client_document_id),
       entityLabel: `${context.document.document_name} — ${context.listing.lot_project_listing_unit_id}`,
       title: 'Requested client document resubmission',
-      description: `Marked ${context.document.document_name} as needing a corrected resubmission.`,
+      description: `Marked ${context.document.document_name} as needing a corrected resubmission.${reason ? ` Reason: ${reason}` : ''}`,
       metadata: {
         accountId: context.listing.lot_project_account_id || null,
         listingId: context.listing.lot_project_listing_id,
@@ -954,6 +954,8 @@ export const requestLotProjectListingDocumentResubmission = async (req, res) => 
         documentId: context.document.document_id,
         documentName: context.document.document_name,
         previousStatus: clientDocument.lot_project_client_document_status,
+        newStatus: 'Rejected',
+        newStatusLabel: 'Needs Resubmission',
         reason: reason || null,
         requestedByUserId: user?.id || null,
       },

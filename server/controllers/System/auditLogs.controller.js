@@ -48,6 +48,16 @@ const safeJsonString = (value) => {
   }
 };
 
+const parseMetadataJson = (value) => {
+  if (!value) return null;
+  if (typeof value === 'object') return value;
+  try {
+    return JSON.parse(String(value));
+  } catch {
+    return null;
+  }
+};
+
 
 const normalizeAction = (value) => {
   const action = String(value || '').trim().toLowerCase();
@@ -375,6 +385,7 @@ const mapAuditLog = (row = {}) => ({
   entityLabel: row.entity_label,
   title: row.title,
   description: row.description,
+  metadata: parseMetadataJson(row.metadata_json),
   ipAddress: normalizeIpAddress(row.ip_address),
   userAgent: row.user_agent,
   createdAt: row.audit_log_created_at,
@@ -530,9 +541,10 @@ export const getAuditLogs = async (req, res) => {
         al.entity_id LIKE ? OR
         al.entity_label LIKE ? OR
         al.actor_name LIKE ? OR
-        al.actor_email LIKE ?
+        al.actor_email LIKE ? OR
+        CAST(al.metadata_json AS CHAR) LIKE ?
       )`);
-      values.push(...Array(8).fill(buildLike(req.query.search)));
+      values.push(...Array(9).fill(buildLike(req.query.search)));
     }
 
     if (cleanText(req.query.action) && req.query.action !== 'all') {
@@ -572,6 +584,7 @@ export const getAuditLogs = async (req, res) => {
           al.entity_label,
           al.title,
           al.description,
+          al.metadata_json,
           al.ip_address,
           al.user_agent,
           al.audit_log_created_at,
@@ -1106,3 +1119,4 @@ export const downloadAuditLogArchiveExport = async (req, res) => {
     connection.release();
   }
 };
+

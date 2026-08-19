@@ -78,6 +78,8 @@ const Documents = ({
   listingId = '',
   libraryDocuments = [],
   projectDefaultDocuments = [],
+  documentTemplates = [],
+  templateDocuments = [],
   onUploadDocument,
   onApproveDocument,
   onRequestResubmission,
@@ -214,7 +216,7 @@ const Documents = ({
     const confirmed = window.confirm(`Request a corrected ${document.name} from the client? The current copy will stay retained as document history until a corrected copy is uploaded.`)
     if (!confirmed) return
 
-    const reason = window.prompt('Optional resubmission reason for the audit log:', '')
+    const reason = window.prompt('Optional resubmission reason. This will be recorded in Audit Logs:', '')
     if (reason === null) return
 
     setActiveDocumentId(document.id)
@@ -505,6 +507,8 @@ const Documents = ({
           selectedDocuments={rows}
           libraryDocuments={libraryDocuments}
           projectDefaultDocuments={projectDefaultDocuments}
+          documentTemplates={documentTemplates}
+          templateDocuments={templateDocuments}
           title="Edit Document Requirements"
           subtitle="Changes apply to this existing listing. Removed requirements are hidden from the checklist, but existing uploaded files are not deleted."
           saveLabel="Save Requirements"

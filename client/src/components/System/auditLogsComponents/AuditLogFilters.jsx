@@ -7,6 +7,7 @@ const actionOptions = [
   { label: 'Delete', value: 'delete' },
   { label: 'Send', value: 'send' },
   { label: 'Approve', value: 'approve' },
+  { label: 'Reject / Resubmission', value: 'reject' },
   { label: 'Release', value: 'release' },
   { label: 'System', value: 'system' },
 ]
@@ -35,7 +36,7 @@ const AuditLogFilters = ({
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search title, module, user, entity, or description..."
+            placeholder="Search title, module, user, entity, description, or reason..."
             className="h-11 w-full rounded-2xl border border-slate-200 bg-white pl-11 pr-3 text-sm font-semibold text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
           />
         </label>
@@ -103,3 +104,4 @@ const AuditLogFilters = ({
 }
 
 export default AuditLogFilters
+

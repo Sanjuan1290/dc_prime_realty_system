@@ -191,7 +191,14 @@ const DataIntegrity = () => {
 
           <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
             <SummaryCard title="Buyer Accounts" checked={categories.accounts?.checked} issues={categories.accounts?.issues} status={categories.accounts?.status} icon={FiUsers} />
-            <SummaryCard title="Payments & SOA" checked={categories.paymentsSoa?.checked} issues={categories.paymentsSoa?.issues} status={categories.paymentsSoa?.status} icon={FiCreditCard} />
+            <SummaryCard
+              title="Payments & SOA"
+              checked={categories.paymentsSoa?.checked}
+              issues={categories.paymentsSoa?.issues}
+              status={categories.paymentsSoa?.status}
+              helper={`Payment records checked · ${Number(categories.paymentsSoa?.soaChecked || 0).toLocaleString('en-PH')} SOA rows also validated`}
+              icon={FiCreditCard}
+            />
             <SummaryCard title="Discounts & Adjustments" checked={categories.adjustments?.checked} issues={categories.adjustments?.issues} status={categories.adjustments?.status} helper="Adjusted accounts checked" icon={FiTrendingUp} />
             <SummaryCard title="Commissions" checked={categories.commissions?.checked} issues={categories.commissions?.issues} status={categories.commissions?.status} helper="Commission records checked" icon={FiTrendingUp} />
             <SummaryCard title="Proof of Income" checked={categories.proofOfIncome?.checked} issues={categories.proofOfIncome?.issues} status={categories.proofOfIncome?.status} helper="Active receipts checked" icon={FiFileText} />
@@ -292,3 +299,4 @@ const DataIntegrity = () => {
 }
 
 export default DataIntegrity
+

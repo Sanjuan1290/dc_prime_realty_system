@@ -59,7 +59,7 @@ const normalizeDocument = (document = {}) => ({
   status: String(document.status || document.lot_project_default_document_status || document.document_status || 'active').toLowerCase() === 'inactive' ? 'inactive' : 'active',
 })
 
-const AddListingModal = ({ project = {}, projectDefaultDocuments = [], libraryDocuments = [], isLoadingDefaults = false, onClose, onSave, isSaving = false }) => {
+const AddListingModal = ({ project = {}, projectDefaultDocuments = [], libraryDocuments = [], documentTemplates = [], templateDocuments = [], isLoadingDefaults = false, onClose, onSave, isSaving = false }) => {
   const selectedProject = useMemo(() => ({
     id: project.id || project.lot_project_id,
     name: project.name || project.lot_project_name || 'Lot Project',
@@ -320,6 +320,8 @@ const AddListingModal = ({ project = {}, projectDefaultDocuments = [], libraryDo
             setSelectedDocuments={handleDocumentsChange}
             libraryDocuments={libraryDocuments}
             projectDefaultDocuments={projectDefaultDocuments}
+            documentTemplates={documentTemplates}
+            templateDocuments={templateDocuments}
             onClose={() => setShowEditDocumentsModal(false)}
           />
         ) : null}
@@ -329,4 +331,5 @@ const AddListingModal = ({ project = {}, projectDefaultDocuments = [], libraryDo
 }
 
 export default AddListingModal
+
 

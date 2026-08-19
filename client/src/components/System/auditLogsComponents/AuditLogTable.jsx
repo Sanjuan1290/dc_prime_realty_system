@@ -8,12 +8,13 @@ const actionStyles = {
   send: 'bg-indigo-50 text-indigo-700 ring-indigo-100',
   approve: 'bg-green-50 text-green-700 ring-green-100',
   release: 'bg-purple-50 text-purple-700 ring-purple-100',
+  reject: 'bg-amber-50 text-amber-800 ring-amber-100',
   system: 'bg-slate-100 text-slate-700 ring-slate-200',
 }
 
-const ActionBadge = ({ value }) => (
+const ActionBadge = ({ value, label = '' }) => (
   <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-black capitalize ring-1 ${actionStyles[value] || actionStyles.system}`}>
-    {String(value || 'system').replace(/_/g, ' ')}
+    {label || String(value || 'system').replace(/_/g, ' ')}
   </span>
 )
 
@@ -62,7 +63,7 @@ const AuditLogTable = ({ logs = [], isLoading, pagination, onView, page, setPage
                   <p className="font-black text-slate-900">{log.actorName || 'System'}</p>
                   <p className="text-xs font-semibold text-slate-500">{log.actorEmail || log.actorRole || '-'}</p>
                 </td>
-                <td className="px-5 py-4"><ActionBadge value={log.action} /></td>
+                <td className="px-5 py-4"><ActionBadge value={log.action} label={log.title === 'Requested client document resubmission' ? 'Request Resubmission' : ''} /></td>
                 <td className="px-5 py-4 font-black text-blue-700">{log.module}</td>
                 <td className="px-5 py-4">
                   <p className="font-black text-slate-900">{log.title}</p>
@@ -124,3 +125,4 @@ const AuditLogTable = ({ logs = [], isLoading, pagination, onView, page, setPage
 }
 
 export default AuditLogTable
+

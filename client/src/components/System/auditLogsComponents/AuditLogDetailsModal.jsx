@@ -11,6 +11,10 @@ const DetailRow = ({ label, value }) => (
 const AuditLogDetailsModal = ({ log, onClose }) => {
   if (!log) return null
 
+  const isDocumentResubmission = log.title === 'Requested client document resubmission'
+    || (log.action === 'reject' && log.module === 'Documents' && log.metadata?.newStatus === 'Rejected')
+  const actionLabel = isDocumentResubmission ? 'Request Resubmission' : log.action
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
       <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
@@ -32,12 +36,20 @@ const AuditLogDetailsModal = ({ log, onClose }) => {
         <div className="flex-1 overflow-y-auto p-6">
           <div className="grid gap-4 md:grid-cols-2">
             <DetailRow label="Date & Time" value={formatDateTime(log.createdAt)} />
-            <DetailRow label="Action" value={log.action} />
+            <DetailRow label="Action" value={actionLabel} />
             <DetailRow label="User" value={log.actorName} />
             <DetailRow label="User Email" value={log.actorEmail} />
             <DetailRow label="Module" value={log.module} />
             <DetailRow label="Entity" value={log.entityLabel || (log.entityType ? `${log.entityType}${log.entityId ? ` #${log.entityId}` : ''}` : '-')} />
           </div>
+
+          {isDocumentResubmission ? (
+            <div className="mt-4 grid gap-4 md:grid-cols-3">
+              <DetailRow label="Document" value={log.metadata?.documentName || log.entityLabel} />
+              <DetailRow label="Previous Status" value={log.metadata?.previousStatus || '-'} />
+              <DetailRow label="New Status" value={log.metadata?.newStatusLabel || 'Needs Resubmission'} />
+            </div>
+          ) : null}
 
           <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
             <p className="text-xs font-black uppercase tracking-wide text-slate-500">Title</p>
@@ -46,6 +58,13 @@ const AuditLogDetailsModal = ({ log, onClose }) => {
               {log.description || 'No description provided.'}
             </p>
           </div>
+
+          {log.metadata?.reason ? (
+            <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+              <p className="text-xs font-black uppercase tracking-wide text-amber-700">Reason</p>
+              <p className="mt-1 whitespace-pre-wrap text-sm font-bold leading-relaxed text-amber-950">{log.metadata.reason}</p>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
@@ -53,3 +72,4 @@ const AuditLogDetailsModal = ({ log, onClose }) => {
 }
 
 export default AuditLogDetailsModal
+
