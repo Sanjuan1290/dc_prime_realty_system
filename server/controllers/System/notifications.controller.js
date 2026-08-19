@@ -5,6 +5,7 @@ import {
   tableExists,
   columnExists,
   getLatestActiveScheduleGenerationPredicate,
+  refreshStaleDailyPenaltyCaches,
 } from '../Lot_Projects/_shared/lotProject.shared.js';
 import {
   buildMissingDocumentsPdfBuffer,
@@ -645,6 +646,10 @@ export const getPaymentDueNotifications = async (req, res) => {
 
     await ensureNotificationTable(connection);
 
+    // Notifications read stored penalty_amount for summaries and email/PDF
+    // payloads, so repair only stale daily-penalty caches before reading them.
+    await refreshStaleDailyPenaltyCaches(connection);
+
     const category = String(req.query.category || 'all').toLowerCase();
     await ensureDocumentNotificationLogTable(connection);
 
@@ -793,8 +798,15 @@ export const sendPaymentDueNotification = async (req, res) => {
     const scheduleId = Number(req.params.scheduleId || 0);
     if (!scheduleId) return res.status(400).json({ message: 'Payment schedule id is required.' });
 
-    const row = await getScheduleNotificationRow(connection, scheduleId);
+    let row = await getScheduleNotificationRow(connection, scheduleId);
     if (!row) return res.status(404).json({ message: 'Payment schedule not found.' });
+
+    // A direct Send request may arrive without first opening the list page.
+    // Refresh this project's stale cache and re-read the schedule so the
+    // outgoing notice cannot use an old penalty amount.
+    await refreshStaleDailyPenaltyCaches(connection, { lotProjectId: Number(row.lot_project_id || 0) });
+    row = await getScheduleNotificationRow(connection, scheduleId);
+    if (!row) return res.status(404).json({ message: 'Payment schedule not found after penalty refresh.' });
 
     const notification = mapNotificationRow(row);
     if (!notification.buyerEmail) {
@@ -1522,4 +1534,3 @@ export const getDocumentNotifications = async (req, res) => {
     connection.release();
   }
 };
-

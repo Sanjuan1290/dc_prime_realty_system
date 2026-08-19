@@ -1840,6 +1840,94 @@ export const refreshListingPenaltyCache = async (
   return snapshots;
 };
 
+/**
+ * Refreshes only current sold buyer accounts whose overdue daily-penalty cache
+ * has not been calculated through the requested date. This keeps read-heavy
+ * screens fast while still making the canonical penalty engine the source of
+ * truth whenever a cached schedule is stale.
+ */
+export const refreshStaleDailyPenaltyCaches = async (
+  connection,
+  { lotProjectId = 0, asOfDate = todayDateOnly() } = {}
+) => {
+  const cleanAsOfDate = plainDate(asOfDate, todayDateOnly());
+
+  if (!(await tableExists(connection, 'lot_project_listings'))) {
+    return { refreshed: 0, asOfDate: cleanAsOfDate, skipped: 'listings_missing' };
+  }
+  if (!(await tableExists(connection, 'lot_project_client_profiles'))) {
+    return { refreshed: 0, asOfDate: cleanAsOfDate, skipped: 'profiles_missing' };
+  }
+  if (!(await tableExists(connection, 'lot_project_payment_schedules'))) {
+    return { refreshed: 0, asOfDate: cleanAsOfDate, skipped: 'schedules_missing' };
+  }
+  if (!(await columnExists(connection, 'lot_project_client_profiles', 'soa_penalty_calculation_method'))) {
+    return { refreshed: 0, asOfDate: cleanAsOfDate, skipped: 'penalty_method_missing' };
+  }
+  if (!(await columnExists(connection, 'lot_project_payment_schedules', 'penalty_calculated_through'))) {
+    return { refreshed: 0, asOfDate: cleanAsOfDate, skipped: 'penalty_cache_column_missing' };
+  }
+
+  const hasAccounts = await tableExists(connection, 'lot_project_accounts');
+  const hasListingCurrentAccountId = await columnExists(connection, 'lot_project_listings', 'current_account_id');
+  const hasScheduleAccountId = await columnExists(connection, 'lot_project_payment_schedules', 'lot_project_account_id');
+  const useCurrentAccountScope = hasAccounts && hasListingCurrentAccountId;
+
+  const profileJoin = useCurrentAccountScope
+    ? `INNER JOIN lot_project_accounts current_account
+        ON current_account.lot_project_account_id = l.current_account_id
+      INNER JOIN lot_project_client_profiles cp
+        ON cp.lot_project_client_profile_id = current_account.lot_project_client_profile_id`
+    : `INNER JOIN lot_project_client_profiles cp
+        ON cp.lot_project_listing_id = l.lot_project_listing_id
+       AND cp.lot_project_client_profile_status = 'active'`;
+
+  const scheduleAccountScope = useCurrentAccountScope && hasScheduleAccountId
+    ? 'AND s.lot_project_account_id = l.current_account_id'
+    : 'AND s.lot_project_client_profile_id = cp.lot_project_client_profile_id';
+
+  const projectId = Number(lotProjectId || 0);
+  const projectScope = projectId ? 'AND l.lot_project_id = ?' : '';
+  const params = [cleanAsOfDate, cleanAsOfDate];
+  if (projectId) params.push(projectId);
+
+  const [listings] = await connection.query(
+    `
+      SELECT DISTINCT
+        l.lot_project_id,
+        l.lot_project_listing_id,
+        l.lot_project_listing_tcp,
+        cp.lot_project_client_profile_id,
+        ${useCurrentAccountScope ? 'l.current_account_id' : 'NULL'} AS lot_project_account_id
+      FROM lot_project_listings l
+      ${profileJoin}
+      INNER JOIN lot_project_payment_schedules s
+        ON s.lot_project_id = l.lot_project_id
+       AND s.lot_project_listing_id = l.lot_project_listing_id
+       AND s.lot_project_client_profile_id = cp.lot_project_client_profile_id
+      WHERE cp.soa_penalty_calculation_method = 'daily'
+        AND cp.soa_penalty_rate_percent > 0
+        AND cp.lot_project_client_profile_status = 'active'
+        AND l.lot_project_listing_status = 'sold'
+        AND s.schedule_status IN ('Unpaid', 'Partial', 'Overdue')
+        AND s.due_date IS NOT NULL
+        AND s.due_date < ?
+        AND (s.penalty_calculated_through IS NULL OR s.penalty_calculated_through < ?)
+        ${scheduleAccountScope}
+        AND ${getLatestActiveScheduleGenerationPredicate('s')}
+        ${projectScope}
+    `,
+    params
+  );
+
+  for (const listing of listings) {
+    await refreshListingPenaltyCache(connection, listing, cleanAsOfDate);
+    await recomputeListingScheduleBalances(connection, listing, { asOfDate: cleanAsOfDate });
+  }
+
+  return { refreshed: listings.length, asOfDate: cleanAsOfDate };
+};
+
 export const getStoredScheduleType = (row = {}) => {
   const text = String(row.description || '').toLowerCase();
   if (text.includes('reservation')) return 'reservation';
@@ -4228,7 +4316,3 @@ export const addIfColumnExists = async (connection, tableName, columns, values, 
 };
 
 // End of lotProject.shared.js — verified complete.
-
-
-
-

@@ -187,7 +187,7 @@ const DataIntegrityDetailsModal = ({ accountId, onClose }) => {
                 <BreakdownRow label="Commission Payment Progress" value={percent(data.financial?.commissionProgress)} strong />
               </Section>
 
-              <Section title="Payments & SOA" description="Verified non-balloon payments should be fully allocated, and stored SOA paid amounts should match verified allocations.">
+              <Section title="Payments & SOA" description="Verified non-balloon payments should be fully allocated, stored SOA paid amounts should match verified allocations, and overdue daily-penalty caches should be current.">
                 {data.payments?.length ? (
                   <div className="overflow-x-auto rounded-xl border border-slate-200">
                     <table className="min-w-[820px] w-full divide-y divide-slate-200 text-sm">

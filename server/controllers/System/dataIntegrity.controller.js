@@ -618,9 +618,34 @@ const buildAccountReports = (dataset) => {
     }
 
     for (const schedule of schedules) {
-      if (clean(schedule.schedule_status).toLowerCase() === 'cancelled') continue;
+      const scheduleStatus = clean(schedule.schedule_status).toLowerCase();
+      if (scheduleStatus === 'cancelled') continue;
       const scheduleType = getStoredScheduleType(schedule);
       if (scheduleType === 'balloon') continue;
+
+      const scheduleDueDate = dateOnly(schedule.due_date);
+      const penaltyCalculatedThrough = dateOnly(schedule.penalty_calculated_through);
+      const usesDailyPenalty = clean(account.soa_penalty_calculation_method).toLowerCase() === 'daily'
+        && toNumber(account.soa_penalty_rate_percent) > 0;
+      const canStillAccruePenalty = ['unpaid', 'partial', 'overdue'].includes(scheduleStatus);
+      if (
+        report.isCurrent
+        && usesDailyPenalty
+        && canStillAccruePenalty
+        && scheduleDueDate
+        && scheduleDueDate < today
+        && (!penaltyCalculatedThrough || penaltyCalculatedThrough < today)
+      ) {
+        addIssue(report, makeIssue({
+          category: 'paymentsSoa',
+          severity: 'review',
+          title: 'Daily penalty cache is stale',
+          message: `${schedule.description || 'SOA row'} was last calculated through ${penaltyCalculatedThrough || 'no saved date'}; current date is ${today}. The source payment/SOA module should refresh this derived penalty before it is used elsewhere.`,
+          entityType: 'schedule',
+          entityId: schedule.lot_project_payment_schedule_id,
+        }));
+      }
+
       const storedPaid = roundMoney(schedule.amount_paid);
       const allocatedPaid = roundMoney(schedule.verified_allocation_total);
       if (differs(storedPaid, allocatedPaid)) {
@@ -856,6 +881,7 @@ const buildAccountReports = (dataset) => {
       discountAmount: roundMoney(row.discount_amount),
       penalty: roundMoney(row.penalty_amount),
       waivedPenalty: roundMoney(row.waived_penalty_amount),
+      penaltyCalculatedThrough: dateOnly(row.penalty_calculated_through),
       amountPaid: roundMoney(row.amount_paid),
       allocatedPaid: roundMoney(row.verified_allocation_total),
       endingBalance: roundMoney(row.ending_balance),

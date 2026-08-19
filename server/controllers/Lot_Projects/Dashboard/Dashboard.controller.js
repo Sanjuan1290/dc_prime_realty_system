@@ -10,6 +10,7 @@ import {
   formatDocumentsLabel,
   todayDateOnly,
   getLatestActiveScheduleGenerationPredicate,
+  refreshStaleDailyPenaltyCaches,
 } from '../_shared/lotProject.shared.js';
 
 const toNumber = (value) => Number(value || 0);
@@ -455,6 +456,16 @@ export const getLotProjectDashboard = async (req, res) => {
     const hasCommissions = await tableExists(connection, 'lot_project_commissions');
     const hasCommissionReleases = await tableExists(connection, 'lot_project_commission_releases');
     const hasClientProfiles = await tableExists(connection, 'lot_project_client_profiles');
+
+    // Penalties are cached derived values. Refresh only stale overdue rows for
+    // this project before any dashboard aggregate reads penalty_amount.
+    if (hasSchedules && hasClientProfiles) {
+      await refreshStaleDailyPenaltyCaches(connection, {
+        lotProjectId: project.lot_project_id,
+        asOfDate: todayDateOnly(),
+      });
+    }
+
     const hasAccounts = await tableExists(connection, 'lot_project_accounts');
     const hasListingDocuments = await tableExists(connection, 'lot_project_listing_documents');
     const hasClientDocuments = await tableExists(connection, 'lot_project_client_documents');

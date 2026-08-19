@@ -17,6 +17,8 @@ import {
   getComputedSoaTerms,
   createComputedSoaRows,
   recomputeComputedSoaBalances,
+  refreshListingPenaltyCache,
+  recomputeListingScheduleBalances,
 } from '../_shared/lotProject.shared.js';
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
 import { toFormalTitleCase } from '../_shared/buyerProfileText.js';
@@ -1045,6 +1047,17 @@ export const reserveLotProjectListing = async (req, res) => {
       legalMiscFeeAmount,
     });
 
+    // A newly-created historical SOA must not wait for the midnight scheduler.
+    // Seed the persisted cache immediately so SOA, Dashboard, Notifications,
+    // PDFs, and downstream summaries all see the same canonical penalty value.
+    const reservedListing = {
+      ...listing,
+      lot_project_client_profile_id: clientProfileId,
+      lot_project_account_id: account.accountId,
+    };
+    await refreshListingPenaltyCache(connection, reservedListing, today);
+    await recomputeListingScheduleBalances(connection, reservedListing, { asOfDate: today });
+
     await replaceReservationCommissions(
       connection,
       project.lot_project_id,
@@ -1170,4 +1183,3 @@ export const reserveLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
-
