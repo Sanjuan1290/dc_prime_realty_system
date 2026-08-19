@@ -107,7 +107,8 @@ const DataIntegrity = () => {
     queryKey: ['data-integrity-report', scopedProject || 'all', scopedAccountId || 'all'],
     queryFn: () => useFetch(`/data-integrity${queryString ? `?${queryString}` : ''}`),
     retry: false,
-    staleTime: 60_000,
+    staleTime: 0,
+    refetchOnMount: 'always',
   })
 
   const summary = query.data?.summary || {}

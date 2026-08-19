@@ -47,10 +47,12 @@ test('financial integrity checks are discount-aware and do not double-count rese
 
   assert.match(controller, /soa_sale_discount_percentage/);
   assert.match(controller, /soa_sale_discount_amount/);
-  assert.match(controller, /downpaymentDiscountTotal/);
-  assert.match(controller, /const earnedDpDiscount = getEarnedDpDiscount/);
-  assert.match(controller, /const settledValue = roundMoney\(Math\.min\(verifiedCash \+ earnedDpDiscount/);
-  assert.doesNotMatch(controller, /verifiedCash \+ earnedDpDiscount \+[^\n]*reservation/i);
+  const progress = read('server/utils/commissionProgress.js');
+  assert.match(controller, /calculateCommissionPaymentProgress/);
+  assert.match(progress, /approvedDpDiscount/);
+  assert.match(progress, /earnedDpDiscount/);
+  assert.match(progress, /verifiedCash \+ earnedDpDiscount/);
+  assert.doesNotMatch(progress, /verifiedCash \+ earnedDpDiscount \+[^\n]*reservation/i);
   assert.match(controller, /reservationFeeDownpaymentCredit/);
   assert.match(controller, /soa_lmf_waived_amount/);
   assert.match(controller, /penaltyWaivedAmount/);
@@ -82,8 +84,7 @@ test('commission integrity checks releases, deductions, dates, and historical pa
   assert.match(controller, /allDeductions/);
   assert.match(controller, /Earned on Cancellation/);
   assert.match(controller, /Historical release is not supported by encoded payment history/);
-  assert.match(controller, /getVerifiedCash\(payments, actualDate\)/);
-  assert.match(controller, /getEarnedDpDiscount\(terms, payments, actualDate\)/);
+  assert.match(controller, /calculateCommissionPaymentProgress\(\{[\s\S]*cutoffDate: actualDate/);
   assert.match(controller, /release_trigger_percent/);
   assert.match(controller, /Commission release predates the buyer account/);
   assert.match(controller, /release_recorded_at/);
@@ -130,4 +131,6 @@ test('Data Integrity UI is explicitly read-only and links users back to source r
   assert.match(page, /never automatically edits payments, SOA rows, discounts, commissions, receipts, account status, or protected files/);
   assert.match(modal, /Read-only integrity checker/);
   assert.match(modal, /Open Buyer Account/);
+  assert.match(page, /staleTime:\s*0/);
+  assert.match(page, /refetchOnMount:\s*'always'/);
 });

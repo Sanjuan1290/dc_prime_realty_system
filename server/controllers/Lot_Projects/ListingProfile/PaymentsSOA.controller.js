@@ -83,6 +83,7 @@ import { writeAuditLog } from '../../System/auditLogs.controller.js';
 import { isFullAccessAdministrator } from '../../../config/permissions.js';
 import { runTransactionWithRetry } from '../../../utils/transactionRetry.js';
 import { createPaymentStorageCode } from '../../../services/storageCodes.service.js';
+import { syncCommissionProgressForListing } from '../../../services/commissionProgress.service.js';
 
 const createHttpError = (statusCode, message) => {
   const error = new Error(message);
@@ -607,6 +608,8 @@ export const createLotProjectListingPayment = async (req, res) => {
         await rebuildListingPaymentAllocationsChronologically(connection, listing, { finalAsOfDate: todayDateOnly() });
       }
 
+      await syncCommissionProgressForListing(connection, listing);
+
       await writeAuditLog(connection, req, {
         action: 'create',
         module: 'Payments',
@@ -790,6 +793,8 @@ export const updateLotProjectListingPayment = async (req, res) => {
       if (hasSchedules) {
         await rebuildListingPaymentAllocationsChronologically(connection, listing, { finalAsOfDate: todayDateOnly() });
       }
+
+      await syncCommissionProgressForListing(connection, listing);
 
       return { paymentId, referenceId, paymentType };
     });
@@ -1116,6 +1121,10 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
       await recomputeListingScheduleBalances(connection, refreshedListing);
     }
 
+    if (structuralTermsChanged) {
+      await syncCommissionProgressForListing(connection, listing);
+    }
+
     await writeAuditLog(connection, req, {
       action: 'update',
       module: 'Payments',
@@ -1357,6 +1366,8 @@ export const waiveSeparateLegalMiscFee = async (req, res) => {
       soa_legal_misc_fee_amount: 0,
     });
 
+    await syncCommissionProgressForListing(connection, listing);
+
     await writeAuditLog(connection, req, {
       action: 'update',
       module: 'Payments',
@@ -1489,6 +1500,8 @@ export const deleteLotProjectListingPayment = async (req, res) => {
       if (hasSchedules) {
         await rebuildListingPaymentAllocationsChronologically(connection, listing, { finalAsOfDate: todayDateOnly() });
       }
+
+      await syncCommissionProgressForListing(connection, listing);
 
       await connection.query(
         `
@@ -2152,3 +2165,4 @@ export const restorePaymentSchedulePenaltyWaiver = async (req, res) => {
     connection.release();
   }
 };
+

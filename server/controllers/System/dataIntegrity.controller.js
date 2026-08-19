@@ -11,6 +11,7 @@ import {
   todayDateOnly,
 } from '../Lot_Projects/_shared/lotProject.shared.js';
 import { calculateContractPricing } from '../Lot_Projects/_shared/listingPricing.js';
+import { calculateCommissionPaymentProgress } from '../../utils/commissionProgress.js';
 
 const MONEY_TOLERANCE = 0.05;
 const VALID_SCAN_STATUSES = new Set(['pending', 'approved', 'rejected', 'not_scanned', 'error']);
@@ -418,32 +419,6 @@ const groupBy = (rows = [], keyName) => {
   return map;
 };
 
-const paymentWithinCutoff = (payment, cutoffDate = null) => {
-  if (!cutoffDate) return true;
-  const paymentDate = dateOnly(payment.lot_project_payment_date);
-  return Boolean(paymentDate && paymentDate <= cutoffDate);
-};
-
-const getEarnedDpDiscount = (terms = {}, payments = [], cutoffDate = null) => {
-  const approved = roundMoney(terms.downpaymentDiscountTotal);
-  if (approved <= 0) return 0;
-  const remainingDpCash = roundMoney(terms.downpaymentTotal);
-  if (remainingDpCash <= 0) return approved;
-  const paid = payments
-    .filter((payment) => clean(payment.lot_project_payment_status).toLowerCase() === 'verified')
-    .filter((payment) => paymentWithinCutoff(payment, cutoffDate))
-    .filter((payment) => ['downpayment', 'down_payment'].includes(clean(payment.lot_project_payment_type).toLowerCase()))
-    .reduce((sum, payment) => sum + toNumber(payment.lot_project_payment_amount), 0);
-  return roundMoney(Math.min(approved, approved * (paid / remainingDpCash)));
-};
-
-const getVerifiedCash = (payments = [], cutoffDate = null) => roundMoney(
-  payments
-    .filter((payment) => clean(payment.lot_project_payment_status).toLowerCase() === 'verified')
-    .filter((payment) => paymentWithinCutoff(payment, cutoffDate))
-    .reduce((sum, payment) => sum + toNumber(payment.lot_project_payment_amount), 0)
-);
-
 const summarizeAdjustments = (account, schedules, adjustments, penaltyReliefs, terms) => {
   const saleDiscountAmount = roundMoney(account.soa_sale_discount_amount);
   const approvedDpDiscount = roundMoney(terms.downpaymentDiscountTotal);
@@ -564,13 +539,16 @@ const buildAccountReports = (dataset) => {
     }
 
     const terms = getComputedSoaTerms(account, schedules);
-    const verifiedCash = getVerifiedCash(payments);
-    const earnedDpDiscount = getEarnedDpDiscount(terms, payments);
-    const settledValue = roundMoney(Math.min(verifiedCash + earnedDpDiscount, toNumber(terms.tcp)));
-    const commissionProgress = toNumber(terms.tcp) <= 0
-      ? 0
-      : Math.min(100, roundMoney((settledValue / toNumber(terms.tcp)) * 100));
-    const contractRemaining = roundMoney(Math.max(toNumber(terms.tcp) - settledValue, 0));
+    const progressSnapshot = calculateCommissionPaymentProgress({
+      terms,
+      payments,
+      forceFullyPaid: clean(account.lot_project_listing_sold_substatus).toLowerCase() === 'fully_paid',
+    });
+    const verifiedCash = progressSnapshot.verifiedCash;
+    const earnedDpDiscount = progressSnapshot.earnedDpDiscount;
+    const settledValue = progressSnapshot.settledValue;
+    const commissionProgress = progressSnapshot.paymentPercent;
+    const contractRemaining = progressSnapshot.remainingBalance;
     const adjustmentSummary = summarizeAdjustments(account, schedules, adjustments, penaltyReliefs, terms);
 
     const baseSellingPrice = roundMoney(account.soa_selected_base_selling_price);
@@ -724,12 +702,11 @@ const buildAccountReports = (dataset) => {
           }));
         }
         if (clean(release.release_entry_mode).toLowerCase() === 'historical' && actualDate && !release.cancellation_earning_reason) {
-          const historicalCash = getVerifiedCash(payments, actualDate);
-          const historicalEarnedDpDiscount = getEarnedDpDiscount(terms, payments, actualDate);
-          const historicalSettledValue = roundMoney(Math.min(historicalCash + historicalEarnedDpDiscount, toNumber(terms.tcp)));
-          const historicalProgress = toNumber(terms.tcp) > 0
-            ? Math.min(100, roundMoney((historicalSettledValue / toNumber(terms.tcp)) * 100))
-            : 0;
+          const historicalProgress = calculateCommissionPaymentProgress({
+            terms,
+            payments,
+            cutoffDate: actualDate,
+          }).paymentPercent;
           const triggerPercent = toNumber(release.release_trigger_percent);
           if (historicalProgress + 0.01 < triggerPercent) {
             addIssue(report, makeIssue({
