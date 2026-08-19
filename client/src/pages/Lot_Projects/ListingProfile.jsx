@@ -773,7 +773,7 @@ const ListingProfile = () => {
             : 'border-emerald-200 bg-emerald-50 text-emerald-900'
         const label = status === 'critical' ? 'Critical' : status === 'review' ? 'Needs Review' : 'Balanced'
         const role = currentUserData?.user?.role || 'super_admin'
-        const integrityPath = `/portal/${role}/data-integrity?accountId=${integrityAccountId}`
+        const integrityPath = `/portal/${role}/data-integrity?viewAccountId=${integrityAccountId}`
         return (
           <section className={`rounded-2xl border p-4 shadow-sm ${tone}`}>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

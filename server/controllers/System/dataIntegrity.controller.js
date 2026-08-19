@@ -985,7 +985,7 @@ const buildSummary = (reports = []) => {
     categories: {
       accounts: { label: 'Buyer Accounts', checked: reports.length, issues: 0, status: 'balanced' },
       paymentsSoa: { label: 'Payments & SOA', checked: 0, soaChecked: 0, issues: 0, status: 'balanced' },
-      adjustments: { label: 'Discounts & Adjustments', checked: 0, issues: 0, status: 'balanced' },
+      adjustments: { label: 'Discounts & Waivers', checked: 0, issues: 0, status: 'balanced' },
       commissions: { label: 'Commissions', checked: 0, issues: 0, status: 'balanced' },
       proofOfIncome: { label: 'Proof of Income', checked: 0, issues: 0, status: 'balanced' },
       documentsFiles: { label: 'Documents & Files', checked: 0, issues: 0, status: 'balanced' },

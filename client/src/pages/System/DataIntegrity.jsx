@@ -60,7 +60,7 @@ const categoryTabs = [
   { key: 'overview', label: 'Overview' },
   { key: 'accounts', label: 'Accounts' },
   { key: 'paymentsSoa', label: 'Payments & SOA' },
-  { key: 'adjustments', label: 'Discounts & Adjustments' },
+  { key: 'adjustments', label: 'Discounts & Waivers' },
   { key: 'commissions', label: 'Commissions' },
   { key: 'proofOfIncome', label: 'Proof of Income' },
   { key: 'documentsFiles', label: 'Documents & Files' },
@@ -90,12 +90,13 @@ const DataIntegrity = () => {
   const [searchParams] = useSearchParams()
   const scopedProject = searchParams.get('project') || searchParams.get('projectSlug') || ''
   const scopedAccountId = Number(searchParams.get('accountId') || 0)
+  const viewAccountId = Number(searchParams.get('viewAccountId') || 0)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
-  const [recordFilter, setRecordFilter] = useState(scopedAccountId ? 'all' : 'all')
+  const [recordFilter, setRecordFilter] = useState('all')
   const [activeTab, setActiveTab] = useState('overview')
   const [page, setPage] = useState(1)
-  const [selectedAccountId, setSelectedAccountId] = useState(scopedAccountId || null)
+  const [selectedAccountId, setSelectedAccountId] = useState(viewAccountId || scopedAccountId || null)
 
   const queryString = useMemo(() => {
     const params = new URLSearchParams()
@@ -126,6 +127,10 @@ const DataIntegrity = () => {
   useEffect(() => {
     if (pagination.page && pagination.page !== page) setPage(pagination.page)
   }, [page, pagination.page])
+
+  useEffect(() => {
+    if (viewAccountId) setSelectedAccountId(viewAccountId)
+  }, [viewAccountId])
 
   const projects = useMemo(() => {
     const map = new Map()
@@ -199,7 +204,7 @@ const DataIntegrity = () => {
               helper={`Payment records checked · ${Number(categories.paymentsSoa?.soaChecked || 0).toLocaleString('en-PH')} SOA rows also validated`}
               icon={FiCreditCard}
             />
-            <SummaryCard title="Discounts & Adjustments" checked={categories.adjustments?.checked} issues={categories.adjustments?.issues} status={categories.adjustments?.status} helper="Adjusted accounts checked" icon={FiTrendingUp} />
+            <SummaryCard title="Discounts & Waivers" checked={categories.adjustments?.checked} issues={categories.adjustments?.issues} status={categories.adjustments?.status} helper="Accounts with discounts / waivers checked" icon={FiTrendingUp} />
             <SummaryCard title="Commissions" checked={categories.commissions?.checked} issues={categories.commissions?.issues} status={categories.commissions?.status} helper="Commission records checked" icon={FiTrendingUp} />
             <SummaryCard title="Proof of Income" checked={categories.proofOfIncome?.checked} issues={categories.proofOfIncome?.issues} status={categories.proofOfIncome?.status} helper="Active receipts checked" icon={FiFileText} />
             <SummaryCard title="Documents & Files" checked={categories.documentsFiles?.checked} issues={categories.documentsFiles?.issues} status={categories.documentsFiles?.status} helper="Active protected files checked" icon={FiShield} />
@@ -210,7 +215,7 @@ const DataIntegrity = () => {
               <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
                 <div>
                   <h2 className="text-lg font-black text-slate-950">Integrity Records</h2>
-                  <p className="mt-1 text-sm font-semibold text-slate-500">Discounts, credits, and waivers are shown as legitimate adjustments and are not treated as missing cash.</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-500">Sale discounts, DP discounts, LMF waivers, and penalty reliefs are treated as legitimate financial adjustments and are not mistaken for missing cash.</p>
                 </div>
                 <div className="grid gap-2 sm:grid-cols-3 xl:min-w-[720px]">
                   <label className="relative">
@@ -225,7 +230,7 @@ const DataIntegrity = () => {
                   </select>
                   <select value={recordFilter} onChange={(event) => { setRecordFilter(event.target.value); setPage(1) }} className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-700 outline-none">
                     <option value="all">All records</option>
-                    <option value="adjusted">With discounts / adjustments</option>
+                    <option value="adjusted">With discounts / waivers</option>
                     <option value="historical">Historical records</option>
                     <option value="issues">Needs review only</option>
                     <option value="clean">Balanced only</option>
@@ -247,7 +252,7 @@ const DataIntegrity = () => {
                     <th className="px-5 py-3">Unit / Account</th>
                     <th className="px-5 py-3">Buyer / Project</th>
                     <th className="px-5 py-3">Integrity</th>
-                    <th className="px-5 py-3">Discounts & Adjustments</th>
+                    <th className="px-5 py-3">Discounts & Waivers</th>
                     <th className="px-5 py-3 text-right">Direct Difference</th>
                     <th className="px-5 py-3">Top Finding</th>
                     <th className="px-5 py-3 text-right">Action</th>
@@ -276,7 +281,7 @@ const DataIntegrity = () => {
             <div className="flex flex-col gap-3 border-t border-slate-200 px-5 py-4 text-sm font-semibold text-slate-500 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
                 <span>Showing {pagination.from}-{pagination.to} of {pagination.total} buyer accounts.</span>
-                <span>Historical: {summary.historicalAccounts || 0} · With adjustments: {summary.adjustedAccounts || 0}</span>
+                <span>Historical: {summary.historicalAccounts || 0} · With discounts / waivers: {summary.adjustedAccounts || 0}</span>
                 <span>10 records per page</span>
               </div>
               <div className="flex items-center gap-2">

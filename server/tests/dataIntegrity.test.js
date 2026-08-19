@@ -56,8 +56,8 @@ test('financial integrity checks are discount-aware and do not double-count rese
   assert.match(controller, /reservationFeeDownpaymentCredit/);
   assert.match(controller, /soa_lmf_waived_amount/);
   assert.match(controller, /penaltyWaivedAmount/);
-  assert.match(page, /Discounts, credits, and waivers are shown as legitimate adjustments/);
-  assert.match(page, /Discounts & Adjustments/);
+  assert.match(page, /Sale discounts, DP discounts, LMF waivers, and penalty reliefs/);
+  assert.match(page, /Discounts & Waivers/);
   assert.match(modal, /Reservation credit changes the cash still required for DP; it is not counted twice/);
   assert.match(modal, /Sale Discount/);
   assert.match(modal, /Approved DP Discount/);
@@ -119,8 +119,21 @@ test('project dashboard and listing profile expose lightweight integrity shortcu
   assert.match(dashboard, /Data Integrity/);
   assert.match(dashboard, /View Integrity Report/);
   assert.match(listingProfile, /data-integrity\/summary\?accountId=/);
+  assert.match(listingProfile, /data-integrity\?viewAccountId=\$\{integrityAccountId\}/);
+  assert.doesNotMatch(listingProfile, /integrityPath = `[^`]*data-integrity\?accountId=/);
   assert.match(listingProfile, /Account Integrity/);
   assert.match(listingProfile, /View Breakdown/);
+});
+
+test('listing View Breakdown opens the account modal without silently scoping Integrity Records', () => {
+  const page = read('client/src/pages/System/DataIntegrity.jsx');
+
+  assert.match(page, /searchParams\.get\('viewAccountId'\)/);
+  assert.match(page, /useState\(viewAccountId \|\| scopedAccountId \|\| null\)/);
+  assert.match(page, /if \(viewAccountId\) setSelectedAccountId\(viewAccountId\)/);
+  assert.doesNotMatch(page, /params\.set\('viewAccountId'/);
+  assert.match(page, /if \(scopedAccountId\) params\.set\('accountId'/);
+  assert.match(page, /<option value="all">All records<\/option>/);
 });
 
 test('Data Integrity UI is explicitly read-only and links users back to source records instead of repairing them', () => {
@@ -159,3 +172,4 @@ test('Integrity Records uses server-backed pagination capped at 10 records per p
   assert.match(page, />Previous<\/button>/);
   assert.match(page, />Next<\/button>/);
 });
+
