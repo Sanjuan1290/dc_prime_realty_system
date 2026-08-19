@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import StatusAlert from '../../../Shared/StatusAlert'
-import { useFetch } from '../../../../utils/useFetch'
+import { fetchProtectedObjectUrl, revokeProtectedObjectUrl } from '../../../../utils/protectedFile'
 import PdfPrintPages from './PdfPrintPages'
 import PrintPageShell from './PrintPageShell'
 import { readSignedReceiptPrintPayload } from './signedReceiptPrint'
@@ -15,7 +15,7 @@ const isPdfFile = (file = {}) => {
 
 const isPrintableUrl = (value = '') => {
   const url = String(value || '').trim()
-  return /^https?:\/\//i.test(url) || url.startsWith('data:image/') || url.startsWith('data:application/pdf')
+  return /^https?:\/\//i.test(url) || url.startsWith('blob:') || url.startsWith('data:image/') || url.startsWith('data:application/pdf')
 }
 
 const SignedReceiptsPrintPage = () => {
@@ -28,6 +28,12 @@ const SignedReceiptsPrintPage = () => {
   const [loadState, setLoadState] = useState({ loading: true, failed: 0, warningCount: 0, message: '' })
   const [pdfStatuses, setPdfStatuses] = useState({})
   const [imageStatuses, setImageStatuses] = useState({})
+  const objectUrlsRef = useRef(new Set())
+
+  useEffect(() => () => {
+    objectUrlsRef.current.forEach((url) => revokeProtectedObjectUrl(url))
+    objectUrlsRef.current.clear()
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -43,17 +49,16 @@ const SignedReceiptsPrintPage = () => {
 
       const results = await Promise.allSettled(
         sourceFiles.map(async (file, index) => {
-          const result = await useFetch(file.accessPath)
-          const data = result?.data || {}
-          const fileUrl = data.url || result?.url || ''
-          const scanStatus = String(data.malwareScanStatus || file.malwareScanStatus || '').toLowerCase()
+          const scanStatus = String(file.malwareScanStatus || '').toLowerCase()
           const allowUnscanned = file.allowUnscanned === true && scanStatus === 'not_scanned'
 
           if (scanStatus !== 'approved' && !allowUnscanned) {
             throw new Error(`${file.fileName || file.name || `Signed receipt ${index + 1}`} is not security-approved for printing.`)
           }
+          const fileUrl = await fetchProtectedObjectUrl(file.contentPath || file.accessPath)
+          objectUrlsRef.current.add(fileUrl)
           if (!isPrintableUrl(fileUrl)) {
-            throw new Error(`No printable secure link was returned for ${file.fileName || file.name || `signed receipt ${index + 1}`}.`)
+            throw new Error(`Protected content was not returned for ${file.fileName || file.name || `signed receipt ${index + 1}`}.`)
           }
 
           return {
@@ -61,7 +66,7 @@ const SignedReceiptsPrintPage = () => {
             key: file.key || `signed-receipt-${index + 1}`,
             fileUrl,
             isPdf: isPdfFile(file),
-            securityWarning: data.securityWarning || null,
+            securityWarning: allowUnscanned ? 'This signed receipt was uploaded without malware scanning.' : null,
           }
         })
       )
@@ -208,3 +213,4 @@ const SignedReceiptsPrintPage = () => {
 }
 
 export default SignedReceiptsPrintPage
+

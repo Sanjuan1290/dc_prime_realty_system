@@ -897,14 +897,21 @@ const normalizeClientDocumentImageEntries = (fileUrlValue, fileNameValue = '', p
       );
 
       // Authenticated Cloudinary files deliberately store no permanent public URL.
-      // Keep their file id/access route so the client can request a short-lived link.
+      // Keep their file id/status route so the client can request authenticated content without exposing Cloudinary URLs.
       if (!url && !accessPath && !fileId && !cloudinaryPublicId) return null;
+
+      const contentPath = String(
+        item.contentPath ||
+        item.content_path ||
+        (accessPath.endsWith('/access-url') ? accessPath.replace(/\/access-url$/, '/content') : '')
+      ).trim();
 
       return {
         ...item,
         url,
         fileId,
         accessPath,
+        contentPath,
         protected: protectedFile,
         cloudinaryPublicId: cloudinaryPublicId || item.cloudinaryPublicId || item.cloudinary_public_id || null,
         fileName: item.fileName || item.file_name || item.originalFilename || item.original_filename || fallbackFileName || `Document Image ${index + 1}`,
@@ -4371,4 +4378,5 @@ export const addIfColumnExists = async (connection, tableName, columns, values, 
 };
 
 // End of lotProject.shared.js — verified complete.
+
 

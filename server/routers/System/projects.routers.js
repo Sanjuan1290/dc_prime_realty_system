@@ -49,7 +49,9 @@ import {
   createLotProjectDocumentUploadSignature,
   uploadLotProjectListingDocument,
   getLotProjectDocumentFileAccessUrl,
+  getLotProjectDocumentFileContent,
   approveLotProjectListingDocument,
+  requestLotProjectListingDocumentResubmission,
   clearLotProjectListingDocument,
 } from '../../controllers/Lot_Projects/ListingProfile/Documents.controller.js';
 import {
@@ -71,6 +73,7 @@ import {
   createLotProjectPaymentProofUploadSignature,
   saveLotProjectPaymentProofs,
   getLotProjectPaymentProofAccessUrl,
+  getLotProjectPaymentProofContent,
   deleteLotProjectPaymentProof,
 } from '../../controllers/Lot_Projects/ListingProfile/PaymentProofs.controller.js';
 import {
@@ -82,6 +85,7 @@ import {
   createLotProjectPaymentAcknowledgementSignedCopyUploadSignature,
   saveLotProjectPaymentAcknowledgementSignedCopy,
   getLotProjectPaymentAcknowledgementSignedCopyAccessUrl,
+  getLotProjectPaymentAcknowledgementSignedCopyContent,
 } from '../../controllers/Lot_Projects/ListingProfile/SignedAcknowledgement.controller.js';
 import {
   getReservationAgents,
@@ -121,6 +125,7 @@ router.get('/lot-projects/:projectSlug/accounts/:accountId/purge-preview', requi
 router.post('/lot-projects/:projectSlug/accounts/:accountId/purge-code', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), requireExactRole('super_admin'), requireCurrentPassword({ field: 'password', label: 'Administrator password' }), requestLotProjectAccountPurgeCode);
 router.post('/lot-projects/:projectSlug/accounts/:accountId/purge', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), requireExactRole('super_admin'), purgeLotProjectAccount);
 router.get('/lot-projects/:projectSlug/document-files/:fileId/access-url', requirePermission(PERMISSIONS.LOT_LISTINGS_VIEW), getLotProjectDocumentFileAccessUrl);
+router.get('/lot-projects/:projectSlug/document-files/:fileId/content', requirePermission(PERMISSIONS.LOT_LISTINGS_VIEW), getLotProjectDocumentFileContent);
 router.post(
   '/lot-projects/:projectSlug/listings/:listingId/recalculate-commission',
   requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE),
@@ -151,6 +156,7 @@ router.put('/lot-projects/:projectSlug/listings/:listingId/document-requirements
 router.post('/lot-projects/:projectSlug/listings/:listingId/documents/:documentId/upload-signature', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), createLotProjectDocumentUploadSignature);
 router.put('/lot-projects/:projectSlug/listings/:listingId/documents/:documentId/upload', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), uploadLotProjectListingDocument);
 router.patch('/lot-projects/:projectSlug/listings/:listingId/documents/:documentId/approve', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), approveLotProjectListingDocument);
+router.patch('/lot-projects/:projectSlug/listings/:listingId/documents/:documentId/resubmission', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), requestLotProjectListingDocumentResubmission);
 router.patch('/lot-projects/:projectSlug/listings/:listingId/documents/:documentId/clear', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), clearLotProjectListingDocument);
 router.put('/lot-projects/:projectSlug/listings/:listingId/soa-terms', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), updateLotProjectListingSoaTerms);
 router.post('/lot-projects/:projectSlug/listings/:listingId/payments/preview', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), previewLotProjectListingPayment);
@@ -161,11 +167,13 @@ router.get('/lot-projects/:projectSlug/listings/:listingId/payments/:paymentId/p
 router.post('/lot-projects/:projectSlug/listings/:listingId/payments/:paymentId/proofs/upload-signature', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), createLotProjectPaymentProofUploadSignature);
 router.post('/lot-projects/:projectSlug/listings/:listingId/payments/:paymentId/proofs', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), saveLotProjectPaymentProofs);
 router.get('/lot-projects/:projectSlug/listings/:listingId/payments/:paymentId/proofs/:proofId/access-url', requirePermission(PERMISSIONS.LOT_LISTINGS_VIEW), getLotProjectPaymentProofAccessUrl);
+router.get('/lot-projects/:projectSlug/listings/:listingId/payments/:paymentId/proofs/:proofId/content', requirePermission(PERMISSIONS.LOT_LISTINGS_VIEW), getLotProjectPaymentProofContent);
 router.post('/lot-projects/:projectSlug/listings/:listingId/payments/:paymentId/proofs/:proofId/delete', requirePermission(PERMISSIONS.LOT_PAYMENT_DELETE), deleteLotProjectPaymentProof);
 router.get('/lot-projects/:projectSlug/listings/:listingId/payments/:paymentId/acknowledgement-signed-copy', requirePermission(PERMISSIONS.LOT_LISTINGS_VIEW), getLotProjectPaymentAcknowledgementSignedCopy);
 router.post('/lot-projects/:projectSlug/listings/:listingId/payments/:paymentId/acknowledgement-signed-copy/upload-signature', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), createLotProjectPaymentAcknowledgementSignedCopyUploadSignature);
 router.post('/lot-projects/:projectSlug/listings/:listingId/payments/:paymentId/acknowledgement-signed-copy', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), saveLotProjectPaymentAcknowledgementSignedCopy);
 router.get('/lot-projects/:projectSlug/listings/:listingId/payments/:paymentId/acknowledgement-signed-copy/access-url', requirePermission(PERMISSIONS.LOT_LISTINGS_VIEW), getLotProjectPaymentAcknowledgementSignedCopyAccessUrl);
+router.get('/lot-projects/:projectSlug/listings/:listingId/payments/:paymentId/acknowledgement-signed-copy/content', requirePermission(PERMISSIONS.LOT_LISTINGS_VIEW), getLotProjectPaymentAcknowledgementSignedCopyContent);
 router.post('/lot-projects/:projectSlug/listings/:listingId/payment-schedules/:scheduleId/lmf-waiver', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), waiveSeparateLegalMiscFee);
 router.post('/lot-projects/:projectSlug/listings/:listingId/payment-schedules/:scheduleId/penalty-extension', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), grantPaymentSchedulePenaltyExtension);
 router.put('/lot-projects/:projectSlug/listings/:listingId/payment-schedules/:scheduleId/penalty-extension/:reliefId', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), updatePaymentSchedulePenaltyExtension);
@@ -174,3 +182,4 @@ router.post('/lot-projects/:projectSlug/listings/:listingId/payment-schedules/:s
 router.post('/lot-projects/:projectSlug/listings/:listingId/penalty-reliefs/:reliefId/restore', requirePermission(PERMISSIONS.LOT_PENALTY_CORRECT), restorePaymentSchedulePenaltyWaiver);
 
 export default router;
+

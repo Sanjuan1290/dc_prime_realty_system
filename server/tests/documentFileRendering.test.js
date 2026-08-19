@@ -34,6 +34,10 @@ test('protected document metadata remains visible without a permanent public URL
     files[0].accessPath,
     '/projects/lot-projects/bailen-project/document-files/42/access-url'
   );
+  assert.equal(
+    files[0].contentPath,
+    '/projects/lot-projects/bailen-project/document-files/42/content'
+  );
 });
 
 test('listing document mapper keeps protected entries that intentionally have no URL', () => {
@@ -47,16 +51,20 @@ test('listing document mapper keeps protected entries that intentionally have no
   assert.match(shared, /parseClientDocumentImages\([\s\S]*?projectSlug[\s\S]*?\)/);
 });
 
-test('document modal and print page request short-lived links for protected files', () => {
+test('document modal and print page use same-session blob content for protected files', () => {
   const modal = read('client/src/components/Lot_Projects/ListingProfileComponents/Documents/DocumentImagesModal.jsx');
   const printouts = read('client/src/components/Lot_Projects/ListingProfileComponents/Printouts/Printouts.jsx');
   const printPage = read('client/src/components/Lot_Projects/ListingProfileComponents/Printouts/DocumentsPrintPage.jsx');
 
   assert.match(modal, /getDocumentFiles\(document\)/);
-  assert.match(modal, /await useFetch\(file\.accessPath\)/);
+  assert.match(modal, /fetchProtectedObjectUrl\(file\)/);
   assert.match(modal, /Loading protected document previews/);
   assert.match(printouts, /projectSlug,/);
   assert.match(printPage, /getDocumentFiles\(\{ \.\.\.document, projectSlug \}\)/);
-  assert.match(printPage, /await useFetch\(file\.accessPath\)/);
+  assert.match(printPage, /fetchProtectedObjectUrl\(file\)/);
   assert.match(printPage, /Preparing protected document files/);
+  assert.match(modal, /openProtectedObjectUrl/);
+  assert.doesNotMatch(modal, /data\?\.url/);
+  assert.doesNotMatch(printPage, /data\?\.url/);
 });
+

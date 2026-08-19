@@ -708,6 +708,95 @@ export const createAuthenticatedAccessUrl = ({ publicId, format, resourceType = 
   });
 };
 
+export const fetchAuthenticatedAssetContent = async ({
+  publicId,
+  format,
+  resourceType = 'image',
+  timeoutMs = 30_000,
+} = {}) => {
+  const safePublicId = clean(publicId);
+  if (!safePublicId) {
+    const error = new Error('Cloudinary public ID is missing.');
+    error.statusCode = 409;
+    error.code = 'CLOUDINARY_PUBLIC_ID_MISSING';
+    throw error;
+  }
+
+  // The private Cloudinary URL is generated and consumed only on the server.
+  // It is never returned to the browser, so it cannot be copied into another
+  // unauthenticated browser session while the signature is still valid.
+  const privateUrl = createAuthenticatedAccessUrl({
+    publicId: safePublicId,
+    format,
+    resourceType,
+    expiresInSeconds: 120,
+  });
+
+  let response;
+  try {
+    response = await fetch(privateUrl, {
+      method: 'GET',
+      headers: { Accept: '*/*' },
+      signal: AbortSignal.timeout(Math.max(5_000, Math.min(Number(timeoutMs || 30_000), 60_000))),
+    });
+  } catch (cause) {
+    const error = new Error('The protected file could not be retrieved from secure storage.');
+    error.statusCode = 502;
+    error.code = cause?.name === 'TimeoutError' ? 'PROTECTED_FILE_TIMEOUT' : 'PROTECTED_FILE_FETCH_FAILED';
+    error.cause = cause;
+    throw error;
+  }
+
+  if (!response.ok) {
+    const error = new Error('The protected file could not be retrieved from secure storage.');
+    error.statusCode = response.status === 404 ? 404 : 502;
+    error.code = 'PROTECTED_FILE_FETCH_FAILED';
+    throw error;
+  }
+
+  const buffer = Buffer.from(await response.arrayBuffer());
+  return {
+    buffer,
+    contentType: clean(response.headers.get('content-type')) || 'application/octet-stream',
+    contentLength: buffer.length,
+  };
+};
+
+const normalizeInlineFileName = (value = 'document') => {
+  const original = clean(value) || 'document';
+  const ascii = original
+    .replace(/[\r\n\0]/g, '')
+    .replace(/[\"\\]/g, '_')
+    .replace(/[^\x20-\x7E]/g, '_')
+    .slice(0, 180) || 'document';
+  return { original, ascii };
+};
+
+export const sendAuthenticatedAssetContent = async (res, {
+  publicId,
+  format,
+  resourceType = 'image',
+  fileName = 'document',
+  fileMimeType = '',
+} = {}) => {
+  const { buffer, contentType } = await fetchAuthenticatedAssetContent({
+    publicId,
+    format,
+    resourceType,
+  });
+  const names = normalizeInlineFileName(fileName);
+  const resolvedContentType = clean(fileMimeType) || contentType || 'application/octet-stream';
+
+  res.setHeader('Content-Type', resolvedContentType);
+  res.setHeader('Content-Length', String(buffer.length));
+  res.setHeader('Content-Disposition', `inline; filename=\"${names.ascii}\"; filename*=UTF-8''${encodeURIComponent(names.original)}`);
+  res.setHeader('Cache-Control', 'private, no-store, max-age=0, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  return res.status(200).send(buffer);
+};
+
 export const destroyCloudinaryAsset = async ({ publicId, resourceType = 'image', deliveryType = 'authenticated' }) => {
   configureSecureCloudinary();
   return cloudinary.uploader.destroy(clean(publicId), {
@@ -766,3 +855,4 @@ export const destroyCloudinaryAssets = async (assets = []) => {
 };
 
 export const DOCUMENT_UPLOAD_LIMIT_BYTES = MAX_DOCUMENT_BYTES;
+

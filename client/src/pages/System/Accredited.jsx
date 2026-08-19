@@ -868,6 +868,8 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
           recordLabel={`Proof of Income · ${signedReceipt.referenceNumber || `Receipt #${signedReceipt.receiptId}`}`}
           category="Signed Proof of Income"
           basePath={`/accredited/${sellerId}/proof-of-income-receipts/${signedReceipt.receiptId}/signed-copy`}
+          allowDelete
+          deleteLabel="Delete Signed Copy"
           onClose={() => setSignedReceipt(null)}
           onChanged={() => {
             queryClient.invalidateQueries({ queryKey: ["seller-proof-of-income-receipts", sellerId] });
@@ -992,3 +994,4 @@ const Accredited = () => {
 };
 
 export default Accredited;
+

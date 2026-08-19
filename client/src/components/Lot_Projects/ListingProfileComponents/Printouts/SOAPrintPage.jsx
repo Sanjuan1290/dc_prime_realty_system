@@ -36,17 +36,24 @@ const SOAPrintPage = () => {
       <div className="mx-auto w-[920px] bg-white p-5 text-black shadow-lg print:shadow-none">
         <div className="border-2 border-black p-4">
           <div className="grid grid-cols-[1fr_345px] gap-5">
-            <div>
-              <h1 className="text-lg font-black tracking-wide">D&amp;C PRIME REALTY</h1>
-              <p className="mt-1 text-[10px] font-semibold leading-tight">
-                Magsaysay St., Indang, Cavite.
-              </p>
-              <p className="text-[10px] font-semibold leading-tight">
-                4122 Philippines
-              </p>
-              <p className="text-[10px] font-semibold leading-tight">
-                (046) 866-0616
-              </p>
+            <div className="flex items-start gap-3">
+              <img
+                src="/logo.png"
+                alt="D&amp;C Prime Realty"
+                className="h-16 w-16 shrink-0 object-contain"
+              />
+              <div>
+                <h1 className="text-lg font-black tracking-wide">D&amp;C PRIME REALTY</h1>
+                <p className="mt-1 text-[10px] font-semibold leading-tight">
+                  Magsaysay St., Indang, Cavite.
+                </p>
+                <p className="text-[10px] font-semibold leading-tight">
+                  4122 Philippines
+                </p>
+                <p className="text-[10px] font-semibold leading-tight">
+                  (046) 866-0616
+                </p>
+              </div>
             </div>
 
             <div className="border-2 border-black">
@@ -184,3 +191,4 @@ const SOAPrintPage = () => {
 }
 
 export default SOAPrintPage
+

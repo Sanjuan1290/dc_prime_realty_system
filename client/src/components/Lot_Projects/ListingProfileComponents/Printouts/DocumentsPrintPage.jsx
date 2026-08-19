@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import StatusAlert from '../../../Shared/StatusAlert'
-import { useFetch } from '../../../../utils/useFetch'
+import { fetchProtectedObjectUrl, revokeProtectedObjectUrl } from '../../../../utils/protectedFile'
 import { getDocumentFiles, isPdfLike } from '../Documents/documentFileUtils'
 import PrintPageShell from './PrintPageShell'
 import PdfPrintPages from './PdfPrintPages'
@@ -10,6 +10,7 @@ const isPrintableFile = (value = '') => {
   const url = String(value || '').trim()
   if (!url) return false
   if (url.startsWith('/mock-documents/')) return false
+  if (url.startsWith('blob:')) return true
   if (url.startsWith('data:image/')) return true
   if (url.startsWith('data:application/pdf')) return true
   if (/^https?:\/\//i.test(url)) return true
@@ -25,6 +26,12 @@ const DocumentsPrintPage = () => {
   const [resolvedFiles, setResolvedFiles] = useState([])
   const [loadState, setLoadState] = useState({ loading: true, failed: 0, message: '' })
   const [pdfStatuses, setPdfStatuses] = useState({})
+  const objectUrlsRef = useRef(new Set())
+
+  useEffect(() => () => {
+    objectUrlsRef.current.forEach((url) => revokeProtectedObjectUrl(url))
+    objectUrlsRef.current.clear()
+  }, [])
 
   const sourceFiles = useMemo(
     () => documents.flatMap((document) =>
@@ -53,11 +60,10 @@ const DocumentsPrintPage = () => {
       const results = await Promise.allSettled(
         sourceFiles.map(async (file) => {
           if (file.url && !file.protected) return { ...file, fileUrl: file.url }
-          if (!file.accessPath) throw new Error(`${file.fileName || file.name} does not have a secure access route.`)
+          if (!file.accessPath && !file.contentPath) throw new Error(`${file.fileName || file.name} does not have a secure content route.`)
 
-          const result = await useFetch(file.accessPath)
-          const fileUrl = result?.data?.url || result?.url || ''
-          if (!fileUrl) throw new Error(`No secure link was returned for ${file.fileName || file.name}.`)
+          const fileUrl = await fetchProtectedObjectUrl(file)
+          objectUrlsRef.current.add(fileUrl)
           return { ...file, fileUrl }
         })
       )
@@ -108,7 +114,7 @@ const DocumentsPrintPage = () => {
       printDisabled={isPreparing || !resolvedFiles.length}
       printDisabledMessage={
         loadState.loading
-          ? 'Wait for protected document links to finish loading.'
+          ? 'Wait for protected document content to finish loading.'
           : isPreparingPdfPages
             ? 'Wait for all PDF pages to finish loading before printing.'
             : 'No uploaded documents are available for printing.'
@@ -169,3 +175,4 @@ const DocumentsPrintPage = () => {
 }
 
 export default DocumentsPrintPage
+

@@ -11,7 +11,7 @@ import {
   authorizeMalwareQuotaFallback,
   buildMalwareQuotaError,
   buildPaymentAcknowledgementSignedCopyFolder,
-  createAuthenticatedAccessUrl,
+  sendAuthenticatedAssetContent,
   createAuthenticatedSignedCopyUploadSignature,
   getCloudinaryMalwareScanState,
   getPerceptionPointQuotaState,
@@ -111,6 +111,7 @@ const mapSignedCopy = (req, row = {}) => row?.lot_project_payment_acknowledgemen
   malwareScanReason: row.malware_scan_reason || null,
   malwareScannedAt: row.malware_scanned_at || null,
   accessPath: `/projects/lot-projects/${encodeURIComponent(req.params.projectSlug)}/listings/${encodeURIComponent(req.params.listingId)}/payments/${Number(row.lot_project_payment_id)}/acknowledgement-signed-copy/access-url`,
+  contentPath: `/projects/lot-projects/${encodeURIComponent(req.params.projectSlug)}/listings/${encodeURIComponent(req.params.listingId)}/payments/${Number(row.lot_project_payment_id)}/acknowledgement-signed-copy/content`,
 }) : null;
 
 const getActiveFile = async (connection, paymentId) => {
@@ -384,13 +385,7 @@ export const getLotProjectPaymentAcknowledgementSignedCopyAccessUrl = async (req
     return res.json({
       success: true,
       data: {
-        url: createAuthenticatedAccessUrl({
-          publicId: file.cloudinary_public_id,
-          format: file.cloudinary_format,
-          resourceType: file.cloudinary_resource_type,
-          expiresInSeconds: 600,
-        }),
-        expiresInSeconds: 600,
+        contentPath: `/projects/lot-projects/${encodeURIComponent(req.params.projectSlug)}/listings/${encodeURIComponent(req.params.listingId)}/payments/${Number(context.payment.lot_project_payment_id)}/acknowledgement-signed-copy/content`,
         malwareScanStatus,
         securityWarning: malwareScanStatus === 'not_scanned'
           ? 'This signed acknowledgement receipt was uploaded without malware scanning because the scanning quota was unavailable.'
@@ -403,3 +398,30 @@ export const getLotProjectPaymentAcknowledgementSignedCopyAccessUrl = async (req
     connection.release();
   }
 };
+export const getLotProjectPaymentAcknowledgementSignedCopyContent = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    const context = await getContext(connection, req);
+    if (context.errorStatus) return res.status(context.errorStatus).json({ message: context.errorMessage });
+    const file = await getActiveFile(connection, context.payment.lot_project_payment_id);
+    if (!file) return res.status(404).json({ message: 'Signed acknowledgement receipt not found.' });
+
+    const malwareScanStatus = clean(file.malware_scan_status || 'not_scanned').toLowerCase();
+    if (malwareScanStatus === 'pending') return res.status(423).json({ code: 'MALWARE_SCAN_PENDING', message: 'The signed acknowledgement receipt is still being scanned. Try again shortly.' });
+    if (malwareScanStatus === 'rejected') return res.status(403).json({ code: 'MALWARE_DETECTED', message: 'The signed acknowledgement receipt was blocked because malware was detected.' });
+    if (malwareScanStatus === 'error') return res.status(503).json({ code: 'MALWARE_SCAN_ERROR', message: 'The security scan did not complete successfully. The signed acknowledgement receipt is temporarily unavailable.' });
+
+    return await sendAuthenticatedAssetContent(res, {
+      publicId: file.cloudinary_public_id,
+      format: file.cloudinary_format,
+      resourceType: file.cloudinary_resource_type,
+      fileName: file.file_name || file.stored_file_name || 'signed-acknowledgement-receipt',
+      fileMimeType: file.file_mime_type,
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ code: error.code || undefined, message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+

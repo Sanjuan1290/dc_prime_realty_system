@@ -206,3 +206,70 @@ export const requestApi = async (
     }
   }
 }
+
+export const requestApiBlob = async (
+  path,
+  {
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    redirectOnUnavailable = true,
+    headers,
+    ...options
+  } = {}
+) => {
+  const apiBaseUrl = normalizeBaseUrl(import.meta.env.VITE_API_URL)
+  const normalizedPath = normalizePath(path)
+  const url = `${apiBaseUrl}${normalizedPath}`
+  let controller = null
+  let timeoutId = null
+
+  try {
+    controller = new AbortController()
+    const setTimer = typeof window !== 'undefined' ? window.setTimeout.bind(window) : setTimeout
+    timeoutId = setTimer(() => controller.abort(), timeoutMs)
+
+    const response = await fetch(url, {
+      credentials: 'include',
+      method: 'GET',
+      ...options,
+      headers: {
+        Accept: '*/*',
+        ...(headers || {}),
+      },
+      signal: controller.signal,
+    })
+
+    if (!response.ok) {
+      const data = await parseResponseBody(response)
+      const error = new ApiError(data?.message || `Request failed with status ${response.status}.`, {
+        status: response.status,
+        code: data?.code || '',
+        data,
+      })
+      if (redirectOnUnavailable && isMaintenanceError(error)) {
+        redirectToAvailabilityPage('/maintenance', { message: error.message })
+      } else if (redirectOnUnavailable && isServerUnavailableError(error)) {
+        redirectToAvailabilityPage('/server-down', { message: error.message })
+      }
+      throw error
+    }
+
+    return {
+      blob: await response.blob(),
+      contentType: response.headers.get('content-type') || '',
+      contentDisposition: response.headers.get('content-disposition') || '',
+    }
+  } catch (error) {
+    if (error instanceof ApiError) throw error
+    const apiError = error?.name === 'AbortError'
+      ? new ApiError('The server took too long to return the protected file.', { code: 'REQUEST_TIMEOUT', cause: error })
+      : new ApiError('The protected file could not be retrieved from the server.', { code: 'SERVER_UNAVAILABLE', cause: error })
+    if (redirectOnUnavailable) redirectToAvailabilityPage('/server-down', { message: apiError.message })
+    throw apiError
+  } finally {
+    if (timeoutId) {
+      const clearTimer = typeof window !== 'undefined' ? window.clearTimeout.bind(window) : clearTimeout
+      clearTimer(timeoutId)
+    }
+  }
+}
+

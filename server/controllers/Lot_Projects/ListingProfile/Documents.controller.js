@@ -12,7 +12,7 @@ import {
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
 import {
   buildBuyerDocumentFolder,
-  createAuthenticatedAccessUrl,
+  sendAuthenticatedAssetContent,
   createAuthenticatedUploadSignature,
   validateDocumentUploadRequest,
   verifyAuthenticatedCloudinaryAsset,
@@ -175,7 +175,9 @@ const getDocumentContext = async (connection, req) => {
         lpd.lot_project_listing_document_id,
         lpd.document_id,
         d.document_code,
-        d.document_name
+        d.document_name,
+        lpd.lot_project_listing_document_responsible_party,
+        d.document_responsible_party
       FROM lot_project_listing_documents lpd
       INNER JOIN documents d ON d.document_id = lpd.document_id
       WHERE lpd.lot_project_id = ?
@@ -498,7 +500,7 @@ export const uploadLotProjectListingDocument = async (req, res) => {
 
     const [existingRows] = await connection.query(
       `
-        SELECT lot_project_client_document_id, lot_project_client_document_file_name, lot_project_client_document_file_url
+        SELECT lot_project_client_document_id, lot_project_client_document_file_name, lot_project_client_document_file_url, lot_project_client_document_status
         FROM lot_project_client_documents
         WHERE lot_project_client_profile_id = ?
           AND document_id = ?
@@ -506,7 +508,10 @@ export const uploadLotProjectListingDocument = async (req, res) => {
       `,
       [context.listing.lot_project_client_profile_id, context.document.document_id]
     );
-    const existingImages = parseClientDocumentImages(existingRows[0]?.lot_project_client_document_file_url, existingRows[0]?.lot_project_client_document_file_name);
+    const isResubmission = String(existingRows[0]?.lot_project_client_document_status || '').toLowerCase() === 'rejected';
+    const existingImages = isResubmission
+      ? []
+      : parseClientDocumentImages(existingRows[0]?.lot_project_client_document_file_url, existingRows[0]?.lot_project_client_document_file_name);
 
     await connection.beginTransaction();
     const hasAccountColumn = await columnExists(connection, 'lot_project_client_documents', 'lot_project_account_id');
@@ -552,6 +557,20 @@ export const uploadLotProjectListingDocument = async (req, res) => {
     );
     const clientDocumentId = Number(clientDocumentRows[0]?.lot_project_client_document_id || 0);
     if (!clientDocumentId) throw new Error('Client document row was not created.');
+
+    if (isResubmission && await tableExists(connection, 'lot_project_client_document_files')) {
+      await connection.query(
+        `
+          UPDATE lot_project_client_document_files
+          SET file_status = 'superseded',
+              removed_at = NOW(),
+              removal_reason = 'Superseded by corrected document resubmission'
+          WHERE lot_project_client_document_id = ?
+            AND file_status = 'active'
+        `,
+        [clientDocumentId]
+      );
+    }
 
     const storedNewEntries = [];
     for (const file of verifiedFiles) {
@@ -623,6 +642,7 @@ export const uploadLotProjectListingDocument = async (req, res) => {
         ...file,
         fileId,
         accessPath: `/projects/lot-projects/${req.params.projectSlug}/document-files/${fileId}/access-url`,
+        contentPath: `/projects/lot-projects/${req.params.projectSlug}/document-files/${fileId}/content`,
       });
     }
 
@@ -644,13 +664,13 @@ export const uploadLotProjectListingDocument = async (req, res) => {
 
     const clientName = context.listing.buyer_full_name || context.listing.lot_project_listing_unit_id;
     await writeAuditLog(connection, req, {
-      action: existingImages.length ? 'update' : 'create',
+      action: (existingImages.length || isResubmission) ? 'update' : 'create',
       module: 'Documents',
       entityType: 'lot_project_client_document',
       entityId: String(clientDocumentId),
       entityLabel: `${context.document.document_name} — ${clientName}`,
-      title: 'Uploaded protected client document',
-      description: `Uploaded ${storedNewEntries.length} authenticated file(s) for ${context.document.document_name} of ${clientName}.`,
+      title: isResubmission ? 'Submitted corrected client document' : 'Uploaded protected client document',
+      description: `${isResubmission ? 'Submitted corrected' : 'Uploaded'} ${storedNewEntries.length} authenticated file(s) for ${context.document.document_name} of ${clientName}.`,
       metadata: {
         accountId: context.listing.lot_project_account_id,
         accountReference: context.listing.account_reference,
@@ -667,7 +687,9 @@ export const uploadLotProjectListingDocument = async (req, res) => {
     await connection.commit();
     return res.json({
       success: true,
-      message: `${storedNewEntries.length} protected file(s) added to ${context.document.document_name}.`,
+      message: isResubmission
+        ? `${context.document.document_name} resubmitted successfully with ${storedNewEntries.length} corrected protected file(s).`
+        : `${storedNewEntries.length} protected file(s) added to ${context.document.document_name}.`,
       fileName: storedFileName,
       imageEntries: combinedImages,
       uploadedCount: storedNewEntries.length,
@@ -726,17 +748,10 @@ export const getLotProjectDocumentFileAccessUrl = async (req, res) => {
       });
     }
 
-    const url = createAuthenticatedAccessUrl({
-      publicId: file.cloudinary_public_id,
-      format: file.file_format,
-      resourceType: file.cloudinary_resource_type,
-      expiresInSeconds: 600,
-    });
     return res.json({
       success: true,
       data: {
-        url,
-        expiresInSeconds: 600,
+        contentPath: `/projects/lot-projects/${encodeURIComponent(req.params.projectSlug)}/document-files/${fileId}/content`,
         accountStatus: file.account_status,
         malwareScanStatus,
         securityWarning: malwareScanStatus === 'not_scanned'
@@ -746,6 +761,49 @@ export const getLotProjectDocumentFileAccessUrl = async (req, res) => {
     });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
+export const getLotProjectDocumentFileContent = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    const project = await getProjectBySlug(String(req.params.projectSlug || '').trim());
+    if (!project) return res.status(404).json({ message: 'Lot project not found.' });
+    const fileId = Number(req.params.fileId || 0);
+    if (!fileId) return res.status(400).json({ message: 'Document file id is required.' });
+
+    const [rows] = await connection.query(
+      `
+        SELECT file_row.*, account.account_status
+        FROM lot_project_client_document_files file_row
+        INNER JOIN lot_project_accounts account
+          ON account.lot_project_account_id = file_row.lot_project_account_id
+        WHERE file_row.lot_project_client_document_file_id = ?
+          AND account.lot_project_id = ?
+          AND file_row.file_status = 'active'
+        LIMIT 1
+      `,
+      [fileId, project.lot_project_id]
+    );
+    const file = rows[0];
+    if (!file) return res.status(404).json({ message: 'Document file not found.' });
+
+    const malwareScanStatus = String(file.malware_scan_status || 'not_scanned').toLowerCase();
+    if (malwareScanStatus === 'pending') return res.status(423).json({ code: 'MALWARE_SCAN_PENDING', message: 'This file is still being scanned for security threats. Try again shortly.' });
+    if (malwareScanStatus === 'rejected') return res.status(403).json({ code: 'MALWARE_DETECTED', message: 'This file was blocked because the security scan detected malicious content.' });
+    if (malwareScanStatus === 'error') return res.status(503).json({ code: 'MALWARE_SCAN_ERROR', message: 'The security scan did not complete successfully. This file is temporarily unavailable.' });
+
+    return await sendAuthenticatedAssetContent(res, {
+      publicId: file.cloudinary_public_id,
+      format: file.file_format,
+      resourceType: file.cloudinary_resource_type,
+      fileName: file.original_file_name || file.stored_file_name || 'client-document',
+      fileMimeType: file.file_mime_type,
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ code: error.code || undefined, message: getErrorMessage(error) });
   } finally {
     connection.release();
   }
@@ -761,7 +819,7 @@ export const approveLotProjectListingDocument = async (req, res) => {
     const user = await getAuthenticatedUser(req);
     const [rows] = await connection.query(
       `
-        SELECT lot_project_client_document_id, lot_project_client_document_file_name
+        SELECT lot_project_client_document_id, lot_project_client_document_file_name, lot_project_client_document_status
         FROM lot_project_client_documents
         WHERE lot_project_client_profile_id = ?
           AND document_id = ?
@@ -773,6 +831,9 @@ export const approveLotProjectListingDocument = async (req, res) => {
     const clientDocument = rows[0];
     if (!clientDocument?.lot_project_client_document_file_name) {
       return res.status(400).json({ message: `Upload ${context.document.document_name} before approving it.` });
+    }
+    if (String(clientDocument.lot_project_client_document_status || '').toLowerCase() === 'rejected') {
+      return res.status(409).json({ message: `Upload a corrected ${context.document.document_name} copy before approving it.` });
     }
 
     if (await tableExists(connection, 'lot_project_client_document_files')) {
@@ -826,6 +887,86 @@ export const approveLotProjectListingDocument = async (req, res) => {
     });
   } catch (error) {
     return res.status(500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
+export const requestLotProjectListingDocumentResubmission = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    const context = await getDocumentContext(connection, req);
+    if (context.errorStatus) return res.status(context.errorStatus).json({ message: context.errorMessage });
+    const user = await getAuthenticatedUser(req);
+    const reason = String(req.body?.reason || '').trim().slice(0, 500);
+    const responsibleParty = resolveDocumentResponsibleParty(context.document);
+    if (responsibleParty !== 'client') {
+      return res.status(409).json({ message: 'Only client-responsibility documents can be requested for client resubmission.' });
+    }
+
+    const [rows] = await connection.query(
+      `
+        SELECT lot_project_client_document_id, lot_project_client_document_file_name, lot_project_client_document_status
+        FROM lot_project_client_documents
+        WHERE lot_project_client_profile_id = ?
+          AND document_id = ?
+        LIMIT 1
+      `,
+      [context.listing.lot_project_client_profile_id, context.document.document_id]
+    );
+    const clientDocument = rows[0];
+    if (!clientDocument?.lot_project_client_document_id || !clientDocument?.lot_project_client_document_file_name) {
+      return res.status(400).json({ message: `Upload ${context.document.document_name} before requesting resubmission.` });
+    }
+
+    const currentStatus = String(clientDocument.lot_project_client_document_status || '').toLowerCase();
+    if (currentStatus === 'rejected') {
+      return res.json({ success: true, message: `${context.document.document_name} is already marked for resubmission.` });
+    }
+    if (!['submitted', 'approved'].includes(currentStatus)) {
+      return res.status(409).json({ message: `${context.document.document_name} cannot be marked for resubmission from its current status.` });
+    }
+
+    await connection.beginTransaction();
+    await connection.query(
+      `
+        UPDATE lot_project_client_documents
+        SET lot_project_client_document_status = 'Rejected',
+            lot_project_client_document_approved_at = NULL,
+            lot_project_client_document_approved_by_user_id = NULL
+        WHERE lot_project_client_document_id = ?
+      `,
+      [clientDocument.lot_project_client_document_id]
+    );
+
+    await writeAuditLog(connection, req, {
+      action: 'update',
+      module: 'Documents',
+      entityType: 'lot_project_client_document',
+      entityId: String(clientDocument.lot_project_client_document_id),
+      entityLabel: `${context.document.document_name} — ${context.listing.lot_project_listing_unit_id}`,
+      title: 'Requested client document resubmission',
+      description: `Marked ${context.document.document_name} as needing a corrected resubmission.`,
+      metadata: {
+        accountId: context.listing.lot_project_account_id || null,
+        listingId: context.listing.lot_project_listing_id,
+        clientProfileId: context.listing.lot_project_client_profile_id,
+        documentId: context.document.document_id,
+        documentName: context.document.document_name,
+        previousStatus: clientDocument.lot_project_client_document_status,
+        reason: reason || null,
+        requestedByUserId: user?.id || null,
+      },
+    });
+    await connection.commit();
+
+    return res.json({
+      success: true,
+      message: `${context.document.document_name} marked for resubmission. The current file is retained until a corrected copy is submitted.`,
+    });
+  } catch (error) {
+    try { await connection.rollback(); } catch {}
+    return res.status(error.statusCode || 500).json({ code: error.code || undefined, message: getErrorMessage(error) });
   } finally {
     connection.release();
   }
@@ -984,4 +1125,5 @@ export const clearLotProjectListingDocument = async (req, res) => {
     connection.release();
   }
 };
+
 

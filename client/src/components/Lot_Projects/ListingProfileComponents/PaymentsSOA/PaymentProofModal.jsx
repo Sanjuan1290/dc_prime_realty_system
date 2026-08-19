@@ -13,6 +13,7 @@ import {
 import StatusAlert from '../../../Shared/StatusAlert'
 import { useFetch, useFetchPost } from '../../../../utils/useFetch'
 import { requestDoubleCheck } from '../../../../utils/doubleCheck'
+import { fetchProtectedObjectUrl, openProtectedObjectUrl, revokeProtectedObjectUrl } from '../../../../utils/protectedFile'
 import { useUploadSecurity } from '../../../Shared/UploadSecurityCenter/UploadSecurityProvider.jsx'
 import {
   appendCloudinarySecurityFields,
@@ -424,19 +425,29 @@ const PaymentProofModal = ({
 
     setOpeningProofId(proof.proofId)
     try {
-      const result = await useFetch(proof.accessPath)
-      const url = result?.data?.url || result?.url || ''
-      if (!url) throw new Error('The server did not return a protected proof link.')
+      const objectUrl = await fetchProtectedObjectUrl(proof.contentPath || proof.accessPath)
       if (isPdf(proof)) {
-        window.open(url, '_blank', 'noopener,noreferrer')
+        if (!openProtectedObjectUrl(objectUrl)) {
+          setNotice({ type: 'warning', message: 'Your browser blocked the protected payment proof window. Allow pop-ups for this site and try again.' })
+        }
       } else {
-        setPreview({ ...proof, url })
+        setPreview((current) => {
+          if (current?.url) revokeProtectedObjectUrl(current.url)
+          return { ...proof, url: objectUrl }
+        })
       }
     } catch (error) {
       setNotice({ type: 'error', message: error?.message || 'Failed to open payment proof.' })
     } finally {
       setOpeningProofId(0)
     }
+  }
+
+  const closePreview = () => {
+    setPreview((current) => {
+      if (current?.url) revokeProtectedObjectUrl(current.url)
+      return null
+    })
   }
 
   const removeProof = async (proof) => {
@@ -631,9 +642,9 @@ const PaymentProofModal = ({
       </div>
 
       {preview ? (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/80 p-4" onClick={() => setPreview(null)}>
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/80 p-4" onClick={closePreview}>
           <div className="relative max-h-[94vh] max-w-[94vw]" onClick={(event) => event.stopPropagation()}>
-            <button type="button" onClick={() => setPreview(null)} className="absolute right-2 top-2 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-700 shadow-lg"><FiX /></button>
+            <button type="button" onClick={closePreview} className="absolute right-2 top-2 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-700 shadow-lg"><FiX /></button>
             <img src={preview.url} alt={preview.fileName || 'Payment proof'} className="max-h-[94vh] max-w-[94vw] rounded-2xl bg-white object-contain shadow-2xl" />
           </div>
         </div>
@@ -643,3 +654,4 @@ const PaymentProofModal = ({
 }
 
 export default PaymentProofModal
+

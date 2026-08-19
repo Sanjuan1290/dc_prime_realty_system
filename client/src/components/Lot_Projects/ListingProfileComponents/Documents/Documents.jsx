@@ -7,6 +7,7 @@ import {
   FiImage,
   FiLoader,
   FiLock,
+  FiRefreshCw,
   FiTrash2,
   FiUploadCloud,
 } from 'react-icons/fi'
@@ -37,7 +38,7 @@ const StatusPill = ({ value, requirement }) => (
     }`}
   >
     <span className="h-1.5 w-1.5 rounded-full bg-current" />
-    {value === 'Missing' && requirement === 'Optional' ? 'Missing / Optional' : (value || 'Missing')}
+    {value === 'Missing' && requirement === 'Optional' ? 'Missing / Optional' : value === 'Rejected' ? 'Needs Resubmission' : (value || 'Missing')}
   </span>
 )
 
@@ -79,6 +80,7 @@ const Documents = ({
   projectDefaultDocuments = [],
   onUploadDocument,
   onApproveDocument,
+  onRequestResubmission,
   onClearDocument,
   onSaveRequirements,
   isSaving = false,
@@ -190,6 +192,38 @@ const Documents = ({
       setAlert({ type: 'success', message: `${document.name} approved successfully.` })
     } catch (error) {
       setAlert({ type: 'error', message: error?.message || 'Failed to approve document.' })
+    } finally {
+      setActiveDocumentId(null)
+    }
+  }
+
+  const handleRequestResubmission = async (document) => {
+    if (normalizeDocumentResponsibleParty(document.responsibleParty || document.responsible_party) !== 'client') {
+      setAlert({ type: 'error', message: 'Only client-responsibility documents can be requested for client resubmission.' })
+      return
+    }
+    if (!canManage) {
+      setAlert({ type: 'error', message: 'Reserve this unit first before requesting document resubmission.' })
+      return
+    }
+    if (!['Submitted', 'Approved'].includes(document.status)) {
+      setAlert({ type: 'error', message: `${document.name} must be submitted or approved before resubmission can be requested.` })
+      return
+    }
+
+    const confirmed = window.confirm(`Request a corrected ${document.name} from the client? The current copy will stay retained as document history until a corrected copy is uploaded.`)
+    if (!confirmed) return
+
+    const reason = window.prompt('Optional resubmission reason for the audit log:', '')
+    if (reason === null) return
+
+    setActiveDocumentId(document.id)
+    setAlert({ type: 'loading', message: `Marking ${document.name} for resubmission...` })
+    try {
+      const result = await onRequestResubmission?.(document, { reason: reason.trim() })
+      setAlert({ type: 'warning', message: result?.message || `${document.name} now needs a corrected resubmission.` })
+    } catch (error) {
+      setAlert({ type: 'error', message: error?.message || 'Failed to request document resubmission.' })
     } finally {
       setActiveDocumentId(null)
     }
@@ -383,18 +417,30 @@ const Documents = ({
                         className="inline-flex h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         <FiUploadCloud className="h-4 w-4" />
-                        Add Images
+                        {row.status === 'Rejected' ? 'Upload Corrected Copy' : 'Add Images'}
                       </button>
 
                       <button
                         type="button"
                         onClick={() => handleApproveDocument(row)}
-                        disabled={!canManage || isActive || row.status === 'Missing'}
+                        disabled={!canManage || isActive || ['Missing', 'Rejected'].includes(row.status)}
                         className="inline-flex h-9 items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-xs font-black text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         <FiCheckCircle className="h-4 w-4" />
                         Approve
                       </button>
+
+                      {normalizeDocumentResponsibleParty(row.responsibleParty || row.responsible_party) === 'client' ? (
+                        <button
+                          type="button"
+                          onClick={() => handleRequestResubmission(row)}
+                          disabled={!canManage || isActive || !['Submitted', 'Approved'].includes(row.status)}
+                          className="inline-flex h-9 items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 text-xs font-black text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          <FiRefreshCw className="h-4 w-4" />
+                          Request Resubmission
+                        </button>
+                      ) : null}
 
                       <button
                         type="button"
@@ -472,4 +518,5 @@ const Documents = ({
 }
 
 export default Documents
+
 

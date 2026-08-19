@@ -4,12 +4,14 @@ import {
   FiFileText,
   FiLoader,
   FiShield,
+  FiTrash2,
   FiUploadCloud,
   FiX,
 } from 'react-icons/fi'
 import StatusAlert from './StatusAlert'
 import { useFetch, useFetchPost } from '../../utils/useFetch'
 import { requestDoubleCheck } from '../../utils/doubleCheck'
+import { fetchProtectedObjectUrl, openProtectedObjectUrl } from '../../utils/protectedFile'
 import { useUploadSecurity } from './UploadSecurityCenter/UploadSecurityProvider.jsx'
 import {
   appendCloudinarySecurityFields,
@@ -51,6 +53,8 @@ const SignedCopyUploadModal = ({
   basePath,
   readOnly = false,
   viewLabel = 'View / Print',
+  allowDelete = false,
+  deleteLabel = 'Delete Signed Copy',
   onClose,
   onChanged,
 }) => {
@@ -61,12 +65,13 @@ const SignedCopyUploadModal = ({
   const [isLoading, setIsLoading] = useState(true)
   const [isUploading, setIsUploading] = useState(false)
   const [isOpening, setIsOpening] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
   const [scanFallback, setScanFallback] = useState(null)
   const taskIdRef = useRef('')
   const { addUpload, updateUpload, beginSecurityScan, failUpload } = useUploadSecurity()
 
   const invalidFile = file && (!allowedTypes.has(file.type) || file.size <= 0 || file.size > MAX_FILE_BYTES)
-  const isBusy = isLoading || isUploading || isOpening
+  const isBusy = isLoading || isUploading || isOpening || isDeleting
 
   const load = async ({ quiet = false } = {}) => {
     if (!basePath) return
@@ -91,17 +96,41 @@ const SignedCopyUploadModal = ({
       setNotice({ type: 'warning', message: malwareScanLabel(signedCopy || {}) })
       return
     }
+    if (getMalwareScanStatus(signedCopy) === 'not_scanned') {
+      const confirmed = window.confirm('This signed copy was uploaded without malware scanning. Open it only if you trust the source. Continue?')
+      if (!confirmed) return
+    }
     setIsOpening(true)
     try {
-      const result = await useFetch(`${basePath}/access-url`)
-      const data = result?.data || {}
-      if (data.securityWarning && !window.confirm(`${data.securityWarning}\n\nOpen this signed copy anyway?`)) return
-      if (!data.url) throw new Error('The server did not return a signed-copy access URL.')
-      window.open(data.url, '_blank', 'noopener,noreferrer')
+      const objectUrl = await fetchProtectedObjectUrl(signedCopy.contentPath || `${basePath}/content`)
+      if (!openProtectedObjectUrl(objectUrl)) {
+        setNotice({ type: 'warning', message: 'Your browser blocked the protected file window. Allow pop-ups for this site and try again.' })
+      }
     } catch (error) {
       setNotice({ type: 'error', message: error?.message || 'Failed to open signed copy.' })
     } finally {
       setIsOpening(false)
+    }
+  }
+
+  const deleteSignedCopy = async () => {
+    if (!signedCopy || readOnly || !allowDelete || isBusy) return
+    const confirmed = window.confirm(`Delete ${signedCopy.fileName || 'this signed copy'}? The uploaded file will be permanently removed. The system-generated unsigned record will remain unchanged.`)
+    if (!confirmed) return
+
+    setIsDeleting(true)
+    setNotice({ type: 'loading', message: 'Deleting signed copy...' })
+    try {
+      const result = await useFetchPost(`${basePath}/delete`, {}, { confirmationHandled: 'compact' })
+      setSignedCopy(null)
+      setFile(null)
+      setNotice({ type: 'success', message: result?.message || 'Signed copy deleted successfully.' })
+      await load({ quiet: true })
+      onChanged?.(result)
+    } catch (error) {
+      setNotice({ type: 'error', message: error?.message || 'Failed to delete signed copy.' })
+    } finally {
+      setIsDeleting(false)
     }
   }
 
@@ -238,7 +267,7 @@ const SignedCopyUploadModal = ({
               <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div><p className="text-xs font-black uppercase tracking-wide text-slate-500">Current signed copy</p>{signedCopy ? <><p className="mt-1 break-words text-sm font-black text-slate-950">{signedCopy.fileName}</p><p className="mt-1 text-xs font-semibold text-slate-500">Version {signedCopy.version || 1} · {formatBytes(signedCopy.fileSize)} · {formatDateTime(signedCopy.uploadedAt)}</p><p className={`mt-1 text-xs font-black ${getMalwareScanStatus(signedCopy) === 'approved' ? 'text-emerald-700' : getMalwareScanStatus(signedCopy) === 'rejected' || getMalwareScanStatus(signedCopy) === 'error' ? 'text-red-700' : 'text-amber-700'}`}>{malwareScanLabel(signedCopy)}</p></> : <p className="mt-1 text-sm font-semibold text-slate-500">No signed copy uploaded yet.</p>}</div>
-                  {signedCopy ? <button type="button" onClick={openSignedCopy} disabled={isOpening || !canOpenMalwareScannedFile(signedCopy)} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 text-sm font-black text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50">{isOpening ? <FiLoader className="animate-spin" /> : <FiExternalLink />}{viewLabel}</button> : null}
+                  {signedCopy ? <div className="flex shrink-0 flex-wrap justify-end gap-2"><button type="button" onClick={openSignedCopy} disabled={isOpening || !canOpenMalwareScannedFile(signedCopy)} className="inline-flex h-10 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 text-sm font-black text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50">{isOpening ? <FiLoader className="animate-spin" /> : <FiExternalLink />}{viewLabel}</button>{allowDelete && !readOnly ? <button type="button" onClick={deleteSignedCopy} disabled={isBusy} className="inline-flex h-10 items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 text-sm font-black text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-50">{isDeleting ? <FiLoader className="animate-spin" /> : <FiTrash2 />}{isDeleting ? 'Deleting...' : deleteLabel}</button> : null}</div> : null}
                 </div>
               </section>
 
@@ -265,3 +294,4 @@ const SignedCopyUploadModal = ({
 }
 
 export default SignedCopyUploadModal
+

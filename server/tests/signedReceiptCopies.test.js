@@ -42,6 +42,11 @@ test('proof of income signed copies are receipt-specific, scanned, versioned, an
   assert.match(controller, /MALWARE_SCAN_PENDING/);
   assert.match(router, /proof-of-income-receipts\/:receiptId\/signed-copy\/upload-signature/);
   assert.match(router, /proof-of-income-receipts\/:receiptId\/signed-copy\/access-url/);
+  assert.match(router, /proof-of-income-receipts\/:receiptId\/signed-copy\/content/);
+  assert.match(router, /proof-of-income-receipts\/:receiptId\/signed-copy\/delete/);
+  assert.match(controller, /deleteAccreditedSellerProofOfIncomeSignedCopy/);
+  assert.match(controller, /file_status = 'removed'/);
+  assert.match(controller, /destroyCloudinaryAssets/);
   assert.match(accredited, /signedCopy: row\.signed_copy_id/);
   assert.match(accredited, /lot_project_account_id,/);
   assert.match(accredited, /GROUP BY lot_project_commission_receipt_id/);
@@ -59,6 +64,8 @@ test('acknowledgement signed copies attach to the exact verified payment', () =>
   assert.match(controller, /file_status = 'replaced'/);
   assert.match(router, /payments\/:paymentId\/acknowledgement-signed-copy\/upload-signature/);
   assert.match(router, /payments\/:paymentId\/acknowledgement-signed-copy\/access-url/);
+  assert.match(router, /payments\/:paymentId\/acknowledgement-signed-copy\/content/);
+  assert.match(controller, /sendAuthenticatedAssetContent/);
   assert.match(shared, /acknowledgementSignedCopy: row\.ack_signed_copy_id/);
   assert.match(shared, /GROUP BY lot_project_payment_id/);
   assert.match(shared, /latest_ack_file\.lot_project_payment_id = p\.lot_project_payment_id/);
@@ -95,6 +102,9 @@ test('proof and acknowledgement UI clearly separates unsigned printing from sign
   assert.match(manager, /viewLabel="View"/);
   assert.match(signedModal, /viewLabel = 'View \/ Print'/);
   assert.match(signedModal, /Upload Without Scan/);
+  assert.match(signedModal, /fetchProtectedObjectUrl/);
+  assert.match(signedModal, /Delete Signed Copy/);
+  assert.match(accredited, /allowDelete/);
   assert.match(ackPrint, /selectedPaymentId/);
 });
 
@@ -129,7 +139,7 @@ test('bulk signed receipt printing uses one combined internal preview instead of
   assert.match(app, /SignedReceiptsPrintPage/);
   assert.match(app, /portal\/printouts\/signed-receipts/);
   assert.match(signedPrintPage, /Promise\.allSettled/);
-  assert.match(signedPrintPage, /useFetch\(file\.accessPath\)/);
+  assert.match(signedPrintPage, /fetchProtectedObjectUrl\(file\.contentPath \|\| file\.accessPath\)/);
   assert.match(signedPrintPage, /PdfPrintPages/);
   assert.match(signedPrintPage, /malwareScanStatus/);
 });
@@ -141,4 +151,5 @@ test('signed copy verification script checks ownership and duplicate active vers
   assert.match(verify, /HAVING COUNT\(\*\) > 1/);
   assert.match(verify, /lot_project_payment_status <> 'Verified'/);
 });
+
 

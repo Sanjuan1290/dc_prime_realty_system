@@ -1,6 +1,7 @@
-import { requestApi } from './apiClient'
+import { requestApi, requestApiBlob } from './apiClient'
 
 export const useFetch = async (url, options = {}) => requestApi(url, options)
+export const useFetchBlob = async (url, options = {}) => requestApiBlob(url, options)
 
 export const useFetchPost = async (url, body = {}, options = {}) => requestApi(url, {
   ...options,
@@ -26,3 +27,4 @@ export const useFetchDelete = async (url, options = {}) => requestApi(url, {
 })
 
 export { isDoubleCheckCancelled, getDoubleCheckNotice } from './doubleCheck'
+

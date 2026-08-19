@@ -379,7 +379,7 @@ const UploadDocumentModal = ({ document, signaturePath, isSaving = false, onClos
           ) : null}
 
           <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-xs font-semibold leading-5 text-slate-600">
-            The server signs each protected upload and requests malware scanning when quota is available. If the monthly scanner quota is exhausted, uploading without a scan requires your explicit confirmation. Files still use authenticated Cloudinary delivery and short-lived access links.
+            The server signs each protected upload and requests malware scanning when quota is available. If the monthly scanner quota is exhausted, uploading without a scan requires your explicit confirmation. Files still use authenticated Cloudinary storage and are viewed through the logged-in portal without exposing Cloudinary access links.
           </div>
         </div>
 
@@ -396,3 +396,4 @@ const UploadDocumentModal = ({ document, signaturePath, isSaving = false, onClos
 }
 
 export default UploadDocumentModal
+

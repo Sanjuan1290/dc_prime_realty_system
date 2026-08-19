@@ -470,6 +470,27 @@ const ListingProfile = () => {
     },
   })
 
+  const requestDocumentResubmissionMutation = useMutation({
+    mutationFn: ({ document, payload }) =>
+      useFetchPatch(
+        `/projects/lot-projects/${projectSlug}/listings/${listingId}/documents/${document.id}/resubmission`,
+        payload || {},
+        { confirmationHandled: 'compact' }
+      ),
+    onMutate: ({ document }) => {
+      setAlert({ type: 'loading', message: `Requesting corrected ${document?.name || 'document'}...` })
+    },
+    onSuccess: (result) => {
+      setAlert({ type: 'warning', message: result?.message || 'Document marked for resubmission.' })
+      queryClient.invalidateQueries({ queryKey: ['lot-listing-profile', projectSlug, listingId] })
+      queryClient.invalidateQueries({ queryKey: ['lot-buyer-form-state', projectSlug, listingId] })
+      queryClient.invalidateQueries({ queryKey: ['system-document-notifications'] })
+    },
+    onError: (error) => {
+      setAlert(getDoubleCheckNotice(error, 'Failed to request document resubmission.'))
+    },
+  })
+
   const clearDocumentMutation = useMutation({
     mutationFn: (document) =>
       useFetchPatch(
@@ -855,11 +876,13 @@ const ListingProfile = () => {
           projectDefaultDocuments={project.defaultDocuments || []}
           onUploadDocument={(document, payload) => uploadDocumentMutation.mutateAsync({ document, payload })}
           onApproveDocument={(document) => approveDocumentMutation.mutateAsync(document)}
+          onRequestResubmission={(document, payload) => requestDocumentResubmissionMutation.mutateAsync({ document, payload })}
           onClearDocument={(document) => clearDocumentMutation.mutateAsync(document)}
           onSaveRequirements={(nextDocuments) => updateDocumentRequirementsMutation.mutateAsync(nextDocuments)}
           isSaving={
             uploadDocumentMutation.isPending ||
             approveDocumentMutation.isPending ||
+            requestDocumentResubmissionMutation.isPending ||
             clearDocumentMutation.isPending
           }
           isSavingRequirements={updateDocumentRequirementsMutation.isPending}
@@ -948,4 +971,5 @@ const ListingProfile = () => {
 }
 
 export default ListingProfile
+
 

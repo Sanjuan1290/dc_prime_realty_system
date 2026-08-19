@@ -19,7 +19,9 @@ test('payment proof uploads use authenticated Cloudinary delivery', () => {
   assert.match(cloudinary, /createAuthenticatedPaymentProofUploadSignature/);
   assert.match(cloudinary, /dc_prime,payment_proof,authenticated/);
   assert.match(controller, /verifyAuthenticatedCloudinaryAsset/);
-  assert.match(controller, /createAuthenticatedAccessUrl/);
+  assert.match(controller, /sendAuthenticatedAssetContent/);
+  assert.match(controller, /contentPath/);
+  assert.doesNotMatch(controller, /url:\s*createAuthenticatedAccessUrl/);
   assert.doesNotMatch(controller, /secure_url/);
 });
 
@@ -28,6 +30,7 @@ test('payment proof routes separate view, upload, and delete permissions', () =>
   assert.match(router, /payments\/:paymentId\/proofs'.*LOT_LISTINGS_VIEW/);
   assert.match(router, /proofs\/upload-signature'.*LOT_LISTINGS_MANAGE/);
   assert.match(router, /proofs\/:proofId\/access-url'.*LOT_LISTINGS_VIEW/);
+  assert.match(router, /proofs\/:proofId\/content'.*LOT_LISTINGS_VIEW/);
   assert.match(router, /proofs\/:proofId\/delete'.*LOT_PAYMENT_DELETE/);
 });
 
@@ -39,4 +42,7 @@ test('payments UI exposes proof management separately from payment editing', () 
   assert.match(modal, /supporting files, not official receipts/i);
   assert.match(modal, /MAX_FILES = 5/);
   assert.match(modal, /MAX_FILE_BYTES = 15 \* 1024 \* 1024/);
+  assert.match(modal, /fetchProtectedObjectUrl/);
+  assert.doesNotMatch(modal, /result\?\.data\?\.url/);
 });
+

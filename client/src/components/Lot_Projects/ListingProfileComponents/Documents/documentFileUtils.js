@@ -16,6 +16,8 @@ export const isProtectedDocumentFile = (entry) => Boolean(
   entry?.protected ||
   entry?.accessPath ||
   entry?.access_path ||
+  entry?.contentPath ||
+  entry?.content_path ||
   entry?.fileId ||
   entry?.file_id ||
   entry?.cloudinaryPublicId ||
@@ -71,11 +73,12 @@ export const normalizeDocumentFileEntry = (file, document = {}, index = 0) => {
       ? `/projects/lot-projects/${projectSlug}/document-files/${fileId}/access-url`
       : '')
   ).trim()
-  const protectedFile = isProtectedDocumentFile({ ...file, fileId, accessPath })
+  const contentPath = String(file.contentPath || file.content_path || (accessPath.endsWith('/access-url') ? accessPath.replace(/\/access-url$/, '/content') : '')).trim()
+  const protectedFile = isProtectedDocumentFile({ ...file, fileId, accessPath, contentPath })
   const cloudinaryPublicId = file.cloudinaryPublicId || file.cloudinary_public_id || null
 
   // Protected files intentionally have no permanent public URL. Keep the
-  // access route/file id so viewers can request a short-lived signed link.
+  // authenticated status route and same-session content route instead.
   if (!url && !accessPath && !fileId && !cloudinaryPublicId) return null
 
   return {
@@ -83,6 +86,7 @@ export const normalizeDocumentFileEntry = (file, document = {}, index = 0) => {
     fileId,
     url,
     accessPath,
+    contentPath,
     protected: protectedFile,
     cloudinaryPublicId,
     malwareScanStatus: String(file.malwareScanStatus || file.malware_scan_status || 'not_scanned').trim().toLowerCase(),
@@ -131,3 +135,4 @@ export const isPdfLike = (file = {}) => `${
 } ${file.fileName || ''} ${file.fileType || file.file_type || ''} ${file.resourceType || ''} ${file.format || file.cloudinaryFormat || file.cloudinary_format || ''}`
   .toLowerCase()
   .includes('pdf')
+

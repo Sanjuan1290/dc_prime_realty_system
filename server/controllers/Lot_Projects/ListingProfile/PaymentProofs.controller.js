@@ -9,7 +9,7 @@ import {
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
 import {
   buildPaymentProofFolder,
-  createAuthenticatedAccessUrl,
+  sendAuthenticatedAssetContent,
   createAuthenticatedPaymentProofUploadSignature,
   destroyCloudinaryAssets,
   validateDocumentUploadRequest,
@@ -131,6 +131,7 @@ const mapProof = (req, row = {}) => ({
   malwareScanReason: row.malware_scan_reason || null,
   malwareScannedAt: row.malware_scanned_at || null,
   accessPath: `/projects/lot-projects/${encodeURIComponent(req.params.projectSlug)}/listings/${encodeURIComponent(req.params.listingId)}/payments/${Number(row.lot_project_payment_id || 0)}/proofs/${Number(row.lot_project_payment_proof_id || 0)}/access-url`,
+  contentPath: `/projects/lot-projects/${encodeURIComponent(req.params.projectSlug)}/listings/${encodeURIComponent(req.params.listingId)}/payments/${Number(row.lot_project_payment_id || 0)}/proofs/${Number(row.lot_project_payment_proof_id || 0)}/content`,
 });
 
 export const getLotProjectPaymentProofs = async (req, res) => {
@@ -477,17 +478,10 @@ export const getLotProjectPaymentProofAccessUrl = async (req, res) => {
       });
     }
 
-    const url = createAuthenticatedAccessUrl({
-      publicId: proof.cloudinary_public_id,
-      format: proof.cloudinary_format,
-      resourceType: proof.cloudinary_resource_type,
-      expiresInSeconds: 600,
-    });
     return res.json({
       success: true,
       data: {
-        url,
-        expiresInSeconds: 600,
+        contentPath: `/projects/lot-projects/${encodeURIComponent(req.params.projectSlug)}/listings/${encodeURIComponent(req.params.listingId)}/payments/${Number(context.payment.lot_project_payment_id)}/proofs/${proofId}/content`,
         malwareScanStatus,
         securityWarning: malwareScanStatus === 'not_scanned'
           ? 'This payment proof was uploaded without malware scanning because the scanning quota was unavailable.'
@@ -496,6 +490,48 @@ export const getLotProjectPaymentProofAccessUrl = async (req, res) => {
     });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
+export const getLotProjectPaymentProofContent = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    const context = await getPaymentProofContext(connection, req);
+    if (context.errorStatus) return res.status(context.errorStatus).json({ message: context.errorMessage });
+
+    const proofId = Number(req.params.proofId || 0);
+    if (!proofId) return res.status(400).json({ message: 'Payment proof id is required.' });
+
+    const [rows] = await connection.query(
+      `
+        SELECT *
+        FROM lot_project_payment_proofs
+        WHERE lot_project_payment_proof_id = ?
+          AND lot_project_payment_id = ?
+          AND proof_status = 'active'
+        LIMIT 1
+      `,
+      [proofId, context.payment.lot_project_payment_id]
+    );
+    const proof = rows[0];
+    if (!proof) return res.status(404).json({ message: 'Payment proof not found.' });
+
+    const malwareScanStatus = clean(proof.malware_scan_status || 'not_scanned').toLowerCase();
+    if (malwareScanStatus === 'pending') return res.status(423).json({ code: 'MALWARE_SCAN_PENDING', message: 'This payment proof is still being scanned for security threats. Try again shortly.' });
+    if (malwareScanStatus === 'rejected') return res.status(403).json({ code: 'MALWARE_DETECTED', message: 'This payment proof was blocked because the security scan detected malicious content.' });
+    if (malwareScanStatus === 'error') return res.status(503).json({ code: 'MALWARE_SCAN_ERROR', message: 'The security scan did not complete successfully. This payment proof is temporarily unavailable.' });
+
+    return await sendAuthenticatedAssetContent(res, {
+      publicId: proof.cloudinary_public_id,
+      format: proof.cloudinary_format,
+      resourceType: proof.cloudinary_resource_type,
+      fileName: proof.file_name || proof.stored_file_name || 'payment-proof',
+      fileMimeType: proof.file_mime_type,
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ code: error.code || undefined, message: getErrorMessage(error) });
   } finally {
     connection.release();
   }
@@ -585,3 +621,4 @@ export const deleteLotProjectPaymentProof = async (req, res) => {
     connection.release();
   }
 };
+

@@ -10,7 +10,8 @@ import {
   authorizeMalwareQuotaFallback,
   buildCommissionReceiptSignedCopyFolder,
   buildMalwareQuotaError,
-  createAuthenticatedAccessUrl,
+  sendAuthenticatedAssetContent,
+  destroyCloudinaryAssets,
   createAuthenticatedSignedCopyUploadSignature,
   getCloudinaryMalwareScanState,
   getPerceptionPointQuotaState,
@@ -137,6 +138,7 @@ const mapSignedCopy = (sellerId, receiptId, row = {}) => row?.lot_project_commis
   malwareScanReason: row.malware_scan_reason || null,
   malwareScannedAt: row.malware_scanned_at || null,
   accessPath: `/accredited/${Number(sellerId)}/proof-of-income-receipts/${Number(receiptId)}/signed-copy/access-url`,
+  contentPath: `/accredited/${Number(sellerId)}/proof-of-income-receipts/${Number(receiptId)}/signed-copy/content`,
 }) : null;
 
 export const getAccreditedSellerProofOfIncomeSignedCopy = async (req, res) => {
@@ -409,13 +411,7 @@ export const getAccreditedSellerProofOfIncomeSignedCopyAccessUrl = async (req, r
     return res.json({
       success: true,
       data: {
-        url: createAuthenticatedAccessUrl({
-          publicId: file.cloudinary_public_id,
-          format: file.cloudinary_format,
-          resourceType: file.cloudinary_resource_type,
-          expiresInSeconds: 600,
-        }),
-        expiresInSeconds: 600,
+        contentPath: `/accredited/${sellerId}/proof-of-income-receipts/${receiptId}/signed-copy/content`,
         malwareScanStatus,
         securityWarning: malwareScanStatus === 'not_scanned'
           ? 'This signed Proof of Income was uploaded without malware scanning because the scanning quota was unavailable.'
@@ -428,3 +424,126 @@ export const getAccreditedSellerProofOfIncomeSignedCopyAccessUrl = async (req, r
     connection.release();
   }
 };
+
+export const getAccreditedSellerProofOfIncomeSignedCopyContent = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    const user = await requireManager(req, res);
+    if (!user) return;
+    const sellerId = Number(req.params.sellerId || 0);
+    const receiptId = Number(req.params.receiptId || 0);
+    if (!sellerId || !receiptId) return res.status(400).json({ message: 'Seller id and receipt id are required.' });
+    const context = await getContext(connection, sellerId, receiptId);
+    if (context.errorStatus) return res.status(context.errorStatus).json({ message: context.errorMessage });
+    const file = await getActiveFile(connection, receiptId);
+    if (!file) return res.status(404).json({ message: 'Signed Proof of Income not found.' });
+
+    const malwareScanStatus = clean(file.malware_scan_status || 'not_scanned').toLowerCase();
+    if (malwareScanStatus === 'pending') return res.status(423).json({ code: 'MALWARE_SCAN_PENDING', message: 'The signed Proof of Income is still being scanned. Try again shortly.' });
+    if (malwareScanStatus === 'rejected') return res.status(403).json({ code: 'MALWARE_DETECTED', message: 'The signed Proof of Income was blocked because malware was detected.' });
+    if (malwareScanStatus === 'error') return res.status(503).json({ code: 'MALWARE_SCAN_ERROR', message: 'The security scan did not complete successfully. The signed Proof of Income is temporarily unavailable.' });
+
+    return await sendAuthenticatedAssetContent(res, {
+      publicId: file.cloudinary_public_id,
+      format: file.cloudinary_format,
+      resourceType: file.cloudinary_resource_type,
+      fileName: file.file_name || file.stored_file_name || 'signed-proof-of-income',
+      fileMimeType: file.file_mime_type,
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ code: error.code || undefined, message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
+export const deleteAccreditedSellerProofOfIncomeSignedCopy = async (req, res) => {
+  const connection = await db.getConnection();
+  let transactionStarted = false;
+  try {
+    const user = await requireManager(req, res);
+    if (!user) return;
+    const sellerId = Number(req.params.sellerId || 0);
+    const receiptId = Number(req.params.receiptId || 0);
+    if (!sellerId || !receiptId) return res.status(400).json({ message: 'Seller id and receipt id are required.' });
+    const context = await getContext(connection, sellerId, receiptId);
+    if (context.errorStatus) return res.status(context.errorStatus).json({ message: context.errorMessage });
+
+    await connection.beginTransaction();
+    transactionStarted = true;
+    const [rows] = await connection.query(
+      `
+        SELECT *
+        FROM lot_project_commission_receipt_files
+        WHERE lot_project_commission_receipt_id = ?
+          AND accredited_seller_id = ?
+          AND file_status = 'active'
+        ORDER BY lot_project_commission_receipt_file_id DESC
+        LIMIT 1
+        FOR UPDATE
+      `,
+      [receiptId, sellerId]
+    );
+    const file = rows[0];
+    if (!file) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(404).json({ message: 'No active signed Proof of Income copy was found.' });
+    }
+
+    const cloudinaryCleanup = await destroyCloudinaryAssets([{
+      publicId: file.cloudinary_public_id,
+      resourceType: file.cloudinary_resource_type || 'image',
+      deliveryType: file.cloudinary_delivery_type || 'authenticated',
+    }]);
+
+    await connection.query(
+      `
+        UPDATE lot_project_commission_receipt_files
+        SET file_status = 'removed',
+            removed_at = NOW(),
+            updated_at = NOW()
+        WHERE lot_project_commission_receipt_file_id = ?
+          AND file_status = 'active'
+      `,
+      [file.lot_project_commission_receipt_file_id]
+    );
+
+    await writeAuditLog(connection, req, {
+      action: 'delete',
+      module: 'Commissions',
+      entityType: 'lot_project_commission_receipt_file',
+      entityId: String(file.lot_project_commission_receipt_file_id),
+      entityLabel: `${context.receipt.reference_number} — ${context.receipt.lot_project_listing_unit_id}`,
+      title: 'Deleted signed Proof of Income',
+      description: `Deleted the active signed Proof of Income copy for receipt ${context.receipt.reference_number}. The generated unsigned receipt remains available.`,
+      metadata: {
+        sellerId,
+        receiptId,
+        accountId: context.receipt.resolved_account_id,
+        signedCopyId: file.lot_project_commission_receipt_file_id,
+        fileVersion: file.file_version,
+        fileName: file.file_name,
+        cloudinaryDeletedCount: cloudinaryCleanup.deletedCount,
+        cloudinaryAlreadyMissingCount: cloudinaryCleanup.alreadyMissingCount,
+        deletedByUserId: user?.id || null,
+      },
+    });
+
+    await connection.commit();
+    transactionStarted = false;
+    return res.json({
+      success: true,
+      message: 'Signed Proof of Income deleted. The system-generated unsigned receipt is unchanged.',
+      data: { signedCopy: null },
+    });
+  } catch (error) {
+    if (transactionStarted) {
+      try { await connection.rollback(); } catch {}
+    }
+    return res.status(error.statusCode || 500).json({ code: error.code || undefined, message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+

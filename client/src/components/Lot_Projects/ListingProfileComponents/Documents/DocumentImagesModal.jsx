@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { FiExternalLink, FiEye, FiFileText, FiImage, FiLoader, FiLock, FiSearch, FiX } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
-import { useFetch } from '../../../../utils/useFetch'
+import { fetchProtectedObjectUrl, openProtectedObjectUrl, revokeProtectedObjectUrl } from '../../../../utils/protectedFile'
 import { getDocumentFiles, isPdfLike } from './documentFileUtils'
 import {
   canOpenMalwareScannedFile,
@@ -34,6 +34,7 @@ const DocumentImagesModal = ({ documents = [], onClose }) => {
   const [notice, setNotice] = useState(null)
   const [resolvedUrls, setResolvedUrls] = useState({})
   const [previewStatus, setPreviewStatus] = useState({ loading: false, failed: 0 })
+  const objectUrlsRef = useRef(new Set())
 
   const documentFiles = useMemo(
     () => documents.flatMap((document) =>
@@ -46,6 +47,11 @@ const DocumentImagesModal = ({ documents = [], onClose }) => {
     ),
     [documents]
   )
+
+  useEffect(() => () => {
+    objectUrlsRef.current.forEach((url) => revokeProtectedObjectUrl(url))
+    objectUrlsRef.current.clear()
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -62,9 +68,8 @@ const DocumentImagesModal = ({ documents = [], onClose }) => {
       setPreviewStatus({ loading: true, failed: 0 })
       const results = await Promise.allSettled(
         protectedImages.map(async ({ key, file }) => {
-          const result = await useFetch(file.accessPath)
-          const url = result?.data?.url || result?.url || ''
-          if (!url) throw new Error('The server did not return a document link.')
+          const url = await fetchProtectedObjectUrl(file)
+          objectUrlsRef.current.add(url)
           return { key, url }
         })
       )
@@ -102,16 +107,17 @@ const DocumentImagesModal = ({ documents = [], onClose }) => {
 
   const resolveFileUrl = async (file, key) => {
     if (file.url && !file.protected) return file.url
-    if (resolvedUrls[key]) return resolvedUrls[key]
-    if (!file.accessPath) throw new Error('This protected file does not have an access route.')
+    if (!isPdfLike(file) && resolvedUrls[key]) return resolvedUrls[key]
+    if (!file.accessPath && !file.contentPath) throw new Error('This protected file does not have a secure content route.')
 
     setLoadingKey(key)
-    setNotice({ type: 'loading', message: 'Generating a secure document link...' })
+    setNotice({ type: 'loading', message: 'Loading protected document content...' })
     try {
-      const result = await useFetch(file.accessPath)
-      const url = result?.data?.url || result?.url
-      if (!url) throw new Error('The server did not return a document link.')
-      setResolvedUrls((current) => ({ ...current, [key]: url }))
+      const url = await fetchProtectedObjectUrl(file)
+      if (!isPdfLike(file)) {
+        objectUrlsRef.current.add(url)
+        setResolvedUrls((current) => ({ ...current, [key]: url }))
+      }
       setNotice(null)
       return url
     } catch (error) {
@@ -140,7 +146,7 @@ const DocumentImagesModal = ({ documents = [], onClose }) => {
     try {
       const url = await resolveFileUrl(file, key)
       if (isPdfLike(file)) {
-        window.open(url, '_blank', 'noopener,noreferrer')
+        if (!openProtectedObjectUrl(url)) setNotice({ type: 'warning', message: 'Your browser blocked the protected document window. Allow pop-ups for this site and try again.' })
       } else {
         setPreviewFile({ ...file, url, documentName: document.name, index })
       }
@@ -155,7 +161,7 @@ const DocumentImagesModal = ({ documents = [], onClose }) => {
         <header className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
           <div>
             <h2 className="text-xl font-black text-slate-950">Document Files</h2>
-            <p className="mt-1 text-sm font-semibold text-slate-500">Open uploaded files through protected, short-lived links.</p>
+            <p className="mt-1 text-sm font-semibold text-slate-500">Open uploaded files through authenticated same-session protected content.</p>
           </div>
           <button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100" aria-label="Close document files">
             <FiX className="h-4 w-4" />
@@ -283,4 +289,5 @@ const DocumentImagesModal = ({ documents = [], onClose }) => {
 }
 
 export default DocumentImagesModal
+
 

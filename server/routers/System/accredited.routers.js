@@ -12,6 +12,8 @@ import {
   createAccreditedSellerProofOfIncomeSignedCopyUploadSignature,
   saveAccreditedSellerProofOfIncomeSignedCopy,
   getAccreditedSellerProofOfIncomeSignedCopyAccessUrl,
+  getAccreditedSellerProofOfIncomeSignedCopyContent,
+  deleteAccreditedSellerProofOfIncomeSignedCopy,
 } from '../../controllers/System/ProofOfIncomeSignedCopies.controller.js';
 import { authenticateUser, requirePermission } from '../../middleware/auth.middleware.js';
 import { PERMISSIONS } from '../../config/permissions.js';
@@ -28,6 +30,9 @@ router.get('/:sellerId/proof-of-income-receipts/:receiptId/signed-copy', require
 router.post('/:sellerId/proof-of-income-receipts/:receiptId/signed-copy/upload-signature', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_MANAGE), createAccreditedSellerProofOfIncomeSignedCopyUploadSignature);
 router.post('/:sellerId/proof-of-income-receipts/:receiptId/signed-copy', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_MANAGE), saveAccreditedSellerProofOfIncomeSignedCopy);
 router.get('/:sellerId/proof-of-income-receipts/:receiptId/signed-copy/access-url', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_VIEW), getAccreditedSellerProofOfIncomeSignedCopyAccessUrl);
+router.get('/:sellerId/proof-of-income-receipts/:receiptId/signed-copy/content', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_VIEW), getAccreditedSellerProofOfIncomeSignedCopyContent);
+router.post('/:sellerId/proof-of-income-receipts/:receiptId/signed-copy/delete', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_MANAGE), deleteAccreditedSellerProofOfIncomeSignedCopy);
 router.post('/:sellerId/proof-of-income', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_MANAGE), uploadAccreditedSellerProofOfIncome);
 
 export default router;
+
