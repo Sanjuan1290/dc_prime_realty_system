@@ -105,6 +105,7 @@ const ReserveListingModal = ({
       .filter((document) => document.id && document.status === 'active')
   })
   const [searchDocument, setSearchDocument] = useState('')
+  const [templateAdditionHistory, setTemplateAdditionHistory] = useState({})
   const [agentSearch, setAgentSearch] = useState('')
   const [debouncedAgentSearch, setDebouncedAgentSearch] = useState('')
   const [selectedAgentSnapshot, setSelectedAgentSnapshot] = useState(null)
@@ -312,6 +313,21 @@ const ReserveListingModal = ({
     (item) => Number(item.document_id || item.id) === Number(documentId)
   )
 
+  const removeDocumentFromTemplateHistory = (documentId) => {
+    const numericDocumentId = Number(documentId)
+    setTemplateAdditionHistory((current) => Object.fromEntries(
+      Object.entries(current)
+        .map(([templateKey, entry]) => [
+          templateKey,
+          {
+            ...entry,
+            documentIds: (entry.documentIds || []).filter((id) => Number(id) !== numericDocumentId),
+          },
+        ])
+        .filter(([, entry]) => entry.documentIds.length > 0)
+    ))
+  }
+
   const addDocument = (document) => {
     const documentId = Number(document.document_id || document.id)
     if (isDocumentAdded(documentId)) {
@@ -319,6 +335,7 @@ const ReserveListingModal = ({
       return
     }
 
+    removeDocumentFromTemplateHistory(documentId)
     setSelectedDocuments((current) => [...current, {
       ...document,
       id: documentId,
@@ -340,6 +357,10 @@ const ReserveListingModal = ({
     })
   }
 
+  const getTemplateHistoryKey = (template = {}) => String(
+    template.template_id || template.id || template.template_name || 'template'
+  )
+
   const addTemplateDocuments = (template) => {
     const templateRows = Array.isArray(template?.documents) ? template.documents : []
     if (!templateRows.length) {
@@ -353,10 +374,52 @@ const ReserveListingModal = ({
       return
     }
 
+    const templateKey = getTemplateHistoryKey(template)
+    const addedDocumentIds = additions
+      .map((document) => Number(document.document_id || document.id))
+      .filter(Boolean)
+
     mergeSelectedDocuments(additions)
+    setTemplateAdditionHistory((current) => {
+      const previousIds = current[templateKey]?.documentIds || []
+      return {
+        ...current,
+        [templateKey]: {
+          templateName: template.template_name || 'Document Template',
+          documentIds: [...new Set([...previousIds, ...addedDocumentIds])],
+        },
+      }
+    })
     setAlert({
       type: 'success',
-      message: `${template.template_name}: ${additions.length} document${additions.length === 1 ? '' : 's'} added to the reservation checklist.`,
+      message: `${template.template_name}: ${additions.length} document${additions.length === 1 ? '' : 's'} added to the reservation checklist. You can undo this template add if needed.`,
+    })
+  }
+
+  const undoTemplateDocuments = (template) => {
+    const templateKey = getTemplateHistoryKey(template)
+    const entry = templateAdditionHistory[templateKey]
+    const addedIds = new Set((entry?.documentIds || []).map(Number).filter(Boolean))
+
+    if (!addedIds.size) {
+      setAlert({ type: 'info', message: `There are no template-added documents to undo for ${template?.template_name || 'this template'}.` })
+      return
+    }
+
+    const removedCount = selectedDocuments.filter(
+      (document) => addedIds.has(Number(document.document_id || document.id))
+    ).length
+    setSelectedDocuments((current) => current.filter(
+      (document) => !addedIds.has(Number(document.document_id || document.id))
+    ))
+    setTemplateAdditionHistory((current) => {
+      const next = { ...current }
+      delete next[templateKey]
+      return next
+    })
+    setAlert({
+      type: 'warning',
+      message: `${template?.template_name || 'Template'}: ${removedCount || addedIds.size} template-added document${(removedCount || addedIds.size) === 1 ? '' : 's'} removed. Documents that were selected before the template was added were kept.`,
     })
   }
 
@@ -364,6 +427,7 @@ const ReserveListingModal = ({
     setSelectedDocuments((current) => current.filter(
       (document) => Number(document.document_id || document.id) !== Number(documentId)
     ))
+    removeDocumentFromTemplateHistory(documentId)
     setAlert({ type: 'warning', message: 'Document removed from the reservation checklist.' })
   }
 
@@ -396,6 +460,7 @@ const ReserveListingModal = ({
     }
 
     setSelectedDocuments(projectDefaultDocuments)
+    setTemplateAdditionHistory({})
     setAlert({ type: 'success', message: 'Checklist reset to the project default documents.' })
   }
 
@@ -672,7 +737,7 @@ const ReserveListingModal = ({
 
           {activeStep === 1 ? <ReserveClientProfileModal clientForm={clientForm} setClientForm={setClientForm} hasSecondBuyer={hasSecondBuyer} updateBuyerType={updateBuyerType} invalidField={invalidClientField} onFieldChange={handleClientFieldChange} title={mode === 'submission-review' ? 'Submitted Buyer Profile' : 'Client Profile'} description={mode === 'submission-review' ? 'Review the information submitted by the buyer. Admin corrections will be saved with the final reservation.' : undefined} /> : null}
 
-          {activeStep === 2 ? <ReserveDocumentChecklistModal filteredDocuments={filteredDocuments} searchDocument={searchDocument} setSearchDocument={setSearchDocument} selectedDocuments={selectedDocuments} isSaving={isSaving} isLoadingDefaults={isLoadingDocuments} deletingDocId={null} isDocumentAdded={isDocumentAdded} addDocument={addDocument} addTemplateDocuments={addTemplateDocuments} removeDocument={removeDocument} updateDocumentRequirement={updateDocumentRequirement} updateDocumentResponsibleParty={updateDocumentResponsibleParty} loadProjectDefaults={loadProjectDefaults} documentTemplates={reservationDocumentTemplates} /> : null}
+          {activeStep === 2 ? <ReserveDocumentChecklistModal filteredDocuments={filteredDocuments} searchDocument={searchDocument} setSearchDocument={setSearchDocument} selectedDocuments={selectedDocuments} isSaving={isSaving} isLoadingDefaults={isLoadingDocuments} deletingDocId={null} isDocumentAdded={isDocumentAdded} addDocument={addDocument} addTemplateDocuments={addTemplateDocuments} undoTemplateDocuments={undoTemplateDocuments} templateAdditionHistory={templateAdditionHistory} removeDocument={removeDocument} updateDocumentRequirement={updateDocumentRequirement} updateDocumentResponsibleParty={updateDocumentResponsibleParty} loadProjectDefaults={loadProjectDefaults} documentTemplates={reservationDocumentTemplates} /> : null}
 
           {activeStep === 3 ? <ReservePaymentTermsModal listing={listing} project={project} tcp={tcp} contractPricing={contractPricing} paymentForm={effectivePaymentForm} updatePaymentField={updatePaymentField} agents={fetchedAgents} selectedAgent={selectedAgent} agentSearch={agentSearch} setAgentSearch={setAgentSearch} isLoadingAgents={agentsQuery.isLoading || agentsQuery.isFetching} agentsError={!projectSlug ? 'Project information is missing.' : agentsQuery.isError ? agentsQuery.error?.message || 'Failed to load Seller / Group options.' : null} commissionPreview={commissionPreview} isLoadingPreview={previewQuery.isLoading || previewQuery.isFetching} previewError={previewQuery.isError ? previewQuery.error?.message || 'Failed to load the commission structure.' : null} /> : null}
         </div>

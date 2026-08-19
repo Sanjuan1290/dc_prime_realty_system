@@ -21,6 +21,24 @@ test('reservation checklist visibly shows templates and adds missing template do
   assert.doesNotMatch(reservationSource, /selectedTemplateDocumentIds/);
 });
 
+test('reservation template add requires confirmation and can undo only documents added by that template action', async () => {
+  const [modalSource, reservationSource] = await Promise.all([
+    readSource('../../client/src/components/Lot_Projects/ListingProfileComponents/ReserveListingModal/ReserveDocumentChecklistModal.jsx'),
+    readSource('../../client/src/components/Lot_Projects/ListingProfileComponents/ReserveListingModal/ReserveListingModal.jsx'),
+  ]);
+
+  assert.match(modalSource, /Add Document Template\?/);
+  assert.match(modalSource, /Confirm & Add/);
+  assert.match(modalSource, /Undo Template Add/);
+  assert.match(modalSource, /setPendingTemplate\(template\)/);
+  assert.match(modalSource, /already-selected document/);
+  assert.match(reservationSource, /templateAdditionHistory/);
+  assert.match(reservationSource, /const undoTemplateDocuments = \(template\) =>/);
+  assert.match(reservationSource, /documentIds: \[\.\.\.new Set/);
+  assert.match(reservationSource, /Documents that were selected before the template was added were kept/);
+  assert.match(reservationSource, /setTemplateAdditionHistory\(\{\}\)/);
+});
+
 test('in-house group details can add a member directly into the current group', async () => {
   const source = await readSource('../../client/src/pages/System/SellerGroupDetails.jsx');
 
@@ -101,3 +119,4 @@ test('top-level in-house accounts become the group head and previews require a c
   assert.match(commissionSource, /requireGroupHead: true/);
   assert.match(commissionSource, /Only active Sales Agents can be assigned/);
 });
+
