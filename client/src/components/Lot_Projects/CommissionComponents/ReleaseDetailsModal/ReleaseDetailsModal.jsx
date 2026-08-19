@@ -87,21 +87,32 @@ const ModalNotice = ({ notice, onClose }) => {
   )
 }
 
-const ConfirmDialog = ({ action, stage, isSaving, onCancel, onConfirm }) => {
+const ConfirmDialog = ({ action, stage, agentReceiptStatus, isSaving, onCancel, onConfirm }) => {
   if (!action || !stage || action === 'release_stage') return null
 
+  const isReceiptAction = action === 'set_agent_receipt_status'
+  const markingSubmitted = agentReceiptStatus === 'submitted'
   const labels = {
     hold_stage: 'hold this stage',
     unhold_stage: 'unhold this stage',
+    set_agent_receipt_status: markingSubmitted
+      ? 'mark the External Realty agent receipt as Submitted'
+      : 'mark the External Realty agent receipt as Unsubmitted',
   }
   const confirmLabels = {
     hold_stage: 'Hold Stage',
     unhold_stage: 'Unhold Stage',
+    set_agent_receipt_status: markingSubmitted ? 'Mark Submitted' : 'Mark Unsubmitted',
   }
   const titles = {
     hold_stage: 'Hold Commission Stage?',
     unhold_stage: 'Unhold Commission Stage?',
+    set_agent_receipt_status: markingSubmitted ? 'Mark Agent Receipt Submitted?' : 'Mark Agent Receipt Unsubmitted?',
   }
+
+  const receiptHelper = markingSubmitted
+    ? 'If the next milestone is held only because of this receipt requirement, it will be re-evaluated automatically.'
+    : 'If the next milestone is already eligible and has not been released, it will be placed on hold until this receipt is marked Submitted.'
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/50 p-4">
@@ -113,6 +124,7 @@ const ConfirmDialog = ({ action, stage, isSaving, onCancel, onConfirm }) => {
             <p className="mt-1 text-sm font-semibold leading-relaxed">
               Are you sure you want to {labels[action] || action} for {stage.stage}?
             </p>
+            {isReceiptAction ? <p className="mt-2 text-xs font-semibold leading-relaxed text-blue-700">{receiptHelper}</p> : null}
           </div>
         </div>
 
@@ -273,12 +285,18 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, isSaving = fa
   const milestones = useMemo(() => commission.releaseMilestones || [], [commission.releaseMilestones])
   const releaseDateInfo = commission.releaseDateInfo || {}
   const retentionReady = Boolean(commission.retentionReady || (commission.paymentComplete && commission.documentsComplete))
+  const isExternalGroup = Boolean(
+    commission.isExternalGroup
+    || String(commission.rawRole || '').toLowerCase() === 'external_group'
+    || String(commission.sellerGroupType || '').toLowerCase() === 'external'
+  )
   const retentionBlockedMessage = 'Retention can only be unheld when all required documents are complete and the account is fully paid.'
   const [confirmAction, setConfirmAction] = useState(null)
   const [selectedStage, setSelectedStage] = useState(null)
   const [releaseMode, setReleaseMode] = useState('live')
   const [historicalDate, setHistoricalDate] = useState(releaseDateInfo.todayDateISO || todayManilaISO())
   const [historicalNote, setHistoricalNote] = useState('')
+  const [agentReceiptStatus, setAgentReceiptStatus] = useState('')
   const [notice, setNotice] = useState(null)
   const activeNotice = notice || serverNotice
 
@@ -289,11 +307,12 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, isSaving = fa
     setReleaseMode('live')
     setHistoricalDate(releaseDateInfo.todayDateISO || todayManilaISO())
     setHistoricalNote('')
+    setAgentReceiptStatus('')
     setNotice(null)
     onClearServerNotice?.()
   }
 
-  const openConfirm = (action, stage) => {
+  const openConfirm = (action, stage, options = {}) => {
     if (!stage?.releaseId) {
       setNotice({ type: 'error', title: 'Missing release stage', message: 'This release stage is missing a database id. Refresh the page first.' })
       return
@@ -304,9 +323,22 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, isSaving = fa
       return
     }
 
+    if (action === 'unhold_stage' && stage.externalReceiptHoldSourceReleaseId) {
+      setNotice({ type: 'warning', title: 'Receipt required', message: `${stage.stage} is held until the previous External Realty agent receipt is marked Submitted.` })
+      return
+    }
+
     if (action === 'unhold_stage' && stage.stage === 'Retention' && !retentionReady) {
       setNotice({ type: 'warning', title: 'Retention locked', message: retentionBlockedMessage })
       return
+    }
+
+    if (action === 'set_agent_receipt_status') {
+      if (!isExternalGroup || stage.status !== 'Released') {
+        setNotice({ type: 'warning', title: 'Receipt status unavailable', message: 'Agent receipt status is only available for released External Realty commission stages.' })
+        return
+      }
+      setAgentReceiptStatus(options.agentReceiptStatus === 'submitted' ? 'submitted' : 'unsubmitted')
     }
 
     if (action === 'release_stage') {
@@ -342,9 +374,13 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, isSaving = fa
           historicalNote: historicalNote.trim(),
         } : {}),
       } : {}),
+      ...(confirmAction === 'set_agent_receipt_status' ? {
+        agentReceiptStatus,
+      } : {}),
     })
     setConfirmAction(null)
     setSelectedStage(null)
+    setAgentReceiptStatus('')
   }
 
   return (
@@ -419,10 +455,19 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, isSaving = fa
             <h3 className="text-sm font-black text-slate-950">Main Release Milestones</h3>
 
             <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200">
-              <table className="min-w-[840px] w-full divide-y divide-slate-200 text-xs">
+              <table className={`${isExternalGroup ? 'min-w-[980px]' : 'min-w-[840px]'} w-full divide-y divide-slate-200 text-xs`}>
                 <thead className="bg-slate-50">
                   <tr>
-                    {['Stage', 'Trigger %', 'Release %', 'Gross', 'Net', 'Status', 'Actions'].map((head) => (
+                    {[
+                      'Stage',
+                      'Trigger %',
+                      'Release %',
+                      'Gross',
+                      'Net',
+                      'Status',
+                      ...(isExternalGroup ? ['Agent Receipt'] : []),
+                      'Actions',
+                    ].map((head) => (
                       <th key={head} className="px-4 py-3 text-left font-black text-slate-700">{head}</th>
                     ))}
                   </tr>
@@ -434,6 +479,8 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, isSaving = fa
                     const isCancelled = stage.status === 'Cancelled'
                     const isEarnedOnCancellation = stage.status === 'Earned on Cancellation'
                     const isForfeitedOnCancellation = stage.status === 'Forfeited on Cancellation'
+                    const receiptSubmitted = stage.externalAgentReceiptStatus === 'submitted'
+                    const receiptBlocked = Boolean(stage.externalReceiptHoldSourceReleaseId)
 
                     return (
                       <tr key={stage.id || stage.stage} className="align-top">
@@ -446,7 +493,27 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, isSaving = fa
                           <StatusPill status={stage.status} />
                           {isReleased && stage.actualReleaseDate ? <p className="mt-1.5 text-[10px] font-bold text-slate-500">{stage.actualReleaseDate}</p> : null}
                           {isReleased && stage.releaseEntryMode === 'historical' ? <span className="mt-1 inline-flex rounded-full bg-violet-50 px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-violet-700">Historical</span> : null}
+                          {receiptBlocked ? <p className="mt-1.5 max-w-[170px] text-[10px] font-black leading-4 text-amber-700">Held until previous External Realty agent receipt is Submitted.</p> : null}
                         </td>
+                        {isExternalGroup ? (
+                          <td className="px-4 py-3">
+                            {isReleased ? (
+                              <div className="flex min-w-[145px] flex-col items-start gap-2">
+                                <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black ${receiptSubmitted ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
+                                  {receiptSubmitted ? 'Submitted' : 'Unsubmitted'}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => openConfirm('set_agent_receipt_status', stage, { agentReceiptStatus: receiptSubmitted ? 'unsubmitted' : 'submitted' })}
+                                  disabled={isSaving}
+                                  className="inline-flex h-8 items-center rounded-lg border border-slate-300 bg-white px-3 text-[10px] font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  {receiptSubmitted ? 'Mark Unsubmitted' : 'Mark Submitted'}
+                                </button>
+                              </div>
+                            ) : <span className="font-semibold text-slate-400">—</span>}
+                          </td>
+                        ) : null}
                         <td className="px-4 py-3">
                           <div className="flex flex-wrap gap-2">
                             {['Eligible', 'Earned on Cancellation'].includes(stage.status) ? (
@@ -464,7 +531,17 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, isSaving = fa
                             ) : null}
 
                             {isOnHold ? (
-                              <button type="button" onClick={() => openConfirm('unhold_stage', stage)} disabled={isSaving} title={stage.stage === 'Retention' && !retentionReady ? retentionBlockedMessage : undefined} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-[11px] font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">
+                              <button
+                                type="button"
+                                onClick={() => openConfirm('unhold_stage', stage)}
+                                disabled={isSaving || receiptBlocked}
+                                title={receiptBlocked
+                                  ? 'This stage is automatically held until the previous External Realty agent receipt is marked Submitted.'
+                                  : stage.stage === 'Retention' && !retentionReady
+                                    ? retentionBlockedMessage
+                                    : undefined}
+                                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-[11px] font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
                                 <FiPlayCircle className="h-3.5 w-3.5" />
                                 Unhold
                               </button>
@@ -478,7 +555,7 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, isSaving = fa
 
                   {!milestones.length ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-10 text-center font-semibold text-slate-500">
+                      <td colSpan={isExternalGroup ? 8 : 7} className="px-4 py-10 text-center font-semibold text-slate-500">
                         No release milestones found for this commission.
                       </td>
                     </tr>
@@ -510,6 +587,7 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, isSaving = fa
           onCancel={() => {
             setConfirmAction(null)
             setSelectedStage(null)
+            setAgentReceiptStatus('')
           }}
           onConfirm={submitAction}
         />
@@ -518,10 +596,12 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, isSaving = fa
       <ConfirmDialog
         action={confirmAction}
         stage={selectedStage}
+        agentReceiptStatus={agentReceiptStatus}
         isSaving={isSaving}
         onCancel={() => {
           setConfirmAction(null)
           setSelectedStage(null)
+          setAgentReceiptStatus('')
         }}
         onConfirm={submitAction}
       />
@@ -535,3 +615,4 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, isSaving = fa
 }
 
 export default ReleaseDetailsModal
+

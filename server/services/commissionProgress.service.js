@@ -153,7 +153,7 @@ export const syncCommissionProgressForListing = async (connection, listing = {})
 
   const [commissions] = await connection.query(
     `
-      SELECT lot_project_commission_id
+      SELECT lot_project_commission_id, commission_role
       FROM lot_project_commissions
       WHERE lot_project_id = ?
         AND lot_project_listing_id = ?
@@ -183,8 +183,91 @@ export const syncCommissionProgressForListing = async (connection, listing = {})
   if (await tableExists(connection, 'lot_project_commission_releases')) {
     const documents = await getDocumentCompletion(connection, context);
     const retentionReady = progress.paymentComplete && documents.complete;
+    const hasExternalReceiptSchema =
+      (await columnExists(connection, 'lot_project_commission_releases', 'external_agent_receipt_status'))
+      && (await columnExists(connection, 'lot_project_commission_releases', 'external_receipt_hold_source_release_id'));
 
     for (const commission of commissions) {
+      if (hasExternalReceiptSchema && clean(commission.commission_role).toLowerCase() === 'external_group') {
+        const [releaseRows] = await connection.query(
+          `
+            SELECT *
+            FROM lot_project_commission_releases
+            WHERE lot_project_commission_id = ?
+            ORDER BY FIELD(release_stage, '1st Release', '2nd Release', '3rd Release', '4th Release', 'Retention')
+          `,
+          [commission.lot_project_commission_id]
+        );
+
+        for (let index = 0; index < releaseRows.length; index += 1) {
+          const release = releaseRows[index];
+          const current = clean(release.release_status) || 'Pending';
+          if (['Released', 'Cancelled', 'Earned on Cancellation', 'Forfeited on Cancellation'].includes(current)) {
+            continue;
+          }
+
+          const triggerPercent = toNumber(release.release_trigger_percent);
+          const isRetention = clean(release.release_stage).toLowerCase() === 'retention';
+          const baseStatus = isRetention
+            ? retentionReady && progress.paymentPercent >= triggerPercent
+              ? 'Eligible'
+              : 'On Hold'
+            : progress.paymentPercent >= triggerPercent
+              ? 'Eligible'
+              : 'Pending';
+
+          const previous = index > 0 ? releaseRows[index - 1] : null;
+          const previousReceiptSubmitted = clean(previous?.external_agent_receipt_status).toLowerCase() === 'submitted';
+          const previousReceiptBlocks = Boolean(
+            baseStatus === 'Eligible'
+            && previous
+            && clean(previous.release_status) === 'Released'
+            && !previousReceiptSubmitted
+          );
+
+          const existingReceiptHoldSource = Number(release.external_receipt_hold_source_release_id || 0);
+          let nextStatus = baseStatus;
+          let nextReceiptHoldSource = null;
+
+          if (previousReceiptBlocks) {
+            if (current === 'On Hold' && !existingReceiptHoldSource) {
+              // Keep manual/default holds independent from receipt-created holds.
+              nextStatus = 'On Hold';
+              nextReceiptHoldSource = null;
+            } else {
+              nextStatus = 'On Hold';
+              nextReceiptHoldSource = Number(previous.lot_project_commission_release_id);
+            }
+          } else if (current === 'On Hold' && !existingReceiptHoldSource) {
+            nextStatus = 'On Hold';
+            nextReceiptHoldSource = null;
+          }
+
+          const currentReceiptHoldSource = existingReceiptHoldSource || null;
+          if (nextStatus !== current || nextReceiptHoldSource !== currentReceiptHoldSource) {
+            await connection.query(
+              `
+                UPDATE lot_project_commission_releases
+                SET
+                  release_status = ?,
+                  external_receipt_hold_source_release_id = ?
+                WHERE lot_project_commission_release_id = ?
+                  AND lot_project_commission_id = ?
+              `,
+              [
+                nextStatus,
+                nextReceiptHoldSource,
+                release.lot_project_commission_release_id,
+                commission.lot_project_commission_id,
+              ]
+            );
+            release.release_status = nextStatus;
+            release.external_receipt_hold_source_release_id = nextReceiptHoldSource;
+          }
+        }
+        continue;
+      }
+
       await connection.query(
         `
           UPDATE lot_project_commission_releases
@@ -207,3 +290,4 @@ export const syncCommissionProgressForListing = async (connection, listing = {})
     ...progress,
   };
 };
+

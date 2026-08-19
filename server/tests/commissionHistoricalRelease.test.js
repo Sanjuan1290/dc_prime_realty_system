@@ -60,7 +60,7 @@ test('historical release uses the same locked idempotent financial path and neve
   const releaseHandler = commissionController.slice(commissionController.indexOf('export const updateLotProjectCommission'));
   const lockIndex = releaseHandler.indexOf('FOR UPDATE');
   const alreadyIndex = releaseHandler.indexOf("if (computedStatus === 'Released')");
-  const updateIndex = releaseHandler.indexOf('UPDATE lot_project_commission_releases');
+  const updateIndex = releaseHandler.indexOf('UPDATE lot_project_commission_releases', alreadyIndex);
   assert.ok(lockIndex >= 0);
   assert.ok(alreadyIndex > lockIndex);
   assert.ok(updateIndex > alreadyIndex);
@@ -132,3 +132,4 @@ test('cancelled-sale financial archive preserves historical release metadata', (
   assert.match(archiveSource, /r\.release_recorded_at/);
   assert.match(archiveSource, /r\.historical_release_note/);
 });
+

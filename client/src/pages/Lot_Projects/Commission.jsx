@@ -117,7 +117,7 @@ const Commission = () => {
       const commissionForReview = (selected?.sellers || []).find((seller) => Number(seller.commissionId || seller.id) === Number(commissionId)) || {}
       const releaseForReview = (commissionForReview.releaseMilestones || []).find((stage) => Number(stage.releaseId) === Number(payload?.releaseId)) || {}
 
-      if (['hold_stage', 'unhold_stage'].includes(action)) {
+      if (['hold_stage', 'unhold_stage', 'set_agent_receipt_status'].includes(action)) {
         return patchJson(
           `/projects/lot-projects/${projectSlug}/commissions/${commissionId}`,
           payload,
@@ -177,9 +177,12 @@ const Commission = () => {
     onMutate: ({ payload }) => {
       const action = String(payload?.action || '')
       const isRelease = action === 'release_stage'
+      const isReceiptStatus = action === 'set_agent_receipt_status'
       const notice = isRelease
         ? { type: 'loading', title: 'Final review', message: 'Preparing commission release review...' }
-        : { type: 'loading', title: 'Updating', message: 'Updating commission status...' }
+        : isReceiptStatus
+          ? { type: 'loading', title: 'Updating receipt status', message: 'Updating External Realty agent receipt status...' }
+          : { type: 'loading', title: 'Updating', message: 'Updating commission status...' }
       if (selected) setModalNotice(notice)
       else setAlert(notice)
     },
@@ -490,3 +493,4 @@ const Commission = () => {
 }
 
 export default Commission
+

@@ -2,6 +2,7 @@ import {
   db,
   getErrorMessage,
   tableExists,
+  columnExists,
   getProjectBySlug,
   getLatestActiveScheduleGenerationPredicate,
   getAuthenticatedUser,
@@ -218,6 +219,30 @@ const areDocumentsComplete = (row = {}) => {
 
 const isRetentionReady = (row = {}) => isPaymentComplete(row) && areDocumentsComplete(row);
 
+const normalizeAgentReceiptStatus = (value) =>
+  String(value || '').trim().toLowerCase() === 'submitted' ? 'submitted' : 'unsubmitted';
+
+const isExternalCommissionRow = (row = {}) =>
+  String(row.commission_role || row.rawRole || '').trim().toLowerCase() === 'external_group'
+  || String(row.seller_group_type || row.sellerGroupType || '').trim().toLowerCase() === 'external';
+
+const hasExternalAgentReceiptSchema = async (connection) =>
+  (await columnExists(connection, 'lot_project_commission_releases', 'external_agent_receipt_status'))
+  && (await columnExists(connection, 'lot_project_commission_releases', 'external_receipt_hold_source_release_id'));
+
+const getBaseReleaseEligibilityStatus = (release = {}, paymentPercent = 0, eligibility = {}) => {
+  const current = String(release.release_status || 'Pending');
+  if (['Released', 'Cancelled', 'Earned on Cancellation', 'Forfeited on Cancellation'].includes(current)) return current;
+
+  const paidPercent = Number(paymentPercent || 0);
+  const triggerPercent = Number(release.release_trigger_percent || 0);
+  if (isFinalRelease(release.release_stage)) {
+    return Boolean(eligibility.retentionReady) && paidPercent >= triggerPercent ? 'Eligible' : 'On Hold';
+  }
+
+  return paidPercent >= triggerPercent ? 'Eligible' : 'Pending';
+};
+
 const releaseOrder = {
   '1st Release': 1,
   '2nd Release': 2,
@@ -305,6 +330,10 @@ const mapReleaseRow = (row = {}, paymentPercent = 0, releaseDateInfo = {}, commi
     releaseEntryMode: row.release_entry_mode || 'live',
     releaseRecordedAt: row.release_recorded_at || null,
     historicalReleaseNote: row.historical_release_note || '',
+    externalAgentReceiptStatus: row.external_agent_receipt_status || null,
+    externalReceiptHoldSourceReleaseId: row.external_receipt_hold_source_release_id
+      ? Number(row.external_receipt_hold_source_release_id)
+      : null,
     releaseButtonLabel: 'Release',
     isReleaseDate: releaseDateInfo.isReleaseDate,
     canRelease: ['Eligible', 'Earned on Cancellation'].includes(status),
@@ -353,6 +382,8 @@ const buildFallbackMilestones = (commission = {}, releaseDateInfo = {}) => {
       releaseEntryMode: 'live',
       releaseRecordedAt: null,
       historicalReleaseNote: '',
+      externalAgentReceiptStatus: null,
+      externalReceiptHoldSourceReleaseId: null,
       releaseButtonLabel: 'Release',
       isReleaseDate: releaseDateInfo.isReleaseDate,
       canRelease: status === 'Eligible',
@@ -420,6 +451,8 @@ const mapCommissionRow = (row = {}, releases = [], releaseDateInfo = {}) => {
     sellerEmail: row.seller_email || '',
     sellerContactNo: row.seller_contact_no || '',
     sellerGroup: row.seller_group_name_snapshot || row.seller_group_name || '-',
+    sellerGroupType: row.seller_group_type || (String(row.commission_role || '').toLowerCase() === 'external_group' ? 'external' : 'in_house'),
+    isExternalGroup: isExternalCommissionRow(row),
     reportsUnder: row.reports_under || '-',
     accreditationDate: row.accredited_seller_accreditation_date || '',
     role: roleLabel(row.commission_role),
@@ -476,6 +509,9 @@ const syncReleaseStatuses = async (connection, commissionRows = []) => {
   if (!commissionRows.length) return;
 
   const hasReleaseTable = await tableExists(connection, 'lot_project_commission_releases');
+  const hasExternalReceiptSchema = hasReleaseTable
+    ? await hasExternalAgentReceiptSchema(connection)
+    : false;
 
   for (const commission of commissionRows) {
     const paymentPercent = getPaymentPercent(commission);
@@ -493,6 +529,86 @@ const syncReleaseStatuses = async (connection, commissionRows = []) => {
     );
 
     if (!hasReleaseTable) continue;
+
+    // External Realty uses a sequential assurance rule: once D&C releases a
+    // milestone to the External Group, that released milestone starts as
+    // "unsubmitted". If the immediately following milestone becomes eligible
+    // while the previous receipt is still unsubmitted, only that next milestone
+    // is automatically held. Manual holds remain untouched.
+    if (hasExternalReceiptSchema && isExternalCommissionRow(commission)) {
+      const [releaseRows] = await connection.query(
+        `
+          SELECT *
+          FROM lot_project_commission_releases
+          WHERE lot_project_commission_id = ?
+          ORDER BY FIELD(release_stage, '1st Release', '2nd Release', '3rd Release', '4th Release', 'Retention')
+        `,
+        [commission.lot_project_commission_id]
+      );
+
+      const retentionReady = isRetentionReady(commission);
+      for (let index = 0; index < releaseRows.length; index += 1) {
+        const release = releaseRows[index];
+        const current = String(release.release_status || 'Pending');
+        if (['Released', 'Cancelled', 'Earned on Cancellation', 'Forfeited on Cancellation'].includes(current)) {
+          continue;
+        }
+
+        const baseStatus = getBaseReleaseEligibilityStatus(release, paymentPercent, { retentionReady });
+        const previous = index > 0 ? releaseRows[index - 1] : null;
+        const previousReceiptBlocks = Boolean(
+          baseStatus === 'Eligible'
+          && previous
+          && String(previous.release_status || '') === 'Released'
+          && normalizeAgentReceiptStatus(previous.external_agent_receipt_status) !== 'submitted'
+        );
+
+        const existingReceiptHoldSource = Number(release.external_receipt_hold_source_release_id || 0);
+        let nextStatus = baseStatus;
+        let nextReceiptHoldSource = null;
+
+        if (previousReceiptBlocks) {
+          if (current === 'On Hold' && !existingReceiptHoldSource) {
+            // The stage was already manually/default held before the receipt
+            // blocker applied. Keep that independent hold so a later receipt
+            // submission does not accidentally auto-unhold it.
+            nextStatus = 'On Hold';
+            nextReceiptHoldSource = null;
+          } else {
+            nextStatus = 'On Hold';
+            nextReceiptHoldSource = Number(previous.lot_project_commission_release_id);
+          }
+        } else if (current === 'On Hold' && !existingReceiptHoldSource) {
+          // Preserve a manual/default hold. Only receipt-created holds are
+          // automatically removed after the previous receipt becomes submitted.
+          nextStatus = 'On Hold';
+          nextReceiptHoldSource = null;
+        }
+
+        const currentReceiptHoldSource = existingReceiptHoldSource || null;
+        if (nextStatus !== current || nextReceiptHoldSource !== currentReceiptHoldSource) {
+          await connection.query(
+            `
+              UPDATE lot_project_commission_releases
+              SET
+                release_status = ?,
+                external_receipt_hold_source_release_id = ?
+              WHERE lot_project_commission_release_id = ?
+                AND lot_project_commission_id = ?
+            `,
+            [
+              nextStatus,
+              nextReceiptHoldSource,
+              release.lot_project_commission_release_id,
+              commission.lot_project_commission_id,
+            ]
+          );
+          release.release_status = nextStatus;
+          release.external_receipt_hold_source_release_id = nextReceiptHoldSource;
+        }
+      }
+      continue;
+    }
 
     await connection.query(
       `
@@ -749,6 +865,7 @@ export const getLotProjectCommissions = async (req, res) => {
           mainSellerUser.role AS main_seller_role,
           NULLIF(TRIM(CONCAT_WS(' ', mainSellerUser.first_name, mainSellerUser.middle_name, mainSellerUser.last_name)), '') AS main_seller_name,
           sg.seller_group_name,
+          sg.seller_group_type,
           acs.accredited_seller_accreditation_date,
           NULLIF(TRIM(CONCAT_WS(' ', reports.first_name, reports.middle_name, reports.last_name)), '') AS reports_under
         FROM lot_project_commissions c
@@ -833,6 +950,9 @@ export const updateLotProjectCommission = async (req, res) => {
     const requestedReleaseMode = String(req.body.releaseMode || req.body.release_mode || 'live').trim().toLowerCase();
     const requestedActualReleaseDate = String(req.body.actualReleaseDate || req.body.actual_release_date || '').trim();
     const requestedHistoricalNote = String(req.body.historicalNote || req.body.historical_release_note || '').trim();
+    const requestedAgentReceiptStatus = String(
+      req.body.agentReceiptStatus || req.body.agent_receipt_status || ''
+    ).trim().toLowerCase();
     const project = await getProjectBySlug(slug);
 
     if (!project) {
@@ -861,6 +981,10 @@ export const updateLotProjectCommission = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Release mode must be live or historical.' });
     }
 
+    if (action === 'set_agent_receipt_status' && !['unsubmitted', 'submitted'].includes(requestedAgentReceiptStatus)) {
+      return res.status(400).json({ success: false, message: 'Agent receipt status must be unsubmitted or submitted.' });
+    }
+
     if (isHistoricalRelease) {
       historicalActualReleaseDate = normalizeIsoDateOnly(requestedActualReleaseDate);
       if (!historicalActualReleaseDate) {
@@ -876,7 +1000,7 @@ export const updateLotProjectCommission = async (req, res) => {
 
     const hasReleaseTable = await tableExists(connection, 'lot_project_commission_releases');
 
-    if (hasReleaseTable && ['release_stage', 'hold_stage', 'unhold_stage'].includes(action)) {
+    if (hasReleaseTable && ['release_stage', 'hold_stage', 'unhold_stage', 'set_agent_receipt_status'].includes(action)) {
       if (!releaseId) {
         return res.status(400).json({ success: false, message: 'Release stage id is required.' });
       }
@@ -921,6 +1045,7 @@ export const updateLotProjectCommission = async (req, res) => {
           SELECT
             r.*,
             c.lot_project_id,
+            c.commission_role,
             c.payment_percent,
             cp.soa_starting_date,
             ${releaseActualRemainingBalanceSql} AS actual_remaining_balance,
@@ -966,6 +1091,87 @@ export const updateLotProjectCommission = async (req, res) => {
         return res.status(404).json({ success: false, message: 'Commission release stage not found.' });
       }
 
+      const externalCommission = isExternalCommissionRow(release);
+      const externalReceiptSchemaAvailable = externalCommission
+        ? await hasExternalAgentReceiptSchema(connection)
+        : false;
+
+      if (
+        externalCommission
+        && ['release_stage', 'set_agent_receipt_status'].includes(action)
+        && !externalReceiptSchemaAvailable
+      ) {
+        await connection.rollback();
+        return res.status(500).json({
+          success: false,
+          message: 'External Realty agent receipt tracking needs the latest database migration before this action can be used.',
+        });
+      }
+
+      if (action === 'set_agent_receipt_status') {
+        if (!externalCommission) {
+          await connection.rollback();
+          return res.status(400).json({
+            success: false,
+            message: 'Agent receipt status only applies to External Realty commission releases.',
+          });
+        }
+        if (String(release.release_status || '') !== 'Released') {
+          await connection.rollback();
+          return res.status(400).json({
+            success: false,
+            message: 'Agent receipt status can only be changed after the commission stage has been released.',
+          });
+        }
+
+        const [receiptUpdateResult] = await connection.query(
+          `
+            UPDATE lot_project_commission_releases
+            SET external_agent_receipt_status = ?
+            WHERE lot_project_commission_release_id = ?
+              AND lot_project_commission_id = ?
+              AND release_status = 'Released'
+          `,
+          [requestedAgentReceiptStatus, releaseId, commissionId]
+        );
+
+        if (receiptUpdateResult.affectedRows !== 1) {
+          throw Object.assign(new Error('Agent receipt status changed while it was being updated. Please retry.'), { statusCode: 409 });
+        }
+
+        await syncReleaseStatuses(connection, [release]);
+        const data = await recomputeCommissionFromReleases(connection, commissionId, project.lot_project_id);
+
+        await writeAuditLog(connection, req, {
+          action: 'update',
+          module: 'Commissions',
+          entityType: 'lot_project_commission_release',
+          entityId: String(releaseId),
+          entityLabel: `${release.release_stage} — External Agent Receipt`,
+          title: requestedAgentReceiptStatus === 'submitted'
+            ? 'Marked external agent receipt submitted'
+            : 'Marked external agent receipt unsubmitted',
+          description: requestedAgentReceiptStatus === 'submitted'
+            ? `Marked the External Realty agent receipt for ${release.release_stage} as Submitted.`
+            : `Marked the External Realty agent receipt for ${release.release_stage} as Unsubmitted. The next eligible unreleased milestone will be held until this receipt is submitted.`,
+          metadata: {
+            commissionId,
+            releaseId,
+            releaseStage: release.release_stage,
+            agentReceiptStatus: requestedAgentReceiptStatus,
+          },
+        });
+
+        await connection.commit();
+        return res.json({
+          success: true,
+          message: requestedAgentReceiptStatus === 'submitted'
+            ? `${release.release_stage} agent receipt marked Submitted.`
+            : `${release.release_stage} agent receipt marked Unsubmitted.`,
+          data,
+        });
+      }
+
       const computedStatus = normalizeReleaseStatus(release, getPaymentPercent(release), { retentionReady: isRetentionReady(release) });
       let nextStatus = computedStatus;
       let message = 'Commission release stage updated successfully.';
@@ -999,6 +1205,42 @@ export const updateLotProjectCommission = async (req, res) => {
           });
         }
 
+        if (externalCommission) {
+          const currentOrder = releaseOrder[release.release_stage] || 99;
+          const previousStage = Object.entries(releaseOrder)
+            .find(([, order]) => order === currentOrder - 1)?.[0];
+
+          if (previousStage) {
+            const [previousRows] = await connection.query(
+              `
+                SELECT
+                  lot_project_commission_release_id,
+                  release_stage,
+                  release_status,
+                  external_agent_receipt_status
+                FROM lot_project_commission_releases
+                WHERE lot_project_commission_id = ?
+                  AND release_stage = ?
+                LIMIT 1
+                FOR UPDATE
+              `,
+              [commissionId, previousStage]
+            );
+            const previous = previousRows[0];
+            if (
+              previous
+              && String(previous.release_status || '') === 'Released'
+              && normalizeAgentReceiptStatus(previous.external_agent_receipt_status) !== 'submitted'
+            ) {
+              await connection.rollback();
+              return res.status(400).json({
+                success: false,
+                message: `${release.release_stage} is on hold until the ${previous.release_stage} External Realty agent receipt is marked Submitted.`,
+              });
+            }
+          }
+        }
+
         const settings = await getProjectReleaseSettings(connection, project.lot_project_id);
         const releaseDateInfo = getReleaseDateWarning(settings);
         if (!isHistoricalRelease && !releaseDateInfo.isReleaseDate) {
@@ -1030,6 +1272,32 @@ export const updateLotProjectCommission = async (req, res) => {
         if (computedStatus !== 'On Hold') {
           await connection.rollback();
           return res.status(400).json({ success: false, message: 'Only on-hold stages can be unheld.' });
+        }
+
+        if (externalCommission && Number(release.external_receipt_hold_source_release_id || 0)) {
+          const [blockingRows] = await connection.query(
+            `
+              SELECT release_stage, release_status, external_agent_receipt_status
+              FROM lot_project_commission_releases
+              WHERE lot_project_commission_release_id = ?
+                AND lot_project_commission_id = ?
+              LIMIT 1
+              FOR UPDATE
+            `,
+            [release.external_receipt_hold_source_release_id, commissionId]
+          );
+          const blocker = blockingRows[0];
+          if (
+            blocker
+            && String(blocker.release_status || '') === 'Released'
+            && normalizeAgentReceiptStatus(blocker.external_agent_receipt_status) !== 'submitted'
+          ) {
+            await connection.rollback();
+            return res.status(400).json({
+              success: false,
+              message: `${release.release_stage} cannot be unheld until the ${blocker.release_stage} External Realty agent receipt is marked Submitted.`,
+            });
+          }
         }
 
         if (isFinalRelease(release.release_stage) && !isRetentionReady(release)) {
@@ -1081,6 +1349,24 @@ export const updateLotProjectCommission = async (req, res) => {
         throw Object.assign(new Error('Commission release stage changed while it was being updated. Please retry.'), { statusCode: 409 });
       }
 
+      if (action === 'release_stage' && externalCommission) {
+        await connection.query(
+          `
+            UPDATE lot_project_commission_releases
+            SET
+              external_agent_receipt_status = 'unsubmitted',
+              external_receipt_hold_source_release_id = NULL
+            WHERE lot_project_commission_release_id = ?
+              AND lot_project_commission_id = ?
+              AND release_status = 'Released'
+          `,
+          [releaseId, commissionId]
+        );
+      }
+
+      // Re-evaluate all stages immediately so the next eligible External Realty
+      // milestone is held/unheld in the same transaction as the receipt/release action.
+      await syncReleaseStatuses(connection, [release]);
       const data = await recomputeCommissionFromReleases(connection, commissionId, project.lot_project_id);
 
       if (action === 'release_stage') {
@@ -1277,3 +1563,4 @@ export const updateLotProjectCommission = async (req, res) => {
     connection.release();
   }
 };
+

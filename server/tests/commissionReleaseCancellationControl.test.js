@@ -21,7 +21,7 @@ test('commission milestones cannot be manually cancelled from the release detail
 test('commission update endpoint rejects manual milestone and legacy commission cancellation actions', () => {
   const controller = read('server/controllers/Lot_Projects/Commissions/Commissions.controller.js');
 
-  assert.match(controller, /\['release_stage', 'hold_stage', 'unhold_stage'\]\.includes\(action\)/);
+  assert.match(controller, /\['release_stage', 'hold_stage', 'unhold_stage', 'set_agent_receipt_status'\]\.includes\(action\)/);
   assert.doesNotMatch(controller, /action === 'cancel_stage'/);
   assert.doesNotMatch(controller, /action === 'cancel'/);
   assert.doesNotMatch(controller, /canCancel:/);
@@ -36,3 +36,4 @@ test('automatic cancellation settlement statuses remain supported as historical 
   assert.match(modal, /Earned on Cancellation/);
   assert.match(modal, /Forfeited on Cancellation/);
 });
+
