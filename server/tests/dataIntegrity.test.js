@@ -134,3 +134,28 @@ test('Data Integrity UI is explicitly read-only and links users back to source r
   assert.match(page, /staleTime:\s*0/);
   assert.match(page, /refetchOnMount:\s*'always'/);
 });
+
+
+test('Integrity Records uses server-backed pagination capped at 10 records per page', () => {
+  const controller = read('server/controllers/System/dataIntegrity.controller.js');
+  const page = read('client/src/pages/System/DataIntegrity.jsx');
+
+  assert.match(controller, /const DATA_INTEGRITY_PAGE_SIZE = 10/);
+  assert.match(controller, /paginateIntegrityReports/);
+  assert.match(controller, /limit:\s*DATA_INTEGRITY_PAGE_SIZE/);
+  assert.match(controller, /reports\.slice\(offset, offset \+ DATA_INTEGRITY_PAGE_SIZE\)/);
+  assert.match(controller, /pagination:\s*pageResult\.pagination/);
+  assert.match(controller, /req\.query\.page/);
+  assert.match(controller, /req\.query\.search/);
+  assert.match(controller, /req\.query\.status/);
+  assert.match(controller, /req\.query\.recordFilter/);
+  assert.match(controller, /req\.query\.category/);
+
+  assert.match(page, /const \[page, setPage\] = useState\(1\)/);
+  assert.match(page, /params\.set\('page', String\(page\)\)/);
+  assert.match(page, /pagination = query\.data\?\.pagination/);
+  assert.match(page, /10 records per page/);
+  assert.match(page, /Page \{pagination\.page\} of \{pagination\.totalPages\}/);
+  assert.match(page, />Previous<\/button>/);
+  assert.match(page, />Next<\/button>/);
+});

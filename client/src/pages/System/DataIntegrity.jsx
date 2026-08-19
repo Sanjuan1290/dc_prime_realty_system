@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
 import {
@@ -94,65 +94,44 @@ const DataIntegrity = () => {
   const [statusFilter, setStatusFilter] = useState('all')
   const [recordFilter, setRecordFilter] = useState(scopedAccountId ? 'all' : 'all')
   const [activeTab, setActiveTab] = useState('overview')
+  const [page, setPage] = useState(1)
   const [selectedAccountId, setSelectedAccountId] = useState(scopedAccountId || null)
 
   const queryString = useMemo(() => {
     const params = new URLSearchParams()
     if (scopedProject) params.set('projectSlug', scopedProject)
     if (scopedAccountId) params.set('accountId', String(scopedAccountId))
+    params.set('page', String(page))
+    if (search.trim()) params.set('search', search.trim())
+    if (statusFilter !== 'all') params.set('status', statusFilter)
+    if (recordFilter !== 'all') params.set('recordFilter', recordFilter)
+    if (activeTab !== 'overview') params.set('category', activeTab)
     return params.toString()
-  }, [scopedAccountId, scopedProject])
+  }, [activeTab, page, recordFilter, scopedAccountId, scopedProject, search, statusFilter])
 
   const query = useQuery({
-    queryKey: ['data-integrity-report', scopedProject || 'all', scopedAccountId || 'all'],
-    queryFn: () => useFetch(`/data-integrity${queryString ? `?${queryString}` : ''}`),
+    queryKey: ['data-integrity-report', queryString],
+    queryFn: () => useFetch(`/data-integrity?${queryString}`),
     retry: false,
     staleTime: 0,
     refetchOnMount: 'always',
+    placeholderData: (previousData) => previousData,
   })
 
   const summary = query.data?.summary || {}
   const categories = summary.categories || {}
   const records = query.data?.records || []
+  const pagination = query.data?.pagination || { page, limit: 10, total: records.length, totalPages: 1, hasNext: false, hasPrev: false, from: records.length ? 1 : 0, to: records.length }
+
+  useEffect(() => {
+    if (pagination.page && pagination.page !== page) setPage(pagination.page)
+  }, [page, pagination.page])
 
   const projects = useMemo(() => {
     const map = new Map()
     records.forEach((record) => map.set(record.projectSlug, record.projectName))
     return [...map.entries()].map(([slug, name]) => ({ slug, name }))
   }, [records])
-
-  const filteredRecords = useMemo(() => {
-    const keyword = search.trim().toLowerCase()
-    return records.filter((record) => {
-      if (statusFilter !== 'all' && record.status !== statusFilter) return false
-      if (recordFilter === 'adjusted' && !record.adjustments?.hasAdjustments) return false
-      if (recordFilter === 'historical' && !record.isHistorical) return false
-      if (recordFilter === 'issues' && record.status === 'balanced') return false
-      if (recordFilter === 'clean' && record.status !== 'balanced') return false
-
-      if (activeTab !== 'overview') {
-        const issueCount = Number(record.issueCounts?.[activeTab] || 0)
-        const hasActivity = activeTab === 'accounts'
-          ? true
-          : activeTab === 'paymentsSoa'
-            ? Number(record.counts?.payments || 0) > 0 || Number(record.counts?.schedules || 0) > 0
-            : activeTab === 'adjustments'
-              ? Boolean(record.adjustments?.hasAdjustments)
-            : activeTab === 'commissions'
-              ? Number(record.counts?.commissions || 0) > 0
-              : activeTab === 'proofOfIncome'
-                ? Number(record.counts?.receipts || 0) > 0
-                : activeTab === 'documentsFiles'
-                  ? Number(record.counts?.activeFiles || 0) > 0
-                  : false
-        if (!issueCount && !hasActivity) return false
-      }
-
-      if (!keyword) return true
-      return [record.unitId, record.buyerName, record.accountReference, record.projectName, record.projectSlug]
-        .some((value) => String(value || '').toLowerCase().includes(keyword))
-    })
-  }, [activeTab, recordFilter, records, search, statusFilter])
 
   const overallMeta = statusMeta[summary.overallStatus || 'balanced'] || statusMeta.balanced
   const OverallIcon = overallMeta.icon
@@ -229,15 +208,15 @@ const DataIntegrity = () => {
                 <div className="grid gap-2 sm:grid-cols-3 xl:min-w-[720px]">
                   <label className="relative">
                     <FiSearch className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                    <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search unit, buyer, account..." className="h-11 w-full rounded-xl border border-slate-300 bg-white pl-9 pr-3 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50" />
+                    <input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} placeholder="Search unit, buyer, account..." className="h-11 w-full rounded-xl border border-slate-300 bg-white pl-9 pr-3 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50" />
                   </label>
-                  <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-700 outline-none">
+                  <select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1) }} className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-700 outline-none">
                     <option value="all">All statuses</option>
                     <option value="balanced">Balanced</option>
                     <option value="review">Needs Review</option>
                     <option value="critical">Critical</option>
                   </select>
-                  <select value={recordFilter} onChange={(event) => setRecordFilter(event.target.value)} className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-700 outline-none">
+                  <select value={recordFilter} onChange={(event) => { setRecordFilter(event.target.value); setPage(1) }} className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-700 outline-none">
                     <option value="all">All records</option>
                     <option value="adjusted">With discounts / adjustments</option>
                     <option value="historical">Historical records</option>
@@ -249,7 +228,7 @@ const DataIntegrity = () => {
 
               <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
                 {categoryTabs.map((tab) => (
-                  <button key={tab.key} type="button" onClick={() => setActiveTab(tab.key)} className={`shrink-0 rounded-xl px-4 py-2 text-sm font-black transition ${activeTab === tab.key ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{tab.label}</button>
+                  <button key={tab.key} type="button" onClick={() => { setActiveTab(tab.key); setPage(1) }} className={`shrink-0 rounded-xl px-4 py-2 text-sm font-black transition ${activeTab === tab.key ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{tab.label}</button>
                 ))}
               </div>
             </div>
@@ -268,7 +247,7 @@ const DataIntegrity = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filteredRecords.length ? filteredRecords.map((record) => {
+                  {records.length ? records.map((record) => {
                     const meta = statusMeta[record.status] || statusMeta.balanced
                     const hasAdjustments = Boolean(record.adjustments?.hasAdjustments)
                     return (
@@ -287,9 +266,17 @@ const DataIntegrity = () => {
               </table>
             </div>
 
-            <div className="flex flex-col gap-2 border-t border-slate-200 px-5 py-4 text-sm font-semibold text-slate-500 sm:flex-row sm:items-center sm:justify-between">
-              <span>Showing {filteredRecords.length} of {records.length} buyer accounts.</span>
-              <span>Historical: {summary.historicalAccounts || 0} · With adjustments: {summary.adjustedAccounts || 0}</span>
+            <div className="flex flex-col gap-3 border-t border-slate-200 px-5 py-4 text-sm font-semibold text-slate-500 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                <span>Showing {pagination.from}-{pagination.to} of {pagination.total} buyer accounts.</span>
+                <span>Historical: {summary.historicalAccounts || 0} · With adjustments: {summary.adjustedAccounts || 0}</span>
+                <span>10 records per page</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={() => setPage((current) => Math.max(current - 1, 1))} disabled={!pagination.hasPrev || query.isFetching} className="h-10 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40">Previous</button>
+                <span className="inline-flex h-10 items-center rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-700">Page {pagination.page} of {pagination.totalPages}</span>
+                <button type="button" onClick={() => setPage((current) => Math.min(current + 1, pagination.totalPages || 1))} disabled={!pagination.hasNext || query.isFetching} className="h-10 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40">Next</button>
+              </div>
             </div>
           </section>
 

@@ -1014,21 +1014,85 @@ const buildSummary = (reports = []) => {
   return summary;
 };
 
+const DATA_INTEGRITY_PAGE_SIZE = 10;
+
 const parseReportFilters = (req) => ({
   projectSlug: clean(req.query.projectSlug || req.query.project || ''),
   accountId: Number(req.query.accountId || 0),
 });
+
+const parseReportListOptions = (req) => ({
+  page: Math.max(Number.parseInt(req.query.page, 10) || 1, 1),
+  search: clean(req.query.search || '').toLowerCase(),
+  status: clean(req.query.status || 'all').toLowerCase(),
+  recordFilter: clean(req.query.recordFilter || req.query.record || 'all').toLowerCase(),
+  category: clean(req.query.category || req.query.tab || 'overview'),
+});
+
+const reportHasCategoryActivity = (report, category) => {
+  const issueCount = Number(report.issueCounts?.[category] || 0);
+  if (issueCount > 0) return true;
+  if (category === 'accounts') return true;
+  if (category === 'paymentsSoa') {
+    return Number(report.counts?.payments || 0) > 0 || Number(report.counts?.schedules || 0) > 0;
+  }
+  if (category === 'adjustments') return Boolean(report.adjustments?.hasAdjustments);
+  if (category === 'commissions') return Number(report.counts?.commissions || 0) > 0;
+  if (category === 'proofOfIncome') return Number(report.counts?.receipts || 0) > 0;
+  if (category === 'documentsFiles') return Number(report.counts?.activeFiles || 0) > 0;
+  return true;
+};
+
+const filterIntegrityReports = (reports = [], options = {}) => reports.filter((report) => {
+  const { search = '', status = 'all', recordFilter = 'all', category = 'overview' } = options;
+
+  if (status !== 'all' && report.status !== status) return false;
+  if (recordFilter === 'adjusted' && !report.adjustments?.hasAdjustments) return false;
+  if (recordFilter === 'historical' && !report.isHistorical) return false;
+  if (recordFilter === 'issues' && report.status === 'balanced') return false;
+  if (recordFilter === 'clean' && report.status !== 'balanced') return false;
+  if (category !== 'overview' && !reportHasCategoryActivity(report, category)) return false;
+
+  if (!search) return true;
+  return [report.unitId, report.buyerName, report.accountReference, report.projectName, report.projectSlug]
+    .some((value) => clean(value).toLowerCase().includes(search));
+});
+
+const paginateIntegrityReports = (reports = [], requestedPage = 1) => {
+  const total = reports.length;
+  const totalPages = Math.max(Math.ceil(total / DATA_INTEGRITY_PAGE_SIZE), 1);
+  const page = Math.min(Math.max(Number(requestedPage) || 1, 1), totalPages);
+  const offset = (page - 1) * DATA_INTEGRITY_PAGE_SIZE;
+  const records = reports.slice(offset, offset + DATA_INTEGRITY_PAGE_SIZE);
+  return {
+    records,
+    pagination: {
+      page,
+      limit: DATA_INTEGRITY_PAGE_SIZE,
+      total,
+      totalPages,
+      hasNext: page < totalPages,
+      hasPrev: page > 1,
+      from: total ? offset + 1 : 0,
+      to: total ? Math.min(offset + DATA_INTEGRITY_PAGE_SIZE, total) : 0,
+    },
+  };
+};
 
 export const getDataIntegrityReport = async (req, res) => {
   const connection = await db.getConnection();
   try {
     const dataset = await loadIntegrityDataset(connection, parseReportFilters(req));
     const reports = buildAccountReports(dataset);
+    const listOptions = parseReportListOptions(req);
+    const filteredReports = filterIntegrityReports(reports, listOptions);
+    const pageResult = paginateIntegrityReports(filteredReports, listOptions.page);
     return res.json({
       success: true,
       generatedAt: new Date().toISOString(),
       summary: buildSummary(reports),
-      records: reports.map(toSummaryRecord),
+      records: pageResult.records.map(toSummaryRecord),
+      pagination: pageResult.pagination,
     });
   } catch (error) {
     return res.status(error?.statusCode || 500).json({ code: error?.code, message: getErrorMessage(error) });
