@@ -54,6 +54,7 @@ const DataIntegrity = lazy(() => import('./pages/System/DataIntegrity'))
 const Settings = lazy(() => import('./pages/System/Settings'))
 const Employees = lazy(() => import('./pages/System/Employees'))
 const Attendance = lazy(() => import('./pages/System/Attendance'))
+const AttendanceKiosk = lazy(() => import('./pages/Public/AttendanceKiosk'))
 
 const LotDashboard = lazy(() => import('./pages/Lot_Projects/Dashboard'))
 const LotListings = lazy(() => import('./pages/Lot_Projects/Listings'))
@@ -114,6 +115,7 @@ const App = () => {
           <Route path="*" element={<WebsiteNotFound />} />
         </Route>
 
+        <Route path="/attendance" element={<AttendanceKiosk />} />
         <Route path="/maintenance" element={<Maintenance />} />
         <Route path="/server-down" element={<ServerDown />} />
       

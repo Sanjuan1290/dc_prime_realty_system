@@ -14,6 +14,7 @@ const TECHNICAL_MUTATION_PATTERNS = [
   /\/purge-code$/i,
   /\/audit-logs\/archive\/request$/i,
   /\/attendance\/scan$/i,
+  /\/attendance-kiosk\/(?:unlock|lock|scan)$/i,
 ]
 
 const normalizeBaseUrl = (value) =>

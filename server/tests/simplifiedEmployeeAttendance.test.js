@@ -26,7 +26,7 @@ test('simplified employee module uses barcode, department and three employment t
   const controller = read('server/controllers/System/Employees/EmployeesSimple.controller.js');
   assert.match(modal, /Barcode Code/);
   assert.match(modal, /Code128Barcode/);
-  assert.match(modal, /generate its Code 128 barcode automatically/);
+  assert.match(modal, /generate the barcode automatically/);
   assert.doesNotMatch(modal, /BarcodeScanner|Scan Employee Barcode|Scan Barcode/);
   assert.match(modal, /'IT'/);
   assert.match(modal, /Select Department/);
@@ -41,8 +41,11 @@ test('simplified employee module uses barcode, department and three employment t
 test('attendance scanner enforces time-in before time-out and supports automatic timeout', () => {
   const controller = read('server/controllers/System/Employees/AttendanceSimple.controller.js');
   const job = read('server/jobs/attendanceAutoTimeout.job.js');
-  assert.match(controller, /Time Out not allowed\. No Time In record was found/);
+  assert.match(controller, /No Time In record was found/);
+  assert.match(controller, /TIME_IN_REQUIRED/);
   assert.match(controller, /already timed in today/);
+  assert.match(controller, /ALREADY_TIMED_IN/);
+  assert.match(controller, /ALREADY_TIMED_OUT/);
   assert.match(controller, /already timed out today/);
   assert.match(controller, /time_in_source = 'barcode'/);
   assert.match(controller, /time_out_source = 'barcode'/);

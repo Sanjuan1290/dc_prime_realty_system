@@ -41,6 +41,16 @@ const formatTime = (value) => {
   return `${hour}:${String(minute).padStart(2, '0')} ${hourRaw >= 12 ? 'PM' : 'AM'}`
 }
 
+
+const getScanProblem = (error) => {
+  const code = String(error?.code || '')
+  if (code === 'ALREADY_TIMED_IN') return { type: 'warning', title: 'Already Timed In', message: error?.message }
+  if (code === 'ALREADY_TIMED_OUT') return { type: 'warning', title: 'Already Timed Out', message: error?.message }
+  if (code === 'TIME_IN_REQUIRED') return { type: 'warning', title: 'Time In Required', message: error?.message }
+  if (Number(error?.status) === 404) return { type: 'error', title: 'Employee Not Found', message: error?.message || 'No active employee matches that barcode code.' }
+  return { type: 'error', title: 'Unable to Record Attendance', message: error?.message || 'Attendance scan failed.' }
+}
+
 const formatSelectedDate = (value) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))) return value || '—'
   return new Intl.DateTimeFormat('en-US', {
@@ -182,7 +192,7 @@ const Attendance = () => {
       invalidateAttendance()
       setTimeout(() => barcodeInputRef.current?.focus(), 50)
     },
-    onError: (error) => { setAlert(null); setScanResult({ type: 'error', message: error?.message || 'Attendance scan failed.' }); setBarcode(''); setTimeout(() => barcodeInputRef.current?.focus(), 50) },
+    onError: (error) => { setAlert(null); setScanResult(getScanProblem(error)); setBarcode(''); setTimeout(() => barcodeInputRef.current?.focus(), 50) },
   })
 
   const dayMutation = useMutation({
@@ -292,7 +302,7 @@ const Attendance = () => {
               <p className="mt-2 text-xs font-semibold text-blue-700">Use the laptop/desktop webcam, tablet, or phone camera to scan the generated employee barcode. Manual entry and USB/Bluetooth barcode scanners remain available as fallbacks.</p>
             </div>
 
-            {scanResult ? <div className={`rounded-2xl border p-5 ${scanResult.type === 'success' ? 'border-emerald-200 bg-emerald-50' : 'border-red-200 bg-red-50'}`}>{scanResult.type === 'success' ? <><p className="text-sm font-black uppercase tracking-wide text-emerald-700">{scanResult.action === 'time_in' ? 'Time In Successful' : 'Time Out Successful'}</p><p className="mt-1 text-xl font-black text-slate-950">{scanResult.employee?.full_name}</p><p className="mt-1 text-sm font-semibold text-slate-600">{scanResult.employee?.employee_code} · {formatTime(scanResult.time)}</p></> : <><p className="font-black text-red-800">Attendance not recorded</p><p className="mt-1 text-sm font-semibold text-red-700">{scanResult.message}</p></>}</div> : null}
+            {scanResult ? <div className={`rounded-2xl border p-5 ${scanResult.type === 'success' ? 'border-emerald-200 bg-emerald-50' : scanResult.type === 'warning' ? 'border-amber-200 bg-amber-50' : 'border-red-200 bg-red-50'}`}>{scanResult.type === 'success' ? <><p className="text-sm font-black uppercase tracking-wide text-emerald-700">{scanResult.action === 'time_in' ? 'Time In Successful' : 'Time Out Successful'}</p><p className="mt-1 text-xl font-black text-slate-950">{scanResult.employee?.full_name}</p><p className="mt-1 text-sm font-semibold text-slate-600">{scanResult.employee?.employee_code} · {formatTime(scanResult.time)}</p></> : scanResult.type === 'warning' ? <><p className="font-black text-amber-900">{scanResult.title}</p><p className="mt-1 text-sm font-semibold text-amber-800">{scanResult.message}</p></> : <><p className="font-black text-red-800">{scanResult.title || 'Unable to Record Attendance'}</p><p className="mt-1 text-sm font-semibold text-red-700">{scanResult.message}</p></>}</div> : null}
           </div>
         </div>
 

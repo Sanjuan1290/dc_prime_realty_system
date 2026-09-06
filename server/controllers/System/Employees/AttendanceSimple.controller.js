@@ -150,6 +150,30 @@ const restoreEventDaySettings = async (connection, { dates = [], eventId, actorI
   }
 };
 
+
+const formatAttendanceClock = (value) => {
+  if (!value) return '';
+  const [hourRaw = '0', minute = '00'] = String(value).slice(0, 5).split(':');
+  const hour24 = Number(hourRaw);
+  if (!Number.isFinite(hour24)) return String(value).slice(0, 5);
+  const hour12 = hour24 % 12 || 12;
+  return `${hour12}:${String(minute).padStart(2, '0')} ${hour24 >= 12 ? 'PM' : 'AM'}`;
+};
+
+const attendanceScanConflict = ({ code, message, employee, action, time = null, date = null }) => Object.assign(
+  new Error(message),
+  {
+    statusCode: 409,
+    code,
+    data: {
+      employee,
+      action,
+      time: time ? String(time).slice(0, 8) : null,
+      date,
+    },
+  },
+);
+
 export const scanAttendance = async (req, res) => {
   const connection = await db.getConnection();
   try {
@@ -171,7 +195,15 @@ export const scanAttendance = async (req, res) => {
         throw Object.assign(new Error(`${employee.full_name} already has attendance recorded through a company event today.`), { statusCode: 409 });
       }
       if (attendance?.actual_time_in) {
-        throw Object.assign(new Error(`${employee.full_name} already timed in today at ${String(attendance.actual_time_in).slice(0, 8)}.`), { statusCode: 409 });
+        const previousTimeIn = String(attendance.actual_time_in).slice(0, 8);
+        throw attendanceScanConflict({
+          code: 'ALREADY_TIMED_IN',
+          message: `${employee.full_name} already timed in today at ${formatAttendanceClock(previousTimeIn)}. No action is needed.`,
+          employee,
+          action: 'time_in',
+          time: previousTimeIn,
+          date: now.date,
+        });
       }
 
       let attendanceId = attendance?.employee_attendance_id;
@@ -204,13 +236,27 @@ export const scanAttendance = async (req, res) => {
     }
 
     if (!attendance?.actual_time_in) {
-      throw Object.assign(new Error(`Time Out not allowed. No Time In record was found for ${employee.full_name} today.`), { statusCode: 409 });
+      throw attendanceScanConflict({
+        code: 'TIME_IN_REQUIRED',
+        message: `No Time In record was found for ${employee.full_name} today. Please Time In first or ask an administrator for help.`,
+        employee,
+        action: 'time_out',
+        date: now.date,
+      });
     }
     if (attendance.attendance_event_id) {
       throw Object.assign(new Error(`${employee.full_name}'s attendance is already recorded through a company event today.`), { statusCode: 409 });
     }
     if (attendance.actual_time_out) {
-      throw Object.assign(new Error(`${employee.full_name} already timed out today at ${String(attendance.actual_time_out).slice(0, 8)}.`), { statusCode: 409 });
+      const previousTimeOut = String(attendance.actual_time_out).slice(0, 8);
+      throw attendanceScanConflict({
+        code: 'ALREADY_TIMED_OUT',
+        message: `${employee.full_name} already timed out today at ${formatAttendanceClock(previousTimeOut)}. No action is needed.`,
+        employee,
+        action: 'time_out',
+        time: previousTimeOut,
+        date: now.date,
+      });
     }
 
     await connection.query(`
@@ -230,7 +276,12 @@ export const scanAttendance = async (req, res) => {
     return res.json({ success: true, message: 'Time Out successful.', data: { employee, attendanceId: attendance.employee_attendance_id, date: now.date, time: now.time, action } });
   } catch (error) {
     try { await connection.rollback(); } catch {}
-    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      code: error.code || '',
+      message: getErrorMessage(error),
+      data: error.data || null,
+    });
   } finally { connection.release(); }
 };
 

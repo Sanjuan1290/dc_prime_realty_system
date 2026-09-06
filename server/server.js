@@ -23,6 +23,7 @@ import auditLogsRouter from './routers/System/auditLogs.router.js'
 import systemSettingsRouter from './routers/System/systemSettings.routers.js'
 import employeesRouter from './routers/System/employees.routers.js'
 import attendanceRouter from './routers/System/attendance.routers.js'
+import attendanceKioskRouter from './routers/attendanceKiosk.router.js'
 import publicBuyerFormsRouter from './routers/publicBuyerForms.router.js'
 import publicSystemStatusRouter from './routers/publicSystemStatus.router.js'
 import cloudinaryWebhookRouter from './routers/cloudinaryWebhook.router.js'
@@ -109,6 +110,7 @@ app.use('/api/v1/audit-logs', auditLogsRouter)
 app.use('/api/v1/system-settings', systemSettingsRouter)
 app.use('/api/v1/employees', employeesRouter)
 app.use('/api/v1/attendance', attendanceRouter)
+app.use('/api/v1/attendance-kiosk', attendanceKioskRouter)
 
 app.use((err, _req, res, _next) => {
   console.error(err)

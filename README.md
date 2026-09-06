@@ -168,6 +168,12 @@ CLOUDINARY_CLOUD_NAME=
 CLOUDINARY_API_KEY=
 CLOUDINARY_API_SECRET=
 CLOUDINARY_UPLOAD_FOLDER=dc_prime
+
+# Office attendance kiosk at /attendance
+ATTENDANCE_PINCODE=123456
+# Optional; if blank the kiosk signer falls back to JWT_SECRET
+ATTENDANCE_KIOSK_SECRET=
+ATTENDANCE_KIOSK_SESSION_HOURS=12
 ```
 
 All account-invitation and password-reset emails use the existing Resend HTTPS email service. Verify the sending domain and configure `RESEND_API_KEY` plus `EMAIL_FROM`.
@@ -189,12 +195,33 @@ VITE_API_URL=http://localhost:5001/api/v1
 
 ## Validation performed for this package
 
-- Server JavaScript syntax check: **180 files passed**.
-- Client relative-import resolution: **208 source files, no missing relative imports**.
-- Server relative-import resolution: **no missing relative imports**.
-- Focused source-level regression suite for routing, user credentials, Employees, Attendance, and explicit double-check architecture: **22/22 passed**.
-- `node_modules` is intentionally not packaged; run `npm ci` in `client` and `server` on the target machine.
+- Focused Attendance kiosk + Employees + Attendance regression suite: **11/11 passed**.
+- Server JavaScript syntax check: **184 files passed**.
+- Client JS/JSX syntax parse: **211 files passed**.
+- Client/server relative-import resolution: **no missing relative imports**.
+- Kiosk PIN comparison and signed attendance-session token checks passed.
+- `node_modules` is intentionally not packaged; run `npm ci` in `client` and `server` on the target machine before the normal Vite/server build/start process.
 
 ## Attendance calendar revision
 
 Attendance day management is now calendar-based. Select any date in the monthly Attendance Calendar to review or change its Day Type. Company Event is no longer a standalone button/section; it is selected from Date Details and opens the participant/event setup when needed. Past dates remain editable, and Attendance History follows the currently selected calendar date.
+
+
+## Office attendance kiosk
+
+The public `/attendance` route is now an attendance-only office station:
+
+1. Enter the server-side Attendance PIN.
+2. Choose **Time In** or **Time Out**.
+3. Scan using the laptop/desktop webcam, tablet/phone camera, USB/Bluetooth barcode scanner, or manual employee code input.
+4. The kiosk cannot open employee management, the attendance calendar, company events, reports, settings, users, or other Admin/Super Admin pages.
+5. Use **Lock Station** to return immediately to the PIN screen. The signed kiosk session also expires automatically based on `ATTENDANCE_KIOSK_SESSION_HOURS`.
+
+The PIN must be configured in the real server `.env`. `ATTENDANCE_PINCODE=123456` is included in `.env.example` as the requested starting value; change it for production.
+
+Company Event participant selection is paginated at **10 employees per page**. Search and Department filters are applied before pagination and selections persist while moving between pages.
+
+Duplicate attendance scans now use friendlier guidance. Example:
+
+> **Already Timed In**  
+> Robert Renby Cortez San Juan already timed in today at 12:25 PM. No action is needed.

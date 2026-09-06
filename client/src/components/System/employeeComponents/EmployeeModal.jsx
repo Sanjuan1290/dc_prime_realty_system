@@ -56,7 +56,7 @@ const EmployeeModal = ({ employee, departments = [], onClose, onSaved }) => {
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
-      <form onSubmit={submit} className="w-full max-w-3xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+      <form onSubmit={submit} className="w-full max-w-4xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
         <header className="flex items-center justify-between border-b border-slate-200 px-5 py-4 sm:px-6">
           <div><h2 className="text-xl font-black text-slate-950">{isEdit ? 'Edit Employee' : 'Add Employee'}</h2><p className="mt-1 text-sm font-semibold text-slate-500">Employee identity, barcode, department, and employment type only.</p></div>
           <button type="button" onClick={onClose} className="rounded-xl p-2 text-slate-500 hover:bg-slate-100"><FiX /></button>
@@ -71,14 +71,16 @@ const EmployeeModal = ({ employee, departments = [], onClose, onSaved }) => {
             <label className="grid gap-2"><span className="text-sm font-black text-slate-700">Last Name *</span><input className={inputClass} value={form.last_name} onChange={(e) => setValue('last_name', e.target.value)} placeholder="Dela Cruz" /></label>
           </div>
 
-          <section className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
-            <label className="grid gap-2">
-              <span className="text-sm font-black text-blue-950">Barcode Code *</span>
-              <input autoFocus={!isEdit} className={`${inputClass} w-full bg-white font-mono uppercase`} value={form.employee_code} onChange={(e) => setValue('employee_code', e.target.value.toUpperCase())} placeholder="e.g. IT-001" maxLength={40} autoCapitalize="characters" />
-            </label>
-            <p className="mt-2 text-xs font-semibold text-blue-700">Enter the employee code and the system will generate its Code 128 barcode automatically. Barcode scanning is only used on the Attendance page for Time In and Time Out.</p>
-            <div className="mt-4">
-              <Code128Barcode value={form.employee_code} employeeName={[form.first_name, form.middle_name, form.last_name].filter(Boolean).join(' ')} />
+          <section className="grid gap-4 rounded-2xl border border-blue-100 bg-blue-50 p-4 lg:grid-cols-[1.05fr_.95fr] lg:items-stretch">
+            <div className="flex flex-col justify-center">
+              <label className="grid gap-2">
+                <span className="text-sm font-black text-blue-950">Barcode Code *</span>
+                <input autoFocus={!isEdit} className={`${inputClass} w-full bg-white font-mono uppercase`} value={form.employee_code} onChange={(e) => setValue('employee_code', e.target.value.toUpperCase())} placeholder="e.g. IT-001" maxLength={40} autoCapitalize="characters" />
+              </label>
+              <p className="mt-2 text-xs font-semibold leading-5 text-blue-700">Enter the employee code to generate the barcode automatically.</p>
+            </div>
+            <div className="min-w-0">
+              <Code128Barcode compact value={form.employee_code} employeeName={[form.first_name, form.middle_name, form.last_name].filter(Boolean).join(' ')} />
             </div>
           </section>
 
