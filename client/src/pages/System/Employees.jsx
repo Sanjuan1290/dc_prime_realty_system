@@ -9,6 +9,10 @@ import { useFetch, useFetchPatch } from '../../utils/useFetch'
 import { PERMISSIONS, hasPermission } from '../../config/permissions'
 
 const typeLabel = (value) => value === 'part_time' ? 'Part Time' : value === 'probationary' ? 'Probationary' : 'Full Time'
+const restDayLabel = (days = []) => Array.isArray(days) && days.length
+  ? days.map((day) => String(day).slice(0, 3).replace(/^./, (letter) => letter.toUpperCase())).join(', ')
+  : 'Not set'
+
 const statusTone = { active: 'bg-emerald-50 text-emerald-700 ring-emerald-200', inactive: 'bg-slate-100 text-slate-600 ring-slate-200' }
 
 const Employees = () => {
@@ -75,16 +79,17 @@ const Employees = () => {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-[900px] w-full text-sm">
-            <thead className="border-b border-slate-200 bg-slate-50"><tr>{['Employee', 'Barcode Code', 'Department', 'Employment Type', 'Status', 'Actions'].map((head) => <th key={head} className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">{head}</th>)}</tr></thead>
+          <table className="min-w-[1050px] w-full text-sm">
+            <thead className="border-b border-slate-200 bg-slate-50"><tr>{['Employee', 'Barcode Code', 'Department', 'Employment Type', 'Rest Days', 'Status', 'Actions'].map((head) => <th key={head} className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">{head}</th>)}</tr></thead>
             <tbody className="divide-y divide-slate-100">
-              {employeesQuery.isLoading ? <tr><td colSpan={6} className="px-6 py-16 text-center font-semibold text-slate-500">Loading employees...</td></tr> : null}
-              {!employeesQuery.isLoading && rows.length === 0 ? <tr><td colSpan={6} className="px-6 py-16 text-center"><p className="font-black text-slate-800">No employees yet</p><p className="mt-1 text-sm font-semibold text-slate-500">Add the first employee, select a department, and the system will generate the next available barcode automatically.</p></td></tr> : null}
+              {employeesQuery.isLoading ? <tr><td colSpan={7} className="px-6 py-16 text-center font-semibold text-slate-500">Loading employees...</td></tr> : null}
+              {!employeesQuery.isLoading && rows.length === 0 ? <tr><td colSpan={7} className="px-6 py-16 text-center"><p className="font-black text-slate-800">No employees yet</p><p className="mt-1 text-sm font-semibold text-slate-500">Add the first employee, select a department, and the system will generate the next available barcode automatically.</p></td></tr> : null}
               {rows.map((employee) => <tr key={employee.employee_id} className="hover:bg-slate-50">
                 <td className="px-4 py-4"><p className="font-black text-slate-950">{employee.full_name}</p></td>
                 <td className="px-4 py-4 font-mono font-black text-blue-700">{employee.employee_code}</td>
                 <td className="px-4 py-4 font-semibold text-slate-700">{employee.department}</td>
                 <td className="px-4 py-4 text-slate-600">{typeLabel(employee.employment_type)}</td>
+                <td className="px-4 py-4"><span className={`inline-flex rounded-full px-3 py-1 text-xs font-black ring-1 ${employee.rest_days?.length ? 'bg-blue-50 text-blue-700 ring-blue-200' : 'bg-amber-50 text-amber-700 ring-amber-200'}`}>{restDayLabel(employee.rest_days)}</span></td>
                 <td className="px-4 py-4"><span className={`inline-flex rounded-full px-3 py-1 text-xs font-black capitalize ring-1 ${statusTone[employee.employee_status] || statusTone.inactive}`}>{employee.employee_status}</span></td>
                 <td className="px-4 py-4">{canManage ? <div className="flex gap-2"><button type="button" onClick={() => openEdit(employee)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-700"><FiEdit2 />Edit</button><button type="button" onClick={() => statusMutation.mutate(employee)} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700">{employee.employee_status === 'active' ? 'Deactivate' : 'Activate'}</button></div> : <span className="text-xs font-semibold text-slate-400">View only</span>}</td>
               </tr>)}

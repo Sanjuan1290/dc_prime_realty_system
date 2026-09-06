@@ -13,6 +13,7 @@ import {
   updateAttendanceDay,
   updateAttendanceEvent,
 } from '../../controllers/System/Employees/AttendanceSimple.controller.js';
+import { getAttendanceExportData } from '../../controllers/System/Employees/AttendanceExport.controller.js';
 import { authenticateUser, requirePermission } from '../../middleware/auth.middleware.js';
 import { PERMISSIONS } from '../../config/permissions.js';
 
@@ -21,6 +22,7 @@ router.use(authenticateUser);
 
 router.get('/', requirePermission(PERMISSIONS.ATTENDANCE_VIEW), getAttendanceRecords);
 router.get('/calendar', requirePermission(PERMISSIONS.ATTENDANCE_VIEW), getAttendanceCalendar);
+router.get('/export-data', requirePermission(PERMISSIONS.ATTENDANCE_VIEW), getAttendanceExportData);
 router.post('/scan', requirePermission(PERMISSIONS.ATTENDANCE_MANAGE), scanAttendance);
 router.post('/manual', requirePermission(PERMISSIONS.ATTENDANCE_MANAGE), createManualAttendance);
 router.put('/day/:date', requirePermission(PERMISSIONS.ATTENDANCE_MANAGE), updateAttendanceDay);

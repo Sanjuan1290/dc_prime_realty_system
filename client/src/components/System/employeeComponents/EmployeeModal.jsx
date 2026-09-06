@@ -5,11 +5,31 @@ import StatusAlert from '../../Shared/StatusAlert'
 import Code128Barcode from './Code128Barcode'
 import { useFetchPost, useFetchPut } from '../../../utils/useFetch'
 
+const WEEKDAYS = [
+  ['monday', 'Monday'],
+  ['tuesday', 'Tuesday'],
+  ['wednesday', 'Wednesday'],
+  ['thursday', 'Thursday'],
+  ['friday', 'Friday'],
+  ['saturday', 'Saturday'],
+  ['sunday', 'Sunday'],
+]
+
+const getManilaDate = () => {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(new Date()).reduce((acc, part) => {
+    if (part.type !== 'literal') acc[part.type] = part.value
+    return acc
+  }, {})
+  return `${parts.year}-${parts.month}-${parts.day}`
+}
+
 const inputClass = 'h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50'
 
 const blank = {
   first_name: '', middle_name: '', last_name: '', employee_code: '', department: '',
-  employment_type: 'regular', employee_status: 'active',
+  employment_type: 'regular', employee_status: 'active', rest_days: [], rest_days_effective_from: getManilaDate(),
 }
 
 const normalizeConfigs = (departmentConfigs = [], departments = []) => {
@@ -40,6 +60,8 @@ const EmployeeModal = ({ employee, departmentConfigs = [], departments = [], onC
       department: employee.department || initialDepartment,
       employment_type: employee.employment_type || 'regular',
       employee_status: employee.employee_status || 'active',
+      rest_days: Array.isArray(employee.rest_days) ? employee.rest_days : [],
+      rest_days_effective_from: getManilaDate(),
     } : { department: initialDepartment }),
   }))
 
@@ -50,6 +72,7 @@ const EmployeeModal = ({ employee, departmentConfigs = [], departments = [], onC
   }, [configuredNames, form.department])
 
   const selectedDepartmentConfig = configs.find((item) => item.name === form.department)
+  const restDayLabels = WEEKDAYS.filter(([value]) => form.rest_days.includes(value)).map(([, label]) => label)
   const fullName = [form.first_name, form.middle_name, form.last_name].filter(Boolean).join(' ')
 
   const setValue = (field, value) => {
@@ -58,9 +81,27 @@ const EmployeeModal = ({ employee, departmentConfigs = [], departments = [], onC
     setForm((current) => ({ ...current, [field]: value }))
   }
 
+  const toggleRestDay = (day) => {
+    setNotice(null)
+    setForm((current) => ({
+      ...current,
+      rest_days: current.rest_days.includes(day)
+        ? current.rest_days.filter((item) => item !== day)
+        : [...current.rest_days, day],
+    }))
+  }
+
   const validateDetails = () => {
     if (!form.first_name.trim() || !form.last_name.trim() || !form.department) {
       setNotice({ type: 'warning', message: 'First name, last name, and department are required.' })
+      return false
+    }
+    if (!form.rest_days.length) {
+      setNotice({ type: 'warning', message: 'Select at least one Rest Day.' })
+      return false
+    }
+    if (isEdit && !form.rest_days_effective_from) {
+      setNotice({ type: 'warning', message: 'Select when the Rest Day schedule becomes effective.' })
       return false
     }
     return true
@@ -137,7 +178,7 @@ const EmployeeModal = ({ employee, departmentConfigs = [], departments = [], onC
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
-      <form onSubmit={saveEmployee} className="w-full max-w-4xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+      <form onSubmit={saveEmployee} className="flex max-h-[94vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
         <header className="flex items-center justify-between border-b border-slate-200 px-5 py-4 sm:px-6">
           <div>
             <h2 className="text-xl font-black text-slate-950">{isEdit ? 'Edit Employee' : step === 'saved' ? 'Employee Barcode Ready' : 'Add Employee'}</h2>
@@ -146,7 +187,7 @@ const EmployeeModal = ({ employee, departmentConfigs = [], departments = [], onC
           <button type="button" onClick={closeModal} className="rounded-xl p-2 text-slate-500 hover:bg-slate-100"><FiX /></button>
         </header>
 
-        <div className="grid gap-5 p-5 sm:p-6">
+        <div className="grid gap-5 overflow-y-auto p-5 sm:p-6">
           {notice ? <StatusAlert type={notice.type} message={notice.message} /> : null}
 
           {(step === 'details' || isEdit) ? (
@@ -180,6 +221,36 @@ const EmployeeModal = ({ employee, departmentConfigs = [], departments = [], onC
                 <label className="grid gap-2"><span className="text-sm font-black text-slate-700">Employment Type *</span><select className={inputClass} value={form.employment_type} onChange={(e) => setValue('employment_type', e.target.value)}><option value="regular">Full Time</option><option value="probationary">Probationary</option><option value="part_time">Part Time</option></select></label>
                 <label className="grid gap-2"><span className="text-sm font-black text-slate-700">Status</span><select className={inputClass} value={form.employee_status} onChange={(e) => setValue('employee_status', e.target.value)}><option value="active">Active</option><option value="inactive">Inactive</option></select></label>
               </div>
+
+              <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="text-sm font-black text-slate-800">Rest Day(s) *</p>
+                    <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">Select every weekly Rest Day for this employee. Working on one of these days will be reported as Rest Day Overtime (RD OT).</p>
+                  </div>
+                  {restDayLabels.length ? <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700 ring-1 ring-blue-200">{restDayLabels.join(', ')}</span> : null}
+                </div>
+                <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                  {WEEKDAYS.map(([value, label]) => {
+                    const checked = form.rest_days.includes(value)
+                    return (
+                      <label key={value} className={`flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-3 text-sm font-black transition ${checked ? 'border-blue-300 bg-blue-50 text-blue-800' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'}`}>
+                        <input type="checkbox" checked={checked} onChange={() => toggleRestDay(value)} className="h-4 w-4 rounded border-slate-300 text-blue-600" />
+                        {label}
+                      </label>
+                    )
+                  })}
+                </div>
+                {isEdit ? (
+                  <label className="mt-4 grid max-w-sm gap-2">
+                    <span className="text-sm font-black text-slate-700">Rest Day Effective From *</span>
+                    <input type="date" max={getManilaDate()} className={inputClass} value={form.rest_days_effective_from} onChange={(e) => setValue('rest_days_effective_from', e.target.value)} />
+                    <span className="text-xs font-semibold leading-5 text-slate-500">If the Rest Days changed, the previous schedule is preserved before this date so older Attendance Excel exports stay correct.</span>
+                  </label>
+                ) : (
+                  <p className="mt-3 text-xs font-semibold text-slate-500">The first Rest Day schedule starts on the employee hire date.</p>
+                )}
+              </section>
             </>
           ) : null}
 
@@ -192,6 +263,7 @@ const EmployeeModal = ({ employee, departmentConfigs = [], departments = [], onC
                   <div className="flex items-center justify-between gap-4"><span className="font-semibold text-slate-500">Department</span><span className="font-black text-slate-900">{form.department}</span></div>
                   <div className="flex items-center justify-between gap-4"><span className="font-semibold text-slate-500">Barcode Prefix</span><span className="font-mono font-black text-blue-700">{preview?.prefix}</span></div>
                   <div className="flex items-center justify-between gap-4"><span className="font-semibold text-slate-500">Next Barcode</span><span className="font-mono text-lg font-black text-blue-700">{preview?.employee_code}</span></div>
+                  <div className="flex items-start justify-between gap-4"><span className="font-semibold text-slate-500">Rest Days</span><span className="text-right font-black text-slate-900">{restDayLabels.join(', ')}</span></div>
                 </div>
                 <p className="mt-4 text-xs font-semibold leading-5 text-slate-500">This is a preview of the next available code. The server confirms the final code when you click Save Employee, preventing duplicate barcodes if two admins add employees at the same time.</p>
               </div>
@@ -207,6 +279,7 @@ const EmployeeModal = ({ employee, departmentConfigs = [], departments = [], onC
                 <h3 className="mt-2 text-xl font-black text-slate-950">{savedEmployee?.full_name || fullName}</h3>
                 <p className="mt-2 text-sm font-semibold text-slate-600">Department: <span className="font-black text-slate-900">{savedEmployee?.department || form.department}</span></p>
                 <p className="mt-1 text-sm font-semibold text-slate-600">Permanent Barcode: <span className="font-mono font-black text-blue-700">{savedEmployee?.employee_code || form.employee_code}</span></p>
+                <p className="mt-1 text-sm font-semibold text-slate-600">Rest Days: <span className="font-black text-slate-900">{restDayLabels.join(', ')}</span></p>
               </div>
               <Code128Barcode compact value={savedEmployee?.employee_code || form.employee_code} employeeName={savedEmployee?.full_name || fullName} />
             </section>

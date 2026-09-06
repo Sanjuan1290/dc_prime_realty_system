@@ -6,6 +6,7 @@ import {
   FiChevronLeft,
   FiChevronRight,
   FiClock,
+  FiDownload,
   FiEdit2,
   FiExternalLink,
   FiLogIn,
@@ -20,6 +21,7 @@ import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
 import AttendanceCorrectionModal from '../../components/System/employeeComponents/AttendanceCorrectionModal'
 import AttendanceEventModal from '../../components/System/employeeComponents/AttendanceEventModal'
+import AttendanceExportModal from '../../components/System/employeeComponents/AttendanceExportModal'
 import BarcodeScanner from '../../components/System/employeeComponents/BarcodeScanner'
 import useCurrentUser from '../../utils/useCurrentUser'
 import { useFetch, useFetchDelete, useFetchPost, useFetchPut } from '../../utils/useFetch'
@@ -153,6 +155,7 @@ const Attendance = () => {
   const [showCorrection, setShowCorrection] = useState(false)
   const [eventRecord, setEventRecord] = useState(null)
   const [showEvent, setShowEvent] = useState(false)
+  const [showExport, setShowExport] = useState(false)
   const [dayType, setDayType] = useState('regular')
   const [dayNotes, setDayNotes] = useState('')
   const [now, setNow] = useState(new Date())
@@ -347,6 +350,7 @@ const Attendance = () => {
           <a href="/attendance" className="inline-flex h-11 items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-sm font-black text-emerald-700 transition hover:bg-emerald-100">
             <FiExternalLink />Open Attendance Kiosk
           </a>
+          <button type="button" onClick={() => setShowExport(true)} className="inline-flex h-11 items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-sm font-black text-emerald-700 transition hover:bg-emerald-100"><FiDownload />Export Attendance</button>
           <button type="button" onClick={() => { attendanceQuery.refetch(); calendarQuery.refetch() }} className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700"><FiRefreshCw className={attendanceQuery.isFetching || calendarQuery.isFetching ? 'animate-spin' : ''} />Refresh</button>
           {canManage ? <button type="button" onClick={() => { setCorrectionRecord(null); setShowCorrection(true) }} className="inline-flex h-11 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 text-sm font-black text-blue-700"><FiPlus />Manual Attendance</button> : null}
         </div>
@@ -639,6 +643,7 @@ const Attendance = () => {
         <div className="flex flex-col gap-3 border-t border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between"><p className="text-sm font-semibold text-slate-500">Page {pagination.page} of {pagination.totalPages} · {pagination.total} records</p><div className="flex gap-2"><select value={limit} onChange={(e) => { setLimit(Number(e.target.value)); setPage(1) }} className="h-10 rounded-xl border border-slate-300 px-3 text-sm font-semibold"><option value={25}>25</option><option value={50}>50</option><option value={100}>100</option></select><button disabled={!pagination.hasPrev} onClick={() => setPage((current) => Math.max(current - 1, 1))} className="h-10 rounded-xl border border-slate-300 px-4 text-sm font-black disabled:opacity-40">Prev</button><button disabled={!pagination.hasNext} onClick={() => setPage((current) => current + 1)} className="h-10 rounded-xl border border-slate-300 px-4 text-sm font-black disabled:opacity-40">Next</button></div></div>
       </section>
 
+      {showExport ? <AttendanceExportModal onClose={() => setShowExport(false)} /> : null}
       {showScanner ? <BarcodeScanner title={action === 'time_in' ? 'Scan Barcode for Time In' : 'Scan Barcode for Time Out'} onDetected={(code) => { setShowScanner(false); setBarcode(code.toUpperCase()); submitScan(code) }} onClose={() => setShowScanner(false)} /> : null}
       {showCorrection ? <AttendanceCorrectionModal record={correctionRecord} employees={employees} defaultDate={selectedDate} onClose={() => setShowCorrection(false)} onSaved={(message) => { setAlert({ type: 'success', message }); invalidateAttendance() }} /> : null}
       {showEvent ? <AttendanceEventModal event={eventRecord} employees={employees} defaultDate={selectedDate} onClose={() => setShowEvent(false)} onSaved={(message) => { setAlert({ type: 'success', message }); invalidateAttendance() }} /> : null}

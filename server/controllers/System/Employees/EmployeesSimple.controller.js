@@ -2,6 +2,13 @@ import { db } from '../../../db/connect.js';
 import { writeAuditLog } from '../auditLogs.controller.js';
 import { buildEmployeeNameSql, cleanText, nullableText } from './employeeModule.shared.js';
 import { ensureAttendanceLiteSchema, getAttendanceRuntimeSettings, getManilaDateTime } from './attendanceLite.shared.js';
+import {
+  createInitialEmployeeRestDays,
+  formatRestDays,
+  getEmployeeRestDaysAsOf,
+  normalizeRestDays,
+  replaceEmployeeRestDays,
+} from '../../../services/employeeRestDay.service.js';
 
 const employmentTypes = new Set(['regular', 'probationary', 'part_time']);
 const statuses = new Set(['active', 'inactive']);
@@ -19,11 +26,18 @@ const normalizePayload = (body = {}) => ({
   department: cleanText(body.department),
   employmentType: employmentTypes.has(String(body.employment_type)) ? String(body.employment_type) : 'regular',
   status: statuses.has(String(body.employee_status)) ? String(body.employee_status) : 'active',
+  restDays: normalizeRestDays(body.rest_days),
+  restDaysEffectiveFrom: cleanText(body.rest_days_effective_from),
 });
 
 const validatePayload = (payload) => {
   if (!payload.firstName || !payload.lastName || !payload.department) {
     const error = new Error('First name, last name, and department are required.');
+    error.statusCode = 400;
+    throw error;
+  }
+  if (!payload.restDays.length) {
+    const error = new Error('Select at least one Rest Day.');
     error.statusCode = 400;
     throw error;
   }
@@ -34,6 +48,18 @@ const mapEmployee = (row) => ({
   barcode_code: row.employee_code,
   employment_label: row.employment_type === 'part_time' ? 'Part Time' : row.employment_type === 'probationary' ? 'Probationary' : 'Full Time',
 });
+
+const attachCurrentRestDays = async (connection, rows = [], asOfDate) => {
+  const restDayMap = await getEmployeeRestDaysAsOf(
+    connection,
+    rows.map((row) => row.employee_id),
+    asOfDate
+  );
+  return rows.map((row) => ({
+    ...mapEmployee(row),
+    rest_days: restDayMap.get(Number(row.employee_id)) || [],
+  }));
+};
 
 const findDepartmentConfig = async (connection, department) => {
   const runtime = await getAttendanceRuntimeSettings(connection);
@@ -137,6 +163,7 @@ export const getEmployees = async (req, res) => {
   const connection = await db.getConnection();
   try {
     await ensureAttendanceLiteSchema(connection);
+    const today = getManilaDateTime().date;
     const page = Math.max(Number(req.query.page || 1), 1);
     const limit = Math.min(Math.max(Number(req.query.limit || 25), 1), 100);
     const offset = (page - 1) * limit;
@@ -160,13 +187,15 @@ export const getEmployees = async (req, res) => {
     const total = Number(countRows[0]?.total || 0);
     const [rows] = await connection.query(`
       SELECT e.employee_id, e.employee_code, e.first_name, e.middle_name, e.last_name,
-             e.department, e.employment_type, e.employee_status, e.created_at, e.updated_at,
+             e.department, e.employment_type, e.hire_date, e.employee_status, e.created_at, e.updated_at,
              ${buildEmployeeNameSql('e')} AS full_name
       FROM employees e
       WHERE ${where.join(' AND ')}
       ORDER BY e.employee_status = 'active' DESC, e.last_name, e.first_name
       LIMIT ? OFFSET ?
     `, [...params, limit, offset]);
+
+    const employeesWithRestDays = await attachCurrentRestDays(connection, rows, today);
 
     const [summaryRows] = await connection.query(`
       SELECT COUNT(*) AS total,
@@ -180,7 +209,7 @@ export const getEmployees = async (req, res) => {
 
     return res.json({
       success: true,
-      data: rows.map(mapEmployee),
+      data: employeesWithRestDays,
       departments,
       departmentConfigs: runtime.departmentConfigs,
       summary: {
@@ -209,12 +238,14 @@ export const getEmployee = async (req, res) => {
     const employeeId = Number(req.params.employeeId);
     const [rows] = await connection.query(`
       SELECT e.employee_id, e.employee_code, e.first_name, e.middle_name, e.last_name,
-             e.department, e.employment_type, e.employee_status, e.created_at, e.updated_at,
+             e.department, e.employment_type, e.hire_date, e.employee_status, e.created_at, e.updated_at,
              ${buildEmployeeNameSql('e')} AS full_name
       FROM employees e WHERE e.employee_id = ? LIMIT 1
     `, [employeeId]);
     if (!rows[0]) return res.status(404).json({ message: 'Employee not found.' });
-    return res.json({ success: true, data: mapEmployee(rows[0]) });
+    const today = getManilaDateTime().date;
+    const [employee] = await attachCurrentRestDays(connection, rows, today);
+    return res.json({ success: true, data: employee });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
   } finally { connection.release(); }
@@ -263,13 +294,28 @@ export const createEmployee = async (req, res) => {
       barcode.department, payload.employmentType, today, payload.status, actorId, actorId,
     ]);
 
+    await createInitialEmployeeRestDays(connection, {
+      employeeId: result.insertId,
+      restDays: payload.restDays,
+      effectiveFrom: today,
+      actorId,
+    });
+
     await writeAuditLog(connection, req, {
       actor: req.authUser,
       action: 'create', module: 'Employees', entityType: 'employee', entityId: String(result.insertId),
       entityLabel: `${payload.firstName} ${payload.lastName}`,
       title: 'Created employee',
       description: `Created employee ${payload.firstName} ${payload.lastName} with generated barcode ${barcode.employeeCode}.`,
-      metadata: { barcode: barcode.employeeCode, barcodePrefix: barcode.prefix, department: barcode.department, employmentType: payload.employmentType },
+      metadata: {
+        barcode: barcode.employeeCode,
+        barcodePrefix: barcode.prefix,
+        department: barcode.department,
+        employmentType: payload.employmentType,
+        restDays: payload.restDays,
+        restDaysLabel: formatRestDays(payload.restDays),
+        restDaysEffectiveFrom: today,
+      },
     });
     await connection.commit();
     return res.status(201).json({
@@ -280,6 +326,8 @@ export const createEmployee = async (req, res) => {
         employee_id: result.insertId,
         employee_code: barcode.employeeCode,
         department: barcode.department,
+        rest_days: payload.restDays,
+        rest_days_effective_from: today,
         full_name: [payload.firstName, payload.middleName, payload.lastName].filter(Boolean).join(' '),
       },
     });
@@ -297,11 +345,28 @@ export const updateEmployee = async (req, res) => {
     const payload = normalizePayload(req.body);
     validatePayload(payload);
     const actorId = req.authUser?.id || null;
+    const today = getManilaDateTime().date;
 
     await connection.beginTransaction();
     const [rows] = await connection.query('SELECT * FROM employees WHERE employee_id = ? LIMIT 1 FOR UPDATE', [employeeId]);
     if (!rows[0]) throw Object.assign(new Error('Employee not found.'), { statusCode: 404 });
     if (payload.department !== rows[0].department) await findDepartmentConfig(connection, payload.department);
+
+    const restDaysEffectiveFrom = payload.restDaysEffectiveFrom || today;
+    const hireDate = String(rows[0].hire_date || today).slice(0, 10);
+    if (restDaysEffectiveFrom < hireDate) {
+      throw Object.assign(new Error('Rest Day effective date cannot be before the employee hire date.'), { statusCode: 400 });
+    }
+    if (restDaysEffectiveFrom > today) {
+      throw Object.assign(new Error('Rest Day effective date cannot be in the future.'), { statusCode: 400 });
+    }
+
+    const restDayChange = await replaceEmployeeRestDays(connection, {
+      employeeId,
+      restDays: payload.restDays,
+      effectiveFrom: restDaysEffectiveFrom,
+      actorId,
+    });
 
     await connection.query(`
       UPDATE employees SET first_name = ?, middle_name = ?, last_name = ?,
@@ -320,10 +385,24 @@ export const updateEmployee = async (req, res) => {
         previousDepartment: rows[0].department,
         department: payload.department,
         employmentType: payload.employmentType,
+        previousRestDays: restDayChange.previous,
+        restDays: restDayChange.current,
+        restDaysEffectiveFrom: restDayChange.effectiveFrom,
+        restDaysChanged: restDayChange.changed,
       },
     });
     await connection.commit();
-    return res.json({ success: true, message: 'Employee updated successfully. The existing barcode was preserved.', data: { employee_code: rows[0].employee_code } });
+    return res.json({
+      success: true,
+      message: restDayChange.changed
+        ? `Employee updated successfully. Rest Days are effective ${restDayChange.effectiveFrom}. The existing barcode was preserved.`
+        : 'Employee updated successfully. The existing barcode was preserved.',
+      data: {
+        employee_code: rows[0].employee_code,
+        rest_days: restDayChange.current,
+        rest_days_effective_from: restDayChange.effectiveFrom,
+      },
+    });
   } catch (error) {
     try { await connection.rollback(); } catch {}
     return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
