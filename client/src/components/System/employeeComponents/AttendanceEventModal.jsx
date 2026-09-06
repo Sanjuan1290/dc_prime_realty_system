@@ -120,8 +120,8 @@ const AttendanceEventModal = ({ event, employees = [], defaultDate, onClose, onS
           <div className="flex items-center gap-3">
             <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-violet-50 text-violet-700"><FiCalendar /></span>
             <div>
-              <h3 className="font-black text-slate-950">{isEdit ? 'Edit Company Event' : 'Set Up Company Event'}</h3>
-              <p className="text-xs font-semibold text-slate-500">Configure the selected calendar date, event participants, and off-site attendance details.</p>
+              <h3 className="font-black text-slate-950">{isEdit ? 'Edit Whole Company Event' : 'Set Up Company Event'}</h3>
+              <p className="text-xs font-semibold text-slate-500">{isEdit ? 'Changes to dates, participants, and attendance settings apply to the whole event.' : 'Set the event date range, participants, and attendance details once.'}</p>
             </div>
           </div>
           <button type="button" onClick={onClose} className="rounded-xl p-2 text-slate-500 hover:bg-slate-100"><FiX /></button>
@@ -197,7 +197,7 @@ const AttendanceEventModal = ({ event, employees = [], defaultDate, onClose, onS
 
         <footer className="flex flex-col-reverse gap-3 border-t border-slate-200 bg-slate-50 px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
           <button type="button" onClick={onClose} className="h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700">Cancel</button>
-          <button type="submit" disabled={mutation.isPending} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white disabled:opacity-60"><FiSave />{mutation.isPending ? 'Saving...' : 'Save Event Details'}</button>
+          <button type="submit" disabled={mutation.isPending} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white disabled:opacity-60"><FiSave />{mutation.isPending ? 'Saving...' : isEdit ? 'Save Whole Event' : 'Create Company Event'}</button>
         </footer>
       </form>
     </div>
