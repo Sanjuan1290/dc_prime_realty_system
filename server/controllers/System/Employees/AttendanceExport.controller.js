@@ -6,6 +6,7 @@ import { getRestDayAssignmentsForRange } from '../../../services/employeeRestDay
 const EXPORT_SCHEDULE = Object.freeze({
   scheduledTimeIn: '09:00:00',
   scheduledTimeOut: '20:00:00',
+  breakStart: '12:00:00',
   breakMinutes: 60,
   regularWorkingMinutes: 11 * 60,
   lateAfter: '09:00:00',

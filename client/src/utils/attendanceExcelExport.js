@@ -55,6 +55,15 @@ const excelTime = (value) => {
   return seconds === null ? null : seconds / 86400
 }
 
+const breakOverlapSeconds = ({ timeInSeconds, timeOutSeconds, breakStart, breakMinutes }) => {
+  if (timeInSeconds === null || timeOutSeconds === null || timeOutSeconds <= timeInSeconds) return 0
+  const start = secondsFromTime(breakStart)
+  const duration = Math.max(Number(breakMinutes || 0), 0) * 60
+  if (start === null || duration <= 0) return 0
+  const end = Math.min(start + duration, 24 * 60 * 60)
+  return Math.max(Math.min(timeOutSeconds, end) - Math.max(timeInSeconds, start), 0)
+}
+
 const dateOnly = (value) => String(value || '').slice(0, 10)
 const toUtcDate = (value) => {
   const date = dateOnly(value)
@@ -184,7 +193,7 @@ const buildAttendanceRow = ({ employee, date, attendance, restDays, daySetting, 
   const timeOutSeconds = secondsFromTime(timeOut)
   const scheduledIn = secondsFromTime(schedule.scheduledTimeIn)
   const scheduledOut = secondsFromTime(schedule.scheduledTimeOut)
-  const breakSeconds = Number(schedule.breakMinutes || 60) * 60
+  const lateAfter = secondsFromTime(schedule.lateAfter || schedule.scheduledTimeIn || '09:00:00')
   const regularWorkingSeconds = Number(schedule.regularWorkingMinutes || 660) * 60
   const redAfter = secondsFromTime(schedule.redHighlightAfter || '09:15:00')
 
@@ -223,7 +232,14 @@ const buildAttendanceRow = ({ employee, date, attendance, restDays, daySetting, 
 
   let totalWorkedSeconds = 0
   if (timeInSeconds !== null && timeOutSeconds !== null && timeOutSeconds >= timeInSeconds) {
-    totalWorkedSeconds = Math.max(timeOutSeconds - timeInSeconds - breakSeconds, 0)
+    const grossWorkedSeconds = timeOutSeconds - timeInSeconds
+    const deductedBreakSeconds = breakOverlapSeconds({
+      timeInSeconds,
+      timeOutSeconds,
+      breakStart: schedule.breakStart || '12:00:00',
+      breakMinutes: schedule.breakMinutes ?? 60,
+    })
+    totalWorkedSeconds = Math.max(grossWorkedSeconds - deductedBreakSeconds, 0)
   }
 
   if (isRestDay) {
@@ -271,8 +287,8 @@ const buildAttendanceRow = ({ employee, date, attendance, restDays, daySetting, 
     }
   }
 
-  const lateSeconds = timeInSeconds !== null && scheduledIn !== null
-    ? Math.max(timeInSeconds - scheduledIn, 0)
+  const lateSeconds = timeInSeconds !== null && lateAfter !== null
+    ? Math.max(timeInSeconds - lateAfter, 0)
     : 0
   const rawOvertime = timeOutSeconds !== null && scheduledOut !== null
     ? Math.max(timeOutSeconds - scheduledOut, 0)
