@@ -177,20 +177,48 @@ const Attendance = () => {
   const summary = attendanceQuery.data?.summary || { present: 0, inOffice: 0, timedOut: 0, eventParticipants: 0, automaticTimeOuts: 0 }
   const pagination = attendanceQuery.data?.pagination || { page, totalPages: 1, total: 0, hasPrev: false, hasNext: false }
   const employees = employeesQuery.data?.data || []
-  const events = eventsQuery.data?.data || []
+  const detailedEvents = eventsQuery.data?.data || []
+  const calendarEvents = calendarQuery.data?.events || []
+  const selectedCalendarEvents = useMemo(
+    () => calendarEvents.filter((event) => dateFallsWithinEvent(selectedDate, event)),
+    [calendarEvents, selectedDate]
+  )
+  const events = useMemo(() => {
+    const detailedById = new Map(
+      detailedEvents.map((event) => [Number(event.attendance_event_id), event])
+    )
+    const sourceEvents = selectedCalendarEvents.length ? selectedCalendarEvents : detailedEvents
+
+    return sourceEvents.map((event) => {
+      const detailed = detailedById.get(Number(event.attendance_event_id))
+      return detailed ? { ...event, ...detailed } : event
+    })
+  }, [detailedEvents, selectedCalendarEvents])
+  const hasCompanyEvent = selectedCalendarEvents.length > 0 || detailedEvents.length > 0
   const defaultTimeOut = attendanceQuery.data?.settings?.defaultTimeOut || '20:00:00'
 
   useEffect(() => {
-    if (eventsQuery.isLoading) return
     const day = attendanceQuery.data?.day
-    if (events.length) {
+
+    if (hasCompanyEvent) {
       setDayType('company_event')
       setDayNotes(day?.notes || '')
       return
     }
+
+    if (calendarQuery.isLoading || eventsQuery.isLoading) return
+
     setDayType(day?.day_type || 'regular')
     setDayNotes(day?.notes || '')
-  }, [selectedDate, eventsQuery.isLoading, eventsQuery.data, attendanceQuery.data?.day?.attendance_date, attendanceQuery.data?.day?.day_type, attendanceQuery.data?.day?.notes])
+  }, [
+    selectedDate,
+    hasCompanyEvent,
+    calendarQuery.isLoading,
+    eventsQuery.isLoading,
+    attendanceQuery.data?.day?.attendance_date,
+    attendanceQuery.data?.day?.day_type,
+    attendanceQuery.data?.day?.notes,
+  ])
 
   const invalidateAttendance = () => {
     queryClient.invalidateQueries({ queryKey: ['attendance'] })
@@ -248,8 +276,29 @@ const Attendance = () => {
     scanMutation.mutate({ code })
   }
 
-  const openCompanyEvent = (event = null) => {
-    setEventRecord(event || events[0] || null)
+  const openCompanyEvent = async (event = null) => {
+    const target = event || events[0] || null
+
+    if (target?.attendance_event_id && !Array.isArray(target.participants)) {
+      const refreshed = await eventsQuery.refetch()
+      const detailed = refreshed.data?.data?.find(
+        (item) => Number(item.attendance_event_id) === Number(target.attendance_event_id)
+      )
+
+      if (!detailed || !Array.isArray(detailed.participants)) {
+        setAlert({
+          type: 'error',
+          message: 'The company event is visible on the calendar, but its participant details could not be loaded. Please refresh and try again.',
+        })
+        return
+      }
+
+      setEventRecord({ ...target, ...detailed })
+      setShowEvent(true)
+      return
+    }
+
+    setEventRecord(target)
     setShowEvent(true)
   }
 
@@ -284,9 +333,7 @@ const Attendance = () => {
 
   const calendarCells = useMemo(() => buildCalendarCells(calendarMonth), [calendarMonth])
   const calendarDays = calendarQuery.data?.days || []
-  const calendarEvents = calendarQuery.data?.events || []
   const calendarDayMap = useMemo(() => new Map(calendarDays.map((day) => [String(day.attendance_date).slice(0, 10), day])), [calendarDays])
-  const hasCompanyEvent = events.length > 0
 
   const manila = getManilaParts(now)
   const liveTime = formatTime(`${Number(manila.hour) === 24 ? '00' : manila.hour}:${manila.minute}:${manila.second}`)
@@ -308,6 +355,12 @@ const Attendance = () => {
       {alert ? <StatusAlert type={alert.type} message={alert.message} onClose={alert.type === 'loading' ? undefined : () => setAlert(null)} /> : null}
       {attendanceQuery.isError ? <StatusAlert type="error" message={attendanceQuery.error?.message || 'Failed to load attendance.'} /> : null}
       {calendarQuery.isError ? <StatusAlert type="error" message={calendarQuery.error?.message || 'Failed to load attendance calendar.'} /> : null}
+      {eventsQuery.isError && hasCompanyEvent ? (
+        <StatusAlert
+          type="error"
+          message={eventsQuery.error?.message || 'The event is visible on the calendar, but its full details could not be loaded.'}
+        />
+      ) : null}
 
       <section className="grid gap-5 xl:grid-cols-[1.35fr_.65fr]">
         <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">

@@ -2192,8 +2192,9 @@ export const getAttendanceEvents = async (req, res) => {
         SELECT
           ev.*,
 
-          COUNT(
-            DISTINCT p.employee_id
+          COALESCE(
+            participant_counts.participant_count,
+            0
           ) AS participant_count,
 
           TRIM(
@@ -2207,8 +2208,14 @@ export const getAttendanceEvents = async (req, res) => {
 
         FROM attendance_events ev
 
-        LEFT JOIN attendance_event_participants p
-          ON p.attendance_event_id =
+        LEFT JOIN (
+          SELECT
+            attendance_event_id,
+            COUNT(DISTINCT employee_id) AS participant_count
+          FROM attendance_event_participants
+          GROUP BY attendance_event_id
+        ) participant_counts
+          ON participant_counts.attendance_event_id =
             ev.attendance_event_id
 
         LEFT JOIN users creator
@@ -2219,9 +2226,6 @@ export const getAttendanceEvents = async (req, res) => {
           ev.event_status = 'active'
           AND ev.end_date >= ?
           AND ev.start_date <= ?
-
-        GROUP BY
-          ev.attendance_event_id
 
         ORDER BY
           ev.start_date DESC,
@@ -2279,6 +2283,16 @@ export const getAttendanceEvents = async (req, res) => {
       data: rows.map(
         (row) => ({
           ...row,
+
+          start_date:
+            dateOnly(
+              row.start_date
+            ),
+
+          end_date:
+            dateOnly(
+              row.end_date
+            ),
 
           participant_count:
             Number(
