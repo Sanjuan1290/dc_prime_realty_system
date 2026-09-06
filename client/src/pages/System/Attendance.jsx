@@ -7,6 +7,7 @@ import {
   FiChevronRight,
   FiClock,
   FiEdit2,
+  FiExternalLink,
   FiLogIn,
   FiLogOut,
   FiPlus,
@@ -271,10 +272,53 @@ const Attendance = () => {
   return (
     <main className="flex flex-col gap-6">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-        <PageHeader title="Attendance" description="Barcode Time In/Time Out, calendar-based day management, manual corrections, and attendance history." icon={FiClock} />
+        <PageHeader
+          title="Attendance"
+          description="Barcode Time In/Time Out, calendar-based day management, manual corrections, and attendance history."
+          icon={FiClock}
+        />
+
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={() => { attendanceQuery.refetch(); calendarQuery.refetch() }} className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700"><FiRefreshCw className={attendanceQuery.isFetching || calendarQuery.isFetching ? 'animate-spin' : ''} />Refresh</button>
-          {canManage ? <button type="button" onClick={() => { setCorrectionRecord(null); setShowCorrection(true) }} className="inline-flex h-11 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 text-sm font-black text-blue-700"><FiPlus />Manual Attendance</button> : null}
+          <button
+            type="button"
+            onClick={() => window.open('/attendance', '_blank', 'noopener,noreferrer')}
+            className="inline-flex h-11 items-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-black text-white transition hover:bg-slate-800"
+          >
+            <FiExternalLink />
+            Open Attendance Kiosk
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              attendanceQuery.refetch()
+              calendarQuery.refetch()
+            }}
+            className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700"
+          >
+            <FiRefreshCw
+              className={
+                attendanceQuery.isFetching || calendarQuery.isFetching
+                  ? 'animate-spin'
+                  : ''
+              }
+            />
+            Refresh
+          </button>
+
+          {canManage ? (
+            <button
+              type="button"
+              onClick={() => {
+                setCorrectionRecord(null)
+                setShowCorrection(true)
+              }}
+              className="inline-flex h-11 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 text-sm font-black text-blue-700"
+            >
+              <FiPlus />
+              Manual Attendance
+            </button>
+          ) : null}
         </div>
       </div>
 
