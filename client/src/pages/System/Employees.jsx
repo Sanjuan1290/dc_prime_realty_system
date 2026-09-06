@@ -37,6 +37,7 @@ const Employees = () => {
   const rows = employeesQuery.data?.data || []
   const summary = employeesQuery.data?.summary || { total: 0, active: 0, inactive: 0 }
   const departments = employeesQuery.data?.departments || []
+  const departmentConfigs = employeesQuery.data?.departmentConfigs || []
   const pagination = employeesQuery.data?.pagination || { page, totalPages: 1, total: 0, hasPrev: false, hasNext: false }
 
   const statusMutation = useMutation({
@@ -51,7 +52,7 @@ const Employees = () => {
   return (
     <main className="flex flex-col gap-6">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-        <PageHeader title="Employees" description="Manage employees and generate their printable attendance barcodes from the Barcode Code." icon={FiUsers} />
+        <PageHeader title="Employees" description="Manage employees with department-generated attendance barcodes and printable employee codes." icon={FiUsers} />
         <div className="flex gap-2">
           <button type="button" onClick={() => employeesQuery.refetch()} className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700"><FiRefreshCw className={employeesQuery.isFetching ? 'animate-spin' : ''} />Refresh</button>
           {canManage ? <button type="button" onClick={openAdd} className="inline-flex h-11 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white hover:bg-blue-700"><FiPlus />Add Employee</button> : null}
@@ -78,7 +79,7 @@ const Employees = () => {
             <thead className="border-b border-slate-200 bg-slate-50"><tr>{['Employee', 'Barcode Code', 'Department', 'Employment Type', 'Status', 'Actions'].map((head) => <th key={head} className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">{head}</th>)}</tr></thead>
             <tbody className="divide-y divide-slate-100">
               {employeesQuery.isLoading ? <tr><td colSpan={6} className="px-6 py-16 text-center font-semibold text-slate-500">Loading employees...</td></tr> : null}
-              {!employeesQuery.isLoading && rows.length === 0 ? <tr><td colSpan={6} className="px-6 py-16 text-center"><p className="font-black text-slate-800">No employees yet</p><p className="mt-1 text-sm font-semibold text-slate-500">Add the first employee, enter a Barcode Code such as IT-001, and print the generated barcode.</p></td></tr> : null}
+              {!employeesQuery.isLoading && rows.length === 0 ? <tr><td colSpan={6} className="px-6 py-16 text-center"><p className="font-black text-slate-800">No employees yet</p><p className="mt-1 text-sm font-semibold text-slate-500">Add the first employee, select a department, and the system will generate the next available barcode automatically.</p></td></tr> : null}
               {rows.map((employee) => <tr key={employee.employee_id} className="hover:bg-slate-50">
                 <td className="px-4 py-4"><p className="font-black text-slate-950">{employee.full_name}</p></td>
                 <td className="px-4 py-4 font-mono font-black text-blue-700">{employee.employee_code}</td>
@@ -97,7 +98,7 @@ const Employees = () => {
         </div>
       </section>
 
-      {showModal ? <EmployeeModal employee={selectedEmployee} departments={departments} onClose={() => setShowModal(false)} onSaved={(message) => setAlert({ type: 'success', message })} /> : null}
+      {showModal ? <EmployeeModal employee={selectedEmployee} departmentConfigs={departmentConfigs} departments={departments} onClose={() => setShowModal(false)} onSaved={(message) => setAlert({ type: 'success', message })} /> : null}
     </main>
   )
 }

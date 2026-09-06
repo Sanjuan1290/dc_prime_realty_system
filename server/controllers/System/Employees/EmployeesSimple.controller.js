@@ -5,14 +5,14 @@ import { ensureAttendanceLiteSchema, getAttendanceRuntimeSettings, getManilaDate
 
 const employmentTypes = new Set(['regular', 'probationary', 'part_time']);
 const statuses = new Set(['active', 'inactive']);
+const MAX_DEPARTMENT_BARCODE_NUMBER = 999;
 
 const getErrorMessage = (error) => {
-  if (error?.code === 'ER_DUP_ENTRY') return 'That barcode code is already assigned to another employee.';
+  if (error?.code === 'ER_DUP_ENTRY') return 'That employee barcode is already assigned. Please generate the barcode again.';
   return error?.message || 'Employee operation failed.';
 };
 
 const normalizePayload = (body = {}) => ({
-  employeeCode: cleanText(body.employee_code).toUpperCase(),
   firstName: cleanText(body.first_name),
   middleName: nullableText(body.middle_name),
   lastName: cleanText(body.last_name),
@@ -22,13 +22,8 @@ const normalizePayload = (body = {}) => ({
 });
 
 const validatePayload = (payload) => {
-  if (!payload.firstName || !payload.lastName || !payload.employeeCode || !payload.department) {
-    const error = new Error('First name, last name, barcode code, and department are required.');
-    error.statusCode = 400;
-    throw error;
-  }
-  if (payload.employeeCode.length > 40 || !/^[\x20-\x7E]+$/.test(payload.employeeCode)) {
-    const error = new Error('Barcode Code must be 40 characters or fewer and use standard letters, numbers, spaces, or symbols.');
+  if (!payload.firstName || !payload.lastName || !payload.department) {
+    const error = new Error('First name, last name, and department are required.');
     error.statusCode = 400;
     throw error;
   }
@@ -39,6 +34,104 @@ const mapEmployee = (row) => ({
   barcode_code: row.employee_code,
   employment_label: row.employment_type === 'part_time' ? 'Part Time' : row.employment_type === 'probationary' ? 'Probationary' : 'Full Time',
 });
+
+const findDepartmentConfig = async (connection, department) => {
+  const runtime = await getAttendanceRuntimeSettings(connection);
+  const config = runtime.departmentConfigs.find((item) => item.name.toLowerCase() === String(department || '').trim().toLowerCase());
+  if (!config) {
+    const error = new Error('Select a configured department before generating an employee barcode. Department barcode prefixes are managed in System Settings.');
+    error.statusCode = 400;
+    throw error;
+  }
+  return config;
+};
+
+const getExistingMaxBarcodeNumber = async (connection, prefix) => {
+  const [rows] = await connection.query(
+    'SELECT employee_code FROM employees WHERE employee_code LIKE ?',
+    [`${prefix}-%`]
+  );
+  const matcher = new RegExp(`^${prefix}-([0-9]{3})$`);
+  let maxNumber = 0;
+  for (const row of rows) {
+    const match = matcher.exec(String(row.employee_code || '').toUpperCase());
+    if (match) maxNumber = Math.max(maxNumber, Number(match[1]));
+  }
+  return maxNumber;
+};
+
+const buildBarcodeCode = (prefix, number) => `${prefix}-${String(number).padStart(3, '0')}`;
+
+const getBarcodePreview = async (connection, department) => {
+  const config = await findDepartmentConfig(connection, department);
+  const [rows] = await connection.query(
+    'SELECT prefix, last_number FROM employee_barcode_sequences WHERE department = ? LIMIT 1',
+    [config.name]
+  );
+  const sequenceNumber = rows[0] && String(rows[0].prefix || '').toUpperCase() === config.prefix
+    ? Number(rows[0].last_number || 0)
+    : 0;
+  const existingMax = await getExistingMaxBarcodeNumber(connection, config.prefix);
+  const nextNumber = Math.max(sequenceNumber, existingMax) + 1;
+
+  if (nextNumber > MAX_DEPARTMENT_BARCODE_NUMBER) {
+    const error = new Error(`${config.name} has reached the ${config.prefix}-999 barcode limit. Update the department barcode prefix in System Settings before adding another employee.`);
+    error.statusCode = 409;
+    throw error;
+  }
+
+  return {
+    department: config.name,
+    prefix: config.prefix,
+    nextNumber,
+    employeeCode: buildBarcodeCode(config.prefix, nextNumber),
+  };
+};
+
+const allocateEmployeeBarcode = async (connection, department) => {
+  const config = await findDepartmentConfig(connection, department);
+
+  await connection.query(`
+    INSERT INTO employee_barcode_sequences (department, prefix, last_number)
+    VALUES (?, ?, 0)
+    ON DUPLICATE KEY UPDATE department = VALUES(department)
+  `, [config.name, config.prefix]);
+
+  const [rows] = await connection.query(
+    'SELECT prefix, last_number FROM employee_barcode_sequences WHERE department = ? LIMIT 1 FOR UPDATE',
+    [config.name]
+  );
+  const current = rows[0] || { prefix: config.prefix, last_number: 0 };
+
+  let sequenceNumber = Number(current.last_number || 0);
+  if (String(current.prefix || '').toUpperCase() !== config.prefix) {
+    sequenceNumber = 0;
+    await connection.query(
+      'UPDATE employee_barcode_sequences SET prefix = ?, last_number = 0 WHERE department = ?',
+      [config.prefix, config.name]
+    );
+  }
+
+  const existingMax = await getExistingMaxBarcodeNumber(connection, config.prefix);
+  const nextNumber = Math.max(sequenceNumber, existingMax) + 1;
+  if (nextNumber > MAX_DEPARTMENT_BARCODE_NUMBER) {
+    const error = new Error(`${config.name} has reached the ${config.prefix}-999 barcode limit. Update the department barcode prefix in System Settings before adding another employee.`);
+    error.statusCode = 409;
+    throw error;
+  }
+
+  await connection.query(
+    'UPDATE employee_barcode_sequences SET prefix = ?, last_number = ? WHERE department = ?',
+    [config.prefix, nextNumber, config.name]
+  );
+
+  return {
+    department: config.name,
+    prefix: config.prefix,
+    nextNumber,
+    employeeCode: buildBarcodeCode(config.prefix, nextNumber),
+  };
+};
 
 export const getEmployees = async (req, res) => {
   const connection = await db.getConnection();
@@ -89,6 +182,7 @@ export const getEmployees = async (req, res) => {
       success: true,
       data: rows.map(mapEmployee),
       departments,
+      departmentConfigs: runtime.departmentConfigs,
       summary: {
         total: Number(summaryRows[0]?.total || 0),
         active: Number(summaryRows[0]?.active || 0),
@@ -126,6 +220,28 @@ export const getEmployee = async (req, res) => {
   } finally { connection.release(); }
 };
 
+export const previewEmployeeBarcode = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    await ensureAttendanceLiteSchema(connection);
+    const department = cleanText(req.body.department);
+    if (!department) return res.status(400).json({ message: 'Select a department first.' });
+    const preview = await getBarcodePreview(connection, department);
+    return res.json({
+      success: true,
+      message: `Next available barcode is ${preview.employeeCode}.`,
+      data: {
+        department: preview.department,
+        prefix: preview.prefix,
+        next_number: preview.nextNumber,
+        employee_code: preview.employeeCode,
+      },
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
+  } finally { connection.release(); }
+};
+
 export const createEmployee = async (req, res) => {
   const connection = await db.getConnection();
   try {
@@ -136,14 +252,15 @@ export const createEmployee = async (req, res) => {
     const today = getManilaDateTime().date;
 
     await connection.beginTransaction();
+    const barcode = await allocateEmployeeBarcode(connection, payload.department);
     const [result] = await connection.query(`
       INSERT INTO employees (
         employee_code, first_name, middle_name, last_name, department,
         position, employment_type, hire_date, employee_status, created_by_user_id, updated_by_user_id
       ) VALUES (?, ?, ?, ?, ?, 'Employee', ?, ?, ?, ?, ?)
     `, [
-      payload.employeeCode, payload.firstName, payload.middleName, payload.lastName,
-      payload.department, payload.employmentType, today, payload.status, actorId, actorId,
+      barcode.employeeCode, payload.firstName, payload.middleName, payload.lastName,
+      barcode.department, payload.employmentType, today, payload.status, actorId, actorId,
     ]);
 
     await writeAuditLog(connection, req, {
@@ -151,11 +268,21 @@ export const createEmployee = async (req, res) => {
       action: 'create', module: 'Employees', entityType: 'employee', entityId: String(result.insertId),
       entityLabel: `${payload.firstName} ${payload.lastName}`,
       title: 'Created employee',
-      description: `Created employee ${payload.firstName} ${payload.lastName} with barcode ${payload.employeeCode}.`,
-      metadata: { department: payload.department, employmentType: payload.employmentType },
+      description: `Created employee ${payload.firstName} ${payload.lastName} with generated barcode ${barcode.employeeCode}.`,
+      metadata: { barcode: barcode.employeeCode, barcodePrefix: barcode.prefix, department: barcode.department, employmentType: payload.employmentType },
     });
     await connection.commit();
-    return res.status(201).json({ success: true, message: 'Employee created successfully.', employee_id: result.insertId });
+    return res.status(201).json({
+      success: true,
+      message: `Employee created successfully with barcode ${barcode.employeeCode}.`,
+      employee_id: result.insertId,
+      data: {
+        employee_id: result.insertId,
+        employee_code: barcode.employeeCode,
+        department: barcode.department,
+        full_name: [payload.firstName, payload.middleName, payload.lastName].filter(Boolean).join(' '),
+      },
+    });
   } catch (error) {
     try { await connection.rollback(); } catch {}
     return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
@@ -174,23 +301,29 @@ export const updateEmployee = async (req, res) => {
     await connection.beginTransaction();
     const [rows] = await connection.query('SELECT * FROM employees WHERE employee_id = ? LIMIT 1 FOR UPDATE', [employeeId]);
     if (!rows[0]) throw Object.assign(new Error('Employee not found.'), { statusCode: 404 });
+    if (payload.department !== rows[0].department) await findDepartmentConfig(connection, payload.department);
 
     await connection.query(`
-      UPDATE employees SET employee_code = ?, first_name = ?, middle_name = ?, last_name = ?,
+      UPDATE employees SET first_name = ?, middle_name = ?, last_name = ?,
         department = ?, employment_type = ?, employee_status = ?, updated_by_user_id = ?
       WHERE employee_id = ?
-    `, [payload.employeeCode, payload.firstName, payload.middleName, payload.lastName, payload.department, payload.employmentType, payload.status, actorId, employeeId]);
+    `, [payload.firstName, payload.middleName, payload.lastName, payload.department, payload.employmentType, payload.status, actorId, employeeId]);
 
     await writeAuditLog(connection, req, {
       actor: req.authUser,
       action: 'update', module: 'Employees', entityType: 'employee', entityId: String(employeeId),
       entityLabel: `${payload.firstName} ${payload.lastName}`,
       title: 'Updated employee',
-      description: `Updated employee ${payload.firstName} ${payload.lastName}.`,
-      metadata: { previousBarcode: rows[0].employee_code, barcode: payload.employeeCode, department: payload.department, employmentType: payload.employmentType },
+      description: `Updated employee ${payload.firstName} ${payload.lastName}. Existing barcode ${rows[0].employee_code} was preserved.`,
+      metadata: {
+        barcode: rows[0].employee_code,
+        previousDepartment: rows[0].department,
+        department: payload.department,
+        employmentType: payload.employmentType,
+      },
     });
     await connection.commit();
-    return res.json({ success: true, message: 'Employee updated successfully.' });
+    return res.json({ success: true, message: 'Employee updated successfully. The existing barcode was preserved.', data: { employee_code: rows[0].employee_code } });
   } catch (error) {
     try { await connection.rollback(); } catch {}
     return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });

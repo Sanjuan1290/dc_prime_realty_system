@@ -6,6 +6,7 @@ import {
 } from '../Lot_Projects/_shared/lotProject.shared.js';
 import { writeAuditLog } from './auditLogs.controller.js';
 import { isFullAccessAdministrator } from '../../config/permissions.js';
+import { normalizeDepartmentConfigs, validateDepartmentConfigs } from './Employees/departmentBarcode.shared.js';
 
 const cleanText = (value, fallback = '') => String(value ?? fallback).trim();
 const nullableText = (value) => {
@@ -69,6 +70,7 @@ const systemSettingsTableSql = `
     default_release_day_two TINYINT UNSIGNED NOT NULL DEFAULT 22,
     attendance_default_time_out TIME NOT NULL DEFAULT '20:00:00',
     employee_departments_json TEXT NULL,
+    employee_department_codes_json TEXT NULL,
     updated_by_user_id INT UNSIGNED NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -84,6 +86,7 @@ const ensureSystemSettingsTable = async (connection = db) => {
   await connection.query(systemSettingsTableSql);
   await connection.query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS attendance_default_time_out TIME NOT NULL DEFAULT '20:00:00' AFTER default_release_day_two`);
   await connection.query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS employee_departments_json TEXT NULL AFTER attendance_default_time_out`);
+  await connection.query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS employee_department_codes_json TEXT NULL AFTER employee_departments_json`);
 
   // Keep one singleton settings row so every page has a safe default to read.
   await connection.query(
@@ -110,7 +113,8 @@ const mapSettings = (row = {}) => ({
   defaultReleaseDayOne: Number(row.default_release_day_one || 7),
   defaultReleaseDayTwo: Number(row.default_release_day_two || 22),
   attendanceDefaultTimeOut: String(row.attendance_default_time_out || '20:00:00').slice(0, 8),
-  employeeDepartments: (() => { try { const value = JSON.parse(String(row.employee_departments_json || '[]')); return Array.from(new Set(['Administration', 'Sales', 'Accounting', 'IT', ...(Array.isArray(value) ? value : [])])); } catch { return ['Administration', 'Sales', 'Accounting', 'IT']; } })(),
+  employeeDepartmentCodes: normalizeDepartmentConfigs(row.employee_department_codes_json, row.employee_departments_json),
+  employeeDepartments: normalizeDepartmentConfigs(row.employee_department_codes_json, row.employee_departments_json).map((item) => item.name),
   updatedByUserId: row.updated_by_user_id,
   updatedByName: row.updated_by_name || null,
   createdAt: row.created_at,
@@ -133,8 +137,11 @@ const normalizeSettingsPayload = (body = {}) => ({
   attendanceDefaultTimeOut: /^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(String(body.attendanceDefaultTimeOut || ''))
     ? `${String(body.attendanceDefaultTimeOut).slice(0, 5)}:00`
     : '20:00:00',
-  employeeDepartments: Array.from(new Set((Array.isArray(body.employeeDepartments) ? body.employeeDepartments : String(body.employeeDepartments || '').split(/[\n,]+/))
-    .map((value) => cleanText(value)).filter(Boolean))).slice(0, 100),
+  employeeDepartmentCodes: validateDepartmentConfigs(
+    Array.isArray(body.employeeDepartmentCodes) && body.employeeDepartmentCodes.length
+      ? body.employeeDepartmentCodes
+      : normalizeDepartmentConfigs([], Array.isArray(body.employeeDepartments) ? body.employeeDepartments : String(body.employeeDepartments || '').split(/[\n,]+/))
+  ),
 });
 
 export const getSystemSettings = async (req, res) => {
@@ -201,6 +208,7 @@ export const updateSystemSettings = async (req, res) => {
           default_release_day_two = ?,
           attendance_default_time_out = ?,
           employee_departments_json = ?,
+          employee_department_codes_json = ?,
           updated_by_user_id = ?
         WHERE system_setting_id = 1
       `,
@@ -218,7 +226,8 @@ export const updateSystemSettings = async (req, res) => {
         payload.defaultReleaseDayOne,
         payload.defaultReleaseDayTwo,
         payload.attendanceDefaultTimeOut,
-        JSON.stringify(payload.employeeDepartments),
+        JSON.stringify(payload.employeeDepartmentCodes.map((item) => item.name)),
+        JSON.stringify(payload.employeeDepartmentCodes),
         actor.id,
       ]
     );

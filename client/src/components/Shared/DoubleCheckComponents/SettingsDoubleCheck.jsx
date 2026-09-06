@@ -53,10 +53,10 @@ const SystemSettingsReview = ({ data }) => [
     key: 'attendance',
     title: 'Employee Attendance',
     content: (
-      <DoubleCheckSection title="Employee Attendance" helper="Verify the automatic Time Out and department dropdown values." tone="violet">
+      <DoubleCheckSection title="Employee Attendance" helper="Verify the automatic Time Out and department barcode prefixes used for new employees." tone="violet">
         <DoubleCheckFields fields={[
           { label: 'Default Automatic Time Out', value: data.attendanceDefaultTimeOut },
-          { label: 'Employee Departments', value: Array.isArray(data.employeeDepartments) ? data.employeeDepartments.join(', ') : data.employeeDepartments, wide: true },
+          { label: 'Department Barcode Prefixes', value: Array.isArray(data.employeeDepartmentCodes) ? data.employeeDepartmentCodes.map((item) => `${item.name} (${item.prefix})`).join(', ') : data.employeeDepartments, wide: true },
         ]} />
       </DoubleCheckSection>
     ),

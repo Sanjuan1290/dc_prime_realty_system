@@ -1,4 +1,4 @@
-import { FiMail, FiPhone, FiSave, FiSettings, FiX } from 'react-icons/fi'
+import { FiMail, FiPhone, FiPlus, FiSave, FiSettings, FiTrash2, FiX } from 'react-icons/fi'
 
 const Field = ({ label, helper, children }) => (
   <label className="grid gap-2">
@@ -87,13 +87,75 @@ const SystemSettingsForm = ({ form, setForm, onSubmit, isSaving, disabled = fals
           <p className="mt-1 text-sm font-semibold text-slate-500">Configure the automatic Time Out and the department dropdown used by Employee Management.</p>
         </div>
 
-        <div className="grid gap-4 p-6 md:grid-cols-2">
-          <Field label="Default Automatic Time Out" helper="Open attendance records are automatically closed at this time. Default is 8:00 PM.">
-            <input disabled={disabled} type="time" value={form.attendanceDefaultTimeOut} onChange={(e) => update('attendanceDefaultTimeOut', e.target.value)} className={inputClass} />
-          </Field>
-          <Field label="Employee Departments" helper="One department per line. These become the Employee form dropdown options.">
-            <textarea disabled={disabled} rows={5} value={(form.employeeDepartments || []).join('\n')} onChange={(e) => update('employeeDepartments', e.target.value.split(/\n+/).map((value) => value.trim()).filter(Boolean))} placeholder={'Administration\nSales\nAccounting\nIT'} className={textareaClass} />
-          </Field>
+        <div className="grid gap-5 p-6">
+          <div className="max-w-md">
+            <Field label="Default Automatic Time Out" helper="Open attendance records are automatically closed at this time. Default is 8:00 PM.">
+              <input disabled={disabled} type="time" value={form.attendanceDefaultTimeOut} onChange={(e) => update('attendanceDefaultTimeOut', e.target.value)} className={inputClass} />
+            </Field>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h3 className="text-sm font-black text-slate-800">Department Barcode Prefixes</h3>
+                <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">Each department uses its own prefix when new employee barcodes are generated. Example: IT → IT-001, Marketing → MKT-001.</p>
+              </div>
+              {!disabled ? (
+                <button
+                  type="button"
+                  onClick={() => update('employeeDepartmentCodes', [...(form.employeeDepartmentCodes || []), { name: '', prefix: '' }])}
+                  className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 text-xs font-black text-blue-700 hover:bg-blue-100"
+                >
+                  <FiPlus /> Add Department
+                </button>
+              ) : null}
+            </div>
+
+            <div className="mt-4 grid gap-3">
+              {(form.employeeDepartmentCodes || []).map((item, index) => (
+                <div key={`${item.name || 'department'}-${index}`} className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-3 sm:grid-cols-[1fr_180px_auto] sm:items-end">
+                  <Field label="Department Name">
+                    <input
+                      disabled={disabled}
+                      value={item.name || ''}
+                      onChange={(e) => {
+                        const next = [...(form.employeeDepartmentCodes || [])]
+                        next[index] = { ...next[index], name: e.target.value }
+                        update('employeeDepartmentCodes', next)
+                      }}
+                      placeholder="Marketing"
+                      className={inputClass}
+                    />
+                  </Field>
+                  <Field label="Barcode Prefix" helper="1–8 letters/numbers">
+                    <input
+                      disabled={disabled}
+                      value={item.prefix || ''}
+                      onChange={(e) => {
+                        const next = [...(form.employeeDepartmentCodes || [])]
+                        next[index] = { ...next[index], prefix: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8) }
+                        update('employeeDepartmentCodes', next)
+                      }}
+                      placeholder="MKT"
+                      maxLength={8}
+                      className={`${inputClass} font-mono uppercase`}
+                    />
+                  </Field>
+                  {!disabled ? (
+                    <button
+                      type="button"
+                      onClick={() => update('employeeDepartmentCodes', (form.employeeDepartmentCodes || []).filter((_, itemIndex) => itemIndex !== index))}
+                      disabled={(form.employeeDepartmentCodes || []).length <= 1}
+                      className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 text-xs font-black text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40"
+                      title="Remove department"
+                    >
+                      <FiTrash2 /> Remove
+                    </button>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </section>
 

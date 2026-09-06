@@ -397,7 +397,56 @@ const Attendance = () => {
       </section>
 
       <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-slate-200 p-4 xl:flex-row xl:items-center xl:justify-between"><div><h2 className="font-black text-slate-950">Attendance History</h2><p className="text-xs font-semibold text-slate-500">Showing records for the date selected in the calendar: <span className="font-black text-slate-700">{formatSelectedDate(selectedDate)}</span></p></div><div className="grid gap-2 sm:grid-cols-2"><label className="relative"><FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1) }} placeholder="Search employee..." className="h-10 rounded-xl border border-slate-300 pl-10 pr-3 text-sm font-semibold" /></label><select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1) }} className="h-10 rounded-xl border border-slate-300 px-3 text-sm font-semibold"><option value="all">All Records</option><option value="in_office">Currently In</option><option value="timed_out">Timed Out</option><option value="automatic">Auto Time Out</option><option value="event">Company Event</option></select></div></div>
+        <div className="flex flex-col gap-3 border-b border-slate-200 p-4 xl:flex-row xl:items-end xl:justify-between">
+          <div>
+            <h2 className="font-black text-slate-950">Attendance History</h2>
+            <p className="text-xs font-semibold text-slate-500">
+              Showing records for <span className="font-black text-slate-700">{formatSelectedDate(selectedDate)}</span>.
+            </p>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-[170px_230px_180px]">
+            <label className="grid gap-1">
+              <span className="text-[11px] font-black uppercase tracking-wide text-slate-500">Date</span>
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => {
+                  const nextDate = e.target.value || today
+                  setSelectedDate(nextDate)
+                  setCalendarMonth(nextDate.slice(0, 7))
+                  setPage(1)
+                }}
+                className="h-10 rounded-xl border border-slate-300 px-3 text-sm font-semibold text-slate-700"
+              />
+            </label>
+            <label className="grid gap-1">
+              <span className="text-[11px] font-black uppercase tracking-wide text-slate-500">Search</span>
+              <span className="relative">
+                <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  value={search}
+                  onChange={(e) => { setSearch(e.target.value); setPage(1) }}
+                  placeholder="Search employee..."
+                  className="h-10 w-full rounded-xl border border-slate-300 pl-10 pr-3 text-sm font-semibold"
+                />
+              </span>
+            </label>
+            <label className="grid gap-1">
+              <span className="text-[11px] font-black uppercase tracking-wide text-slate-500">Status</span>
+              <select
+                value={status}
+                onChange={(e) => { setStatus(e.target.value); setPage(1) }}
+                className="h-10 rounded-xl border border-slate-300 px-3 text-sm font-semibold"
+              >
+                <option value="all">All Records</option>
+                <option value="in_office">Currently In</option>
+                <option value="timed_out">Timed Out</option>
+                <option value="automatic">Auto Time Out</option>
+                <option value="event">Company Event</option>
+              </select>
+            </label>
+          </div>
+        </div>
 
         <div className="overflow-x-auto"><table className="min-w-[1100px] w-full text-sm"><thead className="border-b border-slate-200 bg-slate-50"><tr>{['Employee', 'Department', 'Time In', 'Time Out', 'Source', 'Day Type', 'Status', 'Actions'].map((head) => <th key={head} className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">{head}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">
           {attendanceQuery.isLoading ? <tr><td colSpan={8} className="px-6 py-16 text-center font-semibold text-slate-500">Loading attendance...</td></tr> : null}

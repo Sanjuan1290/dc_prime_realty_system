@@ -1,4 +1,5 @@
 import { ensureEmployeeModuleTables, timeOnly } from './employeeModule.shared.js';
+import { normalizeDepartmentConfigs } from './departmentBarcode.shared.js';
 
 export const ATTENDANCE_TIME_ZONE = 'Asia/Manila';
 export const DEFAULT_AUTO_TIME_OUT = '20:00:00';
@@ -52,6 +53,10 @@ const systemSettingsColumns = async (connection) => {
     ALTER TABLE system_settings
       ADD COLUMN IF NOT EXISTS employee_departments_json TEXT NULL AFTER attendance_default_time_out
   `);
+  await connection.query(`
+    ALTER TABLE system_settings
+      ADD COLUMN IF NOT EXISTS employee_department_codes_json TEXT NULL AFTER employee_departments_json
+  `);
 };
 
 export const ensureAttendanceLiteSchema = async (connection) => {
@@ -76,6 +81,7 @@ export const ensureAttendanceLiteSchema = async (connection) => {
       default_release_day_two TINYINT UNSIGNED NOT NULL DEFAULT 22,
       attendance_default_time_out TIME NOT NULL DEFAULT '20:00:00',
       employee_departments_json TEXT NULL,
+      employee_department_codes_json TEXT NULL,
       updated_by_user_id INT UNSIGNED NULL,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -86,6 +92,18 @@ export const ensureAttendanceLiteSchema = async (connection) => {
   `);
   await systemSettingsColumns(connection);
   await connection.query(`INSERT INTO system_settings (system_setting_id) VALUES (1) ON DUPLICATE KEY UPDATE system_setting_id = VALUES(system_setting_id)`);
+
+  await connection.query(`
+    CREATE TABLE IF NOT EXISTS employee_barcode_sequences (
+      department VARCHAR(120) NOT NULL,
+      prefix VARCHAR(8) NOT NULL,
+      last_number SMALLINT UNSIGNED NOT NULL DEFAULT 0,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (department),
+      KEY idx_employee_barcode_sequence_prefix (prefix)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  `);
 
   await connection.query(`ALTER TABLE employee_attendance_records ADD COLUMN IF NOT EXISTS attendance_event_id BIGINT UNSIGNED NULL AFTER employee_id`);
   await connection.query(`ALTER TABLE employee_attendance_records ADD COLUMN IF NOT EXISTS time_in_source ENUM('barcode','manual','event','admin') NULL AFTER actual_time_in`);
@@ -167,20 +185,16 @@ export const ensureAttendanceLiteSchema = async (connection) => {
 export const getAttendanceRuntimeSettings = async (connection) => {
   await ensureAttendanceLiteSchema(connection);
   const [rows] = await connection.query(`
-    SELECT attendance_default_time_out, employee_departments_json
+    SELECT attendance_default_time_out, employee_departments_json, employee_department_codes_json
     FROM system_settings
     WHERE system_setting_id = 1
     LIMIT 1
   `);
   const row = rows[0] || {};
-  let departments = [];
-  try {
-    const parsed = JSON.parse(String(row.employee_departments_json || '[]'));
-    if (Array.isArray(parsed)) departments = parsed.map((value) => String(value || '').trim()).filter(Boolean);
-  } catch {}
-  departments = Array.from(new Set(['Administration', 'Sales', 'Accounting', 'IT', ...departments]));
+  const departmentConfigs = normalizeDepartmentConfigs(row.employee_department_codes_json, row.employee_departments_json);
   return {
     defaultTimeOut: normalizeClockTime(row.attendance_default_time_out, DEFAULT_AUTO_TIME_OUT),
-    departments,
+    departmentConfigs,
+    departments: departmentConfigs.map((item) => item.name),
   };
 };

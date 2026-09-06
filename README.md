@@ -225,3 +225,12 @@ Duplicate attendance scans now use friendlier guidance. Example:
 
 > **Already Timed In**  
 > Robert Renby Cortez San Juan already timed in today at 12:25 PM. No action is needed.
+
+## Attendance History date filter
+Attendance History now has an explicit **Date** filter beside Search and Status. It defaults to today's Philippine date. Choosing a date from History synchronizes the monthly calendar and reloads that day's records; clicking a calendar date updates the History Date filter as well.
+
+## Department-generated employee barcodes
+
+New employees no longer require a manually typed Barcode Code. Select the employee's department, click **Next: Generate Barcode**, review the next server-generated code, then save the employee. Department prefixes are managed under System Settings (for example IT → IT-001 and Marketing → MKT-001). Existing employee barcode codes remain permanent when employee details are edited.
+
+Apply `server/migrations/20260906_department_employee_barcodes.sql` on upgraded databases. For a clean reset, use `database/RESET_QUERY_20260906.sql` so department sequence counters are reset together with employees.

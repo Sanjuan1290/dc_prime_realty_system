@@ -21,20 +21,21 @@ test('Admin and Super Admin creation uses server-generated emailed credentials',
   assert.match(modal, /Secure Login Setup/);
 });
 
-test('simplified employee module uses barcode, department and three employment types without salary or schedule form fields', () => {
+test('simplified employee module generates department barcodes and keeps only the required employment fields', () => {
   const modal = read('client/src/components/System/employeeComponents/EmployeeModal.jsx');
   const controller = read('server/controllers/System/Employees/EmployeesSimple.controller.js');
-  assert.match(modal, /Barcode Code/);
+  assert.match(modal, /Next: Generate Barcode/);
   assert.match(modal, /Code128Barcode/);
-  assert.match(modal, /generate the barcode automatically/);
+  assert.match(modal, /generated from the selected department/);
   assert.doesNotMatch(modal, /BarcodeScanner|Scan Employee Barcode|Scan Barcode/);
-  assert.match(modal, /'IT'/);
   assert.match(modal, /Select Department/);
   assert.match(modal, /Full Time/);
   assert.match(modal, /Probationary/);
   assert.match(modal, /Part Time/);
   assert.doesNotMatch(modal, /Monthly Salary|Work Days|Shift Start|Cash Advance/);
-  assert.match(controller, /employee_code/);
+  assert.match(controller, /employee_barcode_sequences/);
+  assert.match(controller, /allocateEmployeeBarcode/);
+  assert.match(controller, /MAX_DEPARTMENT_BARCODE_NUMBER = 999/);
   assert.doesNotMatch(controller, /monthly_salary/);
 });
 
@@ -76,7 +77,7 @@ test('attendance supports admin corrections, day classification and company even
 });
 
 
-test('employee barcode is generated from the typed code and camera scanning is attendance-only with a local Code 128 fallback', () => {
+test('employee barcode rendering and attendance camera scanning remain separate with a local Code 128 fallback', () => {
   const barcode = read('client/src/components/System/employeeComponents/Code128Barcode.jsx');
   const scanner = read('client/src/components/System/employeeComponents/BarcodeScanner.jsx');
   const attendance = read('client/src/pages/System/Attendance.jsx');

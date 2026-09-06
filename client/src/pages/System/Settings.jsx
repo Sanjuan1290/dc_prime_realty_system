@@ -10,6 +10,15 @@ import { formatDateTime } from '../../utils/formatDateTime'
 import {useFetch, useFetchPut, getDoubleCheckNotice} from '../../utils/useFetch'
 import { isFullAccessAdministrator } from '../../config/permissions'
 
+const defaultDepartmentCodes = [
+  { name: 'Administration', prefix: 'ADM' },
+  { name: 'Accounting', prefix: 'ACC' },
+  { name: 'IT', prefix: 'IT' },
+  { name: 'Sales', prefix: 'SLS' },
+  { name: 'Marketing', prefix: 'MKT' },
+  { name: 'Operations', prefix: 'OPS' },
+]
+
 const defaultForm = {
   companyName: '',
   companyEmail: '',
@@ -24,7 +33,8 @@ const defaultForm = {
   defaultReleaseDayOne: 7,
   defaultReleaseDayTwo: 22,
   attendanceDefaultTimeOut: '20:00',
-  employeeDepartments: ['Administration', 'Sales', 'Accounting', 'IT'],
+  employeeDepartments: defaultDepartmentCodes.map((item) => item.name),
+  employeeDepartmentCodes: defaultDepartmentCodes,
 }
 
 const mapSettingsToForm = (settings = {}) => ({
@@ -41,7 +51,8 @@ const mapSettingsToForm = (settings = {}) => ({
   defaultReleaseDayOne: settings.defaultReleaseDayOne || 7,
   defaultReleaseDayTwo: settings.defaultReleaseDayTwo || 22,
   attendanceDefaultTimeOut: String(settings.attendanceDefaultTimeOut || '20:00').slice(0, 5),
-  employeeDepartments: settings.employeeDepartments?.length ? settings.employeeDepartments : ['Administration', 'Sales', 'Accounting', 'IT'],
+  employeeDepartments: settings.employeeDepartments?.length ? settings.employeeDepartments : defaultDepartmentCodes.map((item) => item.name),
+  employeeDepartmentCodes: settings.employeeDepartmentCodes?.length ? settings.employeeDepartmentCodes : defaultDepartmentCodes,
 })
 
 const Settings = () => {
@@ -80,7 +91,8 @@ const Settings = () => {
   const handleSubmit = (event) => {
     event.preventDefault()
     if (!isEditing || !canManage) return
-    saveMutation.mutate(form)
+    const departmentCodes = (form.employeeDepartmentCodes || []).map((item) => ({ name: String(item.name || '').trim(), prefix: String(item.prefix || '').trim().toUpperCase() }))
+    saveMutation.mutate({ ...form, employeeDepartmentCodes: departmentCodes, employeeDepartments: departmentCodes.map((item) => item.name).filter(Boolean) })
   }
 
   const handleCancel = () => {
@@ -94,7 +106,7 @@ const Settings = () => {
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <PageHeader
           title="System Settings"
-          description="Global company profile, attendance defaults, department options, reservation fallback contact, and system status."
+          description="Global company profile, attendance defaults, department barcode prefixes, reservation fallback contact, and system status."
           icon={FiSettings}
         />
 
