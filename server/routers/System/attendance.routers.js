@@ -5,6 +5,7 @@ import {
   createManualAttendance,
   deleteAttendanceEvent,
   deleteAttendanceRecord,
+  getAttendanceCalendar,
   getAttendanceCorrections,
   getAttendanceEvents,
   getAttendanceRecords,
@@ -19,6 +20,7 @@ const router = express.Router();
 router.use(authenticateUser);
 
 router.get('/', requirePermission(PERMISSIONS.ATTENDANCE_VIEW), getAttendanceRecords);
+router.get('/calendar', requirePermission(PERMISSIONS.ATTENDANCE_VIEW), getAttendanceCalendar);
 router.post('/scan', requirePermission(PERMISSIONS.ATTENDANCE_MANAGE), scanAttendance);
 router.post('/manual', requirePermission(PERMISSIONS.ATTENDANCE_MANAGE), createManualAttendance);
 router.put('/day/:date', requirePermission(PERMISSIONS.ATTENDANCE_MANAGE), updateAttendanceDay);

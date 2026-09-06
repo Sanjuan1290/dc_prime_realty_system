@@ -25,7 +25,10 @@ test('simplified employee module uses barcode, department and three employment t
   const modal = read('client/src/components/System/employeeComponents/EmployeeModal.jsx');
   const controller = read('server/controllers/System/Employees/EmployeesSimple.controller.js');
   assert.match(modal, /Barcode Code/);
-  assert.match(modal, /Scan Barcode/);
+  assert.match(modal, /Code128Barcode/);
+  assert.match(modal, /generate its Code 128 barcode automatically/);
+  assert.doesNotMatch(modal, /BarcodeScanner|Scan Employee Barcode|Scan Barcode/);
+  assert.match(modal, /'IT'/);
   assert.match(modal, /Select Department/);
   assert.match(modal, /Full Time/);
   assert.match(modal, /Probationary/);
@@ -58,10 +61,31 @@ test('attendance supports admin corrections, day classification and company even
   assert.match(controller, /attendance_day_settings/);
   assert.match(controller, /double_pay/);
   assert.match(controller, /attendance_events/);
+  assert.match(controller, /getAttendanceCalendar/);
+  assert.match(page, /Attendance Calendar/);
+  assert.match(page, /Date Details/);
   assert.match(page, /Company Event/);
   assert.match(page, /Manual Attendance/);
+  assert.doesNotMatch(page, /Company Events ·/);
+  assert.doesNotMatch(page, />Add Event</);
   assert.match(eventModal, /Select All Active/);
   assert.match(eventModal, /Attendance Record Only/);
+});
+
+
+test('employee barcode is generated from the typed code and camera scanning is attendance-only with a local Code 128 fallback', () => {
+  const barcode = read('client/src/components/System/employeeComponents/Code128Barcode.jsx');
+  const scanner = read('client/src/components/System/employeeComponents/BarcodeScanner.jsx');
+  const attendance = read('client/src/pages/System/Attendance.jsx');
+  const employees = read('client/src/pages/System/Employees.jsx');
+  assert.match(barcode, /buildCode128Geometry/);
+  assert.match(barcode, /Print Barcode/);
+  assert.match(scanner, /getUserMedia/);
+  assert.match(scanner, /decodeCode128FromImageData/);
+  assert.match(scanner, /built-in Code 128 scanner/);
+  assert.match(attendance, /Scan with Camera/);
+  assert.match(attendance, /<BarcodeScanner/);
+  assert.doesNotMatch(employees, /BarcodeScanner/);
 });
 
 test('Super Admin receives real Employees and Attendance routes while cash advances and house-lot UI are hidden', () => {

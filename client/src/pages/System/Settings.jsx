@@ -24,7 +24,7 @@ const defaultForm = {
   defaultReleaseDayOne: 7,
   defaultReleaseDayTwo: 22,
   attendanceDefaultTimeOut: '20:00',
-  employeeDepartments: ['Administration', 'Sales', 'Accounting'],
+  employeeDepartments: ['Administration', 'Sales', 'Accounting', 'IT'],
 }
 
 const mapSettingsToForm = (settings = {}) => ({
@@ -41,7 +41,7 @@ const mapSettingsToForm = (settings = {}) => ({
   defaultReleaseDayOne: settings.defaultReleaseDayOne || 7,
   defaultReleaseDayTwo: settings.defaultReleaseDayTwo || 22,
   attendanceDefaultTimeOut: String(settings.attendanceDefaultTimeOut || '20:00').slice(0, 5),
-  employeeDepartments: settings.employeeDepartments?.length ? settings.employeeDepartments : ['Administration', 'Sales', 'Accounting'],
+  employeeDepartments: settings.employeeDepartments?.length ? settings.employeeDepartments : ['Administration', 'Sales', 'Accounting', 'IT'],
 })
 
 const Settings = () => {

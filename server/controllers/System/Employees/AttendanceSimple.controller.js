@@ -315,6 +315,59 @@ export const getAttendanceRecords = async (req, res) => {
   } finally { connection.release(); }
 };
 
+
+export const getAttendanceCalendar = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    await ensureAttendanceLiteSchema(connection);
+    const currentMonth = getManilaDateTime().date.slice(0, 7);
+    const month = /^\d{4}-\d{2}$/.test(cleanText(req.query.month)) ? cleanText(req.query.month) : currentMonth;
+    const [year, monthNumber] = month.split('-').map(Number);
+    const start = `${month}-01`;
+    const lastDay = new Date(Date.UTC(year, monthNumber, 0)).getUTCDate();
+    const end = `${month}-${String(lastDay).padStart(2, '0')}`;
+
+    const [dayRows] = await connection.query(`
+      SELECT attendance_date, day_type, notes, source_event_id, updated_at
+      FROM attendance_day_settings
+      WHERE attendance_date BETWEEN ? AND ?
+      ORDER BY attendance_date
+    `, [start, end]);
+
+    const [eventRows] = await connection.query(`
+      SELECT ev.attendance_event_id, ev.event_name, ev.start_date, ev.end_date, ev.location,
+             ev.attendance_treatment, ev.event_time_in, ev.event_time_out, ev.day_type, ev.notes,
+             COUNT(DISTINCT p.employee_id) AS participant_count
+      FROM attendance_events ev
+      LEFT JOIN attendance_event_participants p ON p.attendance_event_id = ev.attendance_event_id
+      WHERE ev.event_status = 'active' AND ev.end_date >= ? AND ev.start_date <= ?
+      GROUP BY ev.attendance_event_id
+      ORDER BY ev.start_date, ev.attendance_event_id
+    `, [start, end]);
+
+    return res.json({
+      success: true,
+      month,
+      dateFrom: start,
+      dateTo: end,
+      days: dayRows.map((row) => ({
+        ...row,
+        attendance_date: dateOnly(row.attendance_date),
+        source_event_id: row.source_event_id ? Number(row.source_event_id) : null,
+      })),
+      events: eventRows.map((row) => ({
+        ...row,
+        attendance_event_id: Number(row.attendance_event_id),
+        start_date: dateOnly(row.start_date),
+        end_date: dateOnly(row.end_date),
+        participant_count: Number(row.participant_count || 0),
+      })),
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
+  } finally { connection.release(); }
+};
+
 export const createManualAttendance = async (req, res) => {
   const connection = await db.getConnection();
   try {

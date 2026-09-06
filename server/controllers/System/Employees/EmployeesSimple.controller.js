@@ -27,6 +27,11 @@ const validatePayload = (payload) => {
     error.statusCode = 400;
     throw error;
   }
+  if (payload.employeeCode.length > 40 || !/^[\x20-\x7E]+$/.test(payload.employeeCode)) {
+    const error = new Error('Barcode Code must be 40 characters or fewer and use standard letters, numbers, spaces, or symbols.');
+    error.statusCode = 400;
+    throw error;
+  }
 };
 
 const mapEmployee = (row) => ({

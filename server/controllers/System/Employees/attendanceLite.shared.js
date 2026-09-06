@@ -178,7 +178,7 @@ export const getAttendanceRuntimeSettings = async (connection) => {
     const parsed = JSON.parse(String(row.employee_departments_json || '[]'));
     if (Array.isArray(parsed)) departments = parsed.map((value) => String(value || '').trim()).filter(Boolean);
   } catch {}
-  if (!departments.length) departments = ['Administration', 'Sales', 'Accounting'];
+  departments = Array.from(new Set(['Administration', 'Sales', 'Accounting', 'IT', ...departments]));
   return {
     defaultTimeOut: normalizeClockTime(row.attendance_default_time_out, DEFAULT_AUTO_TIME_OUT),
     departments,

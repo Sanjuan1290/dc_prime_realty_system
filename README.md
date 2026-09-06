@@ -107,8 +107,8 @@ This full-codebase package already includes the new production flow discussed fo
 
 - **Admin / Super Admin user creation:** no temporary-password field. The server generates a secure random temporary password, emails it through Resend, stores only the bcrypt hash, and forces the existing Change Password screen on first login.
 - **Credential regeneration:** Admin/Super Admin credentials can be regenerated and emailed; successful regeneration increments `auth_version` so old sessions stop working.
-- **Employees:** simplified to employee name, unique barcode code, configurable department, Full Time / Probationary / Part Time, and Active / Inactive status.
-- **Attendance:** barcode/camera/manual Time In and Time Out, server validation that Time Out requires Time In, duplicate protection, Admin Time In/Time Out corrections with reasons, and audit logging.
+- **Employees:** simplified to employee name, unique Barcode Code, generated/printable Code 128 barcode, configurable department (including IT), Full Time / Probationary / Part Time, and Active / Inactive status. The Employees page does not scan barcodes.
+- **Attendance:** the laptop/desktop webcam, tablet, or phone camera is the primary barcode scanner for Time In and Time Out. It uses native BarcodeDetector where available and a built-in Code 128 decoder fallback where it is not. Manual and USB/Bluetooth scanner input remain available. Time Out requires Time In, duplicate scans are blocked, and Admin can correct Time In/Time Out with reasons and audit logging.
 - **Automatic Time Out:** defaults to **8:00 PM Asia/Manila** and is editable in System Settings. Automatic records are clearly marked and do not overwrite a real/admin/event Time Out.
 - **Day classification:** Regular Day, Double Pay Day, Regular Holiday, and Special Holiday.
 - **Company Events:** event date/range, location, participant selection, Full Day / Custom Time / Attendance Record Only, and optional double-pay/holiday classification.
@@ -194,3 +194,7 @@ VITE_API_URL=http://localhost:5001/api/v1
 - Server relative-import resolution: **no missing relative imports**.
 - Focused source-level regression suite for routing, user credentials, Employees, Attendance, and explicit double-check architecture: **22/22 passed**.
 - `node_modules` is intentionally not packaged; run `npm ci` in `client` and `server` on the target machine.
+
+## Attendance calendar revision
+
+Attendance day management is now calendar-based. Select any date in the monthly Attendance Calendar to review or change its Day Type. Company Event is no longer a standalone button/section; it is selected from Date Details and opens the participant/event setup when needed. Past dates remain editable, and Attendance History follows the currently selected calendar date.

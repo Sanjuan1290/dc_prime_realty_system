@@ -92,7 +92,7 @@ const SystemSettingsForm = ({ form, setForm, onSubmit, isSaving, disabled = fals
             <input disabled={disabled} type="time" value={form.attendanceDefaultTimeOut} onChange={(e) => update('attendanceDefaultTimeOut', e.target.value)} className={inputClass} />
           </Field>
           <Field label="Employee Departments" helper="One department per line. These become the Employee form dropdown options.">
-            <textarea disabled={disabled} rows={5} value={(form.employeeDepartments || []).join('\n')} onChange={(e) => update('employeeDepartments', e.target.value.split(/\n+/).map((value) => value.trim()).filter(Boolean))} placeholder={'Administration\nSales\nAccounting'} className={textareaClass} />
+            <textarea disabled={disabled} rows={5} value={(form.employeeDepartments || []).join('\n')} onChange={(e) => update('employeeDepartments', e.target.value.split(/\n+/).map((value) => value.trim()).filter(Boolean))} placeholder={'Administration\nSales\nAccounting\nIT'} className={textareaClass} />
           </Field>
         </div>
       </section>

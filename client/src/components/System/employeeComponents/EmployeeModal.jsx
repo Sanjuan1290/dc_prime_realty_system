@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { FiCamera, FiSave, FiX } from 'react-icons/fi'
+import { FiSave, FiX } from 'react-icons/fi'
 import StatusAlert from '../../Shared/StatusAlert'
-import BarcodeScanner from './BarcodeScanner'
+import Code128Barcode from './Code128Barcode'
 import { useFetchPost, useFetchPut } from '../../../utils/useFetch'
 
 const inputClass = 'h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50'
@@ -16,7 +16,6 @@ const EmployeeModal = ({ employee, departments = [], onClose, onSaved }) => {
   const isEdit = Boolean(employee?.employee_id)
   const queryClient = useQueryClient()
   const [notice, setNotice] = useState(null)
-  const [showScanner, setShowScanner] = useState(false)
   const [form, setForm] = useState(() => ({
     ...blank,
     ...(employee ? {
@@ -30,7 +29,7 @@ const EmployeeModal = ({ employee, departments = [], onClose, onSaved }) => {
     } : { department: departments[0] || '' }),
   }))
 
-  const departmentOptions = useMemo(() => Array.from(new Set([...(departments || []), form.department].filter(Boolean))).sort(), [departments, form.department])
+  const departmentOptions = useMemo(() => Array.from(new Set(['Administration', 'Accounting', 'IT', 'Sales', 'Marketing', 'Operations', ...(departments || []), form.department].filter(Boolean))).sort(), [departments, form.department])
   const setValue = (field, value) => { setNotice(null); setForm((current) => ({ ...current, [field]: value })) }
 
   const mutation = useMutation({
@@ -73,11 +72,14 @@ const EmployeeModal = ({ employee, departments = [], onClose, onSaved }) => {
           </div>
 
           <section className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-              <label className="grid flex-1 gap-2"><span className="text-sm font-black text-blue-950">Barcode Code *</span><input autoFocus={!isEdit} className={`${inputClass} w-full bg-white`} value={form.employee_code} onChange={(e) => setValue('employee_code', e.target.value.toUpperCase())} placeholder="Scan or enter barcode code" /></label>
-              <button type="button" onClick={() => setShowScanner(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white hover:bg-blue-700"><FiCamera />Scan Barcode</button>
+            <label className="grid gap-2">
+              <span className="text-sm font-black text-blue-950">Barcode Code *</span>
+              <input autoFocus={!isEdit} className={`${inputClass} w-full bg-white font-mono uppercase`} value={form.employee_code} onChange={(e) => setValue('employee_code', e.target.value.toUpperCase())} placeholder="e.g. IT-001" maxLength={40} autoCapitalize="characters" />
+            </label>
+            <p className="mt-2 text-xs font-semibold text-blue-700">Enter the employee code and the system will generate its Code 128 barcode automatically. Barcode scanning is only used on the Attendance page for Time In and Time Out.</p>
+            <div className="mt-4">
+              <Code128Barcode value={form.employee_code} employeeName={[form.first_name, form.middle_name, form.last_name].filter(Boolean).join(' ')} />
             </div>
-            <p className="mt-2 text-xs font-semibold text-blue-700">If the camera does not work, enter the code manually or scan it with a USB/Bluetooth barcode scanner while this field is focused.</p>
           </section>
 
           <div className="grid gap-4 md:grid-cols-3">
@@ -93,7 +95,6 @@ const EmployeeModal = ({ employee, departments = [], onClose, onSaved }) => {
         </footer>
       </form>
 
-      {showScanner ? <BarcodeScanner title="Scan Employee Barcode" onDetected={(code) => { setValue('employee_code', code.toUpperCase()); setShowScanner(false) }} onClose={() => setShowScanner(false)} /> : null}
     </div>
   )
 }

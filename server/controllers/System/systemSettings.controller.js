@@ -110,7 +110,7 @@ const mapSettings = (row = {}) => ({
   defaultReleaseDayOne: Number(row.default_release_day_one || 7),
   defaultReleaseDayTwo: Number(row.default_release_day_two || 22),
   attendanceDefaultTimeOut: String(row.attendance_default_time_out || '20:00:00').slice(0, 8),
-  employeeDepartments: (() => { try { const value = JSON.parse(String(row.employee_departments_json || '[]')); return Array.isArray(value) && value.length ? value : ['Administration', 'Sales', 'Accounting']; } catch { return ['Administration', 'Sales', 'Accounting']; } })(),
+  employeeDepartments: (() => { try { const value = JSON.parse(String(row.employee_departments_json || '[]')); return Array.from(new Set(['Administration', 'Sales', 'Accounting', 'IT', ...(Array.isArray(value) ? value : [])])); } catch { return ['Administration', 'Sales', 'Accounting', 'IT']; } })(),
   updatedByUserId: row.updated_by_user_id,
   updatedByName: row.updated_by_name || null,
   createdAt: row.created_at,

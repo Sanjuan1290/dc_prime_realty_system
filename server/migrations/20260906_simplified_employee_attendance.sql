@@ -9,7 +9,7 @@ ALTER TABLE `system_settings`
   ADD COLUMN IF NOT EXISTS `employee_departments_json` TEXT NULL AFTER `attendance_default_time_out`;
 
 UPDATE `system_settings`
-SET `employee_departments_json` = '["Administration","Sales","Accounting"]'
+SET `employee_departments_json` = '["Administration","Sales","Accounting","IT"]'
 WHERE `system_setting_id` = 1
   AND (`employee_departments_json` IS NULL OR TRIM(`employee_departments_json`) = '');
 
