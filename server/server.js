@@ -7,6 +7,7 @@ import 'express-async-errors'
 
 import { db } from './db/connect.js'
 import { startDailyPenaltyScheduler } from './jobs/dailyPenalty.job.js'
+import { startAttendanceAutoTimeoutScheduler } from './jobs/attendanceAutoTimeout.job.js'
 import { parseTrustProxySetting } from './utils/requestIp.js'
 import { maintenanceGuard } from './middleware/maintenance.middleware.js'
 
@@ -22,7 +23,6 @@ import auditLogsRouter from './routers/System/auditLogs.router.js'
 import systemSettingsRouter from './routers/System/systemSettings.routers.js'
 import employeesRouter from './routers/System/employees.routers.js'
 import attendanceRouter from './routers/System/attendance.routers.js'
-import employeeCashAdvancesRouter from './routers/System/employeeCashAdvances.routers.js'
 import publicBuyerFormsRouter from './routers/publicBuyerForms.router.js'
 import publicSystemStatusRouter from './routers/publicSystemStatus.router.js'
 import cloudinaryWebhookRouter from './routers/cloudinaryWebhook.router.js'
@@ -109,7 +109,6 @@ app.use('/api/v1/audit-logs', auditLogsRouter)
 app.use('/api/v1/system-settings', systemSettingsRouter)
 app.use('/api/v1/employees', employeesRouter)
 app.use('/api/v1/attendance', attendanceRouter)
-app.use('/api/v1/employee-cash-advances', employeeCashAdvancesRouter)
 
 app.use((err, _req, res, _next) => {
   console.error(err)
@@ -141,6 +140,7 @@ const startServer = async () => {
     app.listen(PORT, HOST, () => {
       console.log(`Server running on ${HOST}:${PORT}`)
       startDailyPenaltyScheduler()
+      startAttendanceAutoTimeoutScheduler()
     })
   } catch (error) {
     console.error('Failed to start server:', error.message)
@@ -149,4 +149,5 @@ const startServer = async () => {
 }
 
 startServer()
+
 

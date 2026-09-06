@@ -16,10 +16,6 @@ import SoaTermsDoubleCheck from '../SoaTermsDoubleCheck'
 import PenaltyAdjustmentDoubleCheck from '../PenaltyAdjustmentDoubleCheck'
 import CommissionReleaseDoubleCheck from '../CommissionReleaseDoubleCheck'
 import ProofOfIncomeDoubleCheck from '../ProofOfIncomeDoubleCheck'
-import EmployeeDoubleCheck from '../EmployeeDoubleCheck'
-import AttendanceDoubleCheck from '../AttendanceDoubleCheck'
-import CashAdvanceDoubleCheck from '../CashAdvanceDoubleCheck'
-import PayrollReleaseDoubleCheck from '../PayrollReleaseDoubleCheck'
 import SettingsDoubleCheck from '../SettingsDoubleCheck'
 import BuyerFormDoubleCheck from '../BuyerFormDoubleCheck'
 import AuditArchiveDoubleCheck from '../AuditArchiveDoubleCheck'
@@ -41,10 +37,6 @@ const components = {
   'penalty-adjustment': PenaltyAdjustmentDoubleCheck,
   'commission-release': CommissionReleaseDoubleCheck,
   'proof-of-income': ProofOfIncomeDoubleCheck,
-  employee: EmployeeDoubleCheck,
-  attendance: AttendanceDoubleCheck,
-  'cash-advance': CashAdvanceDoubleCheck,
-  'payroll-release': PayrollReleaseDoubleCheck,
   settings: SettingsDoubleCheck,
   'buyer-form': BuyerFormDoubleCheck,
   'audit-archive': AuditArchiveDoubleCheck,
@@ -77,3 +69,4 @@ const DoubleCheckProvider = ({ children }) => {
 }
 
 export default DoubleCheckProvider
+

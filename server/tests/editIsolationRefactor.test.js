@@ -108,14 +108,6 @@ test('schedule repair script is buyer-account scoped', () => {
   assert.match(source, /current_account_id = \?/);
 });
 
-test('employee profile edits only rewrite work schedules when schedule values changed', () => {
-  const source = read('server/controllers/System/Employees/Employees.controller.js');
-  assert.match(source, /buildRequestedScheduleSignature/);
-  assert.match(source, /buildExistingScheduleSignature/);
-  assert.match(source, /if \(scheduleChanged\) \{[\s\S]*upsertEmployeeSchedules/);
-});
-
-
 test('project list aggregates and client mappings preserve cadastral usage without multiplying document counts', () => {
   const controller = read('server/controllers/System/projects.controller.js');
   const systemProjects = read('client/src/pages/System/Projects.jsx');
@@ -126,3 +118,4 @@ test('project list aggregates and client mappings preserve cadastral usage witho
   assert.match(dashboard, /project\.cadastralLotDetails/);
   assert.match(dashboard, /listingCount/);
 });
+

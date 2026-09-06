@@ -15,10 +15,6 @@ const SUPPORTED_DOUBLE_CHECK_TYPES = new Set([
   'penalty-adjustment',
   'commission-release',
   'proof-of-income',
-  'employee',
-  'attendance',
-  'cash-advance',
-  'payroll-release',
   'settings',
   'buyer-form',
   'audit-archive',
@@ -89,3 +85,4 @@ export const getDoubleCheckNotice = (
 ) => isDoubleCheckCancelled(error)
   ? { type: 'info', message: cancelledMessage }
   : { type: 'error', message: error?.message || fallbackMessage }
+

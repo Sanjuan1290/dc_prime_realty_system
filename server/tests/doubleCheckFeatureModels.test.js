@@ -57,23 +57,17 @@ test('reservation review explicitly covers buyer, document, financial and seller
 })
 
 test('feature-specific reviews omit known non-user implementation fields', () => {
-  const attendance = read('client/src/components/Shared/DoubleCheckComponents/AttendanceDoubleCheck.jsx')
-  const cashAdvance = read('client/src/components/Shared/DoubleCheckComponents/CashAdvanceDoubleCheck.jsx')
   const buyerForm = read('client/src/components/Shared/DoubleCheckComponents/BuyerFormDoubleCheck.jsx')
   const commission = read('client/src/components/Shared/DoubleCheckComponents/CommissionReleaseDoubleCheck.jsx')
-  assert.doesNotMatch(attendance, /label=['\"]Source['\"]/)
-  assert.doesNotMatch(cashAdvance, /label=['\"]Status['\"]/)
   assert.doesNotMatch(buyerForm, /Submitted At|label=['\"]Action['\"]/)
   assert.doesNotMatch(commission, /Can Release|Can Hold|Can Unhold|Release Button Label|Retention Ready|Payment Complete/)
   assert.match(commission, /Selected Release/)
 })
 
-test('user review conditionally displays admin type and employee review renders named work days', () => {
+test('user review conditionally displays admin type', () => {
   const user = read('client/src/components/Shared/DoubleCheckComponents/UserDoubleCheck.jsx')
-  const employee = read('client/src/components/Shared/DoubleCheckComponents/EmployeeDoubleCheck.jsx')
   assert.match(user, /role.*admin|admin.*role/i)
   assert.match(user, /Admin Type/)
-  for (const day of ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']) assert.match(employee, new RegExp(day))
 })
 
 test('document template and upload reviews preserve meaningful names and local file preview', () => {
@@ -93,3 +87,4 @@ test('payment review omits redundant SOA row labels while retaining account and 
   assert.match(payment, /Payment Type/)
   assert.match(payment, /Payment Date/)
 })
+

@@ -211,3 +211,4 @@ export const summarizeGroupFixedRates = (rates = {}) => {
       : roundRate(divisionManagerRate + salesDirectorRate + unitManagerRate + salesAgentRate),
   };
 };
+

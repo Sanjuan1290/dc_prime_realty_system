@@ -133,3 +133,4 @@ test('cancelled-sale financial archive preserves historical release metadata', (
   assert.match(archiveSource, /r\.historical_release_note/);
 });
 
+

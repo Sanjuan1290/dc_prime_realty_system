@@ -1,7 +1,9 @@
 import { db } from '../../db/connect.js';
+import crypto from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import { clearAuthCookie, getAuthCookieOptions } from '../../utils/authCookie.js';
+import { isResendConfigured, sendEmail } from '../../services/email.service.js';
 import { writeAuditLog } from './auditLogs.controller.js';
 import {
   canActorChangeUserRole,
@@ -69,6 +71,75 @@ const normalizeStatus = (status) => (status === 'inactive' ? 'inactive' : 'activ
 
 const buildPersonName = (user = {}) => {
   return [user.first_name, user.middle_name, user.last_name].filter(Boolean).join(' ').trim() || user.email || 'User';
+};
+
+const ADMIN_LOGIN_ROLES = new Set(['admin', 'super_admin']);
+
+const generateTemporaryPassword = () => {
+  const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const lower = 'abcdefghijkmnopqrstuvwxyz';
+  const numbers = '23456789';
+  const symbols = '!@#$%*?';
+  const all = `${upper}${lower}${numbers}${symbols}`;
+  const pick = (characters) => characters[crypto.randomInt(0, characters.length)];
+  const required = [pick(upper), pick(lower), pick(numbers), pick(symbols)];
+  while (required.length < 14) required.push(pick(all));
+  for (let index = required.length - 1; index > 0; index -= 1) {
+    const swap = crypto.randomInt(0, index + 1);
+    [required[index], required[swap]] = [required[swap], required[index]];
+  }
+  return required.join('');
+};
+
+const escapeEmailHtml = (value = '') => String(value)
+  .replaceAll('&', '&amp;')
+  .replaceAll('<', '&lt;')
+  .replaceAll('>', '&gt;')
+  .replaceAll('"', '&quot;')
+  .replaceAll("'", '&#039;');
+
+const sendTemporaryLoginCredentials = async ({ user, temporaryPassword }) => {
+  if (!isResendConfigured()) {
+    const error = new Error('Email is not configured. Set RESEND_API_KEY and EMAIL_FROM.');
+    error.code = 'RESEND_NOT_CONFIGURED';
+    throw error;
+  }
+  const appUrl = String(process.env.PUBLIC_APP_URL || '').trim().replace(/\/+$/, '');
+  const loginUrl = appUrl ? `${appUrl}/portal` : '/portal';
+  const name = buildPersonName(user);
+  const roleLabel = user.role === 'super_admin' ? 'Super Admin' : 'Admin';
+  const subject = 'Your D&C Prime Realty login credentials';
+  const text = [
+    `Hello ${name},`,
+    '',
+    `Your ${roleLabel} account for the D&C Prime Realty Internal System is ready.`,
+    '',
+    `Login email: ${user.email}`,
+    `Temporary password: ${temporaryPassword}`,
+    `Login: ${loginUrl}`,
+    '',
+    'You will be required to create a new password immediately after signing in.',
+    'Do not forward or share this temporary password.',
+    '',
+    'D&C Prime Realty',
+  ].join('\n');
+  const html = `
+    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#0f172a;line-height:1.6">
+      <h2 style="margin-bottom:8px">Welcome to D&amp;C Prime Realty</h2>
+      <p>Hello ${escapeEmailHtml(name)},</p>
+      <p>Your <strong>${escapeEmailHtml(roleLabel)}</strong> account for the D&amp;C Prime Realty Internal System is ready.</p>
+      <div style="margin:22px 0;padding:18px;border:1px solid #bfdbfe;border-radius:12px;background:#eff6ff">
+        <div style="font-size:13px;color:#475569">Login email</div>
+        <div style="font-size:16px;font-weight:700">${escapeEmailHtml(user.email)}</div>
+        <div style="margin-top:14px;font-size:13px;color:#475569">Temporary password</div>
+        <div style="font-family:monospace;font-size:20px;font-weight:800;letter-spacing:1px">${escapeEmailHtml(temporaryPassword)}</div>
+      </div>
+      <p><a href="${escapeEmailHtml(loginUrl)}">Open the D&amp;C Prime Realty login page</a></p>
+      <p>You will be required to create a new password immediately after signing in.</p>
+      <p style="font-size:13px;color:#475569">Do not forward or share this temporary password.</p>
+    </div>
+  `;
+  return sendEmail({ to: user.email, subject, text, html });
 };
 
 const denyUserManagement = (res, message) => res.status(403).json({
@@ -408,7 +479,7 @@ export const login = async (req, res) => {
 
   const user = rows[0];
 
-  if (!user) return res.status(401).json({ message: 'Email does not exist!' });
+  if (!user) return res.status(401).json({ message: 'Invalid email or password.' });
   if (user.status !== 'active') return res.status(403).json({ message: 'Account is not active' });
   if (Number(user.can_login ?? 1) !== 1 || Number(user.is_system_account || 0) === 1) {
     return res.status(403).json({ message: 'This system account cannot sign in.' });
@@ -416,7 +487,7 @@ export const login = async (req, res) => {
 
   const isPasswordCorrect = await bcrypt.compare(password, user.password_hash);
 
-  if (!isPasswordCorrect) return res.status(401).json({ message: 'Wrong password' });
+  if (!isPasswordCorrect) return res.status(401).json({ message: 'Invalid email or password.' });
 
   const session = getLoginSessionConfig(rememberMe);
   const token = jwt.sign(
@@ -1210,7 +1281,7 @@ export const createUser = async (req, res) => {
       prc_no,
       address,
       email,
-      password = 'password',
+      password,
       role = 'sales_agent',
       admin_type,
       status = 'active',
@@ -1243,7 +1314,9 @@ export const createUser = async (req, res) => {
 
     await connection.beginTransaction();
 
-    const passwordHash = await bcrypt.hash(String(password), 10);
+    const isAdminLoginAccount = ADMIN_LOGIN_ROLES.has(role);
+    const temporaryPassword = isAdminLoginAccount ? generateTemporaryPassword() : String(password || 'password');
+    const passwordHash = await bcrypt.hash(temporaryPassword, 10);
 
     const [result] = await connection.query(
       `
@@ -1337,7 +1410,29 @@ export const createUser = async (req, res) => {
 
     await connection.commit();
 
-    return res.status(201).json({ message: 'User created successfully.', user_id: userId });
+    let credentialsEmailSent = false;
+    let credentialsEmailWarning = null;
+    if (isAdminLoginAccount) {
+      try {
+        await sendTemporaryLoginCredentials({
+          user: { first_name, middle_name, last_name, email: email.trim(), role },
+          temporaryPassword,
+        });
+        credentialsEmailSent = true;
+      } catch (emailError) {
+        credentialsEmailWarning = 'Account created, but the login credentials email could not be delivered. Use Resend Login Credentials from User Management.';
+        console.error('Failed to send new-user login credentials:', emailError.message);
+      }
+    }
+
+    return res.status(201).json({
+      message: isAdminLoginAccount
+        ? (credentialsEmailSent ? 'User created successfully. Login credentials were sent by email.' : credentialsEmailWarning)
+        : 'User created successfully.',
+      user_id: userId,
+      credentials_email_sent: credentialsEmailSent,
+      credentials_email_warning: credentialsEmailWarning,
+    });
   } catch (error) {
     await connection.rollback();
     return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
@@ -1576,45 +1671,74 @@ export const toggleUserStatus = async (req, res) => {
 };
 
 export const resetUserPassword = async (req, res) => {
+  const connection = await db.getConnection();
   try {
     const userId = Number(req.params.id);
-    const newPassword = req.body.password || 'password';
-
     if (!userId) return res.status(400).json({ message: 'Invalid user id.' });
 
-    const [rows] = await db.query(
-      `SELECT id, first_name, middle_name, last_name, email, role FROM users WHERE id = ? LIMIT 1`,
+    await connection.beginTransaction();
+    const [rows] = await connection.query(
+      `SELECT id, first_name, middle_name, last_name, email, role, status
+       FROM users
+       WHERE id = ?
+       LIMIT 1
+       FOR UPDATE`,
       [userId]
     );
     const user = rows[0];
 
-    if (!user) return res.status(404).json({ message: 'User not found.' });
-    if (user.role === 'external_group') {
-      return res.status(400).json({ message: 'Manage External Group accounts from the External Groups page.' });
+    if (!user) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'User not found.' });
+    }
+    if (!ADMIN_LOGIN_ROLES.has(user.role)) {
+      await connection.rollback();
+      return res.status(400).json({ message: 'Login credential emails are available only for Admin and Super Admin accounts.' });
     }
     if (!actorCanManageTargetRole(req, user.role)) {
+      await connection.rollback();
       return denyUserManagement(res, 'You do not have permission to reset this account password.');
     }
 
-    const passwordHash = await bcrypt.hash(String(newPassword), 10);
+    const temporaryPassword = generateTemporaryPassword();
+    const passwordHash = await bcrypt.hash(temporaryPassword, 10);
 
-    await db.query(
-      `UPDATE users SET password_hash = ?, must_change_password = 1 WHERE id = ?`,
+    await connection.query(
+      `UPDATE users
+       SET password_hash = ?, must_change_password = 1, auth_version = COALESCE(auth_version, 0) + 1
+       WHERE id = ?`,
       [passwordHash, userId]
     );
 
-    await writeAuditLog(db, req, {
+    await writeAuditLog(connection, req, {
       action: 'update',
       module: 'Users',
       entityType: 'user',
       entityId: String(userId),
       entityLabel: buildPersonName(user),
-      title: 'Reset user password',
-      description: 'User password was reset and must be changed on next login.',
+      title: 'Regenerated user login credentials',
+      description: 'A new temporary password was generated for email delivery. Existing sessions will be invalidated when the change is committed.',
+      metadata: { delivery: 'email' },
     });
 
-    return res.json({ message: 'Password reset successfully. User must change password at /portal/change-password on next login.' });
+    try {
+      await sendTemporaryLoginCredentials({ user, temporaryPassword });
+    } catch (emailError) {
+      await connection.rollback();
+      const error = new Error('Login credentials could not be emailed. The existing password and sessions were left unchanged. Check the Resend configuration and try again.');
+      error.statusCode = emailError?.statusCode || 502;
+      throw error;
+    }
+
+    await connection.commit();
+    return res.json({
+      message: 'New login credentials were sent by email. Existing sessions were invalidated and the user must change the temporary password after signing in.',
+      credentials_email_sent: true,
+    });
   } catch (error) {
-    return res.status(500).json({ message: getErrorMessage(error) });
+    try { await connection.rollback(); } catch {}
+    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
   }
 };

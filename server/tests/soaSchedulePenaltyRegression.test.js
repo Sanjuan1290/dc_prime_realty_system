@@ -58,3 +58,4 @@ test('paid and outstanding penalties remain available separately in SOA and dash
   assert.match(lotDashboard, /stats\.totalPenaltyPaid/);
   assert.match(lotDashboard, /stats\.totalPenaltyOutstanding/);
 });
+

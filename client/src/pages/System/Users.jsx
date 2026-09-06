@@ -47,9 +47,9 @@ const ResetPasswordConfirmModal = ({ user, onClose, onConfirm, isSaving }) => {
           </div>
 
           <div className="min-w-0">
-            <h2 className="text-xl font-black text-amber-950">Reset Password?</h2>
+            <h2 className="text-xl font-black text-amber-950">Resend Login Credentials?</h2>
             <p className="mt-1 text-sm font-semibold leading-6 text-amber-800">
-              This will set the temporary password to <span className="font-black">password</span> and force the user to open /portal/change-password on next login.
+              A new secure temporary password will be generated and emailed to this user. Existing login sessions will be invalidated, and the user must change the password after signing in.
             </p>
           </div>
         </div>
@@ -78,7 +78,7 @@ const ResetPasswordConfirmModal = ({ user, onClose, onConfirm, isSaving }) => {
               className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-amber-600 px-5 text-sm font-black text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <FiKey className="h-4 w-4" />
-              {isSaving ? 'Resetting...' : 'Yes, Reset Password'}
+              {isSaving ? 'Sending...' : 'Generate & Send Credentials'}
             </button>
           </div>
         </div>
@@ -100,7 +100,7 @@ const Users = () => {
   const createAllowedRoles = Object.keys(roleLabels).filter((role) => role !== "external_group" && (isSuperAdmin || role !== "super_admin"));
   const getEditAllowedRoles = (user) => user?.role === "external_group" ? ["external_group"] : Object.keys(roleLabels).filter((role) => role !== "external_group" && (isSuperAdmin || role !== "super_admin"));
   const canManageAccount = (user) => user?.role !== "external_group" && canManageUserRole(actorUser, user?.role);
-  const canResetUserPassword = (user) => canResetPasswords && !isSellerRecord(user);
+  const canResetUserPassword = (user) => canResetPasswords && ['admin', 'super_admin'].includes(user?.role);
   const queryClient = useQueryClient();
   const [showEditUser, setShowEditUser] = useState(false);
   const [showCreateUser, setShowCreateUser] = useState(false);
@@ -163,14 +163,14 @@ const Users = () => {
   });
 
   const resetPasswordMutation = useMutation({
-    mutationFn: (user) => patchApi(`/user/resetPassword/${user.id}`, { password: "password" }, { confirmationHandled: 'compact' }),
+    mutationFn: (user) => patchApi(`/user/resetPassword/${user.id}`, {}, { confirmationHandled: 'compact' }),
     onMutate: (user) => {
       setActiveAction({ type: "reset", userId: user.id });
-      setAlert({ type: "loading", message: "Resetting password..." });
+      setAlert({ type: "loading", message: "Generating and sending new login credentials..." });
     },
     onSuccess: (result) => {
       setResetTarget(null);
-      setAlert({ type: "success", message: result.message || "Password reset." });
+      setAlert({ type: "success", message: result.message || "Login credentials sent." });
       queryClient.invalidateQueries({ queryKey: ["users"] });
     },
     onError: (mutationError) => {
@@ -189,7 +189,7 @@ const Users = () => {
   const handleResetPassword = (user) => {
     if (!canResetUserPassword(user)) return;
     setResetTarget(user);
-    setAlert({ type: "warning", message: `Review and confirm password reset for ${user.full_name}.` });
+    setAlert({ type: "warning", message: `Review and confirm credential regeneration for ${user.full_name}.` });
   };
 
   const confirmResetPassword = () => {
@@ -358,7 +358,7 @@ const Users = () => {
                       {canManageAccount(user) ? (
                         <>
                           {canEditUsers ? <button type="button" onClick={() => openEditModal(user)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:bg-slate-50"><FiEdit2 className="h-3.5 w-3.5" />Edit</button> : null}
-                          {canResetUserPassword(user) ? <button type="button" onClick={() => handleResetPassword(user)} disabled={resetPasswordMutation.isPending || toggleStatusMutation.isPending} className="inline-flex h-9 items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 text-xs font-bold text-amber-700 hover:bg-amber-100 disabled:opacity-60"><FiKey className="h-3.5 w-3.5" />{activeAction?.type === "reset" && activeAction?.userId === user.id ? "Resetting..." : "Reset"}</button> : null}
+                          {canResetUserPassword(user) ? <button type="button" onClick={() => handleResetPassword(user)} disabled={resetPasswordMutation.isPending || toggleStatusMutation.isPending} className="inline-flex h-9 items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 text-xs font-bold text-amber-700 hover:bg-amber-100 disabled:opacity-60"><FiKey className="h-3.5 w-3.5" />{activeAction?.type === "reset" && activeAction?.userId === user.id ? "Sending..." : "Credentials"}</button> : null}
                           {canChangeStatus ? <button type="button" onClick={() => handleToggleStatus(user)} disabled={resetPasswordMutation.isPending || toggleStatusMutation.isPending} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60">{activeAction?.type === "status" && activeAction?.userId === user.id ? "Updating..." : user.status === "active" ? "Deactivate" : "Activate"}</button> : null}
                         </>
                       ) : (
@@ -405,3 +405,4 @@ const Users = () => {
 };
 
 export default Users;
+

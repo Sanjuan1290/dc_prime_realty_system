@@ -1,6 +1,6 @@
 # D&C Prime Realty System
 
-Complete React, Node.js, Express, and MySQL project for the System Admin and Lot Project workspaces.
+Complete React, Node.js, Express, and TiDB/MySQL-compatible project for the D&C Prime Realty System Admin and Lot Project workspaces.
 
 ## Main changes in this package
 
@@ -98,29 +98,42 @@ Supported files:
 - Role-based seller hierarchy and commission rates
 - Remember Me and password-reset code flow
 
-The House & Lot placeholder module was not changed.
+The unfinished House & Lot creation UI is hidden from the active admin workflow until that module is completed.
+
+
+## September 6, 2026 clean employee/attendance revision
+
+This full-codebase package already includes the new production flow discussed for D&C Prime Realty:
+
+- **Admin / Super Admin user creation:** no temporary-password field. The server generates a secure random temporary password, emails it through Resend, stores only the bcrypt hash, and forces the existing Change Password screen on first login.
+- **Credential regeneration:** Admin/Super Admin credentials can be regenerated and emailed; successful regeneration increments `auth_version` so old sessions stop working.
+- **Employees:** simplified to employee name, unique barcode code, configurable department, Full Time / Probationary / Part Time, and Active / Inactive status.
+- **Attendance:** barcode/camera/manual Time In and Time Out, server validation that Time Out requires Time In, duplicate protection, Admin Time In/Time Out corrections with reasons, and audit logging.
+- **Automatic Time Out:** defaults to **8:00 PM Asia/Manila** and is editable in System Settings. Automatic records are clearly marked and do not overwrite a real/admin/event Time Out.
+- **Day classification:** Regular Day, Double Pay Day, Regular Holiday, and Special Holiday.
+- **Company Events:** event date/range, location, participant selection, Full Day / Custom Time / Attendance Record Only, and optional double-pay/holiday classification.
+- **Super Admin:** Employees and Attendance use the real modules instead of the previous `On Going...` placeholders.
+- **Retired HR/payroll code removed:** Cash Advances, payroll screens, salary-release/logbook components, old attendance modal, employee schedules/payroll UI, related frontend permissions, old server handlers, and stale double-check models were removed from the active codebase.
+
+### Database migration for this revision
+
+Run this migration against the existing TiDB database before deploying the new code:
+
+```text
+server/migrations/20260906_simplified_employee_attendance.sql
+```
+
+The migration is intentionally non-destructive to historical database tables. Retired payroll/cash-advance tables may still exist in an upgraded database, but this codebase no longer exposes or calls those modules.
 
 ## Database setup
 
-### Fresh database
-
-Import:
+Use your existing `dc_prime_realty_system_db` database and run any migrations that have not yet been applied. For this revision, the required new migration is:
 
 ```text
-database/Dump20260720_complete.sql
+server/migrations/20260906_simplified_employee_attendance.sql
 ```
 
-This contains the current database dump followed by the account-retention, verified-purge, commission-status, and secure-document migration.
-
-### Existing database
-
-Back up the database first. Then run the migrations that your database has not yet received. For a database already matching `Dump20260720_current.sql`, run only:
-
-```text
-server/migrations/20260720_account_retention_secure_purge_cloudinary.sql
-```
-
-See `database/README.md` for the full migration order.
+Back up the TiDB database before applying migrations.
 
 ## Server setup
 
@@ -131,43 +144,33 @@ npm ci
 npm run dev
 ```
 
-Required server environment values:
+Required server environment values include:
 
 ```env
 PORT=5001
 CORS_ORIGIN=http://localhost:5173
 
-DB_HOST=localhost
-DB_USER=root
+DB_HOST=
+DB_USER=
 DB_PASSWORD=
-DB_NAME=dc_prime_realty
+DB_NAME=dc_prime_realty_system_db
 
 JWT_SECRET=
-AUDIT_DELETE_CODE_SECRET=
-DESTRUCTIVE_ACTION_CODE_SECRET=
-DESTRUCTIVE_ACTION_CODE_EXPIRY_MINUTES=10
-DESTRUCTIVE_ACTION_MAX_ATTEMPTS=5
-
 NODE_ENV=development
 
 RESEND_API_KEY=
 EMAIL_FROM=D&C Prime Realty <noreply@example.com>
 EMAIL_REQUEST_TIMEOUT_MS=15000
-COMPANY_EMAIL=
-EMAIL_LOGO_URL=
+PUBLIC_APP_URL=http://localhost:5173
+COMPANY_NAME=D&C Prime Realty
 
 CLOUDINARY_CLOUD_NAME=
 CLOUDINARY_API_KEY=
 CLOUDINARY_API_SECRET=
 CLOUDINARY_UPLOAD_FOLDER=dc_prime
-
-PUBLIC_APP_URL=http://localhost:5173
-COMPANY_NAME=D&C Prime Realty
 ```
 
-All backend email flows use the Resend HTTPS API. Verify the sending domain in Resend and set `RESEND_API_KEY` plus `EMAIL_FROM`.
-
-Use different long random values for `JWT_SECRET`, `AUDIT_DELETE_CODE_SECRET`, and `DESTRUCTIVE_ACTION_CODE_SECRET`.
+All account-invitation and password-reset emails use the existing Resend HTTPS email service. Verify the sending domain and configure `RESEND_API_KEY` plus `EMAIL_FROM`.
 
 ## Client setup
 
@@ -184,48 +187,10 @@ Client environment:
 VITE_API_URL=http://localhost:5001/api/v1
 ```
 
-Do not add a Cloudinary API secret or unsigned upload preset to the client.
+## Validation performed for this package
 
-## Migrating existing Cloudinary buyer documents
-
-The migration script is dry-run only unless `--apply` is supplied.
-
-```bash
-cd server
-npm run migrate:cloudinary-storage
-```
-
-(`migrate:cloudinary-documents` remains as a backwards-compatible alias.)
-
-Review the output, then apply:
-
-```bash
-npm run migrate:cloudinary-storage -- --apply
-```
-
-Optional controls:
-
-```bash
-npm run migrate:cloudinary-storage -- --limit=25
-npm run migrate:cloudinary-storage -- --apply --skip-archives
-```
-
-Before running the Cloudinary migration, apply `server/migrations/20260810_storage_codes_and_canonical_file_names.sql`. The script converts live and archived buyer documents plus active payment proofs to authenticated delivery when needed, moves them into the permanent storage-code hierarchy, assigns readable canonical file names/public IDs, and updates stored metadata. It is dry-run by default and performs applied database updates incrementally so it can be rerun.
-
-After the applied migration is verified in your Cloudinary account:
-
-1. Open Cloudinary Console.
-2. Go to **Settings → Upload → Upload presets**.
-3. Disable or delete `dc_prime_unsigned`.
-4. Redeploy the client without `VITE_CLOUDINARY_UPLOAD_PRESET`.
-5. Confirm that an old unsigned upload request fails.
-
-The actual remote Cloudinary conversion was not run while building this package because live Cloudinary credentials and network access were not available. Run the dry-run and applied migration in your deployment environment.
-
-## Validation completed
-
-- Server: **162 tests passed**
-- Client: Vite production build completed
-- Server JavaScript syntax checks completed
-
-The Vite build reports a chunk-size warning for some existing large pages. It does not stop the build.
+- Server JavaScript syntax check: **180 files passed**.
+- Client relative-import resolution: **208 source files, no missing relative imports**.
+- Server relative-import resolution: **no missing relative imports**.
+- Focused source-level regression suite for routing, user credentials, Employees, Attendance, and explicit double-check architecture: **22/22 passed**.
+- `node_modules` is intentionally not packaged; run `npm ci` in `client` and `server` on the target machine.

@@ -1555,3 +1555,4 @@ export const getLotProjectPriceList = async (req, res) => {
     connection.release();
   }
 };
+

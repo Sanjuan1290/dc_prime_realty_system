@@ -105,7 +105,7 @@ const ChangePassword = () => {
 
             <h1 className="mt-5 text-2xl font-black">Change Password</h1>
             <p className="mt-2 text-sm font-semibold leading-6 text-slate-300">
-              Your password was reset. Create a new password before opening the system.
+              You are using a temporary password. Create a new password before opening the system.
             </p>
           </div>
 
@@ -134,7 +134,7 @@ const ChangePassword = () => {
                 onChange={(event) => setCurrentPassword(event.target.value)}
                 autoComplete="current-password"
                 className="h-11 w-full rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-900 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
-                placeholder="Enter the reset password"
+                placeholder="Enter your temporary password"
               />
             </label>
 
@@ -178,3 +178,4 @@ const ChangePassword = () => {
 }
 
 export default ChangePassword
+

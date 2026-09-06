@@ -85,3 +85,4 @@ test('payment and contract mutations synchronize commission progress before comp
   assert.match(service, /getExistingSoaScheduleRows/);
   assert.match(service, /calculateCommissionPaymentProgress/);
 });
+

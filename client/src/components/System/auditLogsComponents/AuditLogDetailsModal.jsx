@@ -73,3 +73,4 @@ const AuditLogDetailsModal = ({ log, onClose }) => {
 
 export default AuditLogDetailsModal
 
+

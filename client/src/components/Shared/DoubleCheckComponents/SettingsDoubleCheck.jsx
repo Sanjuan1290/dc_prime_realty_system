@@ -50,6 +50,18 @@ const SystemSettingsReview = ({ data }) => [
     ),
   },
   {
+    key: 'attendance',
+    title: 'Employee Attendance',
+    content: (
+      <DoubleCheckSection title="Employee Attendance" helper="Verify the automatic Time Out and department dropdown values." tone="violet">
+        <DoubleCheckFields fields={[
+          { label: 'Default Automatic Time Out', value: data.attendanceDefaultTimeOut },
+          { label: 'Employee Departments', value: Array.isArray(data.employeeDepartments) ? data.employeeDepartments.join(', ') : data.employeeDepartments, wide: true },
+        ]} />
+      </DoubleCheckSection>
+    ),
+  },
+  {
     key: 'system-status',
     title: 'System Status',
     content: (
@@ -125,3 +137,4 @@ const SettingsDoubleCheck = ({ request, onConfirm, onCancel }) => {
 }
 
 export default SettingsDoubleCheck
+

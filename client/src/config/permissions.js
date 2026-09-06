@@ -26,10 +26,6 @@ export const PERMISSIONS = Object.freeze({
   EMPLOYEES_MANAGE: 'employees.manage',
   ATTENDANCE_VIEW: 'attendance.view',
   ATTENDANCE_MANAGE: 'attendance.manage',
-  EMPLOYEE_CASH_ADVANCES_VIEW: 'employee.cash_advances.view',
-  EMPLOYEE_CASH_ADVANCES_MANAGE: 'employee.cash_advances.manage',
-  PAYROLL_VIEW: 'payroll.view',
-  PAYROLL_MANAGE: 'payroll.manage',
   LOT_DASHBOARD_VIEW: 'lot_project.dashboard.view',
   LOT_LISTINGS_VIEW: 'lot_project.listings.view',
   LOT_LISTINGS_MANAGE: 'lot_project.listings.manage',
@@ -122,4 +118,5 @@ export const canChangeUserRole = (userOrRole, currentRole, requestedRole, adminT
 };
 
 export const getRoleHome = (role) => role === 'admin' ? '/portal/admin/dashboard' : role === 'super_admin' ? '/portal/super_admin' : '/portal';
+
 

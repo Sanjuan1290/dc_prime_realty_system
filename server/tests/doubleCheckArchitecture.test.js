@@ -24,7 +24,7 @@ test('DoubleCheck provider uses an explicit feature registry rather than arbitra
     'project', 'listing', 'listing-documents', 'reservation', 'buyer-profile', 'user',
     'seller-group', 'document', 'document-template', 'document-upload', 'payment',
     'payment-proof', 'soa-terms', 'penalty-adjustment', 'commission-release',
-    'proof-of-income', 'employee', 'attendance', 'cash-advance', 'payroll-release',
+    'proof-of-income',
     'settings', 'buyer-form', 'audit-archive',
   ]) assert.match(provider, new RegExp(`['\"]?${type.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['\"]?\\s*:`))
   assert.doesNotMatch(provider, /buildReviewSections|Object\.entries\(request\?\.data|humanizeKey|inferExample/)
@@ -51,3 +51,4 @@ test('review confirmation tokens are one-time and short-lived', () => {
   assert.match(source, /consumeDoubleCheckToken/)
   assert.match(source, /isDoubleCheckCancelled/)
 })
+

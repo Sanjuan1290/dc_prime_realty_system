@@ -125,7 +125,7 @@ const Login = () => {
                   <div className="max-w-md space-y-4">
                     <h1 className="text-2xl font-bold leading-tight sm:text-3xl">D&amp;C Prime Realty internal system</h1>
                     <p className="text-sm leading-6 text-slate-300 sm:text-base">
-                      Manage projects, listings, clients, collections, payroll, and operational reports from one secure workspace.
+                      Manage projects, listings, clients, collections, employees, attendance, and operational reports from one secure workspace.
                     </p>
                   </div>
                 </div>
@@ -208,4 +208,5 @@ const Login = () => {
 }
 
 export default Login
+
 

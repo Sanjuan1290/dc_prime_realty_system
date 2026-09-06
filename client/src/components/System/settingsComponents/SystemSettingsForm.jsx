@@ -83,6 +83,22 @@ const SystemSettingsForm = ({ form, setForm, onSubmit, isSaving, disabled = fals
 
       <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 px-6 py-4">
+          <h2 className="text-lg font-black text-slate-950">Employee Attendance</h2>
+          <p className="mt-1 text-sm font-semibold text-slate-500">Configure the automatic Time Out and the department dropdown used by Employee Management.</p>
+        </div>
+
+        <div className="grid gap-4 p-6 md:grid-cols-2">
+          <Field label="Default Automatic Time Out" helper="Open attendance records are automatically closed at this time. Default is 8:00 PM.">
+            <input disabled={disabled} type="time" value={form.attendanceDefaultTimeOut} onChange={(e) => update('attendanceDefaultTimeOut', e.target.value)} className={inputClass} />
+          </Field>
+          <Field label="Employee Departments" helper="One department per line. These become the Employee form dropdown options.">
+            <textarea disabled={disabled} rows={5} value={(form.employeeDepartments || []).join('\n')} onChange={(e) => update('employeeDepartments', e.target.value.split(/\n+/).map((value) => value.trim()).filter(Boolean))} placeholder={'Administration\nSales\nAccounting'} className={textareaClass} />
+          </Field>
+        </div>
+      </section>
+
+      <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-200 px-6 py-4">
           <h2 className="text-lg font-black text-slate-950">System Status</h2>
           <p className="mt-1 text-sm font-semibold text-slate-500">Show whether the system is operating normally or under maintenance.</p>
         </div>
@@ -126,3 +142,4 @@ const SystemSettingsForm = ({ form, setForm, onSubmit, isSaving, disabled = fals
 }
 
 export default SystemSettingsForm
+

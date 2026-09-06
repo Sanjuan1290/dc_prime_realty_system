@@ -5,7 +5,7 @@ import {
   getEmployees,
   updateEmployee,
   updateEmployeeStatus,
-} from '../../controllers/System/Employees/Employees.controller.js';
+} from '../../controllers/System/Employees/EmployeesSimple.controller.js';
 import { authenticateUser, requirePermission } from '../../middleware/auth.middleware.js';
 import { PERMISSIONS } from '../../config/permissions.js';
 

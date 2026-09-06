@@ -34,3 +34,4 @@ const BuyerFormDoubleCheck = ({ request, onConfirm, onCancel }) => {
 }
 
 export default BuyerFormDoubleCheck
+

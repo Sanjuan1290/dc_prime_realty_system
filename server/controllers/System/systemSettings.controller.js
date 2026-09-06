@@ -67,6 +67,8 @@ const systemSettingsTableSql = `
     reservation_contact_number VARCHAR(60) NULL,
     default_release_day_one TINYINT UNSIGNED NOT NULL DEFAULT 7,
     default_release_day_two TINYINT UNSIGNED NOT NULL DEFAULT 22,
+    attendance_default_time_out TIME NOT NULL DEFAULT '20:00:00',
+    employee_departments_json TEXT NULL,
     updated_by_user_id INT UNSIGNED NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -80,6 +82,8 @@ const systemSettingsTableSql = `
 
 const ensureSystemSettingsTable = async (connection = db) => {
   await connection.query(systemSettingsTableSql);
+  await connection.query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS attendance_default_time_out TIME NOT NULL DEFAULT '20:00:00' AFTER default_release_day_two`);
+  await connection.query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS employee_departments_json TEXT NULL AFTER attendance_default_time_out`);
 
   // Keep one singleton settings row so every page has a safe default to read.
   await connection.query(
@@ -105,6 +109,8 @@ const mapSettings = (row = {}) => ({
   reservationContactNumber: row.reservation_contact_number,
   defaultReleaseDayOne: Number(row.default_release_day_one || 7),
   defaultReleaseDayTwo: Number(row.default_release_day_two || 22),
+  attendanceDefaultTimeOut: String(row.attendance_default_time_out || '20:00:00').slice(0, 8),
+  employeeDepartments: (() => { try { const value = JSON.parse(String(row.employee_departments_json || '[]')); return Array.isArray(value) && value.length ? value : ['Administration', 'Sales', 'Accounting']; } catch { return ['Administration', 'Sales', 'Accounting']; } })(),
   updatedByUserId: row.updated_by_user_id,
   updatedByName: row.updated_by_name || null,
   createdAt: row.created_at,
@@ -124,6 +130,11 @@ const normalizeSettingsPayload = (body = {}) => ({
   reservationContactNumber: nullableText(body.reservationContactNumber),
   defaultReleaseDayOne: clampDay(body.defaultReleaseDayOne, 7),
   defaultReleaseDayTwo: clampDay(body.defaultReleaseDayTwo, 22),
+  attendanceDefaultTimeOut: /^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(String(body.attendanceDefaultTimeOut || ''))
+    ? `${String(body.attendanceDefaultTimeOut).slice(0, 5)}:00`
+    : '20:00:00',
+  employeeDepartments: Array.from(new Set((Array.isArray(body.employeeDepartments) ? body.employeeDepartments : String(body.employeeDepartments || '').split(/[\n,]+/))
+    .map((value) => cleanText(value)).filter(Boolean))).slice(0, 100),
 });
 
 export const getSystemSettings = async (req, res) => {
@@ -188,6 +199,8 @@ export const updateSystemSettings = async (req, res) => {
           reservation_contact_number = ?,
           default_release_day_one = ?,
           default_release_day_two = ?,
+          attendance_default_time_out = ?,
+          employee_departments_json = ?,
           updated_by_user_id = ?
         WHERE system_setting_id = 1
       `,
@@ -204,6 +217,8 @@ export const updateSystemSettings = async (req, res) => {
         payload.reservationContactNumber,
         payload.defaultReleaseDayOne,
         payload.defaultReleaseDayTwo,
+        payload.attendanceDefaultTimeOut,
+        JSON.stringify(payload.employeeDepartments),
         actor.id,
       ]
     );
@@ -246,3 +261,4 @@ export const updateSystemSettings = async (req, res) => {
     connection.release();
   }
 };
+

@@ -5,7 +5,6 @@ import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAx
 import {
   FiEye,
   FiFileText,
-  FiHome,
   FiMap,
   FiPlus,
   FiSearch,
@@ -16,7 +15,6 @@ import StatusAlert from '../../components/Shared/StatusAlert'
 import ReadOnlyNotice from '../../components/Shared/ReadOnlyNotice'
 import useCurrentUser from '../../utils/useCurrentUser'
 import AddLotProjectModal from '../../components/System/projectComponents/AddLotProjectModal'
-import HouseLotProjectModal from '../../components/System/projectComponents/HouseLotProjectModal'
 import { useFetch, useFetchDelete, useFetchPatch, useFetchPost, getDoubleCheckNotice } from '../../utils/useFetch'
 import { isFullAccessAdministrator } from '../../config/permissions'
 
@@ -98,7 +96,6 @@ const Projects = () => {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [showLotModal, setShowLotModal] = useState(false)
-  const [showHouseLotModal, setShowHouseLotModal] = useState(false)
   const [alert, setAlert] = useState(null)
   const [deletingProjectId, setDeletingProjectId] = useState(null)
   const [selectedDocumentProjectId, setSelectedDocumentProjectId] = useState('all')
@@ -402,14 +399,6 @@ const Projects = () => {
             Add Lot Project
           </button>
 
-          <button
-            type="button"
-            onClick={() => setShowHouseLotModal(true)}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-5 text-sm font-black text-blue-700 transition hover:bg-blue-100 active:scale-[0.98]"
-          >
-            <FiHome className="h-4 w-4" />
-            Add House & Lot Project
-          </button>
         </div>
         ) : null}
       </section>
@@ -674,11 +663,9 @@ const Projects = () => {
         />
       ) : null}
 
-      {showHouseLotModal && canManage ? (
-        <HouseLotProjectModal onClose={() => setShowHouseLotModal(false)} />
-      ) : null}
     </main>
   )
 }
 
 export default Projects
+

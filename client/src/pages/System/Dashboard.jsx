@@ -66,9 +66,7 @@ const dateRangeOptions = [
 
 
 const projectScopeOptions = [
-  { value: 'all', label: 'All Projects' },
-  { value: 'lot', label: 'Lot Only Projects' },
-  { value: 'house_lot', label: 'House & Lot Projects' },
+  { value: 'lot', label: 'Lot Projects' },
 ]
 
 const getProjectType = (project = {}, fallback = 'lot') => {
@@ -334,7 +332,7 @@ const Dashboard = () => {
   const [fromDate, setFromDate] = useState(() => defaultDateRange().from)
   const [toDate, setToDate] = useState(() => defaultDateRange().to)
   const [approvedLongRangeKey, setApprovedLongRangeKey] = useState('')
-  const [projectScope, setProjectScope] = useState('all')
+  const [projectScope, setProjectScope] = useState('lot')
   const { data: currentUserData } = useCurrentUser()
   const currentUser = currentUserData?.user || {}
   const role = currentUser.role || 'super_admin'
@@ -698,3 +696,4 @@ const Dashboard = () => {
 }
 
 export default Dashboard
+

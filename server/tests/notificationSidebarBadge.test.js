@@ -60,3 +60,4 @@ test('marking a payment notification contacted records the clicking user in Audi
   assert.match(backfill, /notification_log\.sent_by_user_id/)
 })
 
+

@@ -22,7 +22,7 @@ const UserDoubleCheck = ({ request, onConfirm, onCancel }) => {
       { label: 'Role', value: role, formatter: roleLabel },
       ...(String(role) === 'admin' ? [{ label: 'Admin Type', value: pick(data, 'admin_type', 'adminType') }] : []),
       { label: 'Status', value: pick(data, 'status'), formatter: statusLabel },
-      ...(request.mode === 'create' && !seller ? [{ label: 'Temporary Password', value: pick(data, 'password') ? '••••••••' : '', wide: true }] : []),
+      ...(request.mode === 'create' && !seller ? [{ label: 'Login Setup', value: 'Temporary credentials will be generated securely and emailed automatically.', wide: true }] : []),
     ]} /></DoubleCheckSection> },
     { key: 'hierarchy', title: 'In-House Hierarchy', hidden: !seller, content: <DoubleCheckSection title="In-House Hierarchy" helper="Verify the group, reporting line, and accreditation date. Commission rates are inherited from the selected group." tone="violet"><DoubleCheckFields fields={[
       { label: 'In-House Group', value: pick(data, 'seller_group_name', 'sellerGroupName') || request.meta?.sellerGroupName },
@@ -35,3 +35,4 @@ const UserDoubleCheck = ({ request, onConfirm, onCancel }) => {
 }
 
 export default UserDoubleCheck
+

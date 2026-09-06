@@ -13,6 +13,7 @@ const TECHNICAL_MUTATION_PATTERNS = [
   /\/projects\/lot-projects\/\d+\/edit-preflight$/i,
   /\/purge-code$/i,
   /\/audit-logs\/archive\/request$/i,
+  /\/attendance\/scan$/i,
 ]
 
 const normalizeBaseUrl = (value) =>
@@ -272,4 +273,5 @@ export const requestApiBlob = async (
     }
   }
 }
+
 

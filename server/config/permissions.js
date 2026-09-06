@@ -26,10 +26,6 @@ export const PERMISSIONS = Object.freeze({
   EMPLOYEES_MANAGE: 'employees.manage',
   ATTENDANCE_VIEW: 'attendance.view',
   ATTENDANCE_MANAGE: 'attendance.manage',
-  EMPLOYEE_CASH_ADVANCES_VIEW: 'employee.cash_advances.view',
-  EMPLOYEE_CASH_ADVANCES_MANAGE: 'employee.cash_advances.manage',
-  PAYROLL_VIEW: 'payroll.view',
-  PAYROLL_MANAGE: 'payroll.manage',
   LOT_PROJECT_VIEW: 'lot_project.view',
   LOT_DASHBOARD_VIEW: 'lot_project.dashboard.view',
   LOT_LISTINGS_VIEW: 'lot_project.listings.view',
@@ -124,4 +120,5 @@ export const roleHasPermission = (userOrRole, permission, adminType = '') => {
   if (isAdmin1(actor.role, actor.adminType)) return allPermissions.has(permission);
   return false;
 };
+
 

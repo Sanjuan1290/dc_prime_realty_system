@@ -16,8 +16,7 @@ test('all internal route groups live below /portal', () => {
   assert.match(app, /<Route path="\/portal\/super_admin" element=\{<SystemLayout \/>\}/);
   assert.match(app, /<Route path="\/portal\/admin" element=\{<SystemLayout \/>\}/);
   assert.match(app, /path="\/portal\/lot-projects\/:projectSlug"/);
-  assert.match(app, /path="\/portal\/employee-payroll\/release\/print"/);
-  assert.match(app, /path="\/portal\/employee-payroll\/logbook\/print"/);
+  assert.doesNotMatch(app, /\/portal\/employee-payroll/); // Payroll UI was intentionally removed from the simplified employee module.
   assert.match(app, /<Route path="\/buyer-form\/:token" element=\{<BuyerForm \/>\}/);
 });
 
@@ -48,5 +47,7 @@ test('server-generated frontend links include the portal prefix', () => {
   assert.match(shared, /routePath: `\/portal\/lot-projects\/\$\{project\.lot_project_slug\}`/);
   assert.match(projects, /routePath: `\/portal\/lot-projects\//);
   assert.match(notifications, /`\/portal\/lot-projects\/\$\{row\.lot_project_slug\}\/listings\//);
-  assert.match(users, /\/portal\/change-password on next login/);
+  assert.match(users, /const loginUrl = appUrl \? `\$\{appUrl\}\/portal` : '\/portal'/);
+  assert.match(users, /must_change_password = 1/);
 });
+

@@ -23,6 +23,8 @@ const defaultForm = {
   reservationContactNumber: '',
   defaultReleaseDayOne: 7,
   defaultReleaseDayTwo: 22,
+  attendanceDefaultTimeOut: '20:00',
+  employeeDepartments: ['Administration', 'Sales', 'Accounting'],
 }
 
 const mapSettingsToForm = (settings = {}) => ({
@@ -38,6 +40,8 @@ const mapSettingsToForm = (settings = {}) => ({
   reservationContactNumber: settings.reservationContactNumber || '',
   defaultReleaseDayOne: settings.defaultReleaseDayOne || 7,
   defaultReleaseDayTwo: settings.defaultReleaseDayTwo || 22,
+  attendanceDefaultTimeOut: String(settings.attendanceDefaultTimeOut || '20:00').slice(0, 5),
+  employeeDepartments: settings.employeeDepartments?.length ? settings.employeeDepartments : ['Administration', 'Sales', 'Accounting'],
 })
 
 const Settings = () => {
@@ -90,7 +94,7 @@ const Settings = () => {
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <PageHeader
           title="System Settings"
-          description="Global company profile, reservation fallback contact, release days, and system status."
+          description="Global company profile, attendance defaults, department options, reservation fallback contact, and system status."
           icon={FiSettings}
         />
 
@@ -153,3 +157,4 @@ const Settings = () => {
 }
 
 export default Settings
+

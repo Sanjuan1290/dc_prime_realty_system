@@ -39,3 +39,4 @@ test('modal uses Manila date, server preview, separate penalty, and total payabl
   assert.match(modal, /penalty day\(s\)/);
   assert.doesNotMatch(modal, /Payment status is removed here because admin-added payments are saved as verified automatically/);
 });
+

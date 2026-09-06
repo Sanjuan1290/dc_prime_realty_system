@@ -195,3 +195,4 @@ export const ReservationPaymentPreview = ({ contractPricing = {}, paymentForm = 
 }
 
 export { PreviewCard }
+

@@ -13,3 +13,4 @@ router.get('/', requirePermission(PERMISSIONS.SYSTEM_SETTINGS_VIEW), getSystemSe
 router.put('/', requirePermission(PERMISSIONS.SYSTEM_SETTINGS_MANAGE), updateSystemSettings);
 
 export default router;
+

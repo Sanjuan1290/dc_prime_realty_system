@@ -7,7 +7,6 @@ import {
   FiBell,
   FiClock,
   FiCheckCircle,
-  FiDollarSign,
   FiFileText,
   FiHome,
   FiLoader,
@@ -114,11 +113,6 @@ const SystemLayout = () => {
         description: "Choose a project type, then open a specific workspace",
         items: [
           { label: "Lot Projects", pathname: "lot-projects", icon: FiMap },
-          {
-            label: "House & Lot Projects",
-            pathname: "house-lot-projects",
-            icon: FiHome,
-          },
         ],
       },
       {
@@ -144,11 +138,6 @@ const SystemLayout = () => {
         items: [
           { label: "Employees", pathname: "employees", icon: FiUsers },
           { label: "Attendance", pathname: "attendance", icon: FiClock },
-          {
-            label: "Cash Advances",
-            pathname: "cash-advances",
-            icon: FiDollarSign,
-          },
         ],
       },
       {
@@ -426,4 +415,5 @@ const SystemLayout = () => {
 };
 
 export default SystemLayout;
+
 

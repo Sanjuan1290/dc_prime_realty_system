@@ -13,3 +13,4 @@ router.get('/:token', readLimit, getPublicBuyerForm);
 router.post('/:token/submit', submitLimit, submitPublicBuyerForm);
 
 export default router;
+

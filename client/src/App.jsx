@@ -54,7 +54,6 @@ const DataIntegrity = lazy(() => import('./pages/System/DataIntegrity'))
 const Settings = lazy(() => import('./pages/System/Settings'))
 const Employees = lazy(() => import('./pages/System/Employees'))
 const Attendance = lazy(() => import('./pages/System/Attendance'))
-const EmployeeCashAdvances = lazy(() => import('./pages/System/EmployeeCashAdvances'))
 
 const LotDashboard = lazy(() => import('./pages/Lot_Projects/Dashboard'))
 const LotListings = lazy(() => import('./pages/Lot_Projects/Listings'))
@@ -72,8 +71,6 @@ import SignedReceiptsPrintPage from './components/Lot_Projects/ListingProfileCom
 import AccreditedSellerProofOfIncomePrintPage from './components/Lot_Projects/ListingProfileComponents/Printouts/AccreditedSellerProofOfIncomePrintPage'
 import AccreditedSellerIncomeRangePrintPage from './components/Lot_Projects/ListingProfileComponents/Printouts/AccreditedSellerIncomeRangePrintPage'
 import ProjectPriceListPrintPage from './components/Lot_Projects/ListingProfileComponents/Printouts/ProjectPriceListPrintPage'
-import EmployeeSalaryReleasePrintPage from './components/System/employeeComponents/prints/EmployeeSalaryReleasePrintPage'
-import EmployeeLogbookPrintPage from './components/System/employeeComponents/prints/EmployeeLogbookPrintPage'
 
 
 const LegacyPortalRedirect = () => {
@@ -133,7 +130,6 @@ const App = () => {
         <Route path="/super_admin/*" element={<LegacyPortalRedirect />} />
         <Route path="/lot-projects/*" element={<LegacyPortalRedirect />} />
         <Route path="/house-lot-projects/*" element={<LegacyPortalRedirect />} />
-        <Route path="/employee-payroll/*" element={<LegacyPortalRedirect />} />
 
         <Route path="/portal/super_admin" element={<SystemLayout />} errorElement={<RouteErrorPage />}>
           <Route index element={<Dashboard />} />
@@ -143,11 +139,6 @@ const App = () => {
           <Route
             path="lot-projects"
             element={<ProjectWorkspaceList type="lot" />}
-          />
-
-          <Route
-            path="house-lot-projects"
-            element={<ProjectWorkspaceList type="house_lot" />}
           />
 
           <Route path="documents" element={<Documents />} />
@@ -161,19 +152,8 @@ const App = () => {
           <Route path="notifications" element={<Notifications />} />
           <Route path="audit-logs" element={<AuditLogs />} />
           <Route path="data-integrity" element={protect(PERMISSIONS.SYSTEM_DATA_INTEGRITY_VIEW, <DataIntegrity />)} />
-          {/* <Route path="employees" element={<Employees />} />
+          <Route path="employees" element={<Employees />} />
           <Route path="attendance" element={<Attendance />} />
-          <Route path="cash-advances" element={<EmployeeCashAdvances />} /> */}
-
-          <Route path="employees" element={
-            <p className='text-4xl font-extrabold '>On Going... 🧒</p>
-          } />
-          <Route path="attendance" element={
-            <p className='text-4xl font-extrabold '>On Going... 🧒</p>
-          } />
-          <Route path="cash-advances" element={
-            <p className='text-4xl font-extrabold '>On Going... 🧒</p>
-          } />
 
           <Route path="settings" element={<Settings />} />
         </Route>
@@ -189,11 +169,6 @@ const App = () => {
             element={<ProjectWorkspaceList type="lot" />}
           />
 
-          <Route
-            path="house-lot-projects"
-            element={<ProjectWorkspaceList type="house_lot" />}
-          />
-
           <Route path="documents" element={<Documents />} />
           <Route path="users" element={<Users />} />
           <Route path="users/seller_group" element={<Navigate to="/portal/admin/users/groups/in-house" replace />} />
@@ -207,7 +182,6 @@ const App = () => {
           <Route path="data-integrity" element={protect(PERMISSIONS.SYSTEM_DATA_INTEGRITY_VIEW, <DataIntegrity />)} />
           <Route path="employees" element={<Employees />} />
           <Route path="attendance" element={<Attendance />} />
-          <Route path="cash-advances" element={<EmployeeCashAdvances />} />
           <Route path="settings" element={<Settings />} />
         </Route>
 
@@ -295,20 +269,6 @@ const App = () => {
           path="/portal/lot-projects/:projectSlug/price-list/print"
           element={<ProjectPriceListPrintPage />}
         />
-        <Route
-          path="/portal/employee-payroll/release/print"
-          element={protect(
-            PERMISSIONS.PAYROLL_VIEW,
-            <EmployeeSalaryReleasePrintPage />
-          )}
-        />
-        <Route
-          path="/portal/employee-payroll/logbook/print"
-          element={protect(
-            PERMISSIONS.ATTENDANCE_VIEW,
-            <EmployeeLogbookPrintPage />
-          )}
-        />
       </>
     )
   )
@@ -327,5 +287,6 @@ const App = () => {
 }
 
 export default App
+
 
 
