@@ -251,7 +251,7 @@ const EmployeeModal = ({ employee, departmentConfigs = [], departments = [], onC
           ) : null}
 
           {step === 'barcode' && !isEdit ? (
-            <section className="grid gap-5 lg:grid-cols-[.95fr_1.05fr] lg:items-center">
+            <section className="grid gap-5 lg:grid-cols-[.95fr] lg:items-center">
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
                 <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Employee Code Preview</p>
                 <h3 className="mt-2 text-xl font-black text-slate-950">{fullName}</h3>
@@ -261,12 +261,6 @@ const EmployeeModal = ({ employee, departmentConfigs = [], departments = [], onC
                   <div className="flex items-center justify-between gap-4"><span className="font-semibold text-slate-500">Next Employee Code</span><span className="font-mono text-lg font-black text-blue-700">{preview?.employee_code}</span></div>
                   <div className="flex items-start justify-between gap-4"><span className="font-semibold text-slate-500">Rest Days</span><span className="text-right font-black text-slate-900">{restDayLabels.join(', ')}</span></div>
                 </div>
-                <p className="mt-4 text-xs font-semibold leading-5 text-slate-500">The server confirms this Employee Code atomically when you save. It also creates a separate random 10-digit Attendance Barcode with a check digit. Names, department changes, and Rest Day changes never change that secure barcode automatically.</p>
-              </div>
-              <div className="rounded-2xl border border-blue-100 bg-blue-50 p-5 text-center">
-                <p className="text-xs font-black uppercase tracking-wide text-blue-700">Attendance Barcode</p>
-                <p className="mt-3 text-lg font-black text-slate-950">Generated securely on Save</p>
-                <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">The barcode is intentionally not based on the employee name, department, or Rest Days.</p>
               </div>
             </section>
           ) : null}
