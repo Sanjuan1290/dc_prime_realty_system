@@ -16,6 +16,13 @@ const DEFAULT_DEPARTMENTS = [
 const timeInput = (value, fallback) => String(value || fallback).slice(0, 5)
 const inputClass = 'h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50'
 
+let departmentRowCounter = 0
+const withDepartmentRowId = (item = {}) => ({
+  name: item.name || '',
+  prefix: item.prefix || '',
+  _rowId: item._rowId || `department-row-${Date.now()}-${departmentRowCounter += 1}`,
+})
+
 const initialForm = (settings = {}) => ({
   scheduledTimeIn: timeInput(settings.scheduledTimeIn, '09:00'),
   scheduledTimeOut: timeInput(settings.scheduledTimeOut, '20:00'),
@@ -26,8 +33,8 @@ const initialForm = (settings = {}) => ({
   lateAfter: timeInput(settings.lateAfter, '09:00'),
   redHighlightAfter: timeInput(settings.redHighlightAfter, '09:15'),
   departmentConfigs: Array.isArray(settings.departmentConfigs) && settings.departmentConfigs.length
-    ? settings.departmentConfigs.map((item) => ({ name: item.name || '', prefix: item.prefix || '' }))
-    : DEFAULT_DEPARTMENTS,
+    ? settings.departmentConfigs.map((item) => withDepartmentRowId(item))
+    : DEFAULT_DEPARTMENTS.map((item) => withDepartmentRowId(item)),
 })
 
 const Field = ({ label, helper, children }) => (
@@ -38,10 +45,103 @@ const Field = ({ label, helper, children }) => (
   </label>
 )
 
+
+
+const AddDepartmentModal = ({ existingDepartments = [], onClose, onAdd }) => {
+  const [name, setName] = useState('')
+  const [prefix, setPrefix] = useState('')
+  const [notice, setNotice] = useState(null)
+
+  const cleanName = String(name || '').trim().replace(/\s+/g, ' ')
+  const cleanPrefix = String(prefix || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8)
+  const canSubmit = Boolean(cleanName && cleanPrefix)
+
+  const submit = (event) => {
+    event.preventDefault()
+    setNotice(null)
+
+    if (!cleanName) {
+      setNotice({ type: 'warning', message: 'Department Name is required.' })
+      return
+    }
+    if (!cleanPrefix) {
+      setNotice({ type: 'warning', message: 'Employee Code Prefix is required.' })
+      return
+    }
+
+    const duplicateName = existingDepartments.some((item) => String(item.name || '').trim().toLowerCase() === cleanName.toLowerCase())
+    if (duplicateName) {
+      setNotice({ type: 'warning', message: `Department ${cleanName} already exists.` })
+      return
+    }
+
+    const duplicatePrefix = existingDepartments.some((item) => String(item.prefix || '').trim().toUpperCase() === cleanPrefix)
+    if (duplicatePrefix) {
+      setNotice({ type: 'warning', message: `Employee Code Prefix ${cleanPrefix} is already used by another department.` })
+      return
+    }
+
+    onAdd?.(withDepartmentRowId({ name: cleanName, prefix: cleanPrefix }))
+  }
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/65 p-4 backdrop-blur-sm">
+      <form onSubmit={submit} noValidate className="w-full max-w-lg overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+        <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.15em] text-blue-700">Employee Department</p>
+            <h3 className="mt-1 text-xl font-black text-slate-950">Add Department</h3>
+            <p className="mt-1 text-sm font-semibold leading-6 text-slate-500">Add the department name and the Employee Code prefix used for human-readable codes such as IT-001.</p>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-xl p-2 text-slate-500 hover:bg-slate-100" aria-label="Close"><FiX /></button>
+        </header>
+
+        <div className="grid gap-5 p-5">
+          {notice ? <StatusAlert type={notice.type} message={notice.message} /> : null}
+
+          <Field label="Department Name *" helper="Required. Example: Information Technology">
+            <input
+              autoFocus
+              required
+              value={name}
+              onChange={(event) => { setName(event.target.value); setNotice(null) }}
+              placeholder="Information Technology"
+              className={inputClass}
+            />
+          </Field>
+
+          <Field label="Employee Code Prefix *" helper="Required · 1–8 letters/numbers · Example: IT">
+            <input
+              required
+              value={prefix}
+              onChange={(event) => { setPrefix(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8)); setNotice(null) }}
+              maxLength={8}
+              placeholder="IT"
+              className={`${inputClass} font-mono uppercase`}
+            />
+          </Field>
+
+          {canSubmit ? (
+            <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-900">
+              New Employee Codes will start at <span className="font-black">{cleanPrefix}-001</span> for <span className="font-black">{cleanName}</span>.
+            </div>
+          ) : null}
+        </div>
+
+        <footer className="flex justify-end gap-3 border-t border-slate-200 px-5 py-4">
+          <button type="button" onClick={onClose} className="h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 hover:bg-slate-50">Cancel</button>
+          <button type="submit" className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white hover:bg-blue-700"><FiPlus />Add Department</button>
+        </footer>
+      </form>
+    </div>
+  )
+}
+
 const AttendanceSettingsModal = ({ settings, onClose, onSaved }) => {
   const queryClient = useQueryClient()
   const [form, setForm] = useState(() => initialForm(settings))
   const [notice, setNotice] = useState(null)
+  const [showAddDepartment, setShowAddDepartment] = useState(false)
 
   const departmentPreview = useMemo(() => {
     const item = form.departmentConfigs.find((entry) => entry.name.trim() && entry.prefix.trim())
@@ -141,11 +241,11 @@ const AttendanceSettingsModal = ({ settings, onClose, onSaved }) => {
                 <h3 className="font-black text-slate-950">Employee Departments & Codes</h3>
                 <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">Prefixes generate human Employee Codes such as IT-001. The secure 10-digit Attendance Barcode is generated separately and does not use this prefix.</p>
               </div>
-              <button type="button" onClick={() => update('departmentConfigs', [...form.departmentConfigs, { name: '', prefix: '' }])} className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 text-xs font-black text-blue-700 hover:bg-blue-100"><FiPlus />Add Department</button>
+              <button type="button" onClick={() => { setShowAddDepartment(true); setNotice(null) }} className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 text-xs font-black text-blue-700 hover:bg-blue-100"><FiPlus />Add Department</button>
             </div>
             <div className="mt-4 grid gap-3">
               {form.departmentConfigs.map((item, index) => (
-                <div key={`${item.name || 'department'}-${index}`} className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-[1fr_180px_auto] sm:items-end">
+                <div key={item._rowId || `department-row-${index}`} className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-[1fr_180px_auto] sm:items-end">
                   <Field label="Department Name"><input value={item.name} onChange={(e) => { const next = [...form.departmentConfigs]; next[index] = { ...next[index], name: e.target.value }; update('departmentConfigs', next) }} placeholder="Information Technology" className={inputClass} /></Field>
                   <Field label="Employee Code Prefix" helper="1–8 letters/numbers"><input value={item.prefix} onChange={(e) => { const next = [...form.departmentConfigs]; next[index] = { ...next[index], prefix: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8) }; update('departmentConfigs', next) }} maxLength={8} placeholder="IT" className={`${inputClass} font-mono uppercase`} /></Field>
                   <button type="button" onClick={() => update('departmentConfigs', form.departmentConfigs.filter((_, itemIndex) => itemIndex !== index))} disabled={form.departmentConfigs.length <= 1} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 text-xs font-black text-red-700 hover:bg-red-100 disabled:opacity-40"><FiTrash2 />Remove</button>
@@ -161,6 +261,18 @@ const AttendanceSettingsModal = ({ settings, onClose, onSaved }) => {
           <button type="submit" disabled={mutation.isPending} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white disabled:opacity-50"><FiSave />{mutation.isPending ? 'Saving...' : 'Save Attendance Settings'}</button>
         </footer>
       </form>
+
+      {showAddDepartment ? (
+        <AddDepartmentModal
+          existingDepartments={form.departmentConfigs}
+          onClose={() => setShowAddDepartment(false)}
+          onAdd={(department) => {
+            update('departmentConfigs', [...form.departmentConfigs, department])
+            setShowAddDepartment(false)
+            setNotice({ type: 'success', message: `${department.name} (${department.prefix}) was added. Click Save Attendance Settings to persist this change.` })
+          }}
+        />
+      ) : null}
     </div>
   )
 }

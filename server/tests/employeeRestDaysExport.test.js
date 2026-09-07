@@ -59,6 +59,7 @@ test('attendance export uses saved settings by default but still allows temporar
   assert.match(exportModal, /Defaults come from Attendance Settings/)
   assert.match(exportModal, /regularWorkingMinutes: Math\.round\(regularWorkingHours \* 60\)/)
   assert.match(workbook, /breakOverlapSeconds/)
-  assert.match(workbook, /RD OT/)
+  assert.match(workbook, /remark: 'RD'/)
+  assert.doesNotMatch(workbook, /remark: 'RD OT'/)
   assert.match(workbook, /\[h\]:mm:ss/)
 })

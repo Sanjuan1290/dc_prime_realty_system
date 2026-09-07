@@ -89,7 +89,13 @@ test('Attendance Settings owns department Employee Code prefixes', () => {
   assert.match(controller, /validateDepartmentConfigs/);
   assert.match(modal, /Employee Departments & Codes/);
   assert.match(modal, /Employee Code Prefix/);
-  assert.match(modal, /Add Department/);
+  assert.match(modal, /AddDepartmentModal/);
+  assert.match(modal, /Department Name \*/);
+  assert.match(modal, /Employee Code Prefix \*/);
+  assert.match(modal, /already exists/);
+  assert.match(modal, /already used by another department/);
+  assert.match(modal, /item\._rowId/);
+  assert.doesNotMatch(modal, /key=\{`\$\{item\.name/);
   assert.doesNotMatch(systemForm, /Employee Attendance/);
   assert.doesNotMatch(systemForm, /Department Barcode Prefixes/);
 });

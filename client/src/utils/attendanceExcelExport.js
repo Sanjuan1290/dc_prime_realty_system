@@ -161,12 +161,6 @@ const normalizeDayType = (value) => {
   return ['regular', 'double_pay', 'regular_holiday', 'special_holiday'].includes(day) ? day : 'regular'
 }
 
-const dayTypeText = (value) => ({
-  double_pay: 'DOUBLE PAY',
-  regular_holiday: 'REGULAR HOLIDAY',
-  special_holiday: 'SPECIAL HOLIDAY',
-}[value] || 'HOLIDAY')
-
 const buildAttendanceRow = ({ employee, date, attendance, restDays, daySetting, schedule }) => {
   const dateObject = toUtcDate(date)
   const weekdayIndex = dateObject?.getUTCDay() ?? 0
@@ -179,19 +173,21 @@ const buildAttendanceRow = ({ employee, date, attendance, restDays, daySetting, 
   const isHoliday = !hasEvent && dayType !== 'regular'
   const isRestDay = !hasEvent && !isHoliday && restDays.includes(weekdayKey)
 
-  if (isPreHire) {
+  // A real attendance record is authoritative, even when it was manually added
+  // for a date earlier than the employee's stored hire date. Only show N/A when
+  // the date is pre-hire AND there is no attendance to report.
+  const timeIn = attendance?.actual_time_in || null
+  const timeOut = attendance?.actual_time_out || null
+
+  if (isPreHire && !timeIn && !timeOut) {
     return {
       weekday, date, state: 'na', remark: 'N/A', marker: 'N/A',
       scheduledDay: false, absence: false, lateSeconds: 0, overtimeSeconds: 0,
       totalWorkedSeconds: 0, regularAttendedSeconds: 0, holidayWorkedSeconds: 0,
     }
   }
-
-  const timeIn = attendance?.actual_time_in || null
-  const timeOut = attendance?.actual_time_out || null
   const timeInSeconds = secondsFromTime(timeIn)
   const timeOutSeconds = secondsFromTime(timeOut)
-  const scheduledIn = secondsFromTime(schedule.scheduledTimeIn)
   const scheduledOut = secondsFromTime(schedule.scheduledTimeOut)
   const lateAfter = secondsFromTime(schedule.lateAfter || schedule.scheduledTimeIn || '09:00:00')
   const regularWorkingSeconds = Number(schedule.regularWorkingMinutes || 660) * 60
@@ -206,9 +202,8 @@ const buildAttendanceRow = ({ employee, date, attendance, restDays, daySetting, 
   }
 
   if (isHoliday && !timeIn && !timeOut) {
-    const marker = dayTypeText(dayType)
     return {
-      weekday, date, state: 'holiday', remark: marker, marker,
+      weekday, date, state: 'holiday', remark: '',
       scheduledDay: false, absence: false, lateSeconds: 0, overtimeSeconds: 0,
       totalWorkedSeconds: 0, regularAttendedSeconds: 0, holidayWorkedSeconds: 0,
     }
@@ -244,7 +239,7 @@ const buildAttendanceRow = ({ employee, date, attendance, restDays, daySetting, 
 
   if (isRestDay) {
     return {
-      weekday, date, state: 'rest_work', remark: 'RD OT', timeIn, timeOut,
+      weekday, date, state: 'rest_work', remark: 'RD', timeIn, timeOut,
       totalWorkedSeconds,
       lateSeconds: 0,
       overtimeSeconds: totalWorkedSeconds,
@@ -257,10 +252,21 @@ const buildAttendanceRow = ({ employee, date, attendance, restDays, daySetting, 
   }
 
   if (isHoliday) {
+    const holidayLateSeconds = timeInSeconds !== null && lateAfter !== null
+      ? Math.max(timeInSeconds - lateAfter, 0)
+      : 0
+    const holidayIsLate = holidayLateSeconds > 0
+    const holidayIsRedLate = timeInSeconds !== null && redAfter !== null && timeInSeconds > redAfter
+
     return {
-      weekday, date, state: 'holiday_work', remark: dayTypeText(dayType), timeIn, timeOut,
+      weekday,
+      date,
+      state: holidayIsRedLate ? 'late_red' : 'normal',
+      remark: holidayIsLate ? 'Late' : 'On Time',
+      timeIn,
+      timeOut,
       totalWorkedSeconds,
-      lateSeconds: 0,
+      lateSeconds: holidayLateSeconds,
       overtimeSeconds: 0,
       regularWorkingSeconds: 0,
       regularAttendedSeconds: 0,
@@ -297,13 +303,12 @@ const buildAttendanceRow = ({ employee, date, attendance, restDays, daySetting, 
   const regularAttendedSeconds = Math.min(Math.max(totalWorkedSeconds - overtimeSeconds, 0), regularWorkingSeconds)
   const isLate = lateSeconds > 0
   const isRedLate = timeInSeconds !== null && redAfter !== null && timeInSeconds > redAfter
-  const incomplete = timeInSeconds === null || timeOutSeconds === null
 
   return {
     weekday,
     date,
     state: isRedLate ? 'late_red' : 'normal',
-    remark: incomplete ? 'Incomplete' : isLate ? 'Late' : 'On Time',
+    remark: isLate ? 'Late' : 'On Time',
     timeIn,
     timeOut,
     totalWorkedSeconds,
@@ -327,6 +332,10 @@ const rowPalette = (state, alternate = false) => {
 }
 
 const workbookRowValues = (row, schedule) => {
+  if (row.state === 'holiday') {
+    return [row.weekday, toUtcDate(row.date), '', '', '', '', '', '', '', '', '', '', '']
+  }
+
   if (row.marker) {
     return [
       row.weekday, toUtcDate(row.date), row.marker, row.marker, row.marker, row.marker,

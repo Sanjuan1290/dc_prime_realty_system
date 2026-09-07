@@ -1172,10 +1172,12 @@ export const createManualAttendance = async (req, res) => {
         title:
           'Added manual attendance',
         description:
-          `Manual attendance was added for ${employee.full_name}.`,
+          `Manual attendance was added for ${employee.full_name}. Reason: ${reason}`,
 
         metadata: {
           employeeId,
+          employeeName: employee.full_name,
+          employeeCode: employee.employee_code,
           attendanceDate,
           actualTimeIn,
           actualTimeOut,
@@ -1440,9 +1442,13 @@ export const correctAttendanceRecord = async (req, res) => {
           'Corrected attendance time',
 
         description:
-          `Attendance time was corrected for ${attendance.full_name}.`,
+          `Attendance time was corrected for ${attendance.full_name}. Reason: ${reason}`,
 
         metadata: {
+          employeeId: attendance.employee_id,
+          employeeName: attendance.full_name,
+          employeeCode: attendance.employee_code,
+          attendanceDate: dateOnly(attendance.attendance_date),
           previousTimeIn,
           actualTimeIn,
           previousTimeOut,
