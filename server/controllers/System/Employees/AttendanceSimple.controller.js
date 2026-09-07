@@ -1687,7 +1687,8 @@ export const updateAttendanceDay = async (req, res) => {
   }
 };
 
-const validateEventPayload = (body = {}) => {
+const validateEventPayload = (body = {}, runtime = {}) => {
+  const treatment = normalizeTreatment(body.attendance_treatment);
   const payload = {
     eventName:
       cleanText(
@@ -1710,20 +1711,17 @@ const validateEventPayload = (body = {}) => {
         body.location
       ),
 
-    treatment:
-      normalizeTreatment(
-        body.attendance_treatment
-      ),
+    treatment,
 
     timeIn:
-      normalizeClockTime(
-        body.event_time_in
-      ),
+      treatment === 'full_day'
+        ? normalizeClockTime(runtime.scheduledTimeIn, '09:00:00')
+        : normalizeClockTime(body.event_time_in),
 
     timeOut:
-      normalizeClockTime(
-        body.event_time_out
-      ),
+      treatment === 'full_day'
+        ? normalizeClockTime(runtime.scheduledTimeOut, '20:00:00')
+        : normalizeClockTime(body.event_time_out),
 
     dayType:
       normalizeDayType(
@@ -2036,9 +2034,15 @@ export const createAttendanceEvent = async (req, res) => {
   try {
     await ensureAttendanceLiteSchema(connection);
 
+    const runtime =
+      await getAttendanceRuntimeSettings(
+        connection
+      );
+
     const payload =
       validateEventPayload(
-        req.body
+        req.body,
+        runtime
       );
 
     const actorId =
@@ -2350,9 +2354,15 @@ export const updateAttendanceEvent = async (req, res) => {
         req.params.eventId
       );
 
+    const runtime =
+      await getAttendanceRuntimeSettings(
+        connection
+      );
+
     const payload =
       validateEventPayload(
-        req.body
+        req.body,
+        runtime
       );
 
     const actorId =

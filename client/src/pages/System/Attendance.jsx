@@ -665,7 +665,7 @@ const Attendance = () => {
       {showExport ? <AttendanceExportModal attendanceSettings={attendanceSettings} onClose={() => setShowExport(false)} /> : null}
       {showScanner ? <BarcodeScanner title={action === 'time_in' ? 'Scan Barcode for Time In' : 'Scan Barcode for Time Out'} onDetected={(code) => { const digits = String(code || '').replace(/\D/g, '').slice(0, 10); setShowScanner(false); setBarcode(digits); submitScan(digits) }} onClose={() => setShowScanner(false)} /> : null}
       {showCorrection ? <AttendanceCorrectionModal record={correctionRecord} employees={employees} defaultDate={selectedDate} onClose={() => setShowCorrection(false)} onSaved={(message) => { setAlert({ type: 'success', message }); invalidateAttendance() }} /> : null}
-      {showEvent ? <AttendanceEventModal event={eventRecord} employees={employees} defaultDate={selectedDate} onClose={() => setShowEvent(false)} onSaved={(message) => { setAlert({ type: 'success', message }); invalidateAttendance() }} /> : null}
+      {showEvent ? <AttendanceEventModal event={eventRecord} employees={employees} attendanceSettings={attendanceSettings} defaultDate={selectedDate} onClose={() => setShowEvent(false)} onSaved={(message) => { setAlert({ type: 'success', message }); invalidateAttendance() }} /> : null}
     </main>
   )
 }

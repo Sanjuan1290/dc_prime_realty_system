@@ -54,3 +54,10 @@ test('Attendance Settings uses a separate required Add Department modal with sta
   assert.match(modal, /_rowId/)
   assert.doesNotMatch(modal, /key=\{`\$\{item\.name/)
 })
+
+test('Excel Tardiness includes one full regular workday for every absent scheduled day', () => {
+  const workbook = read('client/src/utils/attendanceExcelExport.js')
+  assert.match(workbook, /const regularWorkingSeconds = Number\(schedule\.regularWorkingMinutes \|\| 600\) \* 60/)
+  assert.match(workbook, /row\.absence \? regularWorkingSeconds : 0/)
+  assert.match(workbook, /const requiredHours = scheduledDays \* regularWorkingSeconds/)
+})

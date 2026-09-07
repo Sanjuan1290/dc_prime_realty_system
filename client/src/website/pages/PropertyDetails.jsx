@@ -66,8 +66,8 @@ const PropertyDetails = () => {
     ['Status', project.statusLabel, FiCheckCircle],
     ['Location', project.location, FiMapPin],
     ['Property type', project.type, FiMaximize2],
-    ['Regular tripping', 'Monday, Wednesday, Friday–Sunday', FiCalendar],
-    ['Unavailable days', 'Tuesday and Thursday', FiClock],
+    ['Regular tripping', 'Monday, Tuesday, Friday–Sunday', FiCalendar],
+    ['Closed days', 'Wednesday and Thursday', FiClock],
     ['Last updated', project.lastUpdated, FiClock],
   ]
 
@@ -105,6 +105,8 @@ const PropertyDetails = () => {
         </div>
       </section>
 
+      {project.locationMap ? <section className="bg-[#f1ede3] px-5 py-14 lg:px-8 lg:py-18"><div className="mx-auto grid max-w-[1240px] items-center gap-9 lg:grid-cols-[0.72fr_1.28fr]"><div><SectionHeading eyebrow="Location & Accessibility" title={`Review nearby landmarks around ${project.name}`} description="Use the location graphic as a travel reference. Distances are estimates from the project material and current road conditions should still be confirmed before travelling." /><Link to="#book-tripping" className="website-button-dark mt-6"><FiCalendar /> Schedule a Site Visit</Link></div><div className="overflow-hidden rounded-[20px] border border-[#ded9ce] bg-white p-3"><img src={project.locationMap} alt={project.locationMapAlt} className="w-full rounded-[14px] object-contain" /></div></div></section> : null}
+
       {project.video ? <section className="bg-[#17130a] px-5 py-14 text-white lg:px-8 lg:py-18"><div className="mx-auto grid max-w-[1240px] items-center gap-9 lg:grid-cols-[0.7fr_1.3fr]"><div><SectionHeading eyebrow="Aerial project view" title="Review the location and access-road footage" description="Use the video as a visual reference, then confirm current road and site conditions during a property visit." light /><p className="mt-5 flex items-center gap-2 text-[12px] font-semibold text-[#dfbd62]"><FiPlayCircle className="h-5 w-5" /> Muted aerial preview</p></div><video controls muted playsInline poster={project.coverImage} className="aspect-video w-full rounded-[18px] border border-white/10 bg-black"><source src={project.video} type="video/mp4" /></video></div></section> : null}
 
       <section className="px-5 py-14 lg:px-8 lg:py-18">
@@ -120,7 +122,7 @@ const PropertyDetails = () => {
 
       <section className="px-5 py-14 lg:px-8 lg:py-18"><div className="mx-auto max-w-[1100px]"><VisitChecklist compact /></div></section>
 
-      <section className="bg-[#f1ede3] px-5 py-14 lg:px-8 lg:py-18"><div className="mx-auto grid max-w-[1240px] gap-9 lg:grid-cols-[0.72fr_1.28fr]"><div><SectionHeading eyebrow="Visit the project" title={`Book a tripping for ${project.name}`} description="Select your preferred schedule. Tuesday and Thursday are unavailable for regular property visits." /><Link to="/contact-us" className="website-button-light mt-6">Contact Us instead</Link></div><TrippingForm initialProject={project.slug} /></div></section>
+      <section className="bg-[#f1ede3] px-5 py-14 lg:px-8 lg:py-18"><div className="mx-auto grid max-w-[1240px] gap-9 lg:grid-cols-[0.72fr_1.28fr]"><div><SectionHeading eyebrow="Visit the project" title={`Book a tripping for ${project.name}`} description="Select your preferred schedule. Wednesday and Thursday are closed for regular office and tripping schedules." /><Link to="/contact-us" className="website-button-light mt-6">Contact Us instead</Link></div><TrippingForm initialProject={project.slug} /></div></section>
       {lightboxIndex !== null ? <GalleryLightbox images={project.gallery} initialIndex={lightboxIndex} onClose={() => setLightboxIndex(null)} /> : null}
     </>
   )

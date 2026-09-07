@@ -87,7 +87,7 @@ const Home = () => {
             <div className="mt-6 grid gap-3 sm:grid-cols-2">
               {company.values.map((value, index) => { const Icon = valueIcons[index]; return <article key={value.title} className="rounded-[14px] border border-[#e2ddd3] bg-[#faf9f6] p-4"><Icon className="h-5 w-5 text-[#806014]" /><h3 className="mt-3 text-[17px] text-[#1b1813]">{value.title}</h3><p className="mt-2 text-[12px] leading-5 text-[#6d6960]">{value.description}</p></article> })}
             </div>
-            <Link to="/about-us" className="website-button-dark mt-6">About the company <FiArrowRight /></Link>
+            <div className="mt-6 flex flex-wrap gap-2"><Link to="/about-us" className="website-button-dark">About the company <FiArrowRight /></Link><Link to="/sellers" className="website-button-light">Our Team</Link><Link to="/about-us#careers" className="website-button-light">Careers</Link></div>
           </div>
         </div>
       </section>
@@ -102,7 +102,7 @@ const Home = () => {
       <section className="bg-[#f1ede3] px-5 py-14 lg:px-8 lg:py-18">
         <div className="mx-auto grid max-w-[1240px] items-start gap-9 lg:grid-cols-[0.78fr_1.22fr]">
           <div className="lg:sticky lg:top-24">
-            <SectionHeading eyebrow="Property tripping" title="See the project area in person" description="Choose an available project and preferred schedule. Tuesday and Thursday are unavailable for regular visits." />
+            <SectionHeading eyebrow="Property tripping" title="See the project area in person" description="Choose an available project and preferred schedule. Wednesday and Thursday are closed for regular office and tripping schedules." />
             <div className="mt-6 space-y-3">
               {['Review actual road and site conditions', 'Ask about current property options', 'Compare the written quotation with project information'].map((item) => <p key={item} className="flex items-start gap-3 text-[13px] leading-6 text-[#5f5b53]"><FiCheckCircle className="mt-1 h-4 w-4 shrink-0 text-[#356447]" /> {item}</p>)}
             </div>

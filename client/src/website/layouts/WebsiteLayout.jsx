@@ -8,7 +8,14 @@ import { ProjectPreferencesProvider } from '../context/ProjectPreferencesContext
 
 const WebsiteLayout = () => {
   const location = useLocation()
-  useEffect(() => { window.scrollTo({ top: 0, behavior: 'auto' }) }, [location.pathname])
+  useEffect(() => {
+    if (location.hash) {
+      const timer = window.setTimeout(() => document.getElementById(location.hash.slice(1))?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80)
+      return () => window.clearTimeout(timer)
+    }
+    window.scrollTo({ top: 0, behavior: 'auto' })
+    return undefined
+  }, [location.pathname, location.hash])
 
   return (
     <ProjectPreferencesProvider>

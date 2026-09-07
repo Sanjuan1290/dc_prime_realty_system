@@ -22,9 +22,9 @@ const WebsiteFooter = () => (
       </div>
 
       <div>
-        <h2 className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#d4aa3b]">Company & Resources</h2>
+        <h2 className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#d4aa3b]">Company & Website</h2>
         <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 lg:grid-cols-1">
-          {flattenNavigation.filter((item) => !['Home', 'Properties', 'Contact Us', 'Luntiang Aguinaldo', 'Prime Enclave', 'General Trias'].includes(item.label)).map((item) => <Link key={item.to} to={item.to} className="text-[12px] text-[#d4cec2] transition hover:text-white">{item.label}</Link>)}
+          {flattenNavigation.filter((item) => !['Home', 'Properties', 'Contact Us', 'Luntiang Aguinaldo', 'Prime Enclave', 'General Trias'].includes(item.label)).map((item) => <Link key={`${item.label}-${item.to}`} to={item.to} className="text-[12px] text-[#d4cec2] transition hover:text-white">{item.label}</Link>)}
         </div>
       </div>
 

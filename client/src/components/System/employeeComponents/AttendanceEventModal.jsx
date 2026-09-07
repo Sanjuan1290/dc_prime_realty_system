@@ -7,21 +7,33 @@ import { useFetchPost, useFetchPut } from '../../../utils/useFetch'
 const inputClass = 'h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50'
 const PARTICIPANT_PAGE_SIZE = 10
 
-const AttendanceEventModal = ({ event, employees = [], defaultDate, onClose, onSaved }) => {
+const timeInput = (value, fallback) => {
+  const match = String(value || '').match(/^(\d{1,2}):(\d{2})/)
+  return match ? `${String(match[1]).padStart(2, '0')}:${match[2]}` : fallback
+}
+
+const AttendanceEventModal = ({ event, employees = [], attendanceSettings = {}, defaultDate, onClose, onSaved }) => {
   const isEdit = Boolean(event?.attendance_event_id)
   const queryClient = useQueryClient()
   const [notice, setNotice] = useState(null)
   const [search, setSearch] = useState('')
   const [departmentFilter, setDepartmentFilter] = useState('all')
   const [participantPage, setParticipantPage] = useState(1)
+  const scheduledTimeIn = timeInput(attendanceSettings.scheduledTimeIn, '09:00')
+  const scheduledTimeOut = timeInput(attendanceSettings.scheduledTimeOut, '20:00')
+  const initialTreatment = event?.attendance_treatment || 'record_only'
   const [form, setForm] = useState({
     event_name: event?.event_name || '',
     start_date: event?.start_date?.slice?.(0, 10) || defaultDate || '',
     end_date: event?.end_date?.slice?.(0, 10) || event?.start_date?.slice?.(0, 10) || defaultDate || '',
     location: event?.location || '',
-    attendance_treatment: event?.attendance_treatment || 'record_only',
-    event_time_in: event?.event_time_in ? String(event.event_time_in).slice(0, 5) : '',
-    event_time_out: event?.event_time_out ? String(event.event_time_out).slice(0, 5) : '',
+    attendance_treatment: initialTreatment,
+    event_time_in: initialTreatment === 'full_day'
+      ? scheduledTimeIn
+      : (event?.event_time_in ? String(event.event_time_in).slice(0, 5) : ''),
+    event_time_out: initialTreatment === 'full_day'
+      ? scheduledTimeOut
+      : (event?.event_time_out ? String(event.event_time_out).slice(0, 5) : ''),
     day_type: event?.day_type || 'regular',
     notes: event?.notes || '',
     employee_ids: event?.participants?.map((item) => Number(item.employee_id)) || [],
@@ -53,6 +65,24 @@ const AttendanceEventModal = ({ event, employees = [], defaultDate, onClose, onS
 
   const selected = new Set(form.employee_ids.map(Number))
   const update = (field, value) => { setNotice(null); setForm((current) => ({ ...current, [field]: value })) }
+  const updateAttendanceTreatment = (treatment) => {
+    setNotice(null)
+    setForm((current) => ({
+      ...current,
+      attendance_treatment: treatment,
+      ...(treatment === 'full_day'
+        ? { event_time_in: scheduledTimeIn, event_time_out: scheduledTimeOut }
+        : {}),
+    }))
+  }
+
+  useEffect(() => {
+    if (form.attendance_treatment !== 'full_day') return
+    setForm((current) => {
+      if (current.event_time_in === scheduledTimeIn && current.event_time_out === scheduledTimeOut) return current
+      return { ...current, event_time_in: scheduledTimeIn, event_time_out: scheduledTimeOut }
+    })
+  }, [form.attendance_treatment, scheduledTimeIn, scheduledTimeOut])
   const toggleEmployee = (employeeId) => setForm((current) => ({
     ...current,
     employee_ids: current.employee_ids.includes(employeeId)
@@ -140,14 +170,16 @@ const AttendanceEventModal = ({ event, employees = [], defaultDate, onClose, onS
 
             <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                <label className="grid gap-2"><span className="text-sm font-black text-slate-700">Attendance Treatment</span><select className={inputClass} value={form.attendance_treatment} onChange={(e) => update('attendance_treatment', e.target.value)}><option value="record_only">Attendance Record Only</option><option value="full_day">Full Day Present</option><option value="custom_time">Custom Time</option></select></label>
+                <label className="grid gap-2"><span className="text-sm font-black text-slate-700">Attendance Treatment</span><select className={inputClass} value={form.attendance_treatment} onChange={(e) => updateAttendanceTreatment(e.target.value)}><option value="record_only">Attendance Record Only</option><option value="full_day">Full Day Present</option><option value="custom_time">Custom Time</option></select></label>
                 <label className="grid gap-2"><span className="text-sm font-black text-slate-700">Pay / Holiday Classification</span><select className={inputClass} value={form.day_type} onChange={(e) => update('day_type', e.target.value)}><option value="regular">Regular Day</option><option value="double_pay">Double Pay Day</option><option value="regular_holiday">Regular Holiday</option><option value="special_holiday">Special Holiday</option></select></label>
                 {form.attendance_treatment !== 'record_only' ? <>
-                  <label className="grid gap-2"><span className="text-sm font-black text-slate-700">Event Time In *</span><input type="time" className={inputClass} value={form.event_time_in} onChange={(e) => update('event_time_in', e.target.value)} /></label>
-                  <label className="grid gap-2"><span className="text-sm font-black text-slate-700">Event Time Out *</span><input type="time" className={inputClass} value={form.event_time_out} onChange={(e) => update('event_time_out', e.target.value)} /></label>
+                  <label className="grid gap-2"><span className="text-sm font-black text-slate-700">Event Time In *</span><input type="time" disabled={form.attendance_treatment === 'full_day'} className={`${inputClass} disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-600`} value={form.event_time_in} onChange={(e) => update('event_time_in', e.target.value)} /></label>
+                  <label className="grid gap-2"><span className="text-sm font-black text-slate-700">Event Time Out *</span><input type="time" disabled={form.attendance_treatment === 'full_day'} className={`${inputClass} disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-600`} value={form.event_time_out} onChange={(e) => update('event_time_out', e.target.value)} /></label>
                 </> : null}
               </div>
-              <p className="mt-3 text-xs font-semibold text-slate-500">Attendance Record Only marks participants as present without inventing exact arrival and departure times.</p>
+              <p className="mt-3 text-xs font-semibold text-slate-500">{form.attendance_treatment === 'full_day'
+                ? `Full Day Present automatically uses the Attendance Settings schedule (${scheduledTimeIn} to ${scheduledTimeOut}).`
+                : 'Attendance Record Only marks participants as present without inventing exact arrival and departure times.'}</p>
             </section>
 
             <section className="overflow-hidden rounded-2xl border border-slate-200">

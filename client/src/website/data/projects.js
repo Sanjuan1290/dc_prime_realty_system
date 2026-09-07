@@ -1,3 +1,5 @@
+import luntiangLocationMap from '../assets/luntiang-location-map.png'
+
 export const projects = [
   {
     slug: 'luntiang-aguinaldo-bailen',
@@ -10,6 +12,8 @@ export const projects = [
     bookingEnabled: true,
     logo: '/website/images/project-logos/luntiang-aguinaldo.svg',
     coverImage: '/website/images/bailen/luntiang-aguinaldo-cover.jpg',
+    locationMap: luntiangLocationMap,
+    locationMapAlt: 'Luntiang Aguinaldo location map with estimated distances to nearby landmarks',
     lastUpdated: 'July 2026',
     visitNote: 'Wear comfortable footwear and confirm the meeting point before travelling.',
     overview: 'A land project in Bailen, Cavite with open surroundings, natural scenery and lot options for buyers planning a future home or long-term property investment.',

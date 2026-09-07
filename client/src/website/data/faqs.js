@@ -5,7 +5,7 @@ export const faqs = [
   },
   {
     question: 'Which days are unavailable for regular tripping?',
-    answer: 'Tuesday and Thursday are unavailable for regular property tripping. Select another date or contact the office for assistance.',
+    answer: 'Wednesday and Thursday are unavailable for regular property tripping. Select another date or contact the office for assistance.',
   },
   {
     question: 'Which projects are currently available?',

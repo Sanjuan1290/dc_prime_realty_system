@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { projects } from '../data/projects'
 import { blogs } from '../data/blogs'
 import { faqs } from '../data/faqs'
+import { flattenNavigation } from '../data/company'
 
 const SiteSearch = ({ open, onClose }) => {
   const [query, setQuery] = useState('')
@@ -13,7 +14,8 @@ const SiteSearch = ({ open, onClose }) => {
     const projectResults = projects.filter((item) => [item.name, item.location, item.overview, item.type].join(' ').toLowerCase().includes(term)).map((item) => ({ type: 'Project', title: item.name, description: item.location, to: `/properties/${item.slug}`, Icon: FiMapPin }))
     const blogResults = blogs.filter((item) => [item.title, item.excerpt, item.category].join(' ').toLowerCase().includes(term)).map((item) => ({ type: 'Article', title: item.title, description: item.category, to: `/blog/${item.slug}`, Icon: FiBookOpen }))
     const faqResults = faqs.filter((item) => [item.question, item.answer].join(' ').toLowerCase().includes(term)).map((item, index) => ({ type: 'FAQ', title: item.question, description: item.answer, to: `/faqs#faq-${index + 1}`, Icon: FiHelpCircle }))
-    return [...projectResults, ...blogResults, ...faqResults].slice(0, 10)
+    const navigationResults = flattenNavigation.filter((item) => [item.label, item.description].filter(Boolean).join(' ').toLowerCase().includes(term)).map((item) => ({ type: 'Page', title: item.label, description: item.description || 'D&C Prime Realty website page', to: item.to, Icon: FiSearch }))
+    return [...projectResults, ...navigationResults, ...blogResults, ...faqResults].filter((item, index, all) => all.findIndex((candidate) => candidate.to === item.to && candidate.title === item.title) === index).slice(0, 10)
   }, [query])
 
   useEffect(() => {

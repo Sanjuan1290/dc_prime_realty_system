@@ -75,7 +75,7 @@ export const blogs = [
         heading: 'Compare access during an actual visit',
         paragraphs: [
           'Road access can change how often you can visit or use the property. Check the route during the same type of weather and travel time you expect after purchase.',
-          'Regular property tripping is available on selected days, excluding Tuesday and Thursday. Contact the office if you need help arranging another schedule.',
+          'Regular property tripping is available on selected days, excluding Wednesday and Thursday. Contact the office if you need help arranging another schedule.',
         ],
       },
     ],
@@ -98,7 +98,7 @@ export const blogs = [
         heading: 'Confirm the meeting details',
         paragraphs: [
           'Confirm the meeting point, date, time and assigned property guide before you travel. Ask about the expected road condition and the type of vehicle or footwear that may be suitable for the site.',
-          'Tuesday and Thursday are unavailable for regular tripping. Choose another date or contact the office directly for assistance.',
+          'Wednesday and Thursday are unavailable for regular tripping. Choose another date or contact the office directly for assistance.',
         ],
       },
       {
