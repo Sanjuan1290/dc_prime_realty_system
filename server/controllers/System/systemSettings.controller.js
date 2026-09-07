@@ -73,7 +73,7 @@ const systemSettingsTableSql = `
     attendance_scheduled_time_out TIME NOT NULL DEFAULT '20:00:00',
     attendance_break_start TIME NOT NULL DEFAULT '12:00:00',
     attendance_break_minutes SMALLINT UNSIGNED NOT NULL DEFAULT 60,
-    attendance_regular_work_minutes SMALLINT UNSIGNED NOT NULL DEFAULT 660,
+    attendance_regular_work_minutes SMALLINT UNSIGNED NOT NULL DEFAULT 600,
     attendance_late_after TIME NOT NULL DEFAULT '09:00:00',
     attendance_red_highlight_after TIME NOT NULL DEFAULT '09:15:00',
     employee_departments_json TEXT NULL,
@@ -96,7 +96,7 @@ const ensureSystemSettingsTable = async (connection = db) => {
   await connection.query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS attendance_scheduled_time_out TIME NOT NULL DEFAULT '20:00:00' AFTER attendance_scheduled_time_in`);
   await connection.query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS attendance_break_start TIME NOT NULL DEFAULT '12:00:00' AFTER attendance_scheduled_time_out`);
   await connection.query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS attendance_break_minutes SMALLINT UNSIGNED NOT NULL DEFAULT 60 AFTER attendance_break_start`);
-  await connection.query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS attendance_regular_work_minutes SMALLINT UNSIGNED NOT NULL DEFAULT 660 AFTER attendance_break_minutes`);
+  await connection.query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS attendance_regular_work_minutes SMALLINT UNSIGNED NOT NULL DEFAULT 600 AFTER attendance_break_minutes`);
   await connection.query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS attendance_late_after TIME NOT NULL DEFAULT '09:00:00' AFTER attendance_regular_work_minutes`);
   await connection.query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS attendance_red_highlight_after TIME NOT NULL DEFAULT '09:15:00' AFTER attendance_late_after`);
   await connection.query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS employee_departments_json TEXT NULL AFTER attendance_red_highlight_after`);

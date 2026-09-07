@@ -27,7 +27,7 @@ const initialForm = (settings = {}) => ({
   scheduledTimeIn: timeInput(settings.scheduledTimeIn, '09:00'),
   scheduledTimeOut: timeInput(settings.scheduledTimeOut, '20:00'),
   automaticTimeOut: timeInput(settings.automaticTimeOut, '20:00'),
-  regularWorkingHours: String((Number(settings.regularWorkingMinutes || 660) / 60)),
+  regularWorkingHours: String((Number(settings.regularWorkingMinutes || 600) / 60)),
   breakStart: timeInput(settings.breakStart, '12:00'),
   breakMinutes: String(settings.breakMinutes ?? 60),
   lateAfter: timeInput(settings.lateAfter, '09:00'),

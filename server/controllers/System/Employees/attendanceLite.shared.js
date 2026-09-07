@@ -7,7 +7,7 @@ export const DEFAULT_SCHEDULED_TIME_IN = '09:00:00';
 export const DEFAULT_SCHEDULED_TIME_OUT = '20:00:00';
 export const DEFAULT_BREAK_START = '12:00:00';
 export const DEFAULT_BREAK_MINUTES = 60;
-export const DEFAULT_REGULAR_WORK_MINUTES = 11 * 60;
+export const DEFAULT_REGULAR_WORK_MINUTES = 10 * 60;
 export const DEFAULT_LATE_AFTER = '09:00:00';
 export const DEFAULT_RED_HIGHLIGHT_AFTER = '09:15:00';
 
@@ -58,7 +58,7 @@ const systemSettingsColumns = async (connection) => {
     ['attendance_scheduled_time_out', `TIME NOT NULL DEFAULT '20:00:00' AFTER attendance_scheduled_time_in`],
     ['attendance_break_start', `TIME NOT NULL DEFAULT '12:00:00' AFTER attendance_scheduled_time_out`],
     ['attendance_break_minutes', `SMALLINT UNSIGNED NOT NULL DEFAULT 60 AFTER attendance_break_start`],
-    ['attendance_regular_work_minutes', `SMALLINT UNSIGNED NOT NULL DEFAULT 660 AFTER attendance_break_minutes`],
+    ['attendance_regular_work_minutes', `SMALLINT UNSIGNED NOT NULL DEFAULT 600 AFTER attendance_break_minutes`],
     ['attendance_late_after', `TIME NOT NULL DEFAULT '09:00:00' AFTER attendance_regular_work_minutes`],
     ['attendance_red_highlight_after', `TIME NOT NULL DEFAULT '09:15:00' AFTER attendance_late_after`],
     ['employee_departments_json', `TEXT NULL AFTER attendance_red_highlight_after`],
@@ -94,7 +94,7 @@ export const ensureAttendanceLiteSchema = async (connection) => {
       attendance_scheduled_time_out TIME NOT NULL DEFAULT '20:00:00',
       attendance_break_start TIME NOT NULL DEFAULT '12:00:00',
       attendance_break_minutes SMALLINT UNSIGNED NOT NULL DEFAULT 60,
-      attendance_regular_work_minutes SMALLINT UNSIGNED NOT NULL DEFAULT 660,
+      attendance_regular_work_minutes SMALLINT UNSIGNED NOT NULL DEFAULT 600,
       attendance_late_after TIME NOT NULL DEFAULT '09:00:00',
       attendance_red_highlight_after TIME NOT NULL DEFAULT '09:15:00',
       employee_departments_json TEXT NULL,

@@ -190,7 +190,7 @@ const buildAttendanceRow = ({ employee, date, attendance, restDays, daySetting, 
   const timeOutSeconds = secondsFromTime(timeOut)
   const scheduledOut = secondsFromTime(schedule.scheduledTimeOut)
   const lateAfter = secondsFromTime(schedule.lateAfter || schedule.scheduledTimeIn || '09:00:00')
-  const regularWorkingSeconds = Number(schedule.regularWorkingMinutes || 660) * 60
+  const regularWorkingSeconds = Number(schedule.regularWorkingMinutes || 600) * 60
   const redAfter = secondsFromTime(schedule.redHighlightAfter || '09:15:00')
 
   if (isRestDay && !timeIn && !timeOut) {
@@ -343,7 +343,7 @@ const workbookRowValues = (row, schedule) => {
     ]
   }
 
-  const regularWorkingSeconds = row.regularWorkingSeconds ?? Number(schedule.regularWorkingMinutes || 660) * 60
+  const regularWorkingSeconds = row.regularWorkingSeconds ?? Number(schedule.regularWorkingMinutes || 600) * 60
   return [
     row.weekday,
     toUtcDate(row.date),
@@ -466,7 +466,7 @@ const buildEmployeeSheet = (employee, data, cutoffLabel) => {
   const overtime = rows.reduce((sum, row) => sum + Number(row.overtimeSeconds || 0), 0)
   const regularAttended = rows.reduce((sum, row) => sum + Number(row.regularAttendedSeconds || 0), 0)
   const holidayWorked = rows.reduce((sum, row) => sum + Number(row.holidayWorkedSeconds || 0), 0)
-  const requiredHours = scheduledDays * Number(schedule.regularWorkingMinutes || 660) * 60
+  const requiredHours = scheduledDays * Number(schedule.regularWorkingMinutes || 600) * 60
 
   setCell(sheet, summaryStart - 1, 0, 'No. of Days', textStyle())
   setCell(sheet, summaryStart - 1, 1, scheduledDays, textStyle(COLORS.black, true, 'left'))

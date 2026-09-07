@@ -11,7 +11,7 @@ const getExportRulesFromSettings = (settings = {}) => ({
   scheduledTimeOut: String(settings.scheduledTimeOut || '20:00').slice(0, 5),
   breakStart: String(settings.breakStart || '12:00').slice(0, 5),
   breakMinutes: String(settings.breakMinutes ?? 60),
-  regularWorkingHours: String(Number(settings.regularWorkingMinutes || 660) / 60),
+  regularWorkingHours: String(Number(settings.regularWorkingMinutes || 600) / 60),
   lateAfter: String(settings.lateAfter || '09:00').slice(0, 5),
   redHighlightAfter: String(settings.redHighlightAfter || '09:15').slice(0, 5),
 })
