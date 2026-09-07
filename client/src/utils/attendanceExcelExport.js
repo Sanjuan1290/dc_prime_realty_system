@@ -461,12 +461,16 @@ const buildEmployeeSheet = (employee, data, cutoffLabel) => {
 
   const scheduledDays = rows.filter((row) => row.scheduledDay).length
   const absenceCount = rows.filter((row) => row.absence).length
+  const regularWorkingSeconds = Number(schedule.regularWorkingMinutes || 600) * 60
   const totalWorked = rows.reduce((sum, row) => sum + Number(row.totalWorkedSeconds || 0), 0)
-  const tardiness = rows.reduce((sum, row) => sum + Number(row.lateSeconds || 0), 0)
+  const tardiness = rows.reduce(
+    (sum, row) => sum + Number(row.lateSeconds || 0) + (row.absence ? regularWorkingSeconds : 0),
+    0,
+  )
   const overtime = rows.reduce((sum, row) => sum + Number(row.overtimeSeconds || 0), 0)
   const regularAttended = rows.reduce((sum, row) => sum + Number(row.regularAttendedSeconds || 0), 0)
   const holidayWorked = rows.reduce((sum, row) => sum + Number(row.holidayWorkedSeconds || 0), 0)
-  const requiredHours = scheduledDays * Number(schedule.regularWorkingMinutes || 600) * 60
+  const requiredHours = scheduledDays * regularWorkingSeconds
 
   setCell(sheet, summaryStart - 1, 0, 'No. of Days', textStyle())
   setCell(sheet, summaryStart - 1, 1, scheduledDays, textStyle(COLORS.black, true, 'left'))
