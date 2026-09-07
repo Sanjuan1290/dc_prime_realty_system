@@ -6,14 +6,14 @@ import { downloadAttendanceWorkbook } from '../../../utils/attendanceExcelExport
 
 const inputClass = 'h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50'
 
-const DEFAULT_EXPORT_RULES = Object.freeze({
-  scheduledTimeIn: '09:00',
-  scheduledTimeOut: '20:00',
-  breakStart: '12:00',
-  breakMinutes: '60',
-  regularWorkingHours: '11',
-  lateAfter: '09:00',
-  redHighlightAfter: '09:15',
+const getExportRulesFromSettings = (settings = {}) => ({
+  scheduledTimeIn: String(settings.scheduledTimeIn || '09:00').slice(0, 5),
+  scheduledTimeOut: String(settings.scheduledTimeOut || '20:00').slice(0, 5),
+  breakStart: String(settings.breakStart || '12:00').slice(0, 5),
+  breakMinutes: String(settings.breakMinutes ?? 60),
+  regularWorkingHours: String(Number(settings.regularWorkingMinutes || 660) / 60),
+  lateAfter: String(settings.lateAfter || '09:00').slice(0, 5),
+  redHighlightAfter: String(settings.redHighlightAfter || '09:15').slice(0, 5),
 })
 
 const withSeconds = (value) => {
@@ -72,7 +72,7 @@ const dateRangeForMode = ({ month, mode, customFrom, customTo }) => {
   }
 }
 
-const AttendanceExportModal = ({ onClose }) => {
+const AttendanceExportModal = ({ onClose, attendanceSettings = {} }) => {
   const initialMonth = getManilaMonth()
   const [month, setMonth] = useState(initialMonth)
   const [mode, setMode] = useState('first')
@@ -80,7 +80,9 @@ const AttendanceExportModal = ({ onClose }) => {
   const [customTo, setCustomTo] = useState(`${initialMonth}-15`)
   const [notice, setNotice] = useState(null)
   const [isExporting, setIsExporting] = useState(false)
-  const [rules, setRules] = useState(DEFAULT_EXPORT_RULES)
+  const attendanceDefaults = useMemo(() => getExportRulesFromSettings(attendanceSettings), [attendanceSettings])
+  const [rules, setRules] = useState(() => getExportRulesFromSettings(attendanceSettings))
+
 
   const range = useMemo(
     () => dateRangeForMode({ month, mode, customFrom, customTo }),
@@ -197,9 +199,9 @@ const AttendanceExportModal = ({ onClose }) => {
             <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <p className="text-sm font-black text-emerald-950">Excel rules</p>
-                <p className="mt-1 text-xs font-semibold leading-5 text-emerald-800">Editable for this export only. These values do not change the database or Attendance settings.</p>
+                <p className="mt-1 text-xs font-semibold leading-5 text-emerald-800">Defaults come from Attendance Settings. You can temporarily override them for this export without changing the saved Attendance Settings.</p>
               </div>
-              <button type="button" onClick={() => { setRules(DEFAULT_EXPORT_RULES); setNotice(null) }} className="mt-2 text-xs font-black text-emerald-700 underline decoration-emerald-300 underline-offset-4 sm:mt-0">Reset defaults</button>
+              <button type="button" onClick={() => { setRules(attendanceDefaults); setNotice(null) }} className="mt-2 text-xs font-black text-emerald-700 underline decoration-emerald-300 underline-offset-4 sm:mt-0">Reset to Attendance Settings</button>
             </div>
 
             <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

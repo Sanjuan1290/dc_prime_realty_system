@@ -36,4 +36,3 @@ test('new listing and existing listing document editors both receive template da
   assert.match(documents, /documentTemplates=\{documentTemplates\}/);
   assert.match(documents, /templateDocuments=\{templateDocuments\}/);
 });
-

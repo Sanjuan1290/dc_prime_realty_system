@@ -834,5 +834,3 @@ const AddSOAPaymentModal = ({
 }
 
 export default AddSOAPaymentModal
-
-

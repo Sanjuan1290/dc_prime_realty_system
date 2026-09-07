@@ -45,4 +45,3 @@ export const useProjectPreferences = () => {
   if (!context) throw new Error('useProjectPreferences must be used inside ProjectPreferencesProvider')
   return context
 }
-

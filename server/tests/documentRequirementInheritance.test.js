@@ -49,4 +49,3 @@ test('listing document picker inherits the Document Library requirement instead 
   assert.match(editListing, /resolveDocumentRequirement\(document\)/);
   assert.match(reserveListing, /resolveDocumentRequirement\(document\)/);
 });
-

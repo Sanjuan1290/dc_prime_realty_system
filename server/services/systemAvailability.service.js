@@ -35,4 +35,3 @@ export const getSystemAvailability = async ({ force = false } = {}) => {
 
   return cachedValue
 }
-

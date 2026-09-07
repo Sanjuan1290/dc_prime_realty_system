@@ -2349,6 +2349,3 @@ export const restorePaymentSchedulePenaltyWaiver = async (req, res) => {
     connection.release();
   }
 };
-
-
-

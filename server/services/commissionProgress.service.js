@@ -290,5 +290,3 @@ export const syncCommissionProgressForListing = async (connection, listing = {})
     ...progress,
   };
 };
-
-

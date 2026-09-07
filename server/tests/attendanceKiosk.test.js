@@ -15,7 +15,10 @@ test('public /attendance route renders the attendance-only kiosk', () => {
   assert.match(kiosk, /attendance-kiosk\/unlock/)
   assert.match(kiosk, /attendance-kiosk\/scan/)
   assert.match(kiosk, /Scan with Camera/)
-  assert.match(kiosk, /No employee management, calendar, reports, or admin controls/)
+  assert.doesNotMatch(kiosk, /Attendance-only station/)
+  assert.match(kiosk, /showTemporaryScanResult/)
+  assert.match(kiosk, /duration = 5000/)
+  assert.match(kiosk, /10-digit attendance barcode/)
 })
 
 test('attendance kiosk API is PIN gated and separate from admin attendance routes', () => {
@@ -41,13 +44,15 @@ test('company event participants are paginated at ten employees per page', () =>
   assert.match(modal, /Showing/)
 })
 
-test('employee barcode preview uses the compact right-side layout', () => {
+test('employee modal separates human Employee Code from secure Attendance Barcode', () => {
   const modal = read('client/src/components/System/employeeComponents/EmployeeModal.jsx')
-  assert.match(modal, /lg:grid-cols-\[1\.05fr_\.95fr\]/)
-  assert.match(modal, /<Code128Barcode compact/)
-  assert.doesNotMatch(modal, /Barcode scanning is only used on the Attendance page/)
+  const barcode = read('client/src/components/System/employeeComponents/Code128Barcode.jsx')
+  assert.match(modal, /Employee Code/)
+  assert.match(modal, /Attendance Barcode/)
+  assert.match(modal, /Regenerate Attendance Barcode/)
+  assert.match(barcode, /employeeCode/)
+  assert.match(barcode, /Print Attendance Barcode/)
 })
-
 
 test('duplicate attendance scans use friendly Already Timed In / Already Timed Out messages', () => {
   const controller = read('server/controllers/System/Employees/AttendanceSimple.controller.js')

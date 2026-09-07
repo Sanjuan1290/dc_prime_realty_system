@@ -39,3 +39,4 @@ The client Final Double-Check refactor does not require a database migration.
 
 Apply this SQL migration before running `npm run migrate:cloudinary-documents`. The Cloudinary script is dry-run by default; only `--apply` changes remote assets/database file metadata.
 
+- `20260907_attendance_settings_and_secure_barcodes.sql` — persistent Attendance Settings and separate secure 10-digit Attendance Barcodes.

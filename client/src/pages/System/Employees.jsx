@@ -56,7 +56,7 @@ const Employees = () => {
   return (
     <main className="flex flex-col gap-6">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-        <PageHeader title="Employees" description="Manage employees with department-generated attendance barcodes and printable employee codes." icon={FiUsers} />
+        <PageHeader title="Employees" description="Manage human Employee Codes, secure 10-digit Attendance Barcodes, departments, Rest Days, and employee status." icon={FiUsers} />
         <div className="flex gap-2">
           <button type="button" onClick={() => employeesQuery.refetch()} className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700"><FiRefreshCw className={employeesQuery.isFetching ? 'animate-spin' : ''} />Refresh</button>
           {canManage ? <button type="button" onClick={openAdd} className="inline-flex h-11 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white hover:bg-blue-700"><FiPlus />Add Employee</button> : null}
@@ -72,21 +72,22 @@ const Employees = () => {
 
       <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
         <div className="grid gap-3 border-b border-slate-200 p-4 md:grid-cols-4">
-          <label className="relative md:col-span-1"><FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1) }} placeholder="Search name or barcode..." className="h-10 w-full rounded-xl border border-slate-300 pl-10 pr-3 text-sm font-semibold" /></label>
+          <label className="relative md:col-span-1"><FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1) }} placeholder="Search name, employee code, or attendance barcode..." className="h-10 w-full rounded-xl border border-slate-300 pl-10 pr-3 text-sm font-semibold" /></label>
           <select value={department} onChange={(e) => { setDepartment(e.target.value); setPage(1) }} className="h-10 rounded-xl border border-slate-300 px-3 text-sm font-semibold"><option value="all">All Departments</option>{departments.map((item) => <option key={item} value={item}>{item}</option>)}</select>
           <select value={employmentType} onChange={(e) => { setEmploymentType(e.target.value); setPage(1) }} className="h-10 rounded-xl border border-slate-300 px-3 text-sm font-semibold"><option value="all">All Employment Types</option><option value="regular">Full Time</option><option value="probationary">Probationary</option><option value="part_time">Part Time</option></select>
           <select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1) }} className="h-10 rounded-xl border border-slate-300 px-3 text-sm font-semibold"><option value="all">All Statuses</option><option value="active">Active</option><option value="inactive">Inactive</option></select>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-[1050px] w-full text-sm">
-            <thead className="border-b border-slate-200 bg-slate-50"><tr>{['Employee', 'Barcode Code', 'Department', 'Employment Type', 'Rest Days', 'Status', 'Actions'].map((head) => <th key={head} className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">{head}</th>)}</tr></thead>
+          <table className="min-w-[1220px] w-full text-sm">
+            <thead className="border-b border-slate-200 bg-slate-50"><tr>{['Employee', 'Employee Code', 'Attendance Barcode', 'Department', 'Employment Type', 'Rest Days', 'Status', 'Actions'].map((head) => <th key={head} className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">{head}</th>)}</tr></thead>
             <tbody className="divide-y divide-slate-100">
-              {employeesQuery.isLoading ? <tr><td colSpan={7} className="px-6 py-16 text-center font-semibold text-slate-500">Loading employees...</td></tr> : null}
-              {!employeesQuery.isLoading && rows.length === 0 ? <tr><td colSpan={7} className="px-6 py-16 text-center"><p className="font-black text-slate-800">No employees yet</p><p className="mt-1 text-sm font-semibold text-slate-500">Add the first employee, select a department, and the system will generate the next available barcode automatically.</p></td></tr> : null}
+              {employeesQuery.isLoading ? <tr><td colSpan={8} className="px-6 py-16 text-center font-semibold text-slate-500">Loading employees...</td></tr> : null}
+              {!employeesQuery.isLoading && rows.length === 0 ? <tr><td colSpan={8} className="px-6 py-16 text-center"><p className="font-black text-slate-800">No employees yet</p><p className="mt-1 text-sm font-semibold text-slate-500">Add the first employee. The system generates a department-based Employee Code and a separate secure 10-digit Attendance Barcode.</p></td></tr> : null}
               {rows.map((employee) => <tr key={employee.employee_id} className="hover:bg-slate-50">
                 <td className="px-4 py-4"><p className="font-black text-slate-950">{employee.full_name}</p></td>
                 <td className="px-4 py-4 font-mono font-black text-blue-700">{employee.employee_code}</td>
+                <td className="px-4 py-4"><span className="rounded-lg bg-slate-950 px-2.5 py-1.5 font-mono text-xs font-black tracking-[0.12em] text-white">{employee.barcode_code || 'Not generated'}</span></td>
                 <td className="px-4 py-4 font-semibold text-slate-700">{employee.department}</td>
                 <td className="px-4 py-4 text-slate-600">{typeLabel(employee.employment_type)}</td>
                 <td className="px-4 py-4"><span className={`inline-flex rounded-full px-3 py-1 text-xs font-black ring-1 ${employee.rest_days?.length ? 'bg-blue-50 text-blue-700 ring-blue-200' : 'bg-amber-50 text-amber-700 ring-amber-200'}`}>{restDayLabel(employee.rest_days)}</span></td>

@@ -126,4 +126,3 @@ WHERE soa_starting_date IS NOT NULL
   AND soa_starting_date < CURRENT_DATE();
 
 DROP PROCEDURE IF EXISTS migration_20260724_add_column_if_missing;
-

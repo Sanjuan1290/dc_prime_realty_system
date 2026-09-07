@@ -12,8 +12,8 @@ import {
   FiLogIn,
   FiLogOut,
   FiPlus,
-  FiRefreshCw,
   FiSearch,
+  FiSettings,
   FiTrash2,
   FiUsers,
 } from 'react-icons/fi'
@@ -22,6 +22,7 @@ import StatusAlert from '../../components/Shared/StatusAlert'
 import AttendanceCorrectionModal from '../../components/System/employeeComponents/AttendanceCorrectionModal'
 import AttendanceEventModal from '../../components/System/employeeComponents/AttendanceEventModal'
 import AttendanceExportModal from '../../components/System/employeeComponents/AttendanceExportModal'
+import AttendanceSettingsModal from '../../components/System/employeeComponents/AttendanceSettingsModal'
 import BarcodeScanner from '../../components/System/employeeComponents/BarcodeScanner'
 import useCurrentUser from '../../utils/useCurrentUser'
 import { useFetch, useFetchDelete, useFetchPost, useFetchPut } from '../../utils/useFetch'
@@ -50,7 +51,8 @@ const getScanProblem = (error) => {
   if (code === 'ALREADY_TIMED_IN') return { type: 'warning', title: 'Already Timed In', message: error?.message }
   if (code === 'ALREADY_TIMED_OUT') return { type: 'warning', title: 'Already Timed Out', message: error?.message }
   if (code === 'TIME_IN_REQUIRED') return { type: 'warning', title: 'Time In Required', message: error?.message }
-  if (Number(error?.status) === 404) return { type: 'error', title: 'Employee Not Found', message: error?.message || 'No active employee matches that barcode code.' }
+  if (code === 'INVALID_ATTENDANCE_BARCODE') return { type: 'error', title: 'Invalid Attendance Barcode', message: error?.message || 'Scan the employee attendance barcode again.' }
+  if (Number(error?.status) === 404) return { type: 'error', title: 'Employee Not Found', message: error?.message || 'No active employee matches that attendance barcode.' }
   return { type: 'error', title: 'Unable to Record Attendance', message: error?.message || 'Attendance scan failed.' }
 }
 
@@ -156,6 +158,7 @@ const Attendance = () => {
   const [eventRecord, setEventRecord] = useState(null)
   const [showEvent, setShowEvent] = useState(false)
   const [showExport, setShowExport] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
   const [dayType, setDayType] = useState('regular')
   const [dayNotes, setDayNotes] = useState('')
   const [now, setNow] = useState(new Date())
@@ -175,6 +178,7 @@ const Attendance = () => {
   const employeesQuery = useQuery({ queryKey: ['employees', 'attendance-options'], queryFn: () => useFetch('/employees?status=active&limit=100') })
   const eventsQuery = useQuery({ queryKey: ['attendance-events', selectedDate], queryFn: () => useFetch(`/attendance/events?dateFrom=${selectedDate}&dateTo=${selectedDate}`) })
   const calendarQuery = useQuery({ queryKey: ['attendance-calendar', calendarMonth], queryFn: () => useFetch(`/attendance/calendar?month=${calendarMonth}`), keepPreviousData: true })
+  const settingsQuery = useQuery({ queryKey: ['attendance-settings'], queryFn: () => useFetch('/attendance/settings') })
 
   const rows = attendanceQuery.data?.data || []
   const summary = attendanceQuery.data?.summary || { present: 0, inOffice: 0, timedOut: 0, eventParticipants: 0, automaticTimeOuts: 0 }
@@ -198,7 +202,8 @@ const Attendance = () => {
     })
   }, [detailedEvents, selectedCalendarEvents])
   const hasCompanyEvent = selectedCalendarEvents.length > 0 || detailedEvents.length > 0
-  const defaultTimeOut = attendanceQuery.data?.settings?.defaultTimeOut || '20:00:00'
+  const attendanceSettings = settingsQuery.data?.data || {}
+  const defaultTimeOut = attendanceSettings.automaticTimeOut || attendanceQuery.data?.settings?.defaultTimeOut || '20:00:00'
 
   useEffect(() => {
     const day = attendanceQuery.data?.day
@@ -274,7 +279,8 @@ const Attendance = () => {
 
   const submitScan = (explicitCode = '') => {
     const code = String(explicitCode || barcode).trim()
-    if (!code) { setScanResult({ type: 'error', message: 'Scan or enter the employee barcode code first.' }); barcodeInputRef.current?.focus(); return }
+    if (!code) { setScanResult({ type: 'error', message: 'Scan or enter the 10-digit attendance barcode first.' }); barcodeInputRef.current?.focus(); return }
+    if (!/^\d{10}$/.test(code)) { setScanResult({ type: 'error', title: 'Invalid Attendance Barcode', message: 'Attendance barcodes contain exactly 10 digits. Scan the printed barcode again.' }); barcodeInputRef.current?.focus(); return }
     if (scanMutation.isPending) return
     scanMutation.mutate({ code })
   }
@@ -350,8 +356,8 @@ const Attendance = () => {
           <a href="/attendance" className="inline-flex h-11 items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-sm font-black text-emerald-700 transition hover:bg-emerald-100">
             <FiExternalLink />Open Attendance Kiosk
           </a>
+          {canManage ? <button type="button" onClick={() => setShowSettings(true)} className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"><FiSettings />Attendance Settings</button> : null}
           <button type="button" onClick={() => setShowExport(true)} className="inline-flex h-11 items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-sm font-black text-emerald-700 transition hover:bg-emerald-100"><FiDownload />Export Attendance</button>
-          <button type="button" onClick={() => { attendanceQuery.refetch(); calendarQuery.refetch() }} className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700"><FiRefreshCw className={attendanceQuery.isFetching || calendarQuery.isFetching ? 'animate-spin' : ''} />Refresh</button>
           {canManage ? <button type="button" onClick={() => { setCorrectionRecord(null); setShowCorrection(true) }} className="inline-flex h-11 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 text-sm font-black text-blue-700"><FiPlus />Manual Attendance</button> : null}
         </div>
       </div>
@@ -379,11 +385,11 @@ const Attendance = () => {
 
             <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
               <div className="flex flex-col gap-3 sm:flex-row">
-                <input ref={barcodeInputRef} autoFocus value={barcode} onChange={(e) => setBarcode(e.target.value.toUpperCase())} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submitScan() } }} placeholder="Scan or enter employee barcode code" className="h-12 flex-1 rounded-xl border border-blue-200 bg-white px-4 font-mono text-base font-black uppercase outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
+                <input ref={barcodeInputRef} autoFocus inputMode="numeric" maxLength={10} value={barcode} onChange={(e) => setBarcode(e.target.value.replace(/\D/g, '').slice(0, 10))} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submitScan() } }} placeholder="Scan or enter 10-digit attendance barcode" className="h-12 flex-1 rounded-xl border border-blue-200 bg-white px-4 font-mono text-base font-black tracking-widest outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100" />
                 <button type="button" onClick={() => setShowScanner(true)} className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-white px-4 text-sm font-black text-blue-700"><FiCamera />Scan with Camera</button>
                 <button type="button" onClick={() => submitScan()} disabled={scanMutation.isPending} className="h-12 rounded-xl bg-blue-600 px-6 text-sm font-black text-white disabled:opacity-60">Submit</button>
               </div>
-              <p className="mt-2 text-xs font-semibold text-blue-700">Use the laptop/desktop webcam, tablet, or phone camera to scan the generated employee barcode. Manual entry and USB/Bluetooth barcode scanners remain available as fallbacks.</p>
+              <p className="mt-2 text-xs font-semibold text-blue-700">Scan the employee’s secure 10-digit Attendance Barcode. Camera, USB/Bluetooth scanners, and manual numeric entry remain available as fallbacks.</p>
             </div>
 
             {scanResult ? <div className={`rounded-2xl border p-5 ${scanResult.type === 'success' ? 'border-emerald-200 bg-emerald-50' : scanResult.type === 'warning' ? 'border-amber-200 bg-amber-50' : 'border-red-200 bg-red-50'}`}>{scanResult.type === 'success' ? <><p className="text-sm font-black uppercase tracking-wide text-emerald-700">{scanResult.action === 'time_in' ? 'Time In Successful' : 'Time Out Successful'}</p><p className="mt-1 text-xl font-black text-slate-950">{scanResult.employee?.full_name}</p><p className="mt-1 text-sm font-semibold text-slate-600">{scanResult.employee?.employee_code} · {formatTime(scanResult.time)}</p></> : scanResult.type === 'warning' ? <><p className="font-black text-amber-900">{scanResult.title}</p><p className="mt-1 text-sm font-semibold text-amber-800">{scanResult.message}</p></> : <><p className="font-black text-red-800">{scanResult.title || 'Unable to Record Attendance'}</p><p className="mt-1 text-sm font-semibold text-red-700">{scanResult.message}</p></>}</div> : null}
@@ -391,9 +397,21 @@ const Attendance = () => {
         </div>
 
         <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-          <p className="text-xs font-black uppercase tracking-wide text-slate-400">Automatic Time Out</p>
-          <p className="mt-2 text-3xl font-black text-slate-950">{formatTime(defaultTimeOut)}</p>
-          <p className="mt-2 text-sm font-semibold leading-6 text-slate-500">Employees who Time In but forget to Time Out are closed automatically at this time. Change it in System Settings.</p>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-black uppercase tracking-wide text-slate-400">Attendance Rules</p>
+              <p className="mt-1 text-sm font-semibold leading-6 text-slate-500">Saved defaults used by attendance operations and Excel exports.</p>
+            </div>
+            {canManage ? <button type="button" onClick={() => setShowSettings(true)} className="inline-flex h-9 shrink-0 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-700 hover:bg-blue-100"><FiSettings />Edit</button> : null}
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+            <div className="rounded-xl bg-slate-50 p-3"><p className="text-xs font-black uppercase text-slate-400">Scheduled Hours</p><p className="mt-1 font-black text-slate-900">{formatTime(attendanceSettings.scheduledTimeIn || '09:00:00')} – {formatTime(attendanceSettings.scheduledTimeOut || '20:00:00')}</p></div>
+            <div className="rounded-xl bg-slate-50 p-3"><p className="text-xs font-black uppercase text-slate-400">Automatic Time Out</p><p className="mt-1 font-black text-slate-900">{formatTime(defaultTimeOut)}</p></div>
+            <div className="rounded-xl bg-slate-50 p-3"><p className="text-xs font-black uppercase text-slate-400">Break</p><p className="mt-1 font-black text-slate-900">{formatTime(attendanceSettings.breakStart || '12:00:00')} · {Number(attendanceSettings.breakMinutes ?? 60)} min</p></div>
+            <div className="rounded-xl bg-slate-50 p-3"><p className="text-xs font-black uppercase text-slate-400">Regular Working Hours</p><p className="mt-1 font-black text-slate-900">{Number(attendanceSettings.regularWorkingMinutes || 660) / 60} hrs</p></div>
+            <div className="rounded-xl bg-slate-50 p-3"><p className="text-xs font-black uppercase text-slate-400">Late After</p><p className="mt-1 font-black text-slate-900">{formatTime(attendanceSettings.lateAfter || '09:00:00')}</p></div>
+            <div className="rounded-xl bg-slate-50 p-3"><p className="text-xs font-black uppercase text-slate-400">Red Highlight After</p><p className="mt-1 font-black text-slate-900">{formatTime(attendanceSettings.redHighlightAfter || '09:15:00')}</p></div>
+          </div>
           <div className="mt-5 rounded-2xl border border-blue-100 bg-blue-50 p-4">
             <p className="text-xs font-black uppercase tracking-wide text-blue-700">Day Management</p>
             <p className="mt-1 text-sm font-semibold leading-6 text-slate-600">Use the attendance calendar below to update Regular, Double Pay, Holiday, or Company Event dates—even if the admin forgot to classify the date earlier.</p>
@@ -643,8 +661,9 @@ const Attendance = () => {
         <div className="flex flex-col gap-3 border-t border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between"><p className="text-sm font-semibold text-slate-500">Page {pagination.page} of {pagination.totalPages} · {pagination.total} records</p><div className="flex gap-2"><select value={limit} onChange={(e) => { setLimit(Number(e.target.value)); setPage(1) }} className="h-10 rounded-xl border border-slate-300 px-3 text-sm font-semibold"><option value={25}>25</option><option value={50}>50</option><option value={100}>100</option></select><button disabled={!pagination.hasPrev} onClick={() => setPage((current) => Math.max(current - 1, 1))} className="h-10 rounded-xl border border-slate-300 px-4 text-sm font-black disabled:opacity-40">Prev</button><button disabled={!pagination.hasNext} onClick={() => setPage((current) => current + 1)} className="h-10 rounded-xl border border-slate-300 px-4 text-sm font-black disabled:opacity-40">Next</button></div></div>
       </section>
 
-      {showExport ? <AttendanceExportModal onClose={() => setShowExport(false)} /> : null}
-      {showScanner ? <BarcodeScanner title={action === 'time_in' ? 'Scan Barcode for Time In' : 'Scan Barcode for Time Out'} onDetected={(code) => { setShowScanner(false); setBarcode(code.toUpperCase()); submitScan(code) }} onClose={() => setShowScanner(false)} /> : null}
+      {showSettings ? <AttendanceSettingsModal settings={attendanceSettings} onClose={() => setShowSettings(false)} onSaved={(message) => setAlert({ type: 'success', message })} /> : null}
+      {showExport ? <AttendanceExportModal attendanceSettings={attendanceSettings} onClose={() => setShowExport(false)} /> : null}
+      {showScanner ? <BarcodeScanner title={action === 'time_in' ? 'Scan Barcode for Time In' : 'Scan Barcode for Time Out'} onDetected={(code) => { const digits = String(code || '').replace(/\D/g, '').slice(0, 10); setShowScanner(false); setBarcode(digits); submitScan(digits) }} onClose={() => setShowScanner(false)} /> : null}
       {showCorrection ? <AttendanceCorrectionModal record={correctionRecord} employees={employees} defaultDate={selectedDate} onClose={() => setShowCorrection(false)} onSaved={(message) => { setAlert({ type: 'success', message }); invalidateAttendance() }} /> : null}
       {showEvent ? <AttendanceEventModal event={eventRecord} employees={employees} defaultDate={selectedDate} onClose={() => setShowEvent(false)} onSaved={(message) => { setAlert({ type: 'success', message }); invalidateAttendance() }} /> : null}
     </main>

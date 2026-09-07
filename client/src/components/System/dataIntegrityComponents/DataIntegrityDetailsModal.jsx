@@ -244,4 +244,3 @@ const DataIntegrityDetailsModal = ({ accountId, onClose }) => {
 }
 
 export default DataIntegrityDetailsModal
-

@@ -131,4 +131,3 @@ SET
   ),
   history.discount_percentage_snapshot = COALESCE(profile.soa_sale_discount_percentage, 0),
   history.discount_applied_snapshot = COALESCE(profile.soa_sale_discount_amount, 0);
-

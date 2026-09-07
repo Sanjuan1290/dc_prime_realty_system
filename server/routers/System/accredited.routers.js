@@ -35,5 +35,3 @@ router.post('/:sellerId/proof-of-income-receipts/:receiptId/signed-copy/delete',
 router.post('/:sellerId/proof-of-income', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_MANAGE), uploadAccreditedSellerProofOfIncome);
 
 export default router;
-
-

@@ -8,6 +8,7 @@ import {
   getManilaDateTime,
   normalizeClockTime,
 } from './attendanceLite.shared.js';
+import { isValidAttendanceBarcode } from './attendanceBarcode.shared.js';
 
 const dayTypes = new Set(['regular', 'double_pay', 'regular_holiday', 'special_holiday']);
 const eventTreatments = new Set(['full_day', 'custom_time', 'record_only']);
@@ -26,7 +27,7 @@ const getEmployeeByBarcode = async (connection, barcode) => {
   const [rows] = await connection.query(`
     SELECT e.*, ${buildEmployeeNameSql('e')} AS full_name
     FROM employees e
-    WHERE UPPER(e.employee_code) = UPPER(?)
+    WHERE e.barcode_code = ?
       AND e.employee_status = 'active'
     LIMIT 1
   `, [barcode]);
@@ -281,14 +282,23 @@ export const scanAttendance = async (req, res) => {
     await ensureAttendanceLiteSchema(connection);
 
     const barcode = cleanText(
-      req.body.barcode_code || req.body.employee_code
-    ).toUpperCase();
+      req.body.barcode_code
+    );
 
     const action = String(req.body.action || '').toLowerCase();
 
     if (!barcode) {
       return res.status(400).json({
-        message: 'Enter or scan a barcode code.',
+        code: 'ATTENDANCE_BARCODE_REQUIRED',
+        message: 'Scan or enter the 10-digit attendance barcode.',
+      });
+    }
+
+    if (!isValidAttendanceBarcode(barcode)) {
+      return res.status(400).json({
+        success: false,
+        code: 'INVALID_ATTENDANCE_BARCODE',
+        message: 'Invalid attendance barcode. Please scan the employee barcode again.',
       });
     }
 
@@ -309,7 +319,7 @@ export const scanAttendance = async (req, res) => {
 
     if (!employee) {
       throw Object.assign(
-        new Error('No active employee matches that barcode code.'),
+        new Error('No active employee matches that attendance barcode.'),
         {
           statusCode: 404,
         }
@@ -421,7 +431,7 @@ export const scanAttendance = async (req, res) => {
 
         metadata: {
           employeeId: employee.employee_id,
-          barcode: employee.employee_code,
+          employeeCode: employee.employee_code,
           attendanceDate: now.date,
           timeIn: now.time,
         },
@@ -505,7 +515,7 @@ export const scanAttendance = async (req, res) => {
 
       metadata: {
         employeeId: employee.employee_id,
-        barcode: employee.employee_code,
+        employeeCode: employee.employee_code,
         attendanceDate: now.date,
         timeOut: now.time,
       },

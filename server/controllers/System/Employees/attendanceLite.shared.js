@@ -3,6 +3,13 @@ import { normalizeDepartmentConfigs } from './departmentBarcode.shared.js';
 
 export const ATTENDANCE_TIME_ZONE = 'Asia/Manila';
 export const DEFAULT_AUTO_TIME_OUT = '20:00:00';
+export const DEFAULT_SCHEDULED_TIME_IN = '09:00:00';
+export const DEFAULT_SCHEDULED_TIME_OUT = '20:00:00';
+export const DEFAULT_BREAK_START = '12:00:00';
+export const DEFAULT_BREAK_MINUTES = 60;
+export const DEFAULT_REGULAR_WORK_MINUTES = 11 * 60;
+export const DEFAULT_LATE_AFTER = '09:00:00';
+export const DEFAULT_RED_HIGHLIGHT_AFTER = '09:15:00';
 
 let attendanceLiteSchemaReady = false;
 
@@ -45,18 +52,21 @@ export const enumerateDateRange = (start, end) => {
 };
 
 const systemSettingsColumns = async (connection) => {
-  await connection.query(`
-    ALTER TABLE system_settings
-      ADD COLUMN IF NOT EXISTS attendance_default_time_out TIME NOT NULL DEFAULT '20:00:00' AFTER default_release_day_two
-  `);
-  await connection.query(`
-    ALTER TABLE system_settings
-      ADD COLUMN IF NOT EXISTS employee_departments_json TEXT NULL AFTER attendance_default_time_out
-  `);
-  await connection.query(`
-    ALTER TABLE system_settings
-      ADD COLUMN IF NOT EXISTS employee_department_codes_json TEXT NULL AFTER employee_departments_json
-  `);
+  const columns = [
+    ['attendance_default_time_out', `TIME NOT NULL DEFAULT '20:00:00' AFTER default_release_day_two`],
+    ['attendance_scheduled_time_in', `TIME NOT NULL DEFAULT '09:00:00' AFTER attendance_default_time_out`],
+    ['attendance_scheduled_time_out', `TIME NOT NULL DEFAULT '20:00:00' AFTER attendance_scheduled_time_in`],
+    ['attendance_break_start', `TIME NOT NULL DEFAULT '12:00:00' AFTER attendance_scheduled_time_out`],
+    ['attendance_break_minutes', `SMALLINT UNSIGNED NOT NULL DEFAULT 60 AFTER attendance_break_start`],
+    ['attendance_regular_work_minutes', `SMALLINT UNSIGNED NOT NULL DEFAULT 660 AFTER attendance_break_minutes`],
+    ['attendance_late_after', `TIME NOT NULL DEFAULT '09:00:00' AFTER attendance_regular_work_minutes`],
+    ['attendance_red_highlight_after', `TIME NOT NULL DEFAULT '09:15:00' AFTER attendance_late_after`],
+    ['employee_departments_json', `TEXT NULL AFTER attendance_red_highlight_after`],
+    ['employee_department_codes_json', `TEXT NULL AFTER employee_departments_json`],
+  ];
+  for (const [column, definition] of columns) {
+    await connection.query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS ${column} ${definition}`);
+  }
 };
 
 export const ensureAttendanceLiteSchema = async (connection) => {
@@ -80,6 +90,13 @@ export const ensureAttendanceLiteSchema = async (connection) => {
       default_release_day_one TINYINT UNSIGNED NOT NULL DEFAULT 7,
       default_release_day_two TINYINT UNSIGNED NOT NULL DEFAULT 22,
       attendance_default_time_out TIME NOT NULL DEFAULT '20:00:00',
+      attendance_scheduled_time_in TIME NOT NULL DEFAULT '09:00:00',
+      attendance_scheduled_time_out TIME NOT NULL DEFAULT '20:00:00',
+      attendance_break_start TIME NOT NULL DEFAULT '12:00:00',
+      attendance_break_minutes SMALLINT UNSIGNED NOT NULL DEFAULT 60,
+      attendance_regular_work_minutes SMALLINT UNSIGNED NOT NULL DEFAULT 660,
+      attendance_late_after TIME NOT NULL DEFAULT '09:00:00',
+      attendance_red_highlight_after TIME NOT NULL DEFAULT '09:15:00',
       employee_departments_json TEXT NULL,
       employee_department_codes_json TEXT NULL,
       updated_by_user_id INT UNSIGNED NULL,
@@ -185,15 +202,34 @@ export const ensureAttendanceLiteSchema = async (connection) => {
 export const getAttendanceRuntimeSettings = async (connection) => {
   await ensureAttendanceLiteSchema(connection);
   const [rows] = await connection.query(`
-    SELECT attendance_default_time_out, employee_departments_json, employee_department_codes_json
+    SELECT
+      attendance_default_time_out,
+      attendance_scheduled_time_in,
+      attendance_scheduled_time_out,
+      attendance_break_start,
+      attendance_break_minutes,
+      attendance_regular_work_minutes,
+      attendance_late_after,
+      attendance_red_highlight_after,
+      employee_departments_json,
+      employee_department_codes_json
     FROM system_settings
     WHERE system_setting_id = 1
     LIMIT 1
   `);
   const row = rows[0] || {};
   const departmentConfigs = normalizeDepartmentConfigs(row.employee_department_codes_json, row.employee_departments_json);
+  const automaticTimeOut = normalizeClockTime(row.attendance_default_time_out, DEFAULT_AUTO_TIME_OUT);
   return {
-    defaultTimeOut: normalizeClockTime(row.attendance_default_time_out, DEFAULT_AUTO_TIME_OUT),
+    defaultTimeOut: automaticTimeOut,
+    automaticTimeOut,
+    scheduledTimeIn: normalizeClockTime(row.attendance_scheduled_time_in, DEFAULT_SCHEDULED_TIME_IN),
+    scheduledTimeOut: normalizeClockTime(row.attendance_scheduled_time_out, DEFAULT_SCHEDULED_TIME_OUT),
+    breakStart: normalizeClockTime(row.attendance_break_start, DEFAULT_BREAK_START),
+    breakMinutes: Number(row.attendance_break_minutes ?? DEFAULT_BREAK_MINUTES),
+    regularWorkingMinutes: Number(row.attendance_regular_work_minutes ?? DEFAULT_REGULAR_WORK_MINUTES),
+    lateAfter: normalizeClockTime(row.attendance_late_after, DEFAULT_LATE_AFTER),
+    redHighlightAfter: normalizeClockTime(row.attendance_red_highlight_after, DEFAULT_RED_HIGHLIGHT_AFTER),
     departmentConfigs,
     departments: departmentConfigs.map((item) => item.name),
   };

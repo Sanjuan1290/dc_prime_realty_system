@@ -21,12 +21,12 @@ test('Admin and Super Admin creation uses server-generated emailed credentials',
   assert.match(modal, /Secure Login Setup/);
 });
 
-test('simplified employee module generates department barcodes and keeps only the required employment fields', () => {
+test('simplified employee module generates human department Employee Codes plus separate secure Attendance Barcodes and keeps only the required employment fields', () => {
   const modal = read('client/src/components/System/employeeComponents/EmployeeModal.jsx');
   const controller = read('server/controllers/System/Employees/EmployeesSimple.controller.js');
-  assert.match(modal, /Next: Generate Barcode/);
+  assert.match(modal, /Next: Generate Employee Code/);
   assert.match(modal, /Code128Barcode/);
-  assert.match(modal, /generated from the selected department/);
+  assert.match(modal, /human Employee Code from the selected department/);
   assert.doesNotMatch(modal, /BarcodeScanner|Scan Employee Barcode|Scan Barcode/);
   assert.match(modal, /Select Department/);
   assert.match(modal, /Full Time/);
@@ -35,6 +35,8 @@ test('simplified employee module generates department barcodes and keeps only th
   assert.doesNotMatch(modal, /Monthly Salary|Work Days|Shift Start|Cash Advance/);
   assert.match(controller, /employee_barcode_sequences/);
   assert.match(controller, /allocateEmployeeBarcode/);
+  assert.match(controller, /generateUniqueAttendanceBarcode/);
+  assert.match(controller, /barcode_code/);
   assert.match(controller, /MAX_DEPARTMENT_BARCODE_NUMBER = 999/);
   assert.doesNotMatch(controller, /monthly_salary/);
 });

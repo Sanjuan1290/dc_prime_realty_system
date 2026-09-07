@@ -125,5 +125,3 @@ const AuditLogTable = ({ logs = [], isLoading, pagination, onView, page, setPage
 }
 
 export default AuditLogTable
-
-

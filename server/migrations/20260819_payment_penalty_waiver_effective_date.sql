@@ -38,4 +38,3 @@ SELECT penalty_relief_id, lot_project_payment_schedule_id, lot_project_payment_i
 FROM lot_project_penalty_reliefs
 ORDER BY penalty_relief_id DESC
 LIMIT 50;
-

@@ -107,7 +107,7 @@ This full-codebase package already includes the new production flow discussed fo
 
 - **Admin / Super Admin user creation:** no temporary-password field. The server generates a secure random temporary password, emails it through Resend, stores only the bcrypt hash, and forces the existing Change Password screen on first login.
 - **Credential regeneration:** Admin/Super Admin credentials can be regenerated and emailed; successful regeneration increments `auth_version` so old sessions stop working.
-- **Employees:** simplified to employee name, unique Barcode Code, generated/printable Code 128 barcode, configurable department (including IT), Full Time / Probationary / Part Time, and Active / Inactive status. The Employees page does not scan barcodes.
+- **Employees:** simplified to employee name, human Employee Code (for example IT-001), separate immutable 10-digit Attendance Barcode, configurable department, multiple historical Rest Days, Full Time / Probationary / Part Time, and Active / Inactive status. The Employees page prints barcodes but does not scan them.
 - **Attendance:** the laptop/desktop webcam, tablet, or phone camera is the primary barcode scanner for Time In and Time Out. It uses native BarcodeDetector where available and a built-in Code 128 decoder fallback where it is not. Manual and USB/Bluetooth scanner input remain available. Time Out requires Time In, duplicate scans are blocked, and Admin can correct Time In/Time Out with reasons and audit logging.
 - **Automatic Time Out:** defaults to **8:00 PM Asia/Manila** and is editable in System Settings. Automatic records are clearly marked and do not overwrite a real/admin/event Time Out.
 - **Day classification:** Regular Day, Double Pay Day, Regular Holiday, and Special Holiday.
@@ -231,6 +231,17 @@ Attendance History now has an explicit **Date** filter beside Search and Status.
 
 ## Department-generated employee barcodes
 
-New employees no longer require a manually typed Barcode Code. Select the employee's department, click **Next: Generate Barcode**, review the next server-generated code, then save the employee. Department prefixes are managed under System Settings (for example IT → IT-001 and Marketing → MKT-001). Existing employee barcode codes remain permanent when employee details are edited.
+New employees do not manually type either identifier. Select the department, click **Next: Generate Employee Code**, review the next human code (for example IT-001), then save. The server separately generates a random 10-digit Attendance Barcode with a check digit. Department Employee Code prefixes and attendance rules are managed under **Attendance → Attendance Settings**. Ordinary employee edits preserve both identifiers; Attendance Barcode regeneration is an explicit admin action.
 
 Apply `server/migrations/20260906_department_employee_barcodes.sql` on upgraded databases. For a clean reset, use `database/RESET_QUERY_20260906.sql` so department sequence counters are reset together with employees.
+
+
+## September 7, 2026 Attendance Settings & secure barcode revision
+
+- Attendance now owns its settings modal: schedule, automatic Time Out, break, regular working hours, late/red thresholds, and Employee Code department prefixes.
+- General System Settings no longer exposes the Employee Attendance section.
+- Excel Rules default from saved Attendance Settings but can be temporarily overridden per export.
+- Employee Code (`IT-001`) is a human/admin reference only. Time In/Time Out accepts only the separate 10-digit `barcode_code`.
+- The 10-digit Attendance Barcode is random, includes a check digit, stays unchanged when names/departments/Rest Days change, and can be explicitly regenerated.
+- Public kiosk scan results clear automatically after 5 seconds and the old attendance-only footer message was removed.
+- Run `server/migrations/20260907_attendance_settings_and_secure_barcodes.sql` when upgrading an existing database.

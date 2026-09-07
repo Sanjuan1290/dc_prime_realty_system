@@ -90,12 +90,12 @@ export const validateDepartmentConfigs = (rawConfigs) => {
     const name = normalizeDepartmentName(item?.name);
     const prefix = normalizeBarcodePrefix(item?.prefix);
     if (!name || !prefix) {
-      const error = new Error('Each employee department needs both a department name and barcode prefix.');
+      const error = new Error('Each employee department needs both a department name and Employee Code prefix.');
       error.statusCode = 400;
       throw error;
     }
     if (!/^[A-Z0-9]{1,8}$/.test(prefix)) {
-      const error = new Error(`Barcode prefix for ${name} must use 1 to 8 letters or numbers only.`);
+      const error = new Error(`Employee Code prefix for ${name} must use 1 to 8 letters or numbers only.`);
       error.statusCode = 400;
       throw error;
     }
@@ -105,7 +105,7 @@ export const validateDepartmentConfigs = (rawConfigs) => {
       throw error;
     }
     if (prefixes.has(prefix)) {
-      const error = new Error(`Barcode prefix ${prefix} is already used by another department.`);
+      const error = new Error(`Employee Code prefix ${prefix} is already used by another department.`);
       error.statusCode = 400;
       throw error;
     }

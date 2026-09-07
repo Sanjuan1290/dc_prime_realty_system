@@ -2,6 +2,7 @@ import { db } from '../../../db/connect.js';
 import { writeAuditLog } from '../auditLogs.controller.js';
 import { buildEmployeeNameSql, cleanText, nullableText } from './employeeModule.shared.js';
 import { ensureAttendanceLiteSchema, getAttendanceRuntimeSettings, getManilaDateTime } from './attendanceLite.shared.js';
+import { generateUniqueAttendanceBarcode } from './attendanceBarcode.shared.js';
 import {
   createInitialEmployeeRestDays,
   formatRestDays,
@@ -15,7 +16,7 @@ const statuses = new Set(['active', 'inactive']);
 const MAX_DEPARTMENT_BARCODE_NUMBER = 999;
 
 const getErrorMessage = (error) => {
-  if (error?.code === 'ER_DUP_ENTRY') return 'That employee barcode is already assigned. Please generate the barcode again.';
+  if (error?.code === 'ER_DUP_ENTRY') return 'That employee code or attendance barcode is already assigned. Please try again.';
   return error?.message || 'Employee operation failed.';
 };
 
@@ -45,7 +46,7 @@ const validatePayload = (payload) => {
 
 const mapEmployee = (row) => ({
   ...row,
-  barcode_code: row.employee_code,
+  barcode_code: row.barcode_code || null,
   employment_label: row.employment_type === 'part_time' ? 'Part Time' : row.employment_type === 'probationary' ? 'Probationary' : 'Full Time',
 });
 
@@ -65,7 +66,7 @@ const findDepartmentConfig = async (connection, department) => {
   const runtime = await getAttendanceRuntimeSettings(connection);
   const config = runtime.departmentConfigs.find((item) => item.name.toLowerCase() === String(department || '').trim().toLowerCase());
   if (!config) {
-    const error = new Error('Select a configured department before generating an employee barcode. Department barcode prefixes are managed in System Settings.');
+    const error = new Error('Select a configured department before generating an employee code. Department code prefixes are managed in Attendance Settings.');
     error.statusCode = 400;
     throw error;
   }
@@ -101,7 +102,7 @@ const getBarcodePreview = async (connection, department) => {
   const nextNumber = Math.max(sequenceNumber, existingMax) + 1;
 
   if (nextNumber > MAX_DEPARTMENT_BARCODE_NUMBER) {
-    const error = new Error(`${config.name} has reached the ${config.prefix}-999 barcode limit. Update the department barcode prefix in System Settings before adding another employee.`);
+    const error = new Error(`${config.name} has reached the ${config.prefix}-999 employee-code limit. Update the department code prefix in Attendance Settings before adding another employee.`);
     error.statusCode = 409;
     throw error;
   }
@@ -141,7 +142,7 @@ const allocateEmployeeBarcode = async (connection, department) => {
   const existingMax = await getExistingMaxBarcodeNumber(connection, config.prefix);
   const nextNumber = Math.max(sequenceNumber, existingMax) + 1;
   if (nextNumber > MAX_DEPARTMENT_BARCODE_NUMBER) {
-    const error = new Error(`${config.name} has reached the ${config.prefix}-999 barcode limit. Update the department barcode prefix in System Settings before adding another employee.`);
+    const error = new Error(`${config.name} has reached the ${config.prefix}-999 employee-code limit. Update the department code prefix in Attendance Settings before adding another employee.`);
     error.statusCode = 409;
     throw error;
   }
@@ -176,8 +177,8 @@ export const getEmployees = async (req, res) => {
 
     if (search) {
       const keyword = `%${search}%`;
-      where.push(`(${buildEmployeeNameSql('e')} LIKE ? OR e.employee_code LIKE ? OR e.department LIKE ?)`);
-      params.push(keyword, keyword, keyword);
+      where.push(`(${buildEmployeeNameSql('e')} LIKE ? OR e.employee_code LIKE ? OR e.barcode_code LIKE ? OR e.department LIKE ?)`);
+      params.push(keyword, keyword, keyword, keyword);
     }
     if (status !== 'all') { where.push('e.employee_status = ?'); params.push(status); }
     if (department !== 'all') { where.push('e.department = ?'); params.push(department); }
@@ -186,7 +187,7 @@ export const getEmployees = async (req, res) => {
     const [countRows] = await connection.query(`SELECT COUNT(*) AS total FROM employees e WHERE ${where.join(' AND ')}`, params);
     const total = Number(countRows[0]?.total || 0);
     const [rows] = await connection.query(`
-      SELECT e.employee_id, e.employee_code, e.first_name, e.middle_name, e.last_name,
+      SELECT e.employee_id, e.employee_code, e.barcode_code, e.first_name, e.middle_name, e.last_name,
              e.department, e.employment_type, e.hire_date, e.employee_status, e.created_at, e.updated_at,
              ${buildEmployeeNameSql('e')} AS full_name
       FROM employees e
@@ -237,7 +238,7 @@ export const getEmployee = async (req, res) => {
     await ensureAttendanceLiteSchema(connection);
     const employeeId = Number(req.params.employeeId);
     const [rows] = await connection.query(`
-      SELECT e.employee_id, e.employee_code, e.first_name, e.middle_name, e.last_name,
+      SELECT e.employee_id, e.employee_code, e.barcode_code, e.first_name, e.middle_name, e.last_name,
              e.department, e.employment_type, e.hire_date, e.employee_status, e.created_at, e.updated_at,
              ${buildEmployeeNameSql('e')} AS full_name
       FROM employees e WHERE e.employee_id = ? LIMIT 1
@@ -260,7 +261,7 @@ export const previewEmployeeBarcode = async (req, res) => {
     const preview = await getBarcodePreview(connection, department);
     return res.json({
       success: true,
-      message: `Next available barcode is ${preview.employeeCode}.`,
+      message: `Next available employee code is ${preview.employeeCode}.`,
       data: {
         department: preview.department,
         prefix: preview.prefix,
@@ -283,15 +284,16 @@ export const createEmployee = async (req, res) => {
     const today = getManilaDateTime().date;
 
     await connection.beginTransaction();
-    const barcode = await allocateEmployeeBarcode(connection, payload.department);
+    const employeeCode = await allocateEmployeeBarcode(connection, payload.department);
+    const attendanceBarcode = await generateUniqueAttendanceBarcode(connection);
     const [result] = await connection.query(`
       INSERT INTO employees (
-        employee_code, first_name, middle_name, last_name, department,
+        employee_code, barcode_code, first_name, middle_name, last_name, department,
         position, employment_type, hire_date, employee_status, created_by_user_id, updated_by_user_id
-      ) VALUES (?, ?, ?, ?, ?, 'Employee', ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, 'Employee', ?, ?, ?, ?, ?)
     `, [
-      barcode.employeeCode, payload.firstName, payload.middleName, payload.lastName,
-      barcode.department, payload.employmentType, today, payload.status, actorId, actorId,
+      employeeCode.employeeCode, attendanceBarcode, payload.firstName, payload.middleName, payload.lastName,
+      employeeCode.department, payload.employmentType, today, payload.status, actorId, actorId,
     ]);
 
     await createInitialEmployeeRestDays(connection, {
@@ -306,11 +308,12 @@ export const createEmployee = async (req, res) => {
       action: 'create', module: 'Employees', entityType: 'employee', entityId: String(result.insertId),
       entityLabel: `${payload.firstName} ${payload.lastName}`,
       title: 'Created employee',
-      description: `Created employee ${payload.firstName} ${payload.lastName} with generated barcode ${barcode.employeeCode}.`,
+      description: `Created employee ${payload.firstName} ${payload.lastName} with employee code ${employeeCode.employeeCode} and a separate 10-digit attendance barcode.`,
       metadata: {
-        barcode: barcode.employeeCode,
-        barcodePrefix: barcode.prefix,
-        department: barcode.department,
+        employeeCode: employeeCode.employeeCode,
+        attendanceBarcode,
+        employeeCodePrefix: employeeCode.prefix,
+        department: employeeCode.department,
         employmentType: payload.employmentType,
         restDays: payload.restDays,
         restDaysLabel: formatRestDays(payload.restDays),
@@ -320,12 +323,13 @@ export const createEmployee = async (req, res) => {
     await connection.commit();
     return res.status(201).json({
       success: true,
-      message: `Employee created successfully with barcode ${barcode.employeeCode}.`,
+      message: `Employee created successfully. Employee code: ${employeeCode.employeeCode}. Attendance barcode is ready to print.`,
       employee_id: result.insertId,
       data: {
         employee_id: result.insertId,
-        employee_code: barcode.employeeCode,
-        department: barcode.department,
+        employee_code: employeeCode.employeeCode,
+        barcode_code: attendanceBarcode,
+        department: employeeCode.department,
         rest_days: payload.restDays,
         rest_days_effective_from: today,
         full_name: [payload.firstName, payload.middleName, payload.lastName].filter(Boolean).join(' '),
@@ -379,9 +383,10 @@ export const updateEmployee = async (req, res) => {
       action: 'update', module: 'Employees', entityType: 'employee', entityId: String(employeeId),
       entityLabel: `${payload.firstName} ${payload.lastName}`,
       title: 'Updated employee',
-      description: `Updated employee ${payload.firstName} ${payload.lastName}. Existing barcode ${rows[0].employee_code} was preserved.`,
+      description: `Updated employee ${payload.firstName} ${payload.lastName}. Employee code ${rows[0].employee_code} and attendance barcode were preserved.`,
       metadata: {
-        barcode: rows[0].employee_code,
+        employeeCode: rows[0].employee_code,
+        attendanceBarcode: rows[0].barcode_code,
         previousDepartment: rows[0].department,
         department: payload.department,
         employmentType: payload.employmentType,
@@ -395,10 +400,11 @@ export const updateEmployee = async (req, res) => {
     return res.json({
       success: true,
       message: restDayChange.changed
-        ? `Employee updated successfully. Rest Days are effective ${restDayChange.effectiveFrom}. The existing barcode was preserved.`
-        : 'Employee updated successfully. The existing barcode was preserved.',
+        ? `Employee updated successfully. Rest Days are effective ${restDayChange.effectiveFrom}. Existing employee code and attendance barcode were preserved.`
+        : 'Employee updated successfully. Existing employee code and attendance barcode were preserved.',
       data: {
         employee_code: rows[0].employee_code,
+        barcode_code: rows[0].barcode_code,
         rest_days: restDayChange.current,
         rest_days_effective_from: restDayChange.effectiveFrom,
       },
@@ -407,6 +413,67 @@ export const updateEmployee = async (req, res) => {
     try { await connection.rollback(); } catch {}
     return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
   } finally { connection.release(); }
+};
+
+export const regenerateEmployeeAttendanceBarcode = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    await ensureAttendanceLiteSchema(connection);
+    const employeeId = Number(req.params.employeeId);
+    if (!Number.isInteger(employeeId) || employeeId <= 0) {
+      return res.status(400).json({ message: 'Select a valid employee.' });
+    }
+
+    await connection.beginTransaction();
+    const [rows] = await connection.query(`
+      SELECT employee_id, employee_code, barcode_code, ${buildEmployeeNameSql('employees')} AS full_name
+      FROM employees
+      WHERE employee_id = ? AND employee_status <> 'archived'
+      LIMIT 1
+      FOR UPDATE
+    `, [employeeId]);
+    const employee = rows[0];
+    if (!employee) throw Object.assign(new Error('Employee not found.'), { statusCode: 404 });
+
+    const previousBarcode = employee.barcode_code || null;
+    let barcodeCode = await generateUniqueAttendanceBarcode(connection, { excludeEmployeeId: employeeId });
+    while (previousBarcode && barcodeCode === previousBarcode) {
+      barcodeCode = await generateUniqueAttendanceBarcode(connection, { excludeEmployeeId: employeeId });
+    }
+
+    await connection.query(
+      'UPDATE employees SET barcode_code = ?, updated_by_user_id = ? WHERE employee_id = ?',
+      [barcodeCode, req.authUser?.id || null, employeeId]
+    );
+
+    await writeAuditLog(connection, req, {
+      actor: req.authUser,
+      action: 'update',
+      module: 'Employees',
+      entityType: 'employee',
+      entityId: String(employeeId),
+      entityLabel: employee.full_name,
+      title: 'Regenerated attendance barcode',
+      description: `Regenerated the attendance barcode for ${employee.full_name}. The employee code ${employee.employee_code} was preserved.`,
+      metadata: {
+        employeeCode: employee.employee_code,
+        previousAttendanceBarcode: previousBarcode,
+        attendanceBarcode: barcodeCode,
+      },
+    });
+
+    await connection.commit();
+    return res.json({
+      success: true,
+      message: 'Attendance barcode regenerated. The previous printed barcode will no longer work.',
+      data: { employee_id: employeeId, employee_code: employee.employee_code, barcode_code: barcodeCode },
+    });
+  } catch (error) {
+    try { await connection.rollback(); } catch {}
+    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
 };
 
 export const updateEmployeeStatus = async (req, res) => {

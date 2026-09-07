@@ -107,4 +107,3 @@ test('commission payment progress credits the full DP discount and reports a ful
   assert.match(dashboardController, /const principalTcpExpr = hasClientProfiles[\s\S]*separate_soa_row/);
   assert.match(dashboardController, /const totalDiscountExpr = hasClientProfiles[\s\S]*downpaymentTargetExpr[\s\S]*soa_dp_discount_percentage/);
 });
-

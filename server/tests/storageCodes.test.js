@@ -135,4 +135,3 @@ test('project and listing screens expose Cloudinary folder references beside hum
   assert.match(unitStatus, /Current Account Folder/);
   assert.match(unitStatus, /Unit ID/);
 });
-

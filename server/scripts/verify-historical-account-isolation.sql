@@ -139,4 +139,3 @@ WHERE account.lot_project_account_id IS NULL
    OR payment.lot_project_id <> file_row.lot_project_id
    OR payment.lot_project_listing_id <> file_row.lot_project_listing_id
    OR payment.lot_project_client_profile_id <> file_row.lot_project_client_profile_id;
-

@@ -50,18 +50,6 @@ const SystemSettingsReview = ({ data }) => [
     ),
   },
   {
-    key: 'attendance',
-    title: 'Employee Attendance',
-    content: (
-      <DoubleCheckSection title="Employee Attendance" helper="Verify the automatic Time Out and department barcode prefixes used for new employees." tone="violet">
-        <DoubleCheckFields fields={[
-          { label: 'Default Automatic Time Out', value: data.attendanceDefaultTimeOut },
-          { label: 'Department Barcode Prefixes', value: Array.isArray(data.employeeDepartmentCodes) ? data.employeeDepartmentCodes.map((item) => `${item.name} (${item.prefix})`).join(', ') : data.employeeDepartments, wide: true },
-        ]} />
-      </DoubleCheckSection>
-    ),
-  },
-  {
     key: 'system-status',
     title: 'System Status',
     content: (
@@ -137,4 +125,3 @@ const SettingsDoubleCheck = ({ request, onConfirm, onCancel }) => {
 }
 
 export default SettingsDoubleCheck
-

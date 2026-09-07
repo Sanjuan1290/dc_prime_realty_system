@@ -6,7 +6,7 @@ import {
 } from '../Lot_Projects/_shared/lotProject.shared.js';
 import { writeAuditLog } from './auditLogs.controller.js';
 import { isFullAccessAdministrator } from '../../config/permissions.js';
-import { normalizeDepartmentConfigs, validateDepartmentConfigs } from './Employees/departmentBarcode.shared.js';
+import { normalizeDepartmentConfigs } from './Employees/departmentBarcode.shared.js';
 
 const cleanText = (value, fallback = '') => String(value ?? fallback).trim();
 const nullableText = (value) => {
@@ -69,6 +69,13 @@ const systemSettingsTableSql = `
     default_release_day_one TINYINT UNSIGNED NOT NULL DEFAULT 7,
     default_release_day_two TINYINT UNSIGNED NOT NULL DEFAULT 22,
     attendance_default_time_out TIME NOT NULL DEFAULT '20:00:00',
+    attendance_scheduled_time_in TIME NOT NULL DEFAULT '09:00:00',
+    attendance_scheduled_time_out TIME NOT NULL DEFAULT '20:00:00',
+    attendance_break_start TIME NOT NULL DEFAULT '12:00:00',
+    attendance_break_minutes SMALLINT UNSIGNED NOT NULL DEFAULT 60,
+    attendance_regular_work_minutes SMALLINT UNSIGNED NOT NULL DEFAULT 660,
+    attendance_late_after TIME NOT NULL DEFAULT '09:00:00',
+    attendance_red_highlight_after TIME NOT NULL DEFAULT '09:15:00',
     employee_departments_json TEXT NULL,
     employee_department_codes_json TEXT NULL,
     updated_by_user_id INT UNSIGNED NULL,
@@ -85,7 +92,14 @@ const systemSettingsTableSql = `
 const ensureSystemSettingsTable = async (connection = db) => {
   await connection.query(systemSettingsTableSql);
   await connection.query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS attendance_default_time_out TIME NOT NULL DEFAULT '20:00:00' AFTER default_release_day_two`);
-  await connection.query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS employee_departments_json TEXT NULL AFTER attendance_default_time_out`);
+  await connection.query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS attendance_scheduled_time_in TIME NOT NULL DEFAULT '09:00:00' AFTER attendance_default_time_out`);
+  await connection.query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS attendance_scheduled_time_out TIME NOT NULL DEFAULT '20:00:00' AFTER attendance_scheduled_time_in`);
+  await connection.query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS attendance_break_start TIME NOT NULL DEFAULT '12:00:00' AFTER attendance_scheduled_time_out`);
+  await connection.query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS attendance_break_minutes SMALLINT UNSIGNED NOT NULL DEFAULT 60 AFTER attendance_break_start`);
+  await connection.query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS attendance_regular_work_minutes SMALLINT UNSIGNED NOT NULL DEFAULT 660 AFTER attendance_break_minutes`);
+  await connection.query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS attendance_late_after TIME NOT NULL DEFAULT '09:00:00' AFTER attendance_regular_work_minutes`);
+  await connection.query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS attendance_red_highlight_after TIME NOT NULL DEFAULT '09:15:00' AFTER attendance_late_after`);
+  await connection.query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS employee_departments_json TEXT NULL AFTER attendance_red_highlight_after`);
   await connection.query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS employee_department_codes_json TEXT NULL AFTER employee_departments_json`);
 
   // Keep one singleton settings row so every page has a safe default to read.
@@ -134,14 +148,6 @@ const normalizeSettingsPayload = (body = {}) => ({
   reservationContactNumber: nullableText(body.reservationContactNumber),
   defaultReleaseDayOne: clampDay(body.defaultReleaseDayOne, 7),
   defaultReleaseDayTwo: clampDay(body.defaultReleaseDayTwo, 22),
-  attendanceDefaultTimeOut: /^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(String(body.attendanceDefaultTimeOut || ''))
-    ? `${String(body.attendanceDefaultTimeOut).slice(0, 5)}:00`
-    : '20:00:00',
-  employeeDepartmentCodes: validateDepartmentConfigs(
-    Array.isArray(body.employeeDepartmentCodes) && body.employeeDepartmentCodes.length
-      ? body.employeeDepartmentCodes
-      : normalizeDepartmentConfigs([], Array.isArray(body.employeeDepartments) ? body.employeeDepartments : String(body.employeeDepartments || '').split(/[\n,]+/))
-  ),
 });
 
 export const getSystemSettings = async (req, res) => {
@@ -206,9 +212,6 @@ export const updateSystemSettings = async (req, res) => {
           reservation_contact_number = ?,
           default_release_day_one = ?,
           default_release_day_two = ?,
-          attendance_default_time_out = ?,
-          employee_departments_json = ?,
-          employee_department_codes_json = ?,
           updated_by_user_id = ?
         WHERE system_setting_id = 1
       `,
@@ -225,9 +228,6 @@ export const updateSystemSettings = async (req, res) => {
         payload.reservationContactNumber,
         payload.defaultReleaseDayOne,
         payload.defaultReleaseDayTwo,
-        payload.attendanceDefaultTimeOut,
-        JSON.stringify(payload.employeeDepartmentCodes.map((item) => item.name)),
-        JSON.stringify(payload.employeeDepartmentCodes),
         actor.id,
       ]
     );
@@ -270,4 +270,3 @@ export const updateSystemSettings = async (req, res) => {
     connection.release();
   }
 };
-

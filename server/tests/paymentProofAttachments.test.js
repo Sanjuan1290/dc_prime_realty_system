@@ -45,5 +45,3 @@ test('payments UI exposes proof management separately from payment editing', () 
   assert.match(modal, /fetchProtectedObjectUrl/);
   assert.doesNotMatch(modal, /result\?\.data\?\.url/);
 });
-
-

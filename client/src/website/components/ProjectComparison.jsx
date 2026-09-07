@@ -71,4 +71,3 @@ const ProjectComparison = ({ projects, onClose, onRemove }) => {
 }
 
 export default ProjectComparison
-

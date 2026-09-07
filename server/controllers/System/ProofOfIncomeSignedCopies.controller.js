@@ -546,5 +546,3 @@ export const deleteAccreditedSellerProofOfIncomeSignedCopy = async (req, res) =>
     connection.release();
   }
 };
-
-

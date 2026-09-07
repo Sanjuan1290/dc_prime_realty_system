@@ -1,17 +1,7 @@
 import { db } from '../../../db/connect.js';
 import { buildEmployeeNameSql, dateOnly } from './employeeModule.shared.js';
-import { ensureAttendanceLiteSchema, enumerateDateRange, getManilaDateTime } from './attendanceLite.shared.js';
+import { ensureAttendanceLiteSchema, enumerateDateRange, getAttendanceRuntimeSettings, getManilaDateTime } from './attendanceLite.shared.js';
 import { getRestDayAssignmentsForRange } from '../../../services/employeeRestDay.service.js';
-
-const EXPORT_SCHEDULE = Object.freeze({
-  scheduledTimeIn: '09:00:00',
-  scheduledTimeOut: '20:00:00',
-  breakStart: '12:00:00',
-  breakMinutes: 60,
-  regularWorkingMinutes: 11 * 60,
-  lateAfter: '09:00:00',
-  redHighlightAfter: '09:15:00',
-});
 
 const getErrorMessage = (error) => error?.message || 'Attendance export data could not be prepared.';
 
@@ -128,6 +118,7 @@ export const getAttendanceExportData = async (req, res) => {
       ORDER BY start_date ASC, attendance_event_id ASC
     `, [dateFrom, dateTo]);
 
+    const runtime = await getAttendanceRuntimeSettings(connection);
     const generated = getManilaDateTime();
 
     return res.json({
@@ -137,7 +128,15 @@ export const getAttendanceExportData = async (req, res) => {
         dateTo,
         dates,
         generatedAt: `${generated.date} ${generated.time}`,
-        schedule: EXPORT_SCHEDULE,
+        schedule: {
+          scheduledTimeIn: runtime.scheduledTimeIn,
+          scheduledTimeOut: runtime.scheduledTimeOut,
+          breakStart: runtime.breakStart,
+          breakMinutes: runtime.breakMinutes,
+          regularWorkingMinutes: runtime.regularWorkingMinutes,
+          lateAfter: runtime.lateAfter,
+          redHighlightAfter: runtime.redHighlightAfter,
+        },
         employees: employees.map((employee) => ({
           ...employee,
           employee_id: Number(employee.employee_id),

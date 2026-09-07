@@ -19,4 +19,3 @@ const RecentlyViewed = () => {
 }
 
 export default RecentlyViewed
-

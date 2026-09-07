@@ -151,6 +151,3 @@ test('signed copy verification script checks ownership and duplicate active vers
   assert.match(verify, /HAVING COUNT\(\*\) > 1/);
   assert.match(verify, /lot_project_payment_status <> 'Verified'/);
 });
-
-
-

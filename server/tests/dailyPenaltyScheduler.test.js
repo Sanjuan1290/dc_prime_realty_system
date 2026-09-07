@@ -55,4 +55,3 @@ test('financial penalty calculation remains delegated to refreshListingPenaltyCa
   assert.match(job, /lot_project_client_profile_status = 'active'/);
   assert.match(job, /lot_project_listing_status = 'sold'/);
 });
-

@@ -4,4 +4,3 @@ export { default as DoubleCheckSection } from './core/DoubleCheckSection'
 export { default as DoubleCheckField } from './core/DoubleCheckField'
 export { default as DoubleCheckFields } from './core/DoubleCheckFields'
 export { default as DoubleCheckListCard } from './core/DoubleCheckListCard'
-

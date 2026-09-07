@@ -13,7 +13,7 @@ const normalizeTime = (value) =>
 const getEmployeeLabel = (employee) => {
   if (!employee) return ''
 
-  return `${employee.full_name || ''} · ${employee.employee_code || ''}`
+  return `${employee.full_name || ''} · ${employee.employee_code || ''}${employee.barcode_code ? ` · ${employee.barcode_code}` : ''}`
 }
 
 const AttendanceCorrectionModal = ({
@@ -77,13 +77,13 @@ const AttendanceCorrectionModal = ({
         item.full_name || ''
       ).toLowerCase()
 
-      const employeeCode = String(
-        item.employee_code || ''
-      ).toLowerCase()
+      const employeeCode = String(item.employee_code || '').toLowerCase()
+      const attendanceBarcode = String(item.barcode_code || '').toLowerCase()
 
       return (
         fullName.includes(keyword) ||
-        employeeCode.includes(keyword)
+        employeeCode.includes(keyword) ||
+        attendanceBarcode.includes(keyword)
       )
     })
 
@@ -370,7 +370,7 @@ const AttendanceCorrectionModal = ({
                         150
                       )
                     }}
-                    placeholder="Search name or barcode..."
+                    placeholder="Search name, employee code, or attendance barcode..."
                     className={`${inputClass} w-full pl-10`}
                   />
                 </div>

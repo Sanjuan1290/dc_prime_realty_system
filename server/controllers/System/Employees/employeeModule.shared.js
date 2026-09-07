@@ -1,3 +1,4 @@
+import { backfillMissingAttendanceBarcodes } from './attendanceBarcode.shared.js';
 let employeeModuleTablesReady = false;
 
 export const cleanText = (value, fallback = '') => {
@@ -39,6 +40,7 @@ const employeesTableSql = `
     employee_id INT UNSIGNED NOT NULL AUTO_INCREMENT,
     linked_user_id INT UNSIGNED NULL,
     employee_code VARCHAR(80) NOT NULL,
+    barcode_code CHAR(10) NULL,
     first_name VARCHAR(100) NOT NULL,
     middle_name VARCHAR(100) NULL,
     last_name VARCHAR(100) NOT NULL,
@@ -56,6 +58,7 @@ const employeesTableSql = `
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (employee_id),
     UNIQUE KEY uq_employees_code (employee_code),
+    UNIQUE KEY uq_employees_barcode_code (barcode_code),
     UNIQUE KEY uq_employees_email (email),
     KEY idx_employees_status (employee_status),
     KEY idx_employees_department (department),
@@ -125,6 +128,19 @@ export const ensureEmployeeModuleTables = async (connection) => {
   await connection.query(employeeRestDaysTableSql);
 
   // Compatibility columns required by older employee tables remain populated internally.
+  await addColumnIfMissing(connection, 'employees', 'barcode_code', `CHAR(10) NULL AFTER employee_code`);
+  const [barcodeIndexRows] = await connection.query(`
+    SELECT COUNT(*) AS total
+    FROM information_schema.statistics
+    WHERE table_schema = DATABASE()
+      AND table_name = 'employees'
+      AND index_name = 'uq_employees_barcode_code'
+  `);
+  if (!Number(barcodeIndexRows[0]?.total || 0)) {
+    await connection.query('ALTER TABLE employees ADD UNIQUE KEY uq_employees_barcode_code (barcode_code)');
+  }
+  await backfillMissingAttendanceBarcodes(connection);
+
   await addColumnIfMissing(connection, 'employees', 'department', `VARCHAR(120) NULL AFTER address`);
   await addColumnIfMissing(connection, 'employees', 'position', `VARCHAR(120) NOT NULL DEFAULT 'Employee' AFTER department`);
   await addColumnIfMissing(connection, 'employees', 'employment_type', `ENUM('regular','probationary','part_time') NOT NULL DEFAULT 'regular' AFTER position`);

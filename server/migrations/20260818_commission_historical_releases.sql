@@ -96,4 +96,3 @@ SELECT
 FROM lot_project_commission_releases
 GROUP BY release_entry_mode
 ORDER BY release_entry_mode;
-

@@ -35,7 +35,10 @@ const getScanProblem = (error) => {
     return { type: 'warning', title: 'Time In Required', message: error?.message, employee: details.employee }
   }
   if (Number(error?.status) === 404) {
-    return { type: 'error', title: 'Employee Not Found', message: error?.message || 'No active employee matches that barcode code.' }
+    return { type: 'error', title: 'Employee Not Found', message: error?.message || 'No active employee matches that attendance barcode.' }
+  }
+  if (code === 'INVALID_ATTENDANCE_BARCODE' || code === 'ATTENDANCE_BARCODE_REQUIRED') {
+    return { type: 'error', title: 'Invalid Barcode', message: error?.message || 'Scan the 10-digit employee attendance barcode again.' }
   }
   return { type: 'error', title: 'Unable to Record Attendance', message: error?.message || 'Attendance was not recorded.' }
 }
@@ -43,6 +46,7 @@ const getScanProblem = (error) => {
 const AttendanceKiosk = () => {
   const barcodeInputRef = useRef(null)
   const pinInputRef = useRef(null)
+  const resultTimeoutRef = useRef(null)
   const [now, setNow] = useState(new Date())
   const [pin, setPin] = useState('')
   const [action, setAction] = useState('time_in')
@@ -55,6 +59,28 @@ const AttendanceKiosk = () => {
     const timer = window.setInterval(() => setNow(new Date()), 1000)
     return () => window.clearInterval(timer)
   }, [])
+
+  useEffect(() => () => {
+    if (resultTimeoutRef.current) window.clearTimeout(resultTimeoutRef.current)
+  }, [])
+
+  const clearScanResult = () => {
+    if (resultTimeoutRef.current) {
+      window.clearTimeout(resultTimeoutRef.current)
+      resultTimeoutRef.current = null
+    }
+    setScanResult(null)
+  }
+
+  const showTemporaryScanResult = (result, duration = 5000) => {
+    if (resultTimeoutRef.current) window.clearTimeout(resultTimeoutRef.current)
+    setScanResult(result)
+    resultTimeoutRef.current = window.setTimeout(() => {
+      setScanResult(null)
+      resultTimeoutRef.current = null
+      barcodeInputRef.current?.focus()
+    }, duration)
+  }
 
   const sessionQuery = useQuery({
     queryKey: ['attendance-kiosk-session'],
@@ -94,7 +120,7 @@ const AttendanceKiosk = () => {
     mutationFn: () => useFetchPost('/attendance-kiosk/lock', {}, { confirmationHandled: 'technical' }),
     onSuccess: () => {
       setBarcode('')
-      setScanResult(null)
+      clearScanResult()
       setNotice(null)
       setShowScanner(false)
       sessionQuery.refetch()
@@ -108,12 +134,12 @@ const AttendanceKiosk = () => {
     }, { confirmationHandled: 'technical' }),
     onMutate: () => {
       setNotice({ type: 'loading', message: action === 'time_in' ? 'Recording Time In...' : 'Recording Time Out...' })
-      setScanResult(null)
+      clearScanResult()
     },
     onSuccess: (result) => {
       const data = result?.data || {}
       setNotice(null)
-      setScanResult({
+      showTemporaryScanResult({
         type: 'success',
         action: data.action,
         employee: data.employee,
@@ -127,19 +153,19 @@ const AttendanceKiosk = () => {
       setNotice(null)
       setBarcode('')
       if (error?.code === 'ATTENDANCE_PIN_REQUIRED' || Number(error?.status) === 401 && error?.code === 'ATTENDANCE_PIN_REQUIRED') {
-        setScanResult(null)
+        clearScanResult()
         sessionQuery.refetch()
         return
       }
-      setScanResult(getScanProblem(error))
+      showTemporaryScanResult(getScanProblem(error))
       window.setTimeout(() => barcodeInputRef.current?.focus(), 80)
     },
   })
 
   const submitScan = (explicitCode = '') => {
-    const code = String(explicitCode || barcode).trim().toUpperCase()
+    const code = String(explicitCode || barcode).replace(/\D/g, '').slice(0, 10)
     if (!code) {
-      setScanResult({ type: 'error', message: 'Scan or enter the employee barcode code first.' })
+      showTemporaryScanResult({ type: 'error', title: 'Barcode Required', message: 'Scan or enter the 10-digit attendance barcode first.' })
       barcodeInputRef.current?.focus()
       return
     }
@@ -217,8 +243,8 @@ const AttendanceKiosk = () => {
               {notice ? <StatusAlert type={notice.type} message={notice.message} /> : null}
 
               <div className="grid grid-cols-2 gap-3">
-                <button type="button" onClick={() => { setAction('time_in'); setScanResult(null); barcodeInputRef.current?.focus() }} className={`flex h-20 items-center justify-center gap-3 rounded-2xl border text-lg font-black transition ${action === 'time_in' ? 'border-emerald-300 bg-emerald-50 text-emerald-700 ring-4 ring-emerald-50' : 'border-slate-200 bg-white text-slate-500'}`}><FiLogIn className="h-6 w-6" />TIME IN</button>
-                <button type="button" onClick={() => { setAction('time_out'); setScanResult(null); barcodeInputRef.current?.focus() }} className={`flex h-20 items-center justify-center gap-3 rounded-2xl border text-lg font-black transition ${action === 'time_out' ? 'border-orange-300 bg-orange-50 text-orange-700 ring-4 ring-orange-50' : 'border-slate-200 bg-white text-slate-500'}`}><FiLogOut className="h-6 w-6" />TIME OUT</button>
+                <button type="button" onClick={() => { setAction('time_in'); clearScanResult(); barcodeInputRef.current?.focus() }} className={`flex h-20 items-center justify-center gap-3 rounded-2xl border text-lg font-black transition ${action === 'time_in' ? 'border-emerald-300 bg-emerald-50 text-emerald-700 ring-4 ring-emerald-50' : 'border-slate-200 bg-white text-slate-500'}`}><FiLogIn className="h-6 w-6" />TIME IN</button>
+                <button type="button" onClick={() => { setAction('time_out'); clearScanResult(); barcodeInputRef.current?.focus() }} className={`flex h-20 items-center justify-center gap-3 rounded-2xl border text-lg font-black transition ${action === 'time_out' ? 'border-orange-300 bg-orange-50 text-orange-700 ring-4 ring-orange-50' : 'border-slate-200 bg-white text-slate-500'}`}><FiLogOut className="h-6 w-6" />TIME OUT</button>
               </div>
 
               <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 sm:p-5">
@@ -227,15 +253,18 @@ const AttendanceKiosk = () => {
                     ref={barcodeInputRef}
                     autoFocus
                     value={barcode}
-                    onChange={(event) => setBarcode(event.target.value.toUpperCase())}
+                    inputMode="numeric"
+                    maxLength={10}
+                    autoComplete="off"
+                    onChange={(event) => setBarcode(event.target.value.replace(/\D/g, '').slice(0, 10))}
                     onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); submitScan() } }}
-                    placeholder="Scan or enter employee barcode code"
-                    className="h-14 flex-1 rounded-xl border border-blue-200 bg-white px-4 font-mono text-lg font-black uppercase outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                    placeholder="Scan or enter 10-digit attendance barcode"
+                    className="h-14 flex-1 rounded-xl border border-blue-200 bg-white px-4 font-mono text-lg font-black tracking-[0.12em] outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                   />
                   <button type="button" onClick={() => setShowScanner(true)} className="inline-flex h-14 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-white px-5 text-sm font-black text-blue-700"><FiCamera />Scan with Camera</button>
                   <button type="button" onClick={() => submitScan()} disabled={scanMutation.isPending} className="h-14 rounded-xl bg-blue-600 px-8 text-sm font-black text-white disabled:opacity-60">Submit</button>
                 </div>
-                <p className="mt-3 text-xs font-semibold leading-5 text-blue-700">Use the laptop/desktop webcam, tablet, or phone camera. USB/Bluetooth scanners and manual barcode entry also work.</p>
+                <p className="mt-3 text-xs font-semibold leading-5 text-blue-700">Scan the printed 10-digit attendance barcode. USB/Bluetooth scanners and manual numeric entry remain available as fallbacks.</p>
               </div>
 
               {scanResult ? (
@@ -266,7 +295,6 @@ const AttendanceKiosk = () => {
                 </div>
               ) : null}
 
-              <p className="text-center text-xs font-semibold text-slate-400">Attendance-only station · No employee management, calendar, reports, or admin controls are available here.</p>
             </div>
           </section>
         )}
@@ -275,7 +303,7 @@ const AttendanceKiosk = () => {
       {showScanner && unlocked ? (
         <BarcodeScanner
           title={`${action === 'time_in' ? 'Time In' : 'Time Out'} · Scan Employee Barcode`}
-          onDetected={(code) => { setShowScanner(false); setBarcode(String(code || '').toUpperCase()); window.setTimeout(() => submitScan(code), 30) }}
+          onDetected={(code) => { const clean = String(code || '').replace(/\D/g, '').slice(0, 10); setShowScanner(false); setBarcode(clean); window.setTimeout(() => submitScan(clean), 30) }}
           onClose={() => { setShowScanner(false); window.setTimeout(() => barcodeInputRef.current?.focus(), 50) }}
         />
       ) : null}

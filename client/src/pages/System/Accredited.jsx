@@ -994,5 +994,3 @@ const Accredited = () => {
 };
 
 export default Accredited;
-
-

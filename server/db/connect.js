@@ -43,4 +43,3 @@ export const db = mysql.createPool({
   keepAliveInitialDelay: 0,
   dateStrings: true,
 });
-

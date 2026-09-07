@@ -1,4 +1,4 @@
-import { FiMail, FiPhone, FiPlus, FiSave, FiSettings, FiTrash2, FiX } from 'react-icons/fi'
+import { FiMail, FiPhone, FiSave, FiSettings, FiX } from 'react-icons/fi'
 
 const Field = ({ label, helper, children }) => (
   <label className="grid gap-2">
@@ -19,40 +19,19 @@ const SystemSettingsForm = ({ form, setForm, onSubmit, isSaving, disabled = fals
       <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 px-6 py-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-blue-700">
-              <FiSettings className="h-5 w-5" />
-            </div>
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-blue-50 text-blue-700"><FiSettings className="h-5 w-5" /></div>
             <div>
               <h2 className="text-lg font-black text-slate-950">Company Profile</h2>
               <p className="mt-1 text-sm font-semibold text-slate-500">Used as fallback details across system printouts, notifications, and admin screens.</p>
             </div>
           </div>
         </div>
-
         <div className="grid gap-4 p-6 md:grid-cols-2">
-          <Field label="Company Name">
-            <input disabled={disabled} value={form.companyName} onChange={(e) => update('companyName', e.target.value)} placeholder="D&C Prime Realty" required className={inputClass} />
-          </Field>
-          <Field label="Company TIN">
-            <input disabled={disabled} value={form.companyTin} onChange={(e) => update('companyTin', e.target.value)} placeholder="000-000-000-000" className={inputClass} />
-          </Field>
-          <Field label="Company Email">
-            <div className="relative">
-              <FiMail className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input disabled={disabled} value={form.companyEmail} onChange={(e) => update('companyEmail', e.target.value)} placeholder="dcprimerealty@gmail.com" className={`${inputClass} w-full pl-11`} />
-            </div>
-          </Field>
-          <Field label="Company Contact Number">
-            <div className="relative">
-              <FiPhone className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input disabled={disabled} value={form.companyContactNumber} onChange={(e) => update('companyContactNumber', e.target.value)} placeholder="(046) 866-0618" className={`${inputClass} w-full pl-11`} />
-            </div>
-          </Field>
-          <div className="md:col-span-2">
-            <Field label="Company Address">
-              <textarea disabled={disabled} value={form.companyAddress} onChange={(e) => update('companyAddress', e.target.value)} placeholder="Unit D, Mia's Commercial Building, Indang, Cavite" className={textareaClass} />
-            </Field>
-          </div>
+          <Field label="Company Name"><input disabled={disabled} value={form.companyName} onChange={(e) => update('companyName', e.target.value)} placeholder="D&C Prime Realty" required className={inputClass} /></Field>
+          <Field label="Company TIN"><input disabled={disabled} value={form.companyTin} onChange={(e) => update('companyTin', e.target.value)} placeholder="000-000-000-000" className={inputClass} /></Field>
+          <Field label="Company Email"><div className="relative"><FiMail className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input disabled={disabled} value={form.companyEmail} onChange={(e) => update('companyEmail', e.target.value)} placeholder="dcprimerealty@gmail.com" className={`${inputClass} w-full pl-11`} /></div></Field>
+          <Field label="Company Contact Number"><div className="relative"><FiPhone className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input disabled={disabled} value={form.companyContactNumber} onChange={(e) => update('companyContactNumber', e.target.value)} placeholder="(046) 866-0618" className={`${inputClass} w-full pl-11`} /></div></Field>
+          <div className="md:col-span-2"><Field label="Company Address"><textarea disabled={disabled} value={form.companyAddress} onChange={(e) => update('companyAddress', e.target.value)} placeholder="Unit D, Mia's Commercial Building, Indang, Cavite" className={textareaClass} /></Field></div>
         </div>
       </section>
 
@@ -61,101 +40,12 @@ const SystemSettingsForm = ({ form, setForm, onSubmit, isSaving, disabled = fals
           <h2 className="text-lg font-black text-slate-950">Reservation & Commission Defaults</h2>
           <p className="mt-1 text-sm font-semibold text-slate-500">Global fallback values. Individual lot project settings can still override project-specific contact details.</p>
         </div>
-
         <div className="grid gap-4 p-6 md:grid-cols-3">
-          <Field label="Reservation Contact Name">
-            <input disabled={disabled} value={form.reservationContactName} onChange={(e) => update('reservationContactName', e.target.value)} placeholder="Reservation Assistance" className={inputClass} />
-          </Field>
-          <Field label="Reservation Contact Email">
-            <input disabled={disabled} value={form.reservationContactEmail} onChange={(e) => update('reservationContactEmail', e.target.value)} placeholder="sales@dcprime.com" className={inputClass} />
-          </Field>
-          <Field label="Reservation Contact Number">
-            <input disabled={disabled} value={form.reservationContactNumber} onChange={(e) => update('reservationContactNumber', e.target.value)} placeholder="0912-345-6789" className={inputClass} />
-          </Field>
-          <Field label="Default Release Day 1" helper="Allowed commission release day fallback.">
-            <input disabled={disabled} type="number" min="1" max="31" value={form.defaultReleaseDayOne} onChange={(e) => update('defaultReleaseDayOne', e.target.value)} className={inputClass} />
-          </Field>
-          <Field label="Default Release Day 2" helper="Allowed commission release day fallback.">
-            <input disabled={disabled} type="number" min="1" max="31" value={form.defaultReleaseDayTwo} onChange={(e) => update('defaultReleaseDayTwo', e.target.value)} className={inputClass} />
-          </Field>
-        </div>
-      </section>
-
-      <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-200 px-6 py-4">
-          <h2 className="text-lg font-black text-slate-950">Employee Attendance</h2>
-          <p className="mt-1 text-sm font-semibold text-slate-500">Configure the automatic Time Out and the department dropdown used by Employee Management.</p>
-        </div>
-
-        <div className="grid gap-5 p-6">
-          <div className="max-w-md">
-            <Field label="Default Automatic Time Out" helper="Open attendance records are automatically closed at this time. Default is 8:00 PM.">
-              <input disabled={disabled} type="time" value={form.attendanceDefaultTimeOut} onChange={(e) => update('attendanceDefaultTimeOut', e.target.value)} className={inputClass} />
-            </Field>
-          </div>
-
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <h3 className="text-sm font-black text-slate-800">Department Barcode Prefixes</h3>
-                <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">Each department uses its own prefix when new employee barcodes are generated. Example: IT → IT-001, Marketing → MKT-001.</p>
-              </div>
-              {!disabled ? (
-                <button
-                  type="button"
-                  onClick={() => update('employeeDepartmentCodes', [...(form.employeeDepartmentCodes || []), { name: '', prefix: '' }])}
-                  className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 text-xs font-black text-blue-700 hover:bg-blue-100"
-                >
-                  <FiPlus /> Add Department
-                </button>
-              ) : null}
-            </div>
-
-            <div className="mt-4 grid gap-3">
-              {(form.employeeDepartmentCodes || []).map((item, index) => (
-                <div key={`${item.name || 'department'}-${index}`} className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-3 sm:grid-cols-[1fr_180px_auto] sm:items-end">
-                  <Field label="Department Name">
-                    <input
-                      disabled={disabled}
-                      value={item.name || ''}
-                      onChange={(e) => {
-                        const next = [...(form.employeeDepartmentCodes || [])]
-                        next[index] = { ...next[index], name: e.target.value }
-                        update('employeeDepartmentCodes', next)
-                      }}
-                      placeholder="Marketing"
-                      className={inputClass}
-                    />
-                  </Field>
-                  <Field label="Barcode Prefix" helper="1–8 letters/numbers">
-                    <input
-                      disabled={disabled}
-                      value={item.prefix || ''}
-                      onChange={(e) => {
-                        const next = [...(form.employeeDepartmentCodes || [])]
-                        next[index] = { ...next[index], prefix: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8) }
-                        update('employeeDepartmentCodes', next)
-                      }}
-                      placeholder="MKT"
-                      maxLength={8}
-                      className={`${inputClass} font-mono uppercase`}
-                    />
-                  </Field>
-                  {!disabled ? (
-                    <button
-                      type="button"
-                      onClick={() => update('employeeDepartmentCodes', (form.employeeDepartmentCodes || []).filter((_, itemIndex) => itemIndex !== index))}
-                      disabled={(form.employeeDepartmentCodes || []).length <= 1}
-                      className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 text-xs font-black text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40"
-                      title="Remove department"
-                    >
-                      <FiTrash2 /> Remove
-                    </button>
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          </div>
+          <Field label="Reservation Contact Name"><input disabled={disabled} value={form.reservationContactName} onChange={(e) => update('reservationContactName', e.target.value)} placeholder="Reservation Assistance" className={inputClass} /></Field>
+          <Field label="Reservation Contact Email"><input disabled={disabled} value={form.reservationContactEmail} onChange={(e) => update('reservationContactEmail', e.target.value)} placeholder="sales@dcprime.com" className={inputClass} /></Field>
+          <Field label="Reservation Contact Number"><input disabled={disabled} value={form.reservationContactNumber} onChange={(e) => update('reservationContactNumber', e.target.value)} placeholder="0912-345-6789" className={inputClass} /></Field>
+          <Field label="Default Release Day 1" helper="Allowed commission release day fallback."><input disabled={disabled} type="number" min="1" max="31" value={form.defaultReleaseDayOne} onChange={(e) => update('defaultReleaseDayOne', e.target.value)} className={inputClass} /></Field>
+          <Field label="Default Release Day 2" helper="Allowed commission release day fallback."><input disabled={disabled} type="number" min="1" max="31" value={form.defaultReleaseDayTwo} onChange={(e) => update('defaultReleaseDayTwo', e.target.value)} className={inputClass} /></Field>
         </div>
       </section>
 
@@ -164,39 +54,16 @@ const SystemSettingsForm = ({ form, setForm, onSubmit, isSaving, disabled = fals
           <h2 className="text-lg font-black text-slate-950">System Status</h2>
           <p className="mt-1 text-sm font-semibold text-slate-500">Show whether the system is operating normally or under maintenance.</p>
         </div>
-
         <div className="grid gap-4 p-6 md:grid-cols-2">
-          <Field label="System Status">
-            <select disabled={disabled} value={form.systemStatus} onChange={(e) => update('systemStatus', e.target.value)} className={inputClass}>
-              <option value="active">Active</option>
-              <option value="maintenance">Maintenance</option>
-            </select>
-          </Field>
-          <Field label="Maintenance Message" helper="Required when status is Maintenance.">
-            <input disabled={disabled} value={form.maintenanceMessage} onChange={(e) => update('maintenanceMessage', e.target.value)} placeholder="System is under scheduled maintenance." className={inputClass} />
-          </Field>
+          <Field label="System Status"><select disabled={disabled} value={form.systemStatus} onChange={(e) => update('systemStatus', e.target.value)} className={inputClass}><option value="active">Active</option><option value="maintenance">Maintenance</option></select></Field>
+          <Field label="Maintenance Message" helper="Required when status is Maintenance."><input disabled={disabled} value={form.maintenanceMessage} onChange={(e) => update('maintenanceMessage', e.target.value)} placeholder="System is under scheduled maintenance." className={inputClass} /></Field>
         </div>
       </section>
 
       {!disabled ? (
         <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={isSaving}
-            className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-6 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <FiX className="h-4 w-4" />
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={isSaving}
-            className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-6 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <FiSave className="h-4 w-4" />
-            {isSaving ? 'Opening Review...' : 'Proceed to Final Review'}
-          </button>
+          <button type="button" onClick={onCancel} disabled={isSaving} className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-6 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-60"><FiX className="h-4 w-4" />Cancel</button>
+          <button type="submit" disabled={isSaving} className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-6 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60"><FiSave className="h-4 w-4" />{isSaving ? 'Opening Review...' : 'Proceed to Final Review'}</button>
         </div>
       ) : null}
     </form>
@@ -204,4 +71,3 @@ const SystemSettingsForm = ({ form, setForm, onSubmit, isSaving, disabled = fals
 }
 
 export default SystemSettingsForm
-

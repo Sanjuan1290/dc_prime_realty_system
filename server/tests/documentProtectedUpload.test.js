@@ -20,4 +20,3 @@ test('protected document upload imports and uses columnExists', () => {
     /await columnExists\(connection, 'lot_project_client_documents', 'lot_project_account_id'\)/
   );
 });
-

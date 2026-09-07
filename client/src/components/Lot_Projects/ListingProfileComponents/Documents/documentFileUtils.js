@@ -135,5 +135,3 @@ export const isPdfLike = (file = {}) => `${
 } ${file.fileName || ''} ${file.fileType || file.file_type || ''} ${file.resourceType || ''} ${file.format || file.cloudinaryFormat || file.cloudinary_format || ''}`
   .toLowerCase()
   .includes('pdf')
-
-

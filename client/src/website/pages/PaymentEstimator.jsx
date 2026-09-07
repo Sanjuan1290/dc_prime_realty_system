@@ -31,4 +31,3 @@ const PaymentEstimator = () => {
 }
 
 export default PaymentEstimator
-
