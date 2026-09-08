@@ -19,6 +19,8 @@ import ProofOfIncomeDoubleCheck from '../ProofOfIncomeDoubleCheck'
 import SettingsDoubleCheck from '../SettingsDoubleCheck'
 import BuyerFormDoubleCheck from '../BuyerFormDoubleCheck'
 import AuditArchiveDoubleCheck from '../AuditArchiveDoubleCheck'
+import ListingImportDoubleCheck from '../ListingImportDoubleCheck'
+import ReservationCorrectionDoubleCheck from '../ReservationCorrectionDoubleCheck'
 
 const components = {
   project: ProjectDoubleCheck,
@@ -40,6 +42,9 @@ const components = {
   settings: SettingsDoubleCheck,
   'buyer-form': BuyerFormDoubleCheck,
   'audit-archive': AuditArchiveDoubleCheck,
+  'listing-import': ListingImportDoubleCheck,
+  'listing-import-reversal': ListingImportDoubleCheck,
+  'reservation-correction': ReservationCorrectionDoubleCheck,
 }
 
 const DoubleCheckProvider = ({ children }) => {

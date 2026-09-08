@@ -184,6 +184,8 @@ const UnitStatus = ({
   onSave,
   canRecalculateCommission = false,
   onRecalculateCommission,
+  canCorrectReservation = false,
+  onCorrectReservation,
   isSaving = false,
   isRecalculatingCommission = false,
   readOnly = false,
@@ -290,6 +292,7 @@ const UnitStatus = ({
   )
 
   const showAvailableButton = !readOnly && unitData.listing_status === 'Cancelled'
+  const showCorrectionButton = !readOnly && canCorrectReservation && unitData.listing_status === 'Sold / Active'
 
   return (
     <div className="flex flex-col gap-5">
@@ -320,6 +323,18 @@ const UnitStatus = ({
           <div className="flex flex-wrap items-center gap-2">
             <StatusPill status={unitData.listing_status} />
             <StatusPill status={unitData.document_status} />
+
+            {showCorrectionButton ? (
+              <button
+                type="button"
+                onClick={() => onCorrectReservation?.()}
+                disabled={isSaving}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-4 text-sm font-black text-orange-700 transition hover:bg-orange-100 disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98]"
+              >
+                <FiRotateCcw className="h-4 w-4" />
+                Correct Reservation
+              </button>
+            ) : null}
 
             {!readOnly ? (
               <button

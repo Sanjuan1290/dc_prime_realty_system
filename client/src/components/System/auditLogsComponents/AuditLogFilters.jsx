@@ -9,6 +9,9 @@ const actionOptions = [
   { label: 'Approve', value: 'approve' },
   { label: 'Reject / Resubmission', value: 'reject' },
   { label: 'Release', value: 'release' },
+  { label: 'Import', value: 'import' },
+  { label: 'Export', value: 'export' },
+  { label: 'Correction', value: 'correct' },
   { label: 'System', value: 'system' },
 ]
 

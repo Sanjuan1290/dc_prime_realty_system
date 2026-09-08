@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { FaCircle } from "react-icons/fa6";
 import {
   FiActivity,
+  FiBarChart2,
   FiBell,
   FiClock,
   FiCheckCircle,
@@ -101,7 +102,10 @@ const SystemLayout = () => {
       {
         title: "OVERVIEW",
         description: "Main summary",
-        items: [{ label: "Dashboard", pathname: dashboardPathname, icon: FiHome }],
+        items: [
+          { label: "Dashboard", pathname: dashboardPathname, icon: FiHome },
+          { label: "Reports", pathname: "reports", icon: FiBarChart2 },
+        ],
       },
       {
         title: "PROJECTS",

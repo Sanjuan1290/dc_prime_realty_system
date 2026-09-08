@@ -25,6 +25,7 @@ import PaymentsSOA from '../../components/Lot_Projects/ListingProfileComponents/
 import Documents from '../../components/Lot_Projects/ListingProfileComponents/Documents/Documents'
 import Printouts from '../../components/Lot_Projects/ListingProfileComponents/Printouts/Printouts'
 import AccountHistoryPanel from '../../components/Lot_Projects/ListingProfileComponents/AccountHistory/AccountHistoryPanel'
+import ReservationCorrectionModal from '../../components/Lot_Projects/ListingProfileComponents/ReservationCorrection/ReservationCorrectionModal'
 import ReserveListingModal from '../../components/Lot_Projects/ListingProfileComponents/ReserveListingModal/ReserveListingModal'
 import BuyerFormLinkModal from '../../components/Lot_Projects/ListingProfileComponents/BuyerForm/BuyerFormLinkModal'
 import BuyerFormStatusBanner from '../../components/Lot_Projects/ListingProfileComponents/BuyerForm/BuyerFormStatusBanner'
@@ -113,6 +114,7 @@ const ListingProfile = () => {
   const { projectSlug, listingId, accountId } = useParams()
   const { data: currentUserData } = useCurrentUser()
   const canRecalculateCommission = isFullAccessAdministrator(currentUserData?.user)
+  const canCorrectReservation = hasPermission(currentUserData?.user, PERMISSIONS.LOT_RESERVATION_CORRECT)
   const isAccountRoute = Boolean(accountId)
   const profileKey = ['lot-listing-profile', projectSlug, listingId, accountId || 'current']
   const profileUrl = accountId
@@ -126,6 +128,7 @@ const ListingProfile = () => {
   const [generatedBuyerFormUrl, setGeneratedBuyerFormUrl] = useState('')
   const [buyerFormNotice, setBuyerFormNotice] = useState(null)
   const [showHoldModal, setShowHoldModal] = useState(false)
+  const [showReservationCorrectionModal, setShowReservationCorrectionModal] = useState(false)
   const [alert, setAlert] = useState(null)
 
   const profileQuery = useQuery({
@@ -837,6 +840,8 @@ const ListingProfile = () => {
           onSave={(payload) => updateListingMutation.mutateAsync(payload)}
           canRecalculateCommission={canRecalculateCommission}
           onRecalculateCommission={(payload) => recalculateCommissionMutation.mutateAsync(payload)}
+          canCorrectReservation={canCorrectReservation}
+          onCorrectReservation={() => setShowReservationCorrectionModal(true)}
           isSaving={updateListingMutation.isPending}
           isRecalculatingCommission={recalculateCommissionMutation.isPending}
           readOnly={readOnly}
@@ -915,6 +920,23 @@ const ListingProfile = () => {
         />
       ) : null}
       </TabErrorBoundary>
+
+      {!readOnly && showReservationCorrectionModal ? (
+        <ReservationCorrectionModal
+          open
+          projectSlug={projectSlug}
+          listingId={listingId}
+          onClose={() => setShowReservationCorrectionModal(false)}
+          onCorrected={(result) => {
+            const destinationId = result?.data?.destinationListingId
+            setShowReservationCorrectionModal(false)
+            queryClient.invalidateQueries({ queryKey: ['lot-listings', projectSlug] })
+            queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] })
+            queryClient.invalidateQueries({ queryKey: ['system-reports'] })
+            if (destinationId) navigate(`/portal/lot-projects/${projectSlug}/listings/${destinationId}`)
+          }}
+        />
+      ) : null}
 
       {!readOnly && showHoldModal ? (
         <HoldListingModal

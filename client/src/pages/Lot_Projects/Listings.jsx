@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { FiEye, FiFileText, FiGrid, FiPlus, FiSearch, FiTrash2 } from 'react-icons/fi'
+import { FiClock, FiEye, FiFileText, FiGrid, FiPlus, FiSearch, FiTrash2, FiUpload } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
 import ConfirmActionModal from '../../components/Shared/ConfirmActionModal'
 import AddListingModal from '../../components/Lot_Projects/ListingComponents/AddListingModal/AddListingModal'
+import ListingImportModal from '../../components/Lot_Projects/ListingComponents/ListingImportModal/ListingImportModal'
+import ListingImportHistoryModal from '../../components/Lot_Projects/ListingComponents/ListingImportModal/ListingImportHistoryModal'
 import {useFetch, useFetchDelete, useFetchPost, getDoubleCheckNotice} from '../../utils/useFetch'
 
 const money = (value) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value || 0))
@@ -24,6 +26,8 @@ const Listings = () => {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [showAddModal, setShowAddModal] = useState(false)
+  const [showImportModal, setShowImportModal] = useState(false)
+  const [showImportHistory, setShowImportHistory] = useState(false)
   const [listingToDelete, setListingToDelete] = useState(null)
   const [alert, setAlert] = useState(null)
   const [page, setPage] = useState(1)
@@ -126,7 +130,11 @@ const Listings = () => {
     <main className="flex flex-col gap-6">
       <section className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <PageHeader title={`${project.name || project.lot_project_name || 'Lot Project'} Listings / Units`} description="Database-connected inventory table with price columns, document setup, and unit profile links." icon={FiGrid} />
-        <button type="button" onClick={() => setShowAddModal(true)} disabled={isLoading || isDocumentsLoading || isTemplatesLoading} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 text-sm font-black text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"><FiPlus className="h-4 w-4" />Add Listing</button>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => setShowImportHistory(true)} disabled={isLoading} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"><FiClock className="h-4 w-4" />Import History</button>
+          <button type="button" onClick={() => setShowImportModal(true)} disabled={isLoading} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-4 text-sm font-black text-blue-700 transition hover:bg-blue-100 disabled:opacity-60"><FiUpload className="h-4 w-4" />Import Excel</button>
+          <button type="button" onClick={() => setShowAddModal(true)} disabled={isLoading || isDocumentsLoading || isTemplatesLoading} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 text-sm font-black text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"><FiPlus className="h-4 w-4" />Add Listing</button>
+        </div>
       </section>
 
       {alert ? <StatusAlert type={alert.type} message={alert.message} onClose={alert.type === 'loading' ? undefined : () => setAlert(null)} /> : null}
@@ -177,6 +185,8 @@ const Listings = () => {
       </section>
 
       {showAddModal ? <AddListingModal project={project} projectDefaultDocuments={project.defaultDocuments || []} libraryDocuments={documentsData?.documents || []} documentTemplates={templatesData?.templates || []} templateDocuments={templatesData?.template_documents || []} isLoadingDefaults={isDocumentsLoading || isTemplatesLoading} onClose={() => setShowAddModal(false)} onSave={handleAddListing} isSaving={addListingMutation.isPending} /> : null}
+      {showImportModal ? <ListingImportModal project={project} projectSlug={projectSlug} onClose={() => setShowImportModal(false)} onImported={async () => { setShowImportModal(false); setAlert({ type: 'success', message: 'Listing import completed. You can review or undo it from Import History.' }); await queryClient.invalidateQueries({ queryKey: ['lot-listings', projectSlug] }); await queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] }); await queryClient.invalidateQueries({ queryKey: ['listing-import-history', projectSlug] }) }} /> : null}
+      {showImportHistory ? <ListingImportHistoryModal projectSlug={projectSlug} onClose={() => setShowImportHistory(false)} /> : null}
       <ConfirmActionModal
         open={Boolean(listingToDelete)}
         title={`Delete ${listingToDelete?.unitLabel || 'listing'}?`}

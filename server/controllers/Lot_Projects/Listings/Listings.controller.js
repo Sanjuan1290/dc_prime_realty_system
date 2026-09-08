@@ -114,7 +114,7 @@ const normalizeListingDocumentRequirements = (documents = []) => {
   return [...documentMap.values()];
 };
 
-const replaceListingDocumentRequirements = async (connection, projectId, listingId, documents = []) => {
+export const replaceListingDocumentRequirements = async (connection, projectId, listingId, documents = []) => {
   if (!(await tableExists(connection, 'lot_project_listing_documents'))) {
     return { count: 0, skipped: true };
   }
@@ -1279,6 +1279,7 @@ export const updateLotProjectListing = async (req, res) => {
           lot_project_listing_price_per_sqm,
           lot_project_listing_installment_price_per_sqm,
           lot_project_listing_cash_price_per_sqm,
+          lot_project_listing_net_selling_price,
           lot_project_listing_lmf_rate,
           lot_project_listing_lmf_amount,
           lot_project_listing_tcp,
@@ -1988,11 +1989,49 @@ export const updateLotProjectListing = async (req, res) => {
       title: auditTitle,
       description: auditDescription,
       metadata: {
-        unitCode,
-        previousUnitCode: existingListing.lot_project_listing_unit_id,
-        previousStatus: existingListing.lot_project_listing_status,
-        nextStatus: listingStatus.status,
-        soldSubstatus: listingStatus.soldSubstatus,
+        projectId: project.lot_project_id,
+        projectName: project.lot_project_name,
+        before: {
+          unitCode: existingListing.lot_project_listing_unit_id,
+          oldUnitIds: existingListing.lot_project_listing_old_unit_ids,
+          lotType: existingListing.lot_project_listing_unit_type,
+          lotAreaSqm: Number(existingListing.lot_project_listing_area_sqm || 0),
+          installmentPricePerSqm: Number(existingListing.lot_project_listing_installment_price_per_sqm || existingListing.lot_project_listing_price_per_sqm || 0),
+          cashPricePerSqm: Number(existingListing.lot_project_listing_cash_price_per_sqm || existingListing.lot_project_listing_price_per_sqm || 0),
+          netSellingPrice: Number(existingListing.lot_project_listing_net_selling_price || 0),
+          legalMiscRate: Number(existingListing.lot_project_listing_lmf_rate || 0),
+          legalMiscAmount: Number(existingListing.lot_project_listing_lmf_amount || 0),
+          tcp: Number(existingListing.lot_project_listing_tcp || 0),
+          reservationFee: Number(existingListing.lot_project_listing_reservation_fee || 0),
+          annualInterestRate: Number(existingListing.annual_interest_rate || 0),
+          status: existingListing.lot_project_listing_status,
+          soldSubstatus: existingListing.lot_project_listing_sold_substatus,
+        },
+        after: {
+          unitCode,
+          oldUnitIds: toNullable(oldUnitIdsValue),
+          lotType: normalizeLotType(req.body.lotType || req.body.lot_type),
+          lotAreaSqm,
+          installmentPricePerSqm,
+          cashPricePerSqm,
+          netSellingPrice: installmentPricing.netSellingPrice,
+          legalMiscRate,
+          legalMiscAmount: installmentPricing.lmfAmount,
+          tcp: installmentPricing.tcp,
+          reservationFee,
+          annualInterestRate,
+          status: listingStatus.status,
+          soldSubstatus: listingStatus.soldSubstatus,
+          cadastralLots: Array.isArray(req.body.cadastralLots) ? req.body.cadastralLots : null,
+          documentRequirements: Array.isArray(req.body.documentRequirements)
+            ? req.body.documentRequirements.map((document) => ({
+                documentId: document.document_id || document.id || null,
+                name: document.document_name || document.name || null,
+                isRequired: document.is_required ?? document.requirement ?? null,
+                responsibleParty: document.responsible_party || document.responsibleParty || null,
+              }))
+            : null,
+        },
         statusTransitionAction,
         resetToAvailable,
         voidUnpaidAccount,
@@ -2002,7 +2041,7 @@ export const updateLotProjectListing = async (req, res) => {
         cloudinarySyncResult,
         listingDocumentSyncResult,
         cadastralSyncResult,
-        changes: {
+        changedFields: {
           unitIdChanged,
           statusChanged,
           annualInterestChanged,
@@ -2189,7 +2228,7 @@ export const createLotProjectListing = async (req, res) => {
 
     const hasListingCadastralLinks = await tableExists(connection, 'lot_project_listing_cadastral_lots');
     const requestedCadastralLots = Array.isArray(req.body.cadastralLots)
-      ? req.body.cadastralLots.map((item) => String(item).trim()).filter(Boolean)
+      ? Array.from(new Set(req.body.cadastralLots.map((item) => String(item).trim()).filter(Boolean)))
       : [];
 
     if (hasListingCadastralLinks && requestedCadastralLots.length > 0) {
@@ -2202,6 +2241,15 @@ export const createLotProjectListing = async (req, res) => {
         `,
         [project.lot_project_id, ...requestedCadastralLots]
       );
+
+      if (lotRows.length !== requestedCadastralLots.length) {
+        const found = new Set(lotRows.map((row) => String(row.lot_project_cadastral_lot_number)));
+        const missing = requestedCadastralLots.filter((lotNumber) => !found.has(lotNumber));
+        throw Object.assign(
+          new Error(`Cadastral lot(s) ${missing.join(', ')} do not belong to ${project.lot_project_name}.`),
+          { statusCode: 400 }
+        );
+      }
 
       if (lotRows.length > 0) {
         await connection.query(
@@ -2238,7 +2286,37 @@ export const createLotProjectListing = async (req, res) => {
       entityLabel: `Unit ${unitCode} — ${project.lot_project_name}`,
       title: 'Added new listing',
       description: `Added ${unitCode} to ${project.lot_project_name}.`,
-      metadata: { unitCode, storageCode, status: listingStatus.status, soldSubstatus: listingStatus.soldSubstatus },
+      metadata: {
+        projectId: project.lot_project_id,
+        projectName: project.lot_project_name,
+        source: 'manual',
+        before: null,
+        after: {
+          unitCode,
+          storageCode,
+          oldUnitIds: toNullable(req.body.oldUnitIds),
+          lotType: normalizeLotType(req.body.lotType || req.body.unitType),
+          lotAreaSqm,
+          installmentPricePerSqm,
+          cashPricePerSqm,
+          netSellingPrice: installmentPricing.netSellingPrice,
+          legalMiscRate,
+          legalMiscAmount: installmentPricing.lmfAmount,
+          tcp: installmentPricing.tcp,
+          reservationFee,
+          annualInterestRate,
+          status: listingStatus.status,
+          soldSubstatus: listingStatus.soldSubstatus,
+          cadastralLots: requestedCadastralLots,
+          documentRequirements: listingDocuments.map((document) => ({
+            documentId: document.document_id || document.id || null,
+            name: document.document_name || document.name || null,
+            isRequired: document.is_required ?? document.requirement ?? null,
+            responsibleParty: document.responsible_party || document.responsibleParty || null,
+          })),
+          documentSource: requestedDocuments.length ? 'listing_request' : 'project_defaults',
+        },
+      },
     });
 
     await connection.commit();
@@ -2252,7 +2330,7 @@ export const createLotProjectListing = async (req, res) => {
     });
   } catch (error) {
     await connection.rollback();
-    return res.status(500).json({ message: getErrorMessage(error) });
+    return res.status(error?.statusCode || 500).json({ message: getErrorMessage(error) });
   } finally {
     connection.release();
   }
@@ -2277,10 +2355,7 @@ export const deleteLotProjectListing = async (req, res) => {
 
     const [existingRows] = await connection.query(
       `
-        SELECT
-          lot_project_listing_id,
-          lot_project_listing_status,
-          lot_project_listing_unit_id
+        SELECT l.*
         FROM lot_project_listings l
         WHERE l.lot_project_id = ?
           AND ${lookup.sql}
@@ -2313,6 +2388,21 @@ export const deleteLotProjectListing = async (req, res) => {
         await connection.rollback();
         return res.status(409).json({
           message: 'This listing has buyer-account history and cannot be deleted. Close the account first, then use Permanently Delete Account Records from Account History if removal is required.',
+        });
+      }
+    }
+
+    if (await tableExists(connection, 'lot_project_reservation_corrections')) {
+      const [[correctionHistory]] = await connection.query(
+        `SELECT COUNT(*) AS total
+         FROM lot_project_reservation_corrections
+         WHERE source_listing_id = ? OR destination_listing_id = ?`,
+        [existingListing.lot_project_listing_id, existingListing.lot_project_listing_id]
+      );
+      if (Number(correctionHistory?.total || 0) > 0) {
+        await connection.rollback();
+        return res.status(409).json({
+          message: 'This listing is referenced by Administrative Reservation Correction history and cannot be deleted.',
         });
       }
     }
@@ -2365,6 +2455,22 @@ export const deleteLotProjectListing = async (req, res) => {
       await connection.rollback();
       return res.status(404).json({ message: 'Listing not found.' });
     }
+
+    await writeAuditLog(connection, req, {
+      action: 'delete',
+      module: 'Listings',
+      entityType: 'lot_project_listing',
+      entityId: String(existingListing.lot_project_listing_id),
+      entityLabel: `Unit ${existingListing.lot_project_listing_unit_id} — ${project.lot_project_name}`,
+      title: 'Deleted empty listing',
+      description: `Deleted ${existingListing.lot_project_listing_unit_id} from ${project.lot_project_name}. The listing had no buyer/account history.`,
+      metadata: {
+        projectId: project.lot_project_id,
+        projectName: project.lot_project_name,
+        before: existingListing,
+        after: null,
+      },
+    });
 
     await connection.commit();
 

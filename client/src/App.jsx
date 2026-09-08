@@ -41,6 +41,7 @@ const WebsiteContactUs = lazy(() => import('./website/pages/ContactUs'))
 const WebsiteNotFound = lazy(() => import('./website/pages/NotFound'))
 
 const Dashboard = lazy(() => import('./pages/System/Dashboard'))
+const Reports = lazy(() => import('./pages/System/Reports'))
 const Documents = lazy(() => import('./pages/System/Documents'))
 const SellerGroup = lazy(() => import('./pages/System/SellerGroup'))
 const SellerGroupDetails = lazy(() => import('./pages/System/SellerGroupDetails'))
@@ -72,6 +73,7 @@ import SignedReceiptsPrintPage from './components/Lot_Projects/ListingProfileCom
 import AccreditedSellerProofOfIncomePrintPage from './components/Lot_Projects/ListingProfileComponents/Printouts/AccreditedSellerProofOfIncomePrintPage'
 import AccreditedSellerIncomeRangePrintPage from './components/Lot_Projects/ListingProfileComponents/Printouts/AccreditedSellerIncomeRangePrintPage'
 import ProjectPriceListPrintPage from './components/Lot_Projects/ListingProfileComponents/Printouts/ProjectPriceListPrintPage'
+import ReportsPrintPage from './pages/System/ReportsPrintPage'
 
 
 const LegacyPortalRedirect = () => {
@@ -135,6 +137,7 @@ const App = () => {
 
         <Route path="/portal/super_admin" element={<SystemLayout />} errorElement={<RouteErrorPage />}>
           <Route index element={<Dashboard />} />
+          <Route path="reports" element={protect(PERMISSIONS.SYSTEM_REPORTS_VIEW, <Reports />)} />
 
           <Route path="projects" element={<Projects />} />
 
@@ -163,6 +166,7 @@ const App = () => {
         <Route path="/portal/admin" element={<SystemLayout />} errorElement={<RouteErrorPage />}>
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<Dashboard />} />
+          <Route path="reports" element={protect(PERMISSIONS.SYSTEM_REPORTS_VIEW, <Reports />)} />
 
           <Route path="projects" element={<Projects />} />
 
@@ -270,6 +274,10 @@ const App = () => {
         <Route
           path="/portal/lot-projects/:projectSlug/price-list/print"
           element={<ProjectPriceListPrintPage />}
+        />
+        <Route
+          path="/portal/reports/print"
+          element={<ReportsPrintPage />}
         />
       </>
     )

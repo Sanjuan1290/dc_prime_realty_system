@@ -40,6 +40,7 @@ test('General Trias is coming soon and cannot be selected for tripping', () => {
   const card = read('client/src/website/components/ProjectCard.jsx');
   const tripping = read('client/src/website/components/TrippingForm.jsx');
   const details = read('client/src/website/pages/PropertyDetails.jsx');
+  const availability = read('client/src/website/data/trippingAvailability.js');
 
   assert.match(projects, /name: 'General Trias'/);
   assert.match(projects, /status: 'coming_soon'/);
@@ -47,7 +48,8 @@ test('General Trias is coming soon and cannot be selected for tripping', () => {
   assert.match(card, /project\.status === 'coming_soon'/);
   assert.match(tripping, /projects\.filter\(\(project\) => project\.bookingEnabled\)/);
   assert.match(details, /project\.status === 'coming_soon'/);
-  assert.match(tripping, /\['Tuesday', 'Thursday'\]/);
+  assert.match(availability, /closedWeekdays:\s*\[3, 4\]/);
+  assert.match(tripping, /Wednesday and Thursday are closed/);
 });
 
 test('contact details, map, frontend email actions and updated team content are included', () => {
@@ -110,7 +112,7 @@ test('buyer tools, saved projects, comparison and legal pages are routed as fron
   assert.match(properties, /Compare selected/);
   assert.match(details, /GalleryLightbox/);
   assert.match(details, /VisitChecklist/);
-  assert.match(tripping, /Request summary/);
+  assert.match(tripping, /Review your request/);
   assert.match(tripping, /Privacy Notice/);
   assert.match(layout, /ProjectPreferencesProvider/);
   assert.match(layout, /MobileActionBar/);

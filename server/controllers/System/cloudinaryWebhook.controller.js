@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 
 import { db, getErrorMessage, tableExists } from '../Lot_Projects/_shared/lotProject.shared.js';
+import { writeAuditLog } from './auditLogs.controller.js';
 
 const clean = (value) => String(value ?? '').trim();
 const MAX_WEBHOOK_AGE_SECONDS = 2 * 60 * 60;
@@ -134,7 +135,7 @@ export const handleCloudinaryMalwareWebhook = async (req, res) => {
 
     await connection.beginTransaction();
 
-    await connection.query(
+    const [clientFileUpdate] = await connection.query(
       `
         UPDATE lot_project_client_document_files
         SET malware_scan_status = ?,
@@ -146,7 +147,7 @@ export const handleCloudinaryMalwareWebhook = async (req, res) => {
       [scanState.status, scanState.reason, publicId]
     );
 
-    await connection.query(
+    const [paymentProofUpdate] = await connection.query(
       `
         UPDATE lot_project_payment_proofs
         SET malware_scan_status = ?,
@@ -159,8 +160,9 @@ export const handleCloudinaryMalwareWebhook = async (req, res) => {
       [scanState.status, scanState.reason, publicId]
     );
 
+    let commissionReceiptFilesUpdated = 0;
     if (await tableExists(connection, 'lot_project_commission_receipt_files')) {
-      await connection.query(
+      const [result] = await connection.query(
         `
           UPDATE lot_project_commission_receipt_files
           SET malware_scan_status = ?,
@@ -172,10 +174,12 @@ export const handleCloudinaryMalwareWebhook = async (req, res) => {
         `,
         [scanState.status, scanState.reason, publicId]
       );
+      commissionReceiptFilesUpdated = Number(result.affectedRows || 0);
     }
 
+    let acknowledgementFilesUpdated = 0;
     if (await tableExists(connection, 'lot_project_payment_acknowledgement_files')) {
-      await connection.query(
+      const [result] = await connection.query(
         `
           UPDATE lot_project_payment_acknowledgement_files
           SET malware_scan_status = ?,
@@ -187,9 +191,30 @@ export const handleCloudinaryMalwareWebhook = async (req, res) => {
         `,
         [scanState.status, scanState.reason, publicId]
       );
+      acknowledgementFilesUpdated = Number(result.affectedRows || 0);
     }
 
     await updateClientDocumentSnapshots(connection, publicId, scanState);
+    await writeAuditLog(connection, req, {
+      action: 'system',
+      module: 'File Security',
+      entityType: 'cloudinary_asset_scan',
+      entityId: publicId,
+      entityLabel: publicId,
+      title: 'Updated malware scan result',
+      description: `Cloudinary Perception Point marked an uploaded asset as ${scanState.status}.`,
+      metadata: {
+        provider: 'perception_point',
+        scanStatus: scanState.status,
+        scanReason: scanState.reason,
+        affectedRecords: {
+          buyerDocumentFiles: Number(clientFileUpdate.affectedRows || 0),
+          paymentProofs: Number(paymentProofUpdate.affectedRows || 0),
+          commissionReceiptFiles: commissionReceiptFilesUpdated,
+          paymentAcknowledgementFiles: acknowledgementFilesUpdated,
+        },
+      },
+    });
     await connection.commit();
 
     return res.status(200).json({ success: true });

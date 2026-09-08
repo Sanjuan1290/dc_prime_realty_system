@@ -1,6 +1,8 @@
 // Permission names mirror the API rules so the interface never advertises blocked actions.
 export const PERMISSIONS = Object.freeze({
   SYSTEM_DASHBOARD_VIEW: 'system.dashboard.view',
+  SYSTEM_REPORTS_VIEW: 'system.reports.view',
+  SYSTEM_REPORTS_EXPORT: 'system.reports.export',
   SYSTEM_PROJECTS_VIEW: 'system.projects.view',
   SYSTEM_PROJECTS_MANAGE: 'system.projects.manage',
   SYSTEM_ACCREDITED_VIEW: 'system.accredited.view',
@@ -29,6 +31,9 @@ export const PERMISSIONS = Object.freeze({
   LOT_DASHBOARD_VIEW: 'lot_project.dashboard.view',
   LOT_LISTINGS_VIEW: 'lot_project.listings.view',
   LOT_LISTINGS_MANAGE: 'lot_project.listings.manage',
+  LOT_LISTINGS_IMPORT: 'lot_project.listings.import',
+  LOT_LISTINGS_IMPORT_UNDO: 'lot_project.listings.import_undo',
+  LOT_RESERVATION_CORRECT: 'lot_project.reservation.correct',
   LOT_PAYMENT_LOGS_VIEW: 'lot_project.payment_logs.view',
   LOT_COMMISSIONS_VIEW: 'lot_project.commissions.view',
   LOT_SETTINGS_VIEW: 'lot_project.settings.view',

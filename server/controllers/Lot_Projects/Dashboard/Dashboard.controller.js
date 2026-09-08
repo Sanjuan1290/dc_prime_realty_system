@@ -12,6 +12,7 @@ import {
   getLatestActiveScheduleGenerationPredicate,
   refreshStaleDailyPenaltyCaches,
 } from '../_shared/lotProject.shared.js';
+import { writeAuditLog } from '../../System/auditLogs.controller.js';
 
 const toNumber = (value) => Number(value || 0);
 const roundMoney = (value) => Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
@@ -1524,6 +1525,18 @@ export const getLotProjectPriceList = async (req, res) => {
         ) AS cadastral_lots,`
       : `NULL AS cadastral_lots,`;
 
+    const requestedStatus = String(req.query.status || 'available').trim().toLowerCase();
+    const supportedStatuses = new Set(['available', 'all', 'hold', 'sold', 'fully_paid', 'pending_for_cancellation', 'cancelled']);
+    const statusFilter = supportedStatuses.has(requestedStatus) ? requestedStatus : 'available';
+    const statusSql = statusFilter === 'all'
+      ? ''
+      : statusFilter === 'fully_paid'
+        ? "AND l.lot_project_listing_status = 'sold' AND l.lot_project_listing_sold_substatus = 'fully_paid'"
+        : statusFilter === 'sold'
+          ? "AND l.lot_project_listing_status = 'sold' AND COALESCE(l.lot_project_listing_sold_substatus, 'active') = 'active'"
+          : 'AND l.lot_project_listing_status = ?';
+    const statusParams = ['all', 'fully_paid', 'sold'].includes(statusFilter) ? [] : [statusFilter];
+
     const [rows] = await connection.query(
       `
         SELECT
@@ -1535,10 +1548,10 @@ export const getLotProjectPriceList = async (req, res) => {
           0 AS project_required_document_count
         FROM lot_project_listings l
         WHERE l.lot_project_id = ?
-          AND lot_project_listing_status = 'available'
+          ${statusSql}
         ORDER BY l.lot_project_listing_unit_id ASC, l.lot_project_listing_id ASC
       `,
-      [project.lot_project_id]
+      [project.lot_project_id, ...statusParams]
     );
 
     return res.json({
@@ -1546,10 +1559,50 @@ export const getLotProjectPriceList = async (req, res) => {
       data: {
         project: projectPayload,
         listings: rows.map(mapListingRow),
+        statusFilter,
         printedAt: todayDateOnly(),
       },
     });
   } catch (error) {
+    return res.status(500).json({ success: false, message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
+
+export const auditLotProjectPriceListPrint = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    const slug = String(req.params.projectSlug || '').trim();
+    const project = await getProjectBySlug(slug);
+    if (!project) return res.status(404).json({ success: false, message: 'Lot project not found.' });
+
+    const requestedStatus = String(req.body?.status || 'available').trim().toLowerCase();
+    const supportedStatuses = new Set(['available', 'all', 'hold', 'sold', 'fully_paid', 'pending_for_cancellation', 'cancelled']);
+    const status = supportedStatuses.has(requestedStatus) ? requestedStatus : 'available';
+    const months = Math.max(1, Math.min(120, Math.round(Number(req.body?.straightPaymentMonths || 20))));
+
+    await connection.beginTransaction();
+    await writeAuditLog(connection, req, {
+      action: 'export',
+      module: 'Price List',
+      entityType: 'lot_project_price_list',
+      entityId: String(project.lot_project_id),
+      entityLabel: project.lot_project_name,
+      title: 'Printed project price list',
+      description: `Prepared ${project.lot_project_name} price list for printing.`,
+      metadata: {
+        projectId: project.lot_project_id,
+        projectName: project.lot_project_name,
+        status,
+        straightPaymentMonths: months,
+      },
+    });
+    await connection.commit();
+    return res.json({ success: true });
+  } catch (error) {
+    try { await connection.rollback(); } catch {}
     return res.status(500).json({ success: false, message: getErrorMessage(error) });
   } finally {
     connection.release();

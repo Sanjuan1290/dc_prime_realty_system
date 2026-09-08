@@ -159,7 +159,7 @@ const getSavedListingDocumentRequirements = async (connection, projectId, listin
 };
 
 
-const replaceReservationSchedules = async (connection, projectId, listing, clientProfileId, accountId, profileTerms) => {
+export const replaceReservationSchedules = async (connection, projectId, listing, clientProfileId, accountId, profileTerms) => {
   if (!(await tableExists(connection, 'lot_project_payment_schedules'))) return;
 
   const listingTermsRow = {
@@ -262,7 +262,7 @@ const replaceReservationSchedules = async (connection, projectId, listing, clien
   );
 };
 
-const insertReservationDocuments = async (connection, projectId, listingId, clientProfileId, requestedDocuments = null) => {
+export const insertReservationDocuments = async (connection, projectId, listingId, clientProfileId, requestedDocuments = null) => {
   if (!(await tableExists(connection, 'lot_project_listing_documents'))) return;
 
   let sourceDocuments = Array.isArray(requestedDocuments) && requestedDocuments.length
@@ -1151,6 +1151,27 @@ export const reserveLotProjectListing = async (req, res) => {
         startingDate,
         firstDueDate,
         buyerFormSubmissionId,
+        // Preserve the submitted reservation inputs for administrative traceability.
+        // writeAuditLog applies centralized secret/account-number redaction before persistence.
+        clientProfileInput: clientProfile,
+        reservationInput: reservation,
+        paymentTermsInput: terms,
+        computedContract: {
+          pricePerSqm: contractPricing.pricePerSqm,
+          baseSellingPrice: contractPricing.baseSellingPrice,
+          saleDiscountPercentage: contractPricing.saleDiscountPercentage,
+          saleDiscountAmount: contractPricing.saleDiscountAmount,
+          netSellingPrice: contractPricing.netSellingPrice,
+          legalMiscRate: contractPricing.legalMiscRate,
+          legalMiscAmount: contractPricing.lmfAmount,
+          tcp: contractPricing.tcp,
+          downpaymentInputMode,
+          downpaymentAmount,
+          downpaymentPercentage,
+          downpaymentTerms,
+          monthlyTerms,
+          dpDiscountPercentage,
+        },
       },
     });
 

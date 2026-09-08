@@ -17,7 +17,12 @@ test('project price list uses listing inventory pricing without an out-of-scope 
   assert.doesNotMatch(source, /effectiveTcpExpr/);
   assert.match(source, /SELECT\s+l\.\*,\s+\$\{cadastralSelect\}/s);
   assert.match(source, /listings:\s*rows\.map\(mapListingRow\)/);
-  assert.match(source, /lot_project_listing_status = 'available'/);
+  assert.match(source, /requestedStatus = String\(req\.query\.status \|\| 'available'\)/);
+  assert.match(source, /supportedStatuses = new Set\(\['available', 'all', 'hold', 'sold', 'fully_paid', 'pending_for_cancellation', 'cancelled'\]\)/);
+  assert.match(source, /statusFilter === 'all'/);
+  assert.match(source, /statusFilter === 'fully_paid'/);
+  assert.match(source, /statusFilter === 'sold'/);
+  assert.match(source, /statusFilter,/);
 });
 
 test('project price list response still exposes dual cash and installment values through mapListingRow', async () => {
@@ -54,17 +59,20 @@ test('project unit price list matches the inventory sheet columns and straight-p
 
   assert.match(printSource, /const DEFAULT_STRAIGHT_PAYMENT_MONTHS = 20/);
   assert.match(printSource, /installmentSellingPrice - reservationFee/);
-  assert.match(printSource, /new URLSearchParams\(window\.location\.search\)\.get\('straightPaymentMonths'\)/);
+  assert.match(printSource, /const searchParams = new URLSearchParams\(window\.location\.search\)/);
+  assert.match(printSource, /searchParams\.get\('straightPaymentMonths'\)/);
+  assert.match(printSource, /searchParams\.get\('status'\)/);
   assert.match(printSource, /getPriceListValues\(listing, straightPaymentMonths\)/);
   assert.match(printSource, /netAfterReservation \/ straightPaymentMonths/);
   assert.match(printSource, /pageOrientation="landscape"/);
   assert.doesNotMatch(printSource, />Installment TCP</);
   assert.doesNotMatch(printSource, />Cash TCP</);
   assert.doesNotMatch(printSource, />LMF Rate</);
-  assert.match(printSource, /const availableListings = listings\.filter/);
-  assert.match(printSource, /listing\.rawStatus \?\? listing\.status/);
-  assert.match(printSource, /=== 'available'/);
-  assert.doesNotMatch(printSource, /Listing Status/);
-  assert.doesNotMatch(printSource, /statusTone/);
-  assert.match(printSource, /colSpan=\{12\}/);
+  assert.match(printSource, /const listings = payload\.listings \|\| \[\]/);
+  assert.match(printSource, /PRICE_LIST_STATUS_LABELS/);
+  assert.match(printSource, />Status<\/th>/);
+  assert.match(printSource, /listing\.status \|\| '-'/);
+  assert.match(printSource, /No listings found for the selected status/);
+  assert.doesNotMatch(printSource, /const availableListings = listings\.filter/);
+  assert.match(printSource, /colSpan=\{13\}/);
 });

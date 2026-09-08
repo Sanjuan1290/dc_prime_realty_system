@@ -1,6 +1,7 @@
 import { db } from '../../db/connect.js';
 import { validateDocumentCode } from '../../services/storageCodes.service.js';
 import { normalizeDocumentResponsibleParty } from '../../utils/documentRequirement.js';
+import { writeAuditLog } from './auditLogs.controller.js';
 
 const getErrorMessage = (error) => {
   if (String(error?.code || '').startsWith('ER_') || error?.sqlMessage || error?.sql) return 'Database operation failed. Please try again.';
@@ -283,6 +284,29 @@ export const addDocument = async (req, res) => {
       ]
     );
 
+    await writeAuditLog(db, req, {
+      action: 'create',
+      module: 'Documents',
+      entityType: 'document',
+      entityId: String(result.insertId),
+      entityLabel: normalizedDocumentName,
+      title: 'Added document library item',
+      description: `Added ${normalizedDocumentName} to the document library.`,
+      metadata: {
+        before: null,
+        after: {
+          documentId: Number(result.insertId),
+          name: normalizedDocumentName,
+          code: normalizedDocumentCode,
+          description: document_description?.trim() || null,
+          status: document_status,
+          isRequired: Boolean(document_is_required),
+          responsibleParty: normalizeDocumentResponsibleParty(document_responsible_party, 'client'),
+          isReusable: true,
+        },
+      },
+    });
+
     return res.status(201).json({
       message: 'Document added successfully.',
       document_id: result.insertId,
@@ -352,6 +376,26 @@ export const addTemplate = async (req, res) => {
       );
     }
 
+    await writeAuditLog(connection, req, {
+      action: 'create',
+      module: 'Documents',
+      entityType: 'document_template',
+      entityId: String(templateId),
+      entityLabel: template_name.trim(),
+      title: 'Created document template',
+      description: `Created document template ${template_name.trim()}.`,
+      metadata: {
+        before: null,
+        after: {
+          templateId,
+          name: template_name.trim(),
+          description: template_description?.trim() || null,
+          status: template_status,
+          documents: templateDocumentRows,
+        },
+      },
+    });
+
     await connection.commit();
 
     return res.status(201).json({
@@ -380,7 +424,7 @@ export const deleteDocument = async (req, res) => {
 
     const [documentRows] = await connection.query(
       `
-        SELECT document_id
+        SELECT *
         FROM documents
         WHERE document_id = ?
         LIMIT 1
@@ -406,6 +450,17 @@ export const deleteDocument = async (req, res) => {
       `,
       [documentId]
     );
+
+    await writeAuditLog(connection, req, {
+      action: 'delete',
+      module: 'Documents',
+      entityType: 'document',
+      entityId: String(documentId),
+      entityLabel: documentRows[0]?.document_name || `Document ${documentId}`,
+      title: 'Deleted document library item',
+      description: `Permanently deleted ${documentRows[0]?.document_name || `document ${documentId}`} and removed its requirement links.`,
+      metadata: { before: documentRows[0], after: null },
+    });
 
     await connection.commit();
 
@@ -435,7 +490,7 @@ export const deleteTemplate = async (req, res) => {
 
     const [templateRows] = await connection.query(
       `
-        SELECT template_id
+        SELECT *
         FROM document_templates
         WHERE template_id = ?
         LIMIT 1
@@ -457,6 +512,17 @@ export const deleteTemplate = async (req, res) => {
       `,
       [templateId]
     );
+
+    await writeAuditLog(connection, req, {
+      action: 'delete',
+      module: 'Documents',
+      entityType: 'document_template',
+      entityId: String(templateId),
+      entityLabel: templateRows[0]?.template_name || `Template ${templateId}`,
+      title: 'Deleted document template',
+      description: `Permanently deleted document template ${templateRows[0]?.template_name || templateId}.`,
+      metadata: { before: templateRows[0], after: null },
+    });
 
     await connection.commit();
 
@@ -490,6 +556,9 @@ export const editDocument = async (req, res) => {
       return res.status(400).json({ message: 'Document name is required.' });
     }
 
+    const [beforeRows] = await db.query(`SELECT * FROM documents WHERE document_id = ? LIMIT 1`, [documentId]);
+    if (!beforeRows.length) return res.status(404).json({ message: 'Document not found.' });
+
     const [existingNameRows] = await db.query(
       `SELECT document_id FROM documents WHERE TRIM(document_name) = ? AND document_id <> ? LIMIT 1`,
       [normalizedDocumentName, documentId]
@@ -521,6 +590,28 @@ export const editDocument = async (req, res) => {
       ]
     );
 
+    await writeAuditLog(db, req, {
+      action: 'update',
+      module: 'Documents',
+      entityType: 'document',
+      entityId: String(documentId),
+      entityLabel: normalizedDocumentName,
+      title: 'Updated document library item',
+      description: `Updated ${normalizedDocumentName} in the document library.`,
+      metadata: {
+        before: beforeRows[0],
+        after: {
+          documentId,
+          name: normalizedDocumentName,
+          description: document_description?.trim() || null,
+          status: document_status,
+          isRequired: Boolean(document_is_required),
+          responsibleParty: normalizeDocumentResponsibleParty(document_responsible_party, 'client'),
+          isReusable: true,
+        },
+      },
+    });
+
     return res.json({ message: 'Document updated successfully.' });
   } catch (error) {
     if (isDuplicateDocumentNameError(error)) {
@@ -550,6 +641,13 @@ export const editTemplate = async (req, res) => {
     }
 
     await connection.beginTransaction();
+
+    const [beforeTemplateRows] = await connection.query(`SELECT * FROM document_templates WHERE template_id = ? LIMIT 1 FOR UPDATE`, [templateId]);
+    if (!beforeTemplateRows.length) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Template not found.' });
+    }
+    const [beforeTemplateDocuments] = await connection.query(`SELECT * FROM template_document_list WHERE template_id = ? ORDER BY template_document_list_id`, [templateId]);
 
     await connection.query(
       `
@@ -587,6 +685,26 @@ export const editTemplate = async (req, res) => {
         ])
       );
     }
+
+    await writeAuditLog(connection, req, {
+      action: 'update',
+      module: 'Documents',
+      entityType: 'document_template',
+      entityId: String(templateId),
+      entityLabel: template_name.trim(),
+      title: 'Updated document template',
+      description: `Updated document template ${template_name.trim()}.`,
+      metadata: {
+        before: { ...beforeTemplateRows[0], documents: beforeTemplateDocuments },
+        after: {
+          templateId,
+          name: template_name.trim(),
+          description: template_description?.trim() || null,
+          status: template_status,
+          documents: templateDocumentRows,
+        },
+      },
+    });
 
     await connection.commit();
 

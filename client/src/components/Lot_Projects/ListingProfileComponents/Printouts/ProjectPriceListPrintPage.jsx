@@ -59,25 +59,34 @@ const getPriceListValues = (listing = {}, straightPaymentMonths = DEFAULT_STRAIG
   }
 }
 
+const PRICE_LIST_STATUS_LABELS = {
+  available: 'Available Only',
+  all: 'All Statuses',
+  hold: 'Hold',
+  sold: 'Sold / Active',
+  fully_paid: 'Fully Paid',
+  pending_for_cancellation: 'Pending Cancellation',
+  cancelled: 'Cancelled',
+}
+
 const ProjectPriceListPrintPage = () => {
   const { projectSlug } = useParams()
+  const searchParams = new URLSearchParams(window.location.search)
+  const requestedStatus = String(searchParams.get('status') || 'available').trim().toLowerCase()
+  const statusFilter = PRICE_LIST_STATUS_LABELS[requestedStatus] ? requestedStatus : 'available'
 
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['lot-project-price-list', projectSlug],
-    queryFn: () => fetchJson(`/projects/lot-projects/${projectSlug}/price-list`),
+    queryKey: ['lot-project-price-list', projectSlug, statusFilter],
+    queryFn: () => fetchJson(`/projects/lot-projects/${projectSlug}/price-list?status=${encodeURIComponent(statusFilter)}`),
     enabled: Boolean(projectSlug),
   })
 
   const payload = data?.data || {}
   const project = payload.project || {}
   const listings = payload.listings || []
-  const availableListings = listings.filter((listing) =>
-    String(listing.rawStatus ?? listing.status ?? '').trim().toLowerCase() === 'available'
-  )
   const priceListDate = payload.printedAt || todayDateOnly()
-  const straightPaymentMonths = normalizeStraightPaymentMonths(
-    new URLSearchParams(window.location.search).get('straightPaymentMonths')
-  )
+  const straightPaymentMonths = normalizeStraightPaymentMonths(searchParams.get('straightPaymentMonths'))
+  const statusLabel = PRICE_LIST_STATUS_LABELS[payload.statusFilter || statusFilter] || 'Available Only'
 
   useEffect(() => {
     if (project?.name) document.title = `${project.name} Price Inventory`
@@ -116,7 +125,7 @@ const ProjectPriceListPrintPage = () => {
             As of {formatDate(priceListDate)}
           </p>
           <p className="text-[10px] font-semibold">
-            {project.location || '-'} · Project Code: {project.locationCode || '-'} · Available Units: {availableListings.length}
+            {project.location || '-'} · Project Code: {project.locationCode || '-'} · Units: {statusLabel} · Records: {listings.length}
           </p>
         </div>
 
@@ -124,7 +133,8 @@ const ProjectPriceListPrintPage = () => {
           <table className="project-price-list-table w-full table-fixed border-collapse text-[7px] leading-tight">
             <colgroup>
               <col className="w-[3%]" />
-              <col className="w-[8%]" />
+              <col className="w-[7%]" />
+              <col className="w-[7%]" />
               <col className="w-[7%]" />
               <col className="w-[6%]" />
               <col className="w-[9%]" />
@@ -140,6 +150,7 @@ const ProjectPriceListPrintPage = () => {
               <tr className="bg-slate-200 text-center font-black uppercase">
                 <th className="border border-black px-1 py-1">No.</th>
                 <th className="border border-black px-1 py-1">ID</th>
+                <th className="border border-black px-1 py-1">Status</th>
                 <th className="border border-black px-1 py-1">Orientation</th>
                 <th className="border border-black px-1 py-1">Lot Area</th>
                 <th className="border border-black px-1 py-1">Cash Price per SQM</th>
@@ -153,13 +164,14 @@ const ProjectPriceListPrintPage = () => {
               </tr>
             </thead>
             <tbody>
-              {availableListings.length ? availableListings.map((listing, index) => {
+              {listings.length ? listings.map((listing, index) => {
                 const values = getPriceListValues(listing, straightPaymentMonths)
 
                 return (
                   <tr key={listing.id || listing.unitCode}>
                     <td className="border border-black px-1 py-1 text-center font-bold">{index + 1}</td>
                     <td className="border border-black px-1 py-1 text-center font-black">{listing.unitCode || '-'}</td>
+                    <td className="border border-black px-1 py-1 text-center font-bold">{listing.status || '-'}</td>
                     <td className="border border-black px-1 py-1 text-center uppercase">{listing.lotType || '-'}</td>
                     <td className="border border-black px-1 py-1 text-right">{numberValue(values.area)}</td>
                     <td className="border border-black px-1 py-1 text-right font-bold">{money(values.cashPricePerSqm)}</td>
@@ -174,7 +186,7 @@ const ProjectPriceListPrintPage = () => {
                 )
               }) : (
                 <tr>
-                  <td colSpan={12} className="border border-black px-2 py-8 text-center text-sm font-bold">No available listings found.</td>
+                  <td colSpan={13} className="border border-black px-2 py-8 text-center text-sm font-bold">No listings found for the selected status.</td>
                 </tr>
               )}
             </tbody>

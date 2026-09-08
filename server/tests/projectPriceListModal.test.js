@@ -16,6 +16,9 @@ test('Price List button opens a month-setting modal before printing', async () =
   assert.match(dashboard, /parsedMonths < 1 \|\| parsedMonths > 120/);
   assert.match(dashboard, /setShowPriceListModal\(true\)/);
   assert.match(dashboard, /new URLSearchParams\(\{ straightPaymentMonths:/);
+  assert.match(dashboard, /status \}/);
+  assert.match(dashboard, /PRICE_LIST_STATUS_OPTIONS/);
+  assert.match(dashboard, /Unit Status/);
   assert.match(dashboard, /Print Price List/);
   assert.match(details, /onClick=\{onPrintPriceList\}[\s\S]*?Print Price List/);
   assert.match(dashboard, /onPrintPriceList=\{\(\) => \{ setShowDetails\(false\); setShowPriceListModal\(true\) \}\}/);
@@ -39,7 +42,9 @@ test('print page uses the month count supplied by the Price List modal', async (
     '../../client/src/components/Lot_Projects/ListingProfileComponents/Printouts/ProjectPriceListPrintPage.jsx'
   );
 
-  assert.match(printPage, /new URLSearchParams\(window\.location\.search\)\.get\('straightPaymentMonths'\)/);
+  assert.match(printPage, /const searchParams = new URLSearchParams\(window\.location\.search\)/);
+  assert.match(printPage, /searchParams\.get\('straightPaymentMonths'\)/);
+  assert.match(printPage, /searchParams\.get\('status'\)/);
   assert.match(printPage, /getPriceListValues\(listing, straightPaymentMonths\)/);
   assert.match(printPage, /netAfterReservation \/ straightPaymentMonths/);
   assert.match(printPage, /\{straightPaymentMonths\}<\/td>/);

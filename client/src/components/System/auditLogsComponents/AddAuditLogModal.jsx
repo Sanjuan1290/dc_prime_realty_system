@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { FiPlus, FiX } from 'react-icons/fi'
 
-const actionOptions = ['system', 'create', 'update', 'delete', 'send', 'approve', 'reject', 'release', 'view']
+const actionOptions = ['system', 'create', 'update', 'delete', 'send', 'approve', 'reject', 'release', 'import', 'export', 'correct', 'view']
 
 const AddAuditLogModal = ({ onClose, onSubmit, isSaving }) => {
   const [form, setForm] = useState({

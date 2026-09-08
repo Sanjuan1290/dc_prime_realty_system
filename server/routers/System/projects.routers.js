@@ -21,8 +21,13 @@ import {
 } from '../../controllers/System/projects.controller.js';
 
 import {
+  getSystemReports,
+  auditSystemReportExport,
+} from '../../controllers/System/reports.controller.js';
+import {
   getLotProjectDashboard,
   getLotProjectPriceList,
+  auditLotProjectPriceListPrint,
 } from '../../controllers/Lot_Projects/Dashboard/Dashboard.controller.js';
 import {
   getLotProjectListings,
@@ -31,6 +36,13 @@ import {
   deleteLotProjectListing,
 } from '../../controllers/Lot_Projects/Listings/Listings.controller.js';
 import {
+  validateLotProjectListingImport,
+  importLotProjectListings,
+  getLotProjectListingImports,
+  getLotProjectListingImportBatch,
+  revertLotProjectListingImport,
+} from '../../controllers/Lot_Projects/Listings/ListingImports.controller.js';
+import {
   getLotProjectListingProfile,
   recalculateLotProjectListingCommission,
   holdLotProjectListing,
@@ -38,6 +50,11 @@ import {
 } from '../../controllers/Lot_Projects/ListingProfile/ListingProfile.controller.js';
 import { updateLotProjectClientProfile } from '../../controllers/Lot_Projects/ListingProfile/ClientProfile.controller.js';
 import { reserveLotProjectListing } from '../../controllers/Lot_Projects/ListingProfile/ReserveListing.controller.js';
+import {
+  getReservationCorrectionOptions,
+  previewReservationCorrection,
+  correctReservationUnit,
+} from '../../controllers/Lot_Projects/ListingProfile/ReservationCorrection.controller.js';
 import {
   createBuyerFormLink,
   getBuyerFormState,
@@ -105,6 +122,8 @@ import {
 const router = express.Router();
 router.use(authenticateUser);
 
+router.get('/reports', requirePermission(PERMISSIONS.SYSTEM_REPORTS_VIEW), getSystemReports);
+router.post('/reports/export-audit', requirePermission(PERMISSIONS.SYSTEM_REPORTS_EXPORT), auditSystemReportExport);
 router.get('/lot-projects', requirePermission(PERMISSIONS.SYSTEM_PROJECTS_VIEW), getLotProjects);
 router.get('/lot-projects/options', requirePermission(PERMISSIONS.SYSTEM_PROJECTS_VIEW), getLotProjectOptions);
 router.get('/lot-projects/document-compliance', requirePermission(PERMISSIONS.SYSTEM_PROJECTS_VIEW), getLotProjectDocumentCompliance);
@@ -141,11 +160,20 @@ router.put('/lot-projects/:id', requirePermission(PERMISSIONS.SYSTEM_PROJECTS_MA
 router.patch('/lot-projects/:id/status', requirePermission(PERMISSIONS.SYSTEM_PROJECTS_MANAGE), toggleLotProjectStatus);
 router.delete('/lot-projects/:id', requirePermission(PERMISSIONS.SYSTEM_PROJECTS_MANAGE), deleteLotProject);
 
+router.post('/lot-projects/:projectSlug/listing-imports/validate', requirePermission(PERMISSIONS.LOT_LISTINGS_IMPORT), validateLotProjectListingImport);
+router.post('/lot-projects/:projectSlug/listing-imports', requirePermission(PERMISSIONS.LOT_LISTINGS_IMPORT), importLotProjectListings);
+router.get('/lot-projects/:projectSlug/listing-imports', requirePermission(PERMISSIONS.LOT_LISTINGS_IMPORT), getLotProjectListingImports);
+router.get('/lot-projects/:projectSlug/listing-imports/:batchId', requirePermission(PERMISSIONS.LOT_LISTINGS_IMPORT), getLotProjectListingImportBatch);
+router.post('/lot-projects/:projectSlug/listing-imports/:batchId/revert', requirePermission(PERMISSIONS.LOT_LISTINGS_IMPORT_UNDO), revertLotProjectListingImport);
+
 router.post('/lot-projects/:projectSlug/listings', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), createLotProjectListing);
 router.put('/lot-projects/:projectSlug/listings/:listingId', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), updateLotProjectListing);
 router.delete('/lot-projects/:projectSlug/listings/:listingId', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), deleteLotProjectListing);
 router.put('/lot-projects/:projectSlug/listings/:listingId/client-profile', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), updateLotProjectClientProfile);
 router.post('/lot-projects/:projectSlug/listings/:listingId/reserve', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), reserveLotProjectListing);
+router.get('/lot-projects/:projectSlug/listings/:listingId/reservation-correction', requirePermission(PERMISSIONS.LOT_RESERVATION_CORRECT), getReservationCorrectionOptions);
+router.post('/lot-projects/:projectSlug/listings/:listingId/reservation-correction/preview', requirePermission(PERMISSIONS.LOT_RESERVATION_CORRECT), previewReservationCorrection);
+router.post('/lot-projects/:projectSlug/listings/:listingId/reservation-correction', requirePermission(PERMISSIONS.LOT_RESERVATION_CORRECT), correctReservationUnit);
 router.get('/lot-projects/:projectSlug/listings/:listingId/buyer-form', requirePermission(PERMISSIONS.LOT_LISTINGS_VIEW), getBuyerFormState);
 router.post('/lot-projects/:projectSlug/listings/:listingId/buyer-form-links', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), createBuyerFormLink);
 router.post('/lot-projects/:projectSlug/listings/:listingId/buyer-form-links/:linkId/revoke', requirePermission(PERMISSIONS.LOT_LISTINGS_MANAGE), revokeBuyerFormLink);

@@ -22,6 +22,9 @@ const allowedActions = new Set([
   'release',
   'system',
   'view',
+  'import',
+  'export',
+  'correct',
 ]);
 
 const ARCHIVE_CODE_EXPIRY_MINUTES = 10;
@@ -39,10 +42,33 @@ const normalizeRetentionDays = (value) => {
   return Math.min(Math.max(parsed, MIN_RETENTION_DAYS), MAX_RETENTION_DAYS);
 };
 
+const AUDIT_SECRET_KEY_PATTERN = /(password|passcode|otp|one[_-]?time|token|jwt|authorization|cookie|secret|signature|private[_-]?key|pin|verification[_-]?code|reset[_-]?code)/i;
+const AUDIT_ACCOUNT_KEY_PATTERN = /(account[_-]?number|bank[_-]?account)/i;
+
+const maskAccountValue = (value) => {
+  const text = String(value ?? '').trim();
+  if (!text) return text;
+  const compact = text.replace(/\s+/g, '');
+  const lastFour = compact.slice(-4);
+  return lastFour ? `****${lastFour}` : '****';
+};
+
+const redactAuditValue = (value, key = '') => {
+  if (AUDIT_SECRET_KEY_PATTERN.test(String(key || ''))) return '[REDACTED]';
+  if (AUDIT_ACCOUNT_KEY_PATTERN.test(String(key || ''))) return maskAccountValue(value);
+  if (Array.isArray(value)) return value.map((item) => redactAuditValue(item));
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([childKey, childValue]) => [childKey, redactAuditValue(childValue, childKey)])
+    );
+  }
+  return value;
+};
+
 const safeJsonString = (value) => {
   if (value === undefined || value === null || value === '') return null;
   try {
-    return JSON.stringify(value);
+    return JSON.stringify(redactAuditValue(value));
   } catch {
     return JSON.stringify({ note: 'Unable to serialize metadata.' });
   }
@@ -166,7 +192,7 @@ export const auditLogTableSql = `
     actor_name VARCHAR(255) NULL,
     actor_email VARCHAR(150) NULL,
     actor_role VARCHAR(80) NULL,
-    action ENUM('create','update','delete','login','logout','send','approve','reject','release','system','view') NOT NULL DEFAULT 'system',
+    action ENUM('create','update','delete','login','logout','send','approve','reject','release','system','view','import','export','correct') NOT NULL DEFAULT 'system',
     module VARCHAR(100) NOT NULL,
     entity_type VARCHAR(100) NULL,
     entity_id VARCHAR(120) NULL,
@@ -324,7 +350,12 @@ const ensureAuditArchiveTables = async (connection = db) => {
 
 const insertAuditLog = async (connection, req, payload = {}) => {
   const actor = payload.actor || (req ? await getAuthenticatedUser(req) : null);
-  const metadata = safeJsonString(payload.metadata || payload.metadataJson || null);
+  const requestId = String(req?.headers?.['x-request-id'] || req?.auditRequestId || crypto.randomUUID()).slice(0, 120);
+  if (req && !req.auditRequestId) req.auditRequestId = requestId;
+  const metadataPayload = payload.metadata || payload.metadataJson || null;
+  const metadata = safeJsonString(metadataPayload && typeof metadataPayload === 'object'
+    ? { ...metadataPayload, requestId }
+    : metadataPayload ? { value: metadataPayload, requestId } : { requestId });
 
   await connection.query(
     `
