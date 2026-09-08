@@ -18,6 +18,7 @@ const HEADERS = [
 ]
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
+const MAX_IMPORT_ROWS = 5000
 const ALLOWED_FILE_EXTENSIONS = new Set(['xlsx'])
 
 const headerStyle = {
@@ -94,6 +95,21 @@ const ListingImportModal = ({ project = {}, projectSlug, onClose, onImported }) 
     ]
     listingSheet['!freeze'] = { xSplit: 0, ySplit: 1 }
     listingSheet['!autofilter'] = { ref: `A1:${XLSX.utils.encode_col(HEADERS.length - 1)}1` }
+
+    // Unit IDs are identifiers, not quantities. Pre-format every import row in
+    // column B as Text so Excel preserves leading zeroes such as 0101/0102.
+    // We intentionally do not auto-pad values on import because the official
+    // unit number must be entered exactly as intended by the administrator.
+    for (let row = 1; row <= MAX_IMPORT_ROWS; row += 1) {
+      const address = XLSX.utils.encode_cell({ r: row, c: 1 })
+      listingSheet[address] = {
+        t: 's',
+        v: '',
+        z: '@',
+        s: { numFmt: '@' },
+      }
+    }
+    listingSheet['!ref'] = `A1:${XLSX.utils.encode_col(HEADERS.length - 1)}${MAX_IMPORT_ROWS + 1}`
     for (let index = 0; index < HEADERS.length; index += 1) {
       const address = XLSX.utils.encode_cell({ r: 0, c: index })
       if (listingSheet[address]) listingSheet[address].s = headerStyle
@@ -103,11 +119,11 @@ const ListingImportModal = ({ project = {}, projectSlug, onClose, onImported }) 
       ['D&C Prime Realty — Lot Listing Import Template'],
       ['Project', projectName],
       ['Locked Project Code', `${projectCode || 'PROJECT'}-`],
-      ['Important', `In Unit ID, type only the number after the prefix. Example: if the final unit is ${projectCode || 'LA'}-1306, enter 1306.`],
+      ['Important', `In Unit ID, type only the number after the prefix. The Unit ID column is formatted as Text so leading zeroes are preserved. Example: if the final unit is ${projectCode || 'LA'}-0101, enter 0101.`],
       ['Status', 'All imported listings are automatically created as Available.'],
       ['Documents', 'Project default document requirements are automatically applied.'],
       ['Cadastral Lot', 'Required. Use one cadastral lot number from the Project Reference sheet. Only lots belonging to this project are accepted.'],
-      ['Unit ID', `Required. Enter only the unit number after ${projectCode || 'PROJECT'}-. Do not type the project prefix.`],
+      ['Unit ID', `Required. Enter only the unit number after ${projectCode || 'PROJECT'}-. Do not type the project prefix. Leading zeroes are preserved (example: 0101).`],
       ['Lot Type', 'Required. Inner, Corner, or End'],
       ['Rates', 'Enter percentage values only. Example: 10 means 10%.'],
     ]
