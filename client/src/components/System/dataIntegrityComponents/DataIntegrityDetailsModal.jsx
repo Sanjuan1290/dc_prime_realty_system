@@ -155,7 +155,13 @@ const DataIntegrityDetailsModal = ({ accountId, onClose }) => {
                 <Metric label="Effective TCP" value={money(data.financial?.effectiveTcp)} helper="Saved contract TCP after the contract pricing choices." tone="blue" />
                 <Metric label="Verified Cash" value={money(data.financial?.verifiedCash)} helper="Actual verified payment records." tone="green" />
                 <Metric label="Earned DP Discount" value={money(data.financial?.earnedDpDiscount)} helper={`Approved ${money(data.financial?.approvedDpDiscount)}`} tone="amber" />
-                <Metric label="Commission Progress" value={percent(data.financial?.commissionProgress)} helper={`Recognized settled value ${money(data.financial?.settledValue)}`} />
+                <Metric
+                  label={data.financial?.commissionProgressMode === 'cancellation_retained' ? 'Cancellation Commission Progress' : 'Commission Progress'}
+                  value={percent(data.financial?.commissionProgress)}
+                  helper={data.financial?.commissionProgressMode === 'cancellation_retained'
+                    ? `Retained after refund ${money(data.financial?.cancellationDiscontinuedAmount)}`
+                    : `Recognized settled value ${money(data.financial?.settledValue)}`}
+                />
               </div>
 
               <div className="grid gap-5 xl:grid-cols-2">
@@ -178,14 +184,24 @@ const DataIntegrityDetailsModal = ({ accountId, onClose }) => {
                 </Section>
               </div>
 
-              <Section title="Settlement Used for Commission Progress" description="This mirrors the system's discount-aware commission progress concept. Sale discounts and LMF waivers are already embedded in contract TCP and are not added again as cash.">
-                <BreakdownRow label="Verified Cash Paid" value={money(data.financial?.verifiedCash)} />
-                <BreakdownRow label="Earned DP Discount" value={`+${money(data.financial?.earnedDpDiscount)}`} />
-                <BreakdownRow label="Recognized Settled Value" value={money(data.financial?.settledValue)} strong />
-                <BreakdownRow label="Effective TCP" value={money(data.financial?.effectiveTcp)} />
-                <BreakdownRow label="Contract Remaining for Progress" value={money(data.financial?.contractRemaining)} />
-                <BreakdownRow label="Commission Payment Progress" value={percent(data.financial?.commissionProgress)} strong />
-              </Section>
+              {data.financial?.commissionProgressMode === 'cancellation_retained' ? (
+                <Section title="Cancellation Retained Basis for Commission" description="Cancelled accounts are historical. Commission milestones are frozen from the amount D&C retained after the refund divided by the original commission base; normal paid/TCP progress does not overwrite that snapshot.">
+                  <BreakdownRow label="Cash Collected at Cancellation" value={money(data.financial?.cancellationCashCollected)} />
+                  <BreakdownRow label="Refunded" value={`-${money(data.financial?.cancellationRefundAmount)}`} />
+                  <BreakdownRow label="Discontinued / Retained" value={money(data.financial?.cancellationDiscontinuedAmount)} strong />
+                  <BreakdownRow label="Normal Contract Payment Progress" value={percent(data.financial?.liveCommissionProgress)} note="Reference only; this is not used for cancelled commission eligibility." />
+                  <BreakdownRow label="Cancellation Commission Progress" value={percent(data.financial?.commissionProgress)} strong />
+                </Section>
+              ) : (
+                <Section title="Settlement Used for Commission Progress" description="This mirrors the system's discount-aware commission progress concept. Sale discounts and LMF waivers are already embedded in contract TCP and are not added again as cash.">
+                  <BreakdownRow label="Verified Cash Paid" value={money(data.financial?.verifiedCash)} />
+                  <BreakdownRow label="Earned DP Discount" value={`+${money(data.financial?.earnedDpDiscount)}`} />
+                  <BreakdownRow label="Recognized Settled Value" value={money(data.financial?.settledValue)} strong />
+                  <BreakdownRow label="Effective TCP" value={money(data.financial?.effectiveTcp)} />
+                  <BreakdownRow label="Contract Remaining for Progress" value={money(data.financial?.contractRemaining)} />
+                  <BreakdownRow label="Commission Payment Progress" value={percent(data.financial?.commissionProgress)} strong />
+                </Section>
+              )}
 
               <Section title="Payments & SOA" description="Verified non-balloon payments should be fully allocated, stored SOA paid amounts should match verified allocations, and overdue daily-penalty caches should be current.">
                 {data.payments?.length ? (
@@ -244,3 +260,4 @@ const DataIntegrityDetailsModal = ({ accountId, onClose }) => {
 }
 
 export default DataIntegrityDetailsModal
+

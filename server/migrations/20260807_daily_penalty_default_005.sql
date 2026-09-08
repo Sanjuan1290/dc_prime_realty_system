@@ -7,3 +7,4 @@ ALTER TABLE lot_project_client_profiles
 
 ALTER TABLE lot_project_settings
   MODIFY COLUMN default_penalty_rate_percent DECIMAL(5,2) NOT NULL DEFAULT '0.05';
+

@@ -123,3 +123,4 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_documents_document_name
 SELECT document_id, document_name, document_code
 FROM documents
 ORDER BY document_name, document_id;
+

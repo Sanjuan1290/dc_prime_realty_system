@@ -1306,3 +1306,4 @@ export const unholdLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
+

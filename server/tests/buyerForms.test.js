@@ -135,3 +135,4 @@ test('second buyer formal text is normalized before public-link submission data 
   assert.equal(profile.secondBuyerPresentAddress, 'Imus, Cavite');
   assert.equal(profile.secondBuyerEmploymentStatus, 'Employed - Private');
 });
+

@@ -31,3 +31,4 @@ test('commission rate examples are field-authored instead of inheriting the dail
   assert.doesNotMatch(decorator, /if \(\/rate\|percentage\|percent[\s\S]*?return '0\.05%'/);
   assert.doesNotMatch(decorator, /custom\.\*daily\.\*penalty\.\*rate/);
 });
+

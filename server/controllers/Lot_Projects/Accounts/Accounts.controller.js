@@ -651,3 +651,4 @@ export const purgeLotProjectAccount = async (req, res) => {
     connection.release();
   }
 };
+

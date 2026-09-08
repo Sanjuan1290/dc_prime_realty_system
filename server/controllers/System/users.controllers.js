@@ -1742,3 +1742,4 @@ export const resetUserPassword = async (req, res) => {
     connection.release();
   }
 };
+

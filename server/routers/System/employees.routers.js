@@ -22,3 +22,4 @@ router.put('/:employeeId', requirePermission(PERMISSIONS.EMPLOYEES_MANAGE), upda
 router.post('/:employeeId/regenerate-barcode', requirePermission(PERMISSIONS.EMPLOYEES_MANAGE), regenerateEmployeeAttendanceBarcode);
 router.patch('/:employeeId/status', requirePermission(PERMISSIONS.EMPLOYEES_MANAGE), updateEmployeeStatus);
 export default router;
+

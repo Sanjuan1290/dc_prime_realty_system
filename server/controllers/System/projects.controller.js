@@ -883,3 +883,4 @@ export const getLotProjectDocumentCompliance = async (req, res) => {
     connection.release();
   }
 };
+

@@ -12,6 +12,7 @@ import {
 } from '../Lot_Projects/_shared/lotProject.shared.js';
 import { calculateContractPricing } from '../Lot_Projects/_shared/listingPricing.js';
 import { calculateCommissionPaymentProgress } from '../../utils/commissionProgress.js';
+import { calculateCommissionableRetainedPercent } from '../../services/lotProjectAccount.service.js';
 
 const MONEY_TOLERANCE = 0.05;
 const VALID_SCAN_STATUSES = new Set(['pending', 'approved', 'rejected', 'not_scanned', 'error']);
@@ -547,9 +548,32 @@ const buildAccountReports = (dataset) => {
     const verifiedCash = progressSnapshot.verifiedCash;
     const earnedDpDiscount = progressSnapshot.earnedDpDiscount;
     const settledValue = progressSnapshot.settledValue;
-    const commissionProgress = progressSnapshot.paymentPercent;
+    const liveCommissionProgress = progressSnapshot.paymentPercent;
+    const isCancelledAccount = clean(account.account_status).toLowerCase() === 'cancelled';
+    const cancellationCommissionProgress = commissions.length
+      ? Math.max(...commissions.map((commission) => calculateCommissionableRetainedPercent({
+          retainedAmount: account.discontinued_amount,
+          commissionBase: commission.commission_base_amount,
+        })))
+      : toNumber(account.commissionable_retained_percent);
+    const commissionProgress = isCancelledAccount ? cancellationCommissionProgress : liveCommissionProgress;
     const contractRemaining = progressSnapshot.remainingBalance;
     const adjustmentSummary = summarizeAdjustments(account, schedules, adjustments, penaltyReliefs, terms);
+
+    if (isCancelledAccount && differs(account.commissionable_retained_amount, account.discontinued_amount)) {
+      addIssue(report, makeIssue({
+        category: 'commissions', severity: 'critical', title: 'Cancelled account retained amount does not match discontinued amount',
+        message: `The cancelled account stores ${roundMoney(account.commissionable_retained_amount).toFixed(2)} as commissionable retained value, but the cancellation settlement discontinued ${roundMoney(account.discontinued_amount).toFixed(2)}.`,
+        amountDifference: moneyDiff(account.commissionable_retained_amount, account.discontinued_amount), entityType: 'account', entityId: accountId,
+      }));
+    }
+    if (isCancelledAccount && commissions.length && differs(account.commissionable_retained_percent, cancellationCommissionProgress, 0.1)) {
+      addIssue(report, makeIssue({
+        category: 'commissions', severity: 'review', title: 'Cancelled account retained percentage is stale or inconsistent',
+        message: `Stored cancellation progress is ${toNumber(account.commissionable_retained_percent).toFixed(2)}% while the retained/discontinued amount against the original commission base supports ${cancellationCommissionProgress.toFixed(2)}%.`,
+        entityType: 'account', entityId: accountId,
+      }));
+    }
 
     const baseSellingPrice = roundMoney(account.soa_selected_base_selling_price);
     const savedSaleDiscount = roundMoney(account.soa_sale_discount_amount);
@@ -693,10 +717,19 @@ const buildAccountReports = (dataset) => {
           amountDifference: moneyDiff(commission.net_remaining_commission_amount, expectedRemaining), entityType: 'commission', entityId: commission.lot_project_commission_id,
         }));
       }
-      if (differs(commission.payment_percent, commissionProgress, 0.1)) {
+      const expectedCommissionPaymentPercent = isCancelledAccount
+        ? calculateCommissionableRetainedPercent({
+            retainedAmount: account.discontinued_amount,
+            commissionBase: commission.commission_base_amount,
+          })
+        : liveCommissionProgress;
+      if (differs(commission.payment_percent, expectedCommissionPaymentPercent, 0.1)) {
         addIssue(report, makeIssue({
           category: 'commissions', severity: 'review', title: 'Stored commission payment progress is stale or inconsistent',
-          message: `Stored progress is ${toNumber(commission.payment_percent).toFixed(2)}% while the current discount-aware calculation is ${commissionProgress.toFixed(2)}%.`, entityType: 'commission', entityId: commission.lot_project_commission_id,
+          message: isCancelledAccount
+            ? `Stored progress is ${toNumber(commission.payment_percent).toFixed(2)}% while the cancellation-retained calculation is ${expectedCommissionPaymentPercent.toFixed(2)}% (${roundMoney(account.discontinued_amount).toFixed(2)} retained / ${roundMoney(commission.commission_base_amount).toFixed(2)} commission base).`
+            : `Stored progress is ${toNumber(commission.payment_percent).toFixed(2)}% while the current discount-aware calculation is ${expectedCommissionPaymentPercent.toFixed(2)}%.`,
+          entityType: 'commission', entityId: commission.lot_project_commission_id,
         }));
       }
 
@@ -845,6 +878,11 @@ const buildAccountReports = (dataset) => {
       settledValue,
       contractRemaining,
       commissionProgress,
+      liveCommissionProgress,
+      commissionProgressMode: isCancelledAccount ? 'cancellation_retained' : 'active_contract',
+      cancellationCashCollected: roundMoney(account.cash_collected_at_cancellation),
+      cancellationRefundAmount: roundMoney(account.refund_amount),
+      cancellationDiscontinuedAmount: roundMoney(account.discontinued_amount),
       lmfWaivedAmount: roundMoney(account.soa_lmf_waived_amount),
       penaltyWaivedAmount: adjustmentSummary.penaltyWaivedAmount,
       scheduleDiscountAmount: adjustmentSummary.scheduleDiscountAmount,
@@ -902,7 +940,12 @@ const buildAccountReports = (dataset) => {
       storedReleased: roundMoney(commission.released_commission_amount),
       storedRemaining: roundMoney(commission.net_remaining_commission_amount),
       storedPaymentPercent: toNumber(commission.payment_percent),
-      expectedPaymentPercent: commissionProgress,
+      expectedPaymentPercent: isCancelledAccount
+        ? calculateCommissionableRetainedPercent({
+            retainedAmount: account.discontinued_amount,
+            commissionBase: commission.commission_base_amount,
+          })
+        : liveCommissionProgress,
       status: commission.commission_status,
       releases: (releasesByCommission.get(Number(commission.lot_project_commission_id)) || []).map((release) => ({
         id: Number(release.lot_project_commission_release_id),
@@ -1172,3 +1215,4 @@ export const getDataIntegrityAccount = async (req, res) => {
     connection.release();
   }
 };
+

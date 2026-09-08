@@ -234,3 +234,4 @@ export const getAttendanceRuntimeSettings = async (connection) => {
     departments: departmentConfigs.map((item) => item.name),
   };
 };
+

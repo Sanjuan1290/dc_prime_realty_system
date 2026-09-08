@@ -153,7 +153,7 @@ export const syncCommissionProgressForListing = async (connection, listing = {})
 
   const [commissions] = await connection.query(
     `
-      SELECT lot_project_commission_id, commission_role
+      SELECT lot_project_commission_id, commission_role, commission_base_amount
       FROM lot_project_commissions
       WHERE lot_project_id = ?
         AND lot_project_listing_id = ?
@@ -168,7 +168,18 @@ export const syncCommissionProgressForListing = async (connection, listing = {})
     return { commissionCount: 0, ...progress };
   }
 
+  const cancellationFrozen = clean(context.account_status).toLowerCase() === 'cancelled';
+  let frozenCancellationPercent = 0;
+
   for (const commission of commissions) {
+    const commissionBase = toNumber(commission.commission_base_amount);
+    const retainedAmount = toNumber(context.discontinued_amount);
+    const cancellationPercent = commissionBase > 0
+      ? Math.min(100, Math.max(0, Math.round(((retainedAmount / commissionBase) * 100 + Number.EPSILON) * 100) / 100))
+      : 0;
+    const paymentPercent = cancellationFrozen ? cancellationPercent : progress.paymentPercent;
+    if (cancellationFrozen) frozenCancellationPercent = Math.max(frozenCancellationPercent, cancellationPercent);
+
     await connection.query(
       `
         UPDATE lot_project_commissions
@@ -176,11 +187,14 @@ export const syncCommissionProgressForListing = async (connection, listing = {})
         WHERE lot_project_commission_id = ?
           AND ABS(COALESCE(payment_percent, 0) - ?) > 0.004
       `,
-      [progress.paymentPercent, commission.lot_project_commission_id, progress.paymentPercent]
+      [paymentPercent, commission.lot_project_commission_id, paymentPercent]
     );
   }
 
-  if (await tableExists(connection, 'lot_project_commission_releases')) {
+  // Cancellation settlement already classified every unreleased milestone as
+  // Earned on Cancellation or Forfeited on Cancellation. Never re-run normal
+  // live eligibility against a cancelled historical account.
+  if (!cancellationFrozen && await tableExists(connection, 'lot_project_commission_releases')) {
     const documents = await getDocumentCompletion(connection, context);
     const retentionReady = progress.paymentComplete && documents.complete;
     const hasExternalReceiptSchema =
@@ -288,5 +302,8 @@ export const syncCommissionProgressForListing = async (connection, listing = {})
   return {
     commissionCount: commissions.length,
     ...progress,
+    paymentPercent: cancellationFrozen ? frozenCancellationPercent : progress.paymentPercent,
+    cancellationFrozen,
   };
 };
+

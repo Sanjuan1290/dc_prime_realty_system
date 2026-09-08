@@ -165,8 +165,31 @@ const actualRemainingBalanceSql = `
 
 const unpaidScheduledDueSql = actualRemainingBalanceSql;
 
+// Once an account is cancelled, commission progress is a historical snapshot:
+// retained/discontinued value divided by the original commission base. It must
+// never fall back to the live paid/TCP percentage simply because the Commissions
+// page is opened later.
+const cancelledCommissionProgressSql = `
+  (
+    SELECT cancelled_account.commissionable_retained_percent
+    FROM lot_project_accounts cancelled_account
+    WHERE cancelled_account.account_status = 'cancelled'
+      AND (
+        cancelled_account.lot_project_account_id = c.lot_project_account_id
+        OR (
+          c.lot_project_account_id IS NULL
+          AND cancelled_account.lot_project_client_profile_id = c.lot_project_client_profile_id
+        )
+      )
+    ORDER BY cancelled_account.lot_project_account_id DESC
+    LIMIT 1
+  )
+`;
+
 const computedPaymentPercentSql = `
   CASE
+    WHEN (${cancelledCommissionProgressSql}) IS NOT NULL
+      THEN LEAST(100, GREATEST(0, ROUND((${cancelledCommissionProgressSql}), 2)))
     WHEN COALESCE(l.lot_project_listing_sold_substatus, '') = 'fully_paid' THEN 100
     WHEN (${effectiveTcpSql}) <= 0 THEN 0
     ELSE LEAST(100, ROUND(((${paidValueWithDiscountSql}) / NULLIF((${effectiveTcpSql}), 0)) * 100, 2))
@@ -174,15 +197,16 @@ const computedPaymentPercentSql = `
 `;
 
 // Historical releases use payments that existed on or before the selected
-// actual release date. They intentionally do not use the listing's current
-// fully-paid shortcut, because that would make an old release appear eligible
-// based on payments received later.
+// actual release date. Cancelled accounts are the exception: their milestone
+// eligibility was frozen at cancellation using retained/discontinued value.
 const historicalActualRemainingBalanceSql = `
   GREATEST(ROUND((${effectiveTcpSql}) - (${paidValueWithDiscountSql}), 2), 0)
 `;
 const historicalUnpaidScheduledDueSql = historicalActualRemainingBalanceSql;
 const historicalComputedPaymentPercentSql = `
   CASE
+    WHEN (${cancelledCommissionProgressSql}) IS NOT NULL
+      THEN LEAST(100, GREATEST(0, ROUND((${cancelledCommissionProgressSql}), 2)))
     WHEN (${effectiveTcpSql}) <= 0 THEN 0
     ELSE LEAST(100, ROUND(((${paidValueWithDiscountSql}) / NULLIF((${effectiveTcpSql}), 0)) * 100, 2))
   END
@@ -1563,3 +1587,4 @@ export const updateLotProjectCommission = async (req, res) => {
     connection.release();
   }
 };
+

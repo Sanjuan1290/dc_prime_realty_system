@@ -10,3 +10,4 @@ ALTER TABLE audit_logs
 
 -- The archive table is created by 20260715_audit_log_archival.sql and stores the
 -- action as VARCHAR(40), so no archive-schema ALTER is required here.
+

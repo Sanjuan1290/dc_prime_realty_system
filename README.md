@@ -252,3 +252,4 @@ Apply `server/migrations/20260906_department_employee_barcodes.sql` on upgraded 
 - Import validation uses a 120-second client timeout; import/revert uses 180 seconds.
 - Cloudflare Pages API proxy timeout increased from 80 seconds to 190 seconds for bulk operations.
 - Listing import backend returns import-specific error codes and logs the underlying server-side error for diagnosis.
+

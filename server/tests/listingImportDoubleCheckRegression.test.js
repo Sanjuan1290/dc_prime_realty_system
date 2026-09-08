@@ -23,3 +23,4 @@ test('client-side Final Double-Check errors are not mislabeled as server outages
   assert.ok(networkTryIndex > confirmationIndex, 'confirmation must complete before entering network error handling')
   assert.match(source, /CLIENT_CONFIRMATION_ERROR/)
 })
+

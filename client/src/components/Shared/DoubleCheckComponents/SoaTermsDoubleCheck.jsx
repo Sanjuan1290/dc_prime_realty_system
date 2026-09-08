@@ -34,3 +34,4 @@ const SoaTermsDoubleCheck = ({ request, onConfirm, onCancel }) => {
 }
 
 export default SoaTermsDoubleCheck
+

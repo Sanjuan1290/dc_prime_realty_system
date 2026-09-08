@@ -61,3 +61,4 @@ test('Excel Tardiness includes one full regular workday for every absent schedul
   assert.match(workbook, /row\.absence \? regularWorkingSeconds : 0/)
   assert.match(workbook, /const requiredHours = scheduledDays \* regularWorkingSeconds/)
 })
+

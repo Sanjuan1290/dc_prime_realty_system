@@ -179,3 +179,4 @@ export const getLotProjectPaymentLogs = async (req, res) => {
     connection.release();
   }
 };
+

@@ -36,3 +36,4 @@ const ProofOfIncomeDoubleCheck = ({ request, onConfirm, onCancel }) => {
 }
 
 export default ProofOfIncomeDoubleCheck
+
