@@ -159,6 +159,9 @@ export const requestApi = async (
   let controller = null
   let timeoutId = null
 
+  // Final Double-Check is a client-side step. Keep it outside the network
+  // error handler so a UI/configuration problem can never be reported as
+  // "SERVER_UNAVAILABLE" when no HTTP request was made.
   try {
     await requireMutationConfirmation({
       normalizedPath: mutationPath,
@@ -168,7 +171,15 @@ export const requestApi = async (
       confirmationHandled,
       confirmationToken,
     })
+  } catch (error) {
+    if (error instanceof ApiError) throw error
+    throw new ApiError(error?.message || 'The Final Double-Check could not be opened.', {
+      code: 'CLIENT_CONFIRMATION_ERROR',
+      cause: error,
+    })
+  }
 
+  try {
     controller = new AbortController()
     const setTimer = typeof window !== 'undefined' ? window.setTimeout.bind(window) : setTimeout
     timeoutId = setTimer(() => controller.abort(), timeoutMs)
