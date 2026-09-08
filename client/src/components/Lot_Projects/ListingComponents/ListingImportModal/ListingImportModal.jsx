@@ -144,7 +144,11 @@ const ListingImportModal = ({ project = {}, projectSlug, onClose, onImported }) 
         .map(normalizeSheetRow)
       if (!rows.length) throw new Error('No listing rows were found in the workbook.')
       const hash = await fileSha256(selectedFile)
-      const result = await useFetchPost(`/projects/lot-projects/${projectSlug}/listing-imports/validate`, { rows }, { confirmationHandled: 'technical' })
+      const result = await useFetchPost(`/projects/lot-projects/${projectSlug}/listing-imports/validate`, { rows }, {
+        confirmationHandled: 'technical',
+        redirectOnUnavailable: false,
+        timeoutMs: 120_000,
+      })
       setFile(selectedFile)
       setParsedRows(rows)
       setFileHash(hash)
@@ -157,7 +161,8 @@ const ListingImportModal = ({ project = {}, projectSlug, onClose, onImported }) 
       setFile(null)
       setParsedRows([])
       setValidation(null)
-      setAlert({ type: 'error', message: error?.message || 'Could not read the Excel file.' })
+      const suffix = error?.code ? ` (${error.code})` : ''
+      setAlert({ type: 'error', message: `${error?.message || 'Could not read or validate the Excel file.'}${suffix}` })
     } finally {
       setIsWorking(false)
     }
@@ -173,6 +178,8 @@ const ListingImportModal = ({ project = {}, projectSlug, onClose, onImported }) 
         fileSha256: fileHash,
         rows: parsedRows,
       }, {
+        redirectOnUnavailable: false,
+        timeoutMs: 180_000,
         doubleCheck: {
           type: 'listing-import',
           title: 'Review Listing Import',
@@ -190,7 +197,11 @@ const ListingImportModal = ({ project = {}, projectSlug, onClose, onImported }) 
       await onImported?.(result?.data)
     } catch (error) {
       const errors = error?.data?.errors || error?.errors || []
-      setAlert({ type: 'error', message: errors.length ? `${error.message} ${errors.slice(0, 3).map((item) => `Row ${item.row}: ${item.message}`).join(' ')}` : (error?.message || 'Import failed.') })
+      const detail = errors.length
+        ? `${error.message} ${errors.slice(0, 3).map((item) => `Row ${item.row}: ${item.message}`).join(' ')}`
+        : (error?.message || 'Import failed.')
+      const suffix = error?.code ? ` (${error.code})` : ''
+      setAlert({ type: 'error', message: `${detail}${suffix}` })
     } finally {
       setIsWorking(false)
     }

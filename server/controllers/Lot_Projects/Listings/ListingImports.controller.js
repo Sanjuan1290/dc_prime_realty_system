@@ -36,6 +36,7 @@ const requireImportSchema = async (connection) => {
   if (missing.length) {
     const error = new Error(`Listing import database migration is incomplete. Missing: ${missing.join(', ')}. Run server/migrations/20260908_listing_imports.sql.`)
     error.statusCode = 500
+    error.code = 'LISTING_IMPORT_SCHEMA_MISSING'
     throw error
   }
 }
@@ -181,7 +182,8 @@ export const validateLotProjectListingImport = async (req, res) => {
       },
     })
   } catch (error) {
-    return res.status(error?.statusCode || 500).json({ message: getErrorMessage(error) })
+    console.error('Listing import validation failed:', { code: error?.code, message: error?.message, sqlMessage: error?.sqlMessage })
+    return res.status(error?.statusCode || 500).json({ code: error?.code || 'LISTING_IMPORT_VALIDATION_FAILED', message: getErrorMessage(error) })
   } finally {
     connection.release()
   }
@@ -367,7 +369,8 @@ export const importLotProjectListings = async (req, res) => {
     })
   } catch (error) {
     try { await connection.rollback() } catch {}
-    return res.status(error?.statusCode || 500).json({ message: getErrorMessage(error) })
+    console.error('Listing import failed:', { code: error?.code, message: error?.message, sqlMessage: error?.sqlMessage })
+    return res.status(error?.statusCode || 500).json({ code: error?.code || 'LISTING_IMPORT_FAILED', message: getErrorMessage(error) })
   } finally {
     connection.release()
   }

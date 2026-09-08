@@ -1,5 +1,5 @@
 const DEFAULT_RENDER_ORIGIN = 'https://dc-prime-realty-api.onrender.com'
-const PROXY_TIMEOUT_MS = 80_000
+const PROXY_TIMEOUT_MS = 190_000
 
 const normalizeOrigin = (value) =>
   String(value || DEFAULT_RENDER_ORIGIN).trim().replace(/\/+$/, '')

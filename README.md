@@ -245,3 +245,10 @@ Apply `server/migrations/20260906_department_employee_barcodes.sql` on upgraded 
 - The 10-digit Attendance Barcode is random, includes a check digit, stays unchanged when names/departments/Rest Days change, and can be explicitly regenerated.
 - Public kiosk scan results clear automatically after 5 seconds and the old attendance-only footer message was removed.
 - Run `server/migrations/20260907_attendance_settings_and_secure_barcodes.sql` when upgrading an existing database.
+
+## 2026-09-08 Listing import connectivity fix
+
+- Listing Import validation/import/history/revert requests no longer redirect the whole portal to `/server-down` when an import-specific request fails.
+- Import validation uses a 120-second client timeout; import/revert uses 180 seconds.
+- Cloudflare Pages API proxy timeout increased from 80 seconds to 190 seconds for bulk operations.
+- Listing import backend returns import-specific error codes and logs the underlying server-side error for diagnosis.

@@ -15,12 +15,12 @@ const ListingImportHistoryModal = ({ projectSlug, onClose }) => {
 
   const historyQuery = useQuery({
     queryKey: ['listing-import-history', projectSlug],
-    queryFn: () => useFetch(`/projects/lot-projects/${projectSlug}/listing-imports`),
+    queryFn: () => useFetch(`/projects/lot-projects/${projectSlug}/listing-imports`, { redirectOnUnavailable: false, timeoutMs: 120_000 }),
     enabled: Boolean(projectSlug),
   })
   const batchQuery = useQuery({
     queryKey: ['listing-import-batch', projectSlug, selectedBatchId],
-    queryFn: () => useFetch(`/projects/lot-projects/${projectSlug}/listing-imports/${selectedBatchId}`),
+    queryFn: () => useFetch(`/projects/lot-projects/${projectSlug}/listing-imports/${selectedBatchId}`, { redirectOnUnavailable: false, timeoutMs: 120_000 }),
     enabled: Boolean(projectSlug && selectedBatchId),
   })
 
@@ -37,6 +37,8 @@ const ListingImportHistoryModal = ({ projectSlug, onClose }) => {
       listingIds,
       reason,
     }, {
+      redirectOnUnavailable: false,
+      timeoutMs: 180_000,
       doubleCheck: {
         type: 'listing-import-reversal',
         title: mode === 'all' ? 'Review Full Import Reversal' : 'Review Imported Listing Removal',
