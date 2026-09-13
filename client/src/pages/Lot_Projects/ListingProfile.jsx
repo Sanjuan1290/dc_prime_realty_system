@@ -158,6 +158,7 @@ const ListingProfile = () => {
     staleTime: 60_000,
   })
   const readOnly = Boolean(profile.readOnly)
+  const financialSnapshot = profile.financialSnapshot || null
   const project = profile.project || {}
   const listing = profile.listing || emptyListing
   const client = profile.client || {}
@@ -209,8 +210,9 @@ const ListingProfile = () => {
       accountId: account?.id || null,
       accountReference: account?.accountReference || '',
       readOnly,
+      financialSnapshot,
     }),
-    [listing, account, readOnly]
+    [listing, account, readOnly, financialSnapshot]
   )
 
   const updateListingMutation = useMutation({
@@ -996,4 +998,3 @@ const ListingProfile = () => {
 }
 
 export default ListingProfile
-

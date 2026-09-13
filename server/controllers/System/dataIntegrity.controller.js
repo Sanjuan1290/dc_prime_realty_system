@@ -13,6 +13,8 @@ import {
 import { calculateContractPricing } from '../Lot_Projects/_shared/listingPricing.js';
 import { calculateCommissionPaymentProgress } from '../../utils/commissionProgress.js';
 import { calculateCommissionableRetainedPercent } from '../../services/lotProjectAccount.service.js';
+import { buildAccountContext } from '../../services/accountContext.service.js';
+import { reconcileCommission } from '../../services/commissionReconciliation.service.js';
 
 const MONEY_TOLERANCE = 0.05;
 const VALID_SCAN_STATUSES = new Set(['pending', 'approved', 'rejected', 'not_scanned', 'error']);
@@ -476,6 +478,7 @@ const buildAccountReports = (dataset) => {
     const paymentProofs = proofFilesByAccount.get(accountId) || [];
     const receiptFiles = receiptFilesByAccount.get(accountId) || [];
     const acknowledgementFiles = acknowledgementFilesByAccount.get(accountId) || [];
+    const accountContext = buildAccountContext({ account, listing: account });
     const report = {
       id: accountId,
       accountId,
@@ -489,8 +492,10 @@ const buildAccountReports = (dataset) => {
       buyerName: account.buyer_full_name || account.buyer_name_snapshot || '-',
       reservationDate: dateOnly(account.reservation_date),
       accountStartingDate: dateOnly(account.soa_starting_date) || dateOnly(account.reservation_date),
-      isHistorical: Number(account.soa_is_historical_entry || 0) === 1 || account.account_status === 'cancelled',
-      isCurrent: Number(account.current_account_id || 0) === accountId,
+      isHistorical: accountContext.isHistoricalEntry,
+      isHistoricalEntry: accountContext.isHistoricalEntry,
+      isAccountHistory: accountContext.isAccountHistory,
+      isCurrent: accountContext.isCurrentAccount,
       status: 'balanced',
       differenceAmount: 0,
       issues: [],
@@ -689,19 +694,15 @@ const buildAccountReports = (dataset) => {
 
     for (const commission of commissions) {
       const commissionReleases = releasesByCommission.get(Number(commission.lot_project_commission_id)) || [];
+      const reconciliation = reconcileCommission({
+        grossCommission: commission.gross_commission_amount,
+        releases: commissionReleases,
+        fallbackReleased: commission.released_commission_amount,
+      });
       const releasedRows = commissionReleases.filter((release) => release.release_status === 'Released');
-      const releasedNet = roundMoney(releasedRows.reduce((sum, release) => sum + toNumber(release.net_release_amount), 0));
-      const allDeductions = roundMoney(commissionReleases.reduce((sum, release) => sum + toNumber(release.deduction_amount), 0));
-      const cancellationSettled = commissionReleases.some((release) =>
-        ['Earned on Cancellation', 'Forfeited on Cancellation'].includes(release.release_status)
-      );
-      const expectedRemaining = cancellationSettled
-        ? roundMoney(
-            commissionReleases
-              .filter((release) => release.release_status === 'Earned on Cancellation')
-              .reduce((sum, release) => sum + toNumber(release.net_release_amount), 0)
-          )
-        : roundMoney(Math.max(toNumber(commission.gross_commission_amount) - releasedNet - allDeductions, 0));
+      const releasedNet = reconciliation.released;
+      const allDeductions = reconciliation.deductions;
+      const expectedRemaining = reconciliation.remaining;
 
       if (differs(commission.released_commission_amount, releasedNet)) {
         addIssue(report, makeIssue({
@@ -713,7 +714,7 @@ const buildAccountReports = (dataset) => {
       if (differs(commission.net_remaining_commission_amount, expectedRemaining)) {
         addIssue(report, makeIssue({
           category: 'commissions', severity: 'critical', title: 'Commission remaining amount does not reconcile',
-          message: 'Gross commission less released net amounts and release deductions does not equal the stored remaining commission.',
+          message: 'Stored commission remaining does not match the canonical release-stage reconciliation.',
           amountDifference: moneyDiff(commission.net_remaining_commission_amount, expectedRemaining), entityType: 'commission', entityId: commission.lot_project_commission_id,
         }));
       }
@@ -1004,6 +1005,8 @@ const toSummaryRecord = (report) => ({
   reservationDate: report.reservationDate,
   accountStartingDate: report.accountStartingDate,
   isHistorical: report.isHistorical,
+  isHistoricalEntry: report.isHistoricalEntry,
+  isAccountHistory: report.isAccountHistory,
   isCurrent: report.isCurrent,
   status: report.status,
   differenceAmount: report.differenceAmount,
@@ -1024,6 +1027,7 @@ const buildSummary = (reports = []) => {
     critical: 0,
     adjustedAccounts: 0,
     historicalAccounts: 0,
+    accountHistoryAccounts: 0,
     totalDifference: 0,
     categories: {
       accounts: { label: 'Buyer Accounts', checked: reports.length, issues: 0, status: 'balanced' },
@@ -1039,6 +1043,7 @@ const buildSummary = (reports = []) => {
     summary[report.status] += 1;
     if (report.adjustments?.hasAdjustments) summary.adjustedAccounts += 1;
     if (report.isHistorical) summary.historicalAccounts += 1;
+    if (report.isAccountHistory) summary.accountHistoryAccounts += 1;
     summary.totalDifference = roundMoney(summary.totalDifference + report.differenceAmount);
     summary.categories.paymentsSoa.checked += Number(report.counts?.payments || 0);
     summary.categories.paymentsSoa.soaChecked += Number(report.counts?.schedules || 0);
@@ -1094,6 +1099,7 @@ const filterIntegrityReports = (reports = [], options = {}) => reports.filter((r
   if (status !== 'all' && report.status !== status) return false;
   if (recordFilter === 'adjusted' && !report.adjustments?.hasAdjustments) return false;
   if (recordFilter === 'historical' && !report.isHistorical) return false;
+  if (recordFilter === 'account_history' && !report.isAccountHistory) return false;
   if (recordFilter === 'issues' && report.status === 'balanced') return false;
   if (recordFilter === 'clean' && report.status !== 'balanced') return false;
   if (category !== 'overview' && !reportHasCategoryActivity(report, category)) return false;
@@ -1215,4 +1221,3 @@ export const getDataIntegrityAccount = async (req, res) => {
     connection.release();
   }
 };
-

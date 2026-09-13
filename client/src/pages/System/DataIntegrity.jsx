@@ -231,7 +231,8 @@ const DataIntegrity = () => {
                   <select value={recordFilter} onChange={(event) => { setRecordFilter(event.target.value); setPage(1) }} className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-black text-slate-700 outline-none">
                     <option value="all">All records</option>
                     <option value="adjusted">With discounts / waivers</option>
-                    <option value="historical">Historical records</option>
+                    <option value="historical">Historical entries</option>
+                    <option value="account_history">Buyer account history</option>
                     <option value="issues">Needs review only</option>
                     <option value="clean">Balanced only</option>
                   </select>
@@ -264,7 +265,7 @@ const DataIntegrity = () => {
                     const hasAdjustments = Boolean(record.adjustments?.hasAdjustments)
                     return (
                       <tr key={record.accountId} className="align-top transition hover:bg-slate-50">
-                        <td className="px-5 py-4"><p className="font-black text-slate-950">{record.unitId}</p><p className="mt-1 text-xs font-semibold text-slate-500">{record.accountReference}</p>{record.isHistorical ? <span className="mt-2 inline-flex rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-violet-700">Historical</span> : null}</td>
+                        <td className="px-5 py-4"><p className="font-black text-slate-950">{record.unitId}</p><p className="mt-1 text-xs font-semibold text-slate-500">{record.accountReference}</p><div className="mt-2 flex flex-wrap gap-1.5">{record.isHistorical ? <span className="inline-flex rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-violet-700">Historical Entry</span> : null}{record.isAccountHistory ? <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-slate-600">Account History</span> : null}</div></td>
                         <td className="px-5 py-4"><p className="font-black text-slate-900">{record.buyerName}</p><p className="mt-1 text-xs font-semibold text-slate-500">{record.projectName}</p></td>
                         <td className="px-5 py-4"><span className={`inline-flex rounded-full px-3 py-1 text-xs font-black ring-1 ${meta.badge}`}>{meta.label}</span><p className="mt-2 text-xs font-semibold text-slate-500">{record.issueCount || 0} issue{record.issueCount === 1 ? '' : 's'}</p></td>
                         <td className="px-5 py-4">{hasAdjustments ? <div className="grid gap-1 text-xs font-semibold text-slate-600">{Number(record.financial?.saleDiscountAmount || 0) > 0 ? <span>Sale Discount: {money(record.financial.saleDiscountAmount)}</span> : null}{Number(record.financial?.approvedDpDiscount || 0) > 0 ? <span>DP Discount: {money(record.financial.approvedDpDiscount)}</span> : null}{Number(record.financial?.lmfWaivedAmount || 0) > 0 ? <span>LMF Waiver: {money(record.financial.lmfWaivedAmount)}</span> : null}{Number(record.financial?.penaltyWaivedAmount || 0) > 0 ? <span>Penalty Relief: {money(record.financial.penaltyWaivedAmount)}</span> : null}</div> : <span className="text-xs font-semibold text-slate-400">No saved discount/waiver</span>}</td>
@@ -281,7 +282,7 @@ const DataIntegrity = () => {
             <div className="flex flex-col gap-3 border-t border-slate-200 px-5 py-4 text-sm font-semibold text-slate-500 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
                 <span>Showing {pagination.from}-{pagination.to} of {pagination.total} buyer accounts.</span>
-                <span>Historical: {summary.historicalAccounts || 0} · With discounts / waivers: {summary.adjustedAccounts || 0}</span>
+                <span>Historical entries: {summary.historicalAccounts || 0} · Account history: {summary.accountHistoryAccounts || 0} · With discounts / waivers: {summary.adjustedAccounts || 0}</span>
                 <span>10 records per page</span>
               </div>
               <div className="flex items-center gap-2">
@@ -304,4 +305,3 @@ const DataIntegrity = () => {
 }
 
 export default DataIntegrity
-

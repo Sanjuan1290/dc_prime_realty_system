@@ -11,6 +11,8 @@ import {
 } from '../_shared/lotProject.shared.js';
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
 import { isFullAccessAdministrator } from '../../../config/permissions.js';
+import { reconcileCommission } from '../../../services/commissionReconciliation.service.js';
+import { buildAccountContext } from '../../../services/accountContext.service.js';
 
 const toNumber = (value) => Number(value || 0);
 const roundMoney = (value) => Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
@@ -440,23 +442,15 @@ const getAggregateStatus = (commission = {}, releases = []) => {
 
 const mapCommissionRow = (row = {}, releases = [], releaseDateInfo = {}) => {
   const gross = toNumber(row.gross_commission_amount);
-  const releasedFromMilestones = releases
-    .filter((release) => release.status === 'Released')
-    .reduce((sum, release) => sum + toNumber(release.netAmount), 0);
-  const eligibleToRelease = releases
-    .filter((release) => ['Eligible', 'Earned on Cancellation'].includes(release.status))
-    .reduce((sum, release) => sum + toNumber(release.netAmount), 0);
-  const cashAdvanceDeduction = releases
-    .reduce((sum, release) => sum + toNumber(release.deductionAmount), 0);
-  const released = releases.length ? releasedFromMilestones : toNumber(row.released_commission_amount);
-  const cancellationSettled = releases.some((release) =>
-    ['Earned on Cancellation', 'Forfeited on Cancellation'].includes(release.status)
-  );
-  const remaining = cancellationSettled
-    ? releases
-        .filter((release) => release.status === 'Earned on Cancellation')
-        .reduce((sum, release) => sum + toNumber(release.netAmount), 0)
-    : Math.max(gross - released - cashAdvanceDeduction, 0);
+  const reconciliation = reconcileCommission({
+    grossCommission: gross,
+    releases,
+    fallbackReleased: toNumber(row.released_commission_amount),
+  });
+  const released = reconciliation.released;
+  const eligibleToRelease = reconciliation.eligibleUnreleased;
+  const cashAdvanceDeduction = reconciliation.deductions;
+  const remaining = reconciliation.remaining;
   const status = releases.length ? getAggregateStatus(row, releases) : row.commission_status || 'Pending';
 
   return {
@@ -468,7 +462,7 @@ const mapCommissionRow = (row = {}, releases = [], releaseDateInfo = {}) => {
     accreditedSellerId: row.accredited_seller_id,
     client: row.buyer_full_name || 'No buyer name',
     unit: row.lot_project_listing_unit_id || '-',
-    isHistoricalAccount: Number(row.soa_is_historical_entry || 0) === 1,
+    isHistoricalAccount: buildAccountContext({ account: row }).isHistoricalEntry,
     project: row.lot_project_name || '-',
     seller: row.seller_display_name_snapshot || row.seller_name || getUserFullName(row),
     mainSeller: row.main_seller_name || (row.commission_seller_type === 'selling_agent' || row.commission_seller_type === 'main_seller' ? row.seller_name || getUserFullName(row) : '-'),
@@ -1118,7 +1112,8 @@ export const updateLotProjectCommission = async (req, res) => {
         return res.status(404).json({ success: false, message: 'Commission release stage not found.' });
       }
 
-      if (isHistoricalRelease && Number(release.soa_is_historical_entry || 0) !== 1) {
+      const releaseAccountContext = buildAccountContext({ account: release });
+      if (isHistoricalRelease && !releaseAccountContext.isHistoricalEntry) {
         await connection.rollback();
         return res.status(400).json({
           success: false,
@@ -1598,5 +1593,3 @@ export const updateLotProjectCommission = async (req, res) => {
     connection.release();
   }
 };
-
-

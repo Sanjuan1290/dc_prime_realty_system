@@ -22,7 +22,8 @@ test('SOA shows a three-part overdue reconciliation under the account summary', 
 })
 
 test('overdue summary uses Manila date, excludes future\/today and cancelled rows, and deducts partial payments', () => {
-  assert.match(source, /const overdueSummary = useMemo/)
+  assert.match(source, /const localOverdueSummary = useMemo/)
+  assert.match(source, /const overdueSummary = canonicalReceivable[\s\S]*overdueExcludingPenalty[\s\S]*localOverdueSummary/)
   assert.match(source, /const today = todayManila\(\)/)
   assert.match(source, /status === 'cancelled'/)
   assert.match(source, /dueDate >= today/)

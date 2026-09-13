@@ -4,6 +4,8 @@ import {
   tableExists,
 } from '../Lot_Projects/_shared/lotProject.shared.js'
 import { writeAuditLog } from './auditLogs.controller.js'
+import { summarizeContractFinancials } from '../../services/accountFinancialSnapshot.service.js'
+import { reconcileCommissionCohort, resolveCommissionReleaseStatusAsOf } from '../../services/commissionReconciliation.service.js'
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 const clean = (value = '') => String(value ?? '').trim()
@@ -396,10 +398,12 @@ export const getSystemReports = async (req, res) => {
     }
 
     let accounts = accountRows.map((row) => {
-      const contractValue = Math.max(number(row.contract_tcp) - number(row.dp_discount_amount) - number(row.lmf_waived_amount), 0)
-      const cumulativePaid = number(row.cumulative_paid)
-      const refundedToDate = number(row.refunded_to_date)
-      const activeAsOf = !row.cancellation_date || String(row.cancellation_date).slice(0, 10) > to
+      const contract = summarizeContractFinancials({
+        account: row,
+        cumulativePaid: row.cumulative_paid,
+        refundedToDate: row.refunded_to_date,
+        asOfDate: to,
+      })
       return {
         accountId: Number(row.lot_project_account_id || 0),
         accountReference: row.account_reference || '-',
@@ -413,12 +417,12 @@ export const getSystemReports = async (req, res) => {
         reservationDate: row.reservation_date,
         cancellationDate: row.cancellation_date,
         accountStatus: row.account_status,
-        contractValue: roundMoney(contractValue),
-        cumulativePaid: roundMoney(cumulativePaid),
-        refundedToDate: roundMoney(refundedToDate),
-        netCashPosition: roundMoney(cumulativePaid - refundedToDate),
-        outstanding: activeAsOf ? roundMoney(Math.max(contractValue - cumulativePaid, 0)) : 0,
-        activeAsOf,
+        contractValue: contract.contractValue,
+        cumulativePaid: contract.cumulativePaid,
+        refundedToDate: contract.refundedToDate,
+        netCashPosition: contract.netCashPosition,
+        outstanding: contract.outstandingContractReceivable,
+        activeAsOf: contract.activeAsOf,
       }
     })
 
@@ -447,15 +451,16 @@ export const getSystemReports = async (req, res) => {
       const currentStatus = String(row.release_status || 'Pending')
       const actualReleaseDate = plainDate(row.actual_release_date)
       const cancellationDate = plainDate(row.cancellation_date)
-      const releasedByToDate = Boolean(actualReleaseDate && actualReleaseDate <= to && currentStatus === 'Released')
       const cancelledAsOf = Boolean(cancellationDate && cancellationDate <= to)
-      const triggerReached = paymentPercent + 0.0001 >= number(row.release_trigger_percent)
-      const retentionReadyByPayment = String(row.release_stage) !== 'Retention' || paymentPercent >= 99.999
-      let statusAsOf = currentStatus
-      if (releasedByToDate) statusAsOf = 'Released'
-      else if (cancelledAsOf && ['Earned on Cancellation', 'Forfeited on Cancellation', 'Cancelled'].includes(currentStatus)) statusAsOf = currentStatus
-      else if (currentStatus === 'On Hold') statusAsOf = 'On Hold'
-      else statusAsOf = triggerReached && retentionReadyByPayment ? 'Eligible' : 'Pending'
+      const statusAsOf = resolveCommissionReleaseStatusAsOf({
+        ...row,
+        status: currentStatus,
+        actualReleaseDate,
+        cancellationDate,
+        paymentPercent,
+        triggerPercent: number(row.release_trigger_percent),
+        stage: row.release_stage,
+      }, to)
       const eligibleAsOf = ['Eligible', 'Earned on Cancellation'].includes(statusAsOf)
       return {
         id: Number(row.lot_project_commission_release_id || 0),
@@ -510,10 +515,6 @@ export const getSystemReports = async (req, res) => {
       return row.status === 'Released' && actualReleaseDate && actualReleaseDate <= to
     })
     const cohortEligibleUnreleased = commissionCohortReleases.filter((row) => row.eligibleAsOf && row.status !== 'Released')
-    const cohortEarnedOnCancellation = commissionCohortReleases.filter((row) => row.status === 'Earned on Cancellation')
-    const cohortForfeitedOnCancellation = commissionCohortReleases.filter((row) => row.status === 'Forfeited on Cancellation')
-    const cohortCancelledCommission = commissionCohortReleases.filter((row) => row.status === 'Cancelled')
-    const cohortRemainingCommission = commissionCohortReleases.filter((row) => !['Released', 'Cancelled', 'Forfeited on Cancellation'].includes(row.status))
 
     const sellerPerformanceMap = new Map()
     const ensureSeller = ({ sellerId = null, seller = '-', sellerGroup = '-' } = {}) => {
@@ -539,6 +540,8 @@ export const getSystemReports = async (req, res) => {
           commissionRemaining: 0,
           commissionNetPayable: 0,
           eligibleUnreleased: 0,
+          _commissions: [],
+          _releases: [],
         })
       }
       return sellerPerformanceMap.get(key)
@@ -565,16 +568,11 @@ export const getSystemReports = async (req, res) => {
     }
     for (const commission of commissions) {
       const current = ensureSeller(commission)
-      current.grossCommission += commission.grossCommission
+      current._commissions.push(commission)
     }
     for (const release of commissionCohortReleases) {
       const current = ensureSeller(release)
-      current.commissionDeductions += release.deductionAmount
-      if (release.status === 'Released') current.releasedCommission += release.netAmount
-      else if (release.status === 'Forfeited on Cancellation') current.commissionForfeited += release.netAmount
-      else if (release.status === 'Cancelled') current.commissionCancelled += release.netAmount
-      else current.commissionRemaining += release.netAmount
-      if (release.eligibleAsOf && release.status !== 'Released') current.eligibleUnreleased += release.netAmount
+      current._releases.push(release)
     }
 
     const projectBreakdownMap = new Map(projectRows.map((project) => [Number(project.id), {
@@ -603,6 +601,8 @@ export const getSystemReports = async (req, res) => {
       commissionRemaining: 0,
       commissionNetPayable: 0,
       eligibleUnreleased: 0,
+      _commissions: [],
+      _releases: [],
     }]))
     for (const row of reservations) {
       const item = projectBreakdownMap.get(row.projectId)
@@ -647,17 +647,11 @@ export const getSystemReports = async (req, res) => {
     }
     for (const row of commissions) {
       const item = projectBreakdownMap.get(row.projectId)
-      if (item) item.commissionGenerated += row.grossCommission
+      if (item) item._commissions.push(row)
     }
     for (const row of commissionCohortReleases) {
       const item = projectBreakdownMap.get(row.projectId)
-      if (!item) continue
-      item.commissionDeductions += row.deductionAmount
-      if (row.status === 'Released') item.commissionReleased += row.netAmount
-      else if (row.status === 'Forfeited on Cancellation') item.commissionForfeited += row.netAmount
-      else if (row.status === 'Cancelled') item.commissionCancelled += row.netAmount
-      else item.commissionRemaining += row.netAmount
-      if (row.eligibleAsOf && row.status !== 'Released') item.eligibleUnreleased += row.netAmount
+      if (item) item._releases.push(row)
     }
 
     const grossContractedValue = roundMoney(reservations.reduce((sum, row) => sum + row.tcp, 0))
@@ -668,17 +662,19 @@ export const getSystemReports = async (req, res) => {
     const cumulativeCollected = roundMoney(accounts.reduce((sum, row) => sum + row.cumulativePaid, 0))
     const cumulativeRefunded = roundMoney(accounts.reduce((sum, row) => sum + row.refundedToDate, 0))
 
-    const commissionGenerated = roundMoney(commissions.reduce((sum, row) => sum + row.grossCommission, 0))
-    const commissionReleased = roundMoney(cohortReleased.reduce((sum, row) => sum + row.netAmount, 0))
-    const commissionRemaining = roundMoney(cohortRemainingCommission.reduce((sum, row) => sum + row.netAmount, 0))
-    const commissionForfeitedOnCancellation = roundMoney(cohortForfeitedOnCancellation.reduce((sum, row) => sum + row.netAmount, 0))
-    const commissionCancelled = roundMoney(cohortCancelledCommission.reduce((sum, row) => sum + row.netAmount, 0))
-    const commissionDeductions = roundMoney(commissionCohortReleases.reduce((sum, row) => sum + row.deductionAmount, 0))
-    const commissionNonPayable = roundMoney(commissionForfeitedOnCancellation + commissionCancelled)
-    const commissionNetPayable = roundMoney(commissionReleased + commissionRemaining)
-    const commissionReconciliationDifference = roundMoney(
-      commissionGenerated - commissionNetPayable - commissionForfeitedOnCancellation - commissionCancelled - commissionDeductions
-    )
+    const commissionReconciliation = reconcileCommissionCohort({
+      commissions,
+      releases: commissionCohortReleases,
+    })
+    const commissionGenerated = commissionReconciliation.grossCommission
+    const commissionReleased = commissionReconciliation.released
+    const commissionRemaining = commissionReconciliation.remaining
+    const commissionForfeitedOnCancellation = commissionReconciliation.forfeitedOnCancellation
+    const commissionCancelled = commissionReconciliation.cancelled
+    const commissionDeductions = commissionReconciliation.deductions
+    const commissionNonPayable = commissionReconciliation.nonPayable
+    const commissionNetPayable = commissionReconciliation.netPayable
+    const commissionReconciliationDifference = commissionReconciliation.reconciliationDifference
 
     const summary = {
       reservationCount: reservations.length,
@@ -702,14 +698,14 @@ export const getSystemReports = async (req, res) => {
       discontinuedAmount: roundMoney(cancellations.reduce((sum, row) => sum + row.discontinuedAmount, 0)),
       commissionGenerated,
       commissionReleased,
-      commissionEarnedOnCancellation: roundMoney(cohortEarnedOnCancellation.reduce((sum, row) => sum + row.netAmount, 0)),
+      commissionEarnedOnCancellation: commissionReconciliation.earnedOnCancellation,
       commissionForfeitedOnCancellation,
       commissionCancelled,
       commissionNonPayable,
       commissionDeductions,
       commissionNetPayable,
       commissionReconciliationDifference,
-      eligibleUnreleased: roundMoney(cohortEligibleUnreleased.reduce((sum, row) => sum + row.netAmount, 0)),
+      eligibleUnreleased: commissionReconciliation.eligibleUnreleased,
       commissionRemaining,
     }
 
@@ -738,33 +734,48 @@ export const getSystemReports = async (req, res) => {
         commissionCohortReleases,
         releasedInRange: cohortReleased,
         eligibleUnreleased: cohortEligibleUnreleased,
-        sellerPerformance: [...sellerPerformanceMap.values()].map((row) => ({
-          ...row,
-          grossContractedValue: roundMoney(row.grossContractedValue),
-          cancelledValue: roundMoney(row.cancelledValue),
-          netActiveSales: roundMoney(row.netActiveSales),
-          salesAmount: roundMoney(row.netActiveSales),
-          collectedInRange: roundMoney(row.collectedInRange),
-          refundsInRange: roundMoney(row.refundsInRange),
-          netCashMovement: roundMoney(row.netCashMovement),
-          grossCommission: roundMoney(row.grossCommission),
-          commissionForfeited: roundMoney(row.commissionForfeited),
-          commissionCancelled: roundMoney(row.commissionCancelled),
-          commissionNonPayable: roundMoney(row.commissionForfeited + row.commissionCancelled),
-          commissionDeductions: roundMoney(row.commissionDeductions),
-          releasedCommission: roundMoney(row.releasedCommission),
-          commissionRemaining: roundMoney(row.commissionRemaining),
-          commissionNetPayable: roundMoney(row.releasedCommission + row.commissionRemaining),
-          eligibleUnreleased: roundMoney(row.eligibleUnreleased),
-          cancellationRate: row.reservations > 0 ? roundMoney((row.cancelledReservations / row.reservations) * 100) : 0,
-        })).sort((a, b) => number(b.netActiveSales) - number(a.netActiveSales)),
+        sellerPerformance: [...sellerPerformanceMap.values()].map((row) => {
+          const commission = reconcileCommissionCohort({ commissions: row._commissions, releases: row._releases })
+          const { _commissions, _releases, ...visible } = row
+          return {
+            ...visible,
+            grossContractedValue: roundMoney(row.grossContractedValue),
+            cancelledValue: roundMoney(row.cancelledValue),
+            netActiveSales: roundMoney(row.netActiveSales),
+            salesAmount: roundMoney(row.netActiveSales),
+            collectedInRange: roundMoney(row.collectedInRange),
+            refundsInRange: roundMoney(row.refundsInRange),
+            netCashMovement: roundMoney(row.netCashMovement),
+            grossCommission: commission.grossCommission,
+            commissionForfeited: commission.forfeitedOnCancellation,
+            commissionCancelled: commission.cancelled,
+            commissionNonPayable: commission.nonPayable,
+            commissionDeductions: commission.deductions,
+            releasedCommission: commission.released,
+            commissionRemaining: commission.remaining,
+            commissionNetPayable: commission.netPayable,
+            eligibleUnreleased: commission.eligibleUnreleased,
+            cancellationRate: row.reservations > 0 ? roundMoney((row.cancelledReservations / row.reservations) * 100) : 0,
+          }
+        }).sort((a, b) => number(b.netActiveSales) - number(a.netActiveSales)),
         projectBreakdown: [...projectBreakdownMap.values()]
           .filter((row) => !projectScope.projectId || row.projectId === projectScope.projectId)
-          .map((row) => ({
-            ...Object.fromEntries(Object.entries(row).map(([key, value]) => [key, typeof value === 'number' && !['projectId','reservations','cancelled'].includes(key) ? roundMoney(value) : value])),
-            commissionNonPayable: roundMoney(row.commissionForfeited + row.commissionCancelled),
-            commissionNetPayable: roundMoney(row.commissionReleased + row.commissionRemaining),
-          })),
+          .map((row) => {
+            const commission = reconcileCommissionCohort({ commissions: row._commissions, releases: row._releases })
+            const { _commissions, _releases, ...visible } = row
+            return {
+              ...Object.fromEntries(Object.entries(visible).map(([key, value]) => [key, typeof value === 'number' && !['projectId','reservations','cancelled'].includes(key) ? roundMoney(value) : value])),
+              commissionGenerated: commission.grossCommission,
+              commissionForfeited: commission.forfeitedOnCancellation,
+              commissionCancelled: commission.cancelled,
+              commissionNonPayable: commission.nonPayable,
+              commissionDeductions: commission.deductions,
+              commissionReleased: commission.released,
+              commissionRemaining: commission.remaining,
+              commissionNetPayable: commission.netPayable,
+              eligibleUnreleased: commission.eligibleUnreleased,
+            }
+          }),
       },
     })
   } catch (error) {
@@ -807,5 +818,3 @@ export const auditSystemReportExport = async (req, res) => {
     connection.release()
   }
 }
-
-

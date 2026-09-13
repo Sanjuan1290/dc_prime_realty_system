@@ -690,6 +690,8 @@ const PaymentsSOA = ({
 
   const rows = useMemo(() => normalizeRows(soaRows), [soaRows])
   const paymentRecords = useMemo(() => normalizePayments(payments, listing), [payments, listing])
+  const canonicalReceivable = listing?.financialSnapshot?.receivable || null
+  const canonicalCash = listing?.financialSnapshot?.cash || null
 
   const unitCode = getListingValue(listing, ['unit_id', 'unitCode', 'unitNo'], 'Unit')
   const projectName = getListingValue(listing, ['project_name', 'projectName'], 'Project')
@@ -975,7 +977,7 @@ const PaymentsSOA = ({
     })
   ), [paymentRecords, typeFilter, statusFilter])
 
-  const totalDue = useMemo(
+  const localTotalDue = useMemo(
     () => rows.reduce((sum, row) => {
       const rowTotal = Number(row.totalDue ?? row.dueAmount ?? 0)
       const rowPaid = Number(row.amountPaid || 0)
@@ -983,8 +985,9 @@ const PaymentsSOA = ({
     }, 0),
     [rows]
   )
+  const totalDue = canonicalReceivable?.totalAccountOutstanding ?? localTotalDue
 
-  const overdueSummary = useMemo(() => {
+  const localOverdueSummary = useMemo(() => {
     const today = todayManila()
 
     return rows.reduce((summary, row) => {
@@ -1016,19 +1019,30 @@ const PaymentsSOA = ({
     }, { withoutPenalty: 0, penalty: 0, withPenalty: 0, rowCount: 0 })
   }, [rows])
 
-  const outstandingLmf = useMemo(
+  const overdueSummary = canonicalReceivable
+    ? {
+        withoutPenalty: Number(canonicalReceivable.overdueExcludingPenalty || 0),
+        penalty: Number(canonicalReceivable.outstandingPenalty || 0),
+        withPenalty: Number(canonicalReceivable.totalOverdueIncludingPenalty || 0),
+        rowCount: Number(canonicalReceivable.overdueRowCount || 0),
+      }
+    : localOverdueSummary
+
+  const localOutstandingLmf = useMemo(
     () => rows
       .filter((row) => row.scheduleType === 'legal_misc' && String(row.status || '').toLowerCase() !== 'cancelled')
       .reduce((sum, row) => sum + Math.max(Number(row.totalDue ?? row.dueAmount ?? 0) - Number(row.amountPaid || 0), 0), 0),
     [rows]
   )
+  const outstandingLmf = canonicalReceivable?.outstandingLmf ?? localOutstandingLmf
 
   const lmfWaivedAmount = cleanMoney(getListingValue(listing, ['soaLmfWaivedAmount'], 0))
 
-  const totalPaid = useMemo(
+  const localTotalPaid = useMemo(
     () => paymentRecords.reduce((sum, payment) => sum + Number(payment.amount || 0), 0),
     [paymentRecords]
   )
+  const totalPaid = canonicalCash?.verifiedCollections ?? localTotalPaid
 
   const balloonPrincipalReduction = useMemo(
     () => paymentRecords
@@ -1045,10 +1059,11 @@ const PaymentsSOA = ({
     [rows]
   )
 
-  const remainingBalance = useMemo(() => {
+  const localRemainingBalance = useMemo(() => {
     if (!rows.length) return cleanMoney(listing?.balanceAmount ?? listing?.balance)
     return Number(rows[rows.length - 1]?.endingBalance || 0)
   }, [rows, listing])
+  const remainingBalance = canonicalReceivable?.remainingLotPrincipal ?? localRemainingBalance
 
   const resetFilters = () => {
     setTypeFilter('all')
@@ -1765,5 +1780,3 @@ const PaymentsSOA = ({
 }
 
 export default PaymentsSOA
-
-

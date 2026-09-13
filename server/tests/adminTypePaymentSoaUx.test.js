@@ -40,7 +40,8 @@ test('Admin type selector enables Admin 1 and shows disabled future types', () =
 test('Payments and SOA show the total amount paid in the summary and statement', () => {
   const paymentsSoa = read('client/src/components/Lot_Projects/ListingProfileComponents/PaymentsSOA/Payments_SOA.jsx');
 
-  assert.match(paymentsSoa, /const totalPaid = useMemo\([\s\S]*paymentRecords\.reduce/);
+  assert.match(paymentsSoa, /const localTotalPaid = useMemo\([\s\S]*paymentRecords\.reduce/);
+  assert.match(paymentsSoa, /const totalPaid = canonicalCash\?\.verifiedCollections \?\? localTotalPaid/);
   assert.match(paymentsSoa, /<SummaryCard label="Total Payments Made"/);
   assert.match(paymentsSoa, /Total payments made:/);
 });
@@ -67,4 +68,3 @@ test('Penalty adjustment wording is understandable without technical correction 
   assert.doesNotMatch(modal, />Reset Correction</);
   assert.doesNotMatch(modal, />Waive Penalty</);
 });
-

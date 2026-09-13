@@ -81,8 +81,9 @@ test('commission integrity checks releases, deductions, dates, and historical pa
 
   assert.match(controller, /Commission released total does not match released milestones/);
   assert.match(controller, /Commission remaining amount does not reconcile/);
-  assert.match(controller, /allDeductions/);
-  assert.match(controller, /Earned on Cancellation/);
+  assert.match(controller, /reconcileCommission\(\{/);
+  assert.match(controller, /const allDeductions = reconciliation\.deductions/);
+  assert.match(controller, /Stored commission remaining does not match the canonical release-stage reconciliation/);
   assert.match(controller, /Historical release is not supported by encoded payment history/);
   assert.match(controller, /calculateCommissionPaymentProgress\(\{[\s\S]*cutoffDate: actualDate/);
   assert.match(controller, /release_trigger_percent/);
@@ -172,4 +173,3 @@ test('Integrity Records uses server-backed pagination capped at 10 records per p
   assert.match(page, />Previous<\/button>/);
   assert.match(page, />Next<\/button>/);
 });
-

@@ -70,6 +70,9 @@ import {
   addIfColumnExists,
 } from '../_shared/lotProject.shared.js';
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
+import { buildAccountFinancialSnapshot } from '../../../services/accountFinancialSnapshot.service.js';
+import { buildAccountContext } from '../../../services/accountContext.service.js';
+import { reconcileCommission } from '../../../services/commissionReconciliation.service.js';
 import {
   hasReleasedCommissionActivity,
   replaceReservationCommissions,
@@ -411,23 +414,15 @@ const mapCommissionSnapshotRows = (rows = [], releaseRows = []) => {
       const commissionId = Number(row.lot_project_commission_id || row.commissionId || 0);
       const releases = releasesByCommission.get(commissionId) || [];
       const grossCommission = Number(row.gross_commission_amount ?? row.grossCommission ?? 0);
-      const releasedFromMilestones = releases
-        .filter((release) => release.release_status === 'Released')
-        .reduce((sum, release) => sum + Number(release.net_release_amount || 0), 0);
-      const releasedAmount = releases.length
-        ? releasedFromMilestones
-        : Number(row.released_commission_amount ?? row.releasedAmount ?? 0);
-      const eligibleAmount = releases
-        .filter((release) => release.release_status === 'Eligible')
-        .reduce((sum, release) => sum + Number(release.net_release_amount || 0), 0);
-      const cashAdvanceDeduction = releases.reduce(
-        (sum, release) => sum + Number(release.deduction_amount || 0),
-        0
-      );
-      const remainingAmount = Math.max(
-        grossCommission - releasedAmount - cashAdvanceDeduction,
-        0
-      );
+      const reconciliation = reconcileCommission({
+        grossCommission,
+        releases,
+        fallbackReleased: Number(row.released_commission_amount ?? row.releasedAmount ?? 0),
+      });
+      const releasedAmount = reconciliation.released;
+      const eligibleAmount = reconciliation.eligibleUnreleased;
+      const cashAdvanceDeduction = reconciliation.deductions;
+      const remainingAmount = reconciliation.remaining;
 
       return {
         commissionId,
@@ -704,7 +699,9 @@ export const getLotProjectListingProfile = async (req, res) => {
     const readOnly = Boolean(
       isAccountRoute && Number(row.current_account_id || 0) !== selectedAccountId
     );
-    row.isHistoricalAccount = readOnly;
+    const accountContext = buildAccountContext({ account: row, listing: row, readOnly });
+    row.isHistoricalEntry = accountContext.isHistoricalEntry;
+    row.isAccountHistory = accountContext.isAccountHistory;
 
     const documents = await getListingDocuments(
       connection,
@@ -787,12 +784,23 @@ export const getLotProjectListingProfile = async (req, res) => {
         rawStatus: row.account_status,
         canEditBuyerProfile: false,
         canUsePayments: true,
-        isHistoricalAccount: true,
+        isHistoricalEntry: accountContext.isHistoricalEntry,
+        isAccountHistory: true,
         accountId: selectedAccountId,
         accountReference: row.account_reference,
         accountStatus: row.account_status,
       };
     }
+
+    const financialSnapshot = buildAccountFinancialSnapshot({
+      account: row,
+      listing: { ...row, ...mappedListing },
+      soaRows,
+      payments,
+      commissions: commissionSnapshot.commissionRows,
+      releases: commissionSnapshot.releaseRows,
+      readOnly,
+    });
 
     return res.json({
       success: true,
@@ -827,6 +835,7 @@ export const getLotProjectListingProfile = async (req, res) => {
             }
           : null,
         readOnly,
+        financialSnapshot,
         client: clientProfile,
         soaRows,
         payments,
@@ -1306,4 +1315,3 @@ export const unholdLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
-

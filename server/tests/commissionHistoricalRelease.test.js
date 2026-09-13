@@ -89,8 +89,10 @@ test('commission UI explicitly separates Release Today from Record Historical Re
 
 test('historical release is restricted to buyer accounts explicitly encoded as historical', () => {
   assert.match(commissionController, /COALESCE\(cp\.soa_is_historical_entry, 0\) AS soa_is_historical_entry/);
-  assert.match(commissionController, /isHistoricalAccount: Number\(row\.soa_is_historical_entry \|\| 0\) === 1/);
-  assert.match(commissionController, /isHistoricalRelease && Number\(release\.soa_is_historical_entry \|\| 0\) !== 1/);
+  assert.match(commissionController, /buildAccountContext/);
+  assert.match(commissionController, /isHistoricalAccount: buildAccountContext\(\{ account: row \}\)\.isHistoricalEntry/);
+  assert.match(commissionController, /const releaseAccountContext = buildAccountContext\(\{ account: release \}\)/);
+  assert.match(commissionController, /isHistoricalRelease && !releaseAccountContext\.isHistoricalEntry/);
   assert.match(commissionController, /Historical commission release is only available for buyer accounts that were explicitly encoded as historical records/);
   assert.match(releaseModal, /const historicalAllowed = Boolean\(commission\.isHistoricalAccount\)/);
   assert.match(releaseModal, /Historical release is not available for this account/);
@@ -143,5 +145,3 @@ test('cancelled-sale financial archive preserves historical release metadata', (
   assert.match(archiveSource, /r\.release_recorded_at/);
   assert.match(archiveSource, /r\.historical_release_note/);
 });
-
-
