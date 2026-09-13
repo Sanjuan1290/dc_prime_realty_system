@@ -31,13 +31,21 @@ test('refund cash movement is based on refund date instead of cancellation date'
   assert.match(reportPage, /Refunds Paid/)
 })
 
-test('reports distinguish in-range activity from report-end snapshots', () => {
-  assert.match(reportPage, /IN RANGE = transactions\/events dated/)
-  assert.match(reportPage, /AS OF = balances calculated through/)
+test('reports keep range meaning in the report content without redundant filter badges', () => {
+  assert.doesNotMatch(reportPage, /IN RANGE = transactions\/events dated/)
+  assert.doesNotMatch(reportPage, /AS OF = balances calculated through/)
   assert.match(reportPage, /Outstanding Receivables/)
   assert.match(reportPage, /Unreleased \/ Remaining/)
   assert.match(controller, /cumulativeRefunded/)
   assert.match(controller, /netCumulativeCash/)
+})
+
+test('preset ranges lock From and To dates until Custom is selected', () => {
+  assert.match(reportPage, /disabled=\{range !== 'custom'\}/)
+  assert.match(reportPage, /disabled:cursor-not-allowed/)
+  assert.match(reportPage, /disabled:bg-slate-100/)
+  assert.doesNotMatch(reportPage, /onChange=\{\(event\) => \{ setRange\('custom'\); setFrom/)
+  assert.doesNotMatch(reportPage, /onChange=\{\(event\) => \{ setRange\('custom'\); setTo/)
 })
 
 test('detailed report tables paginate and sales is no longer a duplicate Reservations tab', () => {
