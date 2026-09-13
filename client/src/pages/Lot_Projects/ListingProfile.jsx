@@ -654,6 +654,12 @@ const ListingProfile = () => {
                 {listing.unit_id || listing.unitCode || '-'}
               </h1>
 
+              {listing.buyer_name || listing.buyerName || listing.clientName || account?.buyerName ? (
+                <p className="mt-1 text-base font-black text-slate-800">
+                  {listing.buyer_name || listing.buyerName || listing.clientName || account?.buyerName}
+                </p>
+              ) : null}
+
               <p className="mt-1 text-sm font-semibold text-slate-500">
                 {listing.project_name || project.name || 'Lot Project'} • {readOnly ? account?.statusLabel || listing.listing_status || '-' : listing.listing_status || '-'}
               </p>
@@ -1008,5 +1014,6 @@ const ListingProfile = () => {
 }
 
 export default ListingProfile
+
 
 

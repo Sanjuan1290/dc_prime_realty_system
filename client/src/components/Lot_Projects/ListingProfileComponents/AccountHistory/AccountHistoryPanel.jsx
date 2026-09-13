@@ -100,7 +100,7 @@ const AccountHistoryPanel = ({ projectSlug, listingId, isSuperAdmin = false }) =
               </div>
 
               <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3"><p className="text-xs font-black uppercase text-slate-500">Verified payments</p><p className="mt-1 text-base font-black text-slate-950">{money(account.verifiedPaymentTotal)}</p><p className="text-xs font-semibold text-slate-500">{account.paymentCount} payment(s)</p></div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3"><p className="text-xs font-black uppercase text-slate-500">Verified payments</p><p className="mt-1 text-base font-black text-slate-950">{money(account.verifiedPaymentTotal)}</p><p className="text-xs font-semibold text-slate-500">{account.paymentCount} verified payment(s){Number(account.voidedPaymentCount || 0) > 0 ? ` · ${account.voidedPaymentCount} voided` : ''}</p></div>
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3"><p className="text-xs font-black uppercase text-slate-500">Refunded</p><p className="mt-1 text-base font-black text-slate-950">{money(account.refundAmount)}</p></div>
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3"><p className="text-xs font-black uppercase text-slate-500">Discontinued</p><p className="mt-1 text-base font-black text-slate-950">{money(account.discontinuedAmount)}</p><p className="text-xs font-semibold text-slate-500">{Number(account.commissionableRetainedPercent || 0).toFixed(2)}% commissionable</p></div>
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3"><p className="text-xs font-black uppercase text-slate-500">Retained records</p><p className="mt-1 text-base font-black text-slate-950">{account.documentCount} docs · {account.commissionCount} commissions</p></div>
@@ -136,4 +136,5 @@ const AccountHistoryPanel = ({ projectSlug, listingId, isSuperAdmin = false }) =
 }
 
 export default AccountHistoryPanel
+
 

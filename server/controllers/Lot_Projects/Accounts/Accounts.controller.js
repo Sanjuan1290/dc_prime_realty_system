@@ -218,7 +218,8 @@ export const getLotProjectListingAccountHistory = async (req, res) => {
           profile.buyer_full_name,
           profile.buyer_email,
           profile.buyer_contact_number,
-          (SELECT COUNT(*) FROM lot_project_payments payment WHERE payment.lot_project_account_id = account.lot_project_account_id) AS payment_count,
+          (SELECT COUNT(*) FROM lot_project_payments payment WHERE payment.lot_project_account_id = account.lot_project_account_id AND payment.lot_project_payment_status = 'Verified') AS payment_count,
+          (SELECT COUNT(*) FROM lot_project_payments payment WHERE payment.lot_project_account_id = account.lot_project_account_id AND payment.lot_project_payment_status = 'Cancelled') AS voided_payment_count,
           (SELECT COALESCE(SUM(payment.lot_project_payment_amount), 0) FROM lot_project_payments payment WHERE payment.lot_project_account_id = account.lot_project_account_id AND payment.lot_project_payment_status = 'Verified') AS verified_payment_total,
           (SELECT COUNT(*) FROM lot_project_client_documents document_row WHERE document_row.lot_project_account_id = account.lot_project_account_id) AS document_count,
           (SELECT COUNT(*) FROM lot_project_commissions commission WHERE commission.lot_project_account_id = account.lot_project_account_id) AS commission_count
@@ -252,6 +253,7 @@ export const getLotProjectListingAccountHistory = async (req, res) => {
         commissionableRetainedAmount: Number(row.commissionable_retained_amount || 0),
         commissionableRetainedPercent: Number(row.commissionable_retained_percent || 0),
         paymentCount: Number(row.payment_count || 0),
+        voidedPaymentCount: Number(row.voided_payment_count || 0),
         verifiedPaymentTotal: Number(row.verified_payment_total || 0),
         documentCount: Number(row.document_count || 0),
         commissionCount: Number(row.commission_count || 0),
@@ -651,4 +653,5 @@ export const purgeLotProjectAccount = async (req, res) => {
     connection.release();
   }
 };
+
 

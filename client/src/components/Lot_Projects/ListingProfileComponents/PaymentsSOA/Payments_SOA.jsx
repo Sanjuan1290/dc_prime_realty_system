@@ -203,100 +203,160 @@ const SummaryCard = ({ label, value, tone = 'slate', isMoney = true }) => {
   )
 }
 
-const DeletePaymentModal = ({ payment, password, setPassword, alert, isDeleting, onClose, onConfirm }) => {
-  if (!payment) return null
+const PaymentAccountConfirmationModal = ({ data, acknowledged, setAcknowledged, isLoading, onClose, onContinue }) => {
+  if (!data) return null
+  const recent = Boolean(data.hasRecentPayment)
+  const latest = data.latestPayment || null
+  const tone = recent
+    ? 'border-amber-300 bg-amber-50 text-amber-950'
+    : 'border-emerald-300 bg-emerald-50 text-emerald-950'
 
   return (
-    <div className="fixed inset-0 z-[75] flex items-center justify-center bg-slate-950/50 p-4">
-      <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-red-50 text-red-700">
-              <FiAlertTriangle className="h-5 w-5" />
-            </div>
-            <div>
-              <h3 className="text-lg font-black text-slate-950">Delete Payment</h3>
-              <p className="text-sm font-semibold text-slate-500">
-                Administrator password is required.
-              </p>
+    <div className="fixed inset-0 z-[76] flex items-center justify-center bg-slate-950/55 p-4">
+      <div className="w-full max-w-2xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6">
+          <div>
+            <p className={`text-xs font-black uppercase tracking-[0.16em] ${recent ? 'text-amber-700' : 'text-emerald-700'}`}>{recent ? 'Verify Before Adding Payment' : 'Confirm Payment Account'}</p>
+            <h3 className="mt-1 text-xl font-black text-slate-950">Check the buyer and unit</h3>
+            <p className="mt-1 text-sm font-semibold text-slate-500">This extra check helps prevent payments from being recorded under the wrong unit.</p>
+          </div>
+          <button type="button" onClick={onClose} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50"><FiX /></button>
+        </div>
+
+        <div className="space-y-4 p-5 sm:p-6">
+          <div className={`rounded-2xl border p-4 ${tone}`}>
+            <div className="flex items-start gap-3">
+              {recent ? <FiAlertTriangle className="mt-0.5 h-5 w-5 shrink-0" /> : <FiCheckCircle className="mt-0.5 h-5 w-5 shrink-0" />}
+              <div>
+                <p className="font-black">{recent ? 'Recent verified payment detected' : 'No recent verified payment detected'}</p>
+                <p className="mt-1 text-sm font-semibold opacity-90">
+                  {recent
+                    ? `This account has ${Number(data.recentPaymentCount || 0)} verified payment record${Number(data.recentPaymentCount || 0) === 1 ? '' : 's'} within the current month / past 30 days.`
+                    : 'No verified payment was recorded for this account within the current month / past 30 days.'}
+                </p>
+              </div>
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
-          >
-            <FiX className="h-4 w-4" />
-          </button>
-        </div>
+          <div className="rounded-2xl border-2 border-blue-200 bg-blue-50/60 p-5">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div><p className="text-[11px] font-black uppercase tracking-wide text-slate-500">Unit</p><p className="mt-1 text-3xl font-black text-blue-800">{data.unitId || '-'}</p></div>
+              <div><p className="text-[11px] font-black uppercase tracking-wide text-slate-500">Buyer</p><p className="mt-1 text-xl font-black text-slate-950">{data.buyerName || '-'}</p></div>
+              <div><p className="text-[11px] font-black uppercase tracking-wide text-slate-500">Project</p><p className="mt-1 font-black text-slate-800">{data.projectName || '-'}</p></div>
+              <div><p className="text-[11px] font-black uppercase tracking-wide text-slate-500">Account</p><p className="mt-1 font-black text-slate-800">{data.accountReference || '-'}</p></div>
+            </div>
+          </div>
 
-        <div className="p-5">
-          {alert ? (
-            <StatusAlert
-              type={alert.type}
-              message={alert.message}
-              onClose={alert.type === 'loading' ? undefined : null}
-              className="mb-4"
-            />
+          {recent && latest ? (
+            <div className="rounded-2xl border border-amber-200 bg-white p-4">
+              <p className="text-xs font-black uppercase tracking-wide text-amber-700">Latest verified payment</p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <div><p className="text-xs font-bold text-slate-500">Amount</p><p className="font-black text-slate-950">{money(latest.amount)}</p></div>
+                <div><p className="text-xs font-bold text-slate-500">Payment Date</p><p className="font-black text-slate-950">{formatDate(latest.paymentDate)}</p></div>
+                <div><p className="text-xs font-bold text-slate-500">Type</p><p className="font-black text-slate-950">{latest.type || '-'}</p></div>
+                <div><p className="text-xs font-bold text-slate-500">Reference</p><p className="break-all font-black text-slate-950">{latest.referenceId || '-'}</p></div>
+              </div>
+            </div>
           ) : null}
 
-          <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-800">
-            This will remove the payment record and reverse the amount applied to the SOA.
-          </div>
-
-          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <div>
-                <p className="font-black text-slate-500">Reference ID</p>
-                <p className="mt-1 font-semibold text-slate-900">{payment.referenceId}</p>
-              </div>
-              <div>
-                <p className="font-black text-slate-500">Amount</p>
-                <p className="mt-1 font-semibold text-slate-900">{money(payment.amount)}</p>
-              </div>
-              <div>
-                <p className="font-black text-slate-500">Type</p>
-                <p className="mt-1 font-semibold text-slate-900">{payment.type}</p>
-              </div>
-              <div>
-                <p className="font-black text-slate-500">Date</p>
-                <p className="mt-1 font-semibold text-slate-900">{formatDate(payment.paymentDate)}</p>
-              </div>
-            </div>
-          </div>
-
-          <label className="mt-4 flex flex-col gap-1.5">
-            <span className="text-sm font-black text-slate-700">
-              Super Admin Password <span className="text-red-500">*</span>
-            </span>
-            <input
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder="Enter super admin password"
-              className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-red-400 focus:ring-4 focus:ring-red-50"
-            />
-          </label>
+          {recent ? (
+            <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4">
+              <input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} className="mt-1 h-4 w-4" />
+              <span className="text-sm font-bold text-amber-950">I confirmed that <strong>{data.buyerName || 'this buyer'}</strong> and <strong>Unit {data.unitId || '-'}</strong> are correct, and I intend to record another payment for this account.</span>
+            </label>
+          ) : (
+            <p className="text-center text-sm font-black text-slate-700">You are about to record a payment for {data.buyerName || 'this buyer'} • Unit {data.unitId || '-'}.</p>
+          )}
         </div>
 
-        <div className="flex justify-end gap-2 border-t border-slate-200 bg-white px-5 py-4">
-          <button
-            type="button"
-            onClick={onClose}
-            className="h-10 rounded-lg border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50"
-          >
-            Cancel
+        <div className="flex justify-end gap-2 border-t border-slate-200 px-5 py-4 sm:px-6">
+          <button type="button" onClick={onClose} className="h-10 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 hover:bg-slate-50">Cancel</button>
+          <button type="button" onClick={onContinue} disabled={isLoading || (recent && !acknowledged)} className={`h-10 rounded-xl px-5 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50 ${recent ? 'bg-amber-600 hover:bg-amber-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
+            {recent ? 'Continue Anyway' : 'Continue to Payment'}
           </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
-          <button
-            type="button"
-            onClick={onConfirm}
-            disabled={isDeleting}
-            className="h-10 rounded-lg bg-red-600 px-5 text-sm font-black text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-red-300"
-          >
-            {isDeleting ? 'Deleting...' : 'Delete Payment'}
-          </button>
+const PaymentCorrectionAuthorizationModal = ({ request, reason, setReason, password, setPassword, verificationId, code, setCode, maskedEmail, alert, isSending, isApplying, onClose, onSendCode, onApply }) => {
+  if (!request) return null
+  const isVoid = request.action === 'void'
+  const payment = request.payment || {}
+  const proposed = request.proposed || {}
+  const readyForCode = reason.trim().length >= 5 && password.trim().length > 0
+  const readyToApply = reason.trim().length >= 5 && verificationId && code.trim().length === 6
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/60 p-4">
+      <div className="max-h-[94vh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-slate-200 bg-white shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.16em] text-red-700">Controlled Financial Correction</p>
+            <h3 className="mt-1 text-xl font-black text-slate-950">{isVoid ? 'Void Payment' : 'Authorize Payment Edit'}</h3>
+            <p className="mt-1 text-sm font-semibold text-slate-500">Only an exact Super Admin can change an already recorded verified payment.</p>
+          </div>
+          <button type="button" onClick={onClose} disabled={isSending || isApplying} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-50"><FiX /></button>
+        </div>
+
+        <div className="space-y-4 p-5 sm:p-6">
+          {alert ? <StatusAlert type={alert.type} message={alert.message} /> : null}
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-900">
+            {isVoid
+              ? 'This does not erase the payment. It marks the payment Cancelled, reverses its SOA allocation, keeps the audit/history record, and recalculates balances.'
+              : 'The system will keep a before/after Audit Trail and rebuild the SOA allocation after the verified payment is corrected.'}
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div><p className="text-xs font-black uppercase text-slate-500">Reference</p><p className="mt-1 break-all font-black text-slate-950">{payment.referenceId || '-'}</p></div>
+              <div><p className="text-xs font-black uppercase text-slate-500">Current Amount</p><p className="mt-1 font-black text-slate-950">{money(payment.amount)}</p></div>
+              <div><p className="text-xs font-black uppercase text-slate-500">Current Date</p><p className="mt-1 font-black text-slate-950">{formatDate(payment.paymentDate)}</p></div>
+              <div><p className="text-xs font-black uppercase text-slate-500">Current Type</p><p className="mt-1 font-black text-slate-950">{payment.type || '-'}</p></div>
+            </div>
+            {!isVoid ? (
+              <div className="mt-4 border-t border-slate-200 pt-4">
+                <p className="text-xs font-black uppercase tracking-wide text-blue-700">Proposed values</p>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <div><p className="text-xs font-bold text-slate-500">Amount</p><p className="font-black text-blue-800">{money(proposed.amount)}</p></div>
+                  <div><p className="text-xs font-bold text-slate-500">Payment Date</p><p className="font-black text-blue-800">{formatDate(proposed.paymentDate)}</p></div>
+                  <div><p className="text-xs font-bold text-slate-500">Type</p><p className="font-black text-blue-800">{proposed.paymentType || '-'}</p></div>
+                  <div><p className="text-xs font-bold text-slate-500">Method</p><p className="font-black text-blue-800">{proposed.method || '-'}</p></div>
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          <label className="block">
+            <span className="text-sm font-black text-slate-700">Correction Reason *</span>
+            <textarea rows={3} value={reason} onChange={(event) => setReason(event.target.value)} disabled={Boolean(verificationId)} placeholder="Explain why this recorded payment must be corrected." className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100" />
+          </label>
+
+          {!verificationId ? (
+            <label className="block">
+              <span className="text-sm font-black text-slate-700">Super Admin Password *</span>
+              <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" placeholder="Enter current password" className="mt-1.5 h-11 w-full rounded-xl border border-slate-300 px-3 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50" />
+            </label>
+          ) : (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+              <p className="font-black text-emerald-900">Password verified</p>
+              <p className="mt-1 text-sm font-semibold text-emerald-800">A 6-digit code was sent to {maskedEmail || 'your Super Admin email'}.</p>
+              <label className="mt-3 block">
+                <span className="text-sm font-black text-emerald-950">Email Verification Code *</span>
+                <input inputMode="numeric" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="6-digit code" className="mt-1.5 h-11 w-full rounded-xl border border-emerald-300 bg-white px-3 text-sm font-black tracking-[0.35em] outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100" />
+              </label>
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-slate-200 px-5 py-4 sm:px-6">
+          <button type="button" onClick={onClose} disabled={isSending || isApplying} className="h-10 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 hover:bg-slate-50 disabled:opacity-50">Cancel</button>
+          {!verificationId ? (
+            <button type="button" onClick={onSendCode} disabled={!readyForCode || isSending} className="h-10 rounded-xl bg-amber-600 px-5 text-sm font-black text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:bg-amber-300">{isSending ? 'Sending Code...' : 'Verify Password & Send Code'}</button>
+          ) : (
+            <button type="button" onClick={onApply} disabled={!readyToApply || isApplying} className="h-10 rounded-xl bg-red-600 px-5 text-sm font-black text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-red-300">{isApplying ? 'Applying...' : isVoid ? 'Confirm & Void Payment' : 'Confirm & Apply Correction'}</button>
+          )}
         </div>
       </div>
     </div>
@@ -687,6 +747,7 @@ const PaymentsSOA = ({
   const canCorrectPenalty = canManagePenaltyRelief
   const canWaiveLmf = canManagePenaltyRelief
   const canDeletePaymentProof = !readOnly && isFullAccessAdministrator(currentUserData?.user)
+  const isExactSuperAdmin = !readOnly && String(currentUserData?.user?.role || '').trim().toLowerCase() === 'super_admin'
 
   const rows = useMemo(() => normalizeRows(soaRows), [soaRows])
   const paymentRecords = useMemo(() => normalizePayments(payments, listing), [payments, listing])
@@ -731,11 +792,17 @@ const PaymentsSOA = ({
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [showSoaTermsModal, setShowSoaTermsModal] = useState(false)
   const [editingPayment, setEditingPayment] = useState(null)
-  const [deletePayment, setDeletePayment] = useState(null)
+  const [paymentAccountCheck, setPaymentAccountCheck] = useState(null)
+  const [paymentAccountAcknowledged, setPaymentAccountAcknowledged] = useState(false)
+  const [paymentCorrection, setPaymentCorrection] = useState(null)
+  const [paymentCorrectionReason, setPaymentCorrectionReason] = useState('')
+  const [paymentCorrectionPassword, setPaymentCorrectionPassword] = useState('')
+  const [paymentCorrectionVerificationId, setPaymentCorrectionVerificationId] = useState(null)
+  const [paymentCorrectionCode, setPaymentCorrectionCode] = useState('')
+  const [paymentCorrectionMaskedEmail, setPaymentCorrectionMaskedEmail] = useState('')
+  const [paymentCorrectionAlert, setPaymentCorrectionAlert] = useState(null)
   const [paymentProof, setPaymentProof] = useState(null)
   const [paymentProofCounts, setPaymentProofCounts] = useState({})
-  const [deletePassword, setDeletePassword] = useState('')
-  const [deleteAlert, setDeleteAlert] = useState(null)
   const [penaltyReliefRow, setPenaltyReliefRow] = useState(null)
   const [penaltyReliefAlert, setPenaltyReliefAlert] = useState(null)
   const [lmfWaiverRow, setLmfWaiverRow] = useState(null)
@@ -767,6 +834,19 @@ const PaymentsSOA = ({
     void queryClient.invalidateQueries({ queryKey: ['system-payment-notifications'] })
   }
 
+  const paymentPreflightMutation = useMutation({
+    mutationFn: () => useFetchPost(
+      `/projects/lot-projects/${projectSlug}/listings/${listingId}/payments/preflight`,
+      {},
+      { confirmationHandled: 'technical' }
+    ),
+    onSuccess: (result) => {
+      setPaymentAccountCheck(result?.data || null)
+      setPaymentAccountAcknowledged(false)
+    },
+    onError: (error) => setAlert(getDoubleCheckNotice(error, 'Unable to verify the buyer account before adding payment.')),
+  })
+
   const createPaymentMutation = useMutation({
     mutationFn: (payload) =>
       useFetchPost(`/projects/lot-projects/${projectSlug}/listings/${listingId}/payments`, payload, {
@@ -793,54 +873,64 @@ const PaymentsSOA = ({
     },
   })
 
+  const requestPaymentCorrectionCodeMutation = useMutation({
+    mutationFn: ({ action, paymentId, password, reason, proposed }) => useFetchPost(
+      `/projects/lot-projects/${projectSlug}/listings/${listingId}/payments/${paymentId}/correction-code`,
+      { action, password, reason, proposed },
+      { confirmationHandled: 'technical' }
+    ),
+    onMutate: () => setPaymentCorrectionAlert({ type: 'loading', message: 'Verifying Super Admin password and sending email code...' }),
+    onSuccess: (result) => {
+      setPaymentCorrectionVerificationId(result?.data?.verificationId || null)
+      setPaymentCorrectionMaskedEmail(result?.data?.maskedEmail || '')
+      setPaymentCorrectionCode('')
+      setPaymentCorrectionAlert({ type: 'success', message: result?.message || 'Verification code sent.' })
+    },
+    onError: (error) => setPaymentCorrectionAlert(getDoubleCheckNotice(error, 'Unable to send payment correction verification code.')),
+  })
+
   const updatePaymentMutation = useMutation({
     mutationFn: (payload) =>
       useFetchPut(
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/payments/${payload.paymentId}`,
         payload,
-        {
-          doubleCheck: {
-            type: 'payment',
-            mode: 'edit',
-            summary: `${getListingValue(listing, ['buyer_name', 'buyerName', 'clientName'], 'Client')} · ${getListingValue(listing, ['unit_id', 'unitCode', 'unitNo'], 'Unit')}`,
-            data: {
-              account: {
-                project: getListingValue(listing, ['project_name', 'projectName'], projectSlug),
-                unit: getListingValue(listing, ['unit_id', 'unitCode', 'unitNo'], listingId),
-                buyer: getListingValue(listing, ['buyer_name', 'buyerName', 'clientName'], '-'),
-                accountReference: getListingValue(listing, ['accountReference', 'account_reference'], '-'),
-              },
-              currentPayment: editingPayment || {},
-              newPaymentValues: payload,
-            },
-          },
-        }
+        { confirmationHandled: 'technical' }
       ),
     onSuccess: async (result) => {
       setShowPaymentModal(false)
       setEditingPayment(null)
-      setAlert({ type: 'success', message: result?.message || 'Payment updated successfully.' })
+      setPaymentCorrection(null)
+      setPaymentCorrectionReason('')
+      setPaymentCorrectionPassword('')
+      setPaymentCorrectionVerificationId(null)
+      setPaymentCorrectionCode('')
+      setPaymentCorrectionMaskedEmail('')
+      setPaymentCorrectionAlert(null)
+      setAlert({ type: 'success', message: result?.message || 'Payment corrected successfully.' })
       await refreshProfile()
     },
+    onError: (error) => setPaymentCorrectionAlert(getDoubleCheckNotice(error, 'Failed to correct payment.')),
   })
 
   const deletePaymentMutation = useMutation({
-    mutationFn: ({ paymentId, superAdminPassword }) =>
+    mutationFn: ({ paymentId, reason, verificationId, code }) =>
       useFetchPost(
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/payments/${paymentId}/delete`,
-        { superAdminPassword },
-        { confirmationHandled: 'compact' }
+        { reason, verificationId, code },
+        { confirmationHandled: 'technical' }
       ),
     onSuccess: async (result) => {
-      setDeletePayment(null)
-      setDeletePassword('')
-      setDeleteAlert(null)
-      setAlert({ type: 'success', message: result?.message || 'Payment deleted successfully.' })
+      setPaymentCorrection(null)
+      setPaymentCorrectionReason('')
+      setPaymentCorrectionPassword('')
+      setPaymentCorrectionVerificationId(null)
+      setPaymentCorrectionCode('')
+      setPaymentCorrectionMaskedEmail('')
+      setPaymentCorrectionAlert(null)
+      setAlert({ type: 'success', message: result?.message || 'Payment voided successfully.' })
       await refreshProfile()
     },
-    onError: (error) => {
-      setDeleteAlert(getDoubleCheckNotice(error, 'Failed to delete payment.'))
-    },
+    onError: (error) => setPaymentCorrectionAlert(getDoubleCheckNotice(error, 'Failed to void payment.')),
   })
 
   const updateSoaTermsMutation = useMutation({
@@ -1070,16 +1160,33 @@ const PaymentsSOA = ({
     setStatusFilter('all')
   }
 
+  const resetPaymentCorrection = () => {
+    setPaymentCorrection(null)
+    setPaymentCorrectionReason('')
+    setPaymentCorrectionPassword('')
+    setPaymentCorrectionVerificationId(null)
+    setPaymentCorrectionCode('')
+    setPaymentCorrectionMaskedEmail('')
+    setPaymentCorrectionAlert(null)
+  }
+
   const openAddModal = () => {
+    setEditingPayment(null)
+    setPaymentAccountCheck(null)
+    setPaymentAccountAcknowledged(false)
+    paymentPreflightMutation.mutate()
+  }
+
+  const continueToAddPayment = () => {
+    setPaymentAccountCheck(null)
+    setPaymentAccountAcknowledged(false)
     setEditingPayment(null)
     setShowPaymentModal(true)
   }
 
   const openEditModal = (payment) => {
-    const linkedWaiver = payment?.penaltyWaiver
-    const hasActiveLinkedWaiver = linkedWaiver && !['cancelled', 'restored'].includes(String(linkedWaiver.status || '').toLowerCase())
-    if (hasActiveLinkedWaiver && !canManagePenaltyRelief) {
-      setAlert({ type: 'error', message: 'This payment has a linked penalty waiver. Only an admin or super admin can edit it.' })
+    if (!isExactSuperAdmin) {
+      setAlert({ type: 'error', message: 'Only an exact Super Admin can edit an already recorded payment.' })
       return
     }
     setEditingPayment(payment)
@@ -1091,28 +1198,64 @@ const PaymentsSOA = ({
 
   const handleSavePayment = async (payload) => {
     if (payload.paymentId) {
-      await updatePaymentMutation.mutateAsync(payload)
+      if (!isExactSuperAdmin) throw new Error('Only an exact Super Admin can edit an already recorded payment.')
+      setShowPaymentModal(false)
+      setPaymentCorrection({ action: 'edit', payment: editingPayment || {}, proposed: payload })
+      setPaymentCorrectionReason('')
+      setPaymentCorrectionPassword('')
+      setPaymentCorrectionVerificationId(null)
+      setPaymentCorrectionCode('')
+      setPaymentCorrectionMaskedEmail('')
+      setPaymentCorrectionAlert(null)
       return
     }
 
     await createPaymentMutation.mutateAsync(payload)
   }
 
-  const handleDeleteClick = (payment) => {
-    setDeletePayment(payment)
-    setDeletePassword('')
-    setDeleteAlert(null)
-  }
-
-  const handleConfirmDelete = () => {
-    if (!deletePassword.trim()) {
-      setDeleteAlert({ type: 'error', message: 'Administrator password is required.' })
+  const handleVoidClick = (payment) => {
+    if (!isExactSuperAdmin) {
+      setAlert({ type: 'error', message: 'Only an exact Super Admin can void an already recorded payment.' })
       return
     }
+    setPaymentCorrection({ action: 'void', payment, proposed: null })
+    setPaymentCorrectionReason('')
+    setPaymentCorrectionPassword('')
+    setPaymentCorrectionVerificationId(null)
+    setPaymentCorrectionCode('')
+    setPaymentCorrectionMaskedEmail('')
+    setPaymentCorrectionAlert(null)
+  }
 
+  const handleSendPaymentCorrectionCode = () => {
+    if (!paymentCorrection) return
+    requestPaymentCorrectionCodeMutation.mutate({
+      action: paymentCorrection.action,
+      paymentId: paymentCorrection.payment?.paymentId || paymentCorrection.payment?.id || paymentCorrection.proposed?.paymentId,
+      password: paymentCorrectionPassword,
+      reason: paymentCorrectionReason.trim(),
+      proposed: paymentCorrection.action === 'edit' ? paymentCorrection.proposed : undefined,
+    })
+  }
+
+  const handleApplyPaymentCorrection = () => {
+    if (!paymentCorrection || !paymentCorrectionVerificationId || paymentCorrectionCode.trim().length !== 6) return
+    const paymentId = paymentCorrection.payment?.paymentId || paymentCorrection.payment?.id || paymentCorrection.proposed?.paymentId
+    if (paymentCorrection.action === 'edit') {
+      updatePaymentMutation.mutate({
+        ...paymentCorrection.proposed,
+        paymentId,
+        reason: paymentCorrectionReason.trim(),
+        verificationId: paymentCorrectionVerificationId,
+        code: paymentCorrectionCode.trim(),
+      })
+      return
+    }
     deletePaymentMutation.mutate({
-      paymentId: deletePayment.paymentId || deletePayment.id,
-      superAdminPassword: deletePassword,
+      paymentId,
+      reason: paymentCorrectionReason.trim(),
+      verificationId: paymentCorrectionVerificationId,
+      code: paymentCorrectionCode.trim(),
     })
   }
 
@@ -1211,10 +1354,11 @@ const PaymentsSOA = ({
               <button
                 type="button"
                 onClick={openAddModal}
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98]"
+                disabled={paymentPreflightMutation.isPending}
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-blue-300"
               >
                 <FiPlus className="h-4 w-4" />
-                Add Payment
+                {paymentPreflightMutation.isPending ? 'Checking Account...' : 'Add Payment'}
               </button>
             </>
           ) : (
@@ -1362,12 +1506,13 @@ const PaymentsSOA = ({
                           : 'Upload Proof'}
                       </button>
 
-                      {!readOnly ? (
+                      {isExactSuperAdmin ? (
                         <>
                           <button
                             type="button"
                             onClick={() => openEditModal(payment)}
                             className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 transition hover:bg-slate-50"
+                            title="Requires Super Admin password and email verification"
                           >
                             <FiEdit2 className="h-3.5 w-3.5" />
                             Edit
@@ -1375,13 +1520,16 @@ const PaymentsSOA = ({
 
                           <button
                             type="button"
-                            onClick={() => handleDeleteClick(payment)}
+                            onClick={() => handleVoidClick(payment)}
                             className="inline-flex h-9 items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 text-xs font-black text-red-700 transition hover:bg-red-100"
+                            title="Voids the payment; the historical record is retained"
                           >
                             <FiTrash2 className="h-3.5 w-3.5" />
-                            Delete
+                            Void
                           </button>
                         </>
+                      ) : !readOnly ? (
+                        <span className="inline-flex h-9 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-black text-slate-400">Super Admin only</span>
                       ) : null}
                     </div>
                   </td>
@@ -1762,21 +1910,52 @@ const PaymentsSOA = ({
         />
       ) : null}
 
-      {!readOnly ? <DeletePaymentModal
-        payment={deletePayment}
-        password={deletePassword}
-        setPassword={setDeletePassword}
-        alert={deleteAlert}
-        isDeleting={deletePaymentMutation.isPending}
-        onClose={() => {
-          setDeletePayment(null)
-          setDeletePassword('')
-          setDeleteAlert(null)
-        }}
-        onConfirm={handleConfirmDelete}
-      /> : null}
+      {!readOnly && paymentAccountCheck ? (
+        <PaymentAccountConfirmationModal
+          data={paymentAccountCheck}
+          acknowledged={paymentAccountAcknowledged}
+          setAcknowledged={setPaymentAccountAcknowledged}
+          isLoading={paymentPreflightMutation.isPending}
+          onClose={() => {
+            setPaymentAccountCheck(null)
+            setPaymentAccountAcknowledged(false)
+          }}
+          onContinue={continueToAddPayment}
+        />
+      ) : null}
+
+      {!readOnly && paymentCorrection ? (
+        <PaymentCorrectionAuthorizationModal
+          request={paymentCorrection}
+          reason={paymentCorrectionReason}
+          setReason={(value) => {
+            setPaymentCorrectionReason(value)
+            if (paymentCorrectionVerificationId) {
+              setPaymentCorrectionVerificationId(null)
+              setPaymentCorrectionCode('')
+              setPaymentCorrectionMaskedEmail('')
+            }
+          }}
+          password={paymentCorrectionPassword}
+          setPassword={setPaymentCorrectionPassword}
+          verificationId={paymentCorrectionVerificationId}
+          code={paymentCorrectionCode}
+          setCode={setPaymentCorrectionCode}
+          maskedEmail={paymentCorrectionMaskedEmail}
+          alert={paymentCorrectionAlert}
+          isSending={requestPaymentCorrectionCodeMutation.isPending}
+          isApplying={updatePaymentMutation.isPending || deletePaymentMutation.isPending}
+          onClose={() => {
+            if (requestPaymentCorrectionCodeMutation.isPending || updatePaymentMutation.isPending || deletePaymentMutation.isPending) return
+            resetPaymentCorrection()
+          }}
+          onSendCode={handleSendPaymentCorrectionCode}
+          onApply={handleApplyPaymentCorrection}
+        />
+      ) : null}
     </section>
   )
 }
 
 export default PaymentsSOA
+

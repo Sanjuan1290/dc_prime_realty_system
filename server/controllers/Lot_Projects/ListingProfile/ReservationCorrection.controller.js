@@ -6,6 +6,9 @@ import {
   getProjectBySlug,
   getListingLookupWhere,
   getComputedSoaTerms,
+  getUserFullName,
+  rebuildListingPaymentAllocationsChronologically,
+  todayDateOnly,
 } from '../_shared/lotProject.shared.js'
 import { getListingPricingForMode } from '../_shared/listingPricing.js'
 import {
@@ -14,6 +17,15 @@ import {
 } from './ReserveListing.controller.js'
 import { replaceReservationCommissions } from '../Commissions/commissionHierarchy.service.js'
 import { writeAuditLog } from '../../System/auditLogs.controller.js'
+import { sendEmail } from '../../../services/email.service.js'
+import { syncCommissionProgressForListing } from '../../../services/commissionProgress.service.js'
+import {
+  createSensitiveActionVerification,
+  getSensitiveActionRequestIp,
+  maskSensitiveActionEmail,
+  SENSITIVE_ACTION_CODE_EXPIRY_MINUTES,
+  verifyAndConsumeSensitiveAction,
+} from '../../../services/sensitiveActionVerification.service.js'
 
 const CORRECTION_TABLE = 'lot_project_reservation_corrections'
 const clean = (value = '') => String(value ?? '').trim()
@@ -28,6 +40,78 @@ const dateOnly = (value) => {
   return text.length >= 10 ? text.slice(0, 10) : text
 }
 const money = (value) => Math.round((number(value) + Number.EPSILON) * 100) / 100
+
+
+const CONTROLLED_CORRECTION_ACTION = 'lot_project_controlled_unit_correction'
+const CONTROLLED_CORRECTION_ENTITY = 'lot_project_account'
+const escapeHtml = (value = '') => clean(value)
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;')
+
+const buildControlledCorrectionPayload = ({ actor, source, bundle, destination, computation, reason }) => ({
+  action: CONTROLLED_CORRECTION_ACTION,
+  actorId: Number(actor?.id || 0),
+  accountId: Number(bundle?.lot_project_account_id || 0),
+  clientProfileId: Number(bundle?.lot_project_client_profile_id || 0),
+  sourceListingId: Number(source?.lot_project_listing_id || 0),
+  sourceUnitId: clean(source?.lot_project_listing_unit_id),
+  destinationListingId: Number(destination?.lot_project_listing_id || 0),
+  destinationUnitId: clean(destination?.lot_project_listing_unit_id),
+  reason: clean(reason),
+  terms: {
+    modeOfPayment: clean(computation?.terms?.modeOfPayment),
+    saleDiscountPercentage: number(computation?.terms?.saleDiscountPercentage),
+    reservationFee: number(computation?.terms?.reservationFee),
+    reservationFeeAppliedToDownpayment: Boolean(computation?.terms?.reservationFeeAppliedToDownpayment),
+    legalMiscFeeMode: clean(computation?.terms?.legalMiscFeeMode),
+    startingDate: dateOnly(computation?.terms?.startingDate),
+    firstDueDate: dateOnly(computation?.terms?.firstDueDate),
+    downpaymentPercentage: number(computation?.terms?.downpaymentPercentage),
+    downpaymentInputMode: clean(computation?.terms?.downpaymentInputMode),
+    downpaymentAmount: computation?.terms?.downpaymentAmount == null ? null : number(computation.terms.downpaymentAmount),
+    downpaymentTerms: number(computation?.terms?.downpaymentTerms),
+    monthlyTerms: number(computation?.terms?.monthlyTerms),
+    annualInterestRate: number(computation?.terms?.annualInterestRate),
+    interestRateOverridden: Boolean(computation?.terms?.interestRateOverridden),
+    dpDiscountPercentage: number(computation?.terms?.dpDiscountPercentage),
+    dailyPenaltyRate: number(computation?.terms?.dailyPenaltyRate),
+    penaltyGraceDays: number(computation?.terms?.penaltyGraceDays),
+    penaltyEffectiveFrom: dateOnly(computation?.terms?.penaltyEffectiveFrom),
+    sellerId: Number(computation?.terms?.sellerId || 0),
+    saleChannel: clean(computation?.terms?.saleChannel),
+  },
+  pricing: {
+    baseSellingPrice: money(computation?.pricing?.baseSellingPrice),
+    netSellingPrice: money(computation?.pricing?.netSellingPrice),
+    lmfAmount: money(computation?.pricing?.lmfAmount),
+    tcp: money(computation?.pricing?.tcp),
+  },
+})
+
+const sendControlledCorrectionCodeEmail = async ({ actor, code, source, destination, bundle, reason }) => {
+  const companyName = clean(process.env.COMPANY_NAME) || 'D&C Prime Realty'
+  const actorName = getUserFullName(actor) || 'Super Admin'
+  const buyerName = bundle?.buyer_full_name || bundle?.buyer_name_snapshot || 'Buyer'
+  await sendEmail({
+    to: actor.email,
+    subject: `Controlled unit correction code - ${source.lot_project_listing_unit_id} to ${destination.lot_project_listing_unit_id}`,
+    text: [
+      `Hello ${actorName},`, '',
+      `Your verification code is ${code}.`,
+      `Buyer: ${buyerName}`,
+      `Account: ${bundle?.account_reference || '-'}`,
+      `Wrong unit: ${source.lot_project_listing_unit_id}`,
+      `Correct unit: ${destination.lot_project_listing_unit_id}`,
+      `Reason: ${reason}`,
+      `This code expires in ${SENSITIVE_ACTION_CODE_EXPIRY_MINUTES} minutes.`, '',
+      'This correction moves an account with verified financial activity. Do not share this code.', '', companyName,
+    ].join('\n'),
+    html: `<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;color:#0f172a"><h2>${escapeHtml(companyName)}</h2><p>Hello ${escapeHtml(actorName)},</p><p>Use this code to authorize a controlled reservation correction for <strong>${escapeHtml(buyerName)}</strong>.</p><div style="font-size:30px;font-weight:800;letter-spacing:8px;padding:18px;background:#fffbeb;border:1px solid #fcd34d;border-radius:12px;text-align:center">${code}</div><p><strong>Account:</strong> ${escapeHtml(bundle?.account_reference || '-')}<br/><strong>Wrong unit:</strong> ${escapeHtml(source.lot_project_listing_unit_id)}<br/><strong>Correct unit:</strong> ${escapeHtml(destination.lot_project_listing_unit_id)}<br/><strong>Reason:</strong> ${escapeHtml(reason)}</p><p>This code expires in ${SENSITIVE_ACTION_CODE_EXPIRY_MINUTES} minutes.</p><p style="color:#92400e"><strong>This account already has verified payment activity. Confirm the buyer and both units before using the code.</strong></p></div>`,
+  })
+}
 
 const ensureCorrectionSchema = async (connection) => {
   if (!(await tableExists(connection, CORRECTION_TABLE))) {
@@ -115,36 +199,39 @@ const getCurrentAccountBundle = async (connection, sourceListing, { forUpdate = 
 }
 
 const getCorrectionSafety = async (connection, bundle) => {
-  const reasons = []
+  const hardReasons = []
   if (!bundle) {
-    reasons.push('No current buyer account is linked to this listing.')
-    return { eligible: false, reasons, paymentCount: 0, uploadedFileCount: 0, releasedCommissionCount: 0 }
+    hardReasons.push('No current buyer account is linked to this listing.')
+    return { eligible: false, controlledEligible: false, reasons: hardReasons, hardReasons, paymentCount: 0, cancelledPaymentCount: 0, uploadedFileCount: 0, releasedCommissionCount: 0 }
   }
 
   if (String(bundle.account_status || '') !== 'active') {
-    reasons.push('Only an active buyer account can use Administrative Reservation Correction.')
+    hardReasons.push('Only an active buyer account can use Administrative Reservation Correction.')
   }
   if (String(bundle.lot_project_client_profile_status || '') !== 'active') {
-    reasons.push('The current buyer profile is not active.')
+    hardReasons.push('The current buyer profile is not active.')
   }
   if (bundle.reservation_status && String(bundle.reservation_status) !== 'active') {
-    reasons.push('The reservation is already in a cancellation workflow.')
+    hardReasons.push('The reservation is already in a cancellation workflow.')
   }
 
   const profileId = Number(bundle.lot_project_client_profile_id || 0)
   const accountId = Number(bundle.lot_project_account_id || 0)
 
   let paymentCount = 0
+  let cancelledPaymentCount = 0
   if (await tableExists(connection, 'lot_project_payments')) {
     const hasAccountId = await columnExists(connection, 'lot_project_payments', 'lot_project_account_id')
     const [rows] = await connection.query(
-      `SELECT COUNT(*) AS total
+      `SELECT
+         COALESCE(SUM(CASE WHEN lot_project_payment_status = 'Verified' THEN 1 ELSE 0 END), 0) AS verified_total,
+         COALESCE(SUM(CASE WHEN lot_project_payment_status = 'Cancelled' THEN 1 ELSE 0 END), 0) AS cancelled_total
        FROM lot_project_payments
        WHERE ${hasAccountId ? 'lot_project_account_id = ?' : 'lot_project_client_profile_id = ?'}`,
       [hasAccountId ? accountId : profileId]
     )
-    paymentCount = Number(rows[0]?.total || 0)
-    if (paymentCount > 0) reasons.push('This buyer account already has a payment record. Use a controlled financial correction instead.')
+    paymentCount = Number(rows[0]?.verified_total || 0)
+    cancelledPaymentCount = Number(rows[0]?.cancelled_total || 0)
   }
 
   let uploadedFileCount = 0
@@ -167,7 +254,7 @@ const getCorrectionSafety = async (connection, bundle) => {
     )
     uploadedFileCount += Number(rows[0]?.total || 0)
   }
-  if (uploadedFileCount > 0) reasons.push('Uploaded buyer documents exist. Unit-specific files must not be silently moved.')
+  if (uploadedFileCount > 0) hardReasons.push('Uploaded buyer documents exist. Unit-specific files must not be silently moved.')
 
   let releasedCommissionCount = 0
   if ((await tableExists(connection, 'lot_project_commission_releases')) && (await tableExists(connection, 'lot_project_commissions'))) {
@@ -181,7 +268,7 @@ const getCorrectionSafety = async (connection, bundle) => {
       [profileId]
     )
     releasedCommissionCount = Number(rows[0]?.total || 0)
-    if (releasedCommissionCount > 0) reasons.push('Commission has already been released for this buyer account.')
+    if (releasedCommissionCount > 0) hardReasons.push('Commission has already been released for this buyer account.')
   }
 
   if (await tableExists(connection, 'lot_project_commission_receipts')) {
@@ -189,11 +276,9 @@ const getCorrectionSafety = async (connection, bundle) => {
       `SELECT COUNT(*) AS total FROM lot_project_commission_receipts WHERE lot_project_client_profile_id = ?`,
       [profileId]
     )
-    if (Number(rows[0]?.total || 0) > 0) reasons.push('Commission receipt records already exist for this buyer account.')
+    if (Number(rows[0]?.total || 0) > 0) hardReasons.push('Commission receipt records already exist for this buyer account.')
   }
 
-  // A sent SOA or a manual penalty adjustment is already an externally visible
-  // financial event. V1 deliberately refuses to rewrite those records.
   if (await tableExists(connection, 'lot_project_soa_statements')) {
     const hasAccountId = await columnExists(connection, 'lot_project_soa_statements', 'lot_project_account_id')
     const [rows] = await connection.query(
@@ -202,7 +287,7 @@ const getCorrectionSafety = async (connection, bundle) => {
          AND COALESCE(sent_count, 0) > 0`,
       [hasAccountId ? accountId : profileId]
     )
-    if (Number(rows[0]?.total || 0) > 0) reasons.push('An SOA statement has already been sent for this buyer account.')
+    if (Number(rows[0]?.total || 0) > 0) hardReasons.push('An SOA statement has already been sent for this buyer account.')
   }
 
   if (await tableExists(connection, 'lot_project_penalty_reliefs')) {
@@ -212,10 +297,23 @@ const getCorrectionSafety = async (connection, bundle) => {
        WHERE ${hasAccountId ? 'lot_project_account_id = ?' : 'lot_project_client_profile_id = ?'}`,
       [hasAccountId ? accountId : profileId]
     )
-    if (Number(rows[0]?.total || 0) > 0) reasons.push('Penalty adjustment history already exists for this buyer account.')
+    if (Number(rows[0]?.total || 0) > 0) hardReasons.push('Penalty adjustment history already exists for this buyer account.')
   }
 
-  return { eligible: reasons.length === 0, reasons, paymentCount, uploadedFileCount, releasedCommissionCount }
+  const simplePaymentReason = paymentCount > 0
+    ? 'This buyer account has a verified payment. Use Controlled Unit Correction with Super Admin password and email verification.'
+    : null
+  const reasons = [...(simplePaymentReason ? [simplePaymentReason] : []), ...hardReasons]
+  return {
+    eligible: hardReasons.length === 0 && paymentCount === 0,
+    controlledEligible: hardReasons.length === 0 && paymentCount > 0,
+    reasons,
+    hardReasons,
+    paymentCount,
+    cancelledPaymentCount,
+    uploadedFileCount,
+    releasedCommissionCount,
+  }
 }
 
 const normalizeTerms = (bundle, destinationListing, overrides = {}) => {
@@ -445,7 +543,7 @@ export const getReservationCorrectionOptions = async (req, res) => {
     if (!project) return res.status(404).json({ message: 'Lot project not found.' })
     await ensureCorrectionSchema(connection)
     const { source, bundle, safety } = await loadCorrectionContext(connection, project, clean(req.params.listingId))
-    const destinations = safety.eligible
+    const destinations = (safety.eligible || safety.controlledEligible)
       ? await getAvailableDestinations(connection, project.lot_project_id, source.lot_project_listing_id)
       : []
 
@@ -453,7 +551,12 @@ export const getReservationCorrectionOptions = async (req, res) => {
       success: true,
       data: {
         eligible: safety.eligible,
+        controlledEligible: safety.controlledEligible,
+        correctionMode: safety.controlledEligible ? 'controlled' : safety.eligible ? 'simple' : 'blocked',
+        paymentCount: safety.paymentCount,
+        cancelledPaymentCount: safety.cancelledPaymentCount,
         blockers: safety.reasons,
+        hardBlockers: safety.hardReasons,
         source: {
           id: Number(source.lot_project_listing_id),
           unitId: source.lot_project_listing_unit_id,
@@ -481,7 +584,7 @@ export const previewReservationCorrection = async (req, res) => {
     if (!project) return res.status(404).json({ message: 'Lot project not found.' })
     await ensureCorrectionSchema(connection)
     const { source, bundle, safety } = await loadCorrectionContext(connection, project, clean(req.params.listingId))
-    if (!safety.eligible) return res.status(409).json({ message: safety.reasons.join(' '), blockers: safety.reasons })
+    if (!safety.eligible && !safety.controlledEligible) return res.status(409).json({ message: safety.reasons.join(' '), blockers: safety.reasons })
 
     const destinationId = Number(req.body.destinationListingId || 0)
     if (!destinationId) return res.status(400).json({ message: 'Correct destination unit is required.' })
@@ -498,9 +601,62 @@ export const previewReservationCorrection = async (req, res) => {
         before: buildBeforeSnapshot(source, bundle),
         after: buildAfterSnapshot(destination, bundle, computation),
         carriedTerms: computation.terms,
+        correctionMode: safety.controlledEligible ? 'controlled' : 'simple',
+        verifiedPaymentCount: safety.paymentCount,
       },
     })
   } catch (error) {
+    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) })
+  } finally {
+    connection.release()
+  }
+}
+
+export const requestControlledReservationCorrectionCode = async (req, res) => {
+  const connection = await db.getConnection()
+  try {
+    const actor = req.authUser
+    if (!actor?.id || !actor.email) return res.status(400).json({ message: 'The Super Admin account must have an email address.' })
+    if (!(await tableExists(connection, 'destructive_action_verifications'))) {
+      return res.status(500).json({ message: 'Sensitive-action verification table is missing. Apply the latest database schema first.' })
+    }
+    const project = await getProjectBySlug(clean(req.params.projectSlug))
+    if (!project) return res.status(404).json({ message: 'Lot project not found.' })
+    const destinationId = Number(req.body.destinationListingId || 0)
+    const reason = clean(req.body.reason)
+    if (!destinationId) return res.status(400).json({ message: 'Correct destination unit is required.' })
+    if (reason.length < 5) return res.status(400).json({ message: 'A clear correction reason is required.' })
+
+    await ensureCorrectionSchema(connection)
+    await connection.beginTransaction()
+    const { source, bundle, safety } = await loadCorrectionContext(connection, project, clean(req.params.listingId), { forUpdate: true })
+    if (!safety.controlledEligible) {
+      throw Object.assign(new Error(safety.hardReasons.length ? safety.hardReasons.join(' ') : 'Controlled correction is only required when verified payments exist.'), { statusCode: 409 })
+    }
+    const destination = await getListingById(connection, project.lot_project_id, destinationId, { forUpdate: true })
+    if (!destination || String(destination.lot_project_listing_status) !== 'available' || Number(destination.current_account_id || 0)) {
+      throw Object.assign(new Error('The selected destination unit is no longer available.'), { statusCode: 409 })
+    }
+    const computation = buildDestinationComputation(bundle, destination, req.body.terms || {})
+    const payload = buildControlledCorrectionPayload({ actor, source, bundle, destination, computation, reason })
+    const { verificationId, code } = await createSensitiveActionVerification(connection, {
+      userId: actor.id,
+      actionType: CONTROLLED_CORRECTION_ACTION,
+      entityType: CONTROLLED_CORRECTION_ENTITY,
+      entityId: bundle.lot_project_account_id,
+      payload,
+      reason,
+      requestIp: getSensitiveActionRequestIp(req),
+    })
+    await sendControlledCorrectionCodeEmail({ actor, code, source, destination, bundle, reason })
+    await connection.commit()
+    return res.json({
+      success: true,
+      message: `A verification code was sent to ${maskSensitiveActionEmail(actor.email)}.`,
+      data: { verificationId, maskedEmail: maskSensitiveActionEmail(actor.email), expiresInMinutes: SENSITIVE_ACTION_CODE_EXPIRY_MINUTES },
+    })
+  } catch (error) {
+    try { await connection.rollback() } catch {}
     return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) })
   } finally {
     connection.release()
@@ -551,13 +707,42 @@ export const correctReservationUnit = async (req, res) => {
     if (lockedRows.length !== 2) throw Object.assign(new Error('One of the selected units no longer exists in this project.'), { statusCode: 409 })
 
     const { source, bundle, safety } = await loadCorrectionContext(connection, project, listingLookup, { forUpdate: true })
-    if (!safety.eligible) throw Object.assign(new Error(safety.reasons.join(' ')), { statusCode: 409 })
+    if (!safety.eligible && !safety.controlledEligible) throw Object.assign(new Error(safety.reasons.join(' ')), { statusCode: 409 })
     const destination = await getListingById(connection, project.lot_project_id, destinationId, { forUpdate: true })
     if (!destination || String(destination.lot_project_listing_status) !== 'available' || Number(destination.current_account_id || 0)) {
       throw Object.assign(new Error('The selected destination unit is no longer available.'), { statusCode: 409 })
     }
 
     const computation = buildDestinationComputation(bundle, destination, req.body.terms || {})
+    let correctionAuthorization = null
+    if (safety.controlledEligible) {
+      const actor = req.authUser
+      if (String(actor?.role || '').toLowerCase() !== 'super_admin') {
+        throw Object.assign(new Error('Controlled Unit Correction can only be completed by an exact Super Admin.'), { statusCode: 403 })
+      }
+      const verificationId = Number(req.body.verificationId || req.body.verification_id || 0)
+      const code = clean(req.body.code || req.body.verificationCode || req.body.verification_code)
+      if (!verificationId || !code) {
+        throw Object.assign(new Error('Super Admin password and email-code verification are required for a buyer account with verified payments.'), { statusCode: 400 })
+      }
+      const payload = buildControlledCorrectionPayload({ actor, source, bundle, destination, computation, reason })
+      const verificationResult = await verifyAndConsumeSensitiveAction(connection, {
+        verificationId,
+        userId: actor.id,
+        actionType: CONTROLLED_CORRECTION_ACTION,
+        entityType: CONTROLLED_CORRECTION_ENTITY,
+        entityId: bundle.lot_project_account_id,
+        code,
+        payload,
+      })
+      if (!verificationResult.ok) {
+        // Commit only the verification attempt/expiry state. No reservation or
+        // financial rows have been changed yet at this point.
+        await connection.commit()
+        return res.status(verificationResult.statusCode || 400).json({ message: verificationResult.message })
+      }
+      correctionAuthorization = { verificationId, actorId: actor.id }
+    }
     const before = buildBeforeSnapshot(source, bundle)
     const after = buildAfterSnapshot(destination, bundle, computation)
     const accountId = Number(bundle.lot_project_account_id)
@@ -697,6 +882,30 @@ export const correctReservationUnit = async (req, res) => {
       }
     }
 
+    // Unsent SOA statements are disposable previews tied to the old unit/schedule.
+    // Sent statements are a hard blocker above and are never rewritten.
+    if (await tableExists(connection, 'lot_project_soa_statements')) {
+      const hasStatementAccountId = await columnExists(connection, 'lot_project_soa_statements', 'lot_project_account_id')
+      await connection.query(
+        `DELETE FROM lot_project_soa_statements
+         WHERE ${hasStatementAccountId ? 'lot_project_account_id = ?' : 'lot_project_client_profile_id = ?'}
+           AND COALESCE(sent_count, 0) = 0`,
+        [hasStatementAccountId ? accountId : profileId]
+      )
+    }
+
+    // Payment records belong to the buyer account. Retarget every historical row,
+    // including Cancelled rows, so the account does not keep stale references to
+    // the incorrectly selected unit. Amount/date/reference values are never rewritten.
+    if ((await tableExists(connection, 'lot_project_payments')) && (await columnExists(connection, 'lot_project_payments', 'lot_project_account_id'))) {
+      await connection.query(
+        `UPDATE lot_project_payments
+         SET lot_project_listing_id = ?
+         WHERE lot_project_account_id = ?`,
+        [destinationId, accountId]
+      )
+    }
+
     // Rebuild all unit-dependent derived state from destination pricing while
     // carrying the admin-selected terms and original buyer identity.
     await insertReservationDocuments(connection, project.lot_project_id, destinationId, profileId, null)
@@ -716,6 +925,16 @@ export const correctReservationUnit = async (req, res) => {
       computation.terms
     )
 
+    if (safety.paymentCount > 0) {
+      await rebuildListingPaymentAllocationsChronologically(connection, {
+        ...computation.scheduleListing,
+        lot_project_id: project.lot_project_id,
+        lot_project_listing_id: destinationId,
+        lot_project_client_profile_id: profileId,
+        lot_project_account_id: accountId,
+      }, { finalAsOfDate: todayDateOnly() })
+    }
+
     await replaceReservationCommissions(
       connection,
       project.lot_project_id,
@@ -730,6 +949,14 @@ export const correctReservationUnit = async (req, res) => {
         [accountId, profileId]
       )
     }
+
+    // Recompute commission payment progress after verified payments have been
+    // replayed onto the corrected destination SOA. This prevents a controlled
+    // correction from resetting commission eligibility to 0%.
+    await syncCommissionProgressForListing(connection, {
+      lot_project_listing_id: destinationId,
+      lot_project_account_id: accountId,
+    })
 
     const [correctionResult] = await connection.query(
       `INSERT INTO ${CORRECTION_TABLE} (
@@ -763,8 +990,8 @@ export const correctReservationUnit = async (req, res) => {
       entityType: 'reservation_correction',
       entityId: String(correctionResult.insertId),
       entityLabel: `${source.lot_project_listing_unit_id} → ${destination.lot_project_listing_unit_id}`,
-      title: 'Corrected reservation unit',
-      description: `Administrative reservation correction moved ${bundle.buyer_full_name || 'the buyer'} from ${source.lot_project_listing_unit_id} to ${destination.lot_project_listing_unit_id} without creating cancellation history.`,
+      title: safety.controlledEligible ? 'Controlled correction of reservation unit' : 'Corrected reservation unit',
+      description: `${safety.controlledEligible ? 'Controlled financial correction' : 'Administrative reservation correction'} moved ${bundle.buyer_full_name || 'the buyer'} from ${source.lot_project_listing_unit_id} to ${destination.lot_project_listing_unit_id} without creating cancellation history.`,
       metadata: {
         projectId: project.lot_project_id,
         projectName: project.lot_project_name || project.name,
@@ -772,6 +999,9 @@ export const correctReservationUnit = async (req, res) => {
         accountId,
         accountReference: bundle.account_reference,
         buyerProfileId: profileId,
+        correctionMode: safety.controlledEligible ? 'controlled' : 'simple',
+        verifiedPaymentCount: safety.paymentCount,
+        verificationId: correctionAuthorization?.verificationId || null,
         before,
         after,
         cancellationCreated: false,
@@ -782,7 +1012,7 @@ export const correctReservationUnit = async (req, res) => {
     await connection.commit()
     return res.json({
       success: true,
-      message: `Reservation corrected from ${source.lot_project_listing_unit_id} to ${destination.lot_project_listing_unit_id}. No cancellation or Buyer Account History entry was created.`,
+      message: `${safety.controlledEligible ? 'Controlled reservation correction' : 'Reservation correction'} completed from ${source.lot_project_listing_unit_id} to ${destination.lot_project_listing_unit_id}. No cancellation or Buyer Account History entry was created.`,
       data: {
         correctionId: Number(correctionResult.insertId),
         sourceListingId: sourceId,
@@ -801,4 +1031,5 @@ export const correctReservationUnit = async (req, res) => {
     connection.release()
   }
 }
+
 

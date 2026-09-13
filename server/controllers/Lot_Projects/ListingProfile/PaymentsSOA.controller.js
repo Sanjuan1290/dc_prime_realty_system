@@ -1,6 +1,5 @@
 import {
   db,
-  bcrypt,
   getErrorMessage,
   slugify,
   toNullable,
@@ -84,11 +83,131 @@ import { isFullAccessAdministrator } from '../../../config/permissions.js';
 import { runTransactionWithRetry } from '../../../utils/transactionRetry.js';
 import { createPaymentStorageCode } from '../../../services/storageCodes.service.js';
 import { syncCommissionProgressForListing } from '../../../services/commissionProgress.service.js';
+import { sendEmail } from '../../../services/email.service.js';
+import {
+  createSensitiveActionVerification,
+  getSensitiveActionRequestIp,
+  maskSensitiveActionEmail,
+  SENSITIVE_ACTION_CODE_EXPIRY_MINUTES,
+  verifyAndConsumeSensitiveAction,
+} from '../../../services/sensitiveActionVerification.service.js';
 
 const createHttpError = (statusCode, message) => {
   const error = new Error(message);
   error.statusCode = statusCode;
   return error;
+};
+
+
+const PAYMENT_CORRECTION_ACTION = 'lot_project_payment_correction';
+const PAYMENT_CORRECTION_ENTITY = 'lot_project_payment';
+
+const cleanPaymentCorrectionValue = (value) => String(value ?? '').trim();
+const escapePaymentCorrectionHtml = (value = '') => cleanPaymentCorrectionValue(value)
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
+
+const buildPaymentCorrectionPayload = ({ action, actor, listing, existingPayment, body = {}, reason }) => {
+  const normalizedAction = cleanPaymentCorrectionValue(action).toLowerCase();
+  const paymentMethod = normalizedAction === 'edit'
+    ? normalizePaymentMethod(body.method || body.paymentMethod || body.payment_method || existingPayment.lot_project_payment_method)
+    : existingPayment.lot_project_payment_method;
+  const requestedScheduleId = body.soaRowId ?? body.paymentScheduleId ?? body.lot_project_payment_schedule_id;
+  const proposed = normalizedAction === 'edit'
+    ? {
+        scheduleId: normalizePaymentType(body.paymentType || body.payment_type || existingPayment.lot_project_payment_type) === 'full_payment' || normalizePaymentType(body.paymentType || body.payment_type || existingPayment.lot_project_payment_type) === 'balloon'
+          ? null
+          : toNullableNumber(requestedScheduleId ?? existingPayment.lot_project_payment_schedule_id),
+        paymentType: normalizePaymentType(body.paymentType || body.payment_type || existingPayment.lot_project_payment_type),
+        amount: roundMoneyValue(parseMoneyValue(body.amount ?? existingPayment.lot_project_payment_amount)),
+        paymentDate: dateOrNull(body.paymentDate || body.payment_date) || plainDate(existingPayment.lot_project_payment_date),
+        method: paymentMethod,
+        bankName: paymentMethod === 'Cash' ? null : toNullable(body.bankName || body.bank_name || body.paymentBank || body.payment_bank || existingPayment.lot_project_payment_bank_name),
+        accountNumber: paymentMethod === 'Cash' ? null : toNullable(body.accountNumber || body.account_number || body.accountNo || body.account_no || existingPayment.lot_project_payment_account_number),
+        referenceId: paymentMethod === 'Cash'
+          ? cleanPaymentCorrectionValue(existingPayment.lot_project_payment_reference_id)
+          : toNullable(body.referenceId || body.reference_id || existingPayment.lot_project_payment_reference_id),
+        penaltyHandling: cleanPaymentCorrectionValue(body.penaltyHandling || body.penalty_handling || 'apply').toLowerCase(),
+        penaltyWaiverReason: cleanPaymentCorrectionValue(body.penaltyWaiverReason || body.penalty_waiver_reason),
+        penaltyWaiverInternalNotes: toNullable(body.penaltyWaiverInternalNotes || body.penalty_waiver_internal_notes),
+      }
+    : { status: 'Cancelled' };
+
+  return {
+    action: normalizedAction,
+    paymentId: Number(existingPayment.lot_project_payment_id || 0),
+    accountId: Number(listing.lot_project_account_id || 0),
+    listingId: Number(listing.lot_project_listing_id || 0),
+    clientProfileId: Number(listing.lot_project_client_profile_id || 0),
+    actorId: Number(actor?.id || 0),
+    reason: cleanPaymentCorrectionValue(reason),
+    proposed,
+  };
+};
+
+const validatePaymentCorrectionRequest = ({ action, reason, payload }) => {
+  if (!['edit', 'void'].includes(action)) throw createHttpError(400, 'Payment correction action must be edit or void.');
+  if (cleanPaymentCorrectionValue(reason).length < 5) throw createHttpError(400, 'A clear correction reason is required.');
+  if (action === 'edit') {
+    if (Number(payload?.proposed?.amount || 0) <= 0) throw createHttpError(400, 'Payment amount must be greater than 0.');
+    if (!payload?.proposed?.paymentDate) throw createHttpError(400, 'Payment date is required.');
+    if (payload.proposed.paymentDate > todayDateOnly()) throw createHttpError(400, 'Future payment dates are blocked.');
+    if (!['apply', 'waive'].includes(payload.proposed.penaltyHandling)) throw createHttpError(400, 'Penalty handling must be apply or waive.');
+  }
+};
+
+const sendPaymentCorrectionCodeEmail = async ({ actor, code, action, listing, payment, payload }) => {
+  const companyName = cleanPaymentCorrectionValue(process.env.COMPANY_NAME) || 'D&C Prime Realty';
+  const actionLabel = action === 'void' ? 'void payment' : 'edit payment';
+  const unitId = listing.lot_project_listing_unit_id || '-';
+  const buyerName = listing.buyer_full_name || listing.buyer_name_snapshot || 'Buyer';
+  const referenceId = payment.lot_project_payment_reference_id || `Payment #${payment.lot_project_payment_id}`;
+  const proposed = payload.proposed || {};
+  await sendEmail({
+    to: actor.email,
+    subject: `Payment correction verification - ${unitId}`,
+    text: [
+      `Hello ${getUserFullName(actor) || 'Super Admin'},`, '',
+      `Your verification code is ${code}.`,
+      `Action: ${actionLabel}`,
+      `Unit: ${unitId}`,
+      `Buyer: ${buyerName}`,
+      `Reference: ${referenceId}`,
+      `Current amount: ${money(payment.lot_project_payment_amount)}`,
+      ...(action === 'edit' ? [`Proposed amount: ${money(proposed.amount)}`, `Proposed payment date: ${proposed.paymentDate}`] : []),
+      `Reason: ${payload.reason}`,
+      `This code expires in ${SENSITIVE_ACTION_CODE_EXPIRY_MINUTES} minutes.`, '',
+      'Do not share this code. Ignore this email if you did not request this financial correction.', '', companyName,
+    ].join('\n'),
+    html: `<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;color:#0f172a"><h2>${escapePaymentCorrectionHtml(companyName)}</h2><p>Hello ${escapePaymentCorrectionHtml(getUserFullName(actor) || 'Super Admin')},</p><p>Use this code to authorize a <strong>${escapePaymentCorrectionHtml(actionLabel)}</strong> correction for <strong>${escapePaymentCorrectionHtml(unitId)}</strong> — ${escapePaymentCorrectionHtml(buyerName)}.</p><div style="font-size:30px;font-weight:800;letter-spacing:8px;padding:18px;background:#fff7ed;border:1px solid #fdba74;border-radius:12px;text-align:center">${code}</div><p><strong>Reference:</strong> ${escapePaymentCorrectionHtml(referenceId)}<br/><strong>Current amount:</strong> ${escapePaymentCorrectionHtml(money(payment.lot_project_payment_amount))}${action === 'edit' ? `<br/><strong>Proposed amount:</strong> ${escapePaymentCorrectionHtml(money(proposed.amount))}<br/><strong>Proposed payment date:</strong> ${escapePaymentCorrectionHtml(proposed.paymentDate)}` : ''}<br/><strong>Reason:</strong> ${escapePaymentCorrectionHtml(payload.reason)}</p><p>This code expires in ${SENSITIVE_ACTION_CODE_EXPIRY_MINUTES} minutes.</p><p style="color:#991b1b"><strong>This changes an already recorded financial transaction and must be reviewed carefully.</strong></p></div>`,
+  });
+};
+
+const requirePaymentCorrectionVerification = async (connection, req, { action, listing, existingPayment }) => {
+  const actor = req.authUser || await getAuthenticatedUser(req);
+  if (!actor?.id) throw createHttpError(401, 'Authentication is required.');
+  const reason = cleanPaymentCorrectionValue(req.body.reason);
+  const payload = buildPaymentCorrectionPayload({ action, actor, listing, existingPayment, body: req.body, reason });
+  validatePaymentCorrectionRequest({ action, reason, payload });
+  const verificationId = Number(req.body.verificationId || req.body.verification_id || 0);
+  const code = cleanPaymentCorrectionValue(req.body.code || req.body.verificationCode || req.body.verification_code);
+  if (!verificationId || !code) throw createHttpError(400, 'Super Admin email verification is required.');
+  const verificationResult = await verifyAndConsumeSensitiveAction(connection, {
+    verificationId,
+    userId: actor.id,
+    actionType: PAYMENT_CORRECTION_ACTION,
+    entityType: PAYMENT_CORRECTION_ENTITY,
+    entityId: existingPayment.lot_project_payment_id,
+    code,
+    payload,
+  });
+  if (!verificationResult.ok) {
+    return { ok: false, ...verificationResult };
+  }
+  return { ok: true, actor, reason, payload, verificationId };
 };
 
 const normalizePaymentRequestKey = (value) => {
@@ -365,6 +484,126 @@ const getPenaltyReliefContext = async (connection, project, listing, scheduleId,
   return { clientProfile, schedule, snapshot };
 };
 
+
+const subtractDateOnlyDays = (dateText, days) => {
+  const [year, month, day] = String(dateText).slice(0, 10).split('-').map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() - Number(days || 0));
+  return date.toISOString().slice(0, 10);
+};
+
+export const getLotProjectListingPaymentPreflight = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    const slug = String(req.params.projectSlug || '').trim();
+    const listingLookup = String(req.params.listingId || '').trim();
+    const project = await getProjectBySlug(slug);
+    if (!project) return res.status(404).json({ message: 'Lot project not found.' });
+    const listing = await getListingForPayment(connection, project, listingLookup);
+    if (!listing) return res.status(404).json({ message: 'Listing not found.' });
+    if (!Number(listing.lot_project_account_id || 0)) {
+      return res.status(409).json({ message: 'A current buyer account is required before recording a payment.' });
+    }
+
+    const today = todayDateOnly();
+    const firstOfMonth = `${today.slice(0, 7)}-01`;
+    const thirtyDaysAgo = subtractDateOnlyDays(today, 30);
+    const recentStart = firstOfMonth < thirtyDaysAgo ? firstOfMonth : thirtyDaysAgo;
+    const [recentRows] = await connection.query(
+      `SELECT lot_project_payment_id, lot_project_payment_amount, lot_project_payment_type,
+              lot_project_payment_method, lot_project_payment_reference_id, lot_project_payment_date
+       FROM lot_project_payments
+       WHERE lot_project_id = ?
+         AND lot_project_listing_id = ?
+         AND lot_project_account_id = ?
+         AND lot_project_payment_status = 'Verified'
+         AND lot_project_payment_date >= ?
+       ORDER BY lot_project_payment_date DESC, lot_project_payment_id DESC`,
+      [project.lot_project_id, listing.lot_project_listing_id, listing.lot_project_account_id, recentStart]
+    );
+
+    const latest = recentRows[0] || null;
+    return res.json({
+      success: true,
+      data: {
+        unitId: listing.lot_project_listing_unit_id,
+        buyerName: listing.buyer_full_name || listing.buyer_name_snapshot || '-',
+        projectName: project.lot_project_name || project.name || '-',
+        accountReference: listing.account_reference || '-',
+        accountId: Number(listing.lot_project_account_id),
+        recentWindowStart: recentStart,
+        recentPaymentCount: recentRows.length,
+        hasRecentPayment: recentRows.length > 0,
+        latestPayment: latest ? {
+          paymentId: Number(latest.lot_project_payment_id),
+          amount: Number(latest.lot_project_payment_amount || 0),
+          type: getPaymentTypeLabel(latest.lot_project_payment_type),
+          method: latest.lot_project_payment_method || '-',
+          referenceId: latest.lot_project_payment_reference_id || '-',
+          paymentDate: plainDate(latest.lot_project_payment_date),
+        } : null,
+      },
+    });
+  } catch (error) {
+    return res.status(error?.statusCode || 500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
+export const requestLotProjectPaymentCorrectionCode = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    const actor = req.authUser || await getAuthenticatedUser(req);
+    if (!actor?.id || !actor.email) return res.status(400).json({ message: 'The Super Admin account must have an email address.' });
+    if (!(await tableExists(connection, 'destructive_action_verifications'))) {
+      return res.status(500).json({ message: 'Sensitive-action verification table is missing. Apply the latest database schema first.' });
+    }
+    const slug = String(req.params.projectSlug || '').trim();
+    const listingLookup = String(req.params.listingId || '').trim();
+    const paymentId = Number(req.params.paymentId || 0);
+    const action = cleanPaymentCorrectionValue(req.body.action).toLowerCase();
+    const reason = cleanPaymentCorrectionValue(req.body.reason);
+    const project = await getProjectBySlug(slug);
+    if (!project) return res.status(404).json({ message: 'Lot project not found.' });
+    if (!paymentId) return res.status(400).json({ message: 'Payment id is required.' });
+
+    await connection.beginTransaction();
+    const listing = await getListingForPayment(connection, project, listingLookup, { forUpdate: true });
+    if (!listing) throw createHttpError(404, 'Listing not found.');
+    await lockPaymentAccountForListing(connection, listing);
+    const existingPayment = await getPaymentById(connection, project, listing, paymentId, { forUpdate: true });
+    if (!existingPayment) throw createHttpError(404, 'Payment not found.');
+    if (existingPayment.lot_project_payment_status !== 'Verified') throw createHttpError(409, 'Only a verified payment can be corrected or voided.');
+
+    const body = action === 'edit' && req.body.proposed && typeof req.body.proposed === 'object'
+      ? req.body.proposed
+      : req.body;
+    const payload = buildPaymentCorrectionPayload({ action, actor, listing, existingPayment, body, reason });
+    validatePaymentCorrectionRequest({ action, reason, payload });
+    const { verificationId, code } = await createSensitiveActionVerification(connection, {
+      userId: actor.id,
+      actionType: PAYMENT_CORRECTION_ACTION,
+      entityType: PAYMENT_CORRECTION_ENTITY,
+      entityId: existingPayment.lot_project_payment_id,
+      payload,
+      reason,
+      requestIp: getSensitiveActionRequestIp(req),
+    });
+    await sendPaymentCorrectionCodeEmail({ actor, code, action, listing, payment: existingPayment, payload });
+    await connection.commit();
+    return res.json({
+      success: true,
+      message: `A verification code was sent to ${maskSensitiveActionEmail(actor.email)}.`,
+      data: { verificationId, maskedEmail: maskSensitiveActionEmail(actor.email), expiresInMinutes: SENSITIVE_ACTION_CODE_EXPIRY_MINUTES },
+    });
+  } catch (error) {
+    try { await connection.rollback(); } catch {}
+    return res.status(error?.statusCode || 500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
 
 export const previewLotProjectListingPayment = async (req, res) => {
   const connection = await db.getConnection();
@@ -794,6 +1033,12 @@ export const updateLotProjectListingPayment = async (req, res) => {
       if (existingPayment.lot_project_payment_status !== 'Verified') {
         throw createHttpError(409, 'Only a verified payment can be edited.');
       }
+      const correctionAuthorization = await requirePaymentCorrectionVerification(connection, req, {
+        action: 'edit',
+        listing,
+        existingPayment,
+      });
+      if (!correctionAuthorization.ok) return { authorizationError: correctionAuthorization };
       const existingPaymentPenaltyWaiver = await getPaymentLinkedPenaltyWaiver(connection, paymentId, { forUpdate: true });
       const hasActivePaymentPenaltyWaiver = existingPaymentPenaltyWaiver &&
         !['cancelled', 'restored'].includes(String(existingPaymentPenaltyWaiver.status || '').toLowerCase());
@@ -954,10 +1199,47 @@ export const updateLotProjectListingPayment = async (req, res) => {
 
       await syncCommissionProgressForListing(connection, listing);
 
+      await writeAuditLog(connection, req, {
+        action: 'correct',
+        module: 'Payments',
+        entityType: 'lot_project_payment',
+        entityId: String(paymentId),
+        entityLabel: `${referenceId || existingPayment.lot_project_payment_reference_id || `Payment #${paymentId}`} — ${listing.buyer_full_name || listing.lot_project_listing_unit_id}`,
+        title: 'Corrected verified payment',
+        description: `Super Admin corrected a verified payment for ${listing.buyer_full_name || listing.lot_project_listing_unit_id} after password and email-code verification.`,
+        metadata: {
+          listingId: listing.lot_project_listing_id,
+          unitId: listing.lot_project_listing_unit_id,
+          accountId: listing.lot_project_account_id,
+          verificationId: correctionAuthorization.verificationId,
+          reason: correctionAuthorization.reason,
+          before: {
+            amount: Number(existingPayment.lot_project_payment_amount || 0),
+            paymentDate: plainDate(existingPayment.lot_project_payment_date),
+            paymentType: existingPayment.lot_project_payment_type,
+            paymentMethod: existingPayment.lot_project_payment_method,
+            referenceId: existingPayment.lot_project_payment_reference_id,
+            scheduleId: existingPayment.lot_project_payment_schedule_id,
+          },
+          after: {
+            amount,
+            paymentDate,
+            paymentType,
+            paymentMethod,
+            referenceId,
+            scheduleId,
+          },
+        },
+      });
+
       return { paymentId, referenceId, paymentType, penaltyHandling,
         penaltyWaivedAmount: penaltyHandling === 'waive' ? paymentPenaltyWaiverAmount : 0,
         paymentPenaltyReliefId };
     });
+
+    if (result.authorizationError) {
+      return res.status(result.authorizationError.statusCode || 400).json({ message: result.authorizationError.message });
+    }
 
     return res.json({
       success: true,
@@ -1577,55 +1859,13 @@ export const waiveSeparateLegalMiscFee = async (req, res) => {
 };
 
 
-const verifySuperAdminPassword = async (connection, user, password) => {
-  if (!password) return { ok: false, message: 'Administrator password is required.' };
-
-  if (isFullAccessAdministrator(user)) {
-    const isPasswordCorrect = await bcrypt.compare(password, user.password_hash || '');
-    return isPasswordCorrect
-      ? { ok: true, superAdmin: user }
-      : { ok: false, message: 'Administrator password is incorrect.' };
-  }
-
-  const [superAdmins] = await connection.query(
-    `
-      SELECT id, first_name, middle_name, last_name, email, role, admin_type, password_hash, status
-      FROM users
-      WHERE (role = 'super_admin' OR (role = 'admin' AND (admin_type IS NULL OR admin_type = 'admin_1')))
-        AND status = 'active'
-    `
-  );
-
-  for (const superAdmin of superAdmins) {
-    if (await bcrypt.compare(password, superAdmin.password_hash || '')) {
-      return { ok: true, superAdmin };
-    }
-  }
-
-  return { ok: false, message: user ? 'Administrator password is incorrect.' : 'Please enter a valid administrator password.' };
-};
-
 export const deleteLotProjectListingPayment = async (req, res) => {
-  let actionUser = null;
-
   try {
     const user = await getAuthenticatedUser(req);
     const slug = String(req.params.projectSlug || '').trim();
     const listingLookup = String(req.params.listingId || '').trim();
     const paymentId = Number(req.params.paymentId || 0);
     const project = await getProjectBySlug(slug);
-    const superAdminPassword = String(req.body.superAdminPassword || req.body.password || '').trim();
-
-    const authConnection = await db.getConnection();
-    try {
-      const superAdminCheck = await verifySuperAdminPassword(authConnection, user, superAdminPassword);
-      if (!superAdminCheck.ok) {
-        return res.status(user ? 403 : 401).json({ message: superAdminCheck.message });
-      }
-      actionUser = user || superAdminCheck.superAdmin;
-    } finally {
-      authConnection.release();
-    }
 
     if (!project) return res.status(404).json({ message: 'Lot project not found.' });
     if (!paymentId) return res.status(400).json({ message: 'Payment id is required.' });
@@ -1641,8 +1881,14 @@ export const deleteLotProjectListingPayment = async (req, res) => {
       const existingPayment = await getPaymentById(connection, project, listing, paymentId, { forUpdate: true });
       if (!existingPayment) throw createHttpError(404, 'Payment not found.');
       if (existingPayment.lot_project_payment_status !== 'Verified') {
-        throw createHttpError(409, 'This payment is no longer verified and cannot be deleted again.');
+        throw createHttpError(409, 'This payment is no longer verified and cannot be voided again.');
       }
+      const correctionAuthorization = await requirePaymentCorrectionVerification(connection, req, {
+        action: 'void',
+        listing,
+        existingPayment,
+      });
+      if (!correctionAuthorization.ok) return { authorizationError: correctionAuthorization };
 
       await reversePaymentAllocations(connection, listing, paymentId);
 
@@ -1688,10 +1934,34 @@ export const deleteLotProjectListingPayment = async (req, res) => {
         `,
         [
           paymentId,
-          `Payment ${existingPayment.lot_project_payment_reference_id || paymentId} deleted by ${getUserFullName(actionUser)}.`,
-          actionUser?.id || null,
+          `Payment ${existingPayment.lot_project_payment_reference_id || paymentId} voided by ${getUserFullName(user)}.`,
+          user?.id || null,
         ]
       );
+
+      await writeAuditLog(connection, req, {
+        action: 'correct',
+        module: 'Payments',
+        entityType: 'lot_project_payment',
+        entityId: String(paymentId),
+        entityLabel: `${existingPayment.lot_project_payment_reference_id || `Payment #${paymentId}`} — ${listing.buyer_full_name || listing.lot_project_listing_unit_id}`,
+        title: 'Voided verified payment',
+        description: `Super Admin voided a verified payment for ${listing.buyer_full_name || listing.lot_project_listing_unit_id} after password and email-code verification.`,
+        metadata: {
+          listingId: listing.lot_project_listing_id,
+          unitId: listing.lot_project_listing_unit_id,
+          accountId: listing.lot_project_account_id,
+          verificationId: correctionAuthorization.verificationId,
+          reason: correctionAuthorization.reason,
+          payment: {
+            amount: Number(existingPayment.lot_project_payment_amount || 0),
+            paymentDate: plainDate(existingPayment.lot_project_payment_date),
+            paymentType: existingPayment.lot_project_payment_type,
+            paymentMethod: existingPayment.lot_project_payment_method,
+            referenceId: existingPayment.lot_project_payment_reference_id,
+          },
+        },
+      });
 
       return {
         paymentId,
@@ -1699,9 +1969,13 @@ export const deleteLotProjectListingPayment = async (req, res) => {
       };
     });
 
+    if (result.authorizationError) {
+      return res.status(result.authorizationError.statusCode || 400).json({ message: result.authorizationError.message });
+    }
+
     return res.json({
       success: true,
-      message: 'Payment deleted successfully and SOA balances were recalculated.',
+      message: 'Payment voided successfully. The original record remains in history and SOA balances were recalculated.',
       payment_id: result.paymentId,
     });
   } catch (error) {
@@ -2339,5 +2613,6 @@ export const restorePaymentSchedulePenaltyWaiver = async (req, res) => {
     connection.release();
   }
 };
+
 
 

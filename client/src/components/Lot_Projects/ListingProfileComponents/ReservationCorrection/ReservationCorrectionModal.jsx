@@ -45,6 +45,10 @@ const ReservationCorrectionModal = ({ open, projectSlug, listingId, onClose, onC
   const [reason, setReason] = useState('')
   const [acknowledged, setAcknowledged] = useState(false)
   const [notice, setNotice] = useState(null)
+  const [superAdminPassword, setSuperAdminPassword] = useState('')
+  const [verificationId, setVerificationId] = useState(null)
+  const [verificationCode, setVerificationCode] = useState('')
+  const [maskedEmail, setMaskedEmail] = useState('')
 
   const optionsQuery = useQuery({
     queryKey: ['reservation-correction-options', projectSlug, listingId],
@@ -64,6 +68,8 @@ const ReservationCorrectionModal = ({ open, projectSlug, listingId, onClose, onC
   const updateTerm = (key, value) => {
     setTerms((current) => ({ ...(current || data.terms || {}), [key]: value }))
     setPreview(null)
+    setVerificationId(null)
+    setVerificationCode('')
   }
 
   const previewMutation = useMutation({
@@ -81,6 +87,27 @@ const ReservationCorrectionModal = ({ open, projectSlug, listingId, onClose, onC
     onError: (error) => setNotice(getDoubleCheckNotice(error, 'Unable to preview this reservation correction.')),
   })
 
+  const verificationMutation = useMutation({
+    mutationFn: () => useFetchPost(
+      `/projects/lot-projects/${projectSlug}/listings/${listingId}/reservation-correction/code`,
+      {
+        password: superAdminPassword,
+        destinationListingId: Number(destinationListingId),
+        terms: normalizedTerms,
+        reason: reason.trim(),
+      },
+      { confirmationHandled: 'technical' }
+    ),
+    onMutate: () => setNotice({ type: 'loading', message: 'Verifying Super Admin password and sending email code...' }),
+    onSuccess: (result) => {
+      setVerificationId(result?.data?.verificationId || null)
+      setMaskedEmail(result?.data?.maskedEmail || '')
+      setVerificationCode('')
+      setNotice({ type: 'success', message: result?.message || 'Verification code sent.' })
+    },
+    onError: (error) => setNotice(getDoubleCheckNotice(error, 'Unable to send the controlled-correction verification code.')),
+  })
+
   const correctionMutation = useMutation({
     mutationFn: () => useFetchPost(
       `/projects/lot-projects/${projectSlug}/listings/${listingId}/reservation-correction`,
@@ -88,6 +115,8 @@ const ReservationCorrectionModal = ({ open, projectSlug, listingId, onClose, onC
         destinationListingId: Number(destinationListingId),
         terms: normalizedTerms,
         reason: reason.trim(),
+        verificationId: data.correctionMode === 'controlled' ? verificationId : undefined,
+        code: data.correctionMode === 'controlled' ? verificationCode.trim() : undefined,
       },
       {
         doubleCheck: {
@@ -120,10 +149,11 @@ const ReservationCorrectionModal = ({ open, projectSlug, listingId, onClose, onC
 
   const termsValue = normalizedTerms
   const source = data.source || {}
-  const blockers = data.blockers || []
+  const hardBlockers = data.hardBlockers || []
+  const controlledMode = data.correctionMode === 'controlled'
   const destinations = data.destinations || []
   const selectedDestination = destinations.find((row) => Number(row.id) === Number(destinationListingId))
-  const busy = optionsQuery.isLoading || previewMutation.isPending || correctionMutation.isPending
+  const busy = optionsQuery.isLoading || previewMutation.isPending || verificationMutation.isPending || correctionMutation.isPending
 
   return (
     <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/60 p-3 sm:p-5">
@@ -143,22 +173,35 @@ const ReservationCorrectionModal = ({ open, projectSlug, listingId, onClose, onC
           {notice ? <StatusAlert type={notice.type} message={notice.message} onClose={() => setNotice(null)} /> : null}
           {optionsQuery.isError ? <StatusAlert type="error" message={optionsQuery.error?.message || 'Unable to load correction options.'} /> : null}
 
-          {blockers.length ? (
+          {hardBlockers.length ? (
             <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
               <div className="flex items-start gap-3">
                 <FiAlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
                 <div>
-                  <h3 className="font-black text-red-900">Simple correction is blocked</h3>
+                  <h3 className="font-black text-red-900">Unit correction is blocked</h3>
                   <p className="mt-1 text-sm font-semibold text-red-700">Financial activity or unit-specific files must not be silently rewritten.</p>
                   <ul className="mt-2 list-disc space-y-1 pl-5 text-sm font-semibold text-red-700">
-                    {blockers.map((item) => <li key={item}>{item}</li>)}
+                    {hardBlockers.map((item) => <li key={item}>{item}</li>)}
                   </ul>
                 </div>
               </div>
             </div>
           ) : null}
 
-          {!optionsQuery.isLoading && !blockers.length ? (
+          {controlledMode && !hardBlockers.length ? (
+            <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4">
+              <div className="flex items-start gap-3">
+                <FiAlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
+                <div>
+                  <h3 className="font-black text-amber-950">Controlled Unit Correction required</h3>
+                  <p className="mt-1 text-sm font-semibold text-amber-800">This buyer account has {Number(data.paymentCount || 0)} verified payment record{Number(data.paymentCount || 0) === 1 ? '' : 's'}. The payment amounts, dates, methods, references, and audit history will be preserved while the account is moved and the destination SOA is rebuilt.</p>
+                  <p className="mt-2 text-xs font-black text-amber-900">Requires exact Super Admin password + email verification code.</p>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {!optionsQuery.isLoading && !hardBlockers.length ? (
             <>
               <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                 <div className="grid gap-3 sm:grid-cols-4">
@@ -174,7 +217,7 @@ const ReservationCorrectionModal = ({ open, projectSlug, listingId, onClose, onC
                 <p className="mt-1 text-sm font-semibold text-slate-500">Only currently Available units from this project are shown. The backend checks availability again when you confirm.</p>
                 <select
                   value={destinationListingId}
-                  onChange={(event) => { setDestinationListingId(event.target.value); setPreview(null) }}
+                  onChange={(event) => { setDestinationListingId(event.target.value); setPreview(null); setVerificationId(null); setVerificationCode('') }}
                   className={`${fieldClass} mt-3 bg-white`}
                 >
                   <option value="">Select correct available unit...</option>
@@ -265,7 +308,7 @@ const ReservationCorrectionModal = ({ open, projectSlug, listingId, onClose, onC
                 <h3 className="font-black text-slate-950">4. Administrative reason</h3>
                 <textarea
                   value={reason}
-                  onChange={(event) => setReason(event.target.value)}
+                  onChange={(event) => { setReason(event.target.value); setVerificationId(null); setVerificationCode('') }}
                   rows={3}
                   placeholder="Example: Admin selected LA-0102 instead of LA-0101 during reservation."
                   className="mt-3 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm font-semibold text-slate-800 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
@@ -275,20 +318,55 @@ const ReservationCorrectionModal = ({ open, projectSlug, listingId, onClose, onC
                   <span className="text-sm font-bold text-amber-900">I confirm this is an administrative data-entry error. The buyer did not legitimately reserve the wrong unit and later change their decision.</span>
                 </label>
               </section>
+
+              {controlledMode ? (
+                <section className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4 sm:p-5">
+                  <h3 className="font-black text-slate-950">5. Super Admin authorization</h3>
+                  <p className="mt-1 text-sm font-semibold text-slate-600">Because verified payments already exist, this correction needs password verification and a one-time code sent to the Super Admin email.</p>
+                  {!verificationId ? (
+                    <label className="mt-4 block max-w-md">
+                      <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-600">Super Admin Password *</span>
+                      <input type="password" value={superAdminPassword} onChange={(event) => setSuperAdminPassword(event.target.value)} autoComplete="current-password" className={fieldClass} placeholder="Enter current password" />
+                    </label>
+                  ) : (
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-xl border border-emerald-200 bg-white p-3">
+                        <p className="text-xs font-black uppercase text-emerald-700">Password verified</p>
+                        <p className="mt-1 text-sm font-semibold text-slate-600">Code sent to {maskedEmail || 'the Super Admin email'}.</p>
+                      </div>
+                      <label className="block">
+                        <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-600">Email Verification Code *</span>
+                        <input inputMode="numeric" maxLength={6} value={verificationCode} onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, '').slice(0, 6))} className={fieldClass} placeholder="6-digit code" />
+                      </label>
+                    </div>
+                  )}
+                </section>
+              ) : null}
             </>
           ) : null}
         </div>
 
         <div className="sticky bottom-0 flex flex-col-reverse gap-2 border-t border-slate-200 bg-white px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
           <button type="button" onClick={onClose} disabled={busy} className="h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:opacity-50">Cancel</button>
-          <button
-            type="button"
-            onClick={() => correctionMutation.mutate()}
-            disabled={!previewIsCurrent || reason.trim().length < 5 || !acknowledged || correctionMutation.isPending || blockers.length > 0}
-            className="h-11 rounded-xl bg-red-600 px-5 text-sm font-black text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-red-300"
-          >
-            {correctionMutation.isPending ? 'Correcting Reservation...' : 'Review & Correct Reservation'}
-          </button>
+          {controlledMode && !verificationId ? (
+            <button
+              type="button"
+              onClick={() => verificationMutation.mutate()}
+              disabled={!previewIsCurrent || reason.trim().length < 5 || !acknowledged || !superAdminPassword.trim() || verificationMutation.isPending || hardBlockers.length > 0}
+              className="h-11 rounded-xl bg-amber-600 px-5 text-sm font-black text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:bg-amber-300"
+            >
+              {verificationMutation.isPending ? 'Sending Code...' : 'Verify Password & Send Code'}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => correctionMutation.mutate()}
+              disabled={!previewIsCurrent || reason.trim().length < 5 || !acknowledged || correctionMutation.isPending || hardBlockers.length > 0 || (controlledMode && (!verificationId || verificationCode.trim().length !== 6))}
+              className="h-11 rounded-xl bg-red-600 px-5 text-sm font-black text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-red-300"
+            >
+              {correctionMutation.isPending ? 'Correcting Reservation...' : controlledMode ? 'Review & Apply Controlled Correction' : 'Review & Correct Reservation'}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -296,4 +374,5 @@ const ReservationCorrectionModal = ({ open, projectSlug, listingId, onClose, onC
 }
 
 export default ReservationCorrectionModal
+
 

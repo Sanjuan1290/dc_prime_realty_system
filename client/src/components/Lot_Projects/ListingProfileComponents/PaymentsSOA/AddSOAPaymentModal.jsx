@@ -217,6 +217,7 @@ const AddSOAPaymentModal = ({
         : '',
   })
   const [amountManuallyEdited, setAmountManuallyEdited] = useState(Boolean(isEdit && initialPayment?.amount))
+  const [amountOverrideAcknowledged, setAmountOverrideAcknowledged] = useState(false)
   const [paymentPreview, setPaymentPreview] = useState(null)
   const [isPreviewLoading, setIsPreviewLoading] = useState(false)
   const [previewError, setPreviewError] = useState('')
@@ -366,6 +367,19 @@ const AddSOAPaymentModal = ({
   const isPenaltyWaivedForPayment = canOfferPenaltyWaiver && penaltyHandling === 'waive'
   const adjustedSuggestedAmount = isPenaltyWaivedForPayment ? Math.max(suggestedAmount - automaticPenalty, 0) : suggestedAmount
   const payableAfterPenaltyHandling = isPenaltyWaivedForPayment ? Math.max(totalPayable - automaticPenalty, 0) : totalPayable
+  const enteredAmount = isFullPayment ? fullPaymentAmount : cleanPaymentNumber(form.amount)
+  const amountDifference = enteredAmount - adjustedSuggestedAmount
+  const hasAmountOverrideWarning = Boolean(
+    !isFullPayment &&
+    !isBalloonPayment &&
+    amountManuallyEdited &&
+    adjustedSuggestedAmount > 0 &&
+    Math.abs(amountDifference) > 0.009
+  )
+
+  useEffect(() => {
+    setAmountOverrideAcknowledged(false)
+  }, [form.paymentDate, form.paymentType, form.soaRowId, adjustedSuggestedAmount])
 
   useEffect(() => {
     if (!canOfferPenaltyWaiver && penaltyHandling === 'waive') setPenaltyHandling('apply')
@@ -382,6 +396,7 @@ const AddSOAPaymentModal = ({
 
     if (key === 'amount') {
       setAmountManuallyEdited(true)
+      setAmountOverrideAcknowledged(false)
     }
 
     if (key === 'paymentType' && normalizePaymentType(value) === 'Full Payment') {
@@ -481,6 +496,14 @@ const AddSOAPaymentModal = ({
       setAlert({
         type: 'error',
         message: `Balloon Payment cannot exceed the remaining financed principal of ${money(balloonPrincipalCapacity)}.`,
+      })
+      return
+    }
+
+    if (hasAmountOverrideWarning && !amountOverrideAcknowledged) {
+      setAlert({
+        type: 'error',
+        message: 'Confirm the payment amount override before saving. The entered amount differs from the amount currently due for the selected SOA row.',
       })
       return
     }
@@ -740,6 +763,27 @@ const AddSOAPaymentModal = ({
               required
             />
 
+            {hasAmountOverrideWarning ? (
+              <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 md:col-span-2">
+                <div className="flex items-start gap-3">
+                  <span className="mt-0.5 text-lg">⚠</span>
+                  <div className="w-full">
+                    <p className="text-sm font-black text-amber-950">Payment amount changed from the calculated amount due</p>
+                    <p className="mt-1 text-xs font-semibold text-amber-800">This can be valid for a partial payment, but verify the amount before saving.</p>
+                    <div className="mt-3 grid gap-2 text-sm sm:grid-cols-3">
+                      <div className="rounded-xl border border-amber-200 bg-white p-3"><p className="text-[10px] font-black uppercase text-slate-500">Suggested</p><p className="mt-1 font-black text-slate-950">{money(adjustedSuggestedAmount)}</p></div>
+                      <div className="rounded-xl border border-amber-200 bg-white p-3"><p className="text-[10px] font-black uppercase text-slate-500">Entered</p><p className="mt-1 font-black text-slate-950">{money(enteredAmount)}</p></div>
+                      <div className="rounded-xl border border-amber-200 bg-white p-3"><p className="text-[10px] font-black uppercase text-slate-500">Difference</p><p className={`mt-1 font-black ${amountDifference < 0 ? 'text-amber-700' : 'text-red-700'}`}>{amountDifference > 0 ? '+' : ''}{money(amountDifference)}</p></div>
+                    </div>
+                    <label className="mt-3 flex cursor-pointer items-start gap-2 text-sm font-bold text-amber-950">
+                      <input type="checkbox" checked={amountOverrideAcknowledged} onChange={(event) => setAmountOverrideAcknowledged(event.target.checked)} className="mt-0.5 h-4 w-4" />
+                      I verified that the entered amount is intentional for this payment.
+                    </label>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
             <Field
               label="Payment Date"
               type="date"
@@ -834,4 +878,5 @@ const AddSOAPaymentModal = ({
 }
 
 export default AddSOAPaymentModal
+
 
