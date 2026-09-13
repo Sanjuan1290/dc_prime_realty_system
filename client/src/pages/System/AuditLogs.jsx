@@ -98,10 +98,10 @@ const AuditLogs = () => {
     return params.toString()
   }, [action, from, limit, module, page, search, to])
 
-  const { data, isLoading, isFetching, isError, error, refetch } = useQuery({
+  const { data, isLoading, isFetching, isPlaceholderData, isError, error, refetch } = useQuery({
     queryKey: ['audit-logs', queryString],
     queryFn: () => useFetch(`/audit-logs?${queryString}`),
-    keepPreviousData: true,
+    placeholderData: (previousData) => previousData,
   })
 
   const requestArchiveMutation = useMutation({
@@ -272,6 +272,7 @@ const AuditLogs = () => {
       <AuditLogTable
         logs={logs}
         isLoading={isLoading}
+        isPageChanging={isFetching && isPlaceholderData}
         pagination={pagination}
         onView={setSelectedLog}
         page={page}
@@ -304,4 +305,3 @@ const AuditLogs = () => {
 }
 
 export default AuditLogs
-

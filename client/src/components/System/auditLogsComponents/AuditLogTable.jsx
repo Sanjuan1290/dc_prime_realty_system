@@ -18,16 +18,21 @@ const ActionBadge = ({ value, label = '' }) => (
   </span>
 )
 
-const AuditLogTable = ({ logs = [], isLoading, pagination, onView, page, setPage, limit, setLimit }) => {
+const AuditLogTable = ({ logs = [], isLoading, isPageChanging = false, pagination, onView, page, setPage, limit, setLimit }) => {
   const totalPages = pagination?.totalPages || 1
 
   return (
     <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-      <div className="border-b border-slate-200 px-5 py-4">
-        <h2 className="text-lg font-black text-slate-950">Audit Trail Records</h2>
-        <p className="mt-1 text-sm font-semibold text-slate-500">
-          System activity from real database records. Audit entries cannot be edited manually.
-        </p>
+      <div className="flex flex-col gap-2 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-lg font-black text-slate-950">Audit Trail Records</h2>
+          <p className="mt-1 text-sm font-semibold text-slate-500">
+            System activity from real database records. Audit entries cannot be edited manually.
+          </p>
+        </div>
+        {isPageChanging ? (
+          <span className="text-xs font-black text-blue-600">Loading page {page}...</span>
+        ) : null}
       </div>
 
       <div className="overflow-x-auto">
@@ -94,6 +99,7 @@ const AuditLogTable = ({ logs = [], isLoading, pagination, onView, page, setPage
         <div className="flex items-center gap-2">
           <select
             value={limit}
+            disabled={isPageChanging}
             onChange={(event) => {
               setLimit(Number(event.target.value))
               setPage(1)
@@ -105,7 +111,7 @@ const AuditLogTable = ({ logs = [], isLoading, pagination, onView, page, setPage
           <button
             type="button"
             onClick={() => setPage(Math.max(page - 1, 1))}
-            disabled={page <= 1}
+            disabled={isPageChanging || page <= 1}
             className="h-10 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 disabled:opacity-50"
           >
             Previous
@@ -113,7 +119,7 @@ const AuditLogTable = ({ logs = [], isLoading, pagination, onView, page, setPage
           <button
             type="button"
             onClick={() => setPage(Math.min(page + 1, totalPages))}
-            disabled={page >= totalPages}
+            disabled={isPageChanging || page >= totalPages}
             className="h-10 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 disabled:opacity-50"
           >
             Next
@@ -125,4 +131,3 @@ const AuditLogTable = ({ logs = [], isLoading, pagination, onView, page, setPage
 }
 
 export default AuditLogTable
-
