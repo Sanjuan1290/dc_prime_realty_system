@@ -16,9 +16,11 @@ test('reservation and Edit SOA support controlled historical dates', () => {
   const paymentsController = read('server/controllers/Lot_Projects/ListingProfile/PaymentsSOA.controller.js');
 
   assert.match(reserveTerms, /Encode an existing or historical client account/);
-  assert.match(reserveTerms, /historicalMinimum/);
-  assert.match(reserveModal, /Historical Starting Date must be from/);
-  assert.match(paymentsSoa, /Historical First Due Date must be from/);
+  assert.doesNotMatch(reserveTerms, /historicalMinimum/);
+  assert.match(reserveTerms, /There is no lookback limit/);
+  assert.match(reserveModal, /Historical Starting Date cannot be after today/);
+  assert.match(paymentsSoa, /There is no historical lookback limit/);
+  assert.match(paymentsSoa, /Historical First Due Date cannot be after today/);
   assert.match(reserveController, /soa_is_historical_entry/);
   assert.match(paymentsController, /soa_is_historical_entry/);
 });
@@ -71,4 +73,5 @@ test('paid separate LMF is never treated as lot principal and old rows self-repa
   assert.match(shared, /const principalReduction = isLegalMiscFee\s*\? 0/);
   assert.match(shared, /hasLegacyLegalMiscPrincipalReduction/);
 });
+
 

@@ -413,9 +413,9 @@ const Reports = () => {
         summary={`Net Payable: ${money(summary.commissionNetPayable)} · Released: ${money(summary.commissionReleased)} · Remaining: ${money(summary.commissionRemaining)}`}
         resetKey={resetKey}
         rows={data.commissionCohortReleases || []}
-        minWidth="1750px"
-        headers={['Project', 'Unit', 'Buyer', 'Recipient', 'Role', 'Group', 'Stage', 'Trigger', 'Release %', { label: 'Gross', align: 'right' }, { label: 'Deduction', align: 'right' }, { label: 'Net Amount', align: 'right' }, 'Payment %', 'Status as of End', 'Entry Mode', 'Scheduled', 'Actual Release', 'Released By']}
-        renderRow={(row) => <tr key={row.id}><Td>{row.project}</Td><Td>{row.unit}</Td><Td>{row.buyer}</Td><Td className="font-black text-slate-950">{row.seller}</Td><Td>{row.role}</Td><Td>{row.sellerGroup}</Td><Td>{row.stage}</Td><Td>{percent(row.triggerPercent)}</Td><Td>{percent(row.releasePercent)}</Td><Td align="right">{money(row.grossAmount)}</Td><Td align="right">{money(row.deductionAmount)}</Td><Td align="right" className="font-black">{money(row.netAmount)}</Td><Td>{percent(row.paymentPercent)}</Td><Td><Status value={row.status} /></Td><Td>{row.releaseEntryMode === 'historical' ? <Status value="Historical" /> : 'Live'}</Td><Td>{dateOnly(row.scheduledReleaseDate)}</Td><Td>{dateOnly(row.actualReleaseDate)}</Td><Td>{row.releasedBy}</Td></tr>}
+        minWidth="1650px"
+        headers={['Project', 'Unit', 'Buyer', 'Recipient', 'Role', 'Group', 'Stage', 'Trigger', 'Release %', { label: 'Gross', align: 'right' }, { label: 'Deduction', align: 'right' }, { label: 'Net Amount', align: 'right' }, 'Payment %', 'Status as of End', 'Scheduled', 'Actual Release', 'Released By']}
+        renderRow={(row) => <tr key={row.id}><Td>{row.project}</Td><Td>{row.unit}</Td><Td>{row.buyer}</Td><Td className="font-black text-slate-950">{row.seller}</Td><Td>{row.role}</Td><Td>{row.sellerGroup}</Td><Td>{row.stage}</Td><Td>{percent(row.triggerPercent)}</Td><Td>{percent(row.releasePercent)}</Td><Td align="right">{money(row.grossAmount)}</Td><Td align="right">{money(row.deductionAmount)}</Td><Td align="right" className="font-black">{money(row.netAmount)}</Td><Td>{percent(row.paymentPercent)}</Td><Td><Status value={row.status} /></Td><Td>{dateOnly(row.scheduledReleaseDate)}</Td><Td>{dateOnly(row.actualReleaseDate)}</Td><Td>{row.releasedBy}</Td></tr>}
       />
     </div>
   )

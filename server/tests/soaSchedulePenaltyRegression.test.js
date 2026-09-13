@@ -28,9 +28,11 @@ test('reservation and editable due dates use Manila time with controlled histori
   assert.match(paymentTerms, /Encode an existing or historical client account/);
   assert.match(paymentTerms, /min=\{startingDateMinimum\}/);
   assert.match(paymentTerms, /min=\{firstDueMinimum\}/);
-  assert.match(reserveController, /Historical Starting Date must be from/);
+  assert.match(reserveController, /Historical Starting Date cannot be after today/);
+  assert.doesNotMatch(reserveController, /historicalMinimum/);
   assert.match(reserveController, /First Due Date cannot be before the Starting Date/);
-  assert.match(paymentController, /Historical First Due Date must be from/);
+  assert.match(paymentController, /Historical First Due Date cannot be after today/);
+  assert.doesNotMatch(paymentController, /historicalMinimum/);
 });
 
 test('paid and outstanding penalties remain available separately in SOA and dashboards', () => {
@@ -58,4 +60,5 @@ test('paid and outstanding penalties remain available separately in SOA and dash
   assert.match(lotDashboard, /stats\.totalPenaltyPaid/);
   assert.match(lotDashboard, /stats\.totalPenaltyOutstanding/);
 });
+
 

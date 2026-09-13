@@ -391,11 +391,6 @@ const todayManila = () => new Intl.DateTimeFormat('en-CA', {
   month: '2-digit',
   day: '2-digit',
 }).format(new Date())
-const shiftIsoYears = (value, years) => {
-  const [year, month, day] = String(value || '').split('-').map(Number)
-  if (!year || !month || !day) return value
-  return new Date(Date.UTC(year + years, month - 1, day)).toISOString().slice(0, 10)
-}
 const penaltyGraceDayOptions = Array.from({ length: 32 }, (_, index) => index)
 
 const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, onSave }) => {
@@ -439,10 +434,9 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
   }
 
   const today = todayManila()
-  const historicalMinimum = shiftIsoYears(today, -1)
   const listingStartingDate = String(getListingValue(listing, ['soaStartingDate', 'starting_date'], '') || '')
   const firstDueMinimum = form.isHistoricalEntry
-    ? (listingStartingDate && listingStartingDate > historicalMinimum ? listingStartingDate : historicalMinimum)
+    ? (listingStartingDate || undefined)
     : listingStartingDate && listingStartingDate > today
       ? listingStartingDate
       : today
@@ -483,8 +477,8 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
         return
       }
       if (form.isHistoricalEntry) {
-        if (form.firstDueDate < historicalMinimum || form.firstDueDate > today) {
-          setModalAlert({ type: 'error', message: `Historical First Due Date must be from ${historicalMinimum} through ${today}.` })
+        if (form.firstDueDate > today) {
+          setModalAlert({ type: 'error', message: 'Historical First Due Date cannot be after today.' })
           return
         }
       } else if (form.firstDueDate < today) {
@@ -609,7 +603,7 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
               <span>
                 <span className="block text-sm font-black text-blue-950">Allow Backdated SOA Date</span>
                 <span className="mt-1 block text-xs font-semibold text-blue-700">
-                  Use this when encoding an account that started before today. This option is only available before any payment is recorded. The First Due Date may be set from {historicalMinimum} through {today}, but it cannot be earlier than the saved Starting Date.
+                  Use this when encoding an account that started before today. This option is only available before any payment is recorded. There is no historical lookback limit. The First Due Date cannot be earlier than the saved Starting Date or later than today.
                 </span>
               </span>
             </label>
@@ -989,6 +983,38 @@ const PaymentsSOA = ({
     }, 0),
     [rows]
   )
+
+  const overdueSummary = useMemo(() => {
+    const today = todayManila()
+
+    return rows.reduce((summary, row) => {
+      const status = String(row.status || '').trim().toLowerCase()
+      const dueDate = String(row.dueDate || '').slice(0, 10)
+      if (status === 'cancelled' || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate) || dueDate >= today) return summary
+
+      const totalOutstanding = Math.max(
+        Number(row.totalDue ?? row.dueAmount ?? 0) - Number(row.amountPaid || 0),
+        0
+      )
+      if (totalOutstanding <= 0.009) return summary
+
+      const derivedOutstandingPenalty = Math.max(
+        Number(row.penalty || 0) - Number(row.paidPenaltyAmount || 0),
+        0
+      )
+      const outstandingPenalty = Math.min(
+        totalOutstanding,
+        Math.max(Number(row.outstandingPenaltyAmount || 0), derivedOutstandingPenalty)
+      )
+      const overdueWithoutPenalty = Math.max(totalOutstanding - outstandingPenalty, 0)
+
+      summary.withoutPenalty += overdueWithoutPenalty
+      summary.penalty += outstandingPenalty
+      summary.withPenalty += totalOutstanding
+      summary.rowCount += 1
+      return summary
+    }, { withoutPenalty: 0, penalty: 0, withPenalty: 0, rowCount: 0 })
+  }, [rows])
 
   const outstandingLmf = useMemo(
     () => rows
@@ -1422,6 +1448,36 @@ const PaymentsSOA = ({
               </div>
             </div>
           </div>
+
+          <div className="mt-4 border-t border-slate-200 pt-4">
+            <div className="mb-2 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-xs font-black uppercase tracking-wide text-slate-700">Overdue Overview</p>
+                <p className="text-xs font-semibold text-slate-500">Past-due unpaid SOA amounts as of {formatDate(todayManila())}. Partial payments are already deducted.</p>
+              </div>
+              <span className="w-fit rounded-full bg-red-50 px-3 py-1 text-[11px] font-black text-red-700 ring-1 ring-red-100">
+                {overdueSummary.rowCount} overdue row{overdueSummary.rowCount === 1 ? '' : 's'}
+              </span>
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-3">
+              <div className="rounded-xl border border-orange-200 bg-orange-50 px-4 py-3">
+                <p className="text-[11px] font-black uppercase tracking-wide text-orange-700">Overdue — Excl. Penalty</p>
+                <p className="mt-1 text-base font-black text-orange-950">{money(overdueSummary.withoutPenalty)}</p>
+                <p className="mt-1 text-[11px] font-semibold text-orange-700">Past-due scheduled balance only</p>
+              </div>
+              <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+                <p className="text-[11px] font-black uppercase tracking-wide text-red-700">Outstanding Penalties</p>
+                <p className="mt-1 text-base font-black text-red-950">{money(overdueSummary.penalty)}</p>
+                <p className="mt-1 text-[11px] font-semibold text-red-700">Unpaid penalties on overdue rows</p>
+              </div>
+              <div className="rounded-xl border border-rose-300 bg-rose-100/70 px-4 py-3">
+                <p className="text-[11px] font-black uppercase tracking-wide text-rose-800">Total Overdue — Incl. Penalty</p>
+                <p className="mt-1 text-base font-black text-rose-950">{money(overdueSummary.withPenalty)}</p>
+                <p className="mt-1 text-[11px] font-semibold text-rose-800">Overdue balance + outstanding penalties</p>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div className="overflow-x-auto">
@@ -1709,4 +1765,5 @@ const PaymentsSOA = ({
 }
 
 export default PaymentsSOA
+
 

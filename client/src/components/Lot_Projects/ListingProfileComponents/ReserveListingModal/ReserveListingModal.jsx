@@ -27,12 +27,6 @@ const todayISO = () => new Intl.DateTimeFormat('en-CA', {
   day: '2-digit',
 }).format(new Date())
 
-const shiftIsoYears = (value, years) => {
-  const [year, month, day] = String(value || '').split('-').map(Number)
-  if (!year || !month || !day) return value
-  return new Date(Date.UTC(year + years, month - 1, day)).toISOString().slice(0, 10)
-}
-
 const normalizeTemplateRequirement = (document = {}) => {
   const value = document.template_document_list_is_required ?? document.document_is_required ?? document.is_required
   return value === false || value === 0 || value === '0' || String(value || '').trim().toLowerCase() === 'optional'
@@ -506,7 +500,6 @@ const ReserveListingModal = ({
     }
 
     const today = todayISO()
-    const historicalMinimum = shiftIsoYears(today, -1)
     const startingDate = String(paymentForm.startingDate || '')
     const firstDueDate = String(paymentForm.firstDueDate || '')
     const isHistoricalEntry = Boolean(paymentForm.isHistoricalEntry)
@@ -521,8 +514,8 @@ const ReserveListingModal = ({
     }
 
     if (isHistoricalEntry) {
-      if (startingDate < historicalMinimum || startingDate > today) {
-        setAlert({ type: 'error', message: `Historical Starting Date must be from ${historicalMinimum} through ${today}.` })
+      if (startingDate > today) {
+        setAlert({ type: 'error', message: 'Historical Starting Date cannot be after today.' })
         return false
       }
       if (firstDueDate > today) {
@@ -756,4 +749,5 @@ const ReserveListingModal = ({
 }
 
 export default ReserveListingModal
+
 

@@ -16,11 +16,14 @@ test('listing import and reservation correction are registered Final Double-Chec
 })
 
 test('client-side Final Double-Check errors are not mislabeled as server outages', () => {
-  const source = read('client/src/utils/apiClient.js')
+  // Normalize line endings so this source-order regression test behaves the
+  // same on Windows (CRLF) and Unix/macOS (LF) checkouts.
+  const source = read('client/src/utils/apiClient.js').replace(/\r\n/g, '\n')
   const confirmationIndex = source.indexOf('await requireMutationConfirmation({')
   const networkTryIndex = source.indexOf('try {\n    controller = new AbortController()', confirmationIndex)
   assert.ok(confirmationIndex >= 0, 'confirmation step should exist')
   assert.ok(networkTryIndex > confirmationIndex, 'confirmation must complete before entering network error handling')
   assert.match(source, /CLIENT_CONFIRMATION_ERROR/)
 })
+
 

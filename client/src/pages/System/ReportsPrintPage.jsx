@@ -234,9 +234,9 @@ const ReportsPrintPage = () => {
       </div>
       {Math.abs(commissionDifference) > 0.01 ? <p className="mt-2 rounded border border-red-300 bg-red-50 p-2 text-[7px] font-black text-red-800">Commission reconciliation difference requiring review: {money(commissionDifference)}</p> : null}
       <PrintTable
-        headers={['Project', 'Unit', 'Buyer', 'Recipient', 'Role', 'Group', 'Stage', 'Trigger', 'Release %', 'Gross', 'Deduction', 'Net Amount', 'Payment %', 'Status as of End', 'Mode', 'Scheduled', 'Actual Release', 'Released By']}
+        headers={['Project', 'Unit', 'Buyer', 'Recipient', 'Role', 'Group', 'Stage', 'Trigger', 'Release %', 'Gross', 'Deduction', 'Net Amount', 'Payment %', 'Status as of End', 'Scheduled', 'Actual Release', 'Released By']}
         rows={(payload.commissionCohortReleases || []).map((row) => <tr key={row.id}>
-          <Cell>{row.project}</Cell><Cell>{row.unit}</Cell><Cell>{row.buyer}</Cell><Cell strong>{row.seller}</Cell><Cell>{row.role}</Cell><Cell>{row.sellerGroup}</Cell><Cell>{row.stage}</Cell><Cell>{percent(row.triggerPercent)}</Cell><Cell>{percent(row.releasePercent)}</Cell><Cell right>{money(row.grossAmount)}</Cell><Cell right>{money(row.deductionAmount)}</Cell><Cell right strong>{money(row.netAmount)}</Cell><Cell>{percent(row.paymentPercent)}</Cell><Cell>{row.status}</Cell><Cell>{titleCase(row.releaseEntryMode)}</Cell><Cell>{dateOnly(row.scheduledReleaseDate)}</Cell><Cell>{dateOnly(row.actualReleaseDate)}</Cell><Cell>{row.releasedBy}</Cell>
+          <Cell>{row.project}</Cell><Cell>{row.unit}</Cell><Cell>{row.buyer}</Cell><Cell strong>{row.seller}</Cell><Cell>{row.role}</Cell><Cell>{row.sellerGroup}</Cell><Cell>{row.stage}</Cell><Cell>{percent(row.triggerPercent)}</Cell><Cell>{percent(row.releasePercent)}</Cell><Cell right>{money(row.grossAmount)}</Cell><Cell right>{money(row.deductionAmount)}</Cell><Cell right strong>{money(row.netAmount)}</Cell><Cell>{percent(row.paymentPercent)}</Cell><Cell>{row.status}</Cell><Cell>{dateOnly(row.scheduledReleaseDate)}</Cell><Cell>{dateOnly(row.actualReleaseDate)}</Cell><Cell>{row.releasedBy}</Cell>
         </tr>)}
       />
     </ReportPage>

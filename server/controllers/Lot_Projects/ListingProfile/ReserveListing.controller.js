@@ -53,13 +53,6 @@ const normalizeNumberOption = (modeValue, customValue, fallback = 0) => {
   return Number.isNaN(numberValue) ? fallback : numberValue;
 };
 
-const shiftDateYears = (value, years) => {
-  const clean = dateOrNull(value);
-  if (!clean) return null;
-  const [year, month, day] = clean.split('-').map(Number);
-  return new Date(Date.UTC(year + Number(years || 0), month - 1, day)).toISOString().slice(0, 10);
-};
-
 const getMissingDailyPenaltySchemaItems = async (connection) => {
   const missing = [];
 
@@ -569,16 +562,13 @@ export const reserveLotProjectListing = async (req, res) => {
       Number(terms.reservationFeeAppliedToDownpayment || terms.soa_reservation_fee_applied_to_downpayment || 0) === 1
     );
     const today = todayDateOnly();
-    const historicalMinimum = shiftDateYears(today, -1);
     const isHistoricalEntry = terms.isHistoricalEntry === true || Number(terms.isHistoricalEntry || 0) === 1;
     const startingDate = dateOrNull(terms.startingDate) || today;
     const firstDueDate = dateOrNull(terms.firstDueDate) || startingDate;
 
     if (isHistoricalEntry) {
-      if (startingDate < historicalMinimum || startingDate > today) {
-        return res.status(400).json({
-          message: `Historical Starting Date must be from ${historicalMinimum} through ${today}.`,
-        });
+      if (startingDate > today) {
+        return res.status(400).json({ message: 'Historical Starting Date cannot be after today.' });
       }
       if (firstDueDate > today) {
         return res.status(400).json({ message: 'Historical First Due Date cannot be after today.' });
@@ -1208,4 +1198,5 @@ export const reserveLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
+
 

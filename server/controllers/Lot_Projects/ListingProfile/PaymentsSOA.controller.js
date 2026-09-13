@@ -284,13 +284,6 @@ const addDaysToDateOnly = (value, days = 0) => {
   return new Date(Date.UTC(year, month - 1, day + Number(days || 0))).toISOString().slice(0, 10);
 };
 
-const shiftDateYears = (value, years = 0) => {
-  const clean = dateOrNull(value);
-  if (!clean) return null;
-  const [year, month, day] = clean.split('-').map(Number);
-  return new Date(Date.UTC(year + Number(years || 0), month - 1, day)).toISOString().slice(0, 10);
-};
-
 const getPenaltyReliefContext = async (connection, project, listing, scheduleId, asOfDate = todayDateOnly(), { forUpdate = false } = {}) => {
   if (!(await tableExists(connection, 'lot_project_penalty_reliefs'))) {
     throw createHttpError(500, 'Penalty relief table is missing. Run server/migrations/20260711_add_daily_penalty_reliefs.sql first.');
@@ -1115,16 +1108,13 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
 
     if (firstDueDate !== currentFirstDueDate || isHistoricalEntry !== currentHistoricalEntry) {
       const today = todayDateOnly();
-      const historicalMinimum = shiftDateYears(today, -1);
       const startingDate = dateOrNull(listing.soa_starting_date) || today;
       if (!firstDueDate) {
         return res.status(400).json({ message: 'First Due Date is required.' });
       }
       if (isHistoricalEntry) {
-        if (firstDueDate < historicalMinimum || firstDueDate > today) {
-          return res.status(400).json({
-            message: `Historical First Due Date must be from ${historicalMinimum} through ${today}.`,
-          });
+        if (firstDueDate > today) {
+          return res.status(400).json({ message: 'Historical First Due Date cannot be after today.' });
         }
       } else if (firstDueDate < today) {
         return res.status(400).json({ message: 'First Due Date must be today or a future date.' });
@@ -2349,4 +2339,5 @@ export const restorePaymentSchedulePenaltyWaiver = async (req, res) => {
     connection.release();
   }
 };
+
 

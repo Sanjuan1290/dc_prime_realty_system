@@ -8,12 +8,6 @@ import { PreviewCard, ReservationCommissionPreview, ReservationPaymentPreview } 
 const downpaymentTermOptions = Array.from({ length: 12 }, (_, index) => String(index + 1))
 const penaltyGraceDayOptions = Array.from({ length: 32 }, (_, index) => String(index))
 
-const shiftIsoYears = (value, years) => {
-  const [year, month, day] = String(value || '').split('-').map(Number)
-  if (!year || !month || !day) return value
-  return new Date(Date.UTC(year + years, month - 1, day)).toISOString().slice(0, 10)
-}
-
 const AgentPicker = ({
   agents,
   selectedAgent,
@@ -102,12 +96,11 @@ const ReservePaymentTermsModal = ({
     month: '2-digit',
     day: '2-digit',
   }).format(new Date())
-  const historicalMinimum = shiftIsoYears(today, -1)
   const isHistoricalEntry = Boolean(paymentForm.isHistoricalEntry)
-  const startingDateMinimum = isHistoricalEntry ? historicalMinimum : today
+  const startingDateMinimum = isHistoricalEntry ? undefined : today
   const startingDateMaximum = isHistoricalEntry ? today : undefined
   const firstDueMinimum = isHistoricalEntry
-    ? (paymentForm.startingDate || historicalMinimum)
+    ? (paymentForm.startingDate || undefined)
     : paymentForm.startingDate && paymentForm.startingDate > today
       ? paymentForm.startingDate
       : today
@@ -184,7 +177,7 @@ const ReservePaymentTermsModal = ({
             />
             <span>
               <span className="block text-sm font-black text-blue-950">Encode an existing or historical client account</span>
-              <span className="mt-1 block text-xs font-semibold text-blue-700">Allows the starting date and first due date from {historicalMinimum} through {today}.</span>
+              <span className="mt-1 block text-xs font-semibold text-blue-700">Allows any past starting date. Historical dates cannot be after today, and the first due date cannot be before the starting date.</span>
             </span>
           </label>
           <TextInput
@@ -194,7 +187,7 @@ const ReservePaymentTermsModal = ({
             onChange={(value) => updatePaymentField('startingDate', value)}
             min={startingDateMinimum}
             max={startingDateMaximum}
-            helper={isHistoricalEntry ? `Choose a date from ${historicalMinimum} through ${today}.` : 'Today or a future date.'}
+            helper={isHistoricalEntry ? 'Choose the actual historical starting date. There is no lookback limit; future dates are not allowed.' : 'Today or a future date.'}
             required
           />
           <TextInput
@@ -305,4 +298,5 @@ const ReservePaymentTermsModal = ({
 }
 
 export default ReservePaymentTermsModal
+
 

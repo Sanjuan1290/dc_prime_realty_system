@@ -90,3 +90,11 @@ test('PDF commission section uses cohort reconciliation instead of mixing in-ran
   assert.doesNotMatch(printPage, /Commission Generated in Range/)
   assert.doesNotMatch(printPage, /Commission Released in Range/)
 })
+
+
+test('commission selected-sales report omits release entry mode from screen and PDF tables', () => {
+  assert.doesNotMatch(reportPage, /'Entry Mode'/)
+  assert.doesNotMatch(reportPage, /row\.releaseEntryMode === 'historical'/)
+  assert.doesNotMatch(printPage, /'Mode'.*'Scheduled'.*'Actual Release'.*'Released By'/)
+  assert.doesNotMatch(printPage, /titleCase\(row\.releaseEntryMode\)/)
+})
