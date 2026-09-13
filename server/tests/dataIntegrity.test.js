@@ -8,25 +8,30 @@ const dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(dirname, '..', '..');
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
 
-test('Data Integrity is permission-protected and reachable from both System portals', () => {
+test('Data Integrity is hidden from normal navigation and restricted to the exact Super Admin route/API', () => {
   const serverPermissions = read('server/config/permissions.js');
   const clientPermissions = read('client/src/config/permissions.js');
   const router = read('server/routers/System/dataIntegrity.routers.js');
   const server = read('server/server.js');
   const app = read('client/src/App.jsx');
   const layout = read('client/src/layout/SystemLayout.jsx');
+  const dashboard = read('client/src/pages/Lot_Projects/Dashboard.jsx');
+  const listingProfile = read('client/src/pages/Lot_Projects/ListingProfile.jsx');
 
   assert.match(serverPermissions, /SYSTEM_DATA_INTEGRITY_VIEW:\s*'system\.data_integrity\.view'/);
   assert.match(clientPermissions, /SYSTEM_DATA_INTEGRITY_VIEW:\s*'system\.data_integrity\.view'/);
+  assert.match(router, /router\.use\(requireExactRole\('super_admin'\)\)/);
   assert.match(router, /router\.get\('\/'[\s\S]*SYSTEM_DATA_INTEGRITY_VIEW/);
   assert.match(router, /router\.get\('\/summary'[\s\S]*SYSTEM_DATA_INTEGRITY_VIEW/);
   assert.match(router, /router\.get\('\/accounts\/:accountId'[\s\S]*SYSTEM_DATA_INTEGRITY_VIEW/);
   assert.doesNotMatch(router, /router\.(post|put|patch|delete)\(/i);
   assert.match(server, /app\.use\('\/api\/v1\/data-integrity', dataIntegrityRouter\)/);
   assert.match(app, /const DataIntegrity = lazy/);
-  assert.equal((app.match(/path="data-integrity"/g) || []).length, 2);
-  assert.match(app, /PERMISSIONS\.SYSTEM_DATA_INTEGRITY_VIEW/);
-  assert.match(layout, /label: "Data Integrity", pathname: "data-integrity"/);
+  assert.equal((app.match(/path="data-integrity"/g) || []).length, 1);
+  assert.match(app, /\/portal\/super_admin[\s\S]*path="data-integrity"/);
+  assert.doesNotMatch(layout, /label: "Data Integrity"|pathname: "data-integrity"/);
+  assert.doesNotMatch(dashboard, /data-integrity\/summary|View Integrity Report|>Data Integrity</);
+  assert.doesNotMatch(listingProfile, /data-integrity\/summary|View Breakdown|>Account Integrity</);
 });
 
 test('Data Integrity controller stays read-only and reuses canonical SOA helpers', () => {
@@ -112,21 +117,17 @@ test('protected file integrity checks metadata without triggering remote malware
   assert.match(modal, /does not consume Cloudinary or Perception Point quota by re-scanning files/);
 });
 
-test('project dashboard and listing profile expose lightweight integrity shortcuts', () => {
+test('project and listing workspaces do not advertise or fetch Data Integrity', () => {
   const dashboard = read('client/src/pages/Lot_Projects/Dashboard.jsx');
   const listingProfile = read('client/src/pages/Lot_Projects/ListingProfile.jsx');
 
-  assert.match(dashboard, /data-integrity\/summary\?projectSlug=/);
-  assert.match(dashboard, /Data Integrity/);
-  assert.match(dashboard, /View Integrity Report/);
-  assert.match(listingProfile, /data-integrity\/summary\?accountId=/);
-  assert.match(listingProfile, /data-integrity\?viewAccountId=\$\{integrityAccountId\}/);
-  assert.doesNotMatch(listingProfile, /integrityPath = `[^`]*data-integrity\?accountId=/);
-  assert.match(listingProfile, /Account Integrity/);
-  assert.match(listingProfile, /View Breakdown/);
+  assert.doesNotMatch(dashboard, /data-integrity/);
+  assert.doesNotMatch(dashboard, /integrityQuery|canViewDataIntegrity|View Integrity Report/);
+  assert.doesNotMatch(listingProfile, /data-integrity/);
+  assert.doesNotMatch(listingProfile, /integritySummaryQuery|canViewDataIntegrity|View Breakdown/);
 });
 
-test('listing View Breakdown opens the account modal without silently scoping Integrity Records', () => {
+test('hidden Super Admin Data Integrity page still supports a direct account deep-link when the owner knows the URL', () => {
   const page = read('client/src/pages/System/DataIntegrity.jsx');
 
   assert.match(page, /searchParams\.get\('viewAccountId'\)/);
@@ -173,3 +174,4 @@ test('Integrity Records uses server-backed pagination capped at 10 records per p
   assert.match(page, />Previous<\/button>/);
   assert.match(page, />Next<\/button>/);
 });
+

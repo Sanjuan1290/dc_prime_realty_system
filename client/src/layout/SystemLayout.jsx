@@ -7,7 +7,6 @@ import {
   FiBarChart2,
   FiBell,
   FiClock,
-  FiCheckCircle,
   FiFileText,
   FiHome,
   FiLoader,
@@ -133,7 +132,6 @@ const SystemLayout = () => {
           { label: "Documents", pathname: "documents", icon: FiFileText },
           { label: "Notifications", pathname: "notifications", icon: FiBell, badge: notificationCount },
           { label: "Audit Logs", pathname: "audit-logs", icon: FiActivity },
-          { label: "Data Integrity", pathname: "data-integrity", icon: FiCheckCircle },
         ],
       },
       {
@@ -419,4 +417,5 @@ const SystemLayout = () => {
 };
 
 export default SystemLayout;
+
 

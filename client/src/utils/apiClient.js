@@ -10,8 +10,11 @@ const TECHNICAL_MUTATION_PATTERNS = [
   /\/user\/forgot-password(?:\/|$)/i,
   /\/upload-signature(?:\/|$)/i,
   /\/payments\/preview$/i,
+  /\/projects\/lot-projects\/[^/]+\/listings\/[^/]+\/payments\/preflight$/i,
+  /\/projects\/lot-projects\/[^/]+\/listings\/[^/]+\/payments\/\d+\/correction-code$/i,
   /\/projects\/lot-projects\/[^/]+\/listing-imports\/validate$/i,
   /\/projects\/lot-projects\/[^/]+\/listings\/[^/]+\/reservation-correction\/preview$/i,
+  /\/projects\/lot-projects\/[^/]+\/listings\/[^/]+\/reservation-correction\/code$/i,
   /\/projects\/reports\/export-audit$/i,
   /\/projects\/lot-projects\/[^/]+\/price-list\/print-audit$/i,
   /\/projects\/lot-projects\/\d+\/edit-preflight$/i,
@@ -289,4 +292,5 @@ export const requestApiBlob = async (
     }
   }
 }
+
 

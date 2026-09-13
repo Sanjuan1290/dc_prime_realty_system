@@ -185,7 +185,6 @@ const App = () => {
           <Route path="accredited" element={<Accredited />} />
           <Route path="notifications" element={<Notifications />} />
           <Route path="audit-logs" element={<AuditLogs />} />
-          <Route path="data-integrity" element={protect(PERMISSIONS.SYSTEM_DATA_INTEGRITY_VIEW, <DataIntegrity />)} />
           <Route path="employees" element={<Employees />} />
           <Route path="attendance" element={<Attendance />} />
           <Route path="settings" element={<Settings />} />
@@ -297,4 +296,5 @@ const App = () => {
 }
 
 export default App
+
 

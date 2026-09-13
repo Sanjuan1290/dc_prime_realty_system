@@ -21,6 +21,7 @@ const addPayment = read('client/src/components/Lot_Projects/ListingProfileCompon
 const listingProfile = read('client/src/pages/Lot_Projects/ListingProfile.jsx');
 const accountController = read('server/controllers/Lot_Projects/Accounts/Accounts.controller.js');
 const sensitiveVerification = read('server/services/sensitiveActionVerification.service.js');
+const apiClient = read('client/src/utils/apiClient.js');
 
 
 test('Add Payment always performs account/recent-payment preflight before opening the entry form', () => {
@@ -33,6 +34,25 @@ test('Add Payment always performs account/recent-payment preflight before openin
   assert.match(paymentsUi, /No recent verified payment detected/);
   assert.match(paymentsUi, /I confirmed that/);
   assert.match(paymentsUi, /paymentPreflightMutation\.mutate\(\)/);
+});
+
+
+test('payment and controlled-correction technical preflights are explicitly allowlisted without classifying final financial mutations as technical', () => {
+  assert.match(apiClient, /payments\\\/preflight\\$\/i|payments\\\/preflight/);
+  assert.match(apiClient, /payments\\\/\\d\+\\\/correction-code/);
+  assert.match(apiClient, /reservation-correction\\\/code/);
+  assert.match(paymentsUi, /payments\/preflight[\s\S]*confirmationHandled: 'technical'/);
+  assert.match(paymentsUi, /correction-code[\s\S]*confirmationHandled: 'technical'/);
+
+  const updateStart = paymentsUi.indexOf('const updatePaymentMutation');
+  const deleteStart = paymentsUi.indexOf('const deletePaymentMutation');
+  const soaStart = paymentsUi.indexOf('const updateSoaTermsMutation');
+  const updateBlock = paymentsUi.slice(updateStart, deleteStart);
+  const deleteBlock = paymentsUi.slice(deleteStart, soaStart);
+  assert.match(updateBlock, /confirmationHandled: 'compact'/);
+  assert.match(deleteBlock, /confirmationHandled: 'compact'/);
+  assert.doesNotMatch(updateBlock, /confirmationHandled: 'technical'/);
+  assert.doesNotMatch(deleteBlock, /confirmationHandled: 'technical'/);
 });
 
 test('manual amount changes are visibly warned and must be acknowledged before payment save', () => {

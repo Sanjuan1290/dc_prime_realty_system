@@ -894,7 +894,7 @@ const PaymentsSOA = ({
       useFetchPut(
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/payments/${payload.paymentId}`,
         payload,
-        { confirmationHandled: 'technical' }
+        { confirmationHandled: 'compact' }
       ),
     onSuccess: async (result) => {
       setShowPaymentModal(false)
@@ -917,7 +917,7 @@ const PaymentsSOA = ({
       useFetchPost(
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/payments/${paymentId}/delete`,
         { reason, verificationId, code },
-        { confirmationHandled: 'technical' }
+        { confirmationHandled: 'compact' }
       ),
     onSuccess: async (result) => {
       setPaymentCorrection(null)
