@@ -48,6 +48,12 @@ test('detailed report tables paginate and sales is no longer a duplicate Reserva
   assert.match(reportPage, /sticky top-0/)
 })
 
+test('report bridge cards render with React Fragment instead of the undefined Children.Fragment member', () => {
+  assert.match(reportPage, /import \{ Children, Fragment, useEffect/)
+  assert.match(reportPage, /<Fragment key=\{item\.label\}>/)
+  assert.doesNotMatch(reportPage, /Children\.Fragment/)
+})
+
 test('PDF export is intentionally multi-section and keeps cancellation and refund timing separate', () => {
   assert.match(printPage, /const totalSections = 8/)
   assert.match(printPage, /Management Report — Executive Summary/)

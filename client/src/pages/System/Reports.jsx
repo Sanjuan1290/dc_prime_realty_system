@@ -1,4 +1,4 @@
-import { Children, useEffect, useMemo, useState } from 'react'
+import { Children, Fragment, useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   FiArrowRight,
@@ -83,14 +83,14 @@ const BridgeCard = ({ title, subtitle, scope, items = [], tone = 'blue' }) => (
     </div>
     <div className="mt-5 grid gap-3 lg:grid-cols-[1fr_auto_1fr_auto_1fr] lg:items-center">
       {items.map((item, index) => (
-        <Children.Fragment key={item.label}>
+        <Fragment key={item.label}>
           <div className={`rounded-2xl border p-4 ${item.emphasis ? 'border-slate-900 bg-slate-950 text-white' : item.negative ? 'border-red-100 bg-red-50 text-red-800' : 'border-slate-200 bg-slate-50 text-slate-900'}`}>
             <p className={`text-[10px] font-black uppercase tracking-wide ${item.emphasis ? 'text-slate-300' : 'text-slate-500'}`}>{item.label}</p>
             <p className="mt-2 text-xl font-black">{money(item.value)}</p>
             {item.helper ? <p className={`mt-1 text-xs font-semibold ${item.emphasis ? 'text-slate-300' : 'text-slate-500'}`}>{item.helper}</p> : null}
           </div>
           {index < items.length - 1 ? <FiArrowRight className="hidden h-5 w-5 text-slate-300 lg:block" /> : null}
-        </Children.Fragment>
+        </Fragment>
       ))}
     </div>
   </article>
