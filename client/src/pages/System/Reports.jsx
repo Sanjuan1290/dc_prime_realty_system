@@ -232,6 +232,40 @@ const Reports = () => {
     }
   }
 
+  const commissionLess = Number(summary.commissionNonPayable || 0) + Number(summary.commissionDeductions || 0)
+  const commissionDifference = Number(summary.commissionReconciliationDifference || 0)
+
+  const commissionReconciliation = (
+    <section className="grid gap-5 2xl:grid-cols-2">
+      <BridgeCard
+        title="Commission from Sales in Selected Range"
+        subtitle="This uses the same reservation/sales cohort as the Sales Performance bridge, so old-sale releases are not mixed into the selected period."
+        scope={`SALES COHORT · ${from} TO ${to}`}
+        items={[
+          { label: 'Gross Commission Created', value: summary.commissionGenerated, helper: 'Original gross commission from selected sales' },
+          { label: 'Less: Non-Payable / Deductions', value: commissionLess, helper: `Forfeited ${money(summary.commissionForfeitedOnCancellation)} · Cancelled ${money(summary.commissionCancelled)} · Deductions ${money(summary.commissionDeductions)}`, negative: true },
+          { label: 'Net Commission Payable', value: summary.commissionNetPayable, helper: 'Released plus unreleased commission still payable', emphasis: true },
+        ]}
+      />
+      <BridgeCard
+        title="Status of Net Commission Payable"
+        subtitle="A clean status split of the commission that remains payable from the selected sales cohort."
+        scope={`AS OF ${to}`}
+        tone="green"
+        items={[
+          { label: 'Released', value: summary.commissionReleased, helper: 'Selected-sale commission actually released by report end' },
+          { label: 'Unreleased / Remaining', value: summary.commissionRemaining, helper: `Eligible now ${money(summary.eligibleUnreleased)} · Earned on cancellation ${money(summary.commissionEarnedOnCancellation)}` },
+          { label: 'Net Commission Payable', value: summary.commissionNetPayable, helper: 'Released + unreleased / remaining', emphasis: true },
+        ]}
+      />
+      {Math.abs(commissionDifference) > 0.01 ? (
+        <div className="2xl:col-span-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-800">
+          Commission reconciliation needs review: {money(commissionDifference)} difference between gross commission and its release-status breakdown.
+        </div>
+      ) : null}
+    </section>
+  )
+
   const overview = (
     <div className="grid gap-5">
       <section className="grid gap-5 2xl:grid-cols-2">
@@ -263,11 +297,9 @@ const Reports = () => {
         <Metric label="Net Cumulative Cash" value={money(summary.netCumulativeCash)} helper={`${money(summary.cumulativeCollected)} collected less ${money(summary.cumulativeRefunded)} refunded`} scope={`AS OF ${to}`} tone="green" icon={FiCreditCard} />
         <Metric label="Cancellation Activity" value={number(summary.cancellationActivityCount)} helper={`${money(summary.cancellationActivityValue)} contract value cancelled in range`} scope="IN SELECTED RANGE" tone="red" icon={FiXCircle} />
         <Metric label="Retained / Discontinued" value={money(summary.discontinuedAmount)} helper="Cash retained from cancellations recorded in range" scope="IN SELECTED RANGE" tone="amber" />
-        <Metric label="Commission Generated" value={money(summary.commissionGenerated)} helper="Gross commission from sales created in range" scope="IN SELECTED RANGE" tone="violet" />
-        <Metric label="Commission Released" value={money(summary.commissionReleased)} helper="Actual commission release date falls in range" scope="IN SELECTED RANGE" tone="green" />
-        <Metric label="Eligible — Not Released" value={money(summary.eligibleUnreleased)} helper="Milestones eligible using verified cash through report end" scope={`AS OF ${to}`} tone="amber" />
-        <Metric label="Commission Remaining" value={money(summary.commissionRemaining)} helper="Unreleased, non-forfeited commission liability" scope={`AS OF ${to}`} tone="slate" />
       </section>
+
+      {commissionReconciliation}
 
       <section className="grid gap-5 xl:grid-cols-2">
         <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -373,39 +405,42 @@ const Reports = () => {
   )
 
   const commissionTable = (
-    <PaginatedTable
-      title="Commission Milestones"
-      helper="Status is evaluated as of the report end date using verified payment progress. Released rows use their actual release date."
-      summary={`Remaining Liability: ${money(summary.commissionRemaining)}`}
-      resetKey={resetKey}
-      rows={data.releases || []}
-      minWidth="1700px"
-      headers={['Project', 'Unit', 'Buyer', 'Recipient', 'Role', 'Group', 'Stage', 'Trigger', 'Release %', { label: 'Net Amount', align: 'right' }, 'Payment %', 'Status as of End', 'Entry Mode', 'Scheduled', 'Actual Release', 'Released By']}
-      renderRow={(row) => <tr key={row.id}><Td>{row.project}</Td><Td>{row.unit}</Td><Td>{row.buyer}</Td><Td className="font-black text-slate-950">{row.seller}</Td><Td>{row.role}</Td><Td>{row.sellerGroup}</Td><Td>{row.stage}</Td><Td>{percent(row.triggerPercent)}</Td><Td>{percent(row.releasePercent)}</Td><Td align="right" className="font-black">{money(row.netAmount)}</Td><Td>{percent(row.paymentPercent)}</Td><Td><Status value={row.status} /></Td><Td>{row.releaseEntryMode === 'historical' ? <Status value="Historical" /> : 'Live'}</Td><Td>{dateOnly(row.scheduledReleaseDate)}</Td><Td>{dateOnly(row.actualReleaseDate)}</Td><Td>{row.releasedBy}</Td></tr>}
-    />
+    <div className="grid gap-5">
+      {commissionReconciliation}
+      <PaginatedTable
+        title="Commission Milestones — Selected Sales Cohort"
+        helper={`Only commission milestones belonging to sales/reservations created from ${from} to ${to} are shown. Status is evaluated as of ${to}.`}
+        summary={`Net Payable: ${money(summary.commissionNetPayable)} · Released: ${money(summary.commissionReleased)} · Remaining: ${money(summary.commissionRemaining)}`}
+        resetKey={resetKey}
+        rows={data.commissionCohortReleases || []}
+        minWidth="1750px"
+        headers={['Project', 'Unit', 'Buyer', 'Recipient', 'Role', 'Group', 'Stage', 'Trigger', 'Release %', { label: 'Gross', align: 'right' }, { label: 'Deduction', align: 'right' }, { label: 'Net Amount', align: 'right' }, 'Payment %', 'Status as of End', 'Entry Mode', 'Scheduled', 'Actual Release', 'Released By']}
+        renderRow={(row) => <tr key={row.id}><Td>{row.project}</Td><Td>{row.unit}</Td><Td>{row.buyer}</Td><Td className="font-black text-slate-950">{row.seller}</Td><Td>{row.role}</Td><Td>{row.sellerGroup}</Td><Td>{row.stage}</Td><Td>{percent(row.triggerPercent)}</Td><Td>{percent(row.releasePercent)}</Td><Td align="right">{money(row.grossAmount)}</Td><Td align="right">{money(row.deductionAmount)}</Td><Td align="right" className="font-black">{money(row.netAmount)}</Td><Td>{percent(row.paymentPercent)}</Td><Td><Status value={row.status} /></Td><Td>{row.releaseEntryMode === 'historical' ? <Status value="Historical" /> : 'Live'}</Td><Td>{dateOnly(row.scheduledReleaseDate)}</Td><Td>{dateOnly(row.actualReleaseDate)}</Td><Td>{row.releasedBy}</Td></tr>}
+      />
+    </div>
   )
 
   const sellerTable = (
     <PaginatedTable
       title="Seller Performance"
-      helper="Sales metrics use the selected reservation cohort; collections/refunds use transaction dates; commission eligibility is a report-end snapshot."
+      helper="Sales and commission metrics use the same selected reservation cohort; collections/refunds use transaction dates."
       resetKey={resetKey}
       rows={data.sellerPerformance || []}
       minWidth="1600px"
-      headers={['Seller', 'Group', 'Reservations', 'Cancelled', 'Cancellation Rate', { label: 'Gross Contracted', align: 'right' }, { label: 'Cancelled Value', align: 'right' }, { label: 'Net Active Sales', align: 'right' }, { label: 'Collections', align: 'right' }, { label: 'Refunds', align: 'right' }, { label: 'Net Cash', align: 'right' }, { label: 'Gross Commission', align: 'right' }, { label: 'Released', align: 'right' }, { label: 'Eligible Unreleased', align: 'right' }]}
-      renderRow={(row, index) => <tr key={`${row.sellerId}-${index}`}><Td className="font-black text-slate-950">{row.seller}</Td><Td>{row.sellerGroup}</Td><Td>{number(row.reservations)}</Td><Td>{number(row.cancelledReservations)}</Td><Td>{percent(row.cancellationRate)}</Td><Td align="right">{money(row.grossContractedValue)}</Td><Td align="right" className="text-red-700">{money(row.cancelledValue)}</Td><Td align="right" className="font-black text-blue-700">{money(row.netActiveSales)}</Td><Td align="right">{money(row.collectedInRange)}</Td><Td align="right" className="text-red-700">{money(row.refundsInRange)}</Td><Td align="right" className="font-black">{money(row.netCashMovement)}</Td><Td align="right">{money(row.grossCommission)}</Td><Td align="right">{money(row.releasedCommission)}</Td><Td align="right" className="font-black text-amber-700">{money(row.eligibleUnreleased)}</Td></tr>}
+      headers={['Seller', 'Group', 'Reservations', 'Cancelled', 'Cancellation Rate', { label: 'Gross Contracted', align: 'right' }, { label: 'Cancelled Value', align: 'right' }, { label: 'Net Active Sales', align: 'right' }, { label: 'Collections', align: 'right' }, { label: 'Refunds', align: 'right' }, { label: 'Net Cash', align: 'right' }, { label: 'Gross Commission', align: 'right' }, { label: 'Non-Payable', align: 'right' }, { label: 'Deductions', align: 'right' }, { label: 'Net Payable', align: 'right' }, { label: 'Released', align: 'right' }, { label: 'Remaining', align: 'right' }]}
+      renderRow={(row, index) => <tr key={`${row.sellerId}-${index}`}><Td className="font-black text-slate-950">{row.seller}</Td><Td>{row.sellerGroup}</Td><Td>{number(row.reservations)}</Td><Td>{number(row.cancelledReservations)}</Td><Td>{percent(row.cancellationRate)}</Td><Td align="right">{money(row.grossContractedValue)}</Td><Td align="right" className="text-red-700">{money(row.cancelledValue)}</Td><Td align="right" className="font-black text-blue-700">{money(row.netActiveSales)}</Td><Td align="right">{money(row.collectedInRange)}</Td><Td align="right" className="text-red-700">{money(row.refundsInRange)}</Td><Td align="right" className="font-black">{money(row.netCashMovement)}</Td><Td align="right">{money(row.grossCommission)}</Td><Td align="right" className="text-red-700">{money(row.commissionNonPayable)}</Td><Td align="right">{money(row.commissionDeductions)}</Td><Td align="right" className="font-black text-violet-700">{money(row.commissionNetPayable)}</Td><Td align="right">{money(row.releasedCommission)}</Td><Td align="right" className="font-black text-amber-700">{money(row.commissionRemaining)}</Td></tr>}
     />
   )
 
   const projectTable = (
     <PaginatedTable
       title="Project Breakdown"
-      helper="One reconciled project view covering sales, cancellation activity, cash movement, outstanding balances and commissions."
+      helper="One reconciled project view covering sales, cash, receivables and commission from the same selected sales cohort."
       resetKey={resetKey}
       rows={data.projectBreakdown || []}
       minWidth="1800px"
-      headers={['Project', 'Reservations', 'Cancelled Sales', { label: 'Gross Contracted', align: 'right' }, { label: 'Cancelled from Cohort', align: 'right' }, { label: 'Net Active Contract', align: 'right' }, 'Cancellation Activity', { label: 'Collections', align: 'right' }, { label: 'Refunds', align: 'right' }, { label: 'Net Cash', align: 'right' }, { label: 'Outstanding', align: 'right' }, { label: 'Commission Generated', align: 'right' }, { label: 'Commission Released', align: 'right' }, { label: 'Eligible Unreleased', align: 'right' }]}
-      renderRow={(row) => <tr key={row.projectId}><Td className="font-black text-slate-950">{row.project}</Td><Td>{number(row.reservations)}</Td><Td>{number(row.cohortCancelled)}</Td><Td align="right">{money(row.grossContractedValue)}</Td><Td align="right" className="text-red-700">{money(row.cohortCancelledValue)}</Td><Td align="right" className="font-black text-blue-700">{money(row.netActiveContractValue)}</Td><Td>{number(row.cancellationActivity)}</Td><Td align="right">{money(row.collectedInRange)}</Td><Td align="right" className="text-red-700">{money(row.refundsInRange)}</Td><Td align="right" className="font-black">{money(row.netCashMovement)}</Td><Td align="right" className="font-black text-amber-700">{money(row.outstanding)}</Td><Td align="right">{money(row.commissionGenerated)}</Td><Td align="right">{money(row.commissionReleased)}</Td><Td align="right">{money(row.eligibleUnreleased)}</Td></tr>}
+      headers={['Project', 'Reservations', 'Cancelled Sales', { label: 'Gross Contracted', align: 'right' }, { label: 'Cancelled from Cohort', align: 'right' }, { label: 'Net Active Contract', align: 'right' }, 'Cancellation Activity', { label: 'Collections', align: 'right' }, { label: 'Refunds', align: 'right' }, { label: 'Net Cash', align: 'right' }, { label: 'Outstanding', align: 'right' }, { label: 'Gross Commission', align: 'right' }, { label: 'Non-Payable', align: 'right' }, { label: 'Deductions', align: 'right' }, { label: 'Net Payable', align: 'right' }, { label: 'Released', align: 'right' }, { label: 'Remaining', align: 'right' }]}
+      renderRow={(row) => <tr key={row.projectId}><Td className="font-black text-slate-950">{row.project}</Td><Td>{number(row.reservations)}</Td><Td>{number(row.cohortCancelled)}</Td><Td align="right">{money(row.grossContractedValue)}</Td><Td align="right" className="text-red-700">{money(row.cohortCancelledValue)}</Td><Td align="right" className="font-black text-blue-700">{money(row.netActiveContractValue)}</Td><Td>{number(row.cancellationActivity)}</Td><Td align="right">{money(row.collectedInRange)}</Td><Td align="right" className="text-red-700">{money(row.refundsInRange)}</Td><Td align="right" className="font-black">{money(row.netCashMovement)}</Td><Td align="right" className="font-black text-amber-700">{money(row.outstanding)}</Td><Td align="right">{money(row.commissionGenerated)}</Td><Td align="right" className="text-red-700">{money(row.commissionNonPayable)}</Td><Td align="right">{money(row.commissionDeductions)}</Td><Td align="right" className="font-black text-violet-700">{money(row.commissionNetPayable)}</Td><Td align="right">{money(row.commissionReleased)}</Td><Td align="right" className="font-black text-amber-700">{money(row.commissionRemaining)}</Td></tr>}
     />
   )
 
