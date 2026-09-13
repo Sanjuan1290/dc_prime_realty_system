@@ -53,6 +53,7 @@ export const groupCommissionRecords = (records = []) => {
         tcp: toNumber(record.tcp),
         paid: toNumber(record.paid),
         paymentPercent: toNumber(record.paymentPercent),
+        isHistoricalAccount: Boolean(record.isHistoricalAccount),
         sellers: [],
         grossCommission: 0,
         released: 0,
@@ -64,6 +65,7 @@ export const groupCommissionRecords = (records = []) => {
 
     const account = grouped.get(key)
     account.sellers.push(record)
+    account.isHistoricalAccount = account.isHistoricalAccount || Boolean(record.isHistoricalAccount)
     account.grossCommission += toNumber(record.grossCommission)
     account.released += toNumber(record.released)
     account.eligibleToRelease += toNumber(record.eligibleToRelease)
@@ -96,4 +98,5 @@ export const groupCommissionRecords = (records = []) => {
     }
   })
 }
+
 

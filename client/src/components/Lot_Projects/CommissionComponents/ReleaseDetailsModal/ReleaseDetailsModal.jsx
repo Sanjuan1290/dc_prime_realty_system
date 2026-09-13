@@ -148,6 +148,7 @@ const ReleaseConfirmDialog = ({
   releaseMode,
   historicalDate,
   historicalNote,
+  historicalAllowed,
   isSaving,
   onModeChange,
   onHistoricalDateChange,
@@ -200,25 +201,34 @@ const ReleaseConfirmDialog = ({
             </span>
           </label>
 
-          <label className={`cursor-pointer rounded-2xl border p-4 transition ${historicalSelected ? 'border-violet-400 bg-violet-50 ring-2 ring-violet-50' : 'border-slate-200 bg-white'}`}>
-            <span className="flex items-start gap-3">
-              <input
-                type="radio"
-                name="commission-release-mode"
-                value="historical"
-                checked={historicalSelected}
-                disabled={isSaving}
-                onChange={() => onModeChange('historical')}
-                className="mt-1 h-4 w-4"
-              />
-              <span>
-                <span className="block text-sm font-black text-slate-900">Record Historical Release</span>
-                <span className="mt-1 block text-xs font-semibold leading-relaxed text-slate-500">
-                  Use this only for a commission that was already paid before it was encoded in this system. The original payment milestone is validated as of the selected date.
+          {historicalAllowed ? (
+            <label className={`cursor-pointer rounded-2xl border p-4 transition ${historicalSelected ? 'border-violet-400 bg-violet-50 ring-2 ring-violet-50' : 'border-slate-200 bg-white'}`}>
+              <span className="flex items-start gap-3">
+                <input
+                  type="radio"
+                  name="commission-release-mode"
+                  value="historical"
+                  checked={historicalSelected}
+                  disabled={isSaving}
+                  onChange={() => onModeChange('historical')}
+                  className="mt-1 h-4 w-4"
+                />
+                <span>
+                  <span className="block text-sm font-black text-slate-900">Record Historical Release</span>
+                  <span className="mt-1 block text-xs font-semibold leading-relaxed text-slate-500">
+                    Available because this buyer account was explicitly encoded as a historical record. The payment milestone is validated as of the selected date.
+                  </span>
                 </span>
               </span>
-            </span>
-          </label>
+            </label>
+          ) : (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-sm font-black text-slate-800">Historical release is not available for this account</p>
+              <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-500">
+                This is a normal live buyer account. Backdated commission releases cannot be recorded here.
+              </p>
+            </div>
+          )}
         </div>
 
         {historicalSelected ? (
@@ -284,6 +294,7 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, isSaving = fa
   const netRemaining = Math.max(Number(commission.netRemaining ?? grossCommission - released), 0)
   const milestones = useMemo(() => commission.releaseMilestones || [], [commission.releaseMilestones])
   const releaseDateInfo = commission.releaseDateInfo || {}
+  const historicalAllowed = Boolean(commission.isHistoricalAccount)
   const retentionReady = Boolean(commission.retentionReady || (commission.paymentComplete && commission.documentsComplete))
   const isExternalGroup = Boolean(
     commission.isExternalGroup
@@ -342,6 +353,14 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, isSaving = fa
     }
 
     if (action === 'release_stage') {
+      if (!stage.isReleaseDate && !historicalAllowed) {
+        setNotice({
+          type: 'warning',
+          title: 'Release day required',
+          message: `This is a normal live buyer account, so Historical Release is unavailable. Release this commission on the next configured release day (${releaseDateInfo.nextReleaseDate || '-'}).`,
+        })
+        return
+      }
       setReleaseMode(stage.isReleaseDate ? 'live' : 'historical')
       setHistoricalDate(releaseDateInfo.todayDateISO || todayManilaISO())
       setHistoricalNote('')
@@ -355,6 +374,10 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, isSaving = fa
     if (!confirmAction || !selectedStage || isSaving) return
 
     if (confirmAction === 'release_stage' && releaseMode === 'historical') {
+      if (!historicalAllowed) {
+        setNotice({ type: 'error', title: 'Historical release blocked', message: 'This buyer account was not encoded as a historical record.' })
+        return
+      }
       const today = releaseDateInfo.todayDateISO || todayManilaISO()
       if (!historicalDate || historicalDate > today) {
         setNotice({ type: 'error', title: 'Invalid historical date', message: 'Select a valid actual release date that is not in the future.' })
@@ -517,7 +540,17 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, isSaving = fa
                         <td className="px-4 py-3">
                           <div className="flex flex-wrap gap-2">
                             {['Eligible', 'Earned on Cancellation'].includes(stage.status) ? (
-                              <button type="button" onClick={() => openConfirm('release_stage', stage)} disabled={isSaving} title={!stage.isReleaseDate ? 'Live release is unavailable today; use Historical Release only for a commission that was already paid.' : undefined} className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-blue-600 px-3 text-[11px] font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60">
+                              <button
+                                type="button"
+                                onClick={() => openConfirm('release_stage', stage)}
+                                disabled={isSaving || (!stage.isReleaseDate && !historicalAllowed)}
+                                title={!stage.isReleaseDate
+                                  ? historicalAllowed
+                                    ? 'Live release is unavailable today. This historical account may be recorded with its real past release date.'
+                                    : `Live release is unavailable today. Next release date: ${releaseDateInfo.nextReleaseDate || '-'}.`
+                                  : undefined}
+                                className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-blue-600 px-3 text-[11px] font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
                                 {isSaving ? <FiLoader className="h-3.5 w-3.5 animate-spin" /> : <FiSave className="h-3.5 w-3.5" />}
                                 {stage.releaseButtonLabel || 'Release'}
                               </button>
@@ -580,6 +613,7 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, isSaving = fa
           releaseMode={releaseMode}
           historicalDate={historicalDate}
           historicalNote={historicalNote}
+          historicalAllowed={historicalAllowed}
           isSaving={isSaving}
           onModeChange={setReleaseMode}
           onHistoricalDateChange={setHistoricalDate}
@@ -615,4 +649,5 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, isSaving = fa
 }
 
 export default ReleaseDetailsModal
+
 

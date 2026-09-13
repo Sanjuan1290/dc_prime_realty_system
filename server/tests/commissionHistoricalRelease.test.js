@@ -81,9 +81,20 @@ test('commission UI explicitly separates Release Today from Record Historical Re
   assert.match(releaseModal, /name="commission-release-mode"/);
   assert.match(releaseModal, /max=\{today\}/);
   assert.match(releaseModal, /Historical Note/);
-  assert.match(releaseModal, /original payment milestone is validated as of the selected date/);
+  assert.match(releaseModal, /payment milestone is validated as of the selected date/);
   assert.match(releaseModal, /stage\.releaseEntryMode === 'historical'/);
   assert.doesNotMatch(releaseModal, /Release date locked/);
+});
+
+
+test('historical release is restricted to buyer accounts explicitly encoded as historical', () => {
+  assert.match(commissionController, /COALESCE\(cp\.soa_is_historical_entry, 0\) AS soa_is_historical_entry/);
+  assert.match(commissionController, /isHistoricalAccount: Number\(row\.soa_is_historical_entry \|\| 0\) === 1/);
+  assert.match(commissionController, /isHistoricalRelease && Number\(release\.soa_is_historical_entry \|\| 0\) !== 1/);
+  assert.match(commissionController, /Historical commission release is only available for buyer accounts that were explicitly encoded as historical records/);
+  assert.match(releaseModal, /const historicalAllowed = Boolean\(commission\.isHistoricalAccount\)/);
+  assert.match(releaseModal, /Historical release is not available for this account/);
+  assert.match(releaseModal, /!stage\.isReleaseDate && !historicalAllowed/);
 });
 
 test('commission final review shows release type, actual release date, and historical note', () => {
@@ -132,4 +143,5 @@ test('cancelled-sale financial archive preserves historical release metadata', (
   assert.match(archiveSource, /r\.release_recorded_at/);
   assert.match(archiveSource, /r\.historical_release_note/);
 });
+
 

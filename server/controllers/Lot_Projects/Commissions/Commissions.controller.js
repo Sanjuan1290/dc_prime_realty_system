@@ -468,6 +468,7 @@ const mapCommissionRow = (row = {}, releases = [], releaseDateInfo = {}) => {
     accreditedSellerId: row.accredited_seller_id,
     client: row.buyer_full_name || 'No buyer name',
     unit: row.lot_project_listing_unit_id || '-',
+    isHistoricalAccount: Number(row.soa_is_historical_entry || 0) === 1,
     project: row.lot_project_name || '-',
     seller: row.seller_display_name_snapshot || row.seller_name || getUserFullName(row),
     mainSeller: row.main_seller_name || (row.commission_seller_type === 'selling_agent' || row.commission_seller_type === 'main_seller' ? row.seller_name || getUserFullName(row) : '-'),
@@ -872,6 +873,7 @@ export const getLotProjectCommissions = async (req, res) => {
           l.lot_project_listing_unit_id,
           ${effectiveTcpSql} AS lot_project_listing_tcp,
           cp.buyer_full_name,
+          COALESCE(cp.soa_is_historical_entry, 0) AS soa_is_historical_entry,
           COALESCE(payment_summary.total_paid, 0) AS total_paid,
           ${actualRemainingBalanceSql} AS actual_remaining_balance,
           ${unpaidScheduledDueSql} AS unpaid_scheduled_due,
@@ -1072,6 +1074,7 @@ export const updateLotProjectCommission = async (req, res) => {
             c.commission_role,
             c.payment_percent,
             cp.soa_starting_date,
+            COALESCE(cp.soa_is_historical_entry, 0) AS soa_is_historical_entry,
             ${releaseActualRemainingBalanceSql} AS actual_remaining_balance,
             ${releaseUnpaidScheduledDueSql} AS unpaid_scheduled_due,
             ${getRequiredDocumentCountSql('l')} AS required_document_count,
@@ -1113,6 +1116,14 @@ export const updateLotProjectCommission = async (req, res) => {
       if (!release) {
         await connection.rollback();
         return res.status(404).json({ success: false, message: 'Commission release stage not found.' });
+      }
+
+      if (isHistoricalRelease && Number(release.soa_is_historical_entry || 0) !== 1) {
+        await connection.rollback();
+        return res.status(400).json({
+          success: false,
+          message: 'Historical commission release is only available for buyer accounts that were explicitly encoded as historical records.',
+        });
       }
 
       const externalCommission = isExternalCommissionRow(release);
@@ -1587,4 +1598,5 @@ export const updateLotProjectCommission = async (req, res) => {
     connection.release();
   }
 };
+
 
