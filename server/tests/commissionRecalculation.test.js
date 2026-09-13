@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import bcrypt from 'bcrypt';
 import {
   requireCurrentPassword,
-  requireRole,
+  requireExactRole,
 } from '../middleware/auth.middleware.js';
 import {
   buildCommissionDistribution,
@@ -203,8 +203,8 @@ const createMockResponse = () => ({
   },
 });
 
-test('commission recalculation role guard allows Admin 1 and Super Admin', () => {
-  const guard = requireRole('super_admin');
+test('unit commission adjustment requires the exact Super Admin role', () => {
+  const guard = requireExactRole('super_admin');
 
   const adminResponse = createMockResponse();
   let adminNextCalled = false;
@@ -214,8 +214,8 @@ test('commission recalculation role guard allows Admin 1 and Super Admin', () =>
     () => { adminNextCalled = true; }
   );
 
-  assert.equal(adminResponse.statusCode, 200);
-  assert.equal(adminNextCalled, true);
+  assert.equal(adminResponse.statusCode, 403);
+  assert.equal(adminNextCalled, false);
 
   const superAdminResponse = createMockResponse();
   let superAdminNextCalled = false;
@@ -229,7 +229,7 @@ test('commission recalculation role guard allows Admin 1 and Super Admin', () =>
   assert.equal(superAdminNextCalled, true);
 });
 
-test('commission recalculation password guard requires the current password', async () => {
+test('unit commission adjustment password guard requires the current password', async () => {
   const passwordHash = await bcrypt.hash('correct-password', 4);
   const guard = requireCurrentPassword({
     field: 'password',
@@ -261,7 +261,7 @@ test('commission recalculation password guard requires the current password', as
   assert.equal(wrongNextCalled, false);
 });
 
-test('verified recalculation password is removed before the controller runs', async () => {
+test('verified adjustment password is removed before the controller runs', async () => {
   const passwordHash = await bcrypt.hash('correct-password', 4);
   const guard = requireCurrentPassword({
     field: 'password',
@@ -281,4 +281,5 @@ test('verified recalculation password is removed before the controller runs', as
   assert.equal(Object.hasOwn(request.body, 'password'), false);
   assert.equal(request.body.acknowledgement, true);
 });
+
 

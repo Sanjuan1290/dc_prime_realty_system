@@ -182,12 +182,14 @@ const UnitStatus = ({
   libraryDocuments = [],
   projectDefaultDocuments = [],
   onSave,
-  canRecalculateCommission = false,
-  onRecalculateCommission,
+  canAdjustCommission = false,
+  onRequestCommissionAdjustmentCode,
+  onAdjustCommission,
   canCorrectReservation = false,
   onCorrectReservation,
   isSaving = false,
-  isRecalculatingCommission = false,
+  isRequestingCommissionCode = false,
+  isAdjustingCommission = false,
   readOnly = false,
 }) => {
   const [showEditModal, setShowEditModal] = useState(false)
@@ -198,10 +200,10 @@ const UnitStatus = ({
 
   const unitData = useMemo(() => ({ ...fallbackListing, ...listing }), [listing])
   const commissionRows = useMemo(
-    () => (Array.isArray(unitData.commissionRecalculation?.currentHierarchy)
-      ? unitData.commissionRecalculation.currentHierarchy
+    () => (Array.isArray(unitData.commissionAdjustment?.currentHierarchy)
+      ? unitData.commissionAdjustment.currentHierarchy
       : []),
-    [unitData.commissionRecalculation]
+    [unitData.commissionAdjustment]
   )
 
   const handleSave = async (payload) => {
@@ -526,15 +528,15 @@ const UnitStatus = ({
         title="Seller / Commission"
         description="Assigned seller details and the saved commission distribution for this sale."
         icon={FiBriefcase}
-        action={!readOnly && canRecalculateCommission && (unitData.hasClientProfile || unitData.rawStatus === 'sold') ? (
+        action={!readOnly && canAdjustCommission && (unitData.hasClientProfile || unitData.rawStatus === 'sold') ? (
           <button
             type="button"
             onClick={() => setShowRecalculateModal(true)}
-            disabled={isRecalculatingCommission}
+            disabled={isAdjustingCommission}
             className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 text-sm font-black text-blue-700 transition hover:border-blue-300 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
           >
-            <FiRefreshCw className={`h-4 w-4 ${isRecalculatingCommission ? 'animate-spin' : ''}`} />
-            {isRecalculatingCommission ? 'Recalculating...' : 'Recalculate Commission'}
+            <FiRefreshCw className={`h-4 w-4 ${isAdjustingCommission ? 'animate-spin' : ''}`} />
+            {isAdjustingCommission ? 'Applying...' : 'Adjust Commission'}
           </button>
         ) : null}
       >
@@ -619,13 +621,15 @@ const UnitStatus = ({
         />
       ) : null}
 
-      {!readOnly && canRecalculateCommission && showRecalculateModal ? (
+      {!readOnly && canAdjustCommission && showRecalculateModal ? (
         <RecalculateCommissionModal
           listing={unitData}
-          commissionState={unitData.commissionRecalculation || {}}
-          isSaving={isRecalculatingCommission}
+          commissionState={unitData.commissionAdjustment || unitData.commissionRecalculation || {}}
+          isRequestingCode={isRequestingCommissionCode}
+          isSaving={isAdjustingCommission}
           onClose={() => setShowRecalculateModal(false)}
-          onConfirm={onRecalculateCommission}
+          onRequestCode={onRequestCommissionAdjustmentCode}
+          onConfirm={onAdjustCommission}
         />
       ) : null}
     </div>
@@ -633,4 +637,5 @@ const UnitStatus = ({
 }
 
 export default UnitStatus
+
 

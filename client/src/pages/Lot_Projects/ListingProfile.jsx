@@ -31,7 +31,7 @@ import BuyerFormLinkModal from '../../components/Lot_Projects/ListingProfileComp
 import BuyerFormStatusBanner from '../../components/Lot_Projects/ListingProfileComponents/BuyerForm/BuyerFormStatusBanner'
 import {useFetch, useFetchPatch, useFetchPost, useFetchPut, getDoubleCheckNotice} from '../../utils/useFetch'
 import useCurrentUser from '../../utils/useCurrentUser'
-import { hasPermission, isFullAccessAdministrator, PERMISSIONS } from '../../config/permissions'
+import { hasPermission, PERMISSIONS } from '../../config/permissions'
 
 const money = (value) =>
   new Intl.NumberFormat('en-PH', {
@@ -113,7 +113,7 @@ const ListingProfile = () => {
   const queryClient = useQueryClient()
   const { projectSlug, listingId, accountId } = useParams()
   const { data: currentUserData } = useCurrentUser()
-  const canRecalculateCommission = isFullAccessAdministrator(currentUserData?.user)
+  const canAdjustCommission = currentUserData?.user?.role === 'super_admin'
   const canCorrectReservation = hasPermission(currentUserData?.user, PERMISSIONS.LOT_RESERVATION_CORRECT)
   const isAccountRoute = Boolean(accountId)
   const profileKey = ['lot-listing-profile', projectSlug, listingId, accountId || 'current']
@@ -258,24 +258,32 @@ const ListingProfile = () => {
   })
 
 
-  // Rebuilds only unreleased commission rows using the seller's current hierarchy.
-  const recalculateCommissionMutation = useMutation({
+  const requestCommissionAdjustmentCodeMutation = useMutation({
     mutationFn: (payload) =>
       useFetchPost(
-        `/projects/lot-projects/${projectSlug}/listings/${listingId}/recalculate-commission`,
+        `/projects/lot-projects/${projectSlug}/listings/${listingId}/commission-adjustment-code`,
+        payload,
+        { confirmationHandled: 'compact' }
+      ),
+  })
+
+  const adjustCommissionMutation = useMutation({
+    mutationFn: (payload) =>
+      useFetchPost(
+        `/projects/lot-projects/${projectSlug}/listings/${listingId}/adjust-commission`,
         payload,
         { confirmationHandled: 'compact' }
       ),
     onMutate: () => {
       setAlert({
         type: 'loading',
-        message: `Recalculating the commission hierarchy for ${listing.unit_id || listing.unitCode || 'this unit'}...`,
+        message: `Applying the unit commission adjustment for ${listing.unit_id || listing.unitCode || 'this unit'}...`,
       })
     },
     onSuccess: (result) => {
       setAlert({
         type: 'success',
-        message: result?.message || 'Commission hierarchy recalculated successfully.',
+        message: result?.message || 'Unit commission adjusted successfully.',
       })
       queryClient.invalidateQueries({ queryKey: ['lot-listing-profile', projectSlug, listingId] })
       queryClient.invalidateQueries({ queryKey: ['lot-buyer-form-state', projectSlug, listingId] })
@@ -285,7 +293,7 @@ const ListingProfile = () => {
     onError: (error) => {
       setAlert({
         type: 'error',
-        message: error?.message || 'Failed to recalculate the unit commission.',
+        message: error?.message || 'Failed to adjust the unit commission.',
       })
     },
   })
@@ -840,12 +848,14 @@ const ListingProfile = () => {
           libraryDocuments={documentLibrary}
           projectDefaultDocuments={project.defaultDocuments || []}
           onSave={(payload) => updateListingMutation.mutateAsync(payload)}
-          canRecalculateCommission={canRecalculateCommission}
-          onRecalculateCommission={(payload) => recalculateCommissionMutation.mutateAsync(payload)}
+          canAdjustCommission={canAdjustCommission}
+          onRequestCommissionAdjustmentCode={(payload) => requestCommissionAdjustmentCodeMutation.mutateAsync(payload)}
+          onAdjustCommission={(payload) => adjustCommissionMutation.mutateAsync(payload)}
           canCorrectReservation={canCorrectReservation}
           onCorrectReservation={() => setShowReservationCorrectionModal(true)}
           isSaving={updateListingMutation.isPending}
-          isRecalculatingCommission={recalculateCommissionMutation.isPending}
+          isRequestingCommissionCode={requestCommissionAdjustmentCodeMutation.isPending}
+          isAdjustingCommission={adjustCommissionMutation.isPending}
           readOnly={readOnly}
         />
       ) : null}
@@ -998,3 +1008,5 @@ const ListingProfile = () => {
 }
 
 export default ListingProfile
+
+
