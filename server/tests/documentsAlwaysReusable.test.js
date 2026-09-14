@@ -48,3 +48,4 @@ test('migration normalizes any historical non-reusable documents to reusable', (
   assert.match(source, /UPDATE documents[\s\S]*document_is_reusable = 1/)
   assert.match(source, /MODIFY COLUMN document_is_reusable TINYINT\(1\) NOT NULL DEFAULT 1/)
 })
+

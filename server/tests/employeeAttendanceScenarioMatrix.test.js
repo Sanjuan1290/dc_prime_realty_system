@@ -261,3 +261,4 @@ test('Automatic Time Out only closes open attendance records and labels source a
   assert.match(job, /attendance_event_id IS NULL/)
   assert.match(job, /a\.actual_time_in <= \?/)
 })
+

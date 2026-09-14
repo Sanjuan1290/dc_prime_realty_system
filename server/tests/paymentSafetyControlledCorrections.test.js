@@ -99,8 +99,13 @@ test('cancelled payments no longer block simple unit correction but verified pay
   assert.match(source, /Use Controlled Unit Correction with Super Admin password and email verification/);
 });
 
-test('controlled unit correction preserves payment facts, retargets the account payment rows, and replays verified payments', () => {
+test('controlled unit correction preserves payment facts, protected account files, and replays verified payments', () => {
   assert.match(reservationController, /Controlled Unit Correction can only be completed by an exact Super Admin/);
+  assert.match(reservationController, /reconcileAccountProtectedStorage/);
+  assert.match(reservationController, /retargetAccountProtectedFileMetadata/);
+  assert.doesNotMatch(reservationController, /Uploaded buyer documents exist\. Unit-specific files must not be silently moved/);
+  assert.match(reservationController, /Legacy buyer document files must be migrated to protected account storage/);
+  assert.match(reservationController, /signed payment acknowledgement already exists/i);
   assert.match(reservationController, /verifyAndConsumeSensitiveAction/);
   assert.match(reservationController, /UPDATE lot_project_payments[\s\S]*SET lot_project_listing_id = \?[\s\S]*WHERE lot_project_account_id = \?/);
   assert.match(reservationController, /rebuildListingPaymentAllocationsChronologically/);
@@ -176,3 +181,4 @@ test('sensitive verification hashes bind the code and exact proposed payload', (
     else process.env.DESTRUCTIVE_ACTION_CODE_SECRET = oldSecret;
   }
 });
+

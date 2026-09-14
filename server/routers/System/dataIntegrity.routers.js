@@ -16,3 +16,4 @@ router.get('/summary', requirePermission(PERMISSIONS.SYSTEM_DATA_INTEGRITY_VIEW)
 router.get('/accounts/:accountId', requirePermission(PERMISSIONS.SYSTEM_DATA_INTEGRITY_VIEW), getDataIntegrityAccount);
 
 export default router;
+

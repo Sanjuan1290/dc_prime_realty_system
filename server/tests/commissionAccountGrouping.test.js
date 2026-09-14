@@ -96,3 +96,4 @@ test('commission page and modal expose one-row accounts and seller selector', as
   assert.match(controllerSource, /return every commission recipient for the/);
   assert.match(controllerSource, /searchCommission\.lot_project_listing_id = c\.lot_project_listing_id/);
 });
+

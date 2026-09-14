@@ -52,3 +52,4 @@ test('account history is not silently treated as an explicitly historical entry'
   assert.match(integrity, /isHistorical:\s*accountContext\.isHistoricalEntry/);
   assert.match(integrity, /isAccountHistory:\s*accountContext\.isAccountHistory/);
 });
+

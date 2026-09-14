@@ -55,21 +55,23 @@ Normal listing deletion cannot bypass this flow. A listing can only be deleted w
 
 The client no longer uses an unsigned upload preset. Upload parameters are signed by the server and files use Cloudinary's `authenticated` delivery type.
 
-Folder format for new protected uploads:
+Folder format for new protected uploads is account-owned and does not contain a Listing/Unit folder:
 
 ```text
-{root}/protected/{project_storage_code}/{listing_storage_code}/{account_reference}/documents/{document_code}/files
-{root}/protected/{project_storage_code}/{listing_storage_code}/{account_reference}/payments/{payment_storage_code}/proofs
+{root}/protected/{project_storage_code}/accounts/{account_reference}/documents/{document_code}/files
+{root}/protected/{project_storage_code}/accounts/{account_reference}/payments/{payment_storage_code}/proofs
+{root}/protected/{project_storage_code}/accounts/{account_reference}/payments/{payment_storage_code}/acknowledgement/signed
+{root}/protected/{project_storage_code}/accounts/{account_reference}/commission-receipts/{receipt_code}/signed
 ```
 
 Examples:
 
 ```text
-dc_prime/protected/PRJ-LA-001/LST-000042/ACC-2026-000018/documents/DOC-ITB/files
-dc_prime/protected/PRJ-LA-001/LST-000042/ACC-2026-000018/payments/PAY-2026-000061/proofs
+dc_prime/protected/PRJ-2/accounts/ACC-2026-000018/documents/DOC-ITB/files
+dc_prime/protected/PRJ-2/accounts/ACC-2026-000018/payments/PAY-2026-000061/proofs
 ```
 
-The storage codes are permanent once created. Project names, Unit IDs, buyer names, and document display names may change without moving the protected Cloudinary folders. Document codes are chosen when a Document Library item is created and are locked afterward.
+Project storage codes, account references, payment storage codes, and document codes are permanent identities. Changing a Unit ID (for example `PE-0106` to `PE-0106-A`) or correcting the buyer account to another listing does not rename the protected account folder. Existing V3 `PRJ/LST/ACC` protected assets can be reconciled with the dry-run-first `npm run migrate:cloudinary-account-storage` script.
 
 Canonical stored file names remain readable in Cloudinary while the original upload filename is retained separately in the database, for example:
 
@@ -252,3 +254,4 @@ Apply `server/migrations/20260906_department_employee_barcodes.sql` on upgraded 
 - Import validation uses a 120-second client timeout; import/revert uses 180 seconds.
 - Cloudflare Pages API proxy timeout increased from 80 seconds to 190 seconds for bulk operations.
 - Listing import backend returns import-specific error codes and logs the underlying server-side error for diagnosis.
+

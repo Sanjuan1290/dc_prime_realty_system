@@ -78,3 +78,4 @@ test('live in-house reservation chains reject skipped positions and require a gr
     seller(4, 'division_manager', { is_group_head: true }),
   ], { requireGroupHead: true }), true);
 });
+

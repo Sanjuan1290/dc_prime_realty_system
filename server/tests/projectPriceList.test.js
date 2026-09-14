@@ -76,3 +76,4 @@ test('project unit price list matches the inventory sheet columns and straight-p
   assert.doesNotMatch(printSource, /const availableListings = listings\.filter/);
   assert.match(printSource, /colSpan=\{13\}/);
 });
+

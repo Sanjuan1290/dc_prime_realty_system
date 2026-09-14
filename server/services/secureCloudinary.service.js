@@ -2,7 +2,6 @@ import crypto from 'node:crypto';
 import { v2 as cloudinary } from 'cloudinary';
 import {
   createReadableCloudinaryPublicId,
-  createListingStorageCode,
   createProjectStorageCode,
   normalizeDocumentCode,
   sanitizeStorageCodePart,
@@ -470,85 +469,74 @@ export const getCloudinaryMalwareScanState = (asset = {}) => {
   };
 };
 
-export const buildBuyerDocumentFolder = ({
+// Protected V4 storage is account-owned. Listing IDs and Unit IDs are intentionally
+// excluded from physical Cloudinary folders because a buyer account may be corrected
+// to another listing while remaining the same legal/financial account. The database
+// remains responsible for the account's current listing relationship.
+export const buildAccountProtectedRoot = ({
   projectStorageCode,
   projectId,
   projectLocationCode,
-  listingStorageCode,
-  listingId,
   accountReference,
-  documentCode,
-  documentId,
 }) => {
   const root = sanitizeCloudinarySegment(process.env.CLOUDINARY_UPLOAD_FOLDER || 'dc_prime', 'dc_prime');
   const project = sanitizeStorageCodePart(
     projectStorageCode || createProjectStorageCode(projectId, projectLocationCode),
     'PRJ-PROJECT-000'
   );
-  const listing = sanitizeStorageCodePart(
-    listingStorageCode || createListingStorageCode(listingId),
-    'LST-000000'
-  );
   const account = sanitizeStorageCodePart(accountReference, 'ACC-UNKNOWN');
+  return `${root}/protected/${project}/accounts/${account}`;
+};
+
+export const buildBuyerDocumentFolder = ({
+  projectStorageCode,
+  projectId,
+  projectLocationCode,
+  accountReference,
+  documentCode,
+  documentId,
+}) => {
+  const accountRoot = buildAccountProtectedRoot({ projectStorageCode, projectId, projectLocationCode, accountReference });
   const document = normalizeDocumentCode(documentCode) || `DOC-${String(Number(documentId || 0)).padStart(6, '0')}`;
-  return `${root}/protected/${project}/${listing}/${account}/documents/${document}/files`;
+  return `${accountRoot}/documents/${document}/files`;
 };
 
 export const buildPaymentProofFolder = ({
   projectStorageCode,
   projectId,
   projectLocationCode,
-  listingStorageCode,
-  listingId,
   accountReference,
   paymentStorageCode,
   paymentId,
 }) => {
-  const root = sanitizeCloudinarySegment(process.env.CLOUDINARY_UPLOAD_FOLDER || 'dc_prime', 'dc_prime');
-  const project = sanitizeStorageCodePart(
-    projectStorageCode || createProjectStorageCode(projectId, projectLocationCode),
-    'PRJ-PROJECT-000'
-  );
-  const listing = sanitizeStorageCodePart(
-    listingStorageCode || createListingStorageCode(listingId),
-    'LST-000000'
-  );
-  const account = sanitizeStorageCodePart(accountReference, 'ACC-UNKNOWN');
+  const accountRoot = buildAccountProtectedRoot({ projectStorageCode, projectId, projectLocationCode, accountReference });
   const payment = sanitizeStorageCodePart(paymentStorageCode || `PAY-${String(Number(paymentId || 0)).padStart(6, '0')}`, 'PAY-UNKNOWN');
-  return `${root}/protected/${project}/${listing}/${account}/payments/${payment}/proofs`;
+  return `${accountRoot}/payments/${payment}/proofs`;
 };
 
 export const buildCommissionReceiptSignedCopyFolder = ({
   projectStorageCode,
   projectId,
-  listingStorageCode,
-  listingId,
+  projectLocationCode,
   accountReference,
   receiptId,
 }) => {
-  const root = sanitizeCloudinarySegment(process.env.CLOUDINARY_UPLOAD_FOLDER || 'dc_prime', 'dc_prime');
-  const project = sanitizeStorageCodePart(projectStorageCode || createProjectStorageCode(projectId), 'PRJ-0');
-  const listing = sanitizeStorageCodePart(listingStorageCode || createListingStorageCode(listingId), 'LST-0');
-  const account = sanitizeStorageCodePart(accountReference, 'ACC-UNKNOWN');
+  const accountRoot = buildAccountProtectedRoot({ projectStorageCode, projectId, projectLocationCode, accountReference });
   const receipt = sanitizeStorageCodePart(`POI-${String(Number(receiptId || 0)).padStart(6, '0')}`, 'POI-UNKNOWN');
-  return `${root}/protected/${project}/${listing}/${account}/commission-receipts/${receipt}/signed`;
+  return `${accountRoot}/commission-receipts/${receipt}/signed`;
 };
 
 export const buildPaymentAcknowledgementSignedCopyFolder = ({
   projectStorageCode,
   projectId,
-  listingStorageCode,
-  listingId,
+  projectLocationCode,
   accountReference,
   paymentStorageCode,
   paymentId,
 }) => {
-  const root = sanitizeCloudinarySegment(process.env.CLOUDINARY_UPLOAD_FOLDER || 'dc_prime', 'dc_prime');
-  const project = sanitizeStorageCodePart(projectStorageCode || createProjectStorageCode(projectId), 'PRJ-0');
-  const listing = sanitizeStorageCodePart(listingStorageCode || createListingStorageCode(listingId), 'LST-0');
-  const account = sanitizeStorageCodePart(accountReference, 'ACC-UNKNOWN');
+  const accountRoot = buildAccountProtectedRoot({ projectStorageCode, projectId, projectLocationCode, accountReference });
   const payment = sanitizeStorageCodePart(paymentStorageCode || `PAY-${String(Number(paymentId || 0)).padStart(6, '0')}`, 'PAY-UNKNOWN');
-  return `${root}/protected/${project}/${listing}/${account}/payments/${payment}/acknowledgement/signed`;
+  return `${accountRoot}/payments/${payment}/acknowledgement/signed`;
 };
 
 export const createAuthenticatedUploadSignature = ({
@@ -797,6 +785,55 @@ export const sendAuthenticatedAssetContent = async (res, {
   return res.status(200).send(buffer);
 };
 
+export const moveAuthenticatedAssetFolder = async ({
+  publicId,
+  resourceType = 'image',
+  deliveryType = 'authenticated',
+  currentFolder = '',
+  targetFolder,
+  dryRun = false,
+}) => {
+  configureSecureCloudinary();
+  const safePublicId = clean(publicId);
+  const safeResourceType = ['image', 'raw', 'video'].includes(clean(resourceType)) ? clean(resourceType) : 'image';
+  const safeDeliveryType = clean(deliveryType) || 'authenticated';
+  const safeTargetFolder = clean(targetFolder);
+  if (!safePublicId || !safeTargetFolder) {
+    const error = new Error('Protected asset public ID and target folder are required.');
+    error.statusCode = 400;
+    throw error;
+  }
+  if (safeDeliveryType !== 'authenticated') {
+    const error = new Error('Only authenticated protected assets can be moved into canonical account storage.');
+    error.statusCode = 409;
+    throw error;
+  }
+
+  const existing = await cloudinary.api.resource(safePublicId, {
+    resource_type: safeResourceType,
+    type: 'authenticated',
+  });
+  const actualFolder = clean(existing.asset_folder || existing.folder || currentFolder);
+  if (actualFolder === safeTargetFolder) {
+    return { moved: false, fromFolder: actualFolder, toFolder: safeTargetFolder, asset: existing };
+  }
+  if (dryRun) {
+    return { moved: true, dryRun: true, fromFolder: actualFolder, toFolder: safeTargetFolder, asset: existing };
+  }
+
+  await cloudinary.uploader.explicit(safePublicId, {
+    resource_type: safeResourceType,
+    type: 'authenticated',
+    asset_folder: safeTargetFolder,
+  });
+  const verified = await verifyAuthenticatedCloudinaryAsset({
+    publicId: safePublicId,
+    resourceType: safeResourceType,
+    expectedFolder: safeTargetFolder,
+  });
+  return { moved: true, fromFolder: actualFolder, toFolder: safeTargetFolder, asset: verified };
+};
+
 export const destroyCloudinaryAsset = async ({ publicId, resourceType = 'image', deliveryType = 'authenticated' }) => {
   configureSecureCloudinary();
   return cloudinary.uploader.destroy(clean(publicId), {
@@ -855,3 +892,4 @@ export const destroyCloudinaryAssets = async (assets = []) => {
 };
 
 export const DOCUMENT_UPLOAD_LIMIT_BYTES = MAX_DOCUMENT_BYTES;
+

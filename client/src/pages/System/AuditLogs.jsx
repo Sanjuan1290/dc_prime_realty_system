@@ -70,6 +70,49 @@ const downloadArchiveExport = async (exportUrl, fallbackFilename) => {
   URL.revokeObjectURL(objectUrl)
 }
 
+const formatIsoDate = ({ year, month, day }) => `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+
+const manilaToday = () => {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Manila',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date())
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]))
+  return `${values.year}-${values.month}-${values.day}`
+}
+
+const shiftIsoDate = (value, days) => {
+  const [year, month, day] = String(value || '').split('-').map(Number)
+  if (!year || !month || !day) return ''
+  const date = new Date(Date.UTC(year, month - 1, day))
+  date.setUTCDate(date.getUTCDate() + days)
+  return formatIsoDate({
+    year: date.getUTCFullYear(),
+    month: date.getUTCMonth() + 1,
+    day: date.getUTCDate(),
+  })
+}
+
+const resolveAuditDateRange = (range, customFrom = '', customTo = '') => {
+  if (range === 'custom') return { from: customFrom, to: customTo }
+  if (range === 'all') return { from: '', to: '' }
+
+  const today = manilaToday()
+  if (range === 'today') return { from: today, to: today }
+  if (range === 'yesterday') {
+    const yesterday = shiftIsoDate(today, -1)
+    return { from: yesterday, to: yesterday }
+  }
+
+  const [year, month] = today.split('-')
+  if (range === 'this_month') return { from: `${year}-${month}-01`, to: today }
+  if (range === 'this_year') return { from: `${year}-01-01`, to: today }
+
+  return { from: '', to: '' }
+}
+
 const AuditLogs = () => {
   const queryClient = useQueryClient()
   const { data: currentUserData } = useCurrentUser()
@@ -77,6 +120,7 @@ const AuditLogs = () => {
   const [search, setSearch] = useState('')
   const [action, setAction] = useState('all')
   const [module, setModule] = useState('all')
+  const [dateRange, setDateRange] = useState('all')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [page, setPage] = useState(1)
@@ -88,15 +132,20 @@ const AuditLogs = () => {
 
   const isSuperAdmin = isFullAccessAdministrator(currentUserData?.user)
 
+  const resolvedDateRange = useMemo(
+    () => resolveAuditDateRange(dateRange, from, to),
+    [dateRange, from, to]
+  )
+
   const queryString = useMemo(() => {
     const params = new URLSearchParams({ page: String(page), limit: String(limit) })
     if (search.trim()) params.set('search', search.trim())
     if (action !== 'all') params.set('action', action)
     if (module !== 'all') params.set('module', module)
-    if (from) params.set('from', from)
-    if (to) params.set('to', to)
+    if (resolvedDateRange.from) params.set('from', resolvedDateRange.from)
+    if (resolvedDateRange.to) params.set('to', resolvedDateRange.to)
     return params.toString()
-  }, [action, from, limit, module, page, search, to])
+  }, [action, limit, module, page, resolvedDateRange, search])
 
   const { data, isLoading, isFetching, isPlaceholderData, isError, error, refetch } = useQuery({
     queryKey: ['audit-logs', queryString],
@@ -167,10 +216,22 @@ const AuditLogs = () => {
   const logs = data?.data || []
   const pagination = data?.pagination || { page, limit, total: 0, totalPages: 1 }
 
+  const changeDateRange = (nextRange) => {
+    if (nextRange === 'custom' && dateRange !== 'custom') {
+      const currentRange = resolveAuditDateRange(dateRange, from, to)
+      const fallbackDate = manilaToday()
+      setFrom(currentRange.from || fallbackDate)
+      setTo(currentRange.to || fallbackDate)
+    }
+    setDateRange(nextRange)
+    setPage(1)
+  }
+
   const resetFilters = () => {
     setSearch('')
     setAction('all')
     setModule('all')
+    setDateRange('all')
     setFrom('')
     setTo('')
     setPage(1)
@@ -260,6 +321,8 @@ const AuditLogs = () => {
         module={module}
         setModule={(value) => { setModule(value); setPage(1) }}
         modules={modules}
+        dateRange={dateRange}
+        setDateRange={changeDateRange}
         from={from}
         setFrom={(value) => { setFrom(value); setPage(1) }}
         to={to}
@@ -305,3 +368,4 @@ const AuditLogs = () => {
 }
 
 export default AuditLogs
+

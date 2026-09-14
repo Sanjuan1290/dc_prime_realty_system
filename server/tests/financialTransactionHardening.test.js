@@ -49,3 +49,4 @@ test('Batch 4 migration adds financial uniqueness guards without resetting data'
   assert.doesNotMatch(migration, /DROP DATABASE/i);
   assert.doesNotMatch(migration, /TRUNCATE TABLE/i);
 });
+

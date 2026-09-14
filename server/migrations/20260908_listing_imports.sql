@@ -70,3 +70,4 @@ CREATE TABLE IF NOT EXISTS lot_project_listing_import_rows (
     FOREIGN KEY (removed_by_user_id) REFERENCES users (id)
     ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+

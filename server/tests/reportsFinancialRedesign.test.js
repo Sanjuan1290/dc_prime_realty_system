@@ -107,3 +107,4 @@ test('commission selected-sales report omits release entry mode from screen and 
   assert.doesNotMatch(printPage, /'Mode'.*'Scheduled'.*'Actual Release'.*'Released By'/)
   assert.doesNotMatch(printPage, /titleCase\(row\.releaseEntryMode\)/)
 })
+

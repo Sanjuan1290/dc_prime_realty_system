@@ -141,3 +141,4 @@ const ReservationDoubleCheck = ({ request, onConfirm, onCancel }) => {
 }
 
 export default ReservationDoubleCheck
+

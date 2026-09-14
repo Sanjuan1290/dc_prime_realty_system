@@ -547,3 +547,4 @@ export const downloadAttendanceWorkbook = (payload, { cutoffLabel = '' } = {}) =
   XLSX.writeFile(workbook, filename, { compression: true, cellStyles: true })
   return filename
 }
+

@@ -12,11 +12,12 @@ test('Add and Edit Project include the Title Number text field', async () => {
   assert.match(modal, /titleNumber: form\.titleNumber\.trim\(\)/);
 });
 
-test('Project Details shows Title Number and hides Project ID and Document Template', async () => {
+test('Project Details shows Title Number and immutable Project Storage Code while hiding implementation IDs and templates', async () => {
   const details = await read('../../client/src/components/Lot_Projects/DashboardComponents/ProjectDetailsModal/ProjectDetailsModal.jsx');
 
   assert.match(details, /label="Title Number"/);
-  assert.match(details, /label="Cloudinary Project Folder"/);
+  assert.match(details, /label="Project Storage Code"/);
+  assert.doesNotMatch(details, /label="Cloudinary Project Folder"/);
   assert.doesNotMatch(details, /label="Project ID"/);
   assert.doesNotMatch(details, /label="Document Template"/);
 });
@@ -41,3 +42,4 @@ test('migration adds the optional lot_project_title_number column', async () => 
   assert.match(migration, /ADD COLUMN lot_project_title_number VARCHAR\(150\) NULL/);
   assert.match(migration, /information_schema\.columns/);
 });
+

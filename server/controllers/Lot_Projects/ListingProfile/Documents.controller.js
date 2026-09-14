@@ -28,7 +28,6 @@ import {
   getFileExtension,
   parseDocumentFileSequenceFromName,
   parseDocumentFileVersionFromName,
-  resolveListingStorageCode,
   resolveProjectStorageCode,
 } from '../../../services/storageCodes.service.js';
 import { resolveDocumentRequiredFlag, resolveDocumentResponsibleParty } from '../../../utils/documentRequirement.js';
@@ -398,8 +397,6 @@ export const createLotProjectDocumentUploadSignature = async (req, res) => {
       projectStorageCode: resolveProjectStorageCode(context.project),
       projectId: context.project.lot_project_id,
       projectLocationCode: context.project.lot_project_location_code,
-      listingStorageCode: resolveListingStorageCode(context.listing),
-      listingId: context.listing.lot_project_listing_id,
       accountReference: context.listing.account_reference,
       documentCode: context.document.document_code,
       documentId: context.document.document_id,
@@ -451,8 +448,6 @@ export const uploadLotProjectListingDocument = async (req, res) => {
       projectStorageCode: resolveProjectStorageCode(context.project),
       projectId: context.project.lot_project_id,
       projectLocationCode: context.project.lot_project_location_code,
-      listingStorageCode: resolveListingStorageCode(context.listing),
-      listingId: context.listing.lot_project_listing_id,
       accountReference: context.listing.account_reference,
       documentCode: context.document.document_code,
       documentId: context.document.document_id,
@@ -1127,3 +1122,4 @@ export const clearLotProjectListingDocument = async (req, res) => {
     connection.release();
   }
 };
+

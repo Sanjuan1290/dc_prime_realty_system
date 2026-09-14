@@ -16,3 +16,4 @@ export const getPublicSystemStatus = async (_req, res) => {
     })
   }
 }
+

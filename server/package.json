@@ -10,7 +10,8 @@
     "refresh-penalties": "node -e \"import('./jobs/dailyPenalty.job.js').then(({refreshDailyPenaltyCaches}) => refreshDailyPenaltyCaches().then(console.log).finally(() => process.exit()))\"",
     "migrate:cloudinary-documents": "node scripts/migrate-cloudinary-buyer-documents.js",
     "migrate:cloudinary-storage": "node scripts/migrate-cloudinary-buyer-documents.js",
-    "migrate:cloudinary-storage-ids": "node scripts/migrate-cloudinary-storage-ids-v3.js"
+    "migrate:cloudinary-storage-ids": "node scripts/migrate-cloudinary-storage-ids-v3.js",
+    "migrate:cloudinary-account-storage": "node scripts/migrate-cloudinary-account-storage-v4.js"
   },
   "keywords": [],
   "author": "",

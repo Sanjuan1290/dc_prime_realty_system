@@ -41,3 +41,4 @@ SELECT
 FROM documents
 GROUP BY document_responsible_party
 ORDER BY document_responsible_party;
+

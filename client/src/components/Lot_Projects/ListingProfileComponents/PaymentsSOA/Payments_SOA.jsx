@@ -455,6 +455,7 @@ const penaltyGraceDayOptions = Array.from({ length: 32 }, (_, index) => index)
 
 const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, onSave }) => {
   const initialDailyPenaltyRate = String(getListingValue(listing, ['soaPenaltyRatePercent'], DEFAULT_DAILY_PENALTY_RATE))
+  const [step, setStep] = useState(1)
   const [form, setForm] = useState(() => ({
     dpDiscountPercentage: String(getListingValue(listing, ['soaDpDiscountPercentage'], 0)),
     downpaymentPercentage: String(getListingValue(listing, ['soaDownpaymentPercentage'], 30)),
@@ -495,103 +496,124 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
 
   const today = todayManila()
   const listingStartingDate = String(getListingValue(listing, ['soaStartingDate', 'starting_date'], '') || '')
+  const listingInterestRate = Number(getListingValue(listing, ['annualInterestRate'], 0))
+  const hasRecordedPayments = Number(getListingValue(listing, ['payment_count'], 0)) > 0
   const firstDueMinimum = form.isHistoricalEntry
     ? (listingStartingDate || undefined)
     : listingStartingDate && listingStartingDate > today
       ? listingStartingDate
       : today
   const firstDueMaximum = form.isHistoricalEntry ? today : undefined
-
-  const submit = (event) => {
-    event.preventDefault()
-
-    const dpDiscountPercentage = Number(form.dpDiscountPercentage || 0)
-    const downpaymentPercentage = Number(form.downpaymentPercentage || 0)
-    const downpaymentTerms = Number(form.downpaymentTerms || 0)
-    const monthlyTerms = Number(form.monthlyTerms || 0)
-    const dailyPenaltyRate = Number(form.dailyPenaltyRate || 0)
-    const penaltyGraceDays = Number(form.penaltyGraceDays || 0)
-    if (dpDiscountPercentage < 0 || dpDiscountPercentage > 100) {
-      setModalAlert({ type: 'error', message: 'DP Discount % must be between 0 and 100.' })
-      return
-    }
-
-    if (downpaymentPercentage < 0 || downpaymentPercentage > 100) {
-      setModalAlert({ type: 'error', message: 'Downpayment % must be between 0 and 100.' })
-      return
-    }
-
-    if (!Number.isInteger(downpaymentTerms) || downpaymentTerms < 0) {
-      setModalAlert({ type: 'error', message: 'Downpayment terms must be zero or greater.' })
-      return
-    }
-
-    if (!Number.isInteger(monthlyTerms) || monthlyTerms < 1) {
-      setModalAlert({ type: 'error', message: 'Monthly terms must be at least 1.' })
-      return
-    }
-
-    if (!hasRecordedPayments) {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(form.firstDueDate)) {
-        setModalAlert({ type: 'error', message: 'First Due Date is required.' })
-        return
-      }
-      if (form.isHistoricalEntry) {
-        if (form.firstDueDate > today) {
-          setModalAlert({ type: 'error', message: 'Historical First Due Date cannot be after today.' })
-          return
-        }
-      } else if (form.firstDueDate < today) {
-        setModalAlert({ type: 'error', message: 'First Due Date must be today or a future date.' })
-        return
-      }
-      if (listingStartingDate && form.firstDueDate < listingStartingDate) {
-        setModalAlert({ type: 'error', message: 'First Due Date cannot be before the Starting Date.' })
-        return
-      }
-    }
-
-    const dailyPenaltyRateRaw = String(form.dailyPenaltyRate ?? '').trim()
-    if (dailyPenaltyRateRaw === '' || !Number.isFinite(dailyPenaltyRate) || dailyPenaltyRate < 0 || dailyPenaltyRate > 100) {
-      setModalAlert({ type: 'error', message: 'Daily penalty rate must be between 0 and 100.' })
-      return
-    }
-
-    if (!penaltyGraceDayOptions.includes(penaltyGraceDays)) {
-      setModalAlert({ type: 'error', message: 'Grace period must be from 0 to 31 days.' })
-      return
-    }
-    const penaltyEffectiveFrom = String(form.penaltyEffectiveFrom || '').trim()
-    if (penaltyEffectiveFrom && !/^\d{4}-\d{2}-\d{2}$/.test(penaltyEffectiveFrom)) {
-      setModalAlert({ type: 'error', message: 'Penalty Effective From must be a valid date.' })
-      return
-    }
-
-    setModalAlert({ type: 'loading', message: 'Preparing SOA terms review...' })
-    onSave({
-      dpDiscountPercentage,
-      downpaymentPercentage,
-      downpaymentTerms,
-      reservationFeeAppliedToDownpayment: form.reservationFeeTreatment === 'apply_to_downpayment',
-      reservationFeeTreatment: form.reservationFeeTreatment,
-      monthlyTerms,
-      interestRateSource: 'listing',
-      firstDueDate: form.firstDueDate || null,
-      isHistoricalEntry: Boolean(form.isHistoricalEntry),
-      dailyPenaltyRate,
-      penaltyGraceDays,
-      penaltyEffectiveFrom: penaltyEffectiveFrom || null,
-    })
-  }
-
-  const listingInterestRate = Number(getListingValue(listing, ['annualInterestRate'], 0))
-  const hasRecordedPayments = Number(getListingValue(listing, ['payment_count'], 0)) > 0
   const selectedPenaltyRateOption = penaltyRateMode === 'custom'
     ? 'custom'
     : String(Number(form.dailyPenaltyRate))
   const isCustomPenaltyRate = penaltyRateMode === 'custom'
 
-  const Field = ({ label, value, onChange, type = 'number', placeholder = '', example = '', helper, disabled = false, min, max, step }) => (
+  const validatePaymentTerms = () => {
+    const dpDiscountPercentage = Number(form.dpDiscountPercentage || 0)
+    const downpaymentPercentage = Number(form.downpaymentPercentage || 0)
+    const downpaymentTerms = Number(form.downpaymentTerms || 0)
+    const monthlyTerms = Number(form.monthlyTerms || 0)
+
+    if (dpDiscountPercentage < 0 || dpDiscountPercentage > 100) {
+      setModalAlert({ type: 'error', message: 'DP Discount % must be between 0 and 100.' })
+      return null
+    }
+    if (downpaymentPercentage < 0 || downpaymentPercentage > 100) {
+      setModalAlert({ type: 'error', message: 'Downpayment % must be between 0 and 100.' })
+      return null
+    }
+    if (!Number.isInteger(downpaymentTerms) || downpaymentTerms < 0) {
+      setModalAlert({ type: 'error', message: 'Downpayment terms must be zero or greater.' })
+      return null
+    }
+    if (!Number.isInteger(monthlyTerms) || monthlyTerms < 1) {
+      setModalAlert({ type: 'error', message: 'Monthly terms must be at least 1.' })
+      return null
+    }
+
+    return { dpDiscountPercentage, downpaymentPercentage, downpaymentTerms, monthlyTerms }
+  }
+
+  const validateScheduleAndPenalty = () => {
+    if (!hasRecordedPayments) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(form.firstDueDate)) {
+        setModalAlert({ type: 'error', message: 'First Due Date is required.' })
+        return null
+      }
+      if (form.isHistoricalEntry) {
+        if (form.firstDueDate > today) {
+          setModalAlert({ type: 'error', message: 'Historical First Due Date cannot be after today.' })
+          return null
+        }
+      } else if (form.firstDueDate < today) {
+        setModalAlert({ type: 'error', message: 'First Due Date must be today or a future date.' })
+        return null
+      }
+      if (listingStartingDate && form.firstDueDate < listingStartingDate) {
+        setModalAlert({ type: 'error', message: 'First Due Date cannot be before the Starting Date.' })
+        return null
+      }
+    }
+
+    const dailyPenaltyRateRaw = String(form.dailyPenaltyRate ?? '').trim()
+    const dailyPenaltyRate = Number(form.dailyPenaltyRate || 0)
+    const penaltyGraceDays = Number(form.penaltyGraceDays || 0)
+    if (dailyPenaltyRateRaw === '' || !Number.isFinite(dailyPenaltyRate) || dailyPenaltyRate < 0 || dailyPenaltyRate > 100) {
+      setModalAlert({ type: 'error', message: 'Daily penalty rate must be between 0 and 100.' })
+      return null
+    }
+    if (!penaltyGraceDayOptions.includes(penaltyGraceDays)) {
+      setModalAlert({ type: 'error', message: 'Grace period must be from 0 to 31 days.' })
+      return null
+    }
+    const penaltyEffectiveFrom = String(form.penaltyEffectiveFrom || '').trim()
+    if (penaltyEffectiveFrom && !/^\d{4}-\d{2}-\d{2}$/.test(penaltyEffectiveFrom)) {
+      setModalAlert({ type: 'error', message: 'Penalty Effective From must be a valid date.' })
+      return null
+    }
+
+    return { dailyPenaltyRate, penaltyGraceDays, penaltyEffectiveFrom }
+  }
+
+  const goToScheduleStep = () => {
+    if (!validatePaymentTerms()) return
+    setModalAlert(null)
+    setStep(2)
+  }
+
+  const submit = (event) => {
+    event.preventDefault()
+    if (step === 1) {
+      goToScheduleStep()
+      return
+    }
+    const paymentTerms = validatePaymentTerms()
+    if (!paymentTerms) {
+      setStep(1)
+      return
+    }
+    const scheduleTerms = validateScheduleAndPenalty()
+    if (!scheduleTerms) {
+      setStep(2)
+      return
+    }
+
+    setModalAlert({ type: 'loading', message: 'Preparing SOA terms review...' })
+    onSave({
+      ...paymentTerms,
+      reservationFeeAppliedToDownpayment: form.reservationFeeTreatment === 'apply_to_downpayment',
+      reservationFeeTreatment: form.reservationFeeTreatment,
+      interestRateSource: 'listing',
+      firstDueDate: form.firstDueDate || null,
+      isHistoricalEntry: Boolean(form.isHistoricalEntry),
+      dailyPenaltyRate: scheduleTerms.dailyPenaltyRate,
+      penaltyGraceDays: scheduleTerms.penaltyGraceDays,
+      penaltyEffectiveFrom: scheduleTerms.penaltyEffectiveFrom || null,
+    })
+  }
+
+  const Field = ({ label, value, onChange, type = 'number', placeholder = '', example = '', helper, disabled = false, min, max, step: inputStep }) => (
     <label className="flex flex-col gap-1.5">
       <span className="text-sm font-black text-slate-700">{label}</span>
       <input
@@ -601,7 +623,7 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
         placeholder={placeholder}
         min={min}
         max={max}
-        step={step}
+        step={inputStep}
         data-example={example || undefined}
         disabled={isSaving || disabled}
         className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
@@ -611,128 +633,161 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
   )
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/50 p-4">
-      <form onSubmit={submit} className="w-full max-w-3xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-          <div>
-            <h3 className="text-lg font-black text-slate-950">Edit SOA Terms</h3>
-            <p className="text-sm font-semibold text-slate-500">Update SOA terms and recompute the amortization schedule.</p>
-          </div>
-          <button type="button" onClick={onClose} disabled={isSaving} className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60" aria-label="Close SOA terms modal">
-            <FiX className="h-4 w-4" />
-          </button>
-        </div>
-
-        <div className="p-5">
-          {modalAlert ? <StatusAlert type={modalAlert.type} message={modalAlert.message} onClose={modalAlert.type === 'loading' ? undefined : () => setModalAlert(null)} className="mb-4" /> : null}
-          <div className="grid gap-4 md:grid-cols-2">
-            <Field label="DP Discount %" value={form.dpDiscountPercentage} onChange={(value) => updateForm('dpDiscountPercentage', value)} placeholder="Example: 5" helper="Discount applied to the computed downpayment total." disabled={hasRecordedPayments} />
-            <Field label="Downpayment %" value={form.downpaymentPercentage} onChange={(value) => updateForm('downpaymentPercentage', value)} placeholder="Example: 30" disabled={hasRecordedPayments} />
-            <Field label="Downpayment Terms" value={form.downpaymentTerms} onChange={(value) => updateForm('downpaymentTerms', value)} placeholder="Example: 3" disabled={hasRecordedPayments} />
-            <label className="flex flex-col gap-1.5">
-              <span className="text-sm font-black text-slate-700">Reservation Fee Treatment</span>
-              <select
-                value={form.reservationFeeTreatment}
-                onChange={(event) => updateForm('reservationFeeTreatment', event.target.value)}
-                disabled={isSaving || hasRecordedPayments}
-                className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
-              >
-                <option value="separate">Separate from Downpayment</option>
-                <option value="apply_to_downpayment">Deduct Reservation Fee from Downpayment</option>
-              </select>
-              <span className="text-xs font-semibold text-slate-500">When selected, the reservation fee counts toward the required DP target.</span>
-            </label>
-            <Field label="Monthly Terms" value={form.monthlyTerms} onChange={(value) => updateForm('monthlyTerms', value)} placeholder="Example: 36" disabled={hasRecordedPayments} />
-            <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm font-semibold text-blue-900 md:col-span-2">
-              <p className="text-xs font-black uppercase tracking-wide text-blue-700">Listing Annual Interest Rate</p>
-              <p className="mt-1 text-xl font-black">{listingInterestRate.toFixed(2)}%</p>
-              <p className="mt-1 text-xs font-semibold text-blue-700">SOA interest always follows the rate set in Edit Listing. Update it there if it needs to change.</p>
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/50 p-3 sm:p-4">
+      <form onSubmit={submit} className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+        <div className="shrink-0 border-b border-slate-200 bg-white px-5 py-4">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h3 className="text-lg font-black text-slate-950">Edit SOA Terms</h3>
+              <p className="text-sm font-semibold text-slate-500">Update SOA terms and recompute the amortization schedule.</p>
             </div>
-            <label className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 md:col-span-2">
-              <input
-                type="checkbox"
-                checked={Boolean(form.isHistoricalEntry)}
-                onChange={(event) => {
-                  const checked = event.target.checked
-                  updateForm('isHistoricalEntry', checked)
-                  if (!checked && String(form.firstDueDate || '') < today) updateForm('firstDueDate', today)
-                }}  
-                disabled={isSaving || hasRecordedPayments}
-                className="mt-0.5 h-4 w-4 rounded border-blue-300 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed"
-              />
-              <span>
-                <span className="block text-sm font-black text-blue-950">Allow Backdated SOA Date</span>
-                <span className="mt-1 block text-xs font-semibold text-blue-700">
-                  Use this when encoding an account that started before today. This option is only available before any payment is recorded. There is no historical lookback limit. The First Due Date cannot be earlier than the saved Starting Date or later than today.
-                </span>
-              </span>
-            </label>
-            <Field
-              label="First Due Date"
-              type="date"
-              value={form.firstDueDate && form.firstDueDate !== '-' ? form.firstDueDate : ''}
-              onChange={(value) => updateForm('firstDueDate', value)}
-              min={firstDueMinimum}
-              max={firstDueMaximum}
-              helper={form.isHistoricalEntry ? 'Historical date cannot be before the reservation starting date or after today.' : 'Today or later, and not before the reservation starting date.'}
-              disabled={hasRecordedPayments}
-            />
-            <label className="flex flex-col gap-1.5">
-              <span className="text-sm font-black text-slate-700">Daily Penalty Rate</span>
-              <select
-                value={selectedPenaltyRateOption}
-                onChange={(event) => {
-                  const nextValue = event.target.value
-                  if (nextValue === 'custom') {
-                    setPenaltyRateMode('custom')
-                    updateForm('dailyPenaltyRate', '')
-                  } else {
-                    setPenaltyRateMode('preset')
-                    updateForm('dailyPenaltyRate', nextValue)
-                  }
-                }}
-                disabled={isSaving}
-                className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100"
-              >
-                {DAILY_PENALTY_RATE_OPTIONS.map((rate) => <option key={rate} value={rate}>{formatDailyPenaltyRateOption(rate)}</option>)}
-                <option value="custom">Custom</option>
-              </select>
-              <span className="text-xs font-semibold text-slate-500">Choose 0.01% to 0.10% per day (default 0.05%), or use Custom for another approved rate.</span>
-            </label>
-            {isCustomPenaltyRate ? (
-              <Field
-                label="Custom Daily Penalty Rate (%)"
-                value={form.dailyPenaltyRate}
-                onChange={(value) => updateForm('dailyPenaltyRate', value)}
-                placeholder="Enter 0 to 100"
-                example="0.15%"
-                helper="This rate remains editable even after payments are recorded."
-                min="0"
-                max="100"
-                step="0.01"
-              />
-            ) : null}
-            <label className="flex flex-col gap-1.5">
-              <span className="text-sm font-black text-slate-700">Penalty-Free Grace Period (Days)</span>
-              <select value={form.penaltyGraceDays} onChange={(event) => updateForm('penaltyGraceDays', event.target.value)} disabled={isSaving} className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100">
-                {penaltyGraceDayOptions.map((days) => <option key={days} value={days}>{days === 0 ? 'No grace period (0 days)' : `${days} day${days === 1 ? '' : 's'}`}</option>)}
-              </select>
-            </label>
-            <Field label="Penalty Effective From (Optional)" type="date" value={form.penaltyEffectiveFrom} onChange={(value) => updateForm('penaltyEffectiveFrom', value)} helper="No daily penalty is calculated before this date. Use this for historical accounts that existed before the penalty policy started. Leave blank to use the row due date plus grace period." />
+            <button type="button" onClick={onClose} disabled={isSaving} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60" aria-label="Close SOA terms modal">
+              <FiX className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <div className={`rounded-xl border px-3 py-2 ${step === 1 ? 'border-blue-300 bg-blue-50' : 'border-emerald-200 bg-emerald-50'}`}>
+              <p className={`text-[10px] font-black uppercase tracking-wide ${step === 1 ? 'text-blue-700' : 'text-emerald-700'}`}>Step 1</p>
+              <p className="text-sm font-black text-slate-900">Payment Terms</p>
+            </div>
+            <div className={`rounded-xl border px-3 py-2 ${step === 2 ? 'border-blue-300 bg-blue-50' : 'border-slate-200 bg-slate-50'}`}>
+              <p className={`text-[10px] font-black uppercase tracking-wide ${step === 2 ? 'text-blue-700' : 'text-slate-500'}`}>Step 2</p>
+              <p className="text-sm font-black text-slate-900">Schedule & Penalty</p>
+            </div>
           </div>
         </div>
 
-        <div className="flex justify-end gap-2 border-t border-slate-200 bg-white px-5 py-4">
+        <div className="min-h-0 flex-1 overflow-y-auto p-5">
+          {modalAlert ? <StatusAlert type={modalAlert.type} message={modalAlert.message} onClose={modalAlert.type === 'loading' ? undefined : () => setModalAlert(null)} className="mb-4" /> : null}
+
+          {step === 1 ? (
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label="DP Discount %" value={form.dpDiscountPercentage} onChange={(value) => updateForm('dpDiscountPercentage', value)} placeholder="Example: 5" helper="Discount applied to the computed downpayment total." disabled={hasRecordedPayments} />
+              <Field label="Downpayment %" value={form.downpaymentPercentage} onChange={(value) => updateForm('downpaymentPercentage', value)} placeholder="Example: 30" disabled={hasRecordedPayments} />
+              <Field label="Downpayment Terms" value={form.downpaymentTerms} onChange={(value) => updateForm('downpaymentTerms', value)} placeholder="Example: 3" disabled={hasRecordedPayments} />
+              <label className="flex flex-col gap-1.5">
+                <span className="text-sm font-black text-slate-700">Reservation Fee Treatment</span>
+                <select
+                  value={form.reservationFeeTreatment}
+                  onChange={(event) => updateForm('reservationFeeTreatment', event.target.value)}
+                  disabled={isSaving || hasRecordedPayments}
+                  className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500"
+                >
+                  <option value="separate">Separate from Downpayment</option>
+                  <option value="apply_to_downpayment">Deduct Reservation Fee from Downpayment</option>
+                </select>
+                <span className="text-xs font-semibold text-slate-500">When selected, the reservation fee counts toward the required DP target.</span>
+              </label>
+              <Field label="Monthly Terms" value={form.monthlyTerms} onChange={(value) => updateForm('monthlyTerms', value)} placeholder="Example: 36" disabled={hasRecordedPayments} />
+              <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm font-semibold text-blue-900">
+                <p className="text-xs font-black uppercase tracking-wide text-blue-700">Listing Annual Interest Rate</p>
+                <p className="mt-1 text-xl font-black">{listingInterestRate.toFixed(2)}%</p>
+                <p className="mt-1 text-xs font-semibold text-blue-700">SOA interest follows the rate set in Edit Listing. Update it there if it needs to change.</p>
+              </div>
+            </div>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 md:col-span-2">
+                <p className="text-xs font-black uppercase tracking-wide text-slate-500">Payment terms carried from Step 1</p>
+                <div className="mt-2 grid gap-2 text-sm font-bold text-slate-700 sm:grid-cols-2 lg:grid-cols-4">
+                  <span>DP: {Number(form.downpaymentPercentage || 0).toFixed(2)}%</span>
+                  <span>DP Terms: {form.downpaymentTerms || 0}</span>
+                  <span>Monthly Terms: {form.monthlyTerms || 0}</span>
+                  <span>Interest: {listingInterestRate.toFixed(2)}%</span>
+                </div>
+              </div>
+              <label className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4 md:col-span-2">
+                <input
+                  type="checkbox"
+                  checked={Boolean(form.isHistoricalEntry)}
+                  onChange={(event) => {
+                    const checked = event.target.checked
+                    updateForm('isHistoricalEntry', checked)
+                    if (!checked && String(form.firstDueDate || '') < today) updateForm('firstDueDate', today)
+                  }}
+                  disabled={isSaving || hasRecordedPayments}
+                  className="mt-0.5 h-4 w-4 rounded border-blue-300 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed"
+                />
+                <span>
+                  <span className="block text-sm font-black text-blue-950">Allow Backdated SOA Date</span>
+                  <span className="mt-1 block text-xs font-semibold text-blue-700">
+                    Use this when encoding an account that started before today. This option is only available before any payment is recorded. There is no historical lookback limit. The First Due Date cannot be earlier than the saved Starting Date or later than today.
+                  </span>
+                </span>
+              </label>
+              <Field
+                label="First Due Date"
+                type="date"
+                value={form.firstDueDate && form.firstDueDate !== '-' ? form.firstDueDate : ''}
+                onChange={(value) => updateForm('firstDueDate', value)}
+                min={firstDueMinimum}
+                max={firstDueMaximum}
+                helper={form.isHistoricalEntry ? 'Historical date cannot be before the reservation starting date or after today.' : 'Today or later, and not before the reservation starting date.'}
+                disabled={hasRecordedPayments}
+              />
+              <label className="flex flex-col gap-1.5">
+                <span className="text-sm font-black text-slate-700">Daily Penalty Rate</span>
+                <select
+                  value={selectedPenaltyRateOption}
+                  onChange={(event) => {
+                    const nextValue = event.target.value
+                    if (nextValue === 'custom') {
+                      setPenaltyRateMode('custom')
+                      updateForm('dailyPenaltyRate', '')
+                    } else {
+                      setPenaltyRateMode('preset')
+                      updateForm('dailyPenaltyRate', nextValue)
+                    }
+                  }}
+                  disabled={isSaving}
+                  className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100"
+                >
+                  {DAILY_PENALTY_RATE_OPTIONS.map((rate) => <option key={rate} value={rate}>{formatDailyPenaltyRateOption(rate)}</option>)}
+                  <option value="custom">Custom</option>
+                </select>
+                <span className="text-xs font-semibold text-slate-500">Choose 0.01% to 0.10% per day (default 0.05%), or use Custom for another approved rate.</span>
+              </label>
+              {isCustomPenaltyRate ? (
+                <Field
+                  label="Custom Daily Penalty Rate (%)"
+                  value={form.dailyPenaltyRate}
+                  onChange={(value) => updateForm('dailyPenaltyRate', value)}
+                  placeholder="Enter 0 to 100"
+                  example="0.15%"
+                  helper="This rate remains editable even after payments are recorded."
+                  min="0"
+                  max="100"
+                  step="0.01"
+                />
+              ) : null}
+              <label className="flex flex-col gap-1.5">
+                <span className="text-sm font-black text-slate-700">Penalty-Free Grace Period (Days)</span>
+                <select value={form.penaltyGraceDays} onChange={(event) => updateForm('penaltyGraceDays', event.target.value)} disabled={isSaving} className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100">
+                  {penaltyGraceDayOptions.map((days) => <option key={days} value={days}>{days === 0 ? 'No grace period (0 days)' : `${days} day${days === 1 ? '' : 's'}`}</option>)}
+                </select>
+              </label>
+              <Field label="Penalty Effective From (Optional)" type="date" value={form.penaltyEffectiveFrom} onChange={(value) => updateForm('penaltyEffectiveFrom', value)} helper="No daily penalty is calculated before this date. Use this for historical accounts that existed before the penalty policy started. Leave blank to use the row due date plus grace period." />
+            </div>
+          )}
+        </div>
+
+        <div className="shrink-0 flex flex-wrap justify-end gap-2 border-t border-slate-200 bg-white px-5 py-4">
           <button type="button" onClick={onClose} disabled={isSaving} className="h-10 rounded-lg border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">Cancel</button>
-          <button type="submit" disabled={isSaving} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300">
-            {isSaving ? 'Opening Review...' : 'Proceed to Final Review'}
-          </button>
+          {step === 2 ? (
+            <button type="button" onClick={() => { setModalAlert(null); setStep(1) }} disabled={isSaving} className="h-10 rounded-lg border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">Back</button>
+          ) : null}
+          {step === 1 ? (
+            <button type="button" onClick={goToScheduleStep} disabled={isSaving} className="h-10 rounded-lg bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300">Next: Schedule & Penalty</button>
+          ) : (
+            <button type="submit" disabled={isSaving} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300">
+              {isSaving ? 'Opening Review...' : 'Proceed to Final Review'}
+            </button>
+          )}
         </div>
       </form>
     </div>
   )
 }
-
 const PaymentsSOA = ({
   listing = {},
   soaRows = [],
@@ -1958,3 +2013,4 @@ const PaymentsSOA = ({
 }
 
 export default PaymentsSOA
+

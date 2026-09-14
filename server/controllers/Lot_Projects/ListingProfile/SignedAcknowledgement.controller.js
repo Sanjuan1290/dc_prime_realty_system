@@ -22,7 +22,6 @@ import {
   buildSignedCopyStoredFileName,
   deriveStoredFileNameFromPublicId,
   getFileExtension,
-  resolveListingStorageCode,
   resolvePaymentStorageCode,
   resolveProjectStorageCode,
 } from '../../../services/storageCodes.service.js';
@@ -209,8 +208,6 @@ export const createLotProjectPaymentAcknowledgementSignedCopyUploadSignature = a
     const folder = buildPaymentAcknowledgementSignedCopyFolder({
       projectStorageCode: resolveProjectStorageCode(context.project),
       projectId: context.project.lot_project_id,
-      listingStorageCode: resolveListingStorageCode(context.payment),
-      listingId: context.payment.lot_project_listing_id,
       accountReference: context.payment.account_reference,
       paymentStorageCode,
       paymentId: context.payment.lot_project_payment_id,
@@ -247,8 +244,6 @@ export const saveLotProjectPaymentAcknowledgementSignedCopy = async (req, res) =
     const expectedFolder = buildPaymentAcknowledgementSignedCopyFolder({
       projectStorageCode: resolveProjectStorageCode(context.project),
       projectId: context.project.lot_project_id,
-      listingStorageCode: resolveListingStorageCode(context.payment),
-      listingId: context.payment.lot_project_listing_id,
       accountReference: context.payment.account_reference,
       paymentStorageCode,
       paymentId: context.payment.lot_project_payment_id,
@@ -424,3 +419,4 @@ export const getLotProjectPaymentAcknowledgementSignedCopyContent = async (req, 
     connection.release();
   }
 };
+

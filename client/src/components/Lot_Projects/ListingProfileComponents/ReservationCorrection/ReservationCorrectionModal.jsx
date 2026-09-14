@@ -12,7 +12,7 @@ const money = (value) => new Intl.NumberFormat('en-PH', {
 
 const fieldClass = 'h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100 disabled:text-slate-500'
 
-const NumberField = ({ label, value, onChange, min = 0, max, step = '0.01', disabled = false }) => (
+const NumberField = ({ label, value, onChange, min = 0, max, step = '0.01', disabled = false, helper = '' }) => (
   <label className="block">
     <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-600">{label}</span>
     <input
@@ -25,6 +25,7 @@ const NumberField = ({ label, value, onChange, min = 0, max, step = '0.01', disa
       onChange={(event) => onChange(event.target.value)}
       className={fieldClass}
     />
+    {helper ? <span className="mt-1.5 block text-xs font-semibold text-slate-500">{helper}</span> : null}
   </label>
 )
 
@@ -133,6 +134,8 @@ const ReservationCorrectionModal = ({ open, projectSlug, listingId, onClose, onC
             oldMonthly: preview?.before?.estimatedMonthlyAmortization,
             newMonthly: preview?.after?.estimatedMonthlyAmortization,
             reason: reason.trim(),
+            protectedFileCount: Number(data.protectedFileCount || 0),
+            protectedFilesStayWithAccount: true,
             noCancellation: true,
           },
         },
@@ -164,6 +167,24 @@ const ReservationCorrectionModal = ({ open, projectSlug, listingId, onClose, onC
     ].some((value) => String(value ?? '').toLowerCase().includes(keyword)))
   }, [destinationSearch, destinations])
   const selectedDestination = destinations.find((row) => Number(row.id) === Number(destinationListingId))
+  const destinationInterestRate = Number(selectedDestination?.annualInterestRate ?? termsValue.annualInterestRate ?? 0)
+  const effectiveInterestRate = termsValue.interestRateOverridden
+    ? termsValue.annualInterestRate ?? destinationInterestRate
+    : destinationInterestRate
+  const updateInterestRate = (value) => {
+    const entered = String(value ?? '')
+    const enteredNumber = Number(entered)
+    const hasValidNumber = entered.trim() !== '' && Number.isFinite(enteredNumber)
+    const isOverride = hasValidNumber && Math.abs(enteredNumber - destinationInterestRate) > 0.000001
+    setTerms((current) => ({
+      ...(current || data.terms || {}),
+      annualInterestRate: entered,
+      interestRateOverridden: isOverride,
+    }))
+    setPreview(null)
+    setVerificationId(null)
+    setVerificationCode('')
+  }
   const busy = optionsQuery.isLoading || previewMutation.isPending || verificationMutation.isPending || correctionMutation.isPending
 
   return (
@@ -206,6 +227,9 @@ const ReservationCorrectionModal = ({ open, projectSlug, listingId, onClose, onC
                 <div>
                   <h3 className="font-black text-amber-950">Controlled Unit Correction required</h3>
                   <p className="mt-1 text-sm font-semibold text-amber-800">This buyer account has {Number(data.paymentCount || 0)} verified payment record{Number(data.paymentCount || 0) === 1 ? '' : 's'}. The payment amounts, dates, methods, references, and audit history will be preserved while the account is moved and the destination SOA is rebuilt.</p>
+                  {Number(data.protectedFileCount || 0) > 0 ? (
+                    <p className="mt-2 text-sm font-semibold text-amber-800">{Number(data.protectedFileCount || 0)} account-owned protected file{Number(data.protectedFileCount || 0) === 1 ? '' : 's'} (buyer documents / payment proofs) will stay with this buyer account. Legacy listing-scoped Cloudinary folders are automatically reconciled to the account-owned folder before the correction is saved.</p>
+                  ) : null}
                   <p className="mt-2 text-xs font-black text-amber-900">Requires exact Super Admin password + email verification code.</p>
                 </div>
               </div>
@@ -289,13 +313,15 @@ const ReservationCorrectionModal = ({ open, projectSlug, listingId, onClose, onC
                       <option value="separate_soa_row">Separate SOA Row</option>
                     </select>
                   </label>
-                  <label className="flex min-h-11 items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3">
-                    <input type="checkbox" checked={Boolean(termsValue.interestRateOverridden)} onChange={(event) => updateTerm('interestRateOverridden', event.target.checked)} className="h-4 w-4" />
-                    <span className="text-sm font-black text-slate-700">Keep custom interest rate</span>
-                  </label>
-                  {termsValue.interestRateOverridden ? (
-                    <NumberField label="Annual Interest (%)" max={100} value={termsValue.annualInterestRate ?? 0} onChange={(value) => updateTerm('annualInterestRate', value)} />
-                  ) : null}
+                  <NumberField
+                    label="Annual Interest Rate (%)"
+                    max={100}
+                    value={effectiveInterestRate}
+                    onChange={updateInterestRate}
+                    helper={selectedDestination
+                      ? `Destination listing default: ${destinationInterestRate.toFixed(2)}%. Enter a different rate only when this buyer should keep a unit-specific interest-rate override.`
+                      : 'Select the correct unit first. The destination listing interest rate will be used by default.'}
+                  />
                 </div>
                 <button
                   type="button"
@@ -399,3 +425,4 @@ const ReservationCorrectionModal = ({ open, projectSlug, listingId, onClose, onC
 }
 
 export default ReservationCorrectionModal
+

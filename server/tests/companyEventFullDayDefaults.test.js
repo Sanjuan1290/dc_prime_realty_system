@@ -28,3 +28,4 @@ test('Server enforces Full Day Present event times from Attendance Settings even
   const runtimeCalls = controller.match(/await getAttendanceRuntimeSettings\([\s\S]*?connection[\s\S]*?\);/g) || []
   assert.ok(runtimeCalls.length >= 2, 'create and update event handlers should load Attendance Settings')
 })
+

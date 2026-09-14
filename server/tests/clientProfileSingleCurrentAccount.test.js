@@ -26,3 +26,4 @@ test('editing a buyer profile updates the current account profile and never inse
   assert.doesNotMatch(updateFunction, /INSERT INTO lot_project_client_profiles/);
   assert.doesNotMatch(updateFunction, /ON DUPLICATE KEY UPDATE/);
 });
+

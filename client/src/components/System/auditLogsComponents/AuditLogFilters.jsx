@@ -15,6 +15,15 @@ const actionOptions = [
   { label: 'System', value: 'system' },
 ]
 
+const dateRangeOptions = [
+  { label: 'All Time', value: 'all' },
+  { label: 'Today', value: 'today' },
+  { label: 'Yesterday', value: 'yesterday' },
+  { label: 'This Month', value: 'this_month' },
+  { label: 'This Year', value: 'this_year' },
+  { label: 'Custom', value: 'custom' },
+]
+
 const AuditLogFilters = ({
   search,
   setSearch,
@@ -23,6 +32,8 @@ const AuditLogFilters = ({
   module,
   setModule,
   modules = [],
+  dateRange,
+  setDateRange,
   from,
   setFrom,
   to,
@@ -31,9 +42,14 @@ const AuditLogFilters = ({
   onRefresh,
   isFetching,
 }) => {
+  const isCustomRange = dateRange === 'custom'
+  const gridColumns = isCustomRange
+    ? 'xl:grid-cols-[minmax(260px,1fr)_170px_170px_160px_150px_150px_auto_auto]'
+    : 'xl:grid-cols-[minmax(300px,1fr)_180px_180px_180px_auto_auto]'
+
   return (
     <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="grid gap-3 xl:grid-cols-[1fr_180px_180px_150px_150px_auto_auto]">
+      <div className={`grid items-end gap-3 ${gridColumns}`}>
         <label className="relative">
           <FiSearch className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
@@ -60,6 +76,7 @@ const AuditLogFilters = ({
         <select
           value={module}
           onChange={(event) => setModule(event.target.value)}
+          aria-label="Audit module"
           className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
         >
           <option value="all">All Modules</option>
@@ -68,21 +85,47 @@ const AuditLogFilters = ({
           ))}
         </select>
 
-        <input
-          type="date"
-          value={from}
-          onChange={(event) => setFrom(event.target.value)}
-          aria-label="From date"
-          className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
-        />
+        <label className="grid gap-1">
+          <span className="px-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">Date Range</span>
+          <select
+            value={dateRange}
+            onChange={(event) => setDateRange(event.target.value)}
+            aria-label="Audit date range"
+            className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
+          >
+            {dateRangeOptions.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </label>
 
-        <input
-          type="date"
-          value={to}
-          onChange={(event) => setTo(event.target.value)}
-          aria-label="To date"
-          className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
-        />
+        {isCustomRange ? (
+          <label className="grid gap-1">
+            <span className="px-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">From Date</span>
+            <input
+              type="date"
+              value={from}
+              max={to || undefined}
+              onChange={(event) => setFrom(event.target.value)}
+              aria-label="From date"
+              className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
+            />
+          </label>
+        ) : null}
+
+        {isCustomRange ? (
+          <label className="grid gap-1">
+            <span className="px-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">To Date</span>
+            <input
+              type="date"
+              value={to}
+              min={from || undefined}
+              onChange={(event) => setTo(event.target.value)}
+              aria-label="To date"
+              className="h-11 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
+            />
+          </label>
+        ) : null}
 
         <button
           type="button"
@@ -107,3 +150,4 @@ const AuditLogFilters = ({
 }
 
 export default AuditLogFilters
+

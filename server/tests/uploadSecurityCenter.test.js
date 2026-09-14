@@ -102,3 +102,4 @@ test('deleted payment proofs stop pending security polling and stale not-found c
   assert.match(paymentProof, /removeUploadByAccessPath,/);
   assert.match(paymentProof, /removeUploadByAccessPath\(proof\.accessPath \|\| `\$\{basePath\}\/\$\{proof\.proofId\}\/access-url`\)/);
 });
+

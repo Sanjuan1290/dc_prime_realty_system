@@ -24,7 +24,6 @@ import {
   deriveStoredFileNameFromPublicId,
   getFileExtension,
   parsePaymentProofSequenceFromName,
-  resolveListingStorageCode,
   resolvePaymentStorageCode,
   resolveProjectStorageCode,
 } from '../../../services/storageCodes.service.js';
@@ -246,8 +245,6 @@ export const createLotProjectPaymentProofUploadSignature = async (req, res) => {
       projectStorageCode: resolveProjectStorageCode(context.project),
       projectId: context.project.lot_project_id,
       projectLocationCode: context.project.lot_project_location_code,
-      listingStorageCode: resolveListingStorageCode(context.payment),
-      listingId: context.payment.lot_project_listing_id,
       accountReference: context.payment.account_reference || `ACC-${String(Number(context.payment.lot_project_account_id || 0)).padStart(6, '0')}`,
       paymentStorageCode,
       paymentId: context.payment.lot_project_payment_id,
@@ -307,8 +304,6 @@ export const saveLotProjectPaymentProofs = async (req, res) => {
       projectStorageCode: resolveProjectStorageCode(context.project),
       projectId: context.project.lot_project_id,
       projectLocationCode: context.project.lot_project_location_code,
-      listingStorageCode: resolveListingStorageCode(context.payment),
-      listingId: context.payment.lot_project_listing_id,
       accountReference: context.payment.account_reference || `ACC-${String(Number(context.payment.lot_project_account_id || 0)).padStart(6, '0')}`,
       paymentStorageCode,
       paymentId: context.payment.lot_project_payment_id,
@@ -621,3 +616,4 @@ export const deleteLotProjectPaymentProof = async (req, res) => {
     connection.release();
   }
 };
+

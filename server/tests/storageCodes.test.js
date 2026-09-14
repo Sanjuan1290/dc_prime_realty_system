@@ -62,12 +62,13 @@ test('canonical filenames stay readable while Cloudinary public IDs remain colli
   assert.equal(deriveStoredFileNameFromPublicId(publicId, 'jpg'), documentName);
 });
 
-test('new Cloudinary hierarchy uses project, listing, account and document/payment codes without buyer names or unit names', () => {
+test('protected Cloudinary hierarchy is account-owned and independent of listing or Unit ID', () => {
   const cloudinary = read('server/services/secureCloudinary.service.js');
-  assert.match(cloudinary, /`\$\{root\}\/protected\/\$\{project\}\/\$\{listing\}\/\$\{account\}\/documents\/\$\{document\}\/files`/);
-  assert.match(cloudinary, /`\$\{root\}\/protected\/\$\{project\}\/\$\{listing\}\/\$\{account\}\/payments\/\$\{payment\}\/proofs`/);
-  assert.doesNotMatch(cloudinary, /buyerName/);
-  assert.doesNotMatch(cloudinary, /unitId/);
+  assert.match(cloudinary, /`\$\{root\}\/protected\/\$\{project\}\/accounts\/\$\{account\}`/);
+  assert.match(cloudinary, /`\$\{accountRoot\}\/documents\/\$\{document\}\/files`/);
+  assert.match(cloudinary, /`\$\{accountRoot\}\/payments\/\$\{payment\}\/proofs`/);
+  const folderWindow = cloudinary.slice(cloudinary.indexOf('export const buildAccountProtectedRoot'), cloudinary.indexOf('export const createAuthenticatedUploadSignature'));
+  assert.doesNotMatch(folderWindow, /listingStorageCode|listingId|unitId|buyerName/);
 });
 
 test('Document Library exposes a permanent Document Code below Document Name and locks it after creation', () => {
@@ -126,12 +127,14 @@ test('storage-id v3 migration is dry-run first and updates database codes only a
   assert.match(script, /UPDATE lot_project_listings[\s\S]*lot_project_listing_storage_code = CONCAT\('LST-', lot_project_listing_id\)/i);
 });
 
-test('project and listing screens expose Cloudinary folder references beside human-readable identity', () => {
+test('project and listing screens distinguish storage codes from the account-owned protected folder', () => {
   const projectDetails = read('client/src/components/Lot_Projects/DashboardComponents/ProjectDetailsModal/ProjectDetailsModal.jsx');
   const unitStatus = read('client/src/components/Lot_Projects/ListingProfileComponents/UnitStatus/UnitStatus.jsx');
-  assert.match(projectDetails, /Cloudinary Project Folder/);
-  assert.match(unitStatus, /Cloudinary Project Folder/);
-  assert.match(unitStatus, /Cloudinary Listing Folder/);
-  assert.match(unitStatus, /Current Account Folder/);
+  assert.match(projectDetails, /Project Storage Code/);
+  assert.match(unitStatus, /Project Storage Code/);
+  assert.match(unitStatus, /Listing Storage Code/);
+  assert.match(unitStatus, /Protected Account Folder/);
+  assert.match(unitStatus, /\/accounts\//);
   assert.match(unitStatus, /Unit ID/);
 });
+

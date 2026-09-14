@@ -123,3 +123,4 @@ test('client document PDF separates required action from optional documents', ()
   assert.match(pdfText, /MISSING \/ OPTIONAL/);
   assert.match(pdfText, /RESUBMIT \/ OPTIONAL/);
 });
+

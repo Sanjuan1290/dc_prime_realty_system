@@ -20,6 +20,10 @@ import { writeAuditLog } from '../../System/auditLogs.controller.js'
 import { sendEmail } from '../../../services/email.service.js'
 import { syncCommissionProgressForListing } from '../../../services/commissionProgress.service.js'
 import {
+  reconcileAccountProtectedStorage,
+  retargetAccountProtectedFileMetadata,
+} from '../../../services/accountProtectedStorage.service.js'
+import {
   createSensitiveActionVerification,
   getSensitiveActionRequestIp,
   maskSensitiveActionEmail,
@@ -234,7 +238,12 @@ const getCorrectionSafety = async (connection, bundle) => {
     cancelledPaymentCount = Number(rows[0]?.cancelled_total || 0)
   }
 
+  // Buyer documents and payment proofs are account-owned protected files. They no
+  // longer block a unit correction: their immutable file/payment IDs remain the
+  // same and V4 Cloudinary storage is reconciled to PRJ/.../accounts/ACC-... .
   let uploadedFileCount = 0
+  let buyerDocumentFileCount = 0
+  let paymentProofFileCount = 0
   if (await tableExists(connection, 'lot_project_client_document_files')) {
     const [rows] = await connection.query(
       `SELECT COUNT(*) AS total
@@ -242,19 +251,56 @@ const getCorrectionSafety = async (connection, bundle) => {
        WHERE lot_project_account_id = ? AND file_status <> 'removed'`,
       [accountId]
     )
-    uploadedFileCount += Number(rows[0]?.total || 0)
+    buyerDocumentFileCount = Number(rows[0]?.total || 0)
+    uploadedFileCount += buyerDocumentFileCount
   }
-  if (await tableExists(connection, 'lot_project_client_documents')) {
+  if (await tableExists(connection, 'lot_project_payment_proofs')) {
     const [rows] = await connection.query(
       `SELECT COUNT(*) AS total
-       FROM lot_project_client_documents
-       WHERE lot_project_client_profile_id = ?
-         AND NULLIF(TRIM(COALESCE(lot_project_client_document_file_url, '')), '') IS NOT NULL`,
+       FROM lot_project_payment_proofs proof
+       INNER JOIN lot_project_payments payment
+         ON payment.lot_project_payment_id = proof.lot_project_payment_id
+       WHERE payment.lot_project_account_id = ? AND proof.proof_status = 'active'`,
+      [accountId]
+    )
+    paymentProofFileCount = Number(rows[0]?.total || 0)
+    uploadedFileCount += paymentProofFileCount
+  }
+
+  let legacyDocumentReferenceCount = 0
+  if (await tableExists(connection, 'lot_project_client_documents')) {
+    const hasCanonicalFiles = await tableExists(connection, 'lot_project_client_document_files')
+    const [rows] = await connection.query(
+      `SELECT COUNT(*) AS total
+       FROM lot_project_client_documents client_document
+       WHERE client_document.lot_project_client_profile_id = ?
+         AND NULLIF(TRIM(COALESCE(client_document.lot_project_client_document_file_url, '')), '') IS NOT NULL
+         ${hasCanonicalFiles ? `AND NOT EXISTS (
+           SELECT 1
+           FROM lot_project_client_document_files file_row
+           WHERE file_row.lot_project_client_document_id = client_document.lot_project_client_document_id
+             AND file_row.file_status <> 'removed'
+         )` : ''}`,
       [profileId]
     )
-    uploadedFileCount += Number(rows[0]?.total || 0)
+    legacyDocumentReferenceCount = Number(rows[0]?.total || 0)
+    if (legacyDocumentReferenceCount > 0) hardReasons.push('Legacy buyer document files must be migrated to protected account storage before correcting the unit.')
   }
-  if (uploadedFileCount > 0) hardReasons.push('Uploaded buyer documents exist. Unit-specific files must not be silently moved.')
+
+  // Signed acknowledgement copies can visibly contain the old Unit ID. They are
+  // official signed artifacts and must be superseded/reissued rather than silently
+  // retargeted by Administrative Reservation Correction.
+  let signedAcknowledgementCount = 0
+  if (await tableExists(connection, 'lot_project_payment_acknowledgement_files')) {
+    const [rows] = await connection.query(
+      `SELECT COUNT(*) AS total
+       FROM lot_project_payment_acknowledgement_files
+       WHERE lot_project_account_id = ? AND file_status = 'active'`,
+      [accountId]
+    )
+    signedAcknowledgementCount = Number(rows[0]?.total || 0)
+    if (signedAcknowledgementCount > 0) hardReasons.push('A signed payment acknowledgement already exists. Supersede or remove the active signed copy before correcting the unit.')
+  }
 
   let releasedCommissionCount = 0
   if ((await tableExists(connection, 'lot_project_commission_releases')) && (await tableExists(connection, 'lot_project_commissions'))) {
@@ -312,6 +358,10 @@ const getCorrectionSafety = async (connection, bundle) => {
     paymentCount,
     cancelledPaymentCount,
     uploadedFileCount,
+    buyerDocumentFileCount,
+    paymentProofFileCount,
+    legacyDocumentReferenceCount,
+    signedAcknowledgementCount,
     releasedCommissionCount,
   }
 }
@@ -555,6 +605,9 @@ export const getReservationCorrectionOptions = async (req, res) => {
         correctionMode: safety.controlledEligible ? 'controlled' : safety.eligible ? 'simple' : 'blocked',
         paymentCount: safety.paymentCount,
         cancelledPaymentCount: safety.cancelledPaymentCount,
+        protectedFileCount: safety.uploadedFileCount,
+        buyerDocumentFileCount: safety.buyerDocumentFileCount,
+        paymentProofFileCount: safety.paymentProofFileCount,
         blockers: safety.reasons,
         hardBlockers: safety.hardReasons,
         source: {
@@ -761,11 +814,21 @@ export const correctReservationUnit = async (req, res) => {
       )
     }
 
-    // Rebuild the buyer document checklist. Uploaded files are forbidden by the
-    // safety gate; therefore deleting these checklist rows cannot lose a file.
+    // Generic buyer documents belong to the buyer account, not to the mistaken
+    // unit. Preserve their checklist/file rows and retarget the operational listing
+    // metadata. Destination requirements are merged below without deleting uploads.
     if (await tableExists(connection, 'lot_project_client_documents')) {
-      await connection.query(`DELETE FROM lot_project_client_documents WHERE lot_project_client_profile_id = ?`, [profileId])
+      await connection.query(
+        `UPDATE lot_project_client_documents SET lot_project_listing_id = ? WHERE lot_project_client_profile_id = ?`,
+        [destinationId, profileId]
+      )
     }
+
+    // Rehome any legacy listing-scoped protected files into the account-owned V4
+    // Cloudinary tree before changing the account's listing. Public/file IDs and
+    // upload history remain unchanged. This is idempotent, so a retry can repair
+    // stale folder metadata if a later database step fails.
+    const protectedStorage = await reconcileAccountProtectedStorage(connection, { accountId })
 
     // Move the canonical current account/profile/history to the correct unit.
     await connection.query(
@@ -905,6 +968,10 @@ export const correctReservationUnit = async (req, res) => {
         [destinationId, accountId]
       )
     }
+    const protectedFileMetadata = await retargetAccountProtectedFileMetadata(connection, {
+      accountId,
+      destinationListingId: destinationId,
+    })
 
     // Rebuild all unit-dependent derived state from destination pricing while
     // carrying the admin-selected terms and original buyer identity.
@@ -1005,6 +1072,9 @@ export const correctReservationUnit = async (req, res) => {
         buyerProfileId: profileId,
         correctionMode: safety.controlledEligible ? 'controlled' : 'simple',
         verifiedPaymentCount: safety.paymentCount,
+        protectedFileCount: safety.uploadedFileCount,
+        protectedStorage,
+        protectedFileMetadata,
         verificationId: correctionAuthorization?.verificationId || null,
         before,
         after,
@@ -1035,3 +1105,4 @@ export const correctReservationUnit = async (req, res) => {
     connection.release()
   }
 }
+

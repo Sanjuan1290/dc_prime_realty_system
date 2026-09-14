@@ -63,3 +63,4 @@ test('attendance export uses saved settings by default but still allows temporar
   assert.doesNotMatch(workbook, /remark: 'RD OT'/)
   assert.match(workbook, /\[h\]:mm:ss/)
 })
+

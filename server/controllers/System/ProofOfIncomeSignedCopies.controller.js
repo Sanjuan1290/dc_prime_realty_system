@@ -22,7 +22,6 @@ import {
   buildSignedCopyStoredFileName,
   deriveStoredFileNameFromPublicId,
   getFileExtension,
-  resolveListingStorageCode,
   resolveProjectStorageCode,
 } from '../../services/storageCodes.service.js';
 
@@ -227,8 +226,6 @@ export const createAccreditedSellerProofOfIncomeSignedCopyUploadSignature = asyn
     const folder = buildCommissionReceiptSignedCopyFolder({
       projectStorageCode: resolveProjectStorageCode(context.receipt),
       projectId: context.receipt.lot_project_id,
-      listingStorageCode: resolveListingStorageCode(context.receipt),
-      listingId: context.receipt.lot_project_listing_id,
       accountReference: context.receipt.account_reference,
       receiptId,
     });
@@ -266,8 +263,6 @@ export const saveAccreditedSellerProofOfIncomeSignedCopy = async (req, res) => {
     const expectedFolder = buildCommissionReceiptSignedCopyFolder({
       projectStorageCode: resolveProjectStorageCode(context.receipt),
       projectId: context.receipt.lot_project_id,
-      listingStorageCode: resolveListingStorageCode(context.receipt),
-      listingId: context.receipt.lot_project_listing_id,
       accountReference: context.receipt.account_reference,
       receiptId,
     });
@@ -546,3 +541,4 @@ export const deleteAccreditedSellerProofOfIncomeSignedCopy = async (req, res) =>
     connection.release();
   }
 };
+

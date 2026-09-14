@@ -24,3 +24,4 @@ test('migration protects active and archived audit tables with database triggers
   assert.match(migration, /Archived audit records are append-only/);
   assert.match(migration, /Audit archive events are append-only/);
 });
+
