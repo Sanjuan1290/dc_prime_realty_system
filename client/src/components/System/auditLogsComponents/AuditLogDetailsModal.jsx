@@ -22,6 +22,86 @@ const formatAttendanceTime = (value) => {
   return `${displayHour}:${minute}${second !== '00' ? `:${second}` : ''} ${suffix}`
 }
 
+
+const dayOfMonth = (value) => {
+  const number = Number(value || 0)
+  if (!Number.isInteger(number) || number < 1 || number > 31) return value || 'Not provided'
+  const suffix = [11, 12, 13].includes(number % 100)
+    ? 'th'
+    : number % 10 === 1
+      ? 'st'
+      : number % 10 === 2
+        ? 'nd'
+        : number % 10 === 3
+          ? 'rd'
+          : 'th'
+  return `${number}${suffix} of the month`
+}
+
+const titleCase = (value) => String(value || '')
+  .replace(/[_-]+/g, ' ')
+  .replace(/\b\w/g, (letter) => letter.toUpperCase())
+
+const sameAuditValue = (left, right) => String(left ?? '') === String(right ?? '')
+
+const formatAuditValue = (value, formatter) => {
+  if (formatter) return formatter(value)
+  if (value === null || value === undefined || value === '') return 'Not provided'
+  return String(value)
+}
+
+const settingsChangeDefinitions = {
+  'System Settings': [
+    { key: 'companyName', label: 'Company Name' },
+    { key: 'companyTin', label: 'Company TIN' },
+    { key: 'companyEmail', label: 'Company Email' },
+    { key: 'companyContactNumber', label: 'Company Contact Number' },
+    { key: 'companyAddress', label: 'Company Address' },
+    { key: 'reservationContactName', label: 'Reservation Contact Name' },
+    { key: 'reservationContactEmail', label: 'Reservation Contact Email' },
+    { key: 'reservationContactNumber', label: 'Reservation Contact Number' },
+    { key: 'defaultReleaseDayOne', label: 'Default Release Day 1', formatter: dayOfMonth },
+    { key: 'defaultReleaseDayTwo', label: 'Default Release Day 2', formatter: dayOfMonth },
+    { key: 'systemStatus', label: 'System Status', formatter: titleCase },
+    { key: 'maintenanceMessage', label: 'Maintenance Message' },
+  ],
+  'Project Settings': [
+    { key: 'releaseDayOne', label: 'First Release Day', formatter: dayOfMonth },
+    { key: 'releaseDayTwo', label: 'Second Release Day', formatter: dayOfMonth },
+    { key: 'reservationContactName', label: 'Reservation Contact Name' },
+    { key: 'reservationContactEmail', label: 'Reservation Contact Email' },
+    { key: 'reservationContactNumber', label: 'Reservation Contact Number' },
+    { key: 'companyName', label: 'Company Name' },
+    { key: 'companyEmail', label: 'Company Email' },
+    { key: 'companyContactNumber', label: 'Company Contact Number' },
+  ],
+}
+
+const getSettingsChanges = (log = {}) => {
+  const definitions = settingsChangeDefinitions[log.module] || []
+  const before = log.metadata?.before
+  const after = log.metadata?.after
+  if (!definitions.length || !before || !after || typeof before !== 'object' || typeof after !== 'object') return []
+
+  return definitions.flatMap(({ key, label, formatter }) => {
+    if (sameAuditValue(before[key], after[key])) return []
+    return [{
+      key,
+      label,
+      before: formatAuditValue(before[key], formatter),
+      after: formatAuditValue(after[key], formatter),
+    }]
+  })
+}
+
+const getAuthorizationLabel = (verificationMethod) => (
+  verificationMethod === 'super_admin_password_email_code'
+    ? 'Super Admin password + email verification'
+    : verificationMethod
+      ? titleCase(verificationMethod)
+      : '-'
+)
+
 const DetailRow = ({ label, value }) => (
   <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
     <p className="text-xs font-black uppercase tracking-wide text-slate-500">{label}</p>
@@ -44,6 +124,9 @@ const AuditLogDetailsModal = ({ log, onClose }) => {
     || log.entityLabel
   const attendanceEmployeeCode = log.metadata?.employeeCode || entityParts[0] || '-'
   const attendanceDate = log.metadata?.attendanceDate || entityParts[1] || ''
+  const settingsChanges = getSettingsChanges(log)
+  const isSettingsAudit = Boolean(settingsChangeDefinitions[log.module])
+  const settingsAuthorization = getAuthorizationLabel(log.metadata?.verificationMethod)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
@@ -119,6 +202,50 @@ const AuditLogDetailsModal = ({ log, onClose }) => {
               <p className="mt-1 whitespace-pre-wrap text-sm font-bold leading-relaxed text-amber-950">{log.metadata.reason}</p>
             </div>
           ) : null}
+
+
+          {isSettingsAudit ? (
+            <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-wide text-blue-700">Settings Changes</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-600">Only values changed by this protected settings update are shown.</p>
+                </div>
+                <span className="mt-2 inline-flex w-fit rounded-full border border-blue-200 bg-white px-3 py-1 text-xs font-black text-blue-700 sm:mt-0">
+                  {settingsChanges.length} change{settingsChanges.length === 1 ? '' : 's'}
+                </span>
+              </div>
+
+              {settingsChanges.length ? (
+                <div className="mt-4 grid gap-3">
+                  {settingsChanges.map((change) => (
+                    <div key={change.key} className="rounded-2xl border border-blue-100 bg-white p-4">
+                      <p className="text-xs font-black uppercase tracking-wide text-slate-500">{change.label}</p>
+                      <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto_1fr] md:items-center">
+                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                          <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">Before</p>
+                          <p className="mt-1 break-words text-sm font-bold text-slate-800">{change.before}</p>
+                        </div>
+                        <span className="hidden text-lg font-black text-blue-500 md:block" aria-hidden="true">→</span>
+                        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                          <p className="text-[10px] font-black uppercase tracking-wide text-emerald-700">After</p>
+                          <p className="mt-1 break-words text-sm font-black text-emerald-950">{change.after}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-4 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-600">No changed settings values were recorded.</p>
+              )}
+
+              <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                <p className="text-xs font-black uppercase tracking-wide text-amber-700">Authorization</p>
+                <p className="mt-1 text-sm font-black text-amber-950">{settingsAuthorization}</p>
+                <p className="mt-1 text-xs font-semibold leading-5 text-amber-800">Verification secrets and email codes are never displayed in Audit Logs.</p>
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
@@ -126,4 +253,3 @@ const AuditLogDetailsModal = ({ log, onClose }) => {
 }
 
 export default AuditLogDetailsModal
-

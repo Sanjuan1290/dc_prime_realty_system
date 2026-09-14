@@ -53,6 +53,7 @@ test('System and Lot Project Settings require exact Super Admin password plus em
   const projectPage = read('client/src/pages/Lot_Projects/Settings.jsx');
   const authorizationModal = read('client/src/components/Shared/SettingsAuthorizationModal.jsx');
   const settingsReview = read('client/src/components/Shared/DoubleCheckComponents/SettingsDoubleCheck.jsx');
+  const auditDetails = read('client/src/components/System/auditLogsComponents/AuditLogDetailsModal.jsx');
 
   assert.match(systemRouter, /post\('\/code'[\s\S]*requireExactRole\('super_admin'\)[\s\S]*requireCurrentPassword/);
   assert.match(projectRouter, /settings\/code'[\s\S]*requireExactRole\('super_admin'\)[\s\S]*requireCurrentPassword/);
@@ -69,6 +70,11 @@ test('System and Lot Project Settings require exact Super Admin password plus em
   assert.match(settingsReview, /Reason for Change/);
   assert.match(settingsReview, /— Before/);
   assert.match(settingsReview, /— After/);
+  assert.match(auditDetails, /Settings Changes/);
+  assert.match(auditDetails, />Before</);
+  assert.match(auditDetails, />After</);
+  assert.match(auditDetails, /Super Admin password \+ email verification/);
+  assert.match(auditDetails, /Verification secrets and email codes are never displayed in Audit Logs/);
 });
 
 test('Owner-only operational controls stay visible but disabled for Admin', () => {
