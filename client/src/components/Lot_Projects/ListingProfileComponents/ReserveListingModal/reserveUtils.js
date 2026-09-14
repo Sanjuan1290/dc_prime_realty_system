@@ -202,8 +202,14 @@ export const getPaymentCalculations = (tcp, paymentForm) => {
   const dpGross = roundMoney(Math.max(dpTarget - reservationFeeDownpaymentCredit, 0))
   const dpNet = roundMoney(Math.max(discountedDpTarget - reservationFeeDownpaymentCredit, 0))
   const downpaymentCredit = roundMoney(dpNet + dpDiscountAmount)
+  // Reservation fee treatment changes the installment DP cash requirement, not
+  // a second principal reduction. For installment accounts the financed balance
+  // is therefore TCP principal less the scheduled DP principal (dpGross).
+  // Cash accounts still deduct the reservation from the remaining cash balance.
   const balance = roundMoney(Math.max(
-    principalBase - reservationFee - downpaymentCredit,
+    isCash
+      ? principalBase - reservationFee
+      : principalBase - dpGross,
     0
   ))
   const monthlyAmortization = !isCash
@@ -246,3 +252,4 @@ export const getPaymentCalculations = (tcp, paymentForm) => {
     },
   }
 }
+

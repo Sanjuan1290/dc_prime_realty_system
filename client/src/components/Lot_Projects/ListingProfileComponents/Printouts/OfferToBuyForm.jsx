@@ -174,7 +174,7 @@ const OfferToBuyForm = ({ listing = {}, client = {}, soaRows = [] }) => {
   const tcp = cleanMoney(getValue(listing, ['tcpAmount', 'tcp'], 0))
   const reservationFee = getRowAmount(rows, 'reservation') || cleanMoney(getValue(listing, ['reservationFee'], 0))
   const downpayment = getRowAmount(rows, 'downpayment') || cleanMoney(getValue(listing, ['downpayment'], 0))
-  const balance = cleanMoney(getValue(listing, ['balanceAmount', 'balance'], Math.max(tcp - reservationFee - downpayment, 0)))
+  const balance = cleanMoney(getValue(listing, ['balanceAmount', 'balance'], Math.max(tcp - downpayment, 0)))
   const monthly = cleanMoney(getValue(listing, ['monthlyAmortization'], getMonthlyAmount(rows)))
 
   const buyerType = valueFrom(client, ['buyerType'], 'single')
@@ -631,3 +631,4 @@ const OfferToBuyForm = ({ listing = {}, client = {}, soaRows = [] }) => {
 }
 
 export default OfferToBuyForm
+

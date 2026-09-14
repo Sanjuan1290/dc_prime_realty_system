@@ -2358,7 +2358,18 @@ export const getComputedSoaTerms = (listingRow = {}, existingScheduleRows = []) 
 
   const annualInterestRate = getEffectiveSoaInterestRate(listingRow);
   const interestRateSource = Number(listingRow.soa_interest_rate_overridden || 0) === 1 ? 'custom' : 'listing';
-  const financedBalance = roundMoneyValue(Math.max(principalTcp - reservationFee - downpaymentGrossTotal, 0));
+  const modeOfPayment = String(listingRow.soa_mode_of_payment || listingRow.mode_of_payment || 'installment').toLowerCase();
+  // For installment accounts the reservation fee is either separate from the DP
+  // or credited against the DP cash requirement. It must not also be deducted a
+  // second time from the financed principal. downpaymentGrossTotal already
+  // represents the principal scheduled through the DP rows after any reservation
+  // credit. Cash accounts continue to use reservation as a payment toward cash due.
+  const financedBalance = roundMoneyValue(Math.max(
+    modeOfPayment === 'cash'
+      ? principalTcp - reservationFee
+      : principalTcp - downpaymentGrossTotal,
+    0
+  ));
   const monthlyPrincipal = roundMoneyValue(monthlyTerms > 0 ? financedBalance / monthlyTerms : financedBalance);
   const monthlyAmortization = getMonthlyAmortizationAmount(financedBalance, annualInterestRate, monthlyTerms);
 
@@ -2389,7 +2400,7 @@ export const getComputedSoaTerms = (listingRow = {}, existingScheduleRows = []) 
     financedBalance,
     startingDate,
     firstDueDate,
-    modeOfPayment: listingRow.soa_mode_of_payment || listingRow.mode_of_payment || 'installment',
+    modeOfPayment,
   };
 };
 
@@ -2406,7 +2417,13 @@ export const createComputedSoaRows = (terms = {}) => {
       description: 'Reservation Fee',
       beginningBalance: terms.tcp,
       dueAmount: terms.reservationFee,
-      principalAmount: terms.reservationFee,
+      // Installment reservation fees are tracked as cash obligations but do not
+      // directly reduce lot principal. If applied to DP, their effect is already
+      // reflected by the smaller DP schedule. Cash sales still treat reservation
+      // as principal paid toward the remaining cash balance.
+      principalAmount: String(terms.modeOfPayment || '').toLowerCase() === 'cash'
+        ? terms.reservationFee
+        : 0,
       interest: 0,
       penalty: 0,
       datePaid: '-',
@@ -4455,3 +4472,4 @@ export const addIfColumnExists = async (connection, tableName, columns, values, 
 };
 
 // End of lotProject.shared.js — verified complete.
+
