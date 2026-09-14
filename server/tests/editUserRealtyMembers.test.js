@@ -49,4 +49,3 @@ test('In-House member payload includes editable user fields', () => {
     assert.match(sellerGroupController, new RegExp(field.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
   }
 })
-

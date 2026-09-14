@@ -49,4 +49,3 @@ const BuyerFormStatusBanner = ({ submission, onReview, onReject, isSaving = fals
 }
 
 export default BuyerFormStatusBanner
-

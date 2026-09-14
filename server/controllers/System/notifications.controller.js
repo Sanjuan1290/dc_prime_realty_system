@@ -1534,4 +1534,3 @@ export const getDocumentNotifications = async (req, res) => {
     connection.release();
   }
 };
-

@@ -1127,4 +1127,3 @@ export const clearLotProjectListingDocument = async (req, res) => {
     connection.release();
   }
 };
-

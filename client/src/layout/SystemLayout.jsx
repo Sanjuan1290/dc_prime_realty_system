@@ -417,5 +417,3 @@ const SystemLayout = () => {
 };
 
 export default SystemLayout;
-
-

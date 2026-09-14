@@ -21,4 +21,3 @@ const SectionHeading = ({ eyebrow, title, description, align = 'left', light = f
 }
 
 export default SectionHeading
-

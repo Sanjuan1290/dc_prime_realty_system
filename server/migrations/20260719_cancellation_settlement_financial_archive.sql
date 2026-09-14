@@ -116,4 +116,3 @@ CREATE TABLE IF NOT EXISTS lot_project_archived_commission_releases (
   CONSTRAINT fk_archived_commission_sale_archive FOREIGN KEY (lot_project_cancelled_sale_archive_id)
     REFERENCES lot_project_cancelled_sale_archives (lot_project_cancelled_sale_archive_id) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-

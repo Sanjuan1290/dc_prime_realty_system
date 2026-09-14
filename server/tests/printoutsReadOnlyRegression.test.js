@@ -26,4 +26,3 @@ test('current buyer account does not become read-only merely because an account 
     /<Printouts[\s\S]*account=\{account\}[\s\S]*readOnly=\{readOnly\}/
   )
 })
-

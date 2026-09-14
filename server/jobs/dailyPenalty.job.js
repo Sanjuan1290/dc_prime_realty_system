@@ -298,4 +298,3 @@ export const startDailyPenaltyScheduler = () => {
     getNextRunAt: getNextDailyPenaltyRunAt,
   };
 };
-

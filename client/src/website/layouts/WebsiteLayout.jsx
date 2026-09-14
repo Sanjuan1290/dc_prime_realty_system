@@ -32,4 +32,3 @@ const WebsiteLayout = () => {
 }
 
 export default WebsiteLayout
-

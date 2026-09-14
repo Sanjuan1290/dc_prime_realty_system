@@ -18,4 +18,3 @@ test('listing import Excel template preserves Unit ID leading zeroes as text', (
   assert.match(source, /leading zeroes are preserved/)
   assert.match(source, /enter 0101/)
 })
-

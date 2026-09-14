@@ -50,4 +50,3 @@ test('server-generated frontend links include the portal prefix', () => {
   assert.match(users, /const loginUrl = appUrl \? `\$\{appUrl\}\/portal` : '\/portal'/);
   assert.match(users, /must_change_password = 1/);
 });
-

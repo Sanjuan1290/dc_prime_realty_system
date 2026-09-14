@@ -154,4 +154,3 @@ const DeleteAccountRecordsModal = ({ projectSlug, account, onClose, onDeleted })
 }
 
 export default DeleteAccountRecordsModal
-

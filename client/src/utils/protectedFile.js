@@ -29,4 +29,3 @@ export const openProtectedObjectUrl = (url, { revokeAfterMs = 60_000 } = {}) => 
   window.setTimeout(() => revokeProtectedObjectUrl(url), revokeAfterMs)
   return opened
 }
-

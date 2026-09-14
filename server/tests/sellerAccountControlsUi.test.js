@@ -22,4 +22,3 @@ test('credential regeneration is offered only for Admin and Super Admin rows', a
   assert.match(source, /Generate & Send Credentials/);
   assert.match(source, /\{canResetUserPassword\(user\) \? <button[\s\S]*Credentials/);
 });
-

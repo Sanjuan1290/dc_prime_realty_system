@@ -60,6 +60,7 @@ import {
   getRemainingUnpaidScheduleBalance,
   getBalloonPrincipalCapacity,
   rebuildListingPaymentAllocationsChronologically,
+  hasCrossTypePaymentAllocations,
   normalizePaymentMethod,
   getNextCashReference,
   mapPaymentRow,
@@ -801,6 +802,9 @@ export const createLotProjectListingPayment = async (req, res) => {
       // Lock the full active SOA set in one stable order before reading balances.
       const hasSchedules = await tableExists(connection, 'lot_project_payment_schedules');
       if (hasSchedules) await lockPaymentSchedulesForListing(connection, listing);
+      const allowCrossTypeOverflow = hasSchedules
+        ? await hasCrossTypePaymentAllocations(connection, listing)
+        : false;
       let paymentPenaltyWaiverAmount = 0;
 
       const existingRequest = await getPaymentByRequestKey(connection, requestKey);
@@ -957,7 +961,7 @@ export const createLotProjectListingPayment = async (req, res) => {
       );
 
       if (hasSchedules) {
-        await rebuildListingPaymentAllocationsChronologically(connection, listing, { finalAsOfDate: todayDateOnly() });
+        await rebuildListingPaymentAllocationsChronologically(connection, listing, { finalAsOfDate: todayDateOnly(), allowCrossTypeOverflow, relinkPrimarySchedule: true });
       }
 
       await syncCommissionProgressForListing(connection, listing);
@@ -1027,6 +1031,9 @@ export const updateLotProjectListingPayment = async (req, res) => {
 
       const hasSchedules = await tableExists(connection, 'lot_project_payment_schedules');
       if (hasSchedules) await lockPaymentSchedulesForListing(connection, listing);
+      const allowCrossTypeOverflow = hasSchedules
+        ? await hasCrossTypePaymentAllocations(connection, listing)
+        : false;
 
       const existingPayment = await getPaymentById(connection, project, listing, paymentId, { forUpdate: true });
       if (!existingPayment) throw createHttpError(404, 'Payment not found.');
@@ -1194,7 +1201,7 @@ export const updateLotProjectListingPayment = async (req, res) => {
       );
 
       if (hasSchedules) {
-        await rebuildListingPaymentAllocationsChronologically(connection, listing, { finalAsOfDate: todayDateOnly() });
+        await rebuildListingPaymentAllocationsChronologically(connection, listing, { finalAsOfDate: todayDateOnly(), allowCrossTypeOverflow, relinkPrimarySchedule: true });
       }
 
       await syncCommissionProgressForListing(connection, listing);
@@ -1877,6 +1884,9 @@ export const deleteLotProjectListingPayment = async (req, res) => {
 
       const hasSchedules = await tableExists(connection, 'lot_project_payment_schedules');
       if (hasSchedules) await lockPaymentSchedulesForListing(connection, listing);
+      const allowCrossTypeOverflow = hasSchedules
+        ? await hasCrossTypePaymentAllocations(connection, listing)
+        : false;
 
       const existingPayment = await getPaymentById(connection, project, listing, paymentId, { forUpdate: true });
       if (!existingPayment) throw createHttpError(404, 'Payment not found.');
@@ -1918,7 +1928,7 @@ export const deleteLotProjectListingPayment = async (req, res) => {
       }
 
       if (hasSchedules) {
-        await rebuildListingPaymentAllocationsChronologically(connection, listing, { finalAsOfDate: todayDateOnly() });
+        await rebuildListingPaymentAllocationsChronologically(connection, listing, { finalAsOfDate: todayDateOnly(), allowCrossTypeOverflow, relinkPrimarySchedule: true });
       }
 
       await syncCommissionProgressForListing(connection, listing);
@@ -2613,6 +2623,3 @@ export const restorePaymentSchedulePenaltyWaiver = async (req, res) => {
     connection.release();
   }
 };
-
-
-

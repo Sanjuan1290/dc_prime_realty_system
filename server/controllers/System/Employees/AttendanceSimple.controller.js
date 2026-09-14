@@ -2798,4 +2798,3 @@ export const getAttendanceCorrections = async (req, res) => {
     connection.release();
   }
 };
-

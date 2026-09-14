@@ -75,4 +75,3 @@ export const calculateCommissionPaymentProgress = ({
     paymentComplete: paymentPercent >= 100 || remainingBalance <= 0.009,
   };
 };
-

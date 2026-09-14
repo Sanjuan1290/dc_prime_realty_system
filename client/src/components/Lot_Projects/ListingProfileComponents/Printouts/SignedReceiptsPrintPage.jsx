@@ -213,4 +213,3 @@ const SignedReceiptsPrintPage = () => {
 }
 
 export default SignedReceiptsPrintPage
-

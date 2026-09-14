@@ -25,4 +25,3 @@ const DocumentTemplateDoubleCheck = ({ request, onConfirm, onCancel }) => {
 }
 
 export default DocumentTemplateDoubleCheck
-

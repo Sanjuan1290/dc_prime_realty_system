@@ -216,7 +216,7 @@ const AddSOAPaymentModal = ({
         ? initialPayment.referenceId
         : '',
   })
-  const [amountManuallyEdited, setAmountManuallyEdited] = useState(Boolean(isEdit && initialPayment?.amount))
+  const [amountManuallyEdited, setAmountManuallyEdited] = useState(false)
   const [amountOverrideAcknowledged, setAmountOverrideAcknowledged] = useState(false)
   const [paymentPreview, setPaymentPreview] = useState(null)
   const [isPreviewLoading, setIsPreviewLoading] = useState(false)
@@ -368,12 +368,15 @@ const AddSOAPaymentModal = ({
   const adjustedSuggestedAmount = isPenaltyWaivedForPayment ? Math.max(suggestedAmount - automaticPenalty, 0) : suggestedAmount
   const payableAfterPenaltyHandling = isPenaltyWaivedForPayment ? Math.max(totalPayable - automaticPenalty, 0) : totalPayable
   const enteredAmount = isFullPayment ? fullPaymentAmount : cleanPaymentNumber(form.amount)
-  const amountDifference = enteredAmount - adjustedSuggestedAmount
+  const amountComparisonBaseline = isEdit
+    ? Number(initialPayment?.amount || 0)
+    : adjustedSuggestedAmount
+  const amountDifference = enteredAmount - amountComparisonBaseline
   const hasAmountOverrideWarning = Boolean(
     !isFullPayment &&
     !isBalloonPayment &&
     amountManuallyEdited &&
-    adjustedSuggestedAmount > 0 &&
+    amountComparisonBaseline > 0 &&
     Math.abs(amountDifference) > 0.009
   )
 
@@ -757,7 +760,9 @@ const AddSOAPaymentModal = ({
                   ? `Auto-filled from the complete unpaid SOA balance: ${money(fullPaymentAmount)}.`
                   : isBalloonPayment
                     ? `Direct principal reduction. Maximum available: ${money(balloonPrincipalCapacity)}. The regular monthly amount stays the same while the final monthly rows are removed.`
-                    : `Suggested amount as of ${form.paymentDate}: ${money(adjustedSuggestedAmount)}${isPenaltyWaivedForPayment ? ' after penalty waiver' : ''}`
+                    : isEdit
+                      ? `Recorded amount: ${money(Number(initialPayment?.amount || 0))}. Calculated unpaid amount for the selected SOA row as of ${form.paymentDate}: ${money(adjustedSuggestedAmount)}${isPenaltyWaivedForPayment ? ' after penalty waiver' : ''}`
+                      : `Suggested amount as of ${form.paymentDate}: ${money(adjustedSuggestedAmount)}${isPenaltyWaivedForPayment ? ' after penalty waiver' : ''}`
               }
               disabled={isFullPayment}
               required
@@ -768,10 +773,10 @@ const AddSOAPaymentModal = ({
                 <div className="flex items-start gap-3">
                   <span className="mt-0.5 text-lg">⚠</span>
                   <div className="w-full">
-                    <p className="text-sm font-black text-amber-950">Payment amount changed from the calculated amount due</p>
-                    <p className="mt-1 text-xs font-semibold text-amber-800">This can be valid for a partial payment, but verify the amount before saving.</p>
+                    <p className="text-sm font-black text-amber-950">{isEdit ? 'Payment amount changed from the recorded amount' : 'Payment amount changed from the calculated amount due'}</p>
+                    <p className="mt-1 text-xs font-semibold text-amber-800">{isEdit ? 'Review the before/after amount carefully before authorizing this correction.' : 'This can be valid for a partial payment, but verify the amount before saving.'}</p>
                     <div className="mt-3 grid gap-2 text-sm sm:grid-cols-3">
-                      <div className="rounded-xl border border-amber-200 bg-white p-3"><p className="text-[10px] font-black uppercase text-slate-500">Suggested</p><p className="mt-1 font-black text-slate-950">{money(adjustedSuggestedAmount)}</p></div>
+                      <div className="rounded-xl border border-amber-200 bg-white p-3"><p className="text-[10px] font-black uppercase text-slate-500">{isEdit ? 'Recorded' : 'Suggested'}</p><p className="mt-1 font-black text-slate-950">{money(amountComparisonBaseline)}</p></div>
                       <div className="rounded-xl border border-amber-200 bg-white p-3"><p className="text-[10px] font-black uppercase text-slate-500">Entered</p><p className="mt-1 font-black text-slate-950">{money(enteredAmount)}</p></div>
                       <div className="rounded-xl border border-amber-200 bg-white p-3"><p className="text-[10px] font-black uppercase text-slate-500">Difference</p><p className={`mt-1 font-black ${amountDifference < 0 ? 'text-amber-700' : 'text-red-700'}`}>{amountDifference > 0 ? '+' : ''}{money(amountDifference)}</p></div>
                     </div>
@@ -878,5 +883,3 @@ const AddSOAPaymentModal = ({
 }
 
 export default AddSOAPaymentModal
-
-

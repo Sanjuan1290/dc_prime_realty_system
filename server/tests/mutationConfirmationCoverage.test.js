@@ -47,4 +47,3 @@ test('direct browser mutations are limited to signed external upload URLs', () =
     assert.equal(mutation.method, 'POST')
   }
 })
-

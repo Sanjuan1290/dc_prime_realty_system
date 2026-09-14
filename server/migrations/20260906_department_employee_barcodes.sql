@@ -18,4 +18,3 @@ CREATE TABLE IF NOT EXISTS `employee_barcode_sequences` (
   PRIMARY KEY (`department`),
   KEY `idx_employee_barcode_sequence_prefix` (`prefix`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-

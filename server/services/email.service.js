@@ -166,4 +166,3 @@ export const sendEmail = async ({
     clearTimeout(timeoutId);
   }
 };
-

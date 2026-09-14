@@ -15,6 +15,8 @@ const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'u
 
 const paymentsController = read('server/controllers/Lot_Projects/ListingProfile/PaymentsSOA.controller.js');
 const reservationController = read('server/controllers/Lot_Projects/ListingProfile/ReservationCorrection.controller.js');
+const shared = read('server/controllers/Lot_Projects/_shared/lotProject.shared.js');
+const reservationUi = read('client/src/components/Lot_Projects/ListingProfileComponents/ReservationCorrection/ReservationCorrectionModal.jsx');
 const router = read('server/routers/System/projects.routers.js');
 const paymentsUi = read('client/src/components/Lot_Projects/ListingProfileComponents/PaymentsSOA/Payments_SOA.jsx');
 const addPayment = read('client/src/components/Lot_Projects/ListingProfileComponents/PaymentsSOA/AddSOAPaymentModal.jsx');
@@ -114,6 +116,43 @@ test('listing header shows buyer identity and account history distinguishes veri
   assert.match(read('client/src/components/Lot_Projects/ListingProfileComponents/AccountHistory/AccountHistoryPanel.jsx'), /voidedPaymentCount/);
 });
 
+
+
+test('reservation correction unit picker is searchable without changing backend availability enforcement', () => {
+  assert.match(reservationUi, /destinationSearch/);
+  assert.match(reservationUi, /filteredDestinations/);
+  assert.match(reservationUi, /Search available unit, e\.g\. LA-1504-B/);
+  assert.match(reservationUi, /filteredDestinations\.map/);
+  assert.match(reservationController, /lot_project_listing_status = 'available'/);
+  assert.match(reservationController, /current_account_id IS NULL/);
+});
+
+test('controlled correction carries verified cash beyond a smaller destination payment-type bucket without exceeding total SOA', () => {
+  assert.match(shared, /allowCrossTypeOverflow/);
+  assert.match(shared, /strictTargets/);
+  assert.match(shared, /overflowTargets/);
+  assert.match(shared, /Verified payment carryover exceeds the corrected unit's total remaining SOA balance/);
+  assert.match(reservationController, /allowCrossTypeOverflow:\s*true/);
+  assert.match(reservationController, /relinkPrimarySchedule:\s*true/);
+});
+
+test('payment edit resolves its actual allocated SOA row and does not show a false amount warning on open', () => {
+  assert.match(shared, /effective_schedule_id/);
+  assert.match(shared, /primary_allocation/);
+  assert.match(shared, /soaRowId:\s*row\.effective_schedule_id \?\? row\.lot_project_payment_schedule_id/);
+  assert.match(addPayment, /useState\(false\)/);
+  assert.match(addPayment, /amountComparisonBaseline = isEdit/);
+  assert.match(addPayment, /Payment amount changed from the recorded amount/);
+  assert.match(addPayment, /isEdit \? 'Recorded' : 'Suggested'/);
+});
+
+test('void authorization keeps backend audit semantics but omits the verbose cancellation explanation from the modal', () => {
+  assert.doesNotMatch(paymentsUi, /This does not erase the payment\. It marks the payment Cancelled/);
+  const start = paymentsController.indexOf('export const deleteLotProjectListingPayment');
+  const end = paymentsController.indexOf('export const grantPaymentSchedulePenaltyExtension', start);
+  const source = paymentsController.slice(start, end);
+  assert.match(source, /SET lot_project_payment_status = 'Cancelled'/);
+});
 
 test('failed email-code attempts persist verification state instead of being rolled back with financial mutations', () => {
   assert.match(sensitiveVerification, /return \{[\s\S]*ok: false,[\s\S]*Verification code is incorrect/);

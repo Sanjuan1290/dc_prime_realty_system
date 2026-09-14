@@ -110,4 +110,3 @@ ORDER BY lot_project_listing_id;
 SELECT lot_project_payment_id, lot_project_payment_created_at, lot_project_payment_storage_code
 FROM lot_project_payments
 ORDER BY lot_project_payment_id;
-

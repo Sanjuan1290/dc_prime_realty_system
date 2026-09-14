@@ -226,4 +226,3 @@ export const handleCloudinaryMalwareWebhook = async (req, res) => {
     connection.release();
   }
 };
-

@@ -39,4 +39,3 @@ test('document-name migration removes the known accidental duplicate and adds a 
   assert.match(source, /UPDATE lot_project_client_documents/)
   assert.match(source, /CREATE UNIQUE INDEX IF NOT EXISTS uq_documents_document_name/)
 })
-

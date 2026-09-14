@@ -1150,4 +1150,3 @@ export const downloadAuditLogArchiveExport = async (req, res) => {
     connection.release();
   }
 };
-

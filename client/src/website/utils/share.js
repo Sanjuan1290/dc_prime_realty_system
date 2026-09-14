@@ -14,4 +14,3 @@ export const copyText = async (text) => {
   document.execCommand('copy')
   textarea.remove()
 }
-

@@ -905,4 +905,3 @@ const EditClientProfileModal = ({ client, onClose, onSave, isParentSaving = fals
 }
 
 export default EditClientProfileModal
-

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { FiAlertTriangle, FiArrowRight, FiCheckCircle, FiRefreshCw, FiX } from 'react-icons/fi'
+import { FiAlertTriangle, FiArrowRight, FiCheckCircle, FiRefreshCw, FiSearch, FiX } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
 import { getDoubleCheckNotice, useFetch, useFetchPost } from '../../../../utils/useFetch'
 
@@ -39,6 +39,7 @@ const ComparisonRow = ({ label, before, after, currency = false }) => (
 
 const ReservationCorrectionModal = ({ open, projectSlug, listingId, onClose, onCorrected }) => {
   const [destinationListingId, setDestinationListingId] = useState('')
+  const [destinationSearch, setDestinationSearch] = useState('')
   const [terms, setTerms] = useState(null)
   const [preview, setPreview] = useState(null)
   const [previewFingerprint, setPreviewFingerprint] = useState('')
@@ -152,6 +153,16 @@ const ReservationCorrectionModal = ({ open, projectSlug, listingId, onClose, onC
   const hardBlockers = data.hardBlockers || []
   const controlledMode = data.correctionMode === 'controlled'
   const destinations = data.destinations || []
+  const filteredDestinations = useMemo(() => {
+    const keyword = destinationSearch.trim().toLowerCase()
+    if (!keyword) return destinations
+    return destinations.filter((row) => [
+      row.unitId,
+      row.areaSqm,
+      row.installmentPricePerSqm,
+      row.cashPricePerSqm,
+    ].some((value) => String(value ?? '').toLowerCase().includes(keyword)))
+  }, [destinationSearch, destinations])
   const selectedDestination = destinations.find((row) => Number(row.id) === Number(destinationListingId))
   const busy = optionsQuery.isLoading || previewMutation.isPending || verificationMutation.isPending || correctionMutation.isPending
 
@@ -215,16 +226,30 @@ const ReservationCorrectionModal = ({ open, projectSlug, listingId, onClose, onC
               <section className="rounded-2xl border border-blue-200 bg-blue-50/40 p-4 sm:p-5">
                 <h3 className="font-black text-slate-950">1. Choose the correct unit</h3>
                 <p className="mt-1 text-sm font-semibold text-slate-500">Only currently Available units from this project are shown. The backend checks availability again when you confirm.</p>
+                <label className="relative mt-3 block">
+                  <FiSearch className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="search"
+                    value={destinationSearch}
+                    onChange={(event) => setDestinationSearch(event.target.value)}
+                    className={`${fieldClass} bg-white pl-9`}
+                    placeholder="Search available unit, e.g. LA-1504-B"
+                    aria-label="Search available destination units"
+                  />
+                </label>
                 <select
                   value={destinationListingId}
                   onChange={(event) => { setDestinationListingId(event.target.value); setPreview(null); setVerificationId(null); setVerificationCode('') }}
                   className={`${fieldClass} mt-3 bg-white`}
                 >
                   <option value="">Select correct available unit...</option>
-                  {destinations.map((row) => (
+                  {filteredDestinations.map((row) => (
                     <option key={row.id} value={row.id}>{row.unitId} · {row.areaSqm} sqm</option>
                   ))}
                 </select>
+                {destinationSearch.trim() && !filteredDestinations.length ? (
+                  <p className="mt-2 text-xs font-bold text-amber-700">No available unit matches “{destinationSearch.trim()}”.</p>
+                ) : null}
                 {selectedDestination ? (
                   <p className="mt-2 text-xs font-bold text-blue-700">{selectedDestination.unitId}: {selectedDestination.areaSqm} sqm · Installment {money(selectedDestination.installmentPricePerSqm)}/sqm · Cash {money(selectedDestination.cashPricePerSqm)}/sqm</p>
                 ) : null}
@@ -374,5 +399,3 @@ const ReservationCorrectionModal = ({ open, projectSlug, listingId, onClose, onC
 }
 
 export default ReservationCorrectionModal
-
-

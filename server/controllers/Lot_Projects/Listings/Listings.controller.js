@@ -2482,4 +2482,3 @@ export const deleteLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
-

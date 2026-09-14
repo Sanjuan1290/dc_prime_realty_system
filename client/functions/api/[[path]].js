@@ -63,4 +63,3 @@ export const onRequest = async ({ request, env }) => {
     clearTimeout(timeoutId)
   }
 }
-

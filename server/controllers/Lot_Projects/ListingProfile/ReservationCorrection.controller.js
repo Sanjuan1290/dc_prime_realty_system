@@ -932,7 +932,11 @@ export const correctReservationUnit = async (req, res) => {
         lot_project_listing_id: destinationId,
         lot_project_client_profile_id: profileId,
         lot_project_account_id: accountId,
-      }, { finalAsOfDate: todayDateOnly() })
+      }, {
+        finalAsOfDate: todayDateOnly(),
+        allowCrossTypeOverflow: true,
+        relinkPrimarySchedule: true,
+      })
     }
 
     await replaceReservationCommissions(
@@ -1031,5 +1035,3 @@ export const correctReservationUnit = async (req, res) => {
     connection.release()
   }
 }
-
-

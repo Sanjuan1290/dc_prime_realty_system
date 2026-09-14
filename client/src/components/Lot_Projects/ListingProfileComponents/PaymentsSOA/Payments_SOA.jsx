@@ -302,11 +302,11 @@ const PaymentCorrectionAuthorizationModal = ({ request, reason, setReason, passw
 
         <div className="space-y-4 p-5 sm:p-6">
           {alert ? <StatusAlert type={alert.type} message={alert.message} /> : null}
-          <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-900">
-            {isVoid
-              ? 'This does not erase the payment. It marks the payment Cancelled, reverses its SOA allocation, keeps the audit/history record, and recalculates balances.'
-              : 'The system will keep a before/after Audit Trail and rebuild the SOA allocation after the verified payment is corrected.'}
-          </div>
+          {!isVoid ? (
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-900">
+              The system will keep a before/after Audit Trail and rebuild the SOA allocation after the verified payment is corrected.
+            </div>
+          ) : null}
 
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
             <div className="grid gap-3 sm:grid-cols-2">
@@ -1958,4 +1958,3 @@ const PaymentsSOA = ({
 }
 
 export default PaymentsSOA
-

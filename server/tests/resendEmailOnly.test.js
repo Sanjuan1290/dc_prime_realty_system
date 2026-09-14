@@ -98,4 +98,3 @@ test('shared Resend service sends through the HTTPS API and base64 encodes Buffe
     else process.env.EMAIL_FROM = originalFrom;
   }
 });
-

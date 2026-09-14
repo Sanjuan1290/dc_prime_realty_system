@@ -3224,7 +3224,7 @@ export const mapPaymentRow = (row = {}) => ({
   id: row.lot_project_payment_id,
   paymentId: row.lot_project_payment_id,
   storageCode: row.lot_project_payment_storage_code || null,
-  soaRowId: row.lot_project_payment_schedule_id,
+  soaRowId: row.effective_schedule_id ?? row.lot_project_payment_schedule_id,
   paymentType: getPaymentTypeLabel(row.lot_project_payment_type),
   paymentTypeValue: row.lot_project_payment_type,
   scheduleDescription: row.schedule_description || '-',
@@ -3278,6 +3278,7 @@ export const getListingPayments = async (
   }
 
   const hasPaymentProofs = await tableExists(connection, 'lot_project_payment_proofs');
+  const hasPaymentAllocations = await tableExists(connection, 'lot_project_payment_allocations');
   const hasAcknowledgementSignedCopies = await tableExists(connection, 'lot_project_payment_acknowledgement_files');
   const hasPenaltyReliefs = await tableExists(connection, 'lot_project_penalty_reliefs');
   const hasPaymentLinkedPenaltyReliefs = hasPenaltyReliefs &&
@@ -3344,19 +3345,38 @@ export const getListingPayments = async (
        LEFT JOIN lot_project_payment_acknowledgement_files ack_file
          ON ack_file.lot_project_payment_acknowledgement_file_id = latest_ack_file.latest_file_id`
     : '';
+  const primaryAllocationSelect = hasPaymentAllocations
+    ? `COALESCE(primary_allocation.lot_project_payment_schedule_id, p.lot_project_payment_schedule_id) AS effective_schedule_id,`
+    : `p.lot_project_payment_schedule_id AS effective_schedule_id,`;
+  const primaryAllocationJoin = hasPaymentAllocations
+    ? `LEFT JOIN (
+         SELECT lot_project_payment_id, MIN(lot_project_payment_allocation_id) AS primary_allocation_id
+         FROM lot_project_payment_allocations
+         GROUP BY lot_project_payment_id
+       ) first_payment_allocation
+         ON first_payment_allocation.lot_project_payment_id = p.lot_project_payment_id
+       LEFT JOIN lot_project_payment_allocations primary_allocation
+         ON primary_allocation.lot_project_payment_allocation_id = first_payment_allocation.primary_allocation_id`
+    : '';
+  const effectiveScheduleJoinId = hasPaymentAllocations
+    ? 'COALESCE(primary_allocation.lot_project_payment_schedule_id, p.lot_project_payment_schedule_id)'
+    : 'p.lot_project_payment_schedule_id';
+
 
   const [rows] = await connection.query(
     `
       SELECT
         p.*,
+        ${primaryAllocationSelect}
         ps.description AS schedule_description,
         ${proofCountSelect}
         ${penaltyWaiverSelect}
         ${acknowledgementSignedSelect}
         TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS verified_by_name
       FROM lot_project_payments p
+      ${primaryAllocationJoin}
       LEFT JOIN lot_project_payment_schedules ps
-        ON ps.lot_project_payment_schedule_id = p.lot_project_payment_schedule_id
+        ON ps.lot_project_payment_schedule_id = ${effectiveScheduleJoinId}
        AND (? = 0 OR ps.lot_project_account_id = ?)
       ${penaltyWaiverJoin}
       ${acknowledgementSignedJoin}
@@ -4018,7 +4038,7 @@ export const recomputeListingScheduleBalances = async (connection, listing, { as
   };
 };
 
-export const applyPaymentToSchedules = async (connection, listing, paymentId, preferredScheduleId, amount, paymentDate, referenceId, paymentType) => {
+export const applyPaymentToSchedules = async (connection, listing, paymentId, preferredScheduleId, amount, paymentDate, referenceId, paymentType, { allowCrossTypeOverflow = false } = {}) => {
   if (!(await tableExists(connection, 'lot_project_payment_allocations'))) {
     throw new Error('lot_project_payment_allocations table does not exist. Run the payments SOA migration first.');
   }
@@ -4027,7 +4047,7 @@ export const applyPaymentToSchedules = async (connection, listing, paymentId, pr
     // Balloon payments are principal reductions. They must never be spread over
     // monthly SOA rows or mark future installments as paid/advance.
     await recomputeListingScheduleBalances(connection, listing, { asOfDate: paymentDate });
-    return;
+    return { firstAppliedScheduleId: null };
   }
 
   const [clientProfileRows] = await connection.query(
@@ -4079,11 +4099,17 @@ export const applyPaymentToSchedules = async (connection, listing, paymentId, pr
   const typeFilteredRows = restrictedType
     ? scheduleRows.filter((row) => getStoredScheduleType(row) === restrictedType || isSameScheduleId(row, preferredScheduleId))
     : scheduleRows;
-  const orderedTargets = preferredRow
+  const strictTargets = preferredRow
     ? [preferredRow, ...typeFilteredRows.filter((row) => !isSameScheduleId(row, preferredRow.lot_project_payment_schedule_id))]
     : typeFilteredRows;
+  const strictTargetIds = new Set(strictTargets.map((row) => Number(row.lot_project_payment_schedule_id || 0)));
+  const overflowTargets = allowCrossTypeOverflow
+    ? scheduleRows.filter((row) => !strictTargetIds.has(Number(row.lot_project_payment_schedule_id || 0)))
+    : [];
+  const orderedTargets = [...strictTargets, ...overflowTargets];
 
   let remaining = roundMoneyValue(Number(amount || 0));
+  let firstAppliedScheduleId = null;
 
   for (const row of orderedTargets) {
     if (remaining <= 0) break;
@@ -4123,14 +4149,56 @@ export const applyPaymentToSchedules = async (connection, listing, paymentId, pr
       [paymentId, row.lot_project_payment_schedule_id, appliedAmount]
     );
 
+    if (!firstAppliedScheduleId) firstAppliedScheduleId = Number(row.lot_project_payment_schedule_id || 0) || null;
     remaining = roundMoneyValue(remaining - appliedAmount);
   }
 
   if (remaining > 0) {
-    throw new Error('Payment amount exceeds the remaining unpaid SOA balance for this payment type.');
+    throw new Error(allowCrossTypeOverflow
+      ? "Verified payment carryover exceeds the corrected unit's total remaining SOA balance."
+      : 'Payment amount exceeds the remaining unpaid SOA balance for this payment type.');
   }
 
   await recomputeListingScheduleBalances(connection, listing, { asOfDate: paymentDate });
+  return { firstAppliedScheduleId };
+};
+
+
+export const hasCrossTypePaymentAllocations = async (connection, listing) => {
+  if (!(await tableExists(connection, 'lot_project_payment_allocations'))) return false;
+  if (!(await tableExists(connection, 'lot_project_payments'))) return false;
+  if (!(await tableExists(connection, 'lot_project_payment_schedules'))) return false;
+
+  const [rows] = await connection.query(
+    `
+      SELECT
+        payment.lot_project_payment_type,
+        schedule.description
+      FROM lot_project_payment_allocations allocation
+      INNER JOIN lot_project_payments payment
+        ON payment.lot_project_payment_id = allocation.lot_project_payment_id
+      INNER JOIN lot_project_payment_schedules schedule
+        ON schedule.lot_project_payment_schedule_id = allocation.lot_project_payment_schedule_id
+      WHERE payment.lot_project_id = ?
+        AND payment.lot_project_listing_id = ?
+        AND (? = 0 OR payment.lot_project_client_profile_id = ?)
+        AND (? = 0 OR payment.lot_project_account_id = ?)
+        AND payment.lot_project_payment_status = 'Verified'
+    `,
+    [
+      listing.lot_project_id,
+      listing.lot_project_listing_id,
+      Number(listing.lot_project_client_profile_id || 0),
+      Number(listing.lot_project_client_profile_id || 0),
+      Number(listing.lot_project_account_id || 0),
+      Number(listing.lot_project_account_id || 0),
+    ]
+  );
+
+  return rows.some((row) => {
+    const restrictedType = paymentTypeToStoredScheduleType(row.lot_project_payment_type);
+    return Boolean(restrictedType && getStoredScheduleType(row) !== restrictedType);
+  });
 };
 
 
@@ -4142,7 +4210,7 @@ export const applyPaymentToSchedules = async (connection, listing, paymentId, pr
 export const rebuildListingPaymentAllocationsChronologically = async (
   connection,
   listing,
-  { finalAsOfDate = todayDateOnly() } = {}
+  { finalAsOfDate = todayDateOnly(), allowCrossTypeOverflow = false, relinkPrimarySchedule = false } = {}
 ) => {
   if (!(await tableExists(connection, 'lot_project_payment_allocations'))) return;
   if (!(await tableExists(connection, 'lot_project_payments'))) return;
@@ -4220,7 +4288,7 @@ export const rebuildListingPaymentAllocationsChronologically = async (
     await recomputeListingScheduleBalances(connection, listing, { asOfDate: paymentDate });
 
     if (paymentType !== 'balloon') {
-      await applyPaymentToSchedules(
+      const allocationResult = await applyPaymentToSchedules(
         connection,
         listing,
         Number(payment.lot_project_payment_id),
@@ -4228,8 +4296,17 @@ export const rebuildListingPaymentAllocationsChronologically = async (
         Number(payment.lot_project_payment_amount || 0),
         paymentDate,
         payment.lot_project_payment_reference_id,
-        paymentType
+        paymentType,
+        { allowCrossTypeOverflow }
       );
+      if (relinkPrimarySchedule && allocationResult?.firstAppliedScheduleId) {
+        await connection.query(
+          `UPDATE lot_project_payments
+           SET lot_project_payment_schedule_id = ?
+           WHERE lot_project_payment_id = ?`,
+          [allocationResult.firstAppliedScheduleId, Number(payment.lot_project_payment_id)]
+        );
+      }
     } else {
       await recomputeListingScheduleBalances(connection, listing, { asOfDate: paymentDate });
     }
@@ -4378,4 +4455,3 @@ export const addIfColumnExists = async (connection, tableName, columns, values, 
 };
 
 // End of lotProject.shared.js — verified complete.
-

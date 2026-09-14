@@ -169,4 +169,3 @@ export const requireAttendanceKiosk = (req, res, next) => {
   };
   return next();
 };
-

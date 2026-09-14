@@ -564,4 +564,3 @@ DROP PROCEDURE IF EXISTS migration_add_fk_if_missing;
 DROP PROCEDURE IF EXISTS migration_modify_commission_release_status;
 
 SET FOREIGN_KEY_CHECKS = @OLD_FOREIGN_KEY_CHECKS;
-

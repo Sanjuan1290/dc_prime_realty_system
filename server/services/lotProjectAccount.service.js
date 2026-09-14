@@ -582,4 +582,3 @@ export const voidUnpaidLotProjectAccount = async (
     deletedRowCounts: counts,
   };
 };
-

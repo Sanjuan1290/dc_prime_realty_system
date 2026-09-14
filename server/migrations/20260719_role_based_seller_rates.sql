@@ -306,4 +306,3 @@ WHERE COALESCE(child.is_system_dummy, 0) = 0
     )
   )
 ORDER BY child.seller_group_id, child_user.role, seller_name;
-
