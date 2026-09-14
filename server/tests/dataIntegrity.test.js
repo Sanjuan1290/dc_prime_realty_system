@@ -8,27 +8,47 @@ const dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(dirname, '..', '..');
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
 
-test('Data Integrity is hidden from normal navigation and restricted to the exact Super Admin route/API', () => {
-  const serverPermissions = read('server/config/permissions.js');
-  const clientPermissions = read('client/src/config/permissions.js');
+test('Data Integrity stays hidden from navigation and opens only through the PIN gate at /portal/data-integrity', () => {
   const router = read('server/routers/System/dataIntegrity.routers.js');
+  const accessMiddleware = read('server/middleware/dataIntegrityAccess.middleware.js');
+  const accessController = read('server/controllers/System/dataIntegrityAccess.controller.js');
   const server = read('server/server.js');
   const app = read('client/src/App.jsx');
+  const accessPage = read('client/src/pages/System/DataIntegrityAccess.jsx');
   const layout = read('client/src/layout/SystemLayout.jsx');
   const dashboard = read('client/src/pages/Lot_Projects/Dashboard.jsx');
   const listingProfile = read('client/src/pages/Lot_Projects/ListingProfile.jsx');
 
-  assert.match(serverPermissions, /SYSTEM_DATA_INTEGRITY_VIEW:\s*'system\.data_integrity\.view'/);
-  assert.match(clientPermissions, /SYSTEM_DATA_INTEGRITY_VIEW:\s*'system\.data_integrity\.view'/);
-  assert.match(router, /router\.use\(requireExactRole\('super_admin'\)\)/);
-  assert.match(router, /router\.get\('\/'[\s\S]*SYSTEM_DATA_INTEGRITY_VIEW/);
-  assert.match(router, /router\.get\('\/summary'[\s\S]*SYSTEM_DATA_INTEGRITY_VIEW/);
-  assert.match(router, /router\.get\('\/accounts\/:accountId'[\s\S]*SYSTEM_DATA_INTEGRITY_VIEW/);
-  assert.doesNotMatch(router, /router\.(post|put|patch|delete)\(/i);
+  assert.match(router, /router\.use\(authenticateUser\)/);
+  assert.match(router, /router\.use\(requireRole\('admin', 'super_admin'\)\)/);
+  assert.match(router, /router\.get\('\/access-session', getDataIntegrityAccessStatus\)/);
+  assert.match(router, /router\.post\('\/unlock', unlockDataIntegrity\)/);
+  assert.match(router, /router\.post\('\/lock', lockDataIntegrity\)/);
+  assert.match(router, /router\.use\(requireDataIntegrityPin\)/);
+  assert.match(router, /router\.get\('\/', getDataIntegrityReport\)/);
+  assert.match(router, /router\.get\('\/summary', getDataIntegritySummary\)/);
+  assert.match(router, /router\.get\('\/accounts\/:accountId', getDataIntegrityAccount\)/);
+  assert.doesNotMatch(router, /requireExactRole\('super_admin'\)/);
+  assert.doesNotMatch(router, /router\.(put|patch|delete)\(/i);
+
+  assert.match(accessMiddleware, /DATA_INTEGRITY_PINCODE/);
+  assert.match(accessMiddleware, /httpOnly:\s*true/);
+  assert.match(accessMiddleware, /path:\s*'\/api\/v1\/data-integrity'/);
+  assert.match(accessMiddleware, /Number\(payload\.userId\) !== Number\(userId \|\| 0\)/);
+  assert.match(accessMiddleware, /MAX_FAILED_ATTEMPTS = 5/);
+  assert.match(accessMiddleware, /LOCKOUT_MS = 15 \* 60 \* 1000/);
+  assert.match(accessController, /dataIntegrityPinMatches\(pin\)/);
+  assert.match(accessController, /createDataIntegrityAccessToken\(\{ userId: req\.authUser\?\.id \}\)/);
+  assert.match(accessController, /Data Integrity unlocked/);
+
   assert.match(server, /app\.use\('\/api\/v1\/data-integrity', dataIntegrityRouter\)/);
-  assert.match(app, /const DataIntegrity = lazy/);
-  assert.equal((app.match(/path="data-integrity"/g) || []).length, 1);
-  assert.match(app, /\/portal\/super_admin[\s\S]*path="data-integrity"/);
+  assert.match(app, /const DataIntegrityAccess = lazy/);
+  assert.equal((app.match(/path="\/portal\/data-integrity"/g) || []).length, 1);
+  assert.doesNotMatch(app, /path="data-integrity"/);
+  assert.match(accessPage, /Open Data Integrity/);
+  assert.match(accessPage, /Data Integrity PIN/);
+  assert.match(accessPage, /\/data-integrity\/unlock/);
+  assert.match(accessPage, /refetchInterval:\s*30_000/);
   assert.doesNotMatch(layout, /label: "Data Integrity"|pathname: "data-integrity"/);
   assert.doesNotMatch(dashboard, /data-integrity\/summary|View Integrity Report|>Data Integrity</);
   assert.doesNotMatch(listingProfile, /data-integrity\/summary|View Breakdown|>Account Integrity</);
@@ -127,7 +147,7 @@ test('project and listing workspaces do not advertise or fetch Data Integrity', 
   assert.doesNotMatch(listingProfile, /integritySummaryQuery|canViewDataIntegrity|View Breakdown/);
 });
 
-test('hidden Super Admin Data Integrity page still supports a direct account deep-link when the owner knows the URL', () => {
+test('PIN-protected Data Integrity page still supports a direct account deep-link when the owner knows the URL', () => {
   const page = read('client/src/pages/System/DataIntegrity.jsx');
 
   assert.match(page, /searchParams\.get\('viewAccountId'\)/);
@@ -174,4 +194,3 @@ test('Integrity Records uses server-backed pagination capped at 10 records per p
   assert.match(page, />Previous<\/button>/);
   assert.match(page, />Next<\/button>/);
 });
-

@@ -22,6 +22,7 @@ const TECHNICAL_MUTATION_PATTERNS = [
   /\/projects\/lot-projects\/\d+\/edit-preflight$/i,
   /\/purge-code$/i,
   /\/audit-logs\/archive\/request$/i,
+  /\/data-integrity\/(?:unlock|lock)$/i,
   /\/attendance\/scan$/i,
   /\/attendance-kiosk\/(?:unlock|lock|scan)$/i,
 ]
@@ -294,4 +295,3 @@ export const requestApiBlob = async (
     }
   }
 }
-

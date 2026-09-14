@@ -51,7 +51,7 @@ const Projects = lazy(() => import('./pages/System/Projects'))
 const ProjectWorkspaceList = lazy(() => import('./pages/System/ProjectWorkspaceList'))
 const Notifications = lazy(() => import('./pages/System/Notifications'))
 const AuditLogs = lazy(() => import('./pages/System/AuditLogs'))
-const DataIntegrity = lazy(() => import('./pages/System/DataIntegrity'))
+const DataIntegrityAccess = lazy(() => import('./pages/System/DataIntegrityAccess'))
 const Settings = lazy(() => import('./pages/System/Settings'))
 const Employees = lazy(() => import('./pages/System/Employees'))
 const Attendance = lazy(() => import('./pages/System/Attendance'))
@@ -124,6 +124,7 @@ const App = () => {
         <Route path="/portal" element={<Login />} />
         <Route path="/portal/login" element={<Navigate to="/portal" replace />} />
         <Route path="/portal/change-password" element={<ChangePassword />} />
+        <Route path="/portal/data-integrity" element={<DataIntegrityAccess />} />
 
         {/* Public client form stays outside the internal portal. */}
         <Route path="/buyer-form/:token" element={<BuyerForm />} />
@@ -156,7 +157,6 @@ const App = () => {
           <Route path="users/groups/external/:groupId" element={<SellerGroupDetails expectedGroupType="external" />} />
           <Route path="notifications" element={<Notifications />} />
           <Route path="audit-logs" element={<AuditLogs />} />
-          <Route path="data-integrity" element={protect(PERMISSIONS.SYSTEM_DATA_INTEGRITY_VIEW, <DataIntegrity />)} />
           <Route path="employees" element={<Employees />} />
           <Route path="attendance" element={<Attendance />} />
 
@@ -296,4 +296,3 @@ const App = () => {
 }
 
 export default App
-

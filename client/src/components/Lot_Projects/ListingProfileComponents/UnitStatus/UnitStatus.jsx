@@ -183,6 +183,7 @@ const UnitStatus = ({
   projectDefaultDocuments = [],
   onSave,
   canAdjustCommission = false,
+  canManageCancellation = false,
   onRequestCommissionAdjustmentCode,
   onAdjustCommission,
   canCorrectReservation = false,
@@ -353,9 +354,10 @@ const UnitStatus = ({
             {showSettlementButton ? (
               <button
                 type="button"
-                onClick={() => setShowSettlementModal(true)}
-                disabled={isSaving}
-                className="inline-flex h-10 items-center justify-center rounded-xl bg-orange-600 px-4 text-sm font-black text-white transition hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98]"
+                onClick={() => canManageCancellation && setShowSettlementModal(true)}
+                disabled={isSaving || !canManageCancellation}
+                title={!canManageCancellation ? 'Only the Super Admin can complete Cancellation Settlement or issue a refund.' : 'Open Cancellation Settlement'}
+                className="inline-flex h-10 items-center justify-center rounded-xl bg-orange-600 px-4 text-sm font-black text-white transition hover:bg-orange-700 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 disabled:hover:bg-slate-100 active:scale-[0.98]"
               >
                 Settlement
               </button>
@@ -603,7 +605,7 @@ const UnitStatus = ({
         </>
       ) : null}
 
-      {!readOnly && showSettlementModal ? (
+      {!readOnly && canManageCancellation && showSettlementModal ? (
         <CancellationSettlementModal
           unitId={unitData.unit_id || unitData.unitCode}
           buyerName={unitData.buyer_name}
@@ -624,6 +626,7 @@ const UnitStatus = ({
           onClose={() => setShowEditModal(false)}
           onSave={handleSave}
           isSaving={isSaving}
+          canManageCancellation={canManageCancellation}
         />
       ) : null}
 
@@ -643,4 +646,3 @@ const UnitStatus = ({
 }
 
 export default UnitStatus
-

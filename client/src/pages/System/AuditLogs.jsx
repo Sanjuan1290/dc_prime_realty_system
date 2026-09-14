@@ -17,7 +17,6 @@ import AuditLogFilters from '../../components/System/auditLogsComponents/AuditLo
 import AuditLogTable from '../../components/System/auditLogsComponents/AuditLogTable'
 import { useFetch, useFetchPost } from '../../utils/useFetch'
 import useCurrentUser from '../../utils/useCurrentUser'
-import { isFullAccessAdministrator } from '../../config/permissions'
 
 const StatCard = ({ label, value, helper, icon: Icon, tone = 'slate' }) => {
   const tones = {
@@ -130,7 +129,7 @@ const AuditLogs = () => {
   const [archiveRequest, setArchiveRequest] = useState(null)
   const [archiveError, setArchiveError] = useState('')
 
-  const isSuperAdmin = isFullAccessAdministrator(currentUserData?.user)
+  const isSuperAdmin = currentUserData?.user?.role === 'super_admin'
 
   const resolvedDateRange = useMemo(
     () => resolveAuditDateRange(dateRange, from, to),
@@ -274,16 +273,16 @@ const AuditLogs = () => {
             Refresh
           </button>
 
-          {isSuperAdmin ? (
-            <button
-              type="button"
-              onClick={openArchiveModal}
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 text-sm font-black text-white shadow-sm transition hover:bg-blue-700"
-            >
-              <FiArchive className="h-4 w-4" />
-              Archive Old Logs
-            </button>
-          ) : null}
+          <button
+            type="button"
+            onClick={() => isSuperAdmin && openArchiveModal()}
+            disabled={!isSuperAdmin}
+            title={!isSuperAdmin ? 'Only the Super Admin can archive old audit logs. Password and email verification are required.' : 'Archive old audit logs'}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none disabled:hover:bg-slate-100"
+          >
+            <FiArchive className="h-4 w-4" />
+            Archive Old Logs
+          </button>
         </div>
       </div>
 
@@ -310,7 +309,7 @@ const AuditLogs = () => {
 
       <section className="rounded-2xl border border-blue-100 bg-blue-50 px-5 py-4 text-sm font-semibold text-blue-900">
         <p className="font-black">Audit retention: {archivePolicy.retentionDays} days</p>
-        <p className="mt-1">Permanent delete-all is disabled. Only a full-access administrator can export and archive records older than the retention period.</p>
+        <p className="mt-1">Permanent delete-all is disabled. Only the Super Admin can export and archive records older than the retention period after password and email verification.</p>
       </section>
 
       <AuditLogFilters
@@ -368,4 +367,3 @@ const AuditLogs = () => {
 }
 
 export default AuditLogs
-

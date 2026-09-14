@@ -113,6 +113,7 @@ const ListingProfile = () => {
   const { projectSlug, listingId, accountId } = useParams()
   const { data: currentUserData } = useCurrentUser()
   const canAdjustCommission = currentUserData?.user?.role === 'super_admin'
+  const canManageCancellation = currentUserData?.user?.role === 'super_admin'
   const canCorrectReservation = hasPermission(currentUserData?.user, PERMISSIONS.LOT_RESERVATION_CORRECT)
   const isAccountRoute = Boolean(accountId)
   const profileKey = ['lot-listing-profile', projectSlug, listingId, accountId || 'current']
@@ -805,6 +806,7 @@ const ListingProfile = () => {
           projectDefaultDocuments={project.defaultDocuments || []}
           onSave={(payload) => updateListingMutation.mutateAsync(payload)}
           canAdjustCommission={canAdjustCommission}
+          canManageCancellation={canManageCancellation}
           onRequestCommissionAdjustmentCode={(payload) => requestCommissionAdjustmentCodeMutation.mutateAsync(payload)}
           onAdjustCommission={(payload) => adjustCommissionMutation.mutateAsync(payload)}
           canCorrectReservation={canCorrectReservation}
@@ -965,4 +967,3 @@ const ListingProfile = () => {
 }
 
 export default ListingProfile
-

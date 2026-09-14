@@ -176,8 +176,8 @@ const requireSuperAdmin = async (req) => {
     throw error;
   }
 
-  if (!isFullAccessAdministrator(user)) {
-    const error = new Error('Only a full-access administrator can archive audit logs.');
+  if (user.role !== 'super_admin') {
+    const error = new Error('Only the Super Admin can archive audit logs.');
     error.statusCode = 403;
     throw error;
   }
@@ -1150,4 +1150,3 @@ export const downloadAuditLogArchiveExport = async (req, res) => {
     connection.release();
   }
 };
-

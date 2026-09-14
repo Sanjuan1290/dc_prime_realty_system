@@ -235,7 +235,6 @@ const Users = () => {
         </div>
       </div>
 
-      {actorRole === "admin" ? <StatusAlert type="info" title="Admin operational access" message="Admins have full operational access within their assigned projects. Super Admin accounts and actions requiring owner password plus email verification remain protected." /> : null}
       {alert ? <StatusAlert type={alert.type} message={alert.message} onClose={alert.type === "loading" ? undefined : () => setAlert(null)} /> : null}
       {isLoading ? <StatusAlert type="loading" message="Loading users..." /> : null}
       {!isLoading && isFetching ? <StatusAlert type="info" message="Refreshing users..." /> : null}
@@ -412,4 +411,3 @@ const Users = () => {
 };
 
 export default Users;
-

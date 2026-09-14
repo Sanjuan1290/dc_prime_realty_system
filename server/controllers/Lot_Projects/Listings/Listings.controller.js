@@ -1359,6 +1359,22 @@ export const updateLotProjectListing = async (req, res) => {
     }
 
     const statusTransitionAction = req.body.statusTransitionAction || null;
+    const startsCancellation = existingListing.lot_project_listing_status !== 'pending_for_cancellation'
+      && listingStatus.status === 'pending_for_cancellation';
+    const completesCancellation = [
+      LISTING_STATUS_ACTIONS.SETTLE_CANCELLATION,
+      LISTING_STATUS_ACTIONS.VOID_UNPAID_CANCELLATION,
+    ].includes(statusTransitionAction);
+
+    if ((startsCancellation || completesCancellation) && req.authUser?.role !== 'super_admin') {
+      await connection.rollback();
+      return res.status(403).json({
+        message: startsCancellation
+          ? 'Only the Super Admin can change a sold unit to Pending for Cancellation.'
+          : 'Only the Super Admin can complete Cancellation Settlement or issue a refund.',
+      });
+    }
+
     const statusTransition = validateListingStatusTransition({
       currentStatus: existingListing.lot_project_listing_status,
       nextStatus: listingStatus.status,
@@ -2482,4 +2498,3 @@ export const deleteLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
-

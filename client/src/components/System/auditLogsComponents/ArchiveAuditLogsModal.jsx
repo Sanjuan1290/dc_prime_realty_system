@@ -116,7 +116,7 @@ const ArchiveAuditLogsModal = ({
             </label>
 
             <label className="mt-5 grid gap-2">
-              <span className="text-sm font-black text-slate-700">Administrator password</span>
+              <span className="text-sm font-black text-slate-700">Super Admin password</span>
               <div className="relative">
                 <FiKey className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <input
@@ -124,7 +124,7 @@ const ArchiveAuditLogsModal = ({
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   autoComplete="current-password"
-                  placeholder="Enter your current password"
+                  placeholder="Enter Super Admin password"
                   disabled={busy}
                   className={`${inputClass} pl-11 pr-12`}
                   required
@@ -227,4 +227,3 @@ const ArchiveAuditLogsModal = ({
 }
 
 export default ArchiveAuditLogsModal
-

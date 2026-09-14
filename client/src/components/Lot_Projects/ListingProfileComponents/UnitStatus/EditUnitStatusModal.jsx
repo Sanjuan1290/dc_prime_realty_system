@@ -170,7 +170,7 @@ const BreakdownCard = ({ label, value, highlight = false }) => (
   </div>
 )
 
-const EditUnitStatusModal = ({ listing, project = {}, listingDocuments = [], libraryDocuments = [], projectDefaultDocuments = [], onClose, onSave, isSaving = false }) => {
+const EditUnitStatusModal = ({ listing, project = {}, listingDocuments = [], libraryDocuments = [], projectDefaultDocuments = [], onClose, onSave, isSaving = false, canManageCancellation = false }) => {
   const locationCode = project.locationCode || project.lot_project_location_code || listing?.locationCode || 'LA'
   const selectedLotNumber = Array.isArray(listing?.cadastralLots)
     ? getLotNumberValue(listing.cadastralLots[0])
@@ -193,16 +193,17 @@ const EditUnitStatusModal = ({ listing, project = {}, listingDocuments = [], lib
   const currentStatus = toStatusValue(listing?.listing_status || listing?.status, listing?.rawStatus)
   const allowedStatusOptions = useMemo(() => {
     if (currentStatus === 'sold') {
-      return statusOptions.filter((status) =>
-        ['sold', 'pending_for_cancellation'].includes(status.value)
-      )
+      const allowed = canManageCancellation ? ['sold', 'pending_for_cancellation'] : ['sold']
+      return statusOptions.filter((status) => allowed.includes(status.value))
     }
 
     return statusOptions.filter((status) => status.value === currentStatus)
-  }, [currentStatus])
+  }, [canManageCancellation, currentStatus])
 
   const statusHelper = currentStatus === 'sold'
-    ? 'A sold unit can only move to Pending for Cancellation here. Complete Settlement before returning it to Available.'
+    ? (canManageCancellation
+      ? 'A sold unit can only move to Pending for Cancellation here. Complete Settlement before returning it to Available.'
+      : 'Only the Super Admin can change a sold unit to Pending for Cancellation.')
     : currentStatus === 'pending_for_cancellation'
       ? 'Status is locked here. Use Settlement or Cancel Cancellation on Unit & Status.'
       : currentStatus === 'cancelled'
@@ -711,4 +712,3 @@ const EditUnitStatusModal = ({ listing, project = {}, listingDocuments = [], lib
 }
 
 export default EditUnitStatusModal
-

@@ -4,16 +4,25 @@ import {
   getDataIntegrityReport,
   getDataIntegritySummary,
 } from '../../controllers/System/dataIntegrity.controller.js';
-import { authenticateUser, requireExactRole, requirePermission } from '../../middleware/auth.middleware.js';
-import { PERMISSIONS } from '../../config/permissions.js';
+import {
+  getDataIntegrityAccessStatus,
+  lockDataIntegrity,
+  unlockDataIntegrity,
+} from '../../controllers/System/dataIntegrityAccess.controller.js';
+import { authenticateUser, requireRole } from '../../middleware/auth.middleware.js';
+import { requireDataIntegrityPin } from '../../middleware/dataIntegrityAccess.middleware.js';
 
 const router = express.Router();
 router.use(authenticateUser);
-router.use(requireExactRole('super_admin'));
+router.use(requireRole('admin', 'super_admin'));
 
-router.get('/', requirePermission(PERMISSIONS.SYSTEM_DATA_INTEGRITY_VIEW), getDataIntegrityReport);
-router.get('/summary', requirePermission(PERMISSIONS.SYSTEM_DATA_INTEGRITY_VIEW), getDataIntegritySummary);
-router.get('/accounts/:accountId', requirePermission(PERMISSIONS.SYSTEM_DATA_INTEGRITY_VIEW), getDataIntegrityAccount);
+router.get('/access-session', getDataIntegrityAccessStatus);
+router.post('/unlock', unlockDataIntegrity);
+router.post('/lock', lockDataIntegrity);
+
+router.use(requireDataIntegrityPin);
+router.get('/', getDataIntegrityReport);
+router.get('/summary', getDataIntegritySummary);
+router.get('/accounts/:accountId', getDataIntegrityAccount);
 
 export default router;
-
