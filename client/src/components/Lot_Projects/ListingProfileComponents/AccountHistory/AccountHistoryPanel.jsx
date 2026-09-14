@@ -80,15 +80,17 @@ const AccountHistoryPanel = ({ projectSlug, listingId, isSuperAdmin = false }) =
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
-                  {isSuperAdmin && account.status === 'cancelled' && !account.isCurrent ? (
+                  {account.status === 'cancelled' && !account.isCurrent ? (
                     <button
                       type="button"
                       onClick={(event) => {
                         event.stopPropagation()
-                        setDeleteAccount(account)
+                        if (isSuperAdmin) setDeleteAccount(account)
                       }}
                       onKeyDown={(event) => event.stopPropagation()}
-                      className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 text-sm font-black text-red-700 transition hover:bg-red-100"
+                      disabled={!isSuperAdmin}
+                      title={!isSuperAdmin ? 'Only the Super Admin can permanently delete retained buyer-account records because this action requires owner password and email verification.' : 'Permanently delete retained buyer-account records'}
+                      className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 text-sm font-black text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400"
                     >
                       <FiTrash2 /> Permanently Delete Records
                     </button>

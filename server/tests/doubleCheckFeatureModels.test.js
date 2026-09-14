@@ -64,10 +64,12 @@ test('feature-specific reviews omit known non-user implementation fields', () =>
   assert.match(commission, /Selected Release/)
 })
 
-test('user review conditionally displays admin type', () => {
+test('user review conditionally displays Admin project access instead of legacy Admin Type', () => {
   const user = read('client/src/components/Shared/DoubleCheckComponents/UserDoubleCheck.jsx')
   assert.match(user, /role.*admin|admin.*role/i)
-  assert.match(user, /Admin Type/)
+  assert.match(user, /Project Access/)
+  assert.match(user, /adminProjectNames/)
+  assert.doesNotMatch(user, /Admin Type/)
 })
 
 test('document template and upload reviews preserve meaningful names and local file preview', () => {

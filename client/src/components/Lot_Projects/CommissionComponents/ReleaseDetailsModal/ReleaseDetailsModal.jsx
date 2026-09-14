@@ -504,6 +504,9 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, isSaving = fa
                     const isForfeitedOnCancellation = stage.status === 'Forfeited on Cancellation'
                     const receiptSubmitted = stage.externalAgentReceiptStatus === 'submitted'
                     const receiptBlocked = Boolean(stage.externalReceiptHoldSourceReleaseId)
+                    const releaseDateLocked = ['Eligible', 'Earned on Cancellation'].includes(stage.status)
+                      && !stage.isReleaseDate
+                      && !historicalAllowed
 
                     return (
                       <tr key={stage.id || stage.stage} className="align-top">
@@ -543,7 +546,7 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, isSaving = fa
                               <button
                                 type="button"
                                 onClick={() => openConfirm('release_stage', stage)}
-                                disabled={isSaving || (!stage.isReleaseDate && !historicalAllowed)}
+                                disabled={isSaving || releaseDateLocked}
                                 title={!stage.isReleaseDate
                                   ? historicalAllowed
                                     ? 'Live release is unavailable today. This historical account may be recorded with its real past release date.'
@@ -554,6 +557,12 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, isSaving = fa
                                 {isSaving ? <FiLoader className="h-3.5 w-3.5 animate-spin" /> : <FiSave className="h-3.5 w-3.5" />}
                                 {stage.releaseButtonLabel || 'Release'}
                               </button>
+                            ) : null}
+
+                            {releaseDateLocked ? (
+                              <p className="basis-full max-w-[220px] text-[10px] font-black leading-4 text-amber-700">
+                                Not a release date yet. Next release date: {releaseDateInfo.nextReleaseDate || '-'}.
+                              </p>
                             ) : null}
 
                             {!isReleased && !isOnHold && !isCancelled && !isEarnedOnCancellation && !isForfeitedOnCancellation ? (

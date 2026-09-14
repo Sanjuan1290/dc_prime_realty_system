@@ -1,6 +1,8 @@
 import bcrypt from 'bcrypt';
 import { getAuthenticatedUser } from '../controllers/Lot_Projects/_shared/lotProject.shared.js';
 import { isFullAccessAdministrator, roleHasPermission } from '../config/permissions.js';
+import { canAccessProject } from '../services/adminProjectAccess.service.js';
+import { db } from '../db/connect.js';
 
 const denied = (res, status, message) => res.status(status).json({ success: false, message });
 
@@ -36,6 +38,39 @@ export const requirePermission = (permission) => (req, res, next) => {
   return next();
 };
 
+
+
+export const requireProjectAccessBySlug = async (req, res, next, projectSlug) => {
+  try {
+    if (req.authUser?.role === 'super_admin') return next();
+    const slug = String(projectSlug || '').trim();
+    const [rows] = await db.query('SELECT lot_project_id FROM lot_projects WHERE lot_project_slug = ? LIMIT 1', [slug]);
+    const projectId = Number(rows[0]?.lot_project_id || 0);
+    if (!projectId) return denied(res, 404, 'Lot project not found.');
+    if (!(await canAccessProject(req.authUser, projectId))) {
+      return denied(res, 403, 'You do not have access to this project.');
+    }
+    req.authorizedLotProjectId = projectId;
+    return next();
+  } catch (error) {
+    return denied(res, 500, error?.message || 'Unable to verify project access.');
+  }
+};
+
+export const requireProjectAccessById = (paramName = 'id') => async (req, res, next) => {
+  try {
+    if (req.authUser?.role === 'super_admin') return next();
+    const projectId = Number(req.params?.[paramName] || 0);
+    if (!projectId) return denied(res, 400, 'Invalid project id.');
+    if (!(await canAccessProject(req.authUser, projectId))) {
+      return denied(res, 403, 'You do not have access to this project.');
+    }
+    req.authorizedLotProjectId = projectId;
+    return next();
+  } catch (error) {
+    return denied(res, 500, error?.message || 'Unable to verify project access.');
+  }
+};
 
 /**
  * Requires the authenticated user's current password for sensitive actions.

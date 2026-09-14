@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FiEdit2, FiRefreshCw, FiSettings } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
+import SettingsAuthorizationModal from '../../components/Shared/SettingsAuthorizationModal'
 import EditSettingsModal from '../../components/Lot_Projects/SettingsComponents/EditSettingsModal/EditSettingsModal'
 import {useFetch, useFetchPut, getDoubleCheckNotice} from '../../utils/useFetch'
 
@@ -45,6 +46,7 @@ const Settings = () => {
   const queryClient = useQueryClient()
   const [showEdit, setShowEdit] = useState(false)
   const [alert, setAlert] = useState(null)
+  const [pendingAuthorization, setPendingAuthorization] = useState(null)
 
   const { data, isLoading, isFetching, isError, error, refetch } = useQuery({
     queryKey: ['lot-project-settings', projectSlug],
@@ -61,7 +63,8 @@ const Settings = () => {
       doubleCheck: {
         type: 'settings',
         scope: 'project',
-        data: payload,
+        data: { ...payload, code: undefined, verificationCode: undefined, verificationId: undefined },
+        before: settings || {},
         summary: project?.name || project?.lot_project_name || projectSlug,
       },
     }),
@@ -70,6 +73,7 @@ const Settings = () => {
     },
     onSuccess: (result) => {
       setShowEdit(false)
+      setPendingAuthorization(null)
       setAlert({ type: 'success', message: result?.message || 'Project settings saved successfully.' })
       queryClient.invalidateQueries({ queryKey: ['lot-project-settings', projectSlug] })
       queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] })
@@ -80,7 +84,7 @@ const Settings = () => {
   })
 
   const handleSaveSettings = (updatedSettings) => {
-    updateSettingsMutation.mutate(updatedSettings)
+    setPendingAuthorization(updatedSettings)
   }
 
   const handleRefresh = () => {
@@ -121,31 +125,28 @@ const Settings = () => {
           <button
             type="button"
             onClick={() => {
-              if (!canEdit) {
-                setAlert({ type: 'warning', message: 'Only a full-access administrator can edit project settings.' })
-                return
-              }
-
+              if (!canEdit) return
               setShowEdit(true)
               setAlert({ type: 'info', message: 'Edit Settings opened.' })
             }}
-            disabled={isLoading || updateSettingsMutation.isPending}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={!canEdit || isLoading || updateSettingsMutation.isPending}
+            title={!canEdit ? 'Only the Super Admin can change Lot Project Settings. Saving requires the Super Admin password and email verification code.' : 'Edit protected project settings'}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none"
           >
             <FiEdit2 className="h-4 w-4" />
-            {canEdit ? 'Edit Settings' : 'View Only'}
+            Edit Settings
           </button>
         </div>
       </section>
 
       {!canEdit && !isLoading ? (
-        <StatusAlert type="info" message="Settings are view-only for this account. A full-access administrator can edit release days and project contact details." />
+        <StatusAlert type="info" message="Project Settings are owner-controlled. Only the Super Admin can save changes after password and email verification." />
       ) : null}
 
       <section className="grid gap-4 md:grid-cols-2">
         <SettingCard
           title="Commission Release Days"
-          description="Allowed days when a full-access administrator can release eligible commissions."
+          description="Configured days when eligible commissions may be released."
         >
           <div className="grid gap-3 sm:grid-cols-2">
             <InfoItem label="First Release Day" value={daySuffix(settings.releaseDayOne)} />
@@ -190,6 +191,18 @@ const Settings = () => {
             setAlert({ type: 'info', message: 'Edit cancelled.' })
           }}
           onSave={handleSaveSettings}
+        />
+      ) : null}
+
+      {pendingAuthorization ? (
+        <SettingsAuthorizationModal
+          title="Authorize Project Settings Change"
+          description="Lot Project Settings are owner-controlled. Verify the current Super Admin password, reason, and email code before the final review."
+          codeEndpoint={`/projects/lot-projects/${projectSlug}/settings/code`}
+          settingsPayload={pendingAuthorization}
+          isSaving={updateSettingsMutation.isPending}
+          onClose={() => !updateSettingsMutation.isPending && setPendingAuthorization(null)}
+          onConfirm={(authorizedPayload) => updateSettingsMutation.mutate(authorizedPayload)}
         />
       ) : null}
     </main>

@@ -38,7 +38,7 @@ const ComparisonRow = ({ label, before, after, currency = false }) => (
   </div>
 )
 
-const ReservationCorrectionModal = ({ open, projectSlug, listingId, onClose, onCorrected }) => {
+const ReservationCorrectionModal = ({ open, projectSlug, listingId, onClose, onCorrected, isSuperAdmin = false }) => {
   const [destinationListingId, setDestinationListingId] = useState('')
   const [destinationSearch, setDestinationSearch] = useState('')
   const [terms, setTerms] = useState(null)
@@ -374,10 +374,13 @@ const ReservationCorrectionModal = ({ open, projectSlug, listingId, onClose, onC
                 <section className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4 sm:p-5">
                   <h3 className="font-black text-slate-950">5. Super Admin authorization</h3>
                   <p className="mt-1 text-sm font-semibold text-slate-600">Because verified payments already exist, this correction needs password verification and a one-time code sent to the Super Admin email.</p>
+                  {!isSuperAdmin ? (
+                    <p className="mt-3 rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-xs font-black text-slate-600">Only the Super Admin can authorize this controlled correction. The authorization fields remain visible but are disabled for Admin accounts.</p>
+                  ) : null}
                   {!verificationId ? (
                     <label className="mt-4 block max-w-md">
                       <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-600">Super Admin Password *</span>
-                      <input type="password" value={superAdminPassword} onChange={(event) => setSuperAdminPassword(event.target.value)} autoComplete="current-password" className={fieldClass} placeholder="Enter current password" />
+                      <input type="password" value={superAdminPassword} onChange={(event) => setSuperAdminPassword(event.target.value)} disabled={!isSuperAdmin || busy} title={!isSuperAdmin ? 'Only the Super Admin can authorize a controlled unit correction.' : undefined} autoComplete="current-password" className={fieldClass} placeholder="Enter current password" />
                     </label>
                   ) : (
                     <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -387,7 +390,7 @@ const ReservationCorrectionModal = ({ open, projectSlug, listingId, onClose, onC
                       </div>
                       <label className="block">
                         <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-600">Email Verification Code *</span>
-                        <input inputMode="numeric" maxLength={6} value={verificationCode} onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, '').slice(0, 6))} className={fieldClass} placeholder="6-digit code" />
+                        <input inputMode="numeric" maxLength={6} value={verificationCode} onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, '').slice(0, 6))} disabled={!isSuperAdmin || busy} title={!isSuperAdmin ? 'Only the Super Admin can enter the owner email verification code.' : undefined} className={fieldClass} placeholder="6-digit code" />
                       </label>
                     </div>
                   )}
@@ -402,18 +405,20 @@ const ReservationCorrectionModal = ({ open, projectSlug, listingId, onClose, onC
           {controlledMode && !verificationId ? (
             <button
               type="button"
-              onClick={() => verificationMutation.mutate()}
-              disabled={!previewIsCurrent || reason.trim().length < 5 || !acknowledged || !superAdminPassword.trim() || verificationMutation.isPending || hardBlockers.length > 0}
-              className="h-11 rounded-xl bg-amber-600 px-5 text-sm font-black text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:bg-amber-300"
+              onClick={() => isSuperAdmin && verificationMutation.mutate()}
+              disabled={!isSuperAdmin || !previewIsCurrent || reason.trim().length < 5 || !acknowledged || !superAdminPassword.trim() || verificationMutation.isPending || hardBlockers.length > 0}
+              title={!isSuperAdmin ? 'Only the Super Admin can authorize a controlled unit correction.' : undefined}
+              className="h-11 rounded-xl bg-amber-600 px-5 text-sm font-black text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
             >
               {verificationMutation.isPending ? 'Sending Code...' : 'Verify Password & Send Code'}
             </button>
           ) : (
             <button
               type="button"
-              onClick={() => correctionMutation.mutate()}
-              disabled={!previewIsCurrent || reason.trim().length < 5 || !acknowledged || correctionMutation.isPending || hardBlockers.length > 0 || (controlledMode && (!verificationId || verificationCode.trim().length !== 6))}
-              className="h-11 rounded-xl bg-red-600 px-5 text-sm font-black text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-red-300"
+              onClick={() => (!controlledMode || isSuperAdmin) && correctionMutation.mutate()}
+              disabled={!previewIsCurrent || reason.trim().length < 5 || !acknowledged || correctionMutation.isPending || hardBlockers.length > 0 || (controlledMode && (!isSuperAdmin || !verificationId || verificationCode.trim().length !== 6))}
+              title={controlledMode && !isSuperAdmin ? 'Only the Super Admin can apply a controlled unit correction.' : undefined}
+              className="h-11 rounded-xl bg-red-600 px-5 text-sm font-black text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
             >
               {correctionMutation.isPending ? 'Correcting Reservation...' : controlledMode ? 'Review & Apply Controlled Correction' : 'Review & Correct Reservation'}
             </button>

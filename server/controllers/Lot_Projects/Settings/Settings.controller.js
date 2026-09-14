@@ -4,16 +4,69 @@ import {
   tableExists,
   getProjectBySlug,
   getAuthenticatedUser,
+  getUserFullName,
   toNullable,
 } from '../_shared/lotProject.shared.js';
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
-import { isFullAccessAdministrator } from '../../../config/permissions.js';
+import {
+  createSensitiveActionVerification,
+  getSensitiveActionRequestIp,
+  maskSensitiveActionEmail,
+  SENSITIVE_ACTION_CODE_EXPIRY_MINUTES,
+  verifyAndConsumeSensitiveAction,
+} from '../../../services/sensitiveActionVerification.service.js';
+import {
+  buildSettingsVerificationPayload,
+  LOT_PROJECT_SETTINGS_ACTION,
+  sendSettingsVerificationCodeEmail,
+  SETTINGS_VERIFICATION_ENTITY,
+} from '../../../services/settingsVerification.service.js';
 
 const toDay = (value, fallback) => {
   const number = Number(value || fallback);
   if (!Number.isInteger(number) || number < 1 || number > 31) return fallback;
   return number;
 };
+
+const clean = (value = '') => String(value ?? '').trim();
+const isExactSuperAdmin = (user) => String(user?.role || '').toLowerCase() === 'super_admin';
+
+const normalizeProjectSettingsPayload = (body = {}) => {
+  const releaseDayOne = toDay(body.releaseDayOne ?? body.release_day_one, 7);
+  const releaseDayTwo = toDay(body.releaseDayTwo ?? body.release_day_two, 22);
+
+  if (releaseDayOne === releaseDayTwo) {
+    throw Object.assign(new Error('Release days must be different.'), { statusCode: 400 });
+  }
+
+  const payload = {
+    releaseDayOne,
+    releaseDayTwo,
+    reservationContactName: toNullable(body.reservationContactName),
+    reservationContactEmail: toNullable(body.reservationContactEmail),
+    reservationContactNumber: toNullable(body.reservationContactNumber),
+    companyName: toNullable(body.companyName),
+    companyEmail: toNullable(body.companyEmail),
+    companyContactNumber: toNullable(body.companyContactNumber),
+  };
+
+  if (!payload.reservationContactName) {
+    throw Object.assign(new Error('Reservation contact name is required.'), { statusCode: 400 });
+  }
+  if (!payload.companyName) {
+    throw Object.assign(new Error('Company name is required.'), { statusCode: 400 });
+  }
+
+  return payload;
+};
+
+const buildProjectSettingsVerificationPayload = ({ actor, project, settingsPayload, reason }) => buildSettingsVerificationPayload({
+  actionType: LOT_PROJECT_SETTINGS_ACTION,
+  actorId: actor.id,
+  entityId: project.lot_project_id,
+  settings: settingsPayload,
+  reason,
+});
 
 const mapSettings = (row = {}, project = {}) => ({
   id: row.lot_project_setting_id || null,
@@ -94,7 +147,7 @@ export const getLotProjectSettings = async (req, res) => {
     return res.json({
       success: true,
       data: mapSettings(settings, project),
-      canEdit: isFullAccessAdministrator(currentUser),
+      canEdit: isExactSuperAdmin(currentUser),
       project: {
         id: project.lot_project_id,
         name: project.lot_project_name,
@@ -103,6 +156,67 @@ export const getLotProjectSettings = async (req, res) => {
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
+export const requestLotProjectSettingsCode = async (req, res) => {
+  const connection = await db.getConnection();
+
+  try {
+    const actor = req.authUser || await getAuthenticatedUser(req);
+    if (!actor?.id || !actor.email) {
+      return res.status(400).json({ success: false, message: 'The Super Admin account must have an email address.' });
+    }
+    if (!isExactSuperAdmin(actor)) {
+      return res.status(403).json({ success: false, message: 'Only the exact Super Admin can change project settings.' });
+    }
+    if (!(await tableExists(connection, 'destructive_action_verifications'))) {
+      return res.status(500).json({ success: false, message: 'Sensitive-action verification table is missing. Apply the latest database schema first.' });
+    }
+
+    const slug = clean(req.params.projectSlug);
+    const project = await getProjectBySlug(slug);
+    if (!project) return res.status(404).json({ success: false, message: 'Lot project not found.' });
+
+    const reason = clean(req.body.reason);
+    if (reason.length < 5) return res.status(400).json({ success: false, message: 'A clear reason for changing settings is required.' });
+    const settingsPayload = normalizeProjectSettingsPayload(req.body);
+    const payload = buildProjectSettingsVerificationPayload({ actor, project, settingsPayload, reason });
+
+    await connection.beginTransaction();
+    const { verificationId, code } = await createSensitiveActionVerification(connection, {
+      userId: actor.id,
+      actionType: LOT_PROJECT_SETTINGS_ACTION,
+      entityType: SETTINGS_VERIFICATION_ENTITY,
+      entityId: project.lot_project_id,
+      payload,
+      reason,
+      requestIp: getSensitiveActionRequestIp(req),
+    });
+    await sendSettingsVerificationCodeEmail({
+      actor,
+      code,
+      scopeLabel: 'Lot Project Settings',
+      entityLabel: project.lot_project_name || project.lot_project_slug || 'Lot Project',
+      reason,
+      settings: settingsPayload,
+    });
+    await connection.commit();
+
+    return res.json({
+      success: true,
+      message: `A verification code was sent to ${maskSensitiveActionEmail(actor.email)}.`,
+      data: {
+        verificationId,
+        maskedEmail: maskSensitiveActionEmail(actor.email),
+        expiresInMinutes: SENSITIVE_ACTION_CODE_EXPIRY_MINUTES,
+      },
+    });
+  } catch (error) {
+    try { await connection.rollback(); } catch (_) {}
+    return res.status(error.statusCode || 500).json({ success: false, message: getErrorMessage(error) });
   } finally {
     connection.release();
   }
@@ -128,29 +242,37 @@ export const updateLotProjectSettings = async (req, res) => {
       return res.status(401).json({ success: false, message: 'Please login before updating settings.' });
     }
 
-    if (!isFullAccessAdministrator(currentUser)) {
-      return res.status(403).json({ success: false, message: 'Only a full-access administrator can update release days and project settings.' });
+    if (!isExactSuperAdmin(currentUser)) {
+      return res.status(403).json({ success: false, message: 'Only the exact Super Admin can update project settings.' });
     }
 
-    const releaseDayOne = toDay(req.body.releaseDayOne ?? req.body.release_day_one, 7);
-    const releaseDayTwo = toDay(req.body.releaseDayTwo ?? req.body.release_day_two, 22);
-
-    if (releaseDayOne === releaseDayTwo) {
-      return res.status(400).json({ success: false, message: 'Release days must be different.' });
+    const settingsPayload = normalizeProjectSettingsPayload(req.body);
+    const reason = clean(req.body.reason);
+    const verificationId = Number(req.body.verificationId || req.body.verification_id || 0);
+    const code = clean(req.body.code || req.body.verificationCode || req.body.verification_code);
+    if (reason.length < 5) return res.status(400).json({ success: false, message: 'A clear reason for changing settings is required.' });
+    if (!verificationId || !/^\d{6}$/.test(code)) {
+      return res.status(400).json({ success: false, message: 'Super Admin password and six-digit email verification are required to save project settings.' });
     }
-
-    const settingsPayload = {
-      releaseDayOne,
-      releaseDayTwo,
-      reservationContactName: toNullable(req.body.reservationContactName),
-      reservationContactEmail: toNullable(req.body.reservationContactEmail),
-      reservationContactNumber: toNullable(req.body.reservationContactNumber),
-      companyName: toNullable(req.body.companyName),
-      companyEmail: toNullable(req.body.companyEmail),
-      companyContactNumber: toNullable(req.body.companyContactNumber),
-    };
 
     await connection.beginTransaction();
+
+    const beforeRow = await getOrCreateSettingsRow(connection, project);
+    const before = mapSettings(beforeRow, project);
+    const verificationPayload = buildProjectSettingsVerificationPayload({ actor: currentUser, project, settingsPayload, reason });
+    const verificationResult = await verifyAndConsumeSensitiveAction(connection, {
+      verificationId,
+      userId: currentUser.id,
+      actionType: LOT_PROJECT_SETTINGS_ACTION,
+      entityType: SETTINGS_VERIFICATION_ENTITY,
+      entityId: project.lot_project_id,
+      code,
+      payload: verificationPayload,
+    });
+    if (!verificationResult.ok) {
+      await connection.commit();
+      return res.status(verificationResult.statusCode || 400).json({ success: false, message: verificationResult.message });
+    }
 
     await connection.query(
       `
@@ -195,9 +317,16 @@ export const updateLotProjectSettings = async (req, res) => {
       entityType: 'lot_project_settings',
       entityId: project.lot_project_id,
       entityLabel: project.lot_project_name,
-      title: 'Updated project release settings',
-      description: `${currentUser.first_name || currentUser.email || 'A user'} updated release settings for ${project.lot_project_name}.`,
-      metadata: settingsPayload,
+      title: 'Updated lot project settings',
+      description: `${getUserFullName(currentUser) || currentUser.email || 'Super Admin'} updated protected settings for ${project.lot_project_name}.`,
+      metadata: {
+        reason,
+        verificationId,
+        verificationMethod: 'super_admin_password_email_code',
+        before,
+        after: settingsPayload,
+        releaseDayChangesApplyProspectively: true,
+      },
     });
 
     await connection.commit();
@@ -212,7 +341,7 @@ export const updateLotProjectSettings = async (req, res) => {
     });
   } catch (error) {
     try { await connection.rollback(); } catch (_) {}
-    return res.status(500).json({ success: false, message: getErrorMessage(error) });
+    return res.status(error.statusCode || 500).json({ success: false, message: getErrorMessage(error) });
   } finally {
     connection.release();
   }

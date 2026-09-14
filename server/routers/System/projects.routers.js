@@ -4,6 +4,8 @@ import {
   requireCurrentPassword,
   requirePermission,
   requireExactRole,
+  requireProjectAccessById,
+  requireProjectAccessBySlug,
 } from '../../middleware/auth.middleware.js';
 import { PERMISSIONS } from '../../config/permissions.js';
 
@@ -113,6 +115,7 @@ import {
 } from '../../controllers/Lot_Projects/Commissions/CommissionConfiguration.controller.js';
 import {
   getLotProjectSettings,
+  requestLotProjectSettingsCode,
   updateLotProjectSettings,
 } from '../../controllers/Lot_Projects/Settings/Settings.controller.js';
 import {
@@ -124,6 +127,7 @@ import {
 
 const router = express.Router();
 router.use(authenticateUser);
+router.param('projectSlug', requireProjectAccessBySlug);
 
 router.get('/reports', requirePermission(PERMISSIONS.SYSTEM_REPORTS_VIEW), getSystemReports);
 router.post('/reports/export-audit', requirePermission(PERMISSIONS.SYSTEM_REPORTS_EXPORT), auditSystemReportExport);
@@ -139,7 +143,8 @@ router.get('/lot-projects/:projectSlug/reservation-agents', requirePermission(PE
 router.get('/lot-projects/:projectSlug/commission-preview', requirePermission(PERMISSIONS.LOT_LISTINGS_VIEW), getReservationCommissionPreviewController);
 router.patch('/lot-projects/:projectSlug/commissions/:commissionId', requirePermission(PERMISSIONS.LOT_COMMISSIONS_MANAGE), updateLotProjectCommission);
 router.get('/lot-projects/:projectSlug/settings', requirePermission(PERMISSIONS.LOT_SETTINGS_VIEW), getLotProjectSettings);
-router.put('/lot-projects/:projectSlug/settings', requirePermission(PERMISSIONS.LOT_SETTINGS_MANAGE), updateLotProjectSettings);
+router.post('/lot-projects/:projectSlug/settings/code', requirePermission(PERMISSIONS.LOT_SETTINGS_MANAGE), requireExactRole('super_admin'), requireCurrentPassword({ field: 'password', label: 'Super Admin password' }), requestLotProjectSettingsCode);
+router.put('/lot-projects/:projectSlug/settings', requirePermission(PERMISSIONS.LOT_SETTINGS_MANAGE), requireExactRole('super_admin'), updateLotProjectSettings);
 router.get('/lot-projects/:projectSlug/listings/:listingId', requirePermission(PERMISSIONS.LOT_LISTINGS_VIEW), getLotProjectListingProfile);
 router.get('/lot-projects/:projectSlug/listings/:listingId/accounts', requirePermission(PERMISSIONS.LOT_LISTINGS_VIEW), getLotProjectListingAccountHistory);
 router.get('/lot-projects/:projectSlug/listings/:listingId/accounts/:accountId', requirePermission(PERMISSIONS.LOT_LISTINGS_VIEW), getLotProjectListingProfile);
@@ -164,10 +169,10 @@ router.post(
 router.get('/lot-projects/:projectSlug', requirePermission(PERMISSIONS.LOT_PROJECT_VIEW), getLotProjectBySlug);
 
 router.post('/lot-projects', requirePermission(PERMISSIONS.SYSTEM_PROJECTS_MANAGE), createLotProject);
-router.post('/lot-projects/:id/edit-preflight', requirePermission(PERMISSIONS.SYSTEM_PROJECTS_MANAGE), preflightLotProjectUpdate);
-router.put('/lot-projects/:id', requirePermission(PERMISSIONS.SYSTEM_PROJECTS_MANAGE), updateLotProject);
-router.patch('/lot-projects/:id/status', requirePermission(PERMISSIONS.SYSTEM_PROJECTS_MANAGE), toggleLotProjectStatus);
-router.delete('/lot-projects/:id', requirePermission(PERMISSIONS.SYSTEM_PROJECTS_MANAGE), deleteLotProject);
+router.post('/lot-projects/:id/edit-preflight', requirePermission(PERMISSIONS.SYSTEM_PROJECTS_MANAGE), requireProjectAccessById('id'), preflightLotProjectUpdate);
+router.put('/lot-projects/:id', requirePermission(PERMISSIONS.SYSTEM_PROJECTS_MANAGE), requireProjectAccessById('id'), updateLotProject);
+router.patch('/lot-projects/:id/status', requirePermission(PERMISSIONS.SYSTEM_PROJECTS_MANAGE), requireProjectAccessById('id'), toggleLotProjectStatus);
+router.delete('/lot-projects/:id', requirePermission(PERMISSIONS.SYSTEM_PROJECTS_MANAGE), requireProjectAccessById('id'), deleteLotProject);
 
 router.post('/lot-projects/:projectSlug/listing-imports/validate', requirePermission(PERMISSIONS.LOT_LISTINGS_IMPORT), validateLotProjectListingImport);
 router.post('/lot-projects/:projectSlug/listing-imports', requirePermission(PERMISSIONS.LOT_LISTINGS_IMPORT), importLotProjectListings);

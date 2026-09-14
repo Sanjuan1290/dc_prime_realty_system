@@ -18,6 +18,42 @@ const dayOfMonth = (value) => {
   return `${number}${suffix} of the month`
 }
 
+const sameValue = (left, right) => String(left ?? '') === String(right ?? '')
+
+const buildChangeFields = (before = {}, after = {}, definitions = []) => definitions.flatMap(({ key, label, formatter }) => {
+  if (sameValue(before?.[key], after?.[key])) return []
+  return [
+    { label: `${label} — Before`, value: before?.[key], formatter },
+    { label: `${label} — After`, value: after?.[key], formatter, tone: 'important' },
+  ]
+})
+
+const systemChangeDefinitions = [
+  { key: 'companyName', label: 'Company Name' },
+  { key: 'companyTin', label: 'Company TIN' },
+  { key: 'companyEmail', label: 'Company Email' },
+  { key: 'companyContactNumber', label: 'Company Contact Number' },
+  { key: 'companyAddress', label: 'Company Address' },
+  { key: 'reservationContactName', label: 'Reservation Contact Name' },
+  { key: 'reservationContactEmail', label: 'Reservation Contact Email' },
+  { key: 'reservationContactNumber', label: 'Reservation Contact Number' },
+  { key: 'defaultReleaseDayOne', label: 'Default Release Day 1', formatter: dayOfMonth },
+  { key: 'defaultReleaseDayTwo', label: 'Default Release Day 2', formatter: dayOfMonth },
+  { key: 'systemStatus', label: 'System Status', formatter: titleCase },
+  { key: 'maintenanceMessage', label: 'Maintenance Message' },
+]
+
+const projectChangeDefinitions = [
+  { key: 'releaseDayOne', label: 'First Release Day', formatter: dayOfMonth },
+  { key: 'releaseDayTwo', label: 'Second Release Day', formatter: dayOfMonth },
+  { key: 'reservationContactName', label: 'Reservation Contact Name' },
+  { key: 'reservationContactEmail', label: 'Reservation Contact Email' },
+  { key: 'reservationContactNumber', label: 'Reservation Contact Number' },
+  { key: 'companyName', label: 'Company Name' },
+  { key: 'companyEmail', label: 'Company Email' },
+  { key: 'companyContactNumber', label: 'Company Contact Number' },
+]
+
 const SystemSettingsReview = ({ data }) => [
   {
     key: 'company',
@@ -106,10 +142,29 @@ const ProjectSettingsReview = ({ data }) => [
 
 const SettingsDoubleCheck = ({ request, onConfirm, onCancel }) => {
   const data = request.data || {}
+  const before = request.before || {}
   const scope = request.scope === 'project' ? 'project' : 'system'
-  const steps = scope === 'project'
+  const changeFields = buildChangeFields(
+    before,
+    data,
+    scope === 'project' ? projectChangeDefinitions : systemChangeDefinitions
+  )
+  const authorizationStep = {
+    key: 'owner-authorization',
+    title: 'Owner Authorization',
+    content: (
+      <DoubleCheckSection title="Owner Authorization" helper="Confirm why this protected settings change is being made and review every changed value before saving." tone="amber">
+        <DoubleCheckFields fields={[
+          { label: 'Reason for Change', value: data.reason, wide: true, tone: 'important' },
+          ...(changeFields.length ? changeFields : [{ label: 'Changed Values', value: 'No settings value changed.' }]),
+        ]} />
+      </DoubleCheckSection>
+    ),
+  }
+  const detailSteps = scope === 'project'
     ? ProjectSettingsReview({ data })
     : SystemSettingsReview({ data })
+  const steps = [authorizationStep, ...detailSteps]
 
   return (
     <DoubleCheckShell

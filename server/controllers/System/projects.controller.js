@@ -71,9 +71,16 @@ import {
 import { writeAuditLog } from './auditLogs.controller.js';
 import { createProjectStorageCode } from '../../services/storageCodes.service.js';
 import { resolveDocumentRequiredFlag, resolveDocumentResponsibleParty } from '../../utils/documentRequirement.js';
+import { getAccessibleProjectIds, grantAdminProjectAccess } from '../../services/adminProjectAccess.service.js';
 
 export const getLotProjects = async (req, res) => {
   try {
+    const accessibleProjectIds = await getAccessibleProjectIds(req.authUser);
+    const accessSql = accessibleProjectIds === null
+      ? ''
+      : accessibleProjectIds.length
+        ? `WHERE lp.lot_project_id IN (${accessibleProjectIds.map(() => '?').join(', ')})`
+        : 'WHERE 1 = 0';
     const [projects] = await db.query(`
       SELECT
         lp.*,
@@ -86,9 +93,10 @@ export const getLotProjects = async (req, res) => {
         AND lpdd.lot_project_default_document_status = 'active'
       LEFT JOIN lot_project_listings listing
         ON listing.lot_project_id = lp.lot_project_id
+      ${accessSql}
       GROUP BY lp.lot_project_id
       ORDER BY lp.lot_project_created_at DESC, lp.lot_project_id DESC
-    `);
+    `, accessibleProjectIds === null ? [] : accessibleProjectIds);
 
     const [cadastralRows] = await db.query(`
       SELECT
@@ -101,9 +109,10 @@ export const getLotProjects = async (req, res) => {
         ON link.lot_project_cadastral_lot_number_id = c.lot_project_cadastral_lot_number_id
       LEFT JOIN lot_project_listings listing
         ON listing.lot_project_listing_id = link.lot_project_listing_id
+      ${accessibleProjectIds === null ? '' : accessibleProjectIds.length ? `WHERE c.lot_project_id IN (${accessibleProjectIds.map(() => '?').join(', ')})` : 'WHERE 1 = 0'}
       GROUP BY c.lot_project_cadastral_lot_number_id, c.lot_project_id, c.lot_project_cadastral_lot_number
       ORDER BY c.lot_project_cadastral_lot_number ASC
-    `);
+    `, accessibleProjectIds === null ? [] : accessibleProjectIds);
 
     return res.json({
       success: true,
@@ -144,7 +153,14 @@ export const mapLotProjectOption = (project = {}) => ({
 
 export const getLotProjectOptions = async (req, res) => {
   try {
-    const [rows] = await db.query(LOT_PROJECT_OPTIONS_QUERY);
+    const accessibleProjectIds = await getAccessibleProjectIds(req.authUser);
+    const accessSql = accessibleProjectIds === null
+      ? ''
+      : accessibleProjectIds.length
+        ? ` AND lot_project_id IN (${accessibleProjectIds.map(() => '?').join(', ')})`
+        : ' AND 1 = 0';
+    const query = LOT_PROJECT_OPTIONS_QUERY.replace("WHERE lot_project_status = 'active'", `WHERE lot_project_status = 'active'${accessSql}`);
+    const [rows] = await db.query(query, accessibleProjectIds === null ? [] : accessibleProjectIds);
 
     return res.json({
       success: true,
@@ -237,6 +253,15 @@ export const createLotProject = async (req, res) => {
         `UPDATE lot_projects SET lot_project_storage_code = ? WHERE lot_project_id = ?`,
         [storageCode, lotProjectId]
       );
+    }
+
+    // A scoped Admin who creates a project automatically receives access to it.
+    if (req.authUser?.role === 'admin') {
+      await grantAdminProjectAccess(connection, {
+        userId: req.authUser.id,
+        projectId: lotProjectId,
+        changedByUserId: req.authUser.id,
+      });
     }
 
     if (payload.cadastralLots.length > 0) {
@@ -711,6 +736,14 @@ export const getLotProjectDocumentCompliance = async (req, res) => {
   const connection = await db.getConnection();
 
   try {
+    const accessibleProjectIds = await getAccessibleProjectIds(req.authUser, connection);
+    const projectAccessPredicate = accessibleProjectIds === null
+      ? ''
+      : accessibleProjectIds.length
+        ? ` AND lp.lot_project_id IN (${accessibleProjectIds.map(() => '?').join(', ')})`
+        : ' AND 1 = 0';
+    const projectAccessParams = accessibleProjectIds === null ? [] : accessibleProjectIds;
+
     const requiredTables = [
       'lot_projects',
       'lot_project_listings',
@@ -740,6 +773,7 @@ export const getLotProjectDocumentCompliance = async (req, res) => {
        AND cd.document_id = ld.document_id
       WHERE l.lot_project_listing_status IN ('sold', 'pending_for_cancellation')
         AND cp.lot_project_client_profile_status IN ('active', 'closed')
+        ${projectAccessPredicate}
     `;
 
     const [projectRows] = await connection.query(
@@ -773,7 +807,8 @@ export const getLotProjectDocumentCompliance = async (req, res) => {
         ${baseFromSql}
         GROUP BY lp.lot_project_id, lp.lot_project_name, lp.lot_project_slug
         ORDER BY lp.lot_project_name ASC
-      `
+      `,
+      projectAccessParams
     );
 
     const [unitRows] = await connection.query(
@@ -816,7 +851,8 @@ export const getLotProjectDocumentCompliance = async (req, res) => {
           cp.lot_project_client_profile_id,
           cp.buyer_full_name
         ORDER BY pending_required_documents DESC, lp.lot_project_name ASC, l.lot_project_listing_unit_id ASC
-      `
+      `,
+      projectAccessParams
     );
 
     const mapCounts = (row) => ({

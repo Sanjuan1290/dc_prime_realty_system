@@ -54,12 +54,12 @@ export const USER_ROLES = Object.freeze([
   'external_group',
 ]);
 
-export const ADMIN_TYPES = Object.freeze(['admin_1', 'admin_2', 'admin_3']);
 export const ADMIN_CREATABLE_USER_ROLES = Object.freeze(USER_ROLES.filter((role) => !['super_admin', 'external_group'].includes(role)));
 export const ADMIN_MANAGEABLE_USER_ROLES = ADMIN_CREATABLE_USER_ROLES;
 
 const knownUserRoles = new Set(USER_ROLES);
 const allPermissions = new Set(Object.values(PERMISSIONS));
+const adminPermissions = new Set([...allPermissions].filter((permission) => permission !== PERMISSIONS.SYSTEM_DATA_INTEGRITY_VIEW));
 
 const normalizeActor = (userOrRole, adminType = '') => {
   if (userOrRole && typeof userOrRole === 'object') {
@@ -75,23 +75,26 @@ const normalizeActor = (userOrRole, adminType = '') => {
   };
 };
 
-export const isAdmin1 = (userOrRole, adminType = '') => {
+export const isAdmin = (userOrRole, adminType = '') => {
   const actor = normalizeActor(userOrRole, adminType);
-  return actor.role === 'admin' && (!actor.adminType || actor.adminType === 'admin_1');
+  return actor.role === 'admin';
 };
+
+// Backward-compatible alias while older call sites are migrated.
+export const isAdmin1 = isAdmin;
 
 export const isFullAccessAdministrator = (userOrRole = {}, adminType = '') => {
   const actor = normalizeActor(userOrRole, adminType);
-  return actor.role === 'super_admin' || isAdmin1(actor.role, actor.adminType);
+  return actor.role === 'super_admin' || actor.role === 'admin';
 };
 
-// Admin 1 may manage ordinary accounts, but Super Admin accounts remain owner-only.
+// Admin may manage ordinary accounts, but Super Admin accounts remain owner-only.
 export const canActorManageUserRole = (userOrRole, targetRole, adminType = '') => {
   const actor = normalizeActor(userOrRole, adminType);
   const target = String(targetRole || '');
   if (!knownUserRoles.has(target)) return false;
   if (target === 'super_admin') return actor.role === 'super_admin';
-  return actor.role === 'super_admin' || isAdmin1(actor.role, actor.adminType);
+  return actor.role === 'super_admin' || actor.role === 'admin';
 };
 
 // Creating a Super Admin account remains restricted to an existing Super Admin.
@@ -100,7 +103,7 @@ export const canActorCreateUserRole = (userOrRole, requestedRole, adminType = ''
   const requested = String(requestedRole || '');
   if (!knownUserRoles.has(requested)) return false;
   if (requested === 'super_admin') return actor.role === 'super_admin';
-  return actor.role === 'super_admin' || isAdmin1(actor.role, actor.adminType);
+  return actor.role === 'super_admin' || actor.role === 'admin';
 };
 
 // Editing, promoting to, or demoting from Super Admin remains owner-only.
@@ -110,19 +113,19 @@ export const canActorChangeUserRole = (userOrRole, currentRole, requestedRole, a
   const requested = String(requestedRole || '');
   if (!knownUserRoles.has(current) || !knownUserRoles.has(requested)) return false;
   if (current === 'super_admin' || requested === 'super_admin') return actor.role === 'super_admin';
-  return actor.role === 'super_admin' || isAdmin1(actor.role, actor.adminType);
+  return actor.role === 'super_admin' || actor.role === 'admin';
 };
 
 export const ROLE_PERMISSIONS = Object.freeze({
   super_admin: allPermissions,
-  admin_1: allPermissions,
+  admin: adminPermissions,
 });
 
 export const roleHasPermission = (userOrRole, permission, adminType = '') => {
   if (!permission) return false;
   const actor = normalizeActor(userOrRole, adminType);
   if (actor.role === 'super_admin') return allPermissions.has(permission);
-  if (isAdmin1(actor.role, actor.adminType)) return allPermissions.has(permission);
+  if (actor.role === 'admin') return adminPermissions.has(permission);
   return false;
 };
 

@@ -1584,7 +1584,26 @@ const PaymentsSOA = ({
                           </button>
                         </>
                       ) : !readOnly ? (
-                        <span className="inline-flex h-9 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-black text-slate-400">Super Admin only</span>
+                        <>
+                          <button
+                            type="button"
+                            disabled
+                            title="Only the Super Admin can edit a recorded payment because this action requires owner password and email verification."
+                            className="inline-flex h-9 cursor-not-allowed items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-black text-slate-400"
+                          >
+                            <FiEdit2 className="h-3.5 w-3.5" />
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            disabled
+                            title="Only the Super Admin can void a recorded payment because this action requires owner password and email verification."
+                            className="inline-flex h-9 cursor-not-allowed items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-black text-slate-400"
+                          >
+                            <FiTrash2 className="h-3.5 w-3.5" />
+                            Void
+                          </button>
+                        </>
                       ) : null}
                     </div>
                   </td>

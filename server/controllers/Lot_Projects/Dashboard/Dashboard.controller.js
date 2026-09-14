@@ -131,15 +131,8 @@ export const resolveDashboardDateRange = (query = {}, userOrRole = '', adminType
   }
 
   const actor = normalizeDashboardActor(userOrRole, adminType);
-  const isAdmin1 = actor.role === 'admin' && (!actor.adminType || actor.adminType === 'admin_1');
   const isOverOneYear = exceedsOneYear(fromDate, toDate);
   const spanMonths = getInclusiveMonthSpan(fromDate, toDate);
-
-  if (isAdmin1 && isOverOneYear) {
-    const error = new Error('Admin 1 dashboard reports are limited to 12 months (1 year).');
-    error.statusCode = 400;
-    throw error;
-  }
 
   const dayDiff = getDayDiff(fromDate, toDate);
   return {
@@ -147,7 +140,7 @@ export const resolveDashboardDateRange = (query = {}, userOrRole = '', adminType
     from: toDateOnly(fromDate),
     to: toDateOnly(toDate),
     spanMonths,
-    longRangeWarning: actor.role === 'super_admin' && isOverOneYear,
+    longRangeWarning: ['super_admin', 'admin'].includes(actor.role) && isOverOneYear,
     groupBy: dayDiff > 45 ? 'month' : 'day',
   };
 };

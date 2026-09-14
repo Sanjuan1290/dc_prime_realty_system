@@ -11,7 +11,7 @@ import {
   FiX,
 } from "react-icons/fi";
 import StatusAlert from "../../Shared/StatusAlert";
-import { ADMIN_TYPES } from "../../../config/permissions";
+import AdminProjectAccessFields from "./AdminProjectAccessFields";
 import { useFetch as fetchApi, useFetchPut as putApi, getDoubleCheckNotice } from "../../../utils/useFetch";
 
 const sellerRoles = ["division_manager", "sales_director", "unit_manager", "sales_agent"];
@@ -46,7 +46,8 @@ const getInitialForm = (user = {}, { initialSellerGroupId = "", lockSellerGroup 
   prc_no: String(user.prc_no ?? user.prcNo ?? ""),
   address: String(user.address ?? ""),
   role: String(user.role || "sales_agent"),
-  admin_type: String(user.admin_type || (user.role === "admin" ? "admin_1" : "")),
+  admin_all_projects: Boolean(user.admin_all_projects),
+  admin_project_ids: Array.isArray(user.admin_project_ids) ? user.admin_project_ids.map(Number) : [],
   status: String(user.status || user.user_status || user.accredited_seller_status || "active"),
   seller_group_id: String(
     lockSellerGroup
@@ -215,6 +216,7 @@ const EditUserModal = ({
   onSaved,
   allowedRoles = Object.keys(roleLabels),
   actorRole = "super_admin",
+  actorCanAssignAllProjects = true,
   initialSellerGroupId = "",
   lockSellerGroup = false,
 }) => {
@@ -249,10 +251,17 @@ const EditUserModal = ({
     queryFn: () => fetchApi("/accredited/parents"),
   });
 
+  const { data: projectData, isLoading: isProjectsLoading, isError: isProjectsError, error: projectsError } = useQuery({
+    queryKey: ["lot-project-options", "admin-access"],
+    queryFn: () => fetchApi("/projects/lot-projects/options"),
+    enabled: form.role === "admin",
+  });
+
 
 
   const sellerGroups = useMemo(() => groupData?.data || [], [groupData?.data]);
   const parentSellers = useMemo(() => parentData?.data || [], [parentData?.data]);
+  const adminProjects = useMemo(() => projectData?.data || [], [projectData?.data]);
   const isSellerRole = sellerRoles.includes(form.role);
   const totalSteps = isSellerRole ? 2 : 1;
   const selectedGroup = useMemo(
@@ -320,6 +329,7 @@ const EditUserModal = ({
           meta: {
             sellerGroupName: selectedGroup?.seller_group_name || '',
             reportsUnderName: parentOptions.find((option) => String(option.value) === String(form.reports_under_user_id))?.label || '',
+            adminProjectNames: form.admin_all_projects ? ['All Projects'] : adminProjects.filter((project) => form.admin_project_ids.includes(Number(project.id || project.value || project.lot_project_id))).map((project) => project.name || project.label || project.lot_project_name),
           },
         },
       }),
@@ -362,8 +372,8 @@ const EditUserModal = ({
       return false;
     }
 
-    if (form.role === "admin" && form.admin_type !== "admin_1") {
-      setWarning("Only Admin 1 is available right now. Admin 2 and Admin 3 will be configured later.");
+    if (form.role === "admin" && !form.admin_all_projects && !form.admin_project_ids.length) {
+      setWarning("Select at least one project this Admin can manage, or choose All Projects.");
       return false;
     }
 
@@ -565,7 +575,8 @@ const EditUserModal = ({
                         setForm((current) => ({
                           ...current,
                           role: nextRole,
-                          admin_type: nextRole === "admin" ? "admin_1" : "",
+                          admin_all_projects: nextRole === "admin" ? current.admin_all_projects : false,
+                          admin_project_ids: nextRole === "admin" ? current.admin_project_ids : [],
                           seller_group_id: sellerRoles.includes(nextRole)
                             ? (lockSellerGroup
                               ? String(initialSellerGroupId || current.seller_group_id)
@@ -582,18 +593,9 @@ const EditUserModal = ({
                         <option key={value} value={value}>{label}</option>
                       ))}
                     </select>
-                    <p className="text-xs font-semibold text-slate-500">Admin 1 can manage ordinary user accounts. Super Admin accounts remain owner-only; Admin 2 and Admin 3 remain unavailable.</p>
+                    <p className="text-xs font-semibold text-slate-500">Admins have full operational access within assigned projects. Super Admin accounts and owner-authorized actions remain protected.</p>
                   </label>
 
-                  {form.role === "admin" ? (
-                    <label className="flex flex-col gap-2">
-                      <p className="text-sm font-bold text-slate-700">Admin Type</p>
-                      <select value={form.admin_type || "admin_1"} onChange={(event) => updateForm("admin_type", event.target.value)} className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50">
-                        {ADMIN_TYPES.map((type) => <option key={type.value} value={type.value} disabled={type.disabled}>{type.label}{type.disabled ? " — Coming later" : " — Operational access"}</option>)}
-                      </select>
-                      <p className="text-xs font-semibold text-slate-500">Admin 1 has full operational access with owner-only safeguards and a 12-month dashboard limit.</p>
-                    </label>
-                  ) : null}
 
                   <label className="flex flex-col gap-2">
                     <p className="text-sm font-bold text-slate-700">Status</p>
@@ -608,6 +610,19 @@ const EditUserModal = ({
                     <p className="mt-1 text-xs font-semibold">Use Reset Password from the users table when needed.</p>
                   </div>
                 </div>
+
+                {form.role === "admin" ? (
+                  <AdminProjectAccessFields
+                    projects={adminProjects}
+                    allProjects={form.admin_all_projects}
+                    selectedProjectIds={form.admin_project_ids}
+                    canSelectAllProjects={actorCanAssignAllProjects}
+                    isLoading={isProjectsLoading}
+                    error={isProjectsError ? (projectsError?.message || "Failed to load projects.") : ""}
+                    onAllProjectsChange={(checked) => setForm((current) => ({ ...current, admin_all_projects: checked, admin_project_ids: checked ? [] : current.admin_project_ids }))}
+                    onProjectToggle={(projectId) => setForm((current) => ({ ...current, admin_project_ids: current.admin_project_ids.includes(projectId) ? current.admin_project_ids.filter((id) => id !== projectId) : [...current.admin_project_ids, projectId] }))}
+                  />
+                ) : null}
               </>
             ) : null}
 

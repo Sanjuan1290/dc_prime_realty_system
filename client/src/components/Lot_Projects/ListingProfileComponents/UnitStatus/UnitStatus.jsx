@@ -533,12 +533,13 @@ const UnitStatus = ({
         title="Seller / Commission"
         description="Assigned seller details and the saved commission distribution for this sale."
         icon={FiBriefcase}
-        action={!readOnly && canAdjustCommission && (unitData.hasClientProfile || unitData.rawStatus === 'sold') ? (
+        action={!readOnly && (unitData.hasClientProfile || unitData.rawStatus === 'sold') ? (
           <button
             type="button"
-            onClick={() => setShowRecalculateModal(true)}
-            disabled={isAdjustingCommission}
-            className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 text-sm font-black text-blue-700 transition hover:border-blue-300 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+            onClick={() => canAdjustCommission && setShowRecalculateModal(true)}
+            disabled={!canAdjustCommission || isAdjustingCommission}
+            title={!canAdjustCommission ? 'Only the Super Admin can adjust a saved unit commission because this action requires owner password and email verification.' : 'Adjust the saved unit commission'}
+            className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 text-sm font-black text-blue-700 transition hover:border-blue-300 hover:bg-blue-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400 sm:w-auto"
           >
             <FiRefreshCw className={`h-4 w-4 ${isAdjustingCommission ? 'animate-spin' : ''}`} />
             {isAdjustingCommission ? 'Applying...' : 'Adjust Commission'}

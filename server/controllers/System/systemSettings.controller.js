@@ -3,10 +3,24 @@ import {
   getAuthenticatedUser,
   getErrorMessage,
   getUserFullName,
+  tableExists,
 } from '../Lot_Projects/_shared/lotProject.shared.js';
 import { writeAuditLog } from './auditLogs.controller.js';
 import { isFullAccessAdministrator } from '../../config/permissions.js';
 import { normalizeDepartmentConfigs } from './Employees/departmentBarcode.shared.js';
+import {
+  createSensitiveActionVerification,
+  getSensitiveActionRequestIp,
+  maskSensitiveActionEmail,
+  SENSITIVE_ACTION_CODE_EXPIRY_MINUTES,
+  verifyAndConsumeSensitiveAction,
+} from '../../services/sensitiveActionVerification.service.js';
+import {
+  buildSettingsVerificationPayload,
+  sendSettingsVerificationCodeEmail,
+  SETTINGS_VERIFICATION_ENTITY,
+  SYSTEM_SETTINGS_ACTION,
+} from '../../services/settingsVerification.service.js';
 
 const cleanText = (value, fallback = '') => String(value ?? fallback).trim();
 const nullableText = (value) => {
@@ -18,6 +32,8 @@ const clampDay = (value, fallback) => {
   if (!Number.isFinite(numeric)) return fallback;
   return Math.min(Math.max(Math.trunc(numeric), 1), 31);
 };
+
+const isExactSuperAdmin = (user) => String(user?.role || '').toLowerCase() === 'super_admin';
 
 
 const requireAdmin = async (req) => {
@@ -45,8 +61,8 @@ const requireSettingsManager = async (req) => {
     error.statusCode = 401;
     throw error;
   }
-  if (!isFullAccessAdministrator(user)) {
-    const error = new Error('Only a full-access administrator can edit system settings.');
+  if (!isExactSuperAdmin(user)) {
+    const error = new Error('Only the exact Super Admin can edit system settings.');
     error.statusCode = 403;
     throw error;
   }
@@ -150,6 +166,27 @@ const normalizeSettingsPayload = (body = {}) => ({
   defaultReleaseDayTwo: clampDay(body.defaultReleaseDayTwo, 22),
 });
 
+const validateSettingsPayload = (payload) => {
+  if (!payload.companyName) {
+    throw Object.assign(new Error('Company name is required.'), { statusCode: 400 });
+  }
+  if (payload.systemStatus === 'maintenance' && !payload.maintenanceMessage) {
+    throw Object.assign(new Error('Maintenance message is required when maintenance mode is enabled.'), { statusCode: 400 });
+  }
+  if (payload.defaultReleaseDayOne === payload.defaultReleaseDayTwo) {
+    throw Object.assign(new Error('Default release days must be different.'), { statusCode: 400 });
+  }
+  return payload;
+};
+
+const buildSystemSettingsVerificationPayload = ({ actor, settingsPayload, reason }) => buildSettingsVerificationPayload({
+  actionType: SYSTEM_SETTINGS_ACTION,
+  actorId: actor.id,
+  entityId: '1',
+  settings: settingsPayload,
+  reason,
+});
+
 export const getSystemSettings = async (req, res) => {
   const connection = await db.getConnection();
 
@@ -180,6 +217,59 @@ export const getSystemSettings = async (req, res) => {
   }
 };
 
+export const requestSystemSettingsCode = async (req, res) => {
+  const connection = await db.getConnection();
+
+  try {
+    const actor = await requireSettingsManager(req);
+    if (!actor.email) return res.status(400).json({ message: 'The Super Admin account must have an email address.' });
+    await ensureSystemSettingsTable(connection);
+    if (!(await tableExists(connection, 'destructive_action_verifications'))) {
+      return res.status(500).json({ message: 'Sensitive-action verification table is missing. Apply the latest database schema first.' });
+    }
+
+    const reason = cleanText(req.body.reason);
+    if (reason.length < 5) return res.status(400).json({ message: 'A clear reason for changing settings is required.' });
+    const settingsPayload = validateSettingsPayload(normalizeSettingsPayload(req.body));
+    const payload = buildSystemSettingsVerificationPayload({ actor, settingsPayload, reason });
+
+    await connection.beginTransaction();
+    const { verificationId, code } = await createSensitiveActionVerification(connection, {
+      userId: actor.id,
+      actionType: SYSTEM_SETTINGS_ACTION,
+      entityType: SETTINGS_VERIFICATION_ENTITY,
+      entityId: '1',
+      payload,
+      reason,
+      requestIp: getSensitiveActionRequestIp(req),
+    });
+    await sendSettingsVerificationCodeEmail({
+      actor,
+      code,
+      scopeLabel: 'System Settings',
+      entityLabel: 'Global System Settings',
+      reason,
+      settings: settingsPayload,
+    });
+    await connection.commit();
+
+    return res.json({
+      success: true,
+      message: `A verification code was sent to ${maskSensitiveActionEmail(actor.email)}.`,
+      data: {
+        verificationId,
+        maskedEmail: maskSensitiveActionEmail(actor.email),
+        expiresInMinutes: SENSITIVE_ACTION_CODE_EXPIRY_MINUTES,
+      },
+    });
+  } catch (error) {
+    try { await connection.rollback(); } catch (_) {}
+    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
 export const updateSystemSettings = async (req, res) => {
   const connection = await db.getConnection();
 
@@ -187,14 +277,40 @@ export const updateSystemSettings = async (req, res) => {
     const actor = await requireSettingsManager(req);
     await ensureSystemSettingsTable(connection);
 
-    const payload = normalizeSettingsPayload(req.body);
-
-    if (!payload.companyName) return res.status(400).json({ message: 'Company name is required.' });
-    if (payload.systemStatus === 'maintenance' && !payload.maintenanceMessage) {
-      return res.status(400).json({ message: 'Maintenance message is required when maintenance mode is enabled.' });
+    const payload = validateSettingsPayload(normalizeSettingsPayload(req.body));
+    const reason = cleanText(req.body.reason);
+    const verificationId = Number(req.body.verificationId || req.body.verification_id || 0);
+    const code = cleanText(req.body.code || req.body.verificationCode || req.body.verification_code);
+    if (reason.length < 5) return res.status(400).json({ message: 'A clear reason for changing settings is required.' });
+    if (!verificationId || !/^\d{6}$/.test(code)) {
+      return res.status(400).json({ message: 'Super Admin password and six-digit email verification are required to save system settings.' });
     }
 
     await connection.beginTransaction();
+
+    const [beforeRows] = await connection.query(
+      `SELECT ss.*, TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) AS updated_by_name
+       FROM system_settings ss
+       LEFT JOIN users u ON u.id = ss.updated_by_user_id
+       WHERE ss.system_setting_id = 1
+       LIMIT 1
+       FOR UPDATE`
+    );
+    const before = mapSettings(beforeRows[0] || {});
+    const verificationPayload = buildSystemSettingsVerificationPayload({ actor, settingsPayload: payload, reason });
+    const verificationResult = await verifyAndConsumeSensitiveAction(connection, {
+      verificationId,
+      userId: actor.id,
+      actionType: SYSTEM_SETTINGS_ACTION,
+      entityType: SETTINGS_VERIFICATION_ENTITY,
+      entityId: '1',
+      code,
+      payload: verificationPayload,
+    });
+    if (!verificationResult.ok) {
+      await connection.commit();
+      return res.status(verificationResult.statusCode || 400).json({ message: verificationResult.message });
+    }
 
     await connection.query(
       `
@@ -241,7 +357,14 @@ export const updateSystemSettings = async (req, res) => {
       entityLabel: payload.companyName || 'Global system settings',
       title: 'Updated system settings',
       description: `${getUserFullName(actor)} updated global system settings.`,
-      metadata: payload,
+      metadata: {
+        reason,
+        verificationId,
+        verificationMethod: 'super_admin_password_email_code',
+        before,
+        after: payload,
+        releaseDayChangesApplyProspectively: true,
+      },
     });
 
     await connection.commit();
@@ -264,7 +387,7 @@ export const updateSystemSettings = async (req, res) => {
       data: mapSettings(rows[0]),
     });
   } catch (error) {
-    await connection.rollback();
+    try { await connection.rollback(); } catch (_) {}
     return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
   } finally {
     connection.release();

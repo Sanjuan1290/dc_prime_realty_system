@@ -22,6 +22,11 @@ import {
   SELLER_ROLE_LABELS,
 } from './sellerHierarchyRules.js';
 import {
+  getAccessibleProjectIds,
+  hydrateAdminProjectAccess,
+  replaceAdminProjectAccess,
+} from '../../services/adminProjectAccess.service.js';
+import {
   PASSWORD_RESET_CODE_EXPIRY_MINUTES,
   PASSWORD_RESET_MAX_ATTEMPTS,
   PASSWORD_RESET_RESEND_SECONDS,
@@ -41,7 +46,6 @@ import {
 } from './authentication.service.js';
 
 const userRoles = new Set(['super_admin', 'admin', 'division_manager', 'sales_director', 'unit_manager', 'sales_agent', 'external_group']);
-const supportedAdminTypes = new Set(['admin_1']);
 
 const sellerRoles = new Set([
   'division_manager',
@@ -158,20 +162,28 @@ const actorCanChangeTargetRole = (req, currentRole, requestedRole) =>
 
 const validateRequestedRole = (role) => userRoles.has(String(role || ''));
 
+const normalizeProjectIds = (value) => [...new Set((Array.isArray(value) ? value : [])
+  .map((item) => Number(item))
+  .filter((item) => Number.isInteger(item) && item > 0))];
+
+const assertActorCanAssignAdminProjects = async (req, connection, allProjects, projectIds) => {
+  if (req.authUser?.role === 'super_admin') return;
+  if (req.authUser?.role !== 'admin') throw createValidationError('Only an administrator can assign Admin project access.');
+  const actorIds = await getAccessibleProjectIds(req.authUser, connection);
+  if (actorIds === null) return;
+  if (allProjects) throw createValidationError('You can assign All Projects only if your own Admin account has All Projects access.');
+  const invalid = projectIds.find((projectId) => !actorIds.includes(projectId));
+  if (invalid) throw createValidationError('You can assign only projects that your Admin account can access.');
+};
+
 const createValidationError = (message) => {
   const error = new Error(message);
   error.statusCode = 400;
   return error;
 };
 
-const normalizeAdminType = (role, value) => {
-  if (String(role || '') !== 'admin') return null;
-  const adminType = String(value || 'admin_1').trim().toLowerCase();
-  if (!supportedAdminTypes.has(adminType)) {
-    throw createValidationError('Admin 2 and Admin 3 are visible for future use but are not available yet. Select Admin 1.');
-  }
-  return adminType;
-};
+const normalizeAdminType = () => null;
+
 
 const getSellerDependencyState = async (connection, userId) => {
   if (!userId) return { seller: null, headedGroup: null, directReports: [] };
@@ -418,6 +430,7 @@ const getUserSelectSql = () => `
     u.email,
     u.role,
     u.admin_type,
+    COALESCE(u.admin_all_projects, 0) AS admin_all_projects,
     u.status,
     u.must_change_password,
     u.can_login,
@@ -462,6 +475,7 @@ export const login = async (req, res) => {
         password_hash,
         role,
         admin_type,
+        COALESCE(admin_all_projects, 0) AS admin_all_projects,
         status,
         must_change_password,
         COALESCE(auth_version, 0) AS auth_version,
@@ -531,6 +545,7 @@ export const login = async (req, res) => {
       email: user.email,
       role: user.role,
       admin_type: user.admin_type || null,
+      admin_all_projects: Boolean(Number(user.admin_all_projects || 0)),
       status: user.status,
       must_change_password: Boolean(user.must_change_password),
       last_login: user.last_login,
@@ -985,6 +1000,7 @@ export const getMe = async (req, res) => {
           email,
           role,
           admin_type,
+          admin_all_projects,
           status,
           must_change_password,
           COALESCE(auth_version, 0) AS auth_version,
@@ -1234,7 +1250,8 @@ export const getUsers = async (req, res) => {
       [...params, limit, offset]
     );
 
-    const hydratedRows = await hydrateUserProjectRates(rows);
+    const rateHydratedRows = await hydrateUserProjectRates(rows);
+    const hydratedRows = await hydrateAdminProjectAccess(rateHydratedRows);
 
     const [summaryRows] = await db.query(`
       SELECT
@@ -1284,6 +1301,8 @@ export const createUser = async (req, res) => {
       password,
       role = 'sales_agent',
       admin_type,
+      admin_all_projects = false,
+      admin_project_ids = [],
       status = 'active',
       seller_group_id,
       reports_under_user_id,
@@ -1303,6 +1322,12 @@ export const createUser = async (req, res) => {
       return denyUserManagement(res, 'You do not have permission to create this account type.');
     }
 
+    const normalizedAdminProjectIds = role === 'admin' ? normalizeProjectIds(admin_project_ids) : [];
+    const normalizedAdminAllProjects = role === 'admin' && (admin_all_projects === true || Number(admin_all_projects) === 1 || String(admin_all_projects).toLowerCase() === 'true');
+    if (role === 'admin' && !normalizedAdminAllProjects && !normalizedAdminProjectIds.length) {
+      return res.status(400).json({ message: 'Select at least one project this Admin can manage, or choose All Projects.' });
+    }
+    await assertActorCanAssignAdminProjects(req, connection, normalizedAdminAllProjects, normalizedAdminProjectIds);
     const normalizedAdminType = normalizeAdminType(role, admin_type);
     const normalizedReportsUnderUserId = sellerRoles.has(role)
       ? await validateSellerHierarchyAssignment(connection, {
@@ -1332,9 +1357,10 @@ export const createUser = async (req, res) => {
           password_hash,
           role,
           admin_type,
+          admin_all_projects,
           status,
           must_change_password
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
       `,
       [
         first_name.trim(),
@@ -1348,11 +1374,15 @@ export const createUser = async (req, res) => {
         passwordHash,
         role,
         normalizedAdminType,
+        normalizedAdminAllProjects ? 1 : 0,
         normalizeStatus(status),
       ]
     );
 
     const userId = result.insertId;
+    await replaceAdminProjectAccess(connection, {
+      userId, role, allProjects: normalizedAdminAllProjects, projectIds: normalizedAdminProjectIds, changedByUserId: req.authUser?.id || null,
+    });
     let accreditedSellerId = null;
 
     if (sellerRoles.has(role)) {
@@ -1392,7 +1422,7 @@ export const createUser = async (req, res) => {
       entityLabel: `${first_name.trim()} ${last_name.trim()}`,
       title: 'Created user account',
       description: `Created account for ${first_name.trim()} ${last_name.trim()} (${email.trim()}).`,
-      metadata: { role, admin_type: normalizedAdminType, status: normalizeStatus(status), seller_group_id, reports_under_user_id: normalizedReportsUnderUserId },
+      metadata: { role, admin_all_projects: normalizedAdminAllProjects, admin_project_ids: normalizedAdminProjectIds, status: normalizeStatus(status), seller_group_id, reports_under_user_id: normalizedReportsUnderUserId },
     });
 
     if (accreditedSellerId) {
@@ -1460,6 +1490,8 @@ export const editUser = async (req, res) => {
       email,
       role,
       admin_type,
+      admin_all_projects = false,
+      admin_project_ids = [],
       status,
       seller_group_id,
       reports_under_user_id,
@@ -1474,7 +1506,7 @@ export const editUser = async (req, res) => {
     }
 
     const [targetRows] = await connection.query(
-      `SELECT id, role, admin_type FROM users WHERE id = ? LIMIT 1`,
+      `SELECT id, role, admin_type, COALESCE(admin_all_projects, 0) AS admin_all_projects FROM users WHERE id = ? LIMIT 1`,
       [userId]
     );
     const targetUser = targetRows[0];
@@ -1494,6 +1526,12 @@ export const editUser = async (req, res) => {
       );
     }
 
+    const normalizedAdminProjectIds = role === 'admin' ? normalizeProjectIds(admin_project_ids) : [];
+    const normalizedAdminAllProjects = role === 'admin' && (admin_all_projects === true || Number(admin_all_projects) === 1 || String(admin_all_projects).toLowerCase() === 'true');
+    if (role === 'admin' && !normalizedAdminAllProjects && !normalizedAdminProjectIds.length) {
+      return res.status(400).json({ message: 'Select at least one project this Admin can manage, or choose All Projects.' });
+    }
+    await assertActorCanAssignAdminProjects(req, connection, normalizedAdminAllProjects, normalizedAdminProjectIds);
     const normalizedAdminType = normalizeAdminType(role, admin_type);
 
     const dependencyState = await validateSellerRemovalOrRoleChange(connection, userId, role);
@@ -1524,6 +1562,7 @@ export const editUser = async (req, res) => {
           email = ?,
           role = ?,
           admin_type = ?,
+          admin_all_projects = ?,
           status = ?
         WHERE id = ?
       `,
@@ -1538,10 +1577,15 @@ export const editUser = async (req, res) => {
         email.trim(),
         role,
         normalizedAdminType,
+        normalizedAdminAllProjects ? 1 : 0,
         normalizeStatus(status),
         userId,
       ]
     );
+
+    await replaceAdminProjectAccess(connection, {
+      userId, role, allProjects: normalizedAdminAllProjects, projectIds: normalizedAdminProjectIds, changedByUserId: req.authUser?.id || null,
+    });
 
     let accreditedSellerId = null;
 
@@ -1599,7 +1643,7 @@ export const editUser = async (req, res) => {
       entityLabel: `${first_name.trim()} ${last_name.trim()}`,
       title: 'Updated user account',
       description: `Updated account for ${first_name.trim()} ${last_name.trim()} (${email.trim()}).`,
-      metadata: { role, admin_type: normalizedAdminType, status: normalizeStatus(status), seller_group_id, reports_under_user_id: normalizedReportsUnderUserId },
+      metadata: { role, admin_all_projects: normalizedAdminAllProjects, admin_project_ids: normalizedAdminProjectIds, status: normalizeStatus(status), seller_group_id, reports_under_user_id: normalizedReportsUnderUserId },
     });
 
     if (accreditedSellerId) {

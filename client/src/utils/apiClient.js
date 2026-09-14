@@ -15,6 +15,8 @@ const TECHNICAL_MUTATION_PATTERNS = [
   /\/projects\/lot-projects\/[^/]+\/listing-imports\/validate$/i,
   /\/projects\/lot-projects\/[^/]+\/listings\/[^/]+\/reservation-correction\/preview$/i,
   /\/projects\/lot-projects\/[^/]+\/listings\/[^/]+\/reservation-correction\/code$/i,
+  /\/projects\/lot-projects\/[^/]+\/settings\/code$/i,
+  /\/system-settings\/code$/i,
   /\/projects\/reports\/export-audit$/i,
   /\/projects\/lot-projects\/[^/]+\/price-list\/print-audit$/i,
   /\/projects\/lot-projects\/\d+\/edit-preflight$/i,

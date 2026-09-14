@@ -4,11 +4,11 @@ import { FiEdit2, FiRefreshCw, FiSettings } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
 import ReadOnlyNotice from '../../components/Shared/ReadOnlyNotice'
+import SettingsAuthorizationModal from '../../components/Shared/SettingsAuthorizationModal'
 import useCurrentUser from '../../utils/useCurrentUser'
 import SystemSettingsForm from '../../components/System/settingsComponents/SystemSettingsForm'
 import { formatDateTime } from '../../utils/formatDateTime'
 import {useFetch, useFetchPut, getDoubleCheckNotice} from '../../utils/useFetch'
-import { isFullAccessAdministrator } from '../../config/permissions'
 
 const defaultForm = {
   companyName: '',
@@ -42,11 +42,12 @@ const mapSettingsToForm = (settings = {}) => ({
 
 const Settings = () => {
   const { data: currentUserData } = useCurrentUser()
-  const canManage = isFullAccessAdministrator(currentUserData?.user)
+  const canManage = currentUserData?.user?.role === 'super_admin'
   const queryClient = useQueryClient()
   const [form, setForm] = useState(defaultForm)
   const [alert, setAlert] = useState(null)
   const [isEditing, setIsEditing] = useState(false)
+  const [pendingAuthorization, setPendingAuthorization] = useState(null)
 
   const { data, isLoading, isFetching, isError, error, refetch } = useQuery({
     queryKey: ['system-settings'],
@@ -61,12 +62,13 @@ const Settings = () => {
 
   const saveMutation = useMutation({
     mutationFn: (payload) => useFetchPut('/system-settings', payload, {
-      doubleCheck: { type: 'settings', scope: 'system', data: payload, summary: 'System Settings' },
+      doubleCheck: { type: 'settings', scope: 'system', data: { ...payload, code: undefined, verificationCode: undefined, verificationId: undefined }, before: mapSettingsToForm(settings || {}), summary: 'System Settings' },
     }),
     onMutate: () => setAlert({ type: 'loading', message: 'Preparing settings review...' }),
     onSuccess: (result) => {
       setAlert({ type: 'success', message: result?.message || 'System settings saved.' })
       setIsEditing(false)
+      setPendingAuthorization(null)
       queryClient.invalidateQueries({ queryKey: ['system-settings'] })
       queryClient.invalidateQueries({ queryKey: ['audit-logs'] })
     },
@@ -76,13 +78,14 @@ const Settings = () => {
   const handleSubmit = (event) => {
     event.preventDefault()
     if (!isEditing || !canManage) return
-    saveMutation.mutate(form)
+    setPendingAuthorization({ ...form })
   }
 
   const handleCancel = () => {
     setForm(mapSettingsToForm(settings || defaultForm))
     setIsEditing(false)
     setAlert(null)
+    setPendingAuthorization(null)
   }
 
   return (
@@ -105,12 +108,13 @@ const Settings = () => {
             Refresh
           </button>
 
-          {canManage && !isEditing ? (
+          {!isEditing ? (
             <button
               type="button"
-              onClick={() => setIsEditing(true)}
-              disabled={isLoading || isError || !settings}
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+              onClick={() => canManage && setIsEditing(true)}
+              disabled={!canManage || isLoading || isError || !settings}
+              title={!canManage ? 'Only the Super Admin can change System Settings. Saving requires the Super Admin password and email verification code.' : 'Edit protected System Settings'}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none"
             >
               <FiEdit2 className="h-4 w-4" />
               Edit Settings
@@ -119,7 +123,7 @@ const Settings = () => {
         </div>
       </div>
 
-      {!canManage ? <ReadOnlyNotice message="This account can review system settings but cannot edit them." /> : null}
+      {!canManage ? <ReadOnlyNotice message="System Settings are owner-controlled. The Edit Settings button remains visible for reference but only the Super Admin can use it with password and email verification." /> : null}
 
       {alert ? (
         <StatusAlert type={alert.type} message={alert.message} onClose={alert.type === 'loading' ? undefined : () => setAlert(null)} />
@@ -148,6 +152,18 @@ const Settings = () => {
         disabled={!isEditing || !canManage}
         onCancel={handleCancel}
       />
+
+      {pendingAuthorization ? (
+        <SettingsAuthorizationModal
+          title="Authorize System Settings Change"
+          description="System Settings are owner-controlled. Verify the current Super Admin password, reason, and email code before the final review."
+          codeEndpoint="/system-settings/code"
+          settingsPayload={pendingAuthorization}
+          isSaving={saveMutation.isPending}
+          onClose={() => !saveMutation.isPending && setPendingAuthorization(null)}
+          onConfirm={(authorizedPayload) => saveMutation.mutate(authorizedPayload)}
+        />
+      ) : null}
     </main>
   )
 }

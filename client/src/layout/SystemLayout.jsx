@@ -341,7 +341,7 @@ const SystemLayout = () => {
             </p>
 
             <span className="mt-2 inline-flex rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-black text-blue-700">
-              {user?.role === "admin" ? "Admin 1" : formatRole(user?.role)}
+              {user?.role === "admin" ? "Admin" : formatRole(user?.role)}
             </span>
           </div>
 
@@ -398,7 +398,7 @@ const SystemLayout = () => {
         <div className="flex shrink-0 items-center gap-3">
           <div className="hidden text-right sm:block">
             <h3 className="font-semibold">{getFullName(user)}</h3>
-            <p className="text-xs text-slate-500">{user?.role === "admin" ? "Admin 1" : formatRole(user?.role)}</p>
+            <p className="text-xs text-slate-500">{user?.role === "admin" ? "Admin" : formatRole(user?.role)}</p>
           </div>
 
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-sm font-bold text-white">

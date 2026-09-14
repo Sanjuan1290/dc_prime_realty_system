@@ -894,6 +894,7 @@ const ListingProfile = () => {
           open
           projectSlug={projectSlug}
           listingId={listingId}
+          isSuperAdmin={currentUserData?.user?.role === 'super_admin'}
           onClose={() => setShowReservationCorrectionModal(false)}
           onCorrected={(result) => {
             const destinationId = result?.data?.destinationListingId

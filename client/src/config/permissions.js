@@ -50,20 +50,13 @@ export const USER_ROLES = Object.freeze([
   'external_group',
 ]);
 
-export const ADMIN_TYPES = Object.freeze([
-  {
-    value: 'admin_1',
-    label: 'Admin 1',
-    description: 'Full operational access with owner-only safeguards and a 12-month dashboard limit.',
-  },
-  { value: 'admin_2', label: 'Admin 2', description: 'Permission set will be configured later.', disabled: true },
-  { value: 'admin_3', label: 'Admin 3', description: 'Permission set will be configured later.', disabled: true },
-]);
+
 
 export const ADMIN_CREATABLE_USER_ROLES = Object.freeze(USER_ROLES.filter((role) => !['super_admin', 'external_group'].includes(role)));
 export const ADMIN_MANAGEABLE_USER_ROLES = ADMIN_CREATABLE_USER_ROLES;
 
 const allPermissions = new Set(Object.values(PERMISSIONS));
+const adminPermissions = new Set([...allPermissions].filter((permission) => permission !== PERMISSIONS.SYSTEM_DATA_INTEGRITY_VIEW));
 const knownUserRoles = new Set(USER_ROLES);
 
 const normalizeActor = (userOrRole, adminType = '') => {
@@ -80,21 +73,25 @@ const normalizeActor = (userOrRole, adminType = '') => {
   };
 };
 
-export const isAdmin1 = (userOrRole, adminType = '') => {
+export const isAdmin = (userOrRole, adminType = '') => {
   const actor = normalizeActor(userOrRole, adminType);
-  return actor.role === 'admin' && (!actor.adminType || actor.adminType === 'admin_1');
+  return actor.role === 'admin';
 };
+
+// Backward-compatible alias while older call sites are migrated.
+export const isAdmin1 = isAdmin;
 
 export const isFullAccessAdministrator = (userOrRole, adminType = '') => {
   const actor = normalizeActor(userOrRole, adminType);
-  return actor.role === 'super_admin' || isAdmin1(actor.role, actor.adminType);
+  return actor.role === 'super_admin' || actor.role === 'admin';
 };
 
 export const hasPermission = (userOrRole, permission, adminType = '') => {
   if (!permission) return false;
   const actor = normalizeActor(userOrRole, adminType);
-  return (actor.role === 'super_admin' || isAdmin1(actor.role, actor.adminType))
-    && allPermissions.has(permission);
+  if (actor.role === 'super_admin') return allPermissions.has(permission);
+  if (actor.role === 'admin') return adminPermissions.has(permission);
+  return false;
 };
 
 export const canManageUserRole = (userOrRole, targetRole, adminType = '') => {
@@ -102,7 +99,7 @@ export const canManageUserRole = (userOrRole, targetRole, adminType = '') => {
   const target = String(targetRole || '');
   if (!knownUserRoles.has(target)) return false;
   if (target === 'super_admin') return actor.role === 'super_admin';
-  return actor.role === 'super_admin' || isAdmin1(actor.role, actor.adminType);
+  return actor.role === 'super_admin' || actor.role === 'admin';
 };
 
 export const canCreateUserRole = (userOrRole, requestedRole, adminType = '') => {
@@ -110,7 +107,7 @@ export const canCreateUserRole = (userOrRole, requestedRole, adminType = '') => 
   const requested = String(requestedRole || '');
   if (!knownUserRoles.has(requested)) return false;
   if (requested === 'super_admin') return actor.role === 'super_admin';
-  return actor.role === 'super_admin' || isAdmin1(actor.role, actor.adminType);
+  return actor.role === 'super_admin' || actor.role === 'admin';
 };
 
 export const canChangeUserRole = (userOrRole, currentRole, requestedRole, adminType = '') => {
@@ -119,7 +116,7 @@ export const canChangeUserRole = (userOrRole, currentRole, requestedRole, adminT
   const requested = String(requestedRole || '');
   if (!knownUserRoles.has(current) || !knownUserRoles.has(requested)) return false;
   if (current === 'super_admin' || requested === 'super_admin') return actor.role === 'super_admin';
-  return actor.role === 'super_admin' || isAdmin1(actor.role, actor.adminType);
+  return actor.role === 'super_admin' || actor.role === 'admin';
 };
 
 export const getRoleHome = (role) => role === 'admin' ? '/portal/admin/dashboard' : role === 'super_admin' ? '/portal/super_admin' : '/portal';

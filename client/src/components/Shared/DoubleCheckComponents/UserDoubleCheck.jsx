@@ -20,7 +20,7 @@ const UserDoubleCheck = ({ request, onConfirm, onCancel }) => {
       { label: 'PRC No.', value: pick(data, 'prc_no', 'prcNo') },
       { label: 'Address', value: pick(data, 'address'), wide: true },
       { label: 'Role', value: role, formatter: roleLabel },
-      ...(String(role) === 'admin' ? [{ label: 'Admin Type', value: pick(data, 'admin_type', 'adminType') }] : []),
+      ...(String(role) === 'admin' ? [{ label: 'Project Access', value: (request.meta?.adminProjectNames || []).join(', ') || (pick(data, 'admin_all_projects', 'adminAllProjects') ? 'All Projects' : 'No Projects'), wide: true }] : []),
       { label: 'Status', value: pick(data, 'status'), formatter: statusLabel },
       ...(request.mode === 'create' && !seller ? [{ label: 'Login Setup', value: 'Temporary credentials will be generated securely and emailed automatically.', wide: true }] : []),
     ]} /></DoubleCheckSection> },

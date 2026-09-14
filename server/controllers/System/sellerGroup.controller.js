@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { db } from '../../db/connect.js';
 import { writeAuditLog } from './auditLogs.controller.js';
 import { columnExists, tableExists } from '../Lot_Projects/_shared/lotProject.shared.js';
+import { canAccessProject, getAccessibleProjectIds } from '../../services/adminProjectAccess.service.js';
 import {
   normalizeSellerGroupType,
   validateGroupFixedRateStructure,
@@ -292,15 +293,65 @@ export const assertSellerGroupRoleHierarchy = async (connection, groupId) => {
   }
 };
 
-const getActiveLotProjects = async (connection = db) => {
+const getActiveLotProjects = async (connection = db, user = null) => {
+  const accessibleProjectIds = user ? await getAccessibleProjectIds(user, connection) : null;
+  const accessSql = accessibleProjectIds === null
+    ? ''
+    : accessibleProjectIds.length
+      ? ` AND lot_project_id IN (${accessibleProjectIds.map(() => '?').join(', ')})`
+      : ' AND 1 = 0';
   const [projects] = await connection.query(
     `SELECT lot_project_id, lot_project_name, lot_project_slug,
             lot_project_location, lot_project_location_code
      FROM lot_projects
-     WHERE lot_project_status = 'active'
-     ORDER BY lot_project_name ASC`
+     WHERE lot_project_status = 'active'${accessSql}
+     ORDER BY lot_project_name ASC`,
+    accessibleProjectIds === null ? [] : accessibleProjectIds
   );
   return projects;
+};
+
+const assertCanMutateWholeGroup = async (connection, user, groupId) => {
+  const accessibleProjectIds = await getAccessibleProjectIds(user, connection);
+  if (accessibleProjectIds === null) return;
+  if (!accessibleProjectIds.length) {
+    const error = new Error('You do not have project access for this seller group.');
+    error.statusCode = 403;
+    throw error;
+  }
+
+  const placeholders = accessibleProjectIds.map(() => '?').join(', ');
+  const [[outsideRows], [insideRows]] = await Promise.all([
+    connection.query(
+      `SELECT lot_project_id
+       FROM seller_group_lot_project_rates
+       WHERE seller_group_id = ?
+         AND seller_group_lot_project_rate_status = 'active'
+         AND lot_project_id NOT IN (${placeholders})
+       LIMIT 1`,
+      [groupId, ...accessibleProjectIds]
+    ),
+    connection.query(
+      `SELECT lot_project_id
+       FROM seller_group_lot_project_rates
+       WHERE seller_group_id = ?
+         AND seller_group_lot_project_rate_status = 'active'
+         AND lot_project_id IN (${placeholders})
+       LIMIT 1`,
+      [groupId, ...accessibleProjectIds]
+    ),
+  ]);
+
+  if (!insideRows.length) {
+    const error = new Error('You do not have access to any active project for this seller group.');
+    error.statusCode = 403;
+    throw error;
+  }
+  if (outsideRows.length) {
+    const error = new Error('This seller group is also accredited to projects outside your Admin access. Group-wide changes require the Super Admin or an Admin with access to all of the group projects. Use the project-specific commission configuration for your assigned projects.');
+    error.statusCode = 403;
+    throw error;
+  }
 };
 
 export const normalizeGroupProjectRates = (
@@ -366,48 +417,64 @@ const upsertGroupProjectRates = async (connection, groupId, projectRates, groupT
   );
 };
 
-const deactivateLegacyIndividualRates = async (connection, groupId) => {
+const deactivateLegacyIndividualRates = async (connection, groupId, projectScopeIds = null) => {
+  if (Array.isArray(projectScopeIds) && !projectScopeIds.length) return;
+  const scopeFor = (alias) => projectScopeIds === null
+    ? { sql: '', params: [] }
+    : {
+        sql: ` AND ${alias}.lot_project_id IN (${projectScopeIds.map(() => '?').join(', ')})`,
+        params: projectScopeIds,
+      };
+
   if (await tableExists(connection, 'accredited_seller_lot_project_rates')) {
+    const scope = scopeFor('role_rate');
     await connection.query(
       `UPDATE accredited_seller_lot_project_rates role_rate
        INNER JOIN accredited_sellers seller ON seller.accredited_seller_id = role_rate.accredited_seller_id
        SET role_rate.accredited_seller_lot_project_rate_status = 'inactive'
-       WHERE seller.seller_group_id = ?`,
-      [groupId]
+       WHERE seller.seller_group_id = ?${scope.sql}`,
+      [groupId, ...scope.params]
     );
   }
   if (await tableExists(connection, 'agent_lot_project_direct_rates')) {
+    const scope = scopeFor('direct_rate');
     await connection.query(
       `UPDATE agent_lot_project_direct_rates direct_rate
        INNER JOIN accredited_sellers seller ON seller.accredited_seller_id = direct_rate.accredited_seller_id
        SET direct_rate.direct_rate_status = 'inactive'
-       WHERE seller.seller_group_id = ?`,
-      [groupId]
+       WHERE seller.seller_group_id = ?${scope.sql}`,
+      [groupId, ...scope.params]
     );
   }
   if (await tableExists(connection, 'seller_hierarchy_lot_project_overrides')) {
+    const scope = scopeFor('override_row');
     await connection.query(
       `UPDATE seller_hierarchy_lot_project_overrides override_row
        INNER JOIN accredited_sellers child ON child.accredited_seller_id = override_row.child_accredited_seller_id
        SET override_row.override_rate_status = 'inactive'
-       WHERE child.seller_group_id = ?`,
-      [groupId]
+       WHERE child.seller_group_id = ?${scope.sql}`,
+      [groupId, ...scope.params]
     );
   }
 };
 
-const syncGroupProjectAccreditations = async (connection, groupId, projectRates, groupType) => {
+const syncGroupProjectAccreditations = async (connection, groupId, projectRates, groupType, accessibleProjectIds = null) => {
   await upsertGroupProjectRates(connection, groupId, projectRates, groupType);
   const selectedIds = projectRates.map((rate) => Number(rate.lot_project_id));
   if (!selectedIds.length) return;
   const placeholders = selectedIds.map(() => '?').join(', ');
+  const scopeSql = accessibleProjectIds === null
+    ? ''
+    : accessibleProjectIds.length
+      ? ` AND lot_project_id IN (${accessibleProjectIds.map(() => '?').join(', ')})`
+      : ' AND 1 = 0';
   await connection.query(
     `UPDATE seller_group_lot_project_rates
      SET seller_group_lot_project_rate_status = 'inactive'
-     WHERE seller_group_id = ? AND lot_project_id NOT IN (${placeholders})`,
-    [groupId, ...selectedIds]
+     WHERE seller_group_id = ? AND lot_project_id NOT IN (${placeholders})${scopeSql}`,
+    [groupId, ...selectedIds, ...(accessibleProjectIds === null ? [] : accessibleProjectIds)]
   );
-  await deactivateLegacyIndividualRates(connection, groupId);
+  await deactivateLegacyIndividualRates(connection, groupId, accessibleProjectIds);
 };
 
 const getExternalAccount = async (connection, groupId) => {
@@ -511,7 +578,7 @@ const updateExternalAccount = async (connection, groupId, account = {}, status =
   );
 };
 
-const hydrateGroupRates = async (groups, connection = db) => {
+const hydrateGroupRates = async (groups, connection = db, accessibleProjectIds = null) => {
   const groupIds = groups.map((group) => Number(group.seller_group_id)).filter(Boolean);
   if (!groupIds.length) return groups.map((group) => ({ ...group, project_rates: [] }));
   const placeholders = groupIds.map(() => '?').join(', ');
@@ -532,9 +599,10 @@ const hydrateGroupRates = async (groups, connection = db) => {
       INNER JOIN lot_projects lp ON lp.lot_project_id = sgr.lot_project_id
       WHERE sgr.seller_group_id IN (${placeholders})
         AND sgr.seller_group_lot_project_rate_status = 'active'
+        ${accessibleProjectIds === null ? '' : accessibleProjectIds.length ? `AND sgr.lot_project_id IN (${accessibleProjectIds.map(() => '?').join(', ')})` : 'AND 1 = 0'}
       ORDER BY lp.lot_project_name ASC
     `,
-    groupIds
+    accessibleProjectIds === null ? groupIds : [...groupIds, ...accessibleProjectIds]
   );
   const rateMap = new Map();
   rateRows.forEach((rate) => {
@@ -603,12 +671,13 @@ export const createGroup = async (req, res) => {
     }
 
     await assertSellerGroupRoleHierarchy(connection, groupId);
-    const projects = await getActiveLotProjects(connection);
+    const accessibleProjectIds = await getAccessibleProjectIds(req.authUser, connection);
+    const projects = await getActiveLotProjects(connection, req.authUser);
     const normalizedRates = normalizeGroupProjectRates(project_rates, projects, {
       groupHeadRole: groupHead?.role || 'division_manager',
       groupType,
     });
-    await syncGroupProjectAccreditations(connection, groupId, normalizedRates, groupType);
+    await syncGroupProjectAccreditations(connection, groupId, normalizedRates, groupType, accessibleProjectIds);
 
     await writeAuditLog(connection, req, {
       action: 'create',
@@ -639,8 +708,25 @@ export const getGroups = async (req, res) => {
     const status = String(req.query.status || 'all');
     const projectId = Math.max(Number(req.query.project) || 0, 0);
     const groupType = normalizeSellerGroupType(req.query.groupType || req.query.seller_group_type || 'in_house');
+    const accessibleProjectIds = await getAccessibleProjectIds(req.authUser);
+    if (projectId && accessibleProjectIds !== null && !accessibleProjectIds.includes(projectId)) {
+      return res.status(403).json({ message: 'You do not have access to the selected project.' });
+    }
     const where = ['sg.seller_group_type = ?'];
     const params = [groupType];
+    if (accessibleProjectIds !== null) {
+      if (!accessibleProjectIds.length) {
+        where.push('1 = 0');
+      } else {
+        where.push(`EXISTS (
+          SELECT 1 FROM seller_group_lot_project_rates access_rate
+          WHERE access_rate.seller_group_id = sg.seller_group_id
+            AND access_rate.lot_project_id IN (${accessibleProjectIds.map(() => '?').join(', ')})
+            AND access_rate.seller_group_lot_project_rate_status = 'active'
+        )`);
+        params.push(...accessibleProjectIds);
+      }
+    }
 
     if (search) {
       where.push(`(
@@ -697,21 +783,40 @@ export const getGroups = async (req, res) => {
       `,
       [...params, limit, offset]
     );
-    const hydrated = await hydrateGroupRates(rows);
+    const hydrated = await hydrateGroupRates(rows, db, accessibleProjectIds);
 
+    const metaAccessSql = accessibleProjectIds === null
+      ? ''
+      : accessibleProjectIds.length
+        ? ` AND EXISTS (
+            SELECT 1 FROM seller_group_lot_project_rates meta_access_rate
+            WHERE meta_access_rate.seller_group_id = sg.seller_group_id
+              AND meta_access_rate.lot_project_id IN (${accessibleProjectIds.map(() => '?').join(', ')})
+              AND meta_access_rate.seller_group_lot_project_rate_status = 'active'
+          )`
+        : ' AND 1 = 0';
+    const metaRateCondition = accessibleProjectIds === null
+      ? `rate.seller_group_lot_project_rate_status = 'active'`
+      : accessibleProjectIds.length
+        ? `rate.seller_group_lot_project_rate_status = 'active' AND rate.lot_project_id IN (${accessibleProjectIds.map(() => '?').join(', ')})`
+        : '1 = 0';
     const [metaRows] = await db.query(
       `
         SELECT
-          SUM(sg.seller_group_status = 'active') AS active,
+          COUNT(DISTINCT CASE WHEN sg.seller_group_status = 'active' THEN sg.seller_group_id END) AS active,
           COUNT(DISTINCT CASE WHEN COALESCE(member.is_system_dummy, 0) = 0 THEN member.accredited_seller_id END) AS total_members,
           COUNT(DISTINCT sg.seller_group_external_account_user_id) AS total_accounts,
-          COUNT(DISTINCT CASE WHEN rate.seller_group_lot_project_rate_status = 'active' THEN CONCAT(rate.seller_group_id, ':', rate.lot_project_id) END) AS accredited_projects
+          COUNT(DISTINCT CASE WHEN ${metaRateCondition} THEN CONCAT(rate.seller_group_id, ':', rate.lot_project_id) END) AS accredited_projects
         FROM seller_groups sg
         LEFT JOIN accredited_sellers member ON member.seller_group_id = sg.seller_group_id
         LEFT JOIN seller_group_lot_project_rates rate ON rate.seller_group_id = sg.seller_group_id
-        WHERE sg.seller_group_type = ?
+        WHERE sg.seller_group_type = ?${metaAccessSql}
       `,
-      [groupType]
+      [
+        ...(accessibleProjectIds === null || !accessibleProjectIds.length ? [] : accessibleProjectIds),
+        groupType,
+        ...(accessibleProjectIds === null || !accessibleProjectIds.length ? [] : accessibleProjectIds),
+      ]
     );
     const total = Number(countRows[0]?.total || 0);
     return res.json({
@@ -735,14 +840,25 @@ export const getGroups = async (req, res) => {
 export const getGroupOptions = async (req, res) => {
   try {
     const groupType = normalizeSellerGroupType(req.query.groupType || req.query.seller_group_type || 'in_house');
+    const accessibleProjectIds = await getAccessibleProjectIds(req.authUser);
+    const accessSql = accessibleProjectIds === null
+      ? ''
+      : accessibleProjectIds.length
+        ? ` AND EXISTS (
+            SELECT 1 FROM seller_group_lot_project_rates access_rate
+            WHERE access_rate.seller_group_id = seller_groups.seller_group_id
+              AND access_rate.lot_project_id IN (${accessibleProjectIds.map(() => '?').join(', ')})
+              AND access_rate.seller_group_lot_project_rate_status = 'active'
+          )`
+        : ' AND 1 = 0';
     const [rows] = await db.query(
       `SELECT seller_group_id, seller_group_name, seller_group_type,
               seller_group_head_user_id, seller_group_external_account_user_id,
               seller_group_status
        FROM seller_groups
-       WHERE seller_group_status = 'active' AND seller_group_type = ?
+       WHERE seller_group_status = 'active' AND seller_group_type = ?${accessSql}
        ORDER BY seller_group_name ASC`,
-      [groupType]
+      [groupType, ...(accessibleProjectIds === null ? [] : accessibleProjectIds)]
     );
     return res.json({ data: rows });
   } catch (error) {
@@ -762,6 +878,7 @@ export const editGroup = async (req, res) => {
     );
     const existing = existingRows[0];
     if (!existing) return res.status(404).json({ message: 'Group not found.' });
+    await assertCanMutateWholeGroup(connection, req.authUser, groupId);
 
     const requestedType = normalizeSellerGroupType(req.body.seller_group_type || existing.seller_group_type);
     const groupType = normalizeSellerGroupType(existing.seller_group_type);
@@ -802,12 +919,13 @@ export const editGroup = async (req, res) => {
     }
 
     await assertSellerGroupRoleHierarchy(connection, groupId);
-    const projects = await getActiveLotProjects(connection);
+    const accessibleProjectIds = await getAccessibleProjectIds(req.authUser, connection);
+    const projects = await getActiveLotProjects(connection, req.authUser);
     const normalizedRates = normalizeGroupProjectRates(project_rates, projects, {
       groupHeadRole: nextHead?.role || 'division_manager',
       groupType,
     });
-    await syncGroupProjectAccreditations(connection, groupId, normalizedRates, groupType);
+    await syncGroupProjectAccreditations(connection, groupId, normalizedRates, groupType, accessibleProjectIds);
 
     await writeAuditLog(connection, req, {
       action: 'update', module: 'Groups', entityType: 'seller_group', entityId: String(groupId),
@@ -837,6 +955,7 @@ export const toggleGroupStatus = async (req, res) => {
     );
     const group = rows[0];
     if (!group) return res.status(404).json({ message: 'Group not found.' });
+    await assertCanMutateWholeGroup(connection, req.authUser, groupId);
     const nextStatus = normalizeStatus(req.body.status || (group.seller_group_status === 'active' ? 'inactive' : 'active'));
     await connection.beginTransaction();
     await connection.query(`UPDATE seller_groups SET seller_group_status = ? WHERE seller_group_id = ?`, [nextStatus, groupId]);
@@ -888,6 +1007,20 @@ export const viewGroup = async (req, res) => {
     );
     const group = groupRows[0];
     if (!group) return res.status(404).json({ message: 'Group not found.' });
+    const accessibleProjectIds = await getAccessibleProjectIds(req.authUser);
+    if (accessibleProjectIds !== null) {
+      const [accessRows] = accessibleProjectIds.length
+        ? await db.query(
+            `SELECT 1 FROM seller_group_lot_project_rates
+             WHERE seller_group_id = ?
+               AND seller_group_lot_project_rate_status = 'active'
+               AND lot_project_id IN (${accessibleProjectIds.map(() => '?').join(', ')})
+             LIMIT 1`,
+            [groupId, ...accessibleProjectIds]
+          )
+        : [[]];
+      if (!accessRows.length) return res.status(403).json({ message: 'You do not have access to this group through any assigned project.' });
+    }
     const groupType = normalizeSellerGroupType(group.seller_group_type);
     const [members] = await db.query(
       `SELECT a.accredited_seller_id, a.user_id, ${fullNameSql('u')} AS full_name,
@@ -902,7 +1035,7 @@ export const viewGroup = async (req, res) => {
        ORDER BY FIELD(u.role, 'division_manager', 'sales_director', 'unit_manager', 'sales_agent', 'external_group'), full_name ASC`,
       [groupId]
     );
-    const [hydratedGroup] = await hydrateGroupRates([group]);
+    const [hydratedGroup] = await hydrateGroupRates([group], db, accessibleProjectIds);
     hydratedGroup.external_account = groupType === 'external' ? {
       user_id: hydratedGroup.seller_group_external_account_user_id ? Number(hydratedGroup.seller_group_external_account_user_id) : null,
       full_name: hydratedGroup.external_account_name || null,
@@ -1086,7 +1219,10 @@ export const getGroupProjectOptions = async (req, res) => {
       [groupId]
     );
     if (!groupRows[0]) return res.status(404).json({ message: 'Group not found.' });
-    const projects = await getGroupAccreditedProjects(db, groupId);
+    const accessibleProjectIds = await getAccessibleProjectIds(req.authUser);
+    const projects = (await getGroupAccreditedProjects(db, groupId)).filter((project) =>
+      accessibleProjectIds === null || accessibleProjectIds.includes(Number(project.lot_project_id))
+    );
     return res.json({
       success: true,
       data: projects,
@@ -1109,6 +1245,9 @@ export const getGroupProjectAnalytics = async (req, res) => {
     const projectId = Number(req.params.projectId || 0);
     const range = normalizeGroupAnalyticsRange(req.query.from, req.query.to);
     if (!groupId || !projectId) throw createValidationError('Group and project are required.');
+    if (!(await canAccessProject(req.authUser, projectId, connection))) {
+      return res.status(403).json({ message: 'You do not have access to this project.' });
+    }
     const group = await getGroupAndProject(connection, groupId, projectId);
     if (!group) throw createValidationError('This group is not accredited to the selected project.');
 
@@ -1262,12 +1401,18 @@ export const getGroupProjectConfiguration = async (req, res) => {
     const groupId = Number(req.params.groupId || req.params.id || 0);
     const projectId = Number(req.params.projectId || 0);
     if (!groupId || !projectId) return res.status(400).json({ message: 'Group and project are required.' });
+    if (!(await canAccessProject(req.authUser, projectId, connection))) {
+      return res.status(403).json({ message: 'You do not have access to this project.' });
+    }
     await requireCommissionConfigurationSchema(connection);
     const group = await getGroupAndProject(connection, groupId, projectId);
     if (!group) return res.status(404).json({ message: 'Group or project not found.' });
     const groupType = normalizeSellerGroupType(group.seller_group_type);
     const members = await loadGroupProjectMembers(connection, groupId);
-    const accreditedProjects = await getGroupAccreditedProjects(connection, groupId);
+    const accessibleProjectIds = await getAccessibleProjectIds(req.authUser, connection);
+    const accreditedProjects = (await getGroupAccreditedProjects(connection, groupId)).filter((project) =>
+      accessibleProjectIds === null || accessibleProjectIds.includes(Number(project.lot_project_id))
+    );
     const fixedRates = validateGroupFixedRateStructure(group, {
       groupHeadRole: members.find((member) => Number(member.user_id) === Number(group.seller_group_head_user_id))?.role || 'division_manager',
       projectName: group.lot_project_name,
@@ -1324,6 +1469,9 @@ export const updateGroupProjectPool = async (req, res) => {
     const groupId = Number(req.params.groupId || 0);
     const projectId = Number(req.params.projectId || 0);
     if (!groupId || !projectId) throw createValidationError('Group and project are required.');
+    if (!(await canAccessProject(req.authUser, projectId, connection))) {
+      return res.status(403).json({ message: 'You do not have access to this project.' });
+    }
     await requireCommissionConfigurationSchema(connection);
     await connection.beginTransaction();
     const group = await getGroupAndProject(connection, groupId, projectId);
@@ -1351,7 +1499,7 @@ export const updateGroupProjectPool = async (req, res) => {
       [rates.seller_group_pool_rate, rates.division_manager_rate, rates.sales_director_rate,
        rates.unit_manager_rate, rates.sales_agent_rate, groupType, status, groupId, projectId]
     );
-    await deactivateLegacyIndividualRates(connection, groupId);
+    await deactivateLegacyIndividualRates(connection, groupId, [projectId]);
     await writeAuditLog(connection, req, {
       action: 'update', module: 'Groups', entityType: 'seller_group_project_rates',
       entityId: `${groupId}:${projectId}`, entityLabel: `${group.seller_group_name} — ${group.lot_project_name}`,

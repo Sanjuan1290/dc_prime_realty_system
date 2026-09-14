@@ -92,6 +92,7 @@ const Users = () => {
   const actorUser = currentUserData?.user || {};
   const actorRole = actorUser.role || "";
   const isSuperAdmin = actorRole === "super_admin";
+  const actorCanAssignAllProjects = isSuperAdmin || Boolean(actorUser.admin_all_projects);
   const canCreateUsers = hasPermission(actorUser, PERMISSIONS.SYSTEM_USERS_CREATE);
   const canEditUsers = hasPermission(actorUser, PERMISSIONS.SYSTEM_USERS_EDIT);
   const canResetPasswords = hasPermission(actorUser, PERMISSIONS.SYSTEM_USERS_RESET_PASSWORD);
@@ -234,7 +235,7 @@ const Users = () => {
         </div>
       </div>
 
-      {actorRole === "admin" ? <StatusAlert type="info" title="Admin 1 operational access" message="Admin 1 can manage daily system operations. Super Admin accounts, permanent buyer-account deletion, and owner-only recovery actions remain protected. Dashboard reports are limited to 12 months." /> : null}
+      {actorRole === "admin" ? <StatusAlert type="info" title="Admin operational access" message="Admins have full operational access within their assigned projects. Super Admin accounts and actions requiring owner password plus email verification remain protected." /> : null}
       {alert ? <StatusAlert type={alert.type} message={alert.message} onClose={alert.type === "loading" ? undefined : () => setAlert(null)} /> : null}
       {isLoading ? <StatusAlert type="loading" message="Loading users..." /> : null}
       {!isLoading && isFetching ? <StatusAlert type="info" message="Refreshing users..." /> : null}
@@ -326,7 +327,7 @@ const Users = () => {
               <p>User</p>
               <p>Contact</p>
               <p>Role</p>
-              <p>Group</p>
+              <p>Group / Project Access</p>
               <p>Reports Under</p>
               <p>Status</p>
               <p className="text-right">Actions</p>
@@ -348,8 +349,8 @@ const Users = () => {
                       <p className="font-semibold text-slate-800">{user.email}</p>
                       <p className="text-xs text-slate-500">{user.contact_no || "No contact"}</p>
                     </div>
-                    <p className="font-semibold text-slate-700">{user.role === "admin" ? `Admin ${String(user.admin_type || "admin_1").replace("admin_", "")}` : (roleLabels[user.role] || user.role)}</p>
-                    <p className="font-semibold text-slate-700">{user.seller_group_name || "—"}</p>
+                    <p className="font-semibold text-slate-700">{roleLabels[user.role] || user.role}</p>
+                    <p className="font-semibold text-slate-700">{user.role === "admin" ? (user.admin_all_projects ? "All Projects" : (user.admin_projects || []).map((project) => project.name).join(", ") || "No Projects") : (user.seller_group_name || "—")}</p>
                     <p className="text-slate-600">{user.reports_under_name || "Direct / None"}</p>
                     <span className={`w-fit rounded-full border px-3 py-1 text-xs font-bold capitalize ${user.status === "active" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-slate-50 text-slate-500"}`}>
                       {user.status}
@@ -361,8 +362,14 @@ const Users = () => {
                           {canResetUserPassword(user) ? <button type="button" onClick={() => handleResetPassword(user)} disabled={resetPasswordMutation.isPending || toggleStatusMutation.isPending} className="inline-flex h-9 items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 text-xs font-bold text-amber-700 hover:bg-amber-100 disabled:opacity-60"><FiKey className="h-3.5 w-3.5" />{activeAction?.type === "reset" && activeAction?.userId === user.id ? "Sending..." : "Credentials"}</button> : null}
                           {canChangeStatus ? <button type="button" onClick={() => handleToggleStatus(user)} disabled={resetPasswordMutation.isPending || toggleStatusMutation.isPending} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60">{activeAction?.type === "status" && activeAction?.userId === user.id ? "Updating..." : user.status === "active" ? "Deactivate" : "Activate"}</button> : null}
                         </>
+                      ) : user.role === "super_admin" && actorRole === "admin" ? (
+                        <>
+                          <button type="button" disabled title="Only the Super Admin can edit a Super Admin account." className="inline-flex h-9 cursor-not-allowed items-center gap-2 rounded-lg border border-slate-200 bg-slate-100 px-3 text-xs font-bold text-slate-400"><FiEdit2 className="h-3.5 w-3.5" />Edit</button>
+                          <button type="button" disabled title="Only the Super Admin can regenerate credentials for a Super Admin account." className="inline-flex h-9 cursor-not-allowed items-center gap-2 rounded-lg border border-slate-200 bg-slate-100 px-3 text-xs font-bold text-slate-400"><FiKey className="h-3.5 w-3.5" />Credentials</button>
+                          <button type="button" disabled title="Only the Super Admin can activate or deactivate a Super Admin account." className="inline-flex h-9 cursor-not-allowed items-center gap-2 rounded-lg border border-slate-200 bg-slate-100 px-3 text-xs font-bold text-slate-400">{user.status === "active" ? "Deactivate" : "Activate"}</button>
+                        </>
                       ) : (
-                        <span className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-black text-blue-700">{user.role === "external_group" ? "Managed in External Groups" : "Protected account"}</span>
+                        <span className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-black text-blue-700">Managed in External Groups</span>
                       )}
                     </div>
                   </div>
@@ -389,8 +396,8 @@ const Users = () => {
         </div>
       </section>
 
-      {showCreateUser && canCreateUsers ? <CreateUserModal setShowCreateUser={setShowCreateUser} onSaved={handleSaved} allowedRoles={createAllowedRoles} actorRole={actorRole} /> : null}
-      {showEditUser && selectedUser && canEditUsers && canManageAccount(selectedUser) ? <EditUserModal key={selectedUser.id} setShowEditUser={setShowEditUser} selectedUser={selectedUser} onSaved={handleSaved} allowedRoles={getEditAllowedRoles(selectedUser)} actorRole={actorRole} /> : null}
+      {showCreateUser && canCreateUsers ? <CreateUserModal setShowCreateUser={setShowCreateUser} onSaved={handleSaved} allowedRoles={createAllowedRoles} actorRole={actorRole} actorCanAssignAllProjects={actorCanAssignAllProjects} /> : null}
+      {showEditUser && selectedUser && canEditUsers && canManageAccount(selectedUser) ? <EditUserModal key={selectedUser.id} setShowEditUser={setShowEditUser} selectedUser={selectedUser} onSaved={handleSaved} allowedRoles={getEditAllowedRoles(selectedUser)} actorRole={actorRole} actorCanAssignAllProjects={actorCanAssignAllProjects} /> : null}
       {canResetPasswords ? <ResetPasswordConfirmModal
         user={resetTarget}
         onClose={() => {

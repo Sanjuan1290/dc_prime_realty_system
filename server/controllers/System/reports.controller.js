@@ -6,6 +6,7 @@ import {
 import { writeAuditLog } from './auditLogs.controller.js'
 import { summarizeContractFinancials } from '../../services/accountFinancialSnapshot.service.js'
 import { reconcileCommissionCohort, resolveCommissionReleaseStatusAsOf } from '../../services/commissionReconciliation.service.js'
+import { getAccessibleProjectIds } from '../../services/adminProjectAccess.service.js'
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 const clean = (value = '') => String(value ?? '').trim()
@@ -40,11 +41,23 @@ const resolveDateRange = (req) => {
   return { from, to }
 }
 
-const buildScope = (req, alias = 'project') => {
+const buildScope = (req, accessibleProjectIds, alias = 'project') => {
   const projectId = Number(req.query.projectId || 0)
-  return projectId > 0
-    ? { sql: `AND ${alias}.lot_project_id = ?`, params: [projectId], projectId }
-    : { sql: '', params: [], projectId: null }
+  if (projectId > 0) {
+    if (accessibleProjectIds !== null && !accessibleProjectIds.includes(projectId)) {
+      const error = new Error('You do not have access to the selected project.')
+      error.statusCode = 403
+      throw error
+    }
+    return { sql: `AND ${alias}.lot_project_id = ?`, params: [projectId], projectId }
+  }
+  if (accessibleProjectIds === null) return { sql: '', params: [], projectId: null }
+  if (!accessibleProjectIds.length) return { sql: 'AND 1 = 0', params: [], projectId: null }
+  return {
+    sql: `AND ${alias}.lot_project_id IN (${accessibleProjectIds.map(() => '?').join(', ')})`,
+    params: accessibleProjectIds,
+    projectId: null,
+  }
 }
 
 const sellerNameSql = `TRIM(CONCAT_WS(' ', seller_user.first_name, seller_user.middle_name, seller_user.last_name))`
@@ -126,7 +139,8 @@ export const getSystemReports = async (req, res) => {
   const connection = await db.getConnection()
   try {
     const { from, to } = resolveDateRange(req)
-    const projectScope = buildScope(req, 'project')
+    const accessibleProjectIds = await getAccessibleProjectIds(req.authUser, connection)
+    const projectScope = buildScope(req, accessibleProjectIds, 'project')
     const sellerId = Number(req.query.sellerId || 0) || null
     const search = clean(req.query.search)
 
@@ -145,11 +159,32 @@ export const getSystemReports = async (req, res) => {
       return res.status(500).json({ message: `Reports cannot load because required table(s) are missing: ${missing.join(', ')}.` })
     }
 
+    const projectOptionScope = accessibleProjectIds === null
+      ? { sql: '', params: [] }
+      : accessibleProjectIds.length
+        ? { sql: `WHERE lot_project_id IN (${accessibleProjectIds.map(() => '?').join(', ')})`, params: accessibleProjectIds }
+        : { sql: 'WHERE 1 = 0', params: [] }
     const [projectRows] = await connection.query(
       `SELECT lot_project_id AS id, lot_project_name AS name, lot_project_slug AS slug
        FROM lot_projects
-       ORDER BY lot_project_name ASC`
+       ${projectOptionScope.sql}
+       ORDER BY lot_project_name ASC`,
+      projectOptionScope.params
     )
+    const sellerOptionScope = accessibleProjectIds === null
+      ? { sql: '', params: [] }
+      : accessibleProjectIds.length
+        ? {
+            sql: ` AND EXISTS (
+              SELECT 1
+              FROM seller_group_lot_project_rates report_seller_rate
+              WHERE report_seller_rate.seller_group_id = seller.seller_group_id
+                AND report_seller_rate.lot_project_id IN (${accessibleProjectIds.map(() => '?').join(', ')})
+                AND report_seller_rate.seller_group_lot_project_rate_status = 'active'
+            )`,
+            params: accessibleProjectIds,
+          }
+        : { sql: ' AND 1 = 0', params: [] }
     const [sellerRows] = await connection.query(
       `SELECT seller.accredited_seller_id AS id,
               ${sellerNameSql} AS name,
@@ -157,8 +192,9 @@ export const getSystemReports = async (req, res) => {
        FROM accredited_sellers seller
        INNER JOIN users seller_user ON seller_user.id = seller.user_id
        LEFT JOIN seller_groups group_row ON group_row.seller_group_id = seller.seller_group_id
-       WHERE seller.accredited_seller_status = 'active'
-       ORDER BY name ASC`
+       WHERE seller.accredited_seller_status = 'active'${sellerOptionScope.sql}
+       ORDER BY name ASC`,
+      sellerOptionScope.params
     )
 
     const sellerReservationSql = sellerId ? 'AND profile.assigned_accredited_seller_id = ?' : ''

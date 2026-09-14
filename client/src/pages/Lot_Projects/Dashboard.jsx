@@ -157,7 +157,7 @@ const EmptyChart = ({ message = 'No chart data yet.' }) => (
   </div>
 )
 
-const DateRangeFilter = ({ range, onRangeChange, dateFrom, setDateFrom, dateTo, setDateTo, isFetching, isAdmin1 }) => {
+const DateRangeFilter = ({ range, onRangeChange, dateFrom, setDateFrom, dateTo, setDateTo, isFetching }) => {
   const isCustom = range === 'custom'
 
   return (
@@ -191,7 +191,6 @@ const DateRangeFilter = ({ range, onRangeChange, dateFrom, setDateFrom, dateTo, 
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-3 text-xs font-bold text-slate-500">
-        {isAdmin1 ? <span>Admin 1 limit: up to 12 months (1 year).</span> : null}
         {isFetching ? <span className="text-blue-700">Updating dashboard data...</span> : null}
       </div>
     </section>
@@ -516,10 +515,8 @@ const Dashboard = () => {
   const [recentUnitPageSize, setRecentUnitPageSize] = useState(10)
   const { data: currentUserData } = useCurrentUser()
   const currentUser = currentUserData?.user || {}
-  const isAdmin1 = currentUser.role === 'admin' && (!currentUser.admin_type || currentUser.admin_type === 'admin_1')
   const hasInvalidDateRange = dateRange === 'custom' && (!dateFrom || !dateTo || dateFrom > dateTo)
-  const adminRangeBlocked = isAdmin1 && exceedsTwelveMonths(dateFrom, dateTo)
-  const canLoadDateRange = !hasInvalidDateRange && !adminRangeBlocked
+  const canLoadDateRange = !hasInvalidDateRange
 
   const handleRangeChange = (value) => {
     setDateRange(value)
@@ -670,11 +667,9 @@ const Dashboard = () => {
         dateTo={dateTo}
         setDateTo={setDateTo}
         isFetching={isFetching}
-        isAdmin1={isAdmin1}
       />
 
       {hasInvalidDateRange ? <StatusAlert type="error" message="The From date must be earlier than or equal to the To date." /> : null}
-      {adminRangeBlocked ? <StatusAlert type="error" message="Admin 1 dashboard reports are limited to 12 months (1 year). Select a shorter custom date range." /> : null}
 
       <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">

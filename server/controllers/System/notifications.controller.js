@@ -17,6 +17,7 @@ import {
 import { writeAuditLog } from './auditLogs.controller.js';
 import { isFullAccessAdministrator } from '../../config/permissions.js';
 import { getCompanyContactEmail, sendEmail } from '../../services/email.service.js';
+import { canAccessProject, getAccessibleProjectIds } from '../../services/adminProjectAccess.service.js';
 
 const toDateOnly = (value) => {
   if (!value) return '-';
@@ -70,6 +71,17 @@ const fullName = (row = {}) => {
 };
 
 const canManageNotifications = (user = {}) => isFullAccessAdministrator(user);
+
+const appendProjectAccessFilter = async ({ connection, user, where, params, alias = 'p' }) => {
+  const accessibleProjectIds = await getAccessibleProjectIds(user, connection);
+  if (accessibleProjectIds === null) return;
+  if (!accessibleProjectIds.length) {
+    where.push('1 = 0');
+    return;
+  }
+  where.push(`${alias}.lot_project_id IN (${accessibleProjectIds.map(() => '?').join(', ')})`);
+  params.push(...accessibleProjectIds);
+};
 
 const DEFAULT_EMAIL_LOGO_URL = 'https://res.cloudinary.com/dvazrmgq9/image/upload/v1784705909/logo-mobile_2_i0damo.png';
 
@@ -669,6 +681,7 @@ export const getPaymentDueNotifications = async (req, res) => {
       )`,
     ];
     const params = [];
+    await appendProjectAccessFilter({ connection, user, where, params, alias: 'p' });
 
     if (category === 'due_soon') {
       where.push(`s.due_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)`);
@@ -800,6 +813,9 @@ export const sendPaymentDueNotification = async (req, res) => {
 
     let row = await getScheduleNotificationRow(connection, scheduleId);
     if (!row) return res.status(404).json({ message: 'Payment schedule not found.' });
+    if (!(await canAccessProject(user, Number(row.lot_project_id || 0), connection))) {
+      return res.status(403).json({ message: 'You do not have access to this project.' });
+    }
 
     // A direct Send request may arrive without first opening the list page.
     // Refresh this project's stale cache and re-read the schedule so the
@@ -957,6 +973,9 @@ export const markPaymentDueContacted = async (req, res) => {
 
     const row = await getScheduleNotificationRow(connection, scheduleId);
     if (!row) return res.status(404).json({ message: 'Payment schedule not found.' });
+    if (!(await canAccessProject(user, Number(row.lot_project_id || 0), connection))) {
+      return res.status(403).json({ message: 'You do not have access to this project.' });
+    }
 
     const notification = mapNotificationRow(row);
     const subject = `${notification.statusLabel} contacted - ${notification.projectName} ${notification.unitId}`;
@@ -1213,6 +1232,9 @@ export const sendDocumentNotification = async (req, res) => {
     await ensureDocumentNotificationLogTable(connection);
     const context = await getDocumentNotificationContext(connection, listingId, clientProfileId);
     if (!context) return res.status(404).json({ message: 'Buyer document record not found.' });
+    if (!(await canAccessProject(user, Number(context.projectId || 0), connection))) {
+      return res.status(403).json({ message: 'You do not have access to this project.' });
+    }
     if (!context.buyerEmail) {
       return res.status(400).json({ message: 'Buyer email is missing. Add the buyer email before sending.' });
     }
@@ -1357,6 +1379,10 @@ export const getDocumentNotifications = async (req, res) => {
   const connection = await db.getConnection();
 
   try {
+    const user = await getAuthenticatedUser(req);
+    if (!user) return res.status(401).json({ message: 'Please login before viewing document notifications.' });
+    if (!canManageNotifications(user)) return res.status(403).json({ message: 'Admin access only.' });
+
     const requiredTables = [
       'lot_projects',
       'lot_project_listings',
@@ -1381,6 +1407,7 @@ export const getDocumentNotifications = async (req, res) => {
     const category = String(req.query.category || 'all').trim().toLowerCase();
     const params = [];
     const filters = [];
+    await appendProjectAccessFilter({ connection, user, where: filters, params, alias: 'lp' });
 
     if (search) {
       const keyword = `%${search}%`;

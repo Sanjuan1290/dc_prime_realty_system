@@ -3077,7 +3077,7 @@ export const getAuthenticatedUser = async (req) => {
 
     const [rows] = await db.query(
       `
-        SELECT id, first_name, middle_name, last_name, email, role, admin_type, password_hash, status,
+        SELECT id, first_name, middle_name, last_name, email, role, admin_type, COALESCE(admin_all_projects, 0) AS admin_all_projects, password_hash, status,
           COALESCE(auth_version, 0) AS auth_version
         FROM users
         WHERE id = ?

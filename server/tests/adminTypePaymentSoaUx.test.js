@@ -16,25 +16,26 @@ test('Admin uses the same SystemLayout and full navigation as Super Admin', () =
   assert.match(app, /<Route path="\/portal\/admin" element=\{<SystemLayout \/>\}/);
   assert.doesNotMatch(app, /<Route path="\/portal\/admin" element=\{<AdminLayout \/>\}/);
   assert.match(systemLayout, /isFullAccessAdministrator\(user\)/);
-  assert.match(systemLayout, /Admin 1/);
+  assert.match(systemLayout, /user\?\.role === "admin" \? "Admin"/);
   assert.match(lotLayout, /isFullAccessAdministrator\(user\)/);
 });
 
-test('Admin type selector enables Admin 1 and shows disabled future types', () => {
+test('Admin user forms use project access instead of legacy Admin Type', () => {
   const clientPermissions = read('client/src/config/permissions.js');
   const createUser = read('client/src/components/System/userComponents/CreateUserModal.jsx');
   const editUser = read('client/src/components/System/userComponents/EditUserModal.jsx');
-  const migration = read('server/migrations/20260722_admin_types_and_admin1_full_access.sql');
+  const accessFields = read('client/src/components/System/userComponents/AdminProjectAccessFields.jsx');
+  const migration = read('server/migrations/20260914_admin_project_access.sql');
 
-  assert.match(clientPermissions, /value: 'admin_1'[\s\S]*disabled: true/);
-  assert.match(clientPermissions, /value: 'admin_2'[\s\S]*disabled: true/);
-  assert.match(clientPermissions, /value: 'admin_3'[\s\S]*disabled: true/);
-  assert.match(createUser, /Admin Type/);
-  assert.match(createUser, /Coming later/);
-  assert.match(editUser, /Admin Type/);
-  assert.match(editUser, /Coming later/);
-  assert.match(migration, /admin_type ENUM\('admin_1','admin_2','admin_3'\)/);
-  assert.match(migration, /SET admin_type = 'admin_1'/);
+  assert.doesNotMatch(clientPermissions, /ADMIN_TYPES/);
+  assert.match(createUser, /AdminProjectAccessFields/);
+  assert.match(editUser, /AdminProjectAccessFields/);
+  assert.match(accessFields, /Projects this Admin can manage/);
+  assert.match(accessFields, /All Projects/);
+  assert.doesNotMatch(createUser, />Admin Type</);
+  assert.doesNotMatch(editUser, />Admin Type</);
+  assert.match(migration, /admin_project_access/);
+  assert.match(migration, /admin_all_projects/);
 });
 
 test('Payments and SOA show the total amount paid in the summary and statement', () => {
