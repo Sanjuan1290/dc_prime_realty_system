@@ -44,14 +44,25 @@ const getAccountStorageContext = async (connection, accountId) => {
 const moveRows = async ({ connection, rows, tableName, idColumn, buildTargetFolder, summary, kind, dryRun = false }) => {
   for (const row of rows) {
     const targetFolder = buildTargetFolder(row);
-    const result = await moveAuthenticatedAssetFolder({
-      publicId: row.cloudinary_public_id,
-      resourceType: row.cloudinary_resource_type,
-      deliveryType: row.cloudinary_delivery_type,
-      currentFolder: row.cloudinary_asset_folder,
-      targetFolder,
-      dryRun,
-    });
+    let result;
+    try {
+      result = await moveAuthenticatedAssetFolder({
+        publicId: row.cloudinary_public_id,
+        resourceType: row.cloudinary_resource_type,
+        deliveryType: row.cloudinary_delivery_type,
+        currentFolder: row.cloudinary_asset_folder,
+        targetFolder,
+        dryRun,
+      });
+    } catch (cause) {
+      const originalMessage = clean(cause?.message || cause?.error?.message) || 'Cloudinary protected-file storage reconciliation failed.';
+      const error = new Error(`${kind} file #${row[idColumn]} could not be reconciled to the buyer account folder. ${originalMessage}`);
+      error.statusCode = Number(cause?.statusCode || 0) || 502;
+      error.code = cause?.code || 'PROTECTED_STORAGE_RECONCILIATION_FAILED';
+      error.fileKind = kind;
+      error.fileId = Number(row[idColumn] || 0) || null;
+      throw error;
+    }
 
     if (!dryRun) {
       await connection.query(

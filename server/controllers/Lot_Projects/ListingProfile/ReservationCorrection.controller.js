@@ -1100,7 +1100,18 @@ export const correctReservationUnit = async (req, res) => {
     })
   } catch (error) {
     try { await connection.rollback() } catch {}
-    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) })
+    const message = getErrorMessage(error)
+    console.error('[reservation-correction] failed', {
+      code: error?.code || null,
+      statusCode: error?.statusCode || 500,
+      message,
+      fileKind: error?.fileKind || null,
+      fileId: error?.fileId || null,
+    })
+    return res.status(error.statusCode || 500).json({
+      code: error?.code || undefined,
+      message,
+    })
   } finally {
     connection.release()
   }

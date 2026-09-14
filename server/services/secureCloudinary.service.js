@@ -26,6 +26,68 @@ const toFiniteNumber = (value) => {
 
 const getMalwareNotificationUrl = () => clean(process.env.CLOUDINARY_MALWARE_NOTIFICATION_URL);
 
+const getCloudinaryApiErrorDetails = (error) => {
+  const nested = error && typeof error === 'object' ? error.error : null;
+  const responseError = error?.response?.data?.error;
+  const message = clean(
+    error?.message
+    || nested?.message
+    || responseError?.message
+    || error?.body?.error?.message
+    || error?.body?.message
+  );
+  const httpCode = Number(
+    error?.http_code
+    || nested?.http_code
+    || responseError?.http_code
+    || error?.response?.status
+    || error?.status
+    || 0
+  ) || 0;
+  return { message, httpCode };
+};
+
+const buildProtectedStorageCloudinaryError = (error, action = 'update') => {
+  if (error?.statusCode && error?.message) return error;
+  const { message, httpCode } = getCloudinaryApiErrorDetails(error);
+  const normalizedAction = clean(action) || 'update';
+  const wrapped = new Error(
+    message
+      ? `Cloudinary protected-file ${normalizedAction} failed: ${message}`
+      : `Cloudinary protected-file ${normalizedAction} failed. Check the Cloudinary asset and API configuration.`
+  );
+  wrapped.statusCode = httpCode === 404
+    ? 409
+    : httpCode === 429
+      ? 503
+      : httpCode >= 400 && httpCode < 500
+        ? 409
+        : 502;
+  wrapped.code = httpCode === 404
+    ? 'CLOUDINARY_PROTECTED_ASSET_MISSING'
+    : httpCode === 429
+      ? 'CLOUDINARY_RATE_LIMITED'
+      : 'CLOUDINARY_PROTECTED_STORAGE_FAILED';
+  wrapped.cloudinaryHttpCode = httpCode || null;
+  return wrapped;
+};
+
+const runCloudinaryWithRetry = async (operation, { attempts = 3 } = {}) => {
+  let lastError;
+  for (let attempt = 1; attempt <= Math.max(1, attempts); attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      const { httpCode } = getCloudinaryApiErrorDetails(error);
+      const retryable = !httpCode || httpCode === 408 || httpCode === 429 || httpCode >= 500;
+      if (!retryable || attempt >= attempts) break;
+      await new Promise((resolve) => setTimeout(resolve, 150 * attempt));
+    }
+  }
+  throw lastError;
+};
+
 const getQuotaCacheMs = () => {
   const configured = Number(process.env.CLOUDINARY_MALWARE_QUOTA_CACHE_MS || 30_000);
   if (!Number.isFinite(configured)) return 30_000;
@@ -797,6 +859,7 @@ export const moveAuthenticatedAssetFolder = async ({
   const safePublicId = clean(publicId);
   const safeResourceType = ['image', 'raw', 'video'].includes(clean(resourceType)) ? clean(resourceType) : 'image';
   const safeDeliveryType = clean(deliveryType) || 'authenticated';
+  const safeCurrentFolder = clean(currentFolder);
   const safeTargetFolder = clean(targetFolder);
   if (!safePublicId || !safeTargetFolder) {
     const error = new Error('Protected asset public ID and target folder are required.');
@@ -809,11 +872,29 @@ export const moveAuthenticatedAssetFolder = async ({
     throw error;
   }
 
-  const existing = await cloudinary.api.resource(safePublicId, {
-    resource_type: safeResourceType,
-    type: 'authenticated',
-  });
-  const actualFolder = clean(existing.asset_folder || existing.folder || currentFolder);
+  // Most current V4 rows are already stored in the canonical account folder.
+  // Do not make a remote Cloudinary request during a financial correction when
+  // the persisted canonical folder already matches the deterministic target.
+  if (safeCurrentFolder === safeTargetFolder) {
+    return {
+      moved: false,
+      fromFolder: safeCurrentFolder,
+      toFolder: safeTargetFolder,
+      metadataAlreadyCanonical: true,
+    };
+  }
+
+  let existing;
+  try {
+    existing = await runCloudinaryWithRetry(() => cloudinary.api.resource(safePublicId, {
+      resource_type: safeResourceType,
+      type: 'authenticated',
+    }));
+  } catch (error) {
+    throw buildProtectedStorageCloudinaryError(error, 'lookup');
+  }
+
+  const actualFolder = clean(existing?.asset_folder || existing?.folder || safeCurrentFolder);
   if (actualFolder === safeTargetFolder) {
     return { moved: false, fromFolder: actualFolder, toFolder: safeTargetFolder, asset: existing };
   }
@@ -821,17 +902,54 @@ export const moveAuthenticatedAssetFolder = async ({
     return { moved: true, dryRun: true, fromFolder: actualFolder, toFolder: safeTargetFolder, asset: existing };
   }
 
-  await cloudinary.uploader.explicit(safePublicId, {
-    resource_type: safeResourceType,
-    type: 'authenticated',
-    asset_folder: safeTargetFolder,
-  });
-  const verified = await verifyAuthenticatedCloudinaryAsset({
-    publicId: safePublicId,
-    resourceType: safeResourceType,
-    expectedFolder: safeTargetFolder,
-  });
-  return { moved: true, fromFolder: actualFolder, toFolder: safeTargetFolder, asset: verified };
+  let movedAsset;
+  try {
+    movedAsset = await runCloudinaryWithRetry(() => cloudinary.uploader.explicit(safePublicId, {
+      resource_type: safeResourceType,
+      type: 'authenticated',
+      asset_folder: safeTargetFolder,
+    }));
+  } catch (error) {
+    throw buildProtectedStorageCloudinaryError(error, 'folder move');
+  }
+
+  const explicitFolder = clean(movedAsset?.asset_folder || movedAsset?.folder);
+  if (explicitFolder && explicitFolder !== safeTargetFolder) {
+    const error = new Error(`Cloudinary returned an unexpected protected-file folder after the move. Expected ${safeTargetFolder}, received ${explicitFolder}.`);
+    error.statusCode = 409;
+    error.code = 'CLOUDINARY_PROTECTED_FOLDER_MISMATCH';
+    throw error;
+  }
+
+  // Cloudinary folder moves are metadata operations. When the Explicit response
+  // does not expose asset_folder, verify with a short retry because Admin API
+  // reads can briefly lag the successful move response.
+  if (!explicitFolder) {
+    let verified;
+    try {
+      verified = await runCloudinaryWithRetry(async () => {
+        const asset = await cloudinary.api.resource(safePublicId, {
+          resource_type: safeResourceType,
+          type: 'authenticated',
+          tags: true,
+          context: true,
+          moderations: true,
+        });
+        const verifiedFolder = clean(asset?.asset_folder || asset?.folder);
+        if (verifiedFolder !== safeTargetFolder) {
+          const stale = new Error('Cloudinary asset folder has not reflected the requested move yet.');
+          stale.http_code = 503;
+          throw stale;
+        }
+        return asset;
+      }, { attempts: 4 });
+    } catch (error) {
+      throw buildProtectedStorageCloudinaryError(error, 'folder verification');
+    }
+    return { moved: true, fromFolder: actualFolder, toFolder: safeTargetFolder, asset: verified };
+  }
+
+  return { moved: true, fromFolder: actualFolder, toFolder: safeTargetFolder, asset: movedAsset };
 };
 
 export const destroyCloudinaryAsset = async ({ publicId, resourceType = 'image', deliveryType = 'authenticated' }) => {
