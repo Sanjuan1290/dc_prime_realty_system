@@ -10,6 +10,7 @@ const COLORS = Object.freeze({
   grid: '262626',
   normal: '1E6600',
   gray: '969696',
+  grayFill: 'E7E7E7',
   red: 'E5391B',
   redFill: 'FDE5E5',
   blue: '4472C4',
@@ -178,6 +179,25 @@ const buildAttendanceRow = ({ employee, date, attendance, restDays, daySetting, 
   // the date is pre-hire AND there is no attendance to report.
   const timeIn = attendance?.actual_time_in || null
   const timeOut = attendance?.actual_time_out || null
+  const isExplicitAbsent = String(attendance?.attendance_status || '').toLowerCase() === 'absent'
+
+  // Rest Day and explicitly recorded absence are authoritative markers. They
+  // must not be replaced by the generic pre-hire N/A marker.
+  if (isRestDay && !timeIn && !timeOut) {
+    return {
+      weekday, date, state: 'rest', remark: 'RD', marker: 'RD',
+      scheduledDay: false, absence: false, lateSeconds: 0, overtimeSeconds: 0,
+      totalWorkedSeconds: 0, regularAttendedSeconds: 0, holidayWorkedSeconds: 0,
+    }
+  }
+
+  if (isExplicitAbsent && !timeIn && !timeOut) {
+    return {
+      weekday, date, state: 'absent', remark: 'AB', marker: 'AB',
+      scheduledDay: true, absence: true, lateSeconds: 0, overtimeSeconds: 0,
+      totalWorkedSeconds: 0, regularAttendedSeconds: 0, holidayWorkedSeconds: 0,
+    }
+  }
 
   if (isPreHire && !timeIn && !timeOut) {
     return {
@@ -192,14 +212,6 @@ const buildAttendanceRow = ({ employee, date, attendance, restDays, daySetting, 
   const lateAfter = secondsFromTime(schedule.lateAfter || schedule.scheduledTimeIn || '09:00:00')
   const regularWorkingSeconds = Number(schedule.regularWorkingMinutes || 600) * 60
   const redAfter = secondsFromTime(schedule.redHighlightAfter || '09:15:00')
-
-  if (isRestDay && !timeIn && !timeOut) {
-    return {
-      weekday, date, state: 'rest', remark: 'RD', marker: 'RD',
-      scheduledDay: false, absence: false, lateSeconds: 0, overtimeSeconds: 0,
-      totalWorkedSeconds: 0, regularAttendedSeconds: 0, holidayWorkedSeconds: 0,
-    }
-  }
 
   if (isHoliday && !timeIn && !timeOut) {
     return {
@@ -219,7 +231,7 @@ const buildAttendanceRow = ({ employee, date, attendance, restDays, daySetting, 
 
   if (!timeIn && !timeOut) {
     return {
-      weekday, date, state: 'absent', remark: 'A', marker: 'A',
+      weekday, date, state: 'absent', remark: 'AB', marker: 'AB',
       scheduledDay: true, absence: true, lateSeconds: 0, overtimeSeconds: 0,
       totalWorkedSeconds: 0, regularAttendedSeconds: 0, holidayWorkedSeconds: 0,
     }
@@ -324,8 +336,9 @@ const buildAttendanceRow = ({ employee, date, attendance, restDays, daySetting, 
 
 const rowPalette = (state, alternate = false) => {
   if (state === 'late_red') return { color: COLORS.red, fill: COLORS.redFill }
-  if (state === 'absent') return { color: COLORS.red, fill: alternate ? COLORS.alt : null }
-  if (state === 'rest' || state === 'na') return { color: COLORS.gray, fill: alternate ? COLORS.alt : null }
+  if (state === 'absent') return { color: COLORS.red, fill: COLORS.redFill }
+  if (state === 'rest') return { color: COLORS.gray, fill: COLORS.grayFill }
+  if (state === 'na') return { color: COLORS.gray, fill: alternate ? COLORS.alt : null }
   if (state === 'holiday' || state === 'holiday_work') return { color: COLORS.blue, fill: COLORS.blueFill }
   if (state === 'event' || state === 'event_work') return { color: COLORS.violet, fill: COLORS.violetFill }
   return { color: COLORS.normal, fill: alternate ? COLORS.alt : null }
@@ -547,4 +560,5 @@ export const downloadAttendanceWorkbook = (payload, { cutoffLabel = '' } = {}) =
   XLSX.writeFile(workbook, filename, { compression: true, cellStyles: true })
   return filename
 }
+
 

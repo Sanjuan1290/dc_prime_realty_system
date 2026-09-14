@@ -11,7 +11,11 @@ const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'u
 test('Excel remarks stay attendance-status only and holiday labels are not repeated into time cells', () => {
   const workbook = read('client/src/utils/attendanceExcelExport.js')
   assert.match(workbook, /remark: 'RD'/)
-  assert.match(workbook, /remark: 'A'/)
+  assert.match(workbook, /marker: 'RD'/)
+  assert.match(workbook, /marker: 'AB'/)
+  assert.match(workbook, /state === 'absent'[\s\S]*COLORS\.redFill/)
+  assert.match(workbook, /state === 'rest'[\s\S]*COLORS\.grayFill/)
+  assert.match(workbook, /remark: 'AB'/)
   assert.match(workbook, /remark: isLate \? 'Late' : 'On Time'/)
   assert.match(workbook, /row\.state === 'holiday'[\s\S]*return \[row\.weekday, toUtcDate\(row\.date\), '', '', '', '', '', '', '', '', '', '', ''\]/)
   assert.doesNotMatch(workbook, /remark: dayTypeText/)
@@ -61,4 +65,5 @@ test('Excel Tardiness includes one full regular workday for every absent schedul
   assert.match(workbook, /row\.absence \? regularWorkingSeconds : 0/)
   assert.match(workbook, /const requiredHours = scheduledDays \* regularWorkingSeconds/)
 })
+
 

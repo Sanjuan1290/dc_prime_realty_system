@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FiEdit2, FiPlus, FiRefreshCw, FiSearch, FiUsers } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
+import ConfirmActionModal from '../../components/Shared/ConfirmActionModal'
 import EmployeeModal from '../../components/System/employeeComponents/EmployeeModal'
 import useCurrentUser from '../../utils/useCurrentUser'
 import { useFetch, useFetchPatch } from '../../utils/useFetch'
@@ -28,6 +29,8 @@ const Employees = () => {
   const [selectedEmployee, setSelectedEmployee] = useState(null)
   const [showModal, setShowModal] = useState(false)
   const [alert, setAlert] = useState(null)
+  const [confirmEmployee, setConfirmEmployee] = useState(null)
+  const [statusNotice, setStatusNotice] = useState(null)
 
   const queryString = useMemo(() => new URLSearchParams({
     page: String(page), limit: String(limit),
@@ -46,8 +49,13 @@ const Employees = () => {
 
   const statusMutation = useMutation({
     mutationFn: (employee) => useFetchPatch(`/employees/${employee.employee_id}/status`, { employee_status: employee.employee_status === 'active' ? 'inactive' : 'active' }, { confirmationHandled: 'compact' }),
-    onSuccess: (result) => { setAlert({ type: 'success', message: result.message }); queryClient.invalidateQueries({ queryKey: ['employees'] }) },
-    onError: (error) => setAlert({ type: 'error', message: error.message }),
+    onSuccess: (result) => {
+      setConfirmEmployee(null)
+      setStatusNotice(null)
+      setAlert({ type: 'success', message: result.message })
+      queryClient.invalidateQueries({ queryKey: ['employees'] })
+    },
+    onError: (error) => setStatusNotice({ type: 'error', message: error.message }),
   })
 
   const openAdd = () => { setSelectedEmployee(null); setShowModal(true) }
@@ -92,7 +100,7 @@ const Employees = () => {
                 <td className="px-4 py-4 text-slate-600">{typeLabel(employee.employment_type)}</td>
                 <td className="px-4 py-4"><span className={`inline-flex rounded-full px-3 py-1 text-xs font-black ring-1 ${employee.rest_days?.length ? 'bg-blue-50 text-blue-700 ring-blue-200' : 'bg-amber-50 text-amber-700 ring-amber-200'}`}>{restDayLabel(employee.rest_days)}</span></td>
                 <td className="px-4 py-4"><span className={`inline-flex rounded-full px-3 py-1 text-xs font-black capitalize ring-1 ${statusTone[employee.employee_status] || statusTone.inactive}`}>{employee.employee_status}</span></td>
-                <td className="px-4 py-4">{canManage ? <div className="flex gap-2"><button type="button" onClick={() => openEdit(employee)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-700"><FiEdit2 />Edit</button><button type="button" onClick={() => statusMutation.mutate(employee)} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700">{employee.employee_status === 'active' ? 'Deactivate' : 'Activate'}</button></div> : <span className="text-xs font-semibold text-slate-400">View only</span>}</td>
+                <td className="px-4 py-4">{canManage ? <div className="flex gap-2"><button type="button" onClick={() => openEdit(employee)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-700"><FiEdit2 />Edit</button><button type="button" onClick={() => { setConfirmEmployee(employee); setStatusNotice(null) }} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700">{employee.employee_status === 'active' ? 'Deactivate' : 'Activate'}</button></div> : <span className="text-xs font-semibold text-slate-400">View only</span>}</td>
               </tr>)}
             </tbody>
           </table>
@@ -105,9 +113,29 @@ const Employees = () => {
       </section>
 
       {showModal ? <EmployeeModal employee={selectedEmployee} departmentConfigs={departmentConfigs} departments={departments} onClose={() => setShowModal(false)} onSaved={(message) => setAlert({ type: 'success', message })} /> : null}
+
+      <ConfirmActionModal
+        open={Boolean(confirmEmployee)}
+        title={`${confirmEmployee?.employee_status === 'active' ? 'Deactivate' : 'Activate'} Employee?`}
+        message={confirmEmployee?.employee_status === 'active'
+          ? `${confirmEmployee?.full_name || 'This employee'} will be marked inactive and will no longer be included in active attendance operations or future attendance Excel exports. Existing employee and attendance records will remain available.`
+          : `${confirmEmployee?.full_name || 'This employee'} will be marked active and will be included in attendance operations and future attendance Excel exports again.`}
+        confirmLabel={confirmEmployee?.employee_status === 'active' ? 'Deactivate Employee' : 'Activate Employee'}
+        tone={confirmEmployee?.employee_status === 'active' ? 'danger' : 'primary'}
+        isPending={statusMutation.isPending}
+        notice={statusNotice}
+        onClose={() => {
+          if (!statusMutation.isPending) {
+            setConfirmEmployee(null)
+            setStatusNotice(null)
+          }
+        }}
+        onConfirm={() => confirmEmployee && statusMutation.mutate(confirmEmployee)}
+      />
     </main>
   )
 }
 
 export default Employees
+
 

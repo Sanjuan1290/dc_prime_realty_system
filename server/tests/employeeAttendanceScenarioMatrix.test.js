@@ -91,9 +91,10 @@ test('Excel attendance matrix: break is deducted only when attendance overlaps t
   assert.equal(excel.breakOverlapSeconds({ timeInSeconds: 11 * H + 45 * M, timeOutSeconds: 12 * H + 15 * M, breakStart: '12:00:00', breakMinutes: 60 }), 15 * M)
 })
 
-test('Excel attendance matrix: absent regular day is A and carries one full 10-hour tardiness obligation in summary logic', () => {
+test('Excel attendance matrix: absent regular day is AB and carries one full 10-hour tardiness obligation in summary logic', () => {
   const result = row('2026-09-07')
-  assert.equal(result.remark, 'A')
+  assert.equal(result.remark, 'AB')
+  assert.equal(result.marker, 'AB')
   assert.equal(result.state, 'absent')
   assert.equal(result.scheduledDay, true)
   assert.equal(result.absence, true)
@@ -114,6 +115,16 @@ test('Excel attendance matrix: Rest Day without attendance is RD and with attend
   assert.equal(worked.totalWorkedSeconds, 10 * H)
   assert.equal(worked.overtimeSeconds, 10 * H)
   assert.equal(worked.regularAttendedSeconds, 0)
+})
+
+test('Excel attendance matrix: Rest Day and explicit absence override pre-hire N/A markers', () => {
+  const preHireRest = row('2026-08-30', null, { restDays: ['sunday'] })
+  assert.equal(preHireRest.state, 'rest')
+  assert.equal(preHireRest.marker, 'RD')
+
+  const preHireAbsent = row('2026-08-31', { attendance_status: 'absent' })
+  assert.equal(preHireAbsent.state, 'absent')
+  assert.equal(preHireAbsent.marker, 'AB')
 })
 
 test('Excel attendance matrix: no-attendance holidays do not become absences and keep time fields blank', () => {
@@ -261,4 +272,5 @@ test('Automatic Time Out only closes open attendance records and labels source a
   assert.match(job, /attendance_event_id IS NULL/)
   assert.match(job, /a\.actual_time_in <= \?/)
 })
+
 
