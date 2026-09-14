@@ -5,7 +5,7 @@ import StatusAlert from '../../../Shared/StatusAlert'
 import { useFetchPost } from '../../../../utils/useFetch'
 
 const HEADERS = [
-  'Cadastral Lot No. *',
+  'Cadastral Lot No.',
   'Unit ID *',
   'Old Unit IDs',
   'Lot Type *',
@@ -122,7 +122,7 @@ const ListingImportModal = ({ project = {}, projectSlug, onClose, onImported }) 
       ['Important', `In Unit ID, type only the number after the prefix. The Unit ID column is formatted as Text so leading zeroes are preserved. Example: if the final unit is ${projectCode || 'LA'}-0101, enter 0101.`],
       ['Status', 'All imported listings are automatically created as Available.'],
       ['Documents', 'Project default document requirements are automatically applied.'],
-      ['Cadastral Lot', 'Required. Use one cadastral lot number from the Project Reference sheet. Only lots belonging to this project are accepted.'],
+      ['Cadastral Lot', 'Optional. Leave blank when the listing has no cadastral lot. If provided, use one cadastral lot number from the Project Reference sheet; only lots belonging to this project are accepted.'],
       ['Unit ID', `Required. Enter only the unit number after ${projectCode || 'PROJECT'}-. Do not type the project prefix. Leading zeroes are preserved (example: 0101).`],
       ['Lot Type', 'Required. Inner, Corner, or End'],
       ['Rates', 'Enter percentage values only. Example: 10 means 10%.'],
@@ -131,7 +131,7 @@ const ListingImportModal = ({ project = {}, projectSlug, onClose, onImported }) 
     instructionSheet['!cols'] = [{ wch: 22 }, { wch: 90 }]
     if (instructionSheet.A1) instructionSheet.A1.s = { font: { bold: true, sz: 15, color: { rgb: '1E3A8A' } } }
 
-    const referenceRows = [['Valid Cadastral Lot No.'], ...cadastralLots.map((lot) => [String(lot)])]
+    const referenceRows = [['Valid Cadastral Lot No. (Optional)'], ...cadastralLots.map((lot) => [String(lot)])]
     const referenceSheet = XLSX.utils.aoa_to_sheet(referenceRows)
     referenceSheet['!cols'] = [{ wch: 28 }]
     if (referenceSheet.A1) referenceSheet.A1.s = headerStyle

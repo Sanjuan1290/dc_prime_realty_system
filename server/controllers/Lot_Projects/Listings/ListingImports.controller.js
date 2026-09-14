@@ -86,7 +86,6 @@ const normalizeImportRow = (rawRow = {}, index, project, cadastralMap) => {
   if (!Number.isFinite(reservationFee) || reservationFee < 0) errors.push('Reservation Fee cannot be negative.')
   if (!Number.isFinite(legalMiscRate) || legalMiscRate < 0 || legalMiscRate > 100) errors.push('Legal / Misc Rate must be between 0 and 100.')
   if (!Number.isFinite(annualInterestRate) || annualInterestRate < 0 || annualInterestRate > 100) errors.push('Annual Interest Rate must be between 0 and 100.')
-  if (!cadastralLots.length) errors.push('Cadastral Lot No. is required.')
   if (cadastralLots.length > 1) errors.push('Only one Cadastral Lot No. may be assigned per imported listing row.')
   const missingLots = cadastralLots.filter((lot) => !cadastralMap.has(lot))
   if (missingLots.length) errors.push(`Cadastral lot(s) ${missingLots.join(', ')} are not part of this project.`)
