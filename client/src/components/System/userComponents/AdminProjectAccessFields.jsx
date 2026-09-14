@@ -13,7 +13,7 @@ const AdminProjectAccessFields = ({
   const selected = new Set((selectedProjectIds || []).map((value) => Number(value)))
 
   return (
-    <section className="md:col-span-3 rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
+    <section className="w-full rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
       <div>
         <p className="text-sm font-black text-slate-800">Projects this Admin can manage <span className="text-red-500">*</span></p>
         <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">Administrators have full operational access within the selected projects. Owner-authorized actions that require Super Admin password and email verification remain protected.</p>

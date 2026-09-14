@@ -5,6 +5,9 @@ import { readFile } from 'node:fs/promises';
 const readDashboardController = () =>
   readFile(new URL('../controllers/Lot_Projects/Dashboard/Dashboard.controller.js', import.meta.url), 'utf8');
 
+const readProjectsRouter = () =>
+  readFile(new URL('../routers/System/projects.routers.js', import.meta.url), 'utf8');
+
 const getPriceListSource = (source) => {
   const start = source.indexOf('export const getLotProjectPriceList');
   assert.notEqual(start, -1, 'getLotProjectPriceList must exist');
@@ -75,5 +78,14 @@ test('project unit price list matches the inventory sheet columns and straight-p
   assert.match(printSource, /No listings found for the selected status/);
   assert.doesNotMatch(printSource, /const availableListings = listings\.filter/);
   assert.match(printSource, /colSpan=\{13\}/);
+});
+
+test('project price list print audit endpoint is registered', async () => {
+  const routerSource = await readProjectsRouter();
+
+  assert.match(
+    routerSource,
+    /router\.post\('\/lot-projects\/:projectSlug\/price-list\/print-audit',\s*requirePermission\(PERMISSIONS\.LOT_LISTINGS_VIEW\),\s*auditLotProjectPriceListPrint\);/
+  );
 });
 

@@ -136,6 +136,7 @@ router.get('/lot-projects/options', requirePermission(PERMISSIONS.SYSTEM_PROJECT
 router.get('/lot-projects/document-compliance', requirePermission(PERMISSIONS.SYSTEM_PROJECTS_VIEW), getLotProjectDocumentCompliance);
 router.get('/lot-projects/:projectSlug/dashboard', requirePermission(PERMISSIONS.LOT_DASHBOARD_VIEW), getLotProjectDashboard);
 router.get('/lot-projects/:projectSlug/price-list', requirePermission(PERMISSIONS.LOT_LISTINGS_VIEW), getLotProjectPriceList);
+router.post('/lot-projects/:projectSlug/price-list/print-audit', requirePermission(PERMISSIONS.LOT_LISTINGS_VIEW), auditLotProjectPriceListPrint);
 router.get('/lot-projects/:projectSlug/listings', requirePermission(PERMISSIONS.LOT_LISTINGS_VIEW), getLotProjectListings);
 router.get('/lot-projects/:projectSlug/payment-logs', requirePermission(PERMISSIONS.LOT_PAYMENT_LOGS_VIEW), getLotProjectPaymentLogs);
 router.get('/lot-projects/:projectSlug/commissions', requirePermission(PERMISSIONS.LOT_COMMISSIONS_VIEW), getLotProjectCommissions);
@@ -227,4 +228,3 @@ router.post('/lot-projects/:projectSlug/listings/:listingId/payment-schedules/:s
 router.post('/lot-projects/:projectSlug/listings/:listingId/penalty-reliefs/:reliefId/restore', requirePermission(PERMISSIONS.LOT_PENALTY_CORRECT), restorePaymentSchedulePenaltyWaiver);
 
 export default router;
-

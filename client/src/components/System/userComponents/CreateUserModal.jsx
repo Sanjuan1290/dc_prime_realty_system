@@ -387,7 +387,7 @@ const CreateUserModal = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
       <div className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+        <div className="shrink-0 flex items-center justify-between border-b border-slate-200 px-6 py-4">
           <div>
             <h3 className="text-xl font-bold text-slate-950">{title}</h3>
             <p className="text-sm text-slate-500">
@@ -408,7 +408,7 @@ const CreateUserModal = ({
           </button>
         </div>
 
-        <div className="border-b border-slate-200 bg-slate-50 px-6 py-4">
+        <div className="shrink-0 border-b border-slate-200 bg-slate-50 px-6 py-4">
           <div className={`grid gap-3  ${totalSteps === 2 ? "sm:grid-cols-2" : "grid-cols-1"}`}>
             <button
               type="button"
@@ -452,7 +452,7 @@ const CreateUserModal = ({
           </div>
         </div>
 
-        <div className=" h-fit px-6 py-5">
+        <div className="min-h-0 overflow-y-auto px-6 py-5">
           <div className="grid gap-5">
             {createMutation.isPending ? (
               <StatusAlert type="loading" message="Preparing user review..." />
@@ -639,7 +639,7 @@ const CreateUserModal = ({
           </div>
         </div>
 
-        <div className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="shrink-0 flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs font-bold text-slate-500">Step {activeStep} of {totalSteps}</p>
 
           <div className="flex flex-col-reverse gap-2 sm:flex-row">
@@ -672,4 +672,3 @@ const CreateUserModal = ({
 };
 
 export default CreateUserModal;
-
