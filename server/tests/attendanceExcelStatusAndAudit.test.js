@@ -22,11 +22,12 @@ test('Excel remarks stay attendance-status only and holiday labels are not repea
   assert.doesNotMatch(workbook, /remark: 'RD OT'/)
 })
 
-test('actual attendance overrides pre-hire N/A and late color turns red only after the red threshold', () => {
+test('Excel no longer writes N/A from stored hire date and late color still turns red only after the red threshold', () => {
   const workbook = read('client/src/utils/attendanceExcelExport.js')
-  const timeRead = workbook.indexOf("const timeIn = attendance?.actual_time_in || null")
-  const preHireGuard = workbook.indexOf('if (isPreHire && !timeIn && !timeOut)')
-  assert.ok(timeRead >= 0 && preHireGuard > timeRead, 'attendance must be read before the pre-hire N/A guard')
+  assert.doesNotMatch(workbook, /isPreHire/)
+  assert.doesNotMatch(workbook, /marker: 'N\/A'/)
+  assert.match(workbook, /resolveRestDaysForDate/)
+  assert.match(workbook, /if \(!timeIn && !timeOut\)[\s\S]*state: 'absent'[\s\S]*marker: 'AB'/)
   assert.match(workbook, /const isLate = lateSeconds > 0/)
   assert.match(workbook, /timeInSeconds > redAfter/)
   assert.match(workbook, /state: isRedLate \? 'late_red' : 'normal'/)
@@ -65,5 +66,3 @@ test('Excel Tardiness includes one full regular workday for every absent schedul
   assert.match(workbook, /row\.absence \? regularWorkingSeconds : 0/)
   assert.match(workbook, /const requiredHours = scheduledDays \* regularWorkingSeconds/)
 })
-
-

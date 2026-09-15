@@ -20,6 +20,16 @@ test('employee module stores multiple Rest Days with historical effective dates'
   assert.match(controller, /replaceEmployeeRestDays/)
 })
 
+test('attendance export sends current Rest Days as fallback for historical Excel dates', () => {
+  const controller = read('server/controllers/System/Employees/AttendanceExport.controller.js')
+  const workbook = read('client/src/utils/attendanceExcelExport.js')
+  assert.match(controller, /getEmployeeRestDaysAsOf/)
+  assert.match(controller, /rest_days: currentRestDayMap\.get\(Number\(employee\.employee_id\)\) \|\| \[\]/)
+  assert.match(workbook, /const resolveRestDaysForDate/)
+  assert.match(workbook, /employee\?\.rest_days/)
+  assert.doesNotMatch(workbook, /marker: 'N\/A'/)
+})
+
 test('employees UI requires multiple Rest Day selection and shows Rest Days', () => {
   const modal = read('client/src/components/System/employeeComponents/EmployeeModal.jsx')
   const employees = read('client/src/pages/System/Employees.jsx')
@@ -63,4 +73,3 @@ test('attendance export uses saved settings by default but still allows temporar
   assert.doesNotMatch(workbook, /remark: 'RD OT'/)
   assert.match(workbook, /\[h\]:mm:ss/)
 })
-

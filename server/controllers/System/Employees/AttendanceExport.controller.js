@@ -1,7 +1,7 @@
 import { db } from '../../../db/connect.js';
 import { buildEmployeeNameSql, dateOnly } from './employeeModule.shared.js';
 import { ensureAttendanceLiteSchema, enumerateDateRange, getAttendanceRuntimeSettings, getManilaDateTime } from './attendanceLite.shared.js';
-import { getRestDayAssignmentsForRange } from '../../../services/employeeRestDay.service.js';
+import { getEmployeeRestDaysAsOf, getRestDayAssignmentsForRange } from '../../../services/employeeRestDay.service.js';
 
 const getErrorMessage = (error) => error?.message || 'Attendance export data could not be prepared.';
 
@@ -29,6 +29,7 @@ export const getAttendanceExportData = async (req, res) => {
   try {
     await ensureAttendanceLiteSchema(connection);
     const { dateFrom, dateTo, dates } = normalizeExportRange(req);
+    const generated = getManilaDateTime();
 
     const [employees] = await connection.query(`
       SELECT
@@ -52,6 +53,11 @@ export const getAttendanceExportData = async (req, res) => {
       employeeIds,
       dateFrom,
       dateTo
+    );
+    const currentRestDayMap = await getEmployeeRestDaysAsOf(
+      connection,
+      employeeIds,
+      generated.date
     );
 
     let attendance = [];
@@ -119,7 +125,6 @@ export const getAttendanceExportData = async (req, res) => {
     `, [dateFrom, dateTo]);
 
     const runtime = await getAttendanceRuntimeSettings(connection);
-    const generated = getManilaDateTime();
 
     return res.json({
       success: true,
@@ -141,6 +146,7 @@ export const getAttendanceExportData = async (req, res) => {
           ...employee,
           employee_id: Number(employee.employee_id),
           hire_date: dateOnly(employee.hire_date),
+          rest_days: currentRestDayMap.get(Number(employee.employee_id)) || [],
         })),
         restDayAssignments,
         attendance,
@@ -163,4 +169,3 @@ export const getAttendanceExportData = async (req, res) => {
     connection.release();
   }
 };
-

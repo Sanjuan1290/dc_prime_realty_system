@@ -149,13 +149,26 @@ const activeRestDaysForDate = (employeeId, date, assignments) => assignments
     && (!assignment.effective_to || date <= dateOnly(assignment.effective_to)))
   .map((assignment) => String(assignment.day_of_week || '').toLowerCase())
 
-const hasCompleteRestDayCoverage = (employee, dates, assignments) => {
-  const hireDate = dateOnly(employee.hire_date)
-  return dates.every((date) => {
-    if (hireDate && date < hireDate) return true
-    return activeRestDaysForDate(employee.employee_id, date, assignments).length > 0
-  })
+const normalizeRestDayList = (value = []) => Array.isArray(value)
+  ? Array.from(new Set(
+      value
+        .map((day) => String(day || '').trim().toLowerCase())
+        .filter((day) => DAY_KEY_NAMES.includes(day))
+    ))
+  : []
+
+// Historical exports can include attendance that was backfilled before the employee
+// record/rest-day history was created. Prefer the dated assignment when one exists;
+// otherwise use the employee's current configured Rest Days instead of turning the
+// row into N/A.
+const resolveRestDaysForDate = (employee, date, assignments) => {
+  const historical = activeRestDaysForDate(employee?.employee_id, date, assignments)
+  if (historical.length) return historical
+  return normalizeRestDayList(employee?.rest_days)
 }
+
+const hasCompleteRestDayCoverage = (employee, dates, assignments) =>
+  dates.every((date) => resolveRestDaysForDate(employee, date, assignments).length > 0)
 
 const normalizeDayType = (value) => {
   const day = String(value || 'regular')
@@ -167,22 +180,18 @@ const buildAttendanceRow = ({ employee, date, attendance, restDays, daySetting, 
   const weekdayIndex = dateObject?.getUTCDay() ?? 0
   const weekday = DAY_NAMES[weekdayIndex]
   const weekdayKey = DAY_KEY_NAMES[weekdayIndex]
-  const hireDate = dateOnly(employee.hire_date)
-  const isPreHire = Boolean(hireDate && date < hireDate)
   const dayType = normalizeDayType(attendance?.day_type || daySetting?.day_type || 'regular')
   const hasEvent = Boolean(attendance?.attendance_event_id)
   const isHoliday = !hasEvent && dayType !== 'regular'
   const isRestDay = !hasEvent && !isHoliday && restDays.includes(weekdayKey)
 
-  // A real attendance record is authoritative, even when it was manually added
-  // for a date earlier than the employee's stored hire date. Only show N/A when
-  // the date is pre-hire AND there is no attendance to report.
   const timeIn = attendance?.actual_time_in || null
   const timeOut = attendance?.actual_time_out || null
   const isExplicitAbsent = String(attendance?.attendance_status || '').toLowerCase() === 'absent'
 
-  // Rest Day and explicitly recorded absence are authoritative markers. They
-  // must not be replaced by the generic pre-hire N/A marker.
+  // Excel attendance rows must always use an attendance meaning: Rest Day (RD),
+  // Absence (AB), holiday/event, or the actual attendance. The employee hire_date
+  // is system-created and must not force historical rows to N/A.
   if (isRestDay && !timeIn && !timeOut) {
     return {
       weekday, date, state: 'rest', remark: 'RD', marker: 'RD',
@@ -199,13 +208,6 @@ const buildAttendanceRow = ({ employee, date, attendance, restDays, daySetting, 
     }
   }
 
-  if (isPreHire && !timeIn && !timeOut) {
-    return {
-      weekday, date, state: 'na', remark: 'N/A', marker: 'N/A',
-      scheduledDay: false, absence: false, lateSeconds: 0, overtimeSeconds: 0,
-      totalWorkedSeconds: 0, regularAttendedSeconds: 0, holidayWorkedSeconds: 0,
-    }
-  }
   const timeInSeconds = secondsFromTime(timeIn)
   const timeOutSeconds = secondsFromTime(timeOut)
   const scheduledOut = secondsFromTime(schedule.scheduledTimeOut)
@@ -338,7 +340,6 @@ const rowPalette = (state, alternate = false) => {
   if (state === 'late_red') return { color: COLORS.red, fill: COLORS.redFill }
   if (state === 'absent') return { color: COLORS.red, fill: COLORS.redFill }
   if (state === 'rest') return { color: COLORS.gray, fill: COLORS.grayFill }
-  if (state === 'na') return { color: COLORS.gray, fill: alternate ? COLORS.alt : null }
   if (state === 'holiday' || state === 'holiday_work') return { color: COLORS.blue, fill: COLORS.blueFill }
   if (state === 'event' || state === 'event_work') return { color: COLORS.violet, fill: COLORS.violetFill }
   return { color: COLORS.normal, fill: alternate ? COLORS.alt : null }
@@ -399,7 +400,7 @@ const buildEmployeeSheet = (employee, data, cutoffLabel) => {
     employee,
     date,
     attendance: attendanceMap.get(date),
-    restDays: activeRestDaysForDate(employee.employee_id, date, restDayAssignments),
+    restDays: resolveRestDaysForDate(employee, date, restDayAssignments),
     daySetting: dayMap.get(date),
     schedule,
   }))
@@ -560,5 +561,3 @@ export const downloadAttendanceWorkbook = (payload, { cutoffLabel = '' } = {}) =
   XLSX.writeFile(workbook, filename, { compression: true, cellStyles: true })
   return filename
 }
-
-

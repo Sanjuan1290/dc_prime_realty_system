@@ -25,7 +25,7 @@ const loadExcelInternals = () => {
   let source = read('client/src/utils/attendanceExcelExport.js')
   source = source.replace(/^import \* as XLSX from 'xlsx-js-style'\s*/m, 'const XLSX = { utils: {} }\n')
   source = source.replace(/export const /g, 'const ')
-  source += `\nglobalThis.__attendanceInternals = {\n    secondsFromTime, breakOverlapSeconds, activeRestDaysForDate, hasCompleteRestDayCoverage,\n    buildAttendanceRow, workbookRowValues, rowPalette\n  }\n`
+  source += `\nglobalThis.__attendanceInternals = {\n    secondsFromTime, breakOverlapSeconds, activeRestDaysForDate, resolveRestDaysForDate, hasCompleteRestDayCoverage,\n    buildAttendanceRow, workbookRowValues, rowPalette\n  }\n`
   const context = { console, Date, Intl, Math, Number, String, Array, Set, Map, Object, RegExp, Error }
   context.globalThis = context
   vm.runInNewContext(source, context, { filename: 'attendanceExcelExport.instrumented.js' })
@@ -117,14 +117,14 @@ test('Excel attendance matrix: Rest Day without attendance is RD and with attend
   assert.equal(worked.regularAttendedSeconds, 0)
 })
 
-test('Excel attendance matrix: Rest Day and explicit absence override pre-hire N/A markers', () => {
-  const preHireRest = row('2026-08-30', null, { restDays: ['sunday'] })
-  assert.equal(preHireRest.state, 'rest')
-  assert.equal(preHireRest.marker, 'RD')
+test('Excel attendance matrix: stored hire date never changes Rest Day or no-record regular dates into N/A', () => {
+  const historicalRest = row('2026-08-30', null, { restDays: ['sunday'] })
+  assert.equal(historicalRest.state, 'rest')
+  assert.equal(historicalRest.marker, 'RD')
 
-  const preHireAbsent = row('2026-08-31', { attendance_status: 'absent' })
-  assert.equal(preHireAbsent.state, 'absent')
-  assert.equal(preHireAbsent.marker, 'AB')
+  const historicalAbsent = row('2026-08-31')
+  assert.equal(historicalAbsent.state, 'absent')
+  assert.equal(historicalAbsent.marker, 'AB')
 })
 
 test('Excel attendance matrix: no-attendance holidays do not become absences and keep time fields blank', () => {
@@ -148,15 +148,33 @@ test('Excel attendance matrix: attendance on a holiday shows actual time calcula
   assert.equal(result.holidayWorkedSeconds, 9 * H + 55 * M)
 })
 
-test('Excel attendance matrix: true pre-hire/no-record is N/A but authoritative manual attendance before hire date wins', () => {
+test('Excel attendance matrix: no-record historical dates are AB while manual historical attendance still wins', () => {
   const noRecord = row('2026-08-31')
-  assert.equal(noRecord.remark, 'N/A')
-  assert.equal(noRecord.state, 'na')
+  assert.equal(noRecord.remark, 'AB')
+  assert.equal(noRecord.marker, 'AB')
+  assert.equal(noRecord.state, 'absent')
 
   const manual = row('2026-08-31', { actual_time_in: '09:00:00', actual_time_out: '20:00:00', time_in_source: 'manual', time_out_source: 'manual' })
   assert.equal(manual.remark, 'On Time')
   assert.equal(manual.totalWorkedSeconds, 10 * H)
-  assert.notEqual(manual.state, 'na')
+  assert.equal(manual.state, 'normal')
+})
+
+test('Excel attendance matrix: current Rest Days backfill historical export dates when dated history did not exist yet', () => {
+  const historicalAssignments = [
+    { employee_id: 1, day_of_week: 'wednesday', effective_from: '2026-09-14', effective_to: null },
+    { employee_id: 1, day_of_week: 'thursday', effective_from: '2026-09-14', effective_to: null },
+  ]
+  const exportEmployee = { employee_id: 1, rest_days: ['wednesday', 'thursday'] }
+
+  assert.deepEqual(
+    Array.from(excel.resolveRestDaysForDate(exportEmployee, '2026-09-09', historicalAssignments)),
+    ['wednesday', 'thursday']
+  )
+  assert.deepEqual(
+    Array.from(excel.resolveRestDaysForDate(exportEmployee, '2026-09-16', historicalAssignments)),
+    ['wednesday', 'thursday']
+  )
 })
 
 test('Excel attendance matrix: incomplete Time In remains visible without inventing worked hours', () => {
@@ -272,5 +290,3 @@ test('Automatic Time Out only closes open attendance records and labels source a
   assert.match(job, /attendance_event_id IS NULL/)
   assert.match(job, /a\.actual_time_in <= \?/)
 })
-
-
