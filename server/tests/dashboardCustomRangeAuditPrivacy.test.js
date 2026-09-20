@@ -20,13 +20,13 @@ test('custom dashboard dates are not expanded to complete months', () => {
 });
 
 test('System and Lot dashboards send the selected exact dates', () => {
-  const systemDashboard = read('client/src/pages/System/Dashboard.jsx');
+  const systemReports = read('client/src/pages/System/Reports.jsx');
   const lotDashboard = read('client/src/pages/Lot_Projects/Dashboard.jsx');
-  assert.match(systemDashboard, /range: dateRange,[\s\S]*from: fromDate,[\s\S]*to: toDate/);
+  assert.match(systemReports, /range: dateRange,[\s\S]*from: fromDate,[\s\S]*to: toDate/);
   assert.match(lotDashboard, /new URLSearchParams\(\{ range: dateRange, from: dateFrom, to: dateTo \}\)/);
   assert.match(lotDashboard, /hasInvalidDateRange/);
-  assert.match(systemDashboard, /max=\{isCustom \? toDate \|\| undefined : undefined\}/);
-  assert.match(systemDashboard, /min=\{isCustom \? fromDate \|\| undefined : undefined\}/);
+  assert.match(systemReports, /max=\{isCustom \? toDate \|\| undefined : undefined\}/);
+  assert.match(systemReports, /min=\{isCustom \? fromDate \|\| undefined : undefined\}/);
   assert.match(lotDashboard, /max=\{isCustom \? dateTo \|\| undefined : undefined\}/);
   assert.match(lotDashboard, /min=\{isCustom \? dateFrom \|\| undefined : undefined\}/);
 });
@@ -51,7 +51,7 @@ test('request IP normalization supports local and proxied deployments', () => {
 });
 
 
-test('Lot Project Business Snapshot matches the System Dashboard metric definitions', () => {
+test('Lot Project Business Snapshot matches the System Reports metric definitions', () => {
   const lotDashboard = read('client/src/pages/Lot_Projects/Dashboard.jsx');
   for (const label of [
     'Total Gross Sales',
@@ -71,4 +71,5 @@ test('Lot Project Business Snapshot matches the System Dashboard metric definiti
   assert.doesNotMatch(lotDashboard, /label: 'Settled Value'/);
   assert.doesNotMatch(lotDashboard, /label: 'Payable Commission'/);
 });
+
 

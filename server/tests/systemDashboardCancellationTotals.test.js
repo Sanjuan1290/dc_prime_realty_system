@@ -6,9 +6,9 @@ import { fileURLToPath } from 'node:url'
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(dirname, '..', '..')
-const dashboard = fs.readFileSync(path.join(root, 'client/src/pages/System/Dashboard.jsx'), 'utf8')
+const dashboard = fs.readFileSync(path.join(root, 'client/src/pages/System/Reports.jsx'), 'utf8')
 
-test('System Dashboard combines refunded and discontinued amounts from every loaded project', () => {
+test('System Reports combines refunded and discontinued amounts from every loaded project', () => {
   assert.match(dashboard, /total\.totalRefundedAmount \+= Number\(stats\.totalRefundedAmount \|\| 0\)/)
   assert.match(dashboard, /total\.totalDiscontinuedAmount \+= Number\(stats\.totalDiscontinuedAmount \|\| 0\)/)
   assert.match(dashboard, /totalRefundedAmount: 0/)
@@ -18,7 +18,7 @@ test('System Dashboard combines refunded and discontinued amounts from every loa
 })
 
 
-test('System Dashboard aggregates and charts commission comparison totals from every loaded project', () => {
+test('System Reports aggregates and charts commission comparison totals from every loaded project', () => {
   assert.match(dashboard, /total\.totalCommission \+= Number\(stats\.totalCommission \|\| 0\)/)
   assert.match(dashboard, /total\.eligibleCommission \+= Number\(stats\.eligibleCommission \|\| 0\)/)
   assert.match(dashboard, /total\.releasedCommission \+= Number\(stats\.releasedCommission \|\| 0\)/)
@@ -30,4 +30,5 @@ test('System Dashboard aggregates and charts commission comparison totals from e
   assert.match(dashboard, /label: 'Released'[\s\S]*summary\.releasedCommission/)
   assert.match(dashboard, /label: 'Remaining'[\s\S]*summary\.netRemainingCommission/)
 })
+
 

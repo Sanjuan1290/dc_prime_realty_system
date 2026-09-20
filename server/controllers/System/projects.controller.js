@@ -73,6 +73,104 @@ import { createProjectStorageCode } from '../../services/storageCodes.service.js
 import { resolveDocumentRequiredFlag, resolveDocumentResponsibleParty } from '../../utils/documentRequirement.js';
 import { getAccessibleProjectIds, grantAdminProjectAccess } from '../../services/adminProjectAccess.service.js';
 
+export const getSystemDashboardSummary = async (req, res) => {
+  try {
+    const accessibleProjectIds = await getAccessibleProjectIds(req.authUser);
+    const accessSql = accessibleProjectIds === null
+      ? ''
+      : accessibleProjectIds.length
+        ? `WHERE lp.lot_project_id IN (${accessibleProjectIds.map(() => '?').join(', ')})`
+        : 'WHERE 1 = 0';
+    const params = accessibleProjectIds === null ? [] : accessibleProjectIds;
+
+    const [rows] = await db.query(`
+      SELECT
+        lp.lot_project_id,
+        lp.lot_project_name,
+        lp.lot_project_slug,
+        lp.lot_project_location,
+        lp.lot_project_location_code,
+        lp.lot_project_status,
+        COUNT(l.lot_project_listing_id) AS total_units,
+        COALESCE(SUM(l.lot_project_listing_status = 'available'), 0) AS available_units,
+        COALESCE(SUM(l.lot_project_listing_status = 'hold'), 0) AS hold_units,
+        COALESCE(SUM(
+          l.lot_project_listing_status = 'sold'
+          AND COALESCE(l.lot_project_listing_sold_substatus, 'active') = 'active'
+        ), 0) AS sold_active_units,
+        COALESCE(SUM(
+          l.lot_project_listing_status = 'sold'
+          AND l.lot_project_listing_sold_substatus = 'fully_paid'
+        ), 0) AS fully_paid_units,
+        COALESCE(SUM(l.lot_project_listing_status = 'pending_for_cancellation'), 0) AS pending_cancellation_units,
+        COALESCE(SUM(l.lot_project_listing_status = 'cancelled'), 0) AS cancelled_units
+      FROM lot_projects lp
+      LEFT JOIN lot_project_listings l
+        ON l.lot_project_id = lp.lot_project_id
+      ${accessSql}
+      GROUP BY
+        lp.lot_project_id,
+        lp.lot_project_name,
+        lp.lot_project_slug,
+        lp.lot_project_location,
+        lp.lot_project_location_code,
+        lp.lot_project_status
+      ORDER BY
+        (lp.lot_project_status = 'active') DESC,
+        lp.lot_project_name ASC
+    `, params);
+
+    const projects = rows.map((row) => ({
+      id: Number(row.lot_project_id),
+      name: row.lot_project_name,
+      slug: row.lot_project_slug,
+      location: row.lot_project_location,
+      locationCode: row.lot_project_location_code,
+      status: row.lot_project_status,
+      totalUnits: Number(row.total_units || 0),
+      available: Number(row.available_units || 0),
+      hold: Number(row.hold_units || 0),
+      soldActive: Number(row.sold_active_units || 0),
+      fullyPaid: Number(row.fully_paid_units || 0),
+      pendingCancellation: Number(row.pending_cancellation_units || 0),
+      cancelled: Number(row.cancelled_units || 0),
+      routePath: `/portal/lot-projects/${row.lot_project_slug}`,
+    }));
+
+    const summary = projects.reduce((totals, project) => {
+      totals.totalProjects += 1;
+      if (project.status === 'active') totals.activeProjects += 1;
+      if (project.status === 'inactive') totals.inactiveProjects += 1;
+      totals.totalUnits += project.totalUnits;
+      totals.available += project.available;
+      totals.hold += project.hold;
+      totals.soldActive += project.soldActive;
+      totals.fullyPaid += project.fullyPaid;
+      totals.pendingCancellation += project.pendingCancellation;
+      totals.cancelled += project.cancelled;
+      return totals;
+    }, {
+      totalProjects: 0,
+      activeProjects: 0,
+      inactiveProjects: 0,
+      totalUnits: 0,
+      available: 0,
+      hold: 0,
+      soldActive: 0,
+      fullyPaid: 0,
+      pendingCancellation: 0,
+      cancelled: 0,
+    });
+
+    return res.json({
+      success: true,
+      data: { summary, projects },
+    });
+  } catch (error) {
+    return res.status(500).json({ message: getErrorMessage(error) });
+  }
+};
+
 export const getLotProjects = async (req, res) => {
   try {
     const accessibleProjectIds = await getAccessibleProjectIds(req.authUser);

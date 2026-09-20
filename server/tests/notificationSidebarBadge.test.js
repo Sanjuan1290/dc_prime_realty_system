@@ -17,6 +17,9 @@ test('notification badge counts payment notices plus document records that need 
   assert.match(hook, /pendingRequiredDocuments/)
   assert.match(hook, /awaitingApprovalDocuments/)
   assert.match(hook, /paymentCount \+ documentCount/)
+  assert.match(hook, /paymentSummary/)
+  assert.match(hook, /documentSummary/)
+  assert.match(hook, /refetch: \(\) => Promise\.all/)
   assert.match(hook, /refetchInterval:\s*60_000/)
 })
 

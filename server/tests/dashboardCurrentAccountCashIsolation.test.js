@@ -10,7 +10,7 @@ const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'u
 
 const controller = read('server/controllers/Lot_Projects/Dashboard/Dashboard.controller.js')
 const lotDashboard = read('client/src/pages/Lot_Projects/Dashboard.jsx')
-const systemDashboard = read('client/src/pages/System/Dashboard.jsx')
+const systemReports = read('client/src/pages/System/Reports.jsx')
 
 test('dashboard cash and discount calculations use only the listing current buyer account', () => {
   assert.match(controller, /columnExists\(connection, 'lot_project_payments', 'lot_project_account_id'\)/)
@@ -35,7 +35,7 @@ test('dashboard client pricing joins follow current_account_id instead of any re
 })
 
 test('cash cards explain that finalized cancelled accounts stay in cancellation totals', () => {
-  for (const page of [lotDashboard, systemDashboard]) {
+  for (const page of [lotDashboard, systemReports]) {
     assert.match(page, /Verified payments from current buyer accounts/)
     assert.match(page, /Finalized cancelled-account cash stays in the cancellation totals/)
   }
@@ -43,4 +43,5 @@ test('cash cards explain that finalized cancelled accounts stay in cancellation 
   assert.match(controller, /AS totalDiscontinuedAmount/)
   assert.match(controller, /AS cancellationCashCollected/)
 })
+
 

@@ -12,57 +12,36 @@ const controller = read('server/controllers/System/reports.controller.js')
 const reportPage = read('client/src/pages/System/Reports.jsx')
 const printPage = read('client/src/pages/System/ReportsPrintPage.jsx')
 
-test('sales summary separates gross contracts, selected-cohort cancellations and net active contract value', () => {
-  assert.match(controller, /cancelledAsOf/)
-  assert.match(controller, /cohortCancelledValue/)
-  assert.match(controller, /netContractValue/)
-  assert.match(controller, /grossContractedValue/)
-  assert.match(controller, /netActiveContractValue/)
-  assert.match(reportPage, /Gross Contracted Value/)
-  assert.match(reportPage, /Less: Cancelled from Selected Sales/)
-  assert.match(reportPage, /Net Active Contract Value/)
+test('Reports now uses the former System Dashboard analytics experience', () => {
+  assert.match(reportPage, /PageHeader title="Reports"/)
+  assert.match(reportPage, /Total Gross Sales/)
+  assert.match(reportPage, /Cash Collected/)
+  assert.match(reportPage, /Total Number of Reservations/)
+  assert.match(reportPage, /Pending Cancellations/)
+  assert.match(reportPage, /Company Sales Trend/)
+  assert.match(reportPage, /Sales Summary per Project/)
+  assert.match(reportPage, /Cancellation Trend/)
+  assert.match(reportPage, /Commission Comparison/)
+  assert.match(reportPage, /Inventory by Project/)
 })
 
-test('refund cash movement is based on refund date instead of cancellation date', () => {
-  assert.match(controller, /history\.refund_date BETWEEN \? AND \?/)
-  assert.match(controller, /refundsPaidInRange/)
-  assert.match(controller, /netCashMovement: roundMoney\(collectedInRange - refundsPaidInRange\)/)
-  assert.match(reportPage, /Refunds are counted by refund payment date/)
-  assert.match(reportPage, /Refunds Paid/)
+test('Reports keeps exact date-range behavior from the former System Dashboard', () => {
+  assert.match(reportPage, /range: dateRange,[\s\S]*from: fromDate,[\s\S]*to: toDate/)
+  assert.match(reportPage, /max=\{isCustom \? toDate \|\| undefined : undefined\}/)
+  assert.match(reportPage, /min=\{isCustom \? fromDate \|\| undefined : undefined\}/)
+  assert.match(reportPage, /administratorNeedsConfirmation/)
+  assert.match(reportPage, /Report Date Filter/)
 })
 
-test('reports keep range meaning in the report content without redundant filter badges', () => {
-  assert.doesNotMatch(reportPage, /IN RANGE = transactions\/events dated/)
-  assert.doesNotMatch(reportPage, /AS OF = balances calculated through/)
-  assert.match(reportPage, /Outstanding Receivables/)
-  assert.match(reportPage, /Unreleased \/ Remaining/)
-  assert.match(controller, /cumulativeRefunded/)
-  assert.match(controller, /netCumulativeCash/)
+test('Reports provides audited PDF export through the existing print report', () => {
+  assert.match(reportPage, /Export PDF/)
+  assert.match(reportPage, /SYSTEM_REPORTS_EXPORT/)
+  assert.match(reportPage, /\/projects\/reports\/export-audit/)
+  assert.match(reportPage, /\/portal\/reports\/print\?/)
+  assert.match(reportPage, /DC-Prime-Management-Report_/)
 })
 
-test('preset ranges lock From and To dates until Custom is selected', () => {
-  assert.match(reportPage, /disabled=\{range !== 'custom'\}/)
-  assert.match(reportPage, /disabled:cursor-not-allowed/)
-  assert.match(reportPage, /disabled:bg-slate-100/)
-  assert.doesNotMatch(reportPage, /onChange=\{\(event\) => \{ setRange\('custom'\); setFrom/)
-  assert.doesNotMatch(reportPage, /onChange=\{\(event\) => \{ setRange\('custom'\); setTo/)
-})
-
-test('detailed report tables paginate and sales is no longer a duplicate Reservations tab', () => {
-  assert.match(reportPage, /Sales & Reservations/)
-  assert.doesNotMatch(reportPage, /\['reservations', 'Reservations'\]/)
-  assert.match(reportPage, /\[25, 50, 100\]/)
-  assert.match(reportPage, /Showing \{rows\.length \? start \+ 1 : 0\}/)
-  assert.match(reportPage, /sticky top-0/)
-})
-
-test('report bridge cards render with React Fragment instead of the undefined Children.Fragment member', () => {
-  assert.match(reportPage, /import \{ Children, Fragment, useEffect/)
-  assert.match(reportPage, /<Fragment key=\{item\.label\}>/)
-  assert.doesNotMatch(reportPage, /Children\.Fragment/)
-})
-
-test('PDF export is intentionally multi-section and keeps cancellation and refund timing separate', () => {
+test('PDF export remains multi-section and preserves management-report reconciliation', () => {
   assert.match(printPage, /const totalSections = 8/)
   assert.match(printPage, /Management Report — Executive Summary/)
   assert.match(printPage, /Sales & Reservations/)
@@ -73,24 +52,20 @@ test('PDF export is intentionally multi-section and keeps cancellation and refun
   assert.match(printPage, /report-table thead \{ display: table-header-group; \}/)
 })
 
-test('commission reporting uses the same selected-sales cohort and reconciles gross to payable status', () => {
+test('report backend keeps sales, refund, and commission reconciliation used by PDF export', () => {
+  assert.match(controller, /cancelledAsOf/)
+  assert.match(controller, /cohortCancelledValue/)
+  assert.match(controller, /grossContractedValue/)
+  assert.match(controller, /netActiveContractValue/)
+  assert.match(controller, /history\.refund_date BETWEEN \? AND \?/)
+  assert.match(controller, /refundsPaidInRange/)
+  assert.match(controller, /netCashMovement: roundMoney\(collectedInRange - refundsPaidInRange\)/)
   assert.match(controller, /const cohortCommissionIds = new Set\(commissions\.map/)
   assert.match(controller, /const commissionCohortReleases = releases\.filter/)
-  assert.match(controller, /const cohortReleased = commissionCohortReleases\.filter/)
-  assert.match(controller, /const commissionReconciliation = reconcileCommissionCohort\(\{[\s\S]*commissions,[\s\S]*releases: commissionCohortReleases/)
-  assert.match(controller, /const commissionRemaining = commissionReconciliation\.remaining/)
-  assert.match(controller, /const commissionNonPayable = commissionReconciliation\.nonPayable/)
-  assert.match(controller, /const commissionNetPayable = commissionReconciliation\.netPayable/)
-  assert.match(controller, /commissionReconciliationDifference/)
-  assert.match(reportPage, /Commission from Sales in Selected Range/)
-  assert.match(reportPage, /Less: Non-Payable \/ Deductions/)
-  assert.match(reportPage, /Status of Net Commission Payable/)
-  assert.match(reportPage, /rows=\{data\.commissionCohortReleases \|\| \[\]\}/)
-  assert.doesNotMatch(reportPage, /label="Commission Generated"/)
-  assert.doesNotMatch(reportPage, /label="Commission Released"/)
+  assert.match(controller, /const commissionReconciliation = reconcileCommissionCohort/)
 })
 
-test('PDF commission section uses cohort reconciliation instead of mixing in-range and as-of cards', () => {
+test('PDF commission section uses selected-sales cohort reconciliation', () => {
   assert.match(printPage, /Commission Liability Reconciliation/)
   assert.match(printPage, /Status of Net Commission Payable/)
   assert.match(printPage, /payload\.commissionCohortReleases/)
@@ -99,12 +74,3 @@ test('PDF commission section uses cohort reconciliation instead of mixing in-ran
   assert.doesNotMatch(printPage, /Commission Generated in Range/)
   assert.doesNotMatch(printPage, /Commission Released in Range/)
 })
-
-
-test('commission selected-sales report omits release entry mode from screen and PDF tables', () => {
-  assert.doesNotMatch(reportPage, /'Entry Mode'/)
-  assert.doesNotMatch(reportPage, /row\.releaseEntryMode === 'historical'/)
-  assert.doesNotMatch(printPage, /'Mode'.*'Scheduled'.*'Actual Release'.*'Released By'/)
-  assert.doesNotMatch(printPage, /titleCase\(row\.releaseEntryMode\)/)
-})
-

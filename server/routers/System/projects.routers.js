@@ -10,6 +10,7 @@ import {
 import { PERMISSIONS } from '../../config/permissions.js';
 
 import {
+  getSystemDashboardSummary,
   getLotProjects,
   getLotProjectOptions,
   getLotProjectDocumentCompliance,
@@ -129,6 +130,7 @@ const router = express.Router();
 router.use(authenticateUser);
 router.param('projectSlug', requireProjectAccessBySlug);
 
+router.get('/dashboard-summary', requirePermission(PERMISSIONS.SYSTEM_DASHBOARD_VIEW), getSystemDashboardSummary);
 router.get('/reports', requirePermission(PERMISSIONS.SYSTEM_REPORTS_VIEW), getSystemReports);
 router.post('/reports/export-audit', requirePermission(PERMISSIONS.SYSTEM_REPORTS_EXPORT), auditSystemReportExport);
 router.get('/lot-projects', requirePermission(PERMISSIONS.SYSTEM_PROJECTS_VIEW), getLotProjects);

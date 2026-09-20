@@ -28,6 +28,8 @@ const useNotificationBadge = (user) => {
 
   const paymentNotifications = paymentQuery.data?.data?.notifications || []
   const documentNotifications = documentQuery.data?.data?.notifications || []
+  const paymentSummary = paymentQuery.data?.data?.summary || { total: 0, dueSoon: 0, overdue: 0, totalPaymentDue: 0, totalPenalty: 0 }
+  const documentSummary = documentQuery.data?.data?.summary || { totalUnits: 0, pendingRequired: 0, missingRequired: 0, rejectedRequired: 0, awaitingApproval: 0 }
   const paymentCount = paymentNotifications.length
   const documentCount = documentNotifications.filter(isDocumentAttentionItem).length
 
@@ -35,8 +37,11 @@ const useNotificationBadge = (user) => {
     totalCount: paymentCount + documentCount,
     paymentCount,
     documentCount,
+    paymentSummary,
+    documentSummary,
     isLoading: enabled && (paymentQuery.isLoading || documentQuery.isLoading),
     isFetching: enabled && (paymentQuery.isFetching || documentQuery.isFetching),
+    refetch: () => Promise.all([paymentQuery.refetch(), documentQuery.refetch()]),
   }
 }
 

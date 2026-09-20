@@ -39,7 +39,7 @@ test('paid and outstanding penalties remain available separately in SOA and dash
   const shared = read('server/controllers/Lot_Projects/_shared/lotProject.shared.js');
   const dashboard = read('server/controllers/Lot_Projects/Dashboard/Dashboard.controller.js');
   const soa = read('client/src/components/Lot_Projects/ListingProfileComponents/PaymentsSOA/Payments_SOA.jsx');
-  const systemDashboard = read('client/src/pages/System/Dashboard.jsx');
+  const systemReports = read('client/src/pages/System/Reports.jsx');
   const lotDashboard = read('client/src/pages/Lot_Projects/Dashboard.jsx');
 
   assert.match(shared, /event\.kind === 'payment'[\s\S]*addCalendarDays\(event\.date, 1\)/);
@@ -48,11 +48,11 @@ test('paid and outstanding penalties remain available separately in SOA and dash
   assert.match(soa, /Outstanding \{money\(row\.outstandingPenaltyAmount\)\}/);
 
   // Dashboard UI intentionally separates the two figures instead of showing a combined formula.
-  assert.match(systemDashboard, /Penalty Summary/);
-  assert.match(systemDashboard, /Paid Penalties/);
-  assert.match(systemDashboard, /Outstanding Penalties/);
-  assert.match(systemDashboard, /summary\.penaltyPaid/);
-  assert.match(systemDashboard, /summary\.penaltyOutstanding/);
+  assert.match(systemReports, /Penalty Summary/);
+  assert.match(systemReports, /Paid Penalties/);
+  assert.match(systemReports, /Outstanding Penalties/);
+  assert.match(systemReports, /summary\.penaltyPaid/);
+  assert.match(systemReports, /summary\.penaltyOutstanding/);
 
   assert.match(lotDashboard, /Penalty Summary/);
   assert.match(lotDashboard, /Paid Penalties/);
@@ -60,4 +60,5 @@ test('paid and outstanding penalties remain available separately in SOA and dash
   assert.match(lotDashboard, /stats\.totalPenaltyPaid/);
   assert.match(lotDashboard, /stats\.totalPenaltyOutstanding/);
 });
+
 
