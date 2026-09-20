@@ -3,7 +3,7 @@ import { isFullAccessAdministrator } from '../config/permissions'
 import { useFetch } from './useFetch'
 
 const isDocumentAttentionItem = (item = {}) =>
-  Number(item.pendingRequiredDocuments || 0) > 0 || Number(item.awaitingApprovalDocuments || 0) > 0
+  Number(item.pendingDocuments || 0) > 0 || Number(item.awaitingApprovalDocuments || 0) > 0
 
 const useNotificationBadge = (user) => {
   const enabled = Boolean(user) && !user?.must_change_password && isFullAccessAdministrator(user)
@@ -29,7 +29,7 @@ const useNotificationBadge = (user) => {
   const paymentNotifications = paymentQuery.data?.data?.notifications || []
   const documentNotifications = documentQuery.data?.data?.notifications || []
   const paymentSummary = paymentQuery.data?.data?.summary || { total: 0, dueSoon: 0, overdue: 0, totalPaymentDue: 0, totalPenalty: 0 }
-  const documentSummary = documentQuery.data?.data?.summary || { totalUnits: 0, pendingRequired: 0, missingRequired: 0, rejectedRequired: 0, awaitingApproval: 0 }
+  const documentSummary = documentQuery.data?.data?.summary || { totalUnits: 0, pendingDocuments: 0, missingDocuments: 0, rejectedDocuments: 0, awaitingApproval: 0, clientActionDocuments: 0 }
   const paymentCount = paymentNotifications.length
   const documentCount = documentNotifications.filter(isDocumentAttentionItem).length
 

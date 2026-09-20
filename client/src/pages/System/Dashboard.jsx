@@ -310,7 +310,7 @@ const Dashboard = () => {
           </div>
           <AttentionRow title="Overdue Payments" description="Payment schedules already past their due date." value={paymentSummary.overdue} tone="red" to={notificationsPath} />
           <AttentionRow title="Payments Due Within 7 Days" description="Upcoming payment schedules requiring monitoring." value={paymentSummary.dueSoon} tone="blue" to={notificationsPath} />
-          <AttentionRow title="Document Notifications" description="Client documents missing, rejected, or waiting for approval." value={notificationState.documentCount} tone="amber" to={notificationsPath} />
+          <AttentionRow title="Document Notifications" description="Documents missing, rejected, or waiting for approval across all responsible parties." value={notificationState.documentCount} tone="amber" to={notificationsPath} />
           <AttentionRow title="Units On Hold" description="Units currently held for a client." value={summary.hold} tone="amber" to={lotProjectsPath} />
           <AttentionRow title="Pending Cancellations" description="Units still waiting for cancellation completion." value={summary.pendingCancellation} tone="violet" to={lotProjectsPath} />
         </div>

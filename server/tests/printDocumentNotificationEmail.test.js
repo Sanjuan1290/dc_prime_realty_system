@@ -20,7 +20,7 @@ test('Document Notifications exposes a send email action backed by an authentica
   const router = read('server/routers/System/notifications.routers.js');
   const controller = read('server/controllers/System/notifications.controller.js');
 
-  assert.match(page, /Send Email/);
+assert.match(page, /Send Client Email/);
   assert.match(page, /notifications\/documents\/\$\{listingId\}\/\$\{clientProfileId\}\/send/);
   assert.match(router, /documents\/:listingId\/:clientProfileId\/send/);
   assert.match(controller, /export const sendDocumentNotification/);

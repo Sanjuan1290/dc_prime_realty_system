@@ -14,7 +14,7 @@ test('notification badge counts payment notices plus document records that need 
   assert.match(hook, /system-document-notifications/)
   assert.match(hook, /\/notifications\/payment-dues\?category=all/)
   assert.match(hook, /\/notifications\/documents\?category=all/)
-  assert.match(hook, /pendingRequiredDocuments/)
+  assert.match(hook, /pendingDocuments/)
   assert.match(hook, /awaitingApprovalDocuments/)
   assert.match(hook, /paymentCount \+ documentCount/)
   assert.match(hook, /paymentSummary/)

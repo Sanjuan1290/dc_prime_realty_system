@@ -1397,7 +1397,7 @@ export const getDocumentNotifications = async (req, res) => {
           success: true,
           data: {
             notifications: [],
-            summary: { totalUnits: 0, pendingRequired: 0, missingRequired: 0, rejectedRequired: 0, awaitingApproval: 0 },
+            summary: { totalUnits: 0, pendingDocuments: 0, missingDocuments: 0, rejectedDocuments: 0, awaitingApproval: 0, clientActionDocuments: 0, clientPendingRequired: 0, clientMissingRequired: 0, clientRejectedRequired: 0 },
           },
         });
       }
@@ -1421,10 +1421,10 @@ export const getDocumentNotifications = async (req, res) => {
     }
 
     const havingClauses = {
-      missing: 'missing_required_documents > 0',
-      rejected: 'rejected_required_documents > 0',
+      missing: 'missing_documents > 0',
+      rejected: 'rejected_documents > 0',
       awaiting: 'awaiting_approval_documents > 0',
-      pending: 'pending_required_documents > 0',
+      pending: 'pending_documents > 0',
     };
     const havingSql = havingClauses[category] ? `HAVING ${havingClauses[category]}` : '';
 
@@ -1445,25 +1445,33 @@ export const getDocumentNotifications = async (req, res) => {
           latest_document_log.send_status AS last_document_notification_status,
           latest_document_log.sent_at AS last_document_notification_at,
           latest_document_log.attachment_filename AS last_document_attachment_filename,
-          COALESCE(SUM(ld.lot_project_listing_document_responsible_party = 'client'), 0) AS total_documents,
-          COALESCE(SUM(ld.lot_project_listing_document_responsible_party = 'client' AND COALESCE(cd.lot_project_client_document_status, 'Missing') IN ('Submitted', 'Approved')), 0) AS submitted_documents,
-          COALESCE(SUM(ld.lot_project_listing_document_responsible_party = 'client' AND COALESCE(cd.lot_project_client_document_status, 'Missing') = 'Approved'), 0) AS approved_documents,
-          COALESCE(SUM(ld.lot_project_listing_document_responsible_party = 'client' AND COALESCE(cd.lot_project_client_document_status, 'Missing') = 'Submitted'), 0) AS awaiting_approval_documents,
+          COUNT(ld.lot_project_listing_document_id) AS total_documents,
+          COALESCE(SUM(COALESCE(cd.lot_project_client_document_status, 'Missing') IN ('Submitted', 'Approved')), 0) AS submitted_documents,
+          COALESCE(SUM(COALESCE(cd.lot_project_client_document_status, 'Missing') = 'Approved'), 0) AS approved_documents,
+          COALESCE(SUM(COALESCE(cd.lot_project_client_document_status, 'Missing') = 'Submitted'), 0) AS awaiting_approval_documents,
+          COALESCE(SUM(COALESCE(cd.lot_project_client_document_status, 'Missing') IN ('Missing', 'Rejected')), 0) AS pending_documents,
+          COALESCE(SUM(COALESCE(cd.lot_project_client_document_status, 'Missing') = 'Missing'), 0) AS missing_documents,
+          COALESCE(SUM(COALESCE(cd.lot_project_client_document_status, 'Missing') = 'Rejected'), 0) AS rejected_documents,
+          COALESCE(SUM(
+            ld.lot_project_listing_document_responsible_party = 'client'
+            AND COALESCE(cd.lot_project_client_document_status, 'Missing') IN ('Missing', 'Rejected')
+          ), 0) AS client_action_documents,
+          COALESCE(SUM(ld.lot_project_listing_document_responsible_party = 'client'), 0) AS client_total_documents,
           COALESCE(SUM(
             ld.lot_project_listing_document_is_required = 1
             AND ld.lot_project_listing_document_responsible_party = 'client'
             AND COALESCE(cd.lot_project_client_document_status, 'Missing') IN ('Missing', 'Rejected')
-          ), 0) AS pending_required_documents,
+          ), 0) AS client_pending_required_documents,
           COALESCE(SUM(
             ld.lot_project_listing_document_is_required = 1
             AND ld.lot_project_listing_document_responsible_party = 'client'
             AND COALESCE(cd.lot_project_client_document_status, 'Missing') = 'Missing'
-          ), 0) AS missing_required_documents,
+          ), 0) AS client_missing_required_documents,
           COALESCE(SUM(
             ld.lot_project_listing_document_is_required = 1
             AND ld.lot_project_listing_document_responsible_party = 'client'
             AND COALESCE(cd.lot_project_client_document_status, 'Missing') = 'Rejected'
-          ), 0) AS rejected_required_documents
+          ), 0) AS client_rejected_required_documents
         FROM lot_project_listings l
         INNER JOIN lot_projects lp
           ON lp.lot_project_id = l.lot_project_id
@@ -1510,7 +1518,7 @@ export const getDocumentNotifications = async (req, res) => {
           latest_document_log.sent_at,
           latest_document_log.attachment_filename
         ${havingSql}
-        ORDER BY pending_required_documents DESC, awaiting_approval_documents DESC, lp.lot_project_name ASC, l.lot_project_listing_unit_id ASC
+        ORDER BY pending_documents DESC, awaiting_approval_documents DESC, lp.lot_project_name ASC, l.lot_project_listing_unit_id ASC
       `,
       params
     );
@@ -1534,24 +1542,37 @@ export const getDocumentNotifications = async (req, res) => {
       submittedDocuments: Number(row.submitted_documents || 0),
       approvedDocuments: Number(row.approved_documents || 0),
       awaitingApprovalDocuments: Number(row.awaiting_approval_documents || 0),
-      pendingRequiredDocuments: Number(row.pending_required_documents || 0),
-      missingRequiredDocuments: Number(row.missing_required_documents || 0),
-      rejectedRequiredDocuments: Number(row.rejected_required_documents || 0),
+      pendingDocuments: Number(row.pending_documents || 0),
+      missingDocuments: Number(row.missing_documents || 0),
+      rejectedDocuments: Number(row.rejected_documents || 0),
+      clientActionDocuments: Number(row.client_action_documents || 0),
+      clientTotalDocuments: Number(row.client_total_documents || 0),
+      clientPendingRequiredDocuments: Number(row.client_pending_required_documents || 0),
+      clientMissingRequiredDocuments: Number(row.client_missing_required_documents || 0),
+      clientRejectedRequiredDocuments: Number(row.client_rejected_required_documents || 0),
       listingPath: `/portal/lot-projects/${row.lot_project_slug}/listings/${row.lot_project_listing_id}`,
     }));
 
     const summary = notifications.reduce((totals, item) => {
-      totals.pendingRequired += item.pendingRequiredDocuments;
-      totals.missingRequired += item.missingRequiredDocuments;
-      totals.rejectedRequired += item.rejectedRequiredDocuments;
+      totals.pendingDocuments += item.pendingDocuments;
+      totals.missingDocuments += item.missingDocuments;
+      totals.rejectedDocuments += item.rejectedDocuments;
       totals.awaitingApproval += item.awaitingApprovalDocuments;
+      totals.clientActionDocuments += item.clientActionDocuments;
+      totals.clientPendingRequired += item.clientPendingRequiredDocuments;
+      totals.clientMissingRequired += item.clientMissingRequiredDocuments;
+      totals.clientRejectedRequired += item.clientRejectedRequiredDocuments;
       return totals;
     }, {
       totalUnits: notifications.length,
-      pendingRequired: 0,
-      missingRequired: 0,
-      rejectedRequired: 0,
+      pendingDocuments: 0,
+      missingDocuments: 0,
+      rejectedDocuments: 0,
       awaitingApproval: 0,
+      clientActionDocuments: 0,
+      clientPendingRequired: 0,
+      clientMissingRequired: 0,
+      clientRejectedRequired: 0,
     });
 
     return res.json({ success: true, data: { notifications, summary } });
@@ -1561,4 +1582,5 @@ export const getDocumentNotifications = async (req, res) => {
     connection.release();
   }
 };
+
 

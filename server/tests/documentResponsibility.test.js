@@ -90,17 +90,32 @@ test('server writes responsibility through document, project, listing, and reser
   assert.match(shared, /responsibleParty:\s*normalizeDocumentResponsibleParty/);
 });
 
-test('buyer document notifications are scoped only to client-responsible documents', () => {
+test('document notification status counts every responsible party while client emails stay client-scoped', () => {
   const controller = read('server/controllers/System/notifications.controller.js');
   const notificationsPage = read('client/src/pages/System/Notifications.jsx');
 
+  // Overall notification status/counts include all active listing documents.
+  assert.match(controller, /COUNT\(ld\.lot_project_listing_document_id\) AS total_documents/);
+  assert.match(controller, /AS pending_documents/);
+  assert.match(controller, /AS missing_documents/);
+  assert.match(controller, /AS rejected_documents/);
+  assert.match(notificationsPage, /pendingDocuments/);
+  assert.match(notificationsPage, /missingDocuments/);
+  assert.match(notificationsPage, /rejectedDocuments/);
+  assert.match(notificationsPage, /Pending Documents/);
+  assert.match(notificationsPage, /Missing Documents/);
+  assert.match(notificationsPage, /Rejected Documents/);
+
+  // Email eligibility/content is still limited to client-responsibility documents,
+  // including both required and optional client documents that need action.
   assert.match(controller, /lot_project_listing_document_responsible_party = 'client'/);
+  assert.match(controller, /AS client_action_documents/);
   assert.match(controller, /optionalMissingDocuments/);
   assert.match(controller, /optionalRejectedDocuments/);
   assert.match(controller, /Documents Required From You/);
   assert.match(controller, /Internal\/company and seller\/agent documents are not included/i);
-  assert.match(notificationsPage, /client document requirements/i);
-  assert.match(notificationsPage, /Client Required/i);
+  assert.match(notificationsPage, /clientActionDocuments/);
+  assert.match(notificationsPage, /Send Client Email/);
 });
 
 test('client document PDF separates required action from optional documents', () => {
@@ -123,4 +138,5 @@ test('client document PDF separates required action from optional documents', ()
   assert.match(pdfText, /MISSING \/ OPTIONAL/);
   assert.match(pdfText, /RESUBMIT \/ OPTIONAL/);
 });
+
 
