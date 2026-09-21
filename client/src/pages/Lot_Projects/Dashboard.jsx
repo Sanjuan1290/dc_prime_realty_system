@@ -312,12 +312,6 @@ const Dashboard = () => {
             <FiRefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
             Refresh
           </button>
-          <Link
-            to={`${basePath}/reports`}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 text-sm font-black text-blue-700 shadow-sm transition hover:bg-blue-100"
-          >
-            Open Reports <FiArrowRight className="h-4 w-4" />
-          </Link>
         </div>
       </section>
 
