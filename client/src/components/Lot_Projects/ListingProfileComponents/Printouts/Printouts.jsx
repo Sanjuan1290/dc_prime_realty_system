@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { FiFileText, FiImage, FiPrinter } from 'react-icons/fi'
 import AcknowledgementReceiptsModal from './AcknowledgementReceiptsModal'
 import { openSignedReceiptPrintPreview } from './signedReceiptPrint'
+import { safeLocalStorage } from '../../../../utils/safeStorage'
 
 const printItems = [
   {
@@ -53,7 +54,7 @@ const Printouts = ({
       || `${Date.now()}-${Math.random().toString(36).slice(2)}`
     const storageKey = `lot_project_print_payload:${printKey}`
 
-    localStorage.setItem(
+    const stored = safeLocalStorage.setItem(
       storageKey,
       JSON.stringify({
         projectSlug,
@@ -68,6 +69,10 @@ const Printouts = ({
         ...extraPayload,
       })
     )
+    if (!stored) {
+      window.alert('Print preview could not be prepared because browser storage is unavailable. Allow site storage or try another browser.')
+      return
+    }
 
     window.open(
       `/portal/lot-projects/${projectSlug}/printouts/${item.path}?printKey=${encodeURIComponent(printKey)}`,
@@ -164,4 +169,5 @@ const Printouts = ({
 }
 
 export default Printouts
+
 

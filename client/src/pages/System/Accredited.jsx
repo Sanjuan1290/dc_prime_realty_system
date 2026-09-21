@@ -12,6 +12,7 @@ import {useFetch as fetchApi, useFetchPost as postApi, getDoubleCheckNotice} fro
 import { isFullAccessAdministrator } from "../../config/permissions";
 import { openSignedReceiptPrintPreview } from "../../components/Lot_Projects/ListingProfileComponents/Printouts/signedReceiptPrint";
 import { canOpenMalwareScannedFile, getMalwareScanStatus, malwareScanLabel } from "../../utils/cloudinaryUploadSecurity";
+import { safeLocalStorage } from "../../utils/safeStorage";
 
 const EMPTY_LIST = [];
 
@@ -205,7 +206,7 @@ const IncomeRangeReportPanel = ({ seller, sellerId, receipts = EMPTY_LIST, recei
 
     // Print All Unsigned reuses the exact single-receipt layout. Every generated receipt
     // starts on its own A4 page, so one print job can be saved as one PDF.
-    localStorage.setItem(
+    const stored = safeLocalStorage.setItem(
       "accredited_seller_income_range_payload",
       JSON.stringify({
         seller: reportSeller,
@@ -214,6 +215,10 @@ const IncomeRangeReportPanel = ({ seller, sellerId, receipts = EMPTY_LIST, recei
         generatedAt: report.generatedAt,
       })
     );
+    if (!stored) {
+      setRangeAlert({ type: "error", message: "The print preview could not be prepared because browser storage is unavailable. Allow site storage or try another browser." });
+      return;
+    }
     window.open("/portal/super_admin/accredited/proof-of-income/range/print", "_blank");
   };
 
@@ -484,10 +489,14 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
   }, [receiptDateTouched, suggestedReceiptDate]);
 
   const printReceipt = (receipt) => {
-    localStorage.setItem(
+    const stored = safeLocalStorage.setItem(
       "accredited_seller_proof_payload",
       JSON.stringify({ seller: receiptSeller, receipt })
     );
+    if (!stored) {
+      setLocalAlert({ type: "error", message: "The print preview could not be prepared because browser storage is unavailable. Allow site storage or try another browser." });
+      return;
+    }
     window.open("/portal/super_admin/accredited/proof-of-income/print", "_blank");
   };
 
@@ -994,4 +1003,5 @@ const Accredited = () => {
 };
 
 export default Accredited;
+
 

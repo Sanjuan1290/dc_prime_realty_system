@@ -18,6 +18,7 @@ import { projects } from '../data/projects'
 import { availabilityLegend, buildUpcomingDates, getProjectSchedule } from '../data/trippingAvailability'
 import StatusBadge from './StatusBadge'
 import rainySeasonSafety from '../assets/rainy-season-safety.png'
+import { safeLocalStorage } from '../../utils/safeStorage'
 
 const STORAGE_KEY = 'dc_prime_tripping_requests_v2'
 
@@ -30,7 +31,7 @@ const dayLabel = (date) => new Intl.DateTimeFormat('en-PH', { weekday: 'short' }
 
 const readSavedRequests = () => {
   try {
-    return JSON.parse(window.localStorage.getItem(STORAGE_KEY) || '[]')
+    return JSON.parse(safeLocalStorage.getItem(STORAGE_KEY) || '[]')
   } catch {
     return []
   }
@@ -38,7 +39,7 @@ const readSavedRequests = () => {
 
 const saveRequest = (request) => {
   const current = readSavedRequests().filter((item) => item.reference !== request.reference)
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify([request, ...current].slice(0, 20)))
+  safeLocalStorage.setItem(STORAGE_KEY, JSON.stringify([request, ...current].slice(0, 20)))
 }
 
 const createReference = () => {
@@ -368,4 +369,5 @@ const TrippingForm = ({ initialProject = '' }) => {
 }
 
 export default TrippingForm
+
 

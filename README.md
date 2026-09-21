@@ -1,14 +1,24 @@
-# Lot Project Dashboard / Reports split
+# Mobile Attendance / Browser Storage Resilience Fix
 
-This patch performs the requested UI split for `/portal/lot-projects/:projectSlug`.
+This patch addresses the mobile `/attendance` crash where a browser can deny access to `window.localStorage`.
 
-- The previous analytics-heavy `Dashboard.jsx` is preserved as `Reports.jsx`.
-- A new operational `Dashboard.jsx` shows current unit status, attention items, upcoming dues, recent unit issues, and quick navigation.
-- Adds `/portal/lot-projects/:projectSlug/reports`.
-- Adds **Reports** to the Lot Project sidebar directly after Dashboard.
-- Reuses `LOT_DASHBOARD_VIEW`; no database migration or backend route is required.
-- Updates regression tests that were intentionally coupled to the previous Dashboard analytics page.
+## What changed
 
-Apply the files over the matching repository paths, then run the normal client build and server test suite.
+1. `/attendance` now boots as a standalone public entry path from `main.jsx`. Direct visits do not load `App.jsx` or the portal/website route graph first.
+2. Added `client/src/utils/safeStorage.js`; reading the `localStorage`/`sessionStorage` property itself is inside `try/catch`.
+3. Hardened public website preference/tripping persistence and print-preview payload writes so denied browser storage degrades gracefully instead of throwing.
+4. Added a regression test for standalone Attendance boot and safe-storage behavior.
 
-Validation: the focused source/regression checks for this split passed. One unrelated test could not execute from the reconstructed all-in-one source dump because a shared backend module is truncated in that dump; no failure was produced by the Dashboard/Reports changes.
+## Validation
+
+Run:
+
+```powershell
+cd client
+npm run build
+
+cd ../server
+npm test
+```
+
+No database migration is required.

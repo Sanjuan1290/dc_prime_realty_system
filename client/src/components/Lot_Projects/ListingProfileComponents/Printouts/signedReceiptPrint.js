@@ -1,3 +1,5 @@
+import { safeLocalStorage } from '../../../../utils/safeStorage'
+
 const STORAGE_PREFIX = 'signed_receipt_print_payload:'
 
 const createPrintKey = () => (
@@ -21,7 +23,7 @@ export const openSignedReceiptPrintPreview = ({ title = 'Signed Receipts', files
   if (!printableFiles.length) return false
 
   const printKey = createPrintKey()
-  localStorage.setItem(
+  const stored = safeLocalStorage.setItem(
     `${STORAGE_PREFIX}${printKey}`,
     JSON.stringify({
       title,
@@ -29,6 +31,7 @@ export const openSignedReceiptPrintPreview = ({ title = 'Signed Receipts', files
       createdAt: new Date().toISOString(),
     })
   )
+  if (!stored) return false
 
   const printWindow = window.open(
     `/portal/printouts/signed-receipts?printKey=${encodeURIComponent(printKey)}`,
@@ -43,7 +46,7 @@ export const readSignedReceiptPrintPayload = () => {
     const printKey = new URLSearchParams(window.location.search).get('printKey')
     if (!printKey) return {}
 
-    const saved = localStorage.getItem(`${STORAGE_PREFIX}${printKey}`)
+    const saved = safeLocalStorage.getItem(`${STORAGE_PREFIX}${printKey}`)
     if (!saved) return {}
 
     const parsed = JSON.parse(saved)
@@ -52,4 +55,5 @@ export const readSignedReceiptPrintPayload = () => {
     return {}
   }
 }
+
 

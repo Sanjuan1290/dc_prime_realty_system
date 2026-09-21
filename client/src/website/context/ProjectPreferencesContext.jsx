@@ -1,11 +1,12 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { safeLocalStorage } from '../../utils/safeStorage'
 
 const SAVED_KEY = 'dc_prime_saved_projects'
 const RECENT_KEY = 'dc_prime_recent_projects'
 
 const readSlugs = (key) => {
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(key) || '[]')
+    const parsed = JSON.parse(safeLocalStorage.getItem(key) || '[]')
     return Array.isArray(parsed) ? parsed.filter(Boolean) : []
   } catch {
     return []
@@ -18,8 +19,8 @@ export const ProjectPreferencesProvider = ({ children }) => {
   const [savedSlugs, setSavedSlugs] = useState(() => readSlugs(SAVED_KEY))
   const [recentSlugs, setRecentSlugs] = useState(() => readSlugs(RECENT_KEY))
 
-  useEffect(() => { window.localStorage.setItem(SAVED_KEY, JSON.stringify(savedSlugs)) }, [savedSlugs])
-  useEffect(() => { window.localStorage.setItem(RECENT_KEY, JSON.stringify(recentSlugs)) }, [recentSlugs])
+  useEffect(() => { safeLocalStorage.setItem(SAVED_KEY, JSON.stringify(savedSlugs)) }, [savedSlugs])
+  useEffect(() => { safeLocalStorage.setItem(RECENT_KEY, JSON.stringify(recentSlugs)) }, [recentSlugs])
 
   useEffect(() => {
     const sync = (event) => {
@@ -45,4 +46,5 @@ export const useProjectPreferences = () => {
   if (!context) throw new Error('useProjectPreferences must be used inside ProjectPreferencesProvider')
   return context
 }
+
 
