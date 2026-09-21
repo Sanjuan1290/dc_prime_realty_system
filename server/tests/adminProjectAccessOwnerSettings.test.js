@@ -90,7 +90,9 @@ test('Owner-only operational controls stay visible but disabled for Admin', () =
   assert.match(unitStatus, /disabled=\{!canAdjustCommission \|\| isAdjustingCommission\}/);
   assert.match(correction, /disabled=\{!isSuperAdmin \|\| busy\}/);
   assert.match(users, /Only the Super Admin can edit a Super Admin account/);
-  assert.match(users, /Only the Super Admin can regenerate credentials for a Super Admin account/);
   assert.match(users, /Only the Super Admin can activate or deactivate a Super Admin account/);
+  assert.doesNotMatch(users, /Only the Super Admin can regenerate credentials for a Super Admin account/);
+  assert.doesNotMatch(users, />Credentials<\/button>/);
+  assert.doesNotMatch(users, /resetPassword/);
   assert.doesNotMatch(users, />Super Admin only</i);
 });

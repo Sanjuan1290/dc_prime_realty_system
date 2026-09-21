@@ -6,7 +6,6 @@ import StatusAlert from "../../components/Shared/StatusAlert";
 import useCurrentUser from "../../utils/useCurrentUser";
 import { FaUserPlus } from "react-icons/fa";
 import {
-  FiAlertTriangle,
   FiEdit2,
   FiKey,
   FiPlus,
@@ -35,58 +34,6 @@ const roleLabels = {
 const sellerRoles = ["division_manager", "sales_director", "unit_manager", "sales_agent", "external_group"];
 const isSellerRecord = (user) => sellerRoles.includes(user?.role);
 
-const ResetPasswordConfirmModal = ({ user, onClose, onConfirm, isSaving }) => {
-  if (!user) return null
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
-      <div className="w-full max-w-lg overflow-hidden rounded-3xl border border-amber-100 bg-white shadow-2xl">
-        <div className="flex items-start gap-3 border-b border-amber-100 bg-amber-50 px-6 py-5">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-amber-700 shadow-sm">
-            <FiAlertTriangle className="h-5 w-5" />
-          </div>
-
-          <div className="min-w-0">
-            <h2 className="text-xl font-black text-amber-950">Resend Login Credentials?</h2>
-            <p className="mt-1 text-sm font-semibold leading-6 text-amber-800">
-              A new secure temporary password will be generated and emailed to this user. Existing login sessions will be invalidated, and the user must change the password after signing in.
-            </p>
-          </div>
-        </div>
-
-        <div className="p-6">
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <p className="text-xs font-black uppercase tracking-wide text-slate-400">User</p>
-            <p className="mt-1 font-black text-slate-950">{user.full_name}</p>
-            <p className="text-sm font-semibold text-slate-500">{user.email}</p>
-          </div>
-
-          <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isSaving}
-              className="h-11 rounded-2xl border border-slate-200 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              Cancel
-            </button>
-
-            <button
-              type="button"
-              onClick={onConfirm}
-              disabled={isSaving}
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-amber-600 px-5 text-sm font-black text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <FiKey className="h-4 w-4" />
-              {isSaving ? 'Sending...' : 'Generate & Send Credentials'}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 const Users = () => {
   const { data: currentUserData } = useCurrentUser();
   const actorUser = currentUserData?.user || {};
@@ -95,18 +42,15 @@ const Users = () => {
   const actorCanAssignAllProjects = isSuperAdmin || Boolean(actorUser.admin_all_projects);
   const canCreateUsers = hasPermission(actorUser, PERMISSIONS.SYSTEM_USERS_CREATE);
   const canEditUsers = hasPermission(actorUser, PERMISSIONS.SYSTEM_USERS_EDIT);
-  const canResetPasswords = hasPermission(actorUser, PERMISSIONS.SYSTEM_USERS_RESET_PASSWORD);
   const canChangeStatus = hasPermission(actorUser, PERMISSIONS.SYSTEM_USERS_CHANGE_STATUS);
   const canManageSellerGroups = hasPermission(actorUser, PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE);
   const createAllowedRoles = Object.keys(roleLabels).filter((role) => role !== "external_group" && (isSuperAdmin || role !== "super_admin"));
   const getEditAllowedRoles = (user) => user?.role === "external_group" ? ["external_group"] : Object.keys(roleLabels).filter((role) => role !== "external_group" && (isSuperAdmin || role !== "super_admin"));
   const canManageAccount = (user) => user?.role !== "external_group" && canManageUserRole(actorUser, user?.role);
-  const canResetUserPassword = (user) => canResetPasswords && ['admin', 'super_admin'].includes(user?.role);
   const queryClient = useQueryClient();
   const [showEditUser, setShowEditUser] = useState(false);
   const [showCreateUser, setShowCreateUser] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
-  const [resetTarget, setResetTarget] = useState(null);
   const [alert, setAlert] = useState(null);
   const [activeAction, setActiveAction] = useState(null);
 
@@ -163,40 +107,12 @@ const Users = () => {
     onSettled: () => setActiveAction(null),
   });
 
-  const resetPasswordMutation = useMutation({
-    mutationFn: (user) => patchApi(`/user/resetPassword/${user.id}`, {}, { confirmationHandled: 'compact' }),
-    onMutate: (user) => {
-      setActiveAction({ type: "reset", userId: user.id });
-      setAlert({ type: "loading", message: "Generating and sending new login credentials..." });
-    },
-    onSuccess: (result) => {
-      setResetTarget(null);
-      setAlert({ type: "success", message: result.message || "Login credentials sent." });
-      queryClient.invalidateQueries({ queryKey: ["users"] });
-    },
-    onError: (mutationError) => {
-      setAlert({ type: "error", message: mutationError.message });
-    },
-    onSettled: () => setActiveAction(null),
-  });
-
   const stats = [
     { label: "Total Users", value: summary.total, icon: FiUsers, description: "All system accounts" },
     { label: "Active", value: summary.active, icon: FiUserCheck, description: "Can access the system" },
     { label: "Inactive", value: summary.inactive, icon: FiShield, description: "Blocked from login" },
     { label: "Password Change", value: summary.mustChangePassword, icon: FiKey, description: "Required on next login" },
   ];
-
-  const handleResetPassword = (user) => {
-    if (!canResetUserPassword(user)) return;
-    setResetTarget(user);
-    setAlert({ type: "warning", message: `Review and confirm credential regeneration for ${user.full_name}.` });
-  };
-
-  const confirmResetPassword = () => {
-    if (!resetTarget || resetPasswordMutation.isPending) return;
-    resetPasswordMutation.mutate(resetTarget);
-  };
 
   const handleToggleStatus = (user) => {
     const action = user.status === "active" ? "deactivate" : "activate";
@@ -358,13 +274,11 @@ const Users = () => {
                       {canManageAccount(user) ? (
                         <>
                           {canEditUsers ? <button type="button" onClick={() => openEditModal(user)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:bg-slate-50"><FiEdit2 className="h-3.5 w-3.5" />Edit</button> : null}
-                          {canResetUserPassword(user) ? <button type="button" onClick={() => handleResetPassword(user)} disabled={resetPasswordMutation.isPending || toggleStatusMutation.isPending} className="inline-flex h-9 items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 text-xs font-bold text-amber-700 hover:bg-amber-100 disabled:opacity-60"><FiKey className="h-3.5 w-3.5" />{activeAction?.type === "reset" && activeAction?.userId === user.id ? "Sending..." : "Credentials"}</button> : null}
-                          {canChangeStatus ? <button type="button" onClick={() => handleToggleStatus(user)} disabled={resetPasswordMutation.isPending || toggleStatusMutation.isPending} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60">{activeAction?.type === "status" && activeAction?.userId === user.id ? "Updating..." : user.status === "active" ? "Deactivate" : "Activate"}</button> : null}
+                          {canChangeStatus ? <button type="button" onClick={() => handleToggleStatus(user)} disabled={toggleStatusMutation.isPending} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60">{activeAction?.type === "status" && activeAction?.userId === user.id ? "Updating..." : user.status === "active" ? "Deactivate" : "Activate"}</button> : null}
                         </>
                       ) : user.role === "super_admin" && actorRole === "admin" ? (
                         <>
                           <button type="button" disabled title="Only the Super Admin can edit a Super Admin account." className="inline-flex h-9 cursor-not-allowed items-center gap-2 rounded-lg border border-slate-200 bg-slate-100 px-3 text-xs font-bold text-slate-400"><FiEdit2 className="h-3.5 w-3.5" />Edit</button>
-                          <button type="button" disabled title="Only the Super Admin can regenerate credentials for a Super Admin account." className="inline-flex h-9 cursor-not-allowed items-center gap-2 rounded-lg border border-slate-200 bg-slate-100 px-3 text-xs font-bold text-slate-400"><FiKey className="h-3.5 w-3.5" />Credentials</button>
                           <button type="button" disabled title="Only the Super Admin can activate or deactivate a Super Admin account." className="inline-flex h-9 cursor-not-allowed items-center gap-2 rounded-lg border border-slate-200 bg-slate-100 px-3 text-xs font-bold text-slate-400">{user.status === "active" ? "Deactivate" : "Activate"}</button>
                         </>
                       ) : (
@@ -397,15 +311,6 @@ const Users = () => {
 
       {showCreateUser && canCreateUsers ? <CreateUserModal setShowCreateUser={setShowCreateUser} onSaved={handleSaved} allowedRoles={createAllowedRoles} actorRole={actorRole} actorCanAssignAllProjects={actorCanAssignAllProjects} /> : null}
       {showEditUser && selectedUser && canEditUsers && canManageAccount(selectedUser) ? <EditUserModal key={selectedUser.id} setShowEditUser={setShowEditUser} selectedUser={selectedUser} onSaved={handleSaved} allowedRoles={getEditAllowedRoles(selectedUser)} actorRole={actorRole} actorCanAssignAllProjects={actorCanAssignAllProjects} /> : null}
-      {canResetPasswords ? <ResetPasswordConfirmModal
-        user={resetTarget}
-        onClose={() => {
-          setResetTarget(null);
-          setAlert(null);
-        }}
-        onConfirm={confirmResetPassword}
-        isSaving={resetPasswordMutation.isPending}
-      /> : null}
     </main>
   );
 };
