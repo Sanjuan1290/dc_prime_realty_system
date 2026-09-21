@@ -407,7 +407,7 @@ const buildEmployeeSheet = (employee, data, cutoffLabel) => {
 
   const totalRow = 3 + rows.length + 1
   const summaryStart = totalRow + 1
-  const lastRow = summaryStart + 6
+  const lastRow = summaryStart + 7
   const matrix = Array.from({ length: lastRow }, () => Array(COLUMN_COUNT).fill(''))
   const sheet = XLSX.utils.aoa_to_sheet(matrix)
 
@@ -419,14 +419,14 @@ const buildEmployeeSheet = (employee, data, cutoffLabel) => {
     XLSX.utils.decode_range(`D${summaryStart + 1}:E${summaryStart + 1}`),
     XLSX.utils.decode_range(`J${summaryStart}:M${summaryStart}`),
     XLSX.utils.decode_range(`J${summaryStart + 1}:M${summaryStart + 1}`),
-    XLSX.utils.decode_range(`A${summaryStart + 3}:B${summaryStart + 3}`),
-    XLSX.utils.decode_range(`C${summaryStart + 3}:E${summaryStart + 3}`),
     XLSX.utils.decode_range(`A${summaryStart + 4}:B${summaryStart + 4}`),
     XLSX.utils.decode_range(`C${summaryStart + 4}:E${summaryStart + 4}`),
     XLSX.utils.decode_range(`A${summaryStart + 5}:B${summaryStart + 5}`),
     XLSX.utils.decode_range(`C${summaryStart + 5}:E${summaryStart + 5}`),
     XLSX.utils.decode_range(`A${summaryStart + 6}:B${summaryStart + 6}`),
     XLSX.utils.decode_range(`C${summaryStart + 6}:E${summaryStart + 6}`),
+    XLSX.utils.decode_range(`A${summaryStart + 7}:B${summaryStart + 7}`),
+    XLSX.utils.decode_range(`C${summaryStart + 7}:E${summaryStart + 7}`),
   ]
 
   sheet['!cols'] = [
@@ -481,6 +481,7 @@ const buildEmployeeSheet = (employee, data, cutoffLabel) => {
     (sum, row) => sum + Number(row.lateSeconds || 0) + (row.absence ? regularWorkingSeconds : 0),
     0,
   )
+  const tardinessMinutes = tardiness / 60
   const overtime = rows.reduce((sum, row) => sum + Number(row.overtimeSeconds || 0), 0)
   const regularAttended = rows.reduce((sum, row) => sum + Number(row.regularAttendedSeconds || 0), 0)
   const holidayWorked = rows.reduce((sum, row) => sum + Number(row.holidayWorkedSeconds || 0), 0)
@@ -496,13 +497,14 @@ const buildEmployeeSheet = (employee, data, cutoffLabel) => {
 
   setCell(sheet, summaryStart - 1, 5, 'TARDINESS', textStyle())
   setCell(sheet, summaryStart, 5, excelDuration(tardiness), textStyle(COLORS.red, false), '[h]:mm:ss')
+  setCell(sheet, summaryStart + 1, 5, tardinessMinutes, textStyle(COLORS.red, true), '0.## "mins"')
 
   setCell(sheet, summaryStart - 1, 6, 'ADJUSTMENTS / ABSENCES', textStyle())
   setCell(sheet, summaryStart, 6, absenceCount, textStyle(COLORS.red, false))
-  setCell(sheet, summaryStart + 1, 5, 'UNDER TIME (MINS)', textStyle())
-  setCell(sheet, summaryStart + 1, 6, 'OTHER LOST (MINS)', textStyle())
-  setCell(sheet, summaryStart + 2, 5, 0, textStyle(COLORS.black, false))
-  setCell(sheet, summaryStart + 2, 6, 0, textStyle(COLORS.black, false))
+  setCell(sheet, summaryStart + 2, 5, 'UNDER TIME (MINS)', textStyle())
+  setCell(sheet, summaryStart + 2, 6, 'OTHER LOST (MINS)', textStyle())
+  setCell(sheet, summaryStart + 3, 5, 0, textStyle(COLORS.black, false))
+  setCell(sheet, summaryStart + 3, 6, 0, textStyle(COLORS.black, false))
 
   setCell(sheet, summaryStart - 1, 8, 'OVERTIME', textStyle())
   setCell(sheet, summaryStart, 8, excelDuration(overtime), textStyle(COLORS.black, true), '[h]:mm:ss')
@@ -514,7 +516,7 @@ const buildEmployeeSheet = (employee, data, cutoffLabel) => {
     setCell(sheet, summaryStart + 1, 10, excelDuration(holidayWorked), textStyle(COLORS.blue, true, 'left'), '[h]:mm:ss')
   }
 
-  const idRow = summaryStart + 3
+  const idRow = summaryStart + 4
   setCell(sheet, idRow - 1, 0, 'ID#:', textStyle(COLORS.black, true, 'right'))
   setCell(sheet, idRow - 1, 2, employee.employee_code || '', textStyle(COLORS.black, true, 'center'))
   setCell(sheet, idRow, 0, 'Signature:', textStyle(COLORS.black, true, 'right'))

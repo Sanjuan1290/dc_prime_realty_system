@@ -66,3 +66,12 @@ test('Excel Tardiness includes one full regular workday for every absent schedul
   assert.match(workbook, /row\.absence \? regularWorkingSeconds : 0/)
   assert.match(workbook, /const requiredHours = scheduledDays \* regularWorkingSeconds/)
 })
+
+test('Excel Tardiness shows total minutes directly under the HH:MM:SS duration', () => {
+  const workbook = read('client/src/utils/attendanceExcelExport.js')
+  assert.match(workbook, /const tardinessMinutes = tardiness \/ 60/)
+  assert.match(workbook, /setCell\(sheet, summaryStart, 5, excelDuration\(tardiness\)[\s\S]*'\[h\]:mm:ss'\)/)
+  assert.match(workbook, /setCell\(sheet, summaryStart \+ 1, 5, tardinessMinutes[\s\S]*'0\.## \"mins\"'\)/)
+  assert.match(workbook, /setCell\(sheet, summaryStart \+ 2, 5, 'UNDER TIME \(MINS\)'/)
+  assert.match(workbook, /const idRow = summaryStart \+ 4/)
+})
