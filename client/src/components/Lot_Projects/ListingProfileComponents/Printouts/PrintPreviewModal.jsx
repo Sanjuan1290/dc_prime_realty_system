@@ -305,7 +305,7 @@ const PrintPreviewModal = ({
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/60 p-4">
       <style>{`
         @page {
-          size: A4 portrait;
+          size: ${type === 'offer' ? '8.5in 14in' : 'A4 portrait'};
           margin: 0 !important;
         }
 
@@ -416,4 +416,3 @@ const PrintPreviewModal = ({
 }
 
 export default PrintPreviewModal
-

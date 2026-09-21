@@ -6,11 +6,10 @@ const OfferToBuyPrintPage = () => {
   const { listing = {}, client = {}, soaRows = [] } = readPrintPayload()
 
   return (
-    <PrintPageShell title="Offer To Buy & Buyer&apos;s Profile">
+    <PrintPageShell title="Offer To Buy & Buyer&apos;s Profile" pageSize="legal">
       <OfferToBuyForm listing={listing} client={client} soaRows={soaRows} />
     </PrintPageShell>
   )
 }
 
 export default OfferToBuyPrintPage
-

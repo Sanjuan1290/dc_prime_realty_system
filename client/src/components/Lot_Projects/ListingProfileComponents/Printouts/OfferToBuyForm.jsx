@@ -9,6 +9,10 @@ import {
   getValue,
 } from './printUtils'
 
+const TEMPLATE_WIDTH = 2550
+const TEMPLATE_HEIGHT = 4200
+const TEMPLATE_URL = '/forms/offer-to-buy-individual-apr-2026.png'
+
 const blank = (value) => {
   if (value === undefined || value === null || value === '-') return ''
   return String(value)
@@ -19,7 +23,6 @@ const valueFrom = (source, keys, fallback = '') => blank(getValue(source, keys, 
 const plainMoney = (value) => {
   const amount = Number(value || 0)
   if (!(amount > 0)) return ''
-
   return new Intl.NumberFormat('en-PH', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
@@ -35,138 +38,52 @@ const getMonthlyAmount = (rows) => {
   return cleanMoney(row?.dueAmount || 0)
 }
 
-const Box = ({ checked = false }) => (
-  <span className="otb-box" aria-hidden="true">{checked ? '✓' : ''}</span>
-)
-
-const SmallCheck = ({ checked = false, label }) => (
-  <span className="otb-check"><Box checked={checked} /> <span>{label}</span></span>
-)
-
-const Field = ({ label, value }) => (
-  <span><strong>{label}</strong>{value ? ` ${value}` : ''}</span>
-)
-
 const buyerField = (client, key) => valueFrom(client, [key], '')
 const secondBuyerField = (client, suffix) => valueFrom(client, [`secondBuyer${suffix}`], '')
-
-const civilChecks = (value) => {
-  const civil = String(value || '').toLowerCase()
-
-  return (
-    <div className="otb-check-grid otb-civil-grid">
-      <SmallCheck label="Single/Married" checked={civil === 'single' || civil === 'married'} />
-      <SmallCheck label="Separated" checked={civil.includes('separated')} />
-      <SmallCheck label="Annulled/Divorced" checked={civil.includes('annulled') || civil.includes('divorced')} />
-      <SmallCheck label="Widow/er" checked={civil.includes('widow')} />
-    </div>
-  )
-}
-
-const employmentChecks = (value) => (
-  <div className="otb-check-grid otb-employment-grid">
-    <SmallCheck label="Employed - Private" checked={isEmploymentStatusChecked(value, 'private')} />
-    <SmallCheck label="Self-Employed (With Business)" checked={isEmploymentStatusChecked(value, 'business')} />
-    <SmallCheck label="Employed Government" checked={isEmploymentStatusChecked(value, 'government')} />
-    <SmallCheck label="Self-Employed (Professional)" checked={isEmploymentStatusChecked(value, 'professional')} />
-    <SmallCheck label="Employed - NGO" checked={isEmploymentStatusChecked(value, 'ngo')} />
-    <SmallCheck label="OFW/immigrant" checked={isEmploymentStatusChecked(value, 'ofw')} />
-  </div>
-)
 
 const formatBuyerName = ({ lastName, firstName, middleName, suffix, fallback }) => {
   const familyName = [lastName, suffix].filter(Boolean).join(' ')
   const givenNames = [firstName, middleName].filter(Boolean).join(' ')
-
   if (familyName && givenNames) return `${familyName}, ${givenNames}`
   if (familyName || givenNames) return familyName || givenNames
   return fallback || ''
 }
 
-const BuyerColumn = ({ title, name, client, second = false }) => {
-  const get = (key) => second
-    ? secondBuyerField(client, key)
-    : buyerField(client, key.charAt(0).toLowerCase() + key.slice(1))
+const pxToPercent = (value, axis = 'x') => `${((Number(value || 0) / (axis === 'x' ? TEMPLATE_WIDTH : TEMPLATE_HEIGHT)) * 100).toFixed(5)}%`
 
-  const civil = second ? secondBuyerField(client, 'CivilStatus') : buyerField(client, 'civilStatus')
-  const lastName = second ? secondBuyerField(client, 'LastName') : buyerField(client, 'buyerLastName')
-  const firstName = second ? secondBuyerField(client, 'FirstName') : buyerField(client, 'buyerFirstName')
-  const middleName = second ? secondBuyerField(client, 'MiddleName') : buyerField(client, 'buyerMiddleName')
-  const suffix = second ? secondBuyerField(client, 'Suffix') : buyerField(client, 'buyerSuffix')
-  const fullName = formatBuyerName({ lastName, firstName, middleName, suffix, fallback: name })
-
+const Overlay = ({ x, y, w, h = 42, size = 7.2, weight = 700, align = 'left', children, wrap = false, className = '' }) => {
+  if (children === undefined || children === null || children === '') return null
   return (
-    <td colSpan="6" className="otb-nested-cell">
-      <table className="otb-inner-table">
-        <tbody>
-          <tr>
-            <td colSpan="4" className="otb-buyer-name-row">
-              <strong>{title}</strong>{fullName ? <span className="otb-inline-value">{fullName}</span> : null}
-            </td>
-          </tr>
-          <tr>
-            <td colSpan="2"><Field label="Date of Birth:" value={formatDate(get('BirthDate')) === '-' ? '' : formatDate(get('BirthDate'))} /></td>
-            <td colSpan="2"><Field label="Place of Birth:" value={get('PlaceOfBirth')} /></td>
-          </tr>
-          <tr>
-            <td colSpan="2"><Field label="Citizenship:" value={get('Citizenship')} /></td>
-            <td colSpan="2"><Field label="Gender:" value={get('Gender')} /></td>
-          </tr>
-          <tr>
-            <td colSpan="4" className="otb-civil">
-              <strong>Civil Status:</strong>
-              {civilChecks(civil)}
-            </td>
-          </tr>
-          <tr>
-            <td colSpan="3"><Field label="Present Address:" value={get('PresentAddress')} /></td>
-            <td><Field label="Zip Code" value={get('PresentZipCode')} /></td>
-          </tr>
-          <tr>
-            <td colSpan="3"><Field label="Permanent Address:" value={get('PermanentAddress')} /></td>
-            <td><Field label="Zip Code" value={get('PermanentZipCode')} /></td>
-          </tr>
-          <tr><td colSpan="4"><Field label="Mobile No.:" value={get('ContactNo')} /></td></tr>
-          <tr><td colSpan="4"><Field label="Residence Phone Number:" value={get('ResidencePhoneNumber')} /></td></tr>
-          <tr><td colSpan="4"><Field label="E-mail Add:" value={get('Email')} /></td></tr>
-          <tr><td colSpan="4"><Field label="TIN:" value={get('Tin')} /></td></tr>
-        </tbody>
-      </table>
-    </td>
+    <div
+      className={`otb-overlay ${className}`}
+      style={{
+        left: pxToPercent(x, 'x'),
+        top: pxToPercent(y, 'y'),
+        width: pxToPercent(w, 'x'),
+        minHeight: pxToPercent(h, 'y'),
+        fontSize: `${size}pt`,
+        fontWeight: weight,
+        textAlign: align,
+        whiteSpace: wrap ? 'normal' : 'nowrap',
+      }}
+    >
+      {children}
+    </div>
   )
 }
 
-const WorkColumn = ({ client, second = false }) => {
-  const get = (key) => second
-    ? secondBuyerField(client, key)
-    : buyerField(client, key.charAt(0).toLowerCase() + key.slice(1))
+const Check = ({ x, y, checked }) => checked ? (
+  <div
+    className="otb-checkmark"
+    style={{ left: pxToPercent(x, 'x'), top: pxToPercent(y, 'y') }}
+    aria-hidden="true"
+  >✓</div>
+) : null
 
-  const employmentStatus = get('EmploymentStatus')
-  const otherEmploymentStatus = getEmploymentStatusOtherText(employmentStatus)
-
-  return (
-    <td colSpan="6" className="otb-nested-cell">
-      <table className="otb-inner-table">
-        <tbody>
-          <tr><th className="otb-subhead" colSpan="4">Work/Business Information</th></tr>
-          <tr>
-            <td colSpan="4" className="otb-employment">
-              <strong>Employment Status: (Please check)</strong>
-              {employmentChecks(employmentStatus)}
-              <div className="otb-other-line"><strong>Other</strong><span>{otherEmploymentStatus}</span></div>
-            </td>
-          </tr>
-          <tr><td colSpan="4"><Field label="Employer/Business Name:" value={get('EmployerBusinessName')} /></td></tr>
-          <tr>
-            <td colSpan="3"><Field label="Employer/Business Address:" value={get('EmployerBusinessAddress')} /></td>
-            <td><Field label="Zip Code" value={get('EmployerZipCode')} /></td>
-          </tr>
-          <tr><td colSpan="4"><Field label="Nature of Work/Business:" value={get('NatureOfWorkBusiness')} /></td></tr>
-          <tr><td colSpan="4"><Field label="Occupation/Position/Title:" value={get('OccupationPositionTitle')} /></td></tr>
-        </tbody>
-      </table>
-    </td>
-  )
+const dateText = (value) => {
+  if (!value) return ''
+  const formatted = formatDate(value)
+  return formatted === '-' ? '' : formatted
 }
 
 const OfferToBuyForm = ({ listing = {}, client = {}, soaRows = [] }) => {
@@ -177,7 +94,7 @@ const OfferToBuyForm = ({ listing = {}, client = {}, soaRows = [] }) => {
   const balance = cleanMoney(getValue(listing, ['balanceAmount', 'balance'], Math.max(tcp - downpayment, 0)))
   const monthly = cleanMoney(getValue(listing, ['monthlyAmortization'], getMonthlyAmount(rows)))
 
-  const buyerType = valueFrom(client, ['buyerType'], 'single')
+  const buyerType = valueFrom(client, ['buyerType'], 'single').toLowerCase()
   const modeOfPayment = valueFrom(listing, ['soaModeOfPayment', 'modeOfPayment'], 'installment').toLowerCase()
   const isCash = modeOfPayment === 'cash'
   const isInstallment = !isCash
@@ -194,441 +111,232 @@ const OfferToBuyForm = ({ listing = {}, client = {}, soaRows = [] }) => {
   const sellerMiddleName = valueFrom(listing, ['sellerMiddleName', 'seller_middle_name'], '')
   const sellerAddress = valueFrom(listing, ['sellerAddress', 'seller_address'], '')
   const dateReceivedValue = valueFrom(client, ['dateReceived'], valueFrom(listing, ['client_unit_created'], ''))
-  const dateReceived = dateReceivedValue ? formatDate(dateReceivedValue) : ''
+  const dateReceived = dateText(dateReceivedValue)
   const monthlyIncome = cleanMoney(getValue(client, ['monthlyIncome'], 0))
   const secondMonthlyIncome = cleanMoney(getValue(client, ['secondBuyerMonthlyIncome'], 0))
   const totalIncome = monthlyIncome + secondMonthlyIncome
   const interestRate = valueFrom(listing, ['interestRate', 'soaAnnualInterestRate'], '')
 
+  const principal = {
+    name: formatBuyerName({
+      lastName: buyerField(client, 'buyerLastName'),
+      firstName: buyerField(client, 'buyerFirstName'),
+      middleName: buyerField(client, 'buyerMiddleName'),
+      suffix: buyerField(client, 'buyerSuffix'),
+      fallback: buyerName,
+    }),
+    birthDate: dateText(buyerField(client, 'birthDate')),
+    placeOfBirth: buyerField(client, 'placeOfBirth'),
+    citizenship: buyerField(client, 'citizenship'),
+    gender: buyerField(client, 'gender'),
+    civilStatus: buyerField(client, 'civilStatus'),
+    presentAddress: buyerField(client, 'presentAddress'),
+    presentZip: buyerField(client, 'presentZipCode'),
+    permanentAddress: buyerField(client, 'permanentAddress'),
+    mobile: buyerField(client, 'contactNo'),
+    residencePhone: buyerField(client, 'residencePhoneNumber'),
+    email: buyerField(client, 'email'),
+    tin: buyerField(client, 'tin'),
+    employmentStatus: buyerField(client, 'employmentStatus'),
+    employerName: buyerField(client, 'employerBusinessName'),
+    employerAddress: buyerField(client, 'employerBusinessAddress'),
+    employerZip: buyerField(client, 'employerZipCode'),
+    nature: buyerField(client, 'natureOfWorkBusiness'),
+    occupation: buyerField(client, 'occupationPositionTitle'),
+  }
+
+  const second = {
+    name: formatBuyerName({
+      lastName: secondBuyerField(client, 'LastName'),
+      firstName: secondBuyerField(client, 'FirstName'),
+      middleName: secondBuyerField(client, 'MiddleName'),
+      suffix: secondBuyerField(client, 'Suffix'),
+      fallback: secondBuyerName,
+    }),
+    birthDate: dateText(secondBuyerField(client, 'BirthDate')),
+    placeOfBirth: secondBuyerField(client, 'PlaceOfBirth'),
+    citizenship: secondBuyerField(client, 'Citizenship'),
+    gender: secondBuyerField(client, 'Gender'),
+    civilStatus: secondBuyerField(client, 'CivilStatus'),
+    presentAddress: secondBuyerField(client, 'PresentAddress'),
+    presentZip: secondBuyerField(client, 'PresentZipCode'),
+    permanentAddress: secondBuyerField(client, 'PermanentAddress'),
+    mobile: secondBuyerField(client, 'ContactNo'),
+    residencePhone: secondBuyerField(client, 'ResidencePhoneNumber'),
+    email: secondBuyerField(client, 'Email'),
+    tin: secondBuyerField(client, 'Tin'),
+    employmentStatus: secondBuyerField(client, 'EmploymentStatus'),
+    employerName: secondBuyerField(client, 'EmployerBusinessName'),
+    employerAddress: secondBuyerField(client, 'EmployerBusinessAddress'),
+    employerZip: secondBuyerField(client, 'EmployerZipCode'),
+    nature: secondBuyerField(client, 'NatureOfWorkBusiness'),
+    occupation: secondBuyerField(client, 'OccupationPositionTitle'),
+  }
+
+  const principalCivil = principal.civilStatus.toLowerCase()
+  const secondCivil = second.civilStatus.toLowerCase()
+
   return (
     <section className="print-page print-export-page otb-page mx-auto bg-white text-black shadow-lg print:shadow-none">
       <style>{`
+        @page { size: 8.5in 14in; margin: 0 !important; }
         .otb-page {
-          box-sizing: border-box;
-          width: 210mm;
-          min-height: 297mm;
-          padding: 9mm 11mm;
+          position: relative;
+          width: 8.5in;
+          height: 14in;
+          min-width: 8.5in;
+          min-height: 14in;
+          overflow: hidden;
+          background: #fff;
           font-family: Arial, Helvetica, sans-serif;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
         }
-
-        .otb-page *,
-        .otb-page *::before,
-        .otb-page *::after {
-          box-sizing: border-box;
-        }
-
-        .otb-form {
+        .otb-template-image {
+          position: absolute;
+          inset: 0;
           width: 100%;
-          border: 1.35px solid #4b5563;
-          color: #20242a;
-          background: #ffffff;
-          font-size: 8.25px;
-          line-height: 1.08;
+          height: 100%;
+          object-fit: fill;
+          user-select: none;
+          pointer-events: none;
         }
-
-        .otb-form table {
-          width: 100%;
-          border-collapse: collapse;
-          table-layout: fixed;
+        .otb-overlay {
+          position: absolute;
+          z-index: 2;
+          overflow: hidden;
+          color: #000;
+          line-height: 1.05;
+          font-family: Arial, Helvetica, sans-serif;
+          text-overflow: clip;
         }
-
-        .otb-form td,
-        .otb-form th {
-          border: .85px solid #81858b;
-          padding: 2px 3.5px;
-          vertical-align: top;
-          overflow-wrap: anywhere;
-        }
-
-        .otb-title-cell {
-          border-top: 0 !important;
-          border-right: 0 !important;
-          border-left: 0 !important;
-          padding: 5px 6px 3px !important;
-        }
-
-        .otb-title {
-          margin: 0;
-          font-size: 13px;
-          font-weight: 800;
-          line-height: 1;
-        }
-
-        .otb-subtitle {
-          margin-top: 1px;
-          font-size: 10px;
-          font-weight: 700;
-        }
-
-        .otb-header-grid {
-          display: grid;
-          grid-template-columns: minmax(0, 1fr) 205px 145px;
-          align-items: end;
-          gap: 8px;
-          margin-top: 2px;
-        }
-
-        .otb-buyer-type {
-          display: flex;
-          flex-wrap: wrap;
-          align-items: center;
-          gap: 2px 10px;
-        }
-
-        .otb-sales-box {
-          display: grid;
-          grid-template-columns: auto 1fr;
-          align-items: end;
-          gap: 3px;
-        }
-
-        .otb-line-box {
-          display: block;
-          min-height: 14px;
-          border: .85px solid #81858b;
-          padding: 1px 4px;
-          font-weight: 700;
-        }
-
-        .otb-section,
-        .otb-subhead {
-          background: #d9d9d9;
+        .otb-checkmark {
+          position: absolute;
+          z-index: 3;
+          width: 18px;
+          height: 18px;
+          transform: translate(-50%, -50%);
+          color: #000;
+          font-family: Arial, Helvetica, sans-serif;
+          font-size: 10pt;
+          font-weight: 900;
+          line-height: 18px;
           text-align: center;
-          font-weight: 800;
         }
-
-        .otb-section {
-          text-transform: uppercase;
-          letter-spacing: .15px;
-        }
-
-        .otb-main-section {
-          padding: 3px 4px !important;
-          font-size: 16px;
-          letter-spacing: .65px;
-        }
-
-        .otb-location {
-          height: 23px;
-          padding-top: 5px !important;
-          font-size: 13px;
-        }
-
-        .otb-note {
-          height: 13px;
-          padding: 2px !important;
-          text-align: center;
-          font-size: 7.7px;
-          font-style: italic;
-          font-weight: 600;
-        }
-
-        .otb-box {
-          display: inline-flex;
-          width: 10px;
-          height: 10px;
-          flex: 0 0 10px;
-          align-items: center;
-          justify-content: center;
-          border: .85px solid #6f747b;
-          font-size: 8px;
-          font-weight: 800;
-          line-height: 1;
-          vertical-align: middle;
-        }
-
-        .otb-check {
-          display: inline-flex;
-          align-items: center;
-          gap: 3px;
-          white-space: nowrap;
-        }
-
-        .otb-check-grid {
-          display: grid;
-          grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-        }
-
-        .otb-civil-grid {
-          gap: 4px 12px;
-          margin-top: 5px;
-        }
-
-        .otb-employment-grid {
-          gap: 4px 10px;
-          margin-top: 5px;
-        }
-
-        .otb-term-title {
-          height: 21px;
-          font-weight: 800;
-          vertical-align: middle !important;
-        }
-
-        .otb-term-opening {
-          height: 30px;
-        }
-
-        .otb-term-label {
-          font-weight: 800;
-          vertical-align: middle !important;
-        }
-
-        .otb-currency {
-          width: 30px;
-          text-align: left;
-          vertical-align: middle !important;
-        }
-
-        .otb-term-value {
-          font-weight: 700;
-          vertical-align: middle !important;
-        }
-
-        .otb-term-row {
-          height: 22px;
-        }
-
-        .otb-deferred-label {
-          padding-top: 5px !important;
-          vertical-align: top !important;
-        }
-
-        .otb-nested-cell {
-          padding: 0 !important;
-          border-top: 0 !important;
-          border-bottom: 0 !important;
-        }
-
-        .otb-inner-table td,
-        .otb-inner-table th {
-          height: 16px;
-        }
-
-        .otb-buyer-name-row {
-          height: 24px !important;
-          font-weight: 600;
-        }
-
-        .otb-inline-value {
-          display: inline-block;
-          margin-left: 5px;
-          font-weight: 800;
-        }
-
-        .otb-civil {
-          height: 48px !important;
-        }
-
-        .otb-employment {
-          height: 74px !important;
-        }
-
-        .otb-other-line {
-          display: grid;
-          grid-template-columns: auto 1fr;
-          align-items: end;
-          gap: 4px;
-          margin-top: 5px;
-        }
-
-        .otb-other-line span {
-          min-height: 11px;
-          border-bottom: .85px solid #81858b;
-          font-weight: 700;
-        }
-
-        .otb-income-cell {
-          height: 31px;
-          text-align: center;
-          font-weight: 800;
-          vertical-align: middle !important;
-        }
-
-        .otb-blue {
-          background: #1f4e79;
-          color: #ffffff;
-          text-align: center;
-          font-weight: 800;
-          text-transform: uppercase;
-        }
-
-        .otb-signature-space {
-          height: 40px;
-        }
-
-        .otb-signature-label {
-          height: 22px;
-          text-align: center;
-          font-weight: 800;
-          vertical-align: middle !important;
-        }
-
-        .otb-agent-title {
-          background: #d9d9d9;
-          text-align: center;
-          font-size: 10px;
-          font-weight: 800;
-        }
-
-        .otb-agent-name-labels {
-          padding-top: 0 !important;
-          text-align: center;
-          font-size: 7.5px;
-          font-weight: 700;
-        }
-
-        .otb-field-line {
-          font-weight: 800;
-        }
-
-        .otb-revision {
-          padding: 2px 4px 1px;
-          font-size: 7px;
-          font-weight: 700;
-        }
-
         @media print {
           .otb-page {
-            width: 210mm !important;
-            min-height: 297mm !important;
-            margin: 0 auto !important;
-            padding: 8mm 10mm !important;
+            width: 8.5in !important;
+            height: 14in !important;
+            min-width: 8.5in !important;
+            min-height: 14in !important;
+            margin: 0 !important;
             box-shadow: none !important;
-          }
-
-          .otb-form {
-            min-height: 0 !important;
-            height: auto !important;
           }
         }
       `}</style>
 
-      <div className="otb-form">
-        <table>
-          <tbody>
-            <tr>
-              <td colSpan="12" className="otb-title-cell">
-                <h1 className="otb-title">Offer To Buy &amp; Buyer&apos;s Profile</h1>
-                <div className="otb-subtitle">Real Estate Sales - For Individual</div>
-                <div className="otb-header-grid">
-                  <div className="otb-buyer-type">
-                    <strong>Buyer Type</strong>
-                    <SmallCheck label="Single" checked={buyerType === 'single'} />
-                    <SmallCheck label="Spouses" checked={buyerType === 'spouses'} />
-                    <SmallCheck label="and Account" checked={buyerType === 'and_account'} />
-                  </div>
-                  <div className="otb-sales-box"><strong>Sales Officer:</strong><span className="otb-line-box">{seller}</span></div>
-                  <div><strong>Date Received:</strong> {dateReceived}</div>
-                </div>
-              </td>
-            </tr>
+      <img className="otb-template-image" src={TEMPLATE_URL} alt="" aria-hidden="true" />
 
-            <tr><th colSpan="12" className="otb-section otb-main-section">PROPERTY DESCRIPTION</th></tr>
-            <tr><td colSpan="12" className="otb-location"><strong>Location:</strong> {valueFrom(listing, ['project_location', 'location'], '')}</td></tr>
-            <tr>
-              <td colSpan="3"><Field label="Property Type:" value={valueFrom(listing, ['property_type', 'propertyType'], 'Lot')} /></td>
-              <td colSpan="3"><Field label="Lot Area (sqm):" value={valueFrom(listing, ['lotAreaSqm', 'lot_area_sqm', 'area'], '')} /></td>
-              <td colSpan="2"><Field label="Classification:" /></td>
-              <td colSpan="4"><Field label="Description/Improvements:" value={valueFrom(listing, ['description', 'improvements'], valueFrom(listing, ['unit_id', 'unitCode'], '') ? `Unit ${valueFrom(listing, ['unit_id', 'unitCode'], '')}` : '')} /></td>
-            </tr>
+      {/* Exact April 2026 reference form lines are supplied by the template image above.
+          The elements below only place reservation data into the blank areas. */}
 
-            <tr><th colSpan="12" className="otb-section">OFFER TERMS AND CONDITIONS</th></tr>
-            <tr><td colSpan="12" className="otb-note">I/We, hereby offer to purchase the property described above under the following terms and conditions:</td></tr>
-            <tr>
-              <td colSpan="6" className="otb-term-title"><SmallCheck label="CASH" checked={isCash} /></td>
-              <td colSpan="6" className="otb-term-title"><SmallCheck label="INSTALLMENT/In-house Financing" checked={isInstallment} /></td>
-            </tr>
-            <tr>
-              <td colSpan="6" className="otb-term-opening"></td>
-              <td colSpan="6" className="otb-term-opening"></td>
-            </tr>
-            <tr className="otb-term-row">
-              <td colSpan="2" className="otb-term-label">Purchase Price:</td>
-              <td className="otb-currency">Php</td>
-              <td colSpan="3" className="otb-term-value">{isCash ? plainMoney(tcp) : ''}</td>
-              <td colSpan="2" className="otb-term-label">Purchase Price:</td>
-              <td className="otb-currency">Php</td>
-              <td colSpan="3" className="otb-term-value">{isInstallment ? plainMoney(tcp) : ''}</td>
-            </tr>
-            <tr className="otb-term-row">
-              <td colSpan="2" className="otb-term-label">Reservation Fee:</td>
-              <td colSpan="4" className="otb-term-value">{isCash ? plainMoney(reservationFee) : ''}</td>
-              <td colSpan="2" className="otb-term-label">Reservation Fee:</td>
-              <td colSpan="4" className="otb-term-value">{isInstallment ? plainMoney(reservationFee) : ''}</td>
-            </tr>
-            <tr className="otb-term-row">
-              <td colSpan="2" rowSpan="2" className="otb-term-label">Balance:</td>
-              <td colSpan="4" rowSpan="2" className="otb-term-value">{isCash ? plainMoney(Math.max(tcp - reservationFee, 0)) : ''}</td>
-              <td colSpan="2" className="otb-term-label">Downpayment:</td>
-              <td colSpan="4" className="otb-term-value">{isInstallment ? plainMoney(downpayment) : ''}</td>
-            </tr>
-            <tr className="otb-term-row">
-              <td colSpan="2" className="otb-term-label">Balance:</td>
-              <td colSpan="4" className="otb-term-value">{isInstallment ? plainMoney(balance) : ''}</td>
-            </tr>
-            <tr className="otb-term-row">
-              <td colSpan="2" rowSpan="3" className="otb-term-label otb-deferred-label">Deferred Cash:</td>
-              <td colSpan="4" rowSpan="3"></td>
-              <td colSpan="2" className="otb-term-label">Terms (months/years to pay):</td>
-              <td colSpan="4" className="otb-term-value">{isInstallment && monthlyTerms > 0 ? `${monthlyTerms} months` : ''}</td>
-            </tr>
-            <tr className="otb-term-row">
-              <td colSpan="2" className="otb-term-label">Interest Rate:</td>
-              <td colSpan="4" className="otb-term-value">{isInstallment ? interestRate : ''}</td>
-            </tr>
-            <tr className="otb-term-row">
-              <td colSpan="2" className="otb-term-label">Monthly Amortization:</td>
-              <td colSpan="4" className="otb-term-value">{isInstallment ? plainMoney(monthly) : ''}</td>
-            </tr>
+      <Check x={355} y={405} checked={buyerType === 'single'} />
+      <Check x={590} y={405} checked={buyerType === 'spouses'} />
+      <Check x={842} y={405} checked={buyerType === 'and_account'} />
+      <Overlay x={1410} y={414} w={470} h={38} size={7.5}>{seller}</Overlay>
+      <Overlay x={2175} y={414} w={260} h={38} size={7.5}>{dateReceived}</Overlay>
 
-            <tr><th colSpan="12" className="otb-section">INDIVIDUAL BUYER/S INFORMATION</th></tr>
-            <tr>
-              <BuyerColumn title="Principal Full-name (Last Name, First Name, Middle Name)" name={buyerName} client={client} />
-              <BuyerColumn title="Spouse/Second Buyer's Name (Last Name, First Name, Middle Name)" name={secondBuyerName} client={client} second />
-            </tr>
-            <tr>
-              <WorkColumn client={client} />
-              <WorkColumn client={client} second />
-            </tr>
+      <Overlay x={310} y={668} w={2020} h={52} size={8}>{valueFrom(listing, ['project_location', 'location'], '')}</Overlay>
+      <Overlay x={315} y={753} w={205} h={42} size={6.8}>{valueFrom(listing, ['property_type', 'propertyType'], 'Lot')}</Overlay>
+      <Overlay x={720} y={753} w={250} h={42} size={6.8}>{valueFrom(listing, ['lotAreaSqm', 'lot_area_sqm', 'area'], '')}</Overlay>
+      <Overlay x={1085} y={753} w={250} h={42} size={6.8}>{valueFrom(listing, ['classification', 'lotType', 'lot_type'], '')}</Overlay>
+      <Overlay x={1810} y={753} w={545} h={42} size={6.5}>{valueFrom(listing, ['description', 'improvements'], valueFrom(listing, ['unit_id', 'unitCode'], '') ? `Unit ${valueFrom(listing, ['unit_id', 'unitCode'], '')}` : '')}</Overlay>
 
-            <tr><th colSpan="12" className="otb-section">INCOME DETAILS (MONTHLY)</th></tr>
-            <tr>
-              <td colSpan="4" className="otb-income-cell">PRINCIPAL<br />{plainMoney(monthlyIncome)}</td>
-              <td colSpan="4" className="otb-income-cell">SPOUSE/SECOND BUYER<br />{plainMoney(secondMonthlyIncome)}</td>
-              <td colSpan="4" className="otb-income-cell">TOTAL<br />{plainMoney(totalIncome)}</td>
-            </tr>
-            <tr><th colSpan="12" className="otb-blue">SIGNATURES OF BUYER/S</th></tr>
-            <tr>
-              <td colSpan="6" className="otb-signature-space"></td>
-              <td colSpan="6" className="otb-signature-space"></td>
-            </tr>
-            <tr>
-              <td colSpan="6" className="otb-signature-label">Signature over Printed Name of Principal Buyer</td>
-              <td colSpan="6" className="otb-signature-label">Signature over Printed Name of Spouse/Second Buyer</td>
-            </tr>
-            <tr><th colSpan="12" className="otb-agent-title">SALES AGENT:</th></tr>
-            <tr>
-              <td><strong>Name:</strong></td>
-              <td colSpan="3" className="otb-field-line">{sellerLastName || (!sellerFirstName && !sellerMiddleName ? seller : '')}</td>
-              <td colSpan="3" className="otb-field-line">{sellerFirstName}</td>
-              <td colSpan="2" className="otb-field-line">{sellerMiddleName}</td>
-              <td colSpan="3"><Field label="TIN No.:" value={sellerTinNo} /></td>
-            </tr>
-            <tr>
-              <td></td>
-              <td colSpan="3" className="otb-agent-name-labels">Last name</td>
-              <td colSpan="3" className="otb-agent-name-labels">First Name</td>
-              <td colSpan="2" className="otb-agent-name-labels">Middle Name</td>
-              <td colSpan="3"><Field label="Address:" value={sellerAddress} /></td>
-            </tr>
-          </tbody>
-        </table>
-        <div className="otb-revision">OTB (Individual) – Revised April 2026</div>
-      </div>
+      <Check x={104} y={946} checked={isCash} />
+      <Check x={1260} y={946} checked={isInstallment} />
+      <Overlay x={675} y={1080} w={500} h={35} size={7.3}>{isCash ? plainMoney(tcp) : ''}</Overlay>
+      <Overlay x={1840} y={1080} w={500} h={35} size={7.3}>{isInstallment ? plainMoney(tcp) : ''}</Overlay>
+      <Overlay x={545} y={1135} w={620} h={62} size={7.3}>{isCash ? plainMoney(reservationFee) : ''}</Overlay>
+      <Overlay x={1650} y={1135} w={690} h={62} size={7.3}>{isInstallment ? plainMoney(reservationFee) : ''}</Overlay>
+      <Overlay x={545} y={1237} w={620} h={52} size={7.3}>{isCash ? plainMoney(Math.max(tcp - reservationFee, 0)) : ''}</Overlay>
+      <Overlay x={1650} y={1237} w={690} h={52} size={7.3}>{isInstallment ? plainMoney(downpayment) : ''}</Overlay>
+      <Overlay x={1650} y={1335} w={690} h={52} size={7.3}>{isInstallment ? plainMoney(balance) : ''}</Overlay>
+      <Overlay x={1650} y={1430} w={690} h={62} size={7.3}>{isInstallment && monthlyTerms > 0 ? `${monthlyTerms} months` : ''}</Overlay>
+      <Overlay x={1650} y={1535} w={690} h={52} size={7.3}>{isInstallment ? interestRate : ''}</Overlay>
+      <Overlay x={1800} y={1630} w={535} h={52} size={7.3}>{isInstallment ? plainMoney(monthly) : ''}</Overlay>
+
+      <Overlay x={345} y={1785} w={800} h={68} size={7.2}>{principal.name}</Overlay>
+      <Overlay x={1510} y={1785} w={805} h={68} size={7.2}>{second.name}</Overlay>
+      <Overlay x={285} y={1882} w={230} h={38} size={6.9}>{principal.birthDate}</Overlay>
+      <Overlay x={730} y={1882} w={430} h={38} size={6.9}>{principal.placeOfBirth}</Overlay>
+      <Overlay x={1450} y={1882} w={240} h={38} size={6.9}>{second.birthDate}</Overlay>
+      <Overlay x={1900} y={1882} w={430} h={38} size={6.9}>{second.placeOfBirth}</Overlay>
+      <Overlay x={285} y={1943} w={470} h={38} size={6.9}>{principal.citizenship}</Overlay>
+      <Overlay x={900} y={1943} w={240} h={38} size={6.9}>{principal.gender}</Overlay>
+      <Overlay x={1450} y={1943} w={470} h={38} size={6.9}>{second.citizenship}</Overlay>
+      <Overlay x={2140} y={1943} w={190} h={38} size={6.9}>{second.gender}</Overlay>
+
+      <Check x={126} y={2100} checked={principalCivil === 'single' || principalCivil === 'married'} />
+      <Check x={705} y={2100} checked={principalCivil.includes('separated')} />
+      <Check x={126} y={2178} checked={principalCivil.includes('annulled') || principalCivil.includes('divorced')} />
+      <Check x={705} y={2178} checked={principalCivil.includes('widow')} />
+      <Check x={1268} y={2100} checked={secondCivil === 'single' || secondCivil === 'married'} />
+      <Check x={1858} y={2100} checked={secondCivil.includes('separated')} />
+      <Check x={1268} y={2178} checked={secondCivil.includes('annulled') || secondCivil.includes('divorced')} />
+      <Check x={1858} y={2178} checked={secondCivil.includes('widow')} />
+
+      <Overlay x={305} y={2252} w={480} h={60} size={6.8} wrap>{principal.presentAddress}</Overlay>
+      <Overlay x={910} y={2252} w={285} h={60} size={6.8}>{principal.presentZip}</Overlay>
+      <Overlay x={1460} y={2252} w={530} h={60} size={6.8} wrap>{second.presentAddress}</Overlay>
+      <Overlay x={2140} y={2252} w={210} h={60} size={6.8}>{second.presentZip}</Overlay>
+      <Overlay x={330} y={2340} w={820} h={35} size={6.8}>{principal.permanentAddress}</Overlay>
+      <Overlay x={1485} y={2340} w={825} h={35} size={6.8}>{second.permanentAddress}</Overlay>
+      <Overlay x={245} y={2389} w={900} h={34} size={6.8}>{principal.mobile}</Overlay>
+      <Overlay x={1400} y={2389} w={900} h={34} size={6.8}>{second.mobile}</Overlay>
+      <Overlay x={440} y={2438} w={705} h={34} size={6.8}>{principal.residencePhone}</Overlay>
+      <Overlay x={1590} y={2438} w={710} h={34} size={6.8}>{second.residencePhone}</Overlay>
+      <Overlay x={260} y={2487} w={880} h={34} size={6.8}>{principal.email}</Overlay>
+      <Overlay x={1410} y={2487} w={890} h={34} size={6.8}>{second.email}</Overlay>
+      <Overlay x={170} y={2536} w={970} h={34} size={6.8}>{principal.tin}</Overlay>
+      <Overlay x={1320} y={2536} w={980} h={34} size={6.8}>{second.tin}</Overlay>
+
+      <Check x={118} y={2728} checked={isEmploymentStatusChecked(principal.employmentStatus, 'private')} />
+      <Check x={548} y={2728} checked={isEmploymentStatusChecked(principal.employmentStatus, 'business')} />
+      <Check x={118} y={2802} checked={isEmploymentStatusChecked(principal.employmentStatus, 'government')} />
+      <Check x={548} y={2802} checked={isEmploymentStatusChecked(principal.employmentStatus, 'professional')} />
+      <Check x={118} y={2876} checked={isEmploymentStatusChecked(principal.employmentStatus, 'ngo')} />
+      <Check x={548} y={2876} checked={isEmploymentStatusChecked(principal.employmentStatus, 'ofw')} />
+      <Check x={1262} y={2728} checked={isEmploymentStatusChecked(second.employmentStatus, 'private')} />
+      <Check x={1690} y={2728} checked={isEmploymentStatusChecked(second.employmentStatus, 'business')} />
+      <Check x={1262} y={2802} checked={isEmploymentStatusChecked(second.employmentStatus, 'government')} />
+      <Check x={1690} y={2802} checked={isEmploymentStatusChecked(second.employmentStatus, 'professional')} />
+      <Check x={1262} y={2876} checked={isEmploymentStatusChecked(second.employmentStatus, 'ngo')} />
+      <Check x={1690} y={2876} checked={isEmploymentStatusChecked(second.employmentStatus, 'ofw')} />
+      <Overlay x={190} y={2917} w={590} h={42} size={6.6}>{getEmploymentStatusOtherText(principal.employmentStatus)}</Overlay>
+      <Overlay x={1335} y={2917} w={590} h={42} size={6.6}>{getEmploymentStatusOtherText(second.employmentStatus)}</Overlay>
+
+      <Overlay x={420} y={2982} w={760} h={34} size={6.8}>{principal.employerName}</Overlay>
+      <Overlay x={1575} y={2982} w={760} h={34} size={6.8}>{second.employerName}</Overlay>
+      <Overlay x={470} y={3038} w={690} h={62} size={6.8} wrap>{principal.employerAddress}</Overlay>
+      <Overlay x={915} y={3082} w={270} h={34} size={6.8}>{principal.employerZip}</Overlay>
+      <Overlay x={1620} y={3038} w={700} h={62} size={6.8} wrap>{second.employerAddress}</Overlay>
+      <Overlay x={2070} y={3082} w={265} h={34} size={6.8}>{second.employerZip}</Overlay>
+      <Overlay x={450} y={3133} w={720} h={34} size={6.8}>{principal.nature}</Overlay>
+      <Overlay x={1600} y={3133} w={730} h={34} size={6.8}>{second.nature}</Overlay>
+      <Overlay x={450} y={3185} w={720} h={34} size={6.8}>{principal.occupation}</Overlay>
+      <Overlay x={1600} y={3185} w={730} h={34} size={6.8}>{second.occupation}</Overlay>
+
+      <Overlay x={245} y={3350} w={640} h={40} size={7.2} align="center">{plainMoney(monthlyIncome)}</Overlay>
+      <Overlay x={960} y={3350} w={650} h={40} size={7.2} align="center">{plainMoney(secondMonthlyIncome)}</Overlay>
+      <Overlay x={1710} y={3350} w={640} h={40} size={7.2} align="center">{plainMoney(totalIncome)}</Overlay>
+
+      <Overlay x={215} y={3742} w={280} h={36} size={6.8}>{sellerLastName || (!sellerFirstName && !sellerMiddleName ? seller : '')}</Overlay>
+      <Overlay x={555} y={3742} w={300} h={36} size={6.8}>{sellerFirstName}</Overlay>
+      <Overlay x={930} y={3742} w={260} h={36} size={6.8}>{sellerMiddleName}</Overlay>
+      <Overlay x={1510} y={3738} w={830} h={36} size={6.8}>{sellerTinNo}</Overlay>
+      <Overlay x={1480} y={3790} w={860} h={36} size={6.8}>{sellerAddress}</Overlay>
     </section>
   )
 }
 
 export default OfferToBuyForm
-

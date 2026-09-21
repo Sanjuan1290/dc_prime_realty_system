@@ -9,10 +9,36 @@ const dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(dirname, '..', '..');
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
 
-test('Offer to Buy print does not stretch the form with a forced blank bottom area', () => {
+test('Offer to Buy print uses the exact Legal-size reference template without legacy stretching', () => {
   const page = read('client/src/components/Lot_Projects/ListingProfileComponents/Printouts/OfferToBuyForm.jsx');
+
   assert.doesNotMatch(page, /min-height:\s*276mm/);
-  assert.match(page, /\.otb-form\s*\{[\s\S]*min-height:\s*0\s*!important;[\s\S]*height:\s*auto\s*!important;/);
+  assert.doesNotMatch(page, /\.otb-form\s*\{/);
+
+  assert.match(
+    page,
+    /const TEMPLATE_URL = '\/forms\/offer-to-buy-individual-apr-2026\.png'/
+  );
+
+  assert.match(
+    page,
+    /@page\s*\{\s*size:\s*8\.5in 14in/
+  );
+
+  assert.match(
+    page,
+    /width:\s*8\.5in/
+  );
+
+  assert.match(
+    page,
+    /height:\s*14in/
+  );
+
+  assert.match(
+    page,
+    /className="otb-template-image"/
+  );
 });
 
 test('Document Notifications exposes a send email action backed by an authenticated route', () => {
