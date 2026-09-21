@@ -13,6 +13,7 @@ test('listing printouts expose one acknowledgement receipt page per verified pay
   const listingProfile = read('client/src/pages/Lot_Projects/ListingProfile.jsx')
   const app = read('client/src/App.jsx')
   const receiptPage = read('client/src/components/Lot_Projects/ListingProfileComponents/Printouts/PaymentAcknowledgementReceiptsPrintPage.jsx')
+  const listingProfileController = read('server/controllers/Lot_Projects/ListingProfile/ListingProfile.controller.js')
 
   assert.match(printouts, /title:\s*'Acknowledgement Receipts'/)
   assert.match(printouts, /path:\s*'acknowledgement-receipts'/)
@@ -25,8 +26,13 @@ test('listing printouts expose one acknowledgement receipt page per verified pay
   assert.match(receiptPage, /ACKNOWLEDGEMENT RECEIPT/)
   assert.match(receiptPage, /REFERENCE NUMBER/)
   assert.match(receiptPage, /amountToWords\(paymentAmount\)/)
+  assert.match(listingProfileController, /SELECT company_address[\s\S]*FROM system_settings/)
+  assert.match(listingProfileController, /companyAddress/)
+  assert.match(receiptPage, /Company Address:/)
+  assert.match(receiptPage, /companyAddress/)
   assert.match(receiptPage, /<p>Broker:<\/p>[\s\S]*&nbsp;[\s\S]*PRC No\. __________________/)
   assert.match(receiptPage, /&nbsp;<\/div>[\s\S]*<p className="mt-2">Witness<\/p>/)
   assert.doesNotMatch(receiptPage, /getBrokerDetails|payment\.verifiedBy/)
 })
+
 

@@ -1,10 +1,86 @@
 import { useMemo, useRef } from 'react'
-import { FiPrinter } from 'react-icons/fi'
+import { FiDownload, FiPrinter } from 'react-icons/fi'
 import { buildCode128Geometry, normalizeEmployeeBarcodeCode, validateCode128BText } from '../../../utils/code128'
 
 const escapeHtml = (value) => String(value || '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[char]))
 
-const Code128Barcode = ({ value, employeeName = '', employeeCode = '', showPrint = true, compact = false }) => {
+const safeFilePart = (value) =>
+  String(value || '')
+    .trim()
+    .replace(/[^a-z0-9_-]+/gi, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80) || 'employee'
+
+export const downloadAttendanceBarcodePng = ({ value, employeeName = '', employeeCode = '' } = {}) => {
+  if (typeof document === 'undefined') return false
+
+  const code = normalizeEmployeeBarcodeCode(value)
+  const validation = validateCode128BText(code)
+  if (!validation.valid) return false
+
+  let geometry
+  try {
+    geometry = buildCode128Geometry(code)
+  } catch {
+    return false
+  }
+
+  const scale = 4
+  const padding = 32
+  const barcodeHeight = 72 * scale
+  const hasName = Boolean(String(employeeName || '').trim())
+  const hasEmployeeCode = Boolean(String(employeeCode || '').trim())
+  const headerHeight = (hasName ? 40 : 0) + (hasEmployeeCode ? 30 : 0) + 18
+  const width = Math.ceil((geometry.moduleWidth * scale) + (padding * 2))
+  const height = Math.ceil(padding + headerHeight + barcodeHeight + 58 + padding)
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const context = canvas.getContext('2d')
+  if (!context) return false
+
+  context.fillStyle = '#ffffff'
+  context.fillRect(0, 0, width, height)
+  context.fillStyle = '#111827'
+  context.textAlign = 'center'
+  context.textBaseline = 'middle'
+
+  let y = padding + 12
+  if (hasName) {
+    context.font = '700 24px Arial, sans-serif'
+    context.fillText(String(employeeName).trim(), width / 2, y + 8)
+    y += 40
+  }
+  if (hasEmployeeCode) {
+    context.font = '700 18px Arial, sans-serif'
+    context.fillText(`Employee Code: ${String(employeeCode).trim()}`, width / 2, y)
+    y += 30
+  }
+
+  const barcodeY = y + 12
+  context.fillStyle = '#000000'
+  geometry.bars.forEach((bar) => {
+    context.fillRect(
+      padding + (bar.x * scale),
+      barcodeY,
+      Math.max(bar.width * scale, 1),
+      barcodeHeight
+    )
+  })
+
+  context.font = '700 22px monospace'
+  context.fillText(code, width / 2, barcodeY + barcodeHeight + 34)
+
+  const download = document.createElement('a')
+  download.href = canvas.toDataURL('image/png')
+  download.download = `attendance-barcode-${safeFilePart(employeeCode || employeeName || code)}.png`
+  document.body.appendChild(download)
+  download.click()
+  download.remove()
+  return true
+}
+
+const Code128Barcode = ({ value, employeeName = '', employeeCode = '', showPrint = true, showDownload = true, compact = false }) => {
   const svgRef = useRef(null)
   const code = normalizeEmployeeBarcodeCode(value)
   const validation = validateCode128BText(code)
@@ -48,10 +124,26 @@ const Code128Barcode = ({ value, employeeName = '', employeeCode = '', showPrint
           <text x={geometry.moduleWidth / 2} y={textY} textAnchor="middle" fontFamily="monospace" fontSize={compact ? 10 : 12} fontWeight="700" fill="black">{code}</text>
         </svg>
       </div>
-      {showPrint ? <button type="button" onClick={printBarcode} className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 hover:bg-slate-50"><FiPrinter />Print Attendance Barcode</button> : null}
+      {showPrint || showDownload ? (
+        <div className={`mt-3 grid gap-2 ${showPrint && showDownload ? 'sm:grid-cols-2' : ''}`}>
+          {showDownload ? (
+            <button
+              type="button"
+              onClick={() => downloadAttendanceBarcodePng({ value: code, employeeName, employeeCode })}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 text-sm font-black text-blue-700 hover:bg-blue-100"
+            >
+              <FiDownload />Download Attendance Barcode
+            </button>
+          ) : null}
+          {showPrint ? (
+            <button type="button" onClick={printBarcode} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 hover:bg-slate-50"><FiPrinter />Print Attendance Barcode</button>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   )
 }
 
 export default Code128Barcode
+
 

@@ -186,6 +186,10 @@ const AcknowledgementReceiptPage = ({
       getValue(listing, ['project_location', 'location'], ''),
     '-'
   )
+  const companyAddress = cleanDisplay(
+    getValue(project, ['companyAddress', 'company_address'], ''),
+    ''
+  )
   const lotArea = cleanMoney(
     getValue(listing, ['lotAreaSqm', 'area', 'lot_project_listing_area_sqm'], 0)
   )
@@ -319,6 +323,9 @@ const AcknowledgementReceiptPage = ({
           <p className="mt-6">Unit ID: {unitId}</p>
           <p className="mt-5">{formatLongDate(paymentDate)}</p>
           <p className="mt-5">{projectLocation}</p>
+          {companyAddress ? (
+            <p className="mt-2 whitespace-pre-line">Company Address: {companyAddress}</p>
+          ) : null}
         </div>
       </div>
     </section>
@@ -386,4 +393,5 @@ const PaymentAcknowledgementReceiptsPrintPage = () => {
 }
 
 export default PaymentAcknowledgementReceiptsPrintPage
+
 

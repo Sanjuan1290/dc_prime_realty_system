@@ -800,6 +800,18 @@ export const getLotProjectListingProfile = async (req, res) => {
     );
     const cadastralLots = await getProjectCadastralLots(project.lot_project_id);
     const defaultDocuments = await getProjectDefaultDocuments(project.lot_project_id);
+    let companyAddress = '';
+    if (await tableExists(connection, 'system_settings')) {
+      const [companyRows] = await connection.query(
+        `
+          SELECT company_address
+          FROM system_settings
+          WHERE system_setting_id = 1
+          LIMIT 1
+        `
+      );
+      companyAddress = String(companyRows[0]?.company_address || '').trim();
+    }
     let buyerForm = { currentLink: null, latestSubmission: null, pendingSubmission: null };
     try {
       buyerForm = await readBuyerFormStateForProfile(connection, row.lot_project_listing_id, row.lot_project_account_id);
@@ -894,6 +906,7 @@ export const getLotProjectListingProfile = async (req, res) => {
           location: project.lot_project_location,
           locationCode: project.lot_project_location_code,
           administrator: project.lot_project_administrator_name,
+          companyAddress,
           cadastralLots,
           defaultDocuments,
         },
@@ -1621,4 +1634,5 @@ export const unholdLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
+
 

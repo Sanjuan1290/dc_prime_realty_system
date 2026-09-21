@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { FiEdit2, FiPlus, FiRefreshCw, FiSearch, FiUsers } from 'react-icons/fi'
+import { FiDownload, FiEdit2, FiPlus, FiRefreshCw, FiSearch, FiUsers } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
 import ConfirmActionModal from '../../components/Shared/ConfirmActionModal'
 import EmployeeModal from '../../components/System/employeeComponents/EmployeeModal'
+import { downloadAttendanceBarcodePng } from '../../components/System/employeeComponents/Code128Barcode'
 import useCurrentUser from '../../utils/useCurrentUser'
 import { useFetch, useFetchPatch } from '../../utils/useFetch'
 import { PERMISSIONS, hasPermission } from '../../config/permissions'
@@ -87,7 +88,7 @@ const Employees = () => {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-[1220px] w-full text-sm">
+          <table className="min-w-[1360px] w-full text-sm">
             <thead className="border-b border-slate-200 bg-slate-50"><tr>{['Employee', 'Employee Code', 'Attendance Barcode', 'Department', 'Employment Type', 'Rest Days', 'Status', 'Actions'].map((head) => <th key={head} className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">{head}</th>)}</tr></thead>
             <tbody className="divide-y divide-slate-100">
               {employeesQuery.isLoading ? <tr><td colSpan={8} className="px-6 py-16 text-center font-semibold text-slate-500">Loading employees...</td></tr> : null}
@@ -100,7 +101,25 @@ const Employees = () => {
                 <td className="px-4 py-4 text-slate-600">{typeLabel(employee.employment_type)}</td>
                 <td className="px-4 py-4"><span className={`inline-flex rounded-full px-3 py-1 text-xs font-black ring-1 ${employee.rest_days?.length ? 'bg-blue-50 text-blue-700 ring-blue-200' : 'bg-amber-50 text-amber-700 ring-amber-200'}`}>{restDayLabel(employee.rest_days)}</span></td>
                 <td className="px-4 py-4"><span className={`inline-flex rounded-full px-3 py-1 text-xs font-black capitalize ring-1 ${statusTone[employee.employee_status] || statusTone.inactive}`}>{employee.employee_status}</span></td>
-                <td className="px-4 py-4">{canManage ? <div className="flex gap-2"><button type="button" onClick={() => openEdit(employee)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-700"><FiEdit2 />Edit</button><button type="button" onClick={() => { setConfirmEmployee(employee); setStatusNotice(null) }} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700">{employee.employee_status === 'active' ? 'Deactivate' : 'Activate'}</button></div> : <span className="text-xs font-semibold text-slate-400">View only</span>}</td>
+                <td className="px-4 py-4">
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => downloadAttendanceBarcodePng({ value: employee.barcode_code, employeeName: employee.full_name, employeeCode: employee.employee_code })}
+                      disabled={!employee.barcode_code}
+                      title={employee.barcode_code ? 'Download this employee’s Attendance Barcode as a PNG image.' : 'Attendance Barcode is not available.'}
+                      className="inline-flex h-9 items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-xs font-black text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
+                    >
+                      <FiDownload />Barcode
+                    </button>
+                    {canManage ? (
+                      <>
+                        <button type="button" onClick={() => openEdit(employee)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-700"><FiEdit2 />Edit</button>
+                        <button type="button" onClick={() => { setConfirmEmployee(employee); setStatusNotice(null) }} className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700">{employee.employee_status === 'active' ? 'Deactivate' : 'Activate'}</button>
+                      </>
+                    ) : null}
+                  </div>
+                </td>
               </tr>)}
             </tbody>
           </table>
@@ -137,5 +156,6 @@ const Employees = () => {
 }
 
 export default Employees
+
 
 
