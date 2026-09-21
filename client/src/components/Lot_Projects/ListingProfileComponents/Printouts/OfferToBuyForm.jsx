@@ -240,101 +240,101 @@ const OfferToBuyForm = ({ listing = {}, client = {}, soaRows = [] }) => {
       {/* Exact April 2026 reference form lines are supplied by the template image above.
           The elements below only place reservation data into the blank areas. */}
 
-      <Check x={355} y={405} checked={buyerType === 'single'} />
-      <Check x={590} y={405} checked={buyerType === 'spouses'} />
-      <Check x={842} y={405} checked={buyerType === 'and_account'} />
-      <Overlay x={1410} y={414} w={470} h={38} size={7.5}>{seller}</Overlay>
-      <Overlay x={2175} y={414} w={260} h={38} size={7.5}>{dateReceived}</Overlay>
+      <Check x={366} y={480} checked={buyerType === 'single'} />
+      <Check x={601} y={479} checked={buyerType === 'spouses'} />
+      <Check x={844} y={479} checked={buyerType === 'and_account'} />
+      <Overlay x={1395} y={483} w={480} h={44} size={6.7}>{seller}</Overlay>
+      <Overlay x={2185} y={483} w={250} h={44} size={6.7}>{dateReceived}</Overlay>
 
-      <Overlay x={310} y={668} w={2020} h={52} size={8}>{valueFrom(listing, ['project_location', 'location'], '')}</Overlay>
-      <Overlay x={315} y={753} w={205} h={42} size={6.8}>{valueFrom(listing, ['property_type', 'propertyType'], 'Lot')}</Overlay>
-      <Overlay x={720} y={753} w={250} h={42} size={6.8}>{valueFrom(listing, ['lotAreaSqm', 'lot_area_sqm', 'area'], '')}</Overlay>
-      <Overlay x={1085} y={753} w={250} h={42} size={6.8}>{valueFrom(listing, ['classification', 'lotType', 'lot_type'], '')}</Overlay>
-      <Overlay x={1810} y={753} w={545} h={42} size={6.5}>{valueFrom(listing, ['description', 'improvements'], valueFrom(listing, ['unit_id', 'unitCode'], '') ? `Unit ${valueFrom(listing, ['unit_id', 'unitCode'], '')}` : '')}</Overlay>
+      <Overlay x={270} y={670} w={2050} h={48} size={7}>{valueFrom(listing, ['project_location', 'location'], '')}</Overlay>
+      <Overlay x={250} y={755} w={250} h={40} size={6.2}>{valueFrom(listing, ['property_type', 'propertyType'], 'Lot')}</Overlay>
+      <Overlay x={790} y={755} w={95} h={40} size={6.2}>{valueFrom(listing, ['lotAreaSqm', 'lot_area_sqm', 'area'], '')}</Overlay>
+      <Overlay x={1110} y={755} w={110} h={40} size={6.2}>{valueFrom(listing, ['classification', 'lotType', 'lot_type'], '')}</Overlay>
+      <Overlay x={1700} y={755} w={630} h={40} size={6.2}>{valueFrom(listing, ['description', 'improvements'], valueFrom(listing, ['unit_id', 'unitCode'], '') ? `Unit ${valueFrom(listing, ['unit_id', 'unitCode'], '')}` : '')}</Overlay>
 
       <Check x={104} y={946} checked={isCash} />
       <Check x={1260} y={946} checked={isInstallment} />
-      <Overlay x={675} y={1080} w={500} h={35} size={7.3}>{isCash ? plainMoney(tcp) : ''}</Overlay>
-      <Overlay x={1840} y={1080} w={500} h={35} size={7.3}>{isInstallment ? plainMoney(tcp) : ''}</Overlay>
-      <Overlay x={545} y={1135} w={620} h={62} size={7.3}>{isCash ? plainMoney(reservationFee) : ''}</Overlay>
-      <Overlay x={1650} y={1135} w={690} h={62} size={7.3}>{isInstallment ? plainMoney(reservationFee) : ''}</Overlay>
-      <Overlay x={545} y={1237} w={620} h={52} size={7.3}>{isCash ? plainMoney(Math.max(tcp - reservationFee, 0)) : ''}</Overlay>
-      <Overlay x={1650} y={1237} w={690} h={52} size={7.3}>{isInstallment ? plainMoney(downpayment) : ''}</Overlay>
-      <Overlay x={1650} y={1335} w={690} h={52} size={7.3}>{isInstallment ? plainMoney(balance) : ''}</Overlay>
-      <Overlay x={1650} y={1430} w={690} h={62} size={7.3}>{isInstallment && monthlyTerms > 0 ? `${monthlyTerms} months` : ''}</Overlay>
-      <Overlay x={1650} y={1535} w={690} h={52} size={7.3}>{isInstallment ? interestRate : ''}</Overlay>
-      <Overlay x={1800} y={1630} w={535} h={52} size={7.3}>{isInstallment ? plainMoney(monthly) : ''}</Overlay>
+      <Overlay x={620} y={1080} w={545} h={35} size={6.5}>{isCash ? plainMoney(tcp) : ''}</Overlay>
+      <Overlay x={1730} y={1080} w={600} h={35} size={6.5}>{isInstallment ? plainMoney(tcp) : ''}</Overlay>
+      <Overlay x={555} y={1135} w={610} h={48} size={6.5}>{isCash ? plainMoney(reservationFee) : ''}</Overlay>
+      <Overlay x={1650} y={1135} w={690} h={48} size={6.5}>{isInstallment ? plainMoney(reservationFee) : ''}</Overlay>
+      <Overlay x={555} y={1237} w={610} h={45} size={6.5}>{isCash ? plainMoney(Math.max(tcp - reservationFee, 0)) : ''}</Overlay>
+      <Overlay x={1650} y={1237} w={690} h={45} size={6.5}>{isInstallment ? plainMoney(downpayment) : ''}</Overlay>
+      <Overlay x={1650} y={1335} w={690} h={45} size={6.5}>{isInstallment ? plainMoney(balance) : ''}</Overlay>
+      <Overlay x={1650} y={1430} w={690} h={48} size={6.5}>{isInstallment && monthlyTerms > 0 ? `${monthlyTerms} months` : ''}</Overlay>
+      <Overlay x={1650} y={1535} w={690} h={45} size={6.5}>{isInstallment ? interestRate : ''}</Overlay>
+      <Overlay x={1765} y={1630} w={570} h={45} size={6.5}>{isInstallment ? plainMoney(monthly) : ''}</Overlay>
 
-      <Overlay x={345} y={1785} w={800} h={68} size={7.2}>{principal.name}</Overlay>
-      <Overlay x={1510} y={1785} w={805} h={68} size={7.2}>{second.name}</Overlay>
-      <Overlay x={285} y={1882} w={230} h={38} size={6.9}>{principal.birthDate}</Overlay>
-      <Overlay x={730} y={1882} w={430} h={38} size={6.9}>{principal.placeOfBirth}</Overlay>
-      <Overlay x={1450} y={1882} w={240} h={38} size={6.9}>{second.birthDate}</Overlay>
-      <Overlay x={1900} y={1882} w={430} h={38} size={6.9}>{second.placeOfBirth}</Overlay>
-      <Overlay x={285} y={1943} w={470} h={38} size={6.9}>{principal.citizenship}</Overlay>
-      <Overlay x={900} y={1943} w={240} h={38} size={6.9}>{principal.gender}</Overlay>
-      <Overlay x={1450} y={1943} w={470} h={38} size={6.9}>{second.citizenship}</Overlay>
-      <Overlay x={2140} y={1943} w={190} h={38} size={6.9}>{second.gender}</Overlay>
+      <Overlay x={80} y={1820} w={1080} h={42} size={6.1}>{principal.name}</Overlay>
+      <Overlay x={1240} y={1820} w={1080} h={42} size={6.1}>{second.name}</Overlay>
+      <Overlay x={250} y={1882} w={205} h={36} size={6}>{principal.birthDate}</Overlay>
+      <Overlay x={720} y={1882} w={420} h={36} size={6}>{principal.placeOfBirth}</Overlay>
+      <Overlay x={1410} y={1882} w={245} h={36} size={6}>{second.birthDate}</Overlay>
+      <Overlay x={1875} y={1882} w={440} h={36} size={6}>{second.placeOfBirth}</Overlay>
+      <Overlay x={190} y={1943} w={430} h={36} size={6}>{principal.citizenship}</Overlay>
+      <Overlay x={950} y={1943} w={185} h={36} size={6}>{principal.gender}</Overlay>
+      <Overlay x={1410} y={1943} w={430} h={36} size={6}>{second.citizenship}</Overlay>
+      <Overlay x={2190} y={1943} w={140} h={36} size={6}>{second.gender}</Overlay>
 
-      <Check x={126} y={2100} checked={principalCivil === 'single' || principalCivil === 'married'} />
-      <Check x={705} y={2100} checked={principalCivil.includes('separated')} />
-      <Check x={126} y={2178} checked={principalCivil.includes('annulled') || principalCivil.includes('divorced')} />
-      <Check x={705} y={2178} checked={principalCivil.includes('widow')} />
-      <Check x={1268} y={2100} checked={secondCivil === 'single' || secondCivil === 'married'} />
-      <Check x={1858} y={2100} checked={secondCivil.includes('separated')} />
-      <Check x={1268} y={2178} checked={secondCivil.includes('annulled') || secondCivil.includes('divorced')} />
-      <Check x={1858} y={2178} checked={secondCivil.includes('widow')} />
+      <Check x={128} y={2090} checked={principalCivil === 'single' || principalCivil === 'married'} />
+      <Check x={729} y={2090} checked={principalCivil.includes('separated')} />
+      <Check x={128} y={2145} checked={principalCivil.includes('annulled') || principalCivil.includes('divorced')} />
+      <Check x={729} y={2145} checked={principalCivil.includes('widow')} />
+      <Check x={1286} y={2090} checked={secondCivil === 'single' || secondCivil === 'married'} />
+      <Check x={1889} y={2090} checked={secondCivil.includes('separated')} />
+      <Check x={1286} y={2145} checked={secondCivil.includes('annulled') || secondCivil.includes('divorced')} />
+      <Check x={1889} y={2145} checked={secondCivil.includes('widow')} />
 
-      <Overlay x={305} y={2252} w={480} h={60} size={6.8} wrap>{principal.presentAddress}</Overlay>
-      <Overlay x={910} y={2252} w={285} h={60} size={6.8}>{principal.presentZip}</Overlay>
-      <Overlay x={1460} y={2252} w={530} h={60} size={6.8} wrap>{second.presentAddress}</Overlay>
-      <Overlay x={2140} y={2252} w={210} h={60} size={6.8}>{second.presentZip}</Overlay>
-      <Overlay x={330} y={2340} w={820} h={35} size={6.8}>{principal.permanentAddress}</Overlay>
-      <Overlay x={1485} y={2340} w={825} h={35} size={6.8}>{second.permanentAddress}</Overlay>
-      <Overlay x={245} y={2389} w={900} h={34} size={6.8}>{principal.mobile}</Overlay>
-      <Overlay x={1400} y={2389} w={900} h={34} size={6.8}>{second.mobile}</Overlay>
-      <Overlay x={440} y={2438} w={705} h={34} size={6.8}>{principal.residencePhone}</Overlay>
-      <Overlay x={1590} y={2438} w={710} h={34} size={6.8}>{second.residencePhone}</Overlay>
-      <Overlay x={260} y={2487} w={880} h={34} size={6.8}>{principal.email}</Overlay>
-      <Overlay x={1410} y={2487} w={890} h={34} size={6.8}>{second.email}</Overlay>
-      <Overlay x={170} y={2536} w={970} h={34} size={6.8}>{principal.tin}</Overlay>
-      <Overlay x={1320} y={2536} w={980} h={34} size={6.8}>{second.tin}</Overlay>
+      <Overlay x={80} y={2250} w={730} h={65} size={6} wrap>{principal.presentAddress}</Overlay>
+      <Overlay x={990} y={2250} w={205} h={45} size={6}>{principal.presentZip}</Overlay>
+      <Overlay x={1240} y={2250} w={730} h={65} size={6} wrap>{second.presentAddress}</Overlay>
+      <Overlay x={2190} y={2250} w={145} h={45} size={6}>{second.presentZip}</Overlay>
+      <Overlay x={300} y={2340} w={830} h={34} size={6}>{principal.permanentAddress}</Overlay>
+      <Overlay x={1485} y={2340} w={825} h={34} size={6}>{second.permanentAddress}</Overlay>
+      <Overlay x={200} y={2390} w={930} h={32} size={6}>{principal.mobile}</Overlay>
+      <Overlay x={1370} y={2390} w={930} h={32} size={6}>{second.mobile}</Overlay>
+      <Overlay x={330} y={2438} w={800} h={32} size={6}>{principal.residencePhone}</Overlay>
+      <Overlay x={1570} y={2438} w={730} h={32} size={6}>{second.residencePhone}</Overlay>
+      <Overlay x={190} y={2487} w={940} h={32} size={6}>{principal.email}</Overlay>
+      <Overlay x={1390} y={2487} w={910} h={32} size={6}>{second.email}</Overlay>
+      <Overlay x={120} y={2536} w={1010} h={32} size={6}>{principal.tin}</Overlay>
+      <Overlay x={1300} y={2536} w={1000} h={32} size={6}>{second.tin}</Overlay>
 
-      <Check x={118} y={2728} checked={isEmploymentStatusChecked(principal.employmentStatus, 'private')} />
-      <Check x={548} y={2728} checked={isEmploymentStatusChecked(principal.employmentStatus, 'business')} />
-      <Check x={118} y={2802} checked={isEmploymentStatusChecked(principal.employmentStatus, 'government')} />
-      <Check x={548} y={2802} checked={isEmploymentStatusChecked(principal.employmentStatus, 'professional')} />
-      <Check x={118} y={2876} checked={isEmploymentStatusChecked(principal.employmentStatus, 'ngo')} />
-      <Check x={548} y={2876} checked={isEmploymentStatusChecked(principal.employmentStatus, 'ofw')} />
-      <Check x={1262} y={2728} checked={isEmploymentStatusChecked(second.employmentStatus, 'private')} />
-      <Check x={1690} y={2728} checked={isEmploymentStatusChecked(second.employmentStatus, 'business')} />
-      <Check x={1262} y={2802} checked={isEmploymentStatusChecked(second.employmentStatus, 'government')} />
-      <Check x={1690} y={2802} checked={isEmploymentStatusChecked(second.employmentStatus, 'professional')} />
-      <Check x={1262} y={2876} checked={isEmploymentStatusChecked(second.employmentStatus, 'ngo')} />
-      <Check x={1690} y={2876} checked={isEmploymentStatusChecked(second.employmentStatus, 'ofw')} />
-      <Overlay x={190} y={2917} w={590} h={42} size={6.6}>{getEmploymentStatusOtherText(principal.employmentStatus)}</Overlay>
-      <Overlay x={1335} y={2917} w={590} h={42} size={6.6}>{getEmploymentStatusOtherText(second.employmentStatus)}</Overlay>
+      <Check x={119} y={2710} checked={isEmploymentStatusChecked(principal.employmentStatus, 'private')} />
+      <Check x={562} y={2725} checked={isEmploymentStatusChecked(principal.employmentStatus, 'business')} />
+      <Check x={119} y={2777} checked={isEmploymentStatusChecked(principal.employmentStatus, 'government')} />
+      <Check x={568} y={2786} checked={isEmploymentStatusChecked(principal.employmentStatus, 'professional')} />
+      <Check x={119} y={2845} checked={isEmploymentStatusChecked(principal.employmentStatus, 'ngo')} />
+      <Check x={566} y={2845} checked={isEmploymentStatusChecked(principal.employmentStatus, 'ofw')} />
+      <Check x={1277} y={2706} checked={isEmploymentStatusChecked(second.employmentStatus, 'private')} />
+      <Check x={1765} y={2714} checked={isEmploymentStatusChecked(second.employmentStatus, 'business')} />
+      <Check x={1277} y={2770} checked={isEmploymentStatusChecked(second.employmentStatus, 'government')} />
+      <Check x={1764} y={2775} checked={isEmploymentStatusChecked(second.employmentStatus, 'professional')} />
+      <Check x={1277} y={2831} checked={isEmploymentStatusChecked(second.employmentStatus, 'ngo')} />
+      <Check x={1763} y={2840} checked={isEmploymentStatusChecked(second.employmentStatus, 'ofw')} />
+      <Overlay x={190} y={2890} w={590} h={36} size={5.9}>{getEmploymentStatusOtherText(principal.employmentStatus)}</Overlay>
+      <Overlay x={1335} y={2890} w={590} h={36} size={5.9}>{getEmploymentStatusOtherText(second.employmentStatus)}</Overlay>
 
-      <Overlay x={420} y={2982} w={760} h={34} size={6.8}>{principal.employerName}</Overlay>
-      <Overlay x={1575} y={2982} w={760} h={34} size={6.8}>{second.employerName}</Overlay>
-      <Overlay x={470} y={3038} w={690} h={62} size={6.8} wrap>{principal.employerAddress}</Overlay>
-      <Overlay x={915} y={3082} w={270} h={34} size={6.8}>{principal.employerZip}</Overlay>
-      <Overlay x={1620} y={3038} w={700} h={62} size={6.8} wrap>{second.employerAddress}</Overlay>
-      <Overlay x={2070} y={3082} w={265} h={34} size={6.8}>{second.employerZip}</Overlay>
-      <Overlay x={450} y={3133} w={720} h={34} size={6.8}>{principal.nature}</Overlay>
-      <Overlay x={1600} y={3133} w={730} h={34} size={6.8}>{second.nature}</Overlay>
-      <Overlay x={450} y={3185} w={720} h={34} size={6.8}>{principal.occupation}</Overlay>
-      <Overlay x={1600} y={3185} w={730} h={34} size={6.8}>{second.occupation}</Overlay>
+      <Overlay x={490} y={2930} w={680} h={32} size={6}>{principal.employerName}</Overlay>
+      <Overlay x={1640} y={2930} w={680} h={32} size={6}>{second.employerName}</Overlay>
+      <Overlay x={80} y={3040} w={730} h={60} size={6} wrap>{principal.employerAddress}</Overlay>
+      <Overlay x={990} y={3040} w={205} h={36} size={6}>{principal.employerZip}</Overlay>
+      <Overlay x={1240} y={3040} w={730} h={60} size={6} wrap>{second.employerAddress}</Overlay>
+      <Overlay x={2190} y={3040} w={145} h={36} size={6}>{second.employerZip}</Overlay>
+      <Overlay x={400} y={3133} w={760} h={32} size={6}>{principal.nature}</Overlay>
+      <Overlay x={1550} y={3133} w={770} h={32} size={6}>{second.nature}</Overlay>
+      <Overlay x={400} y={3185} w={760} h={32} size={6}>{principal.occupation}</Overlay>
+      <Overlay x={1550} y={3185} w={770} h={32} size={6}>{second.occupation}</Overlay>
 
-      <Overlay x={245} y={3350} w={640} h={40} size={7.2} align="center">{plainMoney(monthlyIncome)}</Overlay>
-      <Overlay x={960} y={3350} w={650} h={40} size={7.2} align="center">{plainMoney(secondMonthlyIncome)}</Overlay>
-      <Overlay x={1710} y={3350} w={640} h={40} size={7.2} align="center">{plainMoney(totalIncome)}</Overlay>
+      <Overlay x={80} y={3370} w={770} h={38} size={6.4} align="center">{plainMoney(monthlyIncome)}</Overlay>
+      <Overlay x={850} y={3370} w={770} h={38} size={6.4} align="center">{plainMoney(secondMonthlyIncome)}</Overlay>
+      <Overlay x={1620} y={3370} w={780} h={38} size={6.4} align="center">{plainMoney(totalIncome)}</Overlay>
 
-      <Overlay x={215} y={3742} w={280} h={36} size={6.8}>{sellerLastName || (!sellerFirstName && !sellerMiddleName ? seller : '')}</Overlay>
-      <Overlay x={555} y={3742} w={300} h={36} size={6.8}>{sellerFirstName}</Overlay>
-      <Overlay x={930} y={3742} w={260} h={36} size={6.8}>{sellerMiddleName}</Overlay>
-      <Overlay x={1510} y={3738} w={830} h={36} size={6.8}>{sellerTinNo}</Overlay>
-      <Overlay x={1480} y={3790} w={860} h={36} size={6.8}>{sellerAddress}</Overlay>
+      <Overlay x={210} y={3745} w={280} h={34} size={6}>{sellerLastName || (!sellerFirstName && !sellerMiddleName ? seller : '')}</Overlay>
+      <Overlay x={630} y={3745} w={300} h={34} size={6}>{sellerFirstName}</Overlay>
+      <Overlay x={975} y={3745} w={250} h={34} size={6}>{sellerMiddleName}</Overlay>
+      <Overlay x={1455} y={3745} w={850} h={34} size={6}>{sellerTinNo}</Overlay>
+      <Overlay x={1395} y={3830} w={920} h={34} size={6}>{sellerAddress}</Overlay>
     </section>
   )
 }
