@@ -9,38 +9,18 @@ const dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(dirname, '..', '..');
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
 
-test('Offer to Buy print uses the exact Legal-size reference template without legacy stretching', () => {
+test('Offer to Buy print uses Legal paper and vector reference geometry', () => {
   const page = read('client/src/components/Lot_Projects/ListingProfileComponents/Printouts/OfferToBuyForm.jsx');
+  const shell = read('client/src/components/Lot_Projects/ListingProfileComponents/Printouts/PrintPageShell.jsx');
 
   assert.doesNotMatch(page, /min-height:\s*276mm/);
-  assert.doesNotMatch(page, /\.otb-form\s*\{/);
-
-  assert.match(
-    page,
-    /const TEMPLATE_URL = '\/forms\/offer-to-buy-individual-apr-2026\.png'/
-  );
-
-  assert.match(
-    page,
-    /@page\s*\{\s*size:\s*8\.5in 14in/
-  );
-
-  assert.match(
-    page,
-    /width:\s*8\.5in/
-  );
-
-  assert.match(
-    page,
-    /height:\s*14in/
-  );
-
-  assert.match(
-    page,
-    /className="otb-template-image"/
-  );
+  assert.doesNotMatch(page, /TEMPLATE_URL/);
+  assert.doesNotMatch(page, /otb-template-image/);
+  assert.match(page, /viewBox="0 0 612 1008"/);
+  assert.match(page, /@page otb\s*\{[\s\S]*size:\s*legal portrait/);
+  assert.match(page, /\.otb-page\s*\{[\s\S]*width:\s*8\.5in;[\s\S]*height:\s*14in;/);
+  assert.match(shell, /pageSize === 'legal' \? 'legal portrait'/);
 });
-
 test('Document Notifications exposes a send email action backed by an authenticated route', () => {
   const page = read('client/src/pages/System/Notifications.jsx');
   const router = read('server/routers/System/notifications.routers.js');
@@ -119,4 +99,3 @@ test('Missing-document numbering continues across both PDF columns', () => {
   assert.match(pdfText, /\(8\.\) Tj/);
   assert.match(pdfText, /\(14\.\) Tj/);
 });
-

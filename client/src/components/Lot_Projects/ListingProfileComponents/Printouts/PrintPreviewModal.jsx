@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { FiDownload, FiLoader, FiPrinter, FiX } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
-import { downloadElementAsPdf, printWithTemporaryBlankTitle, sanitizePdfFileName } from './pdfExportUtils'
+import { downloadElementAsPdf, openElementInPdfPrintWindow, sanitizePdfFileName } from './pdfExportUtils'
 import OfferToBuyForm from './OfferToBuyForm'
 
 const money = (value) =>
@@ -276,8 +276,25 @@ const PrintPreviewModal = ({
   const previewContentRef = useRef(null)
   const [pdfNotice, setPdfNotice] = useState(null)
 
-  const handlePrint = () => {
-    printWithTemporaryBlankTitle()
+  const handlePrint = async () => {
+    if (!previewContentRef.current) return
+
+    setPdfNotice({ type: 'loading', message: 'Opening clean print window...' })
+
+    try {
+      const unitLabel = getValue(listing, ['unit_id', 'unitCode', 'unitNo'], '')
+      await openElementInPdfPrintWindow(previewContentRef.current, {
+        filename: sanitizePdfFileName(`${title || 'printout'}${unitLabel ? `-${unitLabel}` : ''}`),
+      })
+      setPdfNotice({ type: 'success', message: type === 'offer'
+        ? 'Print window opened. Select Legal (8.5 × 14 in), 100% / Actual size, and Margins: None.'
+        : 'Print window opened.' })
+    } catch (error) {
+      setPdfNotice({
+        type: 'error',
+        message: error?.message || 'Failed to open the print window.',
+      })
+    }
   }
 
   const handleDownloadPdf = async () => {
@@ -305,7 +322,7 @@ const PrintPreviewModal = ({
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/60 p-4">
       <style>{`
         @page {
-          size: ${type === 'offer' ? '8.5in 14in' : 'A4 portrait'};
+          size: ${type === 'offer' ? 'legal portrait' : 'A4 portrait'};
           margin: 0 !important;
         }
 

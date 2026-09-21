@@ -129,7 +129,7 @@ const createPdfPrintStyles = ({ pageSize = 'A4 portrait' } = {}) => `
 const buildPrintableHtml = (element, options = {}) => {
   const clonedElement = element.cloneNode(true)
   const containsOfferToBuy = Boolean(element?.matches?.('.otb-page') || element?.querySelector?.('.otb-page'))
-  const printPageSize = containsOfferToBuy ? '8.5in 14in' : 'A4 portrait'
+  const printPageSize = containsOfferToBuy ? 'legal portrait' : 'A4 portrait'
   clonedElement.classList.add('pdf-print-root')
 
   // Do not copy action bars, modal chrome, or status banners into the PDF print window.

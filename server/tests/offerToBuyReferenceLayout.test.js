@@ -23,38 +23,59 @@ test('Offer to Buy print and modal preview use one shared reference-form compone
   assert.match(preview, /<OfferToBuyForm listing=\{listing\} client=\{client\} soaRows=\{soaRows\}/);
 });
 
-test('Offer to Buy shared form is a coordinate-exact copy of the supplied April 2026 Legal-size reference', () => {
+test('Offer to Buy shared form keeps the supplied April 2026 vector reference geometry on Legal paper', () => {
   const form = read('client/src/components/Lot_Projects/ListingProfileComponents/Printouts/OfferToBuyForm.jsx');
 
-  // Printed labels, spelled exactly as they appear in the reference PDF
-  // (including its lower-case "s" in BUYER/s and "of" in SIGNATURES of BUYER/S).
-  for (const label of [
-    "Offer To Buy & Buyer\\'s Profile",
-    'Real Estate Sales – For Individual',
-    'PROPERTY DESCRIPTION',
-    'OFFER TERMS AND CONDITIONS',
-    'INSTALLMENT/In-house Financing',
-    'INDIVIDUAL BUYER/s INFORMATION',
-    'Work/Business Information',
-    'INCOME DETAILS (MONTHLY)',
-    'SIGNATURES of BUYER/S',
-    'SALES AGENT:',
-    'OTB (Individual) – Revised April 2026',
-    '(With Business)',
-    '(Professional)',
-    'OFW/immigrant',
-    'Permanent Address:',
+  for (const pattern of [
+    /Offer To Buy & Buyer\\'s Profile/,
+    /Real Estate Sales – For Individual/,
+    /PROPERTY DESCRIPTION/,
+    /OFFER TERMS AND CONDITIONS/,
+    /INSTALLMENT\/In-house Financing/,
+    /INDIVIDUAL BUYER\/s INFORMATION/,
+    /Work\/Business Information/,
+    /INCOME DETAILS \(MONTHLY\)/,
+    /SIGNATURES of BUYER\/S/,
+    /SALES AGENT:/,
+    /OTB \(Individual\) – Revised April 2026/,
+    /\(With Business\)/,
+    /\(Professional\)/,
+    /OFW\/immigrant/,
+    /Permanent Address:/,
   ]) {
-    assert.ok(form.includes(label), `missing printed label: ${label}`);
+    assert.match(form, pattern);
   }
 
-  // The reference is 8.5in x 14in (612pt x 1008pt), not A4.
+  // Legal / long bond is an exact 8.5in x 14in page.
+  assert.match(form, /@page otb\s*\{[\s\S]*size:\s*legal portrait/);
+  assert.match(form, /\.otb-page\s*\{[\s\S]*width:\s*8\.5in;[\s\S]*height:\s*14in;/);
   assert.match(form, /viewBox="0 0 612 1008"/);
-  assert.match(form, /size: 8\.5in 14in/);
-  assert.match(form, /@page otb/);
+  assert.match(form, /data-print-page-size="8\.5in 14in"/);
 
-  // The reference has no separate permanent zip cell, so the zip is appended to the address.
+  // The form remains vector-based: the rules/text are recreated, not a raster background image.
+  assert.match(form, /const H_LINES = \[/);
+  assert.match(form, /const V_LINES = \[/);
+  assert.match(form, /const TEXT_RUNS = \[/);
+  assert.match(form, /const BUYER_CELLS = \[/);
+  assert.match(form, /const ValLines =/);
+  assert.doesNotMatch(form, /TEMPLATE_URL/);
+  assert.doesNotMatch(form, /otb-template-image/);
+
+  // The reference has no separate permanent zip cell; saved zip is appended to the address.
   assert.match(form, /PermanentZipCode/);
+});
+
+test('Offer to Buy uses Legal paper in every browser print path', () => {
+  const form = read('client/src/components/Lot_Projects/ListingProfileComponents/Printouts/OfferToBuyForm.jsx');
+  const shell = read('client/src/components/Lot_Projects/ListingProfileComponents/Printouts/PrintPageShell.jsx');
+  const preview = read('client/src/components/Lot_Projects/ListingProfileComponents/Printouts/PrintPreviewModal.jsx');
+  const pdfUtils = read('client/src/components/Lot_Projects/ListingProfileComponents/Printouts/pdfExportUtils.js');
+
+  assert.match(form, /size:\s*legal portrait/);
+  assert.match(shell, /pageSize === 'legal' \? 'legal portrait'/);
+  assert.match(preview, /type === 'offer' \? 'legal portrait' : 'A4 portrait'/);
+  assert.match(pdfUtils, /containsOfferToBuy \? 'legal portrait' : 'A4 portrait'/);
+  assert.match(preview, /openElementInPdfPrintWindow\(previewContentRef\.current/);
 });
 
 test('predefined employment statuses check one box and leave Other blank', () => {
@@ -77,7 +98,6 @@ test('unlisted employment statuses appear only on the Other line', () => {
   assert.equal(getEmploymentStatusOtherText('Unemployed'), 'Unemployed');
   assert.equal(getEmploymentStatusOtherText('Other'), '');
 
-  // Category words inside a custom job description must not select a checkbox.
   assert.equal(resolveEmploymentStatus('Private Tutor').checkedKey, '');
   assert.equal(getEmploymentStatusOtherText('Private Tutor'), 'Private Tutor');
   assert.equal(resolveEmploymentStatus('Government Consultant').checkedKey, '');

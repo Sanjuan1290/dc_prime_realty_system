@@ -650,7 +650,7 @@ const OfferToBuyForm = ({ listing = {}, client = {}, soaRows = [] }) => {
         /* The reference form is printed on 8.5in x 14in (Legal / long bond).
            A named page keeps this size even if a wrapper declares A4. */
         @page otb {
-          size: 8.5in 14in;
+          size: legal portrait;
           margin: 0;
         }
 
@@ -658,8 +658,8 @@ const OfferToBuyForm = ({ listing = {}, client = {}, soaRows = [] }) => {
           page: otb;
           box-sizing: border-box;
           position: relative;
-          width: 612pt;
-          height: 1007pt;
+          width: 8.5in;
+          height: 14in;
           margin: 0 auto;
           padding: 0;
           overflow: hidden;
@@ -670,8 +670,8 @@ const OfferToBuyForm = ({ listing = {}, client = {}, soaRows = [] }) => {
 
         .otb-svg {
           display: block;
-          width: 612pt;
-          height: 1008pt;
+          width: 100%;
+          height: 100%;
           max-width: none;
         }
 
@@ -698,13 +698,18 @@ const OfferToBuyForm = ({ listing = {}, client = {}, soaRows = [] }) => {
 
         @media print {
           .otb-page {
-            width: 612pt !important;
-            height: 1007pt !important;
-            margin: 0 auto !important;
+            width: 8.5in !important;
+            height: 14in !important;
+            margin: 0 !important;
             padding: 0 !important;
             box-shadow: none !important;
             break-after: auto !important;
             page-break-after: auto !important;
+          }
+
+          .otb-svg {
+            width: 8.5in !important;
+            height: 14in !important;
           }
         }
       `}</style>

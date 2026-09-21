@@ -2,7 +2,8 @@ import { FiPrinter, FiX } from 'react-icons/fi'
 import { printWithTemporaryBlankTitle } from './pdfExportUtils'
 
 const PrintPageShell = ({ title, children, printDisabled = false, printDisabledMessage = '', pageOrientation = 'portrait', pageSize = 'A4' }) => {
-  const resolvedPageSize = pageSize === 'legal' ? '8.5in 14in' : `A4 ${pageOrientation === 'landscape' ? 'landscape' : 'portrait'}`
+  const isLegalPage = pageSize === 'legal'
+  const resolvedPageSize = pageSize === 'legal' ? 'legal portrait' : `A4 ${pageOrientation === 'landscape' ? 'landscape' : 'portrait'}`
 
   return (
     <main className="min-h-screen bg-slate-100 text-slate-950 print:bg-white">
@@ -90,7 +91,11 @@ const PrintPageShell = ({ title, children, printDisabled = false, printDisabledM
           <div>
             <h1 className="text-base font-black text-slate-950">{title}</h1>
             <p className="text-xs font-semibold text-slate-500">
-              {printDisabled ? printDisabledMessage : 'Print or Save as PDF.'}
+              {printDisabled
+                ? printDisabledMessage
+                : isLegalPage
+                  ? 'Legal 8.5 × 14 in · Print at 100% / Actual size · Margins: None.'
+                  : 'Print or Save as PDF.'}
             </p>
           </div>
         </div>
