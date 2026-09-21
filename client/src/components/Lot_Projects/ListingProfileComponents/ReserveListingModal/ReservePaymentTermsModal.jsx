@@ -97,14 +97,9 @@ const ReservePaymentTermsModal = ({
     day: '2-digit',
   }).format(new Date())
   const isHistoricalEntry = Boolean(paymentForm.isHistoricalEntry)
-  const startingDateMinimum = isHistoricalEntry ? undefined : today
-  const startingDateMaximum = isHistoricalEntry ? today : undefined
-  const firstDueMinimum = isHistoricalEntry
-    ? (paymentForm.startingDate || undefined)
-    : paymentForm.startingDate && paymentForm.startingDate > today
-      ? paymentForm.startingDate
-      : today
-  const firstDueMaximum = isHistoricalEntry ? today : undefined
+  const startingDateMaximum = today
+  const firstDueMinimum = paymentForm.startingDate || undefined
+  const isBackdatedReservation = Boolean(paymentForm.startingDate && paymentForm.startingDate < today)
   const isCash = String(paymentForm.modeOfPayment || '').toLowerCase() === 'cash'
   const lotAreaSqm = Number(
     listing?.lotAreaSqm ??
@@ -165,19 +160,12 @@ const ReservePaymentTermsModal = ({
             <input
               type="checkbox"
               checked={isHistoricalEntry}
-              onChange={(event) => {
-                const checked = event.target.checked
-                updatePaymentField('isHistoricalEntry', checked)
-                if (!checked) {
-                  if (String(paymentForm.startingDate || '') < today) updatePaymentField('startingDate', today)
-                  if (String(paymentForm.firstDueDate || '') < today) updatePaymentField('firstDueDate', today)
-                }
-              }}
+              onChange={(event) => updatePaymentField('isHistoricalEntry', event.target.checked)}
               className="mt-0.5 h-4 w-4 rounded border-blue-300 text-blue-600 focus:ring-blue-500"
             />
             <span>
-              <span className="block text-sm font-black text-blue-950">Encode an existing or historical client account</span>
-              <span className="mt-1 block text-xs font-semibold text-blue-700">Allows any past starting date. Historical dates cannot be after today, and the first due date cannot be before the starting date.</span>
+              <span className="block text-sm font-black text-blue-950">Import an existing client account</span>
+              <span className="mt-1 block text-xs font-semibold text-blue-700">Use this only for a client account that already existed before it was added to this system, such as an older reservation with an existing payment history or payment schedule. You do not need this for a reservation that is simply being encoded late.</span>
             </span>
           </label>
           <TextInput
@@ -185,9 +173,8 @@ const ReservePaymentTermsModal = ({
             type="date"
             value={paymentForm.startingDate}
             onChange={(value) => updatePaymentField('startingDate', value)}
-            min={startingDateMinimum}
             max={startingDateMaximum}
-            helper={isHistoricalEntry ? 'Choose the actual historical starting date. There is no lookback limit; future dates are not allowed.' : 'Today or a future date.'}
+            helper={isBackdatedReservation ? 'Backdated reservation. Use the actual reservation date and provide the reason below. Future dates are not allowed.' : 'Use the actual reservation date. Past dates are allowed for delayed encoding or system downtime; future dates are not allowed.'}
             required
           />
           <TextInput
@@ -196,10 +183,21 @@ const ReservePaymentTermsModal = ({
             value={paymentForm.firstDueDate}
             onChange={(value) => updatePaymentField('firstDueDate', value)}
             min={firstDueMinimum}
-            max={firstDueMaximum}
-            helper={isHistoricalEntry ? 'Cannot be before the starting date or after today.' : 'Must be today or later and cannot be before the starting date.'}
+            helper="Must be on or after the Starting Date. Past or future dates are allowed."
             required
           />
+          {isBackdatedReservation ? (
+            <div className="md:col-span-2">
+              <TextInput
+                label="Backdate Reason"
+                value={paymentForm.backdateReason || ''}
+                onChange={(value) => updatePaymentField('backdateReason', value)}
+                placeholder="Example: System downtime on September 21"
+                helper="Required because the Starting Date is before today. This reason is saved in the reservation Audit Log."
+                required
+              />
+            </div>
+          ) : null}
           <TextInput
             label="LMF Rate (%)"
             type="number"
@@ -298,4 +296,3 @@ const ReservePaymentTermsModal = ({
 }
 
 export default ReservePaymentTermsModal
-

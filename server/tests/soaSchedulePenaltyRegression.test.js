@@ -18,21 +18,23 @@ test('SOA live queries keep only the newest active schedule generation', () => {
   assert.match(payments, /SET schedule_status = 'Cancelled'[\s\S]*INSERT INTO lot_project_payment_schedules/);
 });
 
-test('reservation and editable due dates use Manila time with controlled historical encoding', () => {
+test('reservation dates allow delayed encoding while preserving Manila date rules', () => {
   const modal = read('client/src/components/Lot_Projects/ListingProfileComponents/ReserveListingModal/ReserveListingModal.jsx');
   const paymentTerms = read('client/src/components/Lot_Projects/ListingProfileComponents/ReserveListingModal/ReservePaymentTermsModal.jsx');
   const reserveController = read('server/controllers/Lot_Projects/ListingProfile/ReserveListing.controller.js');
   const paymentController = read('server/controllers/Lot_Projects/ListingProfile/PaymentsSOA.controller.js');
 
   assert.match(modal, /timeZone: 'Asia\/Manila'/);
-  assert.match(paymentTerms, /Encode an existing or historical client account/);
-  assert.match(paymentTerms, /min=\{startingDateMinimum\}/);
+  assert.match(paymentTerms, /Import an existing client account/);
+  assert.match(paymentTerms, /max=\{startingDateMaximum\}/);
+  assert.doesNotMatch(paymentTerms, /min=\{startingDateMinimum\}/);
   assert.match(paymentTerms, /min=\{firstDueMinimum\}/);
-  assert.match(reserveController, /Historical Starting Date cannot be after today/);
-  assert.doesNotMatch(reserveController, /historicalMinimum/);
+  assert.match(paymentTerms, /Backdate Reason/);
+  assert.match(reserveController, /Starting Date cannot be after today/);
+  assert.match(reserveController, /Backdate Reason is required when Starting Date is before today/);
   assert.match(reserveController, /First Due Date cannot be before the Starting Date/);
-  assert.match(paymentController, /Historical First Due Date cannot be after today/);
-  assert.doesNotMatch(paymentController, /historicalMinimum/);
+  assert.doesNotMatch(reserveController, /Historical First Due Date cannot be after today/);
+  assert.doesNotMatch(paymentController, /Historical First Due Date cannot be after today/);
 });
 
 test('paid and outstanding penalties remain available separately in SOA and dashboards', () => {
@@ -60,6 +62,3 @@ test('paid and outstanding penalties remain available separately in SOA and dash
   assert.match(lotDashboard, /stats\.totalPenaltyPaid/);
   assert.match(lotDashboard, /stats\.totalPenaltyOutstanding/);
 });
-
-
-

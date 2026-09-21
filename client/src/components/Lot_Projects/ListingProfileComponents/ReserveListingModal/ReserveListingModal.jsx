@@ -114,6 +114,7 @@ const ReserveListingModal = ({
     startingDate: todayISO(),
     firstDueDate: todayISO(),
     isHistoricalEntry: false,
+    backdateReason: '',
     legalMiscFee: 'include_in_monthly',
     legalMiscFeeMode: 'include_in_monthly',
     legalMiscFeeRate: String(
@@ -502,7 +503,7 @@ const ReserveListingModal = ({
     const today = todayISO()
     const startingDate = String(paymentForm.startingDate || '')
     const firstDueDate = String(paymentForm.firstDueDate || '')
-    const isHistoricalEntry = Boolean(paymentForm.isHistoricalEntry)
+    const backdateReason = String(paymentForm.backdateReason || '').trim()
 
     if (!/^\d{4}-\d{2}-\d{2}$/.test(startingDate)) {
       setAlert({ type: 'error', message: 'Starting Date is required.' })
@@ -512,29 +513,20 @@ const ReserveListingModal = ({
       setAlert({ type: 'error', message: 'First Due Date is required.' })
       return false
     }
-
-    if (isHistoricalEntry) {
-      if (startingDate > today) {
-        setAlert({ type: 'error', message: 'Historical Starting Date cannot be after today.' })
-        return false
-      }
-      if (firstDueDate > today) {
-        setAlert({ type: 'error', message: 'Historical First Due Date cannot be after today.' })
-        return false
-      }
-    } else {
-      if (startingDate < today) {
-        setAlert({ type: 'error', message: 'Starting Date must be today or a future date.' })
-        return false
-      }
-      if (firstDueDate < today) {
-        setAlert({ type: 'error', message: 'First Due Date must be today or a future date.' })
-        return false
-      }
+    if (startingDate > today) {
+      setAlert({ type: 'error', message: 'Starting Date cannot be after today.' })
+      return false
     }
-
     if (firstDueDate < startingDate) {
       setAlert({ type: 'error', message: 'First Due Date cannot be before the Starting Date.' })
+      return false
+    }
+    if (startingDate < today && !backdateReason) {
+      setAlert({ type: 'error', message: 'Backdate Reason is required when Starting Date is before today.' })
+      return false
+    }
+    if (backdateReason.length > 500) {
+      setAlert({ type: 'error', message: 'Backdate Reason cannot exceed 500 characters.' })
       return false
     }
 
@@ -749,4 +741,3 @@ const ReserveListingModal = ({
 }
 
 export default ReserveListingModal
-

@@ -8,21 +8,27 @@ const dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(dirname, '..', '..');
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
 
-test('reservation and Edit SOA support controlled historical dates', () => {
+test('reservation backdating is normal while imported-existing-account status stays separate', () => {
   const reserveTerms = read('client/src/components/Lot_Projects/ListingProfileComponents/ReserveListingModal/ReservePaymentTermsModal.jsx');
   const reserveModal = read('client/src/components/Lot_Projects/ListingProfileComponents/ReserveListingModal/ReserveListingModal.jsx');
   const paymentsSoa = read('client/src/components/Lot_Projects/ListingProfileComponents/PaymentsSOA/Payments_SOA.jsx');
   const reserveController = read('server/controllers/Lot_Projects/ListingProfile/ReserveListing.controller.js');
   const paymentsController = read('server/controllers/Lot_Projects/ListingProfile/PaymentsSOA.controller.js');
 
-  assert.match(reserveTerms, /Encode an existing or historical client account/);
-  assert.doesNotMatch(reserveTerms, /historicalMinimum/);
-  assert.match(reserveTerms, /There is no lookback limit/);
-  assert.match(reserveModal, /Historical Starting Date cannot be after today/);
-  assert.match(paymentsSoa, /There is no historical lookback limit/);
-  assert.match(paymentsSoa, /Historical First Due Date cannot be after today/);
+  assert.match(reserveTerms, /Import an existing client account/);
+  assert.match(reserveTerms, /Past dates are allowed for delayed encoding or system downtime/);
+  assert.match(reserveTerms, /Backdate Reason/);
+  assert.match(reserveModal, /Starting Date cannot be after today/);
+  assert.match(reserveModal, /Backdate Reason is required when Starting Date is before today/);
+  assert.doesNotMatch(reserveModal, /Starting Date must be today or a future date/);
+  assert.match(reserveController, /Backdate Reason is required when Starting Date is before today/);
+  assert.match(reserveController, /backdateReason: backdateReason \|\| null/);
+  assert.match(paymentsSoa, /Imported Existing Account/);
+  assert.match(paymentsSoa, /Past or future dates are allowed/);
+  assert.doesNotMatch(paymentsSoa, /Historical First Due Date cannot be after today/);
   assert.match(reserveController, /soa_is_historical_entry/);
   assert.match(paymentsController, /soa_is_historical_entry/);
+  assert.doesNotMatch(paymentsController, /Historical First Due Date cannot be after today/);
 });
 
 test('separate Legal Misc Fee can be waived with an audit record', () => {
@@ -73,4 +79,3 @@ test('paid separate LMF is never treated as lot principal and old rows self-repa
   assert.match(shared, /const principalReduction = isLegalMiscFee\s*\? 0/);
   assert.match(shared, /hasLegacyLegalMiscPrincipalReduction/);
 });
-

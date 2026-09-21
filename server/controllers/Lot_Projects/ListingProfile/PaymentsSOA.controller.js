@@ -1324,8 +1324,7 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
     const interestRateSource = 'listing';
     const annualInterestRate = Number(listing.annual_interest_rate || 0);
     const firstDueDate = dateOrNull(req.body.firstDueDate || req.body.soa_first_due_date || listing.soa_first_due_date);
-    const currentHistoricalEntry = Number(listing.soa_is_historical_entry || 0) === 1 ||
-      Boolean(dateOrNull(listing.soa_starting_date) && dateOrNull(listing.soa_starting_date) < todayDateOnly());
+    const currentHistoricalEntry = Number(listing.soa_is_historical_entry || 0) === 1;
     const isHistoricalEntry = req.body.isHistoricalEntry !== undefined
       ? (req.body.isHistoricalEntry === true || Number(req.body.isHistoricalEntry || 0) === 1)
       : currentHistoricalEntry;
@@ -1400,13 +1399,6 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
       const startingDate = dateOrNull(listing.soa_starting_date) || today;
       if (!firstDueDate) {
         return res.status(400).json({ message: 'First Due Date is required.' });
-      }
-      if (isHistoricalEntry) {
-        if (firstDueDate > today) {
-          return res.status(400).json({ message: 'Historical First Due Date cannot be after today.' });
-        }
-      } else if (firstDueDate < today) {
-        return res.status(400).json({ message: 'First Due Date must be today or a future date.' });
       }
       if (firstDueDate < startingDate) {
         return res.status(400).json({ message: 'First Due Date cannot be before the Starting Date.' });
@@ -2623,4 +2615,3 @@ export const restorePaymentSchedulePenaltyWaiver = async (req, res) => {
     connection.release();
   }
 };
-

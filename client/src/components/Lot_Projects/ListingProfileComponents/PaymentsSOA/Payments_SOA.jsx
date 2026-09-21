@@ -464,13 +464,7 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
       (getListingValue(listing, ['soaReservationFeeAppliedToDownpayment'], false) ? 'apply_to_downpayment' : 'separate'),
     monthlyTerms: String(getListingValue(listing, ['soaMonthlyTerms'], 36)),
     firstDueDate: getListingValue(listing, ['soaFirstDueDate', 'first_due_date'], ''),
-    isHistoricalEntry: Boolean(
-      getListingValue(listing, ['soaIsHistoricalEntry'], false) ||
-      (() => {
-        const startingDate = String(getListingValue(listing, ['soaStartingDate', 'starting_date'], '') || '')
-        return startingDate && startingDate < todayManila()
-      })()
-    ),
+    isHistoricalEntry: Boolean(getListingValue(listing, ['soaIsHistoricalEntry'], false)),
     dailyPenaltyRate: initialDailyPenaltyRate,
     penaltyGraceDays: String(getListingValue(listing, ['soaPenaltyGraceDays'], 0)),
     penaltyEffectiveFrom: String(getListingValue(listing, ['soaPenaltyEffectiveFrom'], '') || ''),
@@ -498,12 +492,7 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
   const listingStartingDate = String(getListingValue(listing, ['soaStartingDate', 'starting_date'], '') || '')
   const listingInterestRate = Number(getListingValue(listing, ['annualInterestRate'], 0))
   const hasRecordedPayments = Number(getListingValue(listing, ['payment_count'], 0)) > 0
-  const firstDueMinimum = form.isHistoricalEntry
-    ? (listingStartingDate || undefined)
-    : listingStartingDate && listingStartingDate > today
-      ? listingStartingDate
-      : today
-  const firstDueMaximum = form.isHistoricalEntry ? today : undefined
+  const firstDueMinimum = listingStartingDate || undefined
   const selectedPenaltyRateOption = penaltyRateMode === 'custom'
     ? 'custom'
     : String(Number(form.dailyPenaltyRate))
@@ -539,15 +528,6 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
     if (!hasRecordedPayments) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(form.firstDueDate)) {
         setModalAlert({ type: 'error', message: 'First Due Date is required.' })
-        return null
-      }
-      if (form.isHistoricalEntry) {
-        if (form.firstDueDate > today) {
-          setModalAlert({ type: 'error', message: 'Historical First Due Date cannot be after today.' })
-          return null
-        }
-      } else if (form.firstDueDate < today) {
-        setModalAlert({ type: 'error', message: 'First Due Date must be today or a future date.' })
         return null
       }
       if (listingStartingDate && form.firstDueDate < listingStartingDate) {
@@ -700,18 +680,14 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
                 <input
                   type="checkbox"
                   checked={Boolean(form.isHistoricalEntry)}
-                  onChange={(event) => {
-                    const checked = event.target.checked
-                    updateForm('isHistoricalEntry', checked)
-                    if (!checked && String(form.firstDueDate || '') < today) updateForm('firstDueDate', today)
-                  }}
+                  onChange={(event) => updateForm('isHistoricalEntry', event.target.checked)}
                   disabled={isSaving || hasRecordedPayments}
                   className="mt-0.5 h-4 w-4 rounded border-blue-300 text-blue-600 focus:ring-blue-500 disabled:cursor-not-allowed"
                 />
                 <span>
-                  <span className="block text-sm font-black text-blue-950">Allow Backdated SOA Date</span>
+                  <span className="block text-sm font-black text-blue-950">Imported Existing Account</span>
                   <span className="mt-1 block text-xs font-semibold text-blue-700">
-                    Use this when encoding an account that started before today. This option is only available before any payment is recorded. There is no historical lookback limit. The First Due Date cannot be earlier than the saved Starting Date or later than today.
+                    Marks this buyer as an account that existed before it was added to this system. It does not control whether the First Due Date may be in the past or future.
                   </span>
                 </span>
               </label>
@@ -721,8 +697,7 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
                 value={form.firstDueDate && form.firstDueDate !== '-' ? form.firstDueDate : ''}
                 onChange={(value) => updateForm('firstDueDate', value)}
                 min={firstDueMinimum}
-                max={firstDueMaximum}
-                helper={form.isHistoricalEntry ? 'Historical date cannot be before the reservation starting date or after today.' : 'Today or later, and not before the reservation starting date.'}
+                helper="Must be on or after the saved Starting Date. Past or future dates are allowed."
                 disabled={hasRecordedPayments}
               />
               <label className="flex flex-col gap-1.5">
@@ -2032,4 +2007,3 @@ const PaymentsSOA = ({
 }
 
 export default PaymentsSOA
-

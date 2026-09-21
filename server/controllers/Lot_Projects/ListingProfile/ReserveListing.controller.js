@@ -565,25 +565,19 @@ export const reserveLotProjectListing = async (req, res) => {
     const isHistoricalEntry = terms.isHistoricalEntry === true || Number(terms.isHistoricalEntry || 0) === 1;
     const startingDate = dateOrNull(terms.startingDate) || today;
     const firstDueDate = dateOrNull(terms.firstDueDate) || startingDate;
+    const backdateReason = String(terms.backdateReason || '').trim();
 
-    if (isHistoricalEntry) {
-      if (startingDate > today) {
-        return res.status(400).json({ message: 'Historical Starting Date cannot be after today.' });
-      }
-      if (firstDueDate > today) {
-        return res.status(400).json({ message: 'Historical First Due Date cannot be after today.' });
-      }
-    } else {
-      if (startingDate < today) {
-        return res.status(400).json({ message: 'Starting Date must be today or a future date.' });
-      }
-      if (firstDueDate < today) {
-        return res.status(400).json({ message: 'First Due Date must be today or a future date.' });
-      }
+    if (startingDate > today) {
+      return res.status(400).json({ message: 'Starting Date cannot be after today.' });
     }
-
     if (firstDueDate < startingDate) {
       return res.status(400).json({ message: 'First Due Date cannot be before the Starting Date.' });
+    }
+    if (startingDate < today && !backdateReason) {
+      return res.status(400).json({ message: 'Backdate Reason is required when Starting Date is before today.' });
+    }
+    if (backdateReason.length > 500) {
+      return res.status(400).json({ message: 'Backdate Reason cannot exceed 500 characters.' });
     }
     const dailyPenaltyRate = Number(terms.dailyPenaltyRate ?? terms.penaltyRatePercent ?? 0.05);
     const penaltyGraceDays = Number(terms.penaltyGraceDays ?? 0);
@@ -1139,6 +1133,7 @@ export const reserveLotProjectListing = async (req, res) => {
         penaltyCalculationMethod: 'daily',
         isHistoricalEntry,
         startingDate,
+        backdateReason: backdateReason || null,
         firstDueDate,
         buyerFormSubmissionId,
         // Preserve the submitted reservation inputs for administrative traceability.
@@ -1198,4 +1193,3 @@ export const reserveLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
-

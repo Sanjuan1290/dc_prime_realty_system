@@ -94,8 +94,9 @@ const ReservationDoubleCheck = ({ request, onConfirm, onCancel }) => {
         <DoubleCheckSection title="Payment Terms & Financials" helper="Verify the exact dates, terms, rates, discounts, and penalty settings entered for this reservation." tone="amber">
           <DoubleCheckFields fields={[
             { label: 'Reservation Fee', value: pick(terms, 'reservationFee'), formatter: money, tone: 'financial' },
-            { label: 'Historical / Backdated Entry', value: Boolean(pick(terms, 'isHistoricalEntry')) ? 'Yes' : 'No' },
+            { label: 'Imported Existing Account', value: Boolean(pick(terms, 'isHistoricalEntry')) ? 'Yes' : 'No' },
             { label: 'Starting Date', value: pick(terms, 'startingDate'), formatter: formatDate },
+            { label: 'Backdate Reason', value: pick(terms, 'backdateReason') },
             { label: 'First Due / Full Payment Due Date', value: pick(terms, 'firstDueDate'), formatter: formatDate },
             { label: 'LMF Rate', value: pick(terms, 'legalMiscFeeRate'), formatter: percent, tone: 'financial' },
             { label: 'Legal / Misc Fee Treatment', value: pick(terms, 'legalMiscFeeMode', 'legalMiscFee'), formatter: titleCase },
@@ -141,4 +142,3 @@ const ReservationDoubleCheck = ({ request, onConfirm, onCancel }) => {
 }
 
 export default ReservationDoubleCheck
-
