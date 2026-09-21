@@ -33,26 +33,50 @@ test('Reports keeps exact date-range behavior from the former System Dashboard',
   assert.match(reportPage, /Report Date Filter/)
 })
 
-test('Reports provides audited PDF export through the existing print report', () => {
+test('Reports provides audited management-summary PDF export', () => {
   assert.match(reportPage, /Export PDF/)
+  assert.match(reportPage, /Export Management Summary/)
+  assert.match(reportPage, /Summary export only/)
+  assert.match(reportPage, /Detailed transaction records, buyer-level tables/)
   assert.match(reportPage, /SYSTEM_REPORTS_EXPORT/)
   assert.match(reportPage, /\/projects\/reports\/export-audit/)
   assert.match(reportPage, /\/portal\/reports\/print\?/)
-  assert.match(reportPage, /DC-Prime-Management-Report_/)
+  assert.match(reportPage, /DC-Prime-Management-Summary_/)
+  assert.match(reportPage, /Export Summary PDF/)
 })
 
-test('PDF export remains multi-section and preserves management-report reconciliation', () => {
-  assert.match(printPage, /const totalSections = 8/)
-  assert.match(printPage, /Management Report — Executive Summary/)
-  assert.match(printPage, /Sales & Reservations/)
-  assert.match(printPage, /Outstanding Accounts — As of/)
-  assert.match(printPage, /Cancellation activity uses cancellation date; refund cash movement uses refund date/)
-  assert.match(printPage, /Seller Performance/)
-  assert.match(printPage, /Project Breakdown/)
-  assert.match(printPage, /report-table thead \{ display: table-header-group; \}/)
+test('PDF export is a three-page management summary with no transaction-level tables', () => {
+  assert.match(printPage, /const totalPages = 3/)
+  assert.match(printPage, /Management Summary Report/)
+  assert.match(printPage, /Sales & Collections/)
+  assert.match(printPage, /Inventory Summary/)
+  assert.match(printPage, /Cancellation Summary/)
+  assert.match(printPage, /Payment Status/)
+  assert.match(printPage, /Commission Summary/)
+  assert.match(printPage, /Project Summary/)
+  assert.match(printPage, /Summary Comparison/)
+  assert.match(printPage, /Management Summary Only/)
+  assert.match(printPage, /buyer-level records, individual unit transaction rows/)
+
+  assert.doesNotMatch(printPage, /payload\.payments/)
+  assert.doesNotMatch(printPage, /payload\.outstandingAccounts/)
+  assert.doesNotMatch(printPage, /payload\.cancellations/)
+  assert.doesNotMatch(printPage, /payload\.commissionCohortReleases/)
+  assert.doesNotMatch(printPage, /Seller Performance/)
 })
 
-test('report backend keeps sales, refund, and commission reconciliation used by PDF export', () => {
+test('management summary PDF uses the same project dashboard sources as the Reports page', () => {
+  assert.match(printPage, /useFetch\('\/projects\/lot-projects'\)/)
+  assert.match(printPage, /\/projects\/lot-projects\/\$\{slug\}\/dashboard\?\$\{query\}/)
+  assert.match(printPage, /totalGrossSales/)
+  assert.match(printPage, /totalCashCollected/)
+  assert.match(printPage, /pendingCancellation/)
+  assert.match(printPage, /dueSoonCount/)
+  assert.match(printPage, /overdueCount/)
+  assert.match(printPage, /totalCommission/)
+})
+
+test('report backend keeps historical detailed reconciliation endpoints intact', () => {
   assert.match(controller, /cancelledAsOf/)
   assert.match(controller, /cohortCancelledValue/)
   assert.match(controller, /grossContractedValue/)
@@ -63,14 +87,4 @@ test('report backend keeps sales, refund, and commission reconciliation used by 
   assert.match(controller, /const cohortCommissionIds = new Set\(commissions\.map/)
   assert.match(controller, /const commissionCohortReleases = releases\.filter/)
   assert.match(controller, /const commissionReconciliation = reconcileCommissionCohort/)
-})
-
-test('PDF commission section uses selected-sales cohort reconciliation', () => {
-  assert.match(printPage, /Commission Liability Reconciliation/)
-  assert.match(printPage, /Status of Net Commission Payable/)
-  assert.match(printPage, /payload\.commissionCohortReleases/)
-  assert.match(printPage, /Gross Commission Created/)
-  assert.match(printPage, /Net Commission Payable/)
-  assert.doesNotMatch(printPage, /Commission Generated in Range/)
-  assert.doesNotMatch(printPage, /Commission Released in Range/)
 })

@@ -20,6 +20,7 @@ import {
   FiAlertTriangle,
   FiArrowRight,
   FiCalendar,
+  FiCheckCircle,
   FiDownload,
   FiGrid,
   FiLayers,
@@ -28,6 +29,7 @@ import {
   FiTrendingDown,
   FiTrendingUp,
   FiUsers,
+  FiX,
 } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
@@ -337,6 +339,7 @@ const Reports = () => {
   const [projectScope, setProjectScope] = useState('lot')
   const [exportAlert, setExportAlert] = useState(null)
   const [isExporting, setIsExporting] = useState(false)
+  const [showExportModal, setShowExportModal] = useState(false)
   const { data: currentUserData } = useCurrentUser()
   const currentUser = currentUserData?.user || {}
   const canExport = hasPermission(currentUser, PERMISSIONS.SYSTEM_REPORTS_EXPORT)
@@ -565,20 +568,26 @@ const Reports = () => {
     setExportAlert({ type: 'loading', message: 'Preparing report PDF...' })
 
     try {
-      const filename = `DC-Prime-Management-Report_${fromDate}_to_${toDate}.pdf`
+      const filename = `DC-Prime-Management-Summary_${fromDate}_to_${toDate}.pdf`
       await useFetchPost('/projects/reports/export-audit', {
         from: fromDate,
         to: toDate,
         filename,
       }, { confirmationHandled: 'technical' })
 
-      const params = new URLSearchParams({ from: fromDate, to: toDate })
+      const params = new URLSearchParams({
+        range: dateRange,
+        from: fromDate,
+        to: toDate,
+        projectScope,
+      })
       const printUrl = `/portal/reports/print?${params.toString()}`
 
       if (printWindow) printWindow.location.replace(printUrl)
       else window.open(printUrl, '_blank', 'noopener,noreferrer')
 
-      setExportAlert({ type: 'success', message: 'Report PDF opened in a print-ready view.' })
+      setShowExportModal(false)
+      setExportAlert({ type: 'success', message: 'Management Summary PDF opened in a print-ready view.' })
     } catch (error) {
       try { printWindow?.close() } catch {}
       setExportAlert({ type: 'error', message: error?.message || 'Unable to prepare the report PDF.' })
@@ -606,8 +615,8 @@ const Reports = () => {
             <FiRefreshCw className={isDashboardsFetching ? 'animate-spin' : ''} /> Refresh
           </button>
           {canExport ? (
-            <button type="button" onClick={handleExportPdf} disabled={!canLoadRange || isExporting} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-black text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
-              <FiDownload className={isExporting ? 'animate-pulse' : ''} /> {isExporting ? 'Preparing PDF...' : 'Export PDF'}
+            <button type="button" onClick={() => setShowExportModal(true)} disabled={!canLoadRange || isExporting || selectedProjects.length === 0} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-black text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
+              <FiDownload /> Export PDF
             </button>
           ) : null}
         </div>
@@ -730,6 +739,75 @@ const Reports = () => {
           {projectInventoryChart.length ? <ResponsiveContainer width="100%" height="100%"><BarChart data={projectInventoryChart} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="project" tick={{ fontSize: 11 }} /><YAxis tickFormatter={compactMoney} tick={{ fontSize: 11 }} /><Tooltip content={<ChartTooltip />} /><Legend /><Bar dataKey="listedInventory" name="Listed" fill={chartColors.slate} radius={[8, 8, 0, 0]} /><Bar dataKey="availableInventory" name="Available" fill={chartColors.amber} radius={[8, 8, 0, 0]} /><Bar dataKey="soldInventory" name="Sold / Active" fill={chartColors.indigo} radius={[8, 8, 0, 0]} /><Bar dataKey="pendingCancellationValue" name="Pending Cancellation" fill={chartColors.violet} radius={[8, 8, 0, 0]} /><Bar dataKey="cancelledInventoryValue" name="Cancelled" fill={chartColors.red} radius={[8, 8, 0, 0]} /></BarChart></ResponsiveContainer> : <EmptyChart />}
         </ChartCard>
       </section>
+
+
+      {showExportModal ? (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/55 p-4" role="dialog" aria-modal="true" aria-labelledby="export-summary-title">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-slate-200 bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-6">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-blue-700">PDF Export</p>
+                <h2 id="export-summary-title" className="mt-1 text-xl font-black text-slate-950">Export Management Summary</h2>
+                <p className="mt-2 text-sm font-semibold text-slate-500">Create a concise management PDF using the report period currently selected on this page.</p>
+              </div>
+              <button type="button" onClick={() => setShowExportModal(false)} disabled={isExporting} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-50" aria-label="Close export dialog">
+                <FiX className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="grid gap-5 p-6">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-black uppercase tracking-wide text-slate-500">Report</p>
+                  <p className="mt-1 font-black text-slate-950">Management Summary</p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-black uppercase tracking-wide text-slate-500">Project Scope</p>
+                  <p className="mt-1 font-black text-slate-950">{selectedScopeLabel}</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-500">{number(selectedProjects.length)} project{selectedProjects.length === 1 ? '' : 's'} included</p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:col-span-2">
+                  <p className="text-xs font-black uppercase tracking-wide text-slate-500">Reporting Period</p>
+                  <p className="mt-1 font-black text-slate-950">{fromDate} to {toDate}</p>
+                </div>
+              </div>
+
+              <section className="rounded-2xl border border-slate-200 p-4">
+                <h3 className="font-black text-slate-950">Included in the PDF</h3>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  {[
+                    'Executive Summary',
+                    'Sales & Collections',
+                    'Inventory Summary',
+                    'Cancellations',
+                    'Payment Status',
+                    'Commission Summary',
+                    'Project Summary',
+                    'Summary Comparison',
+                  ].map((label) => (
+                    <div key={label} className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                      <FiCheckCircle className="h-4 w-4 shrink-0 text-emerald-600" />
+                      <span>{label}</span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm font-semibold text-blue-950">
+                <p className="font-black">Summary export only</p>
+                <p className="mt-1 text-blue-800">Detailed transaction records, buyer-level tables, individual unit rows, payment transactions, and seller-level records are not included.</p>
+              </div>
+            </div>
+
+            <div className="flex flex-col-reverse gap-2 border-t border-slate-200 p-6 sm:flex-row sm:justify-end">
+              <button type="button" onClick={() => setShowExportModal(false)} disabled={isExporting} className="h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 hover:bg-slate-50 disabled:opacity-50">Cancel</button>
+              <button type="button" onClick={handleExportPdf} disabled={isExporting || !canLoadRange} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
+                <FiDownload className={isExporting ? 'animate-pulse' : ''} /> {isExporting ? 'Preparing PDF...' : 'Export Summary PDF'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
     </main>
   )
