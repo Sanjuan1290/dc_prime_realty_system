@@ -357,16 +357,14 @@ const PerformanceTable = ({ rows = [], type = 'seller' }) => (
 )
 
 
-const DEFAULT_STRAIGHT_PAYMENT_MONTHS = 20
+const PaginationControls = ({ page, pageSize, totalItems, onPageChange, onPageSizeChange }) => {
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize))
+  const currentPage = Math.min(page, totalPages)
+  const start = totalItems ? ((currentPage - 1) * pageSize) + 1 : 0
+  const end = Math.min(currentPage * pageSize, totalItems)
 
-const PRICE_LIST_STATUS_OPTIONS = [
-  { value: 'available', label: 'Available Only' },
-  { value: 'all', label: 'All Statuses' },
-  { value: 'hold', label: 'Hold' },
-  { value: 'sold', label: 'Sold / Active' },
-  { value: 'fully_paid', label: 'Fully Paid' },
-  { value: 'pending_for_cancellation', label: 'Pending Cancellation' },
-  { value: 'cancelleder-t border-slate-200 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+  return (
+    <div className="flex flex-col gap-3 border-t border-slate-200 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
       <p className="text-sm font-semibold text-slate-600">Showing {start}-{end} of {totalItems} records</p>
       <div className="flex flex-wrap items-center gap-2">
         <select value={pageSize} onChange={(event) => onPageSizeChange(Number(event.target.value))} className="h-9 rounded-lg border border-slate-300 bg-white px-3 text-sm font-black text-slate-700">
