@@ -236,7 +236,7 @@ const UnitStatus = ({
       cadastralLots: String(unitData.cadastral_lot_no || '')
         .split(',')
         .map((item) => item.trim())
-        .filter(Boolean),
+        .filter((item) => item && item !== '-' && item !== '—'),
       status: voidWithoutHistory ? 'available' : 'cancelled',
       statusTransitionAction: voidWithoutHistory ? 'void_unpaid_cancellation' : 'settle_cancellation',
       confirmSaleDataDeletion: voidWithoutHistory,

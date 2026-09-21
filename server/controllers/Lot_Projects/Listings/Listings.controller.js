@@ -1875,15 +1875,19 @@ export const updateLotProjectListing = async (req, res) => {
     }
 
     let cadastralSyncResult = { added: 0, removed: 0, skipped: true };
-    const cadastralWasSubmitted = Array.isArray(req.body.cadastralLots)
-      || Object.prototype.hasOwnProperty.call(req.body, 'cadastral_lot_no');
+    // Cancellation settlement is a status/account operation. It must never
+    // reinterpret display placeholders or change the listing's cadastral links.
+    const cadastralWasSubmitted = !completesCancellation && (
+      Array.isArray(req.body.cadastralLots)
+      || Object.prototype.hasOwnProperty.call(req.body, 'cadastral_lot_no')
+    );
     if (hasListingCadastralLinks && cadastralWasSubmitted) {
       const requestedCadastralLots = Array.from(new Set(
         (Array.isArray(req.body.cadastralLots)
           ? req.body.cadastralLots
           : String(req.body.cadastral_lot_no || '').split(','))
           .map((item) => String(item).trim())
-          .filter(Boolean)
+          .filter((item) => item && item !== '-' && item !== '—')
       ));
 
       const [currentLotRows] = await connection.query(
