@@ -61,6 +61,23 @@ const getListingValue = (listing, keys, fallback = '') => {
   return fallback
 }
 
+const getScheduleDisplayStatus = (row = {}) => {
+  const rawStatus = String(row.displayStatus || row.status || row.schedule_status || 'Unpaid').trim() || 'Unpaid'
+  const normalized = rawStatus.toLowerCase()
+
+  if (normalized === 'paid early' || normalized === 'paid late') return rawStatus
+  if (normalized === 'advance') return 'Paid Early'
+  if (normalized !== 'paid') return rawStatus
+
+  const dueDate = String(row.dueDate || row.due_date || '').slice(0, 10)
+  const datePaid = String(row.datePaid || row.date_paid || '').slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate) || !/^\d{4}-\d{2}-\d{2}$/.test(datePaid)) return 'Paid'
+
+  if (datePaid < dueDate) return 'Paid Early'
+  if (datePaid > dueDate) return 'Paid Late'
+  return 'Paid'
+}
+
 const normalizeRows = (rows = []) => {
   return rows.map((row, index) => ({
     id: row.id || row.scheduleId || row.lot_project_payment_schedule_id || index + 1,
@@ -95,7 +112,9 @@ const normalizeRows = (rows = []) => {
     referenceId: row.referenceId || row.reference_id || row.reference || '-',
     paymentMethod: row.paymentMethod || row.payment_method || '-',
     verifiedBy: row.verifiedBy || row.verified_by || '-',
-    status: row.status || row.schedule_status || 'Unpaid',
+    status: String(row.status || row.schedule_status || 'Unpaid').toLowerCase() === 'advance' ? 'Paid' : (row.status || row.schedule_status || 'Unpaid'),
+    displayStatus: getScheduleDisplayStatus(row),
+    paymentTiming: row.paymentTiming || row.payment_timing || '',
     endingBalance: cleanMoney(
       row.endingBalance ??
         row.remainingBalance ??
@@ -164,6 +183,8 @@ const StatusPill = ({ status }) => {
 
   const styles = {
     paid: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+    'paid early': 'border-blue-200 bg-blue-50 text-blue-700',
+    'paid late': 'border-amber-200 bg-amber-50 text-amber-800',
     advance: 'border-blue-200 bg-blue-50 text-blue-700',
     verified: 'border-emerald-200 bg-emerald-50 text-emerald-700',
     partial: 'border-amber-200 bg-amber-50 text-amber-700',
@@ -1799,7 +1820,7 @@ const PaymentsSOA = ({
                   </td>
 
                   <td className="px-4 py-3">
-                    <StatusPill status={row.status} />
+                    <StatusPill status={row.displayStatus || row.status} />
                   </td>
 
                   <td className="px-4 py-3 font-black text-slate-950">

@@ -235,6 +235,15 @@ const AddSOAPaymentModal = ({
     [rows, form.soaRowId]
   )
 
+  const selectedRowDueDate = String(selectedRow?.dueDate || selectedRow?.due_date || '').slice(0, 10)
+  const isSelectedRowPaidEarly = Boolean(
+    requiresSoaRow &&
+    form.paymentType !== 'Advance Payment' &&
+    /^\d{4}-\d{2}-\d{2}$/.test(form.paymentDate) &&
+    /^\d{4}-\d{2}-\d{2}$/.test(selectedRowDueDate) &&
+    form.paymentDate < selectedRowDueDate
+  )
+
   useEffect(() => {
     if (typeof onPreview !== 'function' || !form.paymentDate || (requiresSoaRow && !form.soaRowId)) {
       setPaymentPreview(null)
@@ -636,11 +645,18 @@ const AddSOAPaymentModal = ({
                     <span className="font-black">{money(fullPaymentAmount)}</span>.
                   </p>
                 ) : selectedRow ? (
-                  <p className="mt-1 text-xs font-semibold text-blue-700">
-                    Payment applies to{' '}
-                    <span className="font-black">{selectedRow.description}</span> ·{' '}
-                    Suggested unpaid amount: {money(suggestedAmount)}
-                  </p>
+                  <>
+                    <p className="mt-1 text-xs font-semibold text-blue-700">
+                      Payment applies to{' '}
+                      <span className="font-black">{selectedRow.description}</span> ·{' '}
+                      Suggested unpaid amount: {money(suggestedAmount)}
+                    </p>
+                    {isSelectedRowPaidEarly ? (
+                      <p className="mt-1 text-xs font-black text-emerald-700">
+                        Paid before the due date. This remains a {form.paymentType} payment and will be shown as Paid Early, not Advance Payment.
+                      </p>
+                    ) : null}
+                  </>
                 ) : (
                   <p className="mt-1 text-xs font-semibold text-red-700">
                     No SOA row available.
@@ -740,6 +756,7 @@ const AddSOAPaymentModal = ({
               label="Payment Type"
               value={form.paymentType}
               onChange={(value) => updateField('paymentType', value)}
+              helper="Paying a selected due before its due date stays as its normal payment type and is shown as Paid Early. Use Advance Payment only for an extra payment intentionally applied toward future monthly obligations."
               required
             >
               {paymentTypes.map((type) => (
@@ -883,4 +900,3 @@ const AddSOAPaymentModal = ({
 }
 
 export default AddSOAPaymentModal
-

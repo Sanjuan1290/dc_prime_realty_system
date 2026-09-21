@@ -90,6 +90,35 @@ export const plainDate = (value, fallback = '-') => {
   return new Date(value).toISOString().slice(0, 10);
 };
 
+export const getSchedulePaymentTiming = (row = {}) => {
+  const rawStatus = String(row.status || row.schedule_status || '').trim().toLowerCase();
+  if (!['paid', 'advance'].includes(rawStatus)) return null;
+
+  const dueDate = plainDate(row.dueDate ?? row.due_date, null);
+  const datePaid = plainDate(row.datePaid ?? row.date_paid, null);
+  if (!dueDate || !datePaid) return null;
+
+  if (datePaid < dueDate) return 'early';
+  if (datePaid > dueDate) return 'late';
+  return 'on_time';
+};
+
+export const getScheduleDisplayStatus = (row = {}) => {
+  const rawStatus = String(row.status || row.schedule_status || 'Unpaid').trim() || 'Unpaid';
+  const normalized = rawStatus.toLowerCase();
+
+  // `Advance` was the old schedule status for a fully paid installment whose
+  // payment date was before the due date. Keep reading it for legacy data,
+  // but present it using the real-world timing label instead.
+  if (normalized === 'advance') return 'Paid Early';
+  if (normalized !== 'paid') return rawStatus;
+
+  const timing = getSchedulePaymentTiming(row);
+  if (timing === 'early') return 'Paid Early';
+  if (timing === 'late') return 'Paid Late';
+  return 'Paid';
+};
+
 export const formatDateTime = (value) => {
   if (!value) return '-';
   if (typeof value === 'string') return value.replace('T', ' ').slice(0, 16);
@@ -2773,7 +2802,7 @@ export const recomputeComputedSoaBalances = (rows = [], terms = {}) => {
     } else if (amountPaid + 0.009 < totalDue) {
       row.status = 'Partial';
     } else {
-      row.status = hasPaidDate && hasDueDate && row.datePaid < row.dueDate ? 'Advance' : 'Paid';
+      row.status = 'Paid';
     }
 
     visibleRows.push({
@@ -2807,6 +2836,8 @@ export const recomputeComputedSoaBalances = (rows = [], terms = {}) => {
       paidPenaltyAmount: penaltyPaid,
       referenceId: row.referenceId || '-',
       status: row.status,
+      paymentTiming: getSchedulePaymentTiming(row),
+      displayStatus: getScheduleDisplayStatus(row),
       endingBalance: row.endingBalance,
       totalDue,
     });
@@ -3017,7 +3048,9 @@ export const getListingSoaRows = async (
         paidInterestAmount: Number(row.paid_interest_amount || 0),
         paidPenaltyAmount: Number(snapshot.paidPenaltyAmount ?? row.paid_penalty_amount ?? 0),
         referenceId: row.reference_id || '-',
-        status: row.schedule_status || 'Unpaid',
+        status: String(row.schedule_status || '').toLowerCase() === 'advance' ? 'Paid' : (row.schedule_status || 'Unpaid'),
+        paymentTiming: getSchedulePaymentTiming(row),
+        displayStatus: getScheduleDisplayStatus(row),
         endingBalance: Number(row.ending_balance || 0),
       };
     });
@@ -3997,14 +4030,10 @@ export const recomputeListingScheduleBalances = async (connection, listing, { as
 
     const totalDue = roundMoneyValue(discountInfo.cashDueAmount);
     const dueDate = plainDate(row.due_date, null);
-    const paymentDate = plainDate(row.date_paid, null);
-    const paidBeforeDue = Boolean(
-      paymentDate && dueDate && paymentDate < dueDate
-    );
     const nextStatus = paidAmount <= 0.009
       ? (dueDate && dueDate < today ? 'Overdue' : 'Unpaid')
       : paidAmount + 0.009 >= totalDue
-        ? (paidBeforeDue ? 'Advance' : 'Paid')
+        ? 'Paid'
         : 'Partial';
 
     const setColumns = [
@@ -4140,8 +4169,9 @@ export const applyPaymentToSchedules = async (connection, listing, paymentId, pr
     const appliedAmount = roundMoneyValue(Math.min(remaining, unpaidForRow));
     const nextPaid = roundMoneyValue(currentPaid + appliedAmount);
     const isPaid = nextPaid + 0.009 >= totalDue;
-    const paidBeforeDue = paymentDate && row.due_date && String(paymentDate).slice(0, 10) < String(row.due_date).slice(0, 10);
-    const nextStatus = isPaid ? (paidBeforeDue ? 'Advance' : 'Paid') : 'Partial';
+    // Paying a selected installment before its due date is still payment of
+    // that installment. Timing is derived separately as Paid Early.
+    const nextStatus = isPaid ? 'Paid' : 'Partial';
 
     await connection.query(
       `
@@ -4381,11 +4411,10 @@ export const reversePaymentAllocations = async (connection, listing, paymentId) 
       Math.max(Number(allocation.amount_paid || 0) - Number(allocation.applied_amount || 0), 0)
     );
     const totalDue = getStoredRowTotalDue(allocation, clientProfile);
-    const paidBeforeDue = allocation.date_paid && allocation.due_date && String(allocation.date_paid).slice(0, 10) < String(allocation.due_date).slice(0, 10);
     const nextStatus = nextPaid <= 0
       ? 'Unpaid'
       : nextPaid + 0.009 >= totalDue
-        ? (paidBeforeDue ? 'Advance' : 'Paid')
+        ? 'Paid'
         : 'Partial';
 
     await connection.query(
@@ -4472,4 +4501,3 @@ export const addIfColumnExists = async (connection, tableName, columns, values, 
 };
 
 // End of lotProject.shared.js — verified complete.
-
