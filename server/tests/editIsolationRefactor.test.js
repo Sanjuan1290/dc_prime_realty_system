@@ -111,7 +111,7 @@ test('schedule repair script is buyer-account scoped', () => {
 test('project list aggregates and client mappings preserve cadastral usage without multiplying document counts', () => {
   const controller = read('server/controllers/System/projects.controller.js');
   const systemProjects = read('client/src/pages/System/Projects.jsx');
-  const dashboard = read('client/src/pages/Lot_Projects/Reports.jsx');
+  const dashboard = read('client/src/pages/Lot_Projects/Dashboard.jsx');
   assert.match(controller, /COUNT\(DISTINCT CASE WHEN lpdd\.lot_project_default_document_is_required = 1 THEN lpdd\.lot_project_default_document_id END\) AS required_documents_count/);
   assert.match(systemProjects, /cadastralLotDetails/);
   assert.match(systemProjects, /listingCount/);

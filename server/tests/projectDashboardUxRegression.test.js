@@ -4,17 +4,24 @@ import { readFile } from 'node:fs/promises';
 
 const read = (relativePath) => readFile(new URL(relativePath, import.meta.url), 'utf8');
 
-test('Lot Project dashboard initializes to This Month and View Details print opens the Price List modal', async () => {
-  const [dashboard, details] = await Promise.all([
+test('Lot Project Reports initializes to This Month while Dashboard owns project actions and Price List', async () => {
+  const [reports, dashboard, details] = await Promise.all([
     read('../../client/src/pages/Lot_Projects/Reports.jsx'),
+    read('../../client/src/pages/Lot_Projects/Dashboard.jsx'),
     read('../../client/src/components/Lot_Projects/DashboardComponents/ProjectDetailsModal/ProjectDetailsModal.jsx'),
   ]);
 
-  assert.match(dashboard, /defaultDateRange = \(\) => resolvePresetDateRange\('this_month'\)/);
-  assert.match(dashboard, /useState\('this_month'\)/);
-  assert.doesNotMatch(dashboard, /useState\('3_months'\)/);
+  assert.match(reports, /defaultDateRange = \(\) => resolvePresetDateRange\('this_month'\)/);
+  assert.match(reports, /useState\('this_month'\)/);
+  assert.doesNotMatch(reports, /useState\('3_months'\)/);
+  assert.match(dashboard, />View Details<\/button>/);
+  assert.match(dashboard, />Edit Project<\/button>/);
+  assert.match(dashboard, />Price List<\/button>/);
   assert.match(details, /onClick=\{onPrintPriceList\}[\s\S]*?Print Price List/);
   assert.match(dashboard, /onPrintPriceList=\{\(\) => \{ setShowDetails\(false\); setShowPriceListModal\(true\) \}\}/);
+  assert.doesNotMatch(reports, />View Details<\/button>/);
+  assert.doesNotMatch(reports, />Edit Project<\/button>/);
+  assert.doesNotMatch(reports, />Price List<\/button>/);
 });
 
 test('commission rate examples are field-authored instead of inheriting the daily penalty sample', async () => {

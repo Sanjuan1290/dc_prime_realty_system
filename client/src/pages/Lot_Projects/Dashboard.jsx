@@ -1,21 +1,27 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   FiAlertTriangle,
   FiArrowRight,
   FiCheckCircle,
   FiClock,
   FiDollarSign,
+  FiEdit3,
+  FiEye,
   FiFileText,
   FiGrid,
   FiHome,
+  FiPrinter,
   FiRefreshCw,
   FiShield,
+  FiX,
 } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
-import { useFetch } from '../../utils/useFetch'
+import ProjectDetailsModal from '../../components/Lot_Projects/DashboardComponents/ProjectDetailsModal/ProjectDetailsModal'
+import EditProjectModal from '../../components/Lot_Projects/DashboardComponents/EditProjectModal/EditProjectModal'
+import { useFetch, useFetchPost, useFetchPut, getDoubleCheckNotice } from '../../utils/useFetch'
 
 const money = (value) => new Intl.NumberFormat('en-PH', {
   style: 'currency',
@@ -82,9 +88,121 @@ const statusClasses = (status = '') => {
   return 'bg-blue-50 text-blue-700 ring-blue-100'
 }
 
+const toProjectView = (project = {}) => ({
+  ...project,
+  project_bailen_id: project.lot_project_id || project.id,
+  project_bailen_storage_code: project.lot_project_storage_code || project.storageCode || project.storage_code || null,
+  project_bailen_name: project.lot_project_name || project.name,
+  project_bailen_location: project.lot_project_location || project.location,
+  project_bailen_location_code: project.lot_project_location_code || project.locationCode,
+  project_bailen_administrator_name: project.lot_project_administrator_name || project.administrator,
+  project_bailen_tax_declaration_no: project.lot_project_tax_declaration_no || project.taxDeclarationNo,
+  project_bailen_title_number: project.lot_project_title_number || project.titleNumber,
+  project_bailen_pin: project.lot_project_pin || project.pin,
+  project_bailen_status: project.lot_project_status || project.status,
+  project_bailen_document_template: 'Project Default Documents',
+  project_bailen_default_documents: project.defaultDocuments?.length || 0,
+  project_bailen_required_documents: project.defaultDocuments?.filter((document) => document.requirement === 'required' || document.lot_project_default_document_is_required).length || 0,
+  project_bailen_optional_documents: project.defaultDocuments?.filter((document) => document.requirement === 'optional' || document.lot_project_default_document_is_required === 0).length || 0,
+  project_bailen_created_at: project.lot_project_created_at || project.created_at,
+  project_bailen_updated_at: project.lot_project_updated_at || project.updated_at,
+  listingCount: Number(project.listingCount ?? project.listing_count ?? 0),
+  cadastral_lots: (project.cadastralLotDetails || project.cadastral_lot_details || project.cadastralLots || project.cadastral_lots || []).map((lot) => ({
+    id: lot.id || lot.lot_project_cadastral_lot_number_id || lot.lotNumber || lot,
+    lotNumber: lot.lotNumber || lot.lot_project_cadastral_lot_number || lot,
+    status: lot.status || 'active',
+    usedCount: Number(lot.usedCount || 0),
+  })),
+})
+
+
+const DEFAULT_STRAIGHT_PAYMENT_MONTHS = 20
+
+const PRICE_LIST_STATUS_OPTIONS = [
+  { value: 'available', label: 'Available Only' },
+  { value: 'all', label: 'All Statuses' },
+  { value: 'hold', label: 'Hold' },
+  { value: 'sold', label: 'Sold / Active' },
+  { value: 'fully_paid', label: 'Fully Paid' },
+  { value: 'pending_for_cancellation', label: 'Pending Cancellation' },
+  { value: 'cancelled', label: 'Cancelled' },
+]
+
+const PriceListPrintModal = ({ projectName, onClose, onPrint }) => {
+  const [months, setMonths] = useState(String(DEFAULT_STRAIGHT_PAYMENT_MONTHS))
+  const [status, setStatus] = useState('available')
+  const [errorMessage, setErrorMessage] = useState('')
+
+  const handleSubmit = (event) => {
+    event.preventDefault()
+    const parsedMonths = Number(months)
+
+    if (!Number.isInteger(parsedMonths) || parsedMonths < 1 || parsedMonths > 120) {
+      setErrorMessage('Straight Payment (Months) must be a whole number from 1 to 120.')
+      return
+    }
+
+    onPrint(parsedMonths, status)
+  }
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
+      <form onSubmit={handleSubmit} className="w-full max-w-lg overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+        <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+          <div>
+            <h2 className="text-xl font-black text-slate-950">Print Price List</h2>
+            <p className="mt-1 text-sm font-semibold text-slate-500">Choose which units to include and set the straight-payment term for {projectName || 'this project'}.</p>
+          </div>
+          <button type="button" onClick={onClose} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100" aria-label="Close price list settings">
+            <FiX className="h-5 w-5" />
+          </button>
+        </header>
+
+        <div className="grid gap-5 p-5">
+          <label className="grid gap-2">
+            <span className="text-xs font-black uppercase tracking-wide text-slate-600">Unit Status</span>
+            <select value={status} onChange={(event) => setStatus(event.target.value)} className="h-12 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-800 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100">
+              {PRICE_LIST_STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+            <span className="text-xs font-semibold text-slate-500">Choose available inventory only, all units, or one specific unit status. Buyer information is never included in the price list.</span>
+          </label>
+
+          <label className="grid gap-2">
+            <span className="text-xs font-black uppercase tracking-wide text-slate-600">Straight Payment (Months)</span>
+            <input
+              type="number"
+              min="1"
+              max="120"
+              step="1"
+              data-example="20 months"
+              value={months}
+              onChange={(event) => { setMonths(event.target.value); setErrorMessage('') }}
+              className="h-12 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-800 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+            />
+            <span className="text-xs font-semibold text-slate-500">The printed monthly amount uses the installment selling price without LMF, less the reservation fee, divided by this month count.</span>
+          </label>
+
+          {errorMessage ? <StatusAlert type="error" message={errorMessage} className="mt-4" /> : null}
+        </div>
+
+        <footer className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4 sm:flex-row sm:justify-end">
+          <button type="button" onClick={onClose} className="h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 hover:bg-slate-100">Cancel</button>
+          <button type="submit" className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white hover:bg-blue-700"><FiPrinter /> Print Price List</button>
+        </footer>
+      </form>
+    </div>
+  )
+}
+
+
 const Dashboard = () => {
   const { projectSlug } = useParams()
   const basePath = `/portal/lot-projects/${projectSlug}`
+  const queryClient = useQueryClient()
+  const [showDetails, setShowDetails] = useState(false)
+  const [showEdit, setShowEdit] = useState(false)
+  const [showPriceListModal, setShowPriceListModal] = useState(false)
+  const [alert, setAlert] = useState(null)
 
   const { data, isLoading, isFetching, isError, error, refetch } = useQuery({
     queryKey: ['lot-dashboard', projectSlug, 'operational'],
@@ -94,11 +212,57 @@ const Dashboard = () => {
   })
 
   const payload = data?.data || {}
-  const project = payload.project || {}
+  const project = useMemo(() => toProjectView(payload.project || {}), [data])
   const stats = payload.stats || {}
   const recentUnits = payload.recentUnits || []
   const upcomingDues = payload.upcomingDues || []
-  const projectName = project.lot_project_name || project.name || project.project_bailen_name || 'Lot Project'
+  const projectName = project.project_bailen_name || project.lot_project_name || project.name || 'Lot Project'
+
+  const { data: documentsData, isLoading: isDocumentsLoading } = useQuery({
+    queryKey: ['documents'],
+    queryFn: () => useFetch('/documents/getDocuments'),
+  })
+
+  const { data: templatesData, isLoading: isTemplatesLoading } = useQuery({
+    queryKey: ['templates'],
+    queryFn: () => useFetch('/documents/getTemplates'),
+  })
+
+  const updateProjectMutation = useMutation({
+    mutationFn: ({ payload: updatePayload, reviewData }) => useFetchPut(`/projects/lot-projects/${project.project_bailen_id}`, updatePayload, {
+      doubleCheck: { type: 'project', mode: 'edit', data: reviewData },
+    }),
+    onMutate: () => setAlert({ type: 'loading', message: 'Preparing project review...' }),
+    onSuccess: (result) => {
+      setShowEdit(false)
+      setAlert({ type: 'success', message: result?.message || 'Project updated successfully.' })
+      queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] })
+      queryClient.invalidateQueries({ queryKey: ['lot-project', projectSlug] })
+      queryClient.invalidateQueries({ queryKey: ['lot-project-options'] })
+      queryClient.invalidateQueries({ queryKey: ['lot-projects'] })
+    },
+    onError: (mutationError) => {
+      setAlert(getDoubleCheckNotice(mutationError, 'Failed to save project changes.'))
+    },
+  })
+
+  const handleSaveProject = (updatePayload, reviewData) => updateProjectMutation.mutateAsync({ payload: updatePayload, reviewData })
+
+  const handlePrintPriceList = async (straightPaymentMonths, status = 'available') => {
+    const printWindow = window.open('about:blank', '_blank')
+    if (printWindow) printWindow.opener = null
+    try {
+      await useFetchPost(`/projects/lot-projects/${projectSlug}/price-list/print-audit`, { straightPaymentMonths, status }, { confirmationHandled: 'technical' })
+      const params = new URLSearchParams({ straightPaymentMonths: String(straightPaymentMonths), status })
+      const printUrl = `/portal/lot-projects/${projectSlug}/price-list/print?${params.toString()}`
+      if (printWindow) printWindow.location.replace(printUrl)
+      else window.open(printUrl, '_blank', 'noopener,noreferrer')
+      setShowPriceListModal(false)
+    } catch (printError) {
+      try { printWindow?.close() } catch {}
+      setAlert({ type: 'error', message: printError?.message || 'Unable to prepare the price list.' })
+    }
+  }
 
   const attentionUnits = useMemo(() => recentUnits.filter((row) => (
     Number(row.overdueCount || 0) > 0
@@ -135,7 +299,10 @@ const Dashboard = () => {
           description="Current project operations, items needing attention, upcoming dues, and recent unit activity."
           icon={FiHome}
         />
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => setShowDetails(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-50"><FiEye className="h-4 w-4" />View Details</button>
+          <button type="button" onClick={() => setShowEdit(true)} disabled={isDocumentsLoading || isTemplatesLoading} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"><FiEdit3 className="h-4 w-4" />Edit Project</button>
+          <button type="button" onClick={() => setShowPriceListModal(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-50"><FiPrinter className="h-4 w-4" />Price List</button>
           <button
             type="button"
             onClick={() => refetch()}
@@ -147,13 +314,14 @@ const Dashboard = () => {
           </button>
           <Link
             to={`${basePath}/reports`}
-            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-black text-white shadow-sm transition hover:bg-blue-700"
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 text-sm font-black text-blue-700 shadow-sm transition hover:bg-blue-100"
           >
             Open Reports <FiArrowRight className="h-4 w-4" />
           </Link>
         </div>
       </section>
 
+      {alert ? <StatusAlert type={alert.type} message={alert.message} onClose={alert.type === 'loading' ? undefined : () => setAlert(null)} /> : null}
       {isLoading ? <StatusAlert type="loading" message="Loading project dashboard..." /> : null}
       {!isLoading && isFetching ? <StatusAlert type="info" message="Refreshing operational data..." /> : null}
       {isError ? <StatusAlert type="error" message={error?.message || 'Failed to load project dashboard.'} /> : null}
@@ -260,6 +428,10 @@ const Dashboard = () => {
           </div>
         </div>
       </section>
+
+      {showPriceListModal ? <PriceListPrintModal projectName={project.project_bailen_name} onClose={() => setShowPriceListModal(false)} onPrint={handlePrintPriceList} /> : null}
+      {showDetails ? <ProjectDetailsModal project={project} onClose={() => setShowDetails(false)} onEdit={() => { setShowDetails(false); setShowEdit(true) }} onPrintPriceList={() => { setShowDetails(false); setShowPriceListModal(true) }} /> : null}
+      {showEdit ? <EditProjectModal project={project} documents={documentsData?.documents || []} templates={templatesData?.templates || []} templateDocuments={templatesData?.template_documents || []} onClose={() => setShowEdit(false)} onSave={handleSaveProject} isSaving={updateProjectMutation.isPending} /> : null}
     </main>
   )
 }
