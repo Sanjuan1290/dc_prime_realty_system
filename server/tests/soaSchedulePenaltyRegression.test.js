@@ -40,7 +40,7 @@ test('paid and outstanding penalties remain available separately in SOA and dash
   const dashboard = read('server/controllers/Lot_Projects/Dashboard/Dashboard.controller.js');
   const soa = read('client/src/components/Lot_Projects/ListingProfileComponents/PaymentsSOA/Payments_SOA.jsx');
   const systemReports = read('client/src/pages/System/Reports.jsx');
-  const lotDashboard = read('client/src/pages/Lot_Projects/Dashboard.jsx');
+  const lotDashboard = read('client/src/pages/Lot_Projects/Reports.jsx');
 
   assert.match(shared, /event\.kind === 'payment'[\s\S]*addCalendarDays\(event\.date, 1\)/);
   assert.match(dashboard, /GREATEST\(s\.paid_penalty_amount, 0\) \+ GREATEST\(s\.penalty_amount - s\.paid_penalty_amount, 0\)/);
@@ -60,5 +60,6 @@ test('paid and outstanding penalties remain available separately in SOA and dash
   assert.match(lotDashboard, /stats\.totalPenaltyPaid/);
   assert.match(lotDashboard, /stats\.totalPenaltyOutstanding/);
 });
+
 
 

@@ -21,7 +21,7 @@ test('custom dashboard dates are not expanded to complete months', () => {
 
 test('System and Lot dashboards send the selected exact dates', () => {
   const systemReports = read('client/src/pages/System/Reports.jsx');
-  const lotDashboard = read('client/src/pages/Lot_Projects/Dashboard.jsx');
+  const lotDashboard = read('client/src/pages/Lot_Projects/Reports.jsx');
   assert.match(systemReports, /range: dateRange,[\s\S]*from: fromDate,[\s\S]*to: toDate/);
   assert.match(lotDashboard, /new URLSearchParams\(\{ range: dateRange, from: dateFrom, to: dateTo \}\)/);
   assert.match(lotDashboard, /hasInvalidDateRange/);
@@ -52,7 +52,7 @@ test('request IP normalization supports local and proxied deployments', () => {
 
 
 test('Lot Project Business Snapshot matches the System Reports metric definitions', () => {
-  const lotDashboard = read('client/src/pages/Lot_Projects/Dashboard.jsx');
+  const lotDashboard = read('client/src/pages/Lot_Projects/Reports.jsx');
   for (const label of [
     'Total Gross Sales',
     'Cash Collected',
@@ -71,5 +71,6 @@ test('Lot Project Business Snapshot matches the System Reports metric definition
   assert.doesNotMatch(lotDashboard, /label: 'Settled Value'/);
   assert.doesNotMatch(lotDashboard, /label: 'Payable Commission'/);
 });
+
 
 

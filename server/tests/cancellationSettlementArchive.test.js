@@ -92,7 +92,7 @@ test('cancelled commission settlement preserves released stages and earns reache
 
 test('Lot Project Business Snapshot exposes refunded and discontinued totals', () => {
   const dashboardController = read('server/controllers/Lot_Projects/Dashboard/Dashboard.controller.js');
-  const dashboardPage = read('client/src/pages/Lot_Projects/Dashboard.jsx');
+  const dashboardPage = read('client/src/pages/Lot_Projects/Reports.jsx');
 
   assert.match(dashboardController, /AS totalRefundedAmount/i);
   assert.match(dashboardController, /AS totalDiscontinuedAmount/i);
@@ -108,4 +108,5 @@ test('seller income and receipt reports include archived released commissions', 
   assert.match(accreditedController, /UNION ALL/i);
   assert.match(accreditedController, /isArchived/i);
 });
+
 

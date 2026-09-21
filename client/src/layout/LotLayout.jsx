@@ -13,6 +13,7 @@ import {
   FiChevronLeft,
   FiDollarSign,
   FiGrid,
+  FiHome,
   FiLoader,
   FiMenu,
   FiSettings,
@@ -25,6 +26,7 @@ import { useFetch } from '../utils/useFetch'
 import { isFullAccessAdministrator } from '../config/permissions'
 
 const getPageTitle = (pathname, projectName) => {
+  if (pathname.includes('/reports')) return `${projectName || 'Lot Project'} Reports`
   if (pathname.includes('/listings/')) return 'Listing Profile'
   if (pathname.includes('/listings')) return 'Listings / Units'
   if (pathname.includes('/payments-audit')) return 'Payments Audit / Logs'
@@ -64,7 +66,8 @@ const LotLayout = () => {
   const basePath = `/portal/lot-projects/${projectSlug}`
 
   const navItems = useMemo(() => [
-    { label: 'Dashboard', path: basePath, icon: FiBarChart2, end: true },
+    { label: 'Dashboard', path: basePath, icon: FiHome, end: true },
+    { label: 'Reports', path: `${basePath}/reports`, icon: FiBarChart2 },
     { label: 'Listings / Units', path: `${basePath}/listings`, icon: FiGrid },
     { label: 'Payments Audit', path: `${basePath}/payments-audit`, icon: FiShield },
     { label: 'Commissions', path: `${basePath}/commissions`, icon: FiDollarSign },
@@ -254,4 +257,3 @@ const LotLayout = () => {
 }
 
 export default LotLayout
-

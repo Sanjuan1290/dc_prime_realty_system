@@ -143,6 +143,9 @@ test('project and listing workspaces do not advertise or fetch Data Integrity', 
 
   assert.doesNotMatch(dashboard, /data-integrity/);
   assert.doesNotMatch(dashboard, /integrityQuery|canViewDataIntegrity|View Integrity Report/);
+  const reports = read('client/src/pages/Lot_Projects/Reports.jsx');
+  assert.doesNotMatch(reports, /data-integrity/);
+  assert.doesNotMatch(reports, /integrityQuery|canViewDataIntegrity|View Integrity Report/);
   assert.doesNotMatch(listingProfile, /data-integrity/);
   assert.doesNotMatch(listingProfile, /integritySummaryQuery|canViewDataIntegrity|View Breakdown/);
 });
@@ -194,3 +197,4 @@ test('Integrity Records uses server-backed pagination capped at 10 records per p
   assert.match(page, />Previous<\/button>/);
   assert.match(page, />Next<\/button>/);
 });
+

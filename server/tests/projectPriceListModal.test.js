@@ -6,7 +6,7 @@ const read = (relativePath) => readFile(new URL(relativePath, import.meta.url), 
 
 test('Price List button opens a month-setting modal before printing', async () => {
   const [dashboard, details] = await Promise.all([
-    read('../../client/src/pages/Lot_Projects/Dashboard.jsx'),
+    read('../../client/src/pages/Lot_Projects/Reports.jsx'),
     read('../../client/src/components/Lot_Projects/DashboardComponents/ProjectDetailsModal/ProjectDetailsModal.jsx'),
   ]);
 
@@ -75,4 +75,5 @@ test('Add and Edit Lot Project use two separate floating document modals', async
   assert.match(projectModal, /onClick=\{handleSave\}/);
   assert.match(editModal, /mode="edit"/);
 });
+
 

@@ -17,7 +17,7 @@ test('input example decorator renders only authored data-example values on free-
 })
 
 test('business-specific examples are authored on their own fields', () => {
-  const priceList = read('client/src/pages/Lot_Projects/Dashboard.jsx')
+  const priceList = read('client/src/pages/Lot_Projects/Reports.jsx')
   const rates = read('client/src/components/System/sellerGroupComponents/ProjectAccreditationFields.jsx')
   assert.match(priceList, /data-example=['\"]20 months['\"]/)
   assert.doesNotMatch(priceList, /data-example=['\"][^'\"]*₱/)
@@ -31,4 +31,5 @@ test('example helper text remains visually secondary', () => {
   assert.match(css, /\.dc-input-example[\s\S]*?font-size:\s*10px/)
   assert.match(css, /font-style:\s*italic/)
 })
+
 

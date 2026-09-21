@@ -51,7 +51,7 @@ test('Super Admin accounts and password plus email-code owner actions stay owner
 test('Admin dashboard ranges now match Super Admin operational capability', () => {
   const controller = read('server/controllers/Lot_Projects/Dashboard/Dashboard.controller.js');
   const systemReports = read('client/src/pages/System/Reports.jsx');
-  const lotDashboard = read('client/src/pages/Lot_Projects/Dashboard.jsx');
+  const lotDashboard = read('client/src/pages/Lot_Projects/Reports.jsx');
 
   assert.doesNotMatch(controller, /Admin 1 dashboard reports are limited to 12 months/);
   assert.match(controller, /\['super_admin', 'admin'\]\.includes\(actor\.role\) && isOverOneYear/);
@@ -60,4 +60,5 @@ test('Admin dashboard ranges now match Super Admin operational capability', () =
   assert.match(systemReports, /administratorNeedsConfirmation/);
   assert.match(lotDashboard, /const canLoadDateRange = !hasInvalidDateRange/);
 });
+
 

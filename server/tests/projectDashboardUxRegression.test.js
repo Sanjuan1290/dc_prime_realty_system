@@ -6,7 +6,7 @@ const read = (relativePath) => readFile(new URL(relativePath, import.meta.url), 
 
 test('Lot Project dashboard initializes to This Month and View Details print opens the Price List modal', async () => {
   const [dashboard, details] = await Promise.all([
-    read('../../client/src/pages/Lot_Projects/Dashboard.jsx'),
+    read('../../client/src/pages/Lot_Projects/Reports.jsx'),
     read('../../client/src/components/Lot_Projects/DashboardComponents/ProjectDetailsModal/ProjectDetailsModal.jsx'),
   ]);
 
@@ -31,4 +31,5 @@ test('commission rate examples are field-authored instead of inheriting the dail
   assert.doesNotMatch(decorator, /if \(\/rate\|percentage\|percent[\s\S]*?return '0\.05%'/);
   assert.doesNotMatch(decorator, /custom\.\*daily\.\*penalty\.\*rate/);
 });
+
 

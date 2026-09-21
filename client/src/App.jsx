@@ -58,6 +58,7 @@ const Attendance = lazy(() => import('./pages/System/Attendance'))
 const AttendanceKiosk = lazy(() => import('./pages/Public/AttendanceKiosk'))
 
 const LotDashboard = lazy(() => import('./pages/Lot_Projects/Dashboard'))
+const LotReports = lazy(() => import('./pages/Lot_Projects/Reports'))
 const LotListings = lazy(() => import('./pages/Lot_Projects/Listings'))
 const LotListingProfile = lazy(() => import('./pages/Lot_Projects/ListingProfile'))
 const LotPaymentLogs = lazy(() => import('./pages/Lot_Projects/PaymentLogs'))
@@ -196,6 +197,13 @@ const App = () => {
             element={protect(
               PERMISSIONS.LOT_DASHBOARD_VIEW,
               <LotDashboard />
+            )}
+          />
+          <Route
+            path="reports"
+            element={protect(
+              PERMISSIONS.LOT_DASHBOARD_VIEW,
+              <LotReports />
             )}
           />
           <Route

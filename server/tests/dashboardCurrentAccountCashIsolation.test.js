@@ -9,7 +9,7 @@ const root = path.resolve(dirname, '..', '..')
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8')
 
 const controller = read('server/controllers/Lot_Projects/Dashboard/Dashboard.controller.js')
-const lotDashboard = read('client/src/pages/Lot_Projects/Dashboard.jsx')
+const lotDashboard = read('client/src/pages/Lot_Projects/Reports.jsx')
 const systemReports = read('client/src/pages/System/Reports.jsx')
 
 test('dashboard cash and discount calculations use only the listing current buyer account', () => {
@@ -43,5 +43,6 @@ test('cash cards explain that finalized cancelled accounts stay in cancellation 
   assert.match(controller, /AS totalDiscontinuedAmount/)
   assert.match(controller, /AS cancellationCashCollected/)
 })
+
 
 
