@@ -120,3 +120,4 @@ test('account foreign keys block accidental deletion outside the verified purge'
   assert.match(migration, /fk_commission_account[\s\S]*RESTRICT/);
 });
 
+

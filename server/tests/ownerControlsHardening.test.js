@@ -59,3 +59,4 @@ test('Pending for Cancellation, Cancellation Settlement, and refund actions are 
   assert.match(controller, /if \(\(startsCancellation \|\| completesCancellation\) && req\.authUser\?\.role !== 'super_admin'\)/);
   assert.match(controller, /Only the Super Admin can complete Cancellation Settlement or issue a refund/);
 });
+

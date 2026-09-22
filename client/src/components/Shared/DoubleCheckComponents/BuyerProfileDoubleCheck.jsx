@@ -81,3 +81,4 @@ const BuyerProfileDoubleCheck = ({ request, onConfirm, onCancel, additionalSteps
 
 export default BuyerProfileDoubleCheck
 
+

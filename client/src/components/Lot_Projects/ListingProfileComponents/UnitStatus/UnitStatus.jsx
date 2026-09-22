@@ -182,6 +182,7 @@ const UnitStatus = ({
   libraryDocuments = [],
   projectDefaultDocuments = [],
   onSave,
+  canEditListing = false,
   canAdjustCommission = false,
   canManageCancellation = false,
   onRequestCommissionAdjustmentCode,
@@ -342,8 +343,9 @@ const UnitStatus = ({
             {!readOnly ? (
               <button
                 type="button"
-                onClick={() => setShowEditModal(true)}
-                disabled={isSaving}
+                onClick={() => canEditListing && setShowEditModal(true)}
+                disabled={isSaving || !canEditListing}
+                title={!canEditListing ? 'Only the Super Admin can edit a reserved, sold, or protected listing.' : 'Edit listing details'}
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98]"
               >
                 <FiEdit3 className="h-4 w-4" />
@@ -366,8 +368,9 @@ const UnitStatus = ({
             {showSettlementButton ? (
               <button
                 type="button"
-                onClick={() => setConfirmAction('cancel-cancellation')}
-                disabled={isSaving}
+                onClick={() => canManageCancellation && setConfirmAction('cancel-cancellation')}
+                disabled={isSaving || !canManageCancellation}
+                title={!canManageCancellation ? 'Only the Super Admin can cancel a pending cancellation.' : 'Return the buyer account to Sold / Active'}
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98]"
               >
                 <FiRotateCcw className="h-4 w-4" />
@@ -378,8 +381,9 @@ const UnitStatus = ({
             {showAvailableButton ? (
               <button
                 type="button"
-                onClick={() => setConfirmAction('make-available')}
-                disabled={isSaving}
+                onClick={() => canManageCancellation && setConfirmAction('make-available')}
+                disabled={isSaving || !canManageCancellation}
+                title={!canManageCancellation ? 'Only the Super Admin can close a cancelled account and make the unit available.' : 'Close the cancelled account and return the unit to Available'}
                 className="inline-flex h-10 items-center justify-center rounded-xl bg-emerald-600 px-4 text-sm font-black text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98]"
               >
                 Close Account & Make Available
@@ -616,7 +620,7 @@ const UnitStatus = ({
         />
       ) : null}
 
-      {!readOnly && showEditModal ? (
+      {!readOnly && canEditListing && showEditModal ? (
         <EditUnitStatusModal
           listing={unitData}
           project={project}
@@ -646,3 +650,4 @@ const UnitStatus = ({
 }
 
 export default UnitStatus
+

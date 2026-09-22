@@ -51,3 +51,4 @@ test('server-generated frontend links include the portal prefix', () => {
   assert.match(users, /must_change_password = 1/);
 });
 
+

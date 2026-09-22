@@ -215,7 +215,7 @@ export const updateLotProjectListingDocumentRequirements = async (req, res) => {
     const lookup = getListingLookupWhere(listingLookup);
     const [listingRows] = await connection.query(
       `
-        SELECT lot_project_listing_id
+        SELECT lot_project_listing_id, lot_project_listing_status
         FROM lot_project_listings l
         WHERE l.lot_project_id = ?
           AND ${lookup.sql}
@@ -226,6 +226,14 @@ export const updateLotProjectListingDocumentRequirements = async (req, res) => {
 
     const listing = listingRows[0];
     if (!listing) return res.status(404).json({ message: 'Listing not found.' });
+
+    const listingStatus = String(listing.lot_project_listing_status || '').trim().toLowerCase();
+    if (!['available', 'hold'].includes(listingStatus)) {
+      return res.status(409).json({
+        code: 'PROTECTED_LISTING_DOCUMENT_REQUIREMENTS_LOCKED',
+        message: 'Listing document requirements are locked after this unit has been reserved. Manage the current buyer account documents instead.',
+      });
+    }
 
     const rawDocuments = Array.isArray(req.body.documents)
       ? req.body.documents
@@ -1122,4 +1130,5 @@ export const clearLotProjectListingDocument = async (req, res) => {
     connection.release();
   }
 };
+
 

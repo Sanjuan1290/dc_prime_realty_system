@@ -1335,6 +1335,65 @@ export const updateLotProjectListing = async (req, res) => {
     }
 
     const sameNumber = (left, right) => Math.abs(Number(left || 0) - Number(right || 0)) < 0.000001;
+    const currentListingStatus = String(existingListing.lot_project_listing_status || '').trim().toLowerCase();
+    const isInventoryEditable = ['available', 'hold'].includes(currentListingStatus);
+    const isProtectedListing = !isInventoryEditable;
+    const isSuperAdmin = req.authUser?.role === 'super_admin';
+
+    // Available and Hold are inventory states and remain editable by users with
+    // LOT_LISTINGS_MANAGE. Once a real sale/reservation state exists, the
+    // generic Edit Listing endpoint becomes a Super Admin administrative-only
+    // correction surface. Contract/pricing fields are frozen below.
+    if (isProtectedListing && !isSuperAdmin) {
+      await connection.rollback();
+      return res.status(403).json({
+        code: 'PROTECTED_LISTING_EDIT_REQUIRES_SUPER_ADMIN',
+        message: 'Only the Super Admin can edit a reserved, sold, or protected listing.',
+      });
+    }
+
+    const existingInstallmentPricePerSqm = Number(
+      existingListing.lot_project_listing_installment_price_per_sqm
+      ?? existingListing.lot_project_listing_price_per_sqm
+      ?? 0
+    );
+    const existingCashPricePerSqm = Number(
+      existingListing.lot_project_listing_cash_price_per_sqm
+      ?? existingListing.lot_project_listing_price_per_sqm
+      ?? 0
+    );
+
+    const protectedContractFieldChanges = [];
+    if (isProtectedListing) {
+      if (!sameNumber(lotAreaSqm, existingListing.lot_project_listing_area_sqm)) {
+        protectedContractFieldChanges.push('Lot Area SQM');
+      }
+      if (!sameNumber(installmentPricePerSqm, existingInstallmentPricePerSqm)) {
+        protectedContractFieldChanges.push('Installment Price / SQM');
+      }
+      if (!sameNumber(cashPricePerSqm, existingCashPricePerSqm)) {
+        protectedContractFieldChanges.push('Cash Price / SQM');
+      }
+      if (!sameNumber(legalMiscRate, existingListing.lot_project_listing_lmf_rate)) {
+        protectedContractFieldChanges.push('Legal / Misc Rate');
+      }
+      if (!sameNumber(reservationFee, existingListing.lot_project_listing_reservation_fee)) {
+        protectedContractFieldChanges.push('Reservation Fee');
+      }
+      if (hasAnnualInterestRate && !sameNumber(annualInterestRate, existingListing.annual_interest_rate)) {
+        protectedContractFieldChanges.push('Annual Interest Rate');
+      }
+    }
+
+    if (protectedContractFieldChanges.length) {
+      await connection.rollback();
+      return res.status(409).json({
+        code: 'PROTECTED_LISTING_CONTRACT_FIELDS_LOCKED',
+        message: `Pricing and contract fields cannot be changed after this listing has been reserved. Locked field(s): ${protectedContractFieldChanges.join(', ')}.`,
+        lockedFields: protectedContractFieldChanges,
+      });
+    }
+
     const unitIdChanged = unitCode !== String(existingListing.lot_project_listing_unit_id || '').trim().toUpperCase();
     const statusChanged = listingStatus.status !== existingListing.lot_project_listing_status
       || String(listingStatus.soldSubstatus || '') !== String(existingListing.lot_project_listing_sold_substatus || '');
@@ -1463,15 +1522,6 @@ export const updateLotProjectListing = async (req, res) => {
       'lot_project_listing_unit_type = ?',
       'lot_project_listing_unit_id = ?',
       'lot_project_listing_old_unit_ids = ?',
-      'lot_project_listing_area_sqm = ?',
-      'lot_project_listing_price_per_sqm = ?',
-      'lot_project_listing_installment_price_per_sqm = ?',
-      'lot_project_listing_cash_price_per_sqm = ?',
-      'lot_project_listing_net_selling_price = ?',
-      'lot_project_listing_lmf_rate = ?',
-      'lot_project_listing_lmf_amount = ?',
-      'lot_project_listing_tcp = ?',
-      'lot_project_listing_reservation_fee = ?',
       'lot_project_listing_status = ?',
       'lot_project_listing_sold_substatus = ?',
     ];
@@ -1480,18 +1530,38 @@ export const updateLotProjectListing = async (req, res) => {
       normalizeLotType(req.body.lotType || req.body.lot_type),
       unitCode,
       toNullable(oldUnitIdsValue),
-      lotAreaSqm,
-      installmentPricePerSqm,
-      installmentPricePerSqm,
-      cashPricePerSqm,
-      installmentPricing.netSellingPrice,
-      legalMiscRate,
-      installmentPricing.lmfAmount,
-      installmentPricing.tcp,
-      reservationFee,
       listingStatus.status,
       listingStatus.soldSubstatus,
     ];
+
+    // Never rewrite contract/master financial configuration while a listing is
+    // in a protected sale state. Even unchanged values are intentionally not
+    // written so this endpoint cannot become an accidental financial mutation
+    // path for an existing buyer account.
+    if (!isProtectedListing) {
+      updateColumns.splice(3, 0,
+        'lot_project_listing_area_sqm = ?',
+        'lot_project_listing_price_per_sqm = ?',
+        'lot_project_listing_installment_price_per_sqm = ?',
+        'lot_project_listing_cash_price_per_sqm = ?',
+        'lot_project_listing_net_selling_price = ?',
+        'lot_project_listing_lmf_rate = ?',
+        'lot_project_listing_lmf_amount = ?',
+        'lot_project_listing_tcp = ?',
+        'lot_project_listing_reservation_fee = ?'
+      );
+      updateParams.splice(3, 0,
+        lotAreaSqm,
+        installmentPricePerSqm,
+        installmentPricePerSqm,
+        cashPricePerSqm,
+        installmentPricing.netSellingPrice,
+        legalMiscRate,
+        installmentPricing.lmfAmount,
+        installmentPricing.tcp,
+        reservationFee
+      );
+    }
 
     if (annualInterestChanged) {
       updateColumns.push('annual_interest_rate = ?');
@@ -1543,6 +1613,40 @@ export const updateLotProjectListing = async (req, res) => {
     if (result.affectedRows === 0) {
       await connection.rollback();
       return res.status(404).json({ message: 'Listing not found.' });
+    }
+
+    // A protected Unit ID edit is an administrative correction of the same
+    // physical listing. Keep the current buyer account/history identity aligned
+    // with the corrected Unit ID. Previous Unit ID discoverability is preserved
+    // by Old Unit IDs + audit metadata above.
+    if (unitIdChanged && currentAccount?.lot_project_account_id) {
+      await connection.query(
+        `UPDATE lot_project_accounts
+         SET unit_id_snapshot = ?, updated_at = NOW()
+         WHERE lot_project_account_id = ?`,
+        [unitCode, currentAccount.lot_project_account_id]
+      );
+
+      if (hasReservationHistory && currentAccount.lot_project_reservation_history_id) {
+        await connection.query(
+          `UPDATE lot_project_reservation_history
+           SET unit_id_snapshot = ?, updated_at = NOW()
+           WHERE lot_project_reservation_history_id = ?`,
+          [unitCode, currentAccount.lot_project_reservation_history_id]
+        );
+
+        // If a cancellation archive already exists for this still-current
+        // account, its unit identity should follow the same administrative ID
+        // correction while all financial snapshots remain untouched.
+        if (await tableExists(connection, 'lot_project_cancelled_sale_archives')) {
+          await connection.query(
+            `UPDATE lot_project_cancelled_sale_archives
+             SET unit_id_snapshot = ?
+             WHERE lot_project_reservation_history_id = ?`,
+            [unitCode, currentAccount.lot_project_reservation_history_id]
+          );
+        }
+      }
     }
 
     const resetToAvailable = statusTransition.resetToAvailable;
@@ -1972,6 +2076,12 @@ export const updateLotProjectListing = async (req, res) => {
       const requestedSignature = signature(requestedClean);
 
       if (currentSignature !== requestedSignature) {
+        if (isProtectedListing) {
+          throw Object.assign(
+            new Error('Listing document requirements are locked after this listing has been reserved. Manage the buyer account documents instead.'),
+            { statusCode: 409, code: 'PROTECTED_LISTING_DOCUMENT_REQUIREMENTS_LOCKED' }
+          );
+        }
         listingDocumentSyncResult = await replaceListingDocumentRequirements(
           connection,
           project.lot_project_id,
@@ -2502,3 +2612,4 @@ export const deleteLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
+

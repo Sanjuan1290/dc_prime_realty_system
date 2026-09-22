@@ -22,3 +22,4 @@ npm test
 ```
 
 No database migration is required.
+

@@ -117,3 +117,4 @@ export const validateDepartmentConfigs = (rawConfigs) => {
   return configs.slice(0, 100);
 };
 
+

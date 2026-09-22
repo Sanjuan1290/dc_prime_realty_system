@@ -70,3 +70,4 @@ test('Penalty adjustment wording is understandable without technical correction 
   assert.doesNotMatch(modal, />Waive Penalty</);
 });
 
+

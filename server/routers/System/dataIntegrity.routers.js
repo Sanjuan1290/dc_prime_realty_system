@@ -26,3 +26,4 @@ router.get('/summary', getDataIntegritySummary);
 router.get('/accounts/:accountId', getDataIntegrityAccount);
 
 export default router;
+

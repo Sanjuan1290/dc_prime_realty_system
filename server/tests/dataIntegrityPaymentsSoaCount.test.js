@@ -16,3 +16,4 @@ test('Payments & SOA integrity summary counts payment records and exposes SOA ro
   assert.match(page, /SOA rows also validated/);
 });
 
+

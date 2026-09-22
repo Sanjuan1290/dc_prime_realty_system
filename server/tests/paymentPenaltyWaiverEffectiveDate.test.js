@@ -36,3 +36,4 @@ test('SOA terms support a penalty policy effective date for historical accounts'
   assert.match(migration, /ADD COLUMN lot_project_payment_id INT UNSIGNED NULL/);
 });
 
+

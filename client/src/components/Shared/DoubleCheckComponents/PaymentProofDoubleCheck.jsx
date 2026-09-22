@@ -4,3 +4,4 @@ const PaymentProofDoubleCheck = (props) => <DocumentUploadDoubleCheck {...props}
 
 export default PaymentProofDoubleCheck
 
+

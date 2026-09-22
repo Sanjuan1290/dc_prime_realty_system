@@ -44,3 +44,4 @@ const VisitChecklist = ({ compact = false }) => {
 
 export default VisitChecklist
 
+

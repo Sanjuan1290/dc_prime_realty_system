@@ -114,3 +114,4 @@ test('verification payload is deterministic and scoped to one buyer account', ()
   assert.equal(payload.groupRate, 10);
 });
 
+

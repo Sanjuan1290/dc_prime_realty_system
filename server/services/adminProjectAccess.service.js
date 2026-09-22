@@ -145,3 +145,4 @@ export const grantAdminProjectAccess = async (connection, { userId, projectId, c
     [uid, pid, changedByUserId || null]
   );
 };
+

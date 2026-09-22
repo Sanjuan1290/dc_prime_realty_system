@@ -26,3 +26,4 @@ router.put('/editTemplate/:id', requirePermission(PERMISSIONS.SYSTEM_DOCUMENTS_M
 
 export default router;
 
+

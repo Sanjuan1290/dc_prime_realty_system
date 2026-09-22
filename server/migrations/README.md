@@ -41,3 +41,4 @@ Apply this SQL migration before running `npm run migrate:cloudinary-documents`. 
 
 - `20260907_attendance_settings_and_secure_barcodes.sql` — persistent Attendance Settings and separate secure 10-digit Attendance Barcodes.
 
+

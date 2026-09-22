@@ -117,6 +117,7 @@ const Field = ({
   required = false,
   min,
   step,
+  disabled = false,
 }) => (
   <label className="flex flex-col gap-1.5">
     <span className="text-sm font-black text-slate-700">
@@ -128,9 +129,10 @@ const Field = ({
       min={min}
       step={step}
       value={value}
+      disabled={disabled}
       onChange={(event) => onChange(event.target.value)}
       placeholder={placeholder}
-      className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
+      className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 disabled:focus:border-slate-300 disabled:focus:ring-0"
     />
 
     {helper ? <p className="text-xs font-semibold text-slate-500">{helper}</p> : null}
@@ -191,6 +193,7 @@ const EditUnitStatusModal = ({ listing, project = {}, listingDocuments = [], lib
   }, [project.cadastralLots, selectedLotNumber])
 
   const currentStatus = toStatusValue(listing?.listing_status || listing?.status, listing?.rawStatus)
+  const isProtectedListing = !['available', 'hold'].includes(currentStatus)
   const allowedStatusOptions = useMemo(() => {
     if (currentStatus === 'sold') {
       const allowed = canManageCancellation ? ['sold', 'pending_for_cancellation'] : ['sold']
@@ -361,7 +364,7 @@ const EditUnitStatusModal = ({ listing, project = {}, listingDocuments = [], lib
       payload.cadastralLots = form.cadastralLotNo ? [form.cadastralLotNo] : []
       payload.cadastral_lot_no = form.cadastralLotNo
     }
-    if (documentsChanged) {
+    if (!isProtectedListing && documentsChanged) {
       payload.documentRequirements = documentRequirements
     }
 
@@ -428,6 +431,14 @@ const EditUnitStatusModal = ({ listing, project = {}, listingDocuments = [], lib
               type={alert.type}
               message={alert.message}
               onClose={alert.type === 'loading' ? undefined : () => setAlert(null)}
+              className="mb-4"
+            />
+          ) : null}
+
+          {isProtectedListing ? (
+            <StatusAlert
+              type="warning"
+              message="Protected listing: pricing, lot area, reservation fee, LMF, interest rate, and listing document requirements are locked because this unit already has reservation/sale history. Only cadastral lot, Unit ID, Old Unit IDs, Lot Type, and controlled Status actions can be changed."
               className="mb-4"
             />
           ) : null}
@@ -518,6 +529,8 @@ const EditUnitStatusModal = ({ listing, project = {}, listingDocuments = [], lib
               value={form.reservationFee}
               onChange={(value) => updateField('reservationFee', value)}
               placeholder="50000"
+              disabled={isProtectedListing}
+              helper={isProtectedListing ? 'Locked after reservation/sale.' : undefined}
             />
 
             <Field
@@ -530,6 +543,7 @@ const EditUnitStatusModal = ({ listing, project = {}, listingDocuments = [], lib
               placeholder="0"
               helper="Used when the reservation mode is Installment."
               required
+              disabled={isProtectedListing}
             />
 
             <Field
@@ -542,6 +556,7 @@ const EditUnitStatusModal = ({ listing, project = {}, listingDocuments = [], lib
               placeholder="0"
               helper="Used when the reservation mode is Cash."
               required
+              disabled={isProtectedListing}
             />
 
             <Field
@@ -553,6 +568,8 @@ const EditUnitStatusModal = ({ listing, project = {}, listingDocuments = [], lib
               onChange={(value) => updateField('lotAreaSqm', value)}
               placeholder="0"
               required
+              disabled={isProtectedListing}
+              helper={isProtectedListing ? 'Locked after reservation/sale.' : undefined}
             />
 
             <Field
@@ -563,7 +580,8 @@ const EditUnitStatusModal = ({ listing, project = {}, listingDocuments = [], lib
               value={form.legalMiscRate}
               onChange={(value) => updateField('legalMiscRate', value)}
               placeholder="10"
-              helper="Enter percentage only. Example: 10 means 10%."
+              helper={isProtectedListing ? 'Locked after reservation/sale.' : 'Enter percentage only. Example: 10 means 10%.'}
+              disabled={isProtectedListing}
             />
 
             <Field
@@ -574,7 +592,8 @@ const EditUnitStatusModal = ({ listing, project = {}, listingDocuments = [], lib
               value={form.annualInterestRate}
               onChange={(value) => updateField('annualInterestRate', value)}
               placeholder="0"
-              helper="Used for monthly amortization and SOA interest view."
+              helper={isProtectedListing ? 'Locked after reservation/sale.' : 'Used for monthly amortization and SOA interest view.'}
+              disabled={isProtectedListing}
             />
 
             <SelectField
@@ -592,17 +611,22 @@ const EditUnitStatusModal = ({ listing, project = {}, listingDocuments = [], lib
             </SelectField>
           </section>
 
-          <section className="mt-5 rounded-xl border border-blue-200 bg-blue-50 p-4">
+          <section className={`mt-5 rounded-xl border p-4 ${isProtectedListing ? 'border-slate-200 bg-slate-50' : 'border-blue-200 bg-blue-50'}`}>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h3 className="text-sm font-black text-slate-950">Listing Document Requirements</h3>
-                <p className="mt-1 text-xs font-semibold text-slate-600">These are the saved requirements used automatically by Review Buyer Form &amp; Reserve. Edit them here, then click Save Changes.</p>
+                <p className="mt-1 text-xs font-semibold text-slate-600">
+                  {isProtectedListing
+                    ? 'Requirements are locked after reservation/sale. Manage the current buyer account documents without rewriting the listing requirements.'
+                    : 'These are the saved requirements used automatically by Review Buyer Form & Reserve. Edit them here, then click Save Changes.'}
+                </p>
               </div>
 
               <button
                 type="button"
-                onClick={() => setShowEditDocumentsModal(true)}
-                disabled={isSaving}
+                onClick={() => !isProtectedListing && setShowEditDocumentsModal(true)}
+                disabled={isSaving || isProtectedListing}
+                title={isProtectedListing ? 'Listing document requirements are locked after reservation/sale.' : 'Edit listing document requirements'}
                 className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <FiFileText className="h-4 w-4" />
@@ -660,7 +684,7 @@ const EditUnitStatusModal = ({ listing, project = {}, listingDocuments = [], lib
           </button>
         </div>
 
-        {showEditDocumentsModal ? (
+        {!isProtectedListing && showEditDocumentsModal ? (
           <EditListingDocumentsModal
             selectedDocuments={documentRequirements}
             setSelectedDocuments={handleDocumentsChange}
@@ -712,3 +736,4 @@ const EditUnitStatusModal = ({ listing, project = {}, listingDocuments = [], lib
 }
 
 export default EditUnitStatusModal
+

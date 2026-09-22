@@ -303,3 +303,4 @@ const EmployeeModal = ({ employee, departmentConfigs = [], departments = [], onC
 
 export default EmployeeModal
 
+

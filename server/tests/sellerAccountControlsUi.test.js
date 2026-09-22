@@ -23,3 +23,4 @@ test('User Management does not expose credential regeneration because password r
   assert.doesNotMatch(source, /resetPasswordMutation/);
   assert.doesNotMatch(source, /\/user\/resetPassword\//);
 });
+

@@ -496,3 +496,4 @@ export const updateEmployeeStatus = async (req, res) => {
   } finally { connection.release(); }
 };
 
+

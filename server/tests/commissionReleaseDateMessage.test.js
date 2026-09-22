@@ -14,3 +14,4 @@ test('eligible live commission shows next release date when release action is da
   assert.match(source, /disabled=\{isSaving \|\| releaseDateLocked\}/)
   assert.match(source, /Not a release date yet\. Next release date: \{releaseDateInfo\.nextReleaseDate \|\| '-'\}\./)
 })
+

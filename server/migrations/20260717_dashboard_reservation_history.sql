@@ -93,3 +93,4 @@ WHERE l.lot_project_listing_status IN ('sold', 'pending_for_cancellation', 'canc
     WHERE rh.lot_project_listing_id = l.lot_project_listing_id
   );
 
+

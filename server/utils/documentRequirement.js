@@ -45,3 +45,4 @@ export const resolveDocumentResponsibleParty = (document = {}, fallback = 'clien
   return normalizeDocumentResponsibleParty(value, fallback);
 };
 
+

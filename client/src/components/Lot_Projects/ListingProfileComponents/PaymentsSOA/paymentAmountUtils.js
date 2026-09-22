@@ -28,3 +28,4 @@ export const getFullPaymentAmount = (rows = [], reversedPaymentAmount = 0) =>
 export const formatPaymentAmountInput = (value) =>
   Number(value || 0) > 0 ? Number(value).toFixed(2) : ''
 
+

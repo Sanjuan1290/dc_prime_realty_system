@@ -90,3 +90,4 @@ export const backfillMissingAttendanceBarcodes = async (connection) => {
   return rows.length;
 };
 
+

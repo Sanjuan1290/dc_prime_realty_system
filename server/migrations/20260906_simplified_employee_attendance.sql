@@ -120,3 +120,4 @@ CREATE TABLE IF NOT EXISTS `employee_attendance_corrections` (
     ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+

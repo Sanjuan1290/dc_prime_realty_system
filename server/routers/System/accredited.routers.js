@@ -36,3 +36,4 @@ router.post('/:sellerId/proof-of-income', requirePermission(PERMISSIONS.SYSTEM_A
 
 export default router;
 
+

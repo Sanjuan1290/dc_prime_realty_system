@@ -9,3 +9,4 @@ WHERE document_is_reusable <> 1;
 ALTER TABLE documents
   MODIFY COLUMN document_is_reusable TINYINT(1) NOT NULL DEFAULT 1;
 
+

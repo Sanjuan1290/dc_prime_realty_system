@@ -112,7 +112,8 @@ const ListingProfile = () => {
   const queryClient = useQueryClient()
   const { projectSlug, listingId, accountId } = useParams()
   const { data: currentUserData } = useCurrentUser()
-  const canAdjustCommission = currentUserData?.user?.role === 'super_admin'
+  const isSuperAdmin = currentUserData?.user?.role === 'super_admin'
+  const canAdjustCommission = isSuperAdmin
   const canManageCancellation = currentUserData?.user?.role === 'super_admin'
   const canCorrectReservation = hasPermission(currentUserData?.user, PERMISSIONS.LOT_RESERVATION_CORRECT)
   const isAccountRoute = Boolean(accountId)
@@ -162,6 +163,16 @@ const ListingProfile = () => {
     : profileBuyerForm
   const pendingBuyerFormSubmission = buyerForm.pendingSubmission || null
   const currentBuyerFormLink = buyerForm.currentLink || null
+  const listingInventoryStatus = String(
+    listing?.rawStatus ||
+      listing?.lot_project_listing_status ||
+      listing?.listing_status ||
+      listing?.status ||
+      ''
+  ).trim().toLowerCase()
+  const listingIsFreelyEditableInventory = ['available', 'hold'].includes(listingInventoryStatus)
+  const canEditListing = Boolean(!readOnly && (listingIsFreelyEditableInventory || isSuperAdmin))
+  const canEditListingRequirements = Boolean(!readOnly && listingIsFreelyEditableInventory)
 
   const reserveDocumentsQuery = useQuery({
     queryKey: ['documents'],
@@ -805,6 +816,7 @@ const ListingProfile = () => {
           libraryDocuments={documentLibrary}
           projectDefaultDocuments={project.defaultDocuments || []}
           onSave={(payload) => updateListingMutation.mutateAsync(payload)}
+          canEditListing={canEditListing}
           canAdjustCommission={canAdjustCommission}
           canManageCancellation={canManageCancellation}
           onRequestCommissionAdjustmentCode={(payload) => requestCommissionAdjustmentCodeMutation.mutateAsync(payload)}
@@ -842,7 +854,7 @@ const ListingProfile = () => {
         <Documents
           documents={documents}
           canManage={canManageDocuments}
-          canEditRequirements={Boolean(!readOnly && (listing.id || listing.routeId || listingId))}
+          canEditRequirements={Boolean(canEditListingRequirements && (listing.id || listing.routeId || listingId))}
           projectSlug={projectSlug}
           listingId={listingId}
           project={project}
@@ -967,3 +979,4 @@ const ListingProfile = () => {
 }
 
 export default ListingProfile
+

@@ -23,3 +23,4 @@ router.post('/:employeeId/regenerate-barcode', requirePermission(PERMISSIONS.EMP
 router.patch('/:employeeId/status', requirePermission(PERMISSIONS.EMPLOYEES_MANAGE), updateEmployeeStatus);
 export default router;
 
+
