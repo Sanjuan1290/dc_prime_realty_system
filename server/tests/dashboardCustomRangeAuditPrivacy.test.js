@@ -71,7 +71,3 @@ test('Lot Project Business Snapshot matches the System Reports metric definition
   assert.doesNotMatch(lotDashboard, /label: 'Settled Value'/);
   assert.doesNotMatch(lotDashboard, /label: 'Payable Commission'/);
 });
-
-
-
-

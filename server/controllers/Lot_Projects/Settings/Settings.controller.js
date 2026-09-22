@@ -8,6 +8,7 @@ import {
   toNullable,
 } from '../_shared/lotProject.shared.js';
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
+import { PERMISSIONS, roleHasPermission } from '../../../config/permissions.js';
 import {
   createSensitiveActionVerification,
   getSensitiveActionRequestIp,
@@ -29,7 +30,7 @@ const toDay = (value, fallback) => {
 };
 
 const clean = (value = '') => String(value ?? '').trim();
-const isExactSuperAdmin = (user) => String(user?.role || '').toLowerCase() === 'super_admin';
+const canEditProjectSettings = (user) => roleHasPermission(user, PERMISSIONS.LOT_SETTINGS_MANAGE);
 
 const normalizeProjectSettingsPayload = (body = {}) => {
   const releaseDayOne = toDay(body.releaseDayOne ?? body.release_day_one, 7);
@@ -147,7 +148,7 @@ export const getLotProjectSettings = async (req, res) => {
     return res.json({
       success: true,
       data: mapSettings(settings, project),
-      canEdit: isExactSuperAdmin(currentUser),
+      canEdit: canEditProjectSettings(currentUser),
       project: {
         id: project.lot_project_id,
         name: project.lot_project_name,
@@ -228,75 +229,40 @@ export const updateLotProjectSettings = async (req, res) => {
   try {
     const slug = String(req.params.projectSlug || '').trim();
     const project = await getProjectBySlug(slug);
-
-    if (!project) {
-      return res.status(404).json({ success: false, message: 'Lot project not found.' });
-    }
-
+    if (!project) return res.status(404).json({ success: false, message: 'Lot project not found.' });
     if (!(await tableExists(connection, 'lot_project_settings'))) {
       return res.status(500).json({ success: false, message: 'lot_project_settings table does not exist.' });
     }
 
-    const currentUser = await getAuthenticatedUser(req);
-    if (!currentUser) {
-      return res.status(401).json({ success: false, message: 'Please login before updating settings.' });
-    }
-
-    if (!isExactSuperAdmin(currentUser)) {
-      return res.status(403).json({ success: false, message: 'Only the exact Super Admin can update project settings.' });
+    const currentUser = req.authUser || await getAuthenticatedUser(req);
+    if (!currentUser) return res.status(401).json({ success: false, message: 'Please login before updating settings.' });
+    if (!canEditProjectSettings(currentUser)) {
+      return res.status(403).json({ success: false, message: 'You do not have permission to edit this project settings.' });
     }
 
     const settingsPayload = normalizeProjectSettingsPayload(req.body);
-    const reason = clean(req.body.reason);
-    const verificationId = Number(req.body.verificationId || req.body.verification_id || 0);
-    const code = clean(req.body.code || req.body.verificationCode || req.body.verification_code);
+    const reason = clean(req.body.reason || 'Authorized project settings update.');
     if (reason.length < 5) return res.status(400).json({ success: false, message: 'A clear reason for changing settings is required.' });
-    if (!verificationId || !/^\d{6}$/.test(code)) {
-      return res.status(400).json({ success: false, message: 'Super Admin password and six-digit email verification are required to save project settings.' });
-    }
 
     await connection.beginTransaction();
-
     const beforeRow = await getOrCreateSettingsRow(connection, project);
     const before = mapSettings(beforeRow, project);
-    const verificationPayload = buildProjectSettingsVerificationPayload({ actor: currentUser, project, settingsPayload, reason });
-    const verificationResult = await verifyAndConsumeSensitiveAction(connection, {
-      verificationId,
-      userId: currentUser.id,
-      actionType: LOT_PROJECT_SETTINGS_ACTION,
-      entityType: SETTINGS_VERIFICATION_ENTITY,
-      entityId: project.lot_project_id,
-      code,
-      payload: verificationPayload,
-    });
-    if (!verificationResult.ok) {
-      await connection.commit();
-      return res.status(verificationResult.statusCode || 400).json({ success: false, message: verificationResult.message });
-    }
 
     await connection.query(
-      `
-        INSERT INTO lot_project_settings (
-          lot_project_id,
-          release_day_one,
-          release_day_two,
-          reservation_contact_name,
-          reservation_contact_email,
-          reservation_contact_number,
-          company_name,
-          company_email,
-          company_contact_number
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON DUPLICATE KEY UPDATE
-          release_day_one = VALUES(release_day_one),
-          release_day_two = VALUES(release_day_two),
-          reservation_contact_name = VALUES(reservation_contact_name),
-          reservation_contact_email = VALUES(reservation_contact_email),
-          reservation_contact_number = VALUES(reservation_contact_number),
-          company_name = VALUES(company_name),
-          company_email = VALUES(company_email),
-          company_contact_number = VALUES(company_contact_number)
-      `,
+      `INSERT INTO lot_project_settings (
+        lot_project_id, release_day_one, release_day_two,
+        reservation_contact_name, reservation_contact_email, reservation_contact_number,
+        company_name, company_email, company_contact_number
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        release_day_one = VALUES(release_day_one),
+        release_day_two = VALUES(release_day_two),
+        reservation_contact_name = VALUES(reservation_contact_name),
+        reservation_contact_email = VALUES(reservation_contact_email),
+        reservation_contact_number = VALUES(reservation_contact_number),
+        company_name = VALUES(company_name),
+        company_email = VALUES(company_email),
+        company_contact_number = VALUES(company_contact_number)`,
       [
         project.lot_project_id,
         settingsPayload.releaseDayOne,
@@ -318,27 +284,13 @@ export const updateLotProjectSettings = async (req, res) => {
       entityId: project.lot_project_id,
       entityLabel: project.lot_project_name,
       title: 'Updated lot project settings',
-      description: `${getUserFullName(currentUser) || currentUser.email || 'Super Admin'} updated protected settings for ${project.lot_project_name}.`,
-      metadata: {
-        reason,
-        verificationId,
-        verificationMethod: 'super_admin_password_email_code',
-        before,
-        after: settingsPayload,
-        releaseDayChangesApplyProspectively: true,
-      },
+      description: `${getUserFullName(currentUser) || currentUser.email || 'Authorized user'} updated settings for ${project.lot_project_name}.`,
+      metadata: { reason, before, after: settingsPayload, releaseDayChangesApplyProspectively: true },
     });
 
     await connection.commit();
-
     const settings = await getOrCreateSettingsRow(connection, project);
-
-    return res.json({
-      success: true,
-      message: 'Project settings saved successfully.',
-      data: mapSettings(settings, project),
-      canEdit: true,
-    });
+    return res.json({ success: true, message: 'Project settings saved successfully.', data: mapSettings(settings, project), canEdit: true });
   } catch (error) {
     try { await connection.rollback(); } catch (_) {}
     return res.status(error.statusCode || 500).json({ success: false, message: getErrorMessage(error) });
@@ -346,5 +298,3 @@ export const updateLotProjectSettings = async (req, res) => {
     connection.release();
   }
 };
-
-

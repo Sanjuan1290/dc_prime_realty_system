@@ -1,48 +1,49 @@
 import { db } from '../db/connect.js';
+import { SYSTEM_USER_ROLES } from '../config/permissions.js';
 
-const clean = (value = '') => String(value ?? '').trim();
 const uniquePositiveIds = (values = []) => [...new Set((Array.isArray(values) ? values : [])
   .map((value) => Number(value))
   .filter((value) => Number.isInteger(value) && value > 0))];
 
 export const isSuperAdmin = (user = {}) => String(user?.role || '').toLowerCase() === 'super_admin';
-export const isOperationalAdmin = (user = {}) => String(user?.role || '').toLowerCase() === 'admin';
+export const isOperationalAdmin = (user = {}) => SYSTEM_USER_ROLES.includes(String(user?.role || '').toLowerCase());
 
-export const getAdminProjectAccess = async (user, connection = db) => {
+export const getUserProjectAccess = async (user, connection = db) => {
   if (!user?.id) return { allProjects: false, projectIds: [] };
   if (isSuperAdmin(user)) return { allProjects: true, projectIds: [] };
   if (!isOperationalAdmin(user)) return { allProjects: false, projectIds: [] };
 
   const [[userRows], [projectRows]] = await Promise.all([
-    connection.query('SELECT COALESCE(admin_all_projects, 0) AS admin_all_projects FROM users WHERE id = ? LIMIT 1', [user.id]),
-    connection.query('SELECT lot_project_id FROM admin_project_access WHERE user_id = ? ORDER BY lot_project_id ASC', [user.id]),
+    connection.query('SELECT COALESCE(all_projects_access, 0) AS all_projects_access FROM users WHERE id = ? LIMIT 1', [user.id]),
+    connection.query('SELECT lot_project_id FROM user_project_access WHERE user_id = ? ORDER BY lot_project_id ASC', [user.id]),
   ]);
 
   return {
-    allProjects: Number(userRows[0]?.admin_all_projects || 0) === 1,
+    allProjects: Number(userRows[0]?.all_projects_access || 0) === 1,
     projectIds: projectRows.map((row) => Number(row.lot_project_id)).filter(Boolean),
   };
 };
+
+// Backward-compatible alias used by older controllers while the UI wording is generalized.
+export const getAdminProjectAccess = getUserProjectAccess;
 
 export const canAccessProject = async (user, projectId, connection = db) => {
   const numericProjectId = Number(projectId || 0);
   if (!numericProjectId) return false;
   if (isSuperAdmin(user)) return true;
   if (!isOperationalAdmin(user)) return false;
-
-  const access = await getAdminProjectAccess(user, connection);
+  const access = await getUserProjectAccess(user, connection);
   return access.allProjects || access.projectIds.includes(numericProjectId);
 };
 
 export const getAccessibleProjectIds = async (user, connection = db) => {
-  if (isSuperAdmin(user)) return null; // null = unrestricted
+  if (isSuperAdmin(user)) return null;
   if (!isOperationalAdmin(user)) return [];
-  const access = await getAdminProjectAccess(user, connection);
-  if (access.allProjects) return null;
-  return access.projectIds;
+  const access = await getUserProjectAccess(user, connection);
+  return access.allProjects ? null : access.projectIds;
 };
 
-export const replaceAdminProjectAccess = async (connection, {
+export const replaceUserProjectAccess = async (connection, {
   userId,
   role,
   allProjects = false,
@@ -52,97 +53,95 @@ export const replaceAdminProjectAccess = async (connection, {
   const id = Number(userId || 0);
   if (!id) throw Object.assign(new Error('User id is required for project access.'), { statusCode: 400 });
 
-  await connection.query('DELETE FROM admin_project_access WHERE user_id = ?', [id]);
+  await connection.query('DELETE FROM user_project_access WHERE user_id = ?', [id]);
 
-  if (String(role || '') !== 'admin') {
-    await connection.query('UPDATE users SET admin_all_projects = 0, admin_type = NULL WHERE id = ?', [id]);
-    return { allProjects: false, projectIds: [] };
+  const normalizedRole = String(role || '');
+  if (!SYSTEM_USER_ROLES.includes(normalizedRole) || normalizedRole === 'super_admin') {
+    await connection.query('UPDATE users SET all_projects_access = ? WHERE id = ?', [normalizedRole === 'super_admin' ? 1 : 0, id]);
+    return { allProjects: normalizedRole === 'super_admin', projectIds: [] };
   }
 
   const normalizedIds = uniquePositiveIds(projectIds);
   if (!allProjects && !normalizedIds.length) {
-    throw Object.assign(new Error('Select at least one project this Admin can manage, or choose All Projects.'), { statusCode: 400 });
+    throw Object.assign(new Error('Select at least one project this user can access, or choose All Projects.'), { statusCode: 400 });
   }
 
   if (normalizedIds.length) {
     const placeholders = normalizedIds.map(() => '?').join(', ');
-    const [validRows] = await connection.query(
-      `SELECT lot_project_id FROM lot_projects WHERE lot_project_id IN (${placeholders})`,
-      normalizedIds
-    );
+    const [validRows] = await connection.query(`SELECT lot_project_id FROM lot_projects WHERE lot_project_id IN (${placeholders})`, normalizedIds);
     const validIds = new Set(validRows.map((row) => Number(row.lot_project_id)));
-    const invalid = normalizedIds.find((projectId) => !validIds.has(projectId));
-    if (invalid) throw Object.assign(new Error('One or more selected projects no longer exist.'), { statusCode: 400 });
+    if (normalizedIds.some((projectId) => !validIds.has(projectId))) {
+      throw Object.assign(new Error('One or more selected projects no longer exist.'), { statusCode: 400 });
+    }
   }
 
-  await connection.query(
-    'UPDATE users SET admin_all_projects = ?, admin_type = NULL WHERE id = ?',
-    [allProjects ? 1 : 0, id]
-  );
+  await connection.query('UPDATE users SET all_projects_access = ? WHERE id = ?', [allProjects ? 1 : 0, id]);
 
   if (!allProjects && normalizedIds.length) {
+    const values = normalizedIds.map(() => '(?, ?, ?)').join(', ');
+    const params = normalizedIds.flatMap((projectId) => [id, projectId, changedByUserId || null]);
     await connection.query(
-      `INSERT INTO admin_project_access (user_id, lot_project_id, created_by_user_id)
-       VALUES ${normalizedIds.map(() => '(?, ?, ?)').join(', ')}`,
-      normalizedIds.flatMap((projectId) => [id, projectId, changedByUserId || null])
+      `INSERT INTO user_project_access (user_id, lot_project_id, created_by_user_id) VALUES ${values}`,
+      params
     );
   }
 
   return { allProjects: Boolean(allProjects), projectIds: allProjects ? [] : normalizedIds };
 };
 
-export const hydrateAdminProjectAccess = async (rows = [], connection = db) => {
-  const adminIds = rows.filter((row) => String(row.role || '') === 'admin').map((row) => Number(row.id)).filter(Boolean);
-  if (!adminIds.length) return rows;
+export const replaceAdminProjectAccess = replaceUserProjectAccess;
 
-  const placeholders = adminIds.map(() => '?').join(', ');
-  const [accessRows] = await connection.query(
-    `SELECT apa.user_id, apa.lot_project_id, lp.lot_project_name
-     FROM admin_project_access apa
-     INNER JOIN lot_projects lp ON lp.lot_project_id = apa.lot_project_id
-     WHERE apa.user_id IN (${placeholders})
-     ORDER BY lp.lot_project_name ASC`,
-    adminIds
+export const hydrateUserProjectAccess = async (rows = [], connection = db) => {
+  if (!Array.isArray(rows) || !rows.length) return rows;
+  const ids = rows.map((row) => Number(row.id)).filter(Boolean);
+  if (!ids.length) return rows;
+  const placeholders = ids.map(() => '?').join(', ');
+  const [projectRows] = await connection.query(
+    `SELECT upa.user_id, p.lot_project_id AS id, p.lot_project_name AS name, p.lot_project_slug AS slug
+     FROM user_project_access upa
+     INNER JOIN lot_projects p ON p.lot_project_id = upa.lot_project_id
+     WHERE upa.user_id IN (${placeholders})
+     ORDER BY p.lot_project_name`, ids
   );
-  const grouped = new Map();
-  accessRows.forEach((row) => {
-    const key = Number(row.user_id);
-    const list = grouped.get(key) || [];
-    list.push({ id: Number(row.lot_project_id), name: row.lot_project_name });
-    grouped.set(key, list);
-  });
-
+  const byUser = new Map();
+  for (const project of projectRows) {
+    if (!byUser.has(Number(project.user_id))) byUser.set(Number(project.user_id), []);
+    byUser.get(Number(project.user_id)).push({ id: Number(project.id), name: project.name, slug: project.slug });
+  }
   return rows.map((row) => {
-    if (String(row.role || '') !== 'admin') return row;
-    const projects = grouped.get(Number(row.id)) || [];
+    const allProjects = row.role === 'super_admin' || Number(row.all_projects_access ?? row.admin_all_projects ?? 0) === 1;
+    const projects = allProjects ? [] : (byUser.get(Number(row.id)) || []);
     return {
       ...row,
-      admin_all_projects: Number(row.admin_all_projects || 0) === 1,
+      all_projects_access: allProjects,
+      project_ids: projects.map((project) => project.id),
+      projects,
+      // Legacy response properties retained so older UI pieces do not break.
+      admin_all_projects: allProjects,
       admin_project_ids: projects.map((project) => project.id),
       admin_projects: projects,
     };
   });
 };
 
-export const projectAccessSummary = (row = {}) => {
-  if (String(row.role || '') !== 'admin') return null;
-  if (Number(row.admin_all_projects || 0) === 1 || row.admin_all_projects === true) return 'All Projects';
-  const projects = Array.isArray(row.admin_projects) ? row.admin_projects : [];
-  return projects.map((project) => clean(project.name)).filter(Boolean).join(', ') || 'No Projects';
+export const hydrateAdminProjectAccess = hydrateUserProjectAccess;
+
+export const describeAdminProjectAccess = (row = {}) => {
+  if (row.role === 'super_admin' || row.all_projects_access === true || Number(row.all_projects_access || row.admin_all_projects || 0) === 1) return 'All Projects';
+  const projects = row.projects || row.admin_projects || [];
+  return projects.map((project) => project.name).filter(Boolean).join(', ') || 'No Projects';
 };
 
-export const grantAdminProjectAccess = async (connection, { userId, projectId, changedByUserId = null }) => {
+export const grantProjectAccessToAdmin = async (connection, userId, projectId, changedByUserId = null) => {
   const uid = Number(userId || 0);
   const pid = Number(projectId || 0);
   if (!uid || !pid) return;
-  const [rows] = await connection.query('SELECT role, COALESCE(admin_all_projects, 0) AS admin_all_projects FROM users WHERE id = ? LIMIT 1', [uid]);
+  const [rows] = await connection.query('SELECT role, COALESCE(all_projects_access, 0) AS all_projects_access FROM users WHERE id = ? LIMIT 1', [uid]);
   const user = rows[0];
-  if (!user || user.role !== 'admin' || Number(user.admin_all_projects || 0) === 1) return;
+  if (!user || !SYSTEM_USER_ROLES.includes(user.role) || user.role === 'super_admin' || Number(user.all_projects_access || 0) === 1) return;
   await connection.query(
-    `INSERT INTO admin_project_access (user_id, lot_project_id, created_by_user_id)
-     VALUES (?, ?, ?)
-     ON DUPLICATE KEY UPDATE created_by_user_id = COALESCE(created_by_user_id, VALUES(created_by_user_id))`,
+    `INSERT INTO user_project_access (user_id, lot_project_id, created_by_user_id)
+     VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE created_by_user_id = VALUES(created_by_user_id)`,
     [uid, pid, changedByUserId || null]
   );
 };
-

@@ -75,4 +75,3 @@ test('Excel Tardiness shows total minutes directly under the HH:MM:SS duration',
   assert.match(workbook, /setCell\(sheet, summaryStart \+ 2, 5, 'UNDER TIME \(MINS\)'/)
   assert.match(workbook, /const idRow = summaryStart \+ 4/)
 })
-

@@ -1221,5 +1221,3 @@ export const getDataIntegrityAccount = async (req, res) => {
     connection.release();
   }
 };
-
-

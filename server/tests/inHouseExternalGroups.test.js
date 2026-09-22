@@ -79,5 +79,3 @@ test('users page separates In-House and External Group management', async () => 
   assert.match(app, /users\/groups\/external/);
   assert.match(permissions, /'external_group'/);
 });
-
-

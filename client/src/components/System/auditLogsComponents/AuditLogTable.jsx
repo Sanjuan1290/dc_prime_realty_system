@@ -131,5 +131,3 @@ const AuditLogTable = ({ logs = [], isLoading, isPageChanging = false, paginatio
 }
 
 export default AuditLogTable
-
-

@@ -118,4 +118,3 @@ const PrintPageShell = ({ title, children, printDisabled = false, printDisabledM
 }
 
 export default PrintPageShell
-

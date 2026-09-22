@@ -3,6 +3,8 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import { calculateContractPricing, getListingPricingForMode } from './listingPricing.js';
 import { normalizeDocumentResponsibleParty } from '../../../utils/documentRequirement.js';
+import { hydrateUserPermissions } from '../../../services/accessControl.service.js';
+import { getUserProjectAccess } from '../../../services/adminProjectAccess.service.js';
 
 export { db, jwt, bcrypt };
 
@@ -3110,7 +3112,9 @@ export const getAuthenticatedUser = async (req) => {
 
     const [rows] = await db.query(
       `
-        SELECT id, first_name, middle_name, last_name, email, role, admin_type, COALESCE(admin_all_projects, 0) AS admin_all_projects, password_hash, status,
+        SELECT id, account_code, account_category, person_key, role_sequence, first_name, middle_name, last_name, email, role, admin_type,
+          COALESCE(all_projects_access, admin_all_projects, 0) AS all_projects_access,
+          COALESCE(admin_all_projects, 0) AS admin_all_projects, password_hash, status,
           COALESCE(auth_version, 0) AS auth_version
         FROM users
         WHERE id = ?
@@ -3122,7 +3126,14 @@ export const getAuthenticatedUser = async (req) => {
     const user = rows[0];
     if (!user || user.status !== 'active') return null;
     if (Number(decoded.authVersion ?? 0) !== Number(user.auth_version || 0)) return null;
-    return user;
+    const hydrated = await hydrateUserPermissions(user);
+    const projectAccess = await getUserProjectAccess(hydrated);
+    return {
+      ...hydrated,
+      all_projects_access: projectAccess.allProjects,
+      project_ids: projectAccess.projectIds,
+      admin_all_projects: projectAccess.allProjects,
+    };
   } catch {
     return null;
   }
@@ -4501,6 +4512,3 @@ export const addIfColumnExists = async (connection, tableName, columns, values, 
 };
 
 // End of lotProject.shared.js — verified complete.
-
-
-

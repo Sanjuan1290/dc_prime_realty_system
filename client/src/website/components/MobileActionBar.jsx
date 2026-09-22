@@ -12,5 +12,3 @@ const MobileActionBar = () => (
 )
 
 export default MobileActionBar
-
-

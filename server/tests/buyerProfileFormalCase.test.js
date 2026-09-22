@@ -35,5 +35,3 @@ test('internal reserve and edit endpoints normalize formal buyer text before dat
     assert.match(controller, /toFormalTitleCase\([^\n]*occupationPositionTitle/);
   }
 });
-
-

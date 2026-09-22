@@ -112,4 +112,3 @@ const SettingsAuthorizationModal = ({
 }
 
 export default SettingsAuthorizationModal
-

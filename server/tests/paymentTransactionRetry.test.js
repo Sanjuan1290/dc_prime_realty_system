@@ -42,5 +42,3 @@ test('retries the whole transaction and releases every connection', async () => 
   assert.equal(rollbacks, 2);
   assert.equal(releases, 3);
 });
-
-

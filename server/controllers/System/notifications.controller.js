@@ -15,7 +15,7 @@ import {
   sanitizeAttachmentFileName,
 } from '../../services/paymentSoaPdf.service.js';
 import { writeAuditLog } from './auditLogs.controller.js';
-import { isFullAccessAdministrator } from '../../config/permissions.js';
+import { PERMISSIONS, roleHasPermission } from '../../config/permissions.js';
 import { getCompanyContactEmail, sendEmail } from '../../services/email.service.js';
 import { canAccessProject, getAccessibleProjectIds } from '../../services/adminProjectAccess.service.js';
 
@@ -70,7 +70,8 @@ const fullName = (row = {}) => {
   return row.buyer_full_name || name || 'No buyer name';
 };
 
-const canManageNotifications = (user = {}) => isFullAccessAdministrator(user);
+const canViewNotifications = (user = {}) => roleHasPermission(user, PERMISSIONS.SYSTEM_NOTIFICATIONS_VIEW);
+const canManageNotifications = (user = {}) => roleHasPermission(user, PERMISSIONS.SYSTEM_NOTIFICATIONS_MANAGE);
 
 const appendProjectAccessFilter = async ({ connection, user, where, params, alias = 'p' }) => {
   const accessibleProjectIds = await getAccessibleProjectIds(user, connection);
@@ -650,7 +651,7 @@ export const getPaymentDueNotifications = async (req, res) => {
   try {
     const user = await getAuthenticatedUser(req);
     if (!user) return res.status(401).json({ message: 'Please login before viewing notifications.' });
-    if (!canManageNotifications(user)) return res.status(403).json({ message: 'Admin access only.' });
+    if (!canViewNotifications(user)) return res.status(403).json({ message: 'You do not have permission to view notifications.' });
 
     if (!(await tableExists(connection, 'lot_project_payment_schedules'))) {
       return res.status(500).json({ message: 'lot_project_payment_schedules table does not exist.' });
@@ -804,7 +805,7 @@ export const sendPaymentDueNotification = async (req, res) => {
   try {
     const user = await getAuthenticatedUser(req);
     if (!user) return res.status(401).json({ message: 'Please login before sending a notification.' });
-    if (!canManageNotifications(user)) return res.status(403).json({ message: 'Admin access only.' });
+    if (!canManageNotifications(user)) return res.status(403).json({ message: 'You do not have permission to manage notifications.' });
 
     await ensureNotificationTables(connection);
 
@@ -964,7 +965,7 @@ export const markPaymentDueContacted = async (req, res) => {
   try {
     const user = await getAuthenticatedUser(req);
     if (!user) return res.status(401).json({ message: 'Please login before marking notification as contacted.' });
-    if (!canManageNotifications(user)) return res.status(403).json({ message: 'Admin access only.' });
+    if (!canManageNotifications(user)) return res.status(403).json({ message: 'You do not have permission to manage notifications.' });
 
     await ensureNotificationTable(connection);
 
@@ -1207,7 +1208,7 @@ export const sendDocumentNotification = async (req, res) => {
   try {
     const user = await getAuthenticatedUser(req);
     if (!user) return res.status(401).json({ message: 'Please login before sending a document notification.' });
-    if (!canManageNotifications(user)) return res.status(403).json({ message: 'Admin access only.' });
+    if (!canManageNotifications(user)) return res.status(403).json({ message: 'You do not have permission to manage notifications.' });
 
     const listingId = Number(req.params.listingId || 0);
     const clientProfileId = Number(req.params.clientProfileId || 0);
@@ -1381,7 +1382,7 @@ export const getDocumentNotifications = async (req, res) => {
   try {
     const user = await getAuthenticatedUser(req);
     if (!user) return res.status(401).json({ message: 'Please login before viewing document notifications.' });
-    if (!canManageNotifications(user)) return res.status(403).json({ message: 'Admin access only.' });
+    if (!canViewNotifications(user)) return res.status(403).json({ message: 'You do not have permission to view notifications.' });
 
     const requiredTables = [
       'lot_projects',
@@ -1582,6 +1583,3 @@ export const getDocumentNotifications = async (req, res) => {
     connection.release();
   }
 };
-
-
-

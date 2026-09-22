@@ -363,5 +363,3 @@ export const applyCloudinaryMoveToEntry = (entry, move, renameResult = {}, folde
     cloudinaryAssetFolder: nextAssetFolder || null,
   };
 };
-
-

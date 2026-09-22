@@ -430,5 +430,3 @@ const ReservationCorrectionModal = ({ open, projectSlug, listingId, onClose, onC
 }
 
 export default ReservationCorrectionModal
-
-

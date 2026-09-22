@@ -32,5 +32,3 @@ const SiteCoordinator = () => {
 }
 
 export default SiteCoordinator
-
-

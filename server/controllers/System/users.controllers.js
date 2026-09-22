@@ -9,6 +9,9 @@ import {
   canActorChangeUserRole,
   canActorCreateUserRole,
   canActorManageUserRole,
+  CONFIGURABLE_SYSTEM_ROLES,
+  ROLE_CODES,
+  SYSTEM_USER_ROLES,
 } from '../../config/permissions.js';
 import {
   assignTopLevelSellerAsGroupHead,
@@ -23,9 +26,16 @@ import {
 } from './sellerHierarchyRules.js';
 import {
   getAccessibleProjectIds,
+  getUserProjectAccess,
   hydrateAdminProjectAccess,
   replaceAdminProjectAccess,
 } from '../../services/adminProjectAccess.service.js';
+import {
+  copyRoleDefaultsToUser,
+  getRoleDefaultPermissionKeys,
+  hydrateUserPermissions,
+  replaceUserPermissions,
+} from '../../services/accessControl.service.js';
 import {
   PASSWORD_RESET_CODE_EXPIRY_MINUTES,
   PASSWORD_RESET_MAX_ATTEMPTS,
@@ -45,7 +55,9 @@ import {
   verifyPasswordResetToken,
 } from './authentication.service.js';
 
-const userRoles = new Set(['super_admin', 'admin', 'division_manager', 'sales_director', 'unit_manager', 'sales_agent', 'external_group']);
+const userRoles = new Set([...SYSTEM_USER_ROLES, 'division_manager', 'sales_director', 'unit_manager', 'sales_agent', 'external_group']);
+const systemUserRoles = new Set(SYSTEM_USER_ROLES);
+const configurableSystemRoles = new Set(CONFIGURABLE_SYSTEM_ROLES);
 
 const sellerRoles = new Set([
   'division_manager',
@@ -62,7 +74,11 @@ const toNullableNumber = (value) => {
 
 const getErrorMessage = (error) => {
   if (error?.statusCode && error?.message) return error.message;
-  if (error?.code === 'ER_DUP_ENTRY') return 'Email already exists.';
+  if (error?.code === 'ER_DUP_ENTRY') {
+    if (String(error?.message || '').includes('uq_users_active_login_email')) return 'That email is already used by another active account.';
+    if (String(error?.message || '').includes('uq_users_account_code')) return 'Generated account code already exists. Please try again.';
+    return 'A unique account value already exists.';
+  }
   if (String(error?.code || '').startsWith('ER_') || error?.sqlMessage || error?.sql) return 'Database operation failed. Please try again.';
   return error?.message || 'Something went wrong.';
 };
@@ -77,7 +93,7 @@ const buildPersonName = (user = {}) => {
   return [user.first_name, user.middle_name, user.last_name].filter(Boolean).join(' ').trim() || user.email || 'User';
 };
 
-const ADMIN_LOGIN_ROLES = new Set(['admin', 'super_admin']);
+const ADMIN_LOGIN_ROLES = new Set(SYSTEM_USER_ROLES);
 
 const generateTemporaryPassword = () => {
   const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -111,7 +127,7 @@ const sendTemporaryLoginCredentials = async ({ user, temporaryPassword }) => {
   const appUrl = String(process.env.PUBLIC_APP_URL || '').trim().replace(/\/+$/, '');
   const loginUrl = appUrl ? `${appUrl}/portal` : '/portal';
   const name = buildPersonName(user);
-  const roleLabel = user.role === 'super_admin' ? 'Super Admin' : 'Admin';
+  const roleLabel = String(user.role || '').split('_').map((part) => part ? part[0].toUpperCase() + part.slice(1) : part).join(' ');
   const subject = 'Your D&C Prime Realty login credentials';
   const text = [
     `Hello ${name},`,
@@ -119,6 +135,7 @@ const sendTemporaryLoginCredentials = async ({ user, temporaryPassword }) => {
     `Your ${roleLabel} account for the D&C Prime Realty Internal System is ready.`,
     '',
     `Login email: ${user.email}`,
+    ...(user.account_code ? [`Account code: ${user.account_code}`] : []),
     `Temporary password: ${temporaryPassword}`,
     `Login: ${loginUrl}`,
     '',
@@ -135,6 +152,7 @@ const sendTemporaryLoginCredentials = async ({ user, temporaryPassword }) => {
       <div style="margin:22px 0;padding:18px;border:1px solid #bfdbfe;border-radius:12px;background:#eff6ff">
         <div style="font-size:13px;color:#475569">Login email</div>
         <div style="font-size:16px;font-weight:700">${escapeEmailHtml(user.email)}</div>
+        ${user.account_code ? `<div style="margin-top:10px;font-size:13px;color:#475569">Account code</div><div style="font-size:16px;font-weight:700">${escapeEmailHtml(user.account_code)}</div>` : ''}
         <div style="margin-top:14px;font-size:13px;color:#475569">Temporary password</div>
         <div style="font-family:monospace;font-size:20px;font-weight:800;letter-spacing:1px">${escapeEmailHtml(temporaryPassword)}</div>
       </div>
@@ -166,14 +184,60 @@ const normalizeProjectIds = (value) => [...new Set((Array.isArray(value) ? value
   .map((item) => Number(item))
   .filter((item) => Number.isInteger(item) && item > 0))];
 
+const normalizeBoolean = (value) => value === true || Number(value) === 1 || String(value || '').toLowerCase() === 'true';
+
+const sanitizeAccountSurname = (value = '') => {
+  const clean = String(value || '').normalize('NFKD').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+  return clean || 'USER';
+};
+
+const buildAccountCode = ({ lastName, role, sequence, collisionSuffix = '' }) => {
+  const roleCode = ROLE_CODES[role] || String(role || 'USR').slice(0, 3).toUpperCase();
+  const base = `${sanitizeAccountSurname(lastName)}-${roleCode}-${String(Number(sequence || 1)).padStart(3, '0')}`;
+  return collisionSuffix ? `${base}-${collisionSuffix}` : base;
+};
+
+const generateUniqueAccountCode = async (connection, { lastName, role, sequence }) => {
+  const base = buildAccountCode({ lastName, role, sequence });
+  const [rows] = await connection.query('SELECT id FROM users WHERE account_code = ? LIMIT 1', [base]);
+  if (!rows.length) return base;
+  // Same-surname/same-role/same-sequence people are disambiguated without changing the hidden per-person sequence.
+  for (let suffix = 2; suffix < 1000; suffix += 1) {
+    const candidate = buildAccountCode({ lastName, role, sequence, collisionSuffix: suffix });
+    const [candidateRows] = await connection.query('SELECT id FROM users WHERE account_code = ? LIMIT 1', [candidate]);
+    if (!candidateRows.length) return candidate;
+  }
+  throw createValidationError('Unable to generate a unique account code.');
+};
+
+const getNextRoleSequence = async (connection, personKey, role) => {
+  const [rows] = await connection.query(
+    `SELECT COALESCE(MAX(role_sequence), 0) AS max_sequence FROM users WHERE person_key = ? AND role = ? FOR UPDATE`,
+    [personKey, role]
+  );
+  return Number(rows[0]?.max_sequence || 0) + 1;
+};
+
+const normalizeSystemProjectAccess = (body = {}) => ({
+  allProjects: normalizeBoolean(body.all_projects_access ?? body.admin_all_projects),
+  projectIds: normalizeProjectIds(body.project_ids ?? body.admin_project_ids),
+});
+
+const assertSystemProjectSelection = (role, access) => {
+  if (role === 'super_admin') return;
+  if (configurableSystemRoles.has(role) && !access.allProjects && !access.projectIds.length) {
+    throw createValidationError('Select at least one project this user can access, or choose All Projects.');
+  }
+};
+
 const assertActorCanAssignAdminProjects = async (req, connection, allProjects, projectIds) => {
   if (req.authUser?.role === 'super_admin') return;
-  if (req.authUser?.role !== 'admin') throw createValidationError('Only an administrator can assign Admin project access.');
+  if (!systemUserRoles.has(req.authUser?.role)) throw createValidationError('Only an internal system user can assign project access.');
   const actorIds = await getAccessibleProjectIds(req.authUser, connection);
   if (actorIds === null) return;
-  if (allProjects) throw createValidationError('You can assign All Projects only if your own Admin account has All Projects access.');
+  if (allProjects) throw createValidationError('You can assign All Projects only when your own account has All Projects access.');
   const invalid = projectIds.find((projectId) => !actorIds.includes(projectId));
-  if (invalid) throw createValidationError('You can assign only projects that your Admin account can access.');
+  if (invalid) throw createValidationError('You can assign only projects that your own account can access.');
 };
 
 const createValidationError = (message) => {
@@ -419,6 +483,10 @@ const syncManagedSellerLink = async (connection, accreditedSellerId, reportsUnde
 const getUserSelectSql = () => `
   SELECT
     u.id,
+    u.account_code,
+    u.account_category,
+    u.person_key,
+    u.role_sequence,
     u.first_name,
     u.last_name,
     u.middle_name,
@@ -430,8 +498,12 @@ const getUserSelectSql = () => `
     u.email,
     u.role,
     u.admin_type,
+    COALESCE(u.all_projects_access, u.admin_all_projects, 0) AS all_projects_access,
     COALESCE(u.admin_all_projects, 0) AS admin_all_projects,
     u.status,
+    u.deactivated_at,
+    u.deactivated_by_user_id,
+    u.deactivation_reason,
     u.must_change_password,
     u.can_login,
     u.is_system_account,
@@ -454,16 +526,21 @@ const getUserSelectSql = () => `
 
 
 export const login = async (req, res) => {
-  const { email, password, rememberMe } = req.body;
+  const identifier = String(req.body?.identifier ?? req.body?.email ?? '').trim();
+  const { password, rememberMe } = req.body;
 
-  if (!email || !password) {
-    return res.status(400).json({ message: 'Email and password are required' });
+  if (!identifier || !password) {
+    return res.status(400).json({ message: 'Email or Account Code and password are required.' });
   }
 
   const [rows] = await db.query(
     `
       SELECT
         id,
+        account_code,
+        account_category,
+        person_key,
+        role_sequence,
         first_name,
         last_name,
         middle_name,
@@ -475,7 +552,7 @@ export const login = async (req, res) => {
         password_hash,
         role,
         admin_type,
-        COALESCE(admin_all_projects, 0) AS admin_all_projects,
+        COALESCE(all_projects_access, admin_all_projects, 0) AS all_projects_access,
         status,
         must_change_password,
         COALESCE(auth_version, 0) AS auth_version,
@@ -485,23 +562,39 @@ export const login = async (req, res) => {
         created_at,
         updated_at
       FROM users
-      WHERE email = ?
+      WHERE
+        (account_code = ?)
+        OR (
+          LOWER(email) = LOWER(?)
+          AND status = 'active'
+          AND can_login = 1
+          AND is_system_account = 0
+        )
+      ORDER BY (account_code = ?) DESC, (status = 'active') DESC, id DESC
       LIMIT 1
     `,
-    [String(email).trim()]
+    [identifier, identifier, identifier]
   );
 
-  const user = rows[0];
+  let user = rows[0];
 
-  if (!user) return res.status(401).json({ message: 'Invalid email or password.' });
-  if (user.status !== 'active') return res.status(403).json({ message: 'Account is not active' });
+  if (!user) return res.status(401).json({ message: 'Invalid email/account code or password.' });
+  if (user.status !== 'active') return res.status(403).json({ message: 'This account has been permanently deactivated.' });
   if (Number(user.can_login ?? 1) !== 1 || Number(user.is_system_account || 0) === 1) {
     return res.status(403).json({ message: 'This system account cannot sign in.' });
   }
 
   const isPasswordCorrect = await bcrypt.compare(password, user.password_hash);
+  if (!isPasswordCorrect) return res.status(401).json({ message: 'Invalid email/account code or password.' });
 
-  if (!isPasswordCorrect) return res.status(401).json({ message: 'Invalid email or password.' });
+  user = await hydrateUserPermissions(user);
+  const projectAccess = await getUserProjectAccess(user);
+  user = {
+    ...user,
+    all_projects_access: projectAccess.allProjects,
+    project_ids: projectAccess.projectIds,
+    admin_all_projects: projectAccess.allProjects,
+  };
 
   const session = getLoginSessionConfig(rememberMe);
   const token = jwt.sign(
@@ -510,12 +603,7 @@ export const login = async (req, res) => {
     { expiresIn: session.expiresInSeconds }
   );
 
-  res.cookie(
-    'token',
-    token,
-    getAuthCookieOptions({ maxAge: session.cookieMaxAge })
-  );
-
+  res.cookie('token', token, getAuthCookieOptions({ maxAge: session.cookieMaxAge }));
   await db.query(`UPDATE users SET last_login = NOW() WHERE id = ?`, [user.id]);
 
   await writeAuditLog(db, req, {
@@ -524,38 +612,16 @@ export const login = async (req, res) => {
     module: 'Authentication',
     entityType: 'user',
     entityId: String(user.id),
-    entityLabel: buildPersonName(user),
+    entityLabel: user.account_code || buildPersonName(user),
     title: 'User logged in',
-    description: `${user.email} logged in successfully.`,
+    description: `${user.account_code || user.email} logged in successfully.`,
   });
 
+  const { password_hash: _passwordHash, ...safeUser } = user;
   return res.status(200).json({
-    message: user.must_change_password
-      ? 'Login successful. Password change is required.'
-      : 'Login successful',
-    user: {
-      id: user.id,
-      first_name: user.first_name,
-      last_name: user.last_name,
-      middle_name: user.middle_name,
-      contact_no: user.contact_no,
-      tin_no: user.tin_no,
-      prc_no: user.prc_no,
-      address: user.address,
-      email: user.email,
-      role: user.role,
-      admin_type: user.admin_type || null,
-      admin_all_projects: Boolean(Number(user.admin_all_projects || 0)),
-      status: user.status,
-      must_change_password: Boolean(user.must_change_password),
-      last_login: user.last_login,
-      created_at: user.created_at,
-      updated_at: user.updated_at,
-    },
-    session: {
-      remembered: session.rememberMe,
-      expiresInSeconds: session.expiresInSeconds,
-    },
+    message: user.must_change_password ? 'Login successful. Password change is required.' : 'Login successful',
+    user: { ...safeUser, must_change_password: Boolean(user.must_change_password) },
+    session: { remembered: session.rememberMe, expiresInSeconds: session.expiresInSeconds },
   });
 };
 
@@ -589,6 +655,10 @@ export const requestForgotPasswordCode = async (req, res) => {
           COALESCE(auth_version, 0) AS auth_version
         FROM users
         WHERE LOWER(email) = LOWER(?)
+          AND status = 'active'
+          AND can_login = 1
+          AND is_system_account = 0
+        ORDER BY id DESC
         LIMIT 1
       `,
       [email]
@@ -960,108 +1030,56 @@ export const logout = async (req, res) => {
 };
 
 export const getMe = async (req, res) => {
-  const token = req.cookies?.token
+  const token = req.cookies?.token;
+  if (!token) return res.status(401).json({ code: 'NOT_AUTHENTICATED', message: 'Not authenticated' });
 
-  if (!token) {
-    return res.status(401).json({
-      code: 'NOT_AUTHENTICATED',
-      message: 'Not authenticated',
-    })
-  }
-
-  let decoded
-
+  let decoded;
   try {
-    decoded = jwt.verify(token, process.env.JWT_SECRET)
+    decoded = jwt.verify(token, process.env.JWT_SECRET);
   } catch (error) {
-    console.warn('getMe JWT verification failed:', {
-      name: error.name,
-      message: error.message,
-    })
-
-    clearAuthCookie(res)
-
-    return res.status(401).json({
-      code: 'INVALID_SESSION',
-      message: 'Invalid or expired token',
-    })
+    console.warn('getMe JWT verification failed:', { name: error.name, message: error.message });
+    clearAuthCookie(res);
+    return res.status(401).json({ code: 'INVALID_SESSION', message: 'Invalid or expired token' });
   }
 
   try {
     const [rows] = await db.query(
-      `
-        SELECT
-          id,
-          first_name,
-          last_name,
-          middle_name,
-          contact_no,
-          tin_no,
-          email,
-          role,
-          admin_type,
-          admin_all_projects,
-          status,
-          must_change_password,
-          COALESCE(auth_version, 0) AS auth_version,
-          last_login,
-          created_at,
-          updated_at
-        FROM users
-        WHERE id = ?
-        LIMIT 1
-      `,
+      `SELECT
+        id, account_code, account_category, person_key, role_sequence,
+        first_name, last_name, middle_name, contact_no, tin_no, email, role, admin_type,
+        COALESCE(all_projects_access, admin_all_projects, 0) AS all_projects_access,
+        status, must_change_password, COALESCE(auth_version, 0) AS auth_version,
+        last_login, created_at, updated_at
+       FROM users WHERE id = ? LIMIT 1`,
       [decoded.id]
-    )
+    );
 
-    const user = rows[0]
-
-    if (!user) {
-      clearAuthCookie(res)
-
-      return res.status(401).json({
-        code: 'USER_NOT_FOUND',
-        message: 'User account was not found',
-      })
+    let user = rows[0];
+    if (!user || user.status !== 'active') {
+      clearAuthCookie(res);
+      return res.status(401).json({ code: 'USER_NOT_ACTIVE', message: 'This account is not active.' });
     }
 
-    const tokenAuthVersion = Number(decoded.authVersion ?? 0)
-    const databaseAuthVersion = Number(user.auth_version || 0)
-
-    if (tokenAuthVersion !== databaseAuthVersion) {
-      console.warn('getMe auth version mismatch:', {
-        userId: user.id,
-        tokenAuthVersion,
-        databaseAuthVersion,
-      })
-
-      clearAuthCookie(res)
-
-      return res.status(401).json({
-        code: 'INVALID_SESSION',
-        message: 'Your session is no longer valid. Please sign in again.',
-      })
+    if (Number(decoded.authVersion ?? 0) !== Number(user.auth_version || 0)) {
+      clearAuthCookie(res);
+      return res.status(401).json({ code: 'INVALID_SESSION', message: 'Your session is no longer valid. Please sign in again.' });
     }
 
-    return res.json({
-      user,
-      message: 'Authenticated successfully',
-    })
+    user = await hydrateUserPermissions(user);
+    const projectAccess = await getUserProjectAccess(user);
+    user = {
+      ...user,
+      all_projects_access: projectAccess.allProjects,
+      project_ids: projectAccess.projectIds,
+      admin_all_projects: projectAccess.allProjects,
+    };
+
+    return res.json({ user, message: 'Authenticated successfully' });
   } catch (error) {
-    console.error('getMe database failure:', {
-      code: error.code,
-      message: error.message,
-      sqlMessage: error.sqlMessage,
-    })
-
-    return res.status(503).json({
-      code: 'SERVER_UNAVAILABLE',
-      message: 'The server is temporarily unavailable.',
-    })
+    console.error('getMe database failure:', { code: error.code, message: error.message, sqlMessage: error.sqlMessage });
+    return res.status(503).json({ code: 'SERVER_UNAVAILABLE', message: 'The server is temporarily unavailable.' });
   }
-}
-
-
+};
 
 export const changePassword = async (req, res) => {
   try {
@@ -1197,7 +1215,7 @@ export const getUsers = async (req, res) => {
     const status = String(req.query.status || 'all');
 
     // System-owned direct-sales agents are operational identities, not user accounts.
-    const where = ['COALESCE(u.is_system_account, 0) = 0'];
+    const where = ["COALESCE(u.is_system_account, 0) = 0", "COALESCE(u.account_category, CASE WHEN u.role IN ('super_admin','admin','marketing','sales','accounting','operations') THEN 'system' ELSE 'seller' END) = 'system'"];
     const params = [];
 
     if (search) {
@@ -1250,8 +1268,7 @@ export const getUsers = async (req, res) => {
       [...params, limit, offset]
     );
 
-    const rateHydratedRows = await hydrateUserProjectRates(rows);
-    const hydratedRows = await hydrateAdminProjectAccess(rateHydratedRows);
+    const hydratedRows = await hydrateAdminProjectAccess(rows);
 
     const [summaryRows] = await db.query(`
       SELECT
@@ -1261,6 +1278,7 @@ export const getUsers = async (req, res) => {
         SUM(must_change_password = 1) AS mustChangePassword
       FROM users
       WHERE COALESCE(is_system_account, 0) = 0
+        AND COALESCE(account_category, CASE WHEN role IN ('super_admin','admin','marketing','sales','accounting','operations') THEN 'system' ELSE 'seller' END) = 'system'
     `);
 
     return res.json({
@@ -1320,6 +1338,92 @@ export const createUser = async (req, res) => {
     }
     if (!actorCanCreateTargetRole(req, role)) {
       return denyUserManagement(res, 'You do not have permission to create this account type.');
+    }
+
+    if (systemUserRoles.has(role)) {
+      const projectAccess = role === 'super_admin'
+        ? { allProjects: true, projectIds: [] }
+        : normalizeSystemProjectAccess(req.body);
+      assertSystemProjectSelection(role, projectAccess);
+      await assertActorCanAssignAdminProjects(req, connection, projectAccess.allProjects, projectAccess.projectIds);
+
+      await connection.beginTransaction();
+      const personKey = crypto.randomUUID();
+      const roleSequence = 1;
+      const accountCode = await generateUniqueAccountCode(connection, { lastName: last_name, role, sequence: roleSequence });
+      const temporaryPassword = generateTemporaryPassword();
+      const passwordHash = await bcrypt.hash(temporaryPassword, 10);
+      const normalizedStatus = normalizeStatus(status);
+
+      const [result] = await connection.query(
+        `INSERT INTO users (
+          account_code, account_category, person_key, role_sequence,
+          first_name, last_name, middle_name, contact_no, tin_no, prc_no, address, email,
+          password_hash, role, admin_type, admin_all_projects, all_projects_access,
+          status, must_change_password, can_login, is_system_account
+        ) VALUES (?, 'system', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, 1, 1, 0)`,
+        [
+          accountCode, personKey, roleSequence,
+          first_name.trim(), last_name.trim(), middle_name?.trim() || null,
+          contact_no?.trim() || null, tin_no?.trim() || null, prc_no?.trim() || null,
+          address?.trim() || null, email.trim(), passwordHash, role,
+          projectAccess.allProjects ? 1 : 0, projectAccess.allProjects ? 1 : 0,
+          normalizedStatus,
+        ]
+      );
+
+      const userId = result.insertId;
+      if (role !== 'super_admin') {
+        await replaceAdminProjectAccess(connection, {
+          userId,
+          role,
+          allProjects: projectAccess.allProjects,
+          projectIds: projectAccess.projectIds,
+          changedByUserId: req.authUser?.id || null,
+        });
+        if (req.authUser?.role === 'super_admin' && Array.isArray(req.body?.permissions)) {
+          await replaceUserPermissions(connection, {
+            userId,
+            permissionKeys: req.body.permissions,
+            changedByUserId: req.authUser?.id || null,
+          });
+        } else {
+          await copyRoleDefaultsToUser(connection, { userId, role, changedByUserId: req.authUser?.id || null });
+        }
+      }
+
+      await writeAuditLog(connection, req, {
+        action: 'create', module: 'Users', entityType: 'user', entityId: String(userId),
+        entityLabel: accountCode, title: 'Created system user account',
+        description: `Created ${accountCode} for ${first_name.trim()} ${last_name.trim()}.`,
+        metadata: {
+          role, account_code: accountCode, person_key: personKey, role_sequence: roleSequence,
+          all_projects_access: projectAccess.allProjects, project_ids: projectAccess.projectIds,
+        },
+      });
+
+      await connection.commit();
+
+      let credentialsEmailSent = false;
+      let credentialsEmailWarning = null;
+      try {
+        await sendTemporaryLoginCredentials({
+          user: { first_name, middle_name, last_name, email: email.trim(), role, account_code: accountCode },
+          temporaryPassword,
+        });
+        credentialsEmailSent = true;
+      } catch (emailError) {
+        credentialsEmailWarning = 'Account created, but the login credentials email could not be delivered. Use Resend Login Credentials from User Management.';
+        console.error('Failed to send new-user login credentials:', emailError.message);
+      }
+
+      return res.status(201).json({
+        message: credentialsEmailSent ? 'User created successfully. Login credentials were sent by email.' : credentialsEmailWarning,
+        user_id: userId,
+        account_code: accountCode,
+        credentials_email_sent: credentialsEmailSent,
+        credentials_email_warning: credentialsEmailWarning,
+      });
     }
 
     const normalizedAdminProjectIds = role === 'admin' ? normalizeProjectIds(admin_project_ids) : [];
@@ -1506,7 +1610,7 @@ export const editUser = async (req, res) => {
     }
 
     const [targetRows] = await connection.query(
-      `SELECT id, role, admin_type, COALESCE(admin_all_projects, 0) AS admin_all_projects FROM users WHERE id = ? LIMIT 1`,
+      `SELECT id, account_code, account_category, person_key, role_sequence, role, status, email, admin_type, COALESCE(all_projects_access, admin_all_projects, 0) AS all_projects_access FROM users WHERE id = ? LIMIT 1`,
       [userId]
     );
     const targetUser = targetRows[0];
@@ -1517,6 +1621,42 @@ export const editUser = async (req, res) => {
 
     if (!actorCanManageTargetRole(req, targetUser.role)) {
       return denyUserManagement(res, 'You do not have permission to edit this account.');
+    }
+
+    if (systemUserRoles.has(targetUser.role)) {
+      if (String(role || targetUser.role) !== targetUser.role) {
+        return res.status(409).json({
+          code: 'SYSTEM_ROLE_IMMUTABLE',
+          message: 'A system account role cannot be changed. Use Change Position / Create New Account instead.',
+        });
+      }
+      if (targetUser.status !== 'active') {
+        return res.status(409).json({
+          code: 'ACCOUNT_DEACTIVATED_PERMANENTLY',
+          message: 'This account is permanently deactivated and retained as a historical identity.',
+        });
+      }
+
+      await connection.beginTransaction();
+      await connection.query(
+        `UPDATE users SET
+          first_name = ?, last_name = ?, middle_name = ?, contact_no = ?, tin_no = ?, prc_no = ?, address = ?, email = ?,
+          auth_version = COALESCE(auth_version, 0) + 1
+         WHERE id = ?`,
+        [
+          first_name.trim(), last_name.trim(), middle_name?.trim() || null,
+          contact_no?.trim() || null, tin_no?.trim() || null, prc_no?.trim() || null,
+          address?.trim() || null, email.trim(), userId,
+        ]
+      );
+      await writeAuditLog(connection, req, {
+        action: 'update', module: 'Users', entityType: 'user', entityId: String(userId),
+        entityLabel: targetUser.account_code || email.trim(), title: 'Updated system user details',
+        description: `Updated personal/contact details for ${targetUser.account_code || email.trim()}. Role and access were unchanged.`,
+        metadata: { role: targetUser.role, role_immutable: true },
+      });
+      await connection.commit();
+      return res.json({ message: 'User details updated. Role and access remain unchanged; existing sessions were invalidated.' });
     }
 
     if (!actorCanChangeTargetRole(req, targetUser.role, role)) {
@@ -1671,47 +1811,180 @@ export const editUser = async (req, res) => {
 };
 
 export const toggleUserStatus = async (req, res) => {
+  const connection = await db.getConnection();
   try {
     const userId = Number(req.params.id);
     if (!userId) return res.status(400).json({ message: 'Invalid user id.' });
 
-    const [rows] = await db.query(
-      `SELECT id, first_name, middle_name, last_name, email, role, status FROM users WHERE id = ? LIMIT 1`,
+    await connection.beginTransaction();
+    const [rows] = await connection.query(
+      `SELECT id, account_code, first_name, middle_name, last_name, email, role, status
+       FROM users WHERE id = ? LIMIT 1 FOR UPDATE`,
       [userId]
     );
     const user = rows[0];
-
-    if (!user) return res.status(404).json({ message: 'User not found.' });
-    if (user.role === 'external_group') {
-      return res.status(400).json({ message: 'Manage External Group accounts from the External Groups page.' });
+    if (!user) throw Object.assign(new Error('User not found.'), { statusCode: 404 });
+    if (user.role === 'external_group') throw Object.assign(new Error('Manage External Group accounts from the External Groups page.'), { statusCode: 400 });
+    if (!actorCanManageTargetRole(req, user.role)) throw Object.assign(new Error('You do not have permission to deactivate this account.'), { statusCode: 403 });
+    if (user.status !== 'active') {
+      const error = new Error('This account is permanently deactivated and cannot be activated again. Create a new account if the employee returns or changes position.');
+      error.statusCode = 409;
+      error.code = 'ACCOUNT_DEACTIVATED_PERMANENTLY';
+      throw error;
     }
-    if (!actorCanManageTargetRole(req, user.role)) {
-      return denyUserManagement(res, 'You do not have permission to activate or deactivate this account.');
+    if (userId === Number(req.authUser?.id || 0)) {
+      throw Object.assign(new Error('You cannot permanently deactivate the account you are currently using.'), { statusCode: 409 });
     }
 
-    const nextStatus = normalizeStatus(req.body.status || (user.status === 'active' ? 'inactive' : 'active'));
-
-    await db.query(`UPDATE users SET status = ? WHERE id = ?`, [nextStatus, userId]);
-    await db.query(
-      `UPDATE accredited_sellers SET accredited_seller_status = ? WHERE user_id = ?`,
-      [nextStatus, userId]
+    const reason = String(req.body?.reason || req.body?.deactivation_reason || 'Account permanently deactivated by an authorized user.').trim().slice(0, 500);
+    await connection.query(
+      `UPDATE users
+       SET status = 'inactive', deactivated_at = NOW(), deactivated_by_user_id = ?, deactivation_reason = ?,
+           auth_version = COALESCE(auth_version, 0) + 1
+       WHERE id = ?`,
+      [req.authUser?.id || null, reason, userId]
+    );
+    await connection.query(
+      `UPDATE accredited_sellers SET accredited_seller_status = 'inactive' WHERE user_id = ?`,
+      [userId]
     );
 
-    await writeAuditLog(db, req, {
-      action: 'update',
-      module: 'Users',
-      entityType: 'user',
-      entityId: String(userId),
-      entityLabel: buildPersonName(user),
-      title: 'Changed user account status',
-      description: `User account status changed to ${nextStatus}.`,
-      metadata: { previousStatus: user.status, nextStatus },
+    await writeAuditLog(connection, req, {
+      action: 'update', module: 'Users', entityType: 'user', entityId: String(userId),
+      entityLabel: user.account_code || buildPersonName(user), title: 'Permanently deactivated user account',
+      description: `${user.account_code || user.email} was permanently deactivated. The account cannot be reactivated.`,
+      metadata: { previousStatus: 'active', nextStatus: 'inactive', permanent: true, reason },
     });
 
-    return res.json({ message: `User is now ${nextStatus}.`, status: nextStatus });
+    await connection.commit();
+    return res.json({
+      message: 'Account permanently deactivated. It cannot be activated again.',
+      status: 'inactive',
+      permanent: true,
+    });
   } catch (error) {
-    return res.status(500).json({ message: getErrorMessage(error) });
+    try { await connection.rollback(); } catch {}
+    return res.status(error.statusCode || 500).json({ code: error.code, message: getErrorMessage(error) });
+  } finally {
+    connection.release();
   }
+};
+
+export const changeUserPosition = async (req, res) => {
+  const connection = await db.getConnection();
+  let newAccount = null;
+  let temporaryPassword = null;
+  try {
+    const sourceUserId = Number(req.params.id || 0);
+    const newRole = String(req.body?.new_role || req.body?.role || '').trim();
+    if (!sourceUserId) return res.status(400).json({ message: 'Invalid user id.' });
+    if (!CONFIGURABLE_SYSTEM_ROLES.includes(newRole)) {
+      return res.status(400).json({ message: 'New position must be Admin, Marketing, Sales, Accounting, or Operations.' });
+    }
+
+    const projectAccess = normalizeSystemProjectAccess(req.body);
+    assertSystemProjectSelection(newRole, projectAccess);
+    await assertActorCanAssignAdminProjects(req, connection, projectAccess.allProjects, projectAccess.projectIds);
+
+    await connection.beginTransaction();
+    const [rows] = await connection.query(
+      `SELECT id, account_code, account_category, person_key, role_sequence,
+              first_name, last_name, middle_name, contact_no, tin_no, prc_no, address, email,
+              role, status
+       FROM users WHERE id = ? LIMIT 1 FOR UPDATE`,
+      [sourceUserId]
+    );
+    const source = rows[0];
+    if (!source) throw Object.assign(new Error('User not found.'), { statusCode: 404 });
+    if (!systemUserRoles.has(source.role)) throw Object.assign(new Error('Change Position applies only to internal system users.'), { statusCode: 400 });
+    if (source.role === 'super_admin') throw Object.assign(new Error('A Super Admin account cannot be changed through the position workflow.'), { statusCode: 409 });
+    if (source.status !== 'active') throw Object.assign(new Error('Only an active account can be changed to a new position.'), { statusCode: 409 });
+    if (source.role === newRole) throw Object.assign(new Error('Choose a different position. The current role is already assigned to this active account.'), { statusCode: 400 });
+
+    const personKey = source.person_key || crypto.randomUUID();
+    if (!source.person_key) await connection.query('UPDATE users SET person_key = ? WHERE id = ?', [personKey, sourceUserId]);
+    const roleSequence = await getNextRoleSequence(connection, personKey, newRole);
+    const accountCode = await generateUniqueAccountCode(connection, { lastName: source.last_name, role: newRole, sequence: roleSequence });
+    temporaryPassword = generateTemporaryPassword();
+    const passwordHash = await bcrypt.hash(temporaryPassword, 10);
+    const reason = String(req.body?.reason || `Position changed from ${source.role} to ${newRole}.`).trim().slice(0, 500);
+
+    // Deactivate first inside the same transaction so the active-email uniqueness constraint
+    // can accept the replacement account. Rollback restores the old account if anything fails.
+    await connection.query(
+      `UPDATE users
+       SET status = 'inactive', deactivated_at = NOW(), deactivated_by_user_id = ?, deactivation_reason = ?,
+           auth_version = COALESCE(auth_version, 0) + 1
+       WHERE id = ?`,
+      [req.authUser?.id || null, reason, sourceUserId]
+    );
+
+    const [insertResult] = await connection.query(
+      `INSERT INTO users (
+        account_code, account_category, person_key, role_sequence,
+        first_name, last_name, middle_name, contact_no, tin_no, prc_no, address, email,
+        password_hash, role, admin_type, admin_all_projects, all_projects_access,
+        status, must_change_password, can_login, is_system_account
+      ) VALUES (?, 'system', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, 'active', 1, 1, 0)`,
+      [
+        accountCode, personKey, roleSequence,
+        source.first_name, source.last_name, source.middle_name, source.contact_no, source.tin_no, source.prc_no, source.address, source.email,
+        passwordHash, newRole, projectAccess.allProjects ? 1 : 0, projectAccess.allProjects ? 1 : 0,
+      ]
+    );
+
+    const newUserId = insertResult.insertId;
+    await replaceAdminProjectAccess(connection, {
+      userId: newUserId, role: newRole, allProjects: projectAccess.allProjects,
+      projectIds: projectAccess.projectIds, changedByUserId: req.authUser?.id || null,
+    });
+    if (Array.isArray(req.body?.permissions)) {
+      await replaceUserPermissions(connection, { userId: newUserId, permissionKeys: req.body.permissions, changedByUserId: req.authUser?.id || null });
+    } else {
+      await copyRoleDefaultsToUser(connection, { userId: newUserId, role: newRole, changedByUserId: req.authUser?.id || null });
+    }
+
+    await writeAuditLog(connection, req, {
+      action: 'update', module: 'Users', entityType: 'user', entityId: String(sourceUserId),
+      entityLabel: source.account_code || source.email, title: 'Retired account for position change',
+      description: `${source.account_code || source.email} was permanently deactivated for a position change.`,
+      metadata: { old_role: source.role, new_role: newRole, replacement_user_id: newUserId, replacement_account_code: accountCode, reason },
+    });
+    await writeAuditLog(connection, req, {
+      action: 'create', module: 'Users', entityType: 'user', entityId: String(newUserId),
+      entityLabel: accountCode, title: 'Created replacement position account',
+      description: `Created ${accountCode} as the replacement account for ${source.account_code || source.email}.`,
+      metadata: { previous_user_id: sourceUserId, previous_account_code: source.account_code, role: newRole, role_sequence: roleSequence, person_key: personKey },
+    });
+
+    await connection.commit();
+    newAccount = { id: newUserId, account_code: accountCode, role: newRole, email: source.email, first_name: source.first_name, middle_name: source.middle_name, last_name: source.last_name };
+  } catch (error) {
+    try { await connection.rollback(); } catch {}
+    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+
+  let credentialsEmailSent = false;
+  let credentialsEmailWarning = null;
+  try {
+    await sendTemporaryLoginCredentials({ user: newAccount, temporaryPassword });
+    credentialsEmailSent = true;
+  } catch (emailError) {
+    credentialsEmailWarning = 'The position change was completed, but the new login credentials email could not be delivered. Use Resend Login Credentials.';
+    console.error('Failed to send position-change credentials:', emailError.message);
+  }
+
+  return res.status(201).json({
+    message: credentialsEmailSent
+      ? `Position changed successfully. ${newAccount.account_code} was created and credentials were emailed.`
+      : credentialsEmailWarning,
+    previous_account_permanently_deactivated: true,
+    user: newAccount,
+    credentials_email_sent: credentialsEmailSent,
+    credentials_email_warning: credentialsEmailWarning,
+  });
 };
 
 export const resetUserPassword = async (req, res) => {
@@ -1722,7 +1995,7 @@ export const resetUserPassword = async (req, res) => {
 
     await connection.beginTransaction();
     const [rows] = await connection.query(
-      `SELECT id, first_name, middle_name, last_name, email, role, status
+      `SELECT id, account_code, first_name, middle_name, last_name, email, role, status
        FROM users
        WHERE id = ?
        LIMIT 1
@@ -1737,7 +2010,11 @@ export const resetUserPassword = async (req, res) => {
     }
     if (!ADMIN_LOGIN_ROLES.has(user.role)) {
       await connection.rollback();
-      return res.status(400).json({ message: 'Login credential emails are available only for Admin and Super Admin accounts.' });
+      return res.status(400).json({ message: 'Login credential emails are available only for internal system-user accounts.' });
+    }
+    if (user.status !== 'active') {
+      await connection.rollback();
+      return res.status(409).json({ message: 'This account is permanently deactivated. Create a new account instead of resetting historical credentials.' });
     }
     if (!actorCanManageTargetRole(req, user.role)) {
       await connection.rollback();
@@ -1786,5 +2063,3 @@ export const resetUserPassword = async (req, res) => {
     connection.release();
   }
 };
-
-

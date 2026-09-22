@@ -14,5 +14,3 @@ const StatusBadge = ({ value, children }) => (
 )
 
 export default StatusBadge
-
-

@@ -88,4 +88,3 @@ test('report backend keeps historical detailed reconciliation endpoints intact',
   assert.match(controller, /const commissionCohortReleases = releases\.filter/)
   assert.match(controller, /const commissionReconciliation = reconcileCommissionCohort/)
 })
-

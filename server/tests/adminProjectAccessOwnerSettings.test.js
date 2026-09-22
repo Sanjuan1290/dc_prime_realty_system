@@ -96,4 +96,3 @@ test('Owner-only operational controls stay visible but disabled for Admin', () =
   assert.doesNotMatch(users, /resetPassword/);
   assert.doesNotMatch(users, />Super Admin only</i);
 });
-

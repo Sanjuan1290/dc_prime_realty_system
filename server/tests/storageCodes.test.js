@@ -137,5 +137,3 @@ test('project and listing screens distinguish storage codes from the account-own
   assert.match(unitStatus, /\/accounts\//);
   assert.match(unitStatus, /Unit ID/);
 });
-
-

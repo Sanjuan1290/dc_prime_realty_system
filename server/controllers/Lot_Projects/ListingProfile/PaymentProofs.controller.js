@@ -616,5 +616,3 @@ export const deleteLotProjectPaymentProof = async (req, res) => {
     connection.release();
   }
 };
-
-

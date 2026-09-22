@@ -15,13 +15,13 @@ const AdminProjectAccessFields = ({
   return (
     <section className="w-full rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
       <div>
-        <p className="text-sm font-black text-slate-800">Projects this Admin can manage <span className="text-red-500">*</span></p>
-        <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">Administrators have full operational access within the selected projects. Owner-authorized actions that require Super Admin password and email verification remain protected.</p>
+        <p className="text-sm font-black text-slate-800">Project Access <span className="text-red-500">*</span></p>
+        <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">Choose where this account can use its assigned permissions. Permissions and project scope must both allow an action.</p>
       </div>
 
       <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
         <label
-          title={!canSelectAllProjects ? 'You can assign All Projects only when your own Admin account has All Projects access.' : undefined}
+          title={!canSelectAllProjects ? 'You can assign All Projects only when your own account is allowed to assign global project access.' : undefined}
           className={`flex items-center gap-3 rounded-xl border px-4 py-3 text-sm font-black ${canSelectAllProjects ? 'cursor-pointer border-blue-200 bg-white text-slate-800' : 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'}`}
         >
           <input
@@ -61,4 +61,3 @@ const AdminProjectAccessFields = ({
 }
 
 export default AdminProjectAccessFields
-

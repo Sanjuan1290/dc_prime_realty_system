@@ -183,5 +183,3 @@ const EditGroupModal = ({ setShowEditGroupModal, selectedGroup, onSaved, groupTy
 }
 
 export default EditGroupModal
-
-

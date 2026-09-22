@@ -7,6 +7,7 @@ import ReadOnlyNotice from '../../components/Shared/ReadOnlyNotice'
 import SettingsAuthorizationModal from '../../components/Shared/SettingsAuthorizationModal'
 import useCurrentUser from '../../utils/useCurrentUser'
 import SystemSettingsForm from '../../components/System/settingsComponents/SystemSettingsForm'
+import RoleAccessControl from '../../components/System/settingsComponents/RoleAccessControl'
 import { formatDateTime } from '../../utils/formatDateTime'
 import {useFetch, useFetchPut, getDoubleCheckNotice} from '../../utils/useFetch'
 
@@ -144,6 +145,8 @@ const Settings = () => {
         </section>
       ) : null}
 
+      <RoleAccessControl />
+
       <SystemSettingsForm
         form={form}
         setForm={setForm}
@@ -169,5 +172,3 @@ const Settings = () => {
 }
 
 export default Settings
-
-

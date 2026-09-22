@@ -20,7 +20,7 @@ import {
 } from "react-icons/fi";
 import useCurrentUser from "../utils/useCurrentUser";
 import StatusAlert from "../components/Shared/StatusAlert";
-import { isFullAccessAdministrator } from "../config/permissions";
+import { hasPermission, isSystemUserRole, PERMISSIONS } from "../config/permissions";
 import { requestApi } from '../utils/apiClient'
 import useNotificationBadge from '../utils/useNotificationBadge'
 
@@ -94,7 +94,7 @@ const SystemLayout = () => {
   const { totalCount: notificationCount } = useNotificationBadge(user);
 
   const roleBasePath = `/portal/${user?.role || "super_admin"}`;
-  const dashboardPathname = user?.role === "admin" ? "dashboard" : "";
+  const dashboardPathname = "";
 
   const navGroups = useMemo(
     () => [
@@ -102,62 +102,66 @@ const SystemLayout = () => {
         title: "OVERVIEW",
         description: "Main summary",
         items: [
-          { label: "Dashboard", pathname: dashboardPathname, icon: FiHome },
-          { label: "Reports", pathname: "reports", icon: FiBarChart2 },
+          { label: "Dashboard", pathname: dashboardPathname, icon: FiHome, permission: PERMISSIONS.SYSTEM_DASHBOARD_VIEW },
+          { label: "Reports", pathname: "reports", icon: FiBarChart2, permission: PERMISSIONS.SYSTEM_REPORTS_VIEW },
         ],
       },
       {
         title: "PROJECTS",
         description: "Project setup and configuration",
-        items: [{ label: "Projects", pathname: "projects", icon: FiMap }],
+        items: [{ label: "Projects", pathname: "projects", icon: FiMap, permission: PERMISSIONS.SYSTEM_PROJECTS_VIEW }],
       },
       {
         title: "PROJECT WORKSPACES",
         description: "Choose a project type, then open a specific workspace",
         items: [
-          { label: "Lot Projects", pathname: "lot-projects", icon: FiMap },
+          { label: "Lot Projects", pathname: "lot-projects", icon: FiMap, permission: PERMISSIONS.LOT_PROJECT_VIEW },
         ],
       },
       {
         title: "MANAGEMENT",
         description: "Seller and team management",
         items: [
-          { label: "Accredited Sellers", pathname: "accredited", icon: FiUsers },
+          { label: "Accredited Sellers", pathname: "accredited", icon: FiUsers, permission: PERMISSIONS.SYSTEM_ACCREDITED_VIEW },
         ],
       },
       {
         title: "COMPLIANCE",
         description: "Documents and system records",
         items: [
-          { label: "Documents", pathname: "documents", icon: FiFileText },
-          { label: "Notifications", pathname: "notifications", icon: FiBell, badge: notificationCount },
-          { label: "Audit Logs", pathname: "audit-logs", icon: FiActivity },
+          { label: "Documents", pathname: "documents", icon: FiFileText, permission: PERMISSIONS.SYSTEM_DOCUMENTS_VIEW },
+          { label: "Notifications", pathname: "notifications", icon: FiBell, badge: notificationCount, permission: PERMISSIONS.SYSTEM_NOTIFICATIONS_VIEW },
+          { label: "Audit Logs", pathname: "audit-logs", icon: FiActivity, permission: PERMISSIONS.AUDIT_LOGS_VIEW },
         ],
       },
       {
         title: "EMPLOYEES",
         description: "Employee monitoring",
         items: [
-          { label: "Employees", pathname: "employees", icon: FiUsers },
-          { label: "Attendance", pathname: "attendance", icon: FiClock },
+          { label: "Employees", pathname: "employees", icon: FiUsers, permission: PERMISSIONS.EMPLOYEES_VIEW },
+          { label: "Attendance", pathname: "attendance", icon: FiClock, permission: PERMISSIONS.ATTENDANCE_VIEW },
         ],
       },
       {
         title: "ADMINISTRATION",
         description: "User access and system settings",
         items: [
-          { label: "Users", pathname: "users", icon: FiShield },
-          { label: "Settings", pathname: "settings", icon: FiSettings },
+          { label: "Users", pathname: "users", icon: FiShield, permission: PERMISSIONS.SYSTEM_USERS_VIEW },
+          { label: "Settings", pathname: "settings", icon: FiSettings, permission: PERMISSIONS.SYSTEM_SETTINGS_VIEW },
         ],
       },
     ],
     [dashboardPathname, notificationCount]
   );
 
+  const visibleNavGroups = useMemo(() => navGroups
+    .map((group) => ({ ...group, items: group.items.filter((item) => hasPermission(user, item.permission)) }))
+    .filter((group) => group.items.length > 0), [navGroups, user]);
+
   const activeItem = useMemo(() => {
     const pathname = location.pathname;
 
-    for (const group of navGroups) {
+    for (const group of visibleNavGroups) {
       for (const item of group.items) {
         const itemPath = item.pathname
           ? `${roleBasePath}/${item.pathname}`.replace(/\/+/g, "/")
@@ -174,7 +178,7 @@ const SystemLayout = () => {
     }
 
     return { label: "Dashboard" };
-  }, [location.pathname, navGroups, roleBasePath]);
+  }, [location.pathname, visibleNavGroups, roleBasePath]);
 
   if (isCurrentUserLoading) {
     return (
@@ -192,7 +196,7 @@ const SystemLayout = () => {
     return <Navigate to="/portal/change-password" replace />;
   }
 
-  if (!isFullAccessAdministrator(user)) {
+  if (!isSystemUserRole(user?.role)) {
     return <Navigate to="/portal" replace />;
   }
 
@@ -270,7 +274,7 @@ const SystemLayout = () => {
             </div>
           ) : null}
 
-          {navGroups.map((nav) => (
+          {visibleNavGroups.map((nav) => (
             <div key={nav.title} className="mb-5">
               <div className="mb-2 px-2">
                 <p className="text-xs font-bold tracking-wider text-slate-600">
@@ -341,7 +345,7 @@ const SystemLayout = () => {
             </p>
 
             <span className="mt-2 inline-flex rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-black text-blue-700">
-              {user?.role === "admin" ? "Admin" : formatRole(user?.role)}
+              {formatRole(user?.role)}
             </span>
           </div>
 
@@ -398,7 +402,7 @@ const SystemLayout = () => {
         <div className="flex shrink-0 items-center gap-3">
           <div className="hidden text-right sm:block">
             <h3 className="font-semibold">{getFullName(user)}</h3>
-            <p className="text-xs text-slate-500">{user?.role === "admin" ? "Admin" : formatRole(user?.role)}</p>
+            <p className="text-xs text-slate-500">{formatRole(user?.role)}</p>
           </div>
 
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-sm font-bold text-white">
@@ -417,5 +421,3 @@ const SystemLayout = () => {
 };
 
 export default SystemLayout;
-
-

@@ -21,5 +21,3 @@ test('seller group analytics returns recent sales with unit account links', asyn
   assert.match(page, /\/accounts\/\$\{sale\.accountId\}/);
   assert.match(page, /sale\.contractPrice/);
 });
-
-

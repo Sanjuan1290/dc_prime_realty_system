@@ -99,5 +99,3 @@ FROM tmp_cancelled_commission_progress_repair repair;
 
 DROP TEMPORARY TABLE IF EXISTS tmp_cancelled_commission_progress_repair;
 COMMIT;
-
-

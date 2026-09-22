@@ -4,7 +4,7 @@ import {
   getErrorMessage,
   tableExists,
 } from '../Lot_Projects/_shared/lotProject.shared.js';
-import { isFullAccessAdministrator } from '../../config/permissions.js';
+import { PERMISSIONS, roleHasPermission } from '../../config/permissions.js';
 import { writeAuditLog } from './auditLogs.controller.js';
 import {
   authorizeMalwareQuotaFallback,
@@ -50,8 +50,8 @@ const requireManager = async (req, res) => {
     res.status(401).json({ message: 'Please login before managing signed Proof of Income copies.' });
     return null;
   }
-  if (!isFullAccessAdministrator(user)) {
-    res.status(403).json({ message: 'Admin access is required to manage signed Proof of Income copies.' });
+  if (!roleHasPermission(user, PERMISSIONS.SYSTEM_ACCREDITED_UPLOAD_PROOF)) {
+    res.status(403).json({ message: 'You do not have permission to manage signed Proof of Income copies.' });
     return null;
   }
   return user;
@@ -541,5 +541,3 @@ export const deleteAccreditedSellerProofOfIncomeSignedCopy = async (req, res) =>
     connection.release();
   }
 };
-
-

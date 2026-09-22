@@ -144,4 +144,3 @@ const DataIntegrityAccess = () => {
 }
 
 export default DataIntegrityAccess
-

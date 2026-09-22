@@ -942,4 +942,3 @@ const OfferToBuyForm = ({ listing = {}, client = {}, soaRows = [] }) => {
 }
 
 export default OfferToBuyForm
-

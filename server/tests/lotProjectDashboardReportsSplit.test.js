@@ -40,4 +40,3 @@ test('Lot Project workspace separates operational Dashboard from Reports', () =>
   assert.doesNotMatch(reports, />Price List<\/button>/)
   assert.match(reports, /export default Reports/)
 })
-

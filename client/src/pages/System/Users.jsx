@@ -1,319 +1,86 @@
-import { useState } from "react";
-import { NavLink } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import PageHeader from "../../components/Shared/PageHeader";
-import StatusAlert from "../../components/Shared/StatusAlert";
-import useCurrentUser from "../../utils/useCurrentUser";
-import { FaUserPlus } from "react-icons/fa";
-import {
-  FiEdit2,
-  FiKey,
-  FiPlus,
-  FiRefreshCw,
-  FiSearch,
-  FiShield,
-  FiUserCheck,
-  FiUsers,
-} from "react-icons/fi";
-import CreateUserModal from "../../components/System/userComponents/CreateUserModal";
-import EditUserModal from "../../components/System/userComponents/EditUserModal";
-import { formatDateTime } from "../../utils/formatDateTime";
-import { useFetch as fetchApi, useFetchPatch as patchApi } from "../../utils/useFetch";
-import { PERMISSIONS, canManageUserRole, hasPermission } from "../../config/permissions";
+import { useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { FaUserPlus } from 'react-icons/fa'
+import { FiEdit2, FiKey, FiLock, FiPlus, FiRefreshCw, FiSearch, FiShield, FiShuffle, FiUserCheck, FiUsers } from 'react-icons/fi'
+import PageHeader from '../../components/Shared/PageHeader'
+import StatusAlert from '../../components/Shared/StatusAlert'
+import useCurrentUser from '../../utils/useCurrentUser'
+import { formatDateTime } from '../../utils/formatDateTime'
+import { useFetch as fetchApi, useFetchPatch as patchApi } from '../../utils/useFetch'
+import { PERMISSIONS, hasPermission, SYSTEM_USER_ROLES } from '../../config/permissions'
+import CreateSystemUserModal from '../../components/System/userComponents/CreateSystemUserModal'
+import EditSystemUserModal from '../../components/System/userComponents/EditSystemUserModal'
+import UserAccessModal from '../../components/System/userComponents/UserAccessModal'
+import ChangePositionModal from '../../components/System/userComponents/ChangePositionModal'
 
-const roleLabels = {
-  super_admin: "Super Admin",
-  admin: "Admin",
-  division_manager: "Division Manager",
-  sales_director: "Sales Director",
-  unit_manager: "Unit Manager",
-  sales_agent: "Sales Agent",
-  external_group: "External Group",
-};
-
-const sellerRoles = ["division_manager", "sales_director", "unit_manager", "sales_agent", "external_group"];
-const isSellerRecord = (user) => sellerRoles.includes(user?.role);
+const roleLabels = { super_admin: 'Super Admin', admin: 'Admin', marketing: 'Marketing', sales: 'Sales', accounting: 'Accounting', operations: 'Operations' }
 
 const Users = () => {
-  const { data: currentUserData } = useCurrentUser();
-  const actorUser = currentUserData?.user || {};
-  const actorRole = actorUser.role || "";
-  const isSuperAdmin = actorRole === "super_admin";
-  const actorCanAssignAllProjects = isSuperAdmin || Boolean(actorUser.admin_all_projects);
-  const canCreateUsers = hasPermission(actorUser, PERMISSIONS.SYSTEM_USERS_CREATE);
-  const canEditUsers = hasPermission(actorUser, PERMISSIONS.SYSTEM_USERS_EDIT);
-  const canChangeStatus = hasPermission(actorUser, PERMISSIONS.SYSTEM_USERS_CHANGE_STATUS);
-  const canManageSellerGroups = hasPermission(actorUser, PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE);
-  const createAllowedRoles = Object.keys(roleLabels).filter((role) => role !== "external_group" && (isSuperAdmin || role !== "super_admin"));
-  const getEditAllowedRoles = (user) => user?.role === "external_group" ? ["external_group"] : Object.keys(roleLabels).filter((role) => role !== "external_group" && (isSuperAdmin || role !== "super_admin"));
-  const canManageAccount = (user) => user?.role !== "external_group" && canManageUserRole(actorUser, user?.role);
-  const queryClient = useQueryClient();
-  const [showEditUser, setShowEditUser] = useState(false);
-  const [showCreateUser, setShowCreateUser] = useState(false);
-  const [selectedUser, setSelectedUser] = useState(null);
-  const [alert, setAlert] = useState(null);
-  const [activeAction, setActiveAction] = useState(null);
+  const { data: currentUserData } = useCurrentUser()
+  const actor = currentUserData?.user || {}
+  const isSuperAdmin = actor.role === 'super_admin'
+  const canCreate = hasPermission(actor, PERMISSIONS.SYSTEM_USERS_CREATE)
+  const canEdit = hasPermission(actor, PERMISSIONS.SYSTEM_USERS_EDIT)
+  const canReset = hasPermission(actor, PERMISSIONS.SYSTEM_USERS_RESET_PASSWORD)
+  const canDeactivate = hasPermission(actor, PERMISSIONS.SYSTEM_USERS_DEACTIVATE)
+  const queryClient = useQueryClient()
+  const [modal, setModal] = useState(null)
+  const [selectedUser, setSelectedUser] = useState(null)
+  const [alert, setAlert] = useState(null)
+  const [search, setSearch] = useState('')
+  const [roleFilter, setRoleFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [page, setPage] = useState(1)
+  const [limit, setLimit] = useState(10)
 
-  const [search, setSearch] = useState("");
-  const [roleFilter, setRoleFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(10);
+  const queryString = new URLSearchParams({ page: String(page), limit: String(limit), ...(search.trim() ? { search: search.trim() } : {}), ...(roleFilter !== 'all' ? { role: roleFilter } : {}), ...(statusFilter !== 'all' ? { status: statusFilter } : {}) }).toString()
+  const { data, isLoading, isFetching, isError, error, refetch } = useQuery({ queryKey: ['users', queryString], queryFn: () => fetchApi(`/user/getUsers?${queryString}`), keepPreviousData: true })
+  const users = data?.data || []
+  const summary = data?.summary || { total: 0, active: 0, inactive: 0, mustChangePassword: 0 }
+  const pagination = data?.pagination || { page, limit, total: 0, totalPages: 1, hasNext: false, hasPrev: false }
 
-  const queryString = new URLSearchParams({
-    page: String(page),
-    limit: String(limit),
-    ...(search.trim() ? { search: search.trim() } : {}),
-    ...(roleFilter !== "all" ? { role: roleFilter } : {}),
-    ...(statusFilter !== "all" ? { status: statusFilter } : {}),
-  }).toString();
+  const refresh = () => { queryClient.invalidateQueries({ queryKey: ['users'] }); queryClient.invalidateQueries({ queryKey: ['currentUser'] }) }
+  const saved = (message) => { setAlert({ type: 'success', message }); refresh() }
 
-  const { data, isLoading, isFetching, isError, error } = useQuery({
-    queryKey: ["users", queryString],
-    queryFn: () => fetchApi(`/user/getUsers?${queryString}`),
-    keepPreviousData: true,
-  });
+  const deactivateMutation = useMutation({
+    mutationFn: (user) => patchApi(`/user/toggleUserStatus/${user.id}`, { status: 'inactive' }, { confirmationHandled: 'compact' }),
+    onMutate: () => setAlert({ type: 'loading', message: 'Permanently deactivating account...' }),
+    onSuccess: (result) => { saved(result.message || 'Account permanently deactivated.') },
+    onError: (e) => setAlert({ type: 'error', message: e.message }),
+  })
+  const resetMutation = useMutation({
+    mutationFn: (user) => patchApi(`/user/resetPassword/${user.id}`, {}, { confirmationHandled: 'compact' }),
+    onMutate: () => setAlert({ type: 'loading', message: 'Generating and emailing new temporary credentials...' }),
+    onSuccess: (result) => saved(result.message || 'Login credentials reset.'),
+    onError: (e) => setAlert({ type: 'error', message: e.message }),
+  })
 
-  const users = data?.data || [];
-  const summary = data?.summary || {
-    total: 0,
-    active: 0,
-    inactive: 0,
-    mustChangePassword: 0,
-  };
-  const pagination = data?.pagination || {
-    page,
-    limit,
-    total: 0,
-    totalPages: 1,
-    hasNext: false,
-    hasPrev: false,
-  };
-
-  const toggleStatusMutation = useMutation({
-    mutationFn: (user) => patchApi(`/user/toggleUserStatus/${user.id}`, {}, { confirmationHandled: 'compact' }),
-    onMutate: (user) => {
-      setActiveAction({ type: "status", userId: user.id });
-      setAlert({ type: "loading", message: `${user.status === "active" ? "Deactivating" : "Activating"} user...` });
-    },
-    onSuccess: (result) => {
-      setAlert({ type: "success", message: result.message || "User status updated." });
-      queryClient.invalidateQueries({ queryKey: ["users"] });
-      queryClient.invalidateQueries({ queryKey: ["accredited"] });
-    },
-    onError: (mutationError) => {
-      setAlert({ type: "error", message: mutationError.message });
-    },
-    onSettled: () => setActiveAction(null),
-  });
+  const open = (type, user = null) => { setSelectedUser(user); setModal(type) }
+  const close = () => { setModal(null); setSelectedUser(null) }
+  const deactivate = (user) => {
+    if (user.status !== 'active') return
+    if (!window.confirm(`Permanently deactivate ${user.account_code || user.full_name}?\n\nThis account can never be activated again. If the employee returns or changes position, create a new account.`)) return
+    deactivateMutation.mutate(user)
+  }
 
   const stats = [
-    { label: "Total Users", value: summary.total, icon: FiUsers, description: "All system accounts" },
-    { label: "Active", value: summary.active, icon: FiUserCheck, description: "Can access the system" },
-    { label: "Inactive", value: summary.inactive, icon: FiShield, description: "Blocked from login" },
-    { label: "Password Change", value: summary.mustChangePassword, icon: FiKey, description: "Required on next login" },
-  ];
+    ['Total System Users', summary.total, FiUsers], ['Active', summary.active, FiUserCheck], ['Permanently Deactivated', summary.inactive, FiShield], ['Password Change Required', summary.mustChangePassword, FiKey],
+  ]
 
-  const handleToggleStatus = (user) => {
-    const action = user.status === "active" ? "deactivate" : "activate";
-    const confirmed = window.confirm(`Are you sure you want to ${action} ${user.full_name}?`);
-    if (!confirmed) return;
-    toggleStatusMutation.mutate(user);
-  };
-
-  const openEditModal = (user) => {
-    setSelectedUser(user);
-    setShowEditUser(true);
-  };
-
-  const handleSaved = (message) => {
-    setAlert({ type: "success", message });
-    queryClient.invalidateQueries({ queryKey: ["users"] });
-    queryClient.invalidateQueries({ queryKey: ["accredited"] });
-  };
-
-  return (
-    <main className="flex flex-col gap-6">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-        <PageHeader
-          title="User Management"
-          description="Create user accounts, assign the in-house sales hierarchy, and manage internal and external groups."
-          icon={FaUserPlus}
-        />
-
-        <div className="flex flex-col gap-2 sm:flex-row">
-          {canManageSellerGroups ? (
-            <><NavLink to="groups/in-house" className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-sm font-bold text-slate-700 shadow-sm hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700">In-House Group</NavLink><NavLink to="groups/external" className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-sm font-bold text-slate-700 shadow-sm hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700">External Group</NavLink></>
-          ) : null}
-          {canCreateUsers ? (
-            <button type="button" onClick={() => setShowCreateUser(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-bold text-white shadow-sm hover:bg-blue-700"><FiPlus className="h-4 w-4" />Create User</button>
-          ) : null}
-        </div>
-      </div>
-
-      {alert ? <StatusAlert type={alert.type} message={alert.message} onClose={alert.type === "loading" ? undefined : () => setAlert(null)} /> : null}
-      {isLoading ? <StatusAlert type="loading" message="Loading users..." /> : null}
-      {!isLoading && isFetching ? <StatusAlert type="info" message="Refreshing users..." /> : null}
-      {isError ? <StatusAlert type="error" message={error?.message || "Failed to load users."} /> : null}
-
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {stats.map((stat) => {
-          const Icon = stat.icon;
-          return (
-            <div key={stat.label} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-bold text-slate-500">{stat.label}</p>
-                  <h3 className="mt-2 text-3xl font-bold text-slate-950">{stat.value}</h3>
-                </div>
-                <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
-                  <Icon className="h-5 w-5" />
-                </span>
-              </div>
-              <p className="mt-3 text-sm text-slate-500">{stat.description}</p>
-            </div>
-          );
-        })}
-      </section>
-
-      <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-4 border-b border-slate-200 p-4 xl:flex-row xl:items-center xl:justify-between">
-          <div>
-            <h2 className="text-lg font-bold text-slate-950">System Users</h2>
-            <p className="text-sm text-slate-500">Search, filter, create, and update system accounts.</p>
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-[1fr_auto_auto_auto]">
-            <label className="relative block">
-              <FiSearch className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                value={search}
-                onChange={(event) => {
-                  setSearch(event.target.value);
-                  setPage(1);
-                }}
-                placeholder="Search users..."
-                className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
-              />
-            </label>
-
-            <select
-              value={roleFilter}
-              onChange={(event) => {
-                setRoleFilter(event.target.value);
-                setPage(1);
-              }}
-              className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
-            >
-              <option value="all">All Roles</option>
-              {Object.entries(roleLabels).map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
-              ))}
-            </select>
-
-            <select
-              value={statusFilter}
-              onChange={(event) => {
-                setStatusFilter(event.target.value);
-                setPage(1);
-              }}
-              className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"
-            >
-              <option value="all">All Status</option>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-            </select>
-
-            <button
-              type="button"
-              onClick={() => queryClient.invalidateQueries({ queryKey: ["users"] })}
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
-            >
-              <FiRefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
-              Refresh
-            </button>
-          </div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <div className="min-w-[1180px]">
-            <div className="grid grid-cols-[1.4fr_1.25fr_0.9fr_1.1fr_1.2fr_0.9fr_1.4fr] bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500">
-              <p>User</p>
-              <p>Contact</p>
-              <p>Role</p>
-              <p>Group / Project Access</p>
-              <p>Reports Under</p>
-              <p>Status</p>
-              <p className="text-right">Actions</p>
-            </div>
-
-            <div className="divide-y divide-slate-100">
-              {isLoading ? (
-                <div className="px-4 py-10 text-center text-sm font-semibold text-slate-500">Loading users...</div>
-              ) : users.length === 0 ? (
-                <div className="px-4 py-10 text-center text-sm font-semibold text-slate-500">No users found.</div>
-              ) : (
-                users.map((user) => (
-                  <div key={user.id} className="grid grid-cols-[1.4fr_1.25fr_0.9fr_1.1fr_1.2fr_0.9fr_1.4fr] items-center px-4 py-4 text-sm">
-                    <div>
-                      <p className="font-bold text-slate-950">{user.full_name}</p>
-                      <p className="text-xs text-slate-500">Last login: {user.last_login ? formatDateTime(user.last_login) : "Never"}</p>
-                    </div>
-                    <div>
-                      <p className="font-semibold text-slate-800">{user.email}</p>
-                      <p className="text-xs text-slate-500">{user.contact_no || "No contact"}</p>
-                    </div>
-                    <p className="font-semibold text-slate-700">{roleLabels[user.role] || user.role}</p>
-                    <p className="font-semibold text-slate-700">{user.role === "admin" ? (user.admin_all_projects ? "All Projects" : (user.admin_projects || []).map((project) => project.name).join(", ") || "No Projects") : (user.seller_group_name || "—")}</p>
-                    <p className="text-slate-600">{user.reports_under_name || "Direct / None"}</p>
-                    <span className={`w-fit rounded-full border px-3 py-1 text-xs font-bold capitalize ${user.status === "active" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-slate-50 text-slate-500"}`}>
-                      {user.status}
-                    </span>
-                    <div className="flex justify-end gap-2">
-                      {canManageAccount(user) ? (
-                        <>
-                          {canEditUsers ? <button type="button" onClick={() => openEditModal(user)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:bg-slate-50"><FiEdit2 className="h-3.5 w-3.5" />Edit</button> : null}
-                          {canChangeStatus ? <button type="button" onClick={() => handleToggleStatus(user)} disabled={toggleStatusMutation.isPending} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60">{activeAction?.type === "status" && activeAction?.userId === user.id ? "Updating..." : user.status === "active" ? "Deactivate" : "Activate"}</button> : null}
-                        </>
-                      ) : user.role === "super_admin" && actorRole === "admin" ? (
-                        <>
-                          <button type="button" disabled title="Only the Super Admin can edit a Super Admin account." className="inline-flex h-9 cursor-not-allowed items-center gap-2 rounded-lg border border-slate-200 bg-slate-100 px-3 text-xs font-bold text-slate-400"><FiEdit2 className="h-3.5 w-3.5" />Edit</button>
-                          <button type="button" disabled title="Only the Super Admin can activate or deactivate a Super Admin account." className="inline-flex h-9 cursor-not-allowed items-center gap-2 rounded-lg border border-slate-200 bg-slate-100 px-3 text-xs font-bold text-slate-400">{user.status === "active" ? "Deactivate" : "Activate"}</button>
-                        </>
-                      ) : (
-                        <span className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-black text-blue-700">Managed in External Groups</span>
-                      )}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-3 border-t border-slate-200 p-4 md:flex-row md:items-center md:justify-between">
-          <p className="text-sm font-semibold text-slate-500">
-            Showing page {pagination.page} of {pagination.totalPages} • {pagination.total} records
-          </p>
-
-          <div className="flex items-center gap-2">
-            <select value={limit} onChange={(event) => { setLimit(Number(event.target.value)); setPage(1); }} className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700">
-              <option value={10}>10</option>
-              <option value={25}>25</option>
-              <option value={50}>50</option>
-            </select>
-            <button type="button" disabled={!pagination.hasPrev} onClick={() => setPage((current) => Math.max(current - 1, 1))} className="h-10 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50">Prev</button>
-            <button type="button" disabled={!pagination.hasNext} onClick={() => setPage((current) => current + 1)} className="h-10 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50">Next</button>
-          </div>
-        </div>
-      </section>
-
-      {showCreateUser && canCreateUsers ? <CreateUserModal setShowCreateUser={setShowCreateUser} onSaved={handleSaved} allowedRoles={createAllowedRoles} actorRole={actorRole} actorCanAssignAllProjects={actorCanAssignAllProjects} /> : null}
-      {showEditUser && selectedUser && canEditUsers && canManageAccount(selectedUser) ? <EditUserModal key={selectedUser.id} setShowEditUser={setShowEditUser} selectedUser={selectedUser} onSaved={handleSaved} allowedRoles={getEditAllowedRoles(selectedUser)} actorRole={actorRole} actorCanAssignAllProjects={actorCanAssignAllProjects} /> : null}
-    </main>
-  );
-};
-
-export default Users;
-
+  return <main className="flex flex-col gap-6">
+    <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between"><PageHeader title="System Users" description="Super Admin, Admin, Marketing, Sales, Accounting, and Operations accounts. Accredited sellers are managed separately." icon={FaUserPlus} /><div className="flex gap-2"><button type="button" onClick={() => refetch()} className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 font-bold"><FiRefreshCw className={isFetching ? 'animate-spin' : ''} />Refresh</button>{canCreate ? <button type="button" onClick={() => open('create')} className="inline-flex h-11 items-center gap-2 rounded-xl bg-blue-600 px-5 font-black text-white"><FiPlus />Create System User</button> : null}</div></div>
+    {alert ? <StatusAlert type={alert.type} message={alert.message} onClose={alert.type === 'loading' ? undefined : () => setAlert(null)} /> : null}
+    {isLoading ? <StatusAlert type="loading" message="Loading system users..." /> : null}{isError ? <StatusAlert type="error" message={error?.message || 'Failed to load users.'} /> : null}
+    <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{stats.map(([label,value,Icon]) => <div key={label} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex justify-between"><div><p className="text-sm font-bold text-slate-500">{label}</p><p className="mt-2 text-3xl font-black">{value}</p></div><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-700"><Icon /></span></div></div>)}</section>
+    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="grid gap-3 border-b p-4 md:grid-cols-[1fr_auto_auto]"><label className="relative"><FiSearch className="absolute left-3 top-3.5 text-slate-400" /><input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1) }} placeholder="Search name, email, account code..." className="h-11 w-full rounded-xl border border-slate-200 pl-10 pr-3" /></label><select value={roleFilter} onChange={(e) => { setRoleFilter(e.target.value); setPage(1) }} className="h-11 rounded-xl border px-3"><option value="all">All Roles</option>{SYSTEM_USER_ROLES.map((r) => <option key={r} value={r}>{roleLabels[r]}</option>)}</select><select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1) }} className="h-11 rounded-xl border px-3"><option value="all">All Statuses</option><option value="active">Active</option><option value="inactive">Deactivated</option></select></div>
+      <div className="overflow-x-auto"><table className="min-w-full text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3">Account</th><th className="px-4 py-3">Role</th><th className="px-4 py-3">Project Scope</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Created</th><th className="px-4 py-3 text-right">Actions</th></tr></thead><tbody className="divide-y divide-slate-100">{!users.length && !isLoading ? <tr><td colSpan="6" className="p-10 text-center text-slate-500">No system users found.</td></tr> : users.map((user) => <tr key={user.id} className="align-top"><td className="px-4 py-4"><p className="font-black text-slate-900">{user.full_name}</p><p className="mt-1 font-mono text-xs font-bold text-blue-700">{user.account_code || 'Legacy account'}</p><p className="mt-1 text-xs text-slate-500">{user.email}</p></td><td className="px-4 py-4 font-bold">{roleLabels[user.role] || user.role}</td><td className="px-4 py-4"><span className="font-semibold">{user.role === 'super_admin' || user.all_projects_access ? 'All Projects' : (user.admin_projects || []).map((p) => p.name).join(', ') || 'No Projects'}</span></td><td className="px-4 py-4"><span className={`rounded-full px-2.5 py-1 text-xs font-black ${user.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>{user.status === 'active' ? 'Active' : 'Deactivated'}</span>{user.deactivated_at ? <p className="mt-2 text-xs text-slate-500">{formatDateTime(user.deactivated_at)}</p> : null}</td><td className="px-4 py-4 text-xs text-slate-500">{formatDateTime(user.created_at)}</td><td className="px-4 py-4"><div className="flex min-w-[260px] flex-wrap justify-end gap-2">{canEdit && user.status === 'active' && user.role !== 'super_admin' ? <button onClick={() => open('edit',user)} className="rounded-lg border px-3 py-2 font-bold"><FiEdit2 className="inline" /> Edit</button> : null}{isSuperAdmin ? <button onClick={() => open('access',user)} className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 font-bold text-blue-700"><FiLock className="inline" /> Access</button> : null}{isSuperAdmin && user.status === 'active' && !['super_admin'].includes(user.role) ? <button onClick={() => open('position',user)} className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 font-bold text-violet-700"><FiShuffle className="inline" /> Change Position</button> : null}{canReset && user.status === 'active' ? <button onClick={() => resetMutation.mutate(user)} className="rounded-lg border px-3 py-2 font-bold"><FiKey className="inline" /> Reset</button> : null}{canDeactivate && user.status === 'active' && user.id !== actor.id ? <button onClick={() => deactivate(user)} className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 font-bold text-red-700"><FiShield className="inline" /> Deactivate</button> : null}</div></td></tr>)}</tbody></table></div>
+      <div className="flex flex-col gap-3 border-t p-4 md:flex-row md:items-center md:justify-between"><p className="text-sm font-semibold text-slate-500">Page {pagination.page} of {pagination.totalPages} · {pagination.total} records</p><div className="flex gap-2"><select value={limit} onChange={(e) => { setLimit(Number(e.target.value)); setPage(1) }} className="h-10 rounded-xl border px-3"><option>10</option><option>25</option><option>50</option></select><button disabled={!pagination.hasPrev} onClick={() => setPage((p) => Math.max(1,p-1))} className="h-10 rounded-xl border px-4 font-bold disabled:opacity-40">Prev</button><button disabled={!pagination.hasNext} onClick={() => setPage((p) => p+1)} className="h-10 rounded-xl border px-4 font-bold disabled:opacity-40">Next</button></div></div>
+    </section>
+    {modal === 'create' ? <CreateSystemUserModal onClose={close} onSaved={saved} /> : null}
+    {modal === 'edit' && selectedUser ? <EditSystemUserModal user={selectedUser} onClose={close} onSaved={saved} /> : null}
+    {modal === 'access' && selectedUser ? <UserAccessModal user={selectedUser} onClose={close} onSaved={saved} /> : null}
+    {modal === 'position' && selectedUser ? <ChangePositionModal user={selectedUser} onClose={close} onSaved={saved} /> : null}
+  </main>
+}
+export default Users

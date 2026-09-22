@@ -252,5 +252,3 @@ export const getPaymentCalculations = (tcp, paymentForm) => {
     },
   }
 }
-
-

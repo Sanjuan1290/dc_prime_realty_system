@@ -10,7 +10,6 @@ import {
   todayDateOnly,
 } from '../_shared/lotProject.shared.js';
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
-import { isFullAccessAdministrator } from '../../../config/permissions.js';
 import { reconcileCommission } from '../../../services/commissionReconciliation.service.js';
 import { buildAccountContext } from '../../../services/accountContext.service.js';
 
@@ -988,9 +987,6 @@ export const updateLotProjectCommission = async (req, res) => {
       return res.status(401).json({ success: false, message: 'Please login before updating commission.' });
     }
 
-    if (!isFullAccessAdministrator(currentUser)) {
-      return res.status(403).json({ success: false, message: 'Admin access is required to update commission.' });
-    }
 
     const isReleaseAction = action === 'release_stage';
     const releaseMode = requestedReleaseMode || 'live';
@@ -1593,5 +1589,3 @@ export const updateLotProjectCommission = async (req, res) => {
     connection.release();
   }
 };
-
-

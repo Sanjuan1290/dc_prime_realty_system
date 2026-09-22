@@ -93,5 +93,3 @@ export const validateSellerReportingChain = (
 
   return true;
 };
-
-

@@ -25,15 +25,13 @@ router.get('/', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_VIEW), getAccred
 router.get('/parents', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_VIEW), getParentSellers);
 router.get('/:sellerId/proof-of-income-receipts', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_VIEW), getAccreditedSellerProofOfIncomeData);
 router.get('/:sellerId/income-range', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_VIEW), getAccreditedSellerIncomeRangeReport);
-router.post('/:sellerId/proof-of-income-receipts', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_MANAGE), createAccreditedSellerProofOfIncomeReceipt);
+router.post('/:sellerId/proof-of-income-receipts', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_UPLOAD_PROOF), createAccreditedSellerProofOfIncomeReceipt);
 router.get('/:sellerId/proof-of-income-receipts/:receiptId/signed-copy', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_VIEW), getAccreditedSellerProofOfIncomeSignedCopy);
-router.post('/:sellerId/proof-of-income-receipts/:receiptId/signed-copy/upload-signature', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_MANAGE), createAccreditedSellerProofOfIncomeSignedCopyUploadSignature);
-router.post('/:sellerId/proof-of-income-receipts/:receiptId/signed-copy', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_MANAGE), saveAccreditedSellerProofOfIncomeSignedCopy);
+router.post('/:sellerId/proof-of-income-receipts/:receiptId/signed-copy/upload-signature', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_UPLOAD_PROOF), createAccreditedSellerProofOfIncomeSignedCopyUploadSignature);
+router.post('/:sellerId/proof-of-income-receipts/:receiptId/signed-copy', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_UPLOAD_PROOF), saveAccreditedSellerProofOfIncomeSignedCopy);
 router.get('/:sellerId/proof-of-income-receipts/:receiptId/signed-copy/access-url', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_VIEW), getAccreditedSellerProofOfIncomeSignedCopyAccessUrl);
 router.get('/:sellerId/proof-of-income-receipts/:receiptId/signed-copy/content', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_VIEW), getAccreditedSellerProofOfIncomeSignedCopyContent);
-router.post('/:sellerId/proof-of-income-receipts/:receiptId/signed-copy/delete', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_MANAGE), deleteAccreditedSellerProofOfIncomeSignedCopy);
-router.post('/:sellerId/proof-of-income', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_MANAGE), uploadAccreditedSellerProofOfIncome);
+router.post('/:sellerId/proof-of-income-receipts/:receiptId/signed-copy/delete', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_UPLOAD_PROOF), deleteAccreditedSellerProofOfIncomeSignedCopy);
+router.post('/:sellerId/proof-of-income', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_UPLOAD_PROOF), uploadAccreditedSellerProofOfIncome);
 
 export default router;
-
-

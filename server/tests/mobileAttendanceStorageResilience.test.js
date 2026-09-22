@@ -32,4 +32,3 @@ test('public website preference writes use safe storage instead of direct localS
   assert.match(preferences, /safeLocalStorage\.setItem/)
   assert.doesNotMatch(preferences, /window\.localStorage/)
 })
-

@@ -44,4 +44,3 @@ test('migration converts legacy Advance schedule statuses to Paid without changi
   assert.match(migration, /WHERE schedule_status = 'Advance'/)
   assert.doesNotMatch(migration, /UPDATE lot_project_payments/)
 })
-

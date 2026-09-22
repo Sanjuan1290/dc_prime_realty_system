@@ -2028,4 +2028,3 @@ const PaymentsSOA = ({
 }
 
 export default PaymentsSOA
-

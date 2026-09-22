@@ -45,5 +45,3 @@ export const resolveCommissionBaseAmount = (listing = {}) => {
     listing.lot_project_listing_tcp
   ));
 };
-
-

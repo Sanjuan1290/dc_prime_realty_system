@@ -48,5 +48,3 @@ const usePageMeta = ({ title, description, image = '/website/images/bailen/lunti
 }
 
 export default usePageMeta
-
-

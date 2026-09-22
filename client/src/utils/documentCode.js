@@ -12,5 +12,3 @@ export const suggestDocumentCode = (documentName) => {
 }
 
 export const isValidDocumentCode = (value) => /^DOC-[A-Z0-9]+(?:-[A-Z0-9]+)*$/.test(clean(value))
-
-

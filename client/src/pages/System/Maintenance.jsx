@@ -102,5 +102,3 @@ const Maintenance = () => {
 }
 
 export default Maintenance
-
-

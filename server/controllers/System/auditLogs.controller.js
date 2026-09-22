@@ -7,7 +7,7 @@ import {
   getUserFullName,
 } from '../Lot_Projects/_shared/lotProject.shared.js';
 import { getRequestIpAddress, normalizeIpAddress } from '../../utils/requestIp.js';
-import { isFullAccessAdministrator } from '../../config/permissions.js';
+import { PERMISSIONS, roleHasPermission } from '../../config/permissions.js';
 import { sendEmail } from '../../services/email.service.js';
 
 const allowedActions = new Set([
@@ -159,8 +159,8 @@ const requireAdmin = async (req) => {
     throw error;
   }
 
-  if (!isFullAccessAdministrator(user)) {
-    const error = new Error('Admin access only.');
+  if (!roleHasPermission(user, PERMISSIONS.AUDIT_LOGS_VIEW)) {
+    const error = new Error('You do not have permission to view audit logs.');
     error.statusCode = 403;
     throw error;
   }
@@ -1150,4 +1150,3 @@ export const downloadAuditLogArchiveExport = async (req, res) => {
     connection.release();
   }
 };
-

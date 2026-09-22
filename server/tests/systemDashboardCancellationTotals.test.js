@@ -30,6 +30,3 @@ test('System Reports aggregates and charts commission comparison totals from eve
   assert.match(dashboard, /label: 'Released'[\s\S]*summary\.releasedCommission/)
   assert.match(dashboard, /label: 'Remaining'[\s\S]*summary\.netRemainingCommission/)
 })
-
-
-

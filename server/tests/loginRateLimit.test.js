@@ -27,4 +27,3 @@ test('login route is limited to ten attempts per fifteen-minute IP window', () =
   assert.match(limiter, /LOGIN_RATE_LIMITED/);
   assert.match(limiter, /Retry-After/);
 });
-

@@ -59,5 +59,3 @@ export const maintenanceGuard = async (req, res, next) => {
     })
   }
 }
-
-

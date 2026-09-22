@@ -47,5 +47,3 @@ CREATE TABLE IF NOT EXISTS lot_project_reservation_corrections (
     FOREIGN KEY (corrected_by_user_id) REFERENCES users (id)
     ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-
-

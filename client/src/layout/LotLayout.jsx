@@ -23,7 +23,7 @@ import {
 import StatusAlert from '../components/Shared/StatusAlert'
 import useCurrentUser from '../utils/useCurrentUser'
 import { useFetch } from '../utils/useFetch'
-import { isFullAccessAdministrator } from '../config/permissions'
+import { hasPermission, isSystemUserRole, PERMISSIONS } from '../config/permissions'
 
 const getPageTitle = (pathname, projectName) => {
   if (pathname.includes('/reports')) return `${projectName || 'Lot Project'} Reports`
@@ -66,13 +66,13 @@ const LotLayout = () => {
   const basePath = `/portal/lot-projects/${projectSlug}`
 
   const navItems = useMemo(() => [
-    { label: 'Dashboard', path: basePath, icon: FiHome, end: true },
-    { label: 'Reports', path: `${basePath}/reports`, icon: FiBarChart2 },
-    { label: 'Listings / Units', path: `${basePath}/listings`, icon: FiGrid },
-    { label: 'Payments Audit', path: `${basePath}/payments-audit`, icon: FiShield },
-    { label: 'Commissions', path: `${basePath}/commissions`, icon: FiDollarSign },
-    { label: 'Settings', path: `${basePath}/settings`, icon: FiSettings },
-  ], [basePath])
+    { label: 'Dashboard', path: basePath, icon: FiHome, end: true, permission: PERMISSIONS.LOT_DASHBOARD_VIEW },
+    { label: 'Reports', path: `${basePath}/reports`, icon: FiBarChart2, permission: PERMISSIONS.LOT_REPORTS_VIEW },
+    { label: 'Listings / Units', path: `${basePath}/listings`, icon: FiGrid, permission: PERMISSIONS.LOT_LISTINGS_VIEW },
+    { label: 'Payments Audit', path: `${basePath}/payments-audit`, icon: FiShield, permission: PERMISSIONS.LOT_PAYMENT_LOGS_VIEW },
+    { label: 'Commissions', path: `${basePath}/commissions`, icon: FiDollarSign, permission: PERMISSIONS.LOT_COMMISSIONS_VIEW },
+    { label: 'Settings', path: `${basePath}/settings`, icon: FiSettings, permission: PERMISSIONS.LOT_SETTINGS_VIEW },
+  ].filter((item) => hasPermission(user, item.permission)), [basePath, user])
 
   const pageTitle = useMemo(
     () => getPageTitle(location.pathname, project?.lot_project_name),
@@ -95,7 +95,7 @@ const LotLayout = () => {
     return <Navigate to="/portal/change-password" replace />
   }
 
-  if (!isFullAccessAdministrator(user)) {
+  if (!isSystemUserRole(user?.role) || !hasPermission(user, PERMISSIONS.LOT_PROJECT_VIEW)) {
     return <Navigate to="/portal" replace />
   }
 
@@ -110,7 +110,7 @@ const LotLayout = () => {
 
           <button
             type="button"
-            onClick={() => navigate(user?.role === 'admin' ? '/portal/admin/projects' : '/portal/super_admin/projects')}
+            onClick={() => navigate(`/portal/${user?.role}/projects`)}
             className="mt-4 h-11 rounded-xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700"
           >
             Back to Projects
@@ -207,7 +207,7 @@ const LotLayout = () => {
         <div className="border-t border-slate-200 p-4">
           <button
             type="button"
-            onClick={() => navigate(user?.role === 'admin' ? '/portal/admin/projects' : '/portal/super_admin/projects')}
+            onClick={() => navigate(`/portal/${user?.role}/projects`)}
             className="flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 transition hover:bg-slate-50"
           >
             <FiChevronLeft className="h-4 w-4" />
@@ -257,4 +257,3 @@ const LotLayout = () => {
 }
 
 export default LotLayout
-

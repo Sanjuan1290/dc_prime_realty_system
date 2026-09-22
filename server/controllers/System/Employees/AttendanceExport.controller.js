@@ -169,4 +169,3 @@ export const getAttendanceExportData = async (req, res) => {
     connection.release();
   }
 };
-

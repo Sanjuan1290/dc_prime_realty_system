@@ -44,5 +44,3 @@ export const resolveDocumentResponsibleParty = (document = {}, fallback = 'clien
   const value = candidates.find((candidate) => candidate !== undefined && candidate !== null && candidate !== '');
   return normalizeDocumentResponsibleParty(value, fallback);
 };
-
-

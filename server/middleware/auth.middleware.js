@@ -1,6 +1,6 @@
 import bcrypt from 'bcrypt';
 import { getAuthenticatedUser } from '../controllers/Lot_Projects/_shared/lotProject.shared.js';
-import { isFullAccessAdministrator, roleHasPermission } from '../config/permissions.js';
+import { roleHasPermission } from '../config/permissions.js';
 import { canAccessProject } from '../services/adminProjectAccess.service.js';
 import { db } from '../db/connect.js';
 
@@ -16,8 +16,7 @@ export const authenticateUser = async (req, res, next) => {
 
 export const requireRole = (...allowedRoles) => (req, res, next) => {
   const role = req.authUser?.role;
-  const allowedAsFullAdmin = allowedRoles.includes('super_admin') && isFullAccessAdministrator(req.authUser);
-  if (!allowedRoles.includes(role) && !allowedAsFullAdmin) {
+  if (!allowedRoles.includes(role)) {
     return denied(res, 403, 'You do not have permission to perform this action.');
   }
   return next();
@@ -101,5 +100,3 @@ export const requireCurrentPassword = ({
 
   return next();
 };
-
-

@@ -51,5 +51,3 @@ export const getDocumentResponsiblePartyLabel = (value) => {
   if (responsibleParty === 'seller') return 'Seller / Agent'
   return 'Client'
 }
-
-

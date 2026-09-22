@@ -1,7 +1,7 @@
 import { db } from '../../db/connect.js';
 import { writeAuditLog } from './auditLogs.controller.js';
 import { getAuthenticatedUser, tableExists, todayDateOnly } from '../Lot_Projects/_shared/lotProject.shared.js';
-import { isFullAccessAdministrator } from '../../config/permissions.js';
+import { PERMISSIONS, roleHasPermission } from '../../config/permissions.js';
 
 const getErrorMessage = (error) => {
   if (String(error?.code || '').startsWith('ER_') || error?.sqlMessage || error?.sql) return 'Database operation failed. Please try again.';
@@ -474,8 +474,8 @@ const requireReceiptManager = async (req, res) => {
     return null;
   }
 
-  if (!isFullAccessAdministrator(user)) {
-    res.status(403).json({ message: 'Admin access is required to manage proof of income receipts.' });
+  if (!roleHasPermission(user, PERMISSIONS.SYSTEM_ACCREDITED_UPLOAD_PROOF)) {
+    res.status(403).json({ message: 'You do not have permission to manage proof of income receipts.' });
     return null;
   }
 
@@ -1404,5 +1404,3 @@ export const createAccreditedSellerProofOfIncomeReceipt = async (req, res) => {
     connection.release();
   }
 };
-
-

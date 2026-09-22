@@ -150,5 +150,3 @@ const EditSettingsModal = ({ settings, onClose, onSave, isSaving = false }) => {
 }
 
 export default EditSettingsModal
-
-

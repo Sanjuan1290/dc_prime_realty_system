@@ -495,5 +495,3 @@ export const updateEmployeeStatus = async (req, res) => {
     return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
   } finally { connection.release(); }
 };
-
-
