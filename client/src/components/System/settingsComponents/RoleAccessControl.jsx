@@ -91,14 +91,17 @@ const RoleAccessControl = () => {
                 </button>
               </div>
               <PermissionMatrix catalog={data.catalog || []} selected={selected} onChange={setSelected} />
-              <div className="mt-5 flex justify-end">
+              <div className="mt-6 flex flex-col gap-3 border-t border-slate-200 pt-5 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm font-semibold text-slate-500">
+                  Saving updates the default template for future {labels[role]} accounts only. Existing users keep their current permissions.
+                </p>
                 <button
                   type="button"
                   onClick={() => save.mutate()}
                   disabled={save.isPending}
-                  className="h-11 rounded-xl bg-blue-600 px-5 font-black text-white disabled:opacity-50"
+                  className="h-11 shrink-0 rounded-xl bg-blue-600 px-5 font-black text-white disabled:opacity-50"
                 >
-                  Save {labels[role]} Defaults
+                  {save.isPending ? 'Saving Role Defaults...' : 'Save Role Defaults'}
                 </button>
               </div>
             </>

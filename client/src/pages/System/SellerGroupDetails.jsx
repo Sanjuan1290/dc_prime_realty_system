@@ -234,7 +234,7 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
   const groupOption = projectOptionsQuery.data?.group || {}
   const groupType = groupOption.type || expectedGroupType || 'in_house'
   const isExternal = groupType === 'external'
-  const groupsPath = `${rootPath}/users/groups/${isExternal ? 'external' : 'in-house'}`
+  const groupsPath = `${rootPath}/accredited/groups/${isExternal ? 'external' : 'in-house'}`
 
   useEffect(() => {
     if (!accreditedProjects.length) return

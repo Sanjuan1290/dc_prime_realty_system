@@ -68,8 +68,8 @@ const SellerGroup = ({ groupType = 'in_house' }) => {
 
   const portalRole = location.pathname.split('/')[2] || 'super_admin'
   const rootPath = `/portal/${portalRole}`
-  const usersPath = `${rootPath}/users`
-  const groupBasePath = `${rootPath}/users/groups/${isExternal ? 'external' : 'in-house'}`
+  const accreditedPath = `${rootPath}/accredited`
+  const groupBasePath = `${rootPath}/accredited/groups/${isExternal ? 'external' : 'in-house'}`
   const [showNewGroupModal, setShowNewGroupModal] = useState(false)
   const [selectedGroup, setSelectedGroup] = useState(null)
   const [editLoadingId, setEditLoadingId] = useState(null)
@@ -153,7 +153,7 @@ const SellerGroup = ({ groupType = 'in_house' }) => {
     <main className="flex flex-col gap-6">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <PageHeader title={config.title} description={config.description} icon={FaUserPlus} />
-        <div className="flex flex-col gap-2 sm:flex-row"><NavLink to={usersPath} className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-sm font-bold text-slate-700 shadow-sm hover:bg-slate-50">Back to Users</NavLink><button type="button" onClick={() => setShowNewGroupModal(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-bold text-white shadow-sm hover:bg-blue-700"><FiPlus />Add Group</button></div>
+        <div className="flex flex-col gap-2 sm:flex-row"><NavLink to={accreditedPath} className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-sm font-bold text-slate-700 shadow-sm hover:bg-slate-50">Back to Accredited Sellers</NavLink><button type="button" onClick={() => setShowNewGroupModal(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-bold text-white shadow-sm hover:bg-blue-700"><FiPlus />Add Group</button></div>
       </div>
 
       {alert ? <StatusAlert type={alert.type} message={alert.message} onClose={() => setAlert(null)} /> : null}

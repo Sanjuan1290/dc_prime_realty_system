@@ -145,7 +145,7 @@ const Settings = () => {
         </section>
       ) : null}
 
-      {canManage ? <RoleAccessControl /> : null}
+      {canManage && isEditing ? <RoleAccessControl /> : null}
 
       <SystemSettingsForm
         form={form}

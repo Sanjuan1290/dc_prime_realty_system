@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { NavLink } from "react-router-dom";
 import PageHeader from "../../components/Shared/PageHeader";
 import StatusAlert from "../../components/Shared/StatusAlert";
 import ReadOnlyNotice from "../../components/Shared/ReadOnlyNotice";
 import SignedCopyUploadModal from "../../components/Shared/SignedCopyUploadModal";
 import useCurrentUser from "../../utils/useCurrentUser";
 import { FaUserPlus } from "react-icons/fa";
-import { FiCalendar, FiFileText, FiLoader, FiPrinter, FiRefreshCw, FiSearch, FiUsers, FiX } from "react-icons/fi";
+import { FiCalendar, FiExternalLink, FiFileText, FiHome, FiLoader, FiPrinter, FiRefreshCw, FiSearch, FiUsers, FiX } from "react-icons/fi";
 import { formatDateTime } from "../../utils/formatDateTime";
 import {useFetch as fetchApi, useFetchPost as postApi, getDoubleCheckNotice} from "../../utils/useFetch";
 import { PERMISSIONS, hasPermission } from "../../config/permissions";
@@ -896,7 +897,9 @@ const Accredited = () => {
   const actor = currentUserData?.user;
   const canPrint = hasPermission(actor, PERMISSIONS.SYSTEM_ACCREDITED_PRINT);
   const canUploadProof = hasPermission(actor, PERMISSIONS.SYSTEM_ACCREDITED_UPLOAD_PROOF);
+  const canViewSellerGroups = hasPermission(actor, PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW);
   const canOpenProofWorkspace = canPrint || canUploadProof;
+  const roleBasePath = `/portal/${actor?.role || "super_admin"}`;
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
@@ -944,7 +947,27 @@ const Accredited = () => {
 
   return (
     <main className="flex flex-col gap-6">
-      <PageHeader title="Accredited Sellers" description="In-house sellers and External Group accounts, group assignments, reporting chains, and commission receipts." icon={FaUserPlus} />
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+        <PageHeader title="Accredited Sellers" description="In-house sellers and External Group accounts, group assignments, reporting chains, and commission receipts." icon={FaUserPlus} />
+        {canViewSellerGroups ? (
+          <div className="flex flex-wrap gap-2">
+            <NavLink
+              to={`${roleBasePath}/accredited/groups/in-house`}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 text-sm font-black text-blue-700 shadow-sm transition hover:border-blue-300 hover:bg-blue-100"
+            >
+              <FiHome className="h-4 w-4" />
+              In-House Groups
+            </NavLink>
+            <NavLink
+              to={`${roleBasePath}/accredited/groups/external`}
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 text-sm font-black text-violet-700 shadow-sm transition hover:border-violet-300 hover:bg-violet-100"
+            >
+              <FiExternalLink className="h-4 w-4" />
+              External Groups
+            </NavLink>
+          </div>
+        ) : null}
+      </div>
 
       {!canOpenProofWorkspace ? <ReadOnlyNotice message="You have view-only access to accredited seller records." /> : null}
       {alert ? <StatusAlert type={alert.type} message={alert.message} onClose={alert.type === "loading" ? undefined : () => setAlert(null)} /> : null}

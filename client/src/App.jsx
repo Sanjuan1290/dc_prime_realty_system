@@ -6,6 +6,7 @@ import {
   Navigate,
   Route,
   useLocation,
+  useParams,
 } from 'react-router-dom'
 
 import Login from './auth/Login'
@@ -80,6 +81,15 @@ const LegacyPortalRedirect = () => {
   return <Navigate to={`/portal${location.pathname}${location.search}${location.hash}`} replace />
 }
 
+const LegacySellerGroupRedirect = ({ groupType }) => {
+  const location = useLocation()
+  const { groupId } = useParams()
+  const portalRole = location.pathname.split('/')[2] || 'super_admin'
+  const groupPath = groupType === 'external' ? 'external' : 'in-house'
+  const target = `/portal/${portalRole}/accredited/groups/${groupPath}${groupId ? `/${groupId}` : ''}${location.search}${location.hash}`
+  return <Navigate to={target} replace />
+}
+
 const protect = (permission, element, options = {}) => (
   <ProtectedPermissionRoute permission={permission} {...options}>{element}</ProtectedPermissionRoute>
 )
@@ -94,11 +104,15 @@ const systemRoleRoutes = SYSTEM_USER_ROLES.map((role) => (
     <Route path="documents" element={protect(PERMISSIONS.SYSTEM_DOCUMENTS_VIEW, <Documents />)} />
     <Route path="users" element={protect(PERMISSIONS.SYSTEM_USERS_VIEW, <Users />)} />
     <Route path="accredited" element={protect(PERMISSIONS.SYSTEM_ACCREDITED_VIEW, <Accredited />)} />
-    <Route path="users/seller_group" element={<Navigate to="../groups/in-house" replace />} />
-    <Route path="users/groups/in-house" element={protect(PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW, <SellerGroup groupType="in_house" />)} />
-    <Route path="users/groups/in-house/:groupId" element={protect(PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW, <SellerGroupDetails expectedGroupType="in_house" />)} />
-    <Route path="users/groups/external" element={protect(PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW, <SellerGroup groupType="external" />)} />
-    <Route path="users/groups/external/:groupId" element={protect(PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW, <SellerGroupDetails expectedGroupType="external" />)} />
+    <Route path="accredited/groups/in-house" element={protect(PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW, <SellerGroup groupType="in_house" />)} />
+    <Route path="accredited/groups/in-house/:groupId" element={protect(PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW, <SellerGroupDetails expectedGroupType="in_house" />)} />
+    <Route path="accredited/groups/external" element={protect(PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW, <SellerGroup groupType="external" />)} />
+    <Route path="accredited/groups/external/:groupId" element={protect(PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW, <SellerGroupDetails expectedGroupType="external" />)} />
+    <Route path="users/seller_group" element={<LegacySellerGroupRedirect groupType="in_house" />} />
+    <Route path="users/groups/in-house" element={<LegacySellerGroupRedirect groupType="in_house" />} />
+    <Route path="users/groups/in-house/:groupId" element={<LegacySellerGroupRedirect groupType="in_house" />} />
+    <Route path="users/groups/external" element={<LegacySellerGroupRedirect groupType="external" />} />
+    <Route path="users/groups/external/:groupId" element={<LegacySellerGroupRedirect groupType="external" />} />
     <Route path="notifications" element={protect(PERMISSIONS.SYSTEM_NOTIFICATIONS_VIEW, <Notifications />)} />
     <Route path="audit-logs" element={protect(PERMISSIONS.AUDIT_LOGS_VIEW, <AuditLogs />)} />
     <Route path="employees" element={protect(PERMISSIONS.EMPLOYEES_VIEW, <Employees />)} />
