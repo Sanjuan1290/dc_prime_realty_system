@@ -1,34 +1,36 @@
-import { Navigate } from 'react-router-dom'
+import { Navigate, useParams } from 'react-router-dom'
 import StatusAlert from '../Shared/StatusAlert'
 import useCurrentUser from '../../utils/useCurrentUser'
 import {
-  isMaintenanceError,
-  isServerUnavailableError,
-} from '../../utils/apiClient'
-import { getRoleHome, hasPermission } from '../../config/permissions'
+  getFirstAllowedSystemPath,
+  hasPermission,
+  hasProjectScope,
+  isSystemUserRole,
+} from '../../config/permissions'
 
-const ProtectedPermissionRoute = ({ permission, children }) => {
-  const { data, isLoading, isError, error } = useCurrentUser()
+const ProtectedPermissionRoute = ({ permission, projectScoped = false, children }) => {
+  const { projectSlug } = useParams()
+  const { data, isLoading, isError } = useCurrentUser()
 
   if (isLoading) {
     return (
-      <div className="flex min-h-[50vh] items-center justify-center">
+      <div className="flex min-h-[240px] items-center justify-center p-6">
         <StatusAlert type="loading" message="Checking access..." />
       </div>
     )
   }
 
-  if (isMaintenanceError(error)) {
-    return <Navigate to="/maintenance" replace state={{ message: error.message }} />
+  const user = data?.user
+  if (isError || !user) return <Navigate to="/portal" replace />
+  if (user.must_change_password) return <Navigate to="/portal/change-password" replace />
+  if (!isSystemUserRole(user.role)) return <Navigate to="/portal" replace />
+
+  if (!hasPermission(user, permission)) {
+    return <Navigate to="/portal/access-denied" replace state={{ message: 'You do not have permission to open this page.' }} />
   }
 
-  if (isServerUnavailableError(error)) {
-    return <Navigate to="/server-down" replace state={{ message: error.message }} />
-  }
-
-  if (isError || !data?.user) return <Navigate to="/portal" replace />
-  if (!hasPermission(data.user, permission)) {
-    return <Navigate to={getRoleHome(data.user.role)} replace />
+  if (projectScoped && !hasProjectScope(user, projectSlug)) {
+    return <Navigate to="/portal/access-denied" replace state={{ message: 'This project is outside your assigned project scope.' }} />
   }
 
   return children

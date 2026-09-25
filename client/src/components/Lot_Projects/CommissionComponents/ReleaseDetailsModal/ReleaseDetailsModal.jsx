@@ -285,7 +285,7 @@ const ReleaseConfirmDialog = ({
   )
 }
 
-const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, isSaving = false, serverNotice = null, onClearServerNotice }) => {
+const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, canRelease = false, canHold = false, canUnhold = false, isSaving = false, serverNotice = null, onClearServerNotice }) => {
   const sellers = Array.isArray(commissionGroup?.sellers) ? commissionGroup.sellers : []
   const [selectedCommissionId, setSelectedCommissionId] = useState(() => String(sellers[0]?.commissionId || sellers[0]?.id || ''))
   const commission = sellers.find((seller) => String(seller.commissionId || seller.id) === selectedCommissionId) || sellers[0] || {}
@@ -324,6 +324,12 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, isSaving = fa
   }
 
   const openConfirm = (action, stage, options = {}) => {
+    if ((['release_stage', 'set_agent_receipt_status'].includes(action) && !canRelease)
+      || (action === 'hold_stage' && !canHold)
+      || (action === 'unhold_stage' && !canUnhold)) {
+      setNotice({ type: 'error', title: 'Permission required', message: 'Your account does not have permission for this commission action.' })
+      return
+    }
     if (!stage?.releaseId) {
       setNotice({ type: 'error', title: 'Missing release stage', message: 'This release stage is missing a database id. Refresh the page first.' })
       return
@@ -528,21 +534,21 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, isSaving = fa
                                 <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black ${receiptSubmitted ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
                                   {receiptSubmitted ? 'Submitted' : 'Unsubmitted'}
                                 </span>
-                                <button
+                                {canRelease ? <button
                                   type="button"
                                   onClick={() => openConfirm('set_agent_receipt_status', stage, { agentReceiptStatus: receiptSubmitted ? 'unsubmitted' : 'submitted' })}
                                   disabled={isSaving}
                                   className="inline-flex h-8 items-center rounded-lg border border-slate-300 bg-white px-3 text-[10px] font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                                 >
                                   {receiptSubmitted ? 'Mark Unsubmitted' : 'Mark Submitted'}
-                                </button>
+                                </button> : null}
                               </div>
                             ) : <span className="font-semibold text-slate-400">—</span>}
                           </td>
                         ) : null}
                         <td className="px-4 py-3">
                           <div className="flex flex-wrap gap-2">
-                            {['Eligible', 'Earned on Cancellation'].includes(stage.status) ? (
+                            {canRelease && ['Eligible', 'Earned on Cancellation'].includes(stage.status) ? (
                               <button
                                 type="button"
                                 onClick={() => openConfirm('release_stage', stage)}
@@ -565,14 +571,14 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, isSaving = fa
                               </p>
                             ) : null}
 
-                            {!isReleased && !isOnHold && !isCancelled && !isEarnedOnCancellation && !isForfeitedOnCancellation ? (
+                            {canHold && !isReleased && !isOnHold && !isCancelled && !isEarnedOnCancellation && !isForfeitedOnCancellation ? (
                               <button type="button" onClick={() => openConfirm('hold_stage', stage)} disabled={isSaving} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-[11px] font-black text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">
                                 <FiPauseCircle className="h-3.5 w-3.5" />
                                 Hold
                               </button>
                             ) : null}
 
-                            {isOnHold ? (
+                            {canUnhold && isOnHold ? (
                               <button
                                 type="button"
                                 onClick={() => openConfirm('unhold_stage', stage)}
@@ -658,3 +664,4 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, isSaving = fa
 }
 
 export default ReleaseDetailsModal
+

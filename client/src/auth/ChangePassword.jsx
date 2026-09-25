@@ -5,8 +5,7 @@ import { FiLock, FiShield } from 'react-icons/fi'
 import StatusAlert from '../components/Shared/StatusAlert'
 import useCurrentUser from '../utils/useCurrentUser'
 import { useFetchPatch } from '../utils/useFetch'
-
-const getDefaultRoute = (role) => `/portal/${role || 'super_admin'}`
+import { getFirstAllowedSystemPath } from '../config/permissions'
 
 const ChangePassword = () => {
   const [currentPassword, setCurrentPassword] = useState('')
@@ -40,7 +39,7 @@ const ChangePassword = () => {
 
       queryClient.invalidateQueries({ queryKey: ['currentUser'] })
       setNotice({ type: 'success', message: result?.message || 'Password changed successfully.' })
-      navigate(getDefaultRoute(updatedUser?.role || user?.role), { replace: true })
+      navigate(getFirstAllowedSystemPath(updatedUser || user), { replace: true })
     },
     onError: (mutationError) => {
       setNotice({ type: 'error', message: mutationError?.message || 'Failed to change password.' })
@@ -91,7 +90,7 @@ const ChangePassword = () => {
   }
 
   if (!user.must_change_password) {
-    return <Navigate to={getDefaultRoute(user.role)} replace />
+    return <Navigate to={getFirstAllowedSystemPath(user)} replace />
   }
 
   return (
@@ -178,3 +177,4 @@ const ChangePassword = () => {
 }
 
 export default ChangePassword
+

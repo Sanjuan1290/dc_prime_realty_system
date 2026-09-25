@@ -52,6 +52,7 @@ const Notifications = lazy(() => import('./pages/System/Notifications'))
 const AuditLogs = lazy(() => import('./pages/System/AuditLogs'))
 const DataIntegrityAccess = lazy(() => import('./pages/System/DataIntegrityAccess'))
 const Settings = lazy(() => import('./pages/System/Settings'))
+const AccessDenied = lazy(() => import('./pages/System/AccessDenied'))
 const Employees = lazy(() => import('./pages/System/Employees'))
 const Attendance = lazy(() => import('./pages/System/Attendance'))
 const AttendanceKiosk = lazy(() => import('./pages/Public/AttendanceKiosk'))
@@ -79,8 +80,8 @@ const LegacyPortalRedirect = () => {
   return <Navigate to={`/portal${location.pathname}${location.search}${location.hash}`} replace />
 }
 
-const protect = (permission, element) => (
-  <ProtectedPermissionRoute permission={permission}>{element}</ProtectedPermissionRoute>
+const protect = (permission, element, options = {}) => (
+  <ProtectedPermissionRoute permission={permission} {...options}>{element}</ProtectedPermissionRoute>
 )
 
 const systemRoleRoutes = SYSTEM_USER_ROLES.map((role) => (
@@ -136,38 +137,43 @@ const App = () => {
         <Route path="/portal" element={<Login />} />
         <Route path="/portal/login" element={<Navigate to="/portal" replace />} />
         <Route path="/portal/change-password" element={<ChangePassword />} />
+        <Route path="/portal/access-denied" element={<AccessDenied />} />
         <Route path="/portal/data-integrity" element={<DataIntegrityAccess />} />
         <Route path="/buyer-form/:token" element={<BuyerForm />} />
 
         <Route path="/change-password" element={<LegacyPortalRedirect />} />
         <Route path="/admin/*" element={<LegacyPortalRedirect />} />
         <Route path="/super_admin/*" element={<LegacyPortalRedirect />} />
+        <Route path="/marketing/*" element={<LegacyPortalRedirect />} />
+        <Route path="/sales/*" element={<LegacyPortalRedirect />} />
+        <Route path="/accounting/*" element={<LegacyPortalRedirect />} />
+        <Route path="/operations/*" element={<LegacyPortalRedirect />} />
         <Route path="/lot-projects/*" element={<LegacyPortalRedirect />} />
         <Route path="/house-lot-projects/*" element={<LegacyPortalRedirect />} />
 
         {systemRoleRoutes}
 
         <Route path="/portal/lot-projects/:projectSlug" element={<LotLayout />} errorElement={<RouteErrorPage />}>
-          <Route index element={protect(PERMISSIONS.LOT_DASHBOARD_VIEW, <LotDashboard />)} />
-          <Route path="reports" element={protect(PERMISSIONS.LOT_REPORTS_VIEW, <LotReports />)} />
-          <Route path="listings" element={protect(PERMISSIONS.LOT_LISTINGS_VIEW, <LotListings />)} />
-          <Route path="listings/:listingId" element={protect(PERMISSIONS.LOT_LISTING_PROFILE_VIEW, <LotListingProfile />)} />
-          <Route path="listings/:listingId/accounts/:accountId" element={protect(PERMISSIONS.LOT_LISTING_PROFILE_VIEW, <LotListingProfile />)} />
-          <Route path="payments-audit" element={protect(PERMISSIONS.LOT_PAYMENT_LOGS_VIEW, <LotPaymentLogs />)} />
-          <Route path="commissions" element={protect(PERMISSIONS.LOT_COMMISSIONS_VIEW, <LotCommission />)} />
-          <Route path="settings" element={protect(PERMISSIONS.LOT_SETTINGS_VIEW, <LotSettings />)} />
+          <Route index element={protect(PERMISSIONS.LOT_DASHBOARD_VIEW, <LotDashboard />, { projectScoped: true })} />
+          <Route path="reports" element={protect(PERMISSIONS.LOT_REPORTS_VIEW, <LotReports />, { projectScoped: true })} />
+          <Route path="listings" element={protect(PERMISSIONS.LOT_LISTINGS_VIEW, <LotListings />, { projectScoped: true })} />
+          <Route path="listings/:listingId" element={protect(PERMISSIONS.LOT_LISTING_PROFILE_VIEW, <LotListingProfile />, { projectScoped: true })} />
+          <Route path="listings/:listingId/accounts/:accountId" element={protect(PERMISSIONS.LOT_LISTING_PROFILE_VIEW, <LotListingProfile />, { projectScoped: true })} />
+          <Route path="payments-audit" element={protect(PERMISSIONS.LOT_PAYMENT_LOGS_VIEW, <LotPaymentLogs />, { projectScoped: true })} />
+          <Route path="commissions" element={protect(PERMISSIONS.LOT_COMMISSIONS_VIEW, <LotCommission />, { projectScoped: true })} />
+          <Route path="settings" element={protect(PERMISSIONS.LOT_SETTINGS_VIEW, <LotSettings />, { projectScoped: true })} />
         </Route>
 
-        <Route path="/portal/lot-projects/:projectSlug/printouts/offer-to-buy" element={protect(PERMISSIONS.LOT_PRINTOUTS_USE, <OfferToBuyPrintPage />)} />
-        <Route path="/portal/lot-projects/:projectSlug/printouts/statement-of-account" element={protect(PERMISSIONS.LOT_PRINTOUTS_USE, <SOAPrintPage />)} />
-        <Route path="/portal/lot-projects/:projectSlug/printouts/acknowledgement-receipts" element={protect(PERMISSIONS.LOT_PRINTOUTS_USE, <PaymentAcknowledgementReceiptsPrintPage />)} />
-        <Route path="/portal/super_admin/accredited/proof-of-income/print" element={protect(PERMISSIONS.SYSTEM_ACCREDITED_PRINT, <AccreditedSellerProofOfIncomePrintPage />)} />
-        <Route path="/portal/super_admin/accredited/proof-of-income/range/print" element={protect(PERMISSIONS.SYSTEM_ACCREDITED_PRINT, <AccreditedSellerIncomeRangePrintPage />)} />
+        <Route path="/portal/lot-projects/:projectSlug/printouts/offer-to-buy" element={protect(PERMISSIONS.LOT_PRINTOUTS_USE, <OfferToBuyPrintPage />, { projectScoped: true })} />
+        <Route path="/portal/lot-projects/:projectSlug/printouts/statement-of-account" element={protect(PERMISSIONS.LOT_PRINTOUTS_USE, <SOAPrintPage />, { projectScoped: true })} />
+        <Route path="/portal/lot-projects/:projectSlug/printouts/acknowledgement-receipts" element={protect(PERMISSIONS.LOT_PRINTOUTS_USE, <PaymentAcknowledgementReceiptsPrintPage />, { projectScoped: true })} />
+        <Route path="/portal/super_admin/accredited/proof-of-income/print" element={<Navigate to="/portal/accredited/proof-of-income/print" replace />} />
+        <Route path="/portal/super_admin/accredited/proof-of-income/range/print" element={<Navigate to="/portal/accredited/proof-of-income/range/print" replace />} />
         <Route path="/portal/accredited/proof-of-income/print" element={protect(PERMISSIONS.SYSTEM_ACCREDITED_PRINT, <AccreditedSellerProofOfIncomePrintPage />)} />
         <Route path="/portal/accredited/proof-of-income/range/print" element={protect(PERMISSIONS.SYSTEM_ACCREDITED_PRINT, <AccreditedSellerIncomeRangePrintPage />)} />
-        <Route path="/portal/lot-projects/:projectSlug/printouts/documents" element={protect(PERMISSIONS.LOT_PRINTOUTS_USE, <DocumentsPrintPage />)} />
+        <Route path="/portal/lot-projects/:projectSlug/printouts/documents" element={protect(PERMISSIONS.LOT_PRINTOUTS_USE, <DocumentsPrintPage />, { projectScoped: true })} />
         <Route path="/portal/printouts/signed-receipts" element={protect(PERMISSIONS.LOT_PRINTOUTS_USE, <SignedReceiptsPrintPage />)} />
-        <Route path="/portal/lot-projects/:projectSlug/price-list/print" element={protect(PERMISSIONS.SYSTEM_PROJECTS_PRINT_PRICE_LIST, <ProjectPriceListPrintPage />)} />
+        <Route path="/portal/lot-projects/:projectSlug/price-list/print" element={protect(PERMISSIONS.SYSTEM_PROJECTS_PRINT_PRICE_LIST, <ProjectPriceListPrintPage />, { projectScoped: true })} />
         <Route path="/portal/reports/print" element={protect(PERMISSIONS.SYSTEM_REPORTS_EXPORT, <ReportsPrintPage />)} />
       </>
     )
@@ -181,3 +187,4 @@ const App = () => {
 }
 
 export default App
+

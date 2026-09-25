@@ -106,3 +106,4 @@ export const FORMAL_BUYER_PROFILE_FIELDS = Object.freeze([
 const formalFieldSet = new Set(FORMAL_BUYER_PROFILE_FIELDS);
 
 export const isFormalBuyerProfileField = (field) => formalFieldSet.has(String(field || ''));
+

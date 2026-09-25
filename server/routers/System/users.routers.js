@@ -5,9 +5,11 @@ import {
   getMe,
   changePassword,
   getUsers,
+  previewSystemAccountCode,
+  previewChangeUserPosition,
   createUser,
   editUser,
-  toggleUserStatus,
+  deactivateUserPermanently,
   resetUserPassword,
   changeUserPosition,
   requestForgotPasswordCode,
@@ -43,10 +45,13 @@ router.put('/access-control/users/:id', authenticateUser, requireExactRole('supe
 router.post('/access-control/users/:id/apply-role-defaults', authenticateUser, requireExactRole('super_admin'), applyRoleDefaultsToUser);
 
 router.get('/getUsers', authenticateUser, requirePermission(PERMISSIONS.SYSTEM_USERS_VIEW), getUsers);
+router.get('/account-code-preview', authenticateUser, requireExactRole('super_admin'), previewSystemAccountCode);
 router.post('/createUser', authenticateUser, requirePermission(PERMISSIONS.SYSTEM_USERS_CREATE), createUser);
 router.put('/editUser/:id', authenticateUser, requirePermission(PERMISSIONS.SYSTEM_USERS_EDIT), editUser);
-router.patch('/toggleUserStatus/:id', authenticateUser, requirePermission(PERMISSIONS.SYSTEM_USERS_DEACTIVATE), toggleUserStatus);
+router.patch('/deactivate/:id', authenticateUser, requirePermission(PERMISSIONS.SYSTEM_USERS_DEACTIVATE), deactivateUserPermanently);
+router.get('/change-position/:id/preview', authenticateUser, requireExactRole('super_admin'), previewChangeUserPosition);
 router.post('/change-position/:id', authenticateUser, requireExactRole('super_admin'), changeUserPosition);
 router.patch('/resetPassword/:id', authenticateUser, requirePermission(PERMISSIONS.SYSTEM_USERS_RESET_PASSWORD), resetUserPassword);
 
 export default router;
+

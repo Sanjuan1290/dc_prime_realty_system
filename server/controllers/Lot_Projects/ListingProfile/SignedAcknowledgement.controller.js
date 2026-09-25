@@ -419,3 +419,4 @@ export const getLotProjectPaymentAcknowledgementSignedCopyContent = async (req, 
     connection.release();
   }
 };
+

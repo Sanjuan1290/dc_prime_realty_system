@@ -9,6 +9,8 @@ import AddListingModal from '../../components/Lot_Projects/ListingComponents/Add
 import ListingImportModal from '../../components/Lot_Projects/ListingComponents/ListingImportModal/ListingImportModal'
 import ListingImportHistoryModal from '../../components/Lot_Projects/ListingComponents/ListingImportModal/ListingImportHistoryModal'
 import {useFetch, useFetchDelete, useFetchPost, getDoubleCheckNotice} from '../../utils/useFetch'
+import useCurrentUser from '../../utils/useCurrentUser'
+import { hasPermission, PERMISSIONS } from '../../config/permissions'
 
 const money = (value) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value || 0))
 
@@ -23,6 +25,14 @@ const statusTone = (status) => {
 const Listings = () => {
   const { projectSlug } = useParams()
   const queryClient = useQueryClient()
+  const { data: currentUserData } = useCurrentUser()
+  const user = currentUserData?.user
+  const canImport = hasPermission(user, PERMISSIONS.LOT_LISTINGS_IMPORT)
+  const canUndoImport = hasPermission(user, PERMISSIONS.LOT_LISTINGS_IMPORT_UNDO)
+  const canCreate = hasPermission(user, PERMISSIONS.LOT_LISTINGS_CREATE)
+  const canDelete = hasPermission(user, PERMISSIONS.LOT_LISTINGS_DELETE)
+  const canViewProfile = hasPermission(user, PERMISSIONS.LOT_LISTING_PROFILE_VIEW)
+  const canViewSystemDocuments = hasPermission(user, PERMISSIONS.SYSTEM_DOCUMENTS_VIEW)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [showAddModal, setShowAddModal] = useState(false)
@@ -48,11 +58,13 @@ const Listings = () => {
   const { data: documentsData, isLoading: isDocumentsLoading } = useQuery({
     queryKey: ['documents'],
     queryFn: () => useFetch('/documents/getDocuments'),
+    enabled: canCreate && canViewSystemDocuments,
   })
 
   const { data: templatesData, isLoading: isTemplatesLoading } = useQuery({
     queryKey: ['document-templates'],
     queryFn: () => useFetch('/documents/getTemplates'),
+    enabled: canCreate && canViewSystemDocuments,
   })
 
   const addListingMutation = useMutation({
@@ -131,9 +143,9 @@ const Listings = () => {
       <section className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <PageHeader title={`${project.name || project.lot_project_name || 'Lot Project'} Listings / Units`} description="Database-connected inventory table with price columns, document setup, and unit profile links." icon={FiGrid} />
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={() => setShowImportHistory(true)} disabled={isLoading} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"><FiClock className="h-4 w-4" />Import History</button>
-          <button type="button" onClick={() => setShowImportModal(true)} disabled={isLoading} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-4 text-sm font-black text-blue-700 transition hover:bg-blue-100 disabled:opacity-60"><FiUpload className="h-4 w-4" />Import Excel</button>
-          <button type="button" onClick={() => setShowAddModal(true)} disabled={isLoading || isDocumentsLoading || isTemplatesLoading} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 text-sm font-black text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"><FiPlus className="h-4 w-4" />Add Listing</button>
+          {canImport ? <button type="button" onClick={() => setShowImportHistory(true)} disabled={isLoading} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"><FiClock className="h-4 w-4" />Import History</button> : null}
+          {canImport ? <button type="button" onClick={() => setShowImportModal(true)} disabled={isLoading} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-4 text-sm font-black text-blue-700 transition hover:bg-blue-100 disabled:opacity-60"><FiUpload className="h-4 w-4" />Import Excel</button> : null}
+          {canCreate ? <button type="button" onClick={() => setShowAddModal(true)} disabled={isLoading || (canViewSystemDocuments && (isDocumentsLoading || isTemplatesLoading))} className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 text-sm font-black text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"><FiPlus className="h-4 w-4" />Add Listing</button> : null}
         </div>
       </section>
 
@@ -165,7 +177,7 @@ const Listings = () => {
                 <td className="px-4 py-4 font-semibold text-slate-700">{listing.lotType}</td><td className="px-4 py-4 font-semibold text-slate-700">{listing.area} sqm</td><td className="px-4 py-4 font-semibold text-slate-700">{money(listing.installmentPricePerSqm ?? listing.pricePerSqm)}</td><td className="px-4 py-4 font-semibold text-slate-700">{money(listing.cashPricePerSqm ?? listing.pricePerSqm)}</td><td className="px-4 py-4 font-black text-slate-900">{money(listing.installmentTcp ?? listing.tcp)}</td><td className="px-4 py-4 font-black text-slate-900">{money(listing.cashTcp ?? listing.tcp)}</td><td className="px-4 py-4 font-semibold text-slate-700">{listing.lmfRate}%</td><td className="px-4 py-4 font-semibold text-slate-700">{money(listing.reservationFee)}</td><td className="px-4 py-4 font-semibold text-slate-700">{listing.buyer}</td>
                 <td className="px-4 py-4"><span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700 ring-1 ring-blue-100"><FiFileText className="h-3.5 w-3.5" />{listing.documentStatus}</span></td>
                 <td className="px-4 py-4"><span className={`rounded-full px-3 py-1 text-xs font-black ring-1 ${statusTone(listing.status)}`}>{listing.status}</span></td>
-                <td className="px-4 py-4"><div className="flex flex-wrap gap-2"><Link to={`/portal/lot-projects/${projectSlug}/listings/${listing.routeId || listing.id || listing.unitCode}`} className="inline-flex h-9 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 transition hover:bg-slate-50"><FiEye className="h-4 w-4" />Details</Link><button type="button" onClick={() => handleDeleteListing(listing)} disabled={deleteListingMutation.isPending} className="inline-flex h-9 items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 text-xs font-black text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"><FiTrash2 className="h-4 w-4" />Delete</button></div></td>
+                <td className="px-4 py-4"><div className="flex flex-wrap gap-2">{canViewProfile ? <Link to={`/portal/lot-projects/${projectSlug}/listings/${listing.routeId || listing.id || listing.unitCode}`} className="inline-flex h-9 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 transition hover:bg-slate-50"><FiEye className="h-4 w-4" />Details</Link> : null}{canDelete ? <button type="button" onClick={() => handleDeleteListing(listing)} disabled={deleteListingMutation.isPending} className="inline-flex h-9 items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 text-xs font-black text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"><FiTrash2 className="h-4 w-4" />Delete</button> : null}{!canViewProfile && !canDelete ? <span className="inline-flex h-9 items-center px-3 text-xs font-semibold text-slate-400">View only</span> : null}</div></td>
               </tr>)}
             </tbody>
           </table>
@@ -184,11 +196,11 @@ const Listings = () => {
         </div>
       </section>
 
-      {showAddModal ? <AddListingModal project={project} projectDefaultDocuments={project.defaultDocuments || []} libraryDocuments={documentsData?.documents || []} documentTemplates={templatesData?.templates || []} templateDocuments={templatesData?.template_documents || []} isLoadingDefaults={isDocumentsLoading || isTemplatesLoading} onClose={() => setShowAddModal(false)} onSave={handleAddListing} isSaving={addListingMutation.isPending} /> : null}
-      {showImportModal ? <ListingImportModal project={project} projectSlug={projectSlug} onClose={() => setShowImportModal(false)} onImported={async () => { setShowImportModal(false); setAlert({ type: 'success', message: 'Listing import completed. You can review or undo it from Import History.' }); await queryClient.invalidateQueries({ queryKey: ['lot-listings', projectSlug] }); await queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] }); await queryClient.invalidateQueries({ queryKey: ['listing-import-history', projectSlug] }) }} /> : null}
-      {showImportHistory ? <ListingImportHistoryModal projectSlug={projectSlug} onClose={() => setShowImportHistory(false)} /> : null}
+      {showAddModal && canCreate ? <AddListingModal project={project} projectDefaultDocuments={project.defaultDocuments || []} libraryDocuments={documentsData?.documents || []} documentTemplates={templatesData?.templates || []} templateDocuments={templatesData?.template_documents || []} isLoadingDefaults={isDocumentsLoading || isTemplatesLoading} onClose={() => setShowAddModal(false)} onSave={handleAddListing} isSaving={addListingMutation.isPending} /> : null}
+      {showImportModal && canImport ? <ListingImportModal project={project} projectSlug={projectSlug} onClose={() => setShowImportModal(false)} onImported={async () => { setShowImportModal(false); setAlert({ type: 'success', message: 'Listing import completed. You can review or undo it from Import History.' }); await queryClient.invalidateQueries({ queryKey: ['lot-listings', projectSlug] }); await queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] }); await queryClient.invalidateQueries({ queryKey: ['listing-import-history', projectSlug] }) }} /> : null}
+      {showImportHistory && canImport ? <ListingImportHistoryModal projectSlug={projectSlug} canUndo={canUndoImport} onClose={() => setShowImportHistory(false)} /> : null}
       <ConfirmActionModal
-        open={Boolean(listingToDelete)}
+        open={canDelete && Boolean(listingToDelete)}
         title={`Delete ${listingToDelete?.unitLabel || 'listing'}?`}
         message="Only a listing that has never had a buyer account can be deleted. Buyer, payment, document, and commission history must be removed through the verified account purge instead."
         confirmLabel="Delete Empty Listing"
@@ -205,3 +217,4 @@ const Listings = () => {
 }
 
 export default Listings
+

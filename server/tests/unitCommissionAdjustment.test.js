@@ -113,3 +113,4 @@ test('verification payload is deterministic and scoped to one buyer account', ()
   assert.deepEqual(payload.rates.map((row) => row.commissionId), [11, 12, 13, 14]);
   assert.equal(payload.groupRate, 10);
 });
+

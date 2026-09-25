@@ -26,10 +26,9 @@ import {
 } from './sellerHierarchyRules.js';
 import {
   getAccessibleProjectIds,
-  getUserProjectAccess,
   hydrateAdminProjectAccess,
   replaceAdminProjectAccess,
-} from '../../services/adminProjectAccess.service.js';
+} from '../../services/projectAccess.service.js';
 import {
   copyRoleDefaultsToUser,
   getRoleDefaultPermissionKeys,
@@ -172,6 +171,12 @@ const denyUserManagement = (res, message) => res.status(403).json({
 const actorCanManageTargetRole = (req, targetRole) =>
   canActorManageUserRole(req.authUser, targetRole);
 
+// Action-specific routes already enforce their own granular permission. This helper
+// only preserves the owner-level rule that a Super Admin account can be acted on
+// by another Super Admin.
+const actorCanPerformUserAction = (req, targetRole) =>
+  targetRole !== 'super_admin' || req.authUser?.role === 'super_admin';
+
 const actorCanCreateTargetRole = (req, targetRole) =>
   canActorCreateUserRole(req.authUser, targetRole);
 
@@ -218,6 +223,17 @@ const getNextRoleSequence = async (connection, personKey, role) => {
   return Number(rows[0]?.max_sequence || 0) + 1;
 };
 
+const previewNextRoleSequence = async (connection, personKey, role) => {
+  const [rows] = await connection.query(
+    `SELECT COALESCE(MAX(role_sequence), 0) AS max_sequence FROM users WHERE person_key = ? AND role = ?`,
+    [personKey, role]
+  );
+  return Number(rows[0]?.max_sequence || 0) + 1;
+};
+
+const PERMANENT_DEACTIVATION_CODE = 'ACCOUNT_PERMANENTLY_DEACTIVATED';
+const LEGACY_PERMANENT_DEACTIVATION_CODE = 'ACCOUNT_DEACTIVATED_PERMANENTLY';
+
 const normalizeSystemProjectAccess = (body = {}) => ({
   allProjects: normalizeBoolean(body.all_projects_access ?? body.admin_all_projects),
   projectIds: normalizeProjectIds(body.project_ids ?? body.admin_project_ids),
@@ -230,14 +246,12 @@ const assertSystemProjectSelection = (role, access) => {
   }
 };
 
-const assertActorCanAssignAdminProjects = async (req, connection, allProjects, projectIds) => {
+const assertActorCanAssignAdminProjects = async (req, _connection, _allProjects, _projectIds) => {
   if (req.authUser?.role === 'super_admin') return;
-  if (!systemUserRoles.has(req.authUser?.role)) throw createValidationError('Only an internal system user can assign project access.');
-  const actorIds = await getAccessibleProjectIds(req.authUser, connection);
-  if (actorIds === null) return;
-  if (allProjects) throw createValidationError('You can assign All Projects only when your own account has All Projects access.');
-  const invalid = projectIds.find((projectId) => !actorIds.includes(projectId));
-  if (invalid) throw createValidationError('You can assign only projects that your own account can access.');
+  const error = new Error('Only Super Admin can assign project scope for internal system accounts.');
+  error.statusCode = 403;
+  error.code = 'SYSTEM_ACCESS_SUPER_ADMIN_ONLY';
+  throw error;
 };
 
 const createValidationError = (message) => {
@@ -579,7 +593,7 @@ export const login = async (req, res) => {
   let user = rows[0];
 
   if (!user) return res.status(401).json({ message: 'Invalid email/account code or password.' });
-  if (user.status !== 'active') return res.status(403).json({ message: 'This account has been permanently deactivated.' });
+  if (user.status !== 'active') return res.status(403).json({ code: PERMANENT_DEACTIVATION_CODE, legacy_code: LEGACY_PERMANENT_DEACTIVATION_CODE, message: 'This account has been permanently deactivated.' });
   if (Number(user.can_login ?? 1) !== 1 || Number(user.is_system_account || 0) === 1) {
     return res.status(403).json({ message: 'This system account cannot sign in.' });
   }
@@ -588,13 +602,7 @@ export const login = async (req, res) => {
   if (!isPasswordCorrect) return res.status(401).json({ message: 'Invalid email/account code or password.' });
 
   user = await hydrateUserPermissions(user);
-  const projectAccess = await getUserProjectAccess(user);
-  user = {
-    ...user,
-    all_projects_access: projectAccess.allProjects,
-    project_ids: projectAccess.projectIds,
-    admin_all_projects: projectAccess.allProjects,
-  };
+  [user] = await hydrateAdminProjectAccess([user]);
 
   const session = getLoginSessionConfig(rememberMe);
   const token = jwt.sign(
@@ -1066,13 +1074,7 @@ export const getMe = async (req, res) => {
     }
 
     user = await hydrateUserPermissions(user);
-    const projectAccess = await getUserProjectAccess(user);
-    user = {
-      ...user,
-      all_projects_access: projectAccess.allProjects,
-      project_ids: projectAccess.projectIds,
-      admin_all_projects: projectAccess.allProjects,
-    };
+    [user] = await hydrateAdminProjectAccess([user]);
 
     return res.json({ user, message: 'Authenticated successfully' });
   } catch (error) {
@@ -1303,6 +1305,84 @@ export const getUsers = async (req, res) => {
   }
 };
 
+export const previewSystemAccountCode = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    const lastName = String(req.query?.last_name || '').trim();
+    const role = String(req.query?.role || '').trim();
+    if (!lastName) return res.status(400).json({ message: 'Last name is required for an account-code preview.' });
+    if (!systemUserRoles.has(role)) return res.status(400).json({ message: 'Select a valid internal system role.' });
+    const roleSequence = 1;
+    const accountCode = await generateUniqueAccountCode(connection, { lastName, role, sequence: roleSequence });
+    return res.json({ account_code: accountCode, role_sequence: roleSequence, preview: true });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
+export const previewChangeUserPosition = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    const sourceUserId = Number(req.params.id || 0);
+    const newRole = String(req.query?.role || req.query?.new_role || '').trim();
+
+    if (!sourceUserId) return res.status(400).json({ message: 'Invalid user id.' });
+    if (!CONFIGURABLE_SYSTEM_ROLES.includes(newRole)) {
+      return res.status(400).json({ message: 'New position must be Admin, Marketing, Sales, Accounting, or Operations.' });
+    }
+
+    const [rows] = await connection.query(
+      `SELECT id, account_code, person_key, first_name, middle_name, last_name, email, role, status
+       FROM users WHERE id = ? LIMIT 1`,
+      [sourceUserId]
+    );
+    const source = rows[0];
+    if (!source) return res.status(404).json({ message: 'User not found.' });
+    if (!systemUserRoles.has(source.role)) {
+      return res.status(400).json({ message: 'Change Position applies only to internal system users.' });
+    }
+    if (source.role === 'super_admin') {
+      return res.status(409).json({ message: 'A Super Admin account cannot be changed through the position workflow.' });
+    }
+    if (source.status !== 'active') {
+      return res.status(409).json({ code: PERMANENT_DEACTIVATION_CODE, message: 'Only an active account can be changed to a new position.' });
+    }
+    if (source.role === newRole) {
+      return res.status(400).json({ message: 'Choose a different position. The current role is already assigned to this active account.' });
+    }
+
+    const personKey = source.person_key || crypto.randomUUID();
+    const roleSequence = await previewNextRoleSequence(connection, personKey, newRole);
+    const accountCode = await generateUniqueAccountCode(connection, {
+      lastName: source.last_name,
+      role: newRole,
+      sequence: roleSequence,
+    });
+
+    return res.json({
+      preview: true,
+      source: {
+        id: source.id,
+        account_code: source.account_code,
+        role: source.role,
+      },
+      replacement: {
+        account_code: accountCode,
+        role: newRole,
+        role_sequence: roleSequence,
+        person_key: personKey,
+        email: source.email,
+      },
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ code: error.code, message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
 export const createUser = async (req, res) => {
   const connection = await db.getConnection();
 
@@ -1341,6 +1421,12 @@ export const createUser = async (req, res) => {
     }
 
     if (systemUserRoles.has(role)) {
+      if (req.authUser?.role !== 'super_admin') {
+        return res.status(403).json({
+          code: 'SYSTEM_ACCESS_SUPER_ADMIN_ONLY',
+          message: 'Only Super Admin can create internal system accounts because account permissions and project scope are assigned at creation.',
+        });
+      }
       const projectAccess = role === 'super_admin'
         ? { allProjects: true, projectIds: [] }
         : normalizeSystemProjectAccess(req.body);
@@ -1632,7 +1718,7 @@ export const editUser = async (req, res) => {
       }
       if (targetUser.status !== 'active') {
         return res.status(409).json({
-          code: 'ACCOUNT_DEACTIVATED_PERMANENTLY',
+          code: 'ACCOUNT_PERMANENTLY_DEACTIVATED',
           message: 'This account is permanently deactivated and retained as a historical identity.',
         });
       }
@@ -1810,11 +1896,20 @@ export const editUser = async (req, res) => {
   }
 };
 
-export const toggleUserStatus = async (req, res) => {
+export const deactivateUserPermanently = async (req, res) => {
   const connection = await db.getConnection();
   try {
     const userId = Number(req.params.id);
     if (!userId) return res.status(400).json({ message: 'Invalid user id.' });
+
+    const requestedStatus = req.body?.status == null ? 'inactive' : String(req.body.status).trim().toLowerCase();
+    if (requestedStatus !== 'inactive') {
+      return res.status(409).json({
+        code: PERMANENT_DEACTIVATION_CODE,
+        legacy_code: LEGACY_PERMANENT_DEACTIVATION_CODE,
+        message: 'Accounts cannot be reactivated. Create a new account if the employee returns or changes position.',
+      });
+    }
 
     await connection.beginTransaction();
     const [rows] = await connection.query(
@@ -1825,11 +1920,11 @@ export const toggleUserStatus = async (req, res) => {
     const user = rows[0];
     if (!user) throw Object.assign(new Error('User not found.'), { statusCode: 404 });
     if (user.role === 'external_group') throw Object.assign(new Error('Manage External Group accounts from the External Groups page.'), { statusCode: 400 });
-    if (!actorCanManageTargetRole(req, user.role)) throw Object.assign(new Error('You do not have permission to deactivate this account.'), { statusCode: 403 });
+    if (!actorCanPerformUserAction(req, user.role)) throw Object.assign(new Error('Only Super Admin can deactivate another Super Admin account.'), { statusCode: 403 });
     if (user.status !== 'active') {
       const error = new Error('This account is permanently deactivated and cannot be activated again. Create a new account if the employee returns or changes position.');
       error.statusCode = 409;
-      error.code = 'ACCOUNT_DEACTIVATED_PERMANENTLY';
+      error.code = PERMANENT_DEACTIVATION_CODE;
       throw error;
     }
     if (userId === Number(req.authUser?.id || 0)) {
@@ -1898,7 +1993,7 @@ export const changeUserPosition = async (req, res) => {
     if (!source) throw Object.assign(new Error('User not found.'), { statusCode: 404 });
     if (!systemUserRoles.has(source.role)) throw Object.assign(new Error('Change Position applies only to internal system users.'), { statusCode: 400 });
     if (source.role === 'super_admin') throw Object.assign(new Error('A Super Admin account cannot be changed through the position workflow.'), { statusCode: 409 });
-    if (source.status !== 'active') throw Object.assign(new Error('Only an active account can be changed to a new position.'), { statusCode: 409 });
+    if (source.status !== 'active') throw Object.assign(new Error('Only an active account can be changed to a new position.'), { statusCode: 409, code: PERMANENT_DEACTIVATION_CODE });
     if (source.role === newRole) throw Object.assign(new Error('Choose a different position. The current role is already assigned to this active account.'), { statusCode: 400 });
 
     const personKey = source.person_key || crypto.randomUUID();
@@ -1961,7 +2056,7 @@ export const changeUserPosition = async (req, res) => {
     newAccount = { id: newUserId, account_code: accountCode, role: newRole, email: source.email, first_name: source.first_name, middle_name: source.middle_name, last_name: source.last_name };
   } catch (error) {
     try { await connection.rollback(); } catch {}
-    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
+    return res.status(error.statusCode || 500).json({ code: error.code, message: getErrorMessage(error) });
   } finally {
     connection.release();
   }
@@ -2014,11 +2109,11 @@ export const resetUserPassword = async (req, res) => {
     }
     if (user.status !== 'active') {
       await connection.rollback();
-      return res.status(409).json({ message: 'This account is permanently deactivated. Create a new account instead of resetting historical credentials.' });
+      return res.status(409).json({ code: PERMANENT_DEACTIVATION_CODE, legacy_code: LEGACY_PERMANENT_DEACTIVATION_CODE, message: 'This account is permanently deactivated. Create a new account instead of resetting historical credentials.' });
     }
-    if (!actorCanManageTargetRole(req, user.role)) {
+    if (!actorCanPerformUserAction(req, user.role)) {
       await connection.rollback();
-      return denyUserManagement(res, 'You do not have permission to reset this account password.');
+      return denyUserManagement(res, 'Only Super Admin can reset another Super Admin account password.');
     }
 
     const temporaryPassword = generateTemporaryPassword();
@@ -2063,3 +2158,4 @@ export const resetUserPassword = async (req, res) => {
     connection.release();
   }
 };
+

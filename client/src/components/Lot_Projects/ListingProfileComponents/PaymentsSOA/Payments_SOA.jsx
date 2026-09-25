@@ -316,7 +316,7 @@ const PaymentCorrectionAuthorizationModal = ({ request, reason, setReason, passw
           <div>
             <p className="text-xs font-black uppercase tracking-[0.16em] text-red-700">Controlled Financial Correction</p>
             <h3 className="mt-1 text-xl font-black text-slate-950">{isVoid ? 'Void Payment' : 'Authorize Payment Edit'}</h3>
-            <p className="mt-1 text-sm font-semibold text-slate-500">Only an exact Super Admin can change an already recorded verified payment.</p>
+            <p className="mt-1 text-sm font-semibold text-slate-500">This financial correction requires the matching permission plus current-password and email-code verification.</p>
           </div>
           <button type="button" onClick={onClose} disabled={isSending || isApplying} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-50"><FiX /></button>
         </div>
@@ -789,6 +789,9 @@ const PaymentsSOA = ({
   soaRows = [],
   payments = [],
   readOnly = false,
+  canCreate = false,
+  canEdit = false,
+  canDelete = false,
   profileQueryKey = null,
 }) => {
   const { projectSlug, listingId, accountId } = useParams()
@@ -797,8 +800,7 @@ const PaymentsSOA = ({
   const canManagePenaltyRelief = !readOnly && isFullAccessAdministrator(currentUserData?.user)
   const canCorrectPenalty = canManagePenaltyRelief
   const canWaiveLmf = canManagePenaltyRelief
-  const canDeletePaymentProof = !readOnly && isFullAccessAdministrator(currentUserData?.user)
-  const isExactSuperAdmin = !readOnly && String(currentUserData?.user?.role || '').trim().toLowerCase() === 'super_admin'
+  const canDeletePaymentProof = !readOnly && canDelete
 
   const rows = useMemo(() => normalizeRows(soaRows), [soaRows])
   const paymentRecords = useMemo(() => normalizePayments(payments, listing), [payments, listing])
@@ -1236,8 +1238,8 @@ const PaymentsSOA = ({
   }
 
   const openEditModal = (payment) => {
-    if (!isExactSuperAdmin) {
-      setAlert({ type: 'error', message: 'Only an exact Super Admin can edit an already recorded payment.' })
+    if (!canEdit || readOnly) {
+      setAlert({ type: 'error', message: 'You do not have permission to edit recorded payments.' })
       return
     }
     setEditingPayment(payment)
@@ -1249,7 +1251,7 @@ const PaymentsSOA = ({
 
   const handleSavePayment = async (payload) => {
     if (payload.paymentId) {
-      if (!isExactSuperAdmin) throw new Error('Only an exact Super Admin can edit an already recorded payment.')
+      if (!canEdit || readOnly) throw new Error('You do not have permission to edit recorded payments.')
       setShowPaymentModal(false)
       setPaymentCorrection({ action: 'edit', payment: editingPayment || {}, proposed: payload })
       setPaymentCorrectionReason('')
@@ -1265,8 +1267,8 @@ const PaymentsSOA = ({
   }
 
   const handleVoidClick = (payment) => {
-    if (!isExactSuperAdmin) {
-      setAlert({ type: 'error', message: 'Only an exact Super Admin can void an already recorded payment.' })
+    if (!canDelete || readOnly) {
+      setAlert({ type: 'error', message: 'You do not have permission to void recorded payments.' })
       return
     }
     setPaymentCorrection({ action: 'void', payment, proposed: null })
@@ -1394,15 +1396,15 @@ const PaymentsSOA = ({
         <div className="flex flex-wrap gap-2">
           {!readOnly ? (
             <>
-              <button
+              {canEdit ? <button
                 type="button"
                 onClick={() => setShowSoaTermsModal(true)}
                 className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 shadow-sm transition hover:bg-slate-50 active:scale-[0.98]"
               >
                 <FiSettings className="h-4 w-4" />
                 Edit SOA Terms
-              </button>
-              <button
+              </button> : null}
+              {canCreate ? <button
                 type="button"
                 onClick={openAddModal}
                 disabled={paymentPreflightMutation.isPending}
@@ -1410,7 +1412,7 @@ const PaymentsSOA = ({
               >
                 <FiPlus className="h-4 w-4" />
                 {paymentPreflightMutation.isPending ? 'Checking Account...' : 'Add Payment'}
-              </button>
+              </button> : null}
             </>
           ) : (
             <span className="inline-flex h-11 items-center rounded-xl border border-blue-200 bg-blue-50 px-5 text-sm font-black text-blue-700">Historical record</span>
@@ -1557,49 +1559,27 @@ const PaymentsSOA = ({
                           : 'Upload Proof'}
                       </button>
 
-                      {isExactSuperAdmin ? (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => openEditModal(payment)}
-                            className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 transition hover:bg-slate-50"
-                            title="Requires Super Admin password and email verification"
-                          >
-                            <FiEdit2 className="h-3.5 w-3.5" />
-                            Edit
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => handleVoidClick(payment)}
-                            className="inline-flex h-9 items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 text-xs font-black text-red-700 transition hover:bg-red-100"
-                            title="Voids the payment; the historical record is retained"
-                          >
-                            <FiTrash2 className="h-3.5 w-3.5" />
-                            Void
-                          </button>
-                        </>
-                      ) : !readOnly ? (
-                        <>
-                          <button
-                            type="button"
-                            disabled
-                            title="Only the Super Admin can edit a recorded payment because this action requires owner password and email verification."
-                            className="inline-flex h-9 cursor-not-allowed items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-black text-slate-400"
-                          >
-                            <FiEdit2 className="h-3.5 w-3.5" />
-                            Edit
-                          </button>
-                          <button
-                            type="button"
-                            disabled
-                            title="Only the Super Admin can void a recorded payment because this action requires owner password and email verification."
-                            className="inline-flex h-9 cursor-not-allowed items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-black text-slate-400"
-                          >
-                            <FiTrash2 className="h-3.5 w-3.5" />
-                            Void
-                          </button>
-                        </>
+                      {canEdit && !readOnly ? (
+                        <button
+                          type="button"
+                          onClick={() => openEditModal(payment)}
+                          className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 transition hover:bg-slate-50"
+                          title="Requires current password and email verification"
+                        >
+                          <FiEdit2 className="h-3.5 w-3.5" />
+                          Edit
+                        </button>
+                      ) : null}
+                      {canDelete && !readOnly ? (
+                        <button
+                          type="button"
+                          onClick={() => handleVoidClick(payment)}
+                          className="inline-flex h-9 items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 text-xs font-black text-red-700 transition hover:bg-red-100"
+                          title="Requires current password and email verification; the historical record is retained"
+                        >
+                          <FiTrash2 className="h-3.5 w-3.5" />
+                          Void
+                        </button>
                       ) : null}
                     </div>
                   </td>
@@ -1902,7 +1882,7 @@ const PaymentsSOA = ({
         </div>
       </section>
 
-      {!readOnly && showSoaTermsModal ? (
+      {!readOnly && canEdit && showSoaTermsModal ? (
         <SoaTermsModal
           listing={listing}
           isSaving={updateSoaTermsMutation.isPending}
@@ -1915,7 +1895,7 @@ const PaymentsSOA = ({
         />
       ) : null}
 
-      {!readOnly && showPaymentModal ? (
+      {!readOnly && (canCreate || canEdit) && showPaymentModal ? (
         <AddSOAPaymentModal
           listing={listing}
           rows={rows}
@@ -1969,7 +1949,7 @@ const PaymentsSOA = ({
           projectSlug={projectSlug}
           listingId={listingId}
           payment={paymentProof}
-          readOnly={readOnly}
+          readOnly={readOnly || !canEdit}
           canDelete={canDeletePaymentProof}
           onClose={() => setPaymentProof(null)}
           onChanged={refreshProfile}
@@ -1980,7 +1960,7 @@ const PaymentsSOA = ({
         />
       ) : null}
 
-      {!readOnly && paymentAccountCheck ? (
+      {!readOnly && canCreate && paymentAccountCheck ? (
         <PaymentAccountConfirmationModal
           data={paymentAccountCheck}
           acknowledged={paymentAccountAcknowledged}
@@ -2028,3 +2008,4 @@ const PaymentsSOA = ({
 }
 
 export default PaymentsSOA
+

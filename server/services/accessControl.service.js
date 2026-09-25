@@ -1,11 +1,26 @@
 import { db } from '../db/connect.js';
-import { CONFIGURABLE_SYSTEM_ROLES, PERMISSIONS } from '../config/permissions.js';
+import { CONFIGURABLE_SYSTEM_ROLES, PERMISSIONS, roleHasPermission } from '../config/permissions.js';
 
 const validPermissionKeys = new Set(Object.values(PERMISSIONS));
 
 export const normalizePermissionKeys = (values = []) => [...new Set((Array.isArray(values) ? values : [])
   .map((value) => String(value || '').trim())
-  .filter((value) => validPermissionKeys.has(value)))];
+  .filter(Boolean))];
+
+export const validatePermissionKeys = (values = []) => {
+  const normalized = normalizePermissionKeys(values);
+  const invalid = normalized.filter((value) => !validPermissionKeys.has(value));
+  if (invalid.length) {
+    throw Object.assign(new Error(`Unknown permission key${invalid.length === 1 ? '' : 's'}: ${invalid.join(', ')}`), {
+      statusCode: 400,
+      code: 'INVALID_PERMISSION_KEY',
+      invalidPermissionKeys: invalid,
+    });
+  }
+  return normalized;
+};
+
+export const hasPermission = (user, permission) => roleHasPermission(user, permission);
 
 export const getUserPermissionKeys = async (userId, connection = db) => {
   const id = Number(userId || 0);
@@ -33,7 +48,7 @@ export const replaceUserPermissions = async (connection, {
 }) => {
   const id = Number(userId || 0);
   if (!id) throw Object.assign(new Error('User id is required.'), { statusCode: 400 });
-  const normalized = normalizePermissionKeys(permissionKeys);
+  const normalized = validatePermissionKeys(permissionKeys);
   await connection.query('DELETE FROM user_permissions WHERE user_id = ?', [id]);
   if (normalized.length) {
     const values = normalized.map(() => '(?, ?, 1, ?)').join(', ');
@@ -56,7 +71,7 @@ export const replaceRoleDefaults = async (connection, { role, permissionKeys = [
   if (!CONFIGURABLE_SYSTEM_ROLES.includes(normalizedRole)) {
     throw Object.assign(new Error('Only Admin, Marketing, Sales, Accounting, and Operations defaults are editable.'), { statusCode: 400 });
   }
-  const normalized = normalizePermissionKeys(permissionKeys);
+  const normalized = validatePermissionKeys(permissionKeys);
   await connection.query('DELETE FROM role_permission_defaults WHERE role = ?', [normalizedRole]);
   if (normalized.length) {
     const values = normalized.map(() => '(?, ?, 1, ?)').join(', ');
@@ -83,3 +98,4 @@ export const hydrateUserPermissions = async (user, connection = db) => {
   if (String(user.role) === 'super_admin') return { ...user, permissions: Object.values(PERMISSIONS) };
   return { ...user, permissions: await getUserPermissionKeys(user.id, connection) };
 };
+

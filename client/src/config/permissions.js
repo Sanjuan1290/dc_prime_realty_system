@@ -145,3 +145,53 @@ export const canChangeUserRole = (userOrRole, currentRole, requestedRole) => {
 }
 
 export const getRoleHome = (role) => SYSTEM_USER_ROLES.includes(String(role || '')) ? `/portal/${role}` : '/portal'
+
+const SYSTEM_LANDING_CANDIDATES = Object.freeze([
+  [PERMISSIONS.SYSTEM_DASHBOARD_VIEW, ''],
+  [PERMISSIONS.SYSTEM_REPORTS_VIEW, 'reports'],
+  [PERMISSIONS.SYSTEM_PROJECTS_VIEW, 'projects'],
+  [PERMISSIONS.LOT_PROJECT_VIEW, 'lot-projects'],
+  [PERMISSIONS.SYSTEM_ACCREDITED_VIEW, 'accredited'],
+  [PERMISSIONS.SYSTEM_DOCUMENTS_VIEW, 'documents'],
+  [PERMISSIONS.SYSTEM_NOTIFICATIONS_VIEW, 'notifications'],
+  [PERMISSIONS.AUDIT_LOGS_VIEW, 'audit-logs'],
+  [PERMISSIONS.EMPLOYEES_VIEW, 'employees'],
+  [PERMISSIONS.ATTENDANCE_VIEW, 'attendance'],
+  [PERMISSIONS.SYSTEM_USERS_VIEW, 'users'],
+  [PERMISSIONS.SYSTEM_SETTINGS_VIEW, 'settings'],
+])
+
+export const getFirstAllowedSystemPath = (user = {}) => {
+  if (!isSystemUserRole(user?.role)) return '/portal'
+  const basePath = `/portal/${user.role}`
+  const match = SYSTEM_LANDING_CANDIDATES.find(([permission]) => hasPermission(user, permission))
+  if (!match) return '/portal/access-denied'
+  return match[1] ? `${basePath}/${match[1]}` : basePath
+}
+
+const LOT_PROJECT_LANDING_CANDIDATES = Object.freeze([
+  [PERMISSIONS.LOT_DASHBOARD_VIEW, ''],
+  [PERMISSIONS.LOT_REPORTS_VIEW, 'reports'],
+  [PERMISSIONS.LOT_LISTINGS_VIEW, 'listings'],
+  [PERMISSIONS.LOT_PAYMENT_LOGS_VIEW, 'payments-audit'],
+  [PERMISSIONS.LOT_COMMISSIONS_VIEW, 'commissions'],
+  [PERMISSIONS.LOT_SETTINGS_VIEW, 'settings'],
+])
+
+export const getFirstAllowedLotProjectPath = (user = {}, projectSlug = '') => {
+  const slug = String(projectSlug || '').trim()
+  if (!slug || !hasPermission(user, PERMISSIONS.LOT_PROJECT_VIEW)) return '/portal/access-denied'
+  const match = LOT_PROJECT_LANDING_CANDIDATES.find(([permission]) => hasPermission(user, permission))
+  if (!match) return '/portal/access-denied'
+  const basePath = `/portal/lot-projects/${slug}`
+  return match[1] ? `${basePath}/${match[1]}` : basePath
+}
+
+export const hasProjectScope = (user = {}, projectSlug = '') => {
+  if (!user || !projectSlug || !isSystemUserRole(user?.role)) return false
+  if (user.role === 'super_admin' || user.all_projects_access === true || Number(user.all_projects_access || user.admin_all_projects || 0) === 1) return true
+  const projects = Array.isArray(user.projects) ? user.projects : (Array.isArray(user.admin_projects) ? user.admin_projects : [])
+  const normalizedSlug = String(projectSlug).trim().toLowerCase()
+  return projects.some((project) => String(project?.slug || project?.lot_project_slug || '').trim().toLowerCase() === normalizedSlug)
+}
+

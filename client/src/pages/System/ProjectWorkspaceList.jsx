@@ -10,6 +10,8 @@ import {
 import PageHeader from "../../components/Shared/PageHeader";
 import StatusAlert from "../../components/Shared/StatusAlert";
 import { useFetch as fetchApi } from "../../utils/useFetch";
+import useCurrentUser from "../../utils/useCurrentUser";
+import { getFirstAllowedLotProjectPath } from "../../config/permissions";
 
 // Accept raw database names and normalized API aliases without showing blank locations.
 const firstNonEmptyText = (...values) => {
@@ -88,6 +90,8 @@ const normalizeStatus = (value = "") =>
 const ProjectWorkspaceList = ({ type = "lot" }) => {
   const config = PROJECT_TYPES[type] || PROJECT_TYPES.lot;
   const HeaderIcon = config.icon;
+  const { data: currentUserData } = useCurrentUser();
+  const user = currentUserData?.user;
   const isFeatureEnabled =
     type !== "house_lot" ||
     import.meta.env.VITE_FEATURE_HOUSE_LOT === "true";
@@ -123,13 +127,13 @@ const ProjectWorkspaceList = ({ type = "lot" }) => {
           location: config.getLocation(project),
           status: config.getStatus(project),
           pathname:
-            project.routePath ||
-            project.route_path ||
-            (slug ? config.fallbackPath(slug) : ""),
+            type === "lot" && slug
+              ? getFirstAllowedLotProjectPath(user, slug)
+              : (project.routePath || project.route_path || (slug ? config.fallbackPath(slug) : "")),
         };
       })
-      .filter((project) => Boolean(project.pathname));
-  }, [config, data]);
+      .filter((project) => Boolean(project.pathname) && project.pathname !== "/portal/access-denied");
+  }, [config, data, type, user]);
 
   return (
     <main className="flex flex-col gap-6">
@@ -241,3 +245,4 @@ const ProjectWorkspaceList = ({ type = "lot" }) => {
 };
 
 export default ProjectWorkspaceList;
+

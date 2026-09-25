@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   FiArrowLeft,
@@ -112,10 +112,24 @@ const ListingProfile = () => {
   const queryClient = useQueryClient()
   const { projectSlug, listingId, accountId } = useParams()
   const { data: currentUserData } = useCurrentUser()
-  const isSuperAdmin = currentUserData?.user?.role === 'super_admin'
-  const canAdjustCommission = isSuperAdmin
-  const canManageCancellation = currentUserData?.user?.role === 'super_admin'
-  const canCorrectReservation = hasPermission(currentUserData?.user, PERMISSIONS.LOT_RESERVATION_CORRECT)
+  const user = currentUserData?.user
+  const isSuperAdmin = user?.role === 'super_admin'
+  const canEditListingPermission = hasPermission(user, PERMISSIONS.LOT_LISTINGS_EDIT)
+  const canReservePermission = hasPermission(user, PERMISSIONS.LOT_RESERVATIONS_CREATE)
+  const canEditBuyerProfile = hasPermission(user, PERMISSIONS.LOT_BUYER_PROFILE_EDIT)
+  const canViewPayments = hasPermission(user, PERMISSIONS.LOT_PAYMENTS_VIEW)
+  const canCreatePayment = hasPermission(user, PERMISSIONS.LOT_PAYMENTS_CREATE)
+  const canEditPayment = hasPermission(user, PERMISSIONS.LOT_PAYMENTS_EDIT)
+  const canDeletePayment = hasPermission(user, PERMISSIONS.LOT_PAYMENT_DELETE)
+  const canViewBuyerDocuments = hasPermission(user, PERMISSIONS.LOT_BUYER_DOCUMENTS_VIEW)
+  const canUpdateBuyerDocuments = hasPermission(user, PERMISSIONS.LOT_BUYER_DOCUMENTS_UPDATE)
+  const canViewAccountHistory = hasPermission(user, PERMISSIONS.LOT_ACCOUNT_HISTORY_VIEW)
+  const canUsePrintouts = hasPermission(user, PERMISSIONS.LOT_PRINTOUTS_USE)
+  const canViewCommissions = hasPermission(user, PERMISSIONS.LOT_COMMISSIONS_VIEW)
+  const canViewSystemDocuments = hasPermission(user, PERMISSIONS.SYSTEM_DOCUMENTS_VIEW)
+  const canAdjustCommission = isSuperAdmin && canViewCommissions
+  const canManageCancellation = isSuperAdmin
+  const canCorrectReservation = hasPermission(user, PERMISSIONS.LOT_RESERVATION_CORRECT)
   const isAccountRoute = Boolean(accountId)
   const profileKey = ['lot-listing-profile', projectSlug, listingId, accountId || 'current']
   const profileUrl = accountId
@@ -132,6 +146,18 @@ const ListingProfile = () => {
   const [showReservationCorrectionModal, setShowReservationCorrectionModal] = useState(false)
   const [alert, setAlert] = useState(null)
 
+  const visibleTabs = useMemo(() => tabs.filter((tab) => {
+    if (tab.key === 'payments') return canViewPayments
+    if (tab.key === 'documents') return canViewBuyerDocuments
+    if (tab.key === 'accounts') return canViewAccountHistory
+    if (tab.key === 'printouts') return canUsePrintouts
+    return true
+  }), [canUsePrintouts, canViewAccountHistory, canViewBuyerDocuments, canViewPayments])
+
+  useEffect(() => {
+    if (!visibleTabs.some((tab) => tab.key === activeTab)) setActiveTab('unit')
+  }, [activeTab, visibleTabs])
+
   const profileQuery = useQuery({
     queryKey: profileKey,
     queryFn: () => useFetch(profileUrl),
@@ -142,7 +168,7 @@ const ListingProfile = () => {
   const buyerFormStateQuery = useQuery({
     queryKey: ['lot-buyer-form-state', projectSlug, listingId],
     queryFn: () => useFetch(`/projects/lot-projects/${projectSlug}/listings/${listingId}/buyer-form`),
-    enabled: Boolean(projectSlug && listingId && !isAccountRoute),
+    enabled: Boolean(projectSlug && listingId && !isAccountRoute && canViewBuyerDocuments),
     retry: false,
     refetchOnWindowFocus: true,
   })
@@ -171,20 +197,20 @@ const ListingProfile = () => {
       ''
   ).trim().toLowerCase()
   const listingIsFreelyEditableInventory = ['available', 'hold'].includes(listingInventoryStatus)
-  const canEditListing = Boolean(!readOnly && (listingIsFreelyEditableInventory || isSuperAdmin))
-  const canEditListingRequirements = Boolean(!readOnly && listingIsFreelyEditableInventory)
+  const canEditListing = Boolean(!readOnly && canEditListingPermission && (listingIsFreelyEditableInventory || isSuperAdmin))
+  const canEditListingRequirements = Boolean(!readOnly && canUpdateBuyerDocuments && listingIsFreelyEditableInventory)
 
   const reserveDocumentsQuery = useQuery({
     queryKey: ['documents'],
     queryFn: () => useFetch('/documents/getDocuments'),
-    enabled: !readOnly,
+    enabled: !readOnly && canViewSystemDocuments && (canReservePermission || canViewBuyerDocuments),
     staleTime: 1000 * 60 * 5,
   })
 
   const reserveTemplatesQuery = useQuery({
     queryKey: ['document-templates'],
     queryFn: () => useFetch('/documents/getTemplates'),
-    enabled: !readOnly && (showReserveModal || activeTab === 'documents'),
+    enabled: !readOnly && canViewSystemDocuments && (showReserveModal || (activeTab === 'documents' && canViewBuyerDocuments)),
     staleTime: 1000 * 60 * 5,
   })
 
@@ -603,11 +629,11 @@ const ListingProfile = () => {
 
   const isHeld = listing.rawStatus === 'hold' || listing.listing_status === 'Hold'
   const canHold = listing.rawStatus === 'available' || listing.listing_status === 'Available'
-  const canReserve = listing.rawStatus === 'available' || listing.listing_status === 'Available'
+  const canReserveInventory = listing.rawStatus === 'available' || listing.listing_status === 'Available'
   const isBuyerFormHold = Boolean(isHeld && pendingBuyerFormSubmission)
-  const canManageBuyerForm = Boolean(canReserve && !buyerForm.migrationRequired)
+  const canManageBuyerForm = Boolean(canUpdateBuyerDocuments && canReserveInventory && !buyerForm.migrationRequired)
   const hasActiveBuyerFormLink = ['active', 'opened'].includes(String(currentBuyerFormLink?.status || '').toLowerCase())
-  const canManageDocuments = Boolean(!readOnly && listing.hasClientProfile && listing.canEditBuyerProfile)
+  const canManageDocuments = Boolean(!readOnly && canUpdateBuyerDocuments && listing.hasClientProfile && listing.canEditBuyerProfile)
 
   return (
     <main className="flex flex-col gap-6">
@@ -629,10 +655,10 @@ const ListingProfile = () => {
         <StatusAlert type="warning" message={buyerForm.message || 'Run the buyer form database migration before using form links.'} />
       ) : null}
 
-      {!readOnly ? <BuyerFormStatusBanner
+      {!readOnly && canViewBuyerDocuments ? <BuyerFormStatusBanner
         submission={pendingBuyerFormSubmission}
-        onReview={reviewBuyerFormSubmission}
-        onReject={rejectBuyerFormSubmission}
+        onReview={canReservePermission ? reviewBuyerFormSubmission : undefined}
+        onReject={canUpdateBuyerDocuments ? rejectBuyerFormSubmission : undefined}
         isSaving={rejectBuyerFormSubmissionMutation.isPending}
       /> : null}
 
@@ -718,7 +744,7 @@ const ListingProfile = () => {
             </button>
 
             {!readOnly ? <>
-            <button
+            {canEditListingPermission ? <button
               type="button"
               onClick={() => {
                 if (isBuyerFormHold) return
@@ -746,9 +772,9 @@ const ListingProfile = () => {
             >
               {isHeld ? <FiUnlock className="h-4 w-4" /> : <FiPauseCircle className="h-4 w-4" />}
               {isBuyerFormHold ? 'Buyer Form Hold' : isHeld ? 'Unhold' : 'Hold'}
-            </button>
+            </button> : null}
 
-            <button
+            {canUpdateBuyerDocuments ? <button
               type="button"
               onClick={() => {
                 setGeneratedBuyerFormUrl('')
@@ -760,17 +786,17 @@ const ListingProfile = () => {
             >
               <FiLink className="h-4 w-4" />
               {hasActiveBuyerFormLink ? 'Manage Form Link' : 'Send Buyer Form'}
-            </button>
+            </button> : null}
 
-            <button
+            {canReservePermission ? <button
               type="button"
               onClick={isBuyerFormHold ? reviewBuyerFormSubmission : openManualReservation}
-              disabled={(!canReserve && !isBuyerFormHold) || profileQuery.isLoading}
+              disabled={(!canReserveInventory && !isBuyerFormHold) || profileQuery.isLoading}
               className="inline-flex min-h-[68px] items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98]"
             >
               <FiUserCheck className="h-4 w-4" />
               {isBuyerFormHold ? 'Review Form' : 'Reserve'}
-            </button>
+            </button> : null}
             </> : (
               <div className="sm:col-span-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
                 <p className="text-xs font-black uppercase text-blue-700">Account</p>
@@ -784,7 +810,7 @@ const ListingProfile = () => {
 
       <section className="overflow-x-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
         <div className="flex min-w-max gap-2">
-          {tabs.map((tab) => {
+          {visibleTabs.map((tab) => {
             const Icon = tab.icon
             const isActive = activeTab === tab.key
 
@@ -836,7 +862,7 @@ const ListingProfile = () => {
           listing={listing}
           onSave={(payload) => updateClientProfileMutation.mutateAsync(payload)}
           isSaving={updateClientProfileMutation.isPending}
-          readOnly={readOnly}
+          readOnly={readOnly || !canEditBuyerProfile}
         />
       ) : null}
 
@@ -846,6 +872,9 @@ const ListingProfile = () => {
           soaRows={soaRows}
           payments={payments}
           readOnly={readOnly}
+          canCreate={canCreatePayment}
+          canEdit={canEditPayment}
+          canDelete={canDeletePayment}
           profileQueryKey={profileKey}
         />
       ) : null}
@@ -921,7 +950,7 @@ const ListingProfile = () => {
         />
       ) : null}
 
-      {!readOnly && showHoldModal ? (
+      {!readOnly && canEditListingPermission && showHoldModal ? (
         <HoldListingModal
           listing={listing}
           isSaving={holdListingMutation.isPending}
@@ -930,7 +959,7 @@ const ListingProfile = () => {
         />
       ) : null}
 
-      {!readOnly && showReserveModal ? (
+      {!readOnly && canReservePermission && showReserveModal ? (
         <ReserveListingModal
           listing={listing}
           client={reserveMode === 'submission-review' ? pendingBuyerFormSubmission?.submittedPayload || {} : client}
@@ -953,7 +982,7 @@ const ListingProfile = () => {
       ) : null}
 
 
-      {!readOnly && showBuyerFormLinkModal ? (
+      {!readOnly && canUpdateBuyerDocuments && showBuyerFormLinkModal ? (
         <BuyerFormLinkModal
           listing={listing}
           currentLink={currentBuyerFormLink}
@@ -979,3 +1008,4 @@ const ListingProfile = () => {
 }
 
 export default ListingProfile
+

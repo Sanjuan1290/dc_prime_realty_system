@@ -8,19 +8,19 @@ const dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(dirname, '..', '..');
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
 
-test('all internal route groups live below /portal', () => {
+test('all internal route groups live below /portal and system roles share one route tree', () => {
   const app = read('client/src/App.jsx');
 
   assert.match(app, /<Route path="\/portal" element=\{<Login \/>\}/);
   assert.match(app, /<Route path="\/portal\/change-password" element=\{<ChangePassword \/>\}/);
-  assert.match(app, /<Route path="\/portal\/super_admin" element=\{<SystemLayout \/>\}/);
-  assert.match(app, /<Route path="\/portal\/admin" element=\{<SystemLayout \/>\}/);
+  assert.match(app, /const systemRoleRoutes = SYSTEM_USER_ROLES\.map/);
+  assert.match(app, /path=\{`\/portal\/\$\{role\}`\} element=\{<SystemLayout \/>\}/);
   assert.match(app, /path="\/portal\/lot-projects\/:projectSlug"/);
   assert.doesNotMatch(app, /\/portal\/employee-payroll/); // Payroll UI was intentionally removed from the simplified employee module.
   assert.match(app, /<Route path="\/buyer-form\/:token" element=\{<BuyerForm \/>\}/);
 });
 
-test('login, password, permission, and layout redirects use /portal', () => {
+test('login, password, permission, and layout redirects use permission-aware /portal destinations', () => {
   const login = read('client/src/auth/Login.jsx');
   const changePassword = read('client/src/auth/ChangePassword.jsx');
   const permissionRoute = read('client/src/components/Auth/ProtectedPermissionRoute.jsx');
@@ -28,12 +28,13 @@ test('login, password, permission, and layout redirects use /portal', () => {
   const systemLayout = read('client/src/layout/SystemLayout.jsx');
   const lotLayout = read('client/src/layout/LotLayout.jsx');
 
-  assert.match(login, /navigate\(`\/portal\/\$\{user\.role\}`/);
-  assert.match(login, /Navigate to=\{`\/portal\/\$\{currentUser\.user\.role\}`\}/);
-  assert.match(changePassword, /`\/portal\/\$\{role \|\| 'super_admin'\}`/);
+  assert.match(login, /getFirstAllowedSystemPath\(user\)/);
+  assert.match(login, /Navigate to=\{getFirstAllowedSystemPath\(currentUser\.user\)\}/);
+  assert.match(changePassword, /getFirstAllowedSystemPath\(updatedUser \|\| user\)/);
   assert.match(permissionRoute, /Navigate to="\/portal"/);
-  assert.match(permissions, /'\/portal\/admin\/dashboard'/);
-  assert.match(permissions, /'\/portal\/super_admin'/);
+  assert.match(permissionRoute, /Navigate to="\/portal\/access-denied"/);
+  assert.match(permissions, /getRoleHome/);
+  assert.match(permissions, /const basePath = `\/portal\/\$\{user\.role\}`/);
   assert.match(systemLayout, /const roleBasePath = `\/portal\/\$\{user\?\.role/);
   assert.match(lotLayout, /const basePath = `\/portal\/lot-projects\/\$\{projectSlug\}`/);
 });
@@ -50,3 +51,4 @@ test('server-generated frontend links include the portal prefix', () => {
   assert.match(users, /const loginUrl = appUrl \? `\$\{appUrl\}\/portal` : '\/portal'/);
   assert.match(users, /must_change_password = 1/);
 });
+

@@ -65,12 +65,12 @@ test('current account routes stay editable while older accounts stay protected',
   assert.match(profile, /const readOnly = Boolean\(profile\.readOnly\)/);
   assert.doesNotMatch(profile, /Read-only historical account/);
   assert.doesNotMatch(profile, /This page is locked to/);
-  assert.match(profile, /!readOnly && showReserveModal/);
-  assert.match(profile, /!readOnly && showBuyerFormLinkModal/);
+  assert.match(profile, /!readOnly && canReservePermission && showReserveModal/);
+  assert.match(profile, /!readOnly && canUpdateBuyerDocuments && showBuyerFormLinkModal/);
   assert.match(unit, /!readOnly && canAdjustCommission/);
   assert.match(client, /!readOnly && \(listing\?\.canEditBuyerProfile/);
   assert.match(payments, /!readOnly \? \([\s\S]*Edit SOA Terms/);
-  assert.match(payments, /!readOnly && showPaymentModal/);
+  assert.match(payments, /!readOnly && \(canCreate \|\| canEdit\) && showPaymentModal/);
   assert.match(payments, /!readOnly && penaltyReliefRow/);
   assert.match(documents, /!readOnly && uploadDoc/);
   assert.match(documents, /Historical account documents are read-only/);
@@ -96,3 +96,4 @@ test('historical SOA keeps the selected account final schedule generation read-o
   assert.match(shared, /if \(readOnly\) \{[\s\S]*totalDue: getScheduleTotalDue\(row\)/);
   assert.match(shared, /if \(!readOnly && existingScheduleRows\.length/);
 });
+

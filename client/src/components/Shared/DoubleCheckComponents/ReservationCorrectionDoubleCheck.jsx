@@ -47,3 +47,4 @@ const ReservationCorrectionDoubleCheck = ({ request, onConfirm, onCancel }) => {
 }
 
 export default ReservationCorrectionDoubleCheck
+

@@ -66,8 +66,8 @@ const SellerGroup = ({ groupType = 'in_house' }) => {
     headLabel: 'Group Head',
   }
 
-  const isAdmin = location.pathname.startsWith('/portal/admin/')
-  const rootPath = isAdmin ? '/portal/admin' : '/portal/super_admin'
+  const portalRole = location.pathname.split('/')[2] || 'super_admin'
+  const rootPath = `/portal/${portalRole}`
   const usersPath = `${rootPath}/users`
   const groupBasePath = `${rootPath}/users/groups/${isExternal ? 'external' : 'in-house'}`
   const [showNewGroupModal, setShowNewGroupModal] = useState(false)
@@ -184,3 +184,4 @@ const SellerGroup = ({ groupType = 'in_house' }) => {
 }
 
 export default SellerGroup
+

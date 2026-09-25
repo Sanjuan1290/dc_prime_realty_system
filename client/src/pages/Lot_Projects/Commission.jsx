@@ -7,6 +7,8 @@ import StatusAlert from '../../components/Shared/StatusAlert'
 import ReleaseDetailsModal from '../../components/Lot_Projects/CommissionComponents/ReleaseDetailsModal/ReleaseDetailsModal'
 import { groupCommissionRecords } from '../../utils/commissionRecords'
 import { useFetch as fetchJson, useFetchPatch as patchJson } from '../../utils/useFetch'
+import useCurrentUser from '../../utils/useCurrentUser'
+import { hasPermission, PERMISSIONS } from '../../config/permissions'
 
 const money = (value) => new Intl.NumberFormat('en-PH', {
   style: 'currency',
@@ -90,6 +92,11 @@ const matchesGroupFilters = (group, commissionTypeFilter, eligibilityFilter) => 
 
 const Commission = () => {
   const { projectSlug } = useParams()
+  const { data: currentUserData } = useCurrentUser()
+  const user = currentUserData?.user
+  const canRelease = hasPermission(user, PERMISSIONS.LOT_COMMISSIONS_RELEASE)
+  const canHold = hasPermission(user, PERMISSIONS.LOT_COMMISSIONS_HOLD)
+  const canUnhold = hasPermission(user, PERMISSIONS.LOT_COMMISSIONS_UNHOLD)
   const queryClient = useQueryClient()
   const [selected, setSelected] = useState(null)
   const [search, setSearch] = useState('')
@@ -484,6 +491,9 @@ const Commission = () => {
             setModalNotice(null)
           }}
           onAction={handleCommissionAction}
+          canRelease={canRelease}
+          canHold={canHold}
+          canUnhold={canUnhold}
           serverNotice={modalNotice}
           onClearServerNotice={() => setModalNotice(null)}
         />
@@ -493,3 +503,4 @@ const Commission = () => {
 }
 
 export default Commission
+

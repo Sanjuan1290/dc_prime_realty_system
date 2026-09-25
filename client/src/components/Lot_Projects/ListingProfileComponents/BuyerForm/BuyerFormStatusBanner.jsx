@@ -35,17 +35,24 @@ const BuyerFormStatusBanner = ({ submission, onReview, onReject, isSaving = fals
           </div>
         </div>
 
-        <div className="flex flex-col gap-2 sm:flex-row">
-          <button type="button" onClick={() => onReject?.(submission)} disabled={isSaving} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-red-200 bg-white px-4 text-sm font-black text-red-700 hover:bg-red-50 disabled:opacity-60">
-            <FiXCircle className="h-4 w-4" /> Reject
-          </button>
-          <button type="button" onClick={() => onReview?.(submission)} disabled={isSaving} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white hover:bg-blue-700 disabled:opacity-60">
-            <FiCheckCircle className="h-4 w-4" /> Review & Complete Reservation
-          </button>
-        </div>
+        {onReject || onReview ? (
+          <div className="flex flex-col gap-2 sm:flex-row">
+            {onReject ? (
+              <button type="button" onClick={() => onReject(submission)} disabled={isSaving} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-red-200 bg-white px-4 text-sm font-black text-red-700 hover:bg-red-50 disabled:opacity-60">
+                <FiXCircle className="h-4 w-4" /> Reject
+              </button>
+            ) : null}
+            {onReview ? (
+              <button type="button" onClick={() => onReview(submission)} disabled={isSaving} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white hover:bg-blue-700 disabled:opacity-60">
+                <FiCheckCircle className="h-4 w-4" /> Review & Complete Reservation
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </section>
   )
 }
 
 export default BuyerFormStatusBanner
+

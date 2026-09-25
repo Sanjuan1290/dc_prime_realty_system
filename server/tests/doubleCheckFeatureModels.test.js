@@ -89,3 +89,4 @@ test('payment review omits redundant SOA row labels while retaining account and 
   assert.match(payment, /Payment Type/)
   assert.match(payment, /Payment Date/)
 })
+

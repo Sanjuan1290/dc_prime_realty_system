@@ -69,3 +69,4 @@ test('legacy listings fall back to the old price for both modes', () => {
   assert.equal(getListingPricingForMode(listing, 'installment').pricePerSqm, 1000);
   assert.equal(getListingPricingForMode(listing, 'cash').pricePerSqm, 1000);
 });
+

@@ -45,3 +45,4 @@ test('builds a one-page Statement of Account PDF buffer', () => {
   assert.match(pdf.toString('latin1'), /STATEMENT OF ACCOUNT/);
   assert.match(pdf.toString('latin1'), /%%EOF/);
 });
+

@@ -35,6 +35,9 @@ test('lot project workspace options endpoint returns the database location', asy
   let responseStatus = 200;
 
   db.query = async (query) => {
+    if (/SELECT id, role, status/.test(query) && /FROM users/.test(query)) {
+      return [[{ id: 1, role: 'super_admin', status: 'active', all_projects_access: 1 }]];
+    }
     assert.equal(query, LOT_PROJECT_OPTIONS_QUERY);
     return [[{
       lot_project_id: 2,
@@ -68,3 +71,4 @@ test('lot project workspace options endpoint returns the database location', asy
   assert.equal(responseBody.data[0].location, 'Maragondon, Cavite');
   assert.equal(responseBody.data[0].lot_project_location, 'Maragondon, Cavite');
 });
+

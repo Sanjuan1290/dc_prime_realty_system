@@ -41,3 +41,4 @@ const createSafeStorage = (kind) => ({
 
 export const safeLocalStorage = createSafeStorage('local')
 export const safeSessionStorage = createSafeStorage('session')
+

@@ -20,7 +20,7 @@ import {
 } from "react-icons/fi";
 import useCurrentUser from "../utils/useCurrentUser";
 import StatusAlert from "../components/Shared/StatusAlert";
-import { hasPermission, isSystemUserRole, PERMISSIONS } from "../config/permissions";
+import { hasPermission, isSystemUserRole, PERMISSIONS, SYSTEM_USER_ROLES } from "../config/permissions";
 import { requestApi } from '../utils/apiClient'
 import useNotificationBadge from '../utils/useNotificationBadge'
 
@@ -198,6 +198,13 @@ const SystemLayout = () => {
 
   if (!isSystemUserRole(user?.role)) {
     return <Navigate to="/portal" replace />;
+  }
+
+  const requestedRole = String(location.pathname.split('/')[2] || '');
+  if (SYSTEM_USER_ROLES.includes(requestedRole) && requestedRole !== user.role) {
+    const suffix = location.pathname.split('/').slice(3).join('/');
+    const canonicalPath = suffix ? `/portal/${user.role}/${suffix}` : `/portal/${user.role}`;
+    return <Navigate to={`${canonicalPath}${location.search || ''}${location.hash || ''}`} replace />;
   }
 
   return (
@@ -421,3 +428,4 @@ const SystemLayout = () => {
 };
 
 export default SystemLayout;
+

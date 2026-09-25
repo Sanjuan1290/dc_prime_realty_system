@@ -25,3 +25,4 @@ router.put('/editDocument/:id', requirePermission(PERMISSIONS.SYSTEM_DOCUMENTS_E
 router.put('/editTemplate/:id', requirePermission(PERMISSIONS.SYSTEM_DOCUMENT_TEMPLATES_EDIT), editTemplate);
 
 export default router;
+

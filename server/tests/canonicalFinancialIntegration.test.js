@@ -14,7 +14,8 @@ test('listing profile exposes the canonical financial snapshot and SOA consumes 
   const payments = read('client/src/components/Lot_Projects/ListingProfileComponents/PaymentsSOA/Payments_SOA.jsx');
 
   assert.match(controller, /buildAccountFinancialSnapshot/);
-  assert.match(controller, /financialSnapshot\s*=\s*buildAccountFinancialSnapshot\(/);
+  assert.match(controller, /const financialSnapshot = canViewPayments[\s\S]*buildAccountFinancialSnapshot\(/);
+  assert.match(controller, /: null;/);
   assert.match(controller, /financialSnapshot,/);
   assert.match(profile, /profile\.financialSnapshot/);
   assert.match(payments, /listing\?\.financialSnapshot\?\.receivable/);
@@ -52,3 +53,4 @@ test('account history is not silently treated as an explicitly historical entry'
   assert.match(integrity, /isHistorical:\s*accountContext\.isHistoricalEntry/);
   assert.match(integrity, /isAccountHistory:\s*accountContext\.isAccountHistory/);
 });
+

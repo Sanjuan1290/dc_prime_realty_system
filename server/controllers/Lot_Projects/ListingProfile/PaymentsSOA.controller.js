@@ -171,7 +171,7 @@ const sendPaymentCorrectionCodeEmail = async ({ actor, code, action, listing, pa
     to: actor.email,
     subject: `Payment correction verification - ${unitId}`,
     text: [
-      `Hello ${getUserFullName(actor) || 'Super Admin'},`, '',
+      `Hello ${getUserFullName(actor) || 'Authorized User'},`, '',
       `Your verification code is ${code}.`,
       `Action: ${actionLabel}`,
       `Unit: ${unitId}`,
@@ -183,7 +183,7 @@ const sendPaymentCorrectionCodeEmail = async ({ actor, code, action, listing, pa
       `This code expires in ${SENSITIVE_ACTION_CODE_EXPIRY_MINUTES} minutes.`, '',
       'Do not share this code. Ignore this email if you did not request this financial correction.', '', companyName,
     ].join('\n'),
-    html: `<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;color:#0f172a"><h2>${escapePaymentCorrectionHtml(companyName)}</h2><p>Hello ${escapePaymentCorrectionHtml(getUserFullName(actor) || 'Super Admin')},</p><p>Use this code to authorize a <strong>${escapePaymentCorrectionHtml(actionLabel)}</strong> correction for <strong>${escapePaymentCorrectionHtml(unitId)}</strong> — ${escapePaymentCorrectionHtml(buyerName)}.</p><div style="font-size:30px;font-weight:800;letter-spacing:8px;padding:18px;background:#fff7ed;border:1px solid #fdba74;border-radius:12px;text-align:center">${code}</div><p><strong>Reference:</strong> ${escapePaymentCorrectionHtml(referenceId)}<br/><strong>Current amount:</strong> ${escapePaymentCorrectionHtml(money(payment.lot_project_payment_amount))}${action === 'edit' ? `<br/><strong>Proposed amount:</strong> ${escapePaymentCorrectionHtml(money(proposed.amount))}<br/><strong>Proposed payment date:</strong> ${escapePaymentCorrectionHtml(proposed.paymentDate)}` : ''}<br/><strong>Reason:</strong> ${escapePaymentCorrectionHtml(payload.reason)}</p><p>This code expires in ${SENSITIVE_ACTION_CODE_EXPIRY_MINUTES} minutes.</p><p style="color:#991b1b"><strong>This changes an already recorded financial transaction and must be reviewed carefully.</strong></p></div>`,
+    html: `<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;color:#0f172a"><h2>${escapePaymentCorrectionHtml(companyName)}</h2><p>Hello ${escapePaymentCorrectionHtml(getUserFullName(actor) || 'Authorized User')},</p><p>Use this code to authorize a <strong>${escapePaymentCorrectionHtml(actionLabel)}</strong> correction for <strong>${escapePaymentCorrectionHtml(unitId)}</strong> — ${escapePaymentCorrectionHtml(buyerName)}.</p><div style="font-size:30px;font-weight:800;letter-spacing:8px;padding:18px;background:#fff7ed;border:1px solid #fdba74;border-radius:12px;text-align:center">${code}</div><p><strong>Reference:</strong> ${escapePaymentCorrectionHtml(referenceId)}<br/><strong>Current amount:</strong> ${escapePaymentCorrectionHtml(money(payment.lot_project_payment_amount))}${action === 'edit' ? `<br/><strong>Proposed amount:</strong> ${escapePaymentCorrectionHtml(money(proposed.amount))}<br/><strong>Proposed payment date:</strong> ${escapePaymentCorrectionHtml(proposed.paymentDate)}` : ''}<br/><strong>Reason:</strong> ${escapePaymentCorrectionHtml(payload.reason)}</p><p>This code expires in ${SENSITIVE_ACTION_CODE_EXPIRY_MINUTES} minutes.</p><p style="color:#991b1b"><strong>This changes an already recorded financial transaction and must be reviewed carefully.</strong></p></div>`,
   });
 };
 
@@ -195,7 +195,7 @@ const requirePaymentCorrectionVerification = async (connection, req, { action, l
   validatePaymentCorrectionRequest({ action, reason, payload });
   const verificationId = Number(req.body.verificationId || req.body.verification_id || 0);
   const code = cleanPaymentCorrectionValue(req.body.code || req.body.verificationCode || req.body.verification_code);
-  if (!verificationId || !code) throw createHttpError(400, 'Super Admin email verification is required.');
+  if (!verificationId || !code) throw createHttpError(400, 'Email verification is required for this payment correction.');
   const verificationResult = await verifyAndConsumeSensitiveAction(connection, {
     verificationId,
     userId: actor.id,
@@ -315,7 +315,7 @@ const requirePenaltyManager = async (req) => {
   const user = await getAuthenticatedUser(req);
   if (!user) throw createHttpError(401, 'Authentication is required.');
   if (!isFullAccessAdministrator(user)) {
-    throw createHttpError(403, 'Only an admin or super admin can manage penalty relief.');
+    throw createHttpError(403, 'Only Super Admin can manage penalty relief.');
   }
   return user;
 };
@@ -556,7 +556,7 @@ export const requestLotProjectPaymentCorrectionCode = async (req, res) => {
   const connection = await db.getConnection();
   try {
     const actor = req.authUser || await getAuthenticatedUser(req);
-    if (!actor?.id || !actor.email) return res.status(400).json({ message: 'The Super Admin account must have an email address.' });
+    if (!actor?.id || !actor.email) return res.status(400).json({ message: 'Your account must have an email address to authorize a payment correction.' });
     if (!(await tableExists(connection, 'destructive_action_verifications'))) {
       return res.status(500).json({ message: 'Sensitive-action verification table is missing. Apply the latest database schema first.' });
     }
@@ -769,7 +769,7 @@ export const createLotProjectListingPayment = async (req, res) => {
     if (!['apply', 'waive'].includes(penaltyHandling)) return res.status(400).json({ message: 'Penalty handling must be apply or waive.' });
     if (penaltyHandling === 'waive' && !scheduleId) return res.status(400).json({ message: 'A specific SOA row is required to waive a payment penalty.' });
     if (penaltyHandling === 'waive' && !penaltyWaiverReason) return res.status(400).json({ message: 'Reason is required when waiving the penalty for a payment.' });
-    if (penaltyHandling === 'waive' && !isFullAccessAdministrator(user)) return res.status(403).json({ message: 'Only an admin or super admin can waive a payment penalty.' });
+    if (penaltyHandling === 'waive' && !isFullAccessAdministrator(user)) return res.status(403).json({ message: 'Only Super Admin can waive a payment penalty.' });
 
     if (paymentDate > todayDateOnly()) return res.status(400).json({ message: 'Future payment dates are blocked.' });
     if (amount <= 0) return res.status(400).json({ message: 'Payment amount must be greater than 0.' });
@@ -1050,7 +1050,7 @@ export const updateLotProjectListingPayment = async (req, res) => {
       const hasActivePaymentPenaltyWaiver = existingPaymentPenaltyWaiver &&
         !['cancelled', 'restored'].includes(String(existingPaymentPenaltyWaiver.status || '').toLowerCase());
       if (hasActivePaymentPenaltyWaiver && !isFullAccessAdministrator(user)) {
-        throw createHttpError(403, 'This payment has a linked penalty waiver. Only an admin or super admin can edit it.');
+        throw createHttpError(403, 'This payment has a linked penalty waiver. Only Super Admin can edit it.');
       }
 
       const amount = parseMoneyValue(req.body.amount);
@@ -1085,7 +1085,7 @@ export const updateLotProjectListingPayment = async (req, res) => {
       if (!['apply', 'waive'].includes(penaltyHandling)) throw createHttpError(400, 'Penalty handling must be apply or waive.');
       if (penaltyHandling === 'waive' && !scheduleId) throw createHttpError(400, 'A specific SOA row is required to waive a payment penalty.');
       if (penaltyHandling === 'waive' && !penaltyWaiverReason) throw createHttpError(400, 'Reason is required when waiving the penalty for a payment.');
-      if (penaltyHandling === 'waive' && !isFullAccessAdministrator(user)) throw createHttpError(403, 'Only an admin or super admin can waive a payment penalty.');
+      if (penaltyHandling === 'waive' && !isFullAccessAdministrator(user)) throw createHttpError(403, 'Only Super Admin can waive a payment penalty.');
 
       if (paymentDate > todayDateOnly()) throw createHttpError(400, 'Future payment dates are blocked.');
       if (amount <= 0) throw createHttpError(400, 'Payment amount must be greater than 0.');
@@ -1213,7 +1213,7 @@ export const updateLotProjectListingPayment = async (req, res) => {
         entityId: String(paymentId),
         entityLabel: `${referenceId || existingPayment.lot_project_payment_reference_id || `Payment #${paymentId}`} — ${listing.buyer_full_name || listing.lot_project_listing_unit_id}`,
         title: 'Corrected verified payment',
-        description: `Super Admin corrected a verified payment for ${listing.buyer_full_name || listing.lot_project_listing_unit_id} after password and email-code verification.`,
+        description: `An authorized user corrected a verified payment for ${listing.buyer_full_name || listing.lot_project_listing_unit_id} after password and email-code verification.`,
         metadata: {
           listingId: listing.lot_project_listing_id,
           unitId: listing.lot_project_listing_unit_id,
@@ -1650,7 +1650,7 @@ export const waiveSeparateLegalMiscFee = async (req, res) => {
 
     if (!user) throw createHttpError(401, 'Authentication is required.');
     if (!isFullAccessAdministrator(user)) {
-      throw createHttpError(403, 'Only an admin or super admin can waive a Legal / Misc Fee.');
+      throw createHttpError(403, 'Only Super Admin can waive a Legal / Misc Fee.');
     }
     if (!project) throw createHttpError(404, 'Lot project not found.');
     if (!listingLookup || !scheduleId) throw createHttpError(400, 'Listing and Legal / Misc Fee row are required.');
@@ -1948,7 +1948,7 @@ export const deleteLotProjectListingPayment = async (req, res) => {
         entityId: String(paymentId),
         entityLabel: `${existingPayment.lot_project_payment_reference_id || `Payment #${paymentId}`} — ${listing.buyer_full_name || listing.lot_project_listing_unit_id}`,
         title: 'Voided verified payment',
-        description: `Super Admin voided a verified payment for ${listing.buyer_full_name || listing.lot_project_listing_unit_id} after password and email-code verification.`,
+        description: `An authorized user voided a verified payment for ${listing.buyer_full_name || listing.lot_project_listing_unit_id} after password and email-code verification.`,
         metadata: {
           listingId: listing.lot_project_listing_id,
           unitId: listing.lot_project_listing_unit_id,
@@ -2615,3 +2615,4 @@ export const restorePaymentSchedulePenaltyWaiver = async (req, res) => {
     connection.release();
   }
 };
+

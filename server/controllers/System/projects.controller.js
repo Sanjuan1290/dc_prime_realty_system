@@ -71,7 +71,7 @@ import {
 import { writeAuditLog } from './auditLogs.controller.js';
 import { createProjectStorageCode } from '../../services/storageCodes.service.js';
 import { resolveDocumentRequiredFlag, resolveDocumentResponsibleParty } from '../../utils/documentRequirement.js';
-import { getAccessibleProjectIds, grantAdminProjectAccess } from '../../services/adminProjectAccess.service.js';
+import { getAccessibleProjectIds, grantAdminProjectAccess } from '../../services/projectAccess.service.js';
 
 export const getSystemDashboardSummary = async (req, res) => {
   try {
@@ -1017,3 +1017,4 @@ export const getLotProjectDocumentCompliance = async (req, res) => {
     connection.release();
   }
 };
+

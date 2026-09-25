@@ -130,7 +130,7 @@ const Settings = () => {
               setAlert({ type: 'info', message: 'Edit Settings opened.' })
             }}
             disabled={!canEdit || isLoading || updateSettingsMutation.isPending}
-            title={!canEdit ? 'Only the Super Admin can change Lot Project Settings. Saving requires the Super Admin password and email verification code.' : 'Edit protected project settings'}
+            title={!canEdit ? 'You do not have permission to edit Lot Project Settings.' : 'Edit protected project settings'}
             className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none"
           >
             <FiEdit2 className="h-4 w-4" />
@@ -140,7 +140,7 @@ const Settings = () => {
       </section>
 
       {!canEdit && !isLoading ? (
-        <StatusAlert type="info" message="Project Settings are owner-controlled. Only the Super Admin can save changes after password and email verification." />
+        <StatusAlert type="info" message="You have view-only access to Project Settings." />
       ) : null}
 
       <section className="grid gap-4 md:grid-cols-2">
@@ -197,10 +197,11 @@ const Settings = () => {
       {pendingAuthorization ? (
         <SettingsAuthorizationModal
           title="Authorize Project Settings Change"
-          description="Lot Project Settings are owner-controlled. Verify the current Super Admin password, reason, and email code before the final review."
+          description="Verify your current account password, reason, and email code before the final review."
           codeEndpoint={`/projects/lot-projects/${projectSlug}/settings/code`}
           settingsPayload={pendingAuthorization}
           isSaving={updateSettingsMutation.isPending}
+          authorizationLabel="Current Account"
           onClose={() => !updateSettingsMutation.isPending && setPendingAuthorization(null)}
           onConfirm={(authorizedPayload) => updateSettingsMutation.mutate(authorizedPayload)}
         />
@@ -210,3 +211,4 @@ const Settings = () => {
 }
 
 export default Settings
+

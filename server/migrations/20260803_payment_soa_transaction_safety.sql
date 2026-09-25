@@ -7,3 +7,4 @@ ALTER TABLE lot_project_payments
 
 ALTER TABLE lot_project_payments
   ADD UNIQUE KEY uq_lot_project_payment_request_key (lot_project_payment_request_key);
+

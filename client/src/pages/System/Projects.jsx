@@ -16,7 +16,7 @@ import ReadOnlyNotice from '../../components/Shared/ReadOnlyNotice'
 import useCurrentUser from '../../utils/useCurrentUser'
 import AddLotProjectModal from '../../components/System/projectComponents/AddLotProjectModal'
 import { useFetch, useFetchDelete, useFetchPatch, useFetchPost, getDoubleCheckNotice } from '../../utils/useFetch'
-import { isFullAccessAdministrator } from '../../config/permissions'
+import { hasPermission, PERMISSIONS } from '../../config/permissions'
 
 const StatCard = ({ label, value }) => (
   <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -89,7 +89,11 @@ const normalizeProject = (project) => ({
 
 const Projects = () => {
   const { data: currentUserData } = useCurrentUser()
-  const canManage = isFullAccessAdministrator(currentUserData?.user)
+  const user = currentUserData?.user
+  const canCreate = hasPermission(user, PERMISSIONS.SYSTEM_PROJECTS_CREATE)
+  const canEdit = hasPermission(user, PERMISSIONS.SYSTEM_PROJECTS_EDIT)
+  const canDelete = hasPermission(user, PERMISSIONS.SYSTEM_PROJECTS_DELETE)
+  const canMutate = canCreate || canEdit || canDelete
   const navigate = useNavigate()
   const queryClient = useQueryClient()
 
@@ -250,7 +254,7 @@ const Projects = () => {
     onError: (error, project) => {
       const message = error.message || 'Failed to delete project.'
 
-      if (message.toLowerCase().includes('listed unit')) {
+      if (canEdit && message.toLowerCase().includes('listed unit')) {
         const changeStatus = window.confirm(`${message}\n\nChange this project status to inactive instead?`)
 
         if (changeStatus) {
@@ -338,7 +342,7 @@ const Projects = () => {
 
   return (
     <main className="flex flex-col gap-6">
-      {!canManage ? <ReadOnlyNotice message="This account can review projects but cannot add, delete, or change project status." /> : null}
+      {!canMutate ? <ReadOnlyNotice message="This account has view-only project access." /> : null}
 
       {alert ? (
         <StatusAlert
@@ -387,7 +391,7 @@ const Projects = () => {
           icon={FiMap}
         />
 
-        {canManage ? (
+        {canCreate ? (
         <div className="flex flex-col gap-2 sm:flex-row">
           <button
             type="button"
@@ -526,7 +530,7 @@ const Projects = () => {
                           Details
                         </button>
 
-                        {canManage ? (
+                        {canDelete ? (
                           <button type="button" onClick={() => handleDelete(project.id)} disabled={deleteProjectMutation.isPending || changeStatusMutation.isPending} className="inline-flex h-9 items-center gap-2 rounded-lg bg-red-600 px-3 text-xs font-black text-white transition hover:bg-red-700 disabled:opacity-60"><FiTrash2 className="h-3.5 w-3.5" />{isDeleting ? 'Deleting...' : 'Delete'}</button>
                         ) : <span className="inline-flex h-9 items-center px-3 text-xs font-semibold text-slate-400">View only</span>}
                       </div>
@@ -652,7 +656,7 @@ const Projects = () => {
         </div>
       </section>
 
-      {showLotModal && canManage ? (
+      {showLotModal && canCreate ? (
         <AddLotProjectModal
           documents={documents}
           templates={templates}
@@ -668,3 +672,4 @@ const Projects = () => {
 }
 
 export default Projects
+

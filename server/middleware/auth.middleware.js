@@ -1,7 +1,7 @@
 import bcrypt from 'bcrypt';
 import { getAuthenticatedUser } from '../controllers/Lot_Projects/_shared/lotProject.shared.js';
 import { roleHasPermission } from '../config/permissions.js';
-import { canAccessProject } from '../services/adminProjectAccess.service.js';
+import { canAccessProject } from '../services/projectAccess.service.js';
 import { db } from '../db/connect.js';
 
 const denied = (res, status, message) => res.status(status).json({ success: false, message });
@@ -38,6 +38,39 @@ export const requirePermission = (permission) => (req, res, next) => {
 };
 
 
+
+
+export const requireProjectPermission = (permission, {
+  projectIdParam = 'id',
+  projectSlugParam = null,
+} = {}) => async (req, res, next) => {
+  try {
+    if (!roleHasPermission(req.authUser, permission)) {
+      return denied(res, 403, 'You do not have permission to perform this action.');
+    }
+
+    let projectId = 0;
+    if (projectSlugParam) {
+      const slug = String(req.params?.[projectSlugParam] || '').trim();
+      if (!slug) return denied(res, 400, 'Invalid project slug.');
+      const [rows] = await db.query('SELECT lot_project_id FROM lot_projects WHERE lot_project_slug = ? LIMIT 1', [slug]);
+      projectId = Number(rows[0]?.lot_project_id || 0);
+      if (!projectId) return denied(res, 404, 'Lot project not found.');
+    } else {
+      projectId = Number(req.params?.[projectIdParam] || 0);
+      if (!projectId) return denied(res, 400, 'Invalid project id.');
+    }
+
+    if (!(await canAccessProject(req.authUser, projectId))) {
+      return denied(res, 403, 'You do not have access to this project.');
+    }
+
+    req.authorizedLotProjectId = projectId;
+    return next();
+  } catch (error) {
+    return denied(res, 500, error?.message || 'Unable to verify project permission.');
+  }
+};
 
 export const requireProjectAccessBySlug = async (req, res, next, projectSlug) => {
   try {
@@ -100,3 +133,4 @@ export const requireCurrentPassword = ({
 
   return next();
 };
+

@@ -1,12 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
-import { isFullAccessAdministrator } from '../config/permissions'
+import { hasPermission, PERMISSIONS } from '../config/permissions'
 import { useFetch } from './useFetch'
 
 const isDocumentAttentionItem = (item = {}) =>
   Number(item.pendingDocuments || 0) > 0 || Number(item.awaitingApprovalDocuments || 0) > 0
 
 const useNotificationBadge = (user) => {
-  const enabled = Boolean(user) && !user?.must_change_password && isFullAccessAdministrator(user)
+  const enabled = Boolean(user) && !user?.must_change_password && hasPermission(user, PERMISSIONS.SYSTEM_NOTIFICATIONS_VIEW)
 
   const paymentQuery = useQuery({
     queryKey: ['system-payment-notifications', 'all', ''],
@@ -46,3 +46,4 @@ const useNotificationBadge = (user) => {
 }
 
 export default useNotificationBadge
+

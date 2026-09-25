@@ -1,5 +1,6 @@
 import { db } from '../../db/connect.js';
 import { CONFIGURABLE_SYSTEM_ROLES, PERMISSIONS, SYSTEM_USER_ROLES } from '../../config/permissions.js';
+import { RECOMMENDED_ROLE_PERMISSIONS } from '../../config/recommendedRolePermissions.js';
 import {
   copyRoleDefaultsToUser,
   getAllRoleDefaults,
@@ -10,7 +11,7 @@ import {
 import {
   getUserProjectAccess,
   replaceUserProjectAccess,
-} from '../../services/adminProjectAccess.service.js';
+} from '../../services/projectAccess.service.js';
 import { writeAuditLog } from './auditLogs.controller.js';
 
 const permissionCatalog = [
@@ -39,6 +40,7 @@ export const getRoleAccessDefaults = async (_req, res) => {
     return res.json({
       roles: CONFIGURABLE_SYSTEM_ROLES,
       defaults,
+      recommendedDefaults: RECOMMENDED_ROLE_PERMISSIONS,
       catalog: permissionCatalog,
       superAdmin: { role: 'super_admin', fullAccess: true, locked: true },
     });
@@ -108,6 +110,7 @@ export const updateUserAccessControl = async (req, res) => {
     const user = rows[0];
     if (!user) throw Object.assign(new Error('User not found.'), { statusCode: 404 });
     if (user.role === 'super_admin') throw Object.assign(new Error('Super Admin access is always full and cannot be restricted.'), { statusCode: 409 });
+    if (user.status !== 'active') throw Object.assign(new Error('This historical account is permanently deactivated and its access can no longer be changed.'), { statusCode: 409, code: 'ACCOUNT_PERMANENTLY_DEACTIVATED' });
     if (!CONFIGURABLE_SYSTEM_ROLES.includes(user.role)) throw Object.assign(new Error('This account does not use the internal system permission matrix.'), { statusCode: 400 });
     const permissions = await replaceUserPermissions(connection, {
       userId,
@@ -132,7 +135,7 @@ export const updateUserAccessControl = async (req, res) => {
     return res.json({ message: 'User access updated. Existing sessions were invalidated.', permissions, ...projectAccess });
   } catch (error) {
     try { await connection.rollback(); } catch {}
-    return res.status(error?.statusCode || 500).json({ message: error?.message || 'Failed to update user access.' });
+    return res.status(error?.statusCode || 500).json({ code: error?.code, message: error?.message || 'Failed to update user access.' });
   } finally { connection.release(); }
 };
 
@@ -141,21 +144,23 @@ export const applyRoleDefaultsToUser = async (req, res) => {
   try {
     const userId = Number(req.params.id || 0);
     await connection.beginTransaction();
-    const [rows] = await connection.query('SELECT id, account_code, email, role FROM users WHERE id = ? LIMIT 1 FOR UPDATE', [userId]);
+    const [rows] = await connection.query('SELECT id, account_code, email, role, status FROM users WHERE id = ? LIMIT 1 FOR UPDATE', [userId]);
     const user = rows[0];
     if (!user) throw Object.assign(new Error('User not found.'), { statusCode: 404 });
+    if (user.status !== 'active') throw Object.assign(new Error('This historical account is permanently deactivated and its permissions can no longer be reset.'), { statusCode: 409, code: 'ACCOUNT_PERMANENTLY_DEACTIVATED' });
     if (!CONFIGURABLE_SYSTEM_ROLES.includes(user.role)) throw Object.assign(new Error('This account does not have editable role defaults.'), { statusCode: 400 });
     const permissions = await copyRoleDefaultsToUser(connection, { userId, role: user.role, changedByUserId: req.authUser?.id || null });
     await connection.query('UPDATE users SET auth_version = COALESCE(auth_version, 0) + 1 WHERE id = ?', [userId]);
     await writeAuditLog(connection, req, {
       action: 'update', module: 'Access Control', entityType: 'user_access', entityId: String(userId),
-      entityLabel: user.account_code || user.email, title: 'Applied role defaults to user',
-      description: `Applied current ${user.role} defaults to ${user.account_code || user.email}.`, metadata: { role: user.role, permissions },
+      entityLabel: user.account_code || user.email, title: 'Reset user permissions to role default',
+      description: `Reset ${user.account_code || user.email} permissions to the current ${user.role} role default. Project scope was not changed.`, metadata: { role: user.role, permissions },
     });
     await connection.commit();
-    return res.json({ message: 'Current role defaults applied to this user.', permissions });
+    return res.json({ message: 'Permissions reset to the current role default. Project scope was not changed.', permissions });
   } catch (error) {
     try { await connection.rollback(); } catch {}
-    return res.status(error?.statusCode || 500).json({ message: error?.message || 'Failed to apply role defaults.' });
+    return res.status(error?.statusCode || 500).json({ code: error?.code, message: error?.message || 'Failed to apply role defaults.' });
   } finally { connection.release(); }
 };
+

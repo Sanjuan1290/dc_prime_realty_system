@@ -38,3 +38,4 @@ WHERE proof.proof_status = 'active'
     '%/protected/PRJ-', proof.lot_project_id,
     '/LST-', proof.lot_project_listing_id, '/%'
   );
+

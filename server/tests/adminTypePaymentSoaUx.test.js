@@ -8,34 +8,37 @@ const dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(dirname, '..', '..');
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
 
-test('Admin uses the same SystemLayout and full navigation as Super Admin', () => {
+test('all internal system roles share SystemLayout while navigation is permission-aware', () => {
   const app = read('client/src/App.jsx');
   const systemLayout = read('client/src/layout/SystemLayout.jsx');
   const lotLayout = read('client/src/layout/LotLayout.jsx');
 
-  assert.match(app, /<Route path="\/portal\/admin" element=\{<SystemLayout \/>\}/);
-  assert.doesNotMatch(app, /<Route path="\/portal\/admin" element=\{<AdminLayout \/>\}/);
-  assert.match(systemLayout, /isFullAccessAdministrator\(user\)/);
-  assert.match(systemLayout, /user\?\.role === "admin" \? "Admin"/);
-  assert.match(lotLayout, /isFullAccessAdministrator\(user\)/);
+  assert.match(app, /const systemRoleRoutes = SYSTEM_USER_ROLES\.map/);
+  assert.match(app, /path=\{`\/portal\/\$\{role\}`\} element=\{<SystemLayout \/>\}/);
+  assert.doesNotMatch(app, /AdminLayout/);
+  assert.match(systemLayout, /hasPermission\(user, item\.permission\)/);
+  assert.match(lotLayout, /hasPermission\(user, item\.permission\)/);
 });
 
-test('Admin user forms use project access instead of legacy Admin Type', () => {
+test('system-user access forms use generalized project scope instead of legacy Admin Type', () => {
   const clientPermissions = read('client/src/config/permissions.js');
-  const createUser = read('client/src/components/System/userComponents/CreateUserModal.jsx');
-  const editUser = read('client/src/components/System/userComponents/EditUserModal.jsx');
+  const createUser = read('client/src/components/System/userComponents/CreateSystemUserModal.jsx');
+  const editUser = read('client/src/components/System/userComponents/EditSystemUserModal.jsx');
+  const accessModal = read('client/src/components/System/userComponents/UserAccessModal.jsx');
   const accessFields = read('client/src/components/System/userComponents/AdminProjectAccessFields.jsx');
-  const migration = read('server/migrations/20260914_admin_project_access.sql');
+  const migration = read('server/migrations/20260925_system_rbac_roles_and_access.sql');
 
   assert.doesNotMatch(clientPermissions, /ADMIN_TYPES/);
   assert.match(createUser, /AdminProjectAccessFields/);
-  assert.match(editUser, /AdminProjectAccessFields/);
-  assert.match(accessFields, /Projects this Admin can manage/);
+  assert.match(accessModal, /AdminProjectAccessFields/);
+  assert.match(editUser, /Role is locked after creation/);
+  assert.match(accessFields, /Project Access/);
   assert.match(accessFields, /All Projects/);
+  assert.match(accessFields, /Permissions and project scope must both allow an action/);
   assert.doesNotMatch(createUser, />Admin Type</);
   assert.doesNotMatch(editUser, />Admin Type</);
-  assert.match(migration, /admin_project_access/);
-  assert.match(migration, /admin_all_projects/);
+  assert.match(migration, /user_project_access/);
+  assert.match(migration, /all_projects_access/);
 });
 
 test('Payments and SOA show the total amount paid in the summary and statement', () => {
@@ -69,3 +72,4 @@ test('Penalty adjustment wording is understandable without technical correction 
   assert.doesNotMatch(modal, />Reset Correction</);
   assert.doesNotMatch(modal, />Waive Penalty</);
 });
+

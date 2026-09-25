@@ -25,3 +25,4 @@ export const sellerOpportunity = {
     'Commission terms are provided through approved company materials.',
   ],
 }
+

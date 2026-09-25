@@ -60,3 +60,4 @@ CREATE TABLE IF NOT EXISTS `employee_rest_day_assignments` (
 -- Verification
 SELECT COUNT(*) AS `rest_day_assignment_rows`
 FROM `employee_rest_day_assignments`;
+

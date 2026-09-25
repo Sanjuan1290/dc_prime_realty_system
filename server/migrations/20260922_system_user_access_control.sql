@@ -176,3 +176,4 @@ SET account_code = CONCAT(
       '-SA-', LPAD(id, 3, '0')
     )
 WHERE role = 'super_admin' AND account_code IS NULL;
+

@@ -9,48 +9,44 @@ import {
   roleHasPermission,
 } from '../config/permissions.js';
 
-const ordinaryUserRoles = ['admin', 'division_manager', 'sales_director', 'unit_manager', 'sales_agent'];
-const admin = { role: 'admin', admin_type: null };
-const superAdmin = { role: 'super_admin', admin_type: null };
+const admin = { role: 'admin', permissions: [] };
+const superAdmin = { role: 'super_admin', permissions: [] };
 
-test('Admin receives every operational permission except hidden owner-only Data Integrity regardless of legacy Admin Type', () => {
+test('Admin uses persisted per-account permissions and is not an implicit full-access role', () => {
   for (const permission of Object.values(PERMISSIONS)) {
-    const expected = permission !== PERMISSIONS.SYSTEM_DATA_INTEGRITY_VIEW;
-    assert.equal(roleHasPermission(admin, permission), expected, permission);
-    assert.equal(roleHasPermission({ role: 'admin', admin_type: 'admin_1' }, permission), expected, permission);
-    assert.equal(roleHasPermission({ role: 'admin', admin_type: 'admin_2' }, permission), expected, permission);
-    assert.equal(roleHasPermission({ role: 'admin', admin_type: 'admin_3' }, permission), expected, permission);
+    assert.equal(roleHasPermission(admin, permission), false, permission);
   }
 
-  assert.equal(isFullAccessAdministrator(admin), true);
-  assert.equal(isFullAccessAdministrator({ role: 'admin', admin_type: 'admin_1' }), true);
-  assert.equal(isFullAccessAdministrator({ role: 'admin', admin_type: 'admin_2' }), true);
-  assert.equal(isFullAccessAdministrator({ role: 'admin', admin_type: 'admin_3' }), true);
+  const delegated = {
+    role: 'admin',
+    permissions: [PERMISSIONS.SYSTEM_REPORTS_VIEW, PERMISSIONS.LOT_LISTINGS_EDIT],
+  };
+  assert.equal(roleHasPermission(delegated, PERMISSIONS.SYSTEM_REPORTS_VIEW), true);
+  assert.equal(roleHasPermission(delegated, PERMISSIONS.LOT_LISTINGS_EDIT), true);
+  assert.equal(roleHasPermission(delegated, PERMISSIONS.LOT_PAYMENT_DELETE), false);
+  assert.equal(isFullAccessAdministrator(admin), false);
+  assert.equal(isFullAccessAdministrator(delegated), false);
 });
 
-test('Admin manages ordinary accounts but cannot create or change Super Admin accounts', () => {
-  for (const role of ordinaryUserRoles) {
-    assert.equal(canActorManageUserRole(admin, role), true, role);
-    assert.equal(canActorCreateUserRole(admin, role), true, role);
-  }
+test('user-management helpers honor granular permissions while Super Admin targets stay owner-only', () => {
+  const manager = {
+    role: 'admin',
+    permissions: [PERMISSIONS.SYSTEM_USERS_EDIT, PERMISSIONS.SYSTEM_USERS_CREATE],
+  };
 
-  assert.equal(canActorManageUserRole(admin, 'super_admin'), false);
-  assert.equal(canActorCreateUserRole(admin, 'super_admin'), false);
+  assert.equal(canActorManageUserRole(manager, 'admin'), true);
+  assert.equal(canActorManageUserRole(manager, 'marketing'), true);
+  assert.equal(canActorCreateUserRole(manager, 'sales_agent'), true);
+  assert.equal(canActorManageUserRole(manager, 'super_admin'), false);
+  assert.equal(canActorCreateUserRole(manager, 'super_admin'), false);
 
-  for (const currentRole of ordinaryUserRoles) {
-    for (const requestedRole of ordinaryUserRoles) {
-      assert.equal(
-        canActorChangeUserRole(admin, currentRole, requestedRole),
-        true,
-        `${currentRole} -> ${requestedRole}`
-      );
-    }
-    assert.equal(canActorChangeUserRole(admin, currentRole, 'super_admin'), false);
-  }
+  // Existing internal-system roles are immutable; a position change creates a new account.
+  assert.equal(canActorChangeUserRole(manager, 'marketing', 'sales'), false);
+  assert.equal(canActorChangeUserRole(superAdmin, 'marketing', 'sales'), false);
+  assert.equal(canActorChangeUserRole(manager, 'marketing', 'marketing'), true);
 
-  for (const requestedRole of [...ordinaryUserRoles, 'super_admin']) {
-    assert.equal(canActorChangeUserRole(admin, 'super_admin', requestedRole), false);
-  }
+  // Seller hierarchy roles retain their existing role-change behavior.
+  assert.equal(canActorChangeUserRole(manager, 'sales_agent', 'unit_manager'), true);
 });
 
 test('Super Admin retains every permission and owner-only account authority', () => {
@@ -58,9 +54,7 @@ test('Super Admin retains every permission and owner-only account authority', ()
     assert.equal(roleHasPermission(superAdmin, permission), true, permission);
   }
 
-  for (const role of [...ordinaryUserRoles, 'super_admin']) {
-    assert.equal(canActorManageUserRole(superAdmin, role), true, role);
-    assert.equal(canActorCreateUserRole(superAdmin, role), true, role);
-    assert.equal(canActorChangeUserRole(superAdmin, role, role), true, role);
-  }
+  assert.equal(isFullAccessAdministrator(superAdmin), true);
+  assert.equal(canActorManageUserRole(superAdmin, 'super_admin'), true);
+  assert.equal(canActorCreateUserRole(superAdmin, 'super_admin'), true);
 });

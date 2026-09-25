@@ -9,7 +9,7 @@ import { FaUserPlus } from "react-icons/fa";
 import { FiCalendar, FiFileText, FiLoader, FiPrinter, FiRefreshCw, FiSearch, FiUsers, FiX } from "react-icons/fi";
 import { formatDateTime } from "../../utils/formatDateTime";
 import {useFetch as fetchApi, useFetchPost as postApi, getDoubleCheckNotice} from "../../utils/useFetch";
-import { isFullAccessAdministrator } from "../../config/permissions";
+import { PERMISSIONS, hasPermission } from "../../config/permissions";
 import { openSignedReceiptPrintPreview } from "../../components/Lot_Projects/ListingProfileComponents/Printouts/signedReceiptPrint";
 import { canOpenMalwareScannedFile, getMalwareScanStatus, malwareScanLabel } from "../../utils/cloudinaryUploadSecurity";
 import { safeLocalStorage } from "../../utils/safeStorage";
@@ -104,7 +104,7 @@ const displayOldUnitIds = (value) => {
   return text && text !== "-" ? text : "";
 };
 
-const IncomeRangeReportPanel = ({ seller, sellerId, receipts = EMPTY_LIST, receiptsLoading = false, receiptsError = null }) => {
+const IncomeRangeReportPanel = ({ seller, sellerId, receipts = EMPTY_LIST, receiptsLoading = false, receiptsError = null, canPrint = false }) => {
   const defaultRange = useMemo(() => getIncomeRangePreset("last12"), []);
   const [rangeForm, setRangeForm] = useState(defaultRange);
   const [appliedRange, setAppliedRange] = useState(defaultRange);
@@ -219,7 +219,7 @@ const IncomeRangeReportPanel = ({ seller, sellerId, receipts = EMPTY_LIST, recei
       setRangeAlert({ type: "error", message: "The print preview could not be prepared because browser storage is unavailable. Allow site storage or try another browser." });
       return;
     }
-    window.open("/portal/super_admin/accredited/proof-of-income/range/print", "_blank");
+    window.open("/portal/accredited/proof-of-income/range/print", "_blank");
   };
 
   const printAllSignedReceipts = () => {
@@ -321,7 +321,7 @@ const IncomeRangeReportPanel = ({ seller, sellerId, receipts = EMPTY_LIST, recei
                 {reportSeller.full_name || seller?.full_name || "Seller"} · {appliedRange.startDate} to {appliedRange.endDate}
               </p>
             </div>
-            <div className="flex flex-wrap justify-end gap-2">
+            {canPrint ? <div className="flex flex-wrap justify-end gap-2">
               <button
                 type="button"
                 onClick={printAllUnsignedReceipts}
@@ -342,7 +342,7 @@ const IncomeRangeReportPanel = ({ seller, sellerId, receipts = EMPTY_LIST, recei
                 <FiPrinter className="h-4 w-4" />
                 {`Print All Signed Receipts (${printableSignedReceiptsInRange.length})`}
               </button>
-            </div>
+            </div> : null}
           </div>
 
           {entries.length ? (
@@ -413,7 +413,7 @@ const IncomeRangeReportPanel = ({ seller, sellerId, receipts = EMPTY_LIST, recei
   );
 };
 
-const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
+const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated, canPrint = false, canUpload = false }) => {
   const queryClient = useQueryClient();
   const sellerId = Number(seller?.accredited_seller_id || 0);
   const [selectedCommissionId, setSelectedCommissionId] = useState("");
@@ -497,7 +497,7 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
       setLocalAlert({ type: "error", message: "The print preview could not be prepared because browser storage is unavailable. Allow site storage or try another browser." });
       return;
     }
-    window.open("/portal/super_admin/accredited/proof-of-income/print", "_blank");
+    window.open("/portal/accredited/proof-of-income/print", "_blank");
   };
 
   const openSignedReceiptForPrint = (receipt) => {
@@ -653,6 +653,7 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
               receipts={receipts}
               receiptsLoading={receiptQuery.isLoading}
               receiptsError={receiptQuery.isError ? receiptQuery.error : null}
+              canPrint={canPrint}
             />
           ) : (
             <>
@@ -814,7 +815,7 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
                         <td className="px-4 py-3"><p className="font-black text-slate-800">{receipt.projectName} · {receipt.unitId}</p>{displayOldUnitIds(receipt.oldUnitIds) ? <p className="text-[11px] font-semibold text-slate-400">Old Unit ID: {displayOldUnitIds(receipt.oldUnitIds)}</p> : null}<p className="text-xs font-semibold text-slate-500">{receipt.buyerName || "-"}</p>{receipt.isArchived ? <span className="mt-1 inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-slate-600">Archived cancelled sale</span> : null}</td>
                         <td className="px-4 py-3"><div className="flex flex-wrap gap-1">{(receipt.releases || []).map((release) => <span key={release.releaseId} className="rounded-lg bg-blue-50 px-2 py-1 text-[11px] font-black text-blue-700">{release.stage} · {Number(release.triggerPercent || 0).toFixed(0)}% cumulative</span>)}</div></td>
                         <td className="px-4 py-3 text-right font-black text-emerald-700">{money(receipt.totalAmount)}</td>
-                        <td className="px-4 py-3 text-right"><div className="flex flex-wrap justify-end gap-2"><button type="button" onClick={() => setPrintChoiceReceipt(receipt)} className="inline-flex h-9 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-700 transition hover:bg-blue-100"><FiPrinter className="h-4 w-4" />Print</button>{!receipt.isArchived ? <button type="button" onClick={() => setSignedReceipt(receipt)} className={`inline-flex h-9 items-center gap-2 rounded-xl border px-3 text-xs font-black transition ${receipt.signedCopy ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}><FiFileText className="h-4 w-4" />{receipt.signedCopy ? 'Signed Copy' : 'Upload Signed'}</button> : null}</div>{receipt.signedCopy ? <p className={`mt-1 text-[10px] font-black ${receipt.signedCopy.malwareScanStatus === 'approved' ? 'text-emerald-700' : receipt.signedCopy.malwareScanStatus === 'rejected' || receipt.signedCopy.malwareScanStatus === 'error' ? 'text-red-700' : 'text-amber-700'}`}>{receipt.signedCopy.malwareScanStatus === 'approved' ? 'Signed copy ready' : receipt.signedCopy.malwareScanStatus === 'pending' ? 'Security scan in progress' : receipt.signedCopy.malwareScanStatus === 'rejected' ? 'Signed copy blocked' : receipt.signedCopy.malwareScanStatus === 'error' ? 'Security scan error' : 'Not security scanned'}</p> : null}</td>
+                        <td className="px-4 py-3 text-right"><div className="flex flex-wrap justify-end gap-2">{canPrint ? <button type="button" onClick={() => setPrintChoiceReceipt(receipt)} className="inline-flex h-9 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-700 transition hover:bg-blue-100"><FiPrinter className="h-4 w-4" />Print</button> : null}{!receipt.isArchived && (canUpload || receipt.signedCopy) ? <button type="button" onClick={() => setSignedReceipt(receipt)} className={`inline-flex h-9 items-center gap-2 rounded-xl border px-3 text-xs font-black transition ${receipt.signedCopy ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}><FiFileText className="h-4 w-4" />{receipt.signedCopy ? 'Signed Copy' : 'Upload Signed'}</button> : null}</div>{receipt.signedCopy ? <p className={`mt-1 text-[10px] font-black ${receipt.signedCopy.malwareScanStatus === 'approved' ? 'text-emerald-700' : receipt.signedCopy.malwareScanStatus === 'rejected' || receipt.signedCopy.malwareScanStatus === 'error' ? 'text-red-700' : 'text-amber-700'}`}>{receipt.signedCopy.malwareScanStatus === 'approved' ? 'Signed copy ready' : receipt.signedCopy.malwareScanStatus === 'pending' ? 'Security scan in progress' : receipt.signedCopy.malwareScanStatus === 'rejected' ? 'Signed copy blocked' : receipt.signedCopy.malwareScanStatus === 'error' ? 'Security scan error' : 'Not security scanned'}</p> : null}</td>
                       </tr>
                     )) : <tr><td colSpan="5" className="px-4 py-8 text-center font-semibold text-slate-500">{receiptSearch.trim() && receipts.length ? "No generated receipts match this search." : "No generated receipts yet."}</td></tr>}
                   </tbody>
@@ -877,7 +878,8 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
           recordLabel={`Proof of Income · ${signedReceipt.referenceNumber || `Receipt #${signedReceipt.receiptId}`}`}
           category="Signed Proof of Income"
           basePath={`/accredited/${sellerId}/proof-of-income-receipts/${signedReceipt.receiptId}/signed-copy`}
-          allowDelete
+          readOnly={!canUpload}
+          allowDelete={canUpload}
           deleteLabel="Delete Signed Copy"
           onClose={() => setSignedReceipt(null)}
           onChanged={() => {
@@ -891,7 +893,10 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated }) => {
 
 const Accredited = () => {
   const { data: currentUserData } = useCurrentUser();
-  const canManage = isFullAccessAdministrator(currentUserData?.user);
+  const actor = currentUserData?.user;
+  const canPrint = hasPermission(actor, PERMISSIONS.SYSTEM_ACCREDITED_PRINT);
+  const canUploadProof = hasPermission(actor, PERMISSIONS.SYSTEM_ACCREDITED_UPLOAD_PROOF);
+  const canOpenProofWorkspace = canPrint || canUploadProof;
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
@@ -941,7 +946,7 @@ const Accredited = () => {
     <main className="flex flex-col gap-6">
       <PageHeader title="Accredited Sellers" description="In-house sellers and External Group accounts, group assignments, reporting chains, and commission receipts." icon={FaUserPlus} />
 
-      {!canManage ? <ReadOnlyNotice message="Admin can review accredited accounts, reporting chains, and inherited group commission structures. Proof-of-income receipt creation is restricted to Super Admin." /> : null}
+      {!canOpenProofWorkspace ? <ReadOnlyNotice message="You have view-only access to accredited seller records." /> : null}
       {alert ? <StatusAlert type={alert.type} message={alert.message} onClose={alert.type === "loading" ? undefined : () => setAlert(null)} /> : null}
       {isLoading ? <StatusAlert type="loading" message="Loading accredited sellers..." /> : null}
       {!isLoading && isFetching ? <StatusAlert type="info" message="Refreshing accredited sellers..." /> : null}
@@ -981,7 +986,7 @@ const Accredited = () => {
                   <p className="font-semibold text-slate-700">{seller.seller_group_name || "No group"}</p>
                   <p className="text-slate-600">{seller.reports_under_name || "Direct to Developer"}</p>
                   <div><span className={`w-fit rounded-full border px-3 py-1 text-xs font-bold capitalize ${seller.accredited_seller_status === "active" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-slate-50 text-slate-500"}`}>{seller.accredited_seller_status}</span><p className="mt-1 text-xs text-slate-500">{seller.accredited_seller_updated_at ? formatDateTime(seller.accredited_seller_updated_at) : "—"}</p></div>
-                  <div className="flex flex-wrap gap-2">{canManage ? <button type="button" onClick={() => handlePrintProof(seller)} className="inline-flex min-h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50"><FiPrinter className="h-4 w-4" />Print Proof of Income</button> : <span className="text-xs font-semibold text-slate-400">View only</span>}</div>
+                  <div className="flex flex-wrap gap-2">{canOpenProofWorkspace ? <button type="button" onClick={() => handlePrintProof(seller)} className="inline-flex min-h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50"><FiPrinter className="h-4 w-4" />Proof of Income</button> : <span className="text-xs font-semibold text-slate-400">View only</span>}</div>
                 </div>
               );
             })}
@@ -991,9 +996,11 @@ const Accredited = () => {
         <div className="flex flex-col gap-3 border-t border-slate-200 p-4 md:flex-row md:items-center md:justify-between"><p className="text-sm font-semibold text-slate-500">Showing page {pagination.page} of {pagination.totalPages} • {pagination.total} records</p><div className="flex items-center gap-2"><select value={limit} onChange={(event) => { setLimit(Number(event.target.value)); setPage(1); }} className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700"><option value={10}>10</option><option value={25}>25</option><option value={50}>50</option></select><button disabled={!pagination.hasPrev} onClick={() => setPage((current) => Math.max(current - 1, 1))} className="h-10 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50">Prev</button><button disabled={!pagination.hasNext} onClick={() => setPage((current) => current + 1)} className="h-10 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50">Next</button></div></div>
       </section>
 
-      {proofSeller && canManage ? (
+      {proofSeller && canOpenProofWorkspace ? (
         <ProofOfIncomeReceiptModal
           seller={proofSeller}
+          canPrint={canPrint}
+          canUpload={canUploadProof}
           onClose={() => setProofSeller(null)}
           onGenerated={(result) => setAlert({ type: "success", message: result?.message || "Proof of income receipt generated." })}
         />
@@ -1003,3 +1010,4 @@ const Accredited = () => {
 };
 
 export default Accredited;
+

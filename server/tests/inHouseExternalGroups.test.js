@@ -66,16 +66,18 @@ test('reservation and reports include External Groups as one commission recipien
   assert.match(proof, /seller\.seller_group_name/);
 });
 
-test('users page separates In-House and External Group management', async () => {
+test('system-user management stays separate from accredited seller group workflows', async () => {
   const [users, app, permissions] = await Promise.all([
     readSource('../../client/src/pages/System/Users.jsx'),
     readSource('../../client/src/App.jsx'),
     readSource('../config/permissions.js'),
   ]);
-  assert.match(users, />In-House Group<\/NavLink>/);
-  assert.match(users, />External Group<\/NavLink>/);
-  assert.match(users, /Managed in External Groups/);
+  assert.match(users, /System Users/);
+  assert.match(users, /Accredited sellers are managed separately/);
+  assert.doesNotMatch(users, /division_manager|sales_director|unit_manager|sales_agent|external_group/);
   assert.match(app, /users\/groups\/in-house/);
   assert.match(app, /users\/groups\/external/);
+  assert.match(permissions, /SELLER_USER_ROLES/);
   assert.match(permissions, /'external_group'/);
 });
+

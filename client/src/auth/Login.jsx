@@ -5,22 +5,24 @@ import useCurrentUser from '../utils/useCurrentUser'
 import StatusAlert from '../components/Shared/StatusAlert'
 import ForgotPasswordModal from './ForgotPasswordModal'
 import { requestApi } from '../utils/apiClient'
+import { getFirstAllowedSystemPath } from '../config/permissions'
 
-const REMEMBERED_EMAIL_KEY = 'dc_prime_remembered_email'
+const REMEMBERED_IDENTIFIER_KEY = 'dc_prime_remembered_identifier'
+const LEGACY_REMEMBERED_EMAIL_KEY = 'dc_prime_remembered_email'
 
-const getRememberedEmail = () => {
+const getRememberedIdentifier = () => {
   try {
-    return window.localStorage.getItem(REMEMBERED_EMAIL_KEY) || ''
+    return window.localStorage.getItem(REMEMBERED_IDENTIFIER_KEY) || window.localStorage.getItem(LEGACY_REMEMBERED_EMAIL_KEY) || ''
   } catch {
     return ''
   }
 }
 
 const Login = () => {
-  const rememberedEmail = getRememberedEmail()
-  const [email, setEmail] = useState(rememberedEmail)
+  const rememberedIdentifier = getRememberedIdentifier()
+  const [identifier, setIdentifier] = useState(rememberedIdentifier)
   const [password, setPassword] = useState('')
-  const [rememberMe, setRememberMe] = useState(Boolean(rememberedEmail))
+  const [rememberMe, setRememberMe] = useState(Boolean(rememberedIdentifier))
   const [showForgotPassword, setShowForgotPassword] = useState(false)
   const [notice, setNotice] = useState(null)
 
@@ -38,13 +40,18 @@ const Login = () => {
     mutationKey: ['currentUser'],
     mutationFn: () => requestApi('/user/login', {
       method: 'POST',
-      body: JSON.stringify({ email, password, rememberMe }),
+      body: JSON.stringify({ identifier, password, rememberMe }),
       confirmationHandled: 'technical',
     }),
     onSuccess: (data) => {
       try {
-        if (rememberMe) window.localStorage.setItem(REMEMBERED_EMAIL_KEY, email.trim())
-        else window.localStorage.removeItem(REMEMBERED_EMAIL_KEY)
+        if (rememberMe) {
+          window.localStorage.setItem(REMEMBERED_IDENTIFIER_KEY, identifier.trim())
+          window.localStorage.removeItem(LEGACY_REMEMBERED_EMAIL_KEY)
+        } else {
+          window.localStorage.removeItem(REMEMBERED_IDENTIFIER_KEY)
+          window.localStorage.removeItem(LEGACY_REMEMBERED_EMAIL_KEY)
+        }
       } catch {
         // The secure HTTP-only cookie still controls the authenticated session.
       }
@@ -63,7 +70,7 @@ const Login = () => {
         navigate('/portal/change-password', { replace: true })
         return
       }
-      navigate(`/portal/${user.role}`, { replace: true })
+      navigate(getFirstAllowedSystemPath(user), { replace: true })
     },
   })
 
@@ -93,7 +100,7 @@ const Login = () => {
   }
 
   if (currentUser?.user?.must_change_password) return <Navigate to="/portal/change-password" replace />
-  if (currentUser?.user) return <Navigate to={`/portal/${currentUser.user.role}`} replace />
+  if (currentUser?.user) return <Navigate to={getFirstAllowedSystemPath(currentUser.user)} replace />
 
   return (
     <>
@@ -156,8 +163,8 @@ const Login = () => {
 
                 <div className="space-y-5">
                   <label className="block">
-                    <span className="mb-2 block text-sm font-semibold text-slate-700">Email</span>
-                    <input type="email" required placeholder="admin@gmail.com" onChange={(event) => setEmail(event.currentTarget.value)} value={email} autoComplete="email" className="h-11 w-full rounded-lg border border-slate-300 bg-white px-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-600 focus:ring-4 focus:ring-blue-100" />
+                    <span className="mb-2 block text-sm font-semibold text-slate-700">Email or Account Code</span>
+                    <input type="text" required placeholder="name@example.com or SURNAME-ADM-001" onChange={(event) => setIdentifier(event.currentTarget.value)} value={identifier} autoComplete="username" className="h-11 w-full rounded-lg border border-slate-300 bg-white px-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-600 focus:ring-4 focus:ring-blue-100" />
                   </label>
 
                   <label className="block">
@@ -193,10 +200,10 @@ const Login = () => {
 
       {showForgotPassword ? (
         <ForgotPasswordModal
-          initialEmail={email}
+          initialEmail={identifier.includes('@') ? identifier : ''}
           onClose={() => setShowForgotPassword(false)}
           onComplete={({ email: resetEmail, message }) => {
-            setEmail(resetEmail)
+            setIdentifier(resetEmail)
             setPassword('')
             setShowForgotPassword(false)
             setNotice({ type: 'success', message })
@@ -208,3 +215,4 @@ const Login = () => {
 }
 
 export default Login
+

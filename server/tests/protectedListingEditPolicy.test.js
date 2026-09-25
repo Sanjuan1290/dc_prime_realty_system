@@ -42,9 +42,10 @@ test('listing document requirements lock after reservation on both routes', () =
 });
 
 test('frontend exposes protected administrative edit only to Super Admin and locks contract inputs', () => {
-  assert.match(listingProfile, /canEditListing = Boolean\(!readOnly && \(listingIsFreelyEditableInventory \|\| isSuperAdmin\)\)/);
+  assert.match(listingProfile, /canEditListing = Boolean\(!readOnly && canEditListingPermission && \(listingIsFreelyEditableInventory \|\| isSuperAdmin\)\)/);
   assert.match(unitStatus, /disabled=\{isSaving \|\| !canEditListing\}/);
   assert.match(editModal, /const isProtectedListing = !\['available', 'hold'\]\.includes\(currentStatus\)/);
   assert.match(editModal, /disabled=\{isProtectedListing\}/);
   assert.match(editModal, /Protected listing: pricing, lot area, reservation fee, LMF, interest rate/);
 });
+

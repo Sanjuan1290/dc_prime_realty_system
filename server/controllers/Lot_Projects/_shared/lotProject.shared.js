@@ -4,7 +4,7 @@ import bcrypt from 'bcrypt';
 import { calculateContractPricing, getListingPricingForMode } from './listingPricing.js';
 import { normalizeDocumentResponsibleParty } from '../../../utils/documentRequirement.js';
 import { hydrateUserPermissions } from '../../../services/accessControl.service.js';
-import { getUserProjectAccess } from '../../../services/adminProjectAccess.service.js';
+import { getUserProjectAccess } from '../../../services/projectAccess.service.js';
 
 export { db, jwt, bcrypt };
 
@@ -4512,3 +4512,4 @@ export const addIfColumnExists = async (connection, tableName, columns, values, 
 };
 
 // End of lotProject.shared.js — verified complete.
+

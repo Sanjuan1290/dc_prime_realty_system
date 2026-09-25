@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { db } from '../../db/connect.js';
 import { writeAuditLog } from './auditLogs.controller.js';
 import { columnExists, tableExists } from '../Lot_Projects/_shared/lotProject.shared.js';
-import { canAccessProject, getAccessibleProjectIds } from '../../services/adminProjectAccess.service.js';
+import { canAccessProject, getAccessibleProjectIds } from '../../services/projectAccess.service.js';
 import {
   normalizeSellerGroupType,
   validateGroupFixedRateStructure,
@@ -1518,3 +1518,4 @@ export const updateGroupProjectPool = async (req, res) => {
     connection.release();
   }
 };
+

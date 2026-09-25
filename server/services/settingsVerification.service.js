@@ -40,7 +40,7 @@ export const sendSettingsVerificationCodeEmail = async ({
   settings,
 }) => {
   const companyName = clean(process.env.COMPANY_NAME) || 'D&C Prime Realty';
-  const actorName = clean([actor?.first_name, actor?.middle_name, actor?.last_name].filter(Boolean).join(' ')) || 'Super Admin';
+  const actorName = clean([actor?.first_name, actor?.middle_name, actor?.last_name].filter(Boolean).join(' ')) || 'Authorized User';
   const releaseOne = settingValue(settings, 'releaseDayOne', settingValue(settings, 'defaultReleaseDayOne'));
   const releaseTwo = settingValue(settings, 'releaseDayTwo', settingValue(settings, 'defaultReleaseDayTwo'));
   const systemStatus = settingValue(settings, 'systemStatus', '');
@@ -70,3 +70,4 @@ export const sendSettingsVerificationCodeEmail = async ({
     html: `<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;color:#0f172a"><h2>${escapeHtml(companyName)}</h2><p>Hello ${escapeHtml(actorName)},</p><p>Use this code to authorize the reviewed <strong>${escapeHtml(scopeLabel)}</strong> settings change.</p><div style="font-size:30px;font-weight:800;letter-spacing:8px;padding:18px;background:#fffbeb;border:1px solid #fcd34d;border-radius:12px;text-align:center">${escapeHtml(code)}</div><p><strong>Settings:</strong> ${escapeHtml(entityLabel)}<br/><strong>Release day 1:</strong> ${escapeHtml(releaseOne)}<br/><strong>Release day 2:</strong> ${escapeHtml(releaseTwo)}${systemStatus ? `<br/><strong>System status:</strong> ${escapeHtml(systemStatus)}` : ''}<br/><strong>Reason:</strong> ${escapeHtml(reason)}</p><p style="color:#92400e"><strong>This code is bound to the exact reviewed settings payload. If any value changes, request a new code.</strong></p></div>`,
   });
 };
+

@@ -17,7 +17,7 @@ import {
 import { writeAuditLog } from './auditLogs.controller.js';
 import { PERMISSIONS, roleHasPermission } from '../../config/permissions.js';
 import { getCompanyContactEmail, sendEmail } from '../../services/email.service.js';
-import { canAccessProject, getAccessibleProjectIds } from '../../services/adminProjectAccess.service.js';
+import { canAccessProject, getAccessibleProjectIds } from '../../services/projectAccess.service.js';
 
 const toDateOnly = (value) => {
   if (!value) return '-';
@@ -1583,3 +1583,4 @@ export const getDocumentNotifications = async (req, res) => {
     connection.release();
   }
 };
+

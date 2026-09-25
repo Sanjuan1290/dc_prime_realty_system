@@ -237,3 +237,4 @@ const AttendanceEventModal = ({ event, employees = [], attendanceSettings = {}, 
 }
 
 export default AttendanceEventModal
+

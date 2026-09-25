@@ -168,10 +168,10 @@ export const requestLotProjectSettingsCode = async (req, res) => {
   try {
     const actor = req.authUser || await getAuthenticatedUser(req);
     if (!actor?.id || !actor.email) {
-      return res.status(400).json({ success: false, message: 'The Super Admin account must have an email address.' });
+      return res.status(400).json({ success: false, message: 'Your account must have an email address before protected project settings can be changed.' });
     }
-    if (!isExactSuperAdmin(actor)) {
-      return res.status(403).json({ success: false, message: 'Only the exact Super Admin can change project settings.' });
+    if (!canEditProjectSettings(actor)) {
+      return res.status(403).json({ success: false, message: 'You do not have permission to edit this project settings.' });
     }
     if (!(await tableExists(connection, 'destructive_action_verifications'))) {
       return res.status(500).json({ success: false, message: 'Sensitive-action verification table is missing. Apply the latest database schema first.' });
@@ -244,7 +244,38 @@ export const updateLotProjectSettings = async (req, res) => {
     const reason = clean(req.body.reason || 'Authorized project settings update.');
     if (reason.length < 5) return res.status(400).json({ success: false, message: 'A clear reason for changing settings is required.' });
 
+    if (!(await tableExists(connection, 'destructive_action_verifications'))) {
+      return res.status(500).json({ success: false, message: 'Sensitive-action verification table is missing. Apply the latest database schema first.' });
+    }
+
+    const verificationId = Number(req.body.verificationId || req.body.verification_id || 0);
+    const verificationCode = clean(req.body.code || req.body.verificationCode || req.body.verification_code);
+    if (!verificationId || !/^\d{6}$/.test(verificationCode)) {
+      return res.status(400).json({ success: false, message: 'A valid settings verification request and 6-digit code are required.' });
+    }
+
+    const verificationPayload = buildProjectSettingsVerificationPayload({
+      actor: currentUser,
+      project,
+      settingsPayload,
+      reason,
+    });
+
     await connection.beginTransaction();
+    const verificationResult = await verifyAndConsumeSensitiveAction(connection, {
+      verificationId,
+      userId: currentUser.id,
+      actionType: LOT_PROJECT_SETTINGS_ACTION,
+      entityType: SETTINGS_VERIFICATION_ENTITY,
+      entityId: project.lot_project_id,
+      code: verificationCode,
+      payload: verificationPayload,
+    });
+    if (!verificationResult.ok) {
+      await connection.rollback();
+      return res.status(verificationResult.statusCode || 400).json({ success: false, message: verificationResult.message });
+    }
+
     const beforeRow = await getOrCreateSettingsRow(connection, project);
     const before = mapSettings(beforeRow, project);
 
@@ -285,7 +316,7 @@ export const updateLotProjectSettings = async (req, res) => {
       entityLabel: project.lot_project_name,
       title: 'Updated lot project settings',
       description: `${getUserFullName(currentUser) || currentUser.email || 'Authorized user'} updated settings for ${project.lot_project_name}.`,
-      metadata: { reason, before, after: settingsPayload, releaseDayChangesApplyProspectively: true },
+      metadata: { reason, before, after: settingsPayload, verificationId, releaseDayChangesApplyProspectively: true },
     });
 
     await connection.commit();

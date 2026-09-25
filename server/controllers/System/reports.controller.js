@@ -6,7 +6,7 @@ import {
 import { writeAuditLog } from './auditLogs.controller.js'
 import { summarizeContractFinancials } from '../../services/accountFinancialSnapshot.service.js'
 import { reconcileCommissionCohort, resolveCommissionReleaseStatusAsOf } from '../../services/commissionReconciliation.service.js'
-import { getAccessibleProjectIds } from '../../services/adminProjectAccess.service.js'
+import { getAccessibleProjectIds } from '../../services/projectAccess.service.js'
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 const clean = (value = '') => String(value ?? '').trim()
@@ -854,3 +854,4 @@ export const auditSystemReportExport = async (req, res) => {
     connection.release()
   }
 }
+

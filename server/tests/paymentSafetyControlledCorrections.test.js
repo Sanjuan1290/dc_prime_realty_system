@@ -67,14 +67,14 @@ test('manual amount changes are visibly warned and must be acknowledged before p
   assert.match(addPayment, /Confirm the payment amount override before saving/);
 });
 
-test('recorded payment edits and voids are exact-Super-Admin actions with password plus email code', () => {
-  assert.match(router, /payments\/:paymentId\/correction-code[\s\S]*requireExactRole\('super_admin'\)[\s\S]*requireCurrentPassword/);
-  assert.match(router, /payments\/:paymentId'[\s\S]*requireExactRole\('super_admin'\)[\s\S]*updateLotProjectListingPayment/);
-  assert.match(router, /payments\/:paymentId\/delete'[\s\S]*requireExactRole\('super_admin'\)[\s\S]*deleteLotProjectListingPayment/);
+test('recorded payment edits and voids use granular permissions plus password and email-code verification', () => {
+  assert.match(router, /const requirePaymentCorrectionPermission/);
+  assert.match(router, /payments\/:paymentId\/correction-code[\s\S]*requirePaymentCorrectionPermission[\s\S]*requireCurrentPassword/);
+  assert.match(router, /payments\/:paymentId'[\s\S]*LOT_PAYMENTS_EDIT[\s\S]*updateLotProjectListingPayment/);
+  assert.match(router, /payments\/:paymentId\/delete'[\s\S]*LOT_PAYMENT_DELETE[\s\S]*deleteLotProjectListingPayment/);
   assert.match(paymentsController, /requirePaymentCorrectionVerification/);
   assert.match(paymentsController, /createSensitiveActionVerification/);
   assert.match(paymentsController, /verifyAndConsumeSensitiveAction/);
-  assert.match(paymentsUi, /Only an exact Super Admin can change an already recorded verified payment/);
   assert.match(paymentsUi, /Verify Password & Send Code/);
   assert.match(paymentsUi, /Email Verification Code/);
 });
@@ -181,3 +181,4 @@ test('sensitive verification hashes bind the code and exact proposed payload', (
     else process.env.DESTRUCTIVE_ACTION_CODE_SECRET = oldSecret;
   }
 });
+

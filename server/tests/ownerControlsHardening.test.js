@@ -43,7 +43,7 @@ test('Pending for Cancellation, Cancellation Settlement, and refund actions are 
   const editStatus = read('client/src/components/Lot_Projects/ListingProfileComponents/UnitStatus/EditUnitStatusModal.jsx');
   const controller = read('server/controllers/Lot_Projects/Listings/Listings.controller.js');
 
-  assert.match(profile, /const canManageCancellation = currentUserData\?\.user\?\.role === 'super_admin'/);
+  assert.match(profile, /const canManageCancellation = isSuperAdmin/);
   assert.match(profile, /canManageCancellation=\{canManageCancellation\}/);
 
   assert.match(unitStatus, /disabled=\{isSaving \|\| !canManageCancellation\}/);
@@ -59,3 +59,4 @@ test('Pending for Cancellation, Cancellation Settlement, and refund actions are 
   assert.match(controller, /if \(\(startsCancellation \|\| completesCancellation\) && req\.authUser\?\.role !== 'super_admin'\)/);
   assert.match(controller, /Only the Super Admin can complete Cancellation Settlement or issue a refund/);
 });
+

@@ -13,6 +13,7 @@ const SettingsAuthorizationModal = ({
   onClose,
   onConfirm,
   isSaving = false,
+  authorizationLabel = 'Super Admin',
 }) => {
   const [reason, setReason] = useState('')
   const [password, setPassword] = useState('')
@@ -28,7 +29,7 @@ const SettingsAuthorizationModal = ({
       return
     }
     if (!password) {
-      setNotice({ type: 'error', message: 'Super Admin password is required.' })
+      setNotice({ type: 'error', message: `${authorizationLabel} password is required.` })
       return
     }
     setIsSending(true)
@@ -69,7 +70,7 @@ const SettingsAuthorizationModal = ({
       <div className="w-full max-w-xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
         <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
           <div>
-            <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-600">Owner Authorization</p>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-600">Protected Authorization</p>
             <h2 className="mt-1 text-xl font-black text-slate-950">{title}</h2>
             <p className="mt-1 text-sm font-semibold leading-6 text-slate-500">{description}</p>
           </div>
@@ -86,14 +87,14 @@ const SettingsAuthorizationModal = ({
 
           {!verificationId ? (
             <label className="grid gap-2">
-              <span className="flex items-center gap-2 text-sm font-black text-slate-700"><FiLock /> Super Admin Password *</span>
-              <input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} className={inputClass} placeholder="Enter current Super Admin password" />
+              <span className="flex items-center gap-2 text-sm font-black text-slate-700"><FiLock /> {authorizationLabel} Password *</span>
+              <input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} className={inputClass} placeholder={`Enter ${authorizationLabel.toLowerCase()} password`} />
             </label>
           ) : (
             <label className="grid gap-2">
               <span className="flex items-center gap-2 text-sm font-black text-slate-700"><FiMail /> Email Verification Code *</span>
               <input inputMode="numeric" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))} className={`${inputClass} tracking-[0.35em]`} placeholder="000000" />
-              <span className="text-xs font-semibold text-slate-500">Code sent to {maskedEmail || 'the Super Admin email'}.</span>
+              <span className="text-xs font-semibold text-slate-500">Code sent to {maskedEmail || `the ${authorizationLabel.toLowerCase()} email`}.</span>
             </label>
           )}
         </div>
@@ -112,3 +113,4 @@ const SettingsAuthorizationModal = ({
 }
 
 export default SettingsAuthorizationModal
+

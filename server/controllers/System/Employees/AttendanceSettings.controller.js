@@ -182,3 +182,4 @@ export const updateAttendanceSettings = async (req, res) => {
     connection.release();
   }
 };
+

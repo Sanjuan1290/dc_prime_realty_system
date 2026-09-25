@@ -145,7 +145,7 @@ const Settings = () => {
         </section>
       ) : null}
 
-      <RoleAccessControl />
+      {canManage ? <RoleAccessControl /> : null}
 
       <SystemSettingsForm
         form={form}
@@ -172,3 +172,4 @@ const Settings = () => {
 }
 
 export default Settings
+

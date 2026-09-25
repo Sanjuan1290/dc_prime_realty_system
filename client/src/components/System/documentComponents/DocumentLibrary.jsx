@@ -7,7 +7,7 @@ import { formatDateTime } from "../../../utils/formatDateTime";
 import { useFetchDelete } from "../../../utils/useFetch";
 import { getDocumentResponsiblePartyLabel } from "../../../utils/documentRequirement";
 
-const Document_Library = ({ documents = [], onEditDocument, canManage = true }) => {
+const Document_Library = ({ documents = [], onEditDocument, canEdit = false, canDelete = false }) => {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -114,7 +114,9 @@ const Document_Library = ({ documents = [], onEditDocument, canManage = true }) 
                 </p>
                 <p className="text-gray-600">{formatDateTime(document.document_updated_at || document.document_created_at)}</p>
                 <div className="flex items-center gap-2 md:justify-end">
-                  {canManage ? <><button type="button" onClick={() => onEditDocument(document)} disabled={deleteMutation.isPending} className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"><FiEdit2 className="h-4 w-4" />Edit</button><button type="button" onClick={() => handleDelete(document)} disabled={deleteMutation.isPending} className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-60"><FiTrash2 className="h-4 w-4" />{isDeleting ? "Deleting..." : "Delete"}</button></> : <span className="text-xs font-semibold text-gray-400">View only</span>}
+                  {canEdit ? <button type="button" onClick={() => onEditDocument(document)} disabled={deleteMutation.isPending} className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"><FiEdit2 className="h-4 w-4" />Edit</button> : null}
+                  {canDelete ? <button type="button" onClick={() => handleDelete(document)} disabled={deleteMutation.isPending} className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-60"><FiTrash2 className="h-4 w-4" />{isDeleting ? "Deleting..." : "Delete"}</button> : null}
+                  {!canEdit && !canDelete ? <span className="text-xs font-semibold text-gray-400">View only</span> : null}
                 </div>
               </div>
             );
@@ -163,3 +165,4 @@ const Document_Library = ({ documents = [], onEditDocument, canManage = true }) 
 };
 
 export default Document_Library;
+

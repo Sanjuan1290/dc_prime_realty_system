@@ -346,7 +346,7 @@ const Reports = () => {
   const role = currentUser.role || 'super_admin'
   const isAdmin = role === 'admin'
   const isSuperAdmin = role === 'super_admin'
-  const roleBasePath = isAdmin ? '/portal/admin' : '/portal/super_admin'
+  const roleBasePath = `/portal/${role}`
   const houseLotEnabled = import.meta.env.VITE_FEATURE_HOUSE_LOT === 'true'
   const projectsPath = projectScope === 'lot'
     ? `${roleBasePath}/lot-projects`
@@ -814,3 +814,4 @@ const Reports = () => {
 }
 
 export default Reports
+

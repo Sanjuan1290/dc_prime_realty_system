@@ -23,7 +23,7 @@ import {
 import StatusAlert from '../components/Shared/StatusAlert'
 import useCurrentUser from '../utils/useCurrentUser'
 import { useFetch } from '../utils/useFetch'
-import { hasPermission, isSystemUserRole, PERMISSIONS } from '../config/permissions'
+import { hasPermission, hasProjectScope, isSystemUserRole, PERMISSIONS } from '../config/permissions'
 
 const getPageTitle = (pathname, projectName) => {
   if (pathname.includes('/reports')) return `${projectName || 'Lot Project'} Reports`
@@ -59,7 +59,7 @@ const LotLayout = () => {
   } = useQuery({
     queryKey: ['lot-project', projectSlug],
     queryFn: () => useFetch(`/projects/lot-projects/${projectSlug}`),
-    enabled: Boolean(projectSlug) && Boolean(user) && !user?.must_change_password,
+    enabled: Boolean(projectSlug) && Boolean(user) && !user?.must_change_password && hasPermission(user, PERMISSIONS.LOT_PROJECT_VIEW) && hasProjectScope(user, projectSlug),
   })
 
   const project = data?.data
@@ -95,8 +95,16 @@ const LotLayout = () => {
     return <Navigate to="/portal/change-password" replace />
   }
 
-  if (!isSystemUserRole(user?.role) || !hasPermission(user, PERMISSIONS.LOT_PROJECT_VIEW)) {
+  if (!isSystemUserRole(user?.role)) {
     return <Navigate to="/portal" replace />
+  }
+
+  if (!hasPermission(user, PERMISSIONS.LOT_PROJECT_VIEW)) {
+    return <Navigate to="/portal/access-denied" replace state={{ message: 'You do not have permission to open project workspaces.' }} />
+  }
+
+  if (!hasProjectScope(user, projectSlug)) {
+    return <Navigate to="/portal/access-denied" replace state={{ message: 'This project is outside your assigned project scope.' }} />
   }
 
   if (isError) {
@@ -110,7 +118,7 @@ const LotLayout = () => {
 
           <button
             type="button"
-            onClick={() => navigate(`/portal/${user?.role}/projects`)}
+            onClick={() => navigate(`/portal/${user?.role}/lot-projects`)}
             className="mt-4 h-11 rounded-xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700"
           >
             Back to Projects
@@ -207,7 +215,7 @@ const LotLayout = () => {
         <div className="border-t border-slate-200 p-4">
           <button
             type="button"
-            onClick={() => navigate(`/portal/${user?.role}/projects`)}
+            onClick={() => navigate(`/portal/${user?.role}/lot-projects`)}
             className="flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 transition hover:bg-slate-50"
           >
             <FiChevronLeft className="h-4 w-4" />
@@ -257,3 +265,4 @@ const LotLayout = () => {
 }
 
 export default LotLayout
+

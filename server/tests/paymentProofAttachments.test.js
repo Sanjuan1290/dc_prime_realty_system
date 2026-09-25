@@ -27,10 +27,10 @@ test('payment proof uploads use authenticated Cloudinary delivery', () => {
 
 test('payment proof routes separate view, upload, and delete permissions', () => {
   const router = read(new URL('../routers/System/projects.routers.js', import.meta.url));
-  assert.match(router, /payments\/:paymentId\/proofs'.*LOT_LISTINGS_VIEW/);
-  assert.match(router, /proofs\/upload-signature'.*LOT_LISTINGS_MANAGE/);
-  assert.match(router, /proofs\/:proofId\/access-url'.*LOT_LISTINGS_VIEW/);
-  assert.match(router, /proofs\/:proofId\/content'.*LOT_LISTINGS_VIEW/);
+  assert.match(router, /payments\/:paymentId\/proofs'.*LOT_PAYMENTS_VIEW/);
+  assert.match(router, /proofs\/upload-signature'.*LOT_PAYMENTS_EDIT/);
+  assert.match(router, /proofs\/:proofId\/access-url'.*LOT_PAYMENTS_VIEW/);
+  assert.match(router, /proofs\/:proofId\/content'.*LOT_PAYMENTS_VIEW/);
   assert.match(router, /proofs\/:proofId\/delete'.*LOT_PAYMENT_DELETE/);
 });
 
@@ -45,3 +45,4 @@ test('payments UI exposes proof management separately from payment editing', () 
   assert.match(modal, /fetchProtectedObjectUrl/);
   assert.doesNotMatch(modal, /result\?\.data\?\.url/);
 });
+

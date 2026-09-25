@@ -72,6 +72,7 @@ import {
   addIfColumnExists,
 } from '../_shared/lotProject.shared.js';
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
+import { PERMISSIONS, roleHasPermission } from '../../../config/permissions.js';
 import { buildAccountFinancialSnapshot } from '../../../services/accountFinancialSnapshot.service.js';
 import { buildAccountContext } from '../../../services/accountContext.service.js';
 import { reconcileCommission } from '../../../services/commissionReconciliation.service.js';
@@ -540,6 +541,12 @@ export const getLotProjectListingProfile = async (req, res) => {
     const listingLookup = String(req.params.listingId || '').trim();
     const requestedAccountId = Number(req.params.accountId || 0);
     const isAccountRoute = Boolean(req.params.accountId);
+    const actor = req.authUser || req.user || {};
+    const canUsePrintouts = roleHasPermission(actor, PERMISSIONS.LOT_PRINTOUTS_USE);
+    const canViewPayments = roleHasPermission(actor, PERMISSIONS.LOT_PAYMENTS_VIEW) || canUsePrintouts;
+    const canViewDocuments = roleHasPermission(actor, PERMISSIONS.LOT_BUYER_DOCUMENTS_VIEW) || canUsePrintouts;
+    const canManageBuyerDocuments = roleHasPermission(actor, PERMISSIONS.LOT_BUYER_DOCUMENTS_UPDATE);
+    const canViewCommissions = roleHasPermission(actor, PERMISSIONS.LOT_COMMISSIONS_VIEW);
     const project = await getProjectBySlug(slug);
 
     if (!project) return res.status(404).json({ message: 'Lot project not found.' });
@@ -775,29 +782,35 @@ export const getLotProjectListingProfile = async (req, res) => {
     row.isHistoricalEntry = accountContext.isHistoricalEntry;
     row.isAccountHistory = accountContext.isAccountHistory;
 
-    const documents = await getListingDocuments(
-      connection,
-      project.lot_project_id,
-      row.lot_project_listing_id,
-      row.lot_project_client_profile_id,
-      slug,
-      selectedAccountId
-    );
-    const payments = await getListingPayments(
-      connection,
-      project.lot_project_id,
-      row.lot_project_listing_id,
-      row.lot_project_client_profile_id,
-      selectedAccountId
-    );
-    const soaRows = await getListingSoaRows(
-      connection,
-      project.lot_project_id,
-      row.lot_project_listing_id,
-      row,
-      payments,
-      { accountId: selectedAccountId, readOnly }
-    );
+    const documents = canViewDocuments
+      ? await getListingDocuments(
+          connection,
+          project.lot_project_id,
+          row.lot_project_listing_id,
+          row.lot_project_client_profile_id,
+          slug,
+          selectedAccountId
+        )
+      : [];
+    const payments = canViewPayments
+      ? await getListingPayments(
+          connection,
+          project.lot_project_id,
+          row.lot_project_listing_id,
+          row.lot_project_client_profile_id,
+          selectedAccountId
+        )
+      : [];
+    const soaRows = canViewPayments
+      ? await getListingSoaRows(
+          connection,
+          project.lot_project_id,
+          row.lot_project_listing_id,
+          row,
+          payments,
+          { accountId: selectedAccountId, readOnly }
+        )
+      : [];
     const cadastralLots = await getProjectCadastralLots(project.lot_project_id);
     const defaultDocuments = await getProjectDefaultDocuments(project.lot_project_id);
     let companyAddress = '';
@@ -813,25 +826,29 @@ export const getLotProjectListingProfile = async (req, res) => {
       companyAddress = String(companyRows[0]?.company_address || '').trim();
     }
     let buyerForm = { currentLink: null, latestSubmission: null, pendingSubmission: null };
-    try {
-      buyerForm = await readBuyerFormStateForProfile(connection, row.lot_project_listing_id, row.lot_project_account_id);
-    } catch (buyerFormError) {
-      buyerForm = {
-        currentLink: null,
-        latestSubmission: null,
-        pendingSubmission: null,
-        migrationRequired: true,
-        message: buyerFormError?.message || 'Buyer form migration is required.',
-      };
-    }
-    const commissionSnapshot = await loadListingCommissionSnapshot(
-      connection,
-      row.lot_project_listing_id,
-      {
-        clientProfileId: row.lot_project_client_profile_id,
-        accountId: selectedAccountId,
+    if (canViewDocuments || canManageBuyerDocuments) {
+      try {
+        buyerForm = await readBuyerFormStateForProfile(connection, row.lot_project_listing_id, row.lot_project_account_id);
+      } catch (buyerFormError) {
+        buyerForm = {
+          currentLink: null,
+          latestSubmission: null,
+          pendingSubmission: null,
+          migrationRequired: true,
+          message: buyerFormError?.message || 'Buyer form migration is required.',
+        };
       }
-    );
+    }
+    const commissionSnapshot = canViewCommissions
+      ? await loadListingCommissionSnapshot(
+          connection,
+          row.lot_project_listing_id,
+          {
+            clientProfileId: row.lot_project_client_profile_id,
+            accountId: selectedAccountId,
+          }
+        )
+      : { commissionRows: [], releaseRows: [] };
     const savedCommissionHierarchy = mapCommissionSnapshotRows(
       commissionSnapshot.commissionRows,
       commissionSnapshot.releaseRows
@@ -885,15 +902,25 @@ export const getLotProjectListingProfile = async (req, res) => {
       };
     }
 
-    const financialSnapshot = buildAccountFinancialSnapshot({
-      account: row,
-      listing: { ...row, ...mappedListing },
-      soaRows,
-      payments,
-      commissions: commissionSnapshot.commissionRows,
-      releases: commissionSnapshot.releaseRows,
-      readOnly,
-    });
+    if (!canViewPayments) {
+      mappedListing = {
+        ...mappedListing,
+        balance: 'Restricted',
+        balanceAmount: null,
+      };
+    }
+
+    const financialSnapshot = canViewPayments
+      ? buildAccountFinancialSnapshot({
+          account: row,
+          listing: { ...row, ...mappedListing },
+          soaRows,
+          payments,
+          commissions: commissionSnapshot.commissionRows,
+          releases: commissionSnapshot.releaseRows,
+          readOnly,
+        })
+      : null;
 
     return res.json({
       success: true,
@@ -912,9 +939,9 @@ export const getLotProjectListingProfile = async (req, res) => {
         },
         listing: {
           ...mappedListing,
-          commissionAdjustment,
+          commissionAdjustment: canViewCommissions ? commissionAdjustment : null,
           // Temporary compatibility alias for clients that still read the previous key.
-          commissionRecalculation: commissionAdjustment,
+          commissionRecalculation: canViewCommissions ? commissionAdjustment : null,
         },
         account: selectedAccountId
           ? {
@@ -1634,3 +1661,4 @@ export const unholdLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
+

@@ -171,3 +171,4 @@ export const buildAccountFinancialSnapshot = ({
 };
 
 export default buildAccountFinancialSnapshot;
+
