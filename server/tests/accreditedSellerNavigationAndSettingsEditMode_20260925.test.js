@@ -30,8 +30,12 @@ test('new Accredited Seller group routes are canonical and old Users group route
   assert.match(app, /path="users\/groups\/external"/);
 });
 
-test('Role & Access Control only mounts while Edit Settings is active', () => {
-  assert.match(settings, /canManage && isEditing \? <RoleAccessControl \/> : null/);
+test('Role & Access Control is a compact Settings card and expands only on demand', () => {
+  assert.match(settings, /Role &amp; Access Control/);
+  assert.match(settings, /Manage Role & Access/);
+  assert.match(settings, /showRoleAccess/);
+  assert.match(settings, /canManage && showRoleAccess \? <RoleAccessControl \/> : null/);
+  assert.doesNotMatch(settings, /canManage && isEditing \? <RoleAccessControl \/> : null/);
   assert.match(roleAccess, /Save Role Defaults/);
   assert.match(roleAccess, /Existing users keep their current permissions/);
 });

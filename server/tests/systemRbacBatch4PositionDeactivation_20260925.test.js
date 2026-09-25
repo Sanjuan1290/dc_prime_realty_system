@@ -50,14 +50,21 @@ test('position transition remains atomic and preserves historical user ids', () 
   assert.doesNotMatch(usersController, /UPDATE audit_logs SET actor_user_id/);
 });
 
-test('permanent deactivation has no reactivation route or UI action', () => {
+test('permanent deactivation has no reactivation route and requires password plus email verification', () => {
+  assert.match(usersController, /export const requestUserDeactivationCode/);
   assert.match(usersController, /export const deactivateUserPermanently/);
+  assert.match(usersRouter, /post\('\/deactivate\/:id\/code'[\s\S]*SYSTEM_USERS_DEACTIVATE[\s\S]*requireCurrentPassword/);
   assert.match(usersRouter, /patch\('\/deactivate\/:id'[\s\S]*SYSTEM_USERS_DEACTIVATE/);
   assert.doesNotMatch(usersRouter, /toggleUserStatus/);
   assert.doesNotMatch(usersPage, /Reactivate|Activate Account|toggleUserStatus/);
   assert.match(deactivateModal, /This action is permanent/);
   assert.match(deactivateModal, /can never be activated again/);
   assert.match(deactivateModal, /Deactivation Reason/);
+  assert.match(deactivateModal, /Administrator Password/);
+  assert.match(deactivateModal, /Email Verification Code/);
+  assert.match(deactivateModal, /Verify Password & Send Code/);
+  assert.match(usersController, /verifyAndConsumeSensitiveAction/);
+  assert.match(usersController, /verificationMethod: 'administrator_password_email_code'/);
 });
 
 test('permanent deactivation rejects active status intent and invalidates sessions', () => {

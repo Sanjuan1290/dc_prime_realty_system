@@ -9,6 +9,7 @@ import {
   previewChangeUserPosition,
   createUser,
   editUser,
+  requestUserDeactivationCode,
   deactivateUserPermanently,
   resetUserPassword,
   changeUserPosition,
@@ -24,7 +25,7 @@ import {
   updateRoleAccessDefaults,
   updateUserAccessControl,
 } from '../../controllers/System/accessControl.controller.js';
-import { authenticateUser, requireExactRole, requirePermission } from '../../middleware/auth.middleware.js';
+import { authenticateUser, requireCurrentPassword, requireExactRole, requirePermission } from '../../middleware/auth.middleware.js';
 import { loginRateLimit } from '../../middleware/loginRateLimit.middleware.js';
 import { PERMISSIONS } from '../../config/permissions.js';
 
@@ -48,6 +49,7 @@ router.get('/getUsers', authenticateUser, requirePermission(PERMISSIONS.SYSTEM_U
 router.get('/account-code-preview', authenticateUser, requireExactRole('super_admin'), previewSystemAccountCode);
 router.post('/createUser', authenticateUser, requirePermission(PERMISSIONS.SYSTEM_USERS_CREATE), createUser);
 router.put('/editUser/:id', authenticateUser, requirePermission(PERMISSIONS.SYSTEM_USERS_EDIT), editUser);
+router.post('/deactivate/:id/code', authenticateUser, requirePermission(PERMISSIONS.SYSTEM_USERS_DEACTIVATE), requireCurrentPassword({ field: 'password', label: 'Administrator password' }), requestUserDeactivationCode);
 router.patch('/deactivate/:id', authenticateUser, requirePermission(PERMISSIONS.SYSTEM_USERS_DEACTIVATE), deactivateUserPermanently);
 router.get('/change-position/:id/preview', authenticateUser, requireExactRole('super_admin'), previewChangeUserPosition);
 router.post('/change-position/:id', authenticateUser, requireExactRole('super_admin'), changeUserPosition);

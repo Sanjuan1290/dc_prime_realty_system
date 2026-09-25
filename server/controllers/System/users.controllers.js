@@ -36,6 +36,13 @@ import {
   replaceUserPermissions,
 } from '../../services/accessControl.service.js';
 import {
+  createSensitiveActionVerification,
+  getSensitiveActionRequestIp,
+  maskSensitiveActionEmail,
+  SENSITIVE_ACTION_CODE_EXPIRY_MINUTES,
+  verifyAndConsumeSensitiveAction,
+} from '../../services/sensitiveActionVerification.service.js';
+import {
   PASSWORD_RESET_CODE_EXPIRY_MINUTES,
   PASSWORD_RESET_MAX_ATTEMPTS,
   PASSWORD_RESET_RESEND_SECONDS,
@@ -57,6 +64,8 @@ import {
 const userRoles = new Set([...SYSTEM_USER_ROLES, 'division_manager', 'sales_director', 'unit_manager', 'sales_agent', 'external_group']);
 const systemUserRoles = new Set(SYSTEM_USER_ROLES);
 const configurableSystemRoles = new Set(CONFIGURABLE_SYSTEM_ROLES);
+const USER_DEACTIVATION_ACTION = 'user_permanent_deactivation';
+const USER_DEACTIVATION_ENTITY = 'user';
 
 const sellerRoles = new Set([
   'division_manager',
@@ -176,6 +185,64 @@ const actorCanManageTargetRole = (req, targetRole) =>
 // by another Super Admin.
 const actorCanPerformUserAction = (req, targetRole) =>
   targetRole !== 'super_admin' || req.authUser?.role === 'super_admin';
+
+const assertPermanentDeactivationTarget = (req, user, userId) => {
+  if (!user) throw Object.assign(new Error('User not found.'), { statusCode: 404 });
+  if (user.role === 'external_group') throw Object.assign(new Error('Manage External Group accounts from the External Groups page.'), { statusCode: 400 });
+  if (!actorCanPerformUserAction(req, user.role)) throw Object.assign(new Error('Only Super Admin can deactivate another Super Admin account.'), { statusCode: 403 });
+  if (user.status !== 'active') {
+    const error = new Error('This account is permanently deactivated and cannot be activated again. Create a new account if the employee returns or changes position.');
+    error.statusCode = 409;
+    error.code = PERMANENT_DEACTIVATION_CODE;
+    throw error;
+  }
+  if (Number(userId) === Number(req.authUser?.id || 0)) {
+    throw Object.assign(new Error('You cannot permanently deactivate the account you are currently using.'), { statusCode: 409 });
+  }
+};
+
+const buildUserDeactivationVerificationPayload = ({ actor, target, reason }) => ({
+  action: USER_DEACTIVATION_ACTION,
+  actorId: Number(actor?.id || 0),
+  targetUserId: Number(target?.id || 0),
+  targetAccountCode: String(target?.account_code || '').trim(),
+  targetEmail: String(target?.email || '').trim().toLowerCase(),
+  reason: String(reason || '').trim(),
+});
+
+const sendUserDeactivationVerificationCodeEmail = async ({ actor, target, reason, code }) => {
+  if (!isResendConfigured()) {
+    throw Object.assign(new Error('Email is not configured. Set RESEND_API_KEY and EMAIL_FROM.'), { statusCode: 500, code: 'RESEND_NOT_CONFIGURED' });
+  }
+  const actorName = buildPersonName(actor);
+  const targetName = buildPersonName(target);
+  const subject = `Account deactivation verification code - ${target.account_code || targetName}`;
+  const text = [
+    `Hello ${actorName},`,
+    '',
+    `Your verification code is ${code}.`,
+    '',
+    `Target account: ${targetName}`,
+    `Account code: ${target.account_code || '-'}`,
+    `Email: ${target.email || '-'}`,
+    `Reason: ${reason}`,
+    '',
+    `This code expires in ${SENSITIVE_ACTION_CODE_EXPIRY_MINUTES} minutes and authorizes only this exact permanent deactivation request.`,
+    'If you did not request this action, do not share or use this code.',
+    '',
+    'D&C Prime Realty',
+  ].join('\n');
+  const html = `
+    <div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;color:#0f172a;line-height:1.6">
+      <h2>D&amp;C Prime Realty</h2>
+      <p>Hello ${escapeEmailHtml(actorName)},</p>
+      <p>Use this code to authorize the permanent deactivation of <strong>${escapeEmailHtml(targetName)}</strong>.</p>
+      <div style="font-size:30px;font-weight:800;letter-spacing:8px;padding:18px;background:#fef2f2;border:1px solid #fecaca;border-radius:12px;text-align:center;color:#991b1b">${escapeEmailHtml(code)}</div>
+      <p><strong>Account code:</strong> ${escapeEmailHtml(target.account_code || '-')}<br/><strong>Email:</strong> ${escapeEmailHtml(target.email || '-')}<br/><strong>Reason:</strong> ${escapeEmailHtml(reason)}</p>
+      <p style="color:#991b1b"><strong>This action is permanent.</strong> The code expires in ${SENSITIVE_ACTION_CODE_EXPIRY_MINUTES} minutes and is bound to this exact account and reason.</p>
+    </div>`;
+  await sendEmail({ to: actor.email, subject, text, html });
+};
 
 const actorCanCreateTargetRole = (req, targetRole) =>
   canActorCreateUserRole(req.authUser, targetRole);
@@ -1896,6 +1963,56 @@ export const editUser = async (req, res) => {
   }
 };
 
+export const requestUserDeactivationCode = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    const userId = Number(req.params.id || 0);
+    if (!userId) return res.status(400).json({ message: 'Invalid user id.' });
+    const actor = req.authUser;
+    if (!actor?.email) return res.status(400).json({ message: 'Your administrator account must have an email address before permanent deactivation can be authorized.' });
+
+    const reason = String(req.body?.reason || req.body?.deactivation_reason || '').trim().slice(0, 500);
+    if (reason.length < 5) return res.status(400).json({ message: 'Enter a clear deactivation reason before requesting an email verification code.' });
+
+    await connection.beginTransaction();
+    const [rows] = await connection.query(
+      `SELECT id, account_code, first_name, middle_name, last_name, email, role, status
+       FROM users WHERE id = ? LIMIT 1 FOR UPDATE`,
+      [userId]
+    );
+    const user = rows[0];
+    assertPermanentDeactivationTarget(req, user, userId);
+
+    const payload = buildUserDeactivationVerificationPayload({ actor, target: user, reason });
+    const { verificationId, code } = await createSensitiveActionVerification(connection, {
+      userId: actor.id,
+      actionType: USER_DEACTIVATION_ACTION,
+      entityType: USER_DEACTIVATION_ENTITY,
+      entityId: String(userId),
+      payload,
+      reason,
+      requestIp: getSensitiveActionRequestIp(req),
+    });
+    await sendUserDeactivationVerificationCodeEmail({ actor, target: user, reason, code });
+    await connection.commit();
+
+    return res.json({
+      success: true,
+      message: `A permanent-deactivation verification code was sent to ${maskSensitiveActionEmail(actor.email)}.`,
+      data: {
+        verificationId,
+        maskedEmail: maskSensitiveActionEmail(actor.email),
+        expiresInMinutes: SENSITIVE_ACTION_CODE_EXPIRY_MINUTES,
+      },
+    });
+  } catch (error) {
+    try { await connection.rollback(); } catch {}
+    return res.status(error.statusCode || 500).json({ code: error.code, message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
 export const deactivateUserPermanently = async (req, res) => {
   const connection = await db.getConnection();
   try {
@@ -1911,6 +2028,14 @@ export const deactivateUserPermanently = async (req, res) => {
       });
     }
 
+    const reason = String(req.body?.reason || req.body?.deactivation_reason || '').trim().slice(0, 500);
+    const verificationId = Number(req.body?.verificationId || req.body?.verification_id || 0);
+    const code = String(req.body?.code || req.body?.verificationCode || req.body?.verification_code || '').trim();
+    if (reason.length < 5) return res.status(400).json({ message: 'A clear deactivation reason is required.' });
+    if (!verificationId || !/^\d{6}$/.test(code)) {
+      return res.status(400).json({ message: 'Administrator password verification and the six-digit email verification code are required before permanent deactivation.' });
+    }
+
     await connection.beginTransaction();
     const [rows] = await connection.query(
       `SELECT id, account_code, first_name, middle_name, last_name, email, role, status
@@ -1918,20 +2043,23 @@ export const deactivateUserPermanently = async (req, res) => {
       [userId]
     );
     const user = rows[0];
-    if (!user) throw Object.assign(new Error('User not found.'), { statusCode: 404 });
-    if (user.role === 'external_group') throw Object.assign(new Error('Manage External Group accounts from the External Groups page.'), { statusCode: 400 });
-    if (!actorCanPerformUserAction(req, user.role)) throw Object.assign(new Error('Only Super Admin can deactivate another Super Admin account.'), { statusCode: 403 });
-    if (user.status !== 'active') {
-      const error = new Error('This account is permanently deactivated and cannot be activated again. Create a new account if the employee returns or changes position.');
-      error.statusCode = 409;
-      error.code = PERMANENT_DEACTIVATION_CODE;
-      throw error;
-    }
-    if (userId === Number(req.authUser?.id || 0)) {
-      throw Object.assign(new Error('You cannot permanently deactivate the account you are currently using.'), { statusCode: 409 });
+    assertPermanentDeactivationTarget(req, user, userId);
+
+    const verificationPayload = buildUserDeactivationVerificationPayload({ actor: req.authUser, target: user, reason });
+    const verificationResult = await verifyAndConsumeSensitiveAction(connection, {
+      verificationId,
+      userId: req.authUser?.id,
+      actionType: USER_DEACTIVATION_ACTION,
+      entityType: USER_DEACTIVATION_ENTITY,
+      entityId: String(userId),
+      code,
+      payload: verificationPayload,
+    });
+    if (!verificationResult.ok) {
+      await connection.commit();
+      return res.status(verificationResult.statusCode || 400).json({ message: verificationResult.message });
     }
 
-    const reason = String(req.body?.reason || req.body?.deactivation_reason || 'Account permanently deactivated by an authorized user.').trim().slice(0, 500);
     await connection.query(
       `UPDATE users
        SET status = 'inactive', deactivated_at = NOW(), deactivated_by_user_id = ?, deactivation_reason = ?,
@@ -1948,7 +2076,7 @@ export const deactivateUserPermanently = async (req, res) => {
       action: 'update', module: 'Users', entityType: 'user', entityId: String(userId),
       entityLabel: user.account_code || buildPersonName(user), title: 'Permanently deactivated user account',
       description: `${user.account_code || user.email} was permanently deactivated. The account cannot be reactivated.`,
-      metadata: { previousStatus: 'active', nextStatus: 'inactive', permanent: true, reason },
+      metadata: { previousStatus: 'active', nextStatus: 'inactive', permanent: true, reason, verificationId, verificationMethod: 'administrator_password_email_code' },
     });
 
     await connection.commit();

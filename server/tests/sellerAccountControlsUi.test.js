@@ -14,14 +14,13 @@ test('system-user creation no longer exposes a temporary password field', async 
   assert.match(source, /Role and account code become immutable account identity/);
 });
 
-test('User Management exposes Reset Password only through the granular reset permission', async () => {
+test('System Users removes the redundant Reset Password action because login has Forgot Password', async () => {
   const source = await readProjectFile('client/src/pages/System/Users.jsx');
 
-  assert.match(source, /SYSTEM_USERS_RESET_PASSWORD/);
-  assert.match(source, /const canReset = hasPermission/);
-  assert.match(source, /resetMutation/);
-  assert.match(source, /\/user\/resetPassword\/\$\{user\.id\}/);
-  assert.match(source, /canReset && user\.status === 'active'/);
+  assert.doesNotMatch(source, /const canReset = hasPermission/);
+  assert.doesNotMatch(source, /resetMutation/);
+  assert.doesNotMatch(source, /\/user\/resetPassword\/\$\{user\.id\}/);
+  assert.doesNotMatch(source, /> Reset<\/button>/);
   assert.doesNotMatch(source, /Resend Login Credentials\?/);
   assert.doesNotMatch(source, /Generate & Send Credentials/);
 });

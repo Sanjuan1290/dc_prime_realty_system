@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { FiEdit2, FiRefreshCw, FiSettings } from 'react-icons/fi'
+import { FiEdit2, FiRefreshCw, FiSettings, FiShield } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
 import ReadOnlyNotice from '../../components/Shared/ReadOnlyNotice'
@@ -48,6 +48,7 @@ const Settings = () => {
   const [form, setForm] = useState(defaultForm)
   const [alert, setAlert] = useState(null)
   const [isEditing, setIsEditing] = useState(false)
+  const [showRoleAccess, setShowRoleAccess] = useState(false)
   const [pendingAuthorization, setPendingAuthorization] = useState(null)
 
   const { data, isLoading, isFetching, isError, error, refetch } = useQuery({
@@ -145,7 +146,39 @@ const Settings = () => {
         </section>
       ) : null}
 
-      {canManage && isEditing ? <RoleAccessControl /> : null}
+      <section className="rounded-3xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-col gap-4 border-b border-slate-200 p-5 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex items-start gap-3">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-violet-50 text-violet-700">
+              <FiShield className="h-5 w-5" />
+            </span>
+            <div>
+              <h2 className="text-lg font-black text-slate-950">Role &amp; Access Control</h2>
+              <p className="mt-1 text-sm font-semibold leading-6 text-slate-500">
+                Manage default permissions for Admin, Marketing, Sales, Accounting, and Operations. Super Admin always keeps Full System Access.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => canManage && setShowRoleAccess((current) => !current)}
+            disabled={!canManage}
+            title={!canManage ? 'Only the Super Admin can manage Role & Access Control.' : undefined}
+            className="h-11 shrink-0 rounded-xl border border-violet-200 bg-violet-50 px-5 text-sm font-black text-violet-700 transition hover:bg-violet-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
+          >
+            {showRoleAccess ? 'Hide Role & Access' : canManage ? 'Manage Role & Access' : 'Super Admin Only'}
+          </button>
+        </div>
+        {!showRoleAccess ? (
+          <div className="grid gap-3 p-5 text-sm sm:grid-cols-2 xl:grid-cols-3">
+            <div className="rounded-2xl bg-slate-50 p-4"><p className="font-black text-slate-900">5 configurable role templates</p><p className="mt-1 font-semibold text-slate-500">Defaults are copied into new system-user accounts.</p></div>
+            <div className="rounded-2xl bg-slate-50 p-4"><p className="font-black text-slate-900">Per-account access stays independent</p><p className="mt-1 font-semibold text-slate-500">Changing a role template does not silently change existing users.</p></div>
+            <div className="rounded-2xl bg-emerald-50 p-4"><p className="font-black text-emerald-900">Super Admin · Full System Access</p><p className="mt-1 font-semibold text-emerald-700">Permissions cannot be restricted.</p></div>
+          </div>
+        ) : null}
+      </section>
+
+      {canManage && showRoleAccess ? <RoleAccessControl /> : null}
 
       <SystemSettingsForm
         form={form}
