@@ -103,6 +103,106 @@ const createHttpError = (statusCode, message) => {
 const PAYMENT_CORRECTION_ACTION = 'lot_project_payment_correction';
 const PAYMENT_CORRECTION_ENTITY = 'lot_project_payment';
 
+
+const isValidEmailAddress = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
+const maskPaymentAccountNumber = (value) => {
+  const clean = String(value || '').trim();
+  if (!clean) return '-';
+  if (clean.length <= 4) return clean;
+  return `${'*'.repeat(Math.max(clean.length - 4, 4))}${clean.slice(-4)}`;
+};
+
+const sendPaymentEntryCompanyNotification = async ({ req, user, project, payment }) => {
+  try {
+    if (!(await tableExists(db, 'system_settings'))) return { enabled: false, sent: false, reason: 'settings_missing' };
+    if (!(await columnExists(db, 'system_settings', 'payment_entry_email_notification_enabled'))) {
+      return { enabled: false, sent: false, reason: 'setting_not_migrated' };
+    }
+
+    const [settingsRows] = await db.query(
+      `SELECT company_name, company_email, payment_entry_email_notification_enabled
+       FROM system_settings
+       WHERE system_setting_id = 1
+       LIMIT 1`
+    );
+    const settings = settingsRows[0] || {};
+    const enabled = Number(settings.payment_entry_email_notification_enabled || 0) === 1;
+    if (!enabled) return { enabled: false, sent: false, reason: 'disabled' };
+
+    const companyEmail = String(settings.company_email || '').trim();
+    if (!isValidEmailAddress(companyEmail)) {
+      const warning = 'Add Payment email notification is enabled, but Company Email is missing or invalid.';
+      console.warn(warning);
+      try {
+        await writeAuditLog(db, req, {
+          action: 'system', module: 'Payments', entityType: 'lot_project_payment', entityId: String(payment.paymentId),
+          entityLabel: payment.referenceId || `Payment #${payment.paymentId}`,
+          title: 'Payment notification email skipped',
+          description: warning,
+          metadata: { notificationEnabled: true, companyEmail: companyEmail || null },
+        });
+      } catch (_) {}
+      return { enabled: true, sent: false, reason: 'invalid_company_email', warning };
+    }
+
+    const companyName = String(settings.company_name || process.env.COMPANY_NAME || 'D&C Prime Realty').trim();
+    const enteredBy = getUserFullName(user) || user?.email || 'Authorized User';
+    const reference = payment.referenceId || `Payment #${payment.paymentId}`;
+    const subject = `New payment recorded - ${payment.unitId || project?.lot_project_name || 'Lot Project'} - ${reference}`;
+    const detailLines = [
+      `Project: ${project?.lot_project_name || project?.name || '-'}`,
+      `Unit: ${payment.unitId || '-'}`,
+      `Buyer: ${payment.buyerName || '-'}`,
+      `Amount: ${money(payment.amount)}`,
+      `Payment date: ${payment.paymentDate || '-'}`,
+      `Payment type: ${getPaymentTypeLabel(payment.paymentType)}`,
+      `Payment method: ${payment.paymentMethod || '-'}`,
+      ...(payment.paymentMethod !== 'Cash' ? [`Bank / provider: ${payment.bankName || '-'}`, `Account / wallet: ${maskPaymentAccountNumber(payment.accountNumber)}`] : []),
+      `Reference: ${reference}`,
+      `Entered by: ${enteredBy}`,
+      `Recorded at: ${new Date().toISOString()}`,
+    ];
+
+    await sendEmail({
+      to: companyEmail,
+      subject,
+      text: [
+        `Hello ${companyName},`, '',
+        'A new verified payment was added to D&C Prime Realty. Please double-check the payment entry below.', '',
+        ...detailLines, '',
+        'If any value is incorrect, review the payment inside the system before making a correction.',
+      ].join('\n'),
+      html: `<div style="font-family:Arial,sans-serif;max-width:640px;margin:auto;color:#0f172a"><h2>${escapePaymentCorrectionHtml(companyName)}</h2><p>A new verified payment was added. Please double-check the entry below.</p><div style="border:1px solid #cbd5e1;border-radius:12px;padding:16px;background:#f8fafc">${detailLines.map((line) => { const [label, ...rest] = line.split(':'); return `<p style="margin:7px 0"><strong>${escapePaymentCorrectionHtml(label)}:</strong>${escapePaymentCorrectionHtml(rest.join(':'))}</p>`; }).join('')}</div><p style="color:#475569">If any value is incorrect, review the payment inside the system before making a correction.</p></div>`,
+      idempotencyKey: `payment-entry-${payment.paymentId}`,
+    });
+
+    try {
+      await writeAuditLog(db, req, {
+        action: 'send', module: 'Payments', entityType: 'lot_project_payment', entityId: String(payment.paymentId),
+        entityLabel: reference,
+        title: 'Sent Add Payment notification',
+        description: `Sent the new payment notification to the configured Company Email (${companyEmail}).`,
+        metadata: { recipient: companyEmail, referenceId: reference, amount: Number(payment.amount || 0), unitId: payment.unitId || null },
+      });
+    } catch (_) {}
+
+    return { enabled: true, sent: true, recipient: companyEmail };
+  } catch (error) {
+    const warning = `Payment was saved, but the Company Email notification could not be sent: ${error?.message || 'Unknown email error.'}`;
+    console.error(warning);
+    try {
+      await writeAuditLog(db, req, {
+        action: 'system', module: 'Payments', entityType: 'lot_project_payment', entityId: String(payment?.paymentId || ''),
+        entityLabel: payment?.referenceId || `Payment #${payment?.paymentId || '-'}`,
+        title: 'Payment notification email failed',
+        description: warning,
+        metadata: { errorCode: error?.code || null, errorMessage: error?.message || null },
+      });
+    } catch (_) {}
+    return { enabled: true, sent: false, reason: 'send_failed', warning };
+  }
+};
+
 const cleanPaymentCorrectionValue = (value) => String(value ?? '').trim();
 const escapePaymentCorrectionHtml = (value = '') => cleanPaymentCorrectionValue(value)
   .replace(/&/g, '&amp;')
@@ -838,6 +938,14 @@ export const createLotProjectListingPayment = async (req, res) => {
           storageCode: existingRequest.lot_project_payment_storage_code || createPaymentStorageCode(existingRequest.lot_project_payment_id, existingRequest.lot_project_payment_created_at),
           idempotentReplay: true,
           penaltyWaivedAmount: existingPenaltyHandling === 'waive' ? Number(existingRequestPenaltyWaiver?.relief_amount || 0) : 0,
+          unitId: listing.lot_project_listing_unit_id,
+          buyerName: listing.buyer_full_name || null,
+          amount: Number(existingRequest.lot_project_payment_amount || 0),
+          paymentDate: plainDate(existingRequest.lot_project_payment_date),
+          paymentType: existingRequest.lot_project_payment_type,
+          paymentMethod: existingRequest.lot_project_payment_method,
+          bankName: existingRequest.lot_project_payment_bank_name,
+          accountNumber: existingRequest.lot_project_payment_account_number,
         };
       }
 
@@ -994,19 +1102,30 @@ export const createLotProjectListingPayment = async (req, res) => {
         },
       });
 
-      return { paymentId, referenceId, storageCode, idempotentReplay: false, penaltyWaivedAmount: paymentPenaltyWaiverAmount };
+      return {
+        paymentId, referenceId, storageCode, idempotentReplay: false, penaltyWaivedAmount: paymentPenaltyWaiverAmount,
+        unitId: listing.lot_project_listing_unit_id,
+        buyerName: listing.buyer_full_name || null,
+        amount, paymentDate, paymentType, paymentMethod, bankName, accountNumber,
+      };
     });
+
+    const paymentNotification = result.idempotentReplay
+      ? { enabled: false, sent: false, reason: 'idempotent_replay' }
+      : await sendPaymentEntryCompanyNotification({ req, user, project, payment: result });
+    const notificationWarning = paymentNotification?.warning || '';
 
     return res.status(result.idempotentReplay ? 200 : 201).json({
       success: true,
       message: result.idempotentReplay
         ? 'This payment was already saved. The existing verified payment was returned.'
-        : `${getPaymentTypeLabel(paymentType)} payment saved and verified successfully.`,
+        : `${getPaymentTypeLabel(paymentType)} payment saved and verified successfully.${notificationWarning ? ` ${notificationWarning}` : ''}`,
       payment_id: result.paymentId,
       reference_id: result.referenceId,
       storage_code: result.storageCode,
       idempotent_replay: result.idempotentReplay,
       penalty_waived_amount: Number(result.penaltyWaivedAmount || 0),
+      payment_notification: paymentNotification,
     });
   } catch (error) {
     return res.status(error?.statusCode || 500).json({ message: getErrorMessage(error) });

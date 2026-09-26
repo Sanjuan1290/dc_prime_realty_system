@@ -53,8 +53,10 @@ test('system user edit UI shows immutable role instead of editable role selector
   assert.doesNotMatch(editSystemUser, /<select[^>]*value=\{form\.role\}/);
 });
 
-test('Role & Access Settings is rendered only for Super Admin while Edit Settings is active', () => {
-  assert.match(settingsPage, /\{canManage && isEditing \? <RoleAccessControl \/> : null\}/);
+test('Role & Access Settings uses a compact Super Admin card and expands the large editor on demand', () => {
+  assert.match(settingsPage, /Role & Access Control/);
+  assert.match(settingsPage, /Manage Role & Access|Close Role & Access/);
+  assert.match(settingsPage, /canManage && showRoleAccess \? <RoleAccessControl \/> : null/);
   assert.match(roleAccess, /Save Role Defaults/);
 });
 

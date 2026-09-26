@@ -1,4 +1,4 @@
-import { FiMail, FiPhone, FiSave, FiSettings, FiX } from 'react-icons/fi'
+import { FiBell, FiMail, FiPhone, FiSave, FiSettings, FiX } from 'react-icons/fi'
 
 const Field = ({ label, helper, children }) => (
   <label className="grid gap-2">
@@ -46,6 +46,40 @@ const SystemSettingsForm = ({ form, setForm, onSubmit, isSaving, disabled = fals
           <Field label="Reservation Contact Number"><input disabled={disabled} value={form.reservationContactNumber} onChange={(e) => update('reservationContactNumber', e.target.value)} placeholder="0912-345-6789" className={inputClass} /></Field>
           <Field label="Default Release Day 1" helper="Allowed commission release day fallback."><input disabled={disabled} type="number" min="1" max="31" value={form.defaultReleaseDayOne} onChange={(e) => update('defaultReleaseDayOne', e.target.value)} className={inputClass} /></Field>
           <Field label="Default Release Day 2" helper="Allowed commission release day fallback."><input disabled={disabled} type="number" min="1" max="31" value={form.defaultReleaseDayTwo} onChange={(e) => update('defaultReleaseDayTwo', e.target.value)} className={inputClass} /></Field>
+        </div>
+      </section>
+
+
+      <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-200 px-6 py-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700"><FiBell className="h-5 w-5" /></div>
+            <div>
+              <h2 className="text-lg font-black text-slate-950">Payment Entry Notifications</h2>
+              <p className="mt-1 text-sm font-semibold text-slate-500">Email the Company Email every time a new verified payment is added so the entry can be double-checked.</p>
+            </div>
+          </div>
+        </div>
+        <div className="p-6">
+          <label className={`flex items-start justify-between gap-4 rounded-2xl border p-4 ${form.paymentEntryEmailNotificationEnabled ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50'}`}>
+            <span>
+              <span className="block text-sm font-black text-slate-900">Email company when a payment is added</span>
+              <span className="mt-1 block text-xs font-semibold leading-5 text-slate-500">Recipient: {form.companyEmail?.trim() || 'No Company Email entered'}. The system mail account remains the sender.</span>
+              {form.paymentEntryEmailNotificationEnabled && !/^\S+@\S+\.\S+$/.test(String(form.companyEmail || '').trim()) ? (
+                <span className="mt-2 block text-xs font-black text-red-600">Enter a valid Company Email before this notification can be enabled.</span>
+              ) : null}
+            </span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={Boolean(form.paymentEntryEmailNotificationEnabled)}
+              disabled={disabled}
+              onClick={() => update('paymentEntryEmailNotificationEnabled', !form.paymentEntryEmailNotificationEnabled)}
+              className={`relative mt-1 h-7 w-12 shrink-0 rounded-full transition disabled:cursor-not-allowed disabled:opacity-50 ${form.paymentEntryEmailNotificationEnabled ? 'bg-emerald-600' : 'bg-slate-300'}`}
+            >
+              <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition ${form.paymentEntryEmailNotificationEnabled ? 'left-6' : 'left-1'}`} />
+            </button>
+          </label>
         </div>
       </section>
 

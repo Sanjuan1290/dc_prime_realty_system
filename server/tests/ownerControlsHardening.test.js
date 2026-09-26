@@ -37,26 +37,25 @@ test('Archive Old Audit Logs is an exact Super Admin action with password plus e
   assert.match(modal, /requestData\.maskedEmail/);
 });
 
-test('Pending for Cancellation, Cancellation Settlement, and refund actions are Super Admin-only', () => {
+test('Cancellation actions are permission-based while sensitive settlement and release remain password + email protected', () => {
   const profile = read('client/src/pages/Lot_Projects/ListingProfile.jsx');
   const unitStatus = read('client/src/components/Lot_Projects/ListingProfileComponents/UnitStatus/UnitStatus.jsx');
-  const editStatus = read('client/src/components/Lot_Projects/ListingProfileComponents/UnitStatus/EditUnitStatusModal.jsx');
+  const modal = read('client/src/components/Lot_Projects/ListingProfileComponents/UnitStatus/CancellationAuthorizationModal.jsx');
+  const router = read('server/routers/System/projects.routers.js');
   const controller = read('server/controllers/Lot_Projects/Listings/Listings.controller.js');
 
-  assert.match(profile, /const canManageCancellation = isSuperAdmin/);
-  assert.match(profile, /canManageCancellation=\{canManageCancellation\}/);
+  assert.match(profile, /PERMISSIONS\.LOT_CANCELLATIONS_MANAGE/);
+  assert.match(profile, /PERMISSIONS\.LOT_CANCELLATIONS_SETTLE/);
+  assert.match(profile, /PERMISSIONS\.LOT_CANCELLATIONS_RELEASE_UNIT/);
 
-  assert.match(unitStatus, /disabled=\{isSaving \|\| !canManageCancellation\}/);
-  assert.match(unitStatus, /Only the Super Admin can complete Cancellation Settlement or issue a refund/);
-  assert.match(unitStatus, /canManageCancellation && showSettlementModal/);
+  assert.match(unitStatus, /statusTransitionAction: 'start_cancellation'/);
+  assert.match(unitStatus, /statusTransitionAction: 'cancel_cancellation'/);
+  assert.match(unitStatus, /statusTransitionAction: 'reset_to_available'/);
+  assert.match(unitStatus, /CancellationAuthorizationModal/);
 
-  assert.match(editStatus, /canManageCancellation \? \['sold', 'pending_for_cancellation'\] : \['sold'\]/);
-  assert.match(editStatus, /Only the Super Admin can change a sold unit to Pending for Cancellation/);
-
-  assert.match(controller, /const startsCancellation =[\s\S]*listingStatus\.status === 'pending_for_cancellation'/);
-  assert.match(controller, /LISTING_STATUS_ACTIONS\.SETTLE_CANCELLATION/);
-  assert.match(controller, /LISTING_STATUS_ACTIONS\.VOID_UNPAID_CANCELLATION/);
-  assert.match(controller, /if \(\(startsCancellation \|\| completesCancellation\) && req\.authUser\?\.role !== 'super_admin'\)/);
-  assert.match(controller, /Only the Super Admin can complete Cancellation Settlement or issue a refund/);
+  assert.match(router, /cancellation-code'[\s\S]*requireCancellationActionPermission[\s\S]*requireCurrentPassword/);
+  assert.match(controller, /roleHasPermission\(req\.authUser, cancellationPermission\)/);
+  assert.match(controller, /verifyAndConsumeSensitiveAction/);
+  assert.match(modal, /Current Account Password/);
+  assert.match(modal, /Email Verification Code/);
 });
-

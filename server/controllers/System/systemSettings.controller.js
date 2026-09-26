@@ -84,6 +84,7 @@ const systemSettingsTableSql = `
     reservation_contact_number VARCHAR(60) NULL,
     default_release_day_one TINYINT UNSIGNED NOT NULL DEFAULT 7,
     default_release_day_two TINYINT UNSIGNED NOT NULL DEFAULT 22,
+    payment_entry_email_notification_enabled TINYINT(1) NOT NULL DEFAULT 0,
     attendance_default_time_out TIME NOT NULL DEFAULT '20:00:00',
     attendance_scheduled_time_in TIME NOT NULL DEFAULT '09:00:00',
     attendance_scheduled_time_out TIME NOT NULL DEFAULT '20:00:00',
@@ -107,6 +108,7 @@ const systemSettingsTableSql = `
 
 const ensureSystemSettingsTable = async (connection = db) => {
   await connection.query(systemSettingsTableSql);
+  await connection.query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS payment_entry_email_notification_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER default_release_day_two`);
   await connection.query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS attendance_default_time_out TIME NOT NULL DEFAULT '20:00:00' AFTER default_release_day_two`);
   await connection.query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS attendance_scheduled_time_in TIME NOT NULL DEFAULT '09:00:00' AFTER attendance_default_time_out`);
   await connection.query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS attendance_scheduled_time_out TIME NOT NULL DEFAULT '20:00:00' AFTER attendance_scheduled_time_in`);
@@ -142,6 +144,7 @@ const mapSettings = (row = {}) => ({
   reservationContactNumber: row.reservation_contact_number,
   defaultReleaseDayOne: Number(row.default_release_day_one || 7),
   defaultReleaseDayTwo: Number(row.default_release_day_two || 22),
+  paymentEntryEmailNotificationEnabled: Boolean(Number(row.payment_entry_email_notification_enabled || 0)),
   attendanceDefaultTimeOut: String(row.attendance_default_time_out || '20:00:00').slice(0, 8),
   employeeDepartmentCodes: normalizeDepartmentConfigs(row.employee_department_codes_json, row.employee_departments_json),
   employeeDepartments: normalizeDepartmentConfigs(row.employee_department_codes_json, row.employee_departments_json).map((item) => item.name),
@@ -164,7 +167,10 @@ const normalizeSettingsPayload = (body = {}) => ({
   reservationContactNumber: nullableText(body.reservationContactNumber),
   defaultReleaseDayOne: clampDay(body.defaultReleaseDayOne, 7),
   defaultReleaseDayTwo: clampDay(body.defaultReleaseDayTwo, 22),
+  paymentEntryEmailNotificationEnabled: body.paymentEntryEmailNotificationEnabled === true || body.paymentEntryEmailNotificationEnabled === 1 || String(body.paymentEntryEmailNotificationEnabled || '').toLowerCase() === 'true' || String(body.paymentEntryEmailNotificationEnabled || '') === '1',
 });
+
+const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
 
 const validateSettingsPayload = (payload) => {
   if (!payload.companyName) {
@@ -175,6 +181,9 @@ const validateSettingsPayload = (payload) => {
   }
   if (payload.defaultReleaseDayOne === payload.defaultReleaseDayTwo) {
     throw Object.assign(new Error('Default release days must be different.'), { statusCode: 400 });
+  }
+  if (payload.paymentEntryEmailNotificationEnabled && !isValidEmail(payload.companyEmail)) {
+    throw Object.assign(new Error('Enter a valid Company Email before enabling Add Payment email notifications.'), { statusCode: 400, code: 'COMPANY_EMAIL_REQUIRED_FOR_PAYMENT_NOTIFICATIONS' });
   }
   return payload;
 };
@@ -328,6 +337,7 @@ export const updateSystemSettings = async (req, res) => {
           reservation_contact_number = ?,
           default_release_day_one = ?,
           default_release_day_two = ?,
+          payment_entry_email_notification_enabled = ?,
           updated_by_user_id = ?
         WHERE system_setting_id = 1
       `,
@@ -344,6 +354,7 @@ export const updateSystemSettings = async (req, res) => {
         payload.reservationContactNumber,
         payload.defaultReleaseDayOne,
         payload.defaultReleaseDayTwo,
+        payload.paymentEntryEmailNotificationEnabled ? 1 : 0,
         actor.id,
       ]
     );

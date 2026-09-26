@@ -8,6 +8,7 @@ import {
   requireProjectAccessBySlug,
 } from '../../middleware/auth.middleware.js';
 import { PERMISSIONS, roleHasPermission } from '../../config/permissions.js';
+import { cancellationPermissionForAction } from '../../services/cancellationVerification.service.js';
 
 import {
   getSystemDashboardSummary,
@@ -35,6 +36,7 @@ import {
   getLotProjectListings,
   createLotProjectListing,
   updateLotProjectListing,
+  requestLotProjectCancellationActionCode,
   deleteLotProjectListing,
 } from '../../controllers/Lot_Projects/Listings/Listings.controller.js';
 import {
@@ -156,6 +158,24 @@ const requireCommissionActionPermission = (req, res, next) => {
   return next();
 };
 
+const requireListingUpdatePermission = (req, res, next) => {
+  const action = String(req.body?.statusTransitionAction || '').trim().toLowerCase();
+  const permission = cancellationPermissionForAction(action) || PERMISSIONS.LOT_LISTINGS_EDIT;
+  if (!roleHasPermission(req.authUser, permission)) {
+    return res.status(403).json({ success: false, message: action ? 'You do not have permission for this cancellation action.' : 'You do not have permission to edit this listing.' });
+  }
+  return next();
+};
+
+const requireCancellationActionPermission = (req, res, next) => {
+  const action = String(req.body?.statusTransitionAction || '').trim().toLowerCase();
+  const permission = cancellationPermissionForAction(action);
+  if (!permission || !roleHasPermission(req.authUser, permission)) {
+    return res.status(403).json({ success: false, message: 'You do not have permission for this cancellation action.' });
+  }
+  return next();
+};
+
 router.use(authenticateUser);
 router.param('projectSlug', requireProjectAccessBySlug);
 
@@ -213,7 +233,8 @@ router.get('/lot-projects/:projectSlug/listing-imports/:batchId', requirePermiss
 router.post('/lot-projects/:projectSlug/listing-imports/:batchId/revert', requirePermission(PERMISSIONS.LOT_LISTINGS_IMPORT_UNDO), revertLotProjectListingImport);
 
 router.post('/lot-projects/:projectSlug/listings', requirePermission(PERMISSIONS.LOT_LISTINGS_CREATE), createLotProjectListing);
-router.put('/lot-projects/:projectSlug/listings/:listingId', requirePermission(PERMISSIONS.LOT_LISTINGS_EDIT), updateLotProjectListing);
+router.post('/lot-projects/:projectSlug/listings/:listingId/cancellation-code', requireCancellationActionPermission, requireCurrentPassword({ field: 'password', label: 'Current account password' }), requestLotProjectCancellationActionCode);
+router.put('/lot-projects/:projectSlug/listings/:listingId', requireListingUpdatePermission, updateLotProjectListing);
 router.delete('/lot-projects/:projectSlug/listings/:listingId', requirePermission(PERMISSIONS.LOT_LISTINGS_DELETE), deleteLotProjectListing);
 router.put('/lot-projects/:projectSlug/listings/:listingId/client-profile', requirePermission(PERMISSIONS.LOT_BUYER_PROFILE_EDIT), updateLotProjectClientProfile);
 router.post('/lot-projects/:projectSlug/listings/:listingId/reserve', requirePermission(PERMISSIONS.LOT_RESERVATIONS_CREATE), reserveLotProjectListing);

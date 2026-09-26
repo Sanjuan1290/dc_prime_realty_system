@@ -17,6 +17,7 @@ import RecalculateCommissionModal from './RecalculateCommissionModal'
 import CommissionDistribution from './CommissionDistribution'
 import CancellationSettlementModal from './CancellationSettlementModal'
 import ConfirmActionModal from '../../../Shared/ConfirmActionModal'
+import CancellationAuthorizationModal from './CancellationAuthorizationModal'
 
 const fallbackListing = {
   unit_id: '-',
@@ -185,11 +186,15 @@ const UnitStatus = ({
   canEditListing = false,
   canAdjustCommission = false,
   canManageCancellation = false,
+  canSettleCancellation = false,
+  canReleaseCancelledUnit = false,
+  onRequestCancellationCode,
   onRequestCommissionAdjustmentCode,
   onAdjustCommission,
   canCorrectReservation = false,
   onCorrectReservation,
   isSaving = false,
+  isRequestingCancellationCode = false,
   isRequestingCommissionCode = false,
   isAdjustingCommission = false,
   readOnly = false,
@@ -198,6 +203,7 @@ const UnitStatus = ({
   const [showRecalculateModal, setShowRecalculateModal] = useState(false)
   const [showSettlementModal, setShowSettlementModal] = useState(false)
   const [confirmAction, setConfirmAction] = useState(null)
+  const [pendingCancellationAuthorization, setPendingCancellationAuthorization] = useState(null)
   const [alert, setAlert] = useState(null)
 
   const unitData = useMemo(() => ({ ...fallbackListing, ...listing }), [listing])
@@ -221,7 +227,7 @@ const UnitStatus = ({
 
   const handleSettleCancellation = async (settlement) => {
     const voidWithoutHistory = settlement?.cancellationAccountHistoryTreatment === 'discard'
-    await handleSave({
+    setPendingCancellationAuthorization({
       ...unitData,
       ...settlement,
       unitCode: unitData.unit_id || unitData.unitCode,
@@ -243,6 +249,26 @@ const UnitStatus = ({
       confirmSaleDataDeletion: voidWithoutHistory,
     })
     setShowSettlementModal(false)
+  }
+
+  const submitStartCancellation = async () => {
+    try {
+      setAlert({ type: 'loading', message: 'Moving the buyer account to Pending for Cancellation...' })
+      await handleSave({
+        ...unitData,
+        unitCode: unitData.unit_id || unitData.unitCode,
+        lotType: unitData.lot_type,
+        installmentPricePerSqm: unitData.installmentPricePerSqm ?? unitData.pricePerSqm,
+        cashPricePerSqm: unitData.cashPricePerSqm ?? unitData.pricePerSqm,
+        lotAreaSqm: unitData.lotAreaSqm,
+        legalMiscRate: unitData.legalMiscRate,
+        annualInterestRate: unitData.annualInterestRate,
+        reservationFee: unitData.reservationFee,
+        oldUnitIds: unitData.old_unit_ids === '-' ? '' : unitData.old_unit_ids,
+        status: 'pending_for_cancellation',
+        statusTransitionAction: 'start_cancellation',
+      })
+    } catch {}
   }
 
   const submitCancelCancellation = async () => {
@@ -268,26 +294,27 @@ const UnitStatus = ({
   }
 
   const submitMakeAvailable = async () => {
-    try {
-      setAlert({ type: 'loading', message: 'Closing the cancelled buyer account and returning the unit to Available...' })
-      await handleSave({
-        ...unitData,
-        unitCode: unitData.unit_id || unitData.unitCode,
-        lotType: unitData.lot_type,
-        installmentPricePerSqm: unitData.installmentPricePerSqm ?? unitData.pricePerSqm,
-        cashPricePerSqm: unitData.cashPricePerSqm ?? unitData.pricePerSqm,
-        lotAreaSqm: unitData.lotAreaSqm,
-        legalMiscRate: unitData.legalMiscRate,
-        annualInterestRate: unitData.annualInterestRate,
-        reservationFee: unitData.reservationFee,
-        oldUnitIds: unitData.old_unit_ids === '-' ? '' : unitData.old_unit_ids,
-        cadastralLots: String(unitData.cadastral_lot_no || '').split(',').map((item) => item.trim()).filter(Boolean),
-        status: 'available',
-        statusTransitionAction: 'reset_to_available',
-        confirmSaleDataDeletion: true,
-      })
-      setConfirmAction(null)
-    } catch {}
+    setPendingCancellationAuthorization({
+      ...unitData,
+      unitCode: unitData.unit_id || unitData.unitCode,
+      lotType: unitData.lot_type,
+      installmentPricePerSqm: unitData.installmentPricePerSqm ?? unitData.pricePerSqm,
+      cashPricePerSqm: unitData.cashPricePerSqm ?? unitData.pricePerSqm,
+      lotAreaSqm: unitData.lotAreaSqm,
+      legalMiscRate: unitData.legalMiscRate,
+      annualInterestRate: unitData.annualInterestRate,
+      reservationFee: unitData.reservationFee,
+      oldUnitIds: unitData.old_unit_ids === '-' ? '' : unitData.old_unit_ids,
+      status: 'available',
+      statusTransitionAction: 'reset_to_available',
+      confirmSaleDataDeletion: true,
+    })
+    setConfirmAction(null)
+  }
+
+  const confirmSensitiveCancellation = async (payload) => {
+    await handleSave(payload)
+    setPendingCancellationAuthorization(null)
   }
 
   const showSettlementButton = !readOnly && (
@@ -295,6 +322,7 @@ const UnitStatus = ({
     unitData.listing_status === 'Pending for Cancellation'
   )
 
+  const showStartCancellationButton = !readOnly && canManageCancellation && ['Sold / Active', 'Fully Paid'].includes(unitData.listing_status)
   const showAvailableButton = !readOnly && unitData.listing_status === 'Cancelled'
   const showCorrectionButton = !readOnly && canCorrectReservation && unitData.listing_status === 'Sold / Active'
 
@@ -345,7 +373,7 @@ const UnitStatus = ({
                 type="button"
                 onClick={() => canEditListing && setShowEditModal(true)}
                 disabled={isSaving || !canEditListing}
-                title={!canEditListing ? 'Only the Super Admin can edit a reserved, sold, or protected listing.' : 'Edit listing details'}
+                title={!canEditListing ? 'Protected listing details are locked. Use the dedicated cancellation actions if permitted.' : 'Edit listing details'}
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98]"
               >
                 <FiEdit3 className="h-4 w-4" />
@@ -353,24 +381,35 @@ const UnitStatus = ({
               </button>
             ) : null}
 
-            {showSettlementButton ? (
+            {showStartCancellationButton ? (
               <button
                 type="button"
-                onClick={() => canManageCancellation && setShowSettlementModal(true)}
-                disabled={isSaving || !canManageCancellation}
-                title={!canManageCancellation ? 'Only the Super Admin can complete Cancellation Settlement or issue a refund.' : 'Open Cancellation Settlement'}
+                onClick={submitStartCancellation}
+                disabled={isSaving}
+                className="inline-flex h-10 items-center justify-center rounded-xl bg-orange-600 px-4 text-sm font-black text-white transition hover:bg-orange-700 disabled:opacity-50"
+              >
+                Start Cancellation
+              </button>
+            ) : null}
+
+            {showSettlementButton && canSettleCancellation ? (
+              <button
+                type="button"
+                onClick={() => setShowSettlementModal(true)}
+                disabled={isSaving}
+                title="Open Cancellation Settlement / Refund"
                 className="inline-flex h-10 items-center justify-center rounded-xl bg-orange-600 px-4 text-sm font-black text-white transition hover:bg-orange-700 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 disabled:hover:bg-slate-100 active:scale-[0.98]"
               >
                 Settlement
               </button>
             ) : null}
 
-            {showSettlementButton ? (
+            {showSettlementButton && canManageCancellation ? (
               <button
                 type="button"
-                onClick={() => canManageCancellation && setConfirmAction('cancel-cancellation')}
-                disabled={isSaving || !canManageCancellation}
-                title={!canManageCancellation ? 'Only the Super Admin can cancel a pending cancellation.' : 'Return the buyer account to Sold / Active'}
+                onClick={() => setConfirmAction('cancel-cancellation')}
+                disabled={isSaving}
+                title="Return the buyer account to Sold / Active"
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 transition hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98]"
               >
                 <FiRotateCcw className="h-4 w-4" />
@@ -378,12 +417,12 @@ const UnitStatus = ({
               </button>
             ) : null}
 
-            {showAvailableButton ? (
+            {showAvailableButton && canReleaseCancelledUnit ? (
               <button
                 type="button"
-                onClick={() => canManageCancellation && setConfirmAction('make-available')}
-                disabled={isSaving || !canManageCancellation}
-                title={!canManageCancellation ? 'Only the Super Admin can close a cancelled account and make the unit available.' : 'Close the cancelled account and return the unit to Available'}
+                onClick={() => setConfirmAction('make-available')}
+                disabled={isSaving}
+                title="Close the cancelled account and return the unit to Available"
                 className="inline-flex h-10 items-center justify-center rounded-xl bg-emerald-600 px-4 text-sm font-black text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60 active:scale-[0.98]"
               >
                 Close Account & Make Available
@@ -609,7 +648,7 @@ const UnitStatus = ({
         </>
       ) : null}
 
-      {!readOnly && canManageCancellation && showSettlementModal ? (
+      {!readOnly && canSettleCancellation && showSettlementModal ? (
         <CancellationSettlementModal
           unitId={unitData.unit_id || unitData.unitCode}
           buyerName={unitData.buyer_name}
@@ -617,6 +656,17 @@ const UnitStatus = ({
           onClose={() => setShowSettlementModal(false)}
           onConfirm={handleSettleCancellation}
           isSaving={isSaving}
+        />
+      ) : null}
+
+      {pendingCancellationAuthorization ? (
+        <CancellationAuthorizationModal
+          payload={pendingCancellationAuthorization}
+          onRequestCode={onRequestCancellationCode}
+          onConfirm={confirmSensitiveCancellation}
+          onClose={() => !isSaving && setPendingCancellationAuthorization(null)}
+          isSaving={isSaving}
+          isRequestingCode={isRequestingCancellationCode}
         />
       ) : null}
 

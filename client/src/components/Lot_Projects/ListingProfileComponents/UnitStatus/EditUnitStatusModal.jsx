@@ -357,6 +357,9 @@ const EditUnitStatusModal = ({ listing, project = {}, listingDocuments = [], lib
       reservationFee: Number(form.reservationFee || 0),
       confirmSkipPreviousUnitId,
     }
+    if (currentStatus === 'sold' && form.status === 'pending_for_cancellation') {
+      payload.statusTransitionAction = 'start_cancellation'
+    }
 
     // Relationship arrays are submitted only when the user actually changed them.
     // The backend independently verifies the diff before mutating anything.

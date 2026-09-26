@@ -10,13 +10,24 @@ test('editing listing details may keep the current status', () => {
   assert.equal(result.resetToAvailable, false);
 });
 
-test('sold may move only to pending for cancellation through Edit Listing', () => {
+test('sold may move to pending for cancellation only through the explicit Start Cancellation action', () => {
   const result = validateListingStatusTransition({
     currentStatus: 'sold',
     nextStatus: 'pending_for_cancellation',
+    action: LISTING_STATUS_ACTIONS.START_CANCELLATION,
   });
   assert.equal(result.nextStatus, 'pending_for_cancellation');
   assert.equal(result.resetToAvailable, false);
+});
+
+test('sold cannot move to pending for cancellation without the Start Cancellation action', () => {
+  assert.throws(
+    () => validateListingStatusTransition({
+      currentStatus: 'sold',
+      nextStatus: 'pending_for_cancellation',
+    }),
+    /cannot be changed directly/i
+  );
 });
 
 test('sold cannot move directly to available', () => {

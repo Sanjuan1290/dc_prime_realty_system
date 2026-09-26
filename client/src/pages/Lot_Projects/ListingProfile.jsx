@@ -128,7 +128,9 @@ const ListingProfile = () => {
   const canViewCommissions = hasPermission(user, PERMISSIONS.LOT_COMMISSIONS_VIEW)
   const canViewSystemDocuments = hasPermission(user, PERMISSIONS.SYSTEM_DOCUMENTS_VIEW)
   const canAdjustCommission = isSuperAdmin && canViewCommissions
-  const canManageCancellation = isSuperAdmin
+  const canManageCancellation = hasPermission(user, PERMISSIONS.LOT_CANCELLATIONS_MANAGE)
+  const canSettleCancellation = hasPermission(user, PERMISSIONS.LOT_CANCELLATIONS_SETTLE)
+  const canReleaseCancelledUnit = hasPermission(user, PERMISSIONS.LOT_CANCELLATIONS_RELEASE_UNIT)
   const canCorrectReservation = hasPermission(user, PERMISSIONS.LOT_RESERVATION_CORRECT)
   const isAccountRoute = Boolean(accountId)
   const profileKey = ['lot-listing-profile', projectSlug, listingId, accountId || 'current']
@@ -285,6 +287,15 @@ const ListingProfile = () => {
     },
   })
 
+
+  const requestCancellationCodeMutation = useMutation({
+    mutationFn: (payload) =>
+      useFetchPost(
+        `/projects/lot-projects/${projectSlug}/listings/${listingId}/cancellation-code`,
+        payload,
+        { confirmationHandled: 'technical' }
+      ),
+  })
 
   const requestCommissionAdjustmentCodeMutation = useMutation({
     mutationFn: (payload) =>
@@ -845,11 +856,15 @@ const ListingProfile = () => {
           canEditListing={canEditListing}
           canAdjustCommission={canAdjustCommission}
           canManageCancellation={canManageCancellation}
+          canSettleCancellation={canSettleCancellation}
+          canReleaseCancelledUnit={canReleaseCancelledUnit}
+          onRequestCancellationCode={(payload) => requestCancellationCodeMutation.mutateAsync(payload)}
           onRequestCommissionAdjustmentCode={(payload) => requestCommissionAdjustmentCodeMutation.mutateAsync(payload)}
           onAdjustCommission={(payload) => adjustCommissionMutation.mutateAsync(payload)}
           canCorrectReservation={canCorrectReservation}
           onCorrectReservation={() => setShowReservationCorrectionModal(true)}
           isSaving={updateListingMutation.isPending}
+          isRequestingCancellationCode={requestCancellationCodeMutation.isPending}
           isRequestingCommissionCode={requestCommissionAdjustmentCodeMutation.isPending}
           isAdjustingCommission={adjustCommissionMutation.isPending}
           readOnly={readOnly}

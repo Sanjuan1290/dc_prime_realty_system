@@ -85,6 +85,7 @@ test('owner-level destructive controls stay owner-only while normal payment and 
   assert.match(correction, /disabled=\{!isSuperAdmin \|\| busy\}/);
   assert.match(users, /isSuperAdmin && canCreate/);
   assert.match(users, /isSuperAdmin && user\.status === 'active' \? <button onClick=\{\(\) => open\('access',user\)\}/);
-  assert.match(users, /canReset && user\.status === 'active'/);
+  assert.doesNotMatch(users, /open\('reset'/);
+  assert.doesNotMatch(users, />Reset<\/button>/);
   assert.match(users, /canDeactivate && user\.status === 'active'/);
 });

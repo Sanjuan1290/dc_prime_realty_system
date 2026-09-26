@@ -15,6 +15,7 @@ const transitionError = (message) => {
 };
 
 export const LISTING_STATUS_ACTIONS = Object.freeze({
+  START_CANCELLATION: 'start_cancellation',
   SETTLE_CANCELLATION: 'settle_cancellation',
   CANCEL_CANCELLATION: 'cancel_cancellation',
   RESET_TO_AVAILABLE: 'reset_to_available',
@@ -39,8 +40,12 @@ export const validateListingStatusTransition = ({
     return { currentStatus: current, nextStatus: next, resetToAvailable: false };
   }
 
-  // Edit Listing may only start the cancellation process for an existing sale.
-  if (current === 'sold' && next === 'pending_for_cancellation') {
+  // Starting cancellation is a distinct permissioned workflow.
+  if (
+    current === 'sold' &&
+    next === 'pending_for_cancellation' &&
+    transitionAction === LISTING_STATUS_ACTIONS.START_CANCELLATION
+  ) {
     return { currentStatus: current, nextStatus: next, resetToAvailable: false };
   }
 

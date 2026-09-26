@@ -93,6 +93,22 @@ import {
 } from '../../../services/cloudinaryUnitFolder.service.js';
 import { createListingStorageCode } from '../../../services/storageCodes.service.js';
 import { resolveDocumentRequiredFlag, resolveDocumentResponsibleParty } from '../../../utils/documentRequirement.js';
+import { PERMISSIONS, roleHasPermission } from '../../../config/permissions.js';
+import {
+  createSensitiveActionVerification,
+  getSensitiveActionRequestIp,
+  maskSensitiveActionEmail,
+  SENSITIVE_ACTION_CODE_EXPIRY_MINUTES,
+  verifyAndConsumeSensitiveAction,
+} from '../../../services/sensitiveActionVerification.service.js';
+import {
+  CANCELLATION_VERIFICATION_ACTION,
+  CANCELLATION_VERIFICATION_ENTITY,
+  buildCancellationVerificationPayload,
+  cancellationActionRequiresVerification,
+  cancellationPermissionForAction,
+  sendCancellationVerificationCodeEmail,
+} from '../../../services/cancellationVerification.service.js';
 
 const normalizeListingDocumentRequirements = (documents = []) => {
   const documentMap = new Map();
@@ -1198,6 +1214,67 @@ const rollbackListingDocumentCloudinaryMoves = async (completedMoves = []) => {
   return failures;
 };
 
+
+export const requestLotProjectCancellationActionCode = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    const actor = req.authUser || await getAuthenticatedUser(req);
+    if (!actor?.id) return res.status(401).json({ message: 'Authentication is required.' });
+    if (!actor.email) return res.status(400).json({ message: 'Your account must have an email address before a cancellation action can be authorized.' });
+
+    const slug = String(req.params.projectSlug || '').trim();
+    const listingLookup = String(req.params.listingId || '').trim();
+    const project = await getProjectBySlug(slug);
+    if (!project) return res.status(404).json({ message: 'Lot project not found.' });
+
+    const action = String(req.body?.statusTransitionAction || '').trim().toLowerCase();
+    const permission = cancellationPermissionForAction(action);
+    if (!permission || !cancellationActionRequiresVerification(action)) {
+      return res.status(400).json({ message: 'This cancellation action does not use sensitive email verification.' });
+    }
+    if (!roleHasPermission(actor, permission)) {
+      return res.status(403).json({ message: 'You do not have permission to authorize this cancellation action.' });
+    }
+
+    await connection.beginTransaction();
+    const listing = await getListingForPayment(connection, project, listingLookup, { forUpdate: true });
+    if (!listing) throw Object.assign(new Error('Listing not found.'), { statusCode: 404 });
+    const account = await getCurrentLotProjectAccount(connection, listing.lot_project_listing_id, { forUpdate: true });
+    const payload = buildCancellationVerificationPayload({ actor, project, listing, account, body: req.body });
+
+    const { verificationId, code } = await createSensitiveActionVerification(connection, {
+      userId: actor.id,
+      actionType: CANCELLATION_VERIFICATION_ACTION,
+      entityType: CANCELLATION_VERIFICATION_ENTITY,
+      entityId: String(listing.lot_project_listing_id),
+      payload,
+      reason: payload.cancellationReason || action,
+      requestIp: getSensitiveActionRequestIp(req),
+    });
+
+    await sendCancellationVerificationCodeEmail({ actor, code, project, listing, payload });
+    await writeAuditLog(connection, req, {
+      action: 'send', module: 'Listings', entityType: 'lot_project_listing', entityId: String(listing.lot_project_listing_id),
+      entityLabel: listing.lot_project_listing_unit_id,
+      title: 'Sent cancellation authorization code',
+      description: `Sent a protected cancellation authorization code for ${listing.lot_project_listing_unit_id}.`,
+      metadata: { action, verificationId, permission },
+    });
+    await connection.commit();
+
+    return res.json({
+      success: true,
+      message: `A cancellation authorization code was sent to ${maskSensitiveActionEmail(actor.email)}.`,
+      data: { verificationId, maskedEmail: maskSensitiveActionEmail(actor.email), expiresInMinutes: SENSITIVE_ACTION_CODE_EXPIRY_MINUTES },
+    });
+  } catch (error) {
+    try { await connection.rollback(); } catch {}
+    return res.status(error?.statusCode || 500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
 export const updateLotProjectListing = async (req, res) => {
   const connection = await db.getConnection();
   const completedCloudinaryMoves = [];
@@ -1316,6 +1393,46 @@ export const updateLotProjectListing = async (req, res) => {
       { forUpdate: true }
     );
     const currentClientProfileId = Number(currentAccount?.lot_project_client_profile_id || 0);
+    const statusTransitionAction = String(req.body.statusTransitionAction || '').trim().toLowerCase() || null;
+    const cancellationPermission = cancellationPermissionForAction(statusTransitionAction);
+    const isCancellationAction = Boolean(cancellationPermission);
+    const canPerformCancellationAction = cancellationPermission
+      ? roleHasPermission(req.authUser, cancellationPermission)
+      : false;
+
+    if (isCancellationAction && !canPerformCancellationAction) {
+      await connection.rollback();
+      return res.status(403).json({ message: 'You do not have permission to perform this cancellation action.' });
+    }
+
+    if (isCancellationAction && cancellationActionRequiresVerification(statusTransitionAction)) {
+      const verificationId = Number(req.body.verificationId || req.body.verification_id || 0);
+      const code = String(req.body.code || req.body.verificationCode || req.body.verification_code || '').trim();
+      if (!verificationId || !/^\d{6}$/.test(code)) {
+        await connection.rollback();
+        return res.status(400).json({ message: 'Current-password verification and the six-digit email code are required for this cancellation action.' });
+      }
+      const verificationPayload = buildCancellationVerificationPayload({
+        actor: req.authUser,
+        project,
+        listing: existingListing,
+        account: currentAccount,
+        body: req.body,
+      });
+      const verificationResult = await verifyAndConsumeSensitiveAction(connection, {
+        verificationId,
+        userId: req.authUser?.id,
+        actionType: CANCELLATION_VERIFICATION_ACTION,
+        entityType: CANCELLATION_VERIFICATION_ENTITY,
+        entityId: String(existingListing.lot_project_listing_id),
+        code,
+        payload: verificationPayload,
+      });
+      if (!verificationResult.ok) {
+        await connection.commit();
+        return res.status(verificationResult.statusCode || 400).json({ message: verificationResult.message });
+      }
+    }
 
     // A generic Edit Listing form submits raw status values such as "sold".
     // Preserve the existing sold substatus (especially fully_paid) unless the
@@ -1344,11 +1461,11 @@ export const updateLotProjectListing = async (req, res) => {
     // LOT_LISTINGS_MANAGE. Once a real sale/reservation state exists, the
     // generic Edit Listing endpoint becomes a Super Admin administrative-only
     // correction surface. Contract/pricing fields are frozen below.
-    if (isProtectedListing && !isSuperAdmin) {
+    if (isProtectedListing && !isSuperAdmin && !isCancellationAction) {
       await connection.rollback();
       return res.status(403).json({
         code: 'PROTECTED_LISTING_EDIT_REQUIRES_SUPER_ADMIN',
-        message: 'Only the Super Admin can edit a reserved, sold, or protected listing.',
+        message: 'Only the Super Admin can edit a reserved, sold, or protected listing outside the permissioned cancellation workflow.',
       });
     }
 
@@ -1407,6 +1524,19 @@ export const updateLotProjectListing = async (req, res) => {
     const previousUnitId = String(existingListing.lot_project_listing_unit_id || '').trim().toUpperCase();
     const keepsPreviousUnitId = oldUnitIdAliases.includes(previousUnitId);
 
+    if (isProtectedListing && isCancellationAction && !isSuperAdmin) {
+      const requestedLotType = normalizeLotType(req.body.lotType || req.body.lot_type);
+      const lotTypeChanged = requestedLotType !== normalizeLotType(existingListing.lot_project_listing_unit_type);
+      const oldUnitIdsChanged = String(oldUnitIdsValue || '').trim() !== String(existingListing.lot_project_listing_old_unit_ids || '').trim();
+      if (unitIdChanged || lotTypeChanged || oldUnitIdsChanged || Array.isArray(req.body.documentRequirements)) {
+        await connection.rollback();
+        return res.status(409).json({
+          code: 'CANCELLATION_WORKFLOW_LISTING_FIELDS_LOCKED',
+          message: 'Cancellation permissions authorize only cancellation workflow changes. Unit identity, lot type, old Unit IDs, pricing, and document requirements remain locked.',
+        });
+      }
+    }
+
     if (unitIdChanged && previousUnitId && !keepsPreviousUnitId && req.body.confirmSkipPreviousUnitId !== true) {
       await connection.rollback();
       return res.status(409).json({
@@ -1417,7 +1547,6 @@ export const updateLotProjectListing = async (req, res) => {
       });
     }
 
-    const statusTransitionAction = req.body.statusTransitionAction || null;
     const startsCancellation = existingListing.lot_project_listing_status !== 'pending_for_cancellation'
       && listingStatus.status === 'pending_for_cancellation';
     const completesCancellation = [
@@ -1425,13 +1554,9 @@ export const updateLotProjectListing = async (req, res) => {
       LISTING_STATUS_ACTIONS.VOID_UNPAID_CANCELLATION,
     ].includes(statusTransitionAction);
 
-    if ((startsCancellation || completesCancellation) && req.authUser?.role !== 'super_admin') {
+    if (startsCancellation && statusTransitionAction !== LISTING_STATUS_ACTIONS.START_CANCELLATION) {
       await connection.rollback();
-      return res.status(403).json({
-        message: startsCancellation
-          ? 'Only the Super Admin can change a sold unit to Pending for Cancellation.'
-          : 'Only the Super Admin can complete Cancellation Settlement or issue a refund.',
-      });
+      return res.status(400).json({ message: 'Use the Start Cancellation action to move a sold unit to Pending for Cancellation.' });
     }
 
     const statusTransition = validateListingStatusTransition({

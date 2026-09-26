@@ -27,7 +27,9 @@ test('system report export stays independent from report view', () => {
 
 test('listing import, listing edit, and reserve are independent backend permissions', () => {
   assert.match(routeLine("listing-imports/validate"), /LOT_LISTINGS_IMPORT/);
-  assert.match(routeLine("router.put('/lot-projects/:projectSlug/listings/:listingId'"), /LOT_LISTINGS_EDIT/);
+  assert.match(routeLine("router.put('/lot-projects/:projectSlug/listings/:listingId'"), /requireListingUpdatePermission/);
+  assert.match(projectRouter, /const requireListingUpdatePermission[\s\S]*LOT_LISTINGS_EDIT/);
+  assert.match(projectRouter, /cancellationPermissionForAction/);
   assert.match(routeLine("listings/:listingId/reserve"), /LOT_RESERVATIONS_CREATE/);
   assert.match(routeLine("reservation-agents"), /LOT_RESERVATIONS_CREATE/);
   assert.match(routeLine("commission-preview"), /LOT_RESERVATIONS_CREATE/);

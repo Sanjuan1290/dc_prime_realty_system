@@ -41,3 +41,6 @@ Apply this SQL migration before running `npm run migrate:cloudinary-documents`. 
 
 - `20260907_attendance_settings_and_secure_barcodes.sql` — persistent Attendance Settings and separate secure 10-digit Attendance Barcodes.
 
+
+## 2026-09-26 — Payment notifications and cancellation access
+Run `20260926_payment_notifications_and_cancellation_access.sql` after the RBAC migrations. It adds the Add Payment email-notification toggle. The three new cancellation permissions default OFF for configurable roles and can be enabled from Role & Access Control.
