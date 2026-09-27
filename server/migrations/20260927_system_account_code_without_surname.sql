@@ -1,22 +1,17 @@
--- 2026-09-27 — System account code = role abbreviation + users.id primary key.
+-- 2026-09-27 — Remove surname from internal system account codes.
+-- Final format: ROLECODE-<users.id padded to at least 5 digits>
+-- Example: CORTEZ-SS-00002 -> SS-00002
 --
--- Canonical visible format:
---   ROLECODE-<users.id padded to at least 5 digits>
--- Examples:
---   users.id = 1  / admin      -> ADM-00001
---   users.id = 2  / marketing  -> MKT-00002
---   users.id = 27 / sales      -> SS-00027
---
--- Surnames are intentionally excluded. users.id is globally unique.
--- person_key + role_sequence remain unchanged and continue to track a person's
--- historical position sequence. They are intentionally NOT used in account_code.
+-- Safe for existing databases. Historical users keep their same user IDs;
+-- only the visible account_code is normalized.
 
 USE `dc_prime_realty_system_db`;
 
 START TRANSACTION;
 
+-- Temporary collision-proof values avoid unique-key conflicts during normalization.
 UPDATE `users`
-SET `account_code` = CONCAT('__ACCOUNT_ID_MIGRATION__', `id`)
+SET `account_code` = CONCAT('__ROLE_ID_CODE__', `id`)
 WHERE COALESCE(`account_category`, 'seller') = 'system'
    OR `role` IN ('super_admin','admin','marketing','sales','accounting','operations');
 
@@ -42,8 +37,7 @@ WHERE COALESCE(`account_category`, 'seller') = 'system'
 
 COMMIT;
 
-SELECT
-  `id`, `account_code`, `first_name`, `last_name`, `role`, `person_key`, `role_sequence`, `status`
+SELECT `id`, `account_code`, `first_name`, `last_name`, `role`, `status`
 FROM `users`
 WHERE COALESCE(`account_category`, 'seller') = 'system'
    OR `role` IN ('super_admin','admin','marketing','sales','accounting','operations')

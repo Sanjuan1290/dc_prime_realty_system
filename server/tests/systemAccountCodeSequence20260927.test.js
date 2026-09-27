@@ -17,24 +17,26 @@ const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'u
 const usersController = read('server/controllers/System/users.controllers.js');
 const createModal = read('client/src/components/System/userComponents/CreateSystemUserModal.jsx');
 const positionModal = read('client/src/components/System/userComponents/ChangePositionModal.jsx');
+const loginPage = read('client/src/auth/Login.jsx');
 
-test('visible account-code suffix is exactly the users table id', () => {
-  assert.equal(buildAccountCode({ lastName: 'Cortez', role: 'admin', userId: 1 }), 'CORTEZ-ADM-001');
-  assert.equal(buildAccountCode({ lastName: 'Cortez', role: 'admin', userId: 2 }), 'CORTEZ-ADM-002');
-  assert.equal(buildAccountCode({ lastName: 'San Juan', role: 'marketing', userId: 3 }), 'SANJUAN-MKT-003');
-  assert.equal(buildAccountCode({ lastName: 'Dela Cruz', role: 'sales', userId: 27 }), 'DELACRUZ-SS-027');
-  assert.equal(buildAccountCode({ lastName: 'Santos', role: 'operations', userId: 1004 }), 'SANTOS-OPS-1004');
+test('visible account code is role abbreviation plus the users table id only', () => {
+  assert.equal(buildAccountCode({ role: 'admin', userId: 1 }), 'ADM-00001');
+  assert.equal(buildAccountCode({ role: 'admin', userId: 2 }), 'ADM-00002');
+  assert.equal(buildAccountCode({ role: 'marketing', userId: 3 }), 'MKT-00003');
+  assert.equal(buildAccountCode({ role: 'sales', userId: 27 }), 'SS-00027');
+  assert.equal(buildAccountCode({ role: 'operations', userId: 1004 }), 'OPS-01004');
+  assert.equal(buildAccountCode({ role: 'super_admin', userId: 100000 }), 'SA-100000');
 });
 
-test('same surname does not create its own counter; different surnames still use the global users id', () => {
-  assert.equal(buildAccountCode({ lastName: 'Cortez', role: 'admin', userId: 4 }), 'CORTEZ-ADM-004');
-  assert.equal(buildAccountCode({ lastName: 'Reyes', role: 'admin', userId: 5 }), 'REYES-ADM-005');
-  assert.equal(buildAccountCode({ lastName: 'Cortez', role: 'admin', userId: 6 }), 'CORTEZ-ADM-006');
+test('surname has no effect on visible account code uniqueness', () => {
+  assert.equal(buildAccountCode({ role: 'admin', userId: 4, lastName: 'Cortez' }), 'ADM-00004');
+  assert.equal(buildAccountCode({ role: 'admin', userId: 5, lastName: 'Reyes' }), 'ADM-00005');
+  assert.equal(buildAccountCode({ role: 'admin', userId: 6, lastName: 'Cortez' }), 'ADM-00006');
 });
 
 test('account code refuses a missing or invalid user id', () => {
   assert.throws(() => formatUserIdForAccountCode(null), /valid users table id/i);
-  assert.throws(() => buildAccountCode({ lastName: 'Cortez', role: 'admin', userId: 0 }), /valid users table id/i);
+  assert.throws(() => buildAccountCode({ role: 'admin', userId: 0 }), /valid users table id/i);
 });
 
 test('preview uses the database AUTO_INCREMENT id when available', async () => {
@@ -46,8 +48,8 @@ test('preview uses the database AUTO_INCREMENT id when available', async () => {
   };
   assert.equal(await getNextUserIdPreview(connection), 12);
   assert.deepEqual(
-    await previewAccountCode(connection, { lastName: 'Cortez', role: 'admin' }),
-    { accountCode: 'CORTEZ-ADM-012', userId: 12 },
+    await previewAccountCode(connection, { role: 'admin' }),
+    { accountCode: 'ADM-00012', userId: 12 },
   );
 });
 
@@ -64,11 +66,11 @@ test('preview falls back to max id plus one if AUTO_INCREMENT metadata is unavai
   assert.equal(await getNextUserIdPreview(connection), 9);
 });
 
-test('final create and position-change codes are rebuilt from insertId, not preview or role sequence', () => {
-  assert.match(usersController, /const userId = Number\(result\.insertId\);[\s\S]*buildAccountCode\(\{ lastName: last_name, role, userId \}\)/);
+test('final create and position-change codes are rebuilt from insertId without surname', () => {
+  assert.match(usersController, /const userId = Number\(result\.insertId\);[\s\S]*buildAccountCode\(\{ role, userId \}\)/);
   assert.match(usersController, /UPDATE users SET account_code = \? WHERE id = \?/);
-  assert.match(usersController, /const newUserId = Number\(insertResult\.insertId\);[\s\S]*buildAccountCode\(\{ lastName: source\.last_name, role: newRole, userId: newUserId \}\)/);
-  assert.doesNotMatch(usersController, /generateUniqueAccountCode/);
+  assert.match(usersController, /const newUserId = Number\(insertResult\.insertId\);[\s\S]*buildAccountCode\(\{ role: newRole, userId: newUserId \}\)/);
+  assert.doesNotMatch(usersController, /buildAccountCode\(\{[^}]*lastName/);
 });
 
 test('role_sequence remains separate historical identity data and is not the visible code suffix', () => {
@@ -78,8 +80,10 @@ test('role_sequence remains separate historical identity data and is not the vis
   assert.match(positionModal, /Users table ID/);
 });
 
-test('create-user UI explains that the account-code number is the Users table id', () => {
-  assert.match(createModal, /numeric suffix represents the Users table ID/i);
-  assert.match(createModal, /user ID 2 becomes CORTEZ-ADM-002/i);
-  assert.doesNotMatch(createModal, /surname \+ role sequence/i);
+test('create-user and login UI describe the role plus user-id account-code format', () => {
+  assert.match(createModal, /role abbreviation plus the Users table ID/i);
+  assert.match(createModal, /SS-00002/);
+  assert.doesNotMatch(createModal, /CORTEZ-ADM/);
+  assert.match(loginPage, /ADM-00002/);
+  assert.doesNotMatch(loginPage, /SURNAME-ADM/);
 });

@@ -33,9 +33,9 @@ const CreateSystemUserModal = ({ onClose, onSaved }) => {
     enabled: isSuperAdmin && form.role !== 'super_admin',
   })
   const { data: accountCodePreview, isFetching: previewLoading } = useQuery({
-    queryKey: ['system-account-code-preview', form.last_name, form.role],
-    queryFn: () => useFetch(`/user/account-code-preview?last_name=${encodeURIComponent(form.last_name.trim())}&role=${encodeURIComponent(form.role)}`),
-    enabled: isSuperAdmin && Boolean(form.last_name.trim()) && Boolean(form.role),
+    queryKey: ['system-account-code-preview', form.role],
+    queryFn: () => useFetch(`/user/account-code-preview?role=${encodeURIComponent(form.role)}`),
+    enabled: isSuperAdmin && Boolean(form.role),
   })
   const emailAvailabilityMutation = useMutation({
     mutationFn: (email) => useFetch(`/user/email-availability?email=${encodeURIComponent(email)}`),
@@ -180,8 +180,8 @@ const CreateSystemUserModal = ({ onClose, onSaved }) => {
               </label>
               <div className="rounded-2xl border border-blue-200 bg-blue-50 p-5">
                 <p className="text-xs font-black uppercase tracking-wide text-blue-500">Account Code Preview</p>
-                <p className="mt-2 font-mono text-2xl font-black text-blue-950">{previewLoading ? 'Generating…' : accountCodePreview?.account_code || 'Enter a last name to preview'}</p>
-                <p className="mt-2 text-xs font-semibold text-blue-700">The numeric suffix represents the Users table ID, not a surname or role counter. Example: user ID 2 becomes CORTEZ-ADM-002. The preview uses the database's current next user ID; the final code is rebuilt from the actual ID when the account is created.</p>
+                <p className="mt-2 font-mono text-2xl font-black text-blue-950">{previewLoading ? 'Generating…' : accountCodePreview?.account_code || 'Generating preview…'}</p>
+                <p className="mt-2 text-xs font-semibold text-blue-700">Account codes use only the role abbreviation plus the Users table ID. Example: user ID 2 with the Sales role becomes SS-00002. The preview uses the database's current next user ID; the final code is rebuilt from the actual ID when the account is created.</p>
               </div>
               {form.role === 'super_admin' ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-bold text-emerald-800">Super Admin is always Full System Access, All Projects, and every valid permission. It cannot be restricted.</div> : null}
             </section>
