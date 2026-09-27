@@ -37,7 +37,7 @@ test('direct browser mutations are limited to signed external upload URLs', () =
     const rel = path.relative(root, file).replace(/\\/g, '/')
     if (rel.endsWith('client/src/utils/apiClient.js')) continue
     const source = fs.readFileSync(file, 'utf8')
-    const pattern = /fetch\(([^,\n]+),\s*\{[\s\S]{0,500}?method:\s*['\"](POST|PUT|PATCH|DELETE)['\"]/g
+    const pattern = /\bfetch\(([^,\n]+),\s*\{[\s\S]{0,500}?method:\s*['\"](POST|PUT|PATCH|DELETE)['\"]/g
     for (const match of source.matchAll(pattern)) mutations.push({ rel, target: match[1].trim(), method: match[2] })
   }
   assert.equal(mutations.length, 3)

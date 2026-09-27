@@ -79,7 +79,20 @@ test('uploaded property media and new brand assets are stored locally', () => {
     'client/public/website/images/project-logos/general-trias.svg',
     'client/public/website/images/general-trias/coming-soon.svg',
   ];
-  assets.forEach((file) => assert.equal(exists(file), true, `${file} should exist`));
+  assets.forEach((file) => {
+    assert.equal(exists(file), true, `${file} should exist`);
+    assert.ok(fs.statSync(path.join(root, file)).size > 0, `${file} should not be empty`);
+  });
+
+  const importedAssets = [
+    'client/src/website/assets/office-hours-flyer.png',
+    'client/src/website/assets/luntiang-location-map.png',
+    'client/src/website/assets/rainy-season-safety.png',
+  ];
+  importedAssets.forEach((file) => {
+    assert.equal(exists(file), true, `${file} should exist`);
+    assert.ok(fs.statSync(path.join(root, file)).size > 0, `${file} should not be empty`);
+  });
 });
 
 test('homepage header is transparent over the video and becomes solid after the hero', () => {

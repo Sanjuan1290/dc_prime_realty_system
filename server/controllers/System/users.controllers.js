@@ -10,7 +10,6 @@ import {
   canActorCreateUserRole,
   canActorManageUserRole,
   CONFIGURABLE_SYSTEM_ROLES,
-  ROLE_CODES,
   SYSTEM_USER_ROLES,
 } from '../../config/permissions.js';
 import {
@@ -35,6 +34,7 @@ import {
   hydrateUserPermissions,
   replaceUserPermissions,
 } from '../../services/accessControl.service.js';
+import { generateUniqueAccountCode } from '../../services/systemAccountCode.service.js';
 import {
   createSensitiveActionVerification,
   getSensitiveActionRequestIp,
@@ -257,30 +257,6 @@ const normalizeProjectIds = (value) => [...new Set((Array.isArray(value) ? value
   .filter((item) => Number.isInteger(item) && item > 0))];
 
 const normalizeBoolean = (value) => value === true || Number(value) === 1 || String(value || '').toLowerCase() === 'true';
-
-const sanitizeAccountSurname = (value = '') => {
-  const clean = String(value || '').normalize('NFKD').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
-  return clean || 'USER';
-};
-
-const buildAccountCode = ({ lastName, role, sequence, collisionSuffix = '' }) => {
-  const roleCode = ROLE_CODES[role] || String(role || 'USR').slice(0, 3).toUpperCase();
-  const base = `${sanitizeAccountSurname(lastName)}-${roleCode}-${String(Number(sequence || 1)).padStart(3, '0')}`;
-  return collisionSuffix ? `${base}-${collisionSuffix}` : base;
-};
-
-const generateUniqueAccountCode = async (connection, { lastName, role, sequence }) => {
-  const base = buildAccountCode({ lastName, role, sequence });
-  const [rows] = await connection.query('SELECT id FROM users WHERE account_code = ? LIMIT 1', [base]);
-  if (!rows.length) return base;
-  // Same-surname/same-role/same-sequence people are disambiguated without changing the hidden per-person sequence.
-  for (let suffix = 2; suffix < 1000; suffix += 1) {
-    const candidate = buildAccountCode({ lastName, role, sequence, collisionSuffix: suffix });
-    const [candidateRows] = await connection.query('SELECT id FROM users WHERE account_code = ? LIMIT 1', [candidate]);
-    if (!candidateRows.length) return candidate;
-  }
-  throw createValidationError('Unable to generate a unique account code.');
-};
 
 const getNextRoleSequence = async (connection, personKey, role) => {
   const [rows] = await connection.query(
@@ -1503,7 +1479,7 @@ export const createUser = async (req, res) => {
       await connection.beginTransaction();
       const personKey = crypto.randomUUID();
       const roleSequence = 1;
-      const accountCode = await generateUniqueAccountCode(connection, { lastName: last_name, role, sequence: roleSequence });
+      const accountCode = await generateUniqueAccountCode(connection, { lastName: last_name, role, sequence: roleSequence, lock: true });
       const temporaryPassword = generateTemporaryPassword();
       const passwordHash = await bcrypt.hash(temporaryPassword, 10);
       const normalizedStatus = normalizeStatus(status);
@@ -2127,7 +2103,7 @@ export const changeUserPosition = async (req, res) => {
     const personKey = source.person_key || crypto.randomUUID();
     if (!source.person_key) await connection.query('UPDATE users SET person_key = ? WHERE id = ?', [personKey, sourceUserId]);
     const roleSequence = await getNextRoleSequence(connection, personKey, newRole);
-    const accountCode = await generateUniqueAccountCode(connection, { lastName: source.last_name, role: newRole, sequence: roleSequence });
+    const accountCode = await generateUniqueAccountCode(connection, { lastName: source.last_name, role: newRole, sequence: roleSequence, lock: true });
     temporaryPassword = generateTemporaryPassword();
     const passwordHash = await bcrypt.hash(temporaryPassword, 10);
     const reason = String(req.body?.reason || `Position changed from ${source.role} to ${newRole}.`).trim().slice(0, 500);
