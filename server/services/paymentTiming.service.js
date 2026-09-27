@@ -18,8 +18,12 @@ const numberOrZero = (value) => {
  * - the nearest future due date touched by that payment => early
  * - later future due dates touched by the same payment => advance
  *
- * The returned map keeps the latest payment allocation classification for each
- * schedule row, matching the schedule row's current date_paid/reference_id view.
+ * A schedule row may be funded by more than one payment. In that case we must
+ * not erase earlier advance-payment history just because a later top-up becomes
+ * the only/nearest future row touched by that later payment. Therefore the
+ * schedule-level result preserves `advance` once any verified allocation to that
+ * row was classified as advance, unless the final/latest allocation is late.
+ * This keeps a row from incorrectly flipping Partial Advance -> Paid Early.
  */
 export const buildLatestScheduleAllocationTiming = (rows = []) => {
   const normalized = (Array.isArray(rows) ? rows : [])
@@ -46,7 +50,7 @@ export const buildLatestScheduleAllocationTiming = (rows = []) => {
     byPayment.get(row.paymentId).push(row);
   }
 
-  const latestBySchedule = new Map();
+  const allocationHistoryBySchedule = new Map();
 
   for (const allocations of byPayment.values()) {
     const paymentDate = allocations.find((row) => row.paymentDate)?.paymentDate || null;
@@ -65,7 +69,10 @@ export const buildLatestScheduleAllocationTiming = (rows = []) => {
         else timing = 'advance';
       }
 
-      latestBySchedule.set(row.scheduleId, {
+      if (!allocationHistoryBySchedule.has(row.scheduleId)) {
+        allocationHistoryBySchedule.set(row.scheduleId, []);
+      }
+      allocationHistoryBySchedule.get(row.scheduleId).push({
         timing,
         paymentId: row.paymentId,
         allocationId: row.allocationId,
@@ -73,6 +80,28 @@ export const buildLatestScheduleAllocationTiming = (rows = []) => {
         dueDate: row.dueDate,
       });
     }
+  }
+
+  const latestBySchedule = new Map();
+  for (const [scheduleId, history] of allocationHistoryBySchedule.entries()) {
+    const latest = history[history.length - 1] || {};
+    const hadAdvanceAllocation = history.some((entry) => entry.timing === 'advance');
+
+    // Completion after the contractual due date must remain Paid Late. Otherwise,
+    // preserve any earlier advance allocation so a later top-up cannot relabel an
+    // advance-funded installment as merely Paid Early.
+    const timing = latest.timing === 'late'
+      ? 'late'
+      : hadAdvanceAllocation
+        ? 'advance'
+        : latest.timing || null;
+
+    latestBySchedule.set(scheduleId, {
+      ...latest,
+      timing,
+      hadAdvanceAllocation,
+      allocationCount: history.length,
+    });
   }
 
   return latestBySchedule;

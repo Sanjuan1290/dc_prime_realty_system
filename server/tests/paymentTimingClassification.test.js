@@ -51,7 +51,7 @@ test('an obligation due on payment date is on time and later future rows are adv
   assert.equal(timing.get(302)?.timing, 'advance')
 })
 
-test('latest allocation classification wins for a schedule completed by a later payment', () => {
+test('an earlier advance partial is preserved when a later top-up completes the same future row', () => {
   const timing = buildLatestScheduleAllocationTiming([
     allocation({ id: 1, paymentId: 40, scheduleId: 401, paymentDate: '2026-09-27', dueDate: '2026-09-30' }),
     allocation({ id: 2, paymentId: 40, scheduleId: 402, paymentDate: '2026-09-27', dueDate: '2026-10-30' }),
@@ -59,8 +59,36 @@ test('latest allocation classification wins for a schedule completed by a later 
   ])
 
   assert.equal(timing.get(401)?.timing, 'early')
-  assert.equal(timing.get(402)?.timing, 'early')
+  assert.equal(timing.get(402)?.timing, 'advance')
+  assert.equal(timing.get(402)?.hadAdvanceAllocation, true)
   assert.equal(timing.get(402)?.paymentId, 41)
+})
+
+test('late completion overrides earlier advance history', () => {
+  const timing = buildLatestScheduleAllocationTiming([
+    allocation({ id: 1, paymentId: 50, scheduleId: 501, paymentDate: '2026-09-27', dueDate: '2026-10-30' }),
+    allocation({ id: 2, paymentId: 50, scheduleId: 502, paymentDate: '2026-09-27', dueDate: '2026-11-30' }),
+    allocation({ id: 3, paymentId: 51, scheduleId: 502, paymentDate: '2026-12-05', dueDate: '2026-11-30' }),
+  ])
+
+  assert.equal(timing.get(502)?.hadAdvanceAllocation, true)
+  assert.equal(timing.get(502)?.timing, 'late')
+})
+
+
+test('Feb installment stays Advance Payment after an advance partial is topped up by a later early payment', () => {
+  const timing = buildLatestScheduleAllocationTiming([
+    allocation({ id: 10, paymentId: 100, scheduleId: 601, paymentDate: '2026-09-27', dueDate: '2026-10-30' }),
+    allocation({ id: 11, paymentId: 100, scheduleId: 602, paymentDate: '2026-09-27', dueDate: '2026-11-30' }),
+    allocation({ id: 12, paymentId: 100, scheduleId: 603, paymentDate: '2026-09-27', dueDate: '2027-02-28' }),
+    allocation({ id: 13, paymentId: 101, scheduleId: 603, paymentDate: '2026-09-27', dueDate: '2027-02-28' }),
+  ])
+
+  assert.equal(timing.get(601)?.timing, 'early')
+  assert.equal(timing.get(602)?.timing, 'advance')
+  assert.equal(timing.get(603)?.timing, 'advance')
+  assert.equal(timing.get(603)?.allocationCount, 2)
+  assert.equal(timing.get(603)?.paymentId, 101)
 })
 
 test('SOA server and client expose Advance Payment / Partial Advance without changing financial schedule state', () => {
