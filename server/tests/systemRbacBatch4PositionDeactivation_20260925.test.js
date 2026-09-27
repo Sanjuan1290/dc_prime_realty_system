@@ -16,6 +16,7 @@ const usersPage = read('client/src/pages/System/Users.jsx');
 const positionModal = read('client/src/components/System/userComponents/ChangePositionModal.jsx');
 const deactivateModal = read('client/src/components/System/userComponents/DeactivateSystemUserModal.jsx');
 const sharedAuth = read('server/controllers/Lot_Projects/_shared/lotProject.shared.js');
+const apiClient = read('client/src/utils/apiClient.js');
 
 test('system accounts use permanent identity and person+role sequencing', () => {
   assert.match(migration, /person_key/);
@@ -63,6 +64,8 @@ test('permanent deactivation has no reactivation route and requires password plu
   assert.match(deactivateModal, /Administrator Password/);
   assert.match(deactivateModal, /Email Verification Code/);
   assert.match(deactivateModal, /Verify Password & Send Code/);
+  assert.match(apiClient, /user\\\/deactivate\\\/\\d\+\\\/code/);
+  assert.match(deactivateModal, /confirmationHandled: 'technical'/);
   assert.match(usersController, /verifyAndConsumeSensitiveAction/);
   assert.match(usersController, /verificationMethod: 'administrator_password_email_code'/);
 });
