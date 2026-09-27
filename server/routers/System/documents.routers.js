@@ -5,6 +5,8 @@ import {
   addDocument,
   addTemplate,
   deleteDocument,
+  getDocumentUsage,
+  updateDocumentStatus,
   deleteTemplate,
   editDocument,
   editTemplate,
@@ -19,6 +21,8 @@ router.get('/getDocuments', requirePermission(PERMISSIONS.SYSTEM_DOCUMENTS_VIEW)
 router.get('/getTemplates', requirePermission(PERMISSIONS.SYSTEM_DOCUMENT_TEMPLATES_VIEW), getTemplates);
 router.post('/addDocument', requirePermission(PERMISSIONS.SYSTEM_DOCUMENTS_CREATE), addDocument);
 router.post('/addTemplate', requirePermission(PERMISSIONS.SYSTEM_DOCUMENT_TEMPLATES_CREATE), addTemplate);
+router.get('/:id/usage', requirePermission(PERMISSIONS.SYSTEM_DOCUMENTS_VIEW), getDocumentUsage);
+router.patch('/:id/status', requirePermission(PERMISSIONS.SYSTEM_DOCUMENTS_EDIT), updateDocumentStatus);
 router.delete('/deleteDocument/:id', requirePermission(PERMISSIONS.SYSTEM_DOCUMENTS_DELETE), deleteDocument);
 router.delete('/deleteTemplate/:id', requirePermission(PERMISSIONS.SYSTEM_DOCUMENT_TEMPLATES_DELETE), deleteTemplate);
 router.put('/editDocument/:id', requirePermission(PERMISSIONS.SYSTEM_DOCUMENTS_EDIT), editDocument);

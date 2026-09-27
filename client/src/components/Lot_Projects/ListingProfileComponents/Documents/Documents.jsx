@@ -42,6 +42,16 @@ const StatusPill = ({ value, requirement }) => (
   </span>
 )
 
+const LibraryStatusPill = ({ value }) => {
+  const inactive = String(value || 'active').toLowerCase() === 'inactive'
+  return (
+    <span className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-black ${inactive ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}>
+      <span className="h-1.5 w-1.5 rounded-full bg-current" />
+      {inactive ? 'Deactivated' : 'Active'}
+    </span>
+  )
+}
+
 const RequirementPill = ({ value }) => (
   <span
     className={`inline-flex w-fit items-center rounded-full border px-3 py-1 text-xs font-black ${
@@ -331,10 +341,10 @@ const Documents = ({
       </div>
 
       <div className="mt-5 overflow-x-auto rounded-2xl border border-slate-200">
-        <table className="min-w-[1100px] w-full divide-y divide-slate-200 text-sm">
+        <table className="min-w-[1250px] w-full divide-y divide-slate-200 text-sm">
           <thead className="bg-slate-50">
             <tr>
-              {['Document', 'Requirement', 'Responsible Party', 'Status', 'File', 'Actions'].map(
+              {['Document', 'Requirement', 'Responsible Party', 'Library Status', 'Submission Status', 'File', 'Actions'].map(
                 (head) => (
                   <th
                     key={head}
@@ -372,6 +382,10 @@ const Documents = ({
 
                   <td className="px-4 py-4">
                     <ResponsibilityPill value={row.responsibleParty || row.responsible_party} />
+                  </td>
+
+                  <td className="px-4 py-4">
+                    <LibraryStatusPill value={row.libraryStatus || row.documentStatus || 'active'} />
                   </td>
 
                   <td className="px-4 py-4">
@@ -465,7 +479,7 @@ const Documents = ({
 
             {!rows.length ? (
               <tr>
-                <td colSpan={6} className="px-4 py-10 text-center">
+                <td colSpan={7} className="px-4 py-10 text-center">
                   <FiImage className="mx-auto h-8 w-8 text-slate-300" />
 
                   <p className="mt-3 text-sm font-black text-slate-700">

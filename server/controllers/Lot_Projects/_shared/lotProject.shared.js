@@ -1013,6 +1013,7 @@ export const getListingDocuments = async (
           d.document_name,
           d.document_code,
           d.document_description,
+          d.document_status AS library_document_status,
           cd.lot_project_client_document_file_name,
           cd.lot_project_client_document_file_url,
           cd.lot_project_client_document_status
@@ -1042,6 +1043,7 @@ export const getListingDocuments = async (
           d.document_name,
           d.document_code,
           d.document_description,
+          d.document_status AS library_document_status,
           NULL AS lot_project_client_document_file_name,
           NULL AS lot_project_client_document_file_url,
           'Missing' AS lot_project_client_document_status
@@ -1075,6 +1077,8 @@ export const getListingDocuments = async (
       responsibleParty: normalizeDocumentResponsibleParty(document.lot_project_listing_document_responsible_party, 'client'),
       responsible_party: normalizeDocumentResponsibleParty(document.lot_project_listing_document_responsible_party, 'client'),
       status: document.lot_project_client_document_status || 'Missing',
+      libraryStatus: String(document.library_document_status || 'active').toLowerCase() === 'inactive' ? 'inactive' : 'active',
+      documentStatus: String(document.library_document_status || 'active').toLowerCase() === 'inactive' ? 'inactive' : 'active',
       fileName: document.lot_project_client_document_file_name || (imageEntries.length ? `${imageEntries.length} file(s)` : '-'),
       fileUrl: imageUrls[0] || '',
       images: imageUrls,

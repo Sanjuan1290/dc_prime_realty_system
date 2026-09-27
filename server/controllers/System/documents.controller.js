@@ -62,6 +62,67 @@ const safeDeleteByColumn = async (connection, tableName, columnName, value) => {
 };
 
 
+const DOCUMENT_USAGE_TABLES = Object.freeze([
+  ['templates', 'template_document_list'],
+  ['projectDefaults', 'lot_project_default_documents'],
+  ['listingRequirements', 'lot_project_listing_documents'],
+  ['buyerDocumentRecords', 'lot_project_client_documents'],
+  ['legacyProjectDefaults', 'project_bailen_default_documents'],
+]);
+
+const getDocumentUsageSummary = async (connection, documentId) => {
+  const usage = {
+    templates: 0,
+    projectDefaults: 0,
+    listingRequirements: 0,
+    buyerDocumentRecords: 0,
+    legacyProjectDefaults: 0,
+    uploadedFiles: 0,
+    activeUploadedFiles: 0,
+  };
+
+  for (const [key, tableName] of DOCUMENT_USAGE_TABLES) {
+    if (!(await tableExists(connection, tableName))) continue;
+    const [[row]] = await connection.query(
+      `SELECT COUNT(*) AS total FROM ${tableName} WHERE document_id = ?`,
+      [documentId]
+    );
+    usage[key] = Number(row?.total || 0);
+  }
+
+  if (
+    await tableExists(connection, 'lot_project_client_document_files')
+    && await tableExists(connection, 'lot_project_client_documents')
+  ) {
+    const [[fileRow]] = await connection.query(
+      `
+        SELECT
+          COUNT(*) AS uploaded_files,
+          COALESCE(SUM(file_row.file_status = 'active'), 0) AS active_uploaded_files
+        FROM lot_project_client_document_files file_row
+        INNER JOIN lot_project_client_documents document_row
+          ON document_row.lot_project_client_document_id = file_row.lot_project_client_document_id
+        WHERE document_row.document_id = ?
+      `,
+      [documentId]
+    );
+    usage.uploadedFiles = Number(fileRow?.uploaded_files || 0);
+    usage.activeUploadedFiles = Number(fileRow?.active_uploaded_files || 0);
+  }
+
+  const referenceCount = DOCUMENT_USAGE_TABLES.reduce(
+    (total, [key]) => total + Number(usage[key] || 0),
+    0
+  );
+  const inUse = referenceCount > 0 || usage.uploadedFiles > 0;
+
+  return {
+    ...usage,
+    referenceCount,
+    inUse,
+  };
+};
+
 const normalizeRequiredValue = (value, fallback = true) => {
   if (value === false || value === 0 || value === '0') return 0;
   if (value === true || value === 1 || value === '1') return 1;
@@ -410,46 +471,142 @@ export const addTemplate = async (req, res) => {
   }
 };
 
-export const deleteDocument = async (req, res) => {
+export const getDocumentUsage = async (req, res) => {
   const connection = await db.getConnection();
-
   try {
     const documentId = Number(req.params.id);
+    if (!documentId) return res.status(400).json({ message: 'Invalid document id.' });
 
-    if (!documentId) {
-      return res.status(400).json({ message: 'Invalid document id.' });
+    const [documentRows] = await connection.query(
+      `SELECT document_id, document_name, document_code, document_status FROM documents WHERE document_id = ? LIMIT 1`,
+      [documentId]
+    );
+    if (!documentRows.length) return res.status(404).json({ message: 'Document not found.' });
+
+    const usage = await getDocumentUsageSummary(connection, documentId);
+    return res.json({
+      success: true,
+      document: documentRows[0],
+      usage,
+      canDeletePermanently: !usage.inUse,
+      recommendedAction: usage.inUse ? 'deactivate' : 'delete',
+    });
+  } catch (error) {
+    return res.status(500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
+export const updateDocumentStatus = async (req, res) => {
+  const connection = await db.getConnection();
+  let transactionStarted = false;
+  try {
+    const documentId = Number(req.params.id);
+    const status = String(req.body?.status || '').trim().toLowerCase();
+    if (!documentId) return res.status(400).json({ message: 'Invalid document id.' });
+    if (!['active', 'inactive'].includes(status)) {
+      return res.status(400).json({ message: 'Document status must be active or inactive.' });
     }
 
     await connection.beginTransaction();
-
+    transactionStarted = true;
     const [documentRows] = await connection.query(
-      `
-        SELECT *
-        FROM documents
-        WHERE document_id = ?
-        LIMIT 1
-      `,
+      `SELECT * FROM documents WHERE document_id = ? LIMIT 1 FOR UPDATE`,
       [documentId]
     );
-
-    if (documentRows.length === 0) {
+    if (!documentRows.length) {
       await connection.rollback();
+      transactionStarted = false;
       return res.status(404).json({ message: 'Document not found.' });
     }
 
-    await safeDeleteByColumn(connection, 'template_document_list', 'document_id', documentId);
-    await safeDeleteByColumn(connection, 'lot_project_default_documents', 'document_id', documentId);
-    await safeDeleteByColumn(connection, 'lot_project_listing_documents', 'document_id', documentId);
-    await safeDeleteByColumn(connection, 'lot_project_client_documents', 'document_id', documentId);
-    await safeDeleteByColumn(connection, 'project_bailen_default_documents', 'document_id', documentId);
+    const before = documentRows[0];
+    const previousStatus = String(before.document_status || 'active').toLowerCase();
+    if (previousStatus !== status) {
+      await connection.query(
+        `UPDATE documents SET document_status = ?, document_updated_at = NOW() WHERE document_id = ?`,
+        [status, documentId]
+      );
 
-    await connection.query(
-      `
-        DELETE FROM documents
-        WHERE document_id = ?
-      `,
+      await writeAuditLog(connection, req, {
+        action: status === 'inactive' ? 'deactivate' : 'reactivate',
+        module: 'Documents',
+        entityType: 'document',
+        entityId: String(documentId),
+        entityLabel: before.document_name || `Document ${documentId}`,
+        title: status === 'inactive' ? 'Deactivated document library item' : 'Reactivated document library item',
+        description: status === 'inactive'
+          ? `Deactivated ${before.document_name || `document ${documentId}`}. Existing templates, project/listing requirements, buyer document history, and uploaded files were preserved.`
+          : `Reactivated ${before.document_name || `document ${documentId}`} for future use.`,
+        metadata: {
+          before: { status: previousStatus },
+          after: { status },
+          preservedExistingUsage: true,
+        },
+      });
+    }
+
+    await connection.commit();
+    transactionStarted = false;
+    return res.json({
+      success: true,
+      status,
+      message: status === 'inactive'
+        ? 'Document deactivated. Existing requirements and uploaded files were preserved.'
+        : 'Document reactivated and is available for future use again.',
+    });
+  } catch (error) {
+    if (transactionStarted) {
+      try { await connection.rollback(); } catch {}
+    }
+    return res.status(500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
+export const deleteDocument = async (req, res) => {
+  const connection = await db.getConnection();
+  let transactionStarted = false;
+
+  try {
+    const documentId = Number(req.params.id);
+    if (!documentId) return res.status(400).json({ message: 'Invalid document id.' });
+
+    await connection.beginTransaction();
+    transactionStarted = true;
+
+    const [documentRows] = await connection.query(
+      `SELECT * FROM documents WHERE document_id = ? LIMIT 1 FOR UPDATE`,
       [documentId]
     );
+    if (!documentRows.length) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(404).json({ message: 'Document not found.' });
+    }
+
+    const usage = await getDocumentUsageSummary(connection, documentId);
+    if (usage.inUse) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(409).json({
+        success: false,
+        code: 'DOCUMENT_IN_USE',
+        message: 'This document is already in use and cannot be permanently deleted. Deactivate it to prevent future use while preserving existing records and uploaded files.',
+        usage,
+        recommendedAction: 'deactivate',
+      });
+    }
+
+    const [deleteResult] = await connection.query(
+      `DELETE FROM documents WHERE document_id = ?`,
+      [documentId]
+    );
+    if (Number(deleteResult.affectedRows || 0) !== 1) {
+      throw new Error('The unused document could not be deleted. Refresh and try again.');
+    }
 
     await writeAuditLog(connection, req, {
       action: 'delete',
@@ -457,19 +614,27 @@ export const deleteDocument = async (req, res) => {
       entityType: 'document',
       entityId: String(documentId),
       entityLabel: documentRows[0]?.document_name || `Document ${documentId}`,
-      title: 'Deleted document library item',
-      description: `Permanently deleted ${documentRows[0]?.document_name || `document ${documentId}`} and removed its requirement links.`,
-      metadata: { before: documentRows[0], after: null },
+      title: 'Permanently deleted unused document library item',
+      description: `Permanently deleted unused document ${documentRows[0]?.document_name || documentId}. No template, project, listing, buyer-document, or uploaded-file history was linked to it.`,
+      metadata: { before: documentRows[0], after: null, usage },
     });
 
     await connection.commit();
-
+    transactionStarted = false;
     return res.json({
       success: true,
-      message: 'Document permanently deleted successfully.',
+      message: 'Unused document permanently deleted successfully.',
     });
   } catch (error) {
-    await connection.rollback();
+    if (transactionStarted) {
+      try { await connection.rollback(); } catch {}
+    }
+    if (String(error?.code || '') === 'ER_ROW_IS_REFERENCED_2') {
+      return res.status(409).json({
+        code: 'DOCUMENT_IN_USE',
+        message: 'This document became linked to another record and can no longer be permanently deleted. Deactivate it instead.',
+      });
+    }
     return res.status(500).json({ message: getErrorMessage(error) });
   } finally {
     connection.release();
