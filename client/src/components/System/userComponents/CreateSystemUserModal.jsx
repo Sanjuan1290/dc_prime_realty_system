@@ -110,7 +110,7 @@ const CreateSystemUserModal = ({ onClose, onSaved }) => {
       try {
         const result = await emailAvailabilityMutation.mutateAsync(form.email.trim())
         if (!result?.available) {
-          setAlert({ type: 'error', message: result?.message || 'That email is already assigned to an existing account. Use a different email address.' })
+          setAlert({ type: 'error', message: result?.message || 'That email is already assigned to an active account. Use a different email address.' })
           return
         }
       } catch (error) {

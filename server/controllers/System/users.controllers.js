@@ -1448,6 +1448,7 @@ export const checkSystemUserEmailAvailability = async (req, res) => {
         SELECT id
         FROM users
         WHERE LOWER(TRIM(email)) = LOWER(?)
+          AND status = 'active'
         LIMIT 1
       `,
       [email]
@@ -1457,7 +1458,7 @@ export const checkSystemUserEmailAvailability = async (req, res) => {
       return res.status(200).json({
         available: false,
         code: 'USER_EMAIL_ALREADY_EXISTS',
-        message: 'That email is already assigned to an existing account. Use a different email address.',
+        message: 'That email is already assigned to an active account. Use a different email address.',
       });
     }
 
@@ -1508,6 +1509,7 @@ export const createUser = async (req, res) => {
         SELECT id
         FROM users
         WHERE LOWER(TRIM(email)) = LOWER(?)
+          AND status = 'active'
         LIMIT 1
       `,
       [normalizedEmail]
@@ -1515,7 +1517,7 @@ export const createUser = async (req, res) => {
     if (existingEmailRows.length) {
       return res.status(409).json({
         code: 'USER_EMAIL_ALREADY_EXISTS',
-        message: 'That email is already assigned to an existing account. Use a different email address.',
+        message: 'That email is already assigned to an active account. Use a different email address.',
       });
     }
     if (!validateRequestedRole(role)) {
