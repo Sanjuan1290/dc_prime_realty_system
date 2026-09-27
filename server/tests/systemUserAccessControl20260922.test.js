@@ -80,7 +80,7 @@ test('same-person historical accounts support role sequences and reusable active
   assert.match(migration, /DROP INDEX uq_users_email/);
   assert.match(migration, /active_login_email/);
   assert.match(usersController, /getNextRoleSequence/);
-  assert.match(usersController, /generateUniqueAccountCode/);
+  assert.match(usersController, /buildAccountCode/);
   assert.match(usersController, /account_code = \?/);
 });
 

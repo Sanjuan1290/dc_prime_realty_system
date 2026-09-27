@@ -23,13 +23,13 @@ test('system accounts use permanent identity and person+role sequencing', () => 
   assert.match(migration, /UNIQUE KEY uq_users_person_role_sequence \(person_key, role, role_sequence\)/);
   assert.match(usersController, /getNextRoleSequence/);
   assert.match(usersController, /WHERE person_key = \? AND role = \? FOR UPDATE/);
-  assert.match(usersController, /generateUniqueAccountCode/);
+  assert.match(usersController, /buildAccountCode/);
 });
 
 test('change-position preview uses the same person identity and next role sequence', () => {
   assert.match(usersController, /export const previewChangeUserPosition/);
   assert.match(usersController, /previewNextRoleSequence\(connection, personKey, newRole\)/);
-  assert.match(usersController, /lastName: source\.last_name[\s\S]*role: newRole[\s\S]*sequence: roleSequence/);
+  assert.match(usersController, /previewAccountCode\(connection,[\s\S]*lastName: source\.last_name[\s\S]*role: newRole/);
   assert.match(usersRouter, /change-position\/:id\/preview[\s\S]*requireExactRole\('super_admin'\)/);
   assert.match(positionModal, /change-position\/\$\{user\.id\}\/preview/);
   assert.match(positionModal, /Replacement Account Preview/);

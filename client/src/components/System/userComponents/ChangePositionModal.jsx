@@ -125,7 +125,7 @@ const ChangePositionModal = ({ user, onClose, onSaved }) => {
             {replacement ? (
               <div className="mt-3 grid gap-3 md:grid-cols-3">
                 <div><p className="text-xs font-bold text-slate-500">Account Code</p><p className="font-mono text-lg font-black text-blue-950">{replacement.account_code}</p></div>
-                <div><p className="text-xs font-bold text-slate-500">Person Role Sequence</p><p className="text-lg font-black text-blue-950">{replacement.role_sequence}</p><p className="mt-1 text-[11px] font-semibold text-slate-500">Tracks this person's history in the role; the account-code number is shared across matching surnames.</p></div>
+                <div><p className="text-xs font-bold text-slate-500">Person Role Sequence</p><p className="text-lg font-black text-blue-950">{replacement.role_sequence}</p><p className="mt-1 text-[11px] font-semibold text-slate-500">Tracks this person's history in the role only. The account-code number comes from the replacement account's Users table ID.</p></div>
                 <div><p className="text-xs font-bold text-slate-500">Login Email</p><p className="break-all text-sm font-black text-blue-950">{replacement.email}</p></div>
               </div>
             ) : null}

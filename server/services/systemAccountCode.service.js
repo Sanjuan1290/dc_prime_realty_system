@@ -13,66 +13,50 @@ export const getAccountCodePrefix = ({ lastName, role }) => {
   return `${sanitizeAccountSurname(lastName)}-${roleCode}-`;
 };
 
-export const buildAccountCode = ({ lastName, role, sequence }) =>
-  `${getAccountCodePrefix({ lastName, role })}${String(Math.max(1, Number(sequence || 1))).padStart(3, '0')}`;
-
-const canonicalSequenceFromCode = (accountCode, prefix) => {
-  const code = String(accountCode || '').toUpperCase();
-  if (!code.startsWith(prefix)) return null;
-  const numericPart = code.slice(prefix.length);
-  if (!/^\d+$/.test(numericPart)) return null;
-  const value = Number(numericPart);
-  return Number.isInteger(value) && value > 0 ? value : null;
-};
-
-export const chooseNextAccountCodeSequence = ({
-  existingAccountCodes = [],
-  lastName,
-  role,
-  minimumSequence = 1,
-}) => {
-  const prefix = getAccountCodePrefix({ lastName, role });
-  const codes = existingAccountCodes
-    .map((value) => String(value || '').toUpperCase())
-    .filter((value) => value.startsWith(prefix));
-
-  const canonicalSequences = codes
-    .map((code) => canonicalSequenceFromCode(code, prefix))
-    .filter((value) => Number.isInteger(value));
-
-  const highestCanonical = canonicalSequences.length ? Math.max(...canonicalSequences) : 0;
-  // Count every historical matching account, including legacy collision codes such as
-  // CORTEZ-ADM-001-2, so a new canonical code never reuses that account's logical slot.
-  let nextSequence = Math.max(
-    1,
-    Number(minimumSequence || 1),
-    highestCanonical + 1,
-    codes.length + 1,
-  );
-
-  const occupied = new Set(codes);
-  while (occupied.has(buildAccountCode({ lastName, role, sequence: nextSequence }))) {
-    nextSequence += 1;
+export const formatUserIdForAccountCode = (userId) => {
+  const numericId = Number(userId);
+  if (!Number.isInteger(numericId) || numericId <= 0) {
+    throw new Error('A valid users table id is required to build an account code.');
   }
-  return nextSequence;
+  return String(numericId).padStart(3, '0');
 };
 
-export const generateUniqueAccountCode = async (
-  connection,
-  { lastName, role, sequence = 1, lock = false },
-) => {
-  const prefix = getAccountCodePrefix({ lastName, role });
-  const [rows] = await connection.query(
-    `SELECT account_code FROM users WHERE account_code LIKE ?${lock ? ' FOR UPDATE' : ''}`,
-    [`${prefix}%`],
+// The visible numeric suffix is the users.id primary key. It is NOT a surname,
+// role, or per-person sequence. person_key + role_sequence remain separate fields
+// used only for historical identity/position tracking.
+export const buildAccountCode = ({ lastName, role, userId, id }) =>
+  `${getAccountCodePrefix({ lastName, role })}${formatUserIdForAccountCode(userId ?? id)}`;
+
+export const getNextUserIdPreview = async (connection) => {
+  // AUTO_INCREMENT is the best available preview of the next users.id. The final
+  // account code is always rebuilt from insertId after INSERT, so concurrency can
+  // never make the saved code disagree with the real primary key.
+  try {
+    const [rows] = await connection.query(`
+      SELECT AUTO_INCREMENT AS next_id
+      FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = 'users'
+      LIMIT 1
+    `);
+    const nextId = Number(rows?.[0]?.next_id || 0);
+    if (Number.isInteger(nextId) && nextId > 0) return nextId;
+  } catch {
+    // Fall through to a read-only estimate for environments where information_schema
+    // does not expose AUTO_INCREMENT in the same way.
+  }
+
+  const [fallbackRows] = await connection.query(
+    'SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM users'
   );
+  const fallback = Number(fallbackRows?.[0]?.next_id || 1);
+  return Number.isInteger(fallback) && fallback > 0 ? fallback : 1;
+};
 
-  const nextSequence = chooseNextAccountCodeSequence({
-    existingAccountCodes: rows.map((row) => row.account_code),
-    lastName,
-    role,
-    minimumSequence: sequence,
-  });
-
-  return buildAccountCode({ lastName, role, sequence: nextSequence });
+export const previewAccountCode = async (connection, { lastName, role }) => {
+  const nextUserId = await getNextUserIdPreview(connection);
+  return {
+    accountCode: buildAccountCode({ lastName, role, userId: nextUserId }),
+    userId: nextUserId,
+  };
 };

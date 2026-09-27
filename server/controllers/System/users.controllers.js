@@ -34,7 +34,7 @@ import {
   hydrateUserPermissions,
   replaceUserPermissions,
 } from '../../services/accessControl.service.js';
-import { generateUniqueAccountCode } from '../../services/systemAccountCode.service.js';
+import { buildAccountCode, previewAccountCode } from '../../services/systemAccountCode.service.js';
 import {
   createSensitiveActionVerification,
   getSensitiveActionRequestIp,
@@ -1356,8 +1356,13 @@ export const previewSystemAccountCode = async (req, res) => {
     if (!lastName) return res.status(400).json({ message: 'Last name is required for an account-code preview.' });
     if (!systemUserRoles.has(role)) return res.status(400).json({ message: 'Select a valid internal system role.' });
     const roleSequence = 1;
-    const accountCode = await generateUniqueAccountCode(connection, { lastName, role, sequence: roleSequence });
-    return res.json({ account_code: accountCode, role_sequence: roleSequence, preview: true });
+    const accountPreview = await previewAccountCode(connection, { lastName, role });
+    return res.json({
+      account_code: accountPreview.accountCode,
+      preview_user_id: accountPreview.userId,
+      role_sequence: roleSequence,
+      preview: true,
+    });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
   } finally {
@@ -1398,11 +1403,11 @@ export const previewChangeUserPosition = async (req, res) => {
 
     const personKey = source.person_key || crypto.randomUUID();
     const roleSequence = await previewNextRoleSequence(connection, personKey, newRole);
-    const accountCode = await generateUniqueAccountCode(connection, {
+    const accountPreview = await previewAccountCode(connection, {
       lastName: source.last_name,
       role: newRole,
-      sequence: roleSequence,
     });
+    const accountCode = accountPreview.accountCode;
 
     return res.json({
       preview: true,
@@ -1413,6 +1418,7 @@ export const previewChangeUserPosition = async (req, res) => {
       },
       replacement: {
         account_code: accountCode,
+        preview_user_id: accountPreview.userId,
         role: newRole,
         role_sequence: roleSequence,
         person_key: personKey,
@@ -1479,7 +1485,6 @@ export const createUser = async (req, res) => {
       await connection.beginTransaction();
       const personKey = crypto.randomUUID();
       const roleSequence = 1;
-      const accountCode = await generateUniqueAccountCode(connection, { lastName: last_name, role, sequence: roleSequence, lock: true });
       const temporaryPassword = generateTemporaryPassword();
       const passwordHash = await bcrypt.hash(temporaryPassword, 10);
       const normalizedStatus = normalizeStatus(status);
@@ -1492,7 +1497,7 @@ export const createUser = async (req, res) => {
           status, must_change_password, can_login, is_system_account
         ) VALUES (?, 'system', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, 1, 1, 0)`,
         [
-          accountCode, personKey, roleSequence,
+          null, personKey, roleSequence,
           first_name.trim(), last_name.trim(), middle_name?.trim() || null,
           contact_no?.trim() || null, tin_no?.trim() || null, prc_no?.trim() || null,
           address?.trim() || null, email.trim(), passwordHash, role,
@@ -1501,7 +1506,10 @@ export const createUser = async (req, res) => {
         ]
       );
 
-      const userId = result.insertId;
+      const userId = Number(result.insertId);
+      const accountCode = buildAccountCode({ lastName: last_name, role, userId });
+      await connection.query('UPDATE users SET account_code = ? WHERE id = ?', [accountCode, userId]);
+
       if (role !== 'super_admin') {
         await replaceAdminProjectAccess(connection, {
           userId,
@@ -2103,7 +2111,6 @@ export const changeUserPosition = async (req, res) => {
     const personKey = source.person_key || crypto.randomUUID();
     if (!source.person_key) await connection.query('UPDATE users SET person_key = ? WHERE id = ?', [personKey, sourceUserId]);
     const roleSequence = await getNextRoleSequence(connection, personKey, newRole);
-    const accountCode = await generateUniqueAccountCode(connection, { lastName: source.last_name, role: newRole, sequence: roleSequence, lock: true });
     temporaryPassword = generateTemporaryPassword();
     const passwordHash = await bcrypt.hash(temporaryPassword, 10);
     const reason = String(req.body?.reason || `Position changed from ${source.role} to ${newRole}.`).trim().slice(0, 500);
@@ -2126,13 +2133,16 @@ export const changeUserPosition = async (req, res) => {
         status, must_change_password, can_login, is_system_account
       ) VALUES (?, 'system', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, 'active', 1, 1, 0)`,
       [
-        accountCode, personKey, roleSequence,
+        null, personKey, roleSequence,
         source.first_name, source.last_name, source.middle_name, source.contact_no, source.tin_no, source.prc_no, source.address, source.email,
         passwordHash, newRole, projectAccess.allProjects ? 1 : 0, projectAccess.allProjects ? 1 : 0,
       ]
     );
 
-    const newUserId = insertResult.insertId;
+    const newUserId = Number(insertResult.insertId);
+    const accountCode = buildAccountCode({ lastName: source.last_name, role: newRole, userId: newUserId });
+    await connection.query('UPDATE users SET account_code = ? WHERE id = ?', [accountCode, newUserId]);
+
     await replaceAdminProjectAccess(connection, {
       userId: newUserId, role: newRole, allProjects: projectAccess.allProjects,
       projectIds: projectAccess.projectIds, changedByUserId: req.authUser?.id || null,
