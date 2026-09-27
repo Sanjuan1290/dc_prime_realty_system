@@ -24,7 +24,6 @@ const defaultForm = {
   reservationContactNumber: '',
   defaultReleaseDayOne: 7,
   defaultReleaseDayTwo: 22,
-  paymentEntryEmailNotificationEnabled: false,
 }
 
 const mapSettingsToForm = (settings = {}) => ({
@@ -40,7 +39,6 @@ const mapSettingsToForm = (settings = {}) => ({
   reservationContactNumber: settings.reservationContactNumber || '',
   defaultReleaseDayOne: settings.defaultReleaseDayOne || 7,
   defaultReleaseDayTwo: settings.defaultReleaseDayTwo || 22,
-  paymentEntryEmailNotificationEnabled: Boolean(settings.paymentEntryEmailNotificationEnabled),
 })
 
 const Settings = () => {
@@ -82,10 +80,6 @@ const Settings = () => {
   const handleSubmit = (event) => {
     event.preventDefault()
     if (!isEditing || !canManage) return
-    if (form.paymentEntryEmailNotificationEnabled && !/^\S+@\S+\.\S+$/.test(String(form.companyEmail || '').trim())) {
-      setAlert({ type: 'error', message: 'Enter a valid Company Email before enabling Add Payment email notifications.' })
-      return
-    }
     setPendingAuthorization({ ...form })
   }
 

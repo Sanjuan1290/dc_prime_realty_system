@@ -19,6 +19,7 @@ const dayOfMonth = (value) => {
 }
 
 const sameValue = (left, right) => String(left ?? '') === String(right ?? '')
+const enabledDisabled = (value) => value === true || value === 1 || String(value || '').toLowerCase() === 'true' || String(value || '') === '1' ? 'Enabled' : 'Disabled'
 
 const buildChangeFields = (before = {}, after = {}, definitions = []) => definitions.flatMap(({ key, label, formatter }) => {
   if (sameValue(before?.[key], after?.[key])) return []
@@ -52,6 +53,7 @@ const projectChangeDefinitions = [
   { key: 'companyName', label: 'Company Name' },
   { key: 'companyEmail', label: 'Company Email' },
   { key: 'companyContactNumber', label: 'Company Contact Number' },
+  { key: 'paymentEntryEmailNotificationEnabled', label: 'Payment Entry Notifications', formatter: enabledDisabled },
 ]
 
 const SystemSettingsReview = ({ data }) => [
@@ -134,6 +136,7 @@ const ProjectSettingsReview = ({ data }) => [
           { label: 'Company Name', value: data.companyName },
           { label: 'Company Email', value: data.companyEmail },
           { label: 'Company Contact Number', value: data.companyContactNumber },
+          { label: 'Payment Entry Notifications', value: data.paymentEntryEmailNotificationEnabled, formatter: enabledDisabled },
         ]} />
       </DoubleCheckSection>
     ),

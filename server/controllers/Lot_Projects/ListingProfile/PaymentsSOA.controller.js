@@ -105,6 +105,30 @@ const PAYMENT_CORRECTION_ENTITY = 'lot_project_payment';
 
 
 const isValidEmailAddress = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
+const PAYMENT_EMAIL_DEFAULT_LOGO_URL = 'https://res.cloudinary.com/dvazrmgq9/image/upload/v1784705909/logo-mobile_2_i0damo.png';
+const getPaymentEmailLogoUrl = () => String(process.env.EMAIL_LOGO_URL || PAYMENT_EMAIL_DEFAULT_LOGO_URL).trim();
+const formatPaymentRecordedAt = (value = new Date()) => {
+  const date = value instanceof Date ? value : new Date(value);
+  const validDate = Number.isNaN(date.getTime()) ? new Date() : date;
+  const dateLabel = new Intl.DateTimeFormat('en-PH', {
+    timeZone: 'Asia/Manila',
+    year: 'numeric',
+    month: 'long',
+    day: '2-digit',
+  }).format(validDate);
+  const dayLabel = new Intl.DateTimeFormat('en-PH', {
+    timeZone: 'Asia/Manila',
+    weekday: 'long',
+  }).format(validDate);
+  const timeLabel = new Intl.DateTimeFormat('en-PH', {
+    timeZone: 'Asia/Manila',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+  }).format(validDate);
+  return `${dateLabel} (${dayLabel}) • ${timeLabel} PHT`;
+};
 const maskPaymentAccountNumber = (value) => {
   const clean = String(value || '').trim();
   if (!clean) return '-';
@@ -114,16 +138,20 @@ const maskPaymentAccountNumber = (value) => {
 
 const sendPaymentEntryCompanyNotification = async ({ req, user, project, payment }) => {
   try {
-    if (!(await tableExists(db, 'system_settings'))) return { enabled: false, sent: false, reason: 'settings_missing' };
-    if (!(await columnExists(db, 'system_settings', 'payment_entry_email_notification_enabled'))) {
+    if (!(await tableExists(db, 'lot_project_settings'))) return { enabled: false, sent: false, reason: 'project_settings_missing' };
+    if (!(await columnExists(db, 'lot_project_settings', 'payment_entry_email_notification_enabled'))) {
       return { enabled: false, sent: false, reason: 'setting_not_migrated' };
     }
 
+    const projectId = Number(project?.lot_project_id || project?.id || 0);
+    if (!projectId) return { enabled: false, sent: false, reason: 'project_missing' };
+
     const [settingsRows] = await db.query(
       `SELECT company_name, company_email, payment_entry_email_notification_enabled
-       FROM system_settings
-       WHERE system_setting_id = 1
-       LIMIT 1`
+       FROM lot_project_settings
+       WHERE lot_project_id = ?
+       LIMIT 1`,
+      [projectId]
     );
     const settings = settingsRows[0] || {};
     const enabled = Number(settings.payment_entry_email_notification_enabled || 0) === 1;
@@ -131,7 +159,7 @@ const sendPaymentEntryCompanyNotification = async ({ req, user, project, payment
 
     const companyEmail = String(settings.company_email || '').trim();
     if (!isValidEmailAddress(companyEmail)) {
-      const warning = 'Add Payment email notification is enabled, but Company Email is missing or invalid.';
+      const warning = 'Payment notification is enabled for this project, but its Company Email is missing or invalid.';
       console.warn(warning);
       try {
         await writeAuditLog(db, req, {
@@ -139,7 +167,7 @@ const sendPaymentEntryCompanyNotification = async ({ req, user, project, payment
           entityLabel: payment.referenceId || `Payment #${payment.paymentId}`,
           title: 'Payment notification email skipped',
           description: warning,
-          metadata: { notificationEnabled: true, companyEmail: companyEmail || null },
+          metadata: { projectId, notificationEnabled: true, companyEmail: companyEmail || null },
         });
       } catch (_) {}
       return { enabled: true, sent: false, reason: 'invalid_company_email', warning };
@@ -148,31 +176,120 @@ const sendPaymentEntryCompanyNotification = async ({ req, user, project, payment
     const companyName = String(settings.company_name || process.env.COMPANY_NAME || 'D&C Prime Realty').trim();
     const enteredBy = getUserFullName(user) || user?.email || 'Authorized User';
     const reference = payment.referenceId || `Payment #${payment.paymentId}`;
-    const subject = `New payment recorded - ${payment.unitId || project?.lot_project_name || 'Lot Project'} - ${reference}`;
+    const projectName = project?.lot_project_name || project?.name || '-';
+    const unitId = payment.unitId || '-';
+    const buyerName = payment.buyerName || '-';
+    const amountLabel = money(payment.amount);
+    const paymentDateLabel = payment.paymentDate || '-';
+    const paymentTypeLabel = getPaymentTypeLabel(payment.paymentType);
+    const paymentMethodLabel = payment.paymentMethod || '-';
+    const recordedAtLabel = formatPaymentRecordedAt(new Date());
+    const logoUrl = getPaymentEmailLogoUrl();
+    const subject = `Payment recorded - ${unitId} - ${reference}`;
     const detailLines = [
-      `Project: ${project?.lot_project_name || project?.name || '-'}`,
-      `Unit: ${payment.unitId || '-'}`,
-      `Buyer: ${payment.buyerName || '-'}`,
-      `Amount: ${money(payment.amount)}`,
-      `Payment date: ${payment.paymentDate || '-'}`,
-      `Payment type: ${getPaymentTypeLabel(payment.paymentType)}`,
-      `Payment method: ${payment.paymentMethod || '-'}`,
-      ...(payment.paymentMethod !== 'Cash' ? [`Bank / provider: ${payment.bankName || '-'}`, `Account / wallet: ${maskPaymentAccountNumber(payment.accountNumber)}`] : []),
+      `Project: ${projectName}`,
+      `Unit: ${unitId}`,
+      `Buyer: ${buyerName}`,
+      `Amount: ${amountLabel}`,
+      `Payment date: ${paymentDateLabel}`,
+      `Payment type: ${paymentTypeLabel}`,
+      `Payment method: ${paymentMethodLabel}`,
+      ...(paymentMethodLabel !== 'Cash' ? [`Bank / provider: ${payment.bankName || '-'}`, `Account / wallet: ${maskPaymentAccountNumber(payment.accountNumber)}`] : []),
       `Reference: ${reference}`,
       `Entered by: ${enteredBy}`,
-      `Recorded at: ${new Date().toISOString()}`,
+      `Recorded at: ${recordedAtLabel}`,
     ];
+
+    const rowHtml = (label, value, options = {}) => {
+      const valueStyle = options.emphasis
+        ? 'font-size:15px;font-weight:800;color:#0f172a;'
+        : 'font-size:14px;font-weight:600;color:#334155;';
+      return `<tr>
+        <td style="width:38%;padding:11px 14px;background:#f8fafc;border-top:1px solid #e2e8f0;font-size:12px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:#64748b;vertical-align:top">${escapePaymentCorrectionHtml(label)}</td>
+        <td style="padding:11px 14px;border-top:1px solid #e2e8f0;${valueStyle}vertical-align:top">${escapePaymentCorrectionHtml(value)}</td>
+      </tr>`;
+    };
+
+    const detailsHtml = `
+      <div style="overflow:hidden;border:1px solid #dbe3ee;border-radius:14px;background:#ffffff">
+        <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse">
+          ${rowHtml('Project', projectName)}
+          ${rowHtml('Unit', unitId)}
+          ${rowHtml('Buyer', buyerName)}
+          ${rowHtml('Payment date', paymentDateLabel)}
+          ${rowHtml('Payment type', paymentTypeLabel)}
+          ${rowHtml('Payment method', paymentMethodLabel)}
+          ${paymentMethodLabel !== 'Cash' ? rowHtml('Bank / provider', payment.bankName || '-') : ''}
+          ${paymentMethodLabel !== 'Cash' ? rowHtml('Account / wallet', maskPaymentAccountNumber(payment.accountNumber)) : ''}
+          ${rowHtml('Reference', reference, { emphasis: true })}
+          ${rowHtml('Entered by', enteredBy)}
+          ${rowHtml('Recorded at', recordedAtLabel, { emphasis: true })}
+        </table>
+      </div>`;
+
+    const html = `<!doctype html>
+      <html>
+        <body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;color:#0f172a">
+          <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;background:#f1f5f9;padding:28px 12px">
+            <tr>
+              <td align="center">
+                <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;max-width:680px;border-collapse:separate;border-spacing:0;background:#ffffff;border:1px solid #e2e8f0;border-radius:20px;overflow:hidden;box-shadow:0 10px 30px rgba(15,23,42,.08)">
+                  <tr>
+                    <td style="padding:24px 28px;background:#0f172a;color:#ffffff">
+                      <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse">
+                        <tr>
+                          <td style="vertical-align:middle">
+                            ${logoUrl ? `<img src="${escapePaymentCorrectionHtml(logoUrl)}" alt="${escapePaymentCorrectionHtml(companyName)}" width="46" height="46" style="display:block;width:46px;height:46px;border-radius:12px;background:#ffffff;object-fit:contain">` : ''}
+                          </td>
+                          <td style="padding-left:14px;vertical-align:middle;width:100%">
+                            <div style="font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#93c5fd">Payment Entry Notification</div>
+                            <div style="margin-top:4px;font-size:20px;font-weight:800;color:#ffffff">${escapePaymentCorrectionHtml(companyName)}</div>
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding:28px">
+                      <div style="display:inline-block;padding:6px 10px;border-radius:999px;background:#dcfce7;color:#166534;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase">Verified Payment Recorded</div>
+                      <h1 style="margin:14px 0 6px;font-size:27px;line-height:1.2;color:#0f172a">${escapePaymentCorrectionHtml(amountLabel)}</h1>
+                      <p style="margin:0 0 6px;font-size:15px;font-weight:700;color:#334155">${escapePaymentCorrectionHtml(buyerName)} · ${escapePaymentCorrectionHtml(unitId)}</p>
+                      <p style="margin:0 0 22px;font-size:13px;color:#64748b">Reference: <strong style="color:#334155">${escapePaymentCorrectionHtml(reference)}</strong></p>
+
+                      <div style="margin:0 0 22px;padding:14px 16px;border-left:4px solid #2563eb;border-radius:10px;background:#eff6ff;color:#1e3a8a;font-size:14px;line-height:1.55">
+                        A new verified payment was recorded in the system. Please review the details below and confirm that the amount, date, and reference are correct.
+                      </div>
+
+                      ${detailsHtml}
+
+                      <div style="margin-top:22px;padding:16px;border:1px solid #fed7aa;border-radius:12px;background:#fff7ed;color:#9a3412;font-size:13px;line-height:1.55">
+                        <strong>Double-check required:</strong> If any payment detail is incorrect, open the buyer account in the internal system and use the approved payment-correction workflow. Do not create a duplicate payment entry.
+                      </div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding:18px 28px;border-top:1px solid #e2e8f0;background:#f8fafc;font-size:12px;line-height:1.5;color:#64748b">
+                      This is an automated internal notification sent to the Company Email configured in System Settings.<br>
+                      ${escapePaymentCorrectionHtml(companyName)} · Recorded ${escapePaymentCorrectionHtml(recordedAtLabel)}
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </body>
+      </html>`;
 
     await sendEmail({
       to: companyEmail,
       subject,
       text: [
-        `Hello ${companyName},`, '',
-        'A new verified payment was added to D&C Prime Realty. Please double-check the payment entry below.', '',
+        `PAYMENT ENTRY NOTIFICATION - ${companyName}`, '',
+        `A new verified payment was recorded for ${buyerName}. Please double-check the entry below.`, '',
         ...detailLines, '',
-        'If any value is incorrect, review the payment inside the system before making a correction.',
+        'If any value is incorrect, review the buyer account in the internal system and use the approved payment-correction workflow. Do not create a duplicate payment entry.',
       ].join('\n'),
-      html: `<div style="font-family:Arial,sans-serif;max-width:640px;margin:auto;color:#0f172a"><h2>${escapePaymentCorrectionHtml(companyName)}</h2><p>A new verified payment was added. Please double-check the entry below.</p><div style="border:1px solid #cbd5e1;border-radius:12px;padding:16px;background:#f8fafc">${detailLines.map((line) => { const [label, ...rest] = line.split(':'); return `<p style="margin:7px 0"><strong>${escapePaymentCorrectionHtml(label)}:</strong>${escapePaymentCorrectionHtml(rest.join(':'))}</p>`; }).join('')}</div><p style="color:#475569">If any value is incorrect, review the payment inside the system before making a correction.</p></div>`,
+      html,
       idempotencyKey: `payment-entry-${payment.paymentId}`,
     });
 

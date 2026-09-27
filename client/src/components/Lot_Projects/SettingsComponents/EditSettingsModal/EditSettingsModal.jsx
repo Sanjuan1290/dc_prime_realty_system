@@ -30,6 +30,7 @@ const EditSettingsModal = ({ settings, onClose, onSave, isSaving = false }) => {
     companyName: settings?.companyName || '',
     companyEmail: settings?.companyEmail || '',
     companyContactNumber: settings?.companyContactNumber || '',
+    paymentEntryEmailNotificationEnabled: Boolean(settings?.paymentEntryEmailNotificationEnabled),
   }))
   const [alert, setAlert] = useState(null)
 
@@ -72,6 +73,11 @@ const EditSettingsModal = ({ settings, onClose, onSave, isSaving = false }) => {
 
     if (!form.companyName.trim()) {
       setAlert({ type: 'error', message: 'Company name is required.' })
+      return
+    }
+
+    if (form.paymentEntryEmailNotificationEnabled && !/^\S+@\S+\.\S+$/.test(String(form.companyEmail || '').trim())) {
+      setAlert({ type: 'error', message: 'Enter a valid Project Company Email before enabling payment entry notifications.' })
       return
     }
 
@@ -134,6 +140,31 @@ const EditSettingsModal = ({ settings, onClose, onSave, isSaving = false }) => {
               <Field label="Company Email" type="email" value={form.companyEmail} onChange={(value) => updateForm('companyEmail', value)} placeholder="company@example.com" />
               <Field label="Company Contact Number" value={form.companyContactNumber} onChange={(value) => updateForm('companyContactNumber', value)} placeholder="(046) 000-0000" />
             </div>
+          </section>
+
+          <section className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <h3 className="text-base font-black text-slate-950">Payment Entry Notifications</h3>
+            <p className="mt-1 text-sm font-semibold text-slate-500">Send a verification email to this project's Company Email whenever a new verified payment is recorded.</p>
+
+            <label className={`mt-4 flex items-start justify-between gap-4 rounded-2xl border p-4 ${form.paymentEntryEmailNotificationEnabled ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-white'}`}>
+              <span>
+                <span className="block text-sm font-black text-slate-900">Email this project's Company Email when a payment is added</span>
+                <span className="mt-1 block text-xs font-semibold leading-5 text-slate-500">Recipient: {form.companyEmail?.trim() || 'No Project Company Email entered'}. The system mail account remains the sender.</span>
+                {form.paymentEntryEmailNotificationEnabled && !/^\S+@\S+\.\S+$/.test(String(form.companyEmail || '').trim()) ? (
+                  <span className="mt-2 block text-xs font-black text-red-600">Enter a valid Project Company Email before this notification can be enabled.</span>
+                ) : null}
+              </span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={Boolean(form.paymentEntryEmailNotificationEnabled)}
+                disabled={isSaving}
+                onClick={() => updateForm('paymentEntryEmailNotificationEnabled', !form.paymentEntryEmailNotificationEnabled)}
+                className={`relative mt-1 h-7 w-12 shrink-0 rounded-full transition disabled:cursor-not-allowed disabled:opacity-50 ${form.paymentEntryEmailNotificationEnabled ? 'bg-emerald-600' : 'bg-slate-300'}`}
+              >
+                <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition ${form.paymentEntryEmailNotificationEnabled ? 'left-6' : 'left-1'}`} />
+              </button>
+            </label>
           </section>
         </div>
 

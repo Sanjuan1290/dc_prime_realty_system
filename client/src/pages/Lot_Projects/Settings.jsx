@@ -181,6 +181,24 @@ const Settings = () => {
         </div>
       </section>
 
+      <SettingCard
+        title="Payment Entry Notifications"
+        description="Controls whether this project's Company Email receives a verification notice whenever a new payment is recorded."
+      >
+        <div className={`rounded-2xl border p-4 ${settings.paymentEntryEmailNotificationEnabled ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-slate-50'}`}>
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-black text-slate-950">Payment notification email</p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">Recipient: {settings.companyEmail || 'No Project Company Email entered'}</p>
+            </div>
+            <span className={`mt-2 inline-flex w-fit rounded-full px-3 py-1 text-xs font-black sm:mt-0 ${settings.paymentEntryEmailNotificationEnabled ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>
+              {settings.paymentEntryEmailNotificationEnabled ? 'Enabled' : 'Disabled'}
+            </span>
+          </div>
+        </div>
+      </SettingCard>
+
+
       {showEdit ? (
         <EditSettingsModal
           settings={settings}

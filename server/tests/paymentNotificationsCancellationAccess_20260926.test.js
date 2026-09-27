@@ -8,29 +8,35 @@ const dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(dirname, '..', '..');
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
 
-test('system settings expose a Super-Admin controlled Add Payment email notification toggle', () => {
-  const controller = read('server/controllers/System/systemSettings.controller.js');
-  const settingsPage = read('client/src/pages/System/Settings.jsx');
-  const form = read('client/src/components/System/settingsComponents/SystemSettingsForm.jsx');
-  const migration = read('server/migrations/20260926_payment_notifications_and_cancellation_access.sql');
+test('payment notification setting is project-specific and uses the project Company Email', () => {
+  const projectController = read('server/controllers/Lot_Projects/Settings/Settings.controller.js');
+  const projectPage = read('client/src/pages/Lot_Projects/Settings.jsx');
+  const projectModal = read('client/src/components/Lot_Projects/SettingsComponents/EditSettingsModal/EditSettingsModal.jsx');
+  const systemController = read('server/controllers/System/systemSettings.controller.js');
+  const systemPage = read('client/src/pages/System/Settings.jsx');
+  const systemForm = read('client/src/components/System/settingsComponents/SystemSettingsForm.jsx');
+  const migration = read('server/migrations/20260927_project_payment_entry_notifications.sql');
 
-  assert.match(controller, /payment_entry_email_notification_enabled TINYINT\(1\) NOT NULL DEFAULT 0/);
-  assert.match(controller, /COMPANY_EMAIL_REQUIRED_FOR_PAYMENT_NOTIFICATIONS/);
-  assert.match(controller, /Enter a valid Company Email before enabling Add Payment email notifications/);
-  assert.match(controller, /payment_entry_email_notification_enabled = \?/);
-  assert.match(settingsPage, /paymentEntryEmailNotificationEnabled/);
-  assert.match(settingsPage, /Enter a valid Company Email before enabling Add Payment email notifications/);
-  assert.match(form, /Payment Entry Notifications/);
-  assert.match(form, /Email company when a payment is added/);
-  assert.match(form, /Recipient:/);
-  assert.match(migration, /ADD COLUMN IF NOT EXISTS payment_entry_email_notification_enabled/);
+  assert.match(projectController, /payment_entry_email_notification_enabled/);
+  assert.match(projectController, /PROJECT_COMPANY_EMAIL_REQUIRED_FOR_PAYMENT_NOTIFICATIONS/);
+  assert.match(projectController, /Enter a valid Project Company Email before enabling payment entry notifications/);
+  assert.match(projectController, /payment_entry_email_notification_enabled = VALUES\(payment_entry_email_notification_enabled\)/);
+  assert.match(projectPage, /Payment Entry Notifications/);
+  assert.match(projectPage, /Recipient: \{settings\.companyEmail/);
+  assert.match(projectModal, /Email this project's Company Email when a payment is added/);
+  assert.match(projectModal, /Project Company Email/);
+  assert.doesNotMatch(systemPage, /paymentEntryEmailNotificationEnabled/);
+  assert.doesNotMatch(systemForm, /Payment Entry Notifications/);
+  assert.doesNotMatch(systemController, /paymentEntryEmailNotificationEnabled/);
+  assert.match(migration, /ALTER TABLE lot_project_settings/);
+  assert.match(migration, /payment_entry_email_notification_enabled/);
 });
 
 test('new payments notify Company Email after the transaction without rolling back payment when email fails', () => {
   const payments = read('server/controllers/Lot_Projects/ListingProfile/PaymentsSOA.controller.js');
 
   assert.match(payments, /const sendPaymentEntryCompanyNotification = async/);
-  assert.match(payments, /SELECT company_name, company_email, payment_entry_email_notification_enabled/);
+  assert.match(payments, /SELECT company_name, company_email, payment_entry_email_notification_enabled[\s\S]*FROM lot_project_settings[\s\S]*WHERE lot_project_id = \?/);
   assert.match(payments, /idempotencyKey: `payment-entry-\$\{payment\.paymentId\}`/);
   assert.match(payments, /Payment was saved, but the Company Email notification could not be sent/);
   assert.match(payments, /result\.idempotentReplay[\s\S]*sendPaymentEntryCompanyNotification/);
@@ -39,6 +45,16 @@ test('new payments notify Company Email after the transaction without rolling ba
   assert.match(payments, /Payment date:/);
   assert.match(payments, /Reference:/);
   assert.match(payments, /Entered by:/);
+  assert.match(payments, /formatPaymentRecordedAt/);
+  assert.match(payments, /timeZone: 'Asia\/Manila'/);
+  assert.match(payments, /weekday: 'long'/);
+  assert.match(payments, /second: '2-digit'/);
+  assert.match(payments, /Recorded at:/);
+  assert.match(payments, /const projectId = Number\(project\?\.lot_project_id/);
+  assert.doesNotMatch(payments, /FROM system_settings[\s\S]*payment_entry_email_notification_enabled/);
+  assert.match(payments, /PAYMENT_EMAIL_DEFAULT_LOGO_URL/);
+  assert.match(payments, /Verified Payment Recorded/);
+  assert.match(payments, /Double-check required:/);
 });
 
 test('cancellation permissions are granular and intentionally absent from recommended role defaults', () => {

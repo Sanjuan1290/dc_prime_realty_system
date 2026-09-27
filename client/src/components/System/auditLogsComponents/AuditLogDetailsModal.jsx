@@ -43,6 +43,7 @@ const titleCase = (value) => String(value || '')
   .replace(/\b\w/g, (letter) => letter.toUpperCase())
 
 const sameAuditValue = (left, right) => String(left ?? '') === String(right ?? '')
+const enabledDisabled = (value) => value === true || value === 1 || String(value || '').toLowerCase() === 'true' || String(value || '') === '1' ? 'Enabled' : 'Disabled'
 
 const formatAuditValue = (value, formatter) => {
   if (formatter) return formatter(value)
@@ -74,6 +75,7 @@ const settingsChangeDefinitions = {
     { key: 'companyName', label: 'Company Name' },
     { key: 'companyEmail', label: 'Company Email' },
     { key: 'companyContactNumber', label: 'Company Contact Number' },
+    { key: 'paymentEntryEmailNotificationEnabled', label: 'Payment Entry Notifications', formatter: enabledDisabled },
   ],
 }
 

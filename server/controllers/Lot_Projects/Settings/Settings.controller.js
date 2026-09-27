@@ -30,7 +30,13 @@ const toDay = (value, fallback) => {
 };
 
 const clean = (value = '') => String(value ?? '').trim();
+const isValidEmailAddress = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean(value));
+const toBoolean = (value) => value === true || value === 1 || String(value ?? '').toLowerCase() === 'true' || String(value ?? '') === '1';
 const canEditProjectSettings = (user) => roleHasPermission(user, PERMISSIONS.LOT_SETTINGS_MANAGE);
+
+const ensureProjectPaymentNotificationColumn = async (connection) => {
+  await connection.query(`ALTER TABLE lot_project_settings ADD COLUMN IF NOT EXISTS payment_entry_email_notification_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER company_contact_number`);
+};
 
 const normalizeProjectSettingsPayload = (body = {}) => {
   const releaseDayOne = toDay(body.releaseDayOne ?? body.release_day_one, 7);
@@ -49,6 +55,7 @@ const normalizeProjectSettingsPayload = (body = {}) => {
     companyName: toNullable(body.companyName),
     companyEmail: toNullable(body.companyEmail),
     companyContactNumber: toNullable(body.companyContactNumber),
+    paymentEntryEmailNotificationEnabled: toBoolean(body.paymentEntryEmailNotificationEnabled),
   };
 
   if (!payload.reservationContactName) {
@@ -56,6 +63,9 @@ const normalizeProjectSettingsPayload = (body = {}) => {
   }
   if (!payload.companyName) {
     throw Object.assign(new Error('Company name is required.'), { statusCode: 400 });
+  }
+  if (payload.paymentEntryEmailNotificationEnabled && !isValidEmailAddress(payload.companyEmail)) {
+    throw Object.assign(new Error('Enter a valid Project Company Email before enabling payment entry notifications.'), { statusCode: 400, code: 'PROJECT_COMPANY_EMAIL_REQUIRED_FOR_PAYMENT_NOTIFICATIONS' });
   }
 
   return payload;
@@ -80,6 +90,7 @@ const mapSettings = (row = {}, project = {}) => ({
   companyName: row.company_name || 'D&C Prime Realty',
   companyEmail: row.company_email || '',
   companyContactNumber: row.company_contact_number || '',
+  paymentEntryEmailNotificationEnabled: Boolean(Number(row.payment_entry_email_notification_enabled || 0)),
   createdAt: row.lot_project_setting_created_at || null,
   updatedAt: row.lot_project_setting_updated_at || null,
 });
@@ -141,6 +152,7 @@ export const getLotProjectSettings = async (req, res) => {
     if (!(await tableExists(connection, 'lot_project_settings'))) {
       return res.status(500).json({ success: false, message: 'lot_project_settings table does not exist.' });
     }
+    await ensureProjectPaymentNotificationColumn(connection);
 
     const currentUser = await getAuthenticatedUser(req);
     const settings = await getOrCreateSettingsRow(connection, project);
@@ -180,6 +192,10 @@ export const requestLotProjectSettingsCode = async (req, res) => {
     const slug = clean(req.params.projectSlug);
     const project = await getProjectBySlug(slug);
     if (!project) return res.status(404).json({ success: false, message: 'Lot project not found.' });
+    if (!(await tableExists(connection, 'lot_project_settings'))) {
+      return res.status(500).json({ success: false, message: 'lot_project_settings table does not exist.' });
+    }
+    await ensureProjectPaymentNotificationColumn(connection);
 
     const reason = clean(req.body.reason);
     if (reason.length < 5) return res.status(400).json({ success: false, message: 'A clear reason for changing settings is required.' });
@@ -233,6 +249,7 @@ export const updateLotProjectSettings = async (req, res) => {
     if (!(await tableExists(connection, 'lot_project_settings'))) {
       return res.status(500).json({ success: false, message: 'lot_project_settings table does not exist.' });
     }
+    await ensureProjectPaymentNotificationColumn(connection);
 
     const currentUser = req.authUser || await getAuthenticatedUser(req);
     if (!currentUser) return res.status(401).json({ success: false, message: 'Please login before updating settings.' });
@@ -283,8 +300,9 @@ export const updateLotProjectSettings = async (req, res) => {
       `INSERT INTO lot_project_settings (
         lot_project_id, release_day_one, release_day_two,
         reservation_contact_name, reservation_contact_email, reservation_contact_number,
-        company_name, company_email, company_contact_number
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        company_name, company_email, company_contact_number,
+        payment_entry_email_notification_enabled
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
         release_day_one = VALUES(release_day_one),
         release_day_two = VALUES(release_day_two),
@@ -293,7 +311,8 @@ export const updateLotProjectSettings = async (req, res) => {
         reservation_contact_number = VALUES(reservation_contact_number),
         company_name = VALUES(company_name),
         company_email = VALUES(company_email),
-        company_contact_number = VALUES(company_contact_number)`,
+        company_contact_number = VALUES(company_contact_number),
+        payment_entry_email_notification_enabled = VALUES(payment_entry_email_notification_enabled)`,
       [
         project.lot_project_id,
         settingsPayload.releaseDayOne,
@@ -304,6 +323,7 @@ export const updateLotProjectSettings = async (req, res) => {
         settingsPayload.companyName,
         settingsPayload.companyEmail,
         settingsPayload.companyContactNumber,
+        settingsPayload.paymentEntryEmailNotificationEnabled ? 1 : 0,
       ]
     );
 
