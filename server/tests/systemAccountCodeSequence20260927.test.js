@@ -80,10 +80,12 @@ test('role_sequence remains separate historical identity data and is not the vis
   assert.match(positionModal, /Users table ID/);
 });
 
-test('create-user and login UI describe the role plus user-id account-code format', () => {
+test('create-user UI describes account-code format while login remains email-only', () => {
   assert.match(createModal, /role abbreviation plus the Users table ID/i);
   assert.match(createModal, /SS-00002/);
   assert.doesNotMatch(createModal, /CORTEZ-ADM/);
-  assert.match(loginPage, /ADM-00002/);
-  assert.doesNotMatch(loginPage, /SURNAME-ADM/);
+  assert.match(loginPage, />Email<\/span>/);
+  assert.match(loginPage, /type="email"/);
+  assert.doesNotMatch(loginPage, /ADM-00002/);
+  assert.doesNotMatch(loginPage, /Email or Account Code/);
 });

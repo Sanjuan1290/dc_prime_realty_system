@@ -7,22 +7,26 @@ import ForgotPasswordModal from './ForgotPasswordModal'
 import { requestApi } from '../utils/apiClient'
 import { getFirstAllowedSystemPath } from '../config/permissions'
 
-const REMEMBERED_IDENTIFIER_KEY = 'dc_prime_remembered_identifier'
-const LEGACY_REMEMBERED_EMAIL_KEY = 'dc_prime_remembered_email'
+const REMEMBERED_EMAIL_KEY = 'dc_prime_remembered_email'
+const LEGACY_REMEMBERED_IDENTIFIER_KEY = 'dc_prime_remembered_identifier'
 
-const getRememberedIdentifier = () => {
+const getRememberedEmail = () => {
   try {
-    return window.localStorage.getItem(REMEMBERED_IDENTIFIER_KEY) || window.localStorage.getItem(LEGACY_REMEMBERED_EMAIL_KEY) || ''
+    const rememberedEmail = window.localStorage.getItem(REMEMBERED_EMAIL_KEY) || ''
+    if (rememberedEmail.includes('@')) return rememberedEmail
+
+    const legacyIdentifier = window.localStorage.getItem(LEGACY_REMEMBERED_IDENTIFIER_KEY) || ''
+    return legacyIdentifier.includes('@') ? legacyIdentifier : ''
   } catch {
     return ''
   }
 }
 
 const Login = () => {
-  const rememberedIdentifier = getRememberedIdentifier()
-  const [identifier, setIdentifier] = useState(rememberedIdentifier)
+  const rememberedEmail = getRememberedEmail()
+  const [email, setEmail] = useState(rememberedEmail)
   const [password, setPassword] = useState('')
-  const [rememberMe, setRememberMe] = useState(Boolean(rememberedIdentifier))
+  const [rememberMe, setRememberMe] = useState(Boolean(rememberedEmail))
   const [showForgotPassword, setShowForgotPassword] = useState(false)
   const [notice, setNotice] = useState(null)
 
@@ -40,17 +44,17 @@ const Login = () => {
     mutationKey: ['currentUser'],
     mutationFn: () => requestApi('/user/login', {
       method: 'POST',
-      body: JSON.stringify({ identifier, password, rememberMe }),
+      body: JSON.stringify({ email, password, rememberMe }),
       confirmationHandled: 'technical',
     }),
     onSuccess: (data) => {
       try {
         if (rememberMe) {
-          window.localStorage.setItem(REMEMBERED_IDENTIFIER_KEY, identifier.trim())
-          window.localStorage.removeItem(LEGACY_REMEMBERED_EMAIL_KEY)
+          window.localStorage.setItem(REMEMBERED_EMAIL_KEY, email.trim())
+          window.localStorage.removeItem(LEGACY_REMEMBERED_IDENTIFIER_KEY)
         } else {
-          window.localStorage.removeItem(REMEMBERED_IDENTIFIER_KEY)
-          window.localStorage.removeItem(LEGACY_REMEMBERED_EMAIL_KEY)
+          window.localStorage.removeItem(REMEMBERED_EMAIL_KEY)
+          window.localStorage.removeItem(LEGACY_REMEMBERED_IDENTIFIER_KEY)
         }
       } catch {
         // The secure HTTP-only cookie still controls the authenticated session.
@@ -163,8 +167,8 @@ const Login = () => {
 
                 <div className="space-y-5">
                   <label className="block">
-                    <span className="mb-2 block text-sm font-semibold text-slate-700">Email or Account Code</span>
-                    <input type="text" required placeholder="name@example.com or ADM-00002" onChange={(event) => setIdentifier(event.currentTarget.value)} value={identifier} autoComplete="username" className="h-11 w-full rounded-lg border border-slate-300 bg-white px-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-600 focus:ring-4 focus:ring-blue-100" />
+                    <span className="mb-2 block text-sm font-semibold text-slate-700">Email</span>
+                    <input type="email" required placeholder="name@example.com" onChange={(event) => setEmail(event.currentTarget.value)} value={email} autoComplete="email" className="h-11 w-full rounded-lg border border-slate-300 bg-white px-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-600 focus:ring-4 focus:ring-blue-100" />
                   </label>
 
                   <label className="block">
@@ -200,10 +204,10 @@ const Login = () => {
 
       {showForgotPassword ? (
         <ForgotPasswordModal
-          initialEmail={identifier.includes('@') ? identifier : ''}
+          initialEmail={email}
           onClose={() => setShowForgotPassword(false)}
           onComplete={({ email: resetEmail, message }) => {
-            setIdentifier(resetEmail)
+            setEmail(resetEmail)
             setPassword('')
             setShowForgotPassword(false)
             setNotice({ type: 'success', message })

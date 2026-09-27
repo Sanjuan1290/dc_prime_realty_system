@@ -100,7 +100,8 @@ test('email login and forgot-password resolve only the active login account', ()
   assert.match(migration, /active_login_email/);
   assert.match(migration, /status = 'active' AND can_login = 1 AND is_system_account = 0/);
   assert.match(migration, /UNIQUE KEY uq_users_active_login_email/);
-  assert.match(usersController, /\(account_code = \?\)[\s\S]*LOWER\(email\) = LOWER\(\?\)[\s\S]*status = 'active'/);
+  assert.match(usersController, /login[\s\S]*LOWER\(email\) = LOWER\(\?\)[\s\S]*status = 'active'[\s\S]*can_login = 1[\s\S]*is_system_account = 0/);
+  assert.doesNotMatch(usersController, /login[\s\S]{0,2400}\(account_code = \?\)/);
   assert.match(usersController, /requestForgotPasswordCode[\s\S]*LOWER\(email\) = LOWER\(\?\)[\s\S]*status = 'active'/);
   assert.match(usersController, /verifyForgotPasswordCode[\s\S]*row\.status !== 'active'/);
 });

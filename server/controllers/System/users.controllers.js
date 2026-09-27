@@ -35,6 +35,7 @@ import {
   replaceUserPermissions,
 } from '../../services/accessControl.service.js';
 import { buildAccountCode, previewAccountCode } from '../../services/systemAccountCode.service.js';
+import { getSystemAvailability } from '../../services/systemAvailability.service.js';
 import {
   createSensitiveActionVerification,
   getSensitiveActionRequestIp,
@@ -143,7 +144,7 @@ const sendTemporaryLoginCredentials = async ({ user, temporaryPassword }) => {
     `Your ${roleLabel} account for the D&C Prime Realty Internal System is ready.`,
     '',
     `Login email: ${user.email}`,
-    ...(user.account_code ? [`Account code: ${user.account_code}`] : []),
+    ...(user.account_code ? [`Account code (reference only): ${user.account_code}`] : []),
     `Temporary password: ${temporaryPassword}`,
     `Login: ${loginUrl}`,
     '',
@@ -160,7 +161,7 @@ const sendTemporaryLoginCredentials = async ({ user, temporaryPassword }) => {
       <div style="margin:22px 0;padding:18px;border:1px solid #bfdbfe;border-radius:12px;background:#eff6ff">
         <div style="font-size:13px;color:#475569">Login email</div>
         <div style="font-size:16px;font-weight:700">${escapeEmailHtml(user.email)}</div>
-        ${user.account_code ? `<div style="margin-top:10px;font-size:13px;color:#475569">Account code</div><div style="font-size:16px;font-weight:700">${escapeEmailHtml(user.account_code)}</div>` : ''}
+        ${user.account_code ? `<div style="margin-top:10px;font-size:13px;color:#475569">Account code (reference only)</div><div style="font-size:16px;font-weight:700">${escapeEmailHtml(user.account_code)}</div>` : ''}
         <div style="margin-top:14px;font-size:13px;color:#475569">Temporary password</div>
         <div style="font-family:monospace;font-size:20px;font-weight:800;letter-spacing:1px">${escapeEmailHtml(temporaryPassword)}</div>
       </div>
@@ -583,11 +584,14 @@ const getUserSelectSql = () => `
 
 
 export const login = async (req, res) => {
-  const identifier = String(req.body?.identifier ?? req.body?.email ?? '').trim();
+  const email = normalizeResetEmail(req.body?.email);
   const { password, rememberMe } = req.body;
 
-  if (!identifier || !password) {
-    return res.status(400).json({ message: 'Email or Account Code and password are required.' });
+  if (!email || !password) {
+    return res.status(400).json({ message: 'Email and password are required.' });
+  }
+  if (!isValidResetEmail(email)) {
+    return res.status(400).json({ message: 'Enter a valid email address.' });
   }
 
   const [rows] = await db.query(
@@ -619,30 +623,35 @@ export const login = async (req, res) => {
         created_at,
         updated_at
       FROM users
-      WHERE
-        (account_code = ?)
-        OR (
-          LOWER(email) = LOWER(?)
-          AND status = 'active'
-          AND can_login = 1
-          AND is_system_account = 0
-        )
-      ORDER BY (account_code = ?) DESC, (status = 'active') DESC, id DESC
+      WHERE LOWER(email) = LOWER(?)
+        AND status = 'active'
+        AND can_login = 1
+        AND is_system_account = 0
+      ORDER BY id DESC
       LIMIT 1
     `,
-    [identifier, identifier, identifier]
+    [email]
   );
 
   let user = rows[0];
 
-  if (!user) return res.status(401).json({ message: 'Invalid email/account code or password.' });
-  if (user.status !== 'active') return res.status(403).json({ code: PERMANENT_DEACTIVATION_CODE, legacy_code: LEGACY_PERMANENT_DEACTIVATION_CODE, message: 'This account has been permanently deactivated.' });
+  if (!user) return res.status(401).json({ message: 'Invalid email or password.' });
   if (Number(user.can_login ?? 1) !== 1 || Number(user.is_system_account || 0) === 1) {
     return res.status(403).json({ message: 'This system account cannot sign in.' });
   }
 
   const isPasswordCorrect = await bcrypt.compare(password, user.password_hash);
-  if (!isPasswordCorrect) return res.status(401).json({ message: 'Invalid email/account code or password.' });
+  if (!isPasswordCorrect) return res.status(401).json({ message: 'Invalid email or password.' });
+
+  const availability = await getSystemAvailability({ force: true });
+  if (availability.status === 'maintenance' && user.role !== 'super_admin') {
+    return res.status(503).json({
+      code: 'MAINTENANCE_MODE',
+      message:
+        availability.maintenanceMessage
+        || 'The system is temporarily under maintenance.',
+    });
+  }
 
   user = await hydrateUserPermissions(user);
   [user] = await hydrateAdminProjectAccess([user]);
@@ -665,7 +674,7 @@ export const login = async (req, res) => {
     entityId: String(user.id),
     entityLabel: user.account_code || buildPersonName(user),
     title: 'User logged in',
-    description: `${user.account_code || user.email} logged in successfully.`,
+    description: `${user.email} logged in successfully.`,
   });
 
   const { password_hash: _passwordHash, ...safeUser } = user;
