@@ -1351,12 +1351,10 @@ export const getUsers = async (req, res) => {
 export const previewSystemAccountCode = async (req, res) => {
   const connection = await db.getConnection();
   try {
-    const lastName = String(req.query?.last_name || '').trim();
     const role = String(req.query?.role || '').trim();
-    if (!lastName) return res.status(400).json({ message: 'Last name is required for an account-code preview.' });
     if (!systemUserRoles.has(role)) return res.status(400).json({ message: 'Select a valid internal system role.' });
     const roleSequence = 1;
-    const accountPreview = await previewAccountCode(connection, { lastName, role });
+    const accountPreview = await previewAccountCode(connection, { role });
     return res.json({
       account_code: accountPreview.accountCode,
       preview_user_id: accountPreview.userId,
@@ -1403,10 +1401,7 @@ export const previewChangeUserPosition = async (req, res) => {
 
     const personKey = source.person_key || crypto.randomUUID();
     const roleSequence = await previewNextRoleSequence(connection, personKey, newRole);
-    const accountPreview = await previewAccountCode(connection, {
-      lastName: source.last_name,
-      role: newRole,
-    });
+    const accountPreview = await previewAccountCode(connection, { role: newRole });
     const accountCode = accountPreview.accountCode;
 
     return res.json({
@@ -1568,7 +1563,7 @@ export const createUser = async (req, res) => {
       );
 
       const userId = Number(result.insertId);
-      const accountCode = buildAccountCode({ lastName: last_name, role, userId });
+      const accountCode = buildAccountCode({ role, userId });
       await connection.query('UPDATE users SET account_code = ? WHERE id = ?', [accountCode, userId]);
 
       if (role !== 'super_admin') {
@@ -2201,7 +2196,7 @@ export const changeUserPosition = async (req, res) => {
     );
 
     const newUserId = Number(insertResult.insertId);
-    const accountCode = buildAccountCode({ lastName: source.last_name, role: newRole, userId: newUserId });
+    const accountCode = buildAccountCode({ role: newRole, userId: newUserId });
     await connection.query('UPDATE users SET account_code = ? WHERE id = ?', [accountCode, newUserId]);
 
     await replaceAdminProjectAccess(connection, {

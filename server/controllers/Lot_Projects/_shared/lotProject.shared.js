@@ -5,6 +5,7 @@ import { calculateContractPricing, getListingPricingForMode } from './listingPri
 import { normalizeDocumentResponsibleParty } from '../../../utils/documentRequirement.js';
 import { hydrateUserPermissions } from '../../../services/accessControl.service.js';
 import { getUserProjectAccess } from '../../../services/projectAccess.service.js';
+import { buildLatestScheduleAllocationTiming } from '../../../services/paymentTiming.service.js';
 
 export { db, jwt, bcrypt };
 
@@ -93,8 +94,13 @@ export const plainDate = (value, fallback = '-') => {
 };
 
 export const getSchedulePaymentTiming = (row = {}) => {
+  const explicitTiming = String(
+    row.paymentTiming || row.payment_timing || row.allocationTiming || row.allocation_timing || ''
+  ).trim().toLowerCase();
+  if (['early', 'late', 'on_time', 'advance'].includes(explicitTiming)) return explicitTiming;
+
   const rawStatus = String(row.status || row.schedule_status || '').trim().toLowerCase();
-  if (!['paid', 'advance'].includes(rawStatus)) return null;
+  if (!['paid', 'partial', 'advance'].includes(rawStatus)) return null;
 
   const dueDate = plainDate(row.dueDate ?? row.due_date, null);
   const datePaid = plainDate(row.datePaid ?? row.date_paid, null);
@@ -108,14 +114,16 @@ export const getSchedulePaymentTiming = (row = {}) => {
 export const getScheduleDisplayStatus = (row = {}) => {
   const rawStatus = String(row.status || row.schedule_status || 'Unpaid').trim() || 'Unpaid';
   const normalized = rawStatus.toLowerCase();
+  const timing = getSchedulePaymentTiming(row);
 
-  // `Advance` was the old schedule status for a fully paid installment whose
-  // payment date was before the due date. Keep reading it for legacy data,
-  // but present it using the real-world timing label instead.
-  if (normalized === 'advance') return 'Paid Early';
+  // Legacy `Advance` rows represent a future obligation paid ahead of the
+  // nearest upcoming obligation. Keep the legacy database value readable,
+  // but expose the clearer SOA label.
+  if (normalized === 'advance') return 'Advance Payment';
+  if (normalized === 'partial' && timing === 'advance') return 'Partial Advance';
   if (normalized !== 'paid') return rawStatus;
 
-  const timing = getSchedulePaymentTiming(row);
+  if (timing === 'advance') return 'Advance Payment';
   if (timing === 'early') return 'Paid Early';
   if (timing === 'late') return 'Paid Late';
   return 'Paid';
@@ -2919,6 +2927,54 @@ export const getExistingSoaScheduleRows = async (
   return rows;
 };
 
+export const getScheduleAllocationTimingMap = async (
+  connection,
+  lotProjectId,
+  listingId,
+  clientProfileId = 0,
+  accountId = 0
+) => {
+  if (!(await tableExists(connection, 'lot_project_payment_allocations'))) return new Map();
+  if (!(await tableExists(connection, 'lot_project_payments'))) return new Map();
+  if (!(await tableExists(connection, 'lot_project_payment_schedules'))) return new Map();
+
+  const [rows] = await connection.query(
+    `
+      SELECT
+        allocation.lot_project_payment_allocation_id AS allocationId,
+        allocation.lot_project_payment_id AS paymentId,
+        allocation.lot_project_payment_schedule_id AS scheduleId,
+        payment.lot_project_payment_date AS paymentDate,
+        schedule.due_date AS dueDate
+      FROM lot_project_payment_allocations allocation
+      INNER JOIN lot_project_payments payment
+        ON payment.lot_project_payment_id = allocation.lot_project_payment_id
+      INNER JOIN lot_project_payment_schedules schedule
+        ON schedule.lot_project_payment_schedule_id = allocation.lot_project_payment_schedule_id
+      WHERE payment.lot_project_id = ?
+        AND payment.lot_project_listing_id = ?
+        AND (? = 0 OR payment.lot_project_client_profile_id = ?)
+        AND (? = 0 OR payment.lot_project_account_id = ?)
+        AND payment.lot_project_payment_status = 'Verified'
+        AND schedule.schedule_status <> 'Cancelled'
+      ORDER BY
+        payment.lot_project_payment_date ASC,
+        payment.lot_project_payment_id ASC,
+        allocation.lot_project_payment_allocation_id ASC
+    `,
+    [
+      lotProjectId,
+      listingId,
+      Number(clientProfileId || 0),
+      Number(clientProfileId || 0),
+      Number(accountId || 0),
+      Number(accountId || 0),
+    ]
+  );
+
+  return buildLatestScheduleAllocationTiming(rows);
+};
+
 export const canGenerateListingSoa = (listingRow = {}) => {
   const rawStatus = String(
     listingRow.lot_project_listing_status ||
@@ -3014,9 +3070,17 @@ export const getListingSoaRows = async (
       : existingScheduleRows.filter(
           (row) => String(row.schedule_status || '').toLowerCase() !== 'cancelled'
         );
+    const allocationTimingMap = await getScheduleAllocationTimingMap(
+      connection,
+      lotProjectId,
+      listingId,
+      clientProfileId,
+      selectedAccountId
+    );
     const storedRows = visibleScheduleRows.map((row, index) => {
       const scheduleId = Number(row.lot_project_payment_schedule_id || 0);
       const snapshot = snapshots.get(scheduleId) || {};
+      const allocationTiming = allocationTimingMap.get(scheduleId)?.timing || null;
       return {
         id: scheduleId,
         scheduleId,
@@ -3051,8 +3115,8 @@ export const getListingSoaRows = async (
         paidPenaltyAmount: Number(snapshot.paidPenaltyAmount ?? row.paid_penalty_amount ?? 0),
         referenceId: row.reference_id || '-',
         status: String(row.schedule_status || '').toLowerCase() === 'advance' ? 'Paid' : (row.schedule_status || 'Unpaid'),
-        paymentTiming: getSchedulePaymentTiming(row),
-        displayStatus: getScheduleDisplayStatus(row),
+        paymentTiming: allocationTiming || getSchedulePaymentTiming(row),
+        displayStatus: getScheduleDisplayStatus({ ...row, paymentTiming: allocationTiming }),
         endingBalance: Number(row.ending_balance || 0),
       };
     });
@@ -4180,8 +4244,9 @@ export const applyPaymentToSchedules = async (connection, listing, paymentId, pr
     const appliedAmount = roundMoneyValue(Math.min(remaining, unpaidForRow));
     const nextPaid = roundMoneyValue(currentPaid + appliedAmount);
     const isPaid = nextPaid + 0.009 >= totalDue;
-    // Paying a selected installment before its due date is still payment of
-    // that installment. Timing is derived separately as Paid Early.
+    // Financial schedule state remains Paid/Partial. The SOA display timing is
+    // derived from payment allocations so the nearest upcoming obligation can
+    // be Paid Early while later future obligations become Advance Payment.
     const nextStatus = isPaid ? 'Paid' : 'Partial';
 
     await connection.query(

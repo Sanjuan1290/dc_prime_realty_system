@@ -164,7 +164,7 @@ const Login = () => {
                 <div className="space-y-5">
                   <label className="block">
                     <span className="mb-2 block text-sm font-semibold text-slate-700">Email or Account Code</span>
-                    <input type="text" required placeholder="name@example.com or SURNAME-ADM-001" onChange={(event) => setIdentifier(event.currentTarget.value)} value={identifier} autoComplete="username" className="h-11 w-full rounded-lg border border-slate-300 bg-white px-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-600 focus:ring-4 focus:ring-blue-100" />
+                    <input type="text" required placeholder="name@example.com or ADM-00002" onChange={(event) => setIdentifier(event.currentTarget.value)} value={identifier} autoComplete="username" className="h-11 w-full rounded-lg border border-slate-300 bg-white px-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-600 focus:ring-4 focus:ring-blue-100" />
                   </label>
 
                   <label className="block">

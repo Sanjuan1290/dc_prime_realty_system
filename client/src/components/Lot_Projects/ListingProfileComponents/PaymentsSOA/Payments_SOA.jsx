@@ -64,10 +64,16 @@ const getListingValue = (listing, keys, fallback = '') => {
 const getScheduleDisplayStatus = (row = {}) => {
   const rawStatus = String(row.displayStatus || row.status || row.schedule_status || 'Unpaid').trim() || 'Unpaid'
   const normalized = rawStatus.toLowerCase()
+  const paymentTiming = String(row.paymentTiming || row.payment_timing || '').trim().toLowerCase()
 
-  if (normalized === 'paid early' || normalized === 'paid late') return rawStatus
-  if (normalized === 'advance') return 'Paid Early'
+  if (['paid early', 'paid late', 'advance payment', 'partial advance'].includes(normalized)) return rawStatus
+  if (normalized === 'advance') return 'Advance Payment'
+  if (normalized === 'partial' && paymentTiming === 'advance') return 'Partial Advance'
   if (normalized !== 'paid') return rawStatus
+
+  if (paymentTiming === 'advance') return 'Advance Payment'
+  if (paymentTiming === 'early') return 'Paid Early'
+  if (paymentTiming === 'late') return 'Paid Late'
 
   const dueDate = String(row.dueDate || row.due_date || '').slice(0, 10)
   const datePaid = String(row.datePaid || row.date_paid || '').slice(0, 10)
@@ -185,7 +191,9 @@ const StatusPill = ({ status }) => {
     paid: 'border-emerald-200 bg-emerald-50 text-emerald-700',
     'paid early': 'border-blue-200 bg-blue-50 text-blue-700',
     'paid late': 'border-amber-200 bg-amber-50 text-amber-800',
-    advance: 'border-blue-200 bg-blue-50 text-blue-700',
+    'advance payment': 'border-violet-200 bg-violet-50 text-violet-700',
+    'partial advance': 'border-violet-200 bg-violet-50 text-violet-700',
+    advance: 'border-violet-200 bg-violet-50 text-violet-700',
     verified: 'border-emerald-200 bg-emerald-50 text-emerald-700',
     partial: 'border-amber-200 bg-amber-50 text-amber-700',
     overdue: 'border-red-200 bg-red-50 text-red-700',

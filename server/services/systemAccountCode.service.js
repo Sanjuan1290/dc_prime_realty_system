@@ -1,16 +1,8 @@
 import { ROLE_CODES } from '../config/permissions.js';
 
-export const sanitizeAccountSurname = (value = '') => {
-  const clean = String(value || '')
-    .normalize('NFKD')
-    .replace(/[^A-Za-z0-9]/g, '')
-    .toUpperCase();
-  return clean || 'USER';
-};
-
-export const getAccountCodePrefix = ({ lastName, role }) => {
+export const getAccountCodePrefix = ({ role }) => {
   const roleCode = ROLE_CODES[role] || String(role || 'USR').slice(0, 3).toUpperCase();
-  return `${sanitizeAccountSurname(lastName)}-${roleCode}-`;
+  return `${roleCode}-`;
 };
 
 export const formatUserIdForAccountCode = (userId) => {
@@ -18,14 +10,15 @@ export const formatUserIdForAccountCode = (userId) => {
   if (!Number.isInteger(numericId) || numericId <= 0) {
     throw new Error('A valid users table id is required to build an account code.');
   }
-  return String(numericId).padStart(3, '0');
+  return String(numericId).padStart(5, '0');
 };
 
-// The visible numeric suffix is the users.id primary key. It is NOT a surname,
-// role, or per-person sequence. person_key + role_sequence remain separate fields
-// used only for historical identity/position tracking.
-export const buildAccountCode = ({ lastName, role, userId, id }) =>
-  `${getAccountCodePrefix({ lastName, role })}${formatUserIdForAccountCode(userId ?? id)}`;
+// Canonical visible account code = ROLECODE + users.id primary key.
+// The surname is intentionally excluded because users.id is globally unique.
+// person_key + role_sequence remain separate fields used only for historical
+// identity/position tracking.
+export const buildAccountCode = ({ role, userId, id }) =>
+  `${getAccountCodePrefix({ role })}${formatUserIdForAccountCode(userId ?? id)}`;
 
 export const getNextUserIdPreview = async (connection) => {
   // AUTO_INCREMENT is the best available preview of the next users.id. The final
@@ -53,10 +46,10 @@ export const getNextUserIdPreview = async (connection) => {
   return Number.isInteger(fallback) && fallback > 0 ? fallback : 1;
 };
 
-export const previewAccountCode = async (connection, { lastName, role }) => {
+export const previewAccountCode = async (connection, { role }) => {
   const nextUserId = await getNextUserIdPreview(connection);
   return {
-    accountCode: buildAccountCode({ lastName, role, userId: nextUserId }),
+    accountCode: buildAccountCode({ role, userId: nextUserId }),
     userId: nextUserId,
   };
 };

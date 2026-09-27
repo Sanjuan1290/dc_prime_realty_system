@@ -3,45 +3,88 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { buildLatestScheduleAllocationTiming } from '../services/paymentTiming.service.js'
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(dirname, '..', '..')
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8')
 
-test('early payment of a scheduled due remains Paid and is displayed as Paid Early', () => {
+const allocation = ({ id, paymentId, scheduleId, paymentDate, dueDate }) => ({
+  lot_project_payment_allocation_id: id,
+  lot_project_payment_id: paymentId,
+  lot_project_payment_schedule_id: scheduleId,
+  lot_project_payment_date: paymentDate,
+  due_date: dueDate,
+})
+
+test('nearest upcoming obligation is Paid Early while later future allocations are Advance Payment', () => {
+  const timing = buildLatestScheduleAllocationTiming([
+    allocation({ id: 1, paymentId: 10, scheduleId: 101, paymentDate: '2026-09-27', dueDate: '2026-09-30' }),
+    allocation({ id: 2, paymentId: 10, scheduleId: 102, paymentDate: '2026-09-27', dueDate: '2026-10-30' }),
+    allocation({ id: 3, paymentId: 10, scheduleId: 103, paymentDate: '2026-09-27', dueDate: '2026-11-30' }),
+  ])
+
+  assert.equal(timing.get(101)?.timing, 'early')
+  assert.equal(timing.get(102)?.timing, 'advance')
+  assert.equal(timing.get(103)?.timing, 'advance')
+})
+
+test('one payment can contain Paid Late, Paid Early, and Advance allocations', () => {
+  const timing = buildLatestScheduleAllocationTiming([
+    allocation({ id: 1, paymentId: 20, scheduleId: 201, paymentDate: '2026-09-27', dueDate: '2026-08-30' }),
+    allocation({ id: 2, paymentId: 20, scheduleId: 202, paymentDate: '2026-09-27', dueDate: '2026-09-30' }),
+    allocation({ id: 3, paymentId: 20, scheduleId: 203, paymentDate: '2026-09-27', dueDate: '2026-10-30' }),
+  ])
+
+  assert.equal(timing.get(201)?.timing, 'late')
+  assert.equal(timing.get(202)?.timing, 'early')
+  assert.equal(timing.get(203)?.timing, 'advance')
+})
+
+test('an obligation due on payment date is on time and later future rows are advance', () => {
+  const timing = buildLatestScheduleAllocationTiming([
+    allocation({ id: 1, paymentId: 30, scheduleId: 301, paymentDate: '2026-09-27', dueDate: '2026-09-27' }),
+    allocation({ id: 2, paymentId: 30, scheduleId: 302, paymentDate: '2026-09-27', dueDate: '2026-10-30' }),
+  ])
+
+  assert.equal(timing.get(301)?.timing, 'on_time')
+  assert.equal(timing.get(302)?.timing, 'advance')
+})
+
+test('latest allocation classification wins for a schedule completed by a later payment', () => {
+  const timing = buildLatestScheduleAllocationTiming([
+    allocation({ id: 1, paymentId: 40, scheduleId: 401, paymentDate: '2026-09-27', dueDate: '2026-09-30' }),
+    allocation({ id: 2, paymentId: 40, scheduleId: 402, paymentDate: '2026-09-27', dueDate: '2026-10-30' }),
+    allocation({ id: 3, paymentId: 41, scheduleId: 402, paymentDate: '2026-10-15', dueDate: '2026-10-30' }),
+  ])
+
+  assert.equal(timing.get(401)?.timing, 'early')
+  assert.equal(timing.get(402)?.timing, 'early')
+  assert.equal(timing.get(402)?.paymentId, 41)
+})
+
+test('SOA server and client expose Advance Payment / Partial Advance without changing financial schedule state', () => {
   const shared = read('server/controllers/Lot_Projects/_shared/lotProject.shared.js')
   const soa = read('client/src/components/Lot_Projects/ListingProfileComponents/PaymentsSOA/Payments_SOA.jsx')
-
-  assert.match(shared, /export const getSchedulePaymentTiming/)
-  assert.match(shared, /if \(datePaid < dueDate\) return 'early'/)
-  assert.match(shared, /if \(datePaid > dueDate\) return 'late'/)
-  assert.match(shared, /if \(normalized === 'advance'\) return 'Paid Early'/)
-  assert.match(shared, /row\.status = 'Paid';/)
-  assert.match(shared, /const nextStatus = isPaid \? 'Paid' : 'Partial';/)
-  assert.doesNotMatch(shared, /paidBeforeDue \? 'Advance' : 'Paid'/)
-
-  assert.match(soa, /if \(datePaid < dueDate\) return 'Paid Early'/)
-  assert.match(soa, /if \(datePaid > dueDate\) return 'Paid Late'/)
-  assert.match(soa, /<StatusPill status=\{row\.displayStatus \|\| row\.status\} \/>/)
-})
-
-test('Advance Payment remains an explicit payment type, not an early-payment timing label', () => {
   const modal = read('client/src/components/Lot_Projects/ListingProfileComponents/PaymentsSOA/AddSOAPaymentModal.jsx')
-  const shared = read('server/controllers/Lot_Projects/_shared/lotProject.shared.js')
 
-  assert.match(modal, /'Advance Payment'/)
-  assert.match(modal, /will be shown as Paid Early, not Advance Payment/)
-  assert.match(modal, /Use Advance Payment only for an extra payment intentionally applied toward future monthly obligations/)
-  assert.match(shared, /advance_payment: 'Advance Payment'/)
-  assert.match(shared, /\['monthly_amortization', 'advance_payment'\]/)
+  assert.match(shared, /buildLatestScheduleAllocationTiming/)
+  assert.match(shared, /timing === 'advance'\) return 'Advance Payment'/)
+  assert.match(shared, /normalized === 'partial' && timing === 'advance'\) return 'Partial Advance'/)
+  assert.match(shared, /const nextStatus = isPaid \? 'Paid' : 'Partial'/)
+  assert.doesNotMatch(shared, /const nextStatus = isPaid \? 'Advance'/)
+
+  assert.match(soa, /paymentTiming === 'advance'\) return 'Advance Payment'/)
+  assert.match(soa, /'partial advance'/)
+  assert.match(soa, /<StatusPill status=\{row\.displayStatus \|\| row\.status\} \/>/)
+  assert.match(modal, /nearest upcoming obligation/)
+  assert.match(modal, /later future installments is shown as Advance Payment automatically/)
 })
 
-test('migration converts legacy Advance schedule statuses to Paid without changing payment types', () => {
+test('legacy migration still normalizes old Advance schedule_status values to Paid', () => {
   const migration = read('server/migrations/20260921_payment_timing_status.sql')
 
   assert.match(migration, /UPDATE lot_project_payment_schedules/)
   assert.match(migration, /SET schedule_status = 'Paid'/)
   assert.match(migration, /WHERE schedule_status = 'Advance'/)
-  assert.doesNotMatch(migration, /UPDATE lot_project_payments/)
 })
-

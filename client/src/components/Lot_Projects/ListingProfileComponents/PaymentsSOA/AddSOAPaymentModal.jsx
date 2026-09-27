@@ -653,7 +653,7 @@ const AddSOAPaymentModal = ({
                     </p>
                     {isSelectedRowPaidEarly ? (
                       <p className="mt-1 text-xs font-black text-emerald-700">
-                        Paid before the due date. This remains a {form.paymentType} payment and will be shown as Paid Early, not Advance Payment.
+                        Paid before the due date. The nearest upcoming obligation is shown as Paid Early; any amount carried into later future installments is shown as Advance Payment automatically.
                       </p>
                     ) : null}
                   </>
@@ -756,7 +756,7 @@ const AddSOAPaymentModal = ({
               label="Payment Type"
               value={form.paymentType}
               onChange={(value) => updateField('paymentType', value)}
-              helper="Paying a selected due before its due date stays as its normal payment type and is shown as Paid Early. Use Advance Payment only for an extra payment intentionally applied toward future monthly obligations."
+              helper="The nearest upcoming obligation paid before its due date is shown as Paid Early. Any amount carried into later future installments is shown as Advance Payment automatically. Use Advance Payment when the transaction itself is intentionally for future monthly obligations."
               required
             >
               {paymentTypes.map((type) => (
