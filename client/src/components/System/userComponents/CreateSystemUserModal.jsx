@@ -37,6 +37,9 @@ const CreateSystemUserModal = ({ onClose, onSaved }) => {
     queryFn: () => useFetch(`/user/account-code-preview?last_name=${encodeURIComponent(form.last_name.trim())}&role=${encodeURIComponent(form.role)}`),
     enabled: isSuperAdmin && Boolean(form.last_name.trim()) && Boolean(form.role),
   })
+  const emailAvailabilityMutation = useMutation({
+    mutationFn: (email) => useFetch(`/user/email-availability?email=${encodeURIComponent(email)}`),
+  })
 
   useEffect(() => {
     if (form.role === 'super_admin') {
@@ -98,9 +101,25 @@ const CreateSystemUserModal = ({ onClose, onSaved }) => {
     return true
   }
 
-  const next = () => {
+  const next = async () => {
     setAlert(null)
     if (!validateStep()) return
+
+    if (step === 0) {
+      setAlert({ type: 'loading', message: 'Checking email availability...' })
+      try {
+        const result = await emailAvailabilityMutation.mutateAsync(form.email.trim())
+        if (!result?.available) {
+          setAlert({ type: 'error', message: result?.message || 'That email is already assigned to an existing account. Use a different email address.' })
+          return
+        }
+      } catch (error) {
+        setAlert({ type: 'error', message: error?.message || 'Email availability could not be checked.' })
+        return
+      }
+    }
+
+    setAlert(null)
     setStep((current) => Math.min(steps.length - 1, current + 1))
   }
   const back = () => { setAlert(null); setStep((current) => Math.max(0, current - 1)) }
@@ -206,7 +225,7 @@ const CreateSystemUserModal = ({ onClose, onSaved }) => {
             <div>{step > 0 ? <button type="button" onClick={back} disabled={mutation.isPending} className="h-11 rounded-xl border border-slate-200 px-5 font-bold">Back</button> : null}</div>
             <div className="flex gap-3">
               <button type="button" onClick={onClose} disabled={mutation.isPending} className="h-11 rounded-xl border border-slate-200 px-5 font-bold">Cancel</button>
-              {step < steps.length - 1 ? <button type="button" onClick={next} className="h-11 rounded-xl bg-blue-600 px-5 font-black text-white">Next</button> : <button type="button" onClick={() => mutation.mutate()} disabled={mutation.isPending} className="h-11 rounded-xl bg-blue-600 px-5 font-black text-white disabled:opacity-50">Create Account</button>}
+              {step < steps.length - 1 ? <button type="button" onClick={next} disabled={emailAvailabilityMutation.isPending} className="h-11 rounded-xl bg-blue-600 px-5 font-black text-white disabled:opacity-50">{emailAvailabilityMutation.isPending ? 'Checking Email…' : 'Next'}</button> : <button type="button" onClick={() => mutation.mutate()} disabled={mutation.isPending} className="h-11 rounded-xl bg-blue-600 px-5 font-black text-white disabled:opacity-50">Create Account</button>}
             </div>
           </div>
         </div>

@@ -1432,6 +1432,45 @@ export const previewChangeUserPosition = async (req, res) => {
   }
 };
 
+export const checkSystemUserEmailAvailability = async (req, res) => {
+  try {
+    const email = normalizeResetEmail(req.query?.email);
+    if (!isValidResetEmail(email)) {
+      return res.status(400).json({
+        available: false,
+        code: 'INVALID_EMAIL',
+        message: 'Enter a valid email address.',
+      });
+    }
+
+    const [rows] = await db.query(
+      `
+        SELECT id
+        FROM users
+        WHERE LOWER(TRIM(email)) = LOWER(?)
+        LIMIT 1
+      `,
+      [email]
+    );
+
+    if (rows.length) {
+      return res.status(200).json({
+        available: false,
+        code: 'USER_EMAIL_ALREADY_EXISTS',
+        message: 'That email is already assigned to an existing account. Use a different email address.',
+      });
+    }
+
+    return res.status(200).json({
+      available: true,
+      email,
+      message: 'Email is available.',
+    });
+  } catch (error) {
+    return res.status(500).json({ message: getErrorMessage(error) });
+  }
+};
+
 export const createUser = async (req, res) => {
   const connection = await db.getConnection();
 
@@ -1458,6 +1497,26 @@ export const createUser = async (req, res) => {
 
     if (!first_name?.trim() || !last_name?.trim() || !email?.trim()) {
       return res.status(400).json({ message: 'First name, last name, and email are required.' });
+    }
+    const normalizedEmail = normalizeResetEmail(email);
+    if (!isValidResetEmail(normalizedEmail)) {
+      return res.status(400).json({ code: 'INVALID_EMAIL', message: 'Enter a valid email address.' });
+    }
+
+    const [existingEmailRows] = await connection.query(
+      `
+        SELECT id
+        FROM users
+        WHERE LOWER(TRIM(email)) = LOWER(?)
+        LIMIT 1
+      `,
+      [normalizedEmail]
+    );
+    if (existingEmailRows.length) {
+      return res.status(409).json({
+        code: 'USER_EMAIL_ALREADY_EXISTS',
+        message: 'That email is already assigned to an existing account. Use a different email address.',
+      });
     }
     if (!validateRequestedRole(role)) {
       return res.status(400).json({ message: 'Select a valid user role.' });
@@ -1500,7 +1559,7 @@ export const createUser = async (req, res) => {
           null, personKey, roleSequence,
           first_name.trim(), last_name.trim(), middle_name?.trim() || null,
           contact_no?.trim() || null, tin_no?.trim() || null, prc_no?.trim() || null,
-          address?.trim() || null, email.trim(), passwordHash, role,
+          address?.trim() || null, normalizedEmail, passwordHash, role,
           projectAccess.allProjects ? 1 : 0, projectAccess.allProjects ? 1 : 0,
           normalizedStatus,
         ]
@@ -1545,7 +1604,7 @@ export const createUser = async (req, res) => {
       let credentialsEmailWarning = null;
       try {
         await sendTemporaryLoginCredentials({
-          user: { first_name, middle_name, last_name, email: email.trim(), role, account_code: accountCode },
+          user: { first_name, middle_name, last_name, email: normalizedEmail, role, account_code: accountCode },
           temporaryPassword,
         });
         credentialsEmailSent = true;
@@ -1611,7 +1670,7 @@ export const createUser = async (req, res) => {
         tin_no?.trim() || null,
         prc_no?.trim() || null,
         address?.trim() || null,
-        email.trim(),
+        normalizedEmail,
         passwordHash,
         role,
         normalizedAdminType,
@@ -1662,7 +1721,7 @@ export const createUser = async (req, res) => {
       entityId: String(userId),
       entityLabel: `${first_name.trim()} ${last_name.trim()}`,
       title: 'Created user account',
-      description: `Created account for ${first_name.trim()} ${last_name.trim()} (${email.trim()}).`,
+      description: `Created account for ${first_name.trim()} ${last_name.trim()} (${normalizedEmail}).`,
       metadata: { role, admin_all_projects: normalizedAdminAllProjects, admin_project_ids: normalizedAdminProjectIds, status: normalizeStatus(status), seller_group_id, reports_under_user_id: normalizedReportsUnderUserId },
     });
 
@@ -1686,7 +1745,7 @@ export const createUser = async (req, res) => {
     if (isAdminLoginAccount) {
       try {
         await sendTemporaryLoginCredentials({
-          user: { first_name, middle_name, last_name, email: email.trim(), role },
+          user: { first_name, middle_name, last_name, email: normalizedEmail, role },
           temporaryPassword,
         });
         credentialsEmailSent = true;

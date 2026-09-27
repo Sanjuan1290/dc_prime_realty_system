@@ -6,6 +6,7 @@ import {
   changePassword,
   getUsers,
   previewSystemAccountCode,
+  checkSystemUserEmailAvailability,
   previewChangeUserPosition,
   createUser,
   editUser,
@@ -47,6 +48,7 @@ router.post('/access-control/users/:id/apply-role-defaults', authenticateUser, r
 
 router.get('/getUsers', authenticateUser, requirePermission(PERMISSIONS.SYSTEM_USERS_VIEW), getUsers);
 router.get('/account-code-preview', authenticateUser, requireExactRole('super_admin'), previewSystemAccountCode);
+router.get('/email-availability', authenticateUser, requireExactRole('super_admin'), checkSystemUserEmailAvailability);
 router.post('/createUser', authenticateUser, requirePermission(PERMISSIONS.SYSTEM_USERS_CREATE), createUser);
 router.put('/editUser/:id', authenticateUser, requirePermission(PERMISSIONS.SYSTEM_USERS_EDIT), editUser);
 router.post('/deactivate/:id/code', authenticateUser, requirePermission(PERMISSIONS.SYSTEM_USERS_DEACTIVATE), requireCurrentPassword({ field: 'password', label: 'Administrator password' }), requestUserDeactivationCode);
