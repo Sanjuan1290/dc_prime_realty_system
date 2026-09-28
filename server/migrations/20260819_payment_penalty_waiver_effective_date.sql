@@ -39,3 +39,4 @@ FROM lot_project_penalty_reliefs
 ORDER BY penalty_relief_id DESC
 LIMIT 50;
 
+

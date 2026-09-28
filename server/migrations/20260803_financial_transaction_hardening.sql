@@ -68,3 +68,4 @@ WHERE table_schema = DATABASE()
   AND index_name = 'uq_commission_release_stage'
 GROUP BY index_name;
 
+

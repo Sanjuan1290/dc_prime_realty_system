@@ -68,3 +68,4 @@ const PermissionMatrix = ({ catalog = [], selected = [], onChange, disabled = fa
 }
 
 export default PermissionMatrix
+

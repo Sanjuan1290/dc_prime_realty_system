@@ -39,3 +39,4 @@ router.delete('/:attendanceId', requirePermission(PERMISSIONS.ATTENDANCE_MANAGE)
 
 export default router;
 
+

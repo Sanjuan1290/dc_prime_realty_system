@@ -282,3 +282,4 @@ test('verified adjustment password is removed before the controller runs', async
   assert.equal(request.body.acknowledgement, true);
 });
 
+

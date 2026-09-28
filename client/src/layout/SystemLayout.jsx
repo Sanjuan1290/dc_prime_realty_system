@@ -7,6 +7,7 @@ import {
   FiBarChart2,
   FiBell,
   FiClock,
+  FiDollarSign,
   FiFileText,
   FiHome,
   FiLoader,
@@ -140,6 +141,7 @@ const SystemLayout = () => {
         items: [
           { label: "Employees", pathname: "employees", icon: FiUsers, permission: PERMISSIONS.EMPLOYEES_VIEW },
           { label: "Attendance", pathname: "attendance", icon: FiClock, permission: PERMISSIONS.ATTENDANCE_VIEW },
+          { label: "Employee Salary", pathname: "employee-salary", icon: FiDollarSign, permission: PERMISSIONS.EMPLOYEE_SALARY_VIEW },
         ],
       },
       {
@@ -428,4 +430,5 @@ const SystemLayout = () => {
 };
 
 export default SystemLayout;
+
 

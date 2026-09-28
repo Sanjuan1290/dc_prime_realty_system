@@ -162,3 +162,4 @@ HAVING COUNT(cp.lot_project_client_profile_id) > 1;
 
 DROP TEMPORARY TABLE IF EXISTS tmp_duplicate_client_profile_repair;
 
+

@@ -360,3 +360,4 @@ test('cash reservation continues to reduce remaining full-payment cash balance',
   assert.equal(reservation.principalAmount, 50000);
 });
 
+

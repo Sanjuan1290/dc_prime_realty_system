@@ -85,3 +85,4 @@ WHERE adjustment.lot_project_payment_schedule_id IS NOT NULL
     OR adjustment.lot_project_account_id <> schedule.lot_project_account_id
   );
 
+

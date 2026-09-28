@@ -279,3 +279,4 @@ const AttendanceSettingsModal = ({ settings, onClose, onSaved }) => {
 
 export default AttendanceSettingsModal
 
+

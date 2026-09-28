@@ -91,3 +91,4 @@ WHERE notification_log.send_status = 'contacted'
 
 SELECT ROW_COUNT() AS contacted_audit_rows_backfilled;
 
+

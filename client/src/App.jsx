@@ -56,6 +56,7 @@ const Settings = lazy(() => import('./pages/System/Settings'))
 const AccessDenied = lazy(() => import('./pages/System/AccessDenied'))
 const Employees = lazy(() => import('./pages/System/Employees'))
 const Attendance = lazy(() => import('./pages/System/Attendance'))
+const EmployeeSalary = lazy(() => import('./pages/System/EmployeeSalary'))
 const AttendanceKiosk = lazy(() => import('./pages/Public/AttendanceKiosk'))
 
 const LotDashboard = lazy(() => import('./pages/Lot_Projects/Dashboard'))
@@ -117,6 +118,7 @@ const systemRoleRoutes = SYSTEM_USER_ROLES.map((role) => (
     <Route path="audit-logs" element={protect(PERMISSIONS.AUDIT_LOGS_VIEW, <AuditLogs />)} />
     <Route path="employees" element={protect(PERMISSIONS.EMPLOYEES_VIEW, <Employees />)} />
     <Route path="attendance" element={protect(PERMISSIONS.ATTENDANCE_VIEW, <Attendance />)} />
+    <Route path="employee-salary" element={protect(PERMISSIONS.EMPLOYEE_SALARY_VIEW, <EmployeeSalary />)} />
     <Route path="settings" element={protect(PERMISSIONS.SYSTEM_SETTINGS_VIEW, <Settings />)} />
   </Route>
 ))
@@ -201,4 +203,5 @@ const App = () => {
 }
 
 export default App
+
 

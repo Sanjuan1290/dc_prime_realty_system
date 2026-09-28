@@ -1,16 +1,19 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { FiDownload, FiEdit2, FiPlus, FiRefreshCw, FiSearch, FiUsers } from 'react-icons/fi'
+import { FiClock, FiDollarSign, FiDownload, FiEdit2, FiPlus, FiRefreshCw, FiSearch, FiTrendingUp, FiUsers } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
 import ConfirmActionModal from '../../components/Shared/ConfirmActionModal'
 import EmployeeModal from '../../components/System/employeeComponents/EmployeeModal'
+import EmploymentChangeModal from '../../components/System/employeeComponents/EmploymentChangeModal'
+import EmploymentHistoryModal from '../../components/System/employeeComponents/EmploymentHistoryModal'
+import SalaryHistoryModal from '../../components/System/employeeSalaryComponents/SalaryHistoryModal'
 import { downloadAttendanceBarcodePng } from '../../components/System/employeeComponents/Code128Barcode'
 import useCurrentUser from '../../utils/useCurrentUser'
 import { useFetch, useFetchPatch } from '../../utils/useFetch'
 import { PERMISSIONS, hasPermission } from '../../config/permissions'
 
-const typeLabel = (value) => value === 'part_time' ? 'Part Time' : value === 'probationary' ? 'Probationary' : 'Full Time'
+const typeLabel = (value) => value === 'part_time' ? 'Part Time' : value === 'probationary' ? 'Probationary' : value === 'contractual' ? 'Contractual' : value === 'intern' ? 'Intern' : 'Full Time'
 const restDayLabel = (days = []) => Array.isArray(days) && days.length
   ? days.map((day) => String(day).slice(0, 3).replace(/^./, (letter) => letter.toUpperCase())).join(', ')
   : 'Not set'
@@ -20,6 +23,13 @@ const statusTone = { active: 'bg-emerald-50 text-emerald-700 ring-emerald-200', 
 const Employees = () => {
   const { data: currentUserData } = useCurrentUser()
   const canManage = hasPermission(currentUserData?.user, PERMISSIONS.EMPLOYEES_MANAGE)
+  const canManageCompensation = hasPermission(currentUserData?.user, PERMISSIONS.EMPLOYEE_COMPENSATION_MANAGE)
+  const canCreateEmploymentChange = hasPermission(currentUserData?.user, PERMISSIONS.EMPLOYMENT_CHANGE_CREATE)
+  const canViewEmploymentHistory = hasPermission(currentUserData?.user, PERMISSIONS.EMPLOYMENT_HISTORY_VIEW)
+  const canViewPayrollHistory = hasPermission(currentUserData?.user, PERMISSIONS.PAYROLL_HISTORY_VIEW)
+  const canRelease = hasPermission(currentUserData?.user, PERMISSIONS.PAYROLL_RELEASE)
+  const canPrintReceipt = hasPermission(currentUserData?.user, PERMISSIONS.PAYROLL_RECEIPT_PRINT)
+  const canExportReceipt = hasPermission(currentUserData?.user, PERMISSIONS.PAYROLL_RECEIPT_EXPORT)
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('all')
@@ -32,6 +42,9 @@ const Employees = () => {
   const [alert, setAlert] = useState(null)
   const [confirmEmployee, setConfirmEmployee] = useState(null)
   const [statusNotice, setStatusNotice] = useState(null)
+  const [compensationEmployee, setCompensationEmployee] = useState(null)
+  const [historyEmployee, setHistoryEmployee] = useState(null)
+  const [salaryHistoryEmployee, setSalaryHistoryEmployee] = useState(null)
 
   const queryString = useMemo(() => new URLSearchParams({
     page: String(page), limit: String(limit),
@@ -65,7 +78,7 @@ const Employees = () => {
   return (
     <main className="flex flex-col gap-6">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-        <PageHeader title="Employees" description="Manage human Employee Codes, secure 10-digit Attendance Barcodes, departments, Rest Days, and employee status." icon={FiUsers} />
+        <PageHeader title="Employees" description="Manage employees, secure Attendance Barcodes, Rest Days, and effective-dated employment/compensation history without overwriting previous records." icon={FiUsers} />
         <div className="flex gap-2">
           <button type="button" onClick={() => employeesQuery.refetch()} className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-700"><FiRefreshCw className={employeesQuery.isFetching ? 'animate-spin' : ''} />Refresh</button>
           {canManage ? <button type="button" onClick={openAdd} className="inline-flex h-11 items-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white hover:bg-blue-700"><FiPlus />Add Employee</button> : null}
@@ -89,14 +102,15 @@ const Employees = () => {
 
         <div className="overflow-x-auto">
           <table className="min-w-[1360px] w-full text-sm">
-            <thead className="border-b border-slate-200 bg-slate-50"><tr>{['Employee', 'Employee Code', 'Attendance Barcode', 'Department', 'Employment Type', 'Rest Days', 'Status', 'Actions'].map((head) => <th key={head} className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">{head}</th>)}</tr></thead>
+            <thead className="border-b border-slate-200 bg-slate-50"><tr>{['Employee', 'Employee Code', 'Attendance Barcode', 'Position', 'Department', 'Employment Type', 'Rest Days', 'Status', 'Actions'].map((head) => <th key={head} className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">{head}</th>)}</tr></thead>
             <tbody className="divide-y divide-slate-100">
-              {employeesQuery.isLoading ? <tr><td colSpan={8} className="px-6 py-16 text-center font-semibold text-slate-500">Loading employees...</td></tr> : null}
-              {!employeesQuery.isLoading && rows.length === 0 ? <tr><td colSpan={8} className="px-6 py-16 text-center"><p className="font-black text-slate-800">No employees yet</p><p className="mt-1 text-sm font-semibold text-slate-500">Add the first employee. The system generates a department-based Employee Code and a separate secure 10-digit Attendance Barcode.</p></td></tr> : null}
+              {employeesQuery.isLoading ? <tr><td colSpan={9} className="px-6 py-16 text-center font-semibold text-slate-500">Loading employees...</td></tr> : null}
+              {!employeesQuery.isLoading && rows.length === 0 ? <tr><td colSpan={9} className="px-6 py-16 text-center"><p className="font-black text-slate-800">No employees yet</p><p className="mt-1 text-sm font-semibold text-slate-500">Add the first employee. The system generates a department-based Employee Code and a separate secure 10-digit Attendance Barcode.</p></td></tr> : null}
               {rows.map((employee) => <tr key={employee.employee_id} className="hover:bg-slate-50">
                 <td className="px-4 py-4"><p className="font-black text-slate-950">{employee.full_name}</p></td>
                 <td className="px-4 py-4 font-mono font-black text-blue-700">{employee.employee_code}</td>
                 <td className="px-4 py-4"><span className="rounded-lg bg-slate-950 px-2.5 py-1.5 font-mono text-xs font-black tracking-[0.12em] text-white">{employee.barcode_code || 'Not generated'}</span></td>
+                <td className="px-4 py-4 font-semibold text-slate-800">{employee.position || '—'}</td>
                 <td className="px-4 py-4 font-semibold text-slate-700">{employee.department}</td>
                 <td className="px-4 py-4 text-slate-600">{typeLabel(employee.employment_type)}</td>
                 <td className="px-4 py-4"><span className={`inline-flex rounded-full px-3 py-1 text-xs font-black ring-1 ${employee.rest_days?.length ? 'bg-blue-50 text-blue-700 ring-blue-200' : 'bg-amber-50 text-amber-700 ring-amber-200'}`}>{restDayLabel(employee.rest_days)}</span></td>
@@ -112,6 +126,9 @@ const Employees = () => {
                     >
                       <FiDownload />Barcode
                     </button>
+                    {canViewEmploymentHistory ? <button type="button" onClick={() => setHistoryEmployee(employee)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 hover:bg-slate-50"><FiClock />Employment History</button> : null}
+                    {canViewPayrollHistory ? <button type="button" onClick={() => setSalaryHistoryEmployee(employee)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-xs font-black text-emerald-700 hover:bg-emerald-100"><FiDollarSign />Salary History</button> : null}
+                    {canManageCompensation && canCreateEmploymentChange ? <button type="button" onClick={() => setCompensationEmployee(employee)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 text-xs font-black text-violet-700 hover:bg-violet-100"><FiTrendingUp />Promote / Compensation</button> : null}
                     {canManage ? (
                       <>
                         <button type="button" onClick={() => openEdit(employee)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-700"><FiEdit2 />Edit</button>
@@ -132,6 +149,9 @@ const Employees = () => {
       </section>
 
       {showModal ? <EmployeeModal employee={selectedEmployee} departmentConfigs={departmentConfigs} departments={departments} onClose={() => setShowModal(false)} onSaved={(message) => setAlert({ type: 'success', message })} /> : null}
+      {compensationEmployee ? <EmploymentChangeModal employee={compensationEmployee} departmentConfigs={departmentConfigs} departments={departments} onClose={() => setCompensationEmployee(null)} onSaved={(message) => setAlert({ type: 'success', message })} /> : null}
+      {historyEmployee ? <EmploymentHistoryModal employee={historyEmployee} onClose={() => setHistoryEmployee(null)} /> : null}
+      {salaryHistoryEmployee ? <SalaryHistoryModal employee={salaryHistoryEmployee} canRelease={canRelease} canPrintReceipt={canPrintReceipt} canExportReceipt={canExportReceipt} onClose={() => setSalaryHistoryEmployee(null)} /> : null}
 
       <ConfirmActionModal
         open={Boolean(confirmEmployee)}
@@ -156,4 +176,5 @@ const Employees = () => {
 }
 
 export default Employees
+
 

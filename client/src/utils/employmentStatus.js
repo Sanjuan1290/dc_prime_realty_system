@@ -94,3 +94,4 @@ export const getEmploymentStatusOtherText = (value) => resolveEmploymentStatus(v
 
 export const isEmploymentStatusChecked = (value, key) => resolveEmploymentStatus(value).checkedKey === key
 
+

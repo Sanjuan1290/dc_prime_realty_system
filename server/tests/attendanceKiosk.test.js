@@ -66,3 +66,4 @@ test('duplicate attendance scans use friendly Already Timed In / Already Timed O
   assert.doesNotMatch(kiosk, />Attendance not recorded</)
 })
 
+

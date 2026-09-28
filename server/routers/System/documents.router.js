@@ -6,8 +6,6 @@ import {
   addDocument,
   addTemplate,
   deleteDocument,
-  getDocumentUsage,
-  updateDocumentStatus,
   deleteTemplate,
   editDocument,
   editTemplate,
@@ -20,8 +18,6 @@ router.get('/getTemplates', getTemplates);
 
 router.post('/addDocument', addDocument);
 router.post('/addTemplate', addTemplate);
-router.get('/:id/usage', getDocumentUsage);
-router.patch('/:id/status', updateDocumentStatus);
 
 router.put('/editDocument/:id', editDocument);
 router.put('/editTemplate/:id', editTemplate);
@@ -30,4 +26,5 @@ router.delete('/deleteDocument/:id', deleteDocument);
 router.delete('/deleteTemplate/:id', deleteTemplate);
 
 export default router;
+
 

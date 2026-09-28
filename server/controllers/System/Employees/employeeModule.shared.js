@@ -49,8 +49,16 @@ const employeesTableSql = `
     address TEXT NULL,
     department VARCHAR(120) NULL,
     position VARCHAR(120) NOT NULL DEFAULT 'Employee',
-    employment_type ENUM('regular','probationary','part_time') NOT NULL DEFAULT 'regular',
+    employment_type ENUM('regular','probationary','contractual','part_time','intern') NOT NULL DEFAULT 'regular',
     hire_date DATE NULL,
+    monthly_salary DECIMAL(14,2) NOT NULL DEFAULT 0.00,
+    payroll_divisor DECIMAL(8,2) NOT NULL DEFAULT 26.00,
+    attendance_grace_minutes SMALLINT UNSIGNED NOT NULL DEFAULT 15,
+    rice_allowance DECIMAL(14,2) NOT NULL DEFAULT 0.00,
+    transportation_allowance DECIMAL(14,2) NOT NULL DEFAULT 0.00,
+    attendance_bonus_amount DECIMAL(14,2) NOT NULL DEFAULT 0.00,
+    overtime_multiplier DECIMAL(6,2) NOT NULL DEFAULT 2.00,
+    night_differential_percent DECIMAL(5,2) NOT NULL DEFAULT 0.00,
     employee_status ENUM('active','inactive','archived') NOT NULL DEFAULT 'active',
     created_by_user_id INT UNSIGNED NULL,
     updated_by_user_id INT UNSIGNED NULL,
@@ -116,6 +124,43 @@ const employeeRestDaysTableSql = `
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
 `;
 
+
+
+const employeeEmploymentHistoryTableSql = `
+  CREATE TABLE IF NOT EXISTS employee_employment_history (
+    employee_employment_history_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    employee_id INT UNSIGNED NOT NULL,
+    change_type ENUM('hired','promotion','salary_increase','position_change','department_transfer','employment_status_change','allowance_adjustment','demotion','other') NOT NULL,
+    position VARCHAR(120) NOT NULL,
+    department VARCHAR(120) NOT NULL,
+    employment_type ENUM('regular','probationary','contractual','part_time','intern') NOT NULL DEFAULT 'regular',
+    monthly_basic_salary DECIMAL(14,2) NOT NULL DEFAULT 0.00,
+    rice_allowance DECIMAL(14,2) NOT NULL DEFAULT 0.00,
+    transportation_allowance DECIMAL(14,2) NOT NULL DEFAULT 0.00,
+    attendance_bonus DECIMAL(14,2) NOT NULL DEFAULT 0.00,
+    effective_from DATE NOT NULL,
+    effective_to DATE NULL,
+    change_reason TEXT NULL,
+    previous_history_id BIGINT UNSIGNED NULL,
+    created_by_user_id INT UNSIGNED NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    corrected_by_user_id INT UNSIGNED NULL,
+    corrected_at DATETIME NULL,
+    correction_reason TEXT NULL,
+    PRIMARY KEY (employee_employment_history_id),
+    UNIQUE KEY uq_employee_employment_start (employee_id, effective_from),
+    KEY idx_employee_employment_effective (employee_id, effective_from, effective_to),
+    KEY idx_employee_employment_current (employee_id, effective_to),
+    KEY idx_employee_employment_previous (previous_history_id),
+    KEY idx_employee_employment_created_by (created_by_user_id),
+    KEY idx_employee_employment_corrected_by (corrected_by_user_id),
+    CONSTRAINT fk_employee_employment_employee FOREIGN KEY (employee_id) REFERENCES employees(employee_id) ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT fk_employee_employment_previous FOREIGN KEY (previous_history_id) REFERENCES employee_employment_history(employee_employment_history_id) ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT fk_employee_employment_created_by FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL ON UPDATE CASCADE,
+    CONSTRAINT fk_employee_employment_corrected_by FOREIGN KEY (corrected_by_user_id) REFERENCES users(id) ON DELETE SET NULL ON UPDATE CASCADE
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+`;
+
 const addColumnIfMissing = async (connection, table, column, definition) => {
   await connection.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${column} ${definition}`);
 };
@@ -126,6 +171,7 @@ export const ensureEmployeeModuleTables = async (connection) => {
   await connection.query(employeesTableSql);
   await connection.query(attendanceTableSql);
   await connection.query(employeeRestDaysTableSql);
+  await connection.query(employeeEmploymentHistoryTableSql);
 
   // Compatibility columns required by older employee tables remain populated internally.
   await addColumnIfMissing(connection, 'employees', 'barcode_code', `CHAR(10) NULL AFTER employee_code`);
@@ -143,12 +189,43 @@ export const ensureEmployeeModuleTables = async (connection) => {
 
   await addColumnIfMissing(connection, 'employees', 'department', `VARCHAR(120) NULL AFTER address`);
   await addColumnIfMissing(connection, 'employees', 'position', `VARCHAR(120) NOT NULL DEFAULT 'Employee' AFTER department`);
-  await addColumnIfMissing(connection, 'employees', 'employment_type', `ENUM('regular','probationary','part_time') NOT NULL DEFAULT 'regular' AFTER position`);
+  await addColumnIfMissing(connection, 'employees', 'employment_type', `ENUM('regular','probationary','contractual','part_time','intern') NOT NULL DEFAULT 'regular' AFTER position`);
+  await connection.query(`ALTER TABLE employees MODIFY COLUMN employment_type ENUM('regular','probationary','contractual','part_time','intern') NOT NULL DEFAULT 'regular'`);
   await addColumnIfMissing(connection, 'employees', 'hire_date', `DATE NULL AFTER employment_type`);
-  await addColumnIfMissing(connection, 'employees', 'employee_status', `ENUM('active','inactive','archived') NOT NULL DEFAULT 'active' AFTER hire_date`);
+  await addColumnIfMissing(connection, 'employees', 'monthly_salary', `DECIMAL(14,2) NOT NULL DEFAULT 0.00 AFTER hire_date`);
+  await addColumnIfMissing(connection, 'employees', 'payroll_divisor', `DECIMAL(8,2) NOT NULL DEFAULT 26.00 AFTER monthly_salary`);
+  await addColumnIfMissing(connection, 'employees', 'attendance_grace_minutes', `SMALLINT UNSIGNED NOT NULL DEFAULT 15 AFTER payroll_divisor`);
+  await addColumnIfMissing(connection, 'employees', 'rice_allowance', `DECIMAL(14,2) NOT NULL DEFAULT 0.00 AFTER attendance_grace_minutes`);
+  await addColumnIfMissing(connection, 'employees', 'transportation_allowance', `DECIMAL(14,2) NOT NULL DEFAULT 0.00 AFTER rice_allowance`);
+  await addColumnIfMissing(connection, 'employees', 'attendance_bonus_amount', `DECIMAL(14,2) NOT NULL DEFAULT 0.00 AFTER transportation_allowance`);
+  await addColumnIfMissing(connection, 'employees', 'overtime_multiplier', `DECIMAL(6,2) NOT NULL DEFAULT 2.00 AFTER attendance_bonus_amount`);
+  await addColumnIfMissing(connection, 'employees', 'night_differential_percent', `DECIMAL(5,2) NOT NULL DEFAULT 0.00 AFTER overtime_multiplier`);
+  await addColumnIfMissing(connection, 'employees', 'employee_status', `ENUM('active','inactive','archived') NOT NULL DEFAULT 'active' AFTER night_differential_percent`);
   await addColumnIfMissing(connection, 'employees', 'created_by_user_id', `INT UNSIGNED NULL AFTER employee_status`);
   await addColumnIfMissing(connection, 'employees', 'updated_by_user_id', `INT UNSIGNED NULL AFTER created_by_user_id`);
 
+
+  await connection.query(`
+    INSERT INTO employee_employment_history (
+      employee_id, change_type, position, department, employment_type,
+      monthly_basic_salary, rice_allowance, transportation_allowance, attendance_bonus,
+      effective_from, effective_to, change_reason, previous_history_id, created_by_user_id, created_at
+    )
+    SELECT
+      e.employee_id, 'hired', COALESCE(NULLIF(TRIM(e.position), ''), 'Employee'),
+      COALESCE(NULLIF(TRIM(e.department), ''), 'Unassigned'), e.employment_type,
+      GREATEST(COALESCE(e.monthly_salary, 0), 0), GREATEST(COALESCE(e.rice_allowance, 0), 0),
+      GREATEST(COALESCE(e.transportation_allowance, 0), 0), GREATEST(COALESCE(e.attendance_bonus_amount, 0), 0),
+      COALESCE(e.hire_date, DATE(e.created_at), CURRENT_DATE), NULL,
+      'Initial employment and compensation record backfilled from the employee profile.',
+      NULL, e.created_by_user_id, COALESCE(e.created_at, CURRENT_TIMESTAMP)
+    FROM employees e
+    WHERE NOT EXISTS (
+      SELECT 1 FROM employee_employment_history h WHERE h.employee_id = e.employee_id
+    )
+  `);
+
   employeeModuleTablesReady = true;
 };
+
 

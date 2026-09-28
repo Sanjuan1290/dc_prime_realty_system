@@ -27,7 +27,8 @@ const permissionCatalog = [
   { group: 'Users', items: [['View Users', PERMISSIONS.SYSTEM_USERS_VIEW], ['Create User', PERMISSIONS.SYSTEM_USERS_CREATE], ['Edit User Details', PERMISSIONS.SYSTEM_USERS_EDIT], ['Reset Password', PERMISSIONS.SYSTEM_USERS_RESET_PASSWORD], ['Deactivate User', PERMISSIONS.SYSTEM_USERS_DEACTIVATE]] },
   { group: 'Accredited Sellers', items: [['View', PERMISSIONS.SYSTEM_ACCREDITED_VIEW], ['Print', PERMISSIONS.SYSTEM_ACCREDITED_PRINT], ['Upload Proof of Income', PERMISSIONS.SYSTEM_ACCREDITED_UPLOAD_PROOF]] },
   { group: 'Seller Groups', items: [['View', PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW], ['Manage', PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE]] },
-  { group: 'Employees', items: [['View', PERMISSIONS.EMPLOYEES_VIEW], ['Manage', PERMISSIONS.EMPLOYEES_MANAGE]] },
+  { group: 'Employees', items: [['View', PERMISSIONS.EMPLOYEES_VIEW], ['Manage Employee Profile', PERMISSIONS.EMPLOYEES_MANAGE], ['Manage Compensation', PERMISSIONS.EMPLOYEE_COMPENSATION_MANAGE], ['Create Employment Change', PERMISSIONS.EMPLOYMENT_CHANGE_CREATE], ['View Employment History', PERMISSIONS.EMPLOYMENT_HISTORY_VIEW]] },
+  { group: 'Employee Salary', items: [['View Employee Salary', PERMISSIONS.EMPLOYEE_SALARY_VIEW], ['Generate Payroll', PERMISSIONS.PAYROLL_GENERATE], ['Recalculate Draft Payroll', PERMISSIONS.PAYROLL_RECALCULATE_DRAFT], ['Finalize Payroll', PERMISSIONS.PAYROLL_FINALIZE], ['Correct Finalized Payroll', PERMISSIONS.PAYROLL_CORRECT_FINALIZED], ['Mark Payroll as Released', PERMISSIONS.PAYROLL_RELEASE], ['View Payroll History', PERMISSIONS.PAYROLL_HISTORY_VIEW], ['Print Payroll Receipt', PERMISSIONS.PAYROLL_RECEIPT_PRINT], ['Export Payroll Receipt', PERMISSIONS.PAYROLL_RECEIPT_EXPORT], ['Export Payroll Summary', PERMISSIONS.PAYROLL_SUMMARY_EXPORT], ['Manage Payroll Settings', PERMISSIONS.PAYROLL_SETTINGS_MANAGE]] },
   { group: 'Attendance', items: [['View', PERMISSIONS.ATTENDANCE_VIEW], ['Manage', PERMISSIONS.ATTENDANCE_MANAGE]] },
   { group: 'Audit Logs', items: [['View', PERMISSIONS.AUDIT_LOGS_VIEW]] },
   { group: 'Notifications', items: [['View', PERMISSIONS.SYSTEM_NOTIFICATIONS_VIEW], ['Manage', PERMISSIONS.SYSTEM_NOTIFICATIONS_MANAGE]] },
@@ -163,4 +164,5 @@ export const applyRoleDefaultsToUser = async (req, res) => {
     return res.status(error?.statusCode || 500).json({ code: error?.code, message: error?.message || 'Failed to apply role defaults.' });
   } finally { connection.release(); }
 };
+
 

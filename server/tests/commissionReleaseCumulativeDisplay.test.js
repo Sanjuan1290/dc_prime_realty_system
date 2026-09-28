@@ -54,3 +54,4 @@ test('income report and receipt show tranche and cumulative values separately', 
   assert.match(controllerSource, /cumulativeGrossTarget/);
 });
 
+

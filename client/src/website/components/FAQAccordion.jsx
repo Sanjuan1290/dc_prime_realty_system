@@ -34,3 +34,4 @@ const FAQAccordion = ({ items }) => {
 
 export default FAQAccordion
 
+

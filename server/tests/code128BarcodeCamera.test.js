@@ -45,3 +45,4 @@ test('camera fallback decoder reads generated Code 128 barcodes from synthetic c
   }
 });
 
+

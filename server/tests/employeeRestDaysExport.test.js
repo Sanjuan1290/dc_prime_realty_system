@@ -74,3 +74,4 @@ test('attendance export uses saved settings by default but still allows temporar
   assert.match(workbook, /\[h\]:mm:ss/)
 })
 
+

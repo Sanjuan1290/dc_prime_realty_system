@@ -24,7 +24,9 @@ const inputClass = 'h-11 rounded-xl border border-slate-300 bg-white px-3 text-s
 
 const blank = {
   first_name: '', middle_name: '', last_name: '', employee_code: '', barcode_code: '', department: '',
-  employment_type: 'regular', employee_status: 'active', rest_days: [], rest_days_effective_from: getManilaDate(),
+  position: '', employment_type: 'regular', employee_status: 'active',
+  monthly_basic_salary: '', rice_allowance: '0', transportation_allowance: '0', attendance_bonus: '0',
+  rest_days: [], rest_days_effective_from: getManilaDate(),
 }
 
 const normalizeConfigs = (departmentConfigs = [], departments = []) => {
@@ -50,7 +52,7 @@ const EmployeeModal = ({ employee, departmentConfigs = [], departments = [], onC
     ...(employee ? {
       first_name: employee.first_name || '', middle_name: employee.middle_name || '', last_name: employee.last_name || '',
       employee_code: employee.employee_code || '', barcode_code: employee.barcode_code || '',
-      department: employee.department || initialDepartment,
+      department: employee.department || initialDepartment, position: employee.position || '',
       employment_type: employee.employment_type || 'regular', employee_status: employee.employee_status || 'active',
       rest_days: Array.isArray(employee.rest_days) ? employee.rest_days : [], rest_days_effective_from: getManilaDate(),
     } : { department: initialDepartment }),
@@ -83,6 +85,18 @@ const EmployeeModal = ({ employee, departmentConfigs = [], departments = [], onC
   const validateDetails = () => {
     if (!form.first_name.trim() || !form.last_name.trim() || !form.department) {
       setNotice({ type: 'warning', message: 'First name, last name, and department are required.' })
+      return false
+    }
+    if (!isEdit && !form.position.trim()) {
+      setNotice({ type: 'warning', message: 'Position is required for the initial employment record.' })
+      return false
+    }
+    if (!isEdit && form.monthly_basic_salary === '') {
+      setNotice({ type: 'warning', message: 'Monthly Basic Salary is required. Enter 0 only when that is intentional.' })
+      return false
+    }
+    if (!isEdit && [form.monthly_basic_salary, form.rice_allowance, form.transportation_allowance, form.attendance_bonus].some((value) => !Number.isFinite(Number(value)) || Number(value) < 0)) {
+      setNotice({ type: 'warning', message: 'Salary and allowance values must be zero or greater.' })
       return false
     }
     if (!form.rest_days.length) {
@@ -175,7 +189,7 @@ const EmployeeModal = ({ employee, departmentConfigs = [], departments = [], onC
   }
 
   const headerDescription = isEdit
-    ? 'Update employee details. Employee Code and Attendance Barcode remain unchanged unless you explicitly regenerate the Attendance Barcode.'
+    ? 'Update identity, status, and Rest Days here. Position, department, employment status, salary, and allowances are changed only through Promote / Update Compensation so history is never overwritten.'
     : step === 'details'
       ? 'Enter employee details first. The system previews a human Employee Code from the selected department.'
       : step === 'barcode'
@@ -219,18 +233,46 @@ const EmployeeModal = ({ employee, departmentConfigs = [], departments = [], onC
                 </section>
               ) : null}
 
-              <div className="grid gap-4 md:grid-cols-3">
-                <label className="grid gap-2">
-                  <span className="text-sm font-black text-slate-700">Department *</span>
-                  <select className={inputClass} value={form.department} onChange={(e) => setValue('department', e.target.value)}>
-                    <option value="">Select Department</option>
-                    {departmentOptions.map((item) => <option key={item} value={item}>{item}</option>)}
-                  </select>
-                  <span className="text-xs font-semibold text-slate-500">{selectedDepartmentConfig?.prefix ? `Human Employee Codes use ${selectedDepartmentConfig.prefix}-001 to ${selectedDepartmentConfig.prefix}-999.` : 'Department Employee Code prefixes are managed in Attendance Settings.'}</span>
-                </label>
-                <label className="grid gap-2"><span className="text-sm font-black text-slate-700">Employment Type *</span><select className={inputClass} value={form.employment_type} onChange={(e) => setValue('employment_type', e.target.value)}><option value="regular">Full Time</option><option value="probationary">Probationary</option><option value="part_time">Part Time</option></select></label>
-                <label className="grid gap-2"><span className="text-sm font-black text-slate-700">Status</span><select className={inputClass} value={form.employee_status} onChange={(e) => setValue('employee_status', e.target.value)}><option value="active">Active</option><option value="inactive">Inactive</option></select></label>
-              </div>
+              {isEdit ? (
+                <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                  <div className="flex flex-col gap-1">
+                    <p className="text-sm font-black text-amber-900">Current Employment Record</p>
+                    <p className="text-xs font-semibold leading-5 text-amber-800">Department, position, employment status, salary, and allowances are historical fields. Change them from <strong>Promote / Update Compensation</strong> on the Employees page so the previous record is preserved.</p>
+                  </div>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-xl border border-amber-200 bg-white p-3"><p className="text-xs font-black uppercase text-slate-400">Department</p><p className="mt-1 font-black text-slate-900">{form.department || '—'}</p></div>
+                    <div className="rounded-xl border border-amber-200 bg-white p-3"><p className="text-xs font-black uppercase text-slate-400">Position</p><p className="mt-1 font-black text-slate-900">{form.position || '—'}</p></div>
+                    <div className="rounded-xl border border-amber-200 bg-white p-3"><p className="text-xs font-black uppercase text-slate-400">Employment Type</p><p className="mt-1 font-black text-slate-900">{form.employment_type === 'part_time' ? 'Part Time' : form.employment_type === 'probationary' ? 'Probationary' : form.employment_type === 'contractual' ? 'Contractual' : form.employment_type === 'intern' ? 'Intern' : 'Full Time'}</p></div>
+                  </div>
+                  <label className="mt-4 grid max-w-sm gap-2"><span className="text-sm font-black text-slate-700">Employee Status</span><select className={inputClass} value={form.employee_status} onChange={(e) => setValue('employee_status', e.target.value)}><option value="active">Active</option><option value="inactive">Inactive</option></select></label>
+                </section>
+              ) : (
+                <>
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <label className="grid gap-2">
+                      <span className="text-sm font-black text-slate-700">Department *</span>
+                      <select className={inputClass} value={form.department} onChange={(e) => setValue('department', e.target.value)}>
+                        <option value="">Select Department</option>
+                        {departmentOptions.map((item) => <option key={item} value={item}>{item}</option>)}
+                      </select>
+                      <span className="text-xs font-semibold text-slate-500">{selectedDepartmentConfig?.prefix ? `Human Employee Codes use ${selectedDepartmentConfig.prefix}-001 to ${selectedDepartmentConfig.prefix}-999.` : 'Department Employee Code prefixes are managed in Attendance Settings.'}</span>
+                    </label>
+                    <label className="grid gap-2"><span className="text-sm font-black text-slate-700">Employment Type *</span><select className={inputClass} value={form.employment_type} onChange={(e) => setValue('employment_type', e.target.value)}><option value="regular">Full Time</option><option value="probationary">Probationary</option><option value="contractual">Contractual</option><option value="part_time">Part Time</option><option value="intern">Intern</option></select></label>
+                    <label className="grid gap-2"><span className="text-sm font-black text-slate-700">Status</span><select className={inputClass} value={form.employee_status} onChange={(e) => setValue('employee_status', e.target.value)}><option value="active">Active</option><option value="inactive">Inactive</option></select></label>
+                  </div>
+
+                  <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                    <div><p className="text-sm font-black text-emerald-900">Initial Employment & Compensation</p><p className="mt-1 text-xs font-semibold leading-5 text-emerald-800">These values create the employee's first effective-dated employment record. Future changes use Promote / Update Compensation and never overwrite this record.</p></div>
+                    <div className="mt-4 grid gap-4 md:grid-cols-2">
+                      <label className="grid gap-2 md:col-span-2"><span className="text-sm font-black text-slate-700">Position *</span><input className={inputClass} value={form.position} onChange={(e) => setValue('position', e.target.value)} placeholder="Junior IT & Systems Developer" /></label>
+                      <label className="grid gap-2"><span className="text-sm font-black text-slate-700">Monthly Basic Salary *</span><input type="number" min="0" step="0.01" className={inputClass} value={form.monthly_basic_salary} onChange={(e) => setValue('monthly_basic_salary', e.target.value)} placeholder="15000.00" /></label>
+                      <label className="grid gap-2"><span className="text-sm font-black text-slate-700">Rice Allowance</span><input type="number" min="0" step="0.01" className={inputClass} value={form.rice_allowance} onChange={(e) => setValue('rice_allowance', e.target.value)} /></label>
+                      <label className="grid gap-2"><span className="text-sm font-black text-slate-700">Transportation Allowance</span><input type="number" min="0" step="0.01" className={inputClass} value={form.transportation_allowance} onChange={(e) => setValue('transportation_allowance', e.target.value)} /></label>
+                      <label className="grid gap-2"><span className="text-sm font-black text-slate-700">Attendance Bonus</span><input type="number" min="0" step="0.01" className={inputClass} value={form.attendance_bonus} onChange={(e) => setValue('attendance_bonus', e.target.value)} /></label>
+                    </div>
+                  </section>
+                </>
+              )}
 
               <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                 <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
@@ -257,6 +299,8 @@ const EmployeeModal = ({ employee, departmentConfigs = [], departments = [], onC
                 <h3 className="mt-2 text-xl font-black text-slate-950">{fullName}</h3>
                 <div className="mt-4 grid gap-3 text-sm">
                   <div className="flex items-center justify-between gap-4"><span className="font-semibold text-slate-500">Department</span><span className="font-black text-slate-900">{form.department}</span></div>
+                  <div className="flex items-center justify-between gap-4"><span className="font-semibold text-slate-500">Position</span><span className="font-black text-slate-900">{form.position}</span></div>
+                  <div className="flex items-center justify-between gap-4"><span className="font-semibold text-slate-500">Monthly Basic</span><span className="font-black text-slate-900">₱{Number(form.monthly_basic_salary || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
                   <div className="flex items-center justify-between gap-4"><span className="font-semibold text-slate-500">Employee Code Prefix</span><span className="font-mono font-black text-blue-700">{preview?.prefix}</span></div>
                   <div className="flex items-center justify-between gap-4"><span className="font-semibold text-slate-500">Next Employee Code</span><span className="font-mono text-lg font-black text-blue-700">{preview?.employee_code}</span></div>
                   <div className="flex items-start justify-between gap-4"><span className="font-semibold text-slate-500">Rest Days</span><span className="text-right font-black text-slate-900">{restDayLabels.join(', ')}</span></div>
@@ -278,6 +322,7 @@ const EmployeeModal = ({ employee, departmentConfigs = [], departments = [], onC
                 <p className="mt-4 text-xs font-black uppercase tracking-[0.16em] text-emerald-700">Employee Saved</p>
                 <h3 className="mt-2 text-xl font-black text-slate-950">{savedEmployee?.full_name || fullName}</h3>
                 <p className="mt-2 text-sm font-semibold text-slate-600">Department: <span className="font-black text-slate-900">{savedEmployee?.department || form.department}</span></p>
+                <p className="mt-1 text-sm font-semibold text-slate-600">Position: <span className="font-black text-slate-900">{savedEmployee?.position || form.position}</span></p>
                 <p className="mt-1 text-sm font-semibold text-slate-600">Employee Code: <span className="font-mono font-black text-blue-700">{savedEmployee?.employee_code || form.employee_code}</span></p>
                 <p className="mt-1 text-sm font-semibold text-slate-600">Attendance Barcode: <span className="font-mono font-black tracking-[0.12em] text-slate-950">{savedEmployee?.barcode_code || form.barcode_code}</span></p>
                 <p className="mt-1 text-sm font-semibold text-slate-600">Rest Days: <span className="font-black text-slate-900">{restDayLabels.join(', ')}</span></p>
@@ -302,4 +347,5 @@ const EmployeeModal = ({ employee, departmentConfigs = [], departments = [], onC
 }
 
 export default EmployeeModal
+
 

@@ -177,3 +177,4 @@ SET account_code = CONCAT(
     )
 WHERE role = 'super_admin' AND account_code IS NULL;
 
+

@@ -24,3 +24,4 @@ test('System Users removes the redundant Reset Password action because login has
   assert.doesNotMatch(source, /Resend Login Credentials\?/);
   assert.doesNotMatch(source, /Generate & Send Credentials/);
 });
+

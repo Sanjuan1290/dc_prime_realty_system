@@ -227,3 +227,4 @@ export const decodeCode128FromImageData = (imageData, width, height) => {
   return null
 }
 
+

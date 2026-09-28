@@ -65,3 +65,4 @@ test('Admin dashboard ranges now match delegated operational capability', () => 
   assert.match(systemReports, /administratorNeedsConfirmation/);
   assert.match(lotDashboard, /const canLoadDateRange = !hasInvalidDateRange/);
 });
+

@@ -591,8 +591,12 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
     setStep(2)
   }
 
-  const proceedToFinalReview = () => {
-    if (step !== 2) return
+  const submit = (event) => {
+    event.preventDefault()
+    if (step === 1) {
+      goToScheduleStep()
+      return
+    }
     const paymentTerms = validatePaymentTerms()
     if (!paymentTerms) {
       setStep(1)
@@ -639,7 +643,7 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/50 p-3 sm:p-4">
-      <form onSubmit={(event) => event.preventDefault()} className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+      <form onSubmit={submit} className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
         <div className="shrink-0 border-b border-slate-200 bg-white px-5 py-4">
           <div className="flex items-center justify-between gap-4">
             <div>
@@ -779,7 +783,7 @@ const SoaTermsModal = ({ listing = {}, isSaving = false, serverAlert, onClose, o
           {step === 1 ? (
             <button type="button" onClick={goToScheduleStep} disabled={isSaving} className="h-10 rounded-lg bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300">Next: Schedule & Penalty</button>
           ) : (
-            <button type="button" onClick={proceedToFinalReview} disabled={isSaving} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300">
+            <button type="submit" disabled={isSaving} className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300">
               {isSaving ? 'Opening Review...' : 'Proceed to Final Review'}
             </button>
           )}
@@ -2012,4 +2016,5 @@ const PaymentsSOA = ({
 }
 
 export default PaymentsSOA
+
 

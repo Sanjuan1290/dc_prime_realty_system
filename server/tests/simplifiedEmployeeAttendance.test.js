@@ -21,7 +21,7 @@ test('Admin and Super Admin creation uses server-generated emailed credentials',
   assert.match(modal, /Secure Login Setup/);
 });
 
-test('simplified employee module generates human department Employee Codes plus separate secure Attendance Barcodes and keeps only the required employment fields', () => {
+test('employee module keeps secure Attendance Barcodes separate while creating the initial employment and compensation record', () => {
   const modal = read('client/src/components/System/employeeComponents/EmployeeModal.jsx');
   const controller = read('server/controllers/System/Employees/EmployeesSimple.controller.js');
   assert.match(modal, /Next: Generate Employee Code/);
@@ -32,13 +32,17 @@ test('simplified employee module generates human department Employee Codes plus 
   assert.match(modal, /Full Time/);
   assert.match(modal, /Probationary/);
   assert.match(modal, /Part Time/);
-  assert.doesNotMatch(modal, /Monthly Salary|Work Days|Shift Start|Cash Advance/);
+  assert.match(modal, /Initial Employment & Compensation/);
+  assert.match(modal, /Monthly Basic Salary/);
+  assert.match(modal, /Rice Allowance/);
+  assert.doesNotMatch(modal, /Work Days|Shift Start|Cash Advance/);
   assert.match(controller, /employee_barcode_sequences/);
   assert.match(controller, /allocateEmployeeBarcode/);
   assert.match(controller, /generateUniqueAttendanceBarcode/);
   assert.match(controller, /barcode_code/);
   assert.match(controller, /MAX_DEPARTMENT_BARCODE_NUMBER = 999/);
-  assert.doesNotMatch(controller, /monthly_salary/);
+  assert.match(controller, /monthly_salary/);
+  assert.match(controller, /createInitialEmploymentHistory/);
 });
 
 test('employee Attendance Barcode can be downloaded as a PNG from the barcode card and Employees table', () => {
@@ -117,4 +121,5 @@ test('Super Admin receives real Employees and Attendance routes while cash advan
   assert.doesNotMatch(projects, /Add House & Lot Project/);
   assert.doesNotMatch(dashboard, /label: 'House & Lot Projects'/);
 });
+
 

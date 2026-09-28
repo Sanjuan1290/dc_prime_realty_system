@@ -10,8 +10,13 @@ import {
   normalizeRestDays,
   replaceEmployeeRestDays,
 } from '../../../services/employeeRestDay.service.js';
+import {
+  applyEmploymentChange,
+  createInitialEmploymentHistory,
+  getEmployeeEmploymentHistory,
+} from '../../../services/employeeEmploymentHistory.service.js';
 
-const employmentTypes = new Set(['regular', 'probationary', 'part_time']);
+const employmentTypes = new Set(['regular', 'probationary', 'contractual', 'part_time', 'intern']);
 const statuses = new Set(['active', 'inactive']);
 const MAX_DEPARTMENT_BARCODE_NUMBER = 999;
 
@@ -20,20 +25,40 @@ const getErrorMessage = (error) => {
   return error?.message || 'Employee operation failed.';
 };
 
+const normalizeMoney = (value, fieldName, fallback = 0) => {
+  const parsed = Number(value ?? fallback);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    const error = new Error(`${fieldName} must be a non-negative amount.`);
+    error.statusCode = 400;
+    throw error;
+  }
+  return Math.round((parsed + Number.EPSILON) * 100) / 100;
+};
+
 const normalizePayload = (body = {}) => ({
   firstName: cleanText(body.first_name),
   middleName: nullableText(body.middle_name),
   lastName: cleanText(body.last_name),
   department: cleanText(body.department),
+  position: cleanText(body.position),
   employmentType: employmentTypes.has(String(body.employment_type)) ? String(body.employment_type) : 'regular',
   status: statuses.has(String(body.employee_status)) ? String(body.employee_status) : 'active',
+  monthlyBasicSalary: normalizeMoney(body.monthly_basic_salary ?? body.monthly_salary, 'Monthly Basic Salary'),
+  riceAllowance: normalizeMoney(body.rice_allowance, 'Rice Allowance'),
+  transportationAllowance: normalizeMoney(body.transportation_allowance, 'Transportation Allowance'),
+  attendanceBonus: normalizeMoney(body.attendance_bonus ?? body.attendance_bonus_amount, 'Attendance Bonus'),
   restDays: normalizeRestDays(body.rest_days),
   restDaysEffectiveFrom: cleanText(body.rest_days_effective_from),
 });
 
-const validatePayload = (payload) => {
+const validatePayload = (payload, { requireCompensation = false } = {}) => {
   if (!payload.firstName || !payload.lastName || !payload.department) {
     const error = new Error('First name, last name, and department are required.');
+    error.statusCode = 400;
+    throw error;
+  }
+  if (requireCompensation && !payload.position) {
+    const error = new Error('Position is required when creating an employee.');
     error.statusCode = 400;
     throw error;
   }
@@ -47,7 +72,7 @@ const validatePayload = (payload) => {
 const mapEmployee = (row) => ({
   ...row,
   barcode_code: row.barcode_code || null,
-  employment_label: row.employment_type === 'part_time' ? 'Part Time' : row.employment_type === 'probationary' ? 'Probationary' : 'Full Time',
+  employment_label: row.employment_type === 'part_time' ? 'Part Time' : row.employment_type === 'probationary' ? 'Probationary' : row.employment_type === 'contractual' ? 'Contractual' : row.employment_type === 'intern' ? 'Intern' : 'Full Time',
 });
 
 const attachCurrentRestDays = async (connection, rows = [], asOfDate) => {
@@ -188,7 +213,7 @@ export const getEmployees = async (req, res) => {
     const total = Number(countRows[0]?.total || 0);
     const [rows] = await connection.query(`
       SELECT e.employee_id, e.employee_code, e.barcode_code, e.first_name, e.middle_name, e.last_name,
-             e.department, e.employment_type, e.hire_date, e.employee_status, e.created_at, e.updated_at,
+             e.department, e.position, e.employment_type, e.hire_date, e.employee_status, e.created_at, e.updated_at,
              ${buildEmployeeNameSql('e')} AS full_name
       FROM employees e
       WHERE ${where.join(' AND ')}
@@ -239,7 +264,7 @@ export const getEmployee = async (req, res) => {
     const employeeId = Number(req.params.employeeId);
     const [rows] = await connection.query(`
       SELECT e.employee_id, e.employee_code, e.barcode_code, e.first_name, e.middle_name, e.last_name,
-             e.department, e.employment_type, e.hire_date, e.employee_status, e.created_at, e.updated_at,
+             e.department, e.position, e.employment_type, e.hire_date, e.employee_status, e.created_at, e.updated_at,
              ${buildEmployeeNameSql('e')} AS full_name
       FROM employees e WHERE e.employee_id = ? LIMIT 1
     `, [employeeId]);
@@ -279,7 +304,7 @@ export const createEmployee = async (req, res) => {
   try {
     await ensureAttendanceLiteSchema(connection);
     const payload = normalizePayload(req.body);
-    validatePayload(payload);
+    validatePayload(payload, { requireCompensation: true });
     const actorId = req.authUser?.id || null;
     const today = getManilaDateTime().date;
 
@@ -289,11 +314,14 @@ export const createEmployee = async (req, res) => {
     const [result] = await connection.query(`
       INSERT INTO employees (
         employee_code, barcode_code, first_name, middle_name, last_name, department,
-        position, employment_type, hire_date, employee_status, created_by_user_id, updated_by_user_id
-      ) VALUES (?, ?, ?, ?, ?, ?, 'Employee', ?, ?, ?, ?, ?)
+        position, employment_type, hire_date, monthly_salary, rice_allowance,
+        transportation_allowance, attendance_bonus_amount, employee_status,
+        created_by_user_id, updated_by_user_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       employeeCode.employeeCode, attendanceBarcode, payload.firstName, payload.middleName, payload.lastName,
-      employeeCode.department, payload.employmentType, today, payload.status, actorId, actorId,
+      employeeCode.department, payload.position, payload.employmentType, today, payload.monthlyBasicSalary,
+      payload.riceAllowance, payload.transportationAllowance, payload.attendanceBonus, payload.status, actorId, actorId,
     ]);
 
     await createInitialEmployeeRestDays(connection, {
@@ -301,6 +329,20 @@ export const createEmployee = async (req, res) => {
       restDays: payload.restDays,
       effectiveFrom: today,
       actorId,
+    });
+
+    const initialEmploymentHistoryId = await createInitialEmploymentHistory(connection, {
+      employeeId: result.insertId,
+      position: payload.position,
+      department: employeeCode.department,
+      employmentType: payload.employmentType,
+      monthlyBasicSalary: payload.monthlyBasicSalary,
+      riceAllowance: payload.riceAllowance,
+      transportationAllowance: payload.transportationAllowance,
+      attendanceBonus: payload.attendanceBonus,
+      effectiveFrom: today,
+      actorId,
+      reason: 'Initial employment and compensation record created with the employee.',
     });
 
     await writeAuditLog(connection, req, {
@@ -314,7 +356,13 @@ export const createEmployee = async (req, res) => {
         attendanceBarcode,
         employeeCodePrefix: employeeCode.prefix,
         department: employeeCode.department,
+        position: payload.position,
         employmentType: payload.employmentType,
+        monthlyBasicSalary: payload.monthlyBasicSalary,
+        riceAllowance: payload.riceAllowance,
+        transportationAllowance: payload.transportationAllowance,
+        attendanceBonus: payload.attendanceBonus,
+        employmentHistoryId: initialEmploymentHistoryId,
         restDays: payload.restDays,
         restDaysLabel: formatRestDays(payload.restDays),
         restDaysEffectiveFrom: today,
@@ -330,6 +378,8 @@ export const createEmployee = async (req, res) => {
         employee_code: employeeCode.employeeCode,
         barcode_code: attendanceBarcode,
         department: employeeCode.department,
+        position: payload.position,
+        employment_type: payload.employmentType,
         rest_days: payload.restDays,
         rest_days_effective_from: today,
         full_name: [payload.firstName, payload.middleName, payload.lastName].filter(Boolean).join(' '),
@@ -354,7 +404,6 @@ export const updateEmployee = async (req, res) => {
     await connection.beginTransaction();
     const [rows] = await connection.query('SELECT * FROM employees WHERE employee_id = ? LIMIT 1 FOR UPDATE', [employeeId]);
     if (!rows[0]) throw Object.assign(new Error('Employee not found.'), { statusCode: 404 });
-    if (payload.department !== rows[0].department) await findDepartmentConfig(connection, payload.department);
 
     const restDaysEffectiveFrom = payload.restDaysEffectiveFrom || today;
     const hireDate = String(rows[0].hire_date || today).slice(0, 10);
@@ -374,22 +423,23 @@ export const updateEmployee = async (req, res) => {
 
     await connection.query(`
       UPDATE employees SET first_name = ?, middle_name = ?, last_name = ?,
-        department = ?, employment_type = ?, employee_status = ?, updated_by_user_id = ?
+        employee_status = ?, updated_by_user_id = ?
       WHERE employee_id = ?
-    `, [payload.firstName, payload.middleName, payload.lastName, payload.department, payload.employmentType, payload.status, actorId, employeeId]);
+    `, [payload.firstName, payload.middleName, payload.lastName, payload.status, actorId, employeeId]);
 
     await writeAuditLog(connection, req, {
       actor: req.authUser,
       action: 'update', module: 'Employees', entityType: 'employee', entityId: String(employeeId),
       entityLabel: `${payload.firstName} ${payload.lastName}`,
       title: 'Updated employee',
-      description: `Updated employee ${payload.firstName} ${payload.lastName}. Employee code ${rows[0].employee_code} and attendance barcode were preserved.`,
+      description: `Updated employee ${payload.firstName} ${payload.lastName}. Employee code, attendance barcode, and employment/compensation record were preserved.`,
       metadata: {
         employeeCode: rows[0].employee_code,
         attendanceBarcode: rows[0].barcode_code,
-        previousDepartment: rows[0].department,
-        department: payload.department,
-        employmentType: payload.employmentType,
+        department: rows[0].department,
+        position: rows[0].position,
+        employmentType: rows[0].employment_type,
+        compensationPreserved: true,
         previousRestDays: restDayChange.previous,
         restDays: restDayChange.current,
         restDaysEffectiveFrom: restDayChange.effectiveFrom,
@@ -496,3 +546,103 @@ export const updateEmployeeStatus = async (req, res) => {
   } finally { connection.release(); }
 };
 
+
+const changeTypeTitle = (changeType) => ({
+  promotion: 'Promotion',
+  salary_increase: 'Salary Increase',
+  position_change: 'Position Change',
+  department_transfer: 'Department Transfer',
+  employment_status_change: 'Employment Status Change',
+  allowance_adjustment: 'Allowance Adjustment',
+  demotion: 'Demotion',
+  other: 'Employment Change',
+}[changeType] || 'Employment Change');
+
+export const getEmployeeEmploymentHistoryDetails = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    await ensureAttendanceLiteSchema(connection);
+    const employeeId = Number(req.params.employeeId);
+    if (!Number.isInteger(employeeId) || employeeId <= 0) {
+      return res.status(400).json({ message: 'Select a valid employee.' });
+    }
+
+    const [employeeRows] = await connection.query(`
+      SELECT e.employee_id, e.employee_code, e.first_name, e.middle_name, e.last_name,
+             e.department, e.position, e.employment_type, e.hire_date, e.employee_status,
+             ${buildEmployeeNameSql('e')} AS full_name
+      FROM employees e
+      WHERE e.employee_id = ? AND e.employee_status <> 'archived'
+      LIMIT 1
+    `, [employeeId]);
+    if (!employeeRows[0]) return res.status(404).json({ message: 'Employee not found.' });
+
+    const history = await getEmployeeEmploymentHistory(connection, employeeId);
+    const current = history.find((item) => !item.effective_to) || history[0] || null;
+    return res.json({ success: true, employee: mapEmployee(employeeRows[0]), current, history });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
+export const createEmployeeEmploymentChange = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    await ensureAttendanceLiteSchema(connection);
+    const employeeId = Number(req.params.employeeId);
+    const actorId = req.authUser?.id || null;
+    const today = getManilaDateTime().date;
+    const requestedDepartment = cleanText(req.body?.department);
+    if (requestedDepartment) await findDepartmentConfig(connection, requestedDepartment);
+
+    await connection.beginTransaction();
+    const change = await applyEmploymentChange(connection, {
+      employeeId,
+      payload: req.body,
+      actorId,
+      today,
+    });
+
+    const [employeeRows] = await connection.query(`
+      SELECT ${buildEmployeeNameSql('employees')} AS full_name, employee_code
+      FROM employees WHERE employee_id = ? LIMIT 1
+    `, [employeeId]);
+    const employee = employeeRows[0] || {};
+    const label = changeTypeTitle(change.after.change_type);
+
+    await writeAuditLog(connection, req, {
+      actor: req.authUser,
+      action: 'update',
+      module: 'Employee Compensation',
+      entityType: 'employee_employment_history',
+      entityId: String(change.after.employee_employment_history_id),
+      entityLabel: employee.full_name || `Employee #${employeeId}`,
+      title: label,
+      description: `${label} recorded for ${employee.full_name || `employee #${employeeId}`} effective ${change.after.effective_from}. Previous employment/compensation history was preserved.`,
+      metadata: {
+        employeeId,
+        employeeCode: employee.employee_code || null,
+        changeType: change.after.change_type,
+        reason: change.after.change_reason,
+        effectiveFrom: change.after.effective_from,
+        before: change.before,
+        after: change.after,
+      },
+    });
+
+    await connection.commit();
+    return res.status(201).json({
+      success: true,
+      message: `${label} saved successfully. Previous employment and compensation history was preserved.`,
+      data: change.after,
+      before: change.before,
+    });
+  } catch (error) {
+    try { await connection.rollback(); } catch {}
+    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};

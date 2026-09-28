@@ -107,3 +107,4 @@ const formalFieldSet = new Set(FORMAL_BUYER_PROFILE_FIELDS);
 
 export const isFormalBuyerProfileField = (field) => formalFieldSet.has(String(field || ''));
 
+

@@ -47,3 +47,4 @@ test('client requires exact allocation before email verification can be requeste
   assert.match(modal, /Email Verification Code/);
 });
 
+

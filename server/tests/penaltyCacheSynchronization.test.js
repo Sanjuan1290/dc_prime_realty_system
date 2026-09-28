@@ -39,3 +39,4 @@ test('data integrity reports stale penalty caches without writing repairs', () =
   assert.doesNotMatch(controller, /connection\.execute\(\s*`\s*(?:UPDATE|INSERT|DELETE|ALTER|TRUNCATE)/i);
 });
 
+
