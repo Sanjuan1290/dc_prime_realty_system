@@ -44,6 +44,7 @@ import {
   verifyAndConsumeSensitiveAction,
 } from '../../services/sensitiveActionVerification.service.js';
 import {
+  LOGIN_SESSION_SECONDS,
   PASSWORD_RESET_CODE_EXPIRY_MINUTES,
   PASSWORD_RESET_MAX_ATTEMPTS,
   PASSWORD_RESET_RESEND_SECONDS,
@@ -186,6 +187,36 @@ const actorCanManageTargetRole = (req, targetRole) =>
 // by another Super Admin.
 const actorCanPerformUserAction = (req, targetRole) =>
   targetRole !== 'super_admin' || req.authUser?.role === 'super_admin';
+
+// Editing your own system-user profile increments auth_version so other existing
+// sessions are invalidated. Refresh only the session that performed the edit so
+// a successful self-edit does not immediately log the actor out.
+const refreshActorSessionAfterSelfEdit = (req, res, { userId, role, authVersion }) => {
+  if (Number(userId) !== Number(req.authUser?.id || 0)) return false;
+
+  const decoded = req.cookies?.token ? jwt.decode(req.cookies.token) : null;
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const issuedAt = Number(decoded?.iat || 0);
+  const expiresAt = Number(decoded?.exp || 0);
+  const remainingSeconds = expiresAt > nowSeconds
+    ? Math.max(1, expiresAt - nowSeconds)
+    : LOGIN_SESSION_SECONDS;
+  const originalLifetimeSeconds = expiresAt > issuedAt ? expiresAt - issuedAt : LOGIN_SESSION_SECONDS;
+  const rememberedSession = originalLifetimeSeconds > LOGIN_SESSION_SECONDS;
+
+  const token = jwt.sign(
+    { id: Number(userId), role: String(role || req.authUser?.role || ''), authVersion: Number(authVersion || 0) },
+    process.env.JWT_SECRET,
+    { expiresIn: remainingSeconds }
+  );
+
+  res.cookie(
+    'token',
+    token,
+    getAuthCookieOptions({ maxAge: rememberedSession ? remainingSeconds * 1000 : undefined })
+  );
+  return true;
+};
 
 const assertPermanentDeactivationTarget = (req, user, userId) => {
   if (!user) throw Object.assign(new Error('User not found.'), { statusCode: 404 });
@@ -1812,7 +1843,10 @@ export const editUser = async (req, res) => {
     }
 
     const [targetRows] = await connection.query(
-      `SELECT id, account_code, account_category, person_key, role_sequence, role, status, email, admin_type, COALESCE(all_projects_access, admin_all_projects, 0) AS all_projects_access FROM users WHERE id = ? LIMIT 1`,
+      `SELECT id, account_code, account_category, person_key, role_sequence, role, status, email, admin_type,
+              COALESCE(all_projects_access, admin_all_projects, 0) AS all_projects_access,
+              COALESCE(auth_version, 0) AS auth_version
+       FROM users WHERE id = ? LIMIT 1`,
       [userId]
     );
     const targetUser = targetRows[0];
@@ -1858,7 +1892,19 @@ export const editUser = async (req, res) => {
         metadata: { role: targetUser.role, role_immutable: true },
       });
       await connection.commit();
-      return res.json({ message: 'User details updated. Role and access remain unchanged; existing sessions were invalidated.' });
+
+      const sessionRefreshed = refreshActorSessionAfterSelfEdit(req, res, {
+        userId,
+        role: targetUser.role,
+        authVersion: Number(targetUser.auth_version || 0) + 1,
+      });
+
+      return res.json({
+        message: sessionRefreshed
+          ? 'Your user details were updated. Other existing sessions were invalidated, and this session was refreshed.'
+          : 'User details updated. Role and access remain unchanged; existing sessions were invalidated.',
+        session_refreshed: sessionRefreshed,
+      });
     }
 
     if (!actorCanChangeTargetRole(req, targetUser.role, role)) {
@@ -2337,4 +2383,3 @@ export const resetUserPassword = async (req, res) => {
     connection.release();
   }
 };
-
