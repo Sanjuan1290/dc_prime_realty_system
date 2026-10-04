@@ -80,7 +80,12 @@ test('Role & Access UI groups governance and department roles clearly', () => {
   assert.match(roleAccess, /system_admin/);
   assert.match(roleAccess, /auditor/);
   assert.match(roleAccess, /super_admin/);
-  assert.match(permissionMatrix, /Required|Inherited|Not Allowed|Optional/);
+  assert.match(permissionMatrix, /Required/);
+  assert.match(permissionMatrix, /Inherited/);
+  assert.match(permissionMatrix, /Not Allowed/);
+  assert.doesNotMatch(permissionMatrix, />Optional<\/span>/);
+  assert.doesNotMatch(permissionMatrix, />Select All Optional<\/button>/);
+  assert.doesNotMatch(permissionMatrix, />Clear Optional<\/button>/);
 });
 
 test('per-account access UI keeps Super Admin full access and Auditor fixed policy visible', () => {

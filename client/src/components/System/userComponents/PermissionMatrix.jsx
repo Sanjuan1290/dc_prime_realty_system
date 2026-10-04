@@ -46,12 +46,11 @@ const PermissionMatrix = ({ catalog = [], selected = [], onChange, disabled = fa
         <div className="flex flex-wrap gap-2 text-[11px] font-black uppercase tracking-wide">
           <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-700">Required</span>
           <span className="rounded-full bg-blue-100 px-2.5 py-1 text-blue-700">Inherited</span>
-          <span className="rounded-full bg-white px-2.5 py-1 text-slate-600 ring-1 ring-slate-200">Optional</span>
           <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-400">Not Allowed</span>
         </div>
         <div className="flex gap-2">
-          <button type="button" onClick={() => commit(new Set(optionalKeys))} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700">Select All Optional</button>
-          <button type="button" onClick={() => commit(new Set())} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700">Clear Optional</button>
+          <button type="button" onClick={() => commit(new Set(optionalKeys))} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700">Select All</button>
+          <button type="button" onClick={() => commit(new Set())} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700">Clear All</button>
         </div>
       </div> : null}
 
@@ -71,7 +70,7 @@ const PermissionMatrix = ({ catalog = [], selected = [], onChange, disabled = fa
                 const state = stateFor(key)
                 return <label key={key} className={`flex items-start gap-3 rounded-xl border p-3 text-sm ${tone[state]} ${isLocked(key) ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
                   <input type="checkbox" checked={effectiveChecked(key)} disabled={isLocked(key)} onChange={() => toggle(key)} className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600" />
-                  <span><span className="font-semibold">{label}</span><span className="mt-1 block text-[10px] font-black uppercase tracking-wide opacity-70">{state === 'forbidden' ? 'Not allowed' : state}</span></span>
+                  <span><span className="font-semibold">{label}</span>{state !== 'optional' ? <span className="mt-1 block text-[10px] font-black uppercase tracking-wide opacity-70">{state === 'forbidden' ? 'Not allowed' : state}</span> : null}</span>
                 </label>
               })}
             </div>
