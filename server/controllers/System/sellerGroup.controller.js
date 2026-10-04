@@ -1719,6 +1719,11 @@ const loadNetworkMemberImportContext = async (connection, groupId, rawRows = [],
          user.tin_no,
          user.prc_no,
          user.role,
+         user.account_category,
+         user.person_key,
+         user.role_sequence,
+         user.can_login,
+         user.is_system_account,
          user.status AS user_status,
          seller.accredited_seller_id,
          seller.seller_group_id,
@@ -1858,13 +1863,26 @@ export const commitNetworkMemberImport = async (req, res) => {
 
       if (row.action === 'CREATE') {
         const passwordHash = passwordHashes.get(row.email) || await bcrypt.hash('password', 10);
+        const sourcePersonKey = String(row.sourcePersonKey || '').trim() || null;
+        let roleSequence = 1;
+        if (sourcePersonKey) {
+          const [sequenceRows] = await connection.query(
+            'SELECT COALESCE(MAX(role_sequence), 0) + 1 AS next_sequence FROM users WHERE person_key = ? AND role = ? FOR UPDATE',
+            [sourcePersonKey, row.role]
+          );
+          roleSequence = Math.max(Number(sequenceRows[0]?.next_sequence || 1), 1);
+        }
+        const preserveExistingLogin = Boolean(row.sourcePersonUserId);
         const [userResult] = await connection.query(
           `INSERT INTO users (
+             account_category, person_key, role_sequence,
              first_name, last_name, middle_name, contact_no, tin_no, prc_no,
              email, password_hash, role, admin_type, admin_all_projects,
-             status, must_change_password
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, 'active', 1)`,
+             status, must_change_password, can_login, is_system_account
+           ) VALUES ('seller', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, 'active', ?, ?, 0)`,
           [
+            sourcePersonKey,
+            roleSequence,
             row.firstName,
             row.lastName,
             row.middleName || null,
@@ -1874,6 +1892,8 @@ export const commitNetworkMemberImport = async (req, res) => {
             row.email,
             passwordHash,
             row.role,
+            preserveExistingLogin ? 0 : 1,
+            preserveExistingLogin ? 0 : 1,
           ]
         );
         userId = Number(userResult.insertId);
@@ -1885,6 +1905,15 @@ export const commitNetworkMemberImport = async (req, res) => {
           [userId, groupId, reportsUnderUserId || null]
         );
         accreditedSellerId = Number(sellerResult.insertId);
+        if (await tableExists(connection, 'employees')) {
+          await connection.query(
+            `UPDATE employees
+                SET linked_user_id = COALESCE(linked_user_id, ?)
+              WHERE LOWER(TRIM(email)) = LOWER(?)
+                AND linked_user_id IS NULL`,
+            [row.sourcePersonUserId || userId, row.email]
+          );
+        }
       } else {
         if (row.existingGroupId && Number(row.existingGroupId) !== groupId) oldGroupIds.add(Number(row.existingGroupId));
         await connection.query(
@@ -1905,15 +1934,26 @@ export const commitNetworkMemberImport = async (req, res) => {
             userId,
           ]
         );
-        await connection.query(
-          `UPDATE accredited_sellers
-              SET seller_group_id = ?,
-                  accredited_seller_reports_under_user_id = ?,
-                  accredited_seller_status = 'active',
-                  accredited_seller_accreditation_date = COALESCE(accredited_seller_accreditation_date, CURDATE())
-            WHERE accredited_seller_id = ?`,
-          [groupId, reportsUnderUserId || null, accreditedSellerId]
-        );
+        if (accreditedSellerId) {
+          await connection.query(
+            `UPDATE accredited_sellers
+                SET seller_group_id = ?,
+                    accredited_seller_reports_under_user_id = ?,
+                    accredited_seller_status = 'active',
+                    accredited_seller_accreditation_date = COALESCE(accredited_seller_accreditation_date, CURDATE())
+              WHERE accredited_seller_id = ?`,
+            [groupId, reportsUnderUserId || null, accreditedSellerId]
+          );
+        } else {
+          const [sellerResult] = await connection.query(
+            `INSERT INTO accredited_sellers (
+               user_id, seller_group_id, accredited_seller_reports_under_user_id,
+               accredited_seller_accreditation_date, accredited_seller_status
+             ) VALUES (?, ?, ?, CURDATE(), 'active')`,
+            [userId, groupId, reportsUnderUserId || null]
+          );
+          accreditedSellerId = Number(sellerResult.insertId);
+        }
       }
 
       userIdByEmail.set(row.email, userId);

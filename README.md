@@ -1,16 +1,19 @@
-# Network Member Import Validation Fix — 2026-10-04
+# Employee + Accredited Seller Import Fix — 2026-10-04
 
-This patch fixes the Accredited Sellers / In-House Network Excel member import Preview flow.
+This patch fixes Network member Excel import when the email already belongs to an employee/internal system account.
 
-## Fixes
-- Approves only `POST /seller-groups/:groupId/members/import/preview` as a validation-only technical mutation, matching the existing Listing Excel import Preview pattern.
-- Preview now reaches the server and returns row-level validation instead of showing `This mutation is not approved as a technical no-review operation.`
-- Error alert includes the first row-specific errors, e.g. `Row 4: Reports Under Email ... was not found...`.
-- The Import Preview table continues showing every affected Excel row and all of its validation messages.
-- Actual Commit no longer uses a technical bypass. It now opens a Final Double-Check showing Network, filename, member count, Create/Update/Transfer counts, and Active status before saving.
-- Commit remains transactional and revalidates the hierarchy on the server.
+## New behavior
+- Existing employee/system account is preserved; role, permissions, login and employee record are not overwritten.
+- A separate seller identity is created for Network hierarchy/commission use when necessary.
+- The seller identity is non-login when the same email is already owned by an active system login, avoiding active-email uniqueness conflicts.
+- If a seller-role user already exists but has no `accredited_sellers` row, the importer attaches seller accreditation instead of rejecting the account.
+- A system account and its seller identity may share the same email without triggering the old duplicate-account error.
+- External Network accounts and protected system-generated accounts remain blocked.
+- Matching employee rows with no `linked_user_id` are linked safely without replacing an existing link.
 
 ## Tests
-`server/tests/networkMemberExcelImport20261004.test.js`: 16/16 passed.
+- Network/import/commission regression set: 35/35 passing.
+- Network member Excel import file: 20/20 passing.
+- Changed server files pass `node --check`.
 
 No database migration is required.

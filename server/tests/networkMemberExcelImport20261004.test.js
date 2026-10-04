@@ -83,6 +83,80 @@ test('missing Reports Under parent is blocked during Preview', () => {
   assert.match(result.rows[0].errors.join(' '), /not found as an existing member of this Network or in this Excel file/i);
 });
 
+
+test('existing employee/system account can also become an accredited seller without replacing the system account', () => {
+  const systemAccount = {
+    user_id: 700,
+    accredited_seller_id: null,
+    seller_group_id: null,
+    accredited_seller_status: null,
+    user_status: 'active',
+    role: 'admin',
+    account_category: 'system',
+    person_key: 'person-employee-1',
+    is_system_account: 0,
+    email: 'employee@example.com',
+  };
+  const result = analyze([
+    row({
+      first_name: 'Employee', last_name: 'Seller', email: 'employee@example.com',
+      role: 'SD', reports_under_email: 'rowena@example.com',
+    }),
+  ], { existingAccounts: [systemAccount] });
+  assert.equal(result.canCommit, true);
+  assert.equal(result.rows[0].action, 'CREATE');
+  assert.equal(result.rows[0].existingUserId, null);
+  assert.equal(result.rows[0].sourcePersonUserId, 700);
+  assert.equal(result.rows[0].sourcePersonKey, 'person-employee-1');
+  assert.match(result.rows[0].warnings.join(' '), /employee\/system account will be preserved/i);
+});
+
+test('existing seller-role user without accreditation is accredited instead of rejected as a non-seller account', () => {
+  const sellerUser = {
+    user_id: 701,
+    accredited_seller_id: null,
+    seller_group_id: null,
+    accredited_seller_status: null,
+    user_status: 'active',
+    role: 'sales_director',
+    account_category: 'seller',
+    person_key: 'person-seller-1',
+    is_system_account: 0,
+    email: 'selleruser@example.com',
+  };
+  const result = analyze([
+    row({
+      first_name: 'Existing', last_name: 'Seller', email: 'selleruser@example.com',
+      role: 'SD', reports_under_email: 'rowena@example.com',
+    }),
+  ], { existingAccounts: [sellerUser] });
+  assert.equal(result.canCommit, true);
+  assert.equal(result.rows[0].action, 'UPDATE');
+  assert.equal(result.rows[0].existingUserId, 701);
+  assert.equal(result.rows[0].existingAccreditedSellerId, null);
+  assert.match(result.rows[0].warnings.join(' '), /Seller accreditation will be added/i);
+});
+
+test('a system account and its seller identity may share one email without duplicate-account import errors', () => {
+  const systemAccount = {
+    user_id: 702, user_status: 'active', role: 'sales', account_category: 'system',
+    person_key: 'person-shared-1', is_system_account: 0, email: 'dual@example.com',
+  };
+  const sellerIdentity = {
+    user_id: 703, accredited_seller_id: 903, seller_group_id: 10,
+    accredited_seller_status: 'active', user_status: 'active', role: 'sales_director',
+    account_category: 'seller', person_key: 'person-shared-1', is_system_account: 0,
+    email: 'dual@example.com', seller_group_name: 'NA Realty Network', direct_report_count: 0,
+  };
+  const result = analyze([
+    row({ first_name: 'Dual', last_name: 'Role', email: 'dual@example.com', role: 'SD', reports_under_email: 'rowena@example.com' }),
+  ], { existingAccounts: [systemAccount, sellerIdentity] });
+  assert.equal(result.canCommit, true);
+  assert.equal(result.rows[0].existingUserId, 703);
+  assert.equal(result.rows[0].action, 'UPDATE');
+  assert.doesNotMatch(result.rows[0].errors.join(' '), /Multiple existing accounts/i);
+});
+
 test('active seller in another Network cannot be transferred through Excel', () => {
   const existing = {
     user_id: 22, accredited_seller_id: 222, seller_group_id: 99,
@@ -226,4 +300,13 @@ test('member import Preview surfaces exact Excel row validation messages like Li
   assert.match(modal, /Row \${row\.sourceRow}: \${row\.errors\.join\(' '\)}/);
   assert.match(modal, /shown in the preview below/);
   assert.match(modal, /row\.errors\?\.map/);
+});
+
+
+test('commit preserves an existing employee/system login by creating a non-login seller identity and can attach seller accreditation to an existing seller user', async () => {
+  const controller = await fs.readFile(path.join(root, 'server/controllers/System/sellerGroup.controller.js'), 'utf8');
+  assert.match(controller, /preserveExistingLogin = Boolean\(row\.sourcePersonUserId\)/);
+  assert.match(controller, /VALUES \('seller', \?, \?,[\s\S]*preserveExistingLogin \? 0 : 1/);
+  assert.match(controller, /if \(accreditedSellerId\)[\s\S]*UPDATE accredited_sellers[\s\S]*else \{[\s\S]*INSERT INTO accredited_sellers/);
+  assert.match(controller, /UPDATE employees[\s\S]*linked_user_id = COALESCE\(linked_user_id, \?\)/);
 });

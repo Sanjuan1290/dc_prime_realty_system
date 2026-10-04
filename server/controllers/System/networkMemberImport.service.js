@@ -133,7 +133,20 @@ export const analyzeNetworkMemberImport = ({
     const errors = [];
     const warnings = [];
     const accounts = accountBuckets.get(row.email) || [];
-    const existing = accounts.length === 1 ? accounts[0] : null;
+    const sellerAccounts = accounts.filter((account) => NETWORK_MEMBER_IMPORT_ROLES.includes(String(account.role || '')));
+    const nonSellerAccounts = accounts.filter((account) => !NETWORK_MEMBER_IMPORT_ROLES.includes(String(account.role || '')));
+    const activeNonSellerAccounts = nonSellerAccounts.filter((account) => String(account.user_status || '') === 'active');
+    const sharedPersonKeys = [...new Set(nonSellerAccounts.map((account) => String(account.person_key || '').trim()).filter(Boolean))];
+    const existing = sellerAccounts.length === 1 ? sellerAccounts[0] : null;
+    const sourcePersonAccount = !existing && nonSellerAccounts.length
+      ? (activeNonSellerAccounts.length === 1
+          ? activeNonSellerAccounts[0]
+          : sharedPersonKeys.length === 1
+            ? [...nonSellerAccounts].sort((a, b) => Number(b.user_id || 0) - Number(a.user_id || 0))[0]
+            : nonSellerAccounts.length === 1
+              ? nonSellerAccounts[0]
+              : null)
+      : null;
     let action = 'CREATE';
 
     if (!row.firstName) errors.push('First Name is required.');
@@ -142,16 +155,17 @@ export const analyzeNetworkMemberImport = ({
     else if (!isEmail(row.email)) errors.push('Enter a valid email address.');
     if (!row.role) errors.push(`Role must be DM, SD, UM, or SA${row.roleRaw ? ` (received “${row.roleRaw}”)` : ''}.`);
     if (row.email && (duplicateCounts.get(row.email) || 0) > 1) errors.push('Email appears more than once in this Excel file.');
-    if (accounts.length > 1) errors.push('Multiple existing accounts use this email. Resolve the duplicate accounts before importing.');
+    if (sellerAccounts.length > 1) errors.push('Multiple seller identities use this email. Resolve the duplicate seller accounts before importing.');
+    if (!existing && nonSellerAccounts.length > 1 && !sourcePersonAccount) {
+      errors.push('Multiple unrelated non-seller accounts use this email. Resolve the duplicate person records before importing.');
+    }
 
     if (existing) {
       const existingRole = String(existing.role || '');
       const existingGroupId = Number(existing.seller_group_id || 0);
       const sellerStatus = String(existing.accredited_seller_status || 'inactive');
 
-      if (!NETWORK_MEMBER_IMPORT_ROLES.includes(existingRole) || !existing.accredited_seller_id) {
-        errors.push('This email belongs to a non-seller account and cannot be imported as a Network member.');
-      } else if (Number(existing.is_system_dummy || 0) === 1) {
+      if (Number(existing.is_system_dummy || 0) === 1) {
         errors.push('System-generated seller accounts cannot be changed through Excel import.');
       } else {
         if (row.role && row.role !== existingRole) {
@@ -167,7 +181,10 @@ export const analyzeNetworkMemberImport = ({
           errors.push('This seller still has members reporting under them in another Network. Reassign those members before transferring.');
         }
 
-        if (existingGroupId === groupId) {
+        if (!existing.accredited_seller_id) {
+          action = 'UPDATE';
+          warnings.push('An existing seller-role account was found. Seller accreditation will be added without creating another login account.');
+        } else if (existingGroupId === groupId) {
           action = 'UPDATE';
           warnings.push('Existing member will be updated and kept Active. Blank optional fields will preserve current values.');
         } else if (sellerStatus !== 'active') {
@@ -176,6 +193,15 @@ export const analyzeNetworkMemberImport = ({
             ? `Inactive seller will be transferred from ${existing.seller_group_name || 'the previous Network'} and reactivated.`
             : 'Inactive seller account will be activated and assigned to this Network.');
         }
+      }
+    } else if (sourcePersonAccount) {
+      const sourceRole = String(sourcePersonAccount.role || '');
+      if (sourceRole === 'external_group' || String(sourcePersonAccount.account_category || '') === 'external') {
+        errors.push('This email belongs to an External Network account and cannot also be used as an In-House seller identity.');
+      } else if (Number(sourcePersonAccount.is_system_account || 0) === 1) {
+        errors.push('This email belongs to a protected system-generated account and cannot be used for seller accreditation.');
+      } else {
+        warnings.push('Existing employee/system account will be preserved. A separate seller identity will be created for Network hierarchy and commissions.');
       }
     }
 
@@ -198,6 +224,9 @@ export const analyzeNetworkMemberImport = ({
       existingUserId: existing ? Number(existing.user_id) : null,
       existingAccreditedSellerId: existing ? Number(existing.accredited_seller_id || 0) || null : null,
       existingGroupId: existing ? Number(existing.seller_group_id || 0) || null : null,
+      sourcePersonUserId: sourcePersonAccount ? Number(sourcePersonAccount.user_id || 0) || null : null,
+      sourcePersonKey: sourcePersonAccount?.person_key || null,
+      sourcePersonRole: sourcePersonAccount?.role || null,
       isCurrentHead,
       displayName: cleanText([row.firstName, row.middleName, row.lastName].filter(Boolean).join(' ')),
       errors,
