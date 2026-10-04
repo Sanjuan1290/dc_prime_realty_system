@@ -1,6 +1,7 @@
 import express from 'express';
 import {
   getAccredited,
+  getAccreditedExport,
   getParentSellers,
   getAccreditedSellerProofOfIncomeData,
   getAccreditedSellerIncomeRangeReport,
@@ -22,6 +23,7 @@ const router = express.Router();
 router.use(authenticateUser);
 
 router.get('/', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_VIEW), getAccredited);
+router.get('/export', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_VIEW), getAccreditedExport);
 router.get('/parents', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_VIEW), getParentSellers);
 router.get('/:sellerId/proof-of-income-receipts', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_VIEW), getAccreditedSellerProofOfIncomeData);
 router.get('/:sellerId/income-range', requirePermission(PERMISSIONS.SYSTEM_ACCREDITED_VIEW), getAccreditedSellerIncomeRangeReport);

@@ -139,6 +139,49 @@ const hydrateSellerRates = async (sellers) => {
   }));
 };
 
+export const getAccreditedExport = async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT
+        a.accredited_seller_id,
+        a.user_id,
+        ${fullNameSql('u')} AS full_name,
+        u.first_name,
+        u.middle_name,
+        u.last_name,
+        u.email,
+        u.contact_no,
+        u.tin_no,
+        u.prc_no,
+        u.role,
+        a.seller_group_id,
+        sg.seller_group_name,
+        sg.seller_group_type,
+        a.accredited_seller_reports_under_user_id AS reports_under_user_id,
+        ${fullNameSql('parent')} AS reports_under_name,
+        parent.email AS reports_under_email,
+        a.accredited_seller_accreditation_date,
+        a.accredited_seller_status,
+        a.accredited_seller_created_at,
+        a.accredited_seller_updated_at
+      FROM accredited_sellers a
+      INNER JOIN users u ON u.id = a.user_id
+      LEFT JOIN seller_groups sg ON sg.seller_group_id = a.seller_group_id
+      LEFT JOIN users parent ON parent.id = a.accredited_seller_reports_under_user_id
+      WHERE COALESCE(a.is_system_dummy, 0) = 0
+      ORDER BY
+        FIELD(u.role, 'division_manager', 'sales_director', 'unit_manager', 'sales_agent', 'external_group'),
+        sg.seller_group_name ASC,
+        u.last_name ASC,
+        u.first_name ASC,
+        a.accredited_seller_id ASC
+    `);
+    return res.json({ data: rows });
+  } catch (error) {
+    return res.status(500).json({ message: error?.message || 'Failed to export accredited sellers.' });
+  }
+};
+
 export const getAccredited = async (req, res) => {
   try {
     const page = Math.max(Number(req.query.page) || 1, 1);

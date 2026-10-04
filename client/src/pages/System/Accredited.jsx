@@ -7,13 +7,14 @@ import ReadOnlyNotice from "../../components/Shared/ReadOnlyNotice";
 import SignedCopyUploadModal from "../../components/Shared/SignedCopyUploadModal";
 import useCurrentUser from "../../utils/useCurrentUser";
 import { FaUserPlus } from "react-icons/fa";
-import { FiCalendar, FiExternalLink, FiFileText, FiHome, FiLoader, FiPrinter, FiRefreshCw, FiSearch, FiUsers, FiX } from "react-icons/fi";
+import { FiCalendar, FiDownload, FiExternalLink, FiFileText, FiHome, FiLoader, FiPrinter, FiRefreshCw, FiSearch, FiUsers, FiX } from "react-icons/fi";
 import { formatDateTime } from "../../utils/formatDateTime";
 import {useFetch as fetchApi, useFetchPost as postApi, getDoubleCheckNotice} from "../../utils/useFetch";
 import { PERMISSIONS, hasPermission } from "../../config/permissions";
 import { openSignedReceiptPrintPreview } from "../../components/Lot_Projects/ListingProfileComponents/Printouts/signedReceiptPrint";
 import { canOpenMalwareScannedFile, getMalwareScanStatus, malwareScanLabel } from "../../utils/cloudinaryUploadSecurity";
 import { safeLocalStorage } from "../../utils/safeStorage";
+import { downloadAccreditedSellersExcel } from "../../utils/accreditedSellerExcel";
 
 const EMPTY_LIST = [];
 
@@ -908,6 +909,7 @@ const Accredited = () => {
   const [limit, setLimit] = useState(10);
   const [alert, setAlert] = useState(null);
   const [proofSeller, setProofSeller] = useState(null);
+  const [isExporting, setIsExporting] = useState(false);
 
   const queryString = new URLSearchParams({
     page: String(page),
@@ -945,12 +947,27 @@ const Accredited = () => {
     setProofSeller(seller);
   };
 
+  const handleExportExcel = async () => {
+    setIsExporting(true);
+    setAlert({ type: "loading", message: "Preparing Accredited Sellers Excel export..." });
+    try {
+      const result = await fetchApi('/accredited/export', { redirectOnUnavailable: false, timeoutMs: 120_000 });
+      const exportRows = result?.data || [];
+      downloadAccreditedSellersExcel(exportRows);
+      setAlert({ type: "success", message: `${exportRows.length} accredited seller record${exportRows.length === 1 ? "" : "s"} exported.` });
+    } catch (exportError) {
+      setAlert({ type: "error", message: exportError?.message || "Failed to export Accredited Sellers." });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   return (
     <main className="flex flex-col gap-6">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <PageHeader title="Accredited Sellers" description="In-house sellers and External Network accounts, Network assignments, reporting chains, and commission receipts." icon={FaUserPlus} />
-        {canViewSellerGroups ? (
-          <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2">
+          {canViewSellerGroups ? (<>
             <NavLink
               to={`${roleBasePath}/accredited/groups/in-house`}
               className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 text-sm font-black text-blue-700 shadow-sm transition hover:border-blue-300 hover:bg-blue-100"
@@ -965,8 +982,17 @@ const Accredited = () => {
               <FiExternalLink className="h-4 w-4" />
               External Networks
             </NavLink>
-          </div>
-        ) : null}
+          </>) : null}
+          <button
+            type="button"
+            onClick={handleExportExcel}
+            disabled={isExporting}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-sm font-black text-emerald-700 shadow-sm transition hover:border-emerald-300 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <FiDownload className={`h-4 w-4 ${isExporting ? "animate-bounce" : ""}`} />
+            {isExporting ? "Exporting..." : "Export Excel"}
+          </button>
+        </div>
       </div>
 
       {!canOpenProofWorkspace ? <ReadOnlyNotice message="You have view-only access to accredited seller records." /> : null}

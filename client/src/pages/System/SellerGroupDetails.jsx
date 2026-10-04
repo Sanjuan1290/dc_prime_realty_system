@@ -15,12 +15,14 @@ import {
   FiSearch,
   FiShoppingBag,
   FiTrendingUp,
+  FiUpload,
   FiUserPlus,
   FiUsers,
 } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
 import EditGroupModal from '../../components/System/sellerGroupComponents/EditGroupModal'
+import NetworkMemberImportModal from '../../components/System/sellerGroupComponents/NetworkMemberImportModal'
 import CreateUserModal from '../../components/System/userComponents/CreateUserModal'
 import EditUserModal from '../../components/System/userComponents/EditUserModal'
 import { getSellerRoleLabel } from '../../config/sellerRoles'
@@ -216,6 +218,7 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
   const [memberSearch, setMemberSearch] = useState('')
   const [memberPage, setMemberPage] = useState(1)
   const [showCreateUser, setShowCreateUser] = useState(false)
+  const [showMemberImport, setShowMemberImport] = useState(false)
   const [selectedMember, setSelectedMember] = useState(null)
   const [showEditGroupModal, setShowEditGroupModal] = useState(false)
   const [range, setRange] = useState(defaultRange)
@@ -300,6 +303,10 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
     () =>
       (configuration?.members || []).filter((member) => !member.is_system_dummy),
     [configuration]
+  )
+  const hierarchyHead = useMemo(
+    () => members.find((member) => Number(member.user_id) === Number(group.headUserId || 0)) || null,
+    [members, group.headUserId]
   )
   const analytics = analyticsQuery.data?.data?.summary || {}
   const recentSales = analyticsQuery.data?.data?.recentSales || []
@@ -418,6 +425,17 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
             >
               <FiUserPlus />
               Add Member
+            </button>
+          ) : null}
+
+          {!isExternal ? (
+            <button
+              type="button"
+              onClick={() => setShowMemberImport(true)}
+              className="inline-flex h-10 items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100"
+            >
+              <FiUpload />
+              Import Members
             </button>
           ) : null}
 
@@ -1013,6 +1031,20 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
             </section>
           )}
         </>
+      ) : null}
+
+      {showMemberImport ? (
+        <NetworkMemberImportModal
+          groupId={Number(group.id || groupId)}
+          networkName={group.name || groupOption.name || 'In-House Network'}
+          hierarchyHead={hierarchyHead}
+          onClose={() => setShowMemberImport(false)}
+          onImported={(result) => {
+            setShowMemberImport(false)
+            setAlert({ type: 'success', message: result?.message || 'Network members imported successfully.' })
+            refresh()
+          }}
+        />
       ) : null}
 
       {showCreateUser ? (

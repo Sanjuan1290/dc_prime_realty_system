@@ -51,3 +51,15 @@ npm run build
 ```
 
 The supplied code passes migration validation, the complete repository test inventory under temporary import-compatibility stubs, and source syntax parsing. The real Vite production build is **not claimed as verified** until the commands above run successfully with actual dependencies.
+
+## 2026-10-04 — Accredited Sellers Excel Import / Export
+
+- Added **Import Members** inside each In-House Network, beside Add Member.
+- Import template columns: First Name, Middle Name, Last Name, Email, Contact Number, Role, Reports Under Email, TIN, PRC Number.
+- Network assignment is taken from the open In-House Network page; imported members are Active by default.
+- Preview validates the complete hierarchy without writing to the database. Excel row order does not matter; hierarchy is resolved DM → SD → UM → SA.
+- Bulk import cannot add/replace the Network hierarchy head, cannot silently change seller roles, and blocks Active sellers assigned to another Network.
+- Inactive sellers may transfer only after old Network dependencies/head responsibility are cleared.
+- Confirm Import revalidates inside one transaction so the file is all-or-nothing.
+- Added **Export Excel** to the main Accredited Sellers page for all non-system-dummy accredited seller records.
+- This feature uses the existing database schema; **no additional database migration is required** beyond the previously supplied Network/Broker/Company Profit migration.

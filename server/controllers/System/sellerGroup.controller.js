@@ -16,6 +16,11 @@ import {
   isGroupHeadRole,
   SELLER_ROLE_LABELS,
 } from './sellerHierarchyRules.js';
+import {
+  analyzeNetworkMemberImport,
+  normalizeNetworkMemberImportEmail,
+  sortNetworkMemberImportRows,
+} from './networkMemberImport.service.js';
 
 const toNullableNumber = (value) => {
   if (value === undefined || value === null || value === '') return null;
@@ -1649,6 +1654,318 @@ export const updateGroupProjectPool = async (req, res) => {
     return res.json({ message: `${groupType === 'external' ? 'External Network Pool Rate' : 'In-House Network commission allocation'} updated successfully.`, data: rates });
   } catch (error) {
     await connection.rollback();
+    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
+
+const loadNetworkMemberImportContext = async (connection, groupId, rawRows = [], { lock = false } = {}) => {
+  const lockSql = lock ? ' FOR UPDATE' : '';
+  const [groupRows] = await connection.query(
+    `SELECT seller_group_id, seller_group_name, seller_group_type, seller_group_status,
+            seller_group_head_user_id
+     FROM seller_groups
+     WHERE seller_group_id = ?
+     LIMIT 1${lockSql}`,
+    [groupId]
+  );
+  const group = groupRows[0] || null;
+  if (!group) throw Object.assign(new Error('In-House Network not found.'), { statusCode: 404 });
+
+  const [currentMembers] = await connection.query(
+    `SELECT
+       seller.accredited_seller_id,
+       seller.user_id,
+       seller.seller_group_id,
+       seller.accredited_seller_reports_under_user_id,
+       seller.accredited_seller_status,
+       COALESCE(seller.is_system_dummy, 0) AS is_system_dummy,
+       user.first_name,
+       user.middle_name,
+       user.last_name,
+       user.email,
+       user.contact_no,
+       user.tin_no,
+       user.prc_no,
+       user.role,
+       user.status AS user_status,
+       ${fullNameSql('user')} AS full_name
+     FROM accredited_sellers seller
+     INNER JOIN users user ON user.id = seller.user_id
+     WHERE seller.seller_group_id = ?
+     ORDER BY seller.accredited_seller_id${lock ? ' FOR UPDATE' : ''}`,
+    [groupId]
+  );
+
+  const emails = [...new Set((Array.isArray(rawRows) ? rawRows : [])
+    .map((row) => normalizeNetworkMemberImportEmail(
+      row?.email ?? row?.Email ?? row?.email_address ?? row?.emailAddress ?? ''
+    ))
+    .filter(Boolean))];
+
+  let existingAccounts = [];
+  if (emails.length) {
+    const placeholders = emails.map(() => '?').join(', ');
+    const [accountRows] = await connection.query(
+      `SELECT
+         user.id AS user_id,
+         user.first_name,
+         user.middle_name,
+         user.last_name,
+         user.email,
+         user.contact_no,
+         user.tin_no,
+         user.prc_no,
+         user.role,
+         user.status AS user_status,
+         seller.accredited_seller_id,
+         seller.seller_group_id,
+         seller.accredited_seller_status,
+         COALESCE(seller.is_system_dummy, 0) AS is_system_dummy,
+         group_row.seller_group_name,
+         headed.seller_group_id AS headed_group_id,
+         (SELECT COUNT(*)
+            FROM accredited_sellers child
+           WHERE child.accredited_seller_reports_under_user_id = user.id
+             AND COALESCE(child.is_system_dummy, 0) = 0) AS direct_report_count
+       FROM users user
+       LEFT JOIN accredited_sellers seller ON seller.user_id = user.id
+       LEFT JOIN seller_groups group_row ON group_row.seller_group_id = seller.seller_group_id
+       LEFT JOIN seller_groups headed ON headed.seller_group_head_user_id = user.id
+       WHERE LOWER(TRIM(user.email)) IN (${placeholders})
+       ORDER BY user.id${lock ? ' FOR UPDATE' : ''}`,
+      emails
+    );
+    existingAccounts = accountRows;
+  }
+
+  return { group, currentMembers, existingAccounts };
+};
+
+const syncImportedManagedSellerLink = async (connection, accreditedSellerId, reportsUnderUserId) => {
+  if (!(await tableExists(connection, 'accredited_seller_managed_sellers'))) return;
+  await connection.query(
+    'DELETE FROM accredited_seller_managed_sellers WHERE managed_accredited_seller_id = ?',
+    [accreditedSellerId]
+  );
+  if (!reportsUnderUserId) return;
+  const [parentRows] = await connection.query(
+    'SELECT accredited_seller_id FROM accredited_sellers WHERE user_id = ? LIMIT 1',
+    [reportsUnderUserId]
+  );
+  const parentSellerId = Number(parentRows[0]?.accredited_seller_id || 0);
+  if (!parentSellerId) throw createValidationError('The selected reporting parent could not be resolved.');
+  await connection.query(
+    `INSERT INTO accredited_seller_managed_sellers (
+       manager_accredited_seller_id, managed_accredited_seller_id
+     ) VALUES (?, ?)
+     ON DUPLICATE KEY UPDATE updated_at = NOW()`,
+    [parentSellerId, accreditedSellerId]
+  );
+};
+
+const analyzeNetworkMemberImportFromDatabase = async (connection, groupId, rows, options = {}) => {
+  const context = await loadNetworkMemberImportContext(connection, groupId, rows, options);
+  return analyzeNetworkMemberImport({ rows, ...context });
+};
+
+export const previewNetworkMemberImport = async (req, res) => {
+  const groupId = Number(req.params.groupId || 0);
+  const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+  if (!groupId) return res.status(400).json({ message: 'Invalid Network id.' });
+  if (!rows.length) return res.status(400).json({ message: 'The Excel file does not contain any member rows.' });
+
+  const connection = await db.getConnection();
+  try {
+    const preview = await analyzeNetworkMemberImportFromDatabase(connection, groupId, rows);
+    return res.json({ success: true, data: preview });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
+export const commitNetworkMemberImport = async (req, res) => {
+  const groupId = Number(req.params.groupId || 0);
+  const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+  if (!groupId) return res.status(400).json({ message: 'Invalid Network id.' });
+  if (!rows.length) return res.status(400).json({ message: 'The Excel file does not contain any member rows.' });
+
+  const connection = await db.getConnection();
+  let transactionStarted = false;
+  try {
+    // First pass keeps expensive password hashing outside the database transaction.
+    const initialPreview = await analyzeNetworkMemberImportFromDatabase(connection, groupId, rows);
+    if (!initialPreview.canCommit) {
+      return res.status(422).json({
+        message: 'Fix the Excel import errors before confirming the import.',
+        data: initialPreview,
+      });
+    }
+
+    const createRows = initialPreview.rows.filter((row) => row.action === 'CREATE');
+    const passwordHashes = new Map();
+    await Promise.all(createRows.map(async (row) => {
+      passwordHashes.set(row.email, await bcrypt.hash('password', 10));
+    }));
+
+    await connection.beginTransaction();
+    transactionStarted = true;
+
+    // Re-check with row locks. A browser preview is never trusted as authority.
+    const lockedPreview = await analyzeNetworkMemberImportFromDatabase(connection, groupId, rows, { lock: true });
+    if (!lockedPreview.canCommit) {
+      await connection.rollback();
+      transactionStarted = false;
+      return res.status(409).json({
+        message: 'The Network changed after Preview. Review the updated import results before confirming again.',
+        data: lockedPreview,
+      });
+    }
+
+    const sortedRows = sortNetworkMemberImportRows(lockedPreview.rows);
+    const userIdByEmail = new Map();
+    const existingSellerIdByEmail = new Map();
+    const oldGroupIds = new Set();
+
+    lockedPreview.rows.forEach((row) => {
+      if (row.existingUserId) userIdByEmail.set(row.email, Number(row.existingUserId));
+      if (row.existingAccreditedSellerId) existingSellerIdByEmail.set(row.email, Number(row.existingAccreditedSellerId));
+    });
+    const lockedContext = await loadNetworkMemberImportContext(connection, groupId, rows, { lock: false });
+    lockedContext.currentMembers.forEach((member) => {
+      const email = normalizeNetworkMemberImportEmail(member.email);
+      if (email) userIdByEmail.set(email, Number(member.user_id));
+    });
+
+    const processed = [];
+    for (const row of sortedRows) {
+      const reportsUnderUserId = row.isCurrentHead
+        ? null
+        : row.reportsUnderEmail
+          ? Number(userIdByEmail.get(row.reportsUnderEmail) || 0)
+          : null;
+
+      if (row.reportsUnderEmail && !reportsUnderUserId) {
+        throw createValidationError(`Row ${row.sourceRow}: Reports Under Email ${row.reportsUnderEmail} could not be resolved during import.`);
+      }
+
+      let userId = Number(row.existingUserId || 0);
+      let accreditedSellerId = Number(row.existingAccreditedSellerId || 0);
+
+      if (row.action === 'CREATE') {
+        const passwordHash = passwordHashes.get(row.email) || await bcrypt.hash('password', 10);
+        const [userResult] = await connection.query(
+          `INSERT INTO users (
+             first_name, last_name, middle_name, contact_no, tin_no, prc_no,
+             email, password_hash, role, admin_type, admin_all_projects,
+             status, must_change_password
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 0, 'active', 1)`,
+          [
+            row.firstName,
+            row.lastName,
+            row.middleName || null,
+            row.contactNumber || null,
+            row.tinNo || null,
+            row.prcNo || null,
+            row.email,
+            passwordHash,
+            row.role,
+          ]
+        );
+        userId = Number(userResult.insertId);
+        const [sellerResult] = await connection.query(
+          `INSERT INTO accredited_sellers (
+             user_id, seller_group_id, accredited_seller_reports_under_user_id,
+             accredited_seller_accreditation_date, accredited_seller_status
+           ) VALUES (?, ?, ?, CURDATE(), 'active')`,
+          [userId, groupId, reportsUnderUserId || null]
+        );
+        accreditedSellerId = Number(sellerResult.insertId);
+      } else {
+        if (row.existingGroupId && Number(row.existingGroupId) !== groupId) oldGroupIds.add(Number(row.existingGroupId));
+        await connection.query(
+          `UPDATE users
+              SET first_name = ?, last_name = ?, middle_name = ?,
+                  contact_no = CASE WHEN ? <> '' THEN ? ELSE contact_no END,
+                  tin_no = CASE WHEN ? <> '' THEN ? ELSE tin_no END,
+                  prc_no = CASE WHEN ? <> '' THEN ? ELSE prc_no END,
+                  status = 'active'
+            WHERE id = ?`,
+          [
+            row.firstName,
+            row.lastName,
+            row.middleName || null,
+            row.contactNumber, row.contactNumber,
+            row.tinNo, row.tinNo,
+            row.prcNo, row.prcNo,
+            userId,
+          ]
+        );
+        await connection.query(
+          `UPDATE accredited_sellers
+              SET seller_group_id = ?,
+                  accredited_seller_reports_under_user_id = ?,
+                  accredited_seller_status = 'active',
+                  accredited_seller_accreditation_date = COALESCE(accredited_seller_accreditation_date, CURDATE())
+            WHERE accredited_seller_id = ?`,
+          [groupId, reportsUnderUserId || null, accreditedSellerId]
+        );
+      }
+
+      userIdByEmail.set(row.email, userId);
+      existingSellerIdByEmail.set(row.email, accreditedSellerId);
+      await syncImportedManagedSellerLink(connection, accreditedSellerId, reportsUnderUserId || null);
+      processed.push({
+        row: row.sourceRow,
+        email: row.email,
+        user_id: userId,
+        accredited_seller_id: accreditedSellerId,
+        action: row.action,
+      });
+    }
+
+    await assertSellerGroupRoleHierarchy(connection, groupId);
+    await assertGroupCurrentPathsWithinPools(connection, groupId);
+    for (const oldGroupId of oldGroupIds) {
+      await assertSellerGroupRoleHierarchy(connection, oldGroupId);
+      await assertGroupCurrentPathsWithinPools(connection, oldGroupId);
+    }
+
+    await writeAuditLog(connection, req, {
+      action: 'create',
+      module: 'Accredited Sellers',
+      entityType: 'seller_network_member_import',
+      entityId: String(groupId),
+      entityLabel: lockedPreview.network.name,
+      title: 'Imported In-House Network members',
+      description: `Imported ${processed.length} member${processed.length === 1 ? '' : 's'} into ${lockedPreview.network.name}.`,
+      metadata: {
+        seller_group_id: groupId,
+        total: lockedPreview.summary.total,
+        created: lockedPreview.summary.create,
+        updated: lockedPreview.summary.update,
+        transferred: lockedPreview.summary.transfer,
+        imported_emails: processed.slice(0, 100).map((item) => item.email),
+      },
+    });
+
+    await connection.commit();
+    transactionStarted = false;
+    return res.status(201).json({
+      success: true,
+      message: `${processed.length} Network member${processed.length === 1 ? '' : 's'} imported successfully.`,
+      data: {
+        network: lockedPreview.network,
+        summary: lockedPreview.summary,
+        processed,
+      },
+    });
+  } catch (error) {
+    if (transactionStarted) await connection.rollback();
     return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
   } finally {
     connection.release();

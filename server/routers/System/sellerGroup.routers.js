@@ -11,6 +11,8 @@ import {
   getGroupProjectAnalytics,
   getGroupProjectConfiguration,
   updateGroupProjectPool,
+  previewNetworkMemberImport,
+  commitNetworkMemberImport,
 } from '../../controllers/System/sellerGroup.controller.js';
 import { authenticateUser, requirePermission, requireProjectPermission } from '../../middleware/auth.middleware.js';
 import { PERMISSIONS } from '../../config/permissions.js';
@@ -21,6 +23,19 @@ router.use(authenticateUser);
 router.get('/', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW), getGroups);
 router.get('/options', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW), getGroupOptions);
 router.get('/pool-shares', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW), getNetworkPoolShares);
+
+router.post('/:groupId/members/import/preview',
+  requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE),
+  requirePermission(PERMISSIONS.SYSTEM_USERS_CREATE),
+  requirePermission(PERMISSIONS.SYSTEM_USERS_EDIT),
+  previewNetworkMemberImport
+);
+router.post('/:groupId/members/import/commit',
+  requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE),
+  requirePermission(PERMISSIONS.SYSTEM_USERS_CREATE),
+  requirePermission(PERMISSIONS.SYSTEM_USERS_EDIT),
+  commitNetworkMemberImport
+);
 
 router.get('/:groupId/projects', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW), getGroupProjectOptions);
 router.get('/:groupId/projects/:projectId/analytics', requireProjectPermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW, { projectIdParam: 'projectId' }), getGroupProjectAnalytics);
