@@ -52,7 +52,19 @@ const pick = (row, keys) => {
 
 const normalizeRole = (value) => {
   const key = cleanText(value).toLowerCase().replace(/[-]+/g, ' ');
-  return ROLE_ALIASES.get(key) || ROLE_ALIASES.get(key.replace(/\s+/g, '_')) || '';
+  const compactKey = key.replace(/[\s_-]+/g, '');
+  const compactAliases = {
+    dm: 'division_manager',
+    divisionmanager: 'division_manager',
+    sd: 'sales_director',
+    salesdirector: 'sales_director',
+    um: 'unit_manager',
+    unitmanager: 'unit_manager',
+    sa: 'sales_agent',
+    salesagent: 'sales_agent',
+    agent: 'sales_agent',
+  };
+  return ROLE_ALIASES.get(key) || ROLE_ALIASES.get(key.replace(/\s+/g, '_')) || compactAliases[compactKey] || '';
 };
 
 const isEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || ''));
@@ -128,7 +140,7 @@ export const analyzeNetworkMemberImport = ({
     if (!row.lastName) errors.push('Last Name is required.');
     if (!row.email) errors.push('Email is required.');
     else if (!isEmail(row.email)) errors.push('Enter a valid email address.');
-    if (!row.role) errors.push(`Role must be Division Manager, Sales Director, Unit Manager, or Sales Agent${row.roleRaw ? ` (received “${row.roleRaw}”)` : ''}.`);
+    if (!row.role) errors.push(`Role must be DM, SD, UM, or SA${row.roleRaw ? ` (received “${row.roleRaw}”)` : ''}.`);
     if (row.email && (duplicateCounts.get(row.email) || 0) > 1) errors.push('Email appears more than once in this Excel file.');
     if (accounts.length > 1) errors.push('Multiple existing accounts use this email. Resolve the duplicate accounts before importing.');
 

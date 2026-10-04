@@ -37,7 +37,7 @@ const row = (overrides = {}) => ({
   first_name: 'Pedro',
   last_name: 'Reyes',
   email: 'pedro@example.com',
-  role: 'Sales Agent',
+  role: 'SA',
   reports_under_email: 'maria@example.com',
   ...overrides,
 });
@@ -52,14 +52,29 @@ const analyze = (rows, options = {}) => analyzeNetworkMemberImport({
 test('out-of-order Excel rows resolve hierarchy from DM to SD to UM to SA without requiring spreadsheet sorting', () => {
   const result = analyze([
     row({ source_row: 2 }),
-    row({ source_row: 3, first_name: 'Maria', last_name: 'Santos', email: 'maria@example.com', role: 'Unit Manager', reports_under_email: 'john@example.com' }),
-    row({ source_row: 4, first_name: 'John', last_name: 'Cruz', email: 'john@example.com', role: 'Sales Director', reports_under_email: 'rowena@example.com' }),
+    row({ source_row: 3, first_name: 'Maria', last_name: 'Santos', email: 'maria@example.com', role: 'UM', reports_under_email: 'john@example.com' }),
+    row({ source_row: 4, first_name: 'John', last_name: 'Cruz', email: 'john@example.com', role: 'SD', reports_under_email: 'rowena@example.com' }),
   ]);
   assert.equal(result.canCommit, true);
   assert.deepEqual(result.summary, { total: 3, ready: 3, warnings: 0, errors: 0, create: 3, update: 0, transfer: 0 });
   assert.deepEqual(sortNetworkMemberImportRows(result.rows).map((item) => item.role), [
     'sales_director', 'unit_manager', 'sales_agent',
   ]);
+});
+
+test('Role column accepts DM, SD, UM, SA without case or spacing sensitivity and keeps full names backward compatible', () => {
+  const result = analyze([
+    row({ email: 'dm@example.com', role: ' dm ', reports_under_email: '' }),
+    row({ email: 'sd@example.com', role: 'sd', reports_under_email: 'rowena@example.com' }),
+    row({ email: 'um@example.com', role: ' Um ', reports_under_email: 'sd@example.com' }),
+    row({ email: 'sa@example.com', role: 'SA', reports_under_email: 'um@example.com' }),
+    row({ email: 'legacy@example.com', role: 'Sales Agent', reports_under_email: 'um@example.com' }),
+  ]);
+  assert.equal(result.rows[0].role, 'division_manager');
+  assert.equal(result.rows[1].role, 'sales_director');
+  assert.equal(result.rows[2].role, 'unit_manager');
+  assert.equal(result.rows[3].role, 'sales_agent');
+  assert.equal(result.rows[4].role, 'sales_agent');
 });
 
 test('missing Reports Under parent is blocked during Preview', () => {
@@ -87,8 +102,8 @@ test('inactive seller can transfer when role is unchanged and no dependencies re
   };
   const result = analyze([
     row(),
-    row({ first_name: 'Maria', last_name: 'Santos', email: 'maria@example.com', role: 'Unit Manager', reports_under_email: 'john@example.com' }),
-    row({ first_name: 'John', last_name: 'Cruz', email: 'john@example.com', role: 'Sales Director', reports_under_email: 'rowena@example.com' }),
+    row({ first_name: 'Maria', last_name: 'Santos', email: 'maria@example.com', role: 'UM', reports_under_email: 'john@example.com' }),
+    row({ first_name: 'John', last_name: 'Cruz', email: 'john@example.com', role: 'SD', reports_under_email: 'rowena@example.com' }),
   ], { existingAccounts: [existing] });
   assert.equal(result.canCommit, true);
   assert.equal(result.rows.find((item) => item.email === 'pedro@example.com').action, 'TRANSFER');
@@ -118,7 +133,7 @@ test('bulk import refuses to change an existing seller role', () => {
 });
 
 test('Excel import cannot add or replace the Division Manager hierarchy head', () => {
-  const result = analyze([row({ role: 'Division Manager', reports_under_email: '', email: 'newdm@example.com' })]);
+  const result = analyze([row({ role: 'DM', reports_under_email: '', email: 'newdm@example.com' })]);
   assert.equal(result.canCommit, false);
   assert.match(result.rows[0].errors.join(' '), /already has Rowena Cortez as its hierarchy head/i);
 });
@@ -132,7 +147,7 @@ test('existing hierarchy head can appear in the file only as the same top-level 
   };
   const result = analyze([row({
     first_name: 'Rowena', last_name: 'Cortez', email: 'rowena@example.com',
-    role: 'Division Manager', reports_under_email: '',
+    role: 'DM', reports_under_email: '',
   })], { existingAccounts: [existingHead] });
   assert.equal(result.canCommit, true);
   assert.equal(result.rows[0].action, 'UPDATE');
@@ -168,7 +183,8 @@ test('Network details UI exposes Import Members and the template contains a safe
   assert.match(modal, /SAMPLE - DELETE THIS ROW/);
   assert.match(modal, /aoa_to_sheet\(\[HEADERS, sampleMemberRow\]\)/);
   assert.match(modal, /String\(row\['First Name'\][\s\S]*SAMPLE_ROW_MARKER/);
-  assert.match(modal, /'Division Manager'[\s\S]*exampleHeadEmail[\s\S]*'Division Manager'[\s\S]*'Sales Director'[\s\S]*'Unit Manager'[\s\S]*'Sales Agent'/);
+  assert.match(modal, /'DM'[\s\S]*exampleHeadEmail[\s\S]*'SD'[\s\S]*'UM'[\s\S]*'SA'/);
+  assert.match(modal, /formula1: '\"DM,SD,UM,SA\"'/);
   assert.doesNotMatch(modal, /Columns intentionally exclude Network Name and Status/);
   assert.doesNotMatch(modal, /Instructions and Examples for SD → UM → SA reporting/);
   assert.match(modal, /Download Template \(\.xlsx\)/);

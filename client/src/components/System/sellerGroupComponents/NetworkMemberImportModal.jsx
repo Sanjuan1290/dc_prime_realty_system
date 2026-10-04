@@ -30,10 +30,10 @@ const ALLOWED_EXTENSIONS = new Set(['xlsx'])
 const SAMPLE_ROW_MARKER = 'SAMPLE - DELETE THIS ROW'
 
 const ROLE_LABELS = {
-  division_manager: 'Division Manager',
-  sales_director: 'Sales Director',
-  unit_manager: 'Unit Manager',
-  sales_agent: 'Sales Agent',
+  division_manager: 'DM — Division Manager',
+  sales_director: 'SD — Sales Director',
+  unit_manager: 'UM — Unit Manager',
+  sales_agent: 'SA — Sales Agent',
 }
 
 const headerStyle = {
@@ -113,7 +113,7 @@ const NetworkMemberImportModal = ({
       'Example',
       'sample.sales.director@example.com',
       '09171234567',
-      'Sales Director',
+      'SD',
       exampleHeadEmail,
       '123-456-789',
       'PRC-0001',
@@ -125,6 +125,14 @@ const NetworkMemberImportModal = ({
     ]
     membersSheet['!freeze'] = { xSplit: 0, ySplit: 1 }
     membersSheet['!autofilter'] = { ref: `A1:${XLSX.utils.encode_col(HEADERS.length - 1)}2` }
+    // Role codes are intentionally short for bulk entry. Spreadsheet readers that
+    // support SheetJS validation metadata can render this as a dropdown.
+    membersSheet['!dataValidation'] = [{
+      sqref: 'F2:F2001',
+      type: 'list',
+      formula1: '"DM,SD,UM,SA"',
+      allowBlank: false,
+    }]
     HEADERS.forEach((_, col) => {
       const address = XLSX.utils.encode_cell({ r: 0, c: col })
       if (membersSheet[address]) membersSheet[address].s = headerStyle
@@ -151,12 +159,13 @@ const NetworkMemberImportModal = ({
       ['Import Network', networkName || 'In-House Network'],
       ['Network Assignment', 'The Network is taken from the page where you import. Do not add a Network Name column.'],
       ['Status', 'Every successfully imported member is Active by default.'],
-      ['Row Order', 'Rows may be in any order. The system resolves hierarchy as Division Manager → Sales Director → Unit Manager → Sales Agent.'],
+      ['Role Codes', 'Use DM, SD, UM, or SA in the Role column. Capitalization and surrounding spaces do not matter. Full role names are also accepted for backward compatibility.'],
+      ['Row Order', 'Rows may be in any order. The system resolves hierarchy as DM → SD → UM → SA.'],
       ['Hierarchy Head', headName ? `${headName}${headEmail ? ` (${headEmail})` : ''}` : 'No hierarchy head detected. Assign the Network head before bulk importing members.'],
-      ['Division Manager', 'The Division Manager is the existing Network hierarchy head/root. The template Examples sheet includes the DM so the full DM → SD → UM → SA chain is visible. Bulk import cannot replace the Network hierarchy head.'],
-      ['Sales Director', 'Reports Under Email must be the active Division Manager / Network hierarchy head email.'],
-      ['Unit Manager', 'Reports Under Email must be an active Sales Director in this Network or another valid Sales Director in the same import file.'],
-      ['Sales Agent', 'Reports Under Email must be an active Unit Manager in this Network or another valid Unit Manager in the same import file.'],
+      ['DM', 'Division Manager. This is the existing Network hierarchy head/root. The Examples sheet includes the DM so the full DM → SD → UM → SA chain is visible. Bulk import cannot replace the Network hierarchy head.'],
+      ['SD', 'Sales Director. Reports Under Email must be the active DM / Network hierarchy head email.'],
+      ['UM', 'Unit Manager. Reports Under Email must be an active SD in this Network or another valid SD in the same import file.'],
+      ['SA', 'Sales Agent. Reports Under Email must be an active UM in this Network or another valid UM in the same import file.'],
       ['Existing Seller', 'An Active seller in another Network is blocked. Set the seller Inactive first. Seller role changes are not allowed through bulk import.'],
       ['Optional Fields', 'For an existing member, blank Contact Number, TIN, and PRC Number preserve the existing values.'],
       ['Sample Row', 'The Members sheet starts with one highlighted sample row. Delete it before entering your sellers. If left unchanged, the importer ignores it automatically.'],
@@ -168,10 +177,10 @@ const NetworkMemberImportModal = ({
 
     const examples = [
       HEADERS,
-      ['Existing', '', 'Division Manager', exampleHeadEmail, '', 'Division Manager', '', '', ''],
-      ['Juan', '', 'Santos', 'sales.director@example.com', '09171234567', 'Sales Director', exampleHeadEmail, '', ''],
-      ['Maria', '', 'Reyes', 'unit.manager@example.com', '09181234567', 'Unit Manager', 'sales.director@example.com', '', ''],
-      ['Pedro', '', 'Cruz', 'sales.agent@example.com', '09191234567', 'Sales Agent', 'unit.manager@example.com', '', ''],
+      ['Existing', '', 'Division Manager', exampleHeadEmail, '', 'DM', '', '', ''],
+      ['Juan', '', 'Santos', 'sales.director@example.com', '09171234567', 'SD', exampleHeadEmail, '', ''],
+      ['Maria', '', 'Reyes', 'unit.manager@example.com', '09181234567', 'UM', 'sales.director@example.com', '', ''],
+      ['Pedro', '', 'Cruz', 'sales.agent@example.com', '09191234567', 'SA', 'unit.manager@example.com', '', ''],
     ]
     const exampleSheet = XLSX.utils.aoa_to_sheet(examples)
     exampleSheet['!cols'] = membersSheet['!cols']
