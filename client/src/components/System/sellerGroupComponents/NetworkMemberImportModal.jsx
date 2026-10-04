@@ -227,8 +227,16 @@ const NetworkMemberImportModal = ({
       setRows(parsedRows)
       setPreview(result?.data || null)
       const errors = Number(result?.data?.summary?.errors || 0)
+      const invalidRows = (result?.data?.rows || []).filter((row) => row.errors?.length)
+      const errorDetails = invalidRows.slice(0, 3).map((row) =>
+        `Row ${row.sourceRow}: ${row.errors.join(' ')}`
+      ).join(' ')
+      const remainingErrors = Math.max(0, invalidRows.length - 3)
       setAlert(errors
-        ? { type: 'error', message: `${errors} row${errors === 1 ? '' : 's'} need correction. Nothing has been imported.` }
+        ? {
+            type: 'error',
+            message: `${errors} row${errors === 1 ? '' : 's'} need correction. ${errorDetails}${remainingErrors ? ` Plus ${remainingErrors} more row${remainingErrors === 1 ? '' : 's'} shown in the preview below.` : ''} Nothing has been imported.`,
+          }
         : { type: 'success', message: `${parsedRows.length} row${parsedRows.length === 1 ? '' : 's'} validated. Review the hierarchy preview, then Confirm Import.` })
     } catch (error) {
       setFile(null)
@@ -248,7 +256,19 @@ const NetworkMemberImportModal = ({
       const result = await useFetchPost(`/seller-groups/${groupId}/members/import/commit`, { rows }, {
         redirectOnUnavailable: false,
         timeoutMs: 180_000,
-        confirmationHandled: 'technical',
+        doubleCheck: {
+          type: 'network-member-import',
+          title: 'Review Network Member Import',
+          confirmLabel: `Confirm & Import ${preview.summary?.ready || rows.length} Members`,
+          data: {
+            network: preview.network?.name || networkName,
+            filename: file?.name || 'Excel import',
+            rowCount: preview.summary?.ready || rows.length,
+            createCount: preview.summary?.create || 0,
+            updateCount: preview.summary?.update || 0,
+            transferCount: preview.summary?.transfer || 0,
+          },
+        },
       })
       await onImported?.(result)
     } catch (error) {

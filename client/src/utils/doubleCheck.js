@@ -19,6 +19,7 @@ const SUPPORTED_DOUBLE_CHECK_TYPES = new Set([
   'buyer-form',
   'audit-archive',
   'listing-import',
+  'network-member-import',
   'listing-import-reversal',
   'reservation-correction',
 ])

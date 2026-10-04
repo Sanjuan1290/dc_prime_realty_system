@@ -20,6 +20,7 @@ import SettingsDoubleCheck from '../SettingsDoubleCheck'
 import BuyerFormDoubleCheck from '../BuyerFormDoubleCheck'
 import AuditArchiveDoubleCheck from '../AuditArchiveDoubleCheck'
 import ListingImportDoubleCheck from '../ListingImportDoubleCheck'
+import NetworkMemberImportDoubleCheck from '../NetworkMemberImportDoubleCheck'
 import ReservationCorrectionDoubleCheck from '../ReservationCorrectionDoubleCheck'
 
 const components = {
@@ -43,6 +44,7 @@ const components = {
   'buyer-form': BuyerFormDoubleCheck,
   'audit-archive': AuditArchiveDoubleCheck,
   'listing-import': ListingImportDoubleCheck,
+  'network-member-import': NetworkMemberImportDoubleCheck,
   'listing-import-reversal': ListingImportDoubleCheck,
   'reservation-correction': ReservationCorrectionDoubleCheck,
 }

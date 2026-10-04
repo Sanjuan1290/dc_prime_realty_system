@@ -207,3 +207,23 @@ test('Accredited Sellers includes Export Excel endpoint and UI action', async ()
   assert.match(page, /Export Excel/);
   assert.match(page, /\/accredited\/export/);
 });
+
+
+test('member import Preview is approved as validation-only technical mutation and Commit uses Final Double-Check', async () => {
+  const apiClient = await fs.readFile(path.join(root, 'client/src/utils/apiClient.js'), 'utf8');
+  const modal = await fs.readFile(path.join(root, 'client/src/components/System/sellerGroupComponents/NetworkMemberImportModal.jsx'), 'utf8');
+  const doubleCheck = await fs.readFile(path.join(root, 'client/src/utils/doubleCheck.js'), 'utf8');
+  const provider = await fs.readFile(path.join(root, 'client/src/components/Shared/DoubleCheckComponents/core/DoubleCheckProvider.jsx'), 'utf8');
+
+  assert.match(apiClient, /seller-groups\\\/\\d\+\\\/members\\\/import\\\/preview/);
+  assert.match(modal, /type: 'network-member-import'/);
+  assert.match(doubleCheck, /'network-member-import'/);
+  assert.match(provider, /'network-member-import': NetworkMemberImportDoubleCheck/);
+});
+
+test('member import Preview surfaces exact Excel row validation messages like Listing import', async () => {
+  const modal = await fs.readFile(path.join(root, 'client/src/components/System/sellerGroupComponents/NetworkMemberImportModal.jsx'), 'utf8');
+  assert.match(modal, /Row \${row\.sourceRow}: \${row\.errors\.join\(' '\)}/);
+  assert.match(modal, /shown in the preview below/);
+  assert.match(modal, /row\.errors\?\.map/);
+});
