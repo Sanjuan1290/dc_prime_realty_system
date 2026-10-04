@@ -56,7 +56,7 @@ export const normalizeUnitCommissionAdjustment = ({
       throw validationError(`${current.roleLabel || current.commission_role || current.role || 'Each commission role'} rate must be greater than 0%.`);
     }
     if (rate > normalizedGroupRate + RATE_EPSILON) {
-      throw validationError(`${current.roleLabel || current.commission_role || current.role || 'A commission role'} rate cannot be greater than the ${normalizedGroupRate.toFixed(2)}% Unit Network Distribution Rate.`);
+      throw validationError(`${current.roleLabel || current.commission_role || current.role || 'A commission role'} rate cannot be greater than the ${normalizedGroupRate.toFixed(4)}% Unit Network Distribution Rate.`);
     }
 
     return {
@@ -76,11 +76,11 @@ export const normalizeUnitCommissionAdjustment = ({
   if (Math.abs(unallocatedRate) > RATE_EPSILON) {
     if (unallocatedRate > 0) {
       throw validationError(
-        `Allocated commission is ${allocatedRate.toFixed(2)}%. Allocate the remaining ${unallocatedRate.toFixed(2)}% before saving.`
+        `Allocated commission is ${allocatedRate.toFixed(4)}%. Allocate the remaining ${unallocatedRate.toFixed(4)}% before saving.`
       );
     }
     throw validationError(
-      `Allocated commission is ${allocatedRate.toFixed(2)}%, which exceeds the ${normalizedGroupRate.toFixed(2)}% Unit Network Distribution Rate by ${Math.abs(unallocatedRate).toFixed(2)}%.`
+      `Allocated commission is ${allocatedRate.toFixed(4)}%, which exceeds the ${normalizedGroupRate.toFixed(4)}% Unit Network Distribution Rate by ${Math.abs(unallocatedRate).toFixed(4)}%.`
     );
   }
 

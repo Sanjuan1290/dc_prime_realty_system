@@ -3,6 +3,11 @@ import DoubleCheckSection from './core/DoubleCheckSection'
 import DoubleCheckFields from './core/DoubleCheckFields'
 import { formatDate, money, percent, pick, roleLabel, titleCase } from './core/doubleCheckFormatters'
 
+const commissionPercent = (value) => {
+  const number = Number(value || 0)
+  return Number.isFinite(number) ? `${number.toFixed(4)}%` : 'Not provided'
+}
+
 const CommissionReleaseDoubleCheck = ({ request, onConfirm, onCancel }) => {
   const data = request.data || {}
   const beneficiary = data.commissionBeneficiary || data.beneficiary || {}
@@ -18,7 +23,7 @@ const CommissionReleaseDoubleCheck = ({ request, onConfirm, onCancel }) => {
       { label: 'Role', value: pick(beneficiary, 'role'), formatter: roleLabel },
       { label: 'Group', value: pick(beneficiary, 'group') },
       { label: 'Commission Base', value: pick(beneficiary, 'commissionBase'), formatter: money, tone: 'financial' },
-      { label: 'Commission Rate', value: pick(beneficiary, 'commissionRate'), formatter: percent, tone: 'financial' },
+      { label: 'Commission Rate', value: pick(beneficiary, 'commissionRate'), formatter: commissionPercent, tone: 'financial' },
       { label: 'Gross Commission', value: pick(beneficiary, 'grossCommission'), formatter: money, tone: 'financial' },
       { label: 'Previously Released', value: pick(beneficiary, 'previouslyReleased'), formatter: money, tone: 'financial' },
       { label: 'Remaining Before Release', value: pick(beneficiary, 'remainingBeforeRelease'), formatter: money, tone: 'financial' },

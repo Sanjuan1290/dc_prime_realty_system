@@ -60,9 +60,9 @@ const HierarchyPreviewContent = ({ preview, isLoading = false, error = null, has
     <div className="grid gap-4">
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <PreviewCard label="Commission Base (Before Discount)" value={money(preview?.commissionBase)} />
-        <PreviewCard label="Network Pool" value={`${Number(preview?.poolRate || 0).toFixed(2)}%`} tone="blue" />
-        <PreviewCard label="Total Allocated" value={`${Number(preview?.allocatedRate || 0).toFixed(2)}%`} tone={preview?.isValid ? 'emerald' : 'red'} />
-        <PreviewCard label="Unallocated" value={`${Number(preview?.unallocatedRate || 0).toFixed(2)}%`} tone="amber" />
+        <PreviewCard label="Network Pool" value={`${Number(preview?.poolRate || 0).toFixed(4)}%`} tone="blue" />
+        <PreviewCard label="Total Allocated" value={`${Number(preview?.allocatedRate || 0).toFixed(4)}%`} tone={preview?.isValid ? 'emerald' : 'red'} />
+        <PreviewCard label="Unallocated" value={`${Number(preview?.unallocatedRate || 0).toFixed(4)}%`} tone="amber" />
         <PreviewCard label="Estimated Total" value={money(preview?.estimatedTotal)} tone="emerald" />
       </div>
 
@@ -99,7 +99,7 @@ const HierarchyPreviewContent = ({ preview, isLoading = false, error = null, has
                     {row.commissionType === 'direct' ? 'Direct' : 'Override'}
                   </span>
                 </td>
-                <td className="px-4 py-4 font-black text-slate-800">{Number(row.rate || 0).toFixed(2)}%</td>
+                <td className="px-4 py-4 font-black text-slate-800">{Number(row.rate || 0).toFixed(4)}%</td>
                 <td className="px-4 py-4 font-black text-slate-950">{money(row.estimatedAmount)}</td>
               </tr>
             ))}
@@ -120,7 +120,7 @@ const HierarchyPreviewContent = ({ preview, isLoading = false, error = null, has
               </span>
             </div>
             <div className="mt-3 grid grid-cols-2 gap-3">
-              <div><p className="text-xs font-bold text-slate-500">Rate</p><p className="font-black text-slate-950">{Number(row.rate || 0).toFixed(2)}%</p></div>
+              <div><p className="text-xs font-bold text-slate-500">Rate</p><p className="font-black text-slate-950">{Number(row.rate || 0).toFixed(4)}%</p></div>
               <div><p className="text-xs font-bold text-slate-500">Estimated</p><p className="font-black text-slate-950">{money(row.estimatedAmount)}</p></div>
             </div>
             {row.isSystemDummy ? <p className="mt-3 text-xs font-semibold text-blue-600">Beneficiary: {row.beneficiaryName}</p> : null}

@@ -369,7 +369,7 @@ const IncomeRangeReportPanel = ({ seller, sellerId, receipts = EMPTY_LIST, recei
                         <td className="px-4 py-3 font-black text-slate-900">{entry.releaseDate || "-"}</td>
                         <td className="px-4 py-3"><p className="font-black text-slate-800">{entry.projectName} · {entry.unitId}</p><p className="text-xs font-semibold text-slate-500">{entry.projectLocation || "-"}</p>{entry.isArchived ? <span className="mt-1 inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-slate-600">Archived cancelled sale</span> : null}</td>
                         <td className="px-4 py-3 font-semibold text-slate-700">{entry.buyerName || "-"}</td>
-                        <td className="px-4 py-3"><p className="font-black text-slate-800">{titleCase(entry.commissionRateType)}</p><p className="text-xs font-semibold text-slate-500">{roleLabels[entry.commissionRole] || titleCase(entry.commissionRole)} · {Number(entry.commissionRate || 0).toFixed(2)}%</p></td>
+                        <td className="px-4 py-3"><p className="font-black text-slate-800">{titleCase(entry.commissionRateType)}</p><p className="text-xs font-semibold text-slate-500">{roleLabels[entry.commissionRole] || titleCase(entry.commissionRole)} · {Number(entry.commissionRate || 0).toFixed(4)}%</p></td>
                         <td className="px-4 py-3"><p className="font-black text-slate-800">{entry.releaseStage}</p><p className="text-xs font-semibold text-slate-500">{releaseMilestoneLabel(entry)}{entry.receiptReference ? ` · Receipt ${entry.receiptReference}` : ""}</p></td>
                         <td className="px-4 py-3 text-right font-black text-slate-800">{money(entry.grossAmount)}</td>
                         <td className="px-4 py-3 text-right"><p className="font-black text-blue-700">{money(entry.cumulativeGrossTarget)}</p><p className="text-xs font-semibold text-slate-500">{Number(entry.triggerPercent || 0).toFixed(2)}% target</p></td>
@@ -393,7 +393,7 @@ const IncomeRangeReportPanel = ({ seller, sellerId, receipts = EMPTY_LIST, recei
                     </div>
                     <dl className="mt-4 grid grid-cols-2 gap-3 text-xs">
                       <div><dt className="font-black uppercase tracking-wide text-slate-400">Buyer</dt><dd className="mt-1 font-semibold text-slate-700">{entry.buyerName || "-"}</dd></div>
-                      <div><dt className="font-black uppercase tracking-wide text-slate-400">Income</dt><dd className="mt-1 font-semibold text-slate-700">{titleCase(entry.commissionRateType)} · {Number(entry.commissionRate || 0).toFixed(2)}%</dd></div>
+                      <div><dt className="font-black uppercase tracking-wide text-slate-400">Income</dt><dd className="mt-1 font-semibold text-slate-700">{titleCase(entry.commissionRateType)} · {Number(entry.commissionRate || 0).toFixed(4)}%</dd></div>
                       <div><dt className="font-black uppercase tracking-wide text-slate-400">Release</dt><dd className="mt-1 font-semibold text-slate-700">{entry.releaseStage}<span className="block text-slate-500">{releaseMilestoneLabel(entry)}</span></dd></div>
                       <div><dt className="font-black uppercase tracking-wide text-slate-400">Cumulative Gross</dt><dd className="mt-1 font-semibold text-blue-700">{money(entry.cumulativeGrossTarget)}</dd></div>
                       <div><dt className="font-black uppercase tracking-wide text-slate-400">Deductions</dt><dd className="mt-1 font-semibold text-rose-600">{money(entry.deductionAmount)}</dd></div>
@@ -708,7 +708,7 @@ const ProofOfIncomeReceiptModal = ({ seller, onClose, onGenerated, canPrint = fa
                             <p className="font-black text-slate-950">{group.projectName} · {group.unitId}</p>
                             {displayOldUnitIds(group.oldUnitIds) ? <p className="mt-1 text-xs font-semibold text-slate-500">Old Unit ID: {displayOldUnitIds(group.oldUnitIds)}</p> : null}
                             <p className="mt-1 text-sm font-semibold text-slate-600">Buyer: {group.buyerName || "-"}</p>
-                            <p className="mt-1 text-xs font-semibold text-slate-500">{roleLabels[group.commissionRole] || group.commissionRole} · {Number(group.commissionRate || 0).toFixed(2)}%</p>
+                            <p className="mt-1 text-xs font-semibold text-slate-500">{roleLabels[group.commissionRole] || group.commissionRole} · {Number(group.commissionRate || 0).toFixed(4)}%</p>
                           </div>
                           <div className="text-left sm:text-right">
                             <p className="text-xs font-black uppercase tracking-wide text-slate-500">Available amount</p>

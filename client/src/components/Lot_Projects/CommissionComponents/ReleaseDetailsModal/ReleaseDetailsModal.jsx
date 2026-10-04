@@ -458,7 +458,7 @@ const ReleaseDetailsModal = ({ commissionGroup, onClose, onAction, canRelease = 
               <InfoCard label="Role" value={commission.role || '-'} />
               <InfoCard label="Commission Type" value={commission.commissionType || commission.sellerType || '-'} />
               <InfoCard label="Commission Base (Before Discount)" value={money(commission.commissionBase)} />
-              <InfoCard label="Rate" value={`${commission.rate || 0}%`} />
+              <InfoCard label="Rate" value={`${Number(commission.rate || 0).toFixed(4)}%`} />
               <InfoCard label="Gross Commission" value={money(grossCommission)} />
               <InfoCard label="Released" value={money(released)} />
               <InfoCard label="Net Remaining" value={money(netRemaining)} />

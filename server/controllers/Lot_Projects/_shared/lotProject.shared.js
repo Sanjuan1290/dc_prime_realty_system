@@ -878,7 +878,7 @@ export const mapProfileListing = (row = {}, project = {}, documents = []) => {
         : row.sale_channel === 'direct_to_developer'
           ? 'Direct to Developer'
           : row.sale_channel || '-',
-    commission_rate: row.commission_rate ? `${Number(row.commission_rate)}%` : '-',
+    commission_rate: row.commission_rate !== null && row.commission_rate !== undefined ? `${Number(row.commission_rate).toFixed(4)}%` : '-',
     commission_amount: money(row.gross_commission_amount || 0),
     released_amount: money(row.released_amount || 0),
     remaining_commission: money(Math.max(Number(row.gross_commission_amount || 0) - Number(row.released_amount || 0), 0)),
@@ -2218,7 +2218,7 @@ export const getReserveSellerOptions = async (
       roleValue: row.role,
       groupType: row.seller_group_type,
       isExternalGroup,
-      rate: `${rateValue.toFixed(2)}%`,
+      rate: `${rateValue.toFixed(4)}%`,
       rateValue,
       directRate: rateValue,
       poolRate: Number(row.pool_rate || 0),

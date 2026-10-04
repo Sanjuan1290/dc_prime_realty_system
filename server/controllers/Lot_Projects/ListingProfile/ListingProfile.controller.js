@@ -189,7 +189,7 @@ const sendCommissionAdjustmentCodeEmail = async ({
       `Unit: ${unitId}`,
       `Account: ${accountReference || '-'}`,
       `Unit Network Distribution Rate: ${Number(groupRate || 0).toFixed(4)}%`,
-      `Allocated Rate: ${Number(allocatedRate || 0).toFixed(2)}%`,
+      `Allocated Rate: ${Number(allocatedRate || 0).toFixed(4)}%`,
       `Reason: ${reason}`,
       `The code expires in ${COMMISSION_ADJUSTMENT_CODE_EXPIRY_MINUTES} minutes.`,
       '',
@@ -204,7 +204,7 @@ const sendCommissionAdjustmentCodeEmail = async ({
         <p>Use this code to authorize the unit-level commission adjustment for <strong>${safeUnitId}</strong> (${safeAccountReference}).</p>
         <div style="font-size:30px;font-weight:800;letter-spacing:8px;padding:18px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;text-align:center">${code}</div>
         <p><strong>Unit Network Distribution Rate:</strong> ${Number(groupRate || 0).toFixed(4)}%<br/>
-        <strong>Allocated Rate:</strong> ${Number(allocatedRate || 0).toFixed(2)}%<br/>
+        <strong>Allocated Rate:</strong> ${Number(allocatedRate || 0).toFixed(4)}%<br/>
         <strong>Reason:</strong> ${safeReason}</p>
         <p>This code expires in ${COMMISSION_ADJUSTMENT_CODE_EXPIRY_MINUTES} minutes.</p>
         <p style="color:#991b1b"><strong>This changes the saved commission snapshot for this buyer account only. Group defaults are not changed.</strong></p>
@@ -1306,7 +1306,7 @@ export const adjustLotProjectListingCommission = async (req, res) => {
         const deduction = roundMoneyValue(Number(release.deduction_amount || 0));
         if (deduction > grossRelease + 0.009) {
           throw Object.assign(
-            new Error(`${formatCommissionRole(row.commission_role)} cannot be reduced to ${rate.toFixed(2)}% because an existing deduction is greater than the adjusted milestone amount.`),
+            new Error(`${formatCommissionRole(row.commission_role)} cannot be reduced to ${rate.toFixed(4)}% because an existing deduction is greater than the adjusted milestone amount.`),
             { statusCode: 409 }
           );
         }

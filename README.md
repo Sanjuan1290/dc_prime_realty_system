@@ -1,21 +1,31 @@
-# Accredited Seller duplicate identity validation fix — 2026-10-04
+# Commission Rate Display Precision Update — 2026-10-04
 
-This patch tightens the In-House Network Excel member importer.
+This patch changes commission-related percentage displays to four decimal places without changing monetary formatting or unrelated percentages.
 
-## Rules
-- Duplicate email inside the same Excel file is a hard error.
-- Exact duplicate full name inside the same Excel file is a hard error, even when emails differ.
-- Full-name matching is case-insensitive and collapses repeated spaces.
-- A new import row cannot use the exact full name of another Accredited Seller already in the target Network when the email is different.
-- Updating the same existing seller (same email) is not treated as a name conflict.
-- Existing employee/system account + seller identity sharing the same email remains supported.
+Examples:
+- 9% -> 9.0000%
+- 8% -> 8.0000%
+- 4% -> 4.0000%
+- 1.6% -> 1.6000%
+- 1.2656% -> 1.2656%
+- 1.1344% -> 1.1344%
 
-Preview errors identify the conflicting Excel row number/email or the existing Network member.
+Updated surfaces include:
+- Automatic Hierarchy Commission Preview
+- Seller / Network rate picker during reservation
+- Saved Commission Distribution
+- Commission Release Details
+- Commission Release Final Double-Check
+- Accredited Seller income / receipt screens
+- Server-provided seller commission rate labels
+- Unit commission adjustment validation / verification messages
 
-No database migration is required.
+Currency remains two decimal places. Payment progress percentages, interest rates, LMF rates, release milestones, and other non-commission percentages are unchanged.
 
-## Validation
-- Network member Excel import tests: 24/24 passed.
-- Related runnable Network/commission tests: 28/28 passed.
-- `networkMemberImport.service.js` passed `node --check`.
-- `sellerGroupRedesign.test.js` still cannot load in the reconstructed environment because `bcrypt` is not installed; this is an environment dependency issue and occurs before assertions run.
+Database migration: none required. The existing Network/Company Profit migration already stores commission rates as DECIMAL(7,4).
+
+Validation:
+- 3/3 new precision-specific tests passed.
+- Reservation preview reuse + unit commission adjustment regression tests passed.
+- Commission historical release tests passed.
+- One separate commission recalculation test file cannot load in this reconstructed environment because bcrypt is not installed; it fails before executing assertions.

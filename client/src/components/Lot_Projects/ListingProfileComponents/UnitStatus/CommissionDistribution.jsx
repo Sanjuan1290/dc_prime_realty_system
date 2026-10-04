@@ -90,7 +90,7 @@ const CommissionDistribution = ({
         {showSummary ? (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
             <SummaryCard label="Commission Base (Before Discount)" value={money(summary.commissionBase)} />
-            <SummaryCard label="Saved Pool Rate" value={`${summary.allocatedRate.toFixed(2)}%`} tone="blue" />
+            <SummaryCard label="Saved Pool Rate" value={`${summary.allocatedRate.toFixed(4)}%`} tone="blue" />
             <SummaryCard label="Gross Commission" value={money(summary.grossCommission)} tone="emerald" />
             <SummaryCard label="Released" value={money(summary.releasedAmount)} tone="blue" />
             <SummaryCard label="Deductions" value={money(summary.cashAdvanceDeduction)} tone="amber" />
@@ -141,7 +141,7 @@ const CommissionDistribution = ({
                         </span>
                       </td>
                       <td className="px-4 py-4 font-semibold text-slate-600">{row.reportsUnder || 'Developer'}</td>
-                      <td className="px-4 py-4 font-black text-blue-700">{Number(row.rate || 0).toFixed(2)}%</td>
+                      <td className="px-4 py-4 font-black text-blue-700">{Number(row.rate || 0).toFixed(4)}%</td>
                       <td className="px-4 py-4 font-black text-slate-950">{money(row.grossCommission)}</td>
                       <td className="px-4 py-4 font-semibold text-slate-700">{money(row.releasedAmount)}</td>
                       <td className="px-4 py-4 font-black text-violet-700">{money(row.remainingAmount)}</td>
@@ -175,7 +175,7 @@ const CommissionDistribution = ({
 
                   <dl className="mt-4 grid grid-cols-2 gap-3 text-xs">
                     <div><dt className="font-bold text-slate-500">Reports Under</dt><dd className="mt-1 font-black text-slate-800">{row.reportsUnder || 'Developer'}</dd></div>
-                    <div><dt className="font-bold text-slate-500">Rate</dt><dd className="mt-1 font-black text-blue-700">{Number(row.rate || 0).toFixed(2)}%</dd></div>
+                    <div><dt className="font-bold text-slate-500">Rate</dt><dd className="mt-1 font-black text-blue-700">{Number(row.rate || 0).toFixed(4)}%</dd></div>
                     <div><dt className="font-bold text-slate-500">Gross</dt><dd className="mt-1 font-black text-slate-950">{money(row.grossCommission)}</dd></div>
                     <div><dt className="font-bold text-slate-500">Released</dt><dd className="mt-1 font-black text-slate-800">{money(row.releasedAmount)}</dd></div>
                     <div><dt className="font-bold text-slate-500">Deductions</dt><dd className="mt-1 font-black text-amber-700">{money(row.cashAdvanceDeduction)}</dd></div>
