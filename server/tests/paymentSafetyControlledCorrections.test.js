@@ -67,14 +67,18 @@ test('manual amount changes are visibly warned and must be acknowledged before p
   assert.match(addPayment, /Confirm the payment amount override before saving/);
 });
 
-test('recorded payment edits and voids use granular permissions plus password and email-code verification', () => {
+test('recorded payment edits and voids use granular permissions plus governed Head/Auditor correction authorization', () => {
   assert.match(router, /const requirePaymentCorrectionPermission/);
-  assert.match(router, /payments\/:paymentId\/correction-code[\s\S]*requirePaymentCorrectionPermission[\s\S]*requireCurrentPassword/);
+  assert.match(router, /payments\/:paymentId\/correction-code[\s\S]*requirePaymentCorrectionPermission[\s\S]*requestLotProjectPaymentCorrectionCode/);
   assert.match(router, /payments\/:paymentId'[\s\S]*LOT_PAYMENTS_EDIT[\s\S]*updateLotProjectListingPayment/);
   assert.match(router, /payments\/:paymentId\/delete'[\s\S]*LOT_PAYMENT_DELETE[\s\S]*deleteLotProjectListingPayment/);
-  assert.match(paymentsController, /requirePaymentCorrectionVerification/);
+  assert.match(paymentsController, /authorizationType: 'returned_review'/);
+  assert.match(paymentsController, /authorizationType: 'department_head'/);
+  assert.match(paymentsController, /authorizationType: 'audit_case'/);
+  assert.match(paymentsController, /authorizationType: 'emergency_super_admin'/);
   assert.match(paymentsController, /createSensitiveActionVerification/);
   assert.match(paymentsController, /verifyAndConsumeSensitiveAction/);
+  assert.match(paymentsUi, /Check Correction Authority/);
   assert.match(paymentsUi, /Verify Password & Send Code/);
   assert.match(paymentsUi, /Email Verification Code/);
 });
@@ -96,11 +100,13 @@ test('cancelled payments no longer block simple unit correction but verified pay
   assert.match(source, /lot_project_payment_status = 'Cancelled'/);
   assert.match(source, /controlledEligible:\s*hardReasons\.length === 0 && paymentCount > 0/);
   assert.match(source, /eligible:\s*hardReasons\.length === 0 && paymentCount === 0/);
-  assert.match(source, /Use Controlled Unit Correction with Super Admin password and email verification/);
+  assert.match(source, /governed Controlled Unit Correction workflow \(Sales Head approval, Auditor review, or Super Admin emergency fallback\)/);
 });
 
 test('controlled unit correction preserves payment facts, protected account files, and replays verified payments', () => {
-  assert.match(reservationController, /Controlled Unit Correction can only be completed by an exact Super Admin/);
+  assert.match(reservationController, /sales_head/);
+  assert.match(reservationController, /system_admin/);
+  assert.match(reservationController, /emergency_super_admin/);
   assert.match(reservationController, /reconcileAccountProtectedStorage/);
   assert.match(reservationController, /retargetAccountProtectedFileMetadata/);
   assert.doesNotMatch(reservationController, /Uploaded buyer documents exist\. Unit-specific files must not be silently moved/);
@@ -162,7 +168,7 @@ test('void authorization keeps backend audit semantics but omits the verbose can
 test('failed email-code attempts persist verification state instead of being rolled back with financial mutations', () => {
   assert.match(sensitiveVerification, /return \{[\s\S]*ok: false,[\s\S]*Verification code is incorrect/);
   assert.match(paymentsController, /authorizationError/);
-  assert.match(reservationController, /Commit only the verification attempt\/expiry state/);
+  assert.match(reservationController, /authorizationError|verificationResult/);
 });
 
 test('sensitive verification hashes bind the code and exact proposed payload', () => {

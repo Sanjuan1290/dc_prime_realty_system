@@ -9,6 +9,11 @@ const UserDoubleCheck = ({ request, onConfirm, onCancel }) => {
   const data = request.data || {}
   const role = pick(data, 'role')
   const seller = sellerRoles.has(String(role))
+  const projectNames = request.meta?.projectNames || request.meta?.adminProjectNames || []
+  const hasProjectScope = Boolean(
+    projectNames.length
+    || pick(data, 'all_projects_access', 'admin_all_projects', 'allProjectsAccess', 'adminAllProjects')
+  )
   const steps = [
     { key: 'user', title: 'User Information', content: <DoubleCheckSection title="User Information" helper="Verify identity, contact, access role, and status." tone="blue"><DoubleCheckFields fields={[
       { label: 'First Name', value: pick(data, 'first_name', 'firstName') },
@@ -20,7 +25,7 @@ const UserDoubleCheck = ({ request, onConfirm, onCancel }) => {
       { label: 'PRC No.', value: pick(data, 'prc_no', 'prcNo') },
       { label: 'Address', value: pick(data, 'address'), wide: true },
       { label: 'Role', value: role, formatter: roleLabel },
-      ...(String(role) === 'admin' ? [{ label: 'Project Access', value: (request.meta?.adminProjectNames || []).join(', ') || (pick(data, 'admin_all_projects', 'adminAllProjects') ? 'All Projects' : 'No Projects'), wide: true }] : []),
+      ...(hasProjectScope ? [{ label: 'Project Access', value: projectNames.join(', ') || (pick(data, 'all_projects_access', 'admin_all_projects', 'allProjectsAccess', 'adminAllProjects') ? 'All Projects' : 'No Projects'), wide: true }] : []),
       { label: 'Status', value: pick(data, 'status'), formatter: statusLabel },
       ...(request.mode === 'create' && !seller ? [{ label: 'Login Setup', value: 'Temporary credentials will be generated securely and emailed automatically.', wide: true }] : []),
     ]} /></DoubleCheckSection> },

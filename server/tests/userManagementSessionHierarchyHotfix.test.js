@@ -10,13 +10,13 @@ const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'u
 
 test('Admin UI never offers Deactivate against a Super Admin target', () => {
   const users = read('client/src/pages/System/Users.jsx');
-  assert.match(users, /canDeactivate && user\.status === 'active' && user\.id !== actor\.id && \(user\.role !== 'super_admin' \|\| isSuperAdmin\)/);
+  assert.match(users, /canDeactivate && canManageTarget\(user\) && user\.status === 'active' && user\.id !== actor\.id/);
 });
 
 test('backend still enforces Super Admin target ownership', () => {
   const controller = read('server/controllers/System/users.controllers.js');
-  assert.match(controller, /targetRole !== 'super_admin' \|\| req\.authUser\?\.role === 'super_admin'/);
-  assert.match(controller, /Only Super Admin can deactivate another Super Admin account/);
+  assert.match(controller, /actorCanPerformUserAction/);
+  assert.match(controller, /canActorManageUserRole/);
 });
 
 test('self-edit refreshes the acting session after auth_version invalidation', () => {

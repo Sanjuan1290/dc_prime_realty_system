@@ -6,6 +6,7 @@ import StatusAlert from '../../components/Shared/StatusAlert'
 import ReadOnlyNotice from '../../components/Shared/ReadOnlyNotice'
 import SettingsAuthorizationModal from '../../components/Shared/SettingsAuthorizationModal'
 import useCurrentUser from '../../utils/useCurrentUser'
+import { PERMISSIONS, hasPermission } from '../../config/permissions'
 import SystemSettingsForm from '../../components/System/settingsComponents/SystemSettingsForm'
 import RoleAccessControl from '../../components/System/settingsComponents/RoleAccessControl'
 import { formatDateTime } from '../../utils/formatDateTime'
@@ -51,7 +52,10 @@ const mapSettingsToForm = (settings = {}) => ({
 
 const Settings = () => {
   const { data: currentUserData } = useCurrentUser()
-  const canManage = currentUserData?.user?.role === 'super_admin'
+  const actor = currentUserData?.user || {}
+  const canManage = actor.role === 'super_admin'
+  const canViewRoleAccess = hasPermission(actor, PERMISSIONS.SYSTEM_ACCESS_CONTROL_VIEW)
+  const canManageRoleAccess = hasPermission(actor, PERMISSIONS.SYSTEM_ACCESS_CONTROL_MANAGE)
   const queryClient = useQueryClient()
   const [form, setForm] = useState(defaultForm)
   const [alert, setAlert] = useState(null)
@@ -163,30 +167,30 @@ const Settings = () => {
             <div>
               <h2 className="text-lg font-black text-slate-950">Role &amp; Access Control</h2>
               <p className="mt-1 text-sm font-semibold leading-6 text-slate-500">
-                Manage default permissions for Admin, Marketing, Sales, Accounting, and Operations. Super Admin always keeps Full System Access.
+                Manage Staff/Head role defaults, System Admin governance, and Auditor read-only policy. Super Admin keeps emergency Full System Access.
               </p>
             </div>
           </div>
           <button
             type="button"
-            onClick={() => canManage && setShowRoleAccess((current) => !current)}
-            disabled={!canManage}
-            title={!canManage ? 'Only the Super Admin can manage Role & Access Control.' : undefined}
+            onClick={() => canViewRoleAccess && setShowRoleAccess((current) => !current)}
+            disabled={!canViewRoleAccess}
+            title={!canViewRoleAccess ? 'Your account cannot view Role & Access Control.' : undefined}
             className="h-11 shrink-0 rounded-xl border border-violet-200 bg-violet-50 px-5 text-sm font-black text-violet-700 transition hover:bg-violet-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
           >
-            {showRoleAccess ? 'Hide Role & Access' : canManage ? 'Manage Role & Access' : 'Super Admin Only'}
+            {showRoleAccess ? 'Hide Role & Access' : canManageRoleAccess ? 'Manage Role & Access' : canViewRoleAccess ? 'View Role & Access' : 'Restricted'}
           </button>
         </div>
         {!showRoleAccess ? (
           <div className="grid gap-3 p-5 text-sm sm:grid-cols-2 xl:grid-cols-3">
-            <div className="rounded-2xl bg-slate-50 p-4"><p className="font-black text-slate-900">5 configurable role templates</p><p className="mt-1 font-semibold text-slate-500">Defaults are copied into new system-user accounts.</p></div>
+            <div className="rounded-2xl bg-slate-50 p-4"><p className="font-black text-slate-900">8 department Staff/Head templates</p><p className="mt-1 font-semibold text-slate-500">Defaults are copied into new system-user accounts.</p></div>
             <div className="rounded-2xl bg-slate-50 p-4"><p className="font-black text-slate-900">Per-account access stays independent</p><p className="mt-1 font-semibold text-slate-500">Changing a role template does not silently change existing users.</p></div>
             <div className="rounded-2xl bg-emerald-50 p-4"><p className="font-black text-emerald-900">Super Admin · Full System Access</p><p className="mt-1 font-semibold text-emerald-700">Permissions cannot be restricted.</p></div>
           </div>
         ) : null}
       </section>
 
-      {canManage && showRoleAccess ? <RoleAccessControl /> : null}
+      {canViewRoleAccess && showRoleAccess ? <RoleAccessControl /> : null}
 
       <SystemSettingsForm
         form={form}

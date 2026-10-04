@@ -27,28 +27,22 @@ test('system accounts use permanent identity and person+role sequencing', () => 
   assert.match(usersController, /buildAccountCode/);
 });
 
-test('change-position preview uses the same person identity and next role sequence', () => {
+test('change-position preview keeps the same account identity instead of creating a replacement account', () => {
   assert.match(usersController, /export const previewChangeUserPosition/);
-  assert.match(usersController, /previewNextRoleSequence\(connection, personKey, newRole\)/);
-  assert.match(usersController, /previewAccountCode\(connection, \{ role: newRole \}\)/);
-  assert.match(usersRouter, /change-position\/:id\/preview[\s\S]*requireExactRole\('super_admin'\)/);
-  assert.match(positionModal, /change-position\/\$\{user\.id\}\/preview/);
-  assert.match(positionModal, /Replacement Account Preview/);
-  assert.match(positionModal, /role_sequence/);
+  assert.match(usersController, /same_account:\s*true/);
+  assert.match(usersController, /The same user account will be retained/);
+  assert.match(usersRouter, /change-position\/:id\/preview[\s\S]*SYSTEM_USERS_EDIT/);
+  assert.match(positionModal, /same_account|same account|retained/i);
 });
 
-test('position transition remains atomic and preserves historical user ids', () => {
+test('position transition is atomic, preserves the user id, and records immutable role history', () => {
   assert.match(usersController, /export const changeUserPosition/);
-  assert.match(usersController, /SELECT id, account_code, account_category, person_key, role_sequence,[\s\S]*FOR UPDATE/);
-  assert.match(usersController, /const personKey = source\.person_key \|\| crypto\.randomUUID\(\)/);
-  assert.match(usersController, /const roleSequence = await getNextRoleSequence\(connection, personKey, newRole\)/);
-  assert.match(usersController, /SET status = 'inactive', deactivated_at = NOW\(\), deactivated_by_user_id = \?, deactivation_reason = \?,[\s\S]*auth_version = COALESCE\(auth_version, 0\) \+ 1/);
-  assert.match(usersController, /INSERT INTO users \([\s\S]*account_code, account_category, person_key, role_sequence/);
+  assert.match(usersController, /UPDATE users[\s\S]*SET role = \?/);
+  assert.match(usersController, /INSERT INTO user_role_history/);
+  assert.match(usersController, /same_user_id:\s*true/);
   assert.match(usersController, /await connection\.commit\(\)/);
   assert.match(usersController, /await connection\.rollback\(\)/);
-  assert.match(usersController, /replacement_user_id: newUserId/);
-  assert.match(usersController, /previous_user_id: sourceUserId/);
-  assert.doesNotMatch(usersController, /UPDATE audit_logs SET actor_user_id/);
+  assert.doesNotMatch(usersController, /replacement_user_id: newUserId/);
 });
 
 test('permanent deactivation has no reactivation route and requires password plus email verification', () => {
@@ -85,7 +79,8 @@ test('historical inactive system accounts cannot have access or credentials chan
   assert.match(accessController, /historical account is permanently deactivated and its access can no longer be changed/);
   assert.match(accessController, /historical account is permanently deactivated and its permissions can no longer be reset/);
   assert.match(usersController, /Create a new account instead of resetting historical credentials/);
-  assert.match(usersPage, /isSuperAdmin && user\.status === 'active'/);
+  assert.match(usersPage, /canViewAccess && user\.status === 'active'/);
+  assert.match(usersPage, /canManageTarget/);
 });
 
 

@@ -344,7 +344,7 @@ const Reports = () => {
   const currentUser = currentUserData?.user || {}
   const canExport = hasPermission(currentUser, PERMISSIONS.SYSTEM_REPORTS_EXPORT)
   const role = currentUser.role || 'super_admin'
-  const isAdmin = role === 'admin'
+  const isSystemAdmin = role === 'system_admin'
   const isSuperAdmin = role === 'super_admin'
   const roleBasePath = `/portal/${role}`
   const houseLotEnabled = import.meta.env.VITE_FEATURE_HOUSE_LOT === 'true'
@@ -357,7 +357,7 @@ const Reports = () => {
   const hasInvalidOrder = selectedDaySpan <= 0
   const isLongerThanTwelveMonths = exceedsTwelveMonths(fromDate, toDate)
   const longRangeKey = `${fromDate}:${toDate}`
-  const administratorNeedsConfirmation = (isSuperAdmin || isAdmin) && dateRange === 'custom' && isLongerThanTwelveMonths && approvedLongRangeKey !== longRangeKey
+  const administratorNeedsConfirmation = (isSuperAdmin || isSystemAdmin) && dateRange === 'custom' && isLongerThanTwelveMonths && approvedLongRangeKey !== longRangeKey
   const canLoadRange = !hasInvalidOrder && !administratorNeedsConfirmation
 
   const resetApproval = () => setApprovedLongRangeKey('')

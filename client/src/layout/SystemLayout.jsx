@@ -24,6 +24,7 @@ import StatusAlert from "../components/Shared/StatusAlert";
 import { hasPermission, isSystemUserRole, PERMISSIONS, SYSTEM_USER_ROLES } from "../config/permissions";
 import { requestApi } from '../utils/apiClient'
 import useNotificationBadge from '../utils/useNotificationBadge'
+import useWorkflowBadge from '../utils/useWorkflowBadge'
 
 const getFullName = (user) => {
   const name = [user?.first_name, user?.middle_name, user?.last_name]
@@ -93,6 +94,7 @@ const SystemLayout = () => {
 
   const user = currentUser?.user;
   const { totalCount: notificationCount } = useNotificationBadge(user);
+  const { badgeCount: workflowBadgeCount } = useWorkflowBadge(user);
 
   const roleBasePath = `/portal/${user?.role || "super_admin"}`;
   const dashboardPathname = "";
@@ -127,9 +129,10 @@ const SystemLayout = () => {
         ],
       },
       {
-        title: "COMPLIANCE",
-        description: "Documents and system records",
+        title: "REVIEW & COMPLIANCE",
+        description: "Department review, audit, and system records",
         items: [
+          { label: "Review Center", pathname: "review-center", icon: FiShield, badge: workflowBadgeCount, permission: PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW },
           { label: "Documents", pathname: "documents", icon: FiFileText, permission: PERMISSIONS.SYSTEM_DOCUMENTS_VIEW },
           { label: "Notifications", pathname: "notifications", icon: FiBell, badge: notificationCount, permission: PERMISSIONS.SYSTEM_NOTIFICATIONS_VIEW },
           { label: "Audit Logs", pathname: "audit-logs", icon: FiActivity, permission: PERMISSIONS.AUDIT_LOGS_VIEW },
@@ -153,7 +156,7 @@ const SystemLayout = () => {
         ],
       },
     ],
-    [dashboardPathname, notificationCount]
+    [dashboardPathname, notificationCount, workflowBadgeCount]
   );
 
   const visibleNavGroups = useMemo(() => navGroups

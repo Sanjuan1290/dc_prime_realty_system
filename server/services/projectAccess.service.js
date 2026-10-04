@@ -6,6 +6,7 @@ const uniquePositiveIds = (values = []) => [...new Set((Array.isArray(values) ? 
   .filter((value) => Number.isInteger(value) && value > 0))];
 
 export const isSuperAdmin = (user = {}) => String(user?.role || '').toLowerCase() === 'super_admin';
+export const hasForcedAllProjectsAccess = (user = {}) => ['super_admin', 'system_admin', 'auditor'].includes(String(user?.role || '').toLowerCase());
 export const isProjectScopedSystemUser = (user = {}) => CONFIGURABLE_SYSTEM_ROLES.includes(String(user?.role || '').toLowerCase());
 
 const loadProjectScopeIdentity = async (connection, userId, { forUpdate = false } = {}) => {
@@ -26,7 +27,7 @@ export const getUserProjectAccess = async (user, connection = db) => {
 
   const identity = await loadProjectScopeIdentity(connection, user.id);
   if (!identity || identity.status !== 'active') return { allProjects: false, projectIds: [] };
-  if (identity.role === 'super_admin') return { allProjects: true, projectIds: [] };
+  if (['super_admin', 'system_admin', 'auditor'].includes(identity.role)) return { allProjects: true, projectIds: [] };
   if (!CONFIGURABLE_SYSTEM_ROLES.includes(identity.role)) return { allProjects: false, projectIds: [] };
 
   if (Number(identity.all_projects_access || 0) === 1) {
@@ -77,7 +78,7 @@ export const replaceUserProjectAccess = async (connection, {
 
   await connection.query('DELETE FROM user_project_access WHERE user_id = ?', [id]);
 
-  if (identity.role === 'super_admin') {
+  if (['super_admin', 'system_admin', 'auditor'].includes(identity.role)) {
     await connection.query('UPDATE users SET all_projects_access = 1 WHERE id = ?', [id]);
     return { allProjects: true, projectIds: [] };
   }
@@ -137,7 +138,7 @@ export const hydrateUserProjectAccess = async (rows = [], connection = db) => {
     byUser.get(Number(project.user_id)).push({ id: Number(project.id), name: project.name, slug: project.slug });
   }
   return rows.map((row) => {
-    const allProjects = row.role === 'super_admin' || Number(row.all_projects_access ?? row.admin_all_projects ?? 0) === 1;
+    const allProjects = hasForcedAllProjectsAccess(row) || Number(row.all_projects_access ?? row.admin_all_projects ?? 0) === 1;
     const projects = allProjects ? [] : (byUser.get(Number(row.id)) || []);
     return {
       ...row,
@@ -153,7 +154,7 @@ export const hydrateUserProjectAccess = async (rows = [], connection = db) => {
 };
 
 export const describeUserProjectAccess = (row = {}) => {
-  if (row.role === 'super_admin' || row.all_projects_access === true || Number(row.all_projects_access || row.admin_all_projects || 0) === 1) return 'All Projects';
+  if (hasForcedAllProjectsAccess(row) || row.all_projects_access === true || Number(row.all_projects_access || row.admin_all_projects || 0) === 1) return 'All Projects';
   const projects = row.projects || row.admin_projects || [];
   return projects.map((project) => project.name).filter(Boolean).join(', ') || 'No Projects';
 };
@@ -163,7 +164,7 @@ export const grantProjectAccessToUser = async (connection, userId, projectId, ch
   const pid = Number(projectId || 0);
   if (!uid || !pid) return;
   const identity = await loadProjectScopeIdentity(connection, uid);
-  if (!identity || !CONFIGURABLE_SYSTEM_ROLES.includes(identity.role) || Number(identity.all_projects_access || 0) === 1) return;
+  if (!identity || !CONFIGURABLE_SYSTEM_ROLES.includes(identity.role) || hasForcedAllProjectsAccess(identity) || Number(identity.all_projects_access || 0) === 1) return;
   await connection.query(
     `INSERT INTO user_project_access (user_id, lot_project_id, created_by_user_id)
      VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE created_by_user_id = VALUES(created_by_user_id)`,

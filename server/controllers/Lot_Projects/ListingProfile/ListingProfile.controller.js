@@ -1,3 +1,4 @@
+import bcrypt from 'bcrypt';
 import crypto from 'node:crypto';
 
 import {
@@ -91,6 +92,9 @@ import {
   resetBuyerFormsForAvailable,
   revokeOpenBuyerFormLinks,
 } from '../BuyerForms/buyerForm.shared.js';
+import { createProtectedChangeRequest, consumeProtectedChange } from '../../../services/protectedChange.service.js';
+import { assertEntityNotReviewLocked, createOperationalReview } from '../../../services/operationalReview.service.js';
+import { getPendingAuditCorrectionCase, advanceAuditCaseToRecheck } from '../../../services/auditCaseAuthorization.service.js';
 
 const getColumnDefinition = async (connection, tableName, columnName) => {
   const [rows] = await connection.query(
@@ -1115,12 +1119,7 @@ export const requestLotProjectListingCommissionAdjustmentCode = async (req, res)
   const connection = await db.getConnection();
   try {
     const actor = req.authUser || await getAuthenticatedUser(req);
-    if (!actor?.id || !actor.email) {
-      return res.status(400).json({ message: 'The Super Admin account must have an email address.' });
-    }
-    if (!(await tableExists(connection, 'destructive_action_verifications'))) {
-      return res.status(500).json({ message: 'Sensitive-action verification table is missing. Apply the latest database schema first.' });
-    }
+    if (!actor?.id) return res.status(401).json({ message: 'Authentication is required.' });
 
     await connection.beginTransaction();
     const context = await loadCommissionAdjustmentContext(connection, req, { lock: true });
@@ -1139,67 +1138,75 @@ export const requestLotProjectListingCommissionAdjustmentCode = async (req, res)
       reason,
       userId: actor.id,
     });
-    const payloadHash = hashCommissionAdjustmentPayload(payload);
-    const code = String(crypto.randomInt(100000, 1000000));
+    const entityId = Number(context.listing.lot_project_account_id);
+    await assertEntityNotReviewLocked(connection, { entityType: 'lot_project_commission_account', entityId });
 
-    await connection.query(
-      `UPDATE destructive_action_verifications
-       SET status = 'expired'
-       WHERE user_id = ? AND action_type = ? AND status = 'pending'`,
-      [actor.id, COMMISSION_ADJUSTMENT_ACTION]
-    );
-    const [insertResult] = await connection.query(
-      `
-        INSERT INTO destructive_action_verifications (
-          user_id, action_type, entity_type, entity_id, code_hash, payload_hash, reason,
-          attempt_count, max_attempts, expires_at, status, request_ip
-        ) VALUES (?, ?, 'lot_project_account', ?, ?, ?, ?, 0, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE), 'pending', ?)
-      `,
-      [
-        actor.id,
-        COMMISSION_ADJUSTMENT_ACTION,
-        String(context.listing.lot_project_account_id),
-        hashCommissionAdjustmentCode(code),
-        payloadHash,
-        reason,
-        COMMISSION_ADJUSTMENT_CODE_MAX_ATTEMPTS,
-        COMMISSION_ADJUSTMENT_CODE_EXPIRY_MINUTES,
-        commissionAdjustmentRequestIp(req),
-      ]
-    );
+    if (actor.role === 'system_admin') {
+      const auditCase = await getPendingAuditCorrectionCase(connection, {
+        auditCaseId: req.body?.auditCaseId || req.body?.audit_case_id,
+        entityType: 'lot_project_commission_account',
+        entityId,
+      });
+      if (!auditCase) throw Object.assign(new Error('A valid Auditor-approved case is required for a System Admin commission correction.'), { statusCode: 409, code: 'AUDIT_CASE_REQUIRED' });
+      await connection.commit();
+      return res.json({ success: true, message: `${auditCase.case_number} authorizes this controlled System Admin commission correction.`, data: { status: 'approved', directCorrection: true, authorizationType: 'audit_case', auditCaseId: auditCase.audit_case_id, caseNumber: auditCase.case_number, before: context.currentRows, after: getAdjustedCommissionPreview(context, adjustment) } });
+    }
 
-    await sendCommissionAdjustmentCodeEmail({
-      to: actor.email,
-      name: getUserFullName(actor),
-      code,
-      unitId: context.listing.lot_project_listing_unit_id,
-      accountReference: context.listing.account_reference,
-      groupRate: adjustment.groupRate,
-      allocatedRate: adjustment.allocatedRate,
+    if (actor.role === 'accounting_head') {
+      await connection.commit();
+      return res.json({ success: true, message: 'Accounting Head may apply this exact commission adjustment directly. It will be sent to the Auditor after saving.', data: { status: 'approved', directHeadApproval: true, authorizationType: 'department_head', before: context.currentRows, after: getAdjustedCommissionPreview(context, adjustment) } });
+    }
+
+    if (actor.role === 'super_admin') {
+      const password = String(req.body?.password || '');
+      if (!password) throw Object.assign(new Error('Super Admin password is required for emergency verification.'), { statusCode: 400 });
+      if (!actor.password_hash || !(await bcrypt.compare(password, actor.password_hash))) throw Object.assign(new Error('Super Admin password is incorrect.'), { statusCode: 401 });
+      if (!actor.email) throw Object.assign(new Error('The Super Admin account must have an email address.'), { statusCode: 400 });
+      if (!(await tableExists(connection, 'destructive_action_verifications'))) throw Object.assign(new Error('Sensitive-action verification table is missing. Apply the latest database schema first.'), { statusCode: 500 });
+      const payloadHash = hashCommissionAdjustmentPayload(payload);
+      const code = String(crypto.randomInt(100000, 1000000));
+      await connection.query(`UPDATE destructive_action_verifications SET status='expired' WHERE user_id=? AND action_type=? AND status='pending'`, [actor.id, COMMISSION_ADJUSTMENT_ACTION]);
+      const [insertResult] = await connection.query(
+        `INSERT INTO destructive_action_verifications (user_id,action_type,entity_type,entity_id,code_hash,payload_hash,reason,attempt_count,max_attempts,expires_at,status,request_ip)
+         VALUES (?,?,'lot_project_account',?,?,?,?,0,?,DATE_ADD(NOW(), INTERVAL ? MINUTE),'pending',?)`,
+        [actor.id, COMMISSION_ADJUSTMENT_ACTION, String(entityId), hashCommissionAdjustmentCode(code), payloadHash, reason, COMMISSION_ADJUSTMENT_CODE_MAX_ATTEMPTS, COMMISSION_ADJUSTMENT_CODE_EXPIRY_MINUTES, commissionAdjustmentRequestIp(req)]
+      );
+      await sendCommissionAdjustmentCodeEmail({
+        to: actor.email, name: getUserFullName(actor), code,
+        unitId: context.listing.lot_project_listing_unit_id,
+        accountReference: context.listing.account_reference,
+        groupRate: adjustment.groupRate, allocatedRate: adjustment.allocatedRate, reason,
+      });
+      await connection.commit();
+      return res.json({ success: true, message: `Emergency verification code sent to ${maskCommissionAdjustmentEmail(actor.email)}.`, data: { verificationId: Number(insertResult.insertId), maskedEmail: maskCommissionAdjustmentEmail(actor.email), expiresInMinutes: COMMISSION_ADJUSTMENT_CODE_EXPIRY_MINUTES, emergency: true, before: context.currentRows, after: getAdjustedCommissionPreview(context, adjustment) } });
+    }
+
+    const approval = await createProtectedChangeRequest(connection, {
+      actor,
+      actionKey: 'commission.adjust_unit',
+      department: 'accounting',
+      projectId: context.project.lot_project_id,
+      entityType: 'lot_project_commission_account',
+      entityId,
+      entityLabel: `Unit ${context.listing.lot_project_listing_unit_id} — ${context.project.lot_project_name}`,
+      payload,
       reason,
     });
-
+    await writeAuditLog(connection, req, {
+      action: 'create', module: 'Review Center', entityType: 'protected_change_request', entityId: String(approval.requestId || entityId),
+      entityLabel: approval.requestNumber || context.listing.account_reference || String(entityId), title: 'Requested Accounting Head approval',
+      description: `Requested Head approval to adjust the saved unit commission for ${context.listing.lot_project_listing_unit_id}.`,
+      metadata: { approval, accountId: entityId, groupRate: adjustment.groupRate, rates: adjustment.rates },
+    });
     await connection.commit();
     return res.json({
       success: true,
-      message: `A verification code was sent to ${maskCommissionAdjustmentEmail(actor.email)}.`,
-      data: {
-        verificationId: Number(insertResult.insertId),
-        maskedEmail: maskCommissionAdjustmentEmail(actor.email),
-        expiresInMinutes: COMMISSION_ADJUSTMENT_CODE_EXPIRY_MINUTES,
-        unitId: context.listing.lot_project_listing_unit_id,
-        accountReference: context.listing.account_reference,
-        commissionBase: context.commissionBase,
-        groupRate: adjustment.groupRate,
-        allocatedRate: adjustment.allocatedRate,
-        unallocatedRate: adjustment.unallocatedRate,
-        before: context.currentRows,
-        after: getAdjustedCommissionPreview(context, adjustment),
-      },
+      message: approval.status === 'approved' ? 'Accounting Head approval is already available.' : 'Approval request sent to the Accounting Head. Apply the exact adjustment after it is approved.',
+      data: { status: approval.status, approvalRequestId: approval.requestId, requestNumber: approval.requestNumber, expiresAt: approval.expiresAt, before: context.currentRows, after: getAdjustedCommissionPreview(context, adjustment) },
     });
   } catch (error) {
     try { await connection.rollback(); } catch {}
-    return res.status(Number(error?.statusCode || 0) || 400).json({ message: getErrorMessage(error) });
+    return res.status(Number(error?.statusCode || 0) || 400).json({ code: error?.code, message: getErrorMessage(error) });
   } finally {
     connection.release();
   }
@@ -1209,10 +1216,7 @@ export const adjustLotProjectListingCommission = async (req, res) => {
   const connection = await db.getConnection();
   try {
     const actor = req.authUser || await getAuthenticatedUser(req);
-    const verificationId = Number(req.body?.verificationId || 0);
-    const code = cleanCommissionAdjustmentValue(req.body?.code);
-    if (!verificationId) return res.status(400).json({ message: 'Verification request is required.' });
-    if (!/^\d{6}$/.test(code)) return res.status(400).json({ message: 'Enter the six-digit email verification code.' });
+    if (!actor?.id) return res.status(401).json({ message: 'Authentication is required.' });
 
     await connection.beginTransaction();
     const context = await loadCommissionAdjustmentContext(connection, req, { lock: true });
@@ -1228,59 +1232,71 @@ export const adjustLotProjectListingCommission = async (req, res) => {
       groupRate: adjustment.groupRate,
       rates: adjustment.rates,
       reason,
-      userId: actor?.id,
+      userId: actor.id,
     });
-    const expectedPayloadHash = hashCommissionAdjustmentPayload(payload);
+    const entityId = Number(context.listing.lot_project_account_id);
+    let authorization = null;
+    let allowReviewId = null;
 
-    const [verificationRows] = await connection.query(
-      `SELECT *, expires_at < NOW() AS is_expired
-       FROM destructive_action_verifications
-       WHERE destructive_action_verification_id = ?
-         AND user_id = ?
-         AND action_type = ?
-         AND entity_type = 'lot_project_account'
-         AND entity_id = ?
-       LIMIT 1
-       FOR UPDATE`,
-      [verificationId, actor?.id || 0, COMMISSION_ADJUSTMENT_ACTION, String(context.listing.lot_project_account_id)]
-    );
-    const verification = verificationRows[0];
-    if (!verification || verification.status !== 'pending') {
-      await connection.rollback();
-      return res.status(400).json({ message: 'Verification request is no longer active.' });
-    }
-    if (Number(verification.is_expired || 0) === 1) {
-      await connection.query(
-        `UPDATE destructive_action_verifications SET status = 'expired' WHERE destructive_action_verification_id = ?`,
-        [verificationId]
-      );
-      await connection.commit();
-      return res.status(400).json({ message: 'This verification code has expired. Request a new code.' });
-    }
-    if (cleanCommissionAdjustmentValue(verification.payload_hash) !== expectedPayloadHash) {
-      await connection.query(
-        `UPDATE destructive_action_verifications SET status = 'expired' WHERE destructive_action_verification_id = ?`,
-        [verificationId]
-      );
-      await connection.commit();
-      return res.status(409).json({ message: 'The proposed commission changed after verification. Review the rates and request a new code.' });
-    }
-
-    const attemptCount = Number(verification.attempt_count || 0) + 1;
-    if (!commissionAdjustmentCodeMatches(code, verification.code_hash)) {
-      const status = attemptCount >= Number(verification.max_attempts || COMMISSION_ADJUSTMENT_CODE_MAX_ATTEMPTS)
-        ? 'locked'
-        : 'pending';
-      await connection.query(
-        `UPDATE destructive_action_verifications SET attempt_count = ?, status = ? WHERE destructive_action_verification_id = ?`,
-        [attemptCount, status, verificationId]
-      );
-      await connection.commit();
-      return res.status(status === 'locked' ? 429 : 401).json({
-        message: status === 'locked'
-          ? 'Too many incorrect codes. Request a new verification code.'
-          : 'Verification code is incorrect.',
+    if (actor.role === 'system_admin') {
+      const auditCase = await getPendingAuditCorrectionCase(connection, {
+        auditCaseId: req.body?.auditCaseId || req.body?.audit_case_id,
+        entityType: 'lot_project_commission_account',
+        entityId,
       });
+      if (!auditCase) throw Object.assign(new Error('A valid Auditor-approved case is required for a System Admin commission correction.'), { statusCode: 409, code: 'AUDIT_CASE_REQUIRED' });
+      authorization = { type: 'audit_case', auditCase };
+      allowReviewId = auditCase.operational_review_id;
+    }
+    await assertEntityNotReviewLocked(connection, { entityType: 'lot_project_commission_account', entityId, allowReviewId });
+
+    if (!authorization && actor.role === 'accounting_head') {
+      authorization = { type: 'department_head', headPreApprovedByUserId: actor.id };
+    }
+    if (!authorization && actor.role === 'super_admin') {
+      const verificationId = Number(req.body?.verificationId || 0);
+      const code = cleanCommissionAdjustmentValue(req.body?.code);
+      if (!verificationId) return res.status(400).json({ message: 'Emergency verification request is required.' });
+      if (!/^\d{6}$/.test(code)) return res.status(400).json({ message: 'Enter the six-digit email verification code.' });
+      const expectedPayloadHash = hashCommissionAdjustmentPayload(payload);
+      const [verificationRows] = await connection.query(
+        `SELECT *, expires_at < NOW() AS is_expired FROM destructive_action_verifications
+         WHERE destructive_action_verification_id=? AND user_id=? AND action_type=? AND entity_type='lot_project_account' AND entity_id=? LIMIT 1 FOR UPDATE`,
+        [verificationId, actor.id, COMMISSION_ADJUSTMENT_ACTION, String(entityId)]
+      );
+      const verification = verificationRows[0];
+      if (!verification || verification.status !== 'pending') throw Object.assign(new Error('Verification request is no longer active.'), { statusCode: 400 });
+      if (Number(verification.is_expired || 0) === 1) {
+        await connection.query(`UPDATE destructive_action_verifications SET status='expired' WHERE destructive_action_verification_id=?`, [verificationId]);
+        await connection.commit();
+        return res.status(400).json({ message: 'This verification code has expired. Request a new code.' });
+      }
+      if (cleanCommissionAdjustmentValue(verification.payload_hash) !== expectedPayloadHash) {
+        await connection.query(`UPDATE destructive_action_verifications SET status='expired' WHERE destructive_action_verification_id=?`, [verificationId]);
+        await connection.commit();
+        return res.status(409).json({ message: 'The proposed commission changed after verification. Review the rates and request a new code.' });
+      }
+      const attemptCount = Number(verification.attempt_count || 0) + 1;
+      if (!commissionAdjustmentCodeMatches(code, verification.code_hash)) {
+        const status = attemptCount >= Number(verification.max_attempts || COMMISSION_ADJUSTMENT_CODE_MAX_ATTEMPTS) ? 'locked' : 'pending';
+        await connection.query(`UPDATE destructive_action_verifications SET attempt_count=?, status=? WHERE destructive_action_verification_id=?`, [attemptCount, status, verificationId]);
+        await connection.commit();
+        return res.status(status === 'locked' ? 429 : 401).json({ message: status === 'locked' ? 'Too many incorrect codes. Request a new verification code.' : 'Verification code is incorrect.' });
+      }
+      authorization = { type: 'emergency_super_admin', verificationId, attemptCount, headPreApprovedByUserId: actor.id };
+    }
+    if (!authorization) {
+      const approvalRequestId = Number(req.body?.approvalRequestId || req.body?.approval_request_id || 0);
+      if (!approvalRequestId) throw Object.assign(new Error('Accounting Head approval is required before this commission adjustment can be applied.'), { statusCode: 409, code: 'HEAD_APPROVAL_REQUIRED' });
+      const approval = await consumeProtectedChange(connection, {
+        requestId: approvalRequestId,
+        actor,
+        actionKey: 'commission.adjust_unit',
+        entityType: 'lot_project_commission_account',
+        entityId,
+        payload,
+      });
+      authorization = { type: 'head_approval', approvalRequestId, headPreApprovedByUserId: approval.reviewed_by_head_user_id };
     }
 
     const rateByCommission = new Map(adjustment.rates.map((row) => [row.commissionId, row.rate]));
@@ -1359,12 +1375,14 @@ export const adjustLotProjectListingCommission = async (req, res) => {
       throw Object.assign(new Error('Adjusted commission did not reconcile to the designated Unit Network Distribution Rate. No changes were saved.'), { statusCode: 409 });
     }
 
-    await connection.query(
-      `UPDATE destructive_action_verifications
-       SET status = 'used', attempt_count = ?, verified_at = NOW(), used_at = NOW()
-       WHERE destructive_action_verification_id = ?`,
-      [attemptCount, verificationId]
-    );
+    if (authorization.type === 'emergency_super_admin') {
+      await connection.query(
+        `UPDATE destructive_action_verifications
+         SET status = 'used', attempt_count = ?, verified_at = NOW(), used_at = NOW()
+         WHERE destructive_action_verification_id = ?`,
+        [authorization.attemptCount, authorization.verificationId]
+      );
+    }
 
     await writeAuditLog(connection, req, {
       action: 'update',
@@ -1384,13 +1402,39 @@ export const adjustLotProjectListingCommission = async (req, res) => {
         allocatedRate: adjustment.allocatedRate,
         unallocatedRate: 0,
         adjustmentReason: reason,
-        verificationId,
-        emailVerification: 'verified',
+        verificationId: authorization.verificationId || null,
+        authorizationType: authorization.type,
+        emailVerification: authorization.type === 'emergency_super_admin' ? 'verified' : null,
         groupSettingsModified: false,
         before: context.currentRows,
         after: updatedRows,
       },
     });
+
+    let workflow = null;
+    if (authorization.type === 'audit_case') {
+      workflow = await advanceAuditCaseToRecheck(connection, {
+        auditCase: authorization.auditCase,
+        actor,
+        correctionSummary: `Adjusted commission for ${context.listing.lot_project_listing_unit_id}: ${reason}`,
+        afterSnapshot: { projectSlug: req.params.projectSlug, listingId: context.listing.lot_project_listing_id, accountId: entityId, groupRate: adjustment.groupRate, hierarchy: updatedRows },
+        metadata: { accountId: entityId, listingId: context.listing.lot_project_listing_id },
+        notificationTitle: `Commission correction needs Auditor recheck · ${authorization.auditCase.case_number}`,
+      });
+    } else {
+      workflow = await createOperationalReview(connection, {
+        actor,
+        actionKey: 'commission.adjust_unit',
+        department: 'accounting',
+        projectId: context.project.lot_project_id,
+        entityType: 'lot_project_commission_account',
+        entityId,
+        entityLabel: `Unit ${context.listing.lot_project_listing_unit_id} — ${context.project.lot_project_name}`,
+        beforeSnapshot: { projectSlug: req.params.projectSlug, listingId: context.listing.lot_project_listing_id, accountId: entityId, groupRate: Number(context.currentRows.reduce((sum,row)=>sum+Number(row.rate||0),0).toFixed(4)), hierarchy: context.currentRows },
+        afterSnapshot: { projectSlug: req.params.projectSlug, listingId: context.listing.lot_project_listing_id, accountId: entityId, groupRate: adjustment.groupRate, hierarchy: updatedRows },
+        headPreApprovedByUserId: authorization.headPreApprovedByUserId || null,
+      });
+    }
 
     await connection.commit();
     return res.json({
@@ -1404,6 +1448,7 @@ export const adjustLotProjectListingCommission = async (req, res) => {
         unallocatedRate: 0,
         previousHierarchy: context.currentRows,
         updatedHierarchy: updatedRows,
+        workflow,
         commissionAdjustment: {
           ...buildCommissionAdjustmentState({
             listingStatus: context.listing.lot_project_listing_status,

@@ -42,7 +42,7 @@ test('underallocated unit commission can exist while editing but is invalid to s
         { commissionId: 14, rate: 1 },
       ],
     }),
-    /Allocate the remaining 1\.00%/i
+    /Allocate the remaining 1\.0000%/i
   );
 });
 
@@ -58,7 +58,7 @@ test('overallocated unit commission is invalid to save', () => {
         { commissionId: 14, rate: 1 },
       ],
     }),
-    /exceeds the 8\.00% Unit Network Distribution Rate by 1\.00%/i
+    /exceeds the 8\.0000% Unit Network Distribution Rate by 1\.0000%/i
   );
 });
 
@@ -74,7 +74,7 @@ test('an individual role cannot exceed the editable Unit Network Distribution Ra
         { commissionId: 14, rate: 1 },
       ],
     }),
-    /Sales Agent rate cannot be greater than the 8\.00% Unit Network Distribution Rate/i
+    /Sales Agent rate cannot be greater than the 8\.0000% Unit Network Distribution Rate/i
   );
 });
 

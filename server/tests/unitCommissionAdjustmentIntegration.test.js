@@ -4,16 +4,19 @@ import { readFileSync } from 'node:fs';
 
 const read = (relativePath) => readFileSync(new URL(relativePath, import.meta.url), 'utf8');
 
-test('unit commission adjustment uses exact Super Admin password + email-code verification', () => {
+test('unit commission adjustment uses Accounting Head approval, Auditor case correction, and Super Admin emergency fallback', () => {
   const router = read('../routers/System/projects.routers.js');
   const controller = read('../controllers/Lot_Projects/ListingProfile/ListingProfile.controller.js');
 
-  assert.match(router, /commission-adjustment-code'[\s\S]*requireExactRole\('super_admin'\)[\s\S]*requireCurrentPassword/);
-  assert.match(router, /adjust-commission'[\s\S]*requireExactRole\('super_admin'\)[\s\S]*adjustLotProjectListingCommission/);
-  assert.match(controller, /crypto\.randomInt\(100000, 1000000\)/);
-  assert.match(controller, /COMMISSION_ADJUSTMENT_ACTION = 'lot_project_commission_adjustment'/);
-  assert.match(controller, /payload_hash/);
-  assert.match(controller, /timingSafeEqual/);
+  assert.match(router, /commission-adjustment-code'[\s\S]*LOT_COMMISSIONS_ADJUST/);
+  assert.doesNotMatch(router, /commission-adjustment-code'[^\n]*requireExactRole/);
+  assert.match(controller, /createProtectedChangeRequest/);
+  assert.match(controller, /department: 'accounting'/);
+  assert.match(controller, /accounting_head/);
+  assert.match(controller, /system_admin/);
+  assert.match(controller, /emergency_super_admin/);
+  assert.match(controller, /createProtectedChangeRequest/);
+  assert.match(controller, /getPendingAuditCorrectionCase/);
 });
 
 test('adjustment edits the saved commission snapshot in place instead of deleting and rebuilding it', () => {
@@ -36,13 +39,14 @@ test('legacy recalculation rows with a missing account id remain visible and are
   assert.match(controller, /lot_project_account_id = \?,[\s\S]*updated_at = NOW\(\)/);
 });
 
-test('client requires exact allocation before email verification can be requested', () => {
+test('client requires exact allocation before governed commission authorization can proceed', () => {
   const modal = read('../../client/src/components/Lot_Projects/ListingProfileComponents/UnitStatus/RecalculateCommissionModal.jsx');
   assert.match(modal, /Unit Network Distribution Rate/);
   assert.match(modal, /Allocated/);
   assert.match(modal, /Unallocated \/ Over/);
   assert.match(modal, /Unallocated must be 0\.0000%/);
   assert.match(modal, /rate cannot be greater than the Unit Network Distribution Rate/);
-  assert.match(modal, /Verify Password & Send Code/);
-  assert.match(modal, /Email Verification Code/);
+  assert.match(modal, /Accounting Head Approval|Head Approval/);
+  assert.match(modal, /Auditor Case|auditCase/);
+  assert.match(modal, /Emergency|Super Admin/);
 });

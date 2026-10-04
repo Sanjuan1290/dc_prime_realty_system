@@ -33,7 +33,7 @@ test('Admin is permission-backed and generalized project access replaces legacy 
   assert.match(migration, /INSERT IGNORE INTO user_project_access[\s\S]*FROM admin_project_access/);
 });
 
-test('owner-only operations remain Super Admin-only while delegated payment corrections retain password plus email verification', () => {
+test('owner-only operations remain Super Admin-only while routine protected corrections use governed department workflows', () => {
   const router = read('server/routers/System/projects.routers.js');
   const settingsRouter = read('server/routers/System/systemSettings.routers.js');
   const middleware = read('server/middleware/auth.middleware.js');
@@ -42,11 +42,14 @@ test('owner-only operations remain Super Admin-only while delegated payment corr
 
   assert.match(middleware, /export const requireExactRole/);
   assert.match(router, /purge-preview'[\s\S]*requireExactRole\('super_admin'\)/);
-  assert.match(router, /commission-adjustment-code'[\s\S]*requireExactRole\('super_admin'\)/);
-  assert.match(router, /reservation-correction\/code'[\s\S]*requireExactRole\('super_admin'\)/);
+  assert.match(router, /commission-adjustment-code'[\s\S]*LOT_COMMISSIONS_ADJUST/);
+  assert.doesNotMatch(router, /commission-adjustment-code'[^\n]*requireExactRole/);
+  assert.match(router, /reservation-correction\/code'[\s\S]*LOT_RESERVATION_CORRECT/);
+  assert.doesNotMatch(router, /reservation-correction\/code'[^\n]*requireExactRole/);
   assert.match(settingsRouter, /\/code'[\s\S]*requireExactRole\('super_admin'\)[\s\S]*requireCurrentPassword/);
 
-  assert.match(router, /payments\/:paymentId\/correction-code'[\s\S]*requirePaymentCorrectionPermission[\s\S]*requireCurrentPassword/);
+  assert.match(router, /payments\/:paymentId\/correction-code'[\s\S]*requirePaymentCorrectionPermission/);
+  assert.doesNotMatch(router, /payments\/:paymentId\/correction-code'[^\n]*requireExactRole/);
   assert.doesNotMatch(router, /payments\/:paymentId\/correction-code'[^\n]*requireExactRole/);
   assert.match(paymentController, /verifyAndConsumeSensitiveAction/);
   assert.match(payments, /You do not have permission to edit recorded payments/);
@@ -59,7 +62,7 @@ test('Admin dashboard ranges now match delegated operational capability', () => 
   const lotDashboard = read('client/src/pages/Lot_Projects/Reports.jsx');
 
   assert.doesNotMatch(controller, /Admin 1 dashboard reports are limited to 12 months/);
-  assert.match(controller, /\['super_admin', 'admin'\]\.includes\(actor\.role\) && isOverOneYear/);
+  assert.match(controller, /\['super_admin', 'system_admin'\]\.includes\(actor\.role\) && isOverOneYear/);
   assert.doesNotMatch(systemReports, /adminRangeBlocked/);
   assert.doesNotMatch(lotDashboard, /adminRangeBlocked/);
   assert.match(systemReports, /administratorNeedsConfirmation/);

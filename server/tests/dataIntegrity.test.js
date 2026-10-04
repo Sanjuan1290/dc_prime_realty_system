@@ -20,7 +20,7 @@ test('Data Integrity stays hidden from navigation and opens only through the PIN
   const listingProfile = read('client/src/pages/Lot_Projects/ListingProfile.jsx');
 
   assert.match(router, /router\.use\(authenticateUser\)/);
-  assert.match(router, /router\.use\(requireRole\('admin', 'super_admin'\)\)/);
+  assert.match(router, /router\.use\(requirePermission\(PERMISSIONS\.SYSTEM_DATA_INTEGRITY_VIEW\)\)/);
   assert.match(router, /router\.get\('\/access-session', getDataIntegrityAccessStatus\)/);
   assert.match(router, /router\.post\('\/unlock', unlockDataIntegrity\)/);
   assert.match(router, /router\.post\('\/lock', lockDataIntegrity\)/);

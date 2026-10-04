@@ -28,6 +28,8 @@ const RecalculateCommissionModal = ({
   commissionState = {},
   isRequestingCode = false,
   isSaving = false,
+  actorRole = '',
+  auditCaseId = null,
   onClose,
   onRequestCode,
   onConfirm,
@@ -55,6 +57,15 @@ const RecalculateCommissionModal = ({
   const unitId = listing?.unit_id || listing?.unitCode || '-'
   const isAllowed = Boolean(commissionState.allowed)
   const busy = isRequestingCode || isSaving
+  const isSuperAdmin = actorRole === 'super_admin'
+  const isAccountingHead = actorRole === 'accounting_head'
+  const isSystemAdminAuditCorrection = actorRole === 'system_admin' && Number(auditCaseId || 0) > 0
+  const authorizationReady = Boolean(
+    requestData?.directCorrection
+    || requestData?.directHeadApproval
+    || requestData?.status === 'approved'
+    || (isSuperAdmin && requestData?.verificationId)
+  )
   const numericGroupRate = Number(groupRate)
   const proposalRows = useMemo(() => currentHierarchy.map((row) => {
     const rate = Number(rates[String(row.commissionId)] || 0)
@@ -95,30 +106,40 @@ const RecalculateCommissionModal = ({
   const requestCode = async (event) => {
     event.preventDefault()
     if (validationMessage) return setNotice({ type: 'warning', message: validationMessage })
-    if (!password) return setNotice({ type: 'warning', message: 'Enter the current Super Admin password.' })
+    if (isSuperAdmin && !password) return setNotice({ type: 'warning', message: 'Enter the Super Admin password for emergency fallback.' })
+    if (actorRole === 'system_admin' && !Number(auditCaseId || 0)) return setNotice({ type: 'warning', message: 'Open this correction from a valid Auditor case.' })
 
-    setNotice({ type: 'loading', message: 'Verifying password and sending the email verification code...' })
+    setNotice({ type: 'loading', message: isSuperAdmin ? 'Verifying emergency owner credentials...' : 'Checking governed commission authorization...' })
     try {
-      const result = await onRequestCode?.({ ...adjustmentPayload(), password })
+      const result = await onRequestCode?.({
+        ...adjustmentPayload(),
+        password: isSuperAdmin ? password : undefined,
+        auditCaseId: isSystemAdminAuditCorrection ? Number(auditCaseId) : undefined,
+      })
       setRequestData(result?.data || null)
       setPassword('')
-      setNotice({ type: 'success', message: result?.message || 'Verification code sent.' })
+      setCode('')
+      setNotice({ type: result?.data?.status === 'pending' ? 'info' : 'success', message: result?.message || 'Authorization checked.' })
     } catch (error) {
-      setNotice({ type: 'error', message: error?.message || 'Failed to request the verification code.' })
+      setNotice({ type: 'error', message: error?.message || 'Failed to request commission authorization.' })
     }
   }
 
+
   const confirmAdjustment = async (event) => {
     event.preventDefault()
-    if (!/^\d{6}$/.test(code)) return setNotice({ type: 'warning', message: 'Enter the six-digit email verification code.' })
+    if (!authorizationReady) return setNotice({ type: 'warning', message: 'Department Head or Audit Case authorization is still required.' })
+    if (isSuperAdmin && !/^\d{6}$/.test(code)) return setNotice({ type: 'warning', message: 'Enter the six-digit emergency email verification code.' })
     if (!confirmed) return setNotice({ type: 'warning', message: 'Confirm that you reviewed the final commission distribution.' })
 
     setNotice({ type: 'loading', message: `Applying the unit commission adjustment for ${unitId}...` })
     try {
       await onConfirm?.({
         ...adjustmentPayload(),
-        verificationId: requestData?.verificationId,
-        code,
+        verificationId: isSuperAdmin ? requestData?.verificationId : undefined,
+        code: isSuperAdmin ? code : undefined,
+        approvalRequestId: !['super_admin','accounting_head','system_admin'].includes(actorRole) ? requestData?.approvalRequestId : undefined,
+        auditCaseId: isSystemAdminAuditCorrection ? Number(auditCaseId) : undefined,
       })
       onClose?.()
     } catch (error) {
@@ -126,10 +147,11 @@ const RecalculateCommissionModal = ({
     }
   }
 
+
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/55 p-3 backdrop-blur-sm sm:p-5">
       <form
-        onSubmit={requestData ? confirmAdjustment : requestCode}
+        onSubmit={authorizationReady ? confirmAdjustment : requestCode}
         className="flex max-h-[94vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl"
       >
         <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-6">
@@ -236,49 +258,49 @@ const RecalculateCommissionModal = ({
                 <div className="flex items-start gap-3">
                   <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-blue-700 shadow-sm"><FiLock className="h-4 w-4" /></span>
                   <div className="min-w-0 flex-1">
-                    <label htmlFor="commission-adjustment-password" className="block text-sm font-black text-slate-900">Super Admin Password <span className="text-red-500">*</span></label>
-                    <p className="mt-1 text-xs font-semibold text-slate-600">Password verification is required before the six-digit email code is sent.</p>
-                    <div className="relative mt-3">
-                      <input id="commission-adjustment-password" type={showPassword ? 'text' : 'password'} value={password} onChange={(event) => { setPassword(event.target.value); setNotice(null) }} disabled={busy} autoComplete="current-password" placeholder="Enter Super Admin password" className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 pr-12 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-100" />
-                      <button type="button" onClick={() => setShowPassword((current) => !current)} disabled={busy} className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-slate-500" aria-label={showPassword ? 'Hide password' : 'Show password'}>{showPassword ? <FiEyeOff /> : <FiEye />}</button>
-                    </div>
+                    <p className="text-sm font-black text-slate-900">Governed authorization</p>
+                    <p className="mt-1 text-xs font-semibold text-slate-600">
+                      {isSuperAdmin
+                        ? 'Super Admin is emergency fallback only and requires password + email verification.'
+                        : isSystemAdminAuditCorrection
+                          ? 'System Admin may apply only the correction authorized by the Auditor case.'
+                          : isAccountingHead
+                            ? 'Accounting Head changes skip self-approval and go to the Auditor after saving.'
+                            : 'Accounting Staff must obtain Accounting Head approval for this exact rate distribution.'}
+                    </p>
+                    {isSuperAdmin ? <div className="relative mt-3"><input id="commission-adjustment-password" type={showPassword ? 'text' : 'password'} value={password} onChange={(event) => { setPassword(event.target.value); setNotice(null) }} disabled={busy} autoComplete="current-password" placeholder="Emergency Super Admin password" className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 pr-12 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-100" /><button type="button" onClick={() => setShowPassword((current) => !current)} disabled={busy} className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-slate-500" aria-label={showPassword ? 'Hide password' : 'Show password'}>{showPassword ? <FiEyeOff /> : <FiEye />}</button></div> : null}
+                    {isSystemAdminAuditCorrection ? <p className="mt-3 rounded-xl border border-violet-200 bg-white px-3 py-2 text-xs font-black text-violet-800">Audit Case #{auditCaseId} will be validated against this exact commission record.</p> : null}
                   </div>
                 </div>
               </section>
             </>
           ) : (
             <>
-              <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm font-semibold text-blue-900">
-                <FiMail className="mr-2 inline" />A six-digit code was sent to <strong>{requestData.maskedEmail}</strong>. It expires in {requestData.expiresInMinutes} minutes. The verified rates are now locked; choose Start Over to edit them.
+              <div className={`rounded-2xl border p-4 text-sm font-semibold ${authorizationReady ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
+                {isSuperAdmin && requestData?.verificationId ? <><FiMail className="mr-2 inline" />Emergency code sent to <strong>{requestData.maskedEmail}</strong>. Enter it below to continue.</> : authorizationReady ? <><FiCheckCircle className="mr-2 inline" />Authorization is ready. Review the exact distribution one final time before applying it.</> : <>Approval request <strong>{requestData?.requestNumber || requestData?.approvalRequestId || ''}</strong> is pending with the Accounting Head. Use Check Head Approval after the Head reviews it.</>}
               </div>
 
               <CommissionDistribution
-                rows={requestData.after || proposalRows}
+                rows={requestData?.after || proposalRows}
                 title="Final Commission Distribution"
-                description={`Unit Network Distribution Rate ${Number(requestData.groupRate || numericGroupRate || 0).toFixed(4)}% · Allocated ${Number(requestData.allocatedRate || allocatedRate || 0).toFixed(4)}% · Unallocated 0.0000%`}
+                description={`Unit Network Distribution Rate ${Number(requestData?.groupRate || numericGroupRate || 0).toFixed(4)}% · Allocated ${Number(requestData?.allocatedRate || allocatedRate || 0).toFixed(4)}% · Unallocated 0.0000%`}
               />
 
-              <label className="block rounded-2xl border border-slate-200 p-4">
-                <span className="mb-1.5 flex items-center gap-2 text-sm font-black text-slate-700"><FiKey /> Email Verification Code *</span>
-                <input inputMode="numeric" maxLength={6} value={code} onChange={(event) => { setCode(event.target.value.replace(/\D/g, '').slice(0, 6)); setNotice(null) }} disabled={busy} placeholder="000000" className="h-14 w-full rounded-xl border border-slate-300 px-4 text-center font-mono text-2xl font-black tracking-[0.4em] outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-100" />
-              </label>
+              {isSuperAdmin && requestData?.verificationId ? <label className="block rounded-2xl border border-slate-200 p-4"><span className="mb-1.5 flex items-center gap-2 text-sm font-black text-slate-700"><FiKey /> Emergency Email Verification Code *</span><input inputMode="numeric" maxLength={6} value={code} onChange={(event) => { setCode(event.target.value.replace(/\D/g, '').slice(0, 6)); setNotice(null) }} disabled={busy} placeholder="000000" className="h-14 w-full rounded-xl border border-slate-300 px-4 text-center font-mono text-2xl font-black tracking-[0.4em] outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-100" /></label> : null}
 
-              <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4">
-                <input type="checkbox" checked={confirmed} onChange={(event) => { setConfirmed(event.target.checked); setNotice(null) }} disabled={busy} className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
-                <span><span className="block text-sm font-black text-slate-900">I reviewed the final rates and amounts for this buyer account.</span><span className="mt-1 block text-xs font-semibold text-slate-500">This does not change the In-House/External Network default rate. Existing released commission activity is never modified.</span></span>
-              </label>
+              {authorizationReady ? <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4"><input type="checkbox" checked={confirmed} onChange={(event) => { setConfirmed(event.target.checked); setNotice(null) }} disabled={busy} className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" /><span><span className="block text-sm font-black text-slate-900">I reviewed the final rates and amounts for this buyer account.</span><span className="mt-1 block text-xs font-semibold text-slate-500">This does not change Network defaults. The saved adjustment will be independently reviewed by the Auditor.</span></span></label> : null}
             </>
           )}
         </div>
 
         <footer className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
           <button type="button" onClick={requestData ? () => { setRequestData(null); setCode(''); setConfirmed(false); setNotice(null) } : onClose} disabled={busy} className="h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 disabled:opacity-50">{requestData ? 'Start Over' : 'Close'}</button>
-          {!requestData ? (
-            <button type="submit" disabled={busy || Boolean(validationMessage) || !password} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300">
-              {isRequestingCode ? <FiLoader className="animate-spin" /> : <FiMail />} {isRequestingCode ? 'Sending Code...' : 'Verify Password & Send Code'}
+          {!authorizationReady ? (
+            <button type="submit" disabled={busy || Boolean(validationMessage) || (isSuperAdmin && !password) || (actorRole === 'system_admin' && !Number(auditCaseId || 0))} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300">
+              {isRequestingCode ? <FiLoader className="animate-spin" /> : <FiLock />} {isRequestingCode ? 'Checking...' : isSuperAdmin ? 'Verify Password & Send Emergency Code' : isSystemAdminAuditCorrection ? 'Validate Audit Case' : isAccountingHead ? 'Continue as Accounting Head' : requestData?.status === 'pending' ? 'Check Head Approval' : 'Request Accounting Head Approval'}
             </button>
           ) : (
-            <button type="submit" disabled={busy || code.length !== 6 || !confirmed} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-700 px-5 text-sm font-black text-white transition hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-blue-300">
+            <button type="submit" disabled={busy || (isSuperAdmin && code.length !== 6) || !confirmed} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-700 px-5 text-sm font-black text-white transition hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-blue-300">
               {isSaving ? <FiLoader className="animate-spin" /> : <FiCheckCircle />} {isSaving ? 'Applying...' : 'Apply Unit Commission'}
             </button>
           )}

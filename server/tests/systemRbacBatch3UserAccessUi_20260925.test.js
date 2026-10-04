@@ -1,120 +1,98 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
+import { readFileSync } from 'node:fs';
 
-const read = (path) => fs.readFileSync(new URL(path, import.meta.url), 'utf8');
-
+const read = (relativePath) => readFileSync(new URL(relativePath, import.meta.url), 'utf8');
+const usersRouter = read('../routers/System/users.routers.js');
 const usersController = read('../controllers/System/users.controllers.js');
 const accessController = read('../controllers/System/accessControl.controller.js');
-const usersRouter = read('../routers/System/users.routers.js');
-const usersPage = read('../../client/src/pages/System/Users.jsx');
-const settingsPage = read('../../client/src/pages/System/Settings.jsx');
+const permissions = read('../config/permissions.js');
+const rolePolicies = read('../config/rolePolicies.js');
 const roleAccess = read('../../client/src/components/System/settingsComponents/RoleAccessControl.jsx');
-const createSystemUser = read('../../client/src/components/System/userComponents/CreateSystemUserModal.jsx');
-const editSystemUser = read('../../client/src/components/System/userComponents/EditSystemUserModal.jsx');
+const usersPage = read('../../client/src/pages/System/Users.jsx');
 const userAccess = read('../../client/src/components/System/userComponents/UserAccessModal.jsx');
 const permissionMatrix = read('../../client/src/components/System/userComponents/PermissionMatrix.jsx');
-const recommendedDefaults = read('../config/recommendedRolePermissions.js');
+const migration = read('../migrations/20261004_batch1_staff_head_auditor_rbac.sql');
 
-test('RBAC endpoints remain Super-Admin-only', () => {
-  for (const route of [
-    "router.get('/access-control/roles', authenticateUser, requireExactRole('super_admin')",
-    "router.put('/access-control/roles/:role', authenticateUser, requireExactRole('super_admin')",
-    "router.get('/access-control/users/:id', authenticateUser, requireExactRole('super_admin')",
-    "router.put('/access-control/users/:id', authenticateUser, requireExactRole('super_admin')",
-    "router.post('/access-control/users/:id/apply-role-defaults', authenticateUser, requireExactRole('super_admin')",
-  ]) assert.ok(usersRouter.includes(route), route);
-});
+const expectedRoles = [
+  'super_admin','system_admin','auditor',
+  'marketing_staff','marketing_head','sales_staff','sales_head',
+  'accounting_staff','accounting_head','operations_staff','operations_head',
+];
 
-test('internal system account creation is Super-Admin-only server-side', () => {
-  assert.match(usersController, /if \(systemUserRoles\.has\(role\)\) \{\s*if \(req\.authUser\?\.role !== 'super_admin'\)/);
-  assert.match(usersController, /SYSTEM_ACCESS_SUPER_ADMIN_ONLY/);
-  assert.match(usersController, /Only Super Admin can create internal system accounts/);
-});
-
-test('project-scope assignment helper rejects non-Super-Admin actors', () => {
-  assert.match(usersController, /Only Super Admin can assign project scope for internal system accounts/);
-  assert.match(usersController, /error\.statusCode = 403/);
-});
-
-test('system roles remain immutable in edit endpoint', () => {
-  assert.match(usersController, /SYSTEM_ROLE_IMMUTABLE/);
-  assert.match(usersController, /Use Change Position \/ Create New Account instead/);
-});
-
-test('System Users UI only offers Create System User to Super Admin', () => {
-  assert.match(usersPage, /isSuperAdmin && canCreate/);
-  assert.match(createSystemUser, /Only Super Admin can create internal system accounts/);
-});
-
-test('system user edit UI shows immutable role instead of editable role selector', () => {
-  assert.match(editSystemUser, /Role is locked after creation/);
-  assert.match(editSystemUser, /To change position, use Change Position \/ Create New Account/);
-  assert.doesNotMatch(editSystemUser, /<select[^>]*value=\{form\.role\}/);
-});
-
-test('Role & Access Settings uses a compact Super Admin card and expands the large editor on demand', () => {
-  assert.match(settingsPage, /Role & Access Control/);
-  assert.match(settingsPage, /Manage Role & Access|Close Role & Access/);
-  assert.match(settingsPage, /canManage && showRoleAccess \? <RoleAccessControl \/> : null/);
-  assert.match(roleAccess, /Save Role Defaults/);
-});
-
-test('Role & Access Control exposes Super Admin as a locked sixth tab', () => {
-  assert.match(roleAccess, /\[\.\.\.\(data\?\.roles \|\| \[\]\), 'super_admin'\]/);
-  assert.match(roleAccess, /Full System Access/);
-  assert.match(roleAccess, /Permissions cannot be restricted or disabled/);
-  assert.match(roleAccess, /isSuperAdminRole \?/);
-});
-
-test('per-account access UI uses explicit Reset to Role Default semantics', () => {
-  assert.match(userAccess, /Reset to Role Default/);
-  assert.match(userAccess, /Project scope will not change/);
-  assert.match(userAccess, /Per-account permissions are authoritative/);
-  assert.match(accessController, /Permissions reset to the current role default\. Project scope was not changed\./);
-});
-
-test('role-default editor provides grouped parent controls, Select All, Clear, and recommended reset', () => {
-  assert.match(permissionMatrix, /toggleGroup/);
-  assert.match(permissionMatrix, /Select All/);
-  assert.match(permissionMatrix, />Clear</);
-  assert.match(roleAccess, /Reset to Recommended Defaults/);
-  assert.match(accessController, /recommendedDefaults: RECOMMENDED_ROLE_PERMISSIONS/);
-  assert.match(recommendedDefaults, /RECOMMENDED_ROLE_PERMISSIONS/);
-});
-
-test('system-user creation includes server-backed account-code preview and final review', () => {
-  assert.match(usersRouter, /account-code-preview/);
-  assert.match(usersController, /previewSystemAccountCode/);
-  assert.match(createSystemUser, /Account Code Preview/);
-  assert.match(createSystemUser, /Final Review/);
-  assert.match(createSystemUser, /Customize Permissions/);
-  assert.match(createSystemUser, /Project Access/);
-});
-
-test('Super Admin user-access representation is read-only Full System Access', () => {
-  assert.match(userAccess, /Super Admin permissions cannot be restricted/);
-  assert.match(accessController, /permissions: Object\.values\(PERMISSIONS\), all_projects_access: true/);
-});
-
-test('recommended role defaults stay aligned with the cumulative RBAC + Employee Salary migrations', async () => {
-  const { RECOMMENDED_ROLE_PERMISSIONS } = await import('../config/recommendedRolePermissions.js');
-  const migrationFiles = [
-    '../migrations/20260925_system_rbac_roles_and_access.sql',
-    '../migrations/20260928_employee_salary_batch1_employment_history.sql',
-    '../migrations/20260928_employee_salary_batch2_payroll_engine.sql',
-    '../migrations/20260928_employee_salary_batch4_finalization.sql',
-    '../migrations/20260928_employee_salary_batch5_fund_release_receipt.sql',
-    '../migrations/20260928_employee_salary_batch6_history.sql',
-    '../migrations/20260928_employee_salary_batch7_release_workflow.sql',
-    '../migrations/20260928_employee_salary_batch8_corrections.sql',
-    '../migrations/20260928_employee_salary_batch9_payroll_settings.sql',
-    '../migrations/20260928_employee_salary_batch10_summary_export.sql',
-  ];
-  const migrations = migrationFiles.map(read).join('\n');
-  for (const [role, permissions] of Object.entries(RECOMMENDED_ROLE_PERMISSIONS)) {
-    for (const permission of permissions) {
-      assert.match(migrations, new RegExp(`\\('${role}'\\s*,\\s*'${permission.replaceAll('.', '\\.')}'(?:\\s*,|\\))`), `${role}: ${permission}`);
-    }
+test('new Staff/Head/System Admin/Auditor role model is shared by server and migration', () => {
+  for (const role of expectedRoles) {
+    assert.match(permissions, new RegExp(`['\"]${role}['\"]`), role);
+    assert.match(migration, new RegExp(role), role);
   }
+  assert.match(migration, /admin[\s\S]*system_admin/);
+  assert.match(migration, /marketing[\s\S]*marketing_staff/);
+  assert.match(migration, /sales[\s\S]*sales_staff/);
+  assert.match(migration, /accounting[\s\S]*accounting_staff/);
+  assert.match(migration, /operations[\s\S]*operations_staff/);
+});
+
+test('Role & Access endpoints are permission-governed instead of exact-Super-Admin-only', () => {
+  for (const route of [
+    "router.get('/access-control/roles'",
+    "router.put('/access-control/roles/:role'",
+    "router.get('/access-control/users/:id'",
+    "router.put('/access-control/users/:id'",
+    "router.post('/access-control/users/:id/apply-role-defaults'",
+  ]) assert.ok(usersRouter.includes(route), route);
+  assert.match(usersRouter, /SYSTEM_ACCESS_CONTROL_VIEW/);
+  assert.match(usersRouter, /SYSTEM_ACCESS_CONTROL_MANAGE/);
+  assert.doesNotMatch(usersRouter, /access-control\/roles'[\s\S]{0,160}requireExactRole\('super_admin'\)/);
+});
+
+test('System Admin can manage Staff/Head accounts but governance roles remain constrained', () => {
+  assert.match(permissions, /SYSTEM_ADMIN_MANAGEABLE_ROLES/);
+  assert.match(permissions, /marketing_staff[\s\S]*marketing_head[\s\S]*sales_staff[\s\S]*sales_head[\s\S]*accounting_staff[\s\S]*accounting_head[\s\S]*operations_staff[\s\S]*operations_head/);
+  assert.match(permissions, /canActorCreateUserRole/);
+  assert.match(permissions, /actor\.role !== 'system_admin'/);
+  assert.match(accessController, /actor\?\.role === 'system_admin'/);
+  assert.match(accessController, /SYSTEM_ADMIN_MANAGEABLE_ROLES/);
+  assert.match(usersPage, /canManageTarget/);
+  assert.match(usersPage, /SYSTEM_ADMIN_MANAGEABLE_ROLES/);
+});
+
+test('Auditor access is globally read-only and cannot be customized', () => {
+  assert.match(permissions, /AUDITOR_ENFORCED_PERMISSIONS/);
+  assert.match(permissions, /if \(actor\.role === 'auditor'\) return AUDITOR_ENFORCED_PERMISSIONS\.has\(permission\)/);
+  assert.match(accessController, /Auditor access is enforced as global read-only and cannot be customized/);
+  assert.match(accessController, /Auditor access is fixed by policy/);
+  assert.match(rolePolicies, /auditor/);
+});
+
+test('Head roles structurally inherit Staff defaults', () => {
+  assert.match(permissions, /ROLE_PARENT/);
+  assert.match(permissions, /marketing_head:\s*'marketing_staff'/);
+  assert.match(permissions, /sales_head:\s*'sales_staff'/);
+  assert.match(permissions, /accounting_head:\s*'accounting_staff'/);
+  assert.match(permissions, /operations_head:\s*'operations_staff'/);
+  assert.match(accessController, /getRolePolicyForAccessControl/);
+});
+
+test('Role & Access UI groups governance and department roles clearly', () => {
+  for (const label of ['SYSTEM','AUDIT','MARKETING','SALES','ACCOUNTING','OPERATIONS','OWNER']) {
+    assert.match(roleAccess, new RegExp(label));
+  }
+  assert.match(roleAccess, /system_admin/);
+  assert.match(roleAccess, /auditor/);
+  assert.match(roleAccess, /super_admin/);
+  assert.match(permissionMatrix, /Required|Inherited|Not Allowed|Optional/);
+});
+
+test('per-account access UI keeps Super Admin full access and Auditor fixed policy visible', () => {
+  assert.match(userAccess, /All Projects · Required/);
+  assert.match(userAccess, /governed at a higher authority level/);
+  assert.match(userAccess, /auditor|Auditor/);
+  assert.match(userAccess, /all_projects_access|All Projects/);
+});
+
+test('change-position routes use granular Edit Users permission and same-account role transition', () => {
+  assert.match(usersRouter, /change-position\/:id\/preview[\s\S]*SYSTEM_USERS_EDIT/);
+  assert.match(usersRouter, /change-position\/:id'[\s\S]*SYSTEM_USERS_EDIT/);
+  assert.match(usersController, /same_account:\s*true/);
+  assert.match(usersController, /INSERT INTO user_role_history/);
 });

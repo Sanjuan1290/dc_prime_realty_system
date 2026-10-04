@@ -354,7 +354,7 @@ export const createLotProject = async (req, res) => {
     }
 
     // A scoped Admin who creates a project automatically receives access to it.
-    if (req.authUser?.role === 'admin') {
+    if (['marketing_staff','marketing_head','sales_staff','sales_head','accounting_staff','accounting_head','operations_staff','operations_head'].includes(req.authUser?.role)) {
       await grantAdminProjectAccess(connection, {
         userId: req.authUser.id,
         projectId: lotProjectId,

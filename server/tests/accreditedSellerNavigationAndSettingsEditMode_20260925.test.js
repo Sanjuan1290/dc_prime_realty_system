@@ -34,8 +34,8 @@ test('Role & Access Control is a compact Settings card and expands only on deman
   assert.match(settings, /Role &amp; Access Control/);
   assert.match(settings, /Manage Role & Access/);
   assert.match(settings, /showRoleAccess/);
-  assert.match(settings, /canManage && showRoleAccess \? <RoleAccessControl \/> : null/);
+  assert.match(settings, /canViewRoleAccess && showRoleAccess \? <RoleAccessControl \/> : null/);
   assert.doesNotMatch(settings, /canManage && isEditing \? <RoleAccessControl \/> : null/);
   assert.match(roleAccess, /Save Role Defaults/);
-  assert.match(roleAccess, /Existing users keep their current permissions/);
+  assert.match(roleAccess, /Existing users keep their current direct permissions until Apply Latest Role Default/);
 });

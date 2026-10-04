@@ -1,3 +1,4 @@
+import bcrypt from 'bcrypt';
 import {
   db,
   getErrorMessage,
@@ -84,6 +85,10 @@ import { isFullAccessAdministrator } from '../../../config/permissions.js';
 import { runTransactionWithRetry } from '../../../utils/transactionRetry.js';
 import { createPaymentStorageCode } from '../../../services/storageCodes.service.js';
 import { syncCommissionProgressForListing } from '../../../services/commissionProgress.service.js';
+import { appendReviewEvent, assertEntityNotReviewLocked, createOperationalReview } from '../../../services/operationalReview.service.js';
+import { createProtectedChangeRequest, consumeProtectedChange } from '../../../services/protectedChange.service.js';
+import { notifyAuditors, notifyDepartmentHeads, notifySystemAdmins } from '../../../services/internalNotification.service.js';
+import { getPendingAuditCorrectionCase, advanceAuditCaseToRecheck } from '../../../services/auditCaseAuthorization.service.js';
 import { sendEmail } from '../../../services/email.service.js';
 import {
   createSensitiveActionVerification,
@@ -410,22 +415,223 @@ const requirePaymentCorrectionVerification = async (connection, req, { action, l
   const reason = cleanPaymentCorrectionValue(req.body.reason);
   const payload = buildPaymentCorrectionPayload({ action, actor, listing, existingPayment, body: req.body, reason });
   validatePaymentCorrectionRequest({ action, reason, payload });
-  const verificationId = Number(req.body.verificationId || req.body.verification_id || 0);
-  const code = cleanPaymentCorrectionValue(req.body.code || req.body.verificationCode || req.body.verification_code);
-  if (!verificationId || !code) throw createHttpError(400, 'Email verification is required for this payment correction.');
-  const verificationResult = await verifyAndConsumeSensitiveAction(connection, {
-    verificationId,
-    userId: actor.id,
-    actionType: PAYMENT_CORRECTION_ACTION,
-    entityType: PAYMENT_CORRECTION_ENTITY,
-    entityId: existingPayment.lot_project_payment_id,
-    code,
-    payload,
-  });
-  if (!verificationResult.ok) {
-    return { ok: false, ...verificationResult };
+
+  // The Head can enter a correction directly only when the record is not already
+  // locked by an active review/case. The saved change is sent straight to Auditor review.
+  if (actor.role === 'accounting_head') {
+    return { ok: true, actor, reason, payload, authorizationType: 'department_head', headPreApprovedByUserId: actor.id };
   }
-  return { ok: true, actor, reason, payload, verificationId };
+
+  // Staff may correct only a payment that the Accounting Head explicitly returned.
+  // The same review is reused and goes back to Head review after the correction.
+  const returnedReviewId = Number(req.body.reviewId || req.body.review_id || 0);
+  const returnedParams = returnedReviewId
+    ? [returnedReviewId, String(existingPayment.lot_project_payment_id), actor.id]
+    : [String(existingPayment.lot_project_payment_id), actor.id];
+  const returnedWhere = returnedReviewId
+    ? `operational_review_id=? AND entity_type='lot_project_payment' AND entity_id=? AND initiated_by_user_id=?`
+    : `entity_type='lot_project_payment' AND entity_id=? AND initiated_by_user_id=?`;
+  const [returnedRows] = await connection.query(
+    `SELECT * FROM operational_reviews
+     WHERE ${returnedWhere} AND status='returned_for_correction'
+     ORDER BY operational_review_id DESC LIMIT 1 FOR UPDATE`,
+    returnedParams
+  );
+  const returnedReview = returnedRows[0] || null;
+  if (returnedReview) {
+    return {
+      ok: true,
+      actor,
+      reason,
+      payload,
+      authorizationType: 'returned_review',
+      allowReviewId: returnedReview.operational_review_id,
+      returnedReview,
+    };
+  }
+  if (returnedReviewId) {
+    throw createHttpError(409, 'This returned-review correction is no longer valid for your account.');
+  }
+
+  // A valid Auditor finding gives System Admin a correction right only for the
+  // exact payment attached to that Audit Case.
+  const auditCaseId = Number(req.body.auditCaseId || req.body.audit_case_id || 0);
+  if (actor.role === 'system_admin' && auditCaseId) {
+    const [caseRows] = await connection.query(
+      `SELECT c.*, r.entity_type, r.entity_id, r.operational_review_id, r.review_number
+       FROM audit_cases c
+       INNER JOIN operational_reviews r ON r.operational_review_id = c.operational_review_id
+       WHERE c.audit_case_id = ?
+       LIMIT 1 FOR UPDATE`,
+      [auditCaseId]
+    );
+    const auditCase = caseRows[0];
+    if (
+      !auditCase ||
+      auditCase.status !== 'pending_system_admin_correction' ||
+      auditCase.entity_type !== 'lot_project_payment' ||
+      String(auditCase.entity_id) !== String(existingPayment.lot_project_payment_id)
+    ) {
+      throw createHttpError(409, 'This Audit Case does not authorize correction of this payment.');
+    }
+    return {
+      ok: true,
+      actor,
+      reason,
+      payload,
+      authorizationType: 'audit_case',
+      allowReviewId: auditCase.operational_review_id,
+      auditCase,
+    };
+  }
+
+  // Super Admin remains the owner-level emergency fallback and keeps the existing
+  // email-code verification path. Password is checked when the code is requested.
+  if (actor.role === 'super_admin') {
+    const verificationId = Number(req.body.verificationId || req.body.verification_id || 0);
+    const code = cleanPaymentCorrectionValue(req.body.code || req.body.verificationCode || req.body.verification_code);
+    if (!verificationId || !code) throw createHttpError(400, 'Emergency Super Admin correction requires email verification.');
+    const verificationResult = await verifyAndConsumeSensitiveAction(connection, {
+      verificationId,
+      userId: actor.id,
+      actionType: PAYMENT_CORRECTION_ACTION,
+      entityType: PAYMENT_CORRECTION_ENTITY,
+      entityId: existingPayment.lot_project_payment_id,
+      code,
+      payload,
+    });
+    if (!verificationResult.ok) return { ok: false, ...verificationResult };
+    return {
+      ok: true,
+      actor,
+      reason,
+      payload,
+      verificationId,
+      authorizationType: 'emergency_super_admin',
+      headPreApprovedByUserId: actor.id,
+    };
+  }
+
+  if (actor.role === 'accounting_staff') {
+    throw createHttpError(409, 'Accounting Staff can correct a recorded payment only after the Accounting Head returns its review for correction.');
+  }
+
+  throw createHttpError(403, 'You are not authorized to correct this recorded payment.');
+};
+
+const completePaymentCorrectionWorkflow = async (connection, {
+  actor, project, listing, existingPayment, paymentId, action, authorization, afterSnapshot,
+}) => {
+  const beforeSnapshot = {
+    amount: Number(existingPayment.lot_project_payment_amount || 0),
+    paymentDate: plainDate(existingPayment.lot_project_payment_date),
+    paymentType: existingPayment.lot_project_payment_type,
+    paymentMethod: existingPayment.lot_project_payment_method,
+    referenceId: existingPayment.lot_project_payment_reference_id,
+    scheduleId: existingPayment.lot_project_payment_schedule_id,
+    status: existingPayment.lot_project_payment_status,
+  };
+
+  if (authorization.authorizationType === 'returned_review') {
+    const review = authorization.returnedReview;
+    await connection.query(
+      `UPDATE operational_reviews
+       SET status='pending_head_review',
+           revision=revision+1,
+           before_snapshot_json=?,
+           after_snapshot_json=?,
+           claimed_by_user_id=NULL,
+           claimed_at=NULL,
+           head_reviewed_by_user_id=NULL,
+           head_reviewed_at=NULL,
+           auditor_reviewed_by_user_id=NULL,
+           auditor_reviewed_at=NULL
+       WHERE operational_review_id=?`,
+      [JSON.stringify(beforeSnapshot), JSON.stringify(afterSnapshot), review.operational_review_id]
+    );
+    await appendReviewEvent(connection, {
+      reviewId: review.operational_review_id,
+      eventType: action === 'void' ? 'staff_void_submitted' : 'staff_correction_submitted',
+      actor,
+      fromStatus: 'returned_for_correction',
+      toStatus: 'pending_head_review',
+      message: authorization.reason,
+      metadata: { action, paymentId },
+    });
+    await notifyDepartmentHeads(connection, {
+      department: 'accounting',
+      projectId: project.lot_project_id,
+      reviewId: review.operational_review_id,
+      title: `Corrected payment ready for Head review · ${review.review_number}`,
+      message: `${listing.lot_project_listing_unit_id} was corrected by the original staff member. Please review the new values.`,
+    });
+    return { reviewId: review.operational_review_id, reviewNumber: review.review_number, status: 'pending_head_review' };
+  }
+
+  if (authorization.authorizationType === 'audit_case') {
+    const auditCase = authorization.auditCase;
+    const summary = `${action === 'void' ? 'Voided' : 'Corrected'} payment ${existingPayment.lot_project_payment_reference_id || paymentId}: ${authorization.reason}`;
+    await connection.query(
+      `UPDATE audit_cases
+       SET status='pending_auditor_recheck',
+           system_admin_user_id=?,
+           correction_summary=?,
+           correction_applied_at=NOW()
+       WHERE audit_case_id=? AND status='pending_system_admin_correction'`,
+      [actor.id, summary, auditCase.audit_case_id]
+    );
+    await connection.query(
+      `UPDATE operational_reviews
+       SET status='pending_auditor_recheck', after_snapshot_json=?
+       WHERE operational_review_id=?`,
+      [JSON.stringify(afterSnapshot), auditCase.operational_review_id]
+    );
+    await appendReviewEvent(connection, {
+      reviewId: auditCase.operational_review_id,
+      eventType: 'system_correction_applied',
+      actor,
+      fromStatus: 'correction_required',
+      toStatus: 'pending_auditor_recheck',
+      message: summary,
+      metadata: { auditCaseId: auditCase.audit_case_id, action, paymentId },
+    });
+    await notifyAuditors(connection, {
+      reviewId: auditCase.operational_review_id,
+      auditCaseId: auditCase.audit_case_id,
+      type: 'audit_correction_recheck',
+      title: `Payment correction needs Auditor recheck · ${auditCase.case_number}`,
+      message: summary,
+    });
+    return {
+      reviewId: auditCase.operational_review_id,
+      auditCaseId: auditCase.audit_case_id,
+      status: 'pending_auditor_recheck',
+    };
+  }
+
+  const review = await createOperationalReview(connection, {
+    actor,
+    actionKey: `payment.${action}`,
+    department: 'accounting',
+    projectId: project.lot_project_id,
+    entityType: 'lot_project_payment',
+    entityId: paymentId,
+    entityLabel: `${existingPayment.lot_project_payment_reference_id || `Payment #${paymentId}`} — ${listing.lot_project_listing_unit_id}`,
+    beforeSnapshot,
+    afterSnapshot,
+    headPreApprovedByUserId: authorization.headPreApprovedByUserId || null,
+  });
+
+  if (authorization.authorizationType === 'emergency_super_admin') {
+    await notifySystemAdmins(connection, {
+      reviewId: review.reviewId,
+      type: 'super_admin_emergency_payment_correction',
+      title: `Emergency owner payment correction · ${listing.lot_project_listing_unit_id}`,
+      message: 'Super Admin used break-glass payment correction. The change is awaiting independent Auditor review.',
+    });
+  }
+
+  return review;
 };
 
 const normalizePaymentRequestKey = (value) => {
@@ -531,10 +737,151 @@ const validateBalloonPaymentAmount = async (
 const requirePenaltyManager = async (req) => {
   const user = await getAuthenticatedUser(req);
   if (!user) throw createHttpError(401, 'Authentication is required.');
-  if (!isFullAccessAdministrator(user)) {
-    throw createHttpError(403, 'Only Super Admin can manage penalty relief.');
+  if (!['accounting_staff', 'accounting_head', 'system_admin', 'super_admin'].includes(String(user.role || ''))) {
+    throw createHttpError(403, 'Penalty and Legal / Misc Fee adjustments are handled by Accounting.');
   }
   return user;
+};
+
+const ACCOUNTING_ADJUSTMENT_ENTITY = 'lot_project_penalty_schedule';
+const ACCOUNTING_LMF_ENTITY = 'lot_project_lmf_schedule';
+
+const authorizeAccountingAdjustment = async (connection, {
+  req,
+  actor,
+  project,
+  listing,
+  actionKey,
+  entityType,
+  entityId,
+  entityLabel,
+  payload,
+  reason,
+}) => {
+  if (!actor?.id) throw createHttpError(401, 'Authentication is required.');
+
+  if (actor.role === 'accounting_head') {
+    return { authorized: true, authorizationType: 'department_head', headPreApprovedByUserId: actor.id };
+  }
+
+  if (actor.role === 'system_admin') {
+    const auditCase = await getPendingAuditCorrectionCase(connection, {
+      auditCaseId: req.body.auditCaseId || req.body.audit_case_id,
+      entityType,
+      entityId,
+      forUpdate: true,
+    });
+    if (!auditCase) {
+      throw Object.assign(new Error('A valid Auditor-approved case is required for a System Admin adjustment.'), {
+        statusCode: 409,
+        code: 'AUDIT_CASE_REQUIRED',
+      });
+    }
+    return {
+      authorized: true,
+      authorizationType: 'audit_case',
+      auditCase,
+      allowReviewId: auditCase.operational_review_id,
+    };
+  }
+
+  if (isFullAccessAdministrator(actor)) {
+    // Super Admin remains a break-glass fallback. It does not become the daily
+    // approver; every emergency use is surfaced to System Admin + Auditor below.
+    return { authorized: true, authorizationType: 'emergency_super_admin', headPreApprovedByUserId: actor.id };
+  }
+
+  if (actor.role !== 'accounting_staff') {
+    throw createHttpError(403, 'Only Accounting Staff, Accounting Head, System Admin with a valid Audit Case, or emergency Super Admin can perform this adjustment.');
+  }
+
+  const approval = await createProtectedChangeRequest(connection, {
+    actor,
+    actionKey,
+    department: 'accounting',
+    projectId: project.lot_project_id,
+    entityType,
+    entityId,
+    entityLabel,
+    payload,
+    reason,
+  });
+
+  if (approval.status !== 'approved') {
+    return {
+      authorized: false,
+      approvalRequired: true,
+      approvalRequestId: approval.requestId,
+      requestNumber: approval.requestNumber,
+      message: `${approval.requestNumber} was sent to the Accounting Head. After it is approved, submit the exact same change again.`,
+    };
+  }
+
+  const consumed = await consumeProtectedChange(connection, {
+    requestId: approval.requestId,
+    actor,
+    actionKey,
+    entityType,
+    entityId,
+    payload,
+  });
+  return {
+    authorized: true,
+    authorizationType: 'head_approval',
+    approvalRequestId: approval.requestId,
+    headPreApprovedByUserId: consumed.reviewed_by_head_user_id,
+  };
+};
+
+const completeAccountingAdjustmentReview = async (connection, {
+  actor,
+  project,
+  listing,
+  actionKey,
+  entityType,
+  entityId,
+  entityLabel,
+  beforeSnapshot,
+  afterSnapshot,
+  authorization,
+}) => {
+  if (authorization?.authorizationType === 'audit_case') {
+    await advanceAuditCaseToRecheck(connection, {
+      auditCase: authorization.auditCase,
+      actor,
+      afterSnapshot,
+      correctionSummary: `${actionKey} corrected by System Admin after Auditor finding.`,
+      notificationTitle: `Accounting correction needs Auditor recheck · ${authorization.auditCase.case_number}`,
+    });
+    return {
+      reviewId: authorization.auditCase.operational_review_id,
+      auditCaseId: authorization.auditCase.audit_case_id,
+      status: 'pending_auditor_recheck',
+    };
+  }
+
+  const review = await createOperationalReview(connection, {
+    actor,
+    actionKey,
+    department: 'accounting',
+    projectId: project.lot_project_id,
+    entityType,
+    entityId,
+    entityLabel,
+    beforeSnapshot,
+    afterSnapshot,
+    headPreApprovedByUserId: authorization?.headPreApprovedByUserId || null,
+  });
+
+  if (authorization?.authorizationType === 'emergency_super_admin') {
+    await notifySystemAdmins(connection, {
+      reviewId: review.reviewId,
+      type: 'super_admin_emergency_adjustment',
+      title: `Emergency Super Admin adjustment · ${entityLabel}`,
+      message: `${actionKey} was performed using owner break-glass access and is awaiting independent Auditor review.`,
+    });
+  }
+  return review;
 };
 
 const getPaymentLinkedPenaltyWaiver = async (connection, paymentId, { forUpdate = false } = {}) => {
@@ -773,10 +1120,7 @@ export const requestLotProjectPaymentCorrectionCode = async (req, res) => {
   const connection = await db.getConnection();
   try {
     const actor = req.authUser || await getAuthenticatedUser(req);
-    if (!actor?.id || !actor.email) return res.status(400).json({ message: 'Your account must have an email address to authorize a payment correction.' });
-    if (!(await tableExists(connection, 'destructive_action_verifications'))) {
-      return res.status(500).json({ message: 'Sensitive-action verification table is missing. Apply the latest database schema first.' });
-    }
+    if (!actor?.id) return res.status(401).json({ message: 'Authentication is required.' });
     const slug = String(req.params.projectSlug || '').trim();
     const listingLookup = String(req.params.listingId || '').trim();
     const paymentId = Number(req.params.paymentId || 0);
@@ -799,6 +1143,89 @@ export const requestLotProjectPaymentCorrectionCode = async (req, res) => {
       : req.body;
     const payload = buildPaymentCorrectionPayload({ action, actor, listing, existingPayment, body, reason });
     validatePaymentCorrectionRequest({ action, reason, payload });
+
+    const [returnedRows] = await connection.query(
+      `SELECT operational_review_id, review_number
+       FROM operational_reviews
+       WHERE entity_type='lot_project_payment'
+         AND entity_id=?
+         AND initiated_by_user_id=?
+         AND status='returned_for_correction'
+       ORDER BY operational_review_id DESC
+       LIMIT 1 FOR UPDATE`,
+      [String(existingPayment.lot_project_payment_id), actor.id]
+    );
+    if (returnedRows[0]) {
+      await connection.commit();
+      return res.json({
+        success: true,
+        message: `${returnedRows[0].review_number} was returned to you for correction. The corrected payment will go back to Accounting Head review.`,
+        data: {
+          directCorrection: true,
+          authorizationType: 'returned_review',
+          reviewId: Number(returnedRows[0].operational_review_id),
+          status: 'approved',
+        },
+      });
+    }
+
+    if (actor.role === 'system_admin') {
+      const auditCaseId = Number(req.body.auditCaseId || req.body.audit_case_id || 0);
+      if (!auditCaseId) throw createHttpError(409, 'A valid Auditor-approved Audit Case is required for System Admin payment correction.');
+      const [caseRows] = await connection.query(
+        `SELECT c.audit_case_id, c.case_number, c.status, r.entity_type, r.entity_id
+         FROM audit_cases c
+         INNER JOIN operational_reviews r ON r.operational_review_id=c.operational_review_id
+         WHERE c.audit_case_id=?
+         LIMIT 1 FOR UPDATE`,
+        [auditCaseId]
+      );
+      const auditCase = caseRows[0];
+      if (
+        !auditCase ||
+        auditCase.status !== 'pending_system_admin_correction' ||
+        auditCase.entity_type !== 'lot_project_payment' ||
+        String(auditCase.entity_id) !== String(existingPayment.lot_project_payment_id)
+      ) {
+        throw createHttpError(409, 'This Audit Case does not authorize correction of this payment.');
+      }
+      await connection.commit();
+      return res.json({
+        success: true,
+        message: `${auditCase.case_number} authorizes this controlled System Admin correction.`,
+        data: {
+          directCorrection: true,
+          authorizationType: 'audit_case',
+          auditCaseId,
+          caseNumber: auditCase.case_number,
+          status: 'approved',
+        },
+      });
+    }
+
+    if (actor.role === 'accounting_head') {
+      await connection.commit();
+      return res.json({
+        success: true,
+        message: 'Accounting Head can apply the correction directly when the payment is not locked. The saved change will go to Auditor review.',
+        data: { directHeadApproval: true, authorizationType: 'department_head', status: 'approved' },
+      });
+    }
+
+    if (actor.role !== 'super_admin') {
+      throw createHttpError(409, 'Accounting Staff can correct this payment only after the Accounting Head returns its review for correction.');
+    }
+
+    if (!(await tableExists(connection, 'destructive_action_verifications'))) {
+      throw createHttpError(500, 'Sensitive-action verification table is missing. Apply the latest database schema first.');
+    }
+    if (!actor.email) throw createHttpError(400, 'Super Admin email is required for emergency verification.');
+    const password = String(req.body?.password || '');
+    if (!password) throw createHttpError(400, 'Super Admin password is required for emergency verification.');
+    if (!actor.password_hash || !(await bcrypt.compare(password, actor.password_hash))) {
+      throw createHttpError(401, 'Super Admin password is incorrect.');
+    }
+
     const { verificationId, code } = await createSensitiveActionVerification(connection, {
       userId: actor.id,
       actionType: PAYMENT_CORRECTION_ACTION,
@@ -812,8 +1239,13 @@ export const requestLotProjectPaymentCorrectionCode = async (req, res) => {
     await connection.commit();
     return res.json({
       success: true,
-      message: `A verification code was sent to ${maskSensitiveActionEmail(actor.email)}.`,
-      data: { verificationId, maskedEmail: maskSensitiveActionEmail(actor.email), expiresInMinutes: SENSITIVE_ACTION_CODE_EXPIRY_MINUTES },
+      message: `Emergency verification code sent to ${maskSensitiveActionEmail(actor.email)}.`,
+      data: {
+        verificationId,
+        maskedEmail: maskSensitiveActionEmail(actor.email),
+        expiresInMinutes: SENSITIVE_ACTION_CODE_EXPIRY_MINUTES,
+        emergency: true,
+      },
     });
   } catch (error) {
     try { await connection.rollback(); } catch {}
@@ -986,7 +1418,6 @@ export const createLotProjectListingPayment = async (req, res) => {
     if (!['apply', 'waive'].includes(penaltyHandling)) return res.status(400).json({ message: 'Penalty handling must be apply or waive.' });
     if (penaltyHandling === 'waive' && !scheduleId) return res.status(400).json({ message: 'A specific SOA row is required to waive a payment penalty.' });
     if (penaltyHandling === 'waive' && !penaltyWaiverReason) return res.status(400).json({ message: 'Reason is required when waiving the penalty for a payment.' });
-    if (penaltyHandling === 'waive' && !isFullAccessAdministrator(user)) return res.status(403).json({ message: 'Only Super Admin can waive a payment penalty.' });
 
     if (paymentDate > todayDateOnly()) return res.status(400).json({ message: 'Future payment dates are blocked.' });
     if (amount <= 0) return res.status(400).json({ message: 'Payment amount must be greater than 0.' });
@@ -1023,6 +1454,7 @@ export const createLotProjectListingPayment = async (req, res) => {
         ? await hasCrossTypePaymentAllocations(connection, listing)
         : false;
       let paymentPenaltyWaiverAmount = 0;
+      let penaltyWaiverAuthorization = null;
 
       const existingRequest = await getPaymentByRequestKey(connection, requestKey);
       if (existingRequest) {
@@ -1077,6 +1509,39 @@ export const createLotProjectListingPayment = async (req, res) => {
           const { snapshot } = await getPenaltyReliefContext(connection, project, listing, scheduleId, paymentDate, { forUpdate: true });
           paymentPenaltyWaiverAmount = roundMoneyValue(snapshot.outstandingPenaltyAmount || 0);
           if (paymentPenaltyWaiverAmount <= 0.009) throw createHttpError(400, 'There is no calculated penalty to waive for this payment date.');
+
+          const waiverPayload = {
+            amount, paymentDate, paymentType, paymentMethod, bankName, accountNumber,
+            requestedReferenceId, scheduleId, penaltyHandling,
+            penaltyWaiverAmount: paymentPenaltyWaiverAmount,
+            penaltyWaiverReason,
+            penaltyWaiverInternalNotes,
+          };
+          penaltyWaiverAuthorization = await authorizeAccountingAdjustment(connection, {
+            req,
+            actor: user,
+            project,
+            listing,
+            actionKey: 'payment.create_with_penalty_waiver',
+            entityType: ACCOUNTING_ADJUSTMENT_ENTITY,
+            entityId: scheduleId,
+            entityLabel: `Payment penalty waiver · ${listing.lot_project_listing_unit_id}`,
+            payload: waiverPayload,
+            reason: penaltyWaiverReason,
+          });
+          if (!penaltyWaiverAuthorization.authorized) {
+            return {
+              approvalRequired: true,
+              approvalRequestId: penaltyWaiverAuthorization.approvalRequestId,
+              requestNumber: penaltyWaiverAuthorization.requestNumber,
+              approvalMessage: penaltyWaiverAuthorization.message,
+            };
+          }
+          await assertEntityNotReviewLocked(connection, {
+            entityType: ACCOUNTING_ADJUSTMENT_ENTITY,
+            entityId: scheduleId,
+            allowReviewId: penaltyWaiverAuthorization.allowReviewId || null,
+          });
         }
       }
 
@@ -1219,13 +1684,49 @@ export const createLotProjectListingPayment = async (req, res) => {
         },
       });
 
+      const operationalReview = await createOperationalReview(connection, {
+        actor: user,
+        actionKey: 'payment.create',
+        department: 'accounting',
+        projectId: project.lot_project_id,
+        entityType: 'lot_project_payment',
+        entityId: paymentId,
+        entityLabel: `${referenceId || `Payment #${paymentId}`} — ${listing.lot_project_listing_unit_id}`,
+        afterSnapshot: {
+          paymentId, referenceId, amount, paymentDate, paymentType, paymentMethod,
+          bankName, accountNumber, scheduleId, listingId: listing.lot_project_listing_id,
+          projectSlug: project.lot_project_slug || slug, unitId: listing.lot_project_listing_unit_id,
+          buyerName: listing.buyer_full_name || null,
+        },
+        headPreApprovedByUserId: penaltyWaiverAuthorization?.headPreApprovedByUserId || null,
+      });
+      if (penaltyWaiverAuthorization?.authorizationType === 'emergency_super_admin') {
+        await notifySystemAdmins(connection, {
+          reviewId: operationalReview.reviewId,
+          type: 'super_admin_emergency_adjustment',
+          title: `Emergency Super Admin payment waiver · ${listing.lot_project_listing_unit_id}`,
+          message: 'A payment was recorded with a penalty waiver using owner break-glass access and is awaiting Auditor review.',
+        });
+      }
+
       return {
         paymentId, referenceId, storageCode, idempotentReplay: false, penaltyWaivedAmount: paymentPenaltyWaiverAmount,
         unitId: listing.lot_project_listing_unit_id,
         buyerName: listing.buyer_full_name || null,
         amount, paymentDate, paymentType, paymentMethod, bankName, accountNumber,
+        operationalReview,
       };
     });
+
+    if (result.approvalRequired) {
+      return res.status(202).json({
+        success: false,
+        approval_required: true,
+        approval_request_id: result.approvalRequestId,
+        request_number: result.requestNumber,
+        message: result.approvalMessage,
+      });
+    }
 
     const paymentNotification = result.idempotentReplay
       ? { enabled: false, sent: false, reason: 'idempotent_replay' }
@@ -1243,6 +1744,7 @@ export const createLotProjectListingPayment = async (req, res) => {
       idempotent_replay: result.idempotentReplay,
       penalty_waived_amount: Number(result.penaltyWaivedAmount || 0),
       payment_notification: paymentNotification,
+      review: result.operationalReview || null,
     });
   } catch (error) {
     return res.status(error?.statusCode || 500).json({ message: getErrorMessage(error) });
@@ -1282,12 +1784,8 @@ export const updateLotProjectListingPayment = async (req, res) => {
         existingPayment,
       });
       if (!correctionAuthorization.ok) return { authorizationError: correctionAuthorization };
+      await assertEntityNotReviewLocked(connection, { entityType: 'lot_project_payment', entityId: paymentId, allowReviewId: correctionAuthorization.allowReviewId || null });
       const existingPaymentPenaltyWaiver = await getPaymentLinkedPenaltyWaiver(connection, paymentId, { forUpdate: true });
-      const hasActivePaymentPenaltyWaiver = existingPaymentPenaltyWaiver &&
-        !['cancelled', 'restored'].includes(String(existingPaymentPenaltyWaiver.status || '').toLowerCase());
-      if (hasActivePaymentPenaltyWaiver && !isFullAccessAdministrator(user)) {
-        throw createHttpError(403, 'This payment has a linked penalty waiver. Only Super Admin can edit it.');
-      }
 
       const amount = parseMoneyValue(req.body.amount);
       const paymentDate = dateOrNull(req.body.paymentDate || req.body.payment_date) || plainDate(existingPayment.lot_project_payment_date);
@@ -1321,7 +1819,6 @@ export const updateLotProjectListingPayment = async (req, res) => {
       if (!['apply', 'waive'].includes(penaltyHandling)) throw createHttpError(400, 'Penalty handling must be apply or waive.');
       if (penaltyHandling === 'waive' && !scheduleId) throw createHttpError(400, 'A specific SOA row is required to waive a payment penalty.');
       if (penaltyHandling === 'waive' && !penaltyWaiverReason) throw createHttpError(400, 'Reason is required when waiving the penalty for a payment.');
-      if (penaltyHandling === 'waive' && !isFullAccessAdministrator(user)) throw createHttpError(403, 'Only Super Admin can waive a payment penalty.');
 
       if (paymentDate > todayDateOnly()) throw createHttpError(400, 'Future payment dates are blocked.');
       if (amount <= 0) throw createHttpError(400, 'Payment amount must be greater than 0.');
@@ -1449,12 +1946,15 @@ export const updateLotProjectListingPayment = async (req, res) => {
         entityId: String(paymentId),
         entityLabel: `${referenceId || existingPayment.lot_project_payment_reference_id || `Payment #${paymentId}`} — ${listing.buyer_full_name || listing.lot_project_listing_unit_id}`,
         title: 'Corrected verified payment',
-        description: `An authorized user corrected a verified payment for ${listing.buyer_full_name || listing.lot_project_listing_unit_id} after password and email-code verification.`,
+        description: `An authorized user corrected a verified payment for ${listing.buyer_full_name || listing.lot_project_listing_unit_id} through the governed correction workflow.`,
         metadata: {
           listingId: listing.lot_project_listing_id,
           unitId: listing.lot_project_listing_unit_id,
           accountId: listing.lot_project_account_id,
-          verificationId: correctionAuthorization.verificationId,
+          authorizationType: correctionAuthorization.authorizationType,
+          verificationId: correctionAuthorization.verificationId || null,
+          approvalRequestId: correctionAuthorization.approvalRequestId || null,
+          auditCaseId: correctionAuthorization.auditCase?.audit_case_id || null,
           reason: correctionAuthorization.reason,
           before: {
             amount: Number(existingPayment.lot_project_payment_amount || 0),
@@ -1475,9 +1975,14 @@ export const updateLotProjectListingPayment = async (req, res) => {
         },
       });
 
+      const workflowReview = await completePaymentCorrectionWorkflow(connection, {
+        req, actor: user, project, listing, existingPayment, paymentId, action: 'edit', authorization: correctionAuthorization,
+        afterSnapshot: { amount, paymentDate, paymentType, paymentMethod, referenceId, scheduleId, status: 'Verified', listingId: listing.lot_project_listing_id, projectSlug: project.lot_project_slug || slug, unitId: listing.lot_project_listing_unit_id },
+      });
+
       return { paymentId, referenceId, paymentType, penaltyHandling,
         penaltyWaivedAmount: penaltyHandling === 'waive' ? paymentPenaltyWaiverAmount : 0,
-        paymentPenaltyReliefId };
+        paymentPenaltyReliefId, workflowReview };
     });
 
     if (result.authorizationError) {
@@ -1490,6 +1995,7 @@ export const updateLotProjectListingPayment = async (req, res) => {
       payment_id: result.paymentId,
       reference_id: result.referenceId,
       penalty_waived_amount: Number(result.penaltyWaivedAmount || 0),
+      review: result.workflowReview || null,
     });
   } catch (error) {
     return res.status(error?.statusCode || 500).json({ message: getErrorMessage(error) });
@@ -1871,11 +2377,183 @@ export const updateLotProjectListingSoaTerms = async (req, res) => {
 };
 
 
+export const restoreSeparateLegalMiscFeeFromAuditCase = async (req, res) => {
+  const connection = await db.getConnection();
+
+  try {
+    const actor = await requirePenaltyManager(req);
+    if (actor.role !== 'system_admin') throw createHttpError(403, 'Only System Admin can restore an LMF from a valid Auditor correction case.');
+
+    const slug = String(req.params.projectSlug || '').trim();
+    const listingLookup = String(req.params.listingId || '').trim();
+    const scheduleId = Number(req.params.scheduleId || 0);
+    const auditCaseId = Number(req.body.auditCaseId || req.body.audit_case_id || 0);
+    const reason = String(req.body.reason || '').trim();
+    const project = await getProjectBySlug(slug);
+
+    if (!project) throw createHttpError(404, 'Lot project not found.');
+    if (!listingLookup || !scheduleId) throw createHttpError(400, 'Listing and Legal / Misc Fee row are required.');
+    if (reason.length < 5) throw createHttpError(400, 'Describe why the LMF is being restored.');
+    if (!auditCaseId) throw createHttpError(409, 'Open this LMF correction from a valid Auditor case.');
+
+    const lookup = getListingLookupWhere(listingLookup);
+    await connection.beginTransaction();
+
+    const [listingRows] = await connection.query(
+      `SELECT l.*, account.lot_project_account_id, account.account_reference, cp.*
+       FROM lot_project_listings l
+       INNER JOIN lot_project_accounts account ON account.lot_project_account_id = l.current_account_id
+       INNER JOIN lot_project_client_profiles cp ON cp.lot_project_client_profile_id = account.lot_project_client_profile_id
+       WHERE l.lot_project_id = ? AND ${lookup.sql}
+       LIMIT 1 FOR UPDATE`,
+      [project.lot_project_id, ...lookup.params]
+    );
+    const listing = listingRows[0];
+    if (!listing) throw createHttpError(404, 'Reserved listing not found.');
+
+    const [scheduleRows] = await connection.query(
+      `SELECT * FROM lot_project_payment_schedules
+       WHERE lot_project_payment_schedule_id=? AND lot_project_id=? AND lot_project_listing_id=? AND lot_project_client_profile_id=?
+       LIMIT 1 FOR UPDATE`,
+      [scheduleId, project.lot_project_id, listing.lot_project_listing_id, listing.lot_project_client_profile_id]
+    );
+    const schedule = scheduleRows[0];
+    if (!schedule || getStoredScheduleType(schedule) !== 'legal_misc') throw createHttpError(404, 'Legal / Misc Fee SOA row not found.');
+
+    const auditCase = await getPendingAuditCorrectionCase(connection, {
+      auditCaseId,
+      entityType: ACCOUNTING_LMF_ENTITY,
+      entityId: scheduleId,
+      forUpdate: true,
+    });
+    if (!auditCase) throw createHttpError(409, 'This Audit Case does not authorize correction of this Legal / Misc Fee row.');
+
+    await assertEntityNotReviewLocked(connection, {
+      entityType: ACCOUNTING_LMF_ENTITY,
+      entityId: scheduleId,
+      allowReviewId: auditCase.operational_review_id,
+    });
+
+    const [reviewRows] = await connection.query(
+      `SELECT before_snapshot_json, after_snapshot_json FROM operational_reviews WHERE operational_review_id=? LIMIT 1 FOR UPDATE`,
+      [auditCase.operational_review_id]
+    );
+    const parseSnapshot = (value) => {
+      if (!value) return {};
+      if (typeof value === 'object') return value;
+      try { return JSON.parse(value); } catch (_) { return {}; }
+    };
+    const before = parseSnapshot(reviewRows[0]?.before_snapshot_json);
+    const originalLmfAmount = roundMoneyValue(before.originalLmfAmount || 0);
+    const originalTcp = roundMoneyValue(before.originalTcp || 0);
+    const allowedStatuses = new Set(['Unpaid','Partial','Paid','Advance','Overdue','Cancelled']);
+    const restoredStatus = allowedStatuses.has(String(before.scheduleStatus || '')) && String(before.scheduleStatus) !== 'Cancelled'
+      ? String(before.scheduleStatus)
+      : 'Unpaid';
+    if (originalLmfAmount <= 0.009 || originalTcp <= 0.009) throw createHttpError(409, 'The Audit Case does not contain a valid pre-waiver LMF snapshot.');
+
+    const [paidRows] = await connection.query(
+      `SELECT COALESCE(SUM(CASE WHEN p.lot_project_payment_status='Verified' THEN COALESCE(a.applied_amount, CASE WHEN p.lot_project_payment_schedule_id=? THEN p.lot_project_payment_amount ELSE 0 END) ELSE 0 END),0) AS paid
+       FROM lot_project_payments p
+       LEFT JOIN lot_project_payment_allocations a ON a.lot_project_payment_id=p.lot_project_payment_id AND a.lot_project_payment_schedule_id=?
+       WHERE p.lot_project_id=? AND p.lot_project_listing_id=? AND p.lot_project_client_profile_id=?`,
+      [scheduleId, scheduleId, project.lot_project_id, listing.lot_project_listing_id, listing.lot_project_client_profile_id]
+    );
+    if (Number(paidRows[0]?.paid || 0) > 0.009) throw createHttpError(409, 'LMF cannot be restored while verified payment allocations exist on this row.');
+
+    const currentSnapshot = {
+      listingId: listing.lot_project_listing_id,
+      projectSlug: project.lot_project_slug || slug,
+      unitId: listing.lot_project_listing_unit_id,
+      lmfAmount: Number(listing.soa_selected_lmf_amount || listing.soa_legal_misc_fee_amount || 0),
+      tcp: Number(listing.soa_selected_tcp || 0),
+      scheduleId,
+      scheduleStatus: schedule.schedule_status,
+    };
+
+    await connection.query(
+      `UPDATE lot_project_client_profiles
+       SET soa_selected_tcp=?, soa_selected_lmf_amount=?, soa_legal_misc_fee_amount=?,
+           soa_lmf_waived_amount=0, soa_lmf_waiver_reason=NULL, soa_lmf_waiver_reference=NULL,
+           soa_lmf_waived_by_user_id=NULL, soa_lmf_waived_at=NULL
+       WHERE lot_project_client_profile_id=? AND lot_project_id=? AND lot_project_listing_id=?`,
+      [originalTcp, originalLmfAmount, originalLmfAmount, listing.lot_project_client_profile_id, project.lot_project_id, listing.lot_project_listing_id]
+    );
+
+    const scheduleSet = [
+      'due_amount = ?',
+      'penalty_amount = 0',
+      'amount_paid = 0',
+      'date_paid = NULL',
+      'reference_id = NULL',
+      'ending_balance = beginning_balance',
+      'schedule_status = ?',
+      'updated_at = NOW()',
+    ];
+    for (const column of ['interest_amount','discount_amount','principal_amount','monthly_amortization_amount','calculated_penalty_amount','waived_penalty_amount','paid_penalty_amount','paid_interest_amount','paid_principal_amount']) {
+      if (await columnExists(connection, 'lot_project_payment_schedules', column)) scheduleSet.push(`${column} = 0`);
+    }
+    await connection.query(
+      `UPDATE lot_project_payment_schedules SET ${scheduleSet.join(', ')} WHERE lot_project_payment_schedule_id=?`,
+      [originalLmfAmount, restoredStatus, scheduleId]
+    );
+
+    await recomputeListingScheduleBalances(connection, {
+      ...listing,
+      soa_selected_tcp: originalTcp,
+      soa_selected_lmf_amount: originalLmfAmount,
+      soa_legal_misc_fee_amount: originalLmfAmount,
+    });
+    await syncCommissionProgressForListing(connection, listing);
+
+    const afterSnapshot = {
+      listingId: listing.lot_project_listing_id,
+      projectSlug: project.lot_project_slug || slug,
+      unitId: listing.lot_project_listing_unit_id,
+      scheduleId,
+      restoredLmfAmount: originalLmfAmount,
+      restoredTcp: originalTcp,
+      scheduleStatus: restoredStatus,
+      reason,
+    };
+
+    await writeAuditLog(connection, req, {
+      actor,
+      action: 'correct',
+      module: 'Payments',
+      entityType: ACCOUNTING_LMF_ENTITY,
+      entityId: String(scheduleId),
+      entityLabel: `LMF · ${listing.lot_project_listing_unit_id}`,
+      title: 'Restored Legal / Misc Fee after Audit Case',
+      description: `Restored ${money(originalLmfAmount)} Legal / Misc Fee for ${listing.buyer_full_name || listing.lot_project_listing_unit_id}.`,
+      metadata: { auditCaseId, reason, before: currentSnapshot, after: afterSnapshot },
+    });
+
+    await advanceAuditCaseToRecheck(connection, {
+      auditCase,
+      actor,
+      correctionSummary: reason,
+      afterSnapshot,
+      metadata: { scheduleId, originalLmfAmount, originalTcp },
+      notificationTitle: `LMF correction needs Auditor recheck · ${listing.lot_project_listing_unit_id}`,
+    });
+
+    await connection.commit();
+    return res.json({ success: true, message: `Legal / Misc Fee of ${money(originalLmfAmount)} was restored. Auditor has been notified for final recheck.`, data: afterSnapshot });
+  } catch (error) {
+    try { await connection.rollback(); } catch (_) {}
+    return res.status(error.statusCode || 500).json({ success: false, message: getErrorMessage(error), code: error.code || undefined });
+  } finally {
+    connection.release();
+  }
+};
+
+
 export const waiveSeparateLegalMiscFee = async (req, res) => {
   const connection = await db.getConnection();
 
   try {
-    const user = await getAuthenticatedUser(req);
+    const user = await requirePenaltyManager(req);
     const slug = String(req.params.projectSlug || '').trim();
     const listingLookup = String(req.params.listingId || '').trim();
     const scheduleId = Number(req.params.scheduleId || 0);
@@ -1884,10 +2562,6 @@ export const waiveSeparateLegalMiscFee = async (req, res) => {
     const internalNotes = toNullable(req.body.internalNotes || req.body.internal_notes);
     const project = await getProjectBySlug(slug);
 
-    if (!user) throw createHttpError(401, 'Authentication is required.');
-    if (!isFullAccessAdministrator(user)) {
-      throw createHttpError(403, 'Only Super Admin can waive a Legal / Misc Fee.');
-    }
     if (!project) throw createHttpError(404, 'Lot project not found.');
     if (!listingLookup || !scheduleId) throw createHttpError(400, 'Listing and Legal / Misc Fee row are required.');
     if (!reason) throw createHttpError(400, 'Reason is required.');
@@ -1972,6 +2646,43 @@ export const waiveSeparateLegalMiscFee = async (req, res) => {
 
     const originalTcp = roundMoneyValue(listing.soa_selected_tcp || listing.lot_project_listing_tcp || 0);
     const adjustedTcp = roundMoneyValue(Math.max(originalTcp - originalLmfAmount, 0));
+    const entityLabel = `LMF · ${listing.lot_project_listing_unit_id}`;
+    const approvalPayload = {
+      scheduleId,
+      originalLmfAmount,
+      originalTcp,
+      adjustedTcp,
+      reason,
+      approvalReference,
+      internalNotes,
+    };
+    const authorization = await authorizeAccountingAdjustment(connection, {
+      req,
+      actor: user,
+      project,
+      listing,
+      actionKey: 'payment.lmf_waiver',
+      entityType: ACCOUNTING_LMF_ENTITY,
+      entityId: scheduleId,
+      entityLabel,
+      payload: approvalPayload,
+      reason,
+    });
+    if (!authorization.authorized) {
+      await connection.commit();
+      return res.status(202).json({
+        success: false,
+        approval_required: true,
+        approval_request_id: authorization.approvalRequestId,
+        request_number: authorization.requestNumber,
+        message: authorization.message,
+      });
+    }
+    await assertEntityNotReviewLocked(connection, {
+      entityType: ACCOUNTING_LMF_ENTITY,
+      entityId: scheduleId,
+      allowReviewId: authorization.allowReviewId || null,
+    });
 
     const [adjustmentResult] = await connection.query(
       `
@@ -2079,11 +2790,40 @@ export const waiveSeparateLegalMiscFee = async (req, res) => {
       },
     });
 
+    const workflowReview = await completeAccountingAdjustmentReview(connection, {
+      actor: user,
+      project,
+      listing,
+      actionKey: 'payment.lmf_waiver',
+      entityType: ACCOUNTING_LMF_ENTITY,
+      entityId: scheduleId,
+      entityLabel,
+      beforeSnapshot: {
+        listingId: listing.lot_project_listing_id,
+        projectSlug: project.lot_project_slug || slug,
+        unitId: listing.lot_project_listing_unit_id,
+        originalLmfAmount,
+        originalTcp,
+        scheduleStatus: schedule.schedule_status,
+      },
+      afterSnapshot: {
+        listingId: listing.lot_project_listing_id,
+        projectSlug: project.lot_project_slug || slug,
+        unitId: listing.lot_project_listing_unit_id,
+        lmfAmount: 0,
+        adjustedTcp,
+        scheduleStatus: 'Cancelled',
+        reason,
+      },
+      authorization,
+    });
+
     await connection.commit();
     return res.json({
       success: true,
       message: `Legal / Misc Fee of ${money(originalLmfAmount)} was waived successfully.`,
       data: { originalLmfAmount, originalTcp, adjustedTcp },
+      review: workflowReview,
     });
   } catch (error) {
     try { await connection.rollback(); } catch {}
@@ -2127,6 +2867,7 @@ export const deleteLotProjectListingPayment = async (req, res) => {
         existingPayment,
       });
       if (!correctionAuthorization.ok) return { authorizationError: correctionAuthorization };
+      await assertEntityNotReviewLocked(connection, { entityType: 'lot_project_payment', entityId: paymentId, allowReviewId: correctionAuthorization.allowReviewId || null });
 
       await reversePaymentAllocations(connection, listing, paymentId);
 
@@ -2184,12 +2925,15 @@ export const deleteLotProjectListingPayment = async (req, res) => {
         entityId: String(paymentId),
         entityLabel: `${existingPayment.lot_project_payment_reference_id || `Payment #${paymentId}`} — ${listing.buyer_full_name || listing.lot_project_listing_unit_id}`,
         title: 'Voided verified payment',
-        description: `An authorized user voided a verified payment for ${listing.buyer_full_name || listing.lot_project_listing_unit_id} after password and email-code verification.`,
+        description: `An authorized user voided a verified payment for ${listing.buyer_full_name || listing.lot_project_listing_unit_id} through the governed correction workflow.`,
         metadata: {
           listingId: listing.lot_project_listing_id,
           unitId: listing.lot_project_listing_unit_id,
           accountId: listing.lot_project_account_id,
-          verificationId: correctionAuthorization.verificationId,
+          authorizationType: correctionAuthorization.authorizationType,
+          verificationId: correctionAuthorization.verificationId || null,
+          approvalRequestId: correctionAuthorization.approvalRequestId || null,
+          auditCaseId: correctionAuthorization.auditCase?.audit_case_id || null,
           reason: correctionAuthorization.reason,
           payment: {
             amount: Number(existingPayment.lot_project_payment_amount || 0),
@@ -2201,9 +2945,15 @@ export const deleteLotProjectListingPayment = async (req, res) => {
         },
       });
 
+      const workflowReview = await completePaymentCorrectionWorkflow(connection, {
+        req, actor: user, project, listing, existingPayment, paymentId, action: 'void', authorization: correctionAuthorization,
+        afterSnapshot: { ...correctionAuthorization.payload.proposed, status: 'Cancelled', listingId: listing.lot_project_listing_id, projectSlug: project.lot_project_slug || slug, unitId: listing.lot_project_listing_unit_id },
+      });
+
       return {
         paymentId,
         referenceId: existingPayment.lot_project_payment_reference_id || null,
+        workflowReview,
       };
     });
 
@@ -2215,6 +2965,7 @@ export const deleteLotProjectListingPayment = async (req, res) => {
       success: true,
       message: 'Payment voided successfully. The original record remains in history and SOA balances were recalculated.',
       payment_id: result.paymentId,
+      review: result.workflowReview || null,
     });
   } catch (error) {
     return res.status(error?.statusCode || 500).json({ message: getErrorMessage(error) });
@@ -2272,6 +3023,23 @@ export const grantPaymentSchedulePenaltyExtension = async (req, res) => {
       throw createHttpError(400, 'This SOA row has no unpaid installment balance.');
     }
 
+    const entityLabel = `${schedule.description} — ${listing.lot_project_listing_unit_id}`;
+    const approvalPayload = { scheduleId, promisedPaymentDate, reason, internalNotes };
+    const authorization = await authorizeAccountingAdjustment(connection, {
+      req, actor: user, project, listing,
+      actionKey: 'payment.penalty_extension.create',
+      entityType: ACCOUNTING_ADJUSTMENT_ENTITY,
+      entityId: scheduleId,
+      entityLabel,
+      payload: approvalPayload,
+      reason,
+    });
+    if (!authorization.authorized) {
+      await connection.commit();
+      return res.status(202).json({ success: false, approval_required: true, approval_request_id: authorization.approvalRequestId, request_number: authorization.requestNumber, message: authorization.message });
+    }
+    await assertEntityNotReviewLocked(connection, { entityType: ACCOUNTING_ADJUSTMENT_ENTITY, entityId: scheduleId, allowReviewId: authorization.allowReviewId || null });
+
     const [result] = await connection.query(
       `
         INSERT INTO lot_project_penalty_reliefs (
@@ -2321,12 +3089,24 @@ export const grantPaymentSchedulePenaltyExtension = async (req, res) => {
       },
     });
 
+    const workflowReview = await completeAccountingAdjustmentReview(connection, {
+      actor: user, project, listing,
+      actionKey: 'payment.penalty_extension.create',
+      entityType: ACCOUNTING_ADJUSTMENT_ENTITY,
+      entityId: scheduleId,
+      entityLabel,
+      beforeSnapshot: { listingId: listing.lot_project_listing_id, projectSlug: project.lot_project_slug || slug, unitId: listing.lot_project_listing_unit_id, scheduleId, activeExtension: snapshot.activeExtension || null },
+      afterSnapshot: { listingId: listing.lot_project_listing_id, projectSlug: project.lot_project_slug || slug, unitId: listing.lot_project_listing_unit_id, scheduleId, promisedPaymentDate, reason },
+      authorization,
+    });
+
     await connection.commit();
 
     return res.status(201).json({
       success: true,
       message: `No new penalty will be added through ${promisedPaymentDate}.`,
       penalty_relief_id: result.insertId,
+      review: workflowReview,
     });
   } catch (error) {
     try { await connection.rollback(); } catch {}
@@ -2377,6 +3157,23 @@ export const updatePaymentSchedulePenaltyExtension = async (req, res) => {
       throw createHttpError(400, 'Only the current active penalty-free extension can be edited.');
     }
 
+    const entityLabel = `${schedule.description} — ${listing.lot_project_listing_unit_id}`;
+    const approvalPayload = { scheduleId, reliefId, promisedPaymentDate, reason, internalNotes };
+    const authorization = await authorizeAccountingAdjustment(connection, {
+      req, actor: user, project, listing,
+      actionKey: 'payment.penalty_extension.update',
+      entityType: ACCOUNTING_ADJUSTMENT_ENTITY,
+      entityId: scheduleId,
+      entityLabel,
+      payload: approvalPayload,
+      reason,
+    });
+    if (!authorization.authorized) {
+      await connection.commit();
+      return res.status(202).json({ success: false, approval_required: true, approval_request_id: authorization.approvalRequestId, request_number: authorization.requestNumber, message: authorization.message });
+    }
+    await assertEntityNotReviewLocked(connection, { entityType: ACCOUNTING_ADJUSTMENT_ENTITY, entityId: scheduleId, allowReviewId: authorization.allowReviewId || null });
+
     const [result] = await connection.query(
       `
         UPDATE lot_project_penalty_reliefs
@@ -2421,8 +3218,19 @@ export const updatePaymentSchedulePenaltyExtension = async (req, res) => {
       metadata: { listingId: listing.lot_project_listing_id, scheduleId, reliefId, promisedPaymentDate, reason },
     });
 
+    const workflowReview = await completeAccountingAdjustmentReview(connection, {
+      actor: user, project, listing,
+      actionKey: 'payment.penalty_extension.update',
+      entityType: ACCOUNTING_ADJUSTMENT_ENTITY,
+      entityId: scheduleId,
+      entityLabel,
+      beforeSnapshot: { listingId: listing.lot_project_listing_id, projectSlug: project.lot_project_slug || slug, unitId: listing.lot_project_listing_unit_id, scheduleId, reliefId, promisedPaymentDate: snapshot.activeExtension?.promisedPaymentDate || null },
+      afterSnapshot: { listingId: listing.lot_project_listing_id, projectSlug: project.lot_project_slug || slug, unitId: listing.lot_project_listing_unit_id, scheduleId, reliefId, promisedPaymentDate, reason },
+      authorization,
+    });
+
     await connection.commit();
-    return res.json({ success: true, message: `The penalty-free payment date was updated to ${promisedPaymentDate}.` });
+    return res.json({ success: true, message: `The penalty-free payment date was updated to ${promisedPaymentDate}.`, review: workflowReview });
   } catch (error) {
     try { await connection.rollback(); } catch {}
     return res.status(error?.statusCode || 500).json({ message: getErrorMessage(error) });
@@ -2436,9 +3244,6 @@ export const correctPaymentSchedulePenalty = async (req, res) => {
 
   try {
     const user = await requirePenaltyManager(req);
-    if (!isFullAccessAdministrator(user)) {
-      throw createHttpError(403, 'Only a full-access administrator can correct a penalty.');
-    }
 
     const slug = String(req.params.projectSlug || '').trim();
     const listingLookup = String(req.params.listingId || '').trim();
@@ -2465,6 +3270,23 @@ export const correctPaymentSchedulePenalty = async (req, res) => {
       { forUpdate: true }
     );
     const correctedAmount = roundMoneyValue(snapshot.calculatedPenaltyAmount || 0);
+
+    const entityLabel = `${schedule.description} — ${listing.lot_project_listing_unit_id}`;
+    const approvalPayload = { scheduleId, correctedAmount, reason, internalNotes };
+    const authorization = await authorizeAccountingAdjustment(connection, {
+      req, actor: user, project, listing,
+      actionKey: 'payment.penalty_correction.create',
+      entityType: ACCOUNTING_ADJUSTMENT_ENTITY,
+      entityId: scheduleId,
+      entityLabel,
+      payload: approvalPayload,
+      reason,
+    });
+    if (!authorization.authorized) {
+      await connection.commit();
+      return res.status(202).json({ success: false, approval_required: true, approval_request_id: authorization.approvalRequestId, request_number: authorization.requestNumber, message: authorization.message });
+    }
+    await assertEntityNotReviewLocked(connection, { entityType: ACCOUNTING_ADJUSTMENT_ENTITY, entityId: scheduleId, allowReviewId: authorization.allowReviewId || null });
 
     const [result] = await connection.query(
       `
@@ -2514,12 +3336,24 @@ export const correctPaymentSchedulePenalty = async (req, res) => {
       },
     });
 
+    const workflowReview = await completeAccountingAdjustmentReview(connection, {
+      actor: user, project, listing,
+      actionKey: 'payment.penalty_correction.create',
+      entityType: ACCOUNTING_ADJUSTMENT_ENTITY,
+      entityId: scheduleId,
+      entityLabel,
+      beforeSnapshot: { listingId: listing.lot_project_listing_id, projectSlug: project.lot_project_slug || slug, unitId: listing.lot_project_listing_unit_id, scheduleId, calculatedPenaltyAmount: correctedAmount, outstandingPenaltyAmount: snapshot.outstandingPenaltyAmount },
+      afterSnapshot: { listingId: listing.lot_project_listing_id, projectSlug: project.lot_project_slug || slug, unitId: listing.lot_project_listing_unit_id, scheduleId, correctedPenaltyAmount: 0, reason },
+      authorization,
+    });
+
     await connection.commit();
     return res.status(201).json({
       success: true,
       message: 'The incorrect penalty was cleared and is now ₱0.00.',
       penalty_relief_id: result.insertId,
       corrected_amount: correctedAmount,
+      review: workflowReview,
     });
   } catch (error) {
     try { await connection.rollback(); } catch {}
@@ -2578,6 +3412,23 @@ export const waivePaymentSchedulePenalty = async (req, res) => {
       throw createHttpError(400, 'Waiver amount cannot exceed the outstanding penalty.');
     }
 
+    const entityLabel = `${schedule.description} — ${listing.lot_project_listing_unit_id}`;
+    const approvalPayload = { scheduleId, waiverType, amount: roundMoneyValue(requestedAmount), reason, internalNotes };
+    const authorization = await authorizeAccountingAdjustment(connection, {
+      req, actor: user, project, listing,
+      actionKey: 'payment.penalty_waiver.create',
+      entityType: ACCOUNTING_ADJUSTMENT_ENTITY,
+      entityId: scheduleId,
+      entityLabel,
+      payload: approvalPayload,
+      reason,
+    });
+    if (!authorization.authorized) {
+      await connection.commit();
+      return res.status(202).json({ success: false, approval_required: true, approval_request_id: authorization.approvalRequestId, request_number: authorization.requestNumber, message: authorization.message });
+    }
+    await assertEntityNotReviewLocked(connection, { entityType: ACCOUNTING_ADJUSTMENT_ENTITY, entityId: scheduleId, allowReviewId: authorization.allowReviewId || null });
+
     const [result] = await connection.query(
       `
         INSERT INTO lot_project_penalty_reliefs (
@@ -2628,6 +3479,17 @@ export const waivePaymentSchedulePenalty = async (req, res) => {
       },
     });
 
+    const workflowReview = await completeAccountingAdjustmentReview(connection, {
+      actor: user, project, listing,
+      actionKey: 'payment.penalty_waiver.create',
+      entityType: ACCOUNTING_ADJUSTMENT_ENTITY,
+      entityId: scheduleId,
+      entityLabel,
+      beforeSnapshot: { listingId: listing.lot_project_listing_id, projectSlug: project.lot_project_slug || slug, unitId: listing.lot_project_listing_unit_id, scheduleId, outstandingPenalty },
+      afterSnapshot: { listingId: listing.lot_project_listing_id, projectSlug: project.lot_project_slug || slug, unitId: listing.lot_project_listing_unit_id, scheduleId, waiverType, waivedAmount: roundMoneyValue(requestedAmount), reason },
+      authorization,
+    });
+
     await connection.commit();
 
     return res.status(201).json({
@@ -2635,6 +3497,7 @@ export const waivePaymentSchedulePenalty = async (req, res) => {
       message: `${waiverType === 'full' ? 'Full' : 'Partial'} penalty reduction saved.`,
       penalty_relief_id: result.insertId,
       waived_amount: roundMoneyValue(requestedAmount),
+      review: workflowReview,
     });
   } catch (error) {
     try { await connection.rollback(); } catch {}
@@ -2731,9 +3594,6 @@ export const restorePaymentSchedulePenaltyWaiver = async (req, res) => {
     if (!relief) throw createHttpError(404, 'Penalty relief record was not found.');
 
     const isCorrection = relief.relief_type === 'penalty_correction';
-    if (isCorrection && !isFullAccessAdministrator(user)) {
-      throw createHttpError(403, 'Only a full-access administrator can recalculate a corrected penalty.');
-    }
 
     const [restorationRows] = await connection.query(
       `
@@ -2765,6 +3625,23 @@ export const restorePaymentSchedulePenaltyWaiver = async (req, res) => {
     if (!isCorrection && (requestedAmount <= 0 || requestedAmount > restorableAmount + 0.009)) {
       throw createHttpError(400, 'Restore amount must be greater than 0 and cannot exceed the remaining waived amount.');
     }
+
+    const entityLabel = `${isCorrection ? 'Penalty correction' : 'Penalty waiver'} #${reliefId} — ${listing.lot_project_listing_unit_id}`;
+    const approvalPayload = { scheduleId, reliefId, amount: roundMoneyValue(requestedAmount), reason, internalNotes };
+    const authorization = await authorizeAccountingAdjustment(connection, {
+      req, actor: user, project, listing,
+      actionKey: 'payment.penalty_restore',
+      entityType: ACCOUNTING_ADJUSTMENT_ENTITY,
+      entityId: scheduleId,
+      entityLabel,
+      payload: approvalPayload,
+      reason,
+    });
+    if (!authorization.authorized) {
+      await connection.commit();
+      return res.status(202).json({ success: false, approval_required: true, approval_request_id: authorization.approvalRequestId, request_number: authorization.requestNumber, message: authorization.message });
+    }
+    await assertEntityNotReviewLocked(connection, { entityType: ACCOUNTING_ADJUSTMENT_ENTITY, entityId: scheduleId, allowReviewId: authorization.allowReviewId || null });
 
     const [result] = await connection.query(
       `
@@ -2836,6 +3713,17 @@ export const restorePaymentSchedulePenaltyWaiver = async (req, res) => {
       },
     });
 
+    const workflowReview = await completeAccountingAdjustmentReview(connection, {
+      actor: user, project, listing,
+      actionKey: 'payment.penalty_restore',
+      entityType: ACCOUNTING_ADJUSTMENT_ENTITY,
+      entityId: scheduleId,
+      entityLabel,
+      beforeSnapshot: { listingId: listing.lot_project_listing_id, projectSlug: project.lot_project_slug || slug, unitId: listing.lot_project_listing_unit_id, scheduleId, reliefId, reliefType: relief.relief_type, reliefAmount: Number(relief.relief_amount || 0), restorableAmount },
+      afterSnapshot: { listingId: listing.lot_project_listing_id, projectSlug: project.lot_project_slug || slug, unitId: listing.lot_project_listing_unit_id, scheduleId, reliefId, restoredAmount: roundMoneyValue(requestedAmount), reason },
+      authorization,
+    });
+
     await connection.commit();
 
     return res.status(201).json({
@@ -2843,6 +3731,7 @@ export const restorePaymentSchedulePenaltyWaiver = async (req, res) => {
       message: isCorrection ? 'The penalty was recalculated successfully.' : 'The removed penalty was added back successfully.',
       penalty_relief_id: result.insertId,
       restored_amount: roundMoneyValue(requestedAmount),
+      review: workflowReview,
     });
   } catch (error) {
     try { await connection.rollback(); } catch {}

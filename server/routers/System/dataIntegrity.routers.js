@@ -9,12 +9,13 @@ import {
   lockDataIntegrity,
   unlockDataIntegrity,
 } from '../../controllers/System/dataIntegrityAccess.controller.js';
-import { authenticateUser, requireRole } from '../../middleware/auth.middleware.js';
+import { authenticateUser, requirePermission } from '../../middleware/auth.middleware.js';
+import { PERMISSIONS } from '../../config/permissions.js';
 import { requireDataIntegrityPin } from '../../middleware/dataIntegrityAccess.middleware.js';
 
 const router = express.Router();
 router.use(authenticateUser);
-router.use(requireRole('admin', 'super_admin'));
+router.use(requirePermission(PERMISSIONS.SYSTEM_DATA_INTEGRITY_VIEW));
 
 router.get('/access-session', getDataIntegrityAccessStatus);
 router.post('/unlock', unlockDataIntegrity);

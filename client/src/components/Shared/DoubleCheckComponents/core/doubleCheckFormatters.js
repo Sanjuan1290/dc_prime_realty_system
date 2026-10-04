@@ -44,7 +44,22 @@ export const titleCase = (value) => {
 
 export const roleLabel = (value) => ({
   super_admin: 'Super Admin',
-  admin: 'Admin',
+  system_admin: 'System Admin',
+  auditor: 'Auditor',
+  marketing_staff: 'Marketing Staff',
+  marketing_head: 'Marketing Head',
+  sales_staff: 'Sales Staff',
+  sales_head: 'Sales Head',
+  accounting_staff: 'Accounting Staff',
+  accounting_head: 'Accounting Head',
+  operations_staff: 'Operations Staff',
+  operations_head: 'Operations Head',
+  // Historical snapshots may still contain pre-migration role values.
+  admin: 'Admin (Legacy)',
+  marketing: 'Marketing (Legacy)',
+  sales: 'Sales (Legacy)',
+  accounting: 'Accounting (Legacy)',
+  operations: 'Operations (Legacy)',
   division_manager: 'Division Manager',
   sales_director: 'Sales Director',
   unit_manager: 'Unit Manager',

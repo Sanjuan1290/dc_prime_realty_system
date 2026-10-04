@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   FiBriefcase,
   FiCreditCard,
@@ -197,6 +197,9 @@ const UnitStatus = ({
   isRequestingCancellationCode = false,
   isRequestingCommissionCode = false,
   isAdjustingCommission = false,
+  actorRole = '',
+  workflowAuditCaseId = null,
+  autoOpenCommissionAdjustment = false,
   readOnly = false,
 }) => {
   const [showEditModal, setShowEditModal] = useState(false)
@@ -205,6 +208,10 @@ const UnitStatus = ({
   const [confirmAction, setConfirmAction] = useState(null)
   const [pendingCancellationAuthorization, setPendingCancellationAuthorization] = useState(null)
   const [alert, setAlert] = useState(null)
+
+  useEffect(() => {
+    if (autoOpenCommissionAdjustment && canAdjustCommission && !readOnly) setShowRecalculateModal(true)
+  }, [autoOpenCommissionAdjustment, canAdjustCommission, readOnly])
 
   const unitData = useMemo(() => ({ ...fallbackListing, ...listing }), [listing])
   const commissionRows = useMemo(
@@ -690,6 +697,8 @@ const UnitStatus = ({
           commissionState={unitData.commissionAdjustment || unitData.commissionRecalculation || {}}
           isRequestingCode={isRequestingCommissionCode}
           isSaving={isAdjustingCommission}
+          actorRole={actorRole}
+          auditCaseId={workflowAuditCaseId}
           onClose={() => setShowRecalculateModal(false)}
           onRequestCode={onRequestCommissionAdjustmentCode}
           onConfirm={onAdjustCommission}

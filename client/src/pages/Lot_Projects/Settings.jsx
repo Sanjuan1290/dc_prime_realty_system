@@ -1,12 +1,13 @@
 import { useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FiEdit2, FiRefreshCw, FiSettings } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
-import SettingsAuthorizationModal from '../../components/Shared/SettingsAuthorizationModal'
+import ProjectSettingsAuthorizationModal from '../../components/Lot_Projects/SettingsComponents/ProjectSettingsAuthorizationModal'
 import EditSettingsModal from '../../components/Lot_Projects/SettingsComponents/EditSettingsModal/EditSettingsModal'
 import {useFetch, useFetchPut, getDoubleCheckNotice} from '../../utils/useFetch'
+import useCurrentUser from '../../utils/useCurrentUser'
 
 const daySuffix = (value) => {
   const number = Number(value || 0)
@@ -43,7 +44,9 @@ const SettingCard = ({ title, description, children }) => (
 
 const Settings = () => {
   const { projectSlug } = useParams()
+  const [searchParams] = useSearchParams()
   const queryClient = useQueryClient()
+  const { data: currentUserData } = useCurrentUser()
   const [showEdit, setShowEdit] = useState(false)
   const [alert, setAlert] = useState(null)
   const [pendingAuthorization, setPendingAuthorization] = useState(null)
@@ -57,13 +60,15 @@ const Settings = () => {
   const settings = data?.data || {}
   const project = data?.project || {}
   const canEdit = Boolean(data?.canEdit)
+  const actorRole = currentUserData?.user?.role || ''
+  const workflowAuditCaseId = Number(searchParams.get('auditCaseId') || 0)
 
   const updateSettingsMutation = useMutation({
     mutationFn: (payload) => useFetchPut(`/projects/lot-projects/${projectSlug}/settings`, payload, {
       doubleCheck: {
         type: 'settings',
         scope: 'project',
-        data: { ...payload, code: undefined, verificationCode: undefined, verificationId: undefined },
+        data: { ...payload, code: undefined, verificationCode: undefined, verificationId: undefined, approvalRequestId: undefined, auditCaseId: undefined },
         before: settings || {},
         summary: project?.name || project?.lot_project_name || projectSlug,
       },
@@ -213,13 +218,12 @@ const Settings = () => {
       ) : null}
 
       {pendingAuthorization ? (
-        <SettingsAuthorizationModal
-          title="Authorize Project Settings Change"
-          description="Verify your current account password, reason, and email code before the final review."
-          codeEndpoint={`/projects/lot-projects/${projectSlug}/settings/code`}
+        <ProjectSettingsAuthorizationModal
+          projectSlug={projectSlug}
           settingsPayload={pendingAuthorization}
+          actorRole={actorRole}
+          auditCaseId={workflowAuditCaseId || null}
           isSaving={updateSettingsMutation.isPending}
-          authorizationLabel="Current Account"
           onClose={() => !updateSettingsMutation.isPending && setPendingAuthorization(null)}
           onConfirm={(authorizedPayload) => updateSettingsMutation.mutate(authorizedPayload)}
         />

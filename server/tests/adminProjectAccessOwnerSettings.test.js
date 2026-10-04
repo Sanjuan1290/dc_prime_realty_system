@@ -43,28 +43,33 @@ test('notifications and seller-group project data respect assigned project scope
   assert.match(groups, /canAccessProject\(req\.authUser, projectId, connection\)/);
 });
 
-test('System Settings stay Super Admin-only while Lot Project Settings are permission-delegated with password plus email verification', () => {
+test('System Settings stay Super Admin-only while Lot Project Settings use Operations Head / Auditor governance', () => {
   const systemRouter = read('server/routers/System/systemSettings.routers.js');
   const projectRouter = read('server/routers/System/projects.routers.js');
   const systemController = read('server/controllers/System/systemSettings.controller.js');
   const projectController = read('server/controllers/Lot_Projects/Settings/Settings.controller.js');
   const systemPage = read('client/src/pages/System/Settings.jsx');
   const projectPage = read('client/src/pages/Lot_Projects/Settings.jsx');
-  const authorizationModal = read('client/src/components/Shared/SettingsAuthorizationModal.jsx');
+  const authorizationModal = read('client/src/components/Lot_Projects/SettingsComponents/ProjectSettingsAuthorizationModal.jsx');
   const settingsReview = read('client/src/components/Shared/DoubleCheckComponents/SettingsDoubleCheck.jsx');
 
   assert.match(systemRouter, /post\('\/code'[\s\S]*SYSTEM_SETTINGS_MANAGE[\s\S]*requireExactRole\('super_admin'\)[\s\S]*requireCurrentPassword/);
-  assert.match(projectRouter, /settings\/code'[\s\S]*LOT_SETTINGS_MANAGE[\s\S]*requireCurrentPassword/);
+  assert.match(projectRouter, /settings\/code'[\s\S]*LOT_SETTINGS_MANAGE[\s\S]*requestLotProjectSettingsCode/);
+  assert.doesNotMatch(projectRouter, /settings\/code'[^\n]*requireCurrentPassword/);
   assert.doesNotMatch(projectRouter, /settings\/code'[^\n]*requireExactRole/);
   assert.match(systemController, /SYSTEM_SETTINGS_ACTION/);
   assert.match(systemController, /verifyAndConsumeSensitiveAction/);
-  assert.match(projectController, /LOT_PROJECT_SETTINGS_ACTION/);
-  assert.match(projectController, /canEditProjectSettings/);
-  assert.match(projectController, /verifyAndConsumeSensitiveAction/);
-  assert.match(authorizationModal, /authorizationLabel = 'Super Admin'/);
+  assert.match(projectController, /PROJECT_SETTINGS_REVIEW_ACTION/);
+  assert.match(projectController, /operations_staff/);
+  assert.match(projectController, /operations_head/);
+  assert.match(projectController, /system_admin/);
+  assert.match(projectController, /super_admin_emergency/);
+  assert.match(authorizationModal, /Operations Head Approval/);
+  assert.match(authorizationModal, /Auditor Case/);
+  assert.match(authorizationModal, /Super Admin Emergency Override/);
   assert.match(authorizationModal, /Email Verification Code/);
   assert.match(systemPage, /disabled=\{!canManage/);
-  assert.match(projectPage, /authorizationLabel="Current Account"/);
+  assert.match(projectPage, /ProjectSettingsAuthorizationModal/);
   assert.match(projectPage, /disabled=\{!canEdit/);
   assert.match(settingsReview, /Reason for Change/);
 });
@@ -82,10 +87,11 @@ test('owner-level destructive controls stay owner-only while normal payment and 
   assert.match(payments, /You do not have permission to void recorded payments/);
   assert.match(accountHistory, /disabled=\{!isSuperAdmin\}/);
   assert.match(unitStatus, /disabled=\{!canAdjustCommission \|\| isAdjustingCommission\}/);
-  assert.match(correction, /disabled=\{!isSuperAdmin \|\| busy\}/);
-  assert.match(users, /isSuperAdmin && canCreate/);
-  assert.match(users, /isSuperAdmin && user\.status === 'active' \? <button onClick=\{\(\) => open\('access',user\)\}/);
+  assert.match(correction, /sales_staff|sales_head/);
+  assert.match(users, /canCreate && \['super_admin','system_admin'\]\.includes\(actor\.role\)/);
+  assert.match(users, /canViewAccess && user\.status === 'active'/);
+  assert.match(users, /canManageTarget/);
   assert.doesNotMatch(users, /open\('reset'/);
   assert.doesNotMatch(users, />Reset<\/button>/);
-  assert.match(users, /canDeactivate && user\.status === 'active'/);
+  assert.match(users, /canDeactivate && canManageTarget\(user\) && user\.status === 'active'/);
 });

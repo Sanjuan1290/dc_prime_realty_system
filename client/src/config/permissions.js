@@ -1,5 +1,5 @@
-// Mirrors server/config/permissions.js. Super Admin bypasses the matrix; every
-// other internal system account uses the permissions returned by /user/me.
+// Mirrors server/config/permissions.js. Super Admin is break-glass owner access;
+ // Auditor is enforced read-only; every other internal account uses effective permissions returned by /user/me.
 export const PERMISSIONS = Object.freeze({
   SYSTEM_DASHBOARD_VIEW: 'system.dashboard.view',
   SYSTEM_REPORTS_VIEW: 'system.reports.view',
@@ -27,6 +27,19 @@ export const PERMISSIONS = Object.freeze({
   SYSTEM_DATA_INTEGRITY_VIEW: 'system.data_integrity.view',
   AUDIT_LOGS_VIEW: 'audit.logs.view',
   AUDIT_LOGS_ARCHIVE: 'audit.logs.archive',
+  SYSTEM_ACCESS_CONTROL_VIEW: 'system.access_control.view',
+  SYSTEM_ACCESS_CONTROL_MANAGE: 'system.access_control.manage',
+  WORKFLOW_REVIEW_CENTER_VIEW: 'workflow.review_center.view',
+  WORKFLOW_DEPARTMENT_REVIEW: 'workflow.department.review',
+  WORKFLOW_DEPARTMENT_RETURN_FOR_CORRECTION: 'workflow.department.return_for_correction',
+  WORKFLOW_DEPARTMENT_APPROVE_PROTECTED_CHANGE: 'workflow.department.approve_protected_change',
+  WORKFLOW_DEPARTMENT_CASE_RESPOND: 'workflow.department.case.respond',
+  WORKFLOW_AUDIT_REVIEW: 'workflow.audit.review',
+  WORKFLOW_AUDIT_CASE_CREATE: 'workflow.audit.case.create',
+  WORKFLOW_AUDIT_CASE_RESOLVE: 'workflow.audit.case.resolve',
+  WORKFLOW_AUDIT_CORRECTION_VERIFY: 'workflow.audit.correction.verify',
+  WORKFLOW_SYSTEM_CORRECTION_APPLY: 'workflow.system_correction.apply',
+  WORKFLOW_EMERGENCY_OVERRIDE: 'workflow.emergency_override',
   SYSTEM_USERS_VIEW: 'system.users.view',
   SYSTEM_USERS_CREATE: 'system.users.create',
   SYSTEM_USERS_EDIT: 'system.users.edit',
@@ -80,6 +93,7 @@ export const PERMISSIONS = Object.freeze({
   LOT_PRINTOUTS_USE: 'lot_project.printouts.use',
   LOT_PAYMENT_LOGS_VIEW: 'lot_project.payment_logs.view',
   LOT_COMMISSIONS_VIEW: 'lot_project.commissions.view',
+  LOT_COMMISSIONS_ADJUST: 'lot_project.commissions.adjust',
   LOT_COMMISSIONS_RELEASE: 'lot_project.commissions.release',
   LOT_COMMISSIONS_HOLD: 'lot_project.commissions.hold',
   LOT_COMMISSIONS_UNHOLD: 'lot_project.commissions.unhold',
@@ -87,7 +101,8 @@ export const PERMISSIONS = Object.freeze({
   LOT_SETTINGS_MANAGE: 'lot_project.settings.manage',
   LOT_PENALTY_CORRECT: 'lot_project.penalties.correct',
 
-  // Legacy names retained for old components while they are migrated.
+  // Legacy keys retained while old call-sites/tests are migrated. New route code
+  // should use the granular keys above.
   SYSTEM_PROJECTS_MANAGE: 'system.projects.manage',
   SYSTEM_ACCREDITED_MANAGE: 'system.accredited.manage',
   SYSTEM_DOCUMENTS_MANAGE: 'system.documents.manage',
@@ -95,76 +110,224 @@ export const PERMISSIONS = Object.freeze({
   SYSTEM_USERS_CHANGE_STATUS: 'system.users.change_status',
   LOT_LISTINGS_MANAGE: 'lot_project.listings.manage',
   LOT_COMMISSIONS_MANAGE: 'lot_project.commissions.manage',
-})
+});
 
-export const SYSTEM_USER_ROLES = Object.freeze(['super_admin', 'admin', 'marketing', 'sales', 'accounting', 'operations'])
-export const CONFIGURABLE_SYSTEM_ROLES = Object.freeze(['admin', 'marketing', 'sales', 'accounting', 'operations'])
-export const SELLER_USER_ROLES = Object.freeze(['division_manager', 'sales_director', 'unit_manager', 'sales_agent'])
-export const USER_ROLES = Object.freeze([...SYSTEM_USER_ROLES, ...SELLER_USER_ROLES, 'external_group'])
-export const ADMIN_CREATABLE_USER_ROLES = CONFIGURABLE_SYSTEM_ROLES
-export const ADMIN_MANAGEABLE_USER_ROLES = CONFIGURABLE_SYSTEM_ROLES
+export const SYSTEM_USER_ROLES = Object.freeze([
+  'super_admin',
+  'system_admin',
+  'auditor',
+  'marketing_staff', 'marketing_head',
+  'sales_staff', 'sales_head',
+  'accounting_staff', 'accounting_head',
+  'operations_staff', 'operations_head',
+]);
+
+export const DEPARTMENT_STAFF_ROLES = Object.freeze([
+  'marketing_staff', 'sales_staff', 'accounting_staff', 'operations_staff',
+]);
+
+export const DEPARTMENT_HEAD_ROLES = Object.freeze([
+  'marketing_head', 'sales_head', 'accounting_head', 'operations_head',
+]);
+
+export const CONFIGURABLE_SYSTEM_ROLES = Object.freeze(
+  SYSTEM_USER_ROLES.filter((role) => role !== 'super_admin')
+);
+
+export const ROLE_DEFAULT_EDITABLE_ROLES = Object.freeze([
+  ...DEPARTMENT_STAFF_ROLES,
+  ...DEPARTMENT_HEAD_ROLES,
+]);
+
+export const SYSTEM_ADMIN_MANAGEABLE_ROLES = Object.freeze([
+  ...DEPARTMENT_STAFF_ROLES,
+  ...DEPARTMENT_HEAD_ROLES,
+]);
+
+export const SELLER_USER_ROLES = Object.freeze(['division_manager', 'sales_director', 'unit_manager', 'sales_agent']);
+export const USER_ROLES = Object.freeze([...SYSTEM_USER_ROLES, ...SELLER_USER_ROLES, 'external_group']);
 
 export const ROLE_CODES = Object.freeze({
   super_admin: 'SA',
-  admin: 'ADM',
-  marketing: 'MKT',
-  sales: 'SS',
-  accounting: 'ACC',
-  operations: 'OPS',
-})
+  system_admin: 'ADM',
+  auditor: 'AUD',
+  marketing_staff: 'MKT',
+  marketing_head: 'MKH',
+  sales_staff: 'SS',
+  sales_head: 'SLH',
+  accounting_staff: 'ACC',
+  accounting_head: 'ACH',
+  operations_staff: 'OPS',
+  operations_head: 'OPH',
+});
 
-const allPermissions = new Set(Object.values(PERMISSIONS))
+export const ROLE_LABELS = Object.freeze({
+  super_admin: 'Super Admin',
+  system_admin: 'System Admin',
+  auditor: 'Auditor',
+  marketing_staff: 'Marketing Staff',
+  marketing_head: 'Marketing Head',
+  sales_staff: 'Sales Staff',
+  sales_head: 'Sales Head',
+  accounting_staff: 'Accounting Staff',
+  accounting_head: 'Accounting Head',
+  operations_staff: 'Operations Staff',
+  operations_head: 'Operations Head',
+});
+
+export const ROLE_PARENT = Object.freeze({
+  marketing_head: 'marketing_staff',
+  sales_head: 'sales_staff',
+  accounting_head: 'accounting_staff',
+  operations_head: 'operations_staff',
+});
+
+export const ROLE_DEPARTMENT = Object.freeze({
+  marketing_staff: 'marketing',
+  marketing_head: 'marketing',
+  sales_staff: 'sales',
+  sales_head: 'sales',
+  accounting_staff: 'accounting',
+  accounting_head: 'accounting',
+  operations_staff: 'operations',
+  operations_head: 'operations',
+  auditor: 'audit',
+  system_admin: 'system',
+  super_admin: 'owner',
+});
+
+export const DEPARTMENT_HEAD_ROLE = Object.freeze({
+  marketing: 'marketing_head',
+  sales: 'sales_head',
+  accounting: 'accounting_head',
+  operations: 'operations_head',
+});
+
+const knownUserRoles = new Set(USER_ROLES);
+const allPermissions = new Set(Object.values(PERMISSIONS));
 
 const normalizeActor = (userOrRole) => {
-  if (userOrRole && typeof userOrRole === 'object') return userOrRole
-  return { role: String(userOrRole || ''), permissions: [] }
-}
+  if (userOrRole && typeof userOrRole === 'object') return userOrRole;
+  return { role: String(userOrRole || ''), permissions: [] };
+};
 
-const permissionSet = (actor) => {
-  if (actor?.permissions instanceof Set) return actor.permissions
-  if (Array.isArray(actor?.permissions)) return new Set(actor.permissions.map(String))
+const normalizedPermissionSet = (actor) => {
+  if (actor?.permissions instanceof Set) return actor.permissions;
+  if (Array.isArray(actor?.permissions)) return new Set(actor.permissions.map(String));
   if (actor?.permissions && typeof actor.permissions === 'object') {
-    return new Set(Object.entries(actor.permissions).filter(([, allowed]) => Boolean(allowed)).map(([key]) => key))
+    return new Set(Object.entries(actor.permissions).filter(([, allowed]) => Boolean(allowed)).map(([key]) => key));
   }
-  return new Set()
-}
+  return new Set();
+};
 
-export const isSystemUserRole = (role) => SYSTEM_USER_ROLES.includes(String(role || ''))
-export const isConfigurableSystemRole = (role) => CONFIGURABLE_SYSTEM_ROLES.includes(String(role || ''))
-export const isAdmin = (userOrRole) => normalizeActor(userOrRole).role === 'admin'
-export const isAdmin1 = isAdmin
-export const isFullAccessAdministrator = (userOrRole) => normalizeActor(userOrRole).role === 'super_admin'
+const AUDITOR_ENFORCED_PERMISSIONS = new Set([
+  PERMISSIONS.SYSTEM_DASHBOARD_VIEW,
+  PERMISSIONS.SYSTEM_REPORTS_VIEW,
+  PERMISSIONS.SYSTEM_PROJECTS_VIEW,
+  PERMISSIONS.SYSTEM_ACCREDITED_VIEW,
+  PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW,
+  PERMISSIONS.SYSTEM_DOCUMENTS_VIEW,
+  PERMISSIONS.SYSTEM_DOCUMENT_TEMPLATES_VIEW,
+  PERMISSIONS.SYSTEM_NOTIFICATIONS_VIEW,
+  PERMISSIONS.SYSTEM_DATA_INTEGRITY_VIEW,
+  PERMISSIONS.AUDIT_LOGS_VIEW,
+  PERMISSIONS.SYSTEM_USERS_VIEW,
+  PERMISSIONS.SYSTEM_SETTINGS_VIEW,
+  PERMISSIONS.SYSTEM_ACCESS_CONTROL_VIEW,
+  PERMISSIONS.EMPLOYEES_VIEW,
+  PERMISSIONS.EMPLOYMENT_HISTORY_VIEW,
+  PERMISSIONS.EMPLOYEE_SALARY_VIEW,
+  PERMISSIONS.PAYROLL_HISTORY_VIEW,
+  PERMISSIONS.ATTENDANCE_VIEW,
+  PERMISSIONS.LOT_PROJECT_VIEW,
+  PERMISSIONS.LOT_DASHBOARD_VIEW,
+  PERMISSIONS.LOT_REPORTS_VIEW,
+  PERMISSIONS.LOT_LISTINGS_VIEW,
+  PERMISSIONS.LOT_LISTING_PROFILE_VIEW,
+  PERMISSIONS.LOT_PAYMENTS_VIEW,
+  PERMISSIONS.LOT_BUYER_DOCUMENTS_VIEW,
+  PERMISSIONS.LOT_ACCOUNT_HISTORY_VIEW,
+  PERMISSIONS.LOT_PAYMENT_LOGS_VIEW,
+  PERMISSIONS.LOT_COMMISSIONS_VIEW,
+  PERMISSIONS.LOT_SETTINGS_VIEW,
+  PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW,
+  PERMISSIONS.WORKFLOW_AUDIT_REVIEW,
+  PERMISSIONS.WORKFLOW_AUDIT_CASE_CREATE,
+  PERMISSIONS.WORKFLOW_AUDIT_CASE_RESOLVE,
+  PERMISSIONS.WORKFLOW_AUDIT_CORRECTION_VERIFY,
+]);
 
-export const hasPermission = (userOrRole, permission) => {
-  if (!permission) return false
-  const actor = normalizeActor(userOrRole)
-  if (actor.role === 'super_admin') return allPermissions.has(permission)
-  return permissionSet(actor).has(permission)
-}
+export const getAuditorEnforcedPermissions = () => [...AUDITOR_ENFORCED_PERMISSIONS];
+export const isSystemUserRole = (role) => SYSTEM_USER_ROLES.includes(String(role || ''));
+export const isConfigurableSystemRole = (role) => CONFIGURABLE_SYSTEM_ROLES.includes(String(role || ''));
+export const isSellerUserRole = (role) => SELLER_USER_ROLES.includes(String(role || ''));
+export const isSystemAdmin = (userOrRole) => normalizeActor(userOrRole).role === 'system_admin';
+export const isAdmin = isSystemAdmin;
+export const isAdmin1 = isSystemAdmin;
+export const isAuditor = (userOrRole) => normalizeActor(userOrRole).role === 'auditor';
+export const isDepartmentHead = (userOrRole) => DEPARTMENT_HEAD_ROLES.includes(normalizeActor(userOrRole).role);
+export const isDepartmentStaff = (userOrRole) => DEPARTMENT_STAFF_ROLES.includes(normalizeActor(userOrRole).role);
+export const getRoleDepartment = (userOrRole) => ROLE_DEPARTMENT[normalizeActor(userOrRole).role] || null;
 
-export const canManageUserRole = (userOrRole, targetRole) => {
-  const actor = normalizeActor(userOrRole)
-  if (targetRole === 'super_admin') return actor.role === 'super_admin'
-  return actor.role === 'super_admin' || hasPermission(actor, PERMISSIONS.SYSTEM_USERS_EDIT)
-}
+// Full-access means owner-level break-glass bypass. System Admin is intentionally NOT included.
+export const isFullAccessAdministrator = (userOrRole = {}) => normalizeActor(userOrRole).role === 'super_admin';
 
-export const canCreateUserRole = (userOrRole, requestedRole) => {
-  const actor = normalizeActor(userOrRole)
-  if (requestedRole === 'super_admin') return actor.role === 'super_admin'
-  return actor.role === 'super_admin' || hasPermission(actor, PERMISSIONS.SYSTEM_USERS_CREATE)
-}
+export const roleHasPermission = (userOrRole, permission) => {
+  if (!permission) return false;
+  const actor = normalizeActor(userOrRole);
+  if (actor.role === 'super_admin') return allPermissions.has(permission);
+  if (actor.role === 'auditor') return AUDITOR_ENFORCED_PERMISSIONS.has(permission);
+  return normalizedPermissionSet(actor).has(permission);
+};
 
-export const canChangeUserRole = (userOrRole, currentRole, requestedRole) => {
-  if (String(currentRole || '') === String(requestedRole || '')) return true
-  if (SYSTEM_USER_ROLES.includes(String(currentRole || '')) || SYSTEM_USER_ROLES.includes(String(requestedRole || ''))) return false
-  const actor = normalizeActor(userOrRole)
-  return actor.role === 'super_admin' || hasPermission(actor, PERMISSIONS.SYSTEM_USERS_EDIT)
-}
+export const canActorManageUserRole = (userOrRole, targetRole) => {
+  const actor = normalizeActor(userOrRole);
+  const target = String(targetRole || '');
+  if (!knownUserRoles.has(target)) return false;
+  if (actor.role === 'super_admin') return true;
+  if (actor.role !== 'system_admin') return false;
+  return SYSTEM_ADMIN_MANAGEABLE_ROLES.includes(target);
+};
+
+export const canActorCreateUserRole = (userOrRole, requestedRole) => {
+  const actor = normalizeActor(userOrRole);
+  const requested = String(requestedRole || '');
+  if (!knownUserRoles.has(requested)) return false;
+  if (actor.role === 'super_admin') return SYSTEM_USER_ROLES.includes(requested) || SELLER_USER_ROLES.includes(requested) || requested === 'external_group';
+  if (actor.role !== 'system_admin') return false;
+  return SYSTEM_ADMIN_MANAGEABLE_ROLES.includes(requested);
+};
+
+export const canActorChangeUserRole = (userOrRole, currentRole, requestedRole) => {
+  const actor = normalizeActor(userOrRole);
+  const current = String(currentRole || '');
+  const requested = String(requestedRole || '');
+  if (!knownUserRoles.has(current) || !knownUserRoles.has(requested)) return false;
+  if (current === requested) return true;
+
+  // Accredited-seller hierarchy keeps its own legacy behavior.
+  if (!SYSTEM_USER_ROLES.includes(current) && !SYSTEM_USER_ROLES.includes(requested)) {
+    return actor.role === 'super_admin' || roleHasPermission(actor, PERMISSIONS.SYSTEM_USERS_EDIT);
+  }
+
+  if (actor.role === 'super_admin') return current !== 'super_admin';
+  if (actor.role !== 'system_admin') return false;
+  return SYSTEM_ADMIN_MANAGEABLE_ROLES.includes(current) && SYSTEM_ADMIN_MANAGEABLE_ROLES.includes(requested);
+};
+
+export const ADMIN_CREATABLE_USER_ROLES = SYSTEM_ADMIN_MANAGEABLE_ROLES
+export const ADMIN_MANAGEABLE_USER_ROLES = SYSTEM_ADMIN_MANAGEABLE_ROLES
+
+export const hasPermission = roleHasPermission
+export const canManageUserRole = canActorManageUserRole
+export const canCreateUserRole = canActorCreateUserRole
+export const canChangeUserRole = canActorChangeUserRole
 
 export const getRoleHome = (role) => SYSTEM_USER_ROLES.includes(String(role || '')) ? `/portal/${role}` : '/portal'
 
 const SYSTEM_LANDING_CANDIDATES = Object.freeze([
   [PERMISSIONS.SYSTEM_DASHBOARD_VIEW, ''],
+  [PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW, 'review-center'],
   [PERMISSIONS.SYSTEM_REPORTS_VIEW, 'reports'],
   [PERMISSIONS.SYSTEM_PROJECTS_VIEW, 'projects'],
   [PERMISSIONS.LOT_PROJECT_VIEW, 'lot-projects'],
@@ -207,7 +370,7 @@ export const getFirstAllowedLotProjectPath = (user = {}, projectSlug = '') => {
 
 export const hasProjectScope = (user = {}, projectSlug = '') => {
   if (!user || !projectSlug || !isSystemUserRole(user?.role)) return false
-  if (user.role === 'super_admin' || user.all_projects_access === true || Number(user.all_projects_access || user.admin_all_projects || 0) === 1) return true
+  if (['super_admin', 'system_admin', 'auditor'].includes(user.role) || user.all_projects_access === true || Number(user.all_projects_access || user.admin_all_projects || 0) === 1) return true
   const projects = Array.isArray(user.projects) ? user.projects : (Array.isArray(user.admin_projects) ? user.admin_projects : [])
   const normalizedSlug = String(projectSlug).trim().toLowerCase()
   return projects.some((project) => String(project?.slug || project?.lot_project_slug || '').trim().toLowerCase() === normalizedSlug)

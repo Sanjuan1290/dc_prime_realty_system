@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
 import {
   FiAlertTriangle,
   FiCheckCircle,
@@ -19,7 +19,7 @@ import useCurrentUser from '../../../../utils/useCurrentUser'
 import AddSOAPaymentModal from './AddSOAPaymentModal'
 import PenaltyReliefModal from './PenaltyReliefModal'
 import PaymentProofModal from './PaymentProofModal'
-import { isFullAccessAdministrator } from '../../../../config/permissions'
+import { hasPermission, PERMISSIONS } from '../../../../config/permissions'
 import { DAILY_PENALTY_RATE_OPTIONS, DEFAULT_DAILY_PENALTY_RATE, formatDailyPenaltyRateOption } from '../../../../config/paymentTerms'
 
 const money = (value) =>
@@ -309,13 +309,27 @@ const PaymentAccountConfirmationModal = ({ data, acknowledged, setAcknowledged, 
   )
 }
 
-const PaymentCorrectionAuthorizationModal = ({ request, reason, setReason, password, setPassword, verificationId, code, setCode, maskedEmail, alert, isSending, isApplying, onClose, onSendCode, onApply }) => {
+const PaymentCorrectionAuthorizationModal = ({ request, actorRole, authorization, reason, setReason, password, setPassword, verificationId, code, setCode, maskedEmail, alert, isSending, isApplying, onClose, onCheckAuthorization, onApply }) => {
   if (!request) return null
   const isVoid = request.action === 'void'
   const payment = request.payment || {}
   const proposed = request.proposed || {}
-  const readyForCode = reason.trim().length >= 5 && password.trim().length > 0
-  const readyToApply = reason.trim().length >= 5 && verificationId && code.trim().length === 6
+  const isSuperAdmin = actorRole === 'super_admin'
+  const isHead = actorRole === 'accounting_head'
+  const isSystemAdmin = actorRole === 'system_admin'
+  const isStaff = actorRole === 'accounting_staff'
+  const directAuthorized = Boolean(authorization?.approved)
+  const readyForCheck = reason.trim().length >= 5 && (!isSuperAdmin || password.trim().length > 0)
+  const readyToApply = reason.trim().length >= 5 && (directAuthorized || (verificationId && code.trim().length === 6))
+  const authorityLabel = isHead
+    ? 'Accounting Head correction'
+    : isSystemAdmin
+      ? 'Auditor-approved System Admin correction'
+      : isStaff
+        ? 'Returned Accounting Head review correction'
+        : isSuperAdmin
+          ? 'Emergency Super Admin correction'
+          : 'Controlled correction'
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/60 p-4">
@@ -324,18 +338,19 @@ const PaymentCorrectionAuthorizationModal = ({ request, reason, setReason, passw
           <div>
             <p className="text-xs font-black uppercase tracking-[0.16em] text-red-700">Controlled Financial Correction</p>
             <h3 className="mt-1 text-xl font-black text-slate-950">{isVoid ? 'Void Payment' : 'Authorize Payment Edit'}</h3>
-            <p className="mt-1 text-sm font-semibold text-slate-500">This financial correction requires the matching permission plus current-password and email-code verification.</p>
+            <p className="mt-1 text-sm font-semibold text-slate-500">{authorityLabel}. The correction remains fully traceable in the Review Center and Audit Trail.</p>
           </div>
           <button type="button" onClick={onClose} disabled={isSending || isApplying} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-50"><FiX /></button>
         </div>
 
         <div className="space-y-4 p-5 sm:p-6">
           {alert ? <StatusAlert type={alert.type} message={alert.message} /> : null}
-          {!isVoid ? (
-            <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-900">
-              The system will keep a before/after Audit Trail and rebuild the SOA allocation after the verified payment is corrected.
-            </div>
-          ) : null}
+          <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm font-semibold text-blue-900">
+            {isStaff ? 'Staff corrections are allowed only when the Accounting Head returned this payment review for correction.' : null}
+            {isHead ? 'Accounting Head corrections skip self-review and go directly to the Auditor.' : null}
+            {isSystemAdmin ? 'System Admin may correct only the exact payment authorized by a valid Auditor Audit Case.' : null}
+            {isSuperAdmin ? 'Super Admin is emergency fallback only. Current password and email verification are still required.' : null}
+          </div>
 
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
             <div className="grid gap-3 sm:grid-cols-2">
@@ -359,30 +374,39 @@ const PaymentCorrectionAuthorizationModal = ({ request, reason, setReason, passw
 
           <label className="block">
             <span className="text-sm font-black text-slate-700">Correction Reason *</span>
-            <textarea rows={3} value={reason} onChange={(event) => setReason(event.target.value)} disabled={Boolean(verificationId)} placeholder="Explain why this recorded payment must be corrected." className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100" />
+            <textarea rows={3} value={reason} onChange={(event) => setReason(event.target.value)} disabled={Boolean(verificationId) || directAuthorized} placeholder="Explain why this recorded payment must be corrected." className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100" />
           </label>
 
-          {!verificationId ? (
+          {isSuperAdmin && !verificationId && !directAuthorized ? (
             <label className="block">
               <span className="text-sm font-black text-slate-700">Super Admin Password *</span>
               <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" placeholder="Enter current password" className="mt-1.5 h-11 w-full rounded-xl border border-slate-300 px-3 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50" />
             </label>
-          ) : (
+          ) : null}
+
+          {verificationId ? (
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-              <p className="font-black text-emerald-900">Password verified</p>
+              <p className="font-black text-emerald-900">Emergency password verified</p>
               <p className="mt-1 text-sm font-semibold text-emerald-800">A 6-digit code was sent to {maskedEmail || 'your Super Admin email'}.</p>
               <label className="mt-3 block">
                 <span className="text-sm font-black text-emerald-950">Email Verification Code *</span>
                 <input inputMode="numeric" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="6-digit code" className="mt-1.5 h-11 w-full rounded-xl border border-emerald-300 bg-white px-3 text-sm font-black tracking-[0.35em] outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100" />
               </label>
             </div>
-          )}
+          ) : null}
+
+          {directAuthorized ? (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-900">
+              <p className="font-black">Correction authority confirmed</p>
+              <p className="mt-1">{authorization.message || 'This correction may now be applied using the governed workflow.'}</p>
+            </div>
+          ) : null}
         </div>
 
         <div className="flex justify-end gap-2 border-t border-slate-200 px-5 py-4 sm:px-6">
           <button type="button" onClick={onClose} disabled={isSending || isApplying} className="h-10 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 hover:bg-slate-50 disabled:opacity-50">Cancel</button>
-          {!verificationId ? (
-            <button type="button" onClick={onSendCode} disabled={!readyForCode || isSending} className="h-10 rounded-xl bg-amber-600 px-5 text-sm font-black text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:bg-amber-300">{isSending ? 'Sending Code...' : 'Verify Password & Send Code'}</button>
+          {!directAuthorized && !verificationId ? (
+            <button type="button" onClick={onCheckAuthorization} disabled={!readyForCheck || isSending} className="h-10 rounded-xl bg-amber-600 px-5 text-sm font-black text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:bg-amber-300">{isSending ? 'Checking...' : isSuperAdmin ? 'Verify Password & Send Code' : 'Check Correction Authority'}</button>
           ) : (
             <button type="button" onClick={onApply} disabled={!readyToApply || isApplying} className="h-10 rounded-xl bg-red-600 px-5 text-sm font-black text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-red-300">{isApplying ? 'Applying...' : isVoid ? 'Confirm & Void Payment' : 'Confirm & Apply Correction'}</button>
           )}
@@ -391,7 +415,6 @@ const PaymentCorrectionAuthorizationModal = ({ request, reason, setReason, passw
     </div>
   )
 }
-
 
 const LmfWaiverModal = ({ row, alert, isSaving, onClose, onConfirm }) => {
   const [reason, setReason] = useState('')
@@ -472,6 +495,35 @@ const LmfWaiverModal = ({ row, alert, isSaving, onClose, onConfirm }) => {
       </form>
     </div>
   )
+}
+
+const AuditLmfRestoreModal = ({ row, auditCaseId, isSaving, alert, onClose, onConfirm }) => {
+  const [reason, setReason] = useState('')
+  const [localAlert, setLocalAlert] = useState(null)
+
+  useEffect(() => { setReason(''); setLocalAlert(null) }, [row?.scheduleId, auditCaseId])
+  if (!row) return null
+
+  const submit = (event) => {
+    event.preventDefault()
+    if (reason.trim().length < 5) return setLocalAlert({ type: 'error', message: 'Describe the correction being applied.' })
+    onConfirm?.({ scheduleId: row.scheduleId, auditCaseId, reason: reason.trim() })
+  }
+
+  return <div className="fixed inset-0 z-[79] flex items-center justify-center bg-slate-950/55 p-4">
+    <form onSubmit={submit} className="w-full max-w-xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+      <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+        <div><p className="text-xs font-black uppercase tracking-wide text-violet-700">System Admin · Audit Case #{auditCaseId}</p><h3 className="mt-1 text-lg font-black text-slate-950">Restore Legal / Misc Fee</h3><p className="mt-1 text-sm font-semibold text-slate-500">Restore the exact pre-waiver LMF/TCP values captured by the Auditor-reviewed snapshot. The Auditor will recheck the correction afterward.</p></div>
+        <button type="button" onClick={onClose} disabled={isSaving} className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 disabled:opacity-50"><FiX /></button>
+      </div>
+      <div className="space-y-4 p-5">
+        {(localAlert || alert) ? <StatusAlert type={(localAlert || alert).type} message={(localAlert || alert).message} onClose={() => setLocalAlert(null)} /> : null}
+        <div className="rounded-xl border border-violet-200 bg-violet-50 p-4 text-sm font-semibold text-violet-900"><p className="font-black">SOA Row #{row.scheduleId}</p><p className="mt-1">Current status: {row.status || 'Cancelled'}. The server will restore only values authorized by Audit Case #{auditCaseId}.</p></div>
+        <label className="grid gap-1.5"><span className="text-sm font-black text-slate-700">Correction Summary *</span><textarea rows={4} value={reason} onChange={(event) => { setReason(event.target.value); setLocalAlert(null) }} placeholder="Explain the LMF correction being applied." className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-50" /></label>
+      </div>
+      <div className="flex justify-end gap-2 border-t border-slate-200 px-5 py-4"><button type="button" onClick={onClose} disabled={isSaving} className="h-10 rounded-lg border border-slate-300 bg-white px-5 text-sm font-black text-slate-700">Cancel</button><button type="submit" disabled={isSaving} className="h-10 rounded-lg bg-violet-700 px-5 text-sm font-black text-white disabled:opacity-50">{isSaving ? 'Restoring...' : 'Proceed to Final Review'}</button></div>
+    </form>
+  </div>
 }
 
 const todayManila = () => new Intl.DateTimeFormat('en-CA', {
@@ -799,9 +851,16 @@ const PaymentsSOA = ({
   profileQueryKey = null,
 }) => {
   const { projectSlug, listingId, accountId } = useParams()
+  const [searchParams] = useSearchParams()
   const queryClient = useQueryClient()
   const { data: currentUserData } = useCurrentUser()
-  const canManagePenaltyRelief = !readOnly && isFullAccessAdministrator(currentUserData?.user)
+  const currentUser = currentUserData?.user || {}
+  const workflowAuditCaseId = Number(searchParams.get('auditCaseId') || 0)
+  const workflowReviewId = Number(searchParams.get('reviewId') || 0)
+  const workflowAction = String(searchParams.get('workflowAction') || '').trim()
+  const workflowPaymentId = Number(searchParams.get('paymentId') || 0)
+  const workflowScheduleId = Number(searchParams.get('scheduleId') || 0)
+  const canManagePenaltyRelief = !readOnly && hasPermission(currentUser, PERMISSIONS.LOT_PENALTY_CORRECT)
   const canCorrectPenalty = canManagePenaltyRelief
   const canWaiveLmf = canManagePenaltyRelief
   const canDeletePaymentProof = !readOnly && canDelete
@@ -857,6 +916,7 @@ const PaymentsSOA = ({
   const [paymentCorrectionVerificationId, setPaymentCorrectionVerificationId] = useState(null)
   const [paymentCorrectionCode, setPaymentCorrectionCode] = useState('')
   const [paymentCorrectionMaskedEmail, setPaymentCorrectionMaskedEmail] = useState('')
+  const [paymentCorrectionAuthorization, setPaymentCorrectionAuthorization] = useState(null)
   const [paymentCorrectionAlert, setPaymentCorrectionAlert] = useState(null)
   const [paymentProof, setPaymentProof] = useState(null)
   const [paymentProofCounts, setPaymentProofCounts] = useState({})
@@ -864,6 +924,8 @@ const PaymentsSOA = ({
   const [penaltyReliefAlert, setPenaltyReliefAlert] = useState(null)
   const [lmfWaiverRow, setLmfWaiverRow] = useState(null)
   const [lmfWaiverAlert, setLmfWaiverAlert] = useState(null)
+  const [lmfAuditRestoreRow, setLmfAuditRestoreRow] = useState(null)
+  const [lmfAuditRestoreAlert, setLmfAuditRestoreAlert] = useState(null)
   const [typeFilter, setTypeFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
 
@@ -923,6 +985,10 @@ const PaymentsSOA = ({
         },
       }),
     onSuccess: async (result) => {
+      if (result?.approval_required) {
+        setAlert({ type: 'info', message: result?.message || 'Accounting Head approval is required for the penalty waiver. After approval, submit the exact same payment again.' })
+        return
+      }
       setShowPaymentModal(false)
       setEditingPayment(null)
       setAlert({ type: 'success', message: result?.message || 'Payment saved successfully.' })
@@ -931,17 +997,21 @@ const PaymentsSOA = ({
   })
 
   const requestPaymentCorrectionCodeMutation = useMutation({
-    mutationFn: ({ action, paymentId, password, reason, proposed }) => useFetchPost(
+    mutationFn: ({ action, paymentId, password, reason, proposed, reviewId, auditCaseId }) => useFetchPost(
       `/projects/lot-projects/${projectSlug}/listings/${listingId}/payments/${paymentId}/correction-code`,
-      { action, password, reason, proposed },
+      { action, password, reason, proposed, reviewId, auditCaseId },
       { confirmationHandled: 'technical' }
     ),
-    onMutate: () => setPaymentCorrectionAlert({ type: 'loading', message: 'Verifying Super Admin password and sending email code...' }),
+    onMutate: () => setPaymentCorrectionAlert({ type: 'loading', message: actorRole === 'super_admin' ? 'Verifying emergency Super Admin credentials...' : 'Checking correction authority...' }),
     onSuccess: (result) => {
-      setPaymentCorrectionVerificationId(result?.data?.verificationId || null)
+      const verificationId = result?.data?.verificationId || null
+      setPaymentCorrectionVerificationId(verificationId)
       setPaymentCorrectionMaskedEmail(result?.data?.maskedEmail || '')
       setPaymentCorrectionCode('')
-      setPaymentCorrectionAlert({ type: 'success', message: result?.message || 'Verification code sent.' })
+      if (!verificationId && result?.data?.status === 'approved') {
+        setPaymentCorrectionAuthorization({ approved: true, ...result.data, message: result?.message || 'Correction authority confirmed.' })
+      }
+      setPaymentCorrectionAlert({ type: 'success', message: result?.message || (verificationId ? 'Verification code sent.' : 'Correction authority confirmed.') })
     },
     onError: (error) => setPaymentCorrectionAlert(getDoubleCheckNotice(error, 'Unable to send payment correction verification code.')),
   })
@@ -962,6 +1032,7 @@ const PaymentsSOA = ({
       setPaymentCorrectionVerificationId(null)
       setPaymentCorrectionCode('')
       setPaymentCorrectionMaskedEmail('')
+      setPaymentCorrectionAuthorization(null)
       setPaymentCorrectionAlert(null)
       setAlert({ type: 'success', message: result?.message || 'Payment corrected successfully.' })
       await refreshProfile()
@@ -970,10 +1041,10 @@ const PaymentsSOA = ({
   })
 
   const deletePaymentMutation = useMutation({
-    mutationFn: ({ paymentId, reason, verificationId, code }) =>
+    mutationFn: ({ paymentId, ...payload }) =>
       useFetchPost(
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/payments/${paymentId}/delete`,
-        { reason, verificationId, code },
+        payload,
         { confirmationHandled: 'compact' }
       ),
     onSuccess: async (result) => {
@@ -983,6 +1054,7 @@ const PaymentsSOA = ({
       setPaymentCorrectionVerificationId(null)
       setPaymentCorrectionCode('')
       setPaymentCorrectionMaskedEmail('')
+      setPaymentCorrectionAuthorization(null)
       setPaymentCorrectionAlert(null)
       setAlert({ type: 'success', message: result?.message || 'Payment voided successfully.' })
       await refreshProfile()
@@ -1020,10 +1092,14 @@ const PaymentsSOA = ({
     mutationFn: ({ scheduleId, ...payload }) =>
       useFetchPost(
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/payment-schedules/${scheduleId}/lmf-waiver`,
-        payload,
+        { ...payload, auditCaseId: currentUser.role === 'system_admin' ? workflowAuditCaseId || undefined : undefined },
         { doubleCheck: { type: 'penalty-adjustment', title: 'Review LMF Waiver', confirmLabel: 'Confirm & Waive LMF', actionLabel: 'Waive Legal / Misc Fee', data: { soaRow: lmfWaiverRow || { scheduleId }, waiver: payload } } }
       ),
     onSuccess: async (result) => {
+      if (result?.approval_required) {
+        setLmfWaiverAlert({ type: 'info', message: result?.message || 'Accounting Head approval is required. Approve it from Review Center, then submit the same waiver again.' })
+        return
+      }
       setLmfWaiverRow(null)
       setLmfWaiverAlert(null)
       setAlert({ type: 'success', message: result?.message || 'Legal / Misc Fee waived successfully.' })
@@ -1036,10 +1112,14 @@ const PaymentsSOA = ({
     mutationFn: ({ scheduleId, ...payload }) =>
       useFetchPost(
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/payment-schedules/${scheduleId}/penalty-extension`,
-        payload,
+        { ...payload, auditCaseId: currentUser.role === 'system_admin' ? workflowAuditCaseId || undefined : undefined },
         { doubleCheck: { type: 'penalty-adjustment', title: 'Review Penalty-Free Extension', confirmLabel: 'Confirm & Save New Payment Date', actionLabel: 'Penalty-Free Extension', data: { soaRow: penaltyReliefRow || { scheduleId }, extension: payload } } }
       ),
     onSuccess: async (result) => {
+      if (result?.approval_required) {
+        setPenaltyReliefAlert({ type: 'info', message: result?.message || 'Accounting Head approval is required. Approve it from Review Center, then submit the exact same adjustment again.' })
+        return
+      }
       setPenaltyReliefRow(null)
       setPenaltyReliefAlert(null)
       setAlert({ type: 'success', message: result?.message || 'The new penalty-free payment date was saved.' })
@@ -1052,10 +1132,14 @@ const PaymentsSOA = ({
     mutationFn: ({ scheduleId, reliefId, ...payload }) =>
       useFetchPut(
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/payment-schedules/${scheduleId}/penalty-extension/${reliefId}`,
-        payload,
+        { ...payload, auditCaseId: currentUser.role === 'system_admin' ? workflowAuditCaseId || undefined : undefined },
         { doubleCheck: { type: 'penalty-adjustment', title: 'Review Extension Changes', confirmLabel: 'Confirm & Save Extension', actionLabel: 'Edit Penalty-Free Extension', data: { soaRow: penaltyReliefRow || { scheduleId, reliefId }, extension: payload } } }
       ),
     onSuccess: async (result) => {
+      if (result?.approval_required) {
+        setPenaltyReliefAlert({ type: 'info', message: result?.message || 'Accounting Head approval is required. Approve it from Review Center, then submit the exact same adjustment again.' })
+        return
+      }
       setPenaltyReliefRow(null)
       setPenaltyReliefAlert(null)
       setAlert({ type: 'success', message: result?.message || 'The penalty-free payment date was updated.' })
@@ -1068,10 +1152,14 @@ const PaymentsSOA = ({
     mutationFn: ({ scheduleId, ...payload }) =>
       useFetchPost(
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/payment-schedules/${scheduleId}/penalty-correction`,
-        payload,
+        { ...payload, auditCaseId: currentUser.role === 'system_admin' ? workflowAuditCaseId || undefined : undefined },
         { doubleCheck: { type: 'penalty-adjustment', title: 'Review Penalty Correction', confirmLabel: 'Confirm & Correct Penalty', actionLabel: 'Correct Penalty', data: { soaRow: penaltyReliefRow || { scheduleId }, correction: payload } } }
       ),
     onSuccess: async (result) => {
+      if (result?.approval_required) {
+        setPenaltyReliefAlert({ type: 'info', message: result?.message || 'Accounting Head approval is required. Approve it from Review Center, then submit the exact same adjustment again.' })
+        return
+      }
       setPenaltyReliefRow(null)
       setPenaltyReliefAlert(null)
       setAlert({ type: 'success', message: result?.message || 'The incorrect penalty was cleared.' })
@@ -1084,10 +1172,14 @@ const PaymentsSOA = ({
     mutationFn: ({ scheduleId, ...payload }) =>
       useFetchPost(
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/payment-schedules/${scheduleId}/penalty-waiver`,
-        payload,
+        { ...payload, auditCaseId: currentUser.role === 'system_admin' ? workflowAuditCaseId || undefined : undefined },
         { doubleCheck: { type: 'penalty-adjustment', title: 'Review Penalty Reduction', confirmLabel: 'Confirm & Reduce Penalty', actionLabel: 'Reduce Penalty', data: { soaRow: penaltyReliefRow || { scheduleId }, reduction: payload } } }
       ),
     onSuccess: async (result) => {
+      if (result?.approval_required) {
+        setPenaltyReliefAlert({ type: 'info', message: result?.message || 'Accounting Head approval is required. Approve it from Review Center, then submit the exact same adjustment again.' })
+        return
+      }
       setPenaltyReliefRow(null)
       setPenaltyReliefAlert(null)
       setAlert({ type: 'success', message: result?.message || 'The penalty reduction was saved.' })
@@ -1100,16 +1192,35 @@ const PaymentsSOA = ({
     mutationFn: ({ reliefId, ...payload }) =>
       useFetchPost(
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/penalty-reliefs/${reliefId}/restore`,
-        payload,
+        { ...payload, auditCaseId: currentUser.role === 'system_admin' ? workflowAuditCaseId || undefined : undefined },
         { doubleCheck: { type: 'penalty-adjustment', title: 'Review Penalty Restore', confirmLabel: 'Confirm & Restore Penalty', actionLabel: 'Restore Penalty', data: { soaRow: penaltyReliefRow || { reliefId }, restore: payload } } }
       ),
     onSuccess: async (result) => {
+      if (result?.approval_required) {
+        setPenaltyReliefAlert({ type: 'info', message: result?.message || 'Accounting Head approval is required. Approve it from Review Center, then submit the exact same adjustment again.' })
+        return
+      }
       setPenaltyReliefRow(null)
       setPenaltyReliefAlert(null)
       setAlert({ type: 'success', message: result?.message || 'The removed penalty was added back.' })
       await refreshProfile()
     },
     onError: (error) => setPenaltyReliefAlert(getDoubleCheckNotice(error, 'The penalty could not be added back.')),
+  })
+
+  const restoreLmfFromAuditMutation = useMutation({
+    mutationFn: ({ scheduleId, auditCaseId, reason }) => useFetchPost(
+      `/projects/lot-projects/${projectSlug}/listings/${listingId}/payment-schedules/${scheduleId}/lmf-restore`,
+      { auditCaseId, reason },
+      { doubleCheck: { type: 'penalty-adjustment', title: 'Review Audit LMF Restoration', confirmLabel: 'Confirm & Restore LMF', actionLabel: 'Restore Legal / Misc Fee', data: { soaRow: lmfAuditRestoreRow || { scheduleId }, correction: { auditCaseId, reason } } } }
+    ),
+    onSuccess: async (result) => {
+      setLmfAuditRestoreRow(null)
+      setLmfAuditRestoreAlert(null)
+      setAlert({ type: 'success', message: result?.message || 'Legal / Misc Fee restored. Auditor recheck is pending.' })
+      await refreshProfile()
+    },
+    onError: (error) => setLmfAuditRestoreAlert(getDoubleCheckNotice(error, 'The Legal / Misc Fee correction could not be applied.')),
   })
 
   const handleSaveSoaTerms = (payload) => {
@@ -1224,6 +1335,7 @@ const PaymentsSOA = ({
     setPaymentCorrectionVerificationId(null)
     setPaymentCorrectionCode('')
     setPaymentCorrectionMaskedEmail('')
+    setPaymentCorrectionAuthorization(null)
     setPaymentCorrectionAlert(null)
   }
 
@@ -1250,6 +1362,30 @@ const PaymentsSOA = ({
     setShowPaymentModal(true)
   }
 
+  useEffect(() => {
+    if (!workflowScheduleId || readOnly || !canManagePenaltyRelief) return
+    const targetRow = rows.find((row) => Number(row.scheduleId || 0) === workflowScheduleId)
+    if (!targetRow) return
+    if (workflowAction === 'penalty_adjustment') {
+      setPenaltyReliefRow(targetRow)
+      setPenaltyReliefAlert({ type: 'info', message: `Audit Case #${workflowAuditCaseId || '—'} authorizes a controlled correction on this penalty row.` })
+    }
+    if (workflowAction === 'lmf_correction' && currentUser.role === 'system_admin' && workflowAuditCaseId) {
+      setLmfAuditRestoreRow(targetRow)
+      setLmfAuditRestoreAlert({ type: 'info', message: `Audit Case #${workflowAuditCaseId} authorizes restoration of the pre-waiver LMF snapshot.` })
+    }
+  }, [workflowAction, workflowScheduleId, workflowAuditCaseId, rows, readOnly, canManagePenaltyRelief, currentUser.role])
+
+  useEffect(() => {
+    if (workflowAction !== 'payment_correction' || !workflowPaymentId || !canEdit || readOnly) return
+    const target = paymentRecords.find((payment) => Number(payment.paymentId || payment.id) === workflowPaymentId)
+    if (target) {
+      setEditingPayment(target)
+      setShowPaymentModal(true)
+      setAlert({ type: 'info', message: `Audit Case correction opened for payment ${target.referenceId || target.payment_reference_id || workflowPaymentId}. Review the current values, make the required change, then submit it through governed authorization.` })
+    }
+  }, [workflowAction, workflowPaymentId, canEdit, readOnly, paymentRecords])
+
   const handlePreviewPayment = (payload) =>
     useFetchPost(`/projects/lot-projects/${projectSlug}/listings/${listingId}/payments/preview`, payload, { confirmationHandled: 'technical' })
 
@@ -1263,6 +1399,7 @@ const PaymentsSOA = ({
       setPaymentCorrectionVerificationId(null)
       setPaymentCorrectionCode('')
       setPaymentCorrectionMaskedEmail('')
+      setPaymentCorrectionAuthorization(null)
       setPaymentCorrectionAlert(null)
       return
     }
@@ -1281,6 +1418,7 @@ const PaymentsSOA = ({
     setPaymentCorrectionVerificationId(null)
     setPaymentCorrectionCode('')
     setPaymentCorrectionMaskedEmail('')
+    setPaymentCorrectionAuthorization(null)
     setPaymentCorrectionAlert(null)
   }
 
@@ -1292,28 +1430,32 @@ const PaymentsSOA = ({
       password: paymentCorrectionPassword,
       reason: paymentCorrectionReason.trim(),
       proposed: paymentCorrection.action === 'edit' ? paymentCorrection.proposed : undefined,
+      reviewId: paymentCorrectionAuthorization?.reviewId || workflowReviewId || undefined,
+      auditCaseId: paymentCorrectionAuthorization?.auditCaseId || workflowAuditCaseId || undefined,
     })
   }
 
   const handleApplyPaymentCorrection = () => {
-    if (!paymentCorrection || !paymentCorrectionVerificationId || paymentCorrectionCode.trim().length !== 6) return
+    if (!paymentCorrection) return
+    const emergencyReady = paymentCorrectionVerificationId && paymentCorrectionCode.trim().length === 6
+    if (!paymentCorrectionAuthorization?.approved && !emergencyReady) return
     const paymentId = paymentCorrection.payment?.paymentId || paymentCorrection.payment?.id || paymentCorrection.proposed?.paymentId
+    const governedFields = {
+      reason: paymentCorrectionReason.trim(),
+      verificationId: paymentCorrectionVerificationId || undefined,
+      code: paymentCorrectionCode.trim() || undefined,
+      reviewId: paymentCorrectionAuthorization?.reviewId || workflowReviewId || undefined,
+      auditCaseId: paymentCorrectionAuthorization?.auditCaseId || workflowAuditCaseId || undefined,
+    }
     if (paymentCorrection.action === 'edit') {
       updatePaymentMutation.mutate({
         ...paymentCorrection.proposed,
         paymentId,
-        reason: paymentCorrectionReason.trim(),
-        verificationId: paymentCorrectionVerificationId,
-        code: paymentCorrectionCode.trim(),
+        ...governedFields,
       })
       return
     }
-    deletePaymentMutation.mutate({
-      paymentId,
-      reason: paymentCorrectionReason.trim(),
-      verificationId: paymentCorrectionVerificationId,
-      code: paymentCorrectionCode.trim(),
-    })
+    deletePaymentMutation.mutate({ paymentId, ...governedFields })
   }
 
   if (!canUsePayments) {
@@ -1948,6 +2090,21 @@ const PaymentsSOA = ({
         onConfirm={(payload) => waiveLmfMutation.mutate(payload)}
       /> : null}
 
+      {!readOnly && lmfAuditRestoreRow ? (
+        <AuditLmfRestoreModal
+          row={lmfAuditRestoreRow}
+          auditCaseId={workflowAuditCaseId}
+          alert={lmfAuditRestoreAlert}
+          isSaving={restoreLmfFromAuditMutation.isPending}
+          onClose={() => {
+            if (restoreLmfFromAuditMutation.isPending) return
+            setLmfAuditRestoreRow(null)
+            setLmfAuditRestoreAlert(null)
+          }}
+          onConfirm={(payload) => restoreLmfFromAuditMutation.mutate(payload)}
+        />
+      ) : null}
+
       {paymentProof ? (
         <PaymentProofModal
           projectSlug={projectSlug}
@@ -1981,11 +2138,14 @@ const PaymentsSOA = ({
       {!readOnly && paymentCorrection ? (
         <PaymentCorrectionAuthorizationModal
           request={paymentCorrection}
+          actorRole={actorRole}
+          authorization={paymentCorrectionAuthorization}
           reason={paymentCorrectionReason}
           setReason={(value) => {
             setPaymentCorrectionReason(value)
-            if (paymentCorrectionVerificationId) {
+            if (paymentCorrectionVerificationId || paymentCorrectionAuthorization) {
               setPaymentCorrectionVerificationId(null)
+              setPaymentCorrectionAuthorization(null)
               setPaymentCorrectionCode('')
               setPaymentCorrectionMaskedEmail('')
             }
@@ -2003,7 +2163,7 @@ const PaymentsSOA = ({
             if (requestPaymentCorrectionCodeMutation.isPending || updatePaymentMutation.isPending || deletePaymentMutation.isPending) return
             resetPaymentCorrection()
           }}
-          onSendCode={handleSendPaymentCorrectionCode}
+          onCheckAuthorization={handleSendPaymentCorrectionCode}
           onApply={handleApplyPaymentCorrection}
         />
       ) : null}

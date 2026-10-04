@@ -91,7 +91,7 @@ test('existing employee/system account can also become an accredited seller with
     seller_group_id: null,
     accredited_seller_status: null,
     user_status: 'active',
-    role: 'admin',
+    role: 'system_admin',
     account_category: 'system',
     person_key: 'person-employee-1',
     is_system_account: 0,

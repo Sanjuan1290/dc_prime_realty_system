@@ -140,7 +140,7 @@ export const resolveDashboardDateRange = (query = {}, userOrRole = '', adminType
     from: toDateOnly(fromDate),
     to: toDateOnly(toDate),
     spanMonths,
-    longRangeWarning: ['super_admin', 'admin'].includes(actor.role) && isOverOneYear,
+    longRangeWarning: ['super_admin', 'system_admin'].includes(actor.role) && isOverOneYear,
     groupBy: dayDiff > 45 ? 'month' : 'day',
   };
 };

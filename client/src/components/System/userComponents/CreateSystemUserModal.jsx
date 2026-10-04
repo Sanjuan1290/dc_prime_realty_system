@@ -2,18 +2,18 @@ import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import StatusAlert from '../../Shared/StatusAlert'
 import useCurrentUser from '../../../utils/useCurrentUser'
-import { CONFIGURABLE_SYSTEM_ROLES } from '../../../config/permissions'
+import { ROLE_LABELS, SYSTEM_ADMIN_MANAGEABLE_ROLES, SYSTEM_USER_ROLES } from '../../../config/permissions'
 import { useFetch, useFetchPost } from '../../../utils/useFetch'
 import AdminProjectAccessFields from './AdminProjectAccessFields'
 import PermissionMatrix from './PermissionMatrix'
 
-const roleLabels = { super_admin: 'Super Admin', admin: 'Admin', marketing: 'Marketing', sales: 'Sales', accounting: 'Accounting', operations: 'Operations' }
-const initial = { first_name: '', middle_name: '', last_name: '', email: '', contact_no: '', tin_no: '', prc_no: '', address: '', role: 'marketing', status: 'active' }
+const initial = { first_name: '', middle_name: '', last_name: '', email: '', contact_no: '', tin_no: '', prc_no: '', address: '', role: 'marketing_staff', status: 'active' }
 const steps = ['Personal Information', 'Role & Account Code', 'Permissions', 'Project Access', 'Final Review']
 
 const CreateSystemUserModal = ({ onClose, onSaved }) => {
   const { data: me } = useCurrentUser()
-  const isSuperAdmin = me?.user?.role === 'super_admin'
+  const actorRole = me?.user?.role
+  const canCreateSystemUsers = ['super_admin', 'system_admin'].includes(actorRole)
   const [form, setForm] = useState(initial)
   const [allProjects, setAllProjects] = useState(false)
   const [projectIds, setProjectIds] = useState([])
@@ -21,28 +21,28 @@ const CreateSystemUserModal = ({ onClose, onSaved }) => {
   const [step, setStep] = useState(0)
   const [alert, setAlert] = useState(null)
 
-  const allowedRoles = useMemo(() => ['super_admin', ...CONFIGURABLE_SYSTEM_ROLES], [])
+  const allowedRoles = useMemo(() => actorRole === 'super_admin' ? SYSTEM_USER_ROLES : SYSTEM_ADMIN_MANAGEABLE_ROLES, [actorRole])
   const { data: roleData } = useQuery({
     queryKey: ['role-access-defaults'],
     queryFn: () => useFetch('/user/access-control/roles'),
-    enabled: isSuperAdmin,
+    enabled: canCreateSystemUsers,
   })
   const { data: projectData, isLoading: projectsLoading, error: projectsError } = useQuery({
     queryKey: ['lot-project-options'],
     queryFn: () => useFetch('/projects/lot-projects/options'),
-    enabled: isSuperAdmin && form.role !== 'super_admin',
+    enabled: canCreateSystemUsers && !['super_admin','system_admin','auditor'].includes(form.role),
   })
   const { data: accountCodePreview, isFetching: previewLoading } = useQuery({
     queryKey: ['system-account-code-preview', form.role],
     queryFn: () => useFetch(`/user/account-code-preview?role=${encodeURIComponent(form.role)}`),
-    enabled: isSuperAdmin && Boolean(form.role),
+    enabled: canCreateSystemUsers && Boolean(form.role),
   })
   const emailAvailabilityMutation = useMutation({
     mutationFn: (email) => useFetch(`/user/email-availability?email=${encodeURIComponent(email)}`),
   })
 
   useEffect(() => {
-    if (form.role === 'super_admin') {
+    if (['super_admin','system_admin','auditor'].includes(form.role)) {
       setPermissions([])
       return
     }
@@ -52,8 +52,8 @@ const CreateSystemUserModal = ({ onClose, onSaved }) => {
   const mutation = useMutation({
     mutationFn: () => useFetchPost('/user/createUser', {
       ...form,
-      all_projects_access: form.role === 'super_admin' ? true : allProjects,
-      project_ids: form.role === 'super_admin' ? [] : projectIds,
+      all_projects_access: ['super_admin','system_admin','auditor'].includes(form.role) ? true : allProjects,
+      project_ids: ['super_admin','system_admin','auditor'].includes(form.role) ? [] : projectIds,
       ...(form.role !== 'super_admin' ? { permissions } : {}),
     }, { confirmationHandled: 'compact' }),
     onMutate: () => setAlert({ type: 'loading', message: 'Creating system account...' }),
@@ -64,11 +64,11 @@ const CreateSystemUserModal = ({ onClose, onSaved }) => {
     onError: (error) => setAlert({ type: 'error', message: error.message || 'Failed to create user.' }),
   })
 
-  if (!isSuperAdmin) {
+  if (!canCreateSystemUsers) {
     return (
       <div className="fixed inset-0 z-[80] overflow-y-auto bg-slate-950/50 p-4">
         <div className="mx-auto my-10 max-w-2xl rounded-3xl bg-white p-6 shadow-2xl">
-          <StatusAlert type="error" message="Only Super Admin can create internal system accounts because permissions and project scope are assigned during creation." />
+          <StatusAlert type="error" message="Only Super Admin or System Admin can create internal system accounts. System Admin is limited to department Staff and Head roles." />
           <div className="mt-5 flex justify-end"><button type="button" onClick={onClose} className="h-11 rounded-xl border px-5 font-bold">Close</button></div>
         </div>
       </div>
@@ -94,7 +94,7 @@ const CreateSystemUserModal = ({ onClose, onSaved }) => {
       setAlert({ type: 'error', message: 'First name, last name, and email are required.' })
       return false
     }
-    if (step === 3 && form.role !== 'super_admin' && !allProjects && projectIds.length === 0) {
+    if (step === 3 && !['super_admin','system_admin','auditor'].includes(form.role) && !allProjects && projectIds.length === 0) {
       setAlert({ type: 'error', message: 'Select All Projects or at least one project.' })
       return false
     }
@@ -125,7 +125,7 @@ const CreateSystemUserModal = ({ onClose, onSaved }) => {
   const back = () => { setAlert(null); setStep((current) => Math.max(0, current - 1)) }
   const changeRole = (role) => {
     setField('role', role)
-    setAllProjects(role === 'super_admin')
+    setAllProjects(['super_admin','system_admin','auditor'].includes(role))
     setProjectIds([])
   }
 
@@ -175,7 +175,7 @@ const CreateSystemUserModal = ({ onClose, onSaved }) => {
               <label className="grid gap-1.5 text-sm font-bold text-slate-700">
                 Role *
                 <select value={form.role} onChange={(e) => changeRole(e.target.value)} className="h-11 rounded-xl border border-slate-200 px-3">
-                  {allowedRoles.map((role) => <option key={role} value={role}>{roleLabels[role]}</option>)}
+                  {allowedRoles.map((role) => <option key={role} value={role}>{ROLE_LABELS[role] || role}</option>)}
                 </select>
               </label>
               <div className="rounded-2xl border border-blue-200 bg-blue-50 p-5">
@@ -188,19 +188,19 @@ const CreateSystemUserModal = ({ onClose, onSaved }) => {
           ) : null}
 
           {step === 2 ? (
-            form.role === 'super_admin' ? (
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-900"><p className="text-lg font-black">Full System Access</p><p className="mt-1 text-sm font-semibold">Permission customization is skipped for Super Admin.</p></div>
+            ['super_admin','system_admin','auditor'].includes(form.role) ? (
+              <div className="rounded-2xl border border-blue-200 bg-blue-50 p-5 text-blue-900"><p className="text-lg font-black">Governed Access</p><p className="mt-1 text-sm font-semibold">{form.role === 'super_admin' ? 'Super Admin keeps owner-level Full System Access.' : form.role === 'auditor' ? 'Auditor receives enforced global read-only access plus audit workflow actions.' : 'System Admin receives the required administration policy and All Projects access.'}</p></div>
             ) : (
               <section className="grid gap-3">
-                <div><h3 className="text-lg font-black">Customize Permissions</h3><p className="text-sm font-semibold text-slate-500">Loaded from the current {roleLabels[form.role]} role default. Changes here apply only to this new account.</p></div>
+                <div><h3 className="text-lg font-black">Customize Permissions</h3><p className="text-sm font-semibold text-slate-500">Loaded from the current {ROLE_LABELS[form.role]} role default. Changes here apply only to this new account.</p></div>
                 <PermissionMatrix catalog={roleData?.catalog || []} selected={permissions} onChange={setPermissions} />
               </section>
             )
           ) : null}
 
           {step === 3 ? (
-            form.role === 'super_admin' ? (
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-900"><p className="text-lg font-black">All Projects</p><p className="mt-1 text-sm font-semibold">Project-scope selection is skipped for Super Admin.</p></div>
+            ['super_admin','system_admin','auditor'].includes(form.role) ? (
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-900"><p className="text-lg font-black">All Projects</p><p className="mt-1 text-sm font-semibold">This governance role always receives All Projects access.</p></div>
             ) : (
               <AdminProjectAccessFields projects={projectData?.data || []} allProjects={allProjects} selectedProjectIds={projectIds} onAllProjectsChange={(checked) => { setAllProjects(checked); if (checked) setProjectIds([]) }} onProjectToggle={toggleProject} canSelectAllProjects isLoading={projectsLoading} error={projectsError?.message || ''} />
             )
@@ -212,12 +212,12 @@ const CreateSystemUserModal = ({ onClose, onSaved }) => {
               <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
                 {reviewItem('Name', [form.first_name, form.middle_name, form.last_name].filter(Boolean).join(' '))}
                 {reviewItem('Email', form.email)}
-                {reviewItem('Role', roleLabels[form.role])}
+                {reviewItem('Role', ROLE_LABELS[form.role])}
                 {reviewItem('Account Code', accountCodePreview?.account_code || 'Generated at creation')}
-                {reviewItem('Permissions', form.role === 'super_admin' ? 'Full System Access' : `${permissions.length} permissions`)}
-                {reviewItem('Project Scope', form.role === 'super_admin' || allProjects ? 'All Projects' : selectedProjectNames.join(', ') || `${projectIds.length} selected project(s)`)}
+                {reviewItem('Permissions', form.role === 'super_admin' ? 'Full System Access' : form.role === 'auditor' ? 'Enforced Global Read-Only' : form.role === 'system_admin' ? 'System Administration' : `${permissions.length} permissions`)}
+                {reviewItem('Project Scope', ['super_admin','system_admin','auditor'].includes(form.role) || allProjects ? 'All Projects' : selectedProjectNames.join(', ') || `${projectIds.length} selected project(s)`)}
               </div>
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">Role and account code become immutable account identity. A later position change creates a new historical account instead of rewriting this one.</div>
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">The account identity is retained if the user is later promoted, demoted, or transferred. Role changes are recorded in Role History and invalidate existing sessions.</div>
             </section>
           ) : null}
 

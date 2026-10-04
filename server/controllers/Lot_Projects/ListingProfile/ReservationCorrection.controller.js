@@ -1,3 +1,4 @@
+import bcrypt from 'bcrypt';
 import {
   db,
   getErrorMessage,
@@ -30,6 +31,9 @@ import {
   SENSITIVE_ACTION_CODE_EXPIRY_MINUTES,
   verifyAndConsumeSensitiveAction,
 } from '../../../services/sensitiveActionVerification.service.js'
+import { createProtectedChangeRequest, consumeProtectedChange } from '../../../services/protectedChange.service.js'
+import { assertEntityNotReviewLocked, createOperationalReview } from '../../../services/operationalReview.service.js'
+import { getPendingAuditCorrectionCase, advanceAuditCaseToRecheck } from '../../../services/auditCaseAuthorization.service.js'
 
 const CORRECTION_TABLE = 'lot_project_reservation_corrections'
 const clean = (value = '') => String(value ?? '').trim()
@@ -347,7 +351,7 @@ const getCorrectionSafety = async (connection, bundle) => {
   }
 
   const simplePaymentReason = paymentCount > 0
-    ? 'This buyer account has a verified payment. Use Controlled Unit Correction with Super Admin password and email verification.'
+    ? 'This buyer account has a verified payment. Use the governed Controlled Unit Correction workflow (Sales Head approval, Auditor review, or Super Admin emergency fallback).'
     : null
   const reasons = [...(simplePaymentReason ? [simplePaymentReason] : []), ...hardReasons]
   return {
@@ -669,10 +673,7 @@ export const requestControlledReservationCorrectionCode = async (req, res) => {
   const connection = await db.getConnection()
   try {
     const actor = req.authUser
-    if (!actor?.id || !actor.email) return res.status(400).json({ message: 'The Super Admin account must have an email address.' })
-    if (!(await tableExists(connection, 'destructive_action_verifications'))) {
-      return res.status(500).json({ message: 'Sensitive-action verification table is missing. Apply the latest database schema first.' })
-    }
+    if (!actor?.id) return res.status(401).json({ message: 'Authentication is required.' })
     const project = await getProjectBySlug(clean(req.params.projectSlug))
     if (!project) return res.status(404).json({ message: 'Lot project not found.' })
     const destinationId = Number(req.body.destinationListingId || 0)
@@ -692,25 +693,73 @@ export const requestControlledReservationCorrectionCode = async (req, res) => {
     }
     const computation = buildDestinationComputation(bundle, destination, req.body.terms || {})
     const payload = buildControlledCorrectionPayload({ actor, source, bundle, destination, computation, reason })
-    const { verificationId, code } = await createSensitiveActionVerification(connection, {
-      userId: actor.id,
-      actionType: CONTROLLED_CORRECTION_ACTION,
-      entityType: CONTROLLED_CORRECTION_ENTITY,
-      entityId: bundle.lot_project_account_id,
+    const entityId = Number(bundle.lot_project_account_id)
+    await assertEntityNotReviewLocked(connection, { entityType: 'lot_project_reservation', entityId })
+
+    if (actor.role === 'system_admin') {
+      const auditCase = await getPendingAuditCorrectionCase(connection, {
+        auditCaseId: req.body.auditCaseId || req.body.audit_case_id,
+        entityType: 'lot_project_reservation',
+        entityId,
+      })
+      if (!auditCase) throw Object.assign(new Error('A valid Auditor-approved case is required for a System Admin reservation correction.'), { statusCode: 409, code: 'AUDIT_CASE_REQUIRED' })
+      await connection.commit()
+      return res.json({ success: true, message: `${auditCase.case_number} authorizes this controlled System Admin reservation correction.`, data: { status: 'approved', directCorrection: true, authorizationType: 'audit_case', auditCaseId: auditCase.audit_case_id, caseNumber: auditCase.case_number } })
+    }
+
+    if (actor.role === 'sales_head') {
+      await connection.commit()
+      return res.json({ success: true, message: 'Sales Head may apply this controlled correction directly. It will be sent to the Auditor after saving.', data: { status: 'approved', directHeadApproval: true, authorizationType: 'department_head' } })
+    }
+
+    if (actor.role === 'super_admin') {
+      if (!(await tableExists(connection, 'destructive_action_verifications'))) {
+        throw Object.assign(new Error('Sensitive-action verification table is missing. Apply the latest database schema first.'), { statusCode: 500 })
+      }
+      const password = String(req.body.password || '')
+      if (!password) throw Object.assign(new Error('Super Admin password is required for emergency verification.'), { statusCode: 400 })
+      if (!actor.password_hash || !(await bcrypt.compare(password, actor.password_hash))) throw Object.assign(new Error('Super Admin password is incorrect.'), { statusCode: 401 })
+      if (!actor.email) throw Object.assign(new Error('The Super Admin account must have an email address.'), { statusCode: 400 })
+      const { verificationId, code } = await createSensitiveActionVerification(connection, {
+        userId: actor.id,
+        actionType: CONTROLLED_CORRECTION_ACTION,
+        entityType: CONTROLLED_CORRECTION_ENTITY,
+        entityId,
+        payload,
+        reason,
+        requestIp: getSensitiveActionRequestIp(req),
+      })
+      await sendControlledCorrectionCodeEmail({ actor, code, source, destination, bundle, reason })
+      await connection.commit()
+      return res.json({ success: true, message: `Emergency verification code sent to ${maskSensitiveActionEmail(actor.email)}.`, data: { verificationId, maskedEmail: maskSensitiveActionEmail(actor.email), expiresInMinutes: SENSITIVE_ACTION_CODE_EXPIRY_MINUTES, emergency: true } })
+    }
+
+    const approval = await createProtectedChangeRequest(connection, {
+      actor,
+      actionKey: 'reservation.controlled_correction',
+      department: 'sales',
+      projectId: project.lot_project_id,
+      entityType: 'lot_project_reservation',
+      entityId,
+      entityLabel: `${source.lot_project_listing_unit_id} → ${destination.lot_project_listing_unit_id}`,
       payload,
       reason,
-      requestIp: getSensitiveActionRequestIp(req),
     })
-    await sendControlledCorrectionCodeEmail({ actor, code, source, destination, bundle, reason })
+    await writeAuditLog(connection, req, {
+      action: 'create', module: 'Review Center', entityType: 'protected_change_request', entityId: String(approval.requestId || entityId),
+      entityLabel: approval.requestNumber || bundle.account_reference || String(entityId), title: 'Requested Sales Head approval',
+      description: `Requested Head approval for a controlled reservation correction from ${source.lot_project_listing_unit_id} to ${destination.lot_project_listing_unit_id}.`,
+      metadata: { approval, accountId: entityId, sourceListingId: source.lot_project_listing_id, destinationListingId: destination.lot_project_listing_id },
+    })
     await connection.commit()
     return res.json({
       success: true,
-      message: `A verification code was sent to ${maskSensitiveActionEmail(actor.email)}.`,
-      data: { verificationId, maskedEmail: maskSensitiveActionEmail(actor.email), expiresInMinutes: SENSITIVE_ACTION_CODE_EXPIRY_MINUTES },
+      message: approval.status === 'approved' ? 'Sales Head approval is already available.' : 'Approval request sent to the Sales Head. Apply the exact correction after it is approved.',
+      data: { status: approval.status, approvalRequestId: approval.requestId, requestNumber: approval.requestNumber, expiresAt: approval.expiresAt },
     })
   } catch (error) {
     try { await connection.rollback() } catch {}
-    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) })
+    return res.status(error.statusCode || 500).json({ code: error.code, message: getErrorMessage(error) })
   } finally {
     connection.release()
   }
@@ -770,31 +819,59 @@ export const correctReservationUnit = async (req, res) => {
     let correctionAuthorization = null
     if (safety.controlledEligible) {
       const actor = req.authUser
-      if (String(actor?.role || '').toLowerCase() !== 'super_admin') {
-        throw Object.assign(new Error('Controlled Unit Correction can only be completed by an exact Super Admin.'), { statusCode: 403 })
+      const entityId = Number(bundle.lot_project_account_id)
+      let allowReviewId = null
+      let auditCase = null
+
+      if (actor?.role === 'system_admin') {
+        auditCase = await getPendingAuditCorrectionCase(connection, {
+          auditCaseId: req.body.auditCaseId || req.body.audit_case_id,
+          entityType: 'lot_project_reservation',
+          entityId,
+        })
+        if (!auditCase) throw Object.assign(new Error('A valid Auditor-approved case is required for a System Admin reservation correction.'), { statusCode: 409, code: 'AUDIT_CASE_REQUIRED' })
+        allowReviewId = auditCase.operational_review_id
+        correctionAuthorization = { authorizationType: 'audit_case', auditCase }
       }
-      const verificationId = Number(req.body.verificationId || req.body.verification_id || 0)
-      const code = clean(req.body.code || req.body.verificationCode || req.body.verification_code)
-      if (!verificationId || !code) {
-        throw Object.assign(new Error('Super Admin password and email-code verification are required for a buyer account with verified payments.'), { statusCode: 400 })
+      await assertEntityNotReviewLocked(connection, { entityType: 'lot_project_reservation', entityId, allowReviewId })
+
+      if (!correctionAuthorization && actor?.role === 'sales_head') {
+        correctionAuthorization = { authorizationType: 'department_head', headPreApprovedByUserId: actor.id }
       }
-      const payload = buildControlledCorrectionPayload({ actor, source, bundle, destination, computation, reason })
-      const verificationResult = await verifyAndConsumeSensitiveAction(connection, {
-        verificationId,
-        userId: actor.id,
-        actionType: CONTROLLED_CORRECTION_ACTION,
-        entityType: CONTROLLED_CORRECTION_ENTITY,
-        entityId: bundle.lot_project_account_id,
-        code,
-        payload,
-      })
-      if (!verificationResult.ok) {
-        // Commit only the verification attempt/expiry state. No reservation or
-        // financial rows have been changed yet at this point.
-        await connection.commit()
-        return res.status(verificationResult.statusCode || 400).json({ message: verificationResult.message })
+      if (!correctionAuthorization && actor?.role === 'super_admin') {
+        const verificationId = Number(req.body.verificationId || req.body.verification_id || 0)
+        const code = clean(req.body.code || req.body.verificationCode || req.body.verification_code)
+        if (!verificationId || !code) throw Object.assign(new Error('Emergency Super Admin email verification is required for this controlled correction.'), { statusCode: 400 })
+        const payload = buildControlledCorrectionPayload({ actor, source, bundle, destination, computation, reason })
+        const verificationResult = await verifyAndConsumeSensitiveAction(connection, {
+          verificationId,
+          userId: actor.id,
+          actionType: CONTROLLED_CORRECTION_ACTION,
+          entityType: CONTROLLED_CORRECTION_ENTITY,
+          entityId,
+          code,
+          payload,
+        })
+        if (!verificationResult.ok) {
+          await connection.commit()
+          return res.status(verificationResult.statusCode || 400).json({ message: verificationResult.message })
+        }
+        correctionAuthorization = { verificationId, actorId: actor.id, authorizationType: 'emergency_super_admin', headPreApprovedByUserId: actor.id }
       }
-      correctionAuthorization = { verificationId, actorId: actor.id }
+      if (!correctionAuthorization) {
+        const approvalRequestId = Number(req.body.approvalRequestId || req.body.approval_request_id || 0)
+        if (!approvalRequestId) throw Object.assign(new Error('Sales Head approval is required before this controlled reservation correction can be applied.'), { statusCode: 409, code: 'HEAD_APPROVAL_REQUIRED' })
+        const payload = buildControlledCorrectionPayload({ actor, source, bundle, destination, computation, reason })
+        const approval = await consumeProtectedChange(connection, {
+          requestId: approvalRequestId,
+          actor,
+          actionKey: 'reservation.controlled_correction',
+          entityType: 'lot_project_reservation',
+          entityId,
+          payload,
+        })
+        correctionAuthorization = { authorizationType: 'head_approval', approvalRequestId, headPreApprovedByUserId: approval.reviewed_by_head_user_id }
+      }
     }
     const before = buildBeforeSnapshot(source, bundle)
     const after = buildAfterSnapshot(destination, bundle, computation)
@@ -1083,6 +1160,31 @@ export const correctReservationUnit = async (req, res) => {
       },
     })
 
+    let workflow = null
+    if (safety.controlledEligible && correctionAuthorization?.authorizationType === 'audit_case') {
+      workflow = await advanceAuditCaseToRecheck(connection, {
+        auditCase: correctionAuthorization.auditCase,
+        actor: req.authUser,
+        correctionSummary: `Corrected reservation from ${source.lot_project_listing_unit_id} to ${destination.lot_project_listing_unit_id}: ${reason}`,
+        afterSnapshot: { ...after, projectSlug: clean(req.params.projectSlug), listingId: destinationId, sourceListingId: sourceId, correctionId: Number(correctionResult.insertId) },
+        metadata: { correctionId: Number(correctionResult.insertId), sourceListingId: sourceId, destinationListingId: destinationId },
+        notificationTitle: `Reservation correction needs Auditor recheck · ${correctionAuthorization.auditCase.case_number}`,
+      })
+    } else {
+      workflow = await createOperationalReview(connection, {
+        actor: req.authUser,
+        actionKey: safety.controlledEligible ? 'reservation.controlled_correction' : 'reservation.correct_unit',
+        department: 'sales',
+        projectId: project.lot_project_id,
+        entityType: 'lot_project_reservation',
+        entityId: accountId,
+        entityLabel: `${source.lot_project_listing_unit_id} → ${destination.lot_project_listing_unit_id}`,
+        beforeSnapshot: { ...before, projectSlug: clean(req.params.projectSlug), listingId: sourceId, correctionId: Number(correctionResult.insertId) },
+        afterSnapshot: { ...after, projectSlug: clean(req.params.projectSlug), listingId: destinationId, sourceListingId: sourceId, correctionId: Number(correctionResult.insertId) },
+        headPreApprovedByUserId: safety.controlledEligible ? (correctionAuthorization?.headPreApprovedByUserId || null) : null,
+      })
+    }
+
     await connection.commit()
     return res.json({
       success: true,
@@ -1096,6 +1198,7 @@ export const correctReservationUnit = async (req, res) => {
         accountReference: bundle.account_reference,
         before,
         after,
+        workflow,
       },
     })
   } catch (error) {

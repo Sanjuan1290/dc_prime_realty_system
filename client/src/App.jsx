@@ -51,6 +51,7 @@ const Projects = lazy(() => import('./pages/System/Projects'))
 const ProjectWorkspaceList = lazy(() => import('./pages/System/ProjectWorkspaceList'))
 const Notifications = lazy(() => import('./pages/System/Notifications'))
 const AuditLogs = lazy(() => import('./pages/System/AuditLogs'))
+const ReviewCenter = lazy(() => import('./pages/System/ReviewCenter'))
 const DataIntegrityAccess = lazy(() => import('./pages/System/DataIntegrityAccess'))
 const Settings = lazy(() => import('./pages/System/Settings'))
 const AccessDenied = lazy(() => import('./pages/System/AccessDenied'))
@@ -77,9 +78,25 @@ import AccreditedSellerIncomeRangePrintPage from './components/Lot_Projects/List
 import ProjectPriceListPrintPage from './components/Lot_Projects/ListingProfileComponents/Printouts/ProjectPriceListPrintPage'
 import ReportsPrintPage from './pages/System/ReportsPrintPage'
 
+const LEGACY_SYSTEM_ROLE_ALIASES = Object.freeze({
+  admin: 'system_admin',
+  marketing: 'marketing_staff',
+  sales: 'sales_staff',
+  accounting: 'accounting_staff',
+  operations: 'operations_staff',
+})
+
 const LegacyPortalRedirect = () => {
   const location = useLocation()
   return <Navigate to={`/portal${location.pathname}${location.search}${location.hash}`} replace />
+}
+
+const LegacySystemRoleRedirect = ({ legacyRole }) => {
+  const location = useLocation()
+  const targetRole = LEGACY_SYSTEM_ROLE_ALIASES[legacyRole]
+  const prefix = `/portal/${legacyRole}`
+  const suffix = location.pathname.startsWith(prefix) ? location.pathname.slice(prefix.length) : ''
+  return <Navigate to={`/portal/${targetRole}${suffix}${location.search}${location.hash}`} replace />
 }
 
 const LegacySellerGroupRedirect = ({ groupType }) => {
@@ -115,6 +132,7 @@ const systemRoleRoutes = SYSTEM_USER_ROLES.map((role) => (
     <Route path="users/groups/external" element={<LegacySellerGroupRedirect groupType="external" />} />
     <Route path="users/groups/external/:groupId" element={<LegacySellerGroupRedirect groupType="external" />} />
     <Route path="notifications" element={protect(PERMISSIONS.SYSTEM_NOTIFICATIONS_VIEW, <Notifications />)} />
+    <Route path="review-center" element={protect(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW, <ReviewCenter />)} />
     <Route path="audit-logs" element={protect(PERMISSIONS.AUDIT_LOGS_VIEW, <AuditLogs />)} />
     <Route path="employees" element={protect(PERMISSIONS.EMPLOYEES_VIEW, <Employees />)} />
     <Route path="attendance" element={protect(PERMISSIONS.ATTENDANCE_VIEW, <Attendance />)} />
@@ -166,6 +184,14 @@ const App = () => {
         <Route path="/operations/*" element={<LegacyPortalRedirect />} />
         <Route path="/lot-projects/*" element={<LegacyPortalRedirect />} />
         <Route path="/house-lot-projects/*" element={<LegacyPortalRedirect />} />
+
+        {Object.entries(LEGACY_SYSTEM_ROLE_ALIASES).map(([legacyRole]) => (
+          <Route
+            key={`legacy-system-role-${legacyRole}`}
+            path={`/portal/${legacyRole}/*`}
+            element={<LegacySystemRoleRedirect legacyRole={legacyRole} />}
+          />
+        ))}
 
         {systemRoleRoutes}
 

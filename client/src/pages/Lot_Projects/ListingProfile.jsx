@@ -14,7 +14,7 @@ import {
   FiUser,
   FiUserCheck,
 } from 'react-icons/fi'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
 import StatusAlert from '../../components/Shared/StatusAlert'
 import TabErrorBoundary from '../../components/Shared/TabErrorBoundary'
@@ -111,6 +111,7 @@ const ListingProfile = () => {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { projectSlug, listingId, accountId } = useParams()
+  const [searchParams] = useSearchParams()
   const { data: currentUserData } = useCurrentUser()
   const user = currentUserData?.user
   const isSuperAdmin = user?.role === 'super_admin'
@@ -127,18 +128,20 @@ const ListingProfile = () => {
   const canUsePrintouts = hasPermission(user, PERMISSIONS.LOT_PRINTOUTS_USE)
   const canViewCommissions = hasPermission(user, PERMISSIONS.LOT_COMMISSIONS_VIEW)
   const canViewSystemDocuments = hasPermission(user, PERMISSIONS.SYSTEM_DOCUMENTS_VIEW)
-  const canAdjustCommission = isSuperAdmin && canViewCommissions
+  const canAdjustCommission = hasPermission(user, PERMISSIONS.LOT_COMMISSIONS_ADJUST)
   const canManageCancellation = hasPermission(user, PERMISSIONS.LOT_CANCELLATIONS_MANAGE)
   const canSettleCancellation = hasPermission(user, PERMISSIONS.LOT_CANCELLATIONS_SETTLE)
   const canReleaseCancelledUnit = hasPermission(user, PERMISSIONS.LOT_CANCELLATIONS_RELEASE_UNIT)
   const canCorrectReservation = hasPermission(user, PERMISSIONS.LOT_RESERVATION_CORRECT)
+  const workflowAuditCaseId = Number(searchParams.get('auditCaseId') || 0)
+  const workflowAction = String(searchParams.get('workflowAction') || '').trim()
   const isAccountRoute = Boolean(accountId)
   const profileKey = ['lot-listing-profile', projectSlug, listingId, accountId || 'current']
   const profileUrl = accountId
     ? `/projects/lot-projects/${projectSlug}/listings/${listingId}/accounts/${accountId}`
     : `/projects/lot-projects/${projectSlug}/listings/${listingId}`
 
-  const [activeTab, setActiveTab] = useState('unit')
+  const [activeTab, setActiveTab] = useState(['payment_correction','penalty_adjustment','lmf_correction'].includes(workflowAction) ? 'payments' : 'unit')
   const [showReserveModal, setShowReserveModal] = useState(false)
   const [reserveMode, setReserveMode] = useState('manual')
   const [showBuyerFormLinkModal, setShowBuyerFormLinkModal] = useState(false)
@@ -178,6 +181,14 @@ const ListingProfile = () => {
   const profile = profileQuery.data?.data || {}
   const account = profile.account || null
   const readOnly = Boolean(profile.readOnly)
+  useEffect(() => {
+    if (['payment_correction','penalty_adjustment','lmf_correction'].includes(workflowAction)) setActiveTab('payments')
+    if (workflowAction === 'commission_adjustment') setActiveTab('unit')
+    if (workflowAction === 'reservation_correction' && canCorrectReservation && !readOnly) {
+      setActiveTab('unit')
+      setShowReservationCorrectionModal(true)
+    }
+  }, [workflowAction, canCorrectReservation, readOnly])
   const financialSnapshot = profile.financialSnapshot || null
   const project = profile.project || {}
   const listing = profile.listing || emptyListing
@@ -867,6 +878,9 @@ const ListingProfile = () => {
           isRequestingCancellationCode={requestCancellationCodeMutation.isPending}
           isRequestingCommissionCode={requestCommissionAdjustmentCodeMutation.isPending}
           isAdjustingCommission={adjustCommissionMutation.isPending}
+          actorRole={user?.role || ''}
+          workflowAuditCaseId={workflowAuditCaseId || null}
+          autoOpenCommissionAdjustment={workflowAction === 'commission_adjustment'}
           readOnly={readOnly}
         />
       ) : null}
@@ -952,7 +966,8 @@ const ListingProfile = () => {
           open
           projectSlug={projectSlug}
           listingId={listingId}
-          isSuperAdmin={currentUserData?.user?.role === 'super_admin'}
+          actorRole={user?.role || ''}
+          auditCaseId={workflowAuditCaseId || null}
           onClose={() => setShowReservationCorrectionModal(false)}
           onCorrected={(result) => {
             const destinationId = result?.data?.destinationListingId

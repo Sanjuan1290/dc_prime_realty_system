@@ -28,6 +28,7 @@ import attendanceKioskRouter from './routers/attendanceKiosk.router.js'
 import publicBuyerFormsRouter from './routers/publicBuyerForms.router.js'
 import publicSystemStatusRouter from './routers/publicSystemStatus.router.js'
 import cloudinaryWebhookRouter from './routers/cloudinaryWebhook.router.js'
+import workflowRouter from './routers/System/workflow.routers.js'
 
 const app = express()
 app.disable('x-powered-by')
@@ -112,6 +113,7 @@ app.use('/api/v1/system-settings', systemSettingsRouter)
 app.use('/api/v1/employees', employeesRouter)
 app.use('/api/v1/attendance', attendanceRouter)
 app.use('/api/v1/employee-payroll', employeePayrollRouter)
+app.use('/api/v1/workflow', workflowRouter)
 app.use('/api/v1/attendance-kiosk', attendanceKioskRouter)
 
 app.use((err, _req, res, _next) => {

@@ -1,3 +1,4 @@
+import bcrypt from 'bcrypt';
 import {
   db,
   getErrorMessage,
@@ -8,6 +9,10 @@ import {
   toNullable,
 } from '../_shared/lotProject.shared.js';
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
+import { createProtectedChangeRequest, consumeProtectedChange } from '../../../services/protectedChange.service.js';
+import { assertEntityNotReviewLocked, createOperationalReview } from '../../../services/operationalReview.service.js';
+import { getPendingAuditCorrectionCase, advanceAuditCaseToRecheck } from '../../../services/auditCaseAuthorization.service.js';
+import { notifySystemAdmins } from '../../../services/internalNotification.service.js';
 import { PERMISSIONS, roleHasPermission } from '../../../config/permissions.js';
 import {
   createSensitiveActionVerification,
@@ -33,6 +38,9 @@ const clean = (value = '') => String(value ?? '').trim();
 const isValidEmailAddress = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean(value));
 const toBoolean = (value) => value === true || value === 1 || String(value ?? '').toLowerCase() === 'true' || String(value ?? '') === '1';
 const canEditProjectSettings = (user) => roleHasPermission(user, PERMISSIONS.LOT_SETTINGS_MANAGE);
+const PROJECT_SETTINGS_REVIEW_ACTION = 'project.settings.update';
+const PROJECT_SETTINGS_REVIEW_ENTITY = 'lot_project_settings';
+const PROJECT_SETTINGS_DEPARTMENT = 'operations';
 
 const ensureProjectPaymentNotificationColumn = async (connection) => {
   await connection.query(`ALTER TABLE lot_project_settings ADD COLUMN IF NOT EXISTS payment_entry_email_notification_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER company_contact_number`);
@@ -179,14 +187,9 @@ export const requestLotProjectSettingsCode = async (req, res) => {
 
   try {
     const actor = req.authUser || await getAuthenticatedUser(req);
-    if (!actor?.id || !actor.email) {
-      return res.status(400).json({ success: false, message: 'Your account must have an email address before protected project settings can be changed.' });
-    }
+    if (!actor?.id) return res.status(401).json({ success: false, message: 'Please login before authorizing project settings.' });
     if (!canEditProjectSettings(actor)) {
       return res.status(403).json({ success: false, message: 'You do not have permission to edit this project settings.' });
-    }
-    if (!(await tableExists(connection, 'destructive_action_verifications'))) {
-      return res.status(500).json({ success: false, message: 'Sensitive-action verification table is missing. Apply the latest database schema first.' });
     }
 
     const slug = clean(req.params.projectSlug);
@@ -200,22 +203,90 @@ export const requestLotProjectSettingsCode = async (req, res) => {
     const reason = clean(req.body.reason);
     if (reason.length < 5) return res.status(400).json({ success: false, message: 'A clear reason for changing settings is required.' });
     const settingsPayload = normalizeProjectSettingsPayload(req.body);
-    const payload = buildProjectSettingsVerificationPayload({ actor, project, settingsPayload, reason });
+    const governedPayload = buildProjectSettingsVerificationPayload({ actor, project, settingsPayload, reason });
+    const auditCaseId = Number(req.body.auditCaseId || req.body.audit_case_id || 0);
 
     await connection.beginTransaction();
+
+    if (actor.role === 'system_admin') {
+      const auditCase = await getPendingAuditCorrectionCase(connection, {
+        auditCaseId,
+        entityType: PROJECT_SETTINGS_REVIEW_ENTITY,
+        entityId: project.lot_project_id,
+      });
+      if (!auditCase) throw Object.assign(new Error('Open this project-settings correction from a valid Auditor-approved case.'), { statusCode: 409, code: 'AUDIT_CASE_REQUIRED' });
+      await connection.commit();
+      return res.json({
+        success: true,
+        message: 'Auditor-approved correction case verified. Continue to Final Review.',
+        data: { authorizationType: 'audit_case', approved: true, auditCaseId: auditCase.audit_case_id },
+      });
+    }
+
+    if (actor.role === 'operations_head') {
+      await connection.commit();
+      return res.json({
+        success: true,
+        message: 'Operations Head authority verified. Continue to Final Review.',
+        data: { authorizationType: 'department_head', approved: true, headUserId: actor.id },
+      });
+    }
+
+    if (actor.role === 'operations_staff') {
+      const approval = await createProtectedChangeRequest(connection, {
+        actor,
+        actionKey: PROJECT_SETTINGS_REVIEW_ACTION,
+        department: PROJECT_SETTINGS_DEPARTMENT,
+        projectId: project.lot_project_id,
+        entityType: PROJECT_SETTINGS_REVIEW_ENTITY,
+        entityId: project.lot_project_id,
+        entityLabel: `${project.lot_project_name} Settings`,
+        payload: governedPayload,
+        reason,
+      });
+      await connection.commit();
+      const approved = approval.status === 'approved';
+      return res.status(approved ? 200 : 202).json({
+        success: true,
+        message: approved
+          ? 'Operations Head approval is ready. Continue to Final Review.'
+          : `${approval.requestNumber || 'Approval request'} is waiting for Operations Head review.`,
+        data: {
+          authorizationType: 'head_approval',
+          approved,
+          approvalRequestId: approval.requestId || null,
+          requestNumber: approval.requestNumber || null,
+          status: approval.status,
+        },
+      });
+    }
+
+    if (actor.role !== 'super_admin') {
+      throw Object.assign(new Error('This protected settings change requires Operations Staff/Head, System Admin correction authority, or Super Admin emergency access.'), { statusCode: 403 });
+    }
+
+    if (!actor.email) throw Object.assign(new Error('Your Super Admin account must have an email address before emergency authorization can be used.'), { statusCode: 400 });
+    if (!(await tableExists(connection, 'destructive_action_verifications'))) {
+      throw Object.assign(new Error('Sensitive-action verification table is missing. Apply the latest database schema first.'), { statusCode: 500 });
+    }
+    const password = String(req.body.password || '');
+    if (!actor.password_hash || !(await bcrypt.compare(password, actor.password_hash))) {
+      throw Object.assign(new Error('Super Admin password is incorrect.'), { statusCode: 401 });
+    }
+
     const { verificationId, code } = await createSensitiveActionVerification(connection, {
       userId: actor.id,
       actionType: LOT_PROJECT_SETTINGS_ACTION,
       entityType: SETTINGS_VERIFICATION_ENTITY,
       entityId: project.lot_project_id,
-      payload,
+      payload: governedPayload,
       reason,
       requestIp: getSensitiveActionRequestIp(req),
     });
     await sendSettingsVerificationCodeEmail({
       actor,
       code,
-      scopeLabel: 'Lot Project Settings',
+      scopeLabel: 'Lot Project Settings Emergency Override',
       entityLabel: project.lot_project_name || project.lot_project_slug || 'Lot Project',
       reason,
       settings: settingsPayload,
@@ -224,8 +295,9 @@ export const requestLotProjectSettingsCode = async (req, res) => {
 
     return res.json({
       success: true,
-      message: `A verification code was sent to ${maskSensitiveActionEmail(actor.email)}.`,
+      message: `Emergency verification code sent to ${maskSensitiveActionEmail(actor.email)}.`,
       data: {
+        authorizationType: 'super_admin_emergency',
         verificationId,
         maskedEmail: maskSensitiveActionEmail(actor.email),
         expiresInMinutes: SENSITIVE_ACTION_CODE_EXPIRY_MINUTES,
@@ -233,7 +305,7 @@ export const requestLotProjectSettingsCode = async (req, res) => {
     });
   } catch (error) {
     try { await connection.rollback(); } catch (_) {}
-    return res.status(error.statusCode || 500).json({ success: false, message: getErrorMessage(error) });
+    return res.status(error.statusCode || 500).json({ success: false, message: getErrorMessage(error), code: error.code || undefined });
   } finally {
     connection.release();
   }
@@ -260,38 +332,70 @@ export const updateLotProjectSettings = async (req, res) => {
     const settingsPayload = normalizeProjectSettingsPayload(req.body);
     const reason = clean(req.body.reason || 'Authorized project settings update.');
     if (reason.length < 5) return res.status(400).json({ success: false, message: 'A clear reason for changing settings is required.' });
-
-    if (!(await tableExists(connection, 'destructive_action_verifications'))) {
-      return res.status(500).json({ success: false, message: 'Sensitive-action verification table is missing. Apply the latest database schema first.' });
-    }
-
-    const verificationId = Number(req.body.verificationId || req.body.verification_id || 0);
-    const verificationCode = clean(req.body.code || req.body.verificationCode || req.body.verification_code);
-    if (!verificationId || !/^\d{6}$/.test(verificationCode)) {
-      return res.status(400).json({ success: false, message: 'A valid settings verification request and 6-digit code are required.' });
-    }
-
-    const verificationPayload = buildProjectSettingsVerificationPayload({
-      actor: currentUser,
-      project,
-      settingsPayload,
-      reason,
-    });
+    const governedPayload = buildProjectSettingsVerificationPayload({ actor: currentUser, project, settingsPayload, reason });
+    const approvalRequestId = Number(req.body.approvalRequestId || req.body.approval_request_id || 0);
+    const auditCaseId = Number(req.body.auditCaseId || req.body.audit_case_id || 0);
 
     await connection.beginTransaction();
-    const verificationResult = await verifyAndConsumeSensitiveAction(connection, {
-      verificationId,
-      userId: currentUser.id,
-      actionType: LOT_PROJECT_SETTINGS_ACTION,
-      entityType: SETTINGS_VERIFICATION_ENTITY,
-      entityId: project.lot_project_id,
-      code: verificationCode,
-      payload: verificationPayload,
-    });
-    if (!verificationResult.ok) {
-      await connection.rollback();
-      return res.status(verificationResult.statusCode || 400).json({ success: false, message: verificationResult.message });
+
+    let authorizationType = '';
+    let headPreApprovedByUserId = null;
+    let auditCase = null;
+    let verificationId = null;
+
+    if (currentUser.role === 'system_admin') {
+      auditCase = await getPendingAuditCorrectionCase(connection, {
+        auditCaseId,
+        entityType: PROJECT_SETTINGS_REVIEW_ENTITY,
+        entityId: project.lot_project_id,
+      });
+      if (!auditCase) throw Object.assign(new Error('A valid Auditor-approved case is required for a System Admin project-settings correction.'), { statusCode: 409, code: 'AUDIT_CASE_REQUIRED' });
+      authorizationType = 'audit_case';
+    } else if (currentUser.role === 'operations_head') {
+      authorizationType = 'department_head';
+      headPreApprovedByUserId = currentUser.id;
+    } else if (currentUser.role === 'operations_staff') {
+      if (!approvalRequestId) throw Object.assign(new Error('Operations Head approval is required before this settings change can be saved.'), { statusCode: 409, code: 'HEAD_APPROVAL_REQUIRED' });
+      const approval = await consumeProtectedChange(connection, {
+        requestId: approvalRequestId,
+        actor: currentUser,
+        actionKey: PROJECT_SETTINGS_REVIEW_ACTION,
+        entityType: PROJECT_SETTINGS_REVIEW_ENTITY,
+        entityId: project.lot_project_id,
+        payload: governedPayload,
+      });
+      authorizationType = 'head_approval';
+      headPreApprovedByUserId = Number(approval.reviewed_by_head_user_id || 0) || null;
+    } else if (currentUser.role === 'super_admin') {
+      if (!(await tableExists(connection, 'destructive_action_verifications'))) {
+        throw Object.assign(new Error('Sensitive-action verification table is missing. Apply the latest database schema first.'), { statusCode: 500 });
+      }
+      verificationId = Number(req.body.verificationId || req.body.verification_id || 0);
+      const verificationCode = clean(req.body.code || req.body.verificationCode || req.body.verification_code);
+      if (!verificationId || !/^\d{6}$/.test(verificationCode)) {
+        throw Object.assign(new Error('A valid emergency verification request and 6-digit code are required.'), { statusCode: 400 });
+      }
+      const verificationResult = await verifyAndConsumeSensitiveAction(connection, {
+        verificationId,
+        userId: currentUser.id,
+        actionType: LOT_PROJECT_SETTINGS_ACTION,
+        entityType: SETTINGS_VERIFICATION_ENTITY,
+        entityId: project.lot_project_id,
+        code: verificationCode,
+        payload: governedPayload,
+      });
+      if (!verificationResult.ok) throw Object.assign(new Error(verificationResult.message), { statusCode: verificationResult.statusCode || 400 });
+      authorizationType = 'super_admin_emergency';
+      headPreApprovedByUserId = currentUser.id;
+    } else {
+      throw Object.assign(new Error('Your role cannot authorize this protected settings change.'), { statusCode: 403 });
     }
+
+    await assertEntityNotReviewLocked(connection, {
+      entityType: PROJECT_SETTINGS_REVIEW_ENTITY,
+      entityId: project.lot_project_id,
+      allowReviewId: auditCase?.operational_review_id || null,
+    });
 
     const beforeRow = await getOrCreateSettingsRow(connection, project);
     const before = mapSettings(beforeRow, project);
@@ -327,25 +431,77 @@ export const updateLotProjectSettings = async (req, res) => {
       ]
     );
 
+    const after = { ...settingsPayload, lotProjectId: project.lot_project_id };
+    let review = null;
+    if (auditCase) {
+      review = await advanceAuditCaseToRecheck(connection, {
+        auditCase,
+        actor: currentUser,
+        correctionSummary: reason,
+        afterSnapshot: after,
+        metadata: { authorizationType, projectId: project.lot_project_id },
+        notificationTitle: `Project Settings correction needs Auditor recheck · ${project.lot_project_name}`,
+      });
+    } else {
+      review = await createOperationalReview(connection, {
+        actor: currentUser,
+        actionKey: PROJECT_SETTINGS_REVIEW_ACTION,
+        department: PROJECT_SETTINGS_DEPARTMENT,
+        projectId: project.lot_project_id,
+        entityType: PROJECT_SETTINGS_REVIEW_ENTITY,
+        entityId: project.lot_project_id,
+        entityLabel: `${project.lot_project_name} Settings`,
+        beforeSnapshot: before,
+        afterSnapshot: after,
+        headPreApprovedByUserId,
+      });
+    }
+
+    if (authorizationType === 'super_admin_emergency') {
+      await notifySystemAdmins(connection, {
+        reviewId: review?.reviewId || null,
+        type: 'super_admin_emergency_override',
+        title: `Emergency override used · ${project.lot_project_name} Settings`,
+        message: `${getUserFullName(currentUser) || currentUser.email || 'Super Admin'} changed protected Project Settings using emergency authorization. Reason: ${reason}`,
+      });
+    }
+
     await writeAuditLog(connection, req, {
       actor: currentUser,
       action: 'update',
       module: 'Project Settings',
-      entityType: 'lot_project_settings',
+      entityType: PROJECT_SETTINGS_REVIEW_ENTITY,
       entityId: project.lot_project_id,
       entityLabel: project.lot_project_name,
       title: 'Updated lot project settings',
       description: `${getUserFullName(currentUser) || currentUser.email || 'Authorized user'} updated settings for ${project.lot_project_name}.`,
-      metadata: { reason, before, after: settingsPayload, verificationId, releaseDayChangesApplyProspectively: true },
+      metadata: {
+        reason,
+        before,
+        after,
+        authorizationType,
+        approvalRequestId: approvalRequestId || null,
+        auditCaseId: auditCase?.audit_case_id || null,
+        verificationId: verificationId || null,
+        operationalReviewId: review?.reviewId || auditCase?.operational_review_id || null,
+        releaseDayChangesApplyProspectively: true,
+      },
     });
 
     await connection.commit();
     const settings = await getOrCreateSettingsRow(connection, project);
-    return res.json({ success: true, message: 'Project settings saved successfully.', data: mapSettings(settings, project), canEdit: true });
+    return res.json({
+      success: true,
+      message: auditCase ? 'Project settings correction saved. Auditor has been notified for final recheck.' : 'Project settings saved and sent for independent audit review.',
+      data: mapSettings(settings, project),
+      review,
+      canEdit: true,
+    });
   } catch (error) {
     try { await connection.rollback(); } catch (_) {}
-    return res.status(error.statusCode || 500).json({ success: false, message: getErrorMessage(error) });
+    return res.status(error.statusCode || 500).json({ success: false, message: getErrorMessage(error), code: error.code || undefined });
   } finally {
     connection.release();
   }
 };
+

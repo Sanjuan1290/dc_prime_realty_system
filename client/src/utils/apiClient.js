@@ -27,6 +27,7 @@ const TECHNICAL_MUTATION_PATTERNS = [
   /\/data-integrity\/(?:unlock|lock)$/i,
   /\/attendance\/scan$/i,
   /\/attendance-kiosk\/(?:unlock|lock|scan)$/i,
+  /\/workflow\/notifications\/\d+\/read$/i,
 ]
 
 const normalizeBaseUrl = (value) =>

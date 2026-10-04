@@ -22,7 +22,7 @@ import { useFetch } from '../utils/useFetch'
 import useNotificationBadge from '../utils/useNotificationBadge'
 import StatusAlert from '../components/Shared/StatusAlert'
 
-const getFullName = (user) => [user?.first_name, user?.middle_name, user?.last_name].filter(Boolean).join(' ').trim() || 'Admin'
+const getFullName = (user) => [user?.first_name, user?.middle_name, user?.last_name].filter(Boolean).join(' ').trim() || 'System Admin'
 const getInitials = (user) => `${user?.first_name?.[0] || ''}${user?.last_name?.[0] || ''}`.toUpperCase() || 'A'
 
 const AdminLayout = () => {
@@ -38,7 +38,7 @@ const AdminLayout = () => {
   const { data: lotProjectsData, isLoading: isProjectsLoading, isFetching: isProjectsFetching, isError: isProjectsError, error: projectsError } = useQuery({
     queryKey: ['lot-project-options'],
     queryFn: () => useFetch('/projects/lot-projects/options'),
-    enabled: Boolean(user) && user?.role === 'admin' && !user?.must_change_password,
+    enabled: Boolean(user) && user?.role === 'system_admin' && !user?.must_change_password,
   })
 
   const logoutMutation = useMutation({
@@ -62,8 +62,8 @@ const AdminLayout = () => {
   })), [lotProjectsData])
 
   const groups = useMemo(() => [
-    { title: 'OVERVIEW', items: [{ label: 'Dashboard', pathname: '/portal/admin/dashboard', icon: FiHome, absolute: true }] },
-    { title: 'PROJECTS', items: [{ label: 'Projects', pathname: '/portal/admin/projects', icon: FiMap, absolute: true }] },
+    { title: 'OVERVIEW', items: [{ label: 'Dashboard', pathname: '/portal/system_admin/dashboard', icon: FiHome, absolute: true }] },
+    { title: 'PROJECTS', items: [{ label: 'Projects', pathname: '/portal/system_admin/projects', icon: FiMap, absolute: true }] },
     {
       title: 'LOT PROJECTS',
       items: lotProjectItems,
@@ -71,28 +71,28 @@ const AdminLayout = () => {
       isError: isProjectsError,
       errorMessage: projectsError?.message || 'Failed to load lot projects.',
     },
-    { title: 'HOUSE & LOT PROJECTS', items: [{ label: 'House & Lot Projects', pathname: '/portal/admin/house-lot-projects', icon: FiHome, absolute: true }] },
-    { title: 'MANAGEMENT', items: [{ label: 'Accredited Sellers', pathname: '/portal/admin/accredited', icon: FiUsers, absolute: true }] },
+    { title: 'HOUSE & LOT PROJECTS', items: [{ label: 'House & Lot Projects', pathname: '/portal/system_admin/house-lot-projects', icon: FiHome, absolute: true }] },
+    { title: 'MANAGEMENT', items: [{ label: 'Accredited Sellers', pathname: '/portal/system_admin/accredited', icon: FiUsers, absolute: true }] },
     {
       title: 'COMPLIANCE',
       items: [
-        { label: 'Documents', pathname: '/portal/admin/documents', icon: FiFileText, absolute: true },
-        { label: 'Notifications', pathname: '/portal/admin/notifications', icon: FiBell, absolute: true, badge: notificationCount },
-        { label: 'Audit Logs', pathname: '/portal/admin/audit-logs', icon: FiActivity, absolute: true },
+        { label: 'Documents', pathname: '/portal/system_admin/documents', icon: FiFileText, absolute: true },
+        { label: 'Notifications', pathname: '/portal/system_admin/notifications', icon: FiBell, absolute: true, badge: notificationCount },
+        { label: 'Audit Logs', pathname: '/portal/system_admin/audit-logs', icon: FiActivity, absolute: true },
       ],
     },
     {
       title: 'EMPLOYEES',
       items: [
-        { label: 'Employees', pathname: '/portal/admin/employees', icon: FiUsers, absolute: true },
-        { label: 'Attendance', pathname: '/portal/admin/attendance', icon: FiClock, absolute: true },
+        { label: 'Employees', pathname: '/portal/system_admin/employees', icon: FiUsers, absolute: true },
+        { label: 'Attendance', pathname: '/portal/system_admin/attendance', icon: FiClock, absolute: true },
       ],
     },
     {
       title: 'ADMINISTRATION',
       items: [
-        { label: 'Users', pathname: '/portal/admin/users', icon: FiShield, absolute: true },
-        { label: 'Settings', pathname: '/portal/admin/settings', icon: FiSettings, absolute: true },
+        { label: 'Users', pathname: '/portal/system_admin/users', icon: FiShield, absolute: true },
+        { label: 'Settings', pathname: '/portal/system_admin/settings', icon: FiSettings, absolute: true },
       ],
     },
   ], [isProjectsError, isProjectsLoading, lotProjectItems, notificationCount, projectsError?.message])
@@ -102,13 +102,13 @@ const AdminLayout = () => {
       const item = group.items.find((entry) => location.pathname === entry.pathname || location.pathname.startsWith(`${entry.pathname}/`))
       if (item) return item.label
     }
-    return 'Admin Workspace'
+    return 'System Admin Workspace'
   }, [groups, location.pathname])
 
-  if (isLoading) return <div className="flex min-h-screen items-center justify-center bg-slate-50"><StatusAlert type="loading" message="Loading Admin access..." /></div>
+  if (isLoading) return <div className="flex min-h-screen items-center justify-center bg-slate-50"><StatusAlert type="loading" message="Loading System Admin access..." /></div>
   if (isError || !user) return <Navigate to="/portal" replace />
   if (user.must_change_password) return <Navigate to="/portal/change-password" replace />
-  if (user.role !== 'admin') return <Navigate to={user.role === 'super_admin' ? '/portal/super_admin' : '/portal'} replace />
+  if (user.role !== 'system_admin') return <Navigate to={user.role === 'super_admin' ? '/portal/super_admin' : `/portal/${user.role || ''}`} replace />
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-950">
@@ -119,7 +119,7 @@ const AdminLayout = () => {
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
               <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-black"><img src="/logo-mobile.png" alt="D&C Prime logo" className="h-7 w-7" /></div>
-              <div className="min-w-0"><p className="truncate font-bold">D&amp;C Prime</p><p className="truncate text-xs font-semibold text-slate-500">Admin workspace</p></div>
+              <div className="min-w-0"><p className="truncate font-bold">D&amp;C Prime</p><p className="truncate text-xs font-semibold text-slate-500">System Admin workspace</p></div>
             </div>
             <button type="button" onClick={() => setIsSidebarOpen(false)} className="rounded-xl p-2 text-slate-500 hover:bg-slate-100 lg:hidden"><FiX className="h-5 w-5" /></button>
           </div>
@@ -154,7 +154,7 @@ const AdminLayout = () => {
         </nav>
 
         <div className="border-t border-slate-200 bg-slate-50 p-4">
-          <div className="mb-3 rounded-xl border border-slate-200 bg-white p-3"><p className="truncate text-sm font-bold">{getFullName(user)}</p><p className="truncate text-xs text-slate-500">{user.email}</p><span className="mt-2 inline-flex rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-black text-blue-700">Admin · Operational system access</span></div>
+          <div className="mb-3 rounded-xl border border-slate-200 bg-white p-3"><p className="truncate text-sm font-bold">{getFullName(user)}</p><p className="truncate text-xs text-slate-500">{user.email}</p><span className="mt-2 inline-flex rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-black text-blue-700">System Admin · Governance access</span></div>
           <button type="button" onClick={() => logoutMutation.mutate()} disabled={logoutMutation.isPending} className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold text-slate-700 transition hover:border-red-200 hover:bg-red-50 hover:text-red-700 disabled:opacity-60">
             {logoutMutation.isPending ? <FiLoader className="animate-spin" /> : <FiLogOut />} {logoutMutation.isPending ? 'Logging out...' : 'Logout'}
           </button>
@@ -164,9 +164,9 @@ const AdminLayout = () => {
       <header className="fixed left-0 right-0 top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white/90 px-4 backdrop-blur lg:left-72 lg:px-6">
         <div className="flex min-w-0 items-center gap-3">
           <button type="button" onClick={() => setIsSidebarOpen(true)} className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 lg:hidden"><FiMenu /></button>
-          <div><h2 className="truncate text-base font-black">{activeLabel}</h2><p className="text-xs font-semibold text-slate-500">Admin workspace</p></div>
+          <div><h2 className="truncate text-base font-black">{activeLabel}</h2><p className="text-xs font-semibold text-slate-500">System Admin workspace</p></div>
         </div>
-        <div className="flex items-center gap-3"><div className="hidden text-right sm:block"><p className="text-sm font-bold">{getFullName(user)}</p><p className="text-xs text-slate-500">Admin</p></div><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-sm font-black text-white">{getInitials(user)}</div></div>
+        <div className="flex items-center gap-3"><div className="hidden text-right sm:block"><p className="text-sm font-bold">{getFullName(user)}</p><p className="text-xs text-slate-500">System Admin</p></div><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-sm font-black text-white">{getInitials(user)}</div></div>
       </header>
 
       <main className="min-h-screen pt-16 lg:pl-72"><div className="p-4 sm:p-6 lg:p-8"><Outlet /></div></main>

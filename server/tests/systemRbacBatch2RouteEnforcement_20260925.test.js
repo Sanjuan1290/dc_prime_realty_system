@@ -65,7 +65,7 @@ test('verified payment correction delegates edit and void independently while pr
   assert.match(projectRouter, /const requirePaymentCorrectionPermission/);
   assert.match(projectRouter, /action === 'edit'[\s\S]*LOT_PAYMENTS_EDIT[\s\S]*action === 'void'[\s\S]*LOT_PAYMENT_DELETE/);
   assert.match(routeLine("payments/:paymentId/correction-code"), /requirePaymentCorrectionPermission/);
-  assert.match(routeLine("payments/:paymentId/correction-code"), /requireCurrentPassword/);
+  assert.doesNotMatch(routeLine("payments/:paymentId/correction-code"), /requireExactRole/);
   assert.doesNotMatch(routeLine("payments/:paymentId/correction-code"), /requireExactRole/);
   assert.match(routeLine("router.put('/lot-projects/:projectSlug/listings/:listingId/payments/:paymentId'"), /LOT_PAYMENTS_EDIT/);
   assert.doesNotMatch(routeLine("router.put('/lot-projects/:projectSlug/listings/:listingId/payments/:paymentId'"), /requireExactRole/);
@@ -74,7 +74,10 @@ test('verified payment correction delegates edit and void independently while pr
   assert.match(paymentsController, /requirePaymentCorrectionVerification/);
   assert.match(paymentsController, /createSensitiveActionVerification/);
   assert.match(paymentsController, /verifyAndConsumeSensitiveAction/);
-  assert.match(paymentsController, /Email verification is required for this payment correction/);
+  assert.match(paymentsController, /authorizationType: 'returned_review'/);
+  assert.match(paymentsController, /authorizationType: 'department_head'/);
+  assert.match(paymentsController, /authorizationType: 'audit_case'/);
+  assert.match(paymentsController, /authorizationType: 'emergency_super_admin'/);
 });
 
 test('commission release, hold, and unhold remain independent', () => {
@@ -85,8 +88,10 @@ test('commission release, hold, and unhold remain independent', () => {
 
 test('sensitive owner-level safeguards remain stronger than ordinary permissions', () => {
   assert.match(routeLine("accounts/:accountId/purge-preview"), /requireExactRole\('super_admin'\)/);
-  assert.match(projectRouter, /commission-adjustment-code'[\s\S]*requireExactRole\('super_admin'\)/);
-  assert.match(projectRouter, /reservation-correction\/code'[\s\S]*requireExactRole\('super_admin'\)/);
+  assert.match(projectRouter, /commission-adjustment-code'[\s\S]*LOT_COMMISSIONS_ADJUST/);
+  assert.doesNotMatch(projectRouter, /commission-adjustment-code'[^\n]*requireExactRole/);
+  assert.match(projectRouter, /reservation-correction\/code'[\s\S]*LOT_RESERVATION_CORRECT/);
+  assert.doesNotMatch(projectRouter, /reservation-correction\/code'[^\n]*requireExactRole/);
   assert.match(projectRouter, /penalty-correction'[\s\S]*LOT_PENALTY_CORRECT/);
 });
 

@@ -2,36 +2,36 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { resolveDashboardDateRange } from '../controllers/Lot_Projects/Dashboard/Dashboard.controller.js';
 
-const admin = { role: 'admin', admin_type: null };
+const systemAdmin = { role: 'system_admin', admin_type: null };
 const superAdmin = { role: 'super_admin', admin_type: null };
 
-test('Admin may load a one-month custom dashboard range', () => {
-  const range = resolveDashboardDateRange({ range: 'custom', from: '2026-07-17', to: '2026-07-17' }, admin);
+test('System Admin may load a one-month custom dashboard range', () => {
+  const range = resolveDashboardDateRange({ range: 'custom', from: '2026-07-17', to: '2026-07-17' }, systemAdmin);
   assert.equal(range.from, '2026-07-17');
   assert.equal(range.to, '2026-07-17');
   assert.equal(range.spanMonths, 1);
 });
 
 test('custom dashboard ranges preserve exact inclusive start and end dates', () => {
-  const range = resolveDashboardDateRange({ range: 'custom', from: '2026-06-01', to: '2026-07-15' }, admin);
+  const range = resolveDashboardDateRange({ range: 'custom', from: '2026-06-01', to: '2026-07-15' }, systemAdmin);
   assert.equal(range.from, '2026-06-01');
   assert.equal(range.to, '2026-07-15');
 });
 
-test('Admin may load exactly 12 months or one year', () => {
-  const range = resolveDashboardDateRange({ range: 'custom', from: '2025-07-31', to: '2026-07-30' }, admin);
+test('System Admin may load exactly 12 months or one year', () => {
+  const range = resolveDashboardDateRange({ range: 'custom', from: '2025-07-31', to: '2026-07-30' }, systemAdmin);
   assert.equal(range.from, '2025-07-31');
   assert.equal(range.to, '2026-07-30');
 });
 
-test('Admin may load more than 12 months and receives a warning flag', () => {
-  const range = resolveDashboardDateRange({ range: 'custom', from: '2025-07-31', to: '2026-07-31' }, admin);
+test('System Admin may load more than 12 months and receives a warning flag', () => {
+  const range = resolveDashboardDateRange({ range: 'custom', from: '2025-07-31', to: '2026-07-31' }, systemAdmin);
   assert.equal(range.from, '2025-07-31');
   assert.equal(range.to, '2026-07-31');
   assert.equal(range.longRangeWarning, true);
 });
 
-test('Super Admin may load more than 12 months and receives a warning flag', () => {
+test('Super System Admin may load more than 12 months and receives a warning flag', () => {
   const range = resolveDashboardDateRange({ range: 'custom', from: '2025-01-18', to: '2026-07-03' }, superAdmin);
   assert.equal(range.from, '2025-01-18');
   assert.equal(range.to, '2026-07-03');
@@ -40,7 +40,7 @@ test('Super Admin may load more than 12 months and receives a warning flag', () 
 });
 
 test('Lot Project dashboard defaults to the current calendar month when range is omitted', () => {
-  const range = resolveDashboardDateRange({}, admin);
+  const range = resolveDashboardDateRange({}, systemAdmin);
   const today = new Date();
   const expectedMonth = String(today.getMonth() + 1).padStart(2, '0');
   const expectedYear = String(today.getFullYear());
@@ -50,7 +50,7 @@ test('Lot Project dashboard defaults to the current calendar month when range is
 });
 
 test('preset ranges resolve to complete calendar months', () => {
-  const range = resolveDashboardDateRange({ range: 'last_month' }, admin);
+  const range = resolveDashboardDateRange({ range: 'last_month' }, systemAdmin);
   assert.match(range.from, /^\d{4}-\d{2}-01$/);
   const end = new Date(`${range.to}T00:00:00`);
   const nextDay = new Date(end.getFullYear(), end.getMonth(), end.getDate() + 1);

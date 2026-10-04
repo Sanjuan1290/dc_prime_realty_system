@@ -69,7 +69,7 @@ test('Accredited Sellers owns In-House and External Network navigation', async (
     readSource('../config/permissions.js'),
   ]);
   assert.match(users, /System Users/);
-  assert.match(users, /Accredited sellers are managed separately/);
+  assert.match(users, /System Admin, Auditor, Department Staff and Department Head accounts/);
   assert.doesNotMatch(users, /division_manager|sales_director|unit_manager|sales_agent|external_group/);
   assert.match(accredited, />\s*In-House Networks\s*<\/NavLink>/);
   assert.match(accredited, />\s*External Networks\s*<\/NavLink>/);

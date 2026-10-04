@@ -74,7 +74,7 @@ export const requireProjectPermission = (permission, {
 
 export const requireProjectAccessBySlug = async (req, res, next, projectSlug) => {
   try {
-    if (req.authUser?.role === 'super_admin') return next();
+    if (['super_admin','system_admin','auditor'].includes(req.authUser?.role)) return next();
     const slug = String(projectSlug || '').trim();
     const [rows] = await db.query('SELECT lot_project_id FROM lot_projects WHERE lot_project_slug = ? LIMIT 1', [slug]);
     const projectId = Number(rows[0]?.lot_project_id || 0);
@@ -91,7 +91,7 @@ export const requireProjectAccessBySlug = async (req, res, next, projectSlug) =>
 
 export const requireProjectAccessById = (paramName = 'id') => async (req, res, next) => {
   try {
-    if (req.authUser?.role === 'super_admin') return next();
+    if (['super_admin','system_admin','auditor'].includes(req.authUser?.role)) return next();
     const projectId = Number(req.params?.[paramName] || 0);
     if (!projectId) return denied(res, 400, 'Invalid project id.');
     if (!(await canAccessProject(req.authUser, projectId))) {

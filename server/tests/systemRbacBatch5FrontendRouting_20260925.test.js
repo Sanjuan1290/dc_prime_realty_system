@@ -21,7 +21,7 @@ const commissionPage = read('../../client/src/pages/Lot_Projects/Commission.jsx'
 const releaseModal = read('../../client/src/components/Lot_Projects/CommissionComponents/ReleaseDetailsModal/ReleaseDetailsModal.jsx');
 const accreditedPage = read('../../client/src/pages/System/Accredited.jsx');
 const lotSettingsPage = read('../../client/src/pages/Lot_Projects/Settings.jsx');
-const settingsAuthModal = read('../../client/src/components/Shared/SettingsAuthorizationModal.jsx');
+const settingsAuthModal = read('../../client/src/components/Lot_Projects/SettingsComponents/ProjectSettingsAuthorizationModal.jsx');
 const usersController = read('../controllers/System/users.controllers.js');
 const listingProfileController = read('../controllers/Lot_Projects/ListingProfile/ListingProfile.controller.js');
 const settingsController = read('../controllers/Lot_Projects/Settings/Settings.controller.js');
@@ -123,14 +123,15 @@ test('commission release, hold, and unhold remain independent in the UI', () => 
   assert.match(releaseModal, /canUnhold/);
 });
 
-test('project settings are permission-delegated but retain password plus email-code verification', () => {
-  assert.match(projectsRouter, /settings\/code'[\s\S]*LOT_SETTINGS_MANAGE[\s\S]*requireCurrentPassword/);
-  assert.doesNotMatch(settingsController, /Only the exact Super Admin can change project settings/);
-  assert.match(settingsController, /canEditProjectSettings\(actor\)/);
-  assert.match(settingsController, /verifyAndConsumeSensitiveAction\(connection/);
-  assert.match(settingsController, /LOT_PROJECT_SETTINGS_ACTION/);
-  assert.match(lotSettingsPage, /authorizationLabel="Current Account"/);
-  assert.match(settingsAuthModal, /authorizationLabel = 'Super Admin'/);
+test('project settings use Operations Head approval, Auditor correction, and owner emergency fallback', () => {
+  assert.match(projectsRouter, /settings\/code'[\s\S]*LOT_SETTINGS_MANAGE[\s\S]*requestLotProjectSettingsCode/);
+  assert.doesNotMatch(projectsRouter, /settings\/code'[^\n]*requireCurrentPassword/);
+  assert.match(settingsController, /operations_staff/);
+  assert.match(settingsController, /operations_head/);
+  assert.match(settingsController, /system_admin/);
+  assert.match(settingsController, /super_admin_emergency/);
+  assert.match(lotSettingsPage, /ProjectSettingsAuthorizationModal/);
+  assert.match(settingsAuthModal, /Super Admin Emergency Override/);
 });
 
 test('accredited seller print/upload UI follows dedicated permissions', () => {

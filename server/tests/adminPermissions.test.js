@@ -9,16 +9,16 @@ import {
   roleHasPermission,
 } from '../config/permissions.js';
 
-const admin = { role: 'admin', permissions: [] };
+const admin = { role: 'system_admin', permissions: [] };
 const superAdmin = { role: 'super_admin', permissions: [] };
 
-test('Admin uses persisted per-account permissions and is not an implicit full-access role', () => {
+test('System Admin uses persisted per-account permissions and is not an implicit full-access role', () => {
   for (const permission of Object.values(PERMISSIONS)) {
     assert.equal(roleHasPermission(admin, permission), false, permission);
   }
 
   const delegated = {
-    role: 'admin',
+    role: 'system_admin',
     permissions: [PERMISSIONS.SYSTEM_REPORTS_VIEW, PERMISSIONS.LOT_LISTINGS_EDIT],
   };
   assert.equal(roleHasPermission(delegated, PERMISSIONS.SYSTEM_REPORTS_VIEW), true);
@@ -28,24 +28,23 @@ test('Admin uses persisted per-account permissions and is not an implicit full-a
   assert.equal(isFullAccessAdministrator(delegated), false);
 });
 
-test('user-management helpers honor granular permissions while Super Admin targets stay owner-only', () => {
-  const manager = {
-    role: 'admin',
-    permissions: [PERMISSIONS.SYSTEM_USERS_EDIT, PERMISSIONS.SYSTEM_USERS_CREATE],
-  };
+test('user-management helpers enforce System Admin Staff/Head boundaries and owner governance', () => {
+  const manager = { role: 'system_admin', permissions: [PERMISSIONS.SYSTEM_USERS_EDIT, PERMISSIONS.SYSTEM_USERS_CREATE] };
 
-  assert.equal(canActorManageUserRole(manager, 'admin'), true);
-  assert.equal(canActorManageUserRole(manager, 'marketing'), true);
-  assert.equal(canActorCreateUserRole(manager, 'sales_agent'), true);
+  assert.equal(canActorManageUserRole(manager, 'accounting_staff'), true);
+  assert.equal(canActorManageUserRole(manager, 'accounting_head'), true);
+  assert.equal(canActorCreateUserRole(manager, 'sales_staff'), true);
+  assert.equal(canActorManageUserRole(manager, 'auditor'), false);
+  assert.equal(canActorManageUserRole(manager, 'system_admin'), false);
   assert.equal(canActorManageUserRole(manager, 'super_admin'), false);
   assert.equal(canActorCreateUserRole(manager, 'super_admin'), false);
 
-  // Existing internal-system roles are immutable; a position change creates a new account.
-  assert.equal(canActorChangeUserRole(manager, 'marketing', 'sales'), false);
-  assert.equal(canActorChangeUserRole(superAdmin, 'marketing', 'sales'), false);
-  assert.equal(canActorChangeUserRole(manager, 'marketing', 'marketing'), true);
+  assert.equal(canActorChangeUserRole(manager, 'marketing_staff', 'marketing_head'), true);
+  assert.equal(canActorChangeUserRole(manager, 'marketing_head', 'sales_staff'), true);
+  assert.equal(canActorChangeUserRole(manager, 'auditor', 'operations_staff'), false);
+  assert.equal(canActorChangeUserRole(superAdmin, 'marketing_staff', 'sales_head'), true);
 
-  // Seller hierarchy roles retain their existing role-change behavior.
+  // Seller hierarchy roles retain their existing role-change behavior for authorized actors.
   assert.equal(canActorChangeUserRole(manager, 'sales_agent', 'unit_manager'), true);
 });
 
