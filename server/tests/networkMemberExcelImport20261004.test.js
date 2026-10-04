@@ -158,13 +158,19 @@ test('External or inactive Network cannot accept member import', () => {
   assert.match(inactive.rows[0].errors.join(' '), /Activate this Network/i);
 });
 
-test('Network details UI exposes Import Members beside Add Member and template has no Network Name or Status columns', async () => {
+test('Network details UI exposes Import Members and the template contains a safe sample row plus the full DM to SA example chain', async () => {
   const details = await fs.readFile(path.join(root, 'client/src/pages/System/SellerGroupDetails.jsx'), 'utf8');
   const modal = await fs.readFile(path.join(root, 'client/src/components/System/sellerGroupComponents/NetworkMemberImportModal.jsx'), 'utf8');
   assert.match(details, /Add Member[\s\S]*Import Members/);
   assert.match(modal, /const HEADERS = \[[\s\S]*'Reports Under Email'[\s\S]*'PRC Number'/);
   const headersBlock = modal.match(/const HEADERS = \[([\s\S]*?)\]\n/)?.[1] || '';
   assert.doesNotMatch(headersBlock, /Network Name|Status/);
+  assert.match(modal, /SAMPLE - DELETE THIS ROW/);
+  assert.match(modal, /aoa_to_sheet\(\[HEADERS, sampleMemberRow\]\)/);
+  assert.match(modal, /String\(row\['First Name'\][\s\S]*SAMPLE_ROW_MARKER/);
+  assert.match(modal, /'Division Manager'[\s\S]*exampleHeadEmail[\s\S]*'Division Manager'[\s\S]*'Sales Director'[\s\S]*'Unit Manager'[\s\S]*'Sales Agent'/);
+  assert.doesNotMatch(modal, /Columns intentionally exclude Network Name and Status/);
+  assert.doesNotMatch(modal, /Instructions and Examples for SD → UM → SA reporting/);
   assert.match(modal, /Download Template \(\.xlsx\)/);
   assert.match(modal, /All successful rows become Active/);
 });

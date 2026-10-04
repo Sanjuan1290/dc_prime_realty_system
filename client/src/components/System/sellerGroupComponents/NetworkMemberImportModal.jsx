@@ -27,6 +27,7 @@ const HEADERS = [
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
 const MAX_IMPORT_ROWS = 2000
 const ALLOWED_EXTENSIONS = new Set(['xlsx'])
+const SAMPLE_ROW_MARKER = 'SAMPLE - DELETE THIS ROW'
 
 const ROLE_LABELS = {
   division_manager: 'Division Manager',
@@ -48,7 +49,7 @@ const headerStyle = {
 }
 
 const normalizeSheetRow = (row = {}, index = 0) => ({
-  source_row: index + 2,
+  source_row: Number.isInteger(row.__rowNum__) ? row.__rowNum__ + 1 : index + 2,
   first_name: row['First Name'],
   middle_name: row['Middle Name'],
   last_name: row['Last Name'],
@@ -105,16 +106,44 @@ const NetworkMemberImportModal = ({
 
   const downloadTemplate = () => {
     const workbook = XLSX.utils.book_new()
-    const membersSheet = XLSX.utils.aoa_to_sheet([HEADERS])
+    const exampleHeadEmail = headEmail || 'division.manager@example.com'
+    const sampleMemberRow = [
+      SAMPLE_ROW_MARKER,
+      '',
+      'Example',
+      'sample.sales.director@example.com',
+      '09171234567',
+      'Sales Director',
+      exampleHeadEmail,
+      '123-456-789',
+      'PRC-0001',
+    ]
+    const membersSheet = XLSX.utils.aoa_to_sheet([HEADERS, sampleMemberRow])
     membersSheet['!cols'] = [
       { wch: 18 }, { wch: 18 }, { wch: 20 }, { wch: 30 }, { wch: 18 },
       { wch: 20 }, { wch: 30 }, { wch: 18 }, { wch: 18 },
     ]
     membersSheet['!freeze'] = { xSplit: 0, ySplit: 1 }
-    membersSheet['!autofilter'] = { ref: `A1:${XLSX.utils.encode_col(HEADERS.length - 1)}1` }
+    membersSheet['!autofilter'] = { ref: `A1:${XLSX.utils.encode_col(HEADERS.length - 1)}2` }
     HEADERS.forEach((_, col) => {
       const address = XLSX.utils.encode_cell({ r: 0, c: col })
       if (membersSheet[address]) membersSheet[address].s = headerStyle
+    })
+    HEADERS.forEach((_, col) => {
+      const address = XLSX.utils.encode_cell({ r: 1, c: col })
+      if (membersSheet[address]) {
+        membersSheet[address].s = {
+          fill: { fgColor: { rgb: 'FEF3C7' } },
+          font: { bold: col === 0, color: { rgb: '92400E' } },
+          alignment: { vertical: 'center', wrapText: true },
+          border: {
+            top: { style: 'thin', color: { rgb: 'FDE68A' } },
+            bottom: { style: 'thin', color: { rgb: 'FDE68A' } },
+            left: { style: 'thin', color: { rgb: 'FDE68A' } },
+            right: { style: 'thin', color: { rgb: 'FDE68A' } },
+          },
+        }
+      }
     })
 
     const instructions = [
@@ -124,21 +153,22 @@ const NetworkMemberImportModal = ({
       ['Status', 'Every successfully imported member is Active by default.'],
       ['Row Order', 'Rows may be in any order. The system resolves hierarchy as Division Manager → Sales Director → Unit Manager → Sales Agent.'],
       ['Hierarchy Head', headName ? `${headName}${headEmail ? ` (${headEmail})` : ''}` : 'No hierarchy head detected. Assign the Network head before bulk importing members.'],
-      ['Division Manager', 'Excel import cannot add or replace the Network hierarchy head. Manage the hierarchy head through Add Member / Edit Network.'],
+      ['Division Manager', 'The Division Manager is the existing Network hierarchy head/root. The template Examples sheet includes the DM so the full DM → SD → UM → SA chain is visible. Bulk import cannot replace the Network hierarchy head.'],
       ['Sales Director', 'Reports Under Email must be the active Division Manager / Network hierarchy head email.'],
       ['Unit Manager', 'Reports Under Email must be an active Sales Director in this Network or another valid Sales Director in the same import file.'],
       ['Sales Agent', 'Reports Under Email must be an active Unit Manager in this Network or another valid Unit Manager in the same import file.'],
       ['Existing Seller', 'An Active seller in another Network is blocked. Set the seller Inactive first. Seller role changes are not allowed through bulk import.'],
       ['Optional Fields', 'For an existing member, blank Contact Number, TIN, and PRC Number preserve the existing values.'],
+      ['Sample Row', 'The Members sheet starts with one highlighted sample row. Delete it before entering your sellers. If left unchanged, the importer ignores it automatically.'],
       ['Maximum Rows', `${MAX_IMPORT_ROWS.toLocaleString()} members per Excel file.`],
     ]
     const instructionsSheet = XLSX.utils.aoa_to_sheet(instructions)
     instructionsSheet['!cols'] = [{ wch: 24 }, { wch: 110 }]
     if (instructionsSheet.A1) instructionsSheet.A1.s = { font: { bold: true, sz: 15, color: { rgb: '1E3A8A' } } }
 
-    const exampleHeadEmail = headEmail || 'division.manager@example.com'
     const examples = [
       HEADERS,
+      ['Existing', '', 'Division Manager', exampleHeadEmail, '', 'Division Manager', '', '', ''],
       ['Juan', '', 'Santos', 'sales.director@example.com', '09171234567', 'Sales Director', exampleHeadEmail, '', ''],
       ['Maria', '', 'Reyes', 'unit.manager@example.com', '09181234567', 'Unit Manager', 'sales.director@example.com', '', ''],
       ['Pedro', '', 'Cruz', 'sales.agent@example.com', '09191234567', 'Sales Agent', 'unit.manager@example.com', '', ''],
@@ -174,6 +204,7 @@ const NetworkMemberImportModal = ({
       if (!sheetName) throw new Error('The workbook does not contain a worksheet.')
       const rawRows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '', raw: false })
         .filter((row) => Object.values(row).some((value) => String(value ?? '').trim() !== ''))
+        .filter((row) => String(row['First Name'] || '').trim().toUpperCase() !== SAMPLE_ROW_MARKER)
       if (!rawRows.length) throw new Error('No member rows were found. Add sellers to the Members sheet first.')
       if (rawRows.length > MAX_IMPORT_ROWS) throw new Error(`Import is limited to ${MAX_IMPORT_ROWS.toLocaleString()} rows per Excel file.`)
 
@@ -227,7 +258,7 @@ const NetworkMemberImportModal = ({
           <div>
             <div className="flex items-center gap-2 text-blue-700"><FiUsers /><p className="text-xs font-black uppercase tracking-wider">In-House Network Bulk Import</p></div>
             <h2 className="mt-1 text-xl font-black text-slate-950">Import Members — {networkName}</h2>
-            <p className="mt-1 text-sm font-semibold text-slate-500">Network and Status are automatic. Excel rows may be in any order; the server resolves the hierarchy before anything is saved.</p>
+            <p className="mt-1 text-sm font-semibold text-slate-500">Excel rows may be in any order; the server resolves the hierarchy before anything is saved.</p>
           </div>
           <button type="button" onClick={onClose} disabled={isWorking} className="grid h-10 w-10 place-items-center rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:opacity-50" aria-label="Close import modal"><FiX /></button>
         </header>
@@ -237,7 +268,7 @@ const NetworkMemberImportModal = ({
 
           <section className="mt-4 grid gap-4 lg:grid-cols-2">
             <div className="rounded-2xl border border-blue-200 bg-blue-50/60 p-5">
-              <div className="flex items-start gap-3"><FiDownload className="mt-1 h-5 w-5 text-blue-700" /><div><h3 className="font-black text-slate-950">1. Download the template</h3><p className="mt-1 text-sm font-semibold leading-6 text-slate-600">Columns intentionally exclude Network Name and Status. The template includes Instructions and Examples for SD → UM → SA reporting.</p></div></div>
+              <div className="flex items-start gap-3"><FiDownload className="mt-1 h-5 w-5 text-blue-700" /><div><h3 className="font-black text-slate-950">1. Download the template</h3><p className="mt-1 text-sm font-semibold leading-6 text-slate-600">A highlighted sample row is included on the Members sheet. Delete it, then enter or paste your sellers.</p></div></div>
               <button type="button" onClick={downloadTemplate} disabled={isWorking} className="mt-4 inline-flex h-11 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-black text-white shadow-sm hover:bg-blue-700 disabled:opacity-60"><FiDownload />Download Template (.xlsx)</button>
             </div>
 
