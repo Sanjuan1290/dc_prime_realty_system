@@ -42,6 +42,7 @@ const ROLE_ALIASES = new Map([
 
 const cleanText = (value) => String(value ?? '').trim().replace(/\s+/g, ' ');
 export const normalizeNetworkMemberImportEmail = (value) => cleanText(value).toLowerCase();
+export const normalizeNetworkMemberImportFullName = (value) => cleanText(value).toLowerCase();
 
 const pick = (row, keys) => {
   for (const key of keys) {
@@ -118,15 +119,34 @@ export const analyzeNetworkMemberImport = ({
   });
 
   const currentMemberByEmail = new Map();
+  const currentMembersByFullName = new Map();
   currentMembers.forEach((member) => {
     const email = normalizeNetworkMemberImportEmail(member.email);
     if (email) currentMemberByEmail.set(email, member);
+
+    const normalizedFullName = normalizeNetworkMemberImportFullName(currentMemberName(member));
+    if (normalizedFullName) {
+      if (!currentMembersByFullName.has(normalizedFullName)) currentMembersByFullName.set(normalizedFullName, []);
+      currentMembersByFullName.get(normalizedFullName).push(member);
+    }
   });
   const headMember = currentMembers.find((member) => Number(member.user_id) === headUserId) || null;
 
   const duplicateCounts = new Map();
+  const duplicateFullNameRows = new Map();
   normalizedRows.forEach((row) => {
     if (row.email) duplicateCounts.set(row.email, (duplicateCounts.get(row.email) || 0) + 1);
+
+    const displayName = cleanText([row.firstName, row.middleName, row.lastName].filter(Boolean).join(' '));
+    const normalizedFullName = normalizeNetworkMemberImportFullName(displayName);
+    if (normalizedFullName) {
+      if (!duplicateFullNameRows.has(normalizedFullName)) duplicateFullNameRows.set(normalizedFullName, []);
+      duplicateFullNameRows.get(normalizedFullName).push({
+        sourceRow: row.sourceRow,
+        email: row.email,
+        displayName,
+      });
+    }
   });
 
   const analyzedRows = normalizedRows.map((row) => {
@@ -154,7 +174,30 @@ export const analyzeNetworkMemberImport = ({
     if (!row.email) errors.push('Email is required.');
     else if (!isEmail(row.email)) errors.push('Enter a valid email address.');
     if (!row.role) errors.push(`Role must be DM, SD, UM, or SA${row.roleRaw ? ` (received “${row.roleRaw}”)` : ''}.`);
-    if (row.email && (duplicateCounts.get(row.email) || 0) > 1) errors.push('Email appears more than once in this Excel file.');
+    if (row.email && (duplicateCounts.get(row.email) || 0) > 1) errors.push('Email appears more than once in this Excel file. Each imported seller must use a unique email.');
+
+    const displayName = cleanText([row.firstName, row.middleName, row.lastName].filter(Boolean).join(' '));
+    const normalizedFullName = normalizeNetworkMemberImportFullName(displayName);
+    const matchingImportNames = normalizedFullName ? (duplicateFullNameRows.get(normalizedFullName) || []) : [];
+    if (matchingImportNames.length > 1) {
+      const otherRows = matchingImportNames
+        .filter((item) => Number(item.sourceRow) !== Number(row.sourceRow))
+        .map((item) => `Row ${item.sourceRow}${item.email ? ` (${item.email})` : ''}`);
+      errors.push(`Full Name “${displayName}” is duplicated in this Excel file${otherRows.length ? `: ${otherRows.join(', ')}` : ''}. Each imported seller must have a unique full name.`);
+    }
+
+    if (normalizedFullName) {
+      const conflictingMembers = (currentMembersByFullName.get(normalizedFullName) || [])
+        .filter((member) => normalizeNetworkMemberImportEmail(member.email) !== row.email);
+      if (conflictingMembers.length) {
+        const conflicts = conflictingMembers
+          .slice(0, 3)
+          .map((member) => `${currentMemberName(member)}${member.email ? ` (${normalizeNetworkMemberImportEmail(member.email)})` : ''}`)
+          .join(', ');
+        errors.push(`Full Name “${displayName}” already belongs to another Accredited Seller in this Network: ${conflicts}. Use a different full name or verify the existing seller record before importing.`);
+      }
+    }
+
     if (sellerAccounts.length > 1) errors.push('Multiple seller identities use this email. Resolve the duplicate seller accounts before importing.');
     if (!existing && nonSellerAccounts.length > 1 && !sourcePersonAccount) {
       errors.push('Multiple unrelated non-seller accounts use this email. Resolve the duplicate person records before importing.');
@@ -228,7 +271,7 @@ export const analyzeNetworkMemberImport = ({
       sourcePersonKey: sourcePersonAccount?.person_key || null,
       sourcePersonRole: sourcePersonAccount?.role || null,
       isCurrentHead,
-      displayName: cleanText([row.firstName, row.middleName, row.lastName].filter(Boolean).join(' ')),
+      displayName,
       errors,
       warnings,
     };

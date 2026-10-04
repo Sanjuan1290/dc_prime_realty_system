@@ -1,19 +1,21 @@
-# Employee + Accredited Seller Import Fix — 2026-10-04
+# Accredited Seller duplicate identity validation fix — 2026-10-04
 
-This patch fixes Network member Excel import when the email already belongs to an employee/internal system account.
+This patch tightens the In-House Network Excel member importer.
 
-## New behavior
-- Existing employee/system account is preserved; role, permissions, login and employee record are not overwritten.
-- A separate seller identity is created for Network hierarchy/commission use when necessary.
-- The seller identity is non-login when the same email is already owned by an active system login, avoiding active-email uniqueness conflicts.
-- If a seller-role user already exists but has no `accredited_sellers` row, the importer attaches seller accreditation instead of rejecting the account.
-- A system account and its seller identity may share the same email without triggering the old duplicate-account error.
-- External Network accounts and protected system-generated accounts remain blocked.
-- Matching employee rows with no `linked_user_id` are linked safely without replacing an existing link.
+## Rules
+- Duplicate email inside the same Excel file is a hard error.
+- Exact duplicate full name inside the same Excel file is a hard error, even when emails differ.
+- Full-name matching is case-insensitive and collapses repeated spaces.
+- A new import row cannot use the exact full name of another Accredited Seller already in the target Network when the email is different.
+- Updating the same existing seller (same email) is not treated as a name conflict.
+- Existing employee/system account + seller identity sharing the same email remains supported.
 
-## Tests
-- Network/import/commission regression set: 35/35 passing.
-- Network member Excel import file: 20/20 passing.
-- Changed server files pass `node --check`.
+Preview errors identify the conflicting Excel row number/email or the existing Network member.
 
 No database migration is required.
+
+## Validation
+- Network member Excel import tests: 24/24 passed.
+- Related runnable Network/commission tests: 28/28 passed.
+- `networkMemberImport.service.js` passed `node --check`.
+- `sellerGroupRedesign.test.js` still cannot load in the reconstructed environment because `bcrypt` is not installed; this is an environment dependency issue and occurs before assertions run.

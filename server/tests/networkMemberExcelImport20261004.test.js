@@ -237,6 +237,60 @@ test('duplicate email rows are rejected', () => {
   assert.match(result.rows[0].errors.join(' '), /appears more than once/i);
 });
 
+test('duplicate full names with different emails are rejected and identify the conflicting Excel rows', () => {
+  const result = analyze([
+    row({ source_row: 2, first_name: 'Robert', middle_name: 'Cortez', last_name: 'San Juan', email: 'robert1@example.com', role: 'SD', reports_under_email: 'rowena@example.com' }),
+    row({ source_row: 3, first_name: 'Robert', middle_name: 'Cortez', last_name: 'San Juan', email: 'robert2@example.com', role: 'SD', reports_under_email: 'rowena@example.com' }),
+  ]);
+  assert.equal(result.canCommit, false);
+  assert.equal(result.summary.errors, 2);
+  assert.match(result.rows[0].errors.join(' '), /Full Name .* duplicated in this Excel file/i);
+  assert.match(result.rows[0].errors.join(' '), /Row 3 \(robert2@example\.com\)/i);
+  assert.match(result.rows[1].errors.join(' '), /Row 2 \(robert1@example\.com\)/i);
+});
+
+test('duplicate full-name validation ignores letter case and repeated spacing', () => {
+  const result = analyze([
+    row({ source_row: 2, first_name: 'Robert', middle_name: 'Cortez', last_name: 'San Juan', email: 'robert1@example.com', role: 'SD', reports_under_email: 'rowena@example.com' }),
+    row({ source_row: 3, first_name: '  robert ', middle_name: ' CORTEZ ', last_name: ' san   juan ', email: 'robert2@example.com', role: 'SD', reports_under_email: 'rowena@example.com' }),
+  ]);
+  assert.equal(result.canCommit, false);
+  assert.match(result.rows[1].errors.join(' '), /unique full name/i);
+});
+
+test('full name matching another Accredited Seller in the target Network is rejected when email is different', () => {
+  const existingMember = {
+    accredited_seller_id: 150, user_id: 50, seller_group_id: 10,
+    accredited_seller_status: 'active', is_system_dummy: 0,
+    first_name: 'Robert', middle_name: 'Cortez', last_name: 'San Juan',
+    full_name: 'Robert Cortez San Juan', email: 'existing-robert@example.com',
+    role: 'sales_director', user_status: 'active',
+  };
+  const result = analyze([
+    row({ first_name: 'Robert', middle_name: 'Cortez', last_name: 'San Juan', email: 'new-robert@example.com', role: 'SD', reports_under_email: 'rowena@example.com' }),
+  ], { currentMembers: [head, existingMember] });
+  assert.equal(result.canCommit, false);
+  assert.match(result.rows[0].errors.join(' '), /already belongs to another Accredited Seller in this Network/i);
+  assert.match(result.rows[0].errors.join(' '), /existing-robert@example\.com/i);
+});
+
+test('updating the same existing seller does not conflict with its own full name', () => {
+  const existingMember = {
+    accredited_seller_id: 151, user_id: 51, seller_group_id: 10,
+    accredited_seller_status: 'active', is_system_dummy: 0,
+    first_name: 'Robert', middle_name: 'Cortez', last_name: 'San Juan',
+    full_name: 'Robert Cortez San Juan', email: 'same-robert@example.com',
+    role: 'sales_director', user_status: 'active', direct_report_count: 0,
+    seller_group_name: 'NA Realty Network',
+  };
+  const result = analyze([
+    row({ first_name: 'Robert', middle_name: 'Cortez', last_name: 'San Juan', email: 'same-robert@example.com', role: 'SD', reports_under_email: 'rowena@example.com' }),
+  ], { currentMembers: [head, existingMember], existingAccounts: [existingMember] });
+  assert.equal(result.canCommit, true);
+  assert.equal(result.rows[0].action, 'UPDATE');
+  assert.doesNotMatch(result.rows[0].errors.join(' '), /Full Name/i);
+});
+
 test('External or inactive Network cannot accept member import', () => {
   const external = analyze([row()], { group: { ...group, seller_group_type: 'external' } });
   assert.equal(external.canCommit, false);
