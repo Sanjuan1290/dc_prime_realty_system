@@ -154,7 +154,7 @@ const RateCard = ({ label, value, helper, bgColor = 'blue' }) => {
             {label}
           </p>
           <p className={`mt-2 text-3xl font-bold tracking-tight ${colors.value}`}>
-            {Number(value || 0).toFixed(2)}%
+            {Number(value || 0).toFixed(4)}%
           </p>
           <p className={`mt-1 text-xs font-medium ${colors.helper}`}>{helper}</p>
         </div>
@@ -284,7 +284,7 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
   const configuration = configurationQuery.data?.data || null
   const group = configuration?.group || {
     id: Number(groupId),
-    name: groupOption.name || 'Group',
+    name: groupOption.name || 'Network',
     type: groupType,
     status: groupOption.status,
     projectRates: accreditedProjects,
@@ -356,6 +356,10 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
     seller_group_head_user_id: group.headUserId,
     seller_group_head_role: group.headRole,
     seller_group_description: group.description,
+    broker_name: group.brokerName || '',
+    broker_license_number: group.brokerLicenseNumber || '',
+    realty_name: group.realtyName || '',
+    broker_prc_number: group.brokerPrcNumber || '',
     seller_group_status: group.status || groupOption.status,
     seller_group_external_account_user_id: group.externalAccountUserId,
     external_account_user_id: group.externalAccountUserId,
@@ -378,12 +382,12 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
             title={
               group.name ||
               groupOption.name ||
-              (isExternal ? 'External Group' : 'In-House Group')
+              (isExternal ? 'External Network' : 'In-House Network')
             }
             description={
               isExternal
-                ? 'External partner account, project pool rate, sales, commissions, and releases.'
-                : 'Internal hierarchy, fixed position rates, sales, commissions, and releases.'
+                ? 'External network account, project pool rate, sales, commissions, and releases.'
+                : 'Internal hierarchy, pool distribution, company profit, sales, commissions, and releases.'
             }
             icon={FiUsers}
           />
@@ -392,7 +396,7 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
         <div className="flex flex-wrap gap-2">
           <NavLink
             to={groupsPath}
-            aria-label="Back to seller groups"
+            aria-label="Back to networks"
             className="flex h-11 w-fit px-4 text-sm items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:border-slate-300 hover:text-slate-950"
           >
             <FiArrowLeft /> Back
@@ -423,7 +427,7 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
             className="inline-flex h-10 items-center gap-2 rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
           >
             <FiEdit2 />
-            Edit Group
+            Edit Network
           </button>
         </div>
       </div>
@@ -437,7 +441,7 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
       ) : null}
 
       {projectOptionsQuery.isLoading || configurationQuery.isLoading ? (
-        <StatusAlert type="loading" message="Loading group details..." />
+        <StatusAlert type="loading" message="Loading network details..." />
       ) : null}
 
       {projectOptionsQuery.isError || configurationQuery.isError ? (
@@ -446,7 +450,7 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
           message={
             projectOptionsQuery.error?.message ||
             configurationQuery.error?.message ||
-            'Failed to load group details.'
+            'Failed to load network details.'
           }
         />
       ) : null}
@@ -456,7 +460,7 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
       expectedGroupType !== groupOption.type ? (
         <StatusAlert
           type="error"
-          message="This group was opened from the wrong group section."
+          message="This Network was opened from the wrong Network section."
         />
       ) : null}
 
@@ -464,10 +468,10 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
         <>
           <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_1px_3px_rgba(15,23,42,0.04)]">
             <div className="grid gap-5 p-5 md:grid-cols-2 xl:grid-cols-4">
-              <DetailItem label="Group Type">
+              <DetailItem label="Network Type">
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700 ring-1 ring-blue-100">
                   <FiBriefcase className="h-3.5 w-3.5" />
-                  {isExternal ? 'External Group' : 'In-House Group'}
+                  {isExternal ? 'External Network' : 'In-House Network'}
                 </span>
               </DetailItem>
 
@@ -478,10 +482,26 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
                 </span>
               </DetailItem>
 
-              <DetailItem label={isExternal ? 'Representative' : 'Group Head'}>
+              <DetailItem label="Broker Name">
+                {group.brokerName || '-'}
+              </DetailItem>
+
+              <DetailItem label="Realty Name">
+                {group.realtyName || '-'}
+              </DetailItem>
+
+              <DetailItem label="Broker License Number">
+                {group.brokerLicenseNumber || '-'}
+              </DetailItem>
+
+              <DetailItem label="PRC Number">
+                {group.brokerPrcNumber || '-'}
+              </DetailItem>
+
+              <DetailItem label={isExternal ? 'Representative' : 'Internal Hierarchy Head'}>
                 {isExternal
                   ? group.externalAccount?.fullName || '-'
-                  : group.headName || 'No head assigned'}
+                  : group.headName || 'No hierarchy head assigned'}
               </DetailItem>
 
               <DetailItem label="Accredited Projects">
@@ -516,8 +536,8 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
               title="Project Commission Structure"
               description={
                 isExternal
-                  ? 'The Pool Rate is the full commission assigned to this group.'
-                  : 'The fixed position rates must equal the project Pool Rate.'
+                  ? 'The Pool Rate is the full commission assigned to this Network.'
+                  : 'Company Profit is retained first; the remaining pool is automatically distributed using the configured position shares.'
               }
               actions={
                 <label className="grid gap-1.5">
@@ -549,7 +569,7 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
 
             <div
               className={`grid gap-4 p-5 ${
-                isExternal ? 'max-w-2xl' : 'sm:grid-cols-2 xl:grid-cols-5'
+                isExternal ? 'max-w-2xl' : 'sm:grid-cols-2 xl:grid-cols-4'
               }`}
             >
               <RateCard
@@ -562,27 +582,39 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
               {!isExternal ? (
                 <>
                   <RateCard
-                    label="Division Manager Rate"
-                    value={fixedRates.divisionManagerRate}
-                    helper="Top in-house position"
-                    bgColor="purple"
-                  />
-                  <RateCard
-                    label="Sales Director Rate"
-                    value={fixedRates.salesDirectorRate}
-                    helper="Fixed override"
-                    bgColor="yellow"
-                  />
-                  <RateCard
-                    label="Unit Manager Rate"
-                    value={fixedRates.unitManagerRate}
-                    helper="Fixed override"
+                    label="Company Profit (CP)"
+                    value={fixedRates.companyProfitRate}
+                    helper="Actual rate retained by the company"
                     bgColor="gray"
                   />
                   <RateCard
-                    label="Sales Agent Rate"
+                    label="Distributable Pool"
+                    value={fixedRates.distributionPoolRate}
+                    helper="Pool Rate less Company Profit"
+                    bgColor="green"
+                  />
+                  <RateCard
+                    label="Division Manager"
+                    value={fixedRates.divisionManagerRate}
+                    helper={`${Number(fixedRates.poolShares?.division_manager || 0).toFixed(2)}% of distributable pool`}
+                    bgColor="purple"
+                  />
+                  <RateCard
+                    label="Sales Director"
+                    value={fixedRates.salesDirectorRate}
+                    helper={`${Number(fixedRates.poolShares?.sales_director || 0).toFixed(2)}% of distributable pool`}
+                    bgColor="yellow"
+                  />
+                  <RateCard
+                    label="Unit Manager"
+                    value={fixedRates.unitManagerRate}
+                    helper={`${Number(fixedRates.poolShares?.unit_manager || 0).toFixed(2)}% of distributable pool`}
+                    bgColor="gray"
+                  />
+                  <RateCard
+                    label="Sales Agent"
                     value={fixedRates.salesAgentRate}
-                    helper="Direct sales rate"
+                    helper={`${Number(fixedRates.poolShares?.sales_agent || 0).toFixed(2)}% of distributable pool`}
                     bgColor="green"
                   />
                 </>
@@ -636,7 +668,7 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
             <div className="grid gap-3 p-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
               <SummaryCard
                 icon={FiUsers}
-                label={isExternal ? 'Group Accounts' : 'Active Members'}
+                label={isExternal ? 'Network Accounts' : 'Active Members'}
                 value={
                   isExternal ? 1 : configuration.summary?.activeMembers || 0
                 }
@@ -817,7 +849,7 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
           {isExternal ? (
             <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_1px_3px_rgba(15,23,42,0.04)]">
               <SectionHeading
-                title="External Group Account"
+                title="External Network Account"
                 description="This single account receives all commissions for the group."
               />
 
@@ -1043,5 +1075,3 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
 }
 
 export default SellerGroupDetails
-
-

@@ -296,5 +296,3 @@ export const requestApiBlob = async (
     }
   }
 }
-
-

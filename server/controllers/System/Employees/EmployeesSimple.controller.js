@@ -432,7 +432,7 @@ export const updateEmployee = async (req, res) => {
       action: 'update', module: 'Employees', entityType: 'employee', entityId: String(employeeId),
       entityLabel: `${payload.firstName} ${payload.lastName}`,
       title: 'Updated employee',
-      description: `Updated employee ${payload.firstName} ${payload.lastName}. Employee code, attendance barcode, and employment/compensation record were preserved.`,
+      description: `Updated employee ${payload.firstName} ${payload.lastName}. Employee code and attendance barcode were preserved; the employment/compensation record was also preserved.`,
       metadata: {
         employeeCode: rows[0].employee_code,
         attendanceBarcode: rows[0].barcode_code,

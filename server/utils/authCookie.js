@@ -18,5 +18,3 @@ export const getAuthCookieOptions = ({ maxAge } = {}) => {
 export const clearAuthCookie = (res) => {
   res.clearCookie('token', getAuthCookieOptions())
 }
-
-

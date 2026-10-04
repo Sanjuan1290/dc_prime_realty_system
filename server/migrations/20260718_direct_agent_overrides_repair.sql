@@ -357,5 +357,3 @@ SELECT
   (SELECT COUNT(*) FROM seller_hierarchy_lot_project_overrides) AS override_rows,
   (SELECT COUNT(*) FROM lot_project_commissions WHERE commission_rate_type = 'direct') AS direct_commission_rows,
   (SELECT COUNT(*) FROM lot_project_commissions WHERE commission_rate_type = 'override') AS override_commission_rows;
-
-

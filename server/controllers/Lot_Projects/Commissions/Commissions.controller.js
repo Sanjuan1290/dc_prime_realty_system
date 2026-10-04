@@ -28,7 +28,7 @@ const roleLabel = (value = '') => {
     sales_director: 'Sales Director',
     unit_manager: 'Unit Manager',
     sales_agent: 'Sales Agent',
-    external_group: 'External Group',
+    external_group: 'External Network',
   };
   return labels[value] || titleCase(value);
 };
@@ -48,7 +48,7 @@ const hierarchyLabel = (value = '') => {
     sales_director: 'Sales Director',
     unit_manager: 'Unit Manager',
     sales_agent: 'Sales Agent',
-    external_group: 'External Group',
+    external_group: 'External Network',
   };
   return labels[value] || roleLabel(value);
 };
@@ -549,7 +549,7 @@ const syncReleaseStatuses = async (connection, commissionRows = []) => {
     if (!hasReleaseTable) continue;
 
     // External Realty uses a sequential assurance rule: once D&C releases a
-    // milestone to the External Group, that released milestone starts as
+    // milestone to the External Network, that released milestone starts as
     // "unsubmitted". If the immediately following milestone becomes eligible
     // while the previous receipt is still unsubmitted, only that next milestone
     // is automatically held. Manual holds remain untouched.
@@ -1589,5 +1589,3 @@ export const updateLotProjectCommission = async (req, res) => {
     connection.release();
   }
 };
-
-

@@ -51,4 +51,3 @@ npm run build
 ```
 
 The supplied code passes migration validation, the complete repository test inventory under temporary import-compatibility stubs, and source syntax parsing. The real Vite production build is **not claimed as verified** until the commands above run successfully with actual dependencies.
-

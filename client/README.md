@@ -40,5 +40,3 @@ Required Render database variables:
 - TIDB_PASSWORD
 - TIDB_DATABASE=dc_prime_realty_system_db
 - TIDB_SSL=true
-
-

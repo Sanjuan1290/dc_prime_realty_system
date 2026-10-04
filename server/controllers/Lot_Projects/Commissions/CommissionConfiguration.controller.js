@@ -26,7 +26,7 @@ const getListingForPreview = async (connection, projectId, listingLookup) => {
 };
 
 /**
- * Returns active In-House Sales Agents and registered External Group accounts
+ * Returns active In-House Sales Agents and registered External Network accounts
  * that have an active commission structure for the selected project.
  */
 export const getReservationAgents = async (req, res) => {
@@ -126,5 +126,3 @@ export const getReservationCommissionPreviewController = async (req, res) => {
     connection.release();
   }
 };
-
-

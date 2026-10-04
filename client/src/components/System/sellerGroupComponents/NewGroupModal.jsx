@@ -7,40 +7,16 @@ import ProjectAccreditationFields from './ProjectAccreditationFields'
 import { getSellerRoleLabel } from '../../../config/sellerRoles'
 import {useFetch as fetchJson, useFetchPost as postJson, getDoubleCheckNotice} from '../../../utils/useFetch'
 
-const validateProjectRates = (projectRates, groupHeadRole, groupType) => {
+const validateProjectRates = (projectRates, groupType) => {
   if (!projectRates.length) return 'Select at least one accredited project.'
-
   for (const rate of projectRates) {
     const pool = Number(rate.seller_group_pool_rate)
-    if (!Number.isFinite(pool) || pool < 6 || pool > 15) {
-      return 'Each selected project Pool Rate must be between 6% and 15%.'
-    }
+    if (!Number.isFinite(pool) || pool < 6 || pool > 15) return 'Each selected project Pool Rate must be between 6% and 15%.'
     if (groupType === 'external') continue
-
-    const positionRates = [
-      Number(rate.division_manager_rate || 0),
-      Number(rate.sales_director_rate || 0),
-      Number(rate.unit_manager_rate || 0),
-      Number(rate.sales_agent_rate || 0),
-    ]
-    if (positionRates.some((value) => !Number.isFinite(value) || value < 0 || value > 15)) {
-      return 'In-house position rates must be between 0% and 15%.'
-    }
-    if (positionRates[1] <= 0) return 'Sales Director Rate must be greater than 0%.'
-    if (positionRates[2] <= 0) return 'Unit Manager Rate must be greater than 0%.'
-    if (positionRates[3] <= 0) return 'Sales Agent Rate must be greater than 0%.'
-    if (groupHeadRole === 'sales_director' && positionRates[0] !== 0) {
-      return 'Division Manager Rate must be 0% when the Group Head is a Sales Director.'
-    }
-    if (groupHeadRole !== 'sales_director' && positionRates[0] <= 0) {
-      return 'Division Manager Rate must be greater than 0%.'
-    }
-    const allocated = Number(positionRates.reduce((sum, value) => sum + value, 0).toFixed(2))
-    if (Math.abs(allocated - pool) > 0.001) {
-      return `The in-house position rates must total the ${pool.toFixed(2)}% Pool Rate.`
-    }
+    const companyProfit = Number(rate.company_profit_rate || 0)
+    if (!Number.isFinite(companyProfit) || companyProfit < 0) return 'Company Profit must be 0% or greater.'
+    if (companyProfit >= pool) return 'Company Profit must be lower than the Pool Rate.'
   }
-
   return ''
 }
 
@@ -54,12 +30,16 @@ const InputField = ({ label, required = false, ...props }) => (
 const NewGroupModal = ({ setShowNewGroupModal, onSaved, groupType = 'in_house' }) => {
   const queryClient = useQueryClient()
   const isExternal = groupType === 'external'
-  const groupLabel = isExternal ? 'External Group' : 'In-House Group'
+  const groupLabel = isExternal ? 'External Network' : 'In-House Network'
   const [notice, setNotice] = useState(null)
   const [projectPendingRemoval, setProjectPendingRemoval] = useState(null)
   const [form, setForm] = useState({
     seller_group_type: groupType,
     seller_group_name: '',
+    broker_name: '',
+    broker_license_number: '',
+    realty_name: '',
+    broker_prc_number: '',
     seller_group_head_user_id: '',
     seller_group_description: '',
     seller_group_status: 'active',
@@ -85,12 +65,17 @@ const NewGroupModal = ({ setShowNewGroupModal, onSaved, groupType = 'in_house' }
     queryKey: ['lot-project-options'],
     queryFn: () => fetchJson('/projects/lot-projects/options'),
   })
+  const poolSharesQuery = useQuery({
+    queryKey: ['network-pool-shares'],
+    queryFn: () => fetchJson('/seller-groups/pool-shares'),
+  })
 
   const parentSellers = parentsQuery.data?.data || []
   const eligibleGroupHeads = parentSellers.filter(
-    (seller) => ['division_manager', 'sales_director'].includes(seller.role) && !seller.seller_group_id
+    (seller) => seller.role === 'division_manager' && !seller.seller_group_id
   )
   const projects = projectsQuery.data?.data || []
+  const poolShares = poolSharesQuery.data?.data || { division_manager: 14.18, sales_director: 15.82, unit_manager: 20, sales_agent: 50 }
   const selectedGroupHead = eligibleGroupHeads.find(
     (seller) => String(seller.user_id) === String(form.seller_group_head_user_id)
   )
@@ -105,6 +90,7 @@ const NewGroupModal = ({ setShowNewGroupModal, onSaved, groupType = 'in_house' }
           ...form,
           seller_group_head_name: selectedGroupHead?.full_name || '',
           seller_group_head_role: groupHeadRole,
+          pool_shares: poolShares,
           project_rates: (form.project_rates || []).map((rate) => ({
             ...rate,
             projectName: projects.find((project) => Number(project.lot_project_id || project.id) === Number(rate.lot_project_id || rate.project_id))?.lot_project_name
@@ -141,7 +127,11 @@ const NewGroupModal = ({ setShowNewGroupModal, onSaved, groupType = 'in_house' }
   const submit = (event) => {
     event.preventDefault()
     if (!form.seller_group_name.trim()) {
-      setNotice({ type: 'error', message: 'Group Name is required.' })
+      setNotice({ type: 'error', message: 'Network Name is required.' })
+      return
+    }
+    if (!form.broker_name.trim() || !form.broker_license_number.trim() || !form.realty_name.trim() || !form.broker_prc_number.trim()) {
+      setNotice({ type: 'error', message: 'Broker Name, Broker License Number, Realty Name, and PRC Number are required.' })
       return
     }
     if (isExternal) {
@@ -151,7 +141,7 @@ const NewGroupModal = ({ setShowNewGroupModal, onSaved, groupType = 'in_house' }
         return
       }
     }
-    const projectError = validateProjectRates(form.project_rates, groupHeadRole, groupType)
+    const projectError = validateProjectRates(form.project_rates, groupType)
     if (projectError) {
       setNotice({ type: 'error', message: projectError })
       return
@@ -159,8 +149,8 @@ const NewGroupModal = ({ setShowNewGroupModal, onSaved, groupType = 'in_house' }
     mutation.mutate()
   }
 
-  const isLoadingOptions = projectsQuery.isLoading || (!isExternal && parentsQuery.isLoading)
-  const hasOptionError = projectsQuery.isError || (!isExternal && parentsQuery.isError)
+  const isLoadingOptions = projectsQuery.isLoading || poolSharesQuery.isLoading || (!isExternal && parentsQuery.isLoading)
+  const hasOptionError = projectsQuery.isError || poolSharesQuery.isError || (!isExternal && parentsQuery.isError)
 
   return (
     <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/55 p-3 backdrop-blur-sm sm:p-5">
@@ -170,54 +160,46 @@ const NewGroupModal = ({ setShowNewGroupModal, onSaved, groupType = 'in_house' }
             <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-700"><FiUsers /></span>
             <div>
               <h2 className="text-xl font-black text-slate-950">Add {groupLabel}</h2>
-              <p className="mt-1 text-sm font-semibold text-slate-500">{isExternal ? 'Create one partner-group account and assign its overall Pool Rate per project.' : 'Create the internal group, select its projects, and assign fixed rates by position.'}</p>
+              <p className="mt-1 text-sm font-semibold text-slate-500">{isExternal ? 'Create one partner Network account and assign its overall Pool Rate per project.' : 'Create the internal Network, select its projects, and configure Pool Rate and Company Profit.'}</p>
             </div>
           </div>
-          <button type="button" onClick={() => setShowNewGroupModal(false)} disabled={mutation.isPending} className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 disabled:opacity-50" aria-label="Close group modal"><FiX /></button>
+          <button type="button" onClick={() => setShowNewGroupModal(false)} disabled={mutation.isPending} className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 disabled:opacity-50" aria-label="Close Network modal"><FiX /></button>
         </header>
 
         <div className="overflow-y-auto p-5">
           <div className="grid gap-5">
             {notice ? <StatusAlert type={notice.type} message={notice.message} onClose={notice.type === 'loading' ? undefined : () => setNotice(null)} /> : null}
-            {isLoadingOptions ? <StatusAlert type="loading" message="Loading group options and active projects..." /> : null}
-            {hasOptionError ? <StatusAlert type="error" message={parentsQuery.error?.message || projectsQuery.error?.message || 'Failed to load group options.'} /> : null}
+            {isLoadingOptions ? <StatusAlert type="loading" message="Loading Network options and active projects..." /> : null}
+            {hasOptionError ? <StatusAlert type="error" message={parentsQuery.error?.message || projectsQuery.error?.message || poolSharesQuery.error?.message || 'Failed to load Network options.'} /> : null}
 
             <section className="rounded-2xl border border-slate-200 p-4">
-              <h3 className="font-black text-slate-950">Group Information</h3>
+              <h3 className="font-black text-slate-950">Network Information</h3>
               <div className="mt-4 grid gap-4 md:grid-cols-2">
-                <InputField autoFocus label="Group Name" required value={form.seller_group_name} onChange={(event) => updateForm('seller_group_name', event.target.value)} placeholder={isExternal ? 'Example: ABC Realty' : 'Example: North Star Team'} disabled={mutation.isPending} />
+                <InputField autoFocus label="Network Name" required value={form.seller_group_name} onChange={(event) => updateForm('seller_group_name', event.target.value)} placeholder={isExternal ? 'Example: ABC Realty' : 'Example: North Star Team'} disabled={mutation.isPending} />
+                <InputField label="Broker Name" required value={form.broker_name} onChange={(event) => updateForm('broker_name', event.target.value)} placeholder="Licensed broker full name" disabled={mutation.isPending} />
+                <InputField label="Broker License Number" required value={form.broker_license_number} onChange={(event) => updateForm('broker_license_number', event.target.value)} placeholder="Broker license number" disabled={mutation.isPending} />
+                <InputField label="Realty Name" required value={form.realty_name} onChange={(event) => updateForm('realty_name', event.target.value)} placeholder="Registered realty name" disabled={mutation.isPending} />
+                <InputField label="PRC Number" required value={form.broker_prc_number} onChange={(event) => updateForm('broker_prc_number', event.target.value)} placeholder="PRC number" disabled={mutation.isPending} />
                 {!isExternal ? (
                   <label className="flex flex-col gap-1.5">
-                    <span className="text-xs font-black text-slate-700">Group Head</span>
+                    <span className="text-xs font-black text-slate-700">Internal Hierarchy Head</span>
                     <select value={form.seller_group_head_user_id} onChange={(event) => {
                       const nextHeadId = event.target.value
-                      const nextHead = eligibleGroupHeads.find((seller) => String(seller.user_id) === String(nextHeadId))
-                      const nextRole = nextHead?.role || 'division_manager'
                       setNotice(null)
                       setForm((current) => ({
                         ...current,
                         seller_group_head_user_id: nextHeadId,
-                        project_rates: current.project_rates.map((rate) => {
-                          const divisionManagerRate = nextRole === 'sales_director' ? 0 : Number(rate.division_manager_rate || 1)
-                          const salesDirectorRate = Number(rate.sales_director_rate || 0)
-                          const unitManagerRate = Number(rate.unit_manager_rate || 0)
-                          const pool = Number(rate.seller_group_pool_rate || 0)
-                          return {
-                            ...rate,
-                            division_manager_rate: divisionManagerRate,
-                            sales_agent_rate: Math.max(pool - divisionManagerRate - salesDirectorRate - unitManagerRate, 0).toFixed(2),
-                          }
-                        }),
+                        project_rates: current.project_rates,
                       }))
                     }} disabled={mutation.isPending || parentsQuery.isLoading} className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100">
-                      <option value="">No head assigned</option>
+                      <option value="">No hierarchy head assigned</option>
                       {eligibleGroupHeads.map((seller) => <option key={seller.user_id} value={seller.user_id}>{seller.full_name} · {getSellerRoleLabel(seller.role)}</option>)}
                     </select>
                   </label>
                 ) : (
                   <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
                     <p className="text-xs font-black text-blue-900">Account Type</p>
-                    <p className="mt-1 text-sm font-black text-blue-700">External Group</p>
+                    <p className="mt-1 text-sm font-black text-blue-700">External Network</p>
                     <p className="mt-1 text-xs font-semibold text-blue-700">One account receives the full project Pool Rate.</p>
                   </div>
                 )}
@@ -225,19 +207,19 @@ const NewGroupModal = ({ setShowNewGroupModal, onSaved, groupType = 'in_house' }
 
               <label className="mt-4 flex flex-col gap-1.5">
                 <span className="text-xs font-black text-slate-700">Description</span>
-                <textarea rows={3} value={form.seller_group_description} onChange={(event) => updateForm('seller_group_description', event.target.value)} placeholder="Describe the group, territory, or agreement..." disabled={mutation.isPending} className="resize-none rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100" />
+                <textarea rows={3} value={form.seller_group_description} onChange={(event) => updateForm('seller_group_description', event.target.value)} placeholder="Describe the Network, territory, or agreement..." disabled={mutation.isPending} className="resize-none rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100" />
               </label>
 
               <label className="mt-4 flex max-w-xs flex-col gap-1.5">
-                <span className="text-xs font-black text-slate-700">Group Status</span>
+                <span className="text-xs font-black text-slate-700">Network Status</span>
                 <select value={form.seller_group_status} onChange={(event) => updateForm('seller_group_status', event.target.value)} disabled={mutation.isPending} className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100"><option value="active">Active</option><option value="inactive">Inactive</option></select>
               </label>
             </section>
 
             {isExternal ? (
               <section className="rounded-2xl border border-slate-200 p-4">
-                <h3 className="font-black text-slate-950">External Group Representative</h3>
-                <p className="mt-1 text-xs font-semibold text-slate-500">This person identifies the External Group in commissions, receipts, and proof-of-income records. Login is disabled until an external portal is added.</p>
+                <h3 className="font-black text-slate-950">External Network Representative</h3>
+                <p className="mt-1 text-xs font-semibold text-slate-500">This person identifies the External Network in commissions, receipts, and proof-of-income records. Login is disabled until an external portal is added.</p>
                 <div className="mt-4 grid gap-4 md:grid-cols-3">
                   <InputField label="First Name" required value={form.external_account.first_name} onChange={(event) => updateExternalAccount('first_name', event.target.value)} disabled={mutation.isPending} />
                   <InputField label="Middle Name" value={form.external_account.middle_name} onChange={(event) => updateExternalAccount('middle_name', event.target.value)} disabled={mutation.isPending} />
@@ -251,7 +233,7 @@ const NewGroupModal = ({ setShowNewGroupModal, onSaved, groupType = 'in_house' }
               </section>
             ) : null}
 
-            <ProjectAccreditationFields projects={projects} projectRates={form.project_rates} onChange={(projectRates) => updateForm('project_rates', projectRates)} groupHeadRole={groupHeadRole} groupType={groupType} disabled={mutation.isPending || projectsQuery.isLoading} onRequestRemove={(project) => setProjectPendingRemoval(project)} />
+            <ProjectAccreditationFields projects={projects} projectRates={form.project_rates} onChange={(projectRates) => updateForm('project_rates', projectRates)} groupType={groupType} poolShares={poolShares} disabled={mutation.isPending || projectsQuery.isLoading} onRequestRemove={(project) => setProjectPendingRemoval(project)} />
           </div>
         </div>
 
@@ -261,11 +243,9 @@ const NewGroupModal = ({ setShowNewGroupModal, onSaved, groupType = 'in_house' }
         </footer>
       </form>
 
-      <ConfirmActionModal open={Boolean(projectPendingRemoval)} title="Remove Project Accreditation?" message={`${projectPendingRemoval?.lot_project_name || 'This project'} will be removed from the group. Existing historical commission records are not changed.`} confirmLabel="Remove Project" tone="danger" onClose={() => setProjectPendingRemoval(null)} onConfirm={() => { const projectId = Number(projectPendingRemoval?.lot_project_id); updateForm('project_rates', form.project_rates.filter((rate) => Number(rate.lot_project_id) !== projectId)); setProjectPendingRemoval(null) }} />
+      <ConfirmActionModal open={Boolean(projectPendingRemoval)} title="Remove Project Accreditation?" message={`${projectPendingRemoval?.lot_project_name || 'This project'} will be removed from the Network. Existing historical commission records are not changed.`} confirmLabel="Remove Project" tone="danger" onClose={() => setProjectPendingRemoval(null)} onConfirm={() => { const projectId = Number(projectPendingRemoval?.lot_project_id); updateForm('project_rates', form.project_rates.filter((rate) => Number(rate.lot_project_id) !== projectId)); setProjectPendingRemoval(null) }} />
     </div>
   )
 }
 
 export default NewGroupModal
-
-

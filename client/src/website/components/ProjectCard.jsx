@@ -39,5 +39,3 @@ const ProjectCard = ({ project, compareSelected = false, onCompare }) => {
 }
 
 export default ProjectCard
-
-

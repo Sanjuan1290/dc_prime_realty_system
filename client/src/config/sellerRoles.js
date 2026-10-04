@@ -10,7 +10,7 @@ export const SELLER_ROLE_LABELS = Object.freeze({
   sales_director: 'Sales Director',
   unit_manager: 'Unit Manager',
   sales_agent: 'Sales Agent',
-  external_group: 'External Group',
+  external_group: 'External Network',
 });
 
 export const REQUIRED_PARENT_ROLE = Object.freeze({
@@ -27,5 +27,3 @@ export const getRequiredParentRole = (role) =>
 
 export const isInHouseSellerRole = (role) =>
   IN_HOUSE_SELLER_ROLES.includes(String(role || ''));
-
-

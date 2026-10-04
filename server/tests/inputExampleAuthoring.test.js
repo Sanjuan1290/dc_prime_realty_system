@@ -22,8 +22,9 @@ test('business-specific examples are authored on their own fields', () => {
   assert.match(priceList, /data-example=['\"]20 months['\"]/)
   assert.doesNotMatch(priceList, /data-example=['\"][^'\"]*₱/)
   assert.match(rates, /data-example=['\"]8%['\"]/)
-  assert.match(rates, /Division Manager Rate['\"], ['\"]1%/)
-  assert.match(rates, /Sales Agent Rate['\"], ['\"]5%/)
+  assert.match(rates, /data-example=['\"]2%['\"]/)
+  assert.match(rates, /Company Profit \(CP\)/)
+  assert.match(rates, /Read-only role distribution/)
 })
 
 test('example helper text remains visually secondary', () => {
@@ -31,5 +32,3 @@ test('example helper text remains visually secondary', () => {
   assert.match(css, /\.dc-input-example[\s\S]*?font-size:\s*10px/)
   assert.match(css, /font-style:\s*italic/)
 })
-
-

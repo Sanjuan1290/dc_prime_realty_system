@@ -12,16 +12,21 @@ import { useFetch as fetchJson, useFetchPatch as patchJson } from '../../utils/u
 
 const rateLabel = (rate) => rate.lot_project_location_code || rate.lot_project_name || `Project ${rate.lot_project_id}`
 
-const FixedRateCard = ({ rate, groupType }) => (
-  <div className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2">
-    <p className="text-xs font-black text-blue-900">{rateLabel(rate)} · Pool {Number(rate.seller_group_pool_rate || 0).toFixed(2)}%</p>
-    <p className="mt-1 text-[11px] font-semibold text-blue-700">
-      {groupType === 'external'
-        ? 'Full Pool Rate paid to the External Group'
-        : `Division Manager ${Number(rate.division_manager_rate || 0).toFixed(2)}% · Sales Director ${Number(rate.sales_director_rate || 0).toFixed(2)}% · Unit Manager ${Number(rate.unit_manager_rate || 0).toFixed(2)}% · Sales Agent ${Number(rate.sales_agent_rate || 0).toFixed(2)}%`}
-    </p>
-  </div>
-)
+const FixedRateCard = ({ rate, groupType }) => {
+  const pool = Number(rate.seller_group_pool_rate || 0)
+  const cp = Number(rate.company_profit_rate || 0)
+  const distributed = Number(rate.distribution_pool_rate ?? Math.max(pool - cp, 0))
+  return (
+    <div className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2">
+      <p className="text-xs font-black text-blue-900">{rateLabel(rate)} · Pool {pool.toFixed(4)}%</p>
+      <p className="mt-1 text-[11px] font-semibold text-blue-700">
+        {groupType === 'external'
+          ? 'Full Pool Rate paid to the External Network'
+          : `CP ${cp.toFixed(4)}% · Distributed ${distributed.toFixed(4)}% · DM ${Number(rate.division_manager_rate || 0).toFixed(4)}% · SD ${Number(rate.sales_director_rate || 0).toFixed(4)}% · UM ${Number(rate.unit_manager_rate || 0).toFixed(4)}% · SA ${Number(rate.sales_agent_rate || 0).toFixed(4)}%`}
+      </p>
+    </div>
+  )
+}
 
 const ProjectRatesCell = ({ rates = [], selectedProjectId = 'all', groupType }) => {
   if (!rates.length) return <p className="text-xs font-semibold text-slate-500">No accredited projects</p>
@@ -47,23 +52,23 @@ const SellerGroup = ({ groupType = 'in_house' }) => {
   const queryClient = useQueryClient()
   const isExternal = groupType === 'external'
   const config = isExternal ? {
-    title: 'External Groups',
-    description: 'Manage external partner groups, accredited projects, and overall project Pool Rates.',
-    totalLabel: 'Total External Groups',
-    activeLabel: 'Active External Groups',
-    thirdLabel: 'Group Accounts',
-    recordsTitle: 'External Group Records',
-    recordsDescription: 'Choose a project to view each accredited External Group and its Pool Rate.',
-    headLabel: 'Representative',
+    title: 'External Networks',
+    description: 'Manage external partner Networks, broker identity, accredited projects, and overall project Pool Rates.',
+    totalLabel: 'Total External Networks',
+    activeLabel: 'Active External Networks',
+    thirdLabel: 'Network Accounts',
+    recordsTitle: 'External Network Records',
+    recordsDescription: 'Choose a project to view each accredited External Network and its Pool Rate.',
+    headLabel: 'Broker',
   } : {
-    title: 'In-House Groups',
-    description: 'Manage internal sales groups, accredited projects, and fixed commission rates by position.',
-    totalLabel: 'Total In-House Groups',
-    activeLabel: 'Active In-House Groups',
+    title: 'In-House Networks',
+    description: 'Manage internal sales Networks, broker identity, accredited projects, Company Profit, and calculated role allocations.',
+    totalLabel: 'Total In-House Networks',
+    activeLabel: 'Active In-House Networks',
     thirdLabel: 'Total Members',
-    recordsTitle: 'In-House Group Records',
-    recordsDescription: 'Choose a project to view each accredited group and its fixed position rates.',
-    headLabel: 'Group Head',
+    recordsTitle: 'In-House Network Records',
+    recordsDescription: 'Choose a project to view each accredited Network and its Pool/CP distribution.',
+    headLabel: 'Broker',
   }
 
   const portalRole = location.pathname.split('/')[2] || 'super_admin'
@@ -112,7 +117,7 @@ const SellerGroup = ({ groupType = 'in_house' }) => {
   const openEditGroup = async (group) => {
     const groupId = Number(group?.seller_group_id || 0)
     if (!groupId) {
-      setAlert({ type: 'error', message: 'Unable to open this group.' })
+      setAlert({ type: 'error', message: 'Unable to open this Network.' })
       return
     }
 
@@ -122,10 +127,10 @@ const SellerGroup = ({ groupType = 'in_house' }) => {
     try {
       const result = await fetchJson(`/seller-groups/${groupId}`)
       const fullGroup = result?.data?.group
-      if (!fullGroup) throw new Error('Group details were not found.')
+      if (!fullGroup) throw new Error('Network details were not found.')
       setSelectedGroup(fullGroup)
     } catch (error) {
-      setAlert({ type: 'error', message: error?.message || 'Failed to load group details.' })
+      setAlert({ type: 'error', message: error?.message || 'Failed to load Network details.' })
     } finally {
       setEditLoadingId(null)
     }
@@ -133,9 +138,9 @@ const SellerGroup = ({ groupType = 'in_house' }) => {
 
   const toggleMutation = useMutation({
     mutationFn: (group) => patchJson(`/seller-groups/toggle-status/${group.seller_group_id}`, { status: group.seller_group_status === 'active' ? 'inactive' : 'active' }, { confirmationHandled: 'compact' }),
-    onMutate: (group) => setModalNotice({ type: 'loading', message: `${group.seller_group_status === 'active' ? 'Deactivating' : 'Activating'} group...` }),
-    onSuccess: (result) => { setConfirmGroup(null); setModalNotice(null); setAlert({ type: 'success', message: result?.message || 'Group status updated.' }); queryClient.invalidateQueries({ queryKey: ['seller-groups'] }); queryClient.invalidateQueries({ queryKey: ['seller-group-options'] }) },
-    onError: (error) => setModalNotice({ type: 'error', message: error?.message || 'Failed to update group.' }),
+    onMutate: (group) => setModalNotice({ type: 'loading', message: `${group.seller_group_status === 'active' ? 'Deactivating' : 'Activating'} Network...` }),
+    onSuccess: (result) => { setConfirmGroup(null); setModalNotice(null); setAlert({ type: 'success', message: result?.message || 'Network status updated.' }); queryClient.invalidateQueries({ queryKey: ['seller-groups'] }); queryClient.invalidateQueries({ queryKey: ['seller-group-options'] }) },
+    onError: (error) => setModalNotice({ type: 'error', message: error?.message || 'Failed to update Network.' }),
   })
 
   const handleSaved = (message) => {
@@ -147,13 +152,13 @@ const SellerGroup = ({ groupType = 'in_house' }) => {
     queryClient.invalidateQueries({ queryKey: ['accredited'] })
   }
 
-  const projectColumnLabel = selectedProject ? `${selectedProject.lot_project_location_code || selectedProject.lot_project_name} ${isExternal ? 'Pool Rate' : 'Fixed Rates'}` : 'Accredited Projects'
+  const projectColumnLabel = selectedProject ? `${selectedProject.lot_project_location_code || selectedProject.lot_project_name} ${isExternal ? 'Pool Rate' : 'Allocation'}` : 'Accredited Projects'
 
   return (
     <main className="flex flex-col gap-6">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <PageHeader title={config.title} description={config.description} icon={FaUserPlus} />
-        <div className="flex flex-col gap-2 sm:flex-row"><NavLink to={accreditedPath} className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-sm font-bold text-slate-700 shadow-sm hover:bg-slate-50">Back to Accredited Sellers</NavLink><button type="button" onClick={() => setShowNewGroupModal(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-bold text-white shadow-sm hover:bg-blue-700"><FiPlus />Add Group</button></div>
+        <div className="flex flex-col gap-2 sm:flex-row"><NavLink to={accreditedPath} className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-sm font-bold text-slate-700 shadow-sm hover:bg-slate-50">Back to Accredited Sellers</NavLink><button type="button" onClick={() => setShowNewGroupModal(true)} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-bold text-white shadow-sm hover:bg-blue-700"><FiPlus />Add Network</button></div>
       </div>
 
       {alert ? <StatusAlert type={alert.type} message={alert.message} onClose={() => setAlert(null)} /> : null}
@@ -162,27 +167,25 @@ const SellerGroup = ({ groupType = 'in_house' }) => {
       {groupsQuery.isError ? <StatusAlert type="error" message={groupsQuery.error?.message || `Failed to load ${config.title}.`} /> : null}
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><p className="text-sm font-semibold text-slate-500">{config.totalLabel}</p><h3 className="mt-2 text-3xl font-bold text-slate-950">{pagination.total}</h3><p className="mt-2 text-sm text-slate-500">{selectedProject ? `Accredited to ${selectedProject.lot_project_name}` : 'All group records'}</p></div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><p className="text-sm font-semibold text-slate-500">{config.totalLabel}</p><h3 className="mt-2 text-3xl font-bold text-slate-950">{pagination.total}</h3><p className="mt-2 text-sm text-slate-500">{selectedProject ? `Accredited to ${selectedProject.lot_project_name}` : 'All Network records'}</p></div>
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><p className="text-sm font-semibold text-slate-500">{config.activeLabel}</p><h3 className="mt-2 text-3xl font-bold text-slate-950">{meta.active}</h3><p className="mt-2 text-sm text-slate-500">Available for new reservations</p></div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><p className="text-sm font-semibold text-slate-500">{config.thirdLabel}</p><h3 className="mt-2 text-3xl font-bold text-slate-950">{isExternal ? meta.totalAccounts : meta.totalMembers}</h3><p className="mt-2 text-sm text-slate-500">{isExternal ? 'One account per group' : 'Members across groups'}</p></div>
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><p className="text-sm font-semibold text-slate-500">Project Accreditations</p><h3 className="mt-2 text-3xl font-bold text-slate-950">{meta.accreditedProjects}</h3><p className="mt-2 text-sm text-slate-500">Active group-project assignments</p></div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><p className="text-sm font-semibold text-slate-500">{config.thirdLabel}</p><h3 className="mt-2 text-3xl font-bold text-slate-950">{isExternal ? meta.totalAccounts : meta.totalMembers}</h3><p className="mt-2 text-sm text-slate-500">{isExternal ? 'One account per Network' : 'Members across Networks'}</p></div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><p className="text-sm font-semibold text-slate-500">Project Accreditations</p><h3 className="mt-2 text-3xl font-bold text-slate-950">{meta.accreditedProjects}</h3><p className="mt-2 text-sm text-slate-500">Active Network-project assignments</p></div>
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-4 border-b border-slate-200 p-4 xl:flex-row xl:items-center xl:justify-between"><div><h2 className="text-lg font-bold text-slate-950">{config.recordsTitle}</h2><p className="text-sm text-slate-500">{config.recordsDescription}</p></div><div className="grid gap-3 md:grid-cols-[minmax(230px,1fr)_minmax(180px,auto)_auto_auto]"><label className="relative block"><FiSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} placeholder="Search group, representative, or description..." className="h-11 w-full rounded-xl border border-slate-200 pl-10 pr-4 text-sm outline-none focus:border-blue-300 focus:ring-4 focus:ring-blue-50" /></label><select value={projectFilter} onChange={(event) => updateProjectFilter(event.target.value)} disabled={projectOptionsQuery.isLoading} className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold"><option value="all">All Projects</option>{projectOptions.map((project) => <option key={project.lot_project_id} value={project.lot_project_id}>{project.lot_project_name}</option>)}</select><select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1) }} className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold"><option value="all">All Status</option><option value="active">Active</option><option value="inactive">Inactive</option></select><button type="button" onClick={() => groupsQuery.refetch()} disabled={groupsQuery.isFetching} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold"><FiRefreshCw className={groupsQuery.isFetching ? 'animate-spin' : ''} />Refresh</button></div></div>
+        <div className="flex flex-col gap-4 border-b border-slate-200 p-4 xl:flex-row xl:items-center xl:justify-between"><div><h2 className="text-lg font-bold text-slate-950">{config.recordsTitle}</h2><p className="text-sm text-slate-500">{config.recordsDescription}</p></div><div className="grid gap-3 md:grid-cols-[minmax(230px,1fr)_minmax(180px,auto)_auto_auto]"><label className="relative block"><FiSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1) }} placeholder="Search Network, broker, realty, or description..." className="h-11 w-full rounded-xl border border-slate-200 pl-10 pr-4 text-sm outline-none focus:border-blue-300 focus:ring-4 focus:ring-blue-50" /></label><select value={projectFilter} onChange={(event) => updateProjectFilter(event.target.value)} disabled={projectOptionsQuery.isLoading} className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold"><option value="all">All Projects</option>{projectOptions.map((project) => <option key={project.lot_project_id} value={project.lot_project_id}>{project.lot_project_name}</option>)}</select><select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1) }} className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold"><option value="all">All Status</option><option value="active">Active</option><option value="inactive">Inactive</option></select><button type="button" onClick={() => groupsQuery.refetch()} disabled={groupsQuery.isFetching} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold"><FiRefreshCw className={groupsQuery.isFetching ? 'animate-spin' : ''} />Refresh</button></div></div>
 
-        <div className="overflow-x-auto"><table className="min-w-[1050px] w-full divide-y divide-slate-200 text-sm"><thead className="bg-slate-50"><tr>{['Group', config.headLabel, isExternal ? 'Account' : 'Members', projectColumnLabel, 'Status', 'Actions'].map((head) => <th key={head} className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">{head}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{sellerGroups.map((group) => <tr key={group.seller_group_id} className="hover:bg-slate-50"><td className="px-4 py-4"><p className="font-bold text-slate-950">{group.seller_group_name}</p><p className="text-xs text-slate-500">{group.seller_group_description || 'No description'}</p></td><td className="px-4 py-4 font-semibold text-slate-700">{isExternal ? group.external_account_name || 'No representative' : group.group_head_name || 'No head'}</td><td className="px-4 py-4 font-bold text-slate-950">{isExternal ? <><p>{group.external_account_email || '-'}</p><p className="text-xs font-semibold text-slate-500">External Group account</p></> : <>{group.member_count} <span className="text-xs font-semibold text-slate-500">({group.active_member_count} active)</span></>}</td><td className="px-4 py-4"><ProjectRatesCell rates={group.project_rates} selectedProjectId={projectFilter} groupType={groupType} /></td><td className="px-4 py-4"><span className={`rounded-full border px-3 py-1 text-xs font-bold capitalize ${group.seller_group_status === 'active' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>{group.seller_group_status}</span></td><td className="px-4 py-4"><div className="flex flex-wrap gap-2"><button type="button" onClick={() => navigate(groupDetailsUrl(group.seller_group_id))} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700"><FiEye />Details</button><button type="button" onClick={() => openEditGroup(group)} disabled={editLoadingId === Number(group.seller_group_id)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-bold text-blue-700 disabled:cursor-not-allowed disabled:opacity-60"><FiEdit2 />{editLoadingId === Number(group.seller_group_id) ? 'Loading...' : 'Edit'}</button><button type="button" onClick={() => { setConfirmGroup(group); setModalNotice(null) }} className={`inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-bold ${group.seller_group_status === 'active' ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}><FiTrash2 />{group.seller_group_status === 'active' ? 'Deactivate' : 'Activate'}</button></div></td></tr>)}{!groupsQuery.isLoading && !sellerGroups.length ? <tr><td colSpan={6} className="px-4 py-12 text-center text-sm font-semibold text-slate-500">No {config.title.toLowerCase()} found.</td></tr> : null}</tbody></table></div>
+        <div className="overflow-x-auto"><table className="min-w-[1050px] w-full divide-y divide-slate-200 text-sm"><thead className="bg-slate-50"><tr>{['Network', config.headLabel, isExternal ? 'Account' : 'Members', projectColumnLabel, 'Status', 'Actions'].map((head) => <th key={head} className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-slate-500">{head}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{sellerGroups.map((group) => <tr key={group.seller_group_id} className="hover:bg-slate-50"><td className="px-4 py-4"><p className="font-bold text-slate-950">{group.seller_group_name}</p><p className="text-xs text-slate-500">{group.realty_name || 'Realty not set'}{group.broker_license_number ? ` · License ${group.broker_license_number}` : ''}{group.broker_prc_number ? ` · PRC ${group.broker_prc_number}` : ''}</p><p className="mt-1 text-xs text-slate-400">{group.seller_group_description || 'No description'}</p></td><td className="px-4 py-4 font-semibold text-slate-700">{group.broker_name || 'Broker not set'}</td><td className="px-4 py-4 font-bold text-slate-950">{isExternal ? <><p>{group.external_account_email || '-'}</p><p className="text-xs font-semibold text-slate-500">External Network account</p></> : <>{group.member_count} <span className="text-xs font-semibold text-slate-500">({group.active_member_count} active)</span></>}</td><td className="px-4 py-4"><ProjectRatesCell rates={group.project_rates} selectedProjectId={projectFilter} groupType={groupType} /></td><td className="px-4 py-4"><span className={`rounded-full border px-3 py-1 text-xs font-bold capitalize ${group.seller_group_status === 'active' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>{group.seller_group_status}</span></td><td className="px-4 py-4"><div className="flex flex-wrap gap-2"><button type="button" onClick={() => navigate(groupDetailsUrl(group.seller_group_id))} className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700"><FiEye />Details</button><button type="button" onClick={() => openEditGroup(group)} disabled={editLoadingId === Number(group.seller_group_id)} className="inline-flex h-9 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-bold text-blue-700 disabled:cursor-not-allowed disabled:opacity-60"><FiEdit2 />{editLoadingId === Number(group.seller_group_id) ? 'Loading...' : 'Edit'}</button><button type="button" onClick={() => { setConfirmGroup(group); setModalNotice(null) }} className={`inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-bold ${group.seller_group_status === 'active' ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'}`}><FiTrash2 />{group.seller_group_status === 'active' ? 'Deactivate' : 'Activate'}</button></div></td></tr>)}{!groupsQuery.isLoading && !sellerGroups.length ? <tr><td colSpan={6} className="px-4 py-12 text-center text-sm font-semibold text-slate-500">No {config.title.toLowerCase()} found.</td></tr> : null}</tbody></table></div>
 
-        <div className="flex flex-col gap-3 border-t border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between"><p className="text-sm font-semibold text-slate-500">Page {pagination.page} of {pagination.totalPages} · {pagination.total} group(s)</p><div className="flex flex-wrap items-center gap-2"><select value={limit} onChange={(event) => { setLimit(Number(event.target.value)); setPage(1) }} className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold"><option value={10}>10 rows</option><option value={25}>25 rows</option><option value={50}>50 rows</option></select><button type="button" disabled={!pagination.hasPrev} onClick={() => setPage((current) => Math.max(current - 1, 1))} className="h-10 rounded-xl border border-slate-200 px-4 text-sm font-bold disabled:opacity-40">Previous</button><button type="button" disabled={!pagination.hasNext} onClick={() => setPage((current) => current + 1)} className="h-10 rounded-xl border border-slate-200 px-4 text-sm font-bold disabled:opacity-40">Next</button></div></div>
+        <div className="flex flex-col gap-3 border-t border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between"><p className="text-sm font-semibold text-slate-500">Page {pagination.page} of {pagination.totalPages} · {pagination.total} Network(s)</p><div className="flex flex-wrap items-center gap-2"><select value={limit} onChange={(event) => { setLimit(Number(event.target.value)); setPage(1) }} className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold"><option value={10}>10 rows</option><option value={25}>25 rows</option><option value={50}>50 rows</option></select><button type="button" disabled={!pagination.hasPrev} onClick={() => setPage((current) => Math.max(current - 1, 1))} className="h-10 rounded-xl border border-slate-200 px-4 text-sm font-bold disabled:opacity-40">Previous</button><button type="button" disabled={!pagination.hasNext} onClick={() => setPage((current) => current + 1)} className="h-10 rounded-xl border border-slate-200 px-4 text-sm font-bold disabled:opacity-40">Next</button></div></div>
       </section>
 
       {showNewGroupModal ? <NewGroupModal setShowNewGroupModal={setShowNewGroupModal} onSaved={handleSaved} groupType={groupType} /> : null}
       {selectedGroup ? <EditGroupModal setShowEditGroupModal={() => setSelectedGroup(null)} selectedGroup={selectedGroup} onSaved={handleSaved} groupType={groupType} /> : null}
-      <ConfirmActionModal open={Boolean(confirmGroup)} title={`${confirmGroup?.seller_group_status === 'active' ? 'Deactivate' : 'Activate'} Group?`} message={`${confirmGroup?.seller_group_name || 'This group'} will ${confirmGroup?.seller_group_status === 'active' ? 'stop accepting new assignments and reservations' : 'be available for new assignments again'}. Existing records remain available.`} confirmLabel={confirmGroup?.seller_group_status === 'active' ? 'Deactivate' : 'Activate'} tone={confirmGroup?.seller_group_status === 'active' ? 'danger' : 'primary'} isPending={toggleMutation.isPending} notice={modalNotice} onClose={() => { if (!toggleMutation.isPending) { setConfirmGroup(null); setModalNotice(null) } }} onConfirm={() => toggleMutation.mutate(confirmGroup)} />
+      <ConfirmActionModal open={Boolean(confirmGroup)} title={`${confirmGroup?.seller_group_status === 'active' ? 'Deactivate' : 'Activate'} Network?`} message={`${confirmGroup?.seller_group_name || 'This Network'} will ${confirmGroup?.seller_group_status === 'active' ? 'stop accepting new assignments and reservations' : 'be available for new assignments again'}. Existing records remain available.`} confirmLabel={confirmGroup?.seller_group_status === 'active' ? 'Deactivate' : 'Activate'} tone={confirmGroup?.seller_group_status === 'active' ? 'danger' : 'primary'} isPending={toggleMutation.isPending} notice={modalNotice} onClose={() => { if (!toggleMutation.isPending) { setConfirmGroup(null); setModalNotice(null) } }} onConfirm={() => toggleMutation.mutate(confirmGroup)} />
     </main>
   )
 }
 
 export default SellerGroup
-
-

@@ -21,7 +21,7 @@ const money = (value) =>
     minimumFractionDigits: 2,
   }).format(Number(value || 0))
 
-const roundRate = (value) => Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100
+const roundRate = (value) => Math.round((Number(value || 0) + Number.EPSILON) * 10000) / 10000
 
 const RecalculateCommissionModal = ({
   listing,
@@ -73,15 +73,15 @@ const RecalculateCommissionModal = ({
   const validationMessage = useMemo(() => {
     if (!isAllowed) return commissionState.reason || 'This commission cannot be adjusted.'
     if (!currentHierarchy.length) return 'No saved commission recipients are available for adjustment.'
-    if (!Number.isFinite(numericGroupRate) || numericGroupRate < 6 || numericGroupRate > 15) {
-      return 'Unit Group Rate must be between 6.00% and 15.00%.'
+    if (!Number.isFinite(numericGroupRate) || numericGroupRate <= 0 || numericGroupRate > 15) {
+      return 'Unit Network Distribution Rate must be greater than 0% and no more than 15.00%.'
     }
     for (const row of proposalRows) {
       if (!Number.isFinite(row.rate) || row.rate <= 0) return `${row.roleLabel || row.role} rate must be greater than 0%.`
-      if (row.rate > numericGroupRate + 0.0001) return `${row.roleLabel || row.role} rate cannot be greater than the Unit Group Rate.`
+      if (row.rate > numericGroupRate + 0.0001) return `${row.roleLabel || row.role} rate cannot be greater than the Unit Network Distribution Rate.`
     }
-    if (unallocatedRate > 0.0001) return `Allocate the remaining ${unallocatedRate.toFixed(2)}% before saving. Unallocated must be 0.00%.`
-    if (overallocatedRate > 0.0001) return `Allocated commission exceeds the Unit Group Rate by ${overallocatedRate.toFixed(2)}%.`
+    if (unallocatedRate > 0.0001) return `Allocate the remaining ${unallocatedRate.toFixed(4)}% before saving. Unallocated must be 0.0000%.`
+    if (overallocatedRate > 0.0001) return `Allocated commission exceeds the Unit Network Distribution Rate by ${overallocatedRate.toFixed(4)}%.`
     if (reason.trim().length < 10) return 'Enter an adjustment reason with at least 10 characters.'
     return ''
   }, [isAllowed, commissionState.reason, currentHierarchy.length, numericGroupRate, proposalRows, reason, unallocatedRate, overallocatedRate])
@@ -140,7 +140,7 @@ const RecalculateCommissionModal = ({
             <div className="min-w-0">
               <h2 className="text-xl font-black text-slate-950">Adjust Unit Commission</h2>
               <p className="mt-1 text-sm font-semibold text-slate-500">
-                Change the saved rates for {unitId} only. Group Settings and other reservations are not changed.
+                Change the saved rates for {unitId} only. Network Settings and other reservations are not changed.
               </p>
             </div>
           </div>
@@ -178,12 +178,12 @@ const RecalculateCommissionModal = ({
                 <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
                   <div>
                     <h3 className="text-base font-black text-slate-950">Proposed Unit Commission</h3>
-                    <p className="mt-1 text-xs font-semibold text-slate-600">The Unit Group Rate is editable, but the final role allocation must equal it exactly.</p>
+                    <p className="mt-1 text-xs font-semibold text-slate-600">The Unit Network Distribution Rate is editable, but the final role allocation must equal it exactly.</p>
                   </div>
                   <label className="mt-3 sm:mt-0">
-                    <span className="mb-1 block text-xs font-black text-slate-700">Unit Group Rate *</span>
+                    <span className="mb-1 block text-xs font-black text-slate-700">Unit Network Distribution Rate *</span>
                     <div className="relative w-full sm:w-44">
-                      <input type="number" min="6" max="15" step="0.01" value={groupRate} onChange={(event) => { setGroupRate(event.target.value); setNotice(null) }} disabled={busy} className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 pr-9 text-right text-sm font-black outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-100" />
+                      <input type="number" min="0.0001" max="15" step="0.0001" value={groupRate} onChange={(event) => { setGroupRate(event.target.value); setNotice(null) }} disabled={busy} className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 pr-9 text-right text-sm font-black outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-100" />
                       <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm font-black text-slate-500">%</span>
                     </div>
                   </label>
@@ -199,10 +199,10 @@ const RecalculateCommissionModal = ({
                         <tr key={row.commissionId}>
                           <td className="px-4 py-3 font-bold text-slate-900">{row.sellerName || '-'}</td>
                           <td className="px-4 py-3 font-semibold text-slate-600">{row.roleLabel || row.role}</td>
-                          <td className="px-4 py-3 text-right font-bold text-slate-600">{Number(currentHierarchy.find((item) => item.commissionId === row.commissionId)?.rate || 0).toFixed(2)}%</td>
+                          <td className="px-4 py-3 text-right font-bold text-slate-600">{Number(currentHierarchy.find((item) => item.commissionId === row.commissionId)?.rate || 0).toFixed(4)}%</td>
                           <td className="px-4 py-3">
                             <div className="relative ml-auto w-36">
-                              <input type="number" min="0.01" max={Number.isFinite(numericGroupRate) ? numericGroupRate : 15} step="0.01" value={rates[String(row.commissionId)] ?? ''} onChange={(event) => { setRates((current) => ({ ...current, [String(row.commissionId)]: event.target.value })); setNotice(null) }} disabled={busy} className="h-10 w-full rounded-xl border border-slate-300 px-3 pr-8 text-right font-black outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-100" />
+                              <input type="number" min="0.0001" max={Number.isFinite(numericGroupRate) ? numericGroupRate : 15} step="0.0001" value={rates[String(row.commissionId)] ?? ''} onChange={(event) => { setRates((current) => ({ ...current, [String(row.commissionId)]: event.target.value })); setNotice(null) }} disabled={busy} className="h-10 w-full rounded-xl border border-slate-300 px-3 pr-8 text-right font-black outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-100" />
                               <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center font-black text-slate-500">%</span>
                             </div>
                           </td>
@@ -214,14 +214,14 @@ const RecalculateCommissionModal = ({
                 </div>
 
                 <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                  <div className="rounded-xl border border-blue-200 bg-white p-3"><p className="text-[10px] font-black uppercase text-slate-500">Unit Group Rate</p><p className="mt-1 text-lg font-black text-blue-800">{Number.isFinite(numericGroupRate) ? numericGroupRate.toFixed(2) : '0.00'}%</p></div>
-                  <div className="rounded-xl border border-emerald-200 bg-white p-3"><p className="text-[10px] font-black uppercase text-slate-500">Allocated</p><p className="mt-1 text-lg font-black text-emerald-800">{allocatedRate.toFixed(2)}%</p></div>
-                  <div className={`rounded-xl border bg-white p-3 ${Math.abs(difference) <= 0.0001 ? 'border-emerald-200' : 'border-amber-300'}`}><p className="text-[10px] font-black uppercase text-slate-500">Unallocated / Over</p><p className={`mt-1 text-lg font-black ${Math.abs(difference) <= 0.0001 ? 'text-emerald-800' : 'text-amber-800'}`}>{unallocatedRate > 0 ? `${unallocatedRate.toFixed(2)}% unallocated` : overallocatedRate > 0 ? `${overallocatedRate.toFixed(2)}% over` : '0.00%'}</p></div>
+                  <div className="rounded-xl border border-blue-200 bg-white p-3"><p className="text-[10px] font-black uppercase text-slate-500">Unit Network Distribution Rate</p><p className="mt-1 text-lg font-black text-blue-800">{Number.isFinite(numericGroupRate) ? numericGroupRate.toFixed(4) : '0.0000'}%</p></div>
+                  <div className="rounded-xl border border-emerald-200 bg-white p-3"><p className="text-[10px] font-black uppercase text-slate-500">Allocated</p><p className="mt-1 text-lg font-black text-emerald-800">{allocatedRate.toFixed(4)}%</p></div>
+                  <div className={`rounded-xl border bg-white p-3 ${Math.abs(difference) <= 0.0001 ? 'border-emerald-200' : 'border-amber-300'}`}><p className="text-[10px] font-black uppercase text-slate-500">Unallocated / Over</p><p className={`mt-1 text-lg font-black ${Math.abs(difference) <= 0.0001 ? 'text-emerald-800' : 'text-amber-800'}`}>{unallocatedRate > 0 ? `${unallocatedRate.toFixed(4)}% unallocated` : overallocatedRate > 0 ? `${overallocatedRate.toFixed(4)}% over` : '0.0000%'}</p></div>
                 </div>
 
                 {Math.abs(difference) > 0.0001 ? (
                   <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-bold text-amber-900">
-                    <FiAlertTriangle className="mr-2 inline" />The final saved distribution must have Allocated = Unit Group Rate and Unallocated = 0.00%.
+                    <FiAlertTriangle className="mr-2 inline" />The final saved distribution must have Allocated = Unit Network Distribution Rate and Unallocated = 0.0000%.
                   </div>
                 ) : null}
               </section>
@@ -255,7 +255,7 @@ const RecalculateCommissionModal = ({
               <CommissionDistribution
                 rows={requestData.after || proposalRows}
                 title="Final Commission Distribution"
-                description={`Unit Group Rate ${Number(requestData.groupRate || numericGroupRate || 0).toFixed(2)}% · Allocated ${Number(requestData.allocatedRate || allocatedRate || 0).toFixed(2)}% · Unallocated 0.00%`}
+                description={`Unit Network Distribution Rate ${Number(requestData.groupRate || numericGroupRate || 0).toFixed(4)}% · Allocated ${Number(requestData.allocatedRate || allocatedRate || 0).toFixed(4)}% · Unallocated 0.0000%`}
               />
 
               <label className="block rounded-2xl border border-slate-200 p-4">
@@ -265,7 +265,7 @@ const RecalculateCommissionModal = ({
 
               <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 bg-white p-4">
                 <input type="checkbox" checked={confirmed} onChange={(event) => { setConfirmed(event.target.checked); setNotice(null) }} disabled={busy} className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
-                <span><span className="block text-sm font-black text-slate-900">I reviewed the final rates and amounts for this buyer account.</span><span className="mt-1 block text-xs font-semibold text-slate-500">This does not change the In-House/External Group default rate. Existing released commission activity is never modified.</span></span>
+                <span><span className="block text-sm font-black text-slate-900">I reviewed the final rates and amounts for this buyer account.</span><span className="mt-1 block text-xs font-semibold text-slate-500">This does not change the In-House/External Network default rate. Existing released commission activity is never modified.</span></span>
               </label>
             </>
           )}
@@ -289,5 +289,3 @@ const RecalculateCommissionModal = ({
 }
 
 export default RecalculateCommissionModal
-
-

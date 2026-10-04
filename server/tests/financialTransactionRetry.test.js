@@ -41,5 +41,3 @@ test('retries a transaction on the existing connection without releasing it', as
   assert.equal(commits, 1);
   assert.equal(rollbacks, 1);
 });
-
-

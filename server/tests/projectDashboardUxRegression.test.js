@@ -31,12 +31,11 @@ test('commission rate examples are field-authored instead of inheriting the dail
   ]);
 
   assert.match(projectRates, /data-example="8%"/);
-  assert.match(projectRates, /'division_manager_rate', 'Division Manager Rate', '1%'/);
-  assert.match(projectRates, /'sales_agent_rate', 'Sales Agent Rate', '5%'/);
-  assert.match(projectRates, /data-example=\{example\}/);
+  assert.match(projectRates, /data-example="2%"/);
+  assert.match(projectRates, /Company Profit \(CP\)/);
+  assert.match(projectRates, /14\.18/);
+  assert.match(projectRates, /50/);
   assert.match(decorator, /getAttribute\('data-example'\)/);
   assert.doesNotMatch(decorator, /if \(\/rate\|percentage\|percent[\s\S]*?return '0\.05%'/);
   assert.doesNotMatch(decorator, /custom\.\*daily\.\*penalty\.\*rate/);
 });
-
-

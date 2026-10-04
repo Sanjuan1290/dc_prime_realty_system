@@ -97,13 +97,24 @@ test('Super Admin user-access representation is read-only Full System Access', (
   assert.match(accessController, /permissions: Object\.values\(PERMISSIONS\), all_projects_access: true/);
 });
 
-test('recommended role defaults stay aligned with the 20260925 migration template', async () => {
+test('recommended role defaults stay aligned with the cumulative RBAC + Employee Salary migrations', async () => {
   const { RECOMMENDED_ROLE_PERMISSIONS } = await import('../config/recommendedRolePermissions.js');
-  const migration = read('../migrations/20260925_system_rbac_roles_and_access.sql');
+  const migrationFiles = [
+    '../migrations/20260925_system_rbac_roles_and_access.sql',
+    '../migrations/20260928_employee_salary_batch1_employment_history.sql',
+    '../migrations/20260928_employee_salary_batch2_payroll_engine.sql',
+    '../migrations/20260928_employee_salary_batch4_finalization.sql',
+    '../migrations/20260928_employee_salary_batch5_fund_release_receipt.sql',
+    '../migrations/20260928_employee_salary_batch6_history.sql',
+    '../migrations/20260928_employee_salary_batch7_release_workflow.sql',
+    '../migrations/20260928_employee_salary_batch8_corrections.sql',
+    '../migrations/20260928_employee_salary_batch9_payroll_settings.sql',
+    '../migrations/20260928_employee_salary_batch10_summary_export.sql',
+  ];
+  const migrations = migrationFiles.map(read).join('\n');
   for (const [role, permissions] of Object.entries(RECOMMENDED_ROLE_PERMISSIONS)) {
     for (const permission of permissions) {
-      assert.ok(migration.includes(`('${role}','${permission}')`), `${role}: ${permission}`);
+      assert.match(migrations, new RegExp(`\\('${role}'\\s*,\\s*'${permission.replaceAll('.', '\\.')}'(?:\\s*,|\\))`), `${role}: ${permission}`);
     }
   }
 });
-

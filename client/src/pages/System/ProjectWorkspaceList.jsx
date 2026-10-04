@@ -245,5 +245,3 @@ const ProjectWorkspaceList = ({ type = "lot" }) => {
 };
 
 export default ProjectWorkspaceList;
-
-

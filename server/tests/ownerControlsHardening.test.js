@@ -59,4 +59,3 @@ test('Cancellation actions are permission-based while sensitive settlement and r
   assert.match(modal, /Current Account Password/);
   assert.match(modal, /Email Verification Code/);
 });
-

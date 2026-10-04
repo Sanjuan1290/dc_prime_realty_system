@@ -33,8 +33,8 @@ const HierarchyPreviewContent = ({ preview, isLoading = false, error = null, has
   if (!hasSelectedAgent) {
     return (
       <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center">
-        <p className="font-black text-slate-700">Select a Seller / Group to calculate the commission.</p>
-        <p className="mt-1 text-sm font-semibold text-slate-500">In-House recipients or the single External Group recipient will appear here.</p>
+        <p className="font-black text-slate-700">Select a Seller / Network to calculate the commission.</p>
+        <p className="mt-1 text-sm font-semibold text-slate-500">In-House recipients or the single External Network recipient will appear here.</p>
       </div>
     )
   }
@@ -60,7 +60,7 @@ const HierarchyPreviewContent = ({ preview, isLoading = false, error = null, has
     <div className="grid gap-4">
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <PreviewCard label="Commission Base (Before Discount)" value={money(preview?.commissionBase)} />
-        <PreviewCard label="Group Pool" value={`${Number(preview?.poolRate || 0).toFixed(2)}%`} tone="blue" />
+        <PreviewCard label="Network Pool" value={`${Number(preview?.poolRate || 0).toFixed(2)}%`} tone="blue" />
         <PreviewCard label="Total Allocated" value={`${Number(preview?.allocatedRate || 0).toFixed(2)}%`} tone={preview?.isValid ? 'emerald' : 'red'} />
         <PreviewCard label="Unallocated" value={`${Number(preview?.unallocatedRate || 0).toFixed(2)}%`} tone="amber" />
         <PreviewCard label="Estimated Total" value={money(preview?.estimatedTotal)} tone="emerald" />
@@ -195,5 +195,3 @@ export const ReservationPaymentPreview = ({ contractPricing = {}, paymentForm = 
 }
 
 export { PreviewCard }
-
-

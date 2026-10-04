@@ -89,4 +89,3 @@ test('owner-level destructive controls stay owner-only while normal payment and 
   assert.doesNotMatch(users, />Reset<\/button>/);
   assert.match(users, /canDeactivate && user\.status === 'active'/);
 });
-

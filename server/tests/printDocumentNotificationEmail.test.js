@@ -99,5 +99,3 @@ test('Missing-document numbering continues across both PDF columns', () => {
   assert.match(pdfText, /\(8\.\) Tj/);
   assert.match(pdfText, /\(14\.\) Tj/);
 });
-
-

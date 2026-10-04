@@ -58,5 +58,3 @@ export const malwareScanLabel = (file = {}) => {
     default: return 'Not security scanned';
   }
 };
-
-

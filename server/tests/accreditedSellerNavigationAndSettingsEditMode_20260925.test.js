@@ -11,9 +11,9 @@ const settings = read('../../client/src/pages/System/Settings.jsx');
 const roleAccess = read('../../client/src/components/System/settingsComponents/RoleAccessControl.jsx');
 const app = read('../../client/src/App.jsx');
 
-test('Accredited Sellers is the entry point for In-House and External Groups', () => {
-  assert.match(accredited, /In-House Groups/);
-  assert.match(accredited, /External Groups/);
+test('Accredited Sellers is the entry point for In-House and External Networks', () => {
+  assert.match(accredited, /In-House Networks/);
+  assert.match(accredited, /External Networks/);
   assert.match(accredited, /SYSTEM_SELLER_GROUPS_VIEW/);
   assert.match(accredited, /accredited\/groups\/in-house/);
   assert.match(accredited, /accredited\/groups\/external/);
@@ -39,4 +39,3 @@ test('Role & Access Control is a compact Settings card and expands only on deman
   assert.match(roleAccess, /Save Role Defaults/);
   assert.match(roleAccess, /Existing users keep their current permissions/);
 });
-

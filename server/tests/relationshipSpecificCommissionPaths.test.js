@@ -24,6 +24,7 @@ test('group controller updates the shared group and project rate structure', asy
 
   assert.match(controller, /validateGroupFixedRateStructure/);
   assert.match(controller, /seller_group_pool_rate = \?/);
+  assert.match(controller, /company_profit_rate = \?/);
   assert.match(controller, /division_manager_rate = \?/);
   assert.match(controller, /sales_director_rate = \?/);
   assert.match(controller, /unit_manager_rate = \?/);
@@ -41,14 +42,14 @@ test('group UI shows type-aware project structures and no commission path editor
   ]);
 
   assert.match(page, /Project Commission Structure/);
-  assert.match(page, /Each member inherits the fixed project rate for their position/);
+  assert.match(page, /Company Profit is retained first/);
   assert.doesNotMatch(page, /Commission Paths/);
   assert.doesNotMatch(page, /Edit Path/);
-  assert.match(projectFields, /Division Manager Rate/);
-  assert.match(projectFields, /Sales Director Rate/);
-  assert.match(projectFields, /Unit Manager Rate/);
-  assert.match(projectFields, /Sales Agent Rate/);
-  assert.match(projectFields, /External Group Commission/);
+  assert.match(projectFields, /Company Profit \(CP\)/);
+  assert.match(projectFields, /Distributable Pool/);
+  assert.match(projectFields, /Division Manager/);
+  assert.match(projectFields, /Sales Agent/);
+  assert.match(projectFields, /External Network/);
 });
 
 test('account history uses the same listing alias emitted by the lookup helper', async () => {
@@ -87,5 +88,3 @@ test('listing profile tabs and routes have user-facing error recovery', async ()
   assert.match(boundary, /This tab could not be displayed/);
   assert.match(routeError, /Reload Page/);
 });
-
-

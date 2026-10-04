@@ -7,37 +7,31 @@ import {
   normalizeGroupProjectRates,
 } from '../controllers/System/sellerGroup.controller.js';
 
-test('seller group accreditation keeps only explicitly selected projects', () => {
+test('Network accreditation keeps only explicitly selected projects and derives role allocation', () => {
   const projects = [
     { lot_project_id: 1, lot_project_name: 'Bailen Project' },
     { lot_project_id: 2, lot_project_name: 'Prime Enclave Project' },
   ];
 
-  assert.deepEqual(
-    normalizeGroupProjectRates([
-      {
-        lot_project_id: 2,
-        seller_group_pool_rate: 9,
-        division_manager_rate: 1,
-        sales_director_rate: 1,
-        unit_manager_rate: 1,
-        sales_agent_rate: 6,
-      },
-    ], projects),
-    [{
-      lot_project_id: 2,
-      seller_group_pool_rate: 9,
-      division_manager_rate: 1,
-      sales_director_rate: 1,
-      unit_manager_rate: 1,
-      sales_agent_rate: 6,
-      allocated_rate: 9,
-      remaining_rate: 0,
-    }]
-  );
+  const [rate] = normalizeGroupProjectRates([{
+    lot_project_id: 2,
+    seller_group_pool_rate: 9,
+    company_profit_rate: 0,
+  }], projects);
+
+  assert.equal(rate.lot_project_id, 2);
+  assert.equal(rate.seller_group_pool_rate, 9);
+  assert.equal(rate.company_profit_rate, 0);
+  assert.equal(rate.distribution_pool_rate, 9);
+  assert.equal(rate.division_manager_rate, 1.2762);
+  assert.equal(rate.sales_director_rate, 1.4238);
+  assert.equal(rate.unit_manager_rate, 1.8);
+  assert.equal(rate.sales_agent_rate, 4.5);
+  assert.equal(rate.allocated_rate, 9);
+  assert.equal(rate.remaining_rate, 0);
 });
 
-test('seller group accreditation requires a project and validates pool rates', () => {
+test('Network accreditation requires a project and validates pool rates', () => {
   const projects = [{ lot_project_id: 1, lot_project_name: 'Bailen Project' }];
 
   assert.throws(
@@ -45,60 +39,42 @@ test('seller group accreditation requires a project and validates pool rates', (
     /select at least one accredited project/i
   );
   assert.throws(
-    () => normalizeGroupProjectRates([{ lot_project_id: 1, seller_group_pool_rate: 5, division_manager_rate: 1, sales_director_rate: 1, unit_manager_rate: 1, sales_agent_rate: 2 }], projects),
+    () => normalizeGroupProjectRates([{ lot_project_id: 1, seller_group_pool_rate: 5, company_profit_rate: 0 }], projects),
     /between 6%? and 15%?/i
   );
   assert.throws(
-    () => normalizeGroupProjectRates([{ lot_project_id: 99, seller_group_pool_rate: 8, division_manager_rate: 1, sales_director_rate: 1, unit_manager_rate: 1, sales_agent_rate: 5 }], projects),
+    () => normalizeGroupProjectRates([{ lot_project_id: 99, seller_group_pool_rate: 8, company_profit_rate: 0 }], projects),
     /unavailable or inactive/i
   );
 });
 
 
 
-test('fixed Realty project rates must equal the project pool', () => {
+test('Company Profit is deducted before the role pool is distributed', () => {
   const projects = [{ lot_project_id: 1, lot_project_name: 'Bailen Project' }];
+  const [rate] = normalizeGroupProjectRates([{
+    lot_project_id: 1,
+    seller_group_pool_rate: 8,
+    company_profit_rate: 2,
+  }], projects);
 
-  assert.throws(
-    () => normalizeGroupProjectRates([{
-      lot_project_id: 1,
-      seller_group_pool_rate: 8,
-      division_manager_rate: 1,
-      sales_director_rate: 1,
-      unit_manager_rate: 1,
-      sales_agent_rate: 4,
-    }], projects),
-    /under the 8\.00% pool/i
-  );
+  assert.equal(rate.distribution_pool_rate, 6);
+  assert.equal(rate.division_manager_rate, 0.8508);
+  assert.equal(rate.sales_director_rate, 0.9492);
+  assert.equal(rate.unit_manager_rate, 1.2);
+  assert.equal(rate.sales_agent_rate, 3);
+  assert.equal(rate.allocated_rate, 6);
+  assert.equal(rate.total_accounted_rate, 8);
+});
 
+test('Company Profit must be lower than the Network project Pool Rate', () => {
+  const projects = [{ lot_project_id: 1, lot_project_name: 'Bailen Project' }];
   assert.throws(
-    () => normalizeGroupProjectRates([{
-      lot_project_id: 1,
-      seller_group_pool_rate: 8,
-      division_manager_rate: 1,
-      sales_director_rate: 2,
-      unit_manager_rate: 2,
-      sales_agent_rate: 4,
-    }], projects),
-    /over the 8\.00% pool/i
+    () => normalizeGroupProjectRates([{ lot_project_id: 1, seller_group_pool_rate: 8, company_profit_rate: 8 }], projects),
+    /Company Profit must be lower/i
   );
 });
 
-test('Broker-headed Realty requires a zero BNM override', () => {
-  const projects = [{ lot_project_id: 1, lot_project_name: 'Bailen Project' }];
-
-  assert.throws(
-    () => normalizeGroupProjectRates([{
-      lot_project_id: 1,
-      seller_group_pool_rate: 8,
-      division_manager_rate: 1,
-      sales_director_rate: 2,
-      unit_manager_rate: 1,
-      sales_agent_rate: 4,
-    }], projects, { groupHeadRole: 'sales_director' }),
-    /BNM override must be 0%/i
-  );
-});
 test('group analytics validates inclusive date ranges', () => {
   assert.deepEqual(
     normalizeGroupAnalyticsRange('2026-01-01', '2026-01-31'),
@@ -164,12 +140,12 @@ test('group analytics preserves daily periods for short ranges', () => {
   );
 });
 
-test('seller group project selection rejects duplicate accreditations', () => {
+test('Network project selection rejects duplicate accreditations', () => {
   const projects = [{ lot_project_id: 1, lot_project_name: 'Bailen Project' }];
   assert.throws(
     () => normalizeGroupProjectRates([
-      { lot_project_id: 1, seller_group_pool_rate: 8, division_manager_rate: 1, sales_director_rate: 1, unit_manager_rate: 1, sales_agent_rate: 5 },
-      { lot_project_id: 1, seller_group_pool_rate: 9, division_manager_rate: 1, sales_director_rate: 1, unit_manager_rate: 1, sales_agent_rate: 6 },
+      { lot_project_id: 1, seller_group_pool_rate: 8, company_profit_rate: 0 },
+      { lot_project_id: 1, seller_group_pool_rate: 9, company_profit_rate: 0 },
     ], projects),
     /selected more than once/i
   );
@@ -181,5 +157,3 @@ test('group analytics rejects ranges longer than ten years', () => {
     /cannot exceed 10 years/i
   );
 });
-
-

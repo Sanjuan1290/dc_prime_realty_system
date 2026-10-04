@@ -49,5 +49,3 @@ test('full payment UI locks amount and submits without a preferred row', async (
   assert.match(source, /soaRowId: isBalloonPayment \|\| isFullPayment \? null/);
   assert.match(source, /Full Payment covers every unpaid SOA row/);
 });
-
-

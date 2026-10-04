@@ -79,5 +79,3 @@ router.post('/lock', (_req, res) => {
 router.post('/scan', requireAttendanceKiosk, scanAttendance);
 
 export default router;
-
-

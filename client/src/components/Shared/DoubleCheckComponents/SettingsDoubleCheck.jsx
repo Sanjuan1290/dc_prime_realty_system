@@ -20,6 +20,7 @@ const dayOfMonth = (value) => {
 
 const sameValue = (left, right) => String(left ?? '') === String(right ?? '')
 const enabledDisabled = (value) => value === true || value === 1 || String(value || '').toLowerCase() === 'true' || String(value || '') === '1' ? 'Enabled' : 'Disabled'
+const percent = (value) => `${Number(value || 0).toFixed(2)}%`
 
 const buildChangeFields = (before = {}, after = {}, definitions = []) => definitions.flatMap(({ key, label, formatter }) => {
   if (sameValue(before?.[key], after?.[key])) return []
@@ -40,6 +41,10 @@ const systemChangeDefinitions = [
   { key: 'reservationContactNumber', label: 'Reservation Contact Number' },
   { key: 'defaultReleaseDayOne', label: 'Default Release Day 1', formatter: dayOfMonth },
   { key: 'defaultReleaseDayTwo', label: 'Default Release Day 2', formatter: dayOfMonth },
+  { key: 'inHouseDmPoolSharePercent', label: 'Division Manager Pool Share', formatter: percent },
+  { key: 'inHouseSdPoolSharePercent', label: 'Sales Director Pool Share', formatter: percent },
+  { key: 'inHouseUmPoolSharePercent', label: 'Unit Manager Pool Share', formatter: percent },
+  { key: 'inHouseSaPoolSharePercent', label: 'Sales Agent Pool Share', formatter: percent },
   { key: 'systemStatus', label: 'System Status', formatter: titleCase },
   { key: 'maintenanceMessage', label: 'Maintenance Message' },
 ]
@@ -83,6 +88,21 @@ const SystemSettingsReview = ({ data }) => [
           { label: 'Reservation Contact Number', value: data.reservationContactNumber },
           { label: 'Default Release Day 1', value: data.defaultReleaseDayOne, formatter: dayOfMonth },
           { label: 'Default Release Day 2', value: data.defaultReleaseDayTwo, formatter: dayOfMonth },
+        ]} />
+      </DoubleCheckSection>
+    ),
+  },
+  {
+    key: 'network-distribution',
+    title: 'In-House Network Pool Distribution',
+    content: (
+      <DoubleCheckSection title="In-House Network Pool Distribution" helper="These read-only role shares are applied to the distributable pool after Company Profit. They must total exactly 100%." tone="violet">
+        <DoubleCheckFields fields={[
+          { label: 'Division Manager', value: data.inHouseDmPoolSharePercent, formatter: percent },
+          { label: 'Sales Director', value: data.inHouseSdPoolSharePercent, formatter: percent },
+          { label: 'Unit Manager', value: data.inHouseUmPoolSharePercent, formatter: percent },
+          { label: 'Sales Agent', value: data.inHouseSaPoolSharePercent, formatter: percent },
+          { label: 'Total', value: Number(data.inHouseDmPoolSharePercent || 0) + Number(data.inHouseSdPoolSharePercent || 0) + Number(data.inHouseUmPoolSharePercent || 0) + Number(data.inHouseSaPoolSharePercent || 0), formatter: percent, tone: 'important' },
         ]} />
       </DoubleCheckSection>
     ),
@@ -183,5 +203,3 @@ const SettingsDoubleCheck = ({ request, onConfirm, onCancel }) => {
 }
 
 export default SettingsDoubleCheck
-
-

@@ -164,5 +164,3 @@ export const applyRoleDefaultsToUser = async (req, res) => {
     return res.status(error?.statusCode || 500).json({ code: error?.code, message: error?.message || 'Failed to apply role defaults.' });
   } finally { connection.release(); }
 };
-
-

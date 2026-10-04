@@ -160,5 +160,3 @@ const BarcodeScanner = ({ onDetected, onClose, title = 'Scan Barcode' }) => {
 }
 
 export default BarcodeScanner
-
-

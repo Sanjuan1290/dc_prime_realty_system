@@ -60,5 +60,3 @@ test('unpaid cancellation offers keep-history and void-without-history paths', (
   assert.match(service, /DELETE FROM lot_project_reservation_history/);
   assert.match(service, /DELETE FROM lot_project_accounts/);
 });
-
-

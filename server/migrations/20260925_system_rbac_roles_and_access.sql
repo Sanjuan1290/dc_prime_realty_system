@@ -134,4 +134,3 @@ DROP TEMPORARY TABLE IF EXISTS rbac_20260925_role_defaults;
 
 -- Super Admin remains a bypass role and therefore intentionally has no rows in
 -- role_permission_defaults or user_permissions requirements.
-

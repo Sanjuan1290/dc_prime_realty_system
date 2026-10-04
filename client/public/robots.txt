@@ -2,5 +2,3 @@ User-agent: *
 Allow: /
 Disallow: /portal
 Disallow: /buyer-form/
-
-

@@ -227,5 +227,3 @@ export const ensureEmployeeModuleTables = async (connection) => {
 
   employeeModuleTablesReady = true;
 };
-
-

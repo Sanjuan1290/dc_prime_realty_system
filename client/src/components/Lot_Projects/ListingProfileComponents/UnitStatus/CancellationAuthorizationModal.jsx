@@ -112,4 +112,3 @@ const CancellationAuthorizationModal = ({
 }
 
 export default CancellationAuthorizationModal
-

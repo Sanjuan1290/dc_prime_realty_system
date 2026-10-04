@@ -65,22 +65,22 @@ test('create and edit user screens use the renamed in-house reporting hierarchy'
   }
 });
 
-test('in-house group-head forms offer Division Manager or Sales Director accounts only', async () => {
+test('in-house Network hierarchy-head forms offer Division Manager accounts only', async () => {
   const [newGroupSource, editGroupSource] = await Promise.all([
     readSource('../../client/src/components/System/sellerGroupComponents/NewGroupModal.jsx'),
     readSource('../../client/src/components/System/sellerGroupComponents/EditGroupModal.jsx'),
   ]);
 
   for (const source of [newGroupSource, editGroupSource]) {
-    assert.match(source, /\['division_manager', 'sales_director'\]\.includes\(seller\.role\)/);
+    assert.match(source, /seller\.role === 'division_manager'/);
   }
 });
 
-test('group details use fixed project rates rather than per-member rate editing', async () => {
+test('Network details use calculated project allocation rather than per-member rate editing', async () => {
   const source = await readSource('../../client/src/pages/System/SellerGroupDetails.jsx');
 
   assert.match(source, /Project Commission Structure/);
-  assert.match(source, /Each member inherits the fixed project rate for their position/);
+  assert.match(source, /Company Profit is retained first/);
   assert.doesNotMatch(source, /MemberRatesModal/);
   assert.doesNotMatch(source, /Edit Rate/);
 });
@@ -105,7 +105,7 @@ test('new migration renames roles and stores both commission structure types', a
   assert.match(source, /external_group/);
 });
 
-test('top-level in-house accounts become the group head and previews require a complete chain', async () => {
+test('top-level in-house accounts become the Network hierarchy head and previews require a complete chain', async () => {
   const [usersSource, groupsSource, commissionSource] = await Promise.all([
     readSource('../controllers/System/users.controllers.js'),
     readSource('../controllers/System/sellerGroup.controller.js'),
@@ -119,5 +119,3 @@ test('top-level in-house accounts become the group head and previews require a c
   assert.match(commissionSource, /requireGroupHead: true/);
   assert.match(commissionSource, /Only active Sales Agents can be assigned/);
 });
-
-

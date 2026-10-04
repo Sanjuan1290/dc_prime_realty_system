@@ -7,6 +7,7 @@ import { canAccessProject, getAccessibleProjectIds } from '../../services/projec
 import {
   normalizeSellerGroupType,
   validateGroupFixedRateStructure,
+  loadInHousePoolShares,
 } from './groupFixedCommissionRates.service.js';
 import {
   EXTERNAL_GROUP_ROLE,
@@ -26,10 +27,10 @@ const getErrorMessage = (error) => {
   if (error?.statusCode && error?.message) return error.message;
   if (error?.code === 'ER_DUP_ENTRY') {
     if (String(error?.sqlMessage || '').includes('email')) return 'That email address is already in use.';
-    return 'A group with the same unique information already exists.';
+    return 'A Network with the same unique broker or realty information already exists.';
   }
   if (String(error?.code || '').startsWith('ER_') || error?.sqlMessage || error?.sql) {
-    return 'Database operation failed. Apply the In-House and External Groups migration, then try again.';
+    return 'Database operation failed. Apply the latest Network commission migration, then try again.';
   }
   return error?.message || 'Something went wrong.';
 };
@@ -42,13 +43,81 @@ const createValidationError = (message) => {
 
 const fullNameSql = (alias) => `TRIM(CONCAT_WS(' ', ${alias}.first_name, ${alias}.middle_name, ${alias}.last_name))`;
 const normalizeStatus = (status) => (String(status || '').toLowerCase() === 'inactive' ? 'inactive' : 'active');
-const groupTypeLabel = (groupType) => normalizeSellerGroupType(groupType) === 'external' ? 'External Group' : 'In-House Group';
+const groupTypeLabel = (groupType) => normalizeSellerGroupType(groupType) === 'external' ? 'External Network' : 'In-House Network';
+
+const normalizeNetworkIdentity = (value) => String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+
+const normalizeNetworkBrokerFields = (body = {}) => {
+  const brokerName = String(body.broker_name ?? body.brokerName ?? '').trim().replace(/\s+/g, ' ');
+  const brokerLicenseNumber = String(body.broker_license_number ?? body.brokerLicenseNumber ?? '').trim().replace(/\s+/g, ' ');
+  const realtyName = String(body.realty_name ?? body.realtyName ?? '').trim().replace(/\s+/g, ' ');
+  const brokerPrcNumber = String(body.broker_prc_number ?? body.brokerPrcNumber ?? body.prc_number ?? '').trim().replace(/\s+/g, ' ');
+  const required = [
+    ['Broker Name', brokerName],
+    ['Broker License Number', brokerLicenseNumber],
+    ['Realty Name', realtyName],
+    ['PRC Number', brokerPrcNumber],
+  ];
+  const missing = required.find(([, value]) => !value);
+  if (missing) throw createValidationError(`${missing[0]} is required.`);
+  return {
+    broker_name: brokerName,
+    broker_license_number: brokerLicenseNumber,
+    realty_name: realtyName,
+    broker_prc_number: brokerPrcNumber,
+    broker_name_normalized: normalizeNetworkIdentity(brokerName),
+    broker_license_number_normalized: normalizeNetworkIdentity(brokerLicenseNumber),
+    realty_name_normalized: normalizeNetworkIdentity(realtyName),
+    broker_prc_number_normalized: normalizeNetworkIdentity(brokerPrcNumber),
+  };
+};
+
+const assertUniqueNetworkBrokerIdentity = async (connection, broker, excludeGroupId = null) => {
+  const [rows] = await connection.query(
+    `SELECT seller_group_id, seller_group_name,
+            broker_name_normalized, broker_license_number_normalized,
+            realty_name_normalized, broker_prc_number_normalized
+     FROM seller_groups
+     WHERE (? IS NULL OR seller_group_id <> ?)
+       AND (
+         broker_name_normalized = ? OR
+         broker_license_number_normalized = ? OR
+         realty_name_normalized = ? OR
+         broker_prc_number_normalized = ?
+       )
+     LIMIT 1`,
+    [
+      excludeGroupId, excludeGroupId,
+      broker.broker_name_normalized,
+      broker.broker_license_number_normalized,
+      broker.realty_name_normalized,
+      broker.broker_prc_number_normalized,
+    ]
+  );
+  const existing = rows[0];
+  if (!existing) return;
+  const conflicts = [];
+  if (existing.broker_name_normalized === broker.broker_name_normalized) conflicts.push('Broker Name');
+  if (existing.broker_license_number_normalized === broker.broker_license_number_normalized) conflicts.push('Broker License Number');
+  if (existing.realty_name_normalized === broker.realty_name_normalized) conflicts.push('Realty Name');
+  if (existing.broker_prc_number_normalized === broker.broker_prc_number_normalized) conflicts.push('PRC Number');
+  throw createValidationError(`${conflicts.join(', ')} already ${conflicts.length === 1 ? 'exists' : 'exist'} in another Network (${existing.seller_group_name}).`);
+};
 
 const requireGroupTypeSchema = async (connection) => {
   const requirements = [
     ['seller_groups', 'seller_group_type'],
     ['seller_groups', 'seller_group_external_account_user_id'],
+    ['seller_groups', 'broker_name'],
+    ['seller_groups', 'broker_license_number'],
+    ['seller_groups', 'realty_name'],
+    ['seller_groups', 'broker_prc_number'],
+    ['seller_groups', 'broker_name_normalized'],
+    ['seller_groups', 'broker_license_number_normalized'],
+    ['seller_groups', 'realty_name_normalized'],
+    ['seller_groups', 'broker_prc_number_normalized'],
     ['seller_group_lot_project_rates', 'commission_structure_type'],
+    ['seller_group_lot_project_rates', 'company_profit_rate'],
     ['seller_group_lot_project_rates', 'division_manager_rate'],
     ['seller_group_lot_project_rates', 'sales_director_rate'],
     ['seller_group_lot_project_rates', 'unit_manager_rate'],
@@ -56,7 +125,7 @@ const requireGroupTypeSchema = async (connection) => {
   ];
   for (const [tableName, columnName] of requirements) {
     if (!(await columnExists(connection, tableName, columnName))) {
-      throw createValidationError('In-House and External Groups need the latest database migration.');
+      throw createValidationError('Networks need the latest database migration.');
     }
   }
 };
@@ -87,19 +156,19 @@ const validateGroupHead = async (connection, userId, groupId = null) => {
   const head = rows[0];
 
   if (!head || Number(head.is_system_dummy || 0) === 1) {
-    throw createValidationError('The selected Group Head is not an accredited in-house seller.');
+    throw createValidationError('The selected Network Hierarchy Head is not an accredited in-house seller.');
   }
-  if (!isGroupHeadRole(head.role)) {
-    throw createValidationError('Only a Division Manager or Sales Director can be the head of an In-House Group.');
+  if (head.role !== 'division_manager') {
+    throw createValidationError('The Internal Hierarchy Head must be a Division Manager so the fixed DM/SD/UM/SA Network distribution has a recipient at every level.');
   }
   if (head.user_status !== 'active' || head.accredited_seller_status !== 'active') {
-    throw createValidationError('The selected Group Head must be active.');
+    throw createValidationError('The selected Network Hierarchy Head must be active.');
   }
   if (head.seller_group_type && head.seller_group_type !== 'in_house') {
-    throw createValidationError('An External Group account cannot be used as an In-House Group Head.');
+    throw createValidationError('An External Network account cannot be used as an In-House Network Hierarchy Head.');
   }
   if (head.seller_group_id && Number(head.seller_group_id) !== Number(groupId || 0)) {
-    throw createValidationError('The selected Group Head already belongs to another group.');
+    throw createValidationError('The selected Network Hierarchy Head already belongs to another Network.');
   }
   return head;
 };
@@ -183,7 +252,7 @@ export const assignTopLevelSellerAsGroupHead = async (connection, groupId, userI
     [groupId]
   );
   if (normalizeSellerGroupType(groupRows[0]?.seller_group_type) !== 'in_house') {
-    throw createValidationError('External Groups do not use an in-house Group Head.');
+    throw createValidationError('External Networks do not use an in-house Network Hierarchy Head.');
   }
 
   const nextHead = await validateGroupHead(connection, userId, groupId);
@@ -211,7 +280,7 @@ export const assertSellerGroupRoleHierarchy = async (connection, groupId) => {
     [groupId]
   );
   const group = groupRows[0];
-  if (!group) throw createValidationError('The selected group was not found.');
+  if (!group) throw createValidationError('The selected Network was not found.');
   const groupType = normalizeSellerGroupType(group.seller_group_type);
 
   const [rows] = await connection.query(
@@ -239,18 +308,18 @@ export const assertSellerGroupRoleHierarchy = async (connection, groupId) => {
 
   if (groupType === 'external') {
     if (!group.seller_group_external_account_user_id) {
-      throw createValidationError('An External Group must have one representative account.');
+      throw createValidationError('An External Network must have one representative account.');
     }
     const externalRows = rows.filter((row) => isExternalGroupRole(row.role));
     if (externalRows.length !== 1 || rows.length !== 1) {
-      throw createValidationError('An External Group must contain exactly one External Group account.');
+      throw createValidationError('An External Network must contain exactly one External Network account.');
     }
     const account = externalRows[0];
     if (Number(account.user_id) !== Number(group.seller_group_external_account_user_id)) {
-      throw createValidationError('The External Group representative does not match the group account.');
+      throw createValidationError('The External Network representative does not match the group account.');
     }
     if (account.accredited_seller_reports_under_user_id) {
-      throw createValidationError('An External Group account cannot have a reporting parent.');
+      throw createValidationError('An External Network account cannot have a reporting parent.');
     }
     return;
   }
@@ -259,20 +328,20 @@ export const assertSellerGroupRoleHierarchy = async (connection, groupId) => {
   const topLevelSellers = rows.filter((seller) => !seller.accredited_seller_reports_under_user_id);
   if (headUserId) {
     const head = rows.find((seller) => Number(seller.user_id) === headUserId);
-    if (!head) throw createValidationError('The In-House Group Head must belong to the same group.');
+    if (!head) throw createValidationError('The In-House Network Hierarchy Head must belong to the same Network.');
     if (!isGroupHeadRole(head.role)) {
-      throw createValidationError('Only a Division Manager or Sales Director can be the In-House Group Head.');
+      throw createValidationError('Only a Division Manager or Sales Director can be the In-House Network Hierarchy Head.');
     }
     if (head.accredited_seller_reports_under_user_id) {
-      throw createValidationError('The In-House Group Head must report directly to the developer.');
+      throw createValidationError('The In-House Network Hierarchy Head must report directly to the developer.');
     }
   } else if (topLevelSellers.length > 1) {
-    throw createValidationError('A headless In-House Group can have only one top-level Division Manager or Sales Director.');
+    throw createValidationError('A headless In-House Network can have only one top-level Division Manager or Sales Director.');
   }
 
   for (const seller of rows) {
     if (isExternalGroupRole(seller.role)) {
-      throw createValidationError('An External Group account cannot be assigned to an In-House Group.');
+      throw createValidationError('An External Network account cannot be assigned to an In-House Network.');
     }
     const isHead = headUserId && Number(seller.user_id) === headUserId;
     if (!seller.accredited_seller_reports_under_user_id) {
@@ -280,9 +349,9 @@ export const assertSellerGroupRoleHierarchy = async (connection, groupId) => {
       const expected = getRequiredParentRole(seller.role);
       throw createValidationError(`${seller.full_name || 'Seller'} must report under a ${SELLER_ROLE_LABELS[expected] || 'valid in-house parent'}.`);
     }
-    if (isHead) throw createValidationError('The In-House Group Head cannot have a reporting parent.');
+    if (isHead) throw createValidationError('The In-House Network Hierarchy Head cannot have a reporting parent.');
     if (!seller.parent_accredited_seller_id || Number(seller.parent_group_id) !== Number(groupId)) {
-      throw createValidationError(`${seller.full_name || 'Seller'} must report under an in-house seller from the same group.`);
+      throw createValidationError(`${seller.full_name || 'Seller'} must report under an in-house seller from the same Network.`);
     }
     const expectedParentRole = getRequiredParentRole(seller.role);
     if (!expectedParentRole || seller.parent_role !== expectedParentRole) {
@@ -315,7 +384,7 @@ const assertCanMutateWholeGroup = async (connection, user, groupId) => {
   const accessibleProjectIds = await getAccessibleProjectIds(user, connection);
   if (accessibleProjectIds === null) return;
   if (!accessibleProjectIds.length) {
-    const error = new Error('You do not have project access for this seller group.');
+    const error = new Error('You do not have project access for this seller Network.');
     error.statusCode = 403;
     throw error;
   }
@@ -343,12 +412,12 @@ const assertCanMutateWholeGroup = async (connection, user, groupId) => {
   ]);
 
   if (!insideRows.length) {
-    const error = new Error('You do not have access to any active project for this seller group.');
+    const error = new Error('You do not have access to any active project for this seller Network.');
     error.statusCode = 403;
     throw error;
   }
   if (outsideRows.length) {
-    const error = new Error('This seller group is also accredited to projects outside your Admin access. Group-wide changes require the Super Admin or an Admin with access to all of the group projects. Use the project-specific commission configuration for your assigned projects.');
+    const error = new Error('This seller Network is also accredited to projects outside your Admin access. Network-wide changes require the Super Admin or an Admin with access to all of the Network projects. Use the project-specific commission configuration for your assigned projects.');
     error.statusCode = 403;
     throw error;
   }
@@ -357,7 +426,7 @@ const assertCanMutateWholeGroup = async (connection, user, groupId) => {
 export const normalizeGroupProjectRates = (
   projectRates = [],
   projects = [],
-  { groupHeadRole = 'division_manager', groupType = 'in_house' } = {}
+  { groupHeadRole = 'division_manager', groupType = 'in_house', poolShares } = {}
 ) => {
   if (!Array.isArray(projectRates) || projectRates.length === 0) {
     throw createValidationError(`Select at least one accredited project for this ${groupTypeLabel(groupType)}.`);
@@ -377,6 +446,7 @@ export const normalizeGroupProjectRates = (
       groupHeadRole,
       projectName: project.lot_project_name,
       groupType,
+      poolShares,
     });
     return {
       lot_project_id: projectId,
@@ -390,13 +460,14 @@ const upsertGroupProjectRates = async (connection, groupId, projectRates, groupT
   await connection.query(
     `
       INSERT INTO seller_group_lot_project_rates (
-        seller_group_id, lot_project_id, seller_group_pool_rate,
+        seller_group_id, lot_project_id, seller_group_pool_rate, company_profit_rate,
         division_manager_rate, sales_director_rate, unit_manager_rate,
         sales_agent_rate, commission_structure_type,
         seller_group_lot_project_rate_status
-      ) VALUES ${projectRates.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, 'active')").join(', ')}
+      ) VALUES ${projectRates.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')").join(', ')}
       ON DUPLICATE KEY UPDATE
         seller_group_pool_rate = VALUES(seller_group_pool_rate),
+        company_profit_rate = VALUES(company_profit_rate),
         division_manager_rate = VALUES(division_manager_rate),
         sales_director_rate = VALUES(sales_director_rate),
         unit_manager_rate = VALUES(unit_manager_rate),
@@ -408,6 +479,7 @@ const upsertGroupProjectRates = async (connection, groupId, projectRates, groupT
       groupId,
       rate.lot_project_id,
       rate.seller_group_pool_rate,
+      rate.company_profit_rate,
       rate.division_manager_rate,
       rate.sales_director_rate,
       rate.unit_manager_rate,
@@ -503,7 +575,7 @@ const createExternalAccount = async (connection, groupId, account = {}, status =
   const lastName = String(account.last_name || '').trim();
   const email = String(account.email || '').trim().toLowerCase();
   if (!firstName || !lastName || !email) {
-    throw createValidationError('External Group representative first name, last name, and email are required.');
+    throw createValidationError('External Network representative first name, last name, and email are required.');
   }
   const passwordHash = await bcrypt.hash(String(account.password || randomUUID()), 10);
   const [userResult] = await connection.query(
@@ -542,12 +614,12 @@ const createExternalAccount = async (connection, groupId, account = {}, status =
 
 const updateExternalAccount = async (connection, groupId, account = {}, status = 'active') => {
   const current = await getExternalAccount(connection, groupId);
-  if (!current) throw createValidationError('The External Group account was not found.');
+  if (!current) throw createValidationError('The External Network account was not found.');
   const firstName = String(account.first_name || current.first_name || '').trim();
   const lastName = String(account.last_name || current.last_name || '').trim();
   const email = String(account.email || current.email || '').trim().toLowerCase();
   if (!firstName || !lastName || !email) {
-    throw createValidationError('External Group representative first name, last name, and email are required.');
+    throw createValidationError('External Network representative first name, last name, and email are required.');
   }
   await connection.query(
     `UPDATE users SET
@@ -587,7 +659,7 @@ const hydrateGroupRates = async (groups, connection = db, accessibleProjectIds =
       SELECT
         sgr.seller_group_id, sgr.lot_project_id,
         lp.lot_project_name, lp.lot_project_slug, lp.lot_project_location_code,
-        sgr.seller_group_pool_rate, sgr.division_manager_rate,
+        sgr.seller_group_pool_rate, sgr.company_profit_rate, sgr.division_manager_rate,
         sgr.sales_director_rate, sgr.unit_manager_rate, sgr.sales_agent_rate,
         sgr.commission_structure_type,
         CASE WHEN sgr.commission_structure_type = 'external'
@@ -604,19 +676,28 @@ const hydrateGroupRates = async (groups, connection = db, accessibleProjectIds =
     `,
     accessibleProjectIds === null ? groupIds : [...groupIds, ...accessibleProjectIds]
   );
+  const poolShares = await loadInHousePoolShares(connection);
   const rateMap = new Map();
   rateRows.forEach((rate) => {
+    const derived = validateGroupFixedRateStructure(rate, {
+      groupType: rate.commission_structure_type,
+      projectName: rate.lot_project_name || 'Project',
+      poolShares,
+    });
     const groupId = Number(rate.seller_group_id);
     if (!rateMap.has(groupId)) rateMap.set(groupId, []);
     rateMap.get(groupId).push({
       ...rate,
       lot_project_id: Number(rate.lot_project_id),
-      seller_group_pool_rate: Number(rate.seller_group_pool_rate || 0),
-      division_manager_rate: Number(rate.division_manager_rate || 0),
-      sales_director_rate: Number(rate.sales_director_rate || 0),
-      unit_manager_rate: Number(rate.unit_manager_rate || 0),
-      sales_agent_rate: Number(rate.sales_agent_rate || 0),
-      allocated_rate: Number(rate.allocated_rate || 0),
+      seller_group_pool_rate: derived.seller_group_pool_rate,
+      company_profit_rate: derived.company_profit_rate,
+      distribution_pool_rate: derived.distribution_pool_rate,
+      division_manager_rate: derived.division_manager_rate,
+      sales_director_rate: derived.sales_director_rate,
+      unit_manager_rate: derived.unit_manager_rate,
+      sales_agent_rate: derived.sales_agent_rate,
+      allocated_rate: derived.allocated_rate,
+      pool_shares: poolShares,
     });
   });
   return groups.map((group) => ({
@@ -645,22 +726,28 @@ export const createGroup = async (req, res) => {
     } = req.body;
     const groupType = normalizeSellerGroupType(seller_group_type);
     const name = String(seller_group_name || '').trim();
-    if (!name) return res.status(400).json({ message: 'Group Name is required.' });
+    if (!name) return res.status(400).json({ message: 'Network Name is required.' });
+    const broker = normalizeNetworkBrokerFields(req.body);
 
     await connection.beginTransaction();
+    await assertUniqueNetworkBrokerIdentity(connection, broker);
     const groupHead = groupType === 'in_house'
       ? await validateGroupHead(connection, seller_group_head_user_id)
       : null;
     if (groupType === 'external' && seller_group_head_user_id) {
-      throw createValidationError('External Groups do not use an in-house Group Head.');
+      throw createValidationError('External Networks do not use an in-house Network Hierarchy Head.');
     }
 
     const [result] = await connection.query(
       `INSERT INTO seller_groups (
          seller_group_name, seller_group_type, seller_group_head_user_id,
-         seller_group_external_account_user_id, seller_group_description, seller_group_status
-       ) VALUES (?, ?, ?, NULL, ?, ?)`,
-      [name, groupType, groupHead?.user_id || null, String(seller_group_description || '').trim() || null, normalizeStatus(seller_group_status)]
+         seller_group_external_account_user_id, seller_group_description, seller_group_status,
+         broker_name, broker_license_number, realty_name, broker_prc_number,
+         broker_name_normalized, broker_license_number_normalized, realty_name_normalized, broker_prc_number_normalized
+       ) VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [name, groupType, groupHead?.user_id || null, String(seller_group_description || '').trim() || null, normalizeStatus(seller_group_status),
+       broker.broker_name, broker.broker_license_number, broker.realty_name, broker.broker_prc_number,
+       broker.broker_name_normalized, broker.broker_license_number_normalized, broker.realty_name_normalized, broker.broker_prc_number_normalized]
     );
     const groupId = Number(result.insertId);
 
@@ -673,9 +760,11 @@ export const createGroup = async (req, res) => {
     await assertSellerGroupRoleHierarchy(connection, groupId);
     const accessibleProjectIds = await getAccessibleProjectIds(req.authUser, connection);
     const projects = await getActiveLotProjects(connection, req.authUser);
+    const poolShares = await loadInHousePoolShares(connection);
     const normalizedRates = normalizeGroupProjectRates(project_rates, projects, {
       groupHeadRole: groupHead?.role || 'division_manager',
       groupType,
+      poolShares,
     });
     await syncGroupProjectAccreditations(connection, groupId, normalizedRates, groupType, accessibleProjectIds);
 
@@ -687,7 +776,7 @@ export const createGroup = async (req, res) => {
       entityLabel: name,
       title: `Created ${groupTypeLabel(groupType)}`,
       description: `Created ${groupTypeLabel(groupType)} ${name}.`,
-      metadata: { groupType, status: normalizeStatus(seller_group_status), projectRates: normalizedRates },
+      metadata: { groupType, status: normalizeStatus(seller_group_status), broker, projectRates: normalizedRates },
     });
     await connection.commit();
     return res.status(201).json({ message: `${groupTypeLabel(groupType)} created successfully.`, seller_group_id: groupId });
@@ -732,10 +821,12 @@ export const getGroups = async (req, res) => {
       where.push(`(
         sg.seller_group_name LIKE ? OR IFNULL(sg.seller_group_description, '') LIKE ? OR
         ${fullNameSql('head_user')} LIKE ? OR ${fullNameSql('external_user')} LIKE ? OR
-        IFNULL(external_user.email, '') LIKE ?
+        IFNULL(external_user.email, '') LIKE ? OR
+        IFNULL(sg.broker_name, '') LIKE ? OR IFNULL(sg.broker_license_number, '') LIKE ? OR
+        IFNULL(sg.realty_name, '') LIKE ? OR IFNULL(sg.broker_prc_number, '') LIKE ?
       )`);
       const term = `%${search}%`;
-      params.push(term, term, term, term, term);
+      params.push(term, term, term, term, term, term, term, term, term);
     }
     if (status === 'active' || status === 'inactive') {
       where.push('sg.seller_group_status = ?');
@@ -837,6 +928,15 @@ export const getGroups = async (req, res) => {
   }
 };
 
+export const getNetworkPoolShares = async (_req, res) => {
+  try {
+    const poolShares = await loadInHousePoolShares(db);
+    return res.json({ success: true, data: poolShares });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
+  }
+};
+
 export const getGroupOptions = async (req, res) => {
   try {
     const groupType = normalizeSellerGroupType(req.query.groupType || req.query.seller_group_type || 'in_house');
@@ -854,6 +954,7 @@ export const getGroupOptions = async (req, res) => {
     const [rows] = await db.query(
       `SELECT seller_group_id, seller_group_name, seller_group_type,
               seller_group_head_user_id, seller_group_external_account_user_id,
+              broker_name, broker_license_number, realty_name, broker_prc_number,
               seller_group_status
        FROM seller_groups
        WHERE seller_group_status = 'active' AND seller_group_type = ?${accessSql}
@@ -871,18 +972,18 @@ export const editGroup = async (req, res) => {
   try {
     await requireGroupTypeSchema(connection);
     const groupId = Number(req.params.id);
-    if (!groupId) return res.status(400).json({ message: 'Invalid group id.' });
+    if (!groupId) return res.status(400).json({ message: 'Invalid Network id.' });
     const [existingRows] = await connection.query(
       `SELECT * FROM seller_groups WHERE seller_group_id = ? LIMIT 1`,
       [groupId]
     );
     const existing = existingRows[0];
-    if (!existing) return res.status(404).json({ message: 'Group not found.' });
+    if (!existing) return res.status(404).json({ message: 'Network not found.' });
     await assertCanMutateWholeGroup(connection, req.authUser, groupId);
 
     const requestedType = normalizeSellerGroupType(req.body.seller_group_type || existing.seller_group_type);
     const groupType = normalizeSellerGroupType(existing.seller_group_type);
-    if (requestedType !== groupType) throw createValidationError('Group Type cannot be changed after creation.');
+    if (requestedType !== groupType) throw createValidationError('Network Type cannot be changed after creation.');
 
     const {
       seller_group_name,
@@ -893,23 +994,29 @@ export const editGroup = async (req, res) => {
       external_account = {},
     } = req.body;
     const name = String(seller_group_name || '').trim();
-    if (!name) return res.status(400).json({ message: 'Group Name is required.' });
+    if (!name) return res.status(400).json({ message: 'Network Name is required.' });
+    const broker = normalizeNetworkBrokerFields(req.body);
 
     await connection.beginTransaction();
+    await assertUniqueNetworkBrokerIdentity(connection, broker, groupId);
     const previousHead = groupType === 'in_house' ? await getCurrentGroupHead(connection, groupId) : null;
     const nextHead = groupType === 'in_house'
       ? await validateGroupHead(connection, seller_group_head_user_id, groupId)
       : null;
     if (groupType === 'external' && seller_group_head_user_id) {
-      throw createValidationError('External Groups do not use an in-house Group Head.');
+      throw createValidationError('External Networks do not use an in-house Network Hierarchy Head.');
     }
 
     await connection.query(
       `UPDATE seller_groups SET
          seller_group_name = ?, seller_group_head_user_id = ?,
-         seller_group_description = ?, seller_group_status = ?
+         seller_group_description = ?, seller_group_status = ?,
+         broker_name = ?, broker_license_number = ?, realty_name = ?, broker_prc_number = ?,
+         broker_name_normalized = ?, broker_license_number_normalized = ?, realty_name_normalized = ?, broker_prc_number_normalized = ?
        WHERE seller_group_id = ?`,
-      [name, nextHead?.user_id || null, String(seller_group_description || '').trim() || null, normalizeStatus(seller_group_status), groupId]
+      [name, nextHead?.user_id || null, String(seller_group_description || '').trim() || null, normalizeStatus(seller_group_status),
+       broker.broker_name, broker.broker_license_number, broker.realty_name, broker.broker_prc_number,
+       broker.broker_name_normalized, broker.broker_license_number_normalized, broker.realty_name_normalized, broker.broker_prc_number_normalized, groupId]
     );
 
     if (groupType === 'external') {
@@ -921,9 +1028,11 @@ export const editGroup = async (req, res) => {
     await assertSellerGroupRoleHierarchy(connection, groupId);
     const accessibleProjectIds = await getAccessibleProjectIds(req.authUser, connection);
     const projects = await getActiveLotProjects(connection, req.authUser);
+    const poolShares = await loadInHousePoolShares(connection);
     const normalizedRates = normalizeGroupProjectRates(project_rates, projects, {
       groupHeadRole: nextHead?.role || 'division_manager',
       groupType,
+      poolShares,
     });
     await syncGroupProjectAccreditations(connection, groupId, normalizedRates, groupType, accessibleProjectIds);
 
@@ -931,7 +1040,7 @@ export const editGroup = async (req, res) => {
       action: 'update', module: 'Groups', entityType: 'seller_group', entityId: String(groupId),
       entityLabel: name, title: `Updated ${groupTypeLabel(groupType)}`,
       description: `Updated ${groupTypeLabel(groupType)} ${name}.`,
-      metadata: { groupType, status: normalizeStatus(seller_group_status), projectRates: normalizedRates },
+      metadata: { groupType, status: normalizeStatus(seller_group_status), broker, projectRates: normalizedRates },
     });
     await connection.commit();
     return res.json({ message: `${groupTypeLabel(groupType)} updated successfully.` });
@@ -947,14 +1056,14 @@ export const toggleGroupStatus = async (req, res) => {
   const connection = await db.getConnection();
   try {
     const groupId = Number(req.params.id);
-    if (!groupId) return res.status(400).json({ message: 'Invalid group id.' });
+    if (!groupId) return res.status(400).json({ message: 'Invalid Network id.' });
     const [rows] = await connection.query(
       `SELECT seller_group_status, seller_group_type, seller_group_external_account_user_id
        FROM seller_groups WHERE seller_group_id = ? LIMIT 1`,
       [groupId]
     );
     const group = rows[0];
-    if (!group) return res.status(404).json({ message: 'Group not found.' });
+    if (!group) return res.status(404).json({ message: 'Network not found.' });
     await assertCanMutateWholeGroup(connection, req.authUser, groupId);
     const nextStatus = normalizeStatus(req.body.status || (group.seller_group_status === 'active' ? 'inactive' : 'active'));
     await connection.beginTransaction();
@@ -976,7 +1085,7 @@ export const toggleGroupStatus = async (req, res) => {
 export const viewGroup = async (req, res) => {
   try {
     const groupId = Number(req.params.id);
-    if (!groupId) return res.status(400).json({ message: 'Invalid group id.' });
+    if (!groupId) return res.status(400).json({ message: 'Invalid Network id.' });
     const [groupRows] = await db.query(
       `
         SELECT sg.*,
@@ -1006,7 +1115,7 @@ export const viewGroup = async (req, res) => {
       [groupId]
     );
     const group = groupRows[0];
-    if (!group) return res.status(404).json({ message: 'Group not found.' });
+    if (!group) return res.status(404).json({ message: 'Network not found.' });
     const accessibleProjectIds = await getAccessibleProjectIds(req.authUser);
     if (accessibleProjectIds !== null) {
       const [accessRows] = accessibleProjectIds.length
@@ -1064,6 +1173,7 @@ const getGroupAndProject = async (connection, groupId, projectId) => {
       SELECT
         sg.seller_group_id, sg.seller_group_name, sg.seller_group_type,
         sg.seller_group_head_user_id, sg.seller_group_external_account_user_id,
+        sg.broker_name, sg.broker_license_number, sg.realty_name, sg.broker_prc_number,
         sg.seller_group_description, sg.seller_group_status,
         ${fullNameSql('head_user')} AS group_head_name,
         ${fullNameSql('external_user')} AS external_account_name,
@@ -1078,7 +1188,7 @@ const getGroupAndProject = async (connection, groupId, projectId) => {
         external_user.can_login AS external_account_can_login,
         lp.lot_project_id, lp.lot_project_name, lp.lot_project_slug,
         lp.lot_project_location_code, lp.lot_project_status,
-        sgr.seller_group_pool_rate, sgr.division_manager_rate,
+        sgr.seller_group_pool_rate, sgr.company_profit_rate, sgr.division_manager_rate,
         sgr.sales_director_rate, sgr.unit_manager_rate, sgr.sales_agent_rate,
         sgr.commission_structure_type,
         sgr.seller_group_lot_project_rate_status AS pool_rate_status
@@ -1145,10 +1255,12 @@ export const assertGroupCurrentPathsWithinPools = async (connection, groupId) =>
      WHERE rate.seller_group_id = ? AND rate.seller_group_lot_project_rate_status = 'active'`,
     [groupId]
   );
+  const poolShares = await loadInHousePoolShares(connection);
   projectRates.forEach((rate) => validateGroupFixedRateStructure(rate, {
     groupHeadRole: rate.group_head_role || 'division_manager',
     projectName: rate.lot_project_name || 'Project',
     groupType: rate.seller_group_type,
+    poolShares,
   }));
 };
 
@@ -1189,7 +1301,7 @@ const getGroupAccreditedProjects = async (connection, groupId) => {
   const [rows] = await connection.query(
     `SELECT rate.lot_project_id, project.lot_project_name, project.lot_project_slug,
             project.lot_project_location, project.lot_project_location_code,
-            rate.seller_group_pool_rate, rate.division_manager_rate,
+            rate.seller_group_pool_rate, rate.company_profit_rate, rate.division_manager_rate,
             rate.sales_director_rate, rate.unit_manager_rate, rate.sales_agent_rate,
             rate.commission_structure_type, rate.seller_group_lot_project_rate_status
      FROM seller_group_lot_project_rates rate
@@ -1198,27 +1310,39 @@ const getGroupAccreditedProjects = async (connection, groupId) => {
      ORDER BY project.lot_project_name ASC`,
     [groupId]
   );
-  return rows.map((row) => ({
-    ...row,
-    lot_project_id: Number(row.lot_project_id),
-    seller_group_pool_rate: Number(row.seller_group_pool_rate || 0),
-    division_manager_rate: Number(row.division_manager_rate || 0),
-    sales_director_rate: Number(row.sales_director_rate || 0),
-    unit_manager_rate: Number(row.unit_manager_rate || 0),
-    sales_agent_rate: Number(row.sales_agent_rate || 0),
-  }));
+  const poolShares = await loadInHousePoolShares(connection);
+  return rows.map((row) => {
+    const derived = validateGroupFixedRateStructure(row, {
+      groupType: row.commission_structure_type,
+      projectName: row.lot_project_name || 'Project',
+      poolShares,
+    });
+    return {
+      ...row,
+      lot_project_id: Number(row.lot_project_id),
+      seller_group_pool_rate: derived.seller_group_pool_rate,
+      company_profit_rate: derived.company_profit_rate,
+      distribution_pool_rate: derived.distribution_pool_rate,
+      division_manager_rate: derived.division_manager_rate,
+      sales_director_rate: derived.sales_director_rate,
+      unit_manager_rate: derived.unit_manager_rate,
+      sales_agent_rate: derived.sales_agent_rate,
+      allocated_rate: derived.allocated_rate,
+      pool_shares: poolShares,
+    };
+  });
 };
 
 export const getGroupProjectOptions = async (req, res) => {
   try {
     const groupId = Number(req.params.groupId || 0);
-    if (!groupId) return res.status(400).json({ message: 'Invalid group id.' });
+    if (!groupId) return res.status(400).json({ message: 'Invalid Network id.' });
     const [groupRows] = await db.query(
       `SELECT seller_group_id, seller_group_name, seller_group_type, seller_group_status
        FROM seller_groups WHERE seller_group_id = ? LIMIT 1`,
       [groupId]
     );
-    if (!groupRows[0]) return res.status(404).json({ message: 'Group not found.' });
+    if (!groupRows[0]) return res.status(404).json({ message: 'Network not found.' });
     const accessibleProjectIds = await getAccessibleProjectIds(req.authUser);
     const projects = (await getGroupAccreditedProjects(db, groupId)).filter((project) =>
       accessibleProjectIds === null || accessibleProjectIds.includes(Number(project.lot_project_id))
@@ -1244,12 +1368,12 @@ export const getGroupProjectAnalytics = async (req, res) => {
     const groupId = Number(req.params.groupId || 0);
     const projectId = Number(req.params.projectId || 0);
     const range = normalizeGroupAnalyticsRange(req.query.from, req.query.to);
-    if (!groupId || !projectId) throw createValidationError('Group and project are required.');
+    if (!groupId || !projectId) throw createValidationError('Network and project are required.');
     if (!(await canAccessProject(req.authUser, projectId, connection))) {
       return res.status(403).json({ message: 'You do not have access to this project.' });
     }
     const group = await getGroupAndProject(connection, groupId, projectId);
-    if (!group) throw createValidationError('This group is not accredited to the selected project.');
+    if (!group) throw createValidationError('This Network is not accredited to the selected project.');
 
     const dateFormat = range.dayCount <= 93 ? '%Y-%m-%d' : '%Y-%m';
     const hasSelectedContractTcp = await columnExists(connection, 'lot_project_client_profiles', 'soa_selected_tcp');
@@ -1400,23 +1524,25 @@ export const getGroupProjectConfiguration = async (req, res) => {
   try {
     const groupId = Number(req.params.groupId || req.params.id || 0);
     const projectId = Number(req.params.projectId || 0);
-    if (!groupId || !projectId) return res.status(400).json({ message: 'Group and project are required.' });
+    if (!groupId || !projectId) return res.status(400).json({ message: 'Network and project are required.' });
     if (!(await canAccessProject(req.authUser, projectId, connection))) {
       return res.status(403).json({ message: 'You do not have access to this project.' });
     }
     await requireCommissionConfigurationSchema(connection);
     const group = await getGroupAndProject(connection, groupId, projectId);
-    if (!group) return res.status(404).json({ message: 'Group or project not found.' });
+    if (!group) return res.status(404).json({ message: 'Network or project not found.' });
     const groupType = normalizeSellerGroupType(group.seller_group_type);
     const members = await loadGroupProjectMembers(connection, groupId);
     const accessibleProjectIds = await getAccessibleProjectIds(req.authUser, connection);
     const accreditedProjects = (await getGroupAccreditedProjects(connection, groupId)).filter((project) =>
       accessibleProjectIds === null || accessibleProjectIds.includes(Number(project.lot_project_id))
     );
+    const poolShares = await loadInHousePoolShares(connection);
     const fixedRates = validateGroupFixedRateStructure(group, {
       groupHeadRole: members.find((member) => Number(member.user_id) === Number(group.seller_group_head_user_id))?.role || 'division_manager',
       projectName: group.lot_project_name,
       groupType,
+      poolShares,
     });
     const externalAccount = groupType === 'external' ? {
       userId: group.seller_group_external_account_user_id ? Number(group.seller_group_external_account_user_id) : null,
@@ -1434,6 +1560,10 @@ export const getGroupProjectConfiguration = async (req, res) => {
           headUserId: group.seller_group_head_user_id ? Number(group.seller_group_head_user_id) : null,
           headRole: members.find((member) => Number(member.user_id) === Number(group.seller_group_head_user_id))?.role || null,
           headName: group.group_head_name || null,
+          brokerName: group.broker_name || null,
+          brokerLicenseNumber: group.broker_license_number || null,
+          realtyName: group.realty_name || null,
+          brokerPrcNumber: group.broker_prc_number || null,
           externalAccountUserId: group.seller_group_external_account_user_id ? Number(group.seller_group_external_account_user_id) : null,
           externalAccount,
           description: group.seller_group_description, status: group.seller_group_status,
@@ -1444,6 +1574,9 @@ export const getGroupProjectConfiguration = async (req, res) => {
         poolRateStatus: group.pool_rate_status,
         fixedRates: {
           poolRate: fixedRates.seller_group_pool_rate,
+          companyProfitRate: fixedRates.company_profit_rate,
+          distributionPoolRate: fixedRates.distribution_pool_rate,
+          poolShares,
           divisionManagerRate: fixedRates.division_manager_rate,
           salesDirectorRate: fixedRates.sales_director_rate,
           unitManagerRate: fixedRates.unit_manager_rate,
@@ -1468,18 +1601,20 @@ export const updateGroupProjectPool = async (req, res) => {
   try {
     const groupId = Number(req.params.groupId || 0);
     const projectId = Number(req.params.projectId || 0);
-    if (!groupId || !projectId) throw createValidationError('Group and project are required.');
+    if (!groupId || !projectId) throw createValidationError('Network and project are required.');
     if (!(await canAccessProject(req.authUser, projectId, connection))) {
       return res.status(403).json({ message: 'You do not have access to this project.' });
     }
     await requireCommissionConfigurationSchema(connection);
     await connection.beginTransaction();
     const group = await getGroupAndProject(connection, groupId, projectId);
-    if (!group) throw createValidationError('Group or project not found.');
+    if (!group) throw createValidationError('Network or project not found.');
     const groupType = normalizeSellerGroupType(group.seller_group_type);
     const [headRows] = await connection.query(`SELECT role FROM users WHERE id = ? LIMIT 1`, [group.seller_group_head_user_id || 0]);
+    const poolShares = await loadInHousePoolShares(connection);
     const rates = validateGroupFixedRateStructure({
       seller_group_pool_rate: req.body.poolRate ?? req.body.seller_group_pool_rate,
+      company_profit_rate: req.body.companyProfitRate ?? req.body.company_profit_rate ?? 0,
       division_manager_rate: req.body.divisionManagerRate ?? req.body.division_manager_rate ?? 0,
       sales_director_rate: req.body.salesDirectorRate ?? req.body.sales_director_rate ?? 0,
       unit_manager_rate: req.body.unitManagerRate ?? req.body.unit_manager_rate ?? 0,
@@ -1488,29 +1623,30 @@ export const updateGroupProjectPool = async (req, res) => {
       groupHeadRole: headRows[0]?.role || 'division_manager',
       projectName: group.lot_project_name,
       groupType,
+      poolShares,
     });
     const status = normalizeStatus(req.body.status);
     await connection.query(
       `UPDATE seller_group_lot_project_rates SET
-         seller_group_pool_rate = ?, division_manager_rate = ?, sales_director_rate = ?,
+         seller_group_pool_rate = ?, company_profit_rate = ?, division_manager_rate = ?, sales_director_rate = ?,
          unit_manager_rate = ?, sales_agent_rate = ?, commission_structure_type = ?,
          seller_group_lot_project_rate_status = ?
        WHERE seller_group_id = ? AND lot_project_id = ?`,
-      [rates.seller_group_pool_rate, rates.division_manager_rate, rates.sales_director_rate,
+      [rates.seller_group_pool_rate, rates.company_profit_rate, rates.division_manager_rate, rates.sales_director_rate,
        rates.unit_manager_rate, rates.sales_agent_rate, groupType, status, groupId, projectId]
     );
     await deactivateLegacyIndividualRates(connection, groupId, [projectId]);
     await writeAuditLog(connection, req, {
       action: 'update', module: 'Groups', entityType: 'seller_group_project_rates',
       entityId: `${groupId}:${projectId}`, entityLabel: `${group.seller_group_name} — ${group.lot_project_name}`,
-      title: `Updated ${groupType === 'external' ? 'External Group Pool Rate' : 'In-House fixed commission rates'}`,
+      title: `Updated ${groupType === 'external' ? 'External Network Pool Rate' : 'In-House Network commission allocation'}`,
       description: groupType === 'external'
         ? `Updated the full Pool Rate for ${group.seller_group_name} in ${group.lot_project_name}.`
-        : `Updated fixed position rates for ${group.seller_group_name} in ${group.lot_project_name}.`,
+        : `Updated Pool Rate and Company Profit allocation for ${group.seller_group_name} in ${group.lot_project_name}.`,
       metadata: { groupId, projectId, groupType, ...rates, status },
     });
     await connection.commit();
-    return res.json({ message: `${groupType === 'external' ? 'External Group Pool Rate' : 'In-House fixed commission rates'} updated successfully.`, data: rates });
+    return res.json({ message: `${groupType === 'external' ? 'External Network Pool Rate' : 'In-House Network commission allocation'} updated successfully.`, data: rates });
   } catch (error) {
     await connection.rollback();
     return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
@@ -1518,5 +1654,3 @@ export const updateGroupProjectPool = async (req, res) => {
     connection.release();
   }
 };
-
-

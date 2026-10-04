@@ -212,5 +212,3 @@ export const hasProjectScope = (user = {}, projectSlug = '') => {
   const normalizedSlug = String(projectSlug).trim().toLowerCase()
   return projects.some((project) => String(project?.slug || project?.lot_project_slug || '').trim().toLowerCase() === normalizedSlug)
 }
-
-

@@ -4,6 +4,7 @@ import {
   getErrorMessage,
   getUserFullName,
   tableExists,
+  columnExists,
 } from '../Lot_Projects/_shared/lotProject.shared.js';
 import { writeAuditLog } from './auditLogs.controller.js';
 import { isFullAccessAdministrator } from '../../config/permissions.js';
@@ -33,7 +34,40 @@ const clampDay = (value, fallback) => {
   return Math.min(Math.max(Math.trunc(numeric), 1), 31);
 };
 
+const normalizePercent = (value, fallback) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0 || numeric > 100) return Number(fallback);
+  return Math.round((numeric + Number.EPSILON) * 10000) / 10000;
+};
+
 const isExactSuperAdmin = (user) => String(user?.role || '').toLowerCase() === 'super_admin';
+
+const syncInHouseNetworkRateCache = async (connection, payload) => {
+  if (!(await tableExists(connection, 'seller_group_lot_project_rates'))) return;
+  if (!(await columnExists(connection, 'seller_group_lot_project_rates', 'company_profit_rate'))) return;
+
+  const dm = Number(payload.inHouseDmPoolSharePercent || 0);
+  const sd = Number(payload.inHouseSdPoolSharePercent || 0);
+  const um = Number(payload.inHouseUmPoolSharePercent || 0);
+  await connection.query(
+    `UPDATE seller_group_lot_project_rates rate_row
+     INNER JOIN seller_groups network_row
+       ON network_row.seller_group_id = rate_row.seller_group_id
+     SET
+       rate_row.division_manager_rate = ROUND((rate_row.seller_group_pool_rate - rate_row.company_profit_rate) * ? / 100, 4),
+       rate_row.sales_director_rate = ROUND((rate_row.seller_group_pool_rate - rate_row.company_profit_rate) * ? / 100, 4),
+       rate_row.unit_manager_rate = ROUND((rate_row.seller_group_pool_rate - rate_row.company_profit_rate) * ? / 100, 4),
+       rate_row.sales_agent_rate = ROUND(
+         (rate_row.seller_group_pool_rate - rate_row.company_profit_rate)
+         - ROUND((rate_row.seller_group_pool_rate - rate_row.company_profit_rate) * ? / 100, 4)
+         - ROUND((rate_row.seller_group_pool_rate - rate_row.company_profit_rate) * ? / 100, 4)
+         - ROUND((rate_row.seller_group_pool_rate - rate_row.company_profit_rate) * ? / 100, 4),
+         4
+       )
+     WHERE network_row.seller_group_type = 'in_house'`,
+    [dm, sd, um, dm, sd, um]
+  );
+};
 
 
 const requireAdmin = async (req) => {
@@ -84,6 +118,10 @@ const systemSettingsTableSql = `
     reservation_contact_number VARCHAR(60) NULL,
     default_release_day_one TINYINT UNSIGNED NOT NULL DEFAULT 7,
     default_release_day_two TINYINT UNSIGNED NOT NULL DEFAULT 22,
+    in_house_dm_pool_share_percent DECIMAL(7,4) NOT NULL DEFAULT 14.1800,
+    in_house_sd_pool_share_percent DECIMAL(7,4) NOT NULL DEFAULT 15.8200,
+    in_house_um_pool_share_percent DECIMAL(7,4) NOT NULL DEFAULT 20.0000,
+    in_house_sa_pool_share_percent DECIMAL(7,4) NOT NULL DEFAULT 50.0000,
     attendance_default_time_out TIME NOT NULL DEFAULT '20:00:00',
     attendance_scheduled_time_in TIME NOT NULL DEFAULT '09:00:00',
     attendance_scheduled_time_out TIME NOT NULL DEFAULT '20:00:00',
@@ -107,6 +145,10 @@ const systemSettingsTableSql = `
 
 const ensureSystemSettingsTable = async (connection = db) => {
   await connection.query(systemSettingsTableSql);
+  await connection.query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS in_house_dm_pool_share_percent DECIMAL(7,4) NOT NULL DEFAULT 14.1800 AFTER default_release_day_two`);
+  await connection.query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS in_house_sd_pool_share_percent DECIMAL(7,4) NOT NULL DEFAULT 15.8200 AFTER in_house_dm_pool_share_percent`);
+  await connection.query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS in_house_um_pool_share_percent DECIMAL(7,4) NOT NULL DEFAULT 20.0000 AFTER in_house_sd_pool_share_percent`);
+  await connection.query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS in_house_sa_pool_share_percent DECIMAL(7,4) NOT NULL DEFAULT 50.0000 AFTER in_house_um_pool_share_percent`);
   await connection.query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS attendance_default_time_out TIME NOT NULL DEFAULT '20:00:00' AFTER default_release_day_two`);
   await connection.query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS attendance_scheduled_time_in TIME NOT NULL DEFAULT '09:00:00' AFTER attendance_default_time_out`);
   await connection.query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS attendance_scheduled_time_out TIME NOT NULL DEFAULT '20:00:00' AFTER attendance_scheduled_time_in`);
@@ -142,6 +184,10 @@ const mapSettings = (row = {}) => ({
   reservationContactNumber: row.reservation_contact_number,
   defaultReleaseDayOne: Number(row.default_release_day_one || 7),
   defaultReleaseDayTwo: Number(row.default_release_day_two || 22),
+  inHouseDmPoolSharePercent: Number(row.in_house_dm_pool_share_percent ?? 14.18),
+  inHouseSdPoolSharePercent: Number(row.in_house_sd_pool_share_percent ?? 15.82),
+  inHouseUmPoolSharePercent: Number(row.in_house_um_pool_share_percent ?? 20),
+  inHouseSaPoolSharePercent: Number(row.in_house_sa_pool_share_percent ?? 50),
   attendanceDefaultTimeOut: String(row.attendance_default_time_out || '20:00:00').slice(0, 8),
   employeeDepartmentCodes: normalizeDepartmentConfigs(row.employee_department_codes_json, row.employee_departments_json),
   employeeDepartments: normalizeDepartmentConfigs(row.employee_department_codes_json, row.employee_departments_json).map((item) => item.name),
@@ -164,6 +210,10 @@ const normalizeSettingsPayload = (body = {}) => ({
   reservationContactNumber: nullableText(body.reservationContactNumber),
   defaultReleaseDayOne: clampDay(body.defaultReleaseDayOne, 7),
   defaultReleaseDayTwo: clampDay(body.defaultReleaseDayTwo, 22),
+  inHouseDmPoolSharePercent: normalizePercent(body.inHouseDmPoolSharePercent, 14.18),
+  inHouseSdPoolSharePercent: normalizePercent(body.inHouseSdPoolSharePercent, 15.82),
+  inHouseUmPoolSharePercent: normalizePercent(body.inHouseUmPoolSharePercent, 20),
+  inHouseSaPoolSharePercent: normalizePercent(body.inHouseSaPoolSharePercent, 50),
 });
 
 
@@ -176,6 +226,15 @@ const validateSettingsPayload = (payload) => {
   }
   if (payload.defaultReleaseDayOne === payload.defaultReleaseDayTwo) {
     throw Object.assign(new Error('Default release days must be different.'), { statusCode: 400 });
+  }
+  const poolShareTotal = Math.round((
+    payload.inHouseDmPoolSharePercent
+    + payload.inHouseSdPoolSharePercent
+    + payload.inHouseUmPoolSharePercent
+    + payload.inHouseSaPoolSharePercent
+  ) * 10000) / 10000;
+  if (Math.abs(poolShareTotal - 100) > 0.0001) {
+    throw Object.assign(new Error(`In-House Network pool distribution must total exactly 100%. Current total is ${poolShareTotal.toFixed(4)}%.`), { statusCode: 400 });
   }
   return payload;
 };
@@ -329,6 +388,10 @@ export const updateSystemSettings = async (req, res) => {
           reservation_contact_number = ?,
           default_release_day_one = ?,
           default_release_day_two = ?,
+          in_house_dm_pool_share_percent = ?,
+          in_house_sd_pool_share_percent = ?,
+          in_house_um_pool_share_percent = ?,
+          in_house_sa_pool_share_percent = ?,
           updated_by_user_id = ?
         WHERE system_setting_id = 1
       `,
@@ -345,9 +408,15 @@ export const updateSystemSettings = async (req, res) => {
         payload.reservationContactNumber,
         payload.defaultReleaseDayOne,
         payload.defaultReleaseDayTwo,
+        payload.inHouseDmPoolSharePercent,
+        payload.inHouseSdPoolSharePercent,
+        payload.inHouseUmPoolSharePercent,
+        payload.inHouseSaPoolSharePercent,
         actor.id,
       ]
     );
+
+    await syncInHouseNetworkRateCache(connection, payload);
 
     await writeAuditLog(connection, req, {
       actor,
@@ -394,5 +463,3 @@ export const updateSystemSettings = async (req, res) => {
     connection.release();
   }
 };
-
-

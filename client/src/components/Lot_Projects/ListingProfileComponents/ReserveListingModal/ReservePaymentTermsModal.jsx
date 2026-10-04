@@ -21,7 +21,7 @@ const AgentPicker = ({
   const [showResults, setShowResults] = useState(false)
   return (
     <div className="relative flex flex-col gap-1.5 md:col-span-2">
-      <span className="text-xs font-black text-slate-700">Assigned Seller / Group <span className="text-red-500">*</span></span>
+      <span className="text-xs font-black text-slate-700">Assigned Seller / Network <span className="text-red-500">*</span></span>
       <div className="relative">
         <FiSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
         <input
@@ -31,11 +31,11 @@ const AgentPicker = ({
             onSearch(event.target.value)
             setShowResults(true)
           }}
-          placeholder="Search Sales Agent or External Group..."
+          placeholder="Search Sales Agent or External Network..."
           className="h-11 w-full rounded-xl border border-slate-300 bg-white pl-10 pr-4 text-sm font-semibold text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
         />
       </div>
-      <p className="text-xs font-semibold text-slate-500">Choose an active In-House Sales Agent or External Group accredited to this project.</p>
+      <p className="text-xs font-semibold text-slate-500">Choose an active In-House Sales Agent or External Network accredited to this project.</p>
 
       {selectedAgent ? (
         <div className="mt-2 flex flex-col gap-2 rounded-xl border border-blue-200 bg-blue-50 p-3 sm:flex-row sm:items-center sm:justify-between">
@@ -46,9 +46,9 @@ const AgentPicker = ({
 
       {showResults ? (
         <div className="absolute left-0 right-0 top-[74px] z-30 max-h-72 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl">
-          {isLoading ? <div className="flex items-center gap-2 px-3 py-4 text-sm font-semibold text-slate-500"><FiLoader className="animate-spin" />Loading Seller / Group options...</div> : null}
+          {isLoading ? <div className="flex items-center gap-2 px-3 py-4 text-sm font-semibold text-slate-500"><FiLoader className="animate-spin" />Loading Seller / Network options...</div> : null}
           {error ? <div className="px-3 py-4 text-sm font-semibold text-red-700">{error}</div> : null}
-          {!isLoading && !error && agents.length === 0 ? <div className="px-3 py-5 text-center"><p className="font-black text-slate-700">No active Seller / Group options found.</p><p className="mt-1 text-xs font-semibold text-slate-500">Configure project rates from the In-House Group or External Group page.</p></div> : null}
+          {!isLoading && !error && agents.length === 0 ? <div className="px-3 py-5 text-center"><p className="font-black text-slate-700">No active Seller / Network options found.</p><p className="mt-1 text-xs font-semibold text-slate-500">Configure project rates from the In-House Network or External Network page.</p></div> : null}
           {!isLoading && agents.map((agent) => (
             <button
               key={agent.id}
@@ -296,5 +296,3 @@ const ReservePaymentTermsModal = ({
 }
 
 export default ReservePaymentTermsModal
-
-

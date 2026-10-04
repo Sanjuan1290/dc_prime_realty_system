@@ -21,5 +21,3 @@ test('Audit Trail pagination keeps the current table mounted while an unseen pag
   assert.match(table, /disabled=\{isPageChanging \|\| page <= 1\}/)
   assert.match(table, /disabled=\{isPageChanging \|\| page >= totalPages\}/)
 })
-
-

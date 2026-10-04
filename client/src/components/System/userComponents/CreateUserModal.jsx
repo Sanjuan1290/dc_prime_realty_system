@@ -267,7 +267,7 @@ const CreateUserModal = ({
         value: String(seller.user_id),
         label: seller.full_name,
         description: `${roleLabels[seller.role] || seller.role}${
-          seller.seller_group_id ? " · Same In-House Group" : ""
+          seller.seller_group_id ? " · Same In-House Network" : ""
         }`,
       })),
     [allowedParents]
@@ -338,7 +338,7 @@ const CreateUserModal = ({
     if (!isSellerRole) return true;
 
     if (!form.seller_group_id) {
-      setWarning("Select a In-House Group.");
+      setWarning("Select an In-House Network.");
       return false;
     }
 
@@ -393,7 +393,7 @@ const CreateUserModal = ({
             <p className="text-sm text-slate-500">
               {activeStep === 1
                 ? "Add account and contact information."
-                : "Assign the In-House Group and reporting line. Commission rates are inherited from the group."}
+                : "Assign the In-House Network and reporting line. Commission rates are calculated from the Network Pool Rate, Company Profit, and role distribution."}
             </p>
           </div>
 
@@ -458,10 +458,10 @@ const CreateUserModal = ({
               <StatusAlert type="loading" message="Preparing user review..." />
             ) : null}
             {isGroupsLoading || isParentsLoading ? (
-              <StatusAlert type="loading" message="Loading In-House Groups and reporting options..." />
+              <StatusAlert type="loading" message="Loading In-House Networks and reporting options..." />
             ) : null}
             {isGroupsError ? (
-              <StatusAlert type="error" message={groupsError?.message || "Failed to load In-House Groups."} />
+              <StatusAlert type="error" message={groupsError?.message || "Failed to load In-House Networks."} />
             ) : null}
             {isParentsError ? (
               <StatusAlert type="error" message={parentsError?.message || "Failed to load parent sellers."} />
@@ -587,7 +587,7 @@ const CreateUserModal = ({
 
                 <div className="grid gap-4 md:grid-cols-3">
                   <SearchableSelect
-                    label="In-House Group"
+                    label="In-House Network"
                     value={form.seller_group_id}
                     options={groupOptions}
                     onChange={(value) => {
@@ -598,9 +598,9 @@ const CreateUserModal = ({
                       }));
                       setWarning("");
                     }}
-                    placeholder="Select In-House Group"
-                    searchPlaceholder="Search In-House Groups..."
-                    emptyText="No In-House Groups match your search."
+                    placeholder="Select In-House Network"
+                    searchPlaceholder="Search In-House Networks..."
+                    emptyText="No In-House Networks match your search."
                     required
                     disabled={lockSellerGroup}
                   />
@@ -616,7 +616,7 @@ const CreateUserModal = ({
                     emptyText={
                       form.seller_group_id
                         ? "No eligible parent seller matches your search."
-                        : "Select a In-House Group first."
+                        : "Select an In-House Network first."
                     }
                     disabled={!form.seller_group_id || form.role === "division_manager"}
                     required={parentIsRequired}
@@ -631,7 +631,7 @@ const CreateUserModal = ({
                 <div className="mt-5 rounded-xl border border-blue-200 bg-white px-4 py-3">
                   <h5 className="text-sm font-black text-slate-900">Inherited Commission Rates</h5>
                   <p className="mt-1 text-xs font-semibold text-slate-500">
-                    This seller automatically uses the fixed Division Manager, Sales Director, Unit Manager, or Sales Agent rate configured for the selected In-House Group and project. Individual seller rates cannot be edited.
+                    This seller automatically uses the calculated Division Manager, Sales Director, Unit Manager, or Sales Agent rate for the selected In-House Network and project. Individual seller rates cannot be edited.
                   </p>
                 </div>
               </div>
@@ -672,5 +672,3 @@ const CreateUserModal = ({
 };
 
 export default CreateUserModal;
-
-

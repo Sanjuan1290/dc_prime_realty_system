@@ -25,7 +25,7 @@ const UserDoubleCheck = ({ request, onConfirm, onCancel }) => {
       ...(request.mode === 'create' && !seller ? [{ label: 'Login Setup', value: 'Temporary credentials will be generated securely and emailed automatically.', wide: true }] : []),
     ]} /></DoubleCheckSection> },
     { key: 'hierarchy', title: 'In-House Hierarchy', hidden: !seller, content: <DoubleCheckSection title="In-House Hierarchy" helper="Verify the group, reporting line, and accreditation date. Commission rates are inherited from the selected group." tone="violet"><DoubleCheckFields fields={[
-      { label: 'In-House Group', value: pick(data, 'seller_group_name', 'sellerGroupName') || request.meta?.sellerGroupName },
+      { label: 'In-House Network', value: pick(data, 'seller_group_name', 'sellerGroupName') || request.meta?.sellerGroupName },
       { label: 'Reports Under', value: pick(data, 'reports_under_name', 'reportsUnderName') || request.meta?.reportsUnderName || (role === 'division_manager' ? 'Direct to Developer' : '') },
       { label: 'Accreditation Date', value: pick(data, 'accreditation_date', 'accreditationDate'), formatter: formatDate },
     ]} /></DoubleCheckSection> },
@@ -35,5 +35,3 @@ const UserDoubleCheck = ({ request, onConfirm, onCancel }) => {
 }
 
 export default UserDoubleCheck
-
-

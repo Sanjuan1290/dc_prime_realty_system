@@ -38,5 +38,3 @@ router.put('/:attendanceId/correction', requirePermission(PERMISSIONS.ATTENDANCE
 router.delete('/:attendanceId', requirePermission(PERMISSIONS.ATTENDANCE_MANAGE), deleteAttendanceRecord);
 
 export default router;
-
-

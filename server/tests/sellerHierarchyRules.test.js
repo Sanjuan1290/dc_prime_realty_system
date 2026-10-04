@@ -24,7 +24,7 @@ test('in-house reporting hierarchy follows Division Manager to Sales Director to
   assert.equal(isValidDirectReportingPair('sales_agent', 'sales_director'), false);
 });
 
-test('only Division Manager and Sales Director can head an in-house group', () => {
+test('only Division Manager and Sales Director can head an in-house Network', () => {
   assert.equal(isGroupHeadRole('division_manager'), true);
   assert.equal(isGroupHeadRole('sales_director'), true);
   assert.equal(isGroupHeadRole('unit_manager'), false);
@@ -32,11 +32,11 @@ test('only Division Manager and Sales Director can head an in-house group', () =
   assert.equal(isGroupHeadRole(EXTERNAL_GROUP_ROLE), false);
 });
 
-test('Sales Agents and External Groups receive sales rates while in-house parent positions receive override rates', () => {
+test('Sales Agents and External Networks receive sales rates while in-house parent positions receive override rates', () => {
   assert.equal(getRoleRateType('sales_agent'), 'sales');
   assert.equal(getRoleRateLabel('sales_agent'), 'Sales commission rate');
   assert.equal(getRoleRateType('external_group'), 'sales');
-  assert.equal(getRoleRateLabel('external_group'), 'External group pool rate');
+  assert.equal(getRoleRateLabel('external_group'), 'External Network pool rate');
   assert.equal(isCommissionRecipientRole('external_group'), true);
 
   for (const role of ['unit_manager', 'sales_director', 'division_manager']) {
@@ -45,7 +45,7 @@ test('Sales Agents and External Groups receive sales rates while in-house parent
   }
 });
 
-test('live in-house reservation chains reject skipped positions and require a group head', () => {
+test('live in-house reservation chains reject skipped positions and require a Network hierarchy head', () => {
   const seller = (id, role, extra = {}) => ({
     accredited_seller_id: id,
     seller_group_id: 7,
@@ -68,7 +68,7 @@ test('live in-house reservation chains reject skipped positions and require a gr
       seller(2, 'unit_manager'),
       seller(3, 'sales_director'),
     ], { requireGroupHead: true }),
-    /assign a Division Manager or Sales Director as the In-House Group Head/i
+    /assign a Division Manager or Sales Director as the In-House Network Hierarchy Head/i
   );
 
   assert.equal(validateSellerReportingChain([
@@ -78,5 +78,3 @@ test('live in-house reservation chains reject skipped positions and require a gr
     seller(4, 'division_manager', { is_group_head: true }),
   ], { requireGroupHead: true }), true);
 });
-
-

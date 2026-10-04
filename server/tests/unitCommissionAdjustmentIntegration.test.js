@@ -38,13 +38,11 @@ test('legacy recalculation rows with a missing account id remain visible and are
 
 test('client requires exact allocation before email verification can be requested', () => {
   const modal = read('../../client/src/components/Lot_Projects/ListingProfileComponents/UnitStatus/RecalculateCommissionModal.jsx');
-  assert.match(modal, /Unit Group Rate/);
+  assert.match(modal, /Unit Network Distribution Rate/);
   assert.match(modal, /Allocated/);
   assert.match(modal, /Unallocated \/ Over/);
-  assert.match(modal, /Unallocated must be 0\.00%/);
-  assert.match(modal, /rate cannot be greater than the Unit Group Rate/);
+  assert.match(modal, /Unallocated must be 0\.0000%/);
+  assert.match(modal, /rate cannot be greater than the Unit Network Distribution Rate/);
   assert.match(modal, /Verify Password & Send Code/);
   assert.match(modal, /Email Verification Code/);
 });
-
-

@@ -181,5 +181,3 @@ test('sensitive verification hashes bind the code and exact proposed payload', (
     else process.env.DESTRUCTIVE_ACTION_CODE_SECRET = oldSecret;
   }
 });
-
-

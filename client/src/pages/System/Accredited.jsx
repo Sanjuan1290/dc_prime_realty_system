@@ -22,12 +22,12 @@ const roleLabels = {
   sales_director: "Sales Director",
   unit_manager: "Unit Manager",
   sales_agent: "Sales Agent",
-  external_group: "External Group",
+  external_group: "External Network",
 };
 
 const getAccreditedDisplayName = (seller = {}) =>
   seller.role === "external_group" || seller.seller_group_type === "external"
-    ? seller.seller_group_name || seller.full_name || "External Group"
+    ? seller.seller_group_name || seller.full_name || "External Network"
     : seller.full_name || "Seller";
 
 const getAccreditedIdentityNote = (seller = {}) =>
@@ -938,7 +938,7 @@ const Accredited = () => {
     { label: "Sales Directors", value: summary.roleBreakdown.sales_director, description: "In-house sales leaders" },
     { label: "Unit Managers", value: summary.roleBreakdown.unit_manager, description: "In-house unit managers" },
     { label: "Sales Agents", value: summary.roleBreakdown.sales_agent, description: "In-house frontline sellers" },
-    { label: "External Groups", value: summary.roleBreakdown.external_group, description: "Single-account partner groups" },
+    { label: "External Networks", value: summary.roleBreakdown.external_group, description: "Single-account partner Networks" },
   ];
 
   const handlePrintProof = (seller) => {
@@ -948,7 +948,7 @@ const Accredited = () => {
   return (
     <main className="flex flex-col gap-6">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-        <PageHeader title="Accredited Sellers" description="In-house sellers and External Group accounts, group assignments, reporting chains, and commission receipts." icon={FaUserPlus} />
+        <PageHeader title="Accredited Sellers" description="In-house sellers and External Network accounts, Network assignments, reporting chains, and commission receipts." icon={FaUserPlus} />
         {canViewSellerGroups ? (
           <div className="flex flex-wrap gap-2">
             <NavLink
@@ -956,14 +956,14 @@ const Accredited = () => {
               className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 text-sm font-black text-blue-700 shadow-sm transition hover:border-blue-300 hover:bg-blue-100"
             >
               <FiHome className="h-4 w-4" />
-              In-House Groups
+              In-House Networks
             </NavLink>
             <NavLink
               to={`${roleBasePath}/accredited/groups/external`}
               className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 text-sm font-black text-violet-700 shadow-sm transition hover:border-violet-300 hover:bg-violet-100"
             >
               <FiExternalLink className="h-4 w-4" />
-              External Groups
+              External Networks
             </NavLink>
           </div>
         ) : null}
@@ -989,7 +989,7 @@ const Accredited = () => {
 
       <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-4 border-b border-slate-200 p-4 xl:flex-row xl:items-center xl:justify-between">
-          <div><h2 className="text-lg font-bold text-slate-950">Seller Directory</h2><p className="text-sm text-slate-500">View group assignments, reporting chains, External Group accounts, and commission receipts. Project rates are managed from the group pages.</p></div>
+          <div><h2 className="text-lg font-bold text-slate-950">Seller Directory</h2><p className="text-sm text-slate-500">View Network assignments, reporting chains, External Network accounts, and commission receipts. Project rates are managed from the Network pages.</p></div>
           <div className="grid gap-3 md:grid-cols-[1fr_auto_auto_auto]">
             <label className="relative block"><FiSearch className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input type="text" value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Search sellers..." className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" /></label>
             <select value={roleFilter} onChange={(event) => { setRoleFilter(event.target.value); setPage(1); }} className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50"><option value="all">All Roles</option>{Object.entries(roleLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
@@ -999,14 +999,14 @@ const Accredited = () => {
         </div>
 
         <div className="overflow-x-auto"><div className="min-w-[1120px]">
-          <div className="grid grid-cols-[1.45fr_1fr_1.2fr_1.25fr_1fr_1.45fr] bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500"><p>Seller</p><p>Role</p><p>Group</p><p>Reports Under</p><p>Status / Updated</p><p>Actions</p></div>
+          <div className="grid grid-cols-[1.45fr_1fr_1.2fr_1.25fr_1fr_1.45fr] bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500"><p>Seller</p><p>Role</p><p>Network</p><p>Reports Under</p><p>Status / Updated</p><p>Actions</p></div>
           <div className="divide-y divide-slate-100">
             {isLoading ? <div className="px-4 py-10 text-center text-sm font-semibold text-slate-500">Loading accredited sellers...</div> : sellers.length === 0 ? <div className="px-4 py-10 text-center text-sm font-semibold text-slate-500">No accredited sellers found.</div> : sellers.map((seller) => {
               return (
                 <div key={seller.accredited_seller_id} className="grid grid-cols-[1.45fr_1fr_1.2fr_1.25fr_1fr_1.45fr] items-center px-4 py-4 text-sm">
                   <div><p className="font-bold text-slate-950">{getAccreditedDisplayName(seller)}</p><p className="text-xs text-slate-500">{getAccreditedIdentityNote(seller)}</p></div>
                   <p className="font-semibold text-slate-700">{roleLabels[seller.role] || seller.role}</p>
-                  <p className="font-semibold text-slate-700">{seller.seller_group_name || "No group"}</p>
+                  <p className="font-semibold text-slate-700">{seller.seller_group_name || "No Network"}</p>
                   <p className="text-slate-600">{seller.reports_under_name || "Direct to Developer"}</p>
                   <div><span className={`w-fit rounded-full border px-3 py-1 text-xs font-bold capitalize ${seller.accredited_seller_status === "active" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-slate-50 text-slate-500"}`}>{seller.accredited_seller_status}</span><p className="mt-1 text-xs text-slate-500">{seller.accredited_seller_updated_at ? formatDateTime(seller.accredited_seller_updated_at) : "—"}</p></div>
                   <div className="flex flex-wrap gap-2">{canOpenProofWorkspace ? <button type="button" onClick={() => handlePrintProof(seller)} className="inline-flex min-h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50"><FiPrinter className="h-4 w-4" />Proof of Income</button> : <span className="text-xs font-semibold text-slate-400">View only</span>}</div>
@@ -1033,5 +1033,3 @@ const Accredited = () => {
 };
 
 export default Accredited;
-
-

@@ -140,5 +140,3 @@ const AddPaymentModal = ({ listing = {}, onClose, onSave, isSaving = false }) =>
 }
 
 export default AddPaymentModal
-
-

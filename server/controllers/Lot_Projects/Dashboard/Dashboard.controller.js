@@ -1601,5 +1601,3 @@ export const auditLotProjectPriceListPrint = async (req, res) => {
     connection.release();
   }
 };
-
-

@@ -117,7 +117,7 @@ test('mid-period compensation changes are detected instead of inventing an unapp
   };
   await assert.rejects(
     getEffectiveCompensationForPeriod(connection, { employeeId: 7, periodStart: '2026-09-01', periodEnd: '2026-09-15' }),
-    (error) => error.code === 'MID_PERIOD_COMPENSATION_CHANGE_REQUIRES_RULE'
+    (error) => error.code === 'MID_PERIOD_COMPENSATION_CHANGE_BLOCKED'
   );
 });
 
@@ -141,12 +141,12 @@ test('Batch 2 adds protected payroll API, historical compensation snapshots and 
   assert.match(permissions, /employee_salary\.recalculate_draft/);
 });
 
-test('Batch 2 records overtime, holiday and night-differential hours but does not invent money multipliers', () => {
+test('Batch 2 records premium hours without hard-coding money multipliers; later approved Payroll Settings remain optional', () => {
   const calculator = read('server/services/payrollCalculation.service.js');
-  assert.match(calculator, /overtimePay = 0/);
-  assert.match(calculator, /restDayOvertimePay = 0/);
-  assert.match(calculator, /regularHolidayPay = 0/);
-  assert.match(calculator, /specialHolidayPay = 0/);
-  assert.match(calculator, /nightDifferentialPay = 0/);
-  assert.doesNotMatch(calculator, /1\.25|1\.30|2\.00|0\.10/);
+  assert.match(calculator, /regularOtMultiplier === null \? 0/);
+  assert.match(calculator, /restDayOtMultiplier === null \? 0/);
+  assert.match(calculator, /regularHolidayMultiplier === null \? 0/);
+  assert.match(calculator, /specialHolidayMultiplier === null \? 0/);
+  assert.match(calculator, /nightDifferentialPercentage === null \? 0/);
+  assert.doesNotMatch(calculator, /const regularOtMultiplier = 1\.25|const restDayOtMultiplier = 1\.30|const regularHolidayMultiplier = 2\.00|const nightDifferentialPercentage = 10/);
 });

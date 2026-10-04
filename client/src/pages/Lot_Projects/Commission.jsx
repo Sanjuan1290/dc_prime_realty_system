@@ -382,7 +382,7 @@ const Commission = () => {
           <table className="min-w-[1080px] w-full divide-y divide-slate-200 text-sm">
             <thead className="bg-slate-50">
               <tr>
-                {['Unit', 'Client', 'Sellers', 'Group Name', 'Commission Base (Before Discount)', 'Total Gross', 'Released', 'Net Remaining', 'Payment %', 'Actions'].map((head) => (
+                {['Unit', 'Client', 'Sellers', 'Network Name', 'Commission Base (Before Discount)', 'Total Gross', 'Released', 'Net Remaining', 'Payment %', 'Actions'].map((head) => (
                   <th key={head} className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">{head}</th>
                 ))}
               </tr>
@@ -503,5 +503,3 @@ const Commission = () => {
 }
 
 export default Commission
-
-

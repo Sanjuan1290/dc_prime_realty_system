@@ -25,5 +25,3 @@ const DoubleCheckListCard = ({ title, subtitle = '', fields = [], index, total, 
 )
 
 export default DoubleCheckListCard
-
-

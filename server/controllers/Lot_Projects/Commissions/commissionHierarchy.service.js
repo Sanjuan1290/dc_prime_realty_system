@@ -3,6 +3,7 @@ import { isExternalGroupRole, validateSellerReportingChain } from '../../System/
 import {
   getGroupFixedRateForRole,
   loadGroupFixedCommissionRates,
+  roundCommissionRate,
 } from '../../System/groupFixedCommissionRates.service.js';
 import {
   resolveCommissionBaseAmount,
@@ -100,7 +101,7 @@ const loadGroupHeadSeller = async (connection, sellerGroupId) => {
 
 /**
  * Loads the current reporting chain. The first entry is always the assigned
- * Sales Agent. Parent sellers follow in reporting order and the Group Head is added
+ * Sales Agent. Parent sellers follow in reporting order and the Network Hierarchy Head is added
  * when they are not already part of the explicit reporting chain.
  */
 export const loadCurrentSellerChain = async (connection, accreditedSellerId) => {
@@ -178,7 +179,7 @@ export const buildCommissionDistribution = ({
 
     return [{
       seller: assignedSeller,
-      rate: roundCommissionMoney(rate),
+      rate: roundCommissionRate(rate),
       sellerType: 'main_seller',
       saleType: 'direct',
     }];
@@ -196,7 +197,7 @@ export const buildCommissionDistribution = ({
       );
     }
 
-    const earnedRate = roundCommissionMoney(currentCeiling - lowerCeiling);
+    const earnedRate = roundCommissionRate(currentCeiling - lowerCeiling);
     if (earnedRate > 0) {
       commissionRows.push({
         seller,
@@ -241,7 +242,7 @@ export const buildDirectOverrideDistribution = ({
 } = {}) => {
   validateSellerReportingChain(chain, { requireGroupHead });
 
-  const normalizedDirectRate = roundCommissionMoney(directRate);
+  const normalizedDirectRate = roundCommissionRate(directRate);
   if (normalizedDirectRate <= 0) {
     throw new Error('The assigned Sales Agent does not have an active sales commission rate for this project.');
   }
@@ -258,7 +259,7 @@ export const buildDirectOverrideDistribution = ({
   for (let index = 1; index < chain.length; index += 1) {
     const childSeller = chain[index - 1];
     const parentSeller = chain[index];
-    const rate = roundCommissionMoney(
+    const rate = roundCommissionRate(
       overrideRateMap.get(overrideKey(childSeller.accredited_seller_id, parentSeller.accredited_seller_id)) || 0
     );
 
@@ -274,7 +275,7 @@ export const buildDirectOverrideDistribution = ({
     }
   }
 
-  const allocatedRate = roundCommissionMoney(rows.reduce((sum, row) => sum + Number(row.rate || 0), 0));
+  const allocatedRate = roundCommissionRate(rows.reduce((sum, row) => sum + Number(row.rate || 0), 0));
   if (groupPoolRate > 0 && allocatedRate > Number(groupPoolRate) + 0.0001) {
     throw new Error(
       `Commission allocation (${allocatedRate}%) exceeds the group project pool (${Number(groupPoolRate)}%).`
@@ -285,7 +286,7 @@ export const buildDirectOverrideDistribution = ({
 };
 
 /**
- * Fixed In-House Group commission model. Rates are configured once per group and
+ * Fixed In-House Network commission model. Rates are configured once per group and
  * project, then applied uniformly to every seller with the matching role.
  */
 export const buildGroupFixedRateDistribution = ({
@@ -296,10 +297,10 @@ export const buildGroupFixedRateDistribution = ({
   validateSellerReportingChain(chain, { requireGroupHead });
 
   const rows = chain.map((seller, index) => {
-    const rate = roundCommissionMoney(getGroupFixedRateForRole(seller.role, fixedRates));
+    const rate = roundCommissionRate(getGroupFixedRateForRole(seller.role, fixedRates));
     if (rate <= 0) {
       throw new Error(
-        `${seller.full_name || seller.role || 'Seller'} does not have a valid fixed group rate for this project.`
+        `${seller.full_name || seller.role || 'Seller'} does not have a valid Network allocation rate for this project.`
       );
     }
 
@@ -313,12 +314,16 @@ export const buildGroupFixedRateDistribution = ({
     };
   });
 
-  const poolRate = roundCommissionMoney(fixedRates.poolRate || fixedRates.seller_group_pool_rate || 0);
-  const allocatedRate = roundCommissionMoney(rows.reduce((sum, row) => sum + row.rate, 0));
-  if (poolRate <= 0) throw new Error('The In-House Group does not have an active project Pool Rate.');
-  if (Math.abs(allocatedRate - poolRate) > 0.0001) {
+  const poolRate = roundCommissionRate(fixedRates.poolRate || fixedRates.seller_group_pool_rate || 0);
+  const companyProfitRate = roundCommissionRate(fixedRates.companyProfitRate || fixedRates.company_profit_rate || 0);
+  const distributionPoolRate = roundCommissionRate(
+    fixedRates.distributionPoolRate || fixedRates.distribution_pool_rate || Math.max(poolRate - companyProfitRate, 0)
+  );
+  const allocatedRate = roundCommissionRate(rows.reduce((sum, row) => sum + row.rate, 0));
+  if (poolRate <= 0) throw new Error('The In-House Network does not have an active project Pool Rate.');
+  if (Math.abs(allocatedRate - distributionPoolRate) > 0.0001) {
     throw new Error(
-      `Fixed position rates total ${allocatedRate.toFixed(2)}%, but the project Pool Rate is ${poolRate.toFixed(2)}%. Edit the In-House Group rates before reserving.`
+      `Seller allocation totals ${allocatedRate.toFixed(4)}%, but the distributable pool is ${distributionPoolRate.toFixed(4)}% after ${companyProfitRate.toFixed(4)}% Company Profit. Check the In-House Network hierarchy before reserving.`
     );
   }
 
@@ -327,7 +332,7 @@ export const buildGroupFixedRateDistribution = ({
 
 /**
  * Loads the exact commission structure used when the reservation is saved.
- * In-House Groups create one row per hierarchy position. External Groups
+ * In-House Networks create one row per hierarchy position. External Networks
  * create one row for the group account using the full project Pool Rate.
  */
 export const getReservationCommissionPreview = async (
@@ -360,16 +365,16 @@ export const getReservationCommissionPreview = async (
   let commissionRows = [];
   if (fixedRates.groupType === 'external') {
     if (!isExternalGroupRole(assignedSeller.role)) {
-      throw new Error('Only the registered External Group account can be assigned for an External Group sale.');
+      throw new Error('Only the registered External Network account can be assigned for an External Network sale.');
     }
     if (
       fixedRates.externalAccountUserId &&
       Number(fixedRates.externalAccountUserId) !== Number(assignedSeller.user_id)
     ) {
-      throw new Error('The selected account does not match the External Group representative.');
+      throw new Error('The selected account does not match the External Network representative.');
     }
-    const poolRate = roundCommissionMoney(fixedRates.poolRate || 0);
-    if (poolRate <= 0) throw new Error('The External Group does not have an active project Pool Rate.');
+    const poolRate = roundCommissionRate(fixedRates.poolRate || 0);
+    if (poolRate <= 0) throw new Error('The External Network does not have an active project Pool Rate.');
     commissionRows = [{
       seller: assignedSeller,
       childSeller: null,
@@ -380,7 +385,7 @@ export const getReservationCommissionPreview = async (
     }];
   } else {
     if (assignedSeller.role !== 'sales_agent') {
-      throw new Error('Only active Sales Agents can be assigned for an In-House Group sale.');
+      throw new Error('Only active Sales Agents can be assigned for an In-House Network sale.');
     }
     const chain = await loadCurrentSellerChain(connection, assignedSellerId);
     if (!chain.length) throw new Error('Assigned in-house hierarchy could not be loaded.');
@@ -391,27 +396,37 @@ export const getReservationCommissionPreview = async (
     });
   }
 
-  const allocatedRate = roundCommissionMoney(
+  const allocatedRate = roundCommissionRate(
     commissionRows.reduce((sum, row) => sum + Number(row.rate || 0), 0)
   );
-  const normalizedPoolRate = Number(fixedRates.poolRate || 0);
-  const unallocatedRate = roundCommissionMoney(Math.max(normalizedPoolRate - allocatedRate, 0));
-  const allocationDifference = roundCommissionMoney(Math.abs(normalizedPoolRate - allocatedRate));
+  const normalizedPoolRate = roundCommissionRate(fixedRates.poolRate || 0);
+  const companyProfitRate = fixedRates.groupType === 'in_house'
+    ? roundCommissionRate(fixedRates.companyProfitRate || 0)
+    : 0;
+  const distributionPoolRate = fixedRates.groupType === 'in_house'
+    ? roundCommissionRate(fixedRates.distributionPoolRate || Math.max(normalizedPoolRate - companyProfitRate, 0))
+    : normalizedPoolRate;
+  const allocationDifference = roundCommissionRate(Math.abs(distributionPoolRate - allocatedRate));
+  const unallocatedRate = roundCommissionRate(Math.max(distributionPoolRate - allocatedRate, 0));
 
   return {
     commissionBase: baseAmount,
     groupType: fixedRates.groupType,
     poolRate: normalizedPoolRate,
+    companyProfitRate,
+    distributionPoolRate,
+    poolShares: fixedRates.poolShares || null,
     allocatedRate,
     unallocatedRate,
     estimatedTotal: roundCommissionMoney(baseAmount * (allocatedRate / 100)),
+    estimatedCompanyProfit: roundCommissionMoney(baseAmount * (companyProfitRate / 100)),
     isValid: allocatedRate > 0 && allocationDifference <= 0.0001,
     warnings: [],
     assignedSeller,
     hierarchy: commissionRows.map((row, index) => {
       const isDummy = Number(row.seller.is_system_dummy || 0) === 1;
       const displayName = fixedRates.groupType === 'external'
-        ? row.seller.seller_group_name || row.seller.full_name || 'External Group'
+        ? row.seller.seller_group_name || row.seller.full_name || 'External Network'
         : isDummy && row.seller.owner_name
           ? `${row.seller.owner_name} — Direct Sales Agent`
           : row.seller.full_name || 'Unnamed seller';
@@ -548,6 +563,10 @@ export const replaceReservationCommissions = async (
   const hasSaleOwner = await columnExists(connection, 'lot_project_commissions', 'sale_owner_accredited_seller_id');
   const hasSellerSnapshot = await columnExists(connection, 'lot_project_commissions', 'seller_display_name_snapshot');
   const hasGroupSnapshot = await columnExists(connection, 'lot_project_commissions', 'seller_group_name_snapshot');
+  const hasPoolSnapshot = await columnExists(connection, 'lot_project_commissions', 'commission_pool_rate_snapshot');
+  const hasCompanyProfitSnapshot = await columnExists(connection, 'lot_project_commissions', 'company_profit_rate_snapshot');
+  const hasDistributionPoolSnapshot = await columnExists(connection, 'lot_project_commissions', 'distribution_pool_rate_snapshot');
+  const hasRolePoolShareSnapshot = await columnExists(connection, 'lot_project_commissions', 'role_pool_share_percent_snapshot');
 
   const insertedRows = [];
   const assignedSeller = preview.assignedSeller;
@@ -596,6 +615,22 @@ export const replaceReservationCommissions = async (
     if (hasGroupSnapshot) {
       columns.push('seller_group_name_snapshot');
       values.push(item.seller.seller_group_name || assignedSeller.seller_group_name || null);
+    }
+    if (hasPoolSnapshot) {
+      columns.push('commission_pool_rate_snapshot');
+      values.push(preview.poolRate);
+    }
+    if (hasCompanyProfitSnapshot) {
+      columns.push('company_profit_rate_snapshot');
+      values.push(preview.companyProfitRate || 0);
+    }
+    if (hasDistributionPoolSnapshot) {
+      columns.push('distribution_pool_rate_snapshot');
+      values.push(preview.distributionPoolRate || preview.poolRate);
+    }
+    if (hasRolePoolShareSnapshot) {
+      columns.push('role_pool_share_percent_snapshot');
+      values.push(preview.groupType === 'in_house' ? Number(preview.poolShares?.[item.seller.role] || 0) : 100);
     }
 
     columns.push(
@@ -658,5 +693,3 @@ export const hasReleasedCommissionActivity = ({
   Number(releasedCommissionCount || 0) > 0 ||
   Number(releasedStageCount || 0) > 0 ||
   Number(receiptCount || 0) > 0;
-
-

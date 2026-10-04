@@ -155,6 +155,8 @@ const commissionAdjustmentCodeMatches = (code, expected) => {
   const expectedBuffer = Buffer.from(cleanCommissionAdjustmentValue(expected), 'hex');
   return actual.length === expectedBuffer.length && crypto.timingSafeEqual(actual, expectedBuffer);
 };
+const roundCommissionRateValue = (value) => Math.round((Number(value || 0) + Number.EPSILON) * 10000) / 10000;
+
 const hashCommissionAdjustmentPayload = (payload) => crypto
   .createHash('sha256')
   .update(JSON.stringify(payload))
@@ -186,7 +188,7 @@ const sendCommissionAdjustmentCodeEmail = async ({
       `Your verification code is ${code}.`,
       `Unit: ${unitId}`,
       `Account: ${accountReference || '-'}`,
-      `Unit Group Rate: ${Number(groupRate || 0).toFixed(2)}%`,
+      `Unit Network Distribution Rate: ${Number(groupRate || 0).toFixed(4)}%`,
       `Allocated Rate: ${Number(allocatedRate || 0).toFixed(2)}%`,
       `Reason: ${reason}`,
       `The code expires in ${COMMISSION_ADJUSTMENT_CODE_EXPIRY_MINUTES} minutes.`,
@@ -201,7 +203,7 @@ const sendCommissionAdjustmentCodeEmail = async ({
         <p>Hello ${safeName},</p>
         <p>Use this code to authorize the unit-level commission adjustment for <strong>${safeUnitId}</strong> (${safeAccountReference}).</p>
         <div style="font-size:30px;font-weight:800;letter-spacing:8px;padding:18px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;text-align:center">${code}</div>
-        <p><strong>Unit Group Rate:</strong> ${Number(groupRate || 0).toFixed(2)}%<br/>
+        <p><strong>Unit Network Distribution Rate:</strong> ${Number(groupRate || 0).toFixed(4)}%<br/>
         <strong>Allocated Rate:</strong> ${Number(allocatedRate || 0).toFixed(2)}%<br/>
         <strong>Reason:</strong> ${safeReason}</p>
         <p>This code expires in ${COMMISSION_ADJUSTMENT_CODE_EXPIRY_MINUTES} minutes.</p>
@@ -864,7 +866,7 @@ export const getLotProjectListingProfile = async (req, res) => {
       }),
       currentHierarchy: savedCommissionHierarchy,
       commissionBase: roundMoneyValue(savedCommissionBase > 0 ? savedCommissionBase : fallbackCommissionBase),
-      groupRate: roundMoneyValue(
+      groupRate: roundCommissionRateValue(
         savedCommissionHierarchy.reduce((sum, item) => sum + Number(item.rate || 0), 0)
       ),
       hasInvalidSnapshot: savedCommissionHierarchy.some((item) =>
@@ -1352,9 +1354,9 @@ export const adjustLotProjectListingCommission = async (req, res) => {
       }
     );
     const updatedRows = mapCommissionSnapshotRows(updatedSnapshot.commissionRows, updatedSnapshot.releaseRows);
-    const updatedAllocatedRate = roundMoneyValue(updatedRows.reduce((sum, row) => sum + Number(row.rate || 0), 0));
+    const updatedAllocatedRate = roundCommissionRateValue(updatedRows.reduce((sum, row) => sum + Number(row.rate || 0), 0));
     if (!updatedRows.length || Math.abs(updatedAllocatedRate - adjustment.groupRate) > 0.0001) {
-      throw Object.assign(new Error('Adjusted commission did not reconcile to the designated Unit Group Rate. No changes were saved.'), { statusCode: 409 });
+      throw Object.assign(new Error('Adjusted commission did not reconcile to the designated Unit Network Distribution Rate. No changes were saved.'), { statusCode: 409 });
     }
 
     await connection.query(
@@ -1371,7 +1373,7 @@ export const adjustLotProjectListingCommission = async (req, res) => {
       entityId: String(context.listing.lot_project_account_id),
       entityLabel: `Unit ${context.listing.lot_project_listing_unit_id} — ${context.project.lot_project_name}`,
       title: 'Adjusted unit commission rates',
-      description: `Adjusted the saved commission rates for ${context.listing.lot_project_listing_unit_id}. Group Settings were not changed.`,
+      description: `Adjusted the saved commission rates for ${context.listing.lot_project_listing_unit_id}. Network Settings were not changed.`,
       metadata: {
         accountId: Number(context.listing.lot_project_account_id),
         accountReference: context.listing.account_reference || null,
@@ -1393,7 +1395,7 @@ export const adjustLotProjectListingCommission = async (req, res) => {
     await connection.commit();
     return res.json({
       success: true,
-      message: `Commission rates for ${context.listing.lot_project_listing_unit_id} were adjusted successfully. Group Settings were not changed.`,
+      message: `Commission rates for ${context.listing.lot_project_listing_unit_id} were adjusted successfully. Network Settings were not changed.`,
       data: {
         unitId: context.listing.lot_project_listing_unit_id,
         accountReference: context.listing.account_reference,
@@ -1661,5 +1663,3 @@ export const unholdLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
-
-

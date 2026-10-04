@@ -1,10 +1,10 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { FiEdit2, FiSearch, FiTrash2 } from "react-icons/fi";
+import { FiEdit2, FiRefreshCw, FiSearch, FiTrash2 } from "react-icons/fi";
 import { FaCircle } from "react-icons/fa6";
 import StatusAlert from "../../Shared/StatusAlert";
 import { formatDateTime } from "../../../utils/formatDateTime";
-import { useFetchDelete } from "../../../utils/useFetch";
+import { useFetch, useFetchDelete, useFetchPatch } from "../../../utils/useFetch";
 import { getDocumentResponsiblePartyLabel } from "../../../utils/documentRequirement";
 
 const Document_Library = ({ documents = [], onEditDocument, canEdit = false, canDelete = false }) => {
@@ -30,6 +30,18 @@ const Document_Library = ({ documents = [], onEditDocument, canEdit = false, can
     onSettled: () => setDeletingDocumentId(null),
   });
 
+
+  const statusMutation = useMutation({
+    mutationFn: ({ documentId, status }) => useFetchPatch(`/documents/${documentId}/status`, { status }, { confirmationHandled: 'compact' }),
+    onMutate: ({ status }) => setAlert({ type: 'loading', message: status === 'active' ? 'Reactivating document...' : 'Deactivating document...' }),
+    onSuccess: (data) => {
+      setAlert({ type: 'success', message: data?.message || 'Document status updated successfully.' });
+      queryClient.invalidateQueries({ queryKey: ['documents'] });
+      queryClient.invalidateQueries({ queryKey: ['templates'] });
+    },
+    onError: (error) => setAlert({ type: 'error', message: error?.message || 'Failed to update document status.' }),
+  });
+
   const filteredDocuments = useMemo(() => {
     const keyword = search.trim().toLowerCase();
     if (!keyword) return documents;
@@ -51,10 +63,31 @@ const Document_Library = ({ documents = [], onEditDocument, canEdit = false, can
     [currentPage, filteredDocuments, pageSize]
   );
 
-  const handleDelete = (document) => {
-    const confirmed = window.confirm(`Delete "${document.document_name}"? This cannot be undone.`);
-    if (!confirmed) return;
-    deleteMutation.mutate(document.document_id);
+  const handleDelete = async (document) => {
+    try {
+      setAlert({ type: 'loading', message: 'Checking document usage...' });
+      const result = await useFetch(`/documents/${document.document_id}/usage`);
+      const usage = result?.usage || result?.data || {};
+      if (usage.inUse) {
+        const confirmed = window.confirm(`This document is already in use (${Number(usage.total || 0)} linked record(s)). It cannot be permanently deleted. Deactivate Document instead? Existing usage will be preserved.`);
+        if (!confirmed) { setAlert(null); return; }
+        statusMutation.mutate({ documentId: document.document_id, status: 'inactive' });
+        return;
+      }
+      const confirmed = window.confirm(`Delete Permanently "${document.document_name}"? It is not in use and this cannot be undone.`);
+      if (!confirmed) { setAlert(null); return; }
+      deleteMutation.mutate(document.document_id);
+    } catch (error) {
+      setAlert({ type: 'error', message: error?.message || 'Unable to check document usage.' });
+    }
+  };
+
+  const handleStatusToggle = (document) => {
+    const isActive = String(document.document_status || 'active').toLowerCase() === 'active';
+    const nextStatus = isActive ? 'inactive' : 'active';
+    const label = isActive ? 'Deactivate Document' : 'Reactivate Document';
+    if (!window.confirm(`${label} "${document.document_name}"? Existing usage will be preserved.`)) return;
+    statusMutation.mutate({ documentId: document.document_id, status: nextStatus });
   };
 
   return (
@@ -114,8 +147,9 @@ const Document_Library = ({ documents = [], onEditDocument, canEdit = false, can
                 </p>
                 <p className="text-gray-600">{formatDateTime(document.document_updated_at || document.document_created_at)}</p>
                 <div className="flex items-center gap-2 md:justify-end">
-                  {canEdit ? <button type="button" onClick={() => onEditDocument(document)} disabled={deleteMutation.isPending} className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"><FiEdit2 className="h-4 w-4" />Edit</button> : null}
-                  {canDelete ? <button type="button" onClick={() => handleDelete(document)} disabled={deleteMutation.isPending} className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-60"><FiTrash2 className="h-4 w-4" />{isDeleting ? "Deleting..." : "Delete"}</button> : null}
+                  {canEdit ? <button type="button" onClick={() => onEditDocument(document)} disabled={deleteMutation.isPending || statusMutation.isPending} className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60"><FiEdit2 className="h-4 w-4" />Edit</button> : null}
+                  {canEdit ? <button type="button" onClick={() => handleStatusToggle(document)} disabled={deleteMutation.isPending || statusMutation.isPending} className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-60"><FiRefreshCw className="h-4 w-4" />{document.document_status === 'active' ? 'Deactivate Document' : 'Reactivate Document'}</button> : null}
+                  {canDelete ? <button type="button" onClick={() => handleDelete(document)} disabled={deleteMutation.isPending || statusMutation.isPending} className="inline-flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-60"><FiTrash2 className="h-4 w-4" />{isDeleting ? "Deleting..." : "Delete Permanently"}</button> : null}
                   {!canEdit && !canDelete ? <span className="text-xs font-semibold text-gray-400">View only</span> : null}
                 </div>
               </div>
@@ -165,5 +199,3 @@ const Document_Library = ({ documents = [], onEditDocument, canEdit = false, can
 };
 
 export default Document_Library;
-
-

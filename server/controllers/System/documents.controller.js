@@ -33,6 +33,49 @@ const tableExists = async (connection, tableName) => {
   return Number(rows[0]?.total || 0) > 0;
 };
 
+
+const countDocumentUsage = async (connection, tableName, documentId) => {
+  if (!(await tableExists(connection, tableName))) return 0;
+  const [rows] = await connection.query(
+    `SELECT COUNT(*) AS total FROM ${tableName} WHERE document_id = ?`,
+    [documentId]
+  );
+  return Number(rows[0]?.total || 0);
+};
+
+const countDocumentFileUsage = async (connection, documentId) => {
+  if (!(await tableExists(connection, 'lot_project_client_document_files'))
+      || !(await tableExists(connection, 'lot_project_client_documents'))) return 0;
+  const [rows] = await connection.query(`
+    SELECT COUNT(*) AS total
+    FROM lot_project_client_document_files file_row
+    INNER JOIN lot_project_client_documents client_document
+      ON client_document.lot_project_client_document_id = file_row.lot_project_client_document_id
+    WHERE client_document.document_id = ?
+  `, [documentId]);
+  return Number(rows[0]?.total || 0);
+};
+
+const getDocumentUsageSummary = async (connection, documentId) => {
+  const [templateLinks, projectDefaults, listingRequirements, clientDocuments, clientDocumentFiles] = await Promise.all([
+    countDocumentUsage(connection, 'template_document_list', documentId),
+    countDocumentUsage(connection, 'lot_project_default_documents', documentId),
+    countDocumentUsage(connection, 'lot_project_listing_documents', documentId),
+    countDocumentUsage(connection, 'lot_project_client_documents', documentId),
+    countDocumentFileUsage(connection, documentId),
+  ]);
+  const total = templateLinks + projectDefaults + listingRequirements + clientDocuments + clientDocumentFiles;
+  return {
+    inUse: total > 0,
+    total,
+    template_document_list: templateLinks,
+    lot_project_default_documents: projectDefaults,
+    lot_project_listing_documents: listingRequirements,
+    lot_project_client_documents: clientDocuments,
+    lot_project_client_document_files: clientDocumentFiles,
+  };
+};
+
 const safeDeleteByColumn = async (connection, tableName, columnName, value) => {
   const allowedTables = new Set([
     'template_document_list',
@@ -410,66 +453,103 @@ export const addTemplate = async (req, res) => {
   }
 };
 
-export const deleteDocument = async (req, res) => {
+export const getDocumentUsage = async (req, res) => {
   const connection = await db.getConnection();
-
   try {
     const documentId = Number(req.params.id);
-
-    if (!documentId) {
-      return res.status(400).json({ message: 'Invalid document id.' });
-    }
-
-    await connection.beginTransaction();
-
-    const [documentRows] = await connection.query(
-      `
-        SELECT *
-        FROM documents
-        WHERE document_id = ?
-        LIMIT 1
-      `,
+    if (!documentId) return res.status(400).json({ message: 'Invalid document id.' });
+    const [rows] = await connection.query(
+      'SELECT document_id, document_name, document_status FROM documents WHERE document_id = ? LIMIT 1',
       [documentId]
     );
+    if (!rows.length) return res.status(404).json({ message: 'Document not found.' });
+    const usage = await getDocumentUsageSummary(connection, documentId);
+    return res.json({ success: true, document: rows[0], usage, data: usage });
+  } catch (error) {
+    return res.status(500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
 
-    if (documentRows.length === 0) {
+export const updateDocumentStatus = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    const documentId = Number(req.params.id);
+    const status = String(req.body?.status || '').trim().toLowerCase();
+    if (!documentId) return res.status(400).json({ message: 'Invalid document id.' });
+    if (!['active', 'inactive'].includes(status)) {
+      return res.status(400).json({ message: 'Document status must be Active or Inactive.' });
+    }
+    await connection.beginTransaction();
+    const [rows] = await connection.query('SELECT * FROM documents WHERE document_id = ? LIMIT 1 FOR UPDATE', [documentId]);
+    if (!rows.length) {
+      await connection.rollback();
+      return res.status(404).json({ message: 'Document not found.' });
+    }
+    await connection.query('UPDATE documents SET document_status = ? WHERE document_id = ?', [status, documentId]);
+    const usage = await getDocumentUsageSummary(connection, documentId);
+    await writeAuditLog(connection, req, {
+      action: 'update', module: 'Documents', entityType: 'document', entityId: String(documentId),
+      entityLabel: rows[0].document_name || `Document ${documentId}`,
+      title: status === 'active' ? 'Reactivated document library item' : 'Deactivated document library item',
+      description: `${status === 'active' ? 'Reactivated' : 'Deactivated'} ${rows[0].document_name || `document ${documentId}`}. Existing project, listing, buyer, and file usage was preserved.`,
+      metadata: { before: rows[0], after: { ...rows[0], document_status: status }, usage, preservedExistingUsage: true },
+    });
+    await connection.commit();
+    return res.json({
+      success: true,
+      status,
+      usage,
+      preservedExistingUsage: true,
+      message: status === 'active' ? 'Document reactivated successfully.' : 'Document deactivated successfully. Existing usage was preserved.',
+    });
+  } catch (error) {
+    try { await connection.rollback(); } catch {}
+    return res.status(500).json({ message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
+export const deleteDocument = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    const documentId = Number(req.params.id);
+    if (!documentId) return res.status(400).json({ message: 'Invalid document id.' });
+
+    await connection.beginTransaction();
+    const [documentRows] = await connection.query(
+      'SELECT * FROM documents WHERE document_id = ? LIMIT 1 FOR UPDATE',
+      [documentId]
+    );
+    if (!documentRows.length) {
       await connection.rollback();
       return res.status(404).json({ message: 'Document not found.' });
     }
 
-    await safeDeleteByColumn(connection, 'template_document_list', 'document_id', documentId);
-    await safeDeleteByColumn(connection, 'lot_project_default_documents', 'document_id', documentId);
-    await safeDeleteByColumn(connection, 'lot_project_listing_documents', 'document_id', documentId);
-    await safeDeleteByColumn(connection, 'lot_project_client_documents', 'document_id', documentId);
-    await safeDeleteByColumn(connection, 'project_bailen_default_documents', 'document_id', documentId);
+    const usage = await getDocumentUsageSummary(connection, documentId);
+    if (usage.inUse) {
+      await connection.rollback();
+      return res.status(409).json({
+        code: 'DOCUMENT_IN_USE',
+        message: 'This document is already in use. Deactivate it instead so existing project, listing, buyer, and historical file usage stays intact.',
+        usage,
+      });
+    }
 
-    await connection.query(
-      `
-        DELETE FROM documents
-        WHERE document_id = ?
-      `,
-      [documentId]
-    );
-
+    await connection.query('DELETE FROM documents WHERE document_id = ?', [documentId]);
     await writeAuditLog(connection, req, {
-      action: 'delete',
-      module: 'Documents',
-      entityType: 'document',
-      entityId: String(documentId),
+      action: 'delete', module: 'Documents', entityType: 'document', entityId: String(documentId),
       entityLabel: documentRows[0]?.document_name || `Document ${documentId}`,
-      title: 'Deleted document library item',
-      description: `Permanently deleted ${documentRows[0]?.document_name || `document ${documentId}`} and removed its requirement links.`,
-      metadata: { before: documentRows[0], after: null },
+      title: 'Permanently deleted unused document',
+      description: `Permanently deleted unused document ${documentRows[0]?.document_name || documentId}.`,
+      metadata: { before: documentRows[0], after: null, usage },
     });
-
     await connection.commit();
-
-    return res.json({
-      success: true,
-      message: 'Document permanently deleted successfully.',
-    });
+    return res.json({ success: true, message: 'Unused document permanently deleted successfully.' });
   } catch (error) {
-    await connection.rollback();
+    try { await connection.rollback(); } catch {}
     return res.status(500).json({ message: getErrorMessage(error) });
   } finally {
     connection.release();
@@ -716,5 +796,3 @@ export const editTemplate = async (req, res) => {
     connection.release();
   }
 };
-
-

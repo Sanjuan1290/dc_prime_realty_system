@@ -175,5 +175,3 @@ export const canActorChangeUserRole = (userOrRole, currentRole, requestedRole) =
 };
 
 export const ROLE_PERMISSIONS = Object.freeze({ super_admin: allPermissions });
-
-

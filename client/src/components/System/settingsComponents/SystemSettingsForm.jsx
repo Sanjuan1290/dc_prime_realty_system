@@ -52,6 +52,20 @@ const SystemSettingsForm = ({ form, setForm, onSubmit, isSaving, disabled = fals
 
       <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 px-6 py-4">
+          <h2 className="text-lg font-black text-slate-950">In-House Network Pool Distribution</h2>
+          <p className="mt-1 text-sm font-semibold text-slate-500">Super Admin controlled. These percentages divide the distributable pool after Company Profit and must total exactly 100%.</p>
+        </div>
+        <div className="grid gap-4 p-6 md:grid-cols-4">
+          <Field label="Division Manager" helper="Default: 14.18% of distributable pool"><div className="relative"><input disabled={disabled} type="number" min="0" max="100" step="0.01" value={form.inHouseDmPoolSharePercent} onChange={(e) => update('inHouseDmPoolSharePercent', e.target.value)} className={`${inputClass} w-full pr-9`} /><span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-sm font-black text-slate-400">%</span></div></Field>
+          <Field label="Sales Director" helper="Default: 15.82% of distributable pool"><div className="relative"><input disabled={disabled} type="number" min="0" max="100" step="0.01" value={form.inHouseSdPoolSharePercent} onChange={(e) => update('inHouseSdPoolSharePercent', e.target.value)} className={`${inputClass} w-full pr-9`} /><span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-sm font-black text-slate-400">%</span></div></Field>
+          <Field label="Unit Manager" helper="Default: 20% of distributable pool"><div className="relative"><input disabled={disabled} type="number" min="0" max="100" step="0.01" value={form.inHouseUmPoolSharePercent} onChange={(e) => update('inHouseUmPoolSharePercent', e.target.value)} className={`${inputClass} w-full pr-9`} /><span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-sm font-black text-slate-400">%</span></div></Field>
+          <Field label="Sales Agent" helper="Default: 50% of distributable pool"><div className="relative"><input disabled={disabled} type="number" min="0" max="100" step="0.01" value={form.inHouseSaPoolSharePercent} onChange={(e) => update('inHouseSaPoolSharePercent', e.target.value)} className={`${inputClass} w-full pr-9`} /><span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-sm font-black text-slate-400">%</span></div></Field>
+        </div>
+        <div className="border-t border-slate-100 px-6 py-4 text-sm font-black text-slate-700">Total: {(Number(form.inHouseDmPoolSharePercent || 0) + Number(form.inHouseSdPoolSharePercent || 0) + Number(form.inHouseUmPoolSharePercent || 0) + Number(form.inHouseSaPoolSharePercent || 0)).toFixed(2)}%</div>
+      </section>
+
+      <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-200 px-6 py-4">
           <h2 className="text-lg font-black text-slate-950">System Status</h2>
           <p className="mt-1 text-sm font-semibold text-slate-500">Show whether the system is operating normally or under maintenance.</p>
         </div>
@@ -72,5 +86,3 @@ const SystemSettingsForm = ({ form, setForm, onSubmit, isSaving, disabled = fals
 }
 
 export default SystemSettingsForm
-
-

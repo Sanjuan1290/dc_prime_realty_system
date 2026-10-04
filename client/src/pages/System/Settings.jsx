@@ -24,6 +24,10 @@ const defaultForm = {
   reservationContactNumber: '',
   defaultReleaseDayOne: 7,
   defaultReleaseDayTwo: 22,
+  inHouseDmPoolSharePercent: 14.18,
+  inHouseSdPoolSharePercent: 15.82,
+  inHouseUmPoolSharePercent: 20,
+  inHouseSaPoolSharePercent: 50,
 }
 
 const mapSettingsToForm = (settings = {}) => ({
@@ -39,6 +43,10 @@ const mapSettingsToForm = (settings = {}) => ({
   reservationContactNumber: settings.reservationContactNumber || '',
   defaultReleaseDayOne: settings.defaultReleaseDayOne || 7,
   defaultReleaseDayTwo: settings.defaultReleaseDayTwo || 22,
+  inHouseDmPoolSharePercent: settings.inHouseDmPoolSharePercent ?? 14.18,
+  inHouseSdPoolSharePercent: settings.inHouseSdPoolSharePercent ?? 15.82,
+  inHouseUmPoolSharePercent: settings.inHouseUmPoolSharePercent ?? 20,
+  inHouseSaPoolSharePercent: settings.inHouseSaPoolSharePercent ?? 50,
 })
 
 const Settings = () => {
@@ -205,5 +213,3 @@ const Settings = () => {
 }
 
 export default Settings
-
-

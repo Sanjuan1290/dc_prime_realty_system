@@ -74,5 +74,3 @@ WHERE file_row.file_status <> 'removed'
       '/accounts/', account.account_reference, '/%'
     )
   );
-
-

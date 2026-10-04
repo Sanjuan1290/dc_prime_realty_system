@@ -43,5 +43,3 @@ SELECT
   `employee_status`
 FROM `employees`
 ORDER BY `employee_id`;
-
-

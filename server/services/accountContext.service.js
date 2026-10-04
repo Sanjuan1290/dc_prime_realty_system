@@ -50,5 +50,3 @@ export const buildAccountContext = ({ account = {}, listing = {}, readOnly = fal
 };
 
 export default buildAccountContext;
-
-

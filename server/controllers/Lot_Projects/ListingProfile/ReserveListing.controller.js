@@ -590,7 +590,7 @@ export const reserveLotProjectListing = async (req, res) => {
     }
     const assignedSellerId = Number(terms.sellerId || reservation.sellerId || reservation.seller?.id || reservation.seller?.accredited_seller_id || 0) || null;
     // The commission service determines whether this is an In-House distributed sale
-    // or a single-recipient External Group sale.
+    // or a single-recipient External Network sale.
     let saleChannel = 'distributed';
 
     if (!assignedSellerId) {
@@ -630,7 +630,7 @@ export const reserveLotProjectListing = async (req, res) => {
         Number(assignedSeller.user_id) === Number(assignedSeller.seller_group_external_account_user_id || 0);
       if (!isInHouseSalesAgent && !isExternalGroupAccount) {
         return res.status(400).json({
-          message: 'Select an active In-House Sales Agent or the registered External Group account.',
+          message: 'Select an active In-House Sales Agent or the registered External Network account.',
         });
       }
       saleChannel = isExternalGroupAccount ? 'external_group' : 'distributed';
@@ -1193,5 +1193,3 @@ export const reserveLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
-
-

@@ -6,6 +6,8 @@ import {
   addTemplate,
   deleteDocument,
   deleteTemplate,
+  getDocumentUsage,
+  updateDocumentStatus,
   editDocument,
   editTemplate,
 } from '../../controllers/System/documents.controller.js';
@@ -17,6 +19,8 @@ router.use(authenticateUser);
 
 router.get('/getDocuments', requirePermission(PERMISSIONS.SYSTEM_DOCUMENTS_VIEW), getDocuments);
 router.get('/getTemplates', requirePermission(PERMISSIONS.SYSTEM_DOCUMENT_TEMPLATES_VIEW), getTemplates);
+router.get('/:id/usage', requirePermission(PERMISSIONS.SYSTEM_DOCUMENTS_VIEW), getDocumentUsage);
+router.patch('/:id/status', requirePermission(PERMISSIONS.SYSTEM_DOCUMENTS_EDIT), updateDocumentStatus);
 router.post('/addDocument', requirePermission(PERMISSIONS.SYSTEM_DOCUMENTS_CREATE), addDocument);
 router.post('/addTemplate', requirePermission(PERMISSIONS.SYSTEM_DOCUMENT_TEMPLATES_CREATE), addTemplate);
 router.delete('/deleteDocument/:id', requirePermission(PERMISSIONS.SYSTEM_DOCUMENTS_DELETE), deleteDocument);
@@ -25,5 +29,3 @@ router.put('/editDocument/:id', requirePermission(PERMISSIONS.SYSTEM_DOCUMENTS_E
 router.put('/editTemplate/:id', requirePermission(PERMISSIONS.SYSTEM_DOCUMENT_TEMPLATES_EDIT), editTemplate);
 
 export default router;
-
-

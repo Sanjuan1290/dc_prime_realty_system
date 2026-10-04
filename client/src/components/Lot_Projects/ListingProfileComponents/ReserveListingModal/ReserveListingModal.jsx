@@ -55,7 +55,7 @@ const normalizeAgent = (agent = {}) => ({
   ...agent,
   id: Number(agent.accreditedSellerId || agent.accredited_seller_id || agent.id),
   accredited_seller_id: Number(agent.accreditedSellerId || agent.accredited_seller_id || agent.id),
-  name: agent.name || 'Unnamed Seller / Group',
+  name: agent.name || 'Unnamed Seller / Network',
   role: agent.role || 'Sales Agent',
   roleValue: agent.roleValue || agent.role_value || 'sales_agent',
   groupType: agent.groupType || agent.group_type || 'in_house',
@@ -472,15 +472,15 @@ const ReserveListingModal = ({
 
   const validatePaymentStep = () => {
     if (!paymentForm.sellerId || !selectedAgent) {
-      setAlert({ type: 'error', message: 'Select an active Seller / Group for this reservation.' })
+      setAlert({ type: 'error', message: 'Select an active Seller / Network for this reservation.' })
       return false
     }
     if (!['sales_agent', 'external_group'].includes(String(selectedAgent.roleValue).toLowerCase())) {
-      setAlert({ type: 'error', message: 'Select an active In-House Sales Agent or External Group account.' })
+      setAlert({ type: 'error', message: 'Select an active In-House Sales Agent or External Network account.' })
       return false
     }
     if (Number(selectedAgent.directRate || 0) <= 0) {
-      setAlert({ type: 'error', message: 'The selected Seller / Group does not have an active project commission rate.' })
+      setAlert({ type: 'error', message: 'The selected Seller / Network does not have an active project commission rate.' })
       return false
     }
     if (previewQuery.isLoading || previewQuery.isFetching) {
@@ -637,7 +637,7 @@ const ReserveListingModal = ({
     const paymentCalculations = getPaymentCalculations(tcp, effectivePaymentForm)
 
     // New reservations always use distributed commission generation. A
-    // The selected account now represents either an In-House Sales Agent or an External Group.
+    // The selected account now represents either an In-House Sales Agent or an External Network.
     const payload = {
       listing,
       reviewData: {
@@ -724,7 +724,7 @@ const ReserveListingModal = ({
 
           {activeStep === 2 ? <ReserveDocumentChecklistModal filteredDocuments={filteredDocuments} searchDocument={searchDocument} setSearchDocument={setSearchDocument} selectedDocuments={selectedDocuments} isSaving={isSaving} isLoadingDefaults={isLoadingDocuments} deletingDocId={null} isDocumentAdded={isDocumentAdded} addDocument={addDocument} addTemplateDocuments={addTemplateDocuments} undoTemplateDocuments={undoTemplateDocuments} templateAdditionHistory={templateAdditionHistory} removeDocument={removeDocument} updateDocumentRequirement={updateDocumentRequirement} updateDocumentResponsibleParty={updateDocumentResponsibleParty} loadProjectDefaults={loadProjectDefaults} documentTemplates={reservationDocumentTemplates} /> : null}
 
-          {activeStep === 3 ? <ReservePaymentTermsModal listing={listing} project={project} tcp={tcp} contractPricing={contractPricing} paymentForm={effectivePaymentForm} updatePaymentField={updatePaymentField} agents={fetchedAgents} selectedAgent={selectedAgent} agentSearch={agentSearch} setAgentSearch={setAgentSearch} isLoadingAgents={agentsQuery.isLoading || agentsQuery.isFetching} agentsError={!projectSlug ? 'Project information is missing.' : agentsQuery.isError ? agentsQuery.error?.message || 'Failed to load Seller / Group options.' : null} commissionPreview={commissionPreview} isLoadingPreview={previewQuery.isLoading || previewQuery.isFetching} previewError={previewQuery.isError ? previewQuery.error?.message || 'Failed to load the commission structure.' : null} /> : null}
+          {activeStep === 3 ? <ReservePaymentTermsModal listing={listing} project={project} tcp={tcp} contractPricing={contractPricing} paymentForm={effectivePaymentForm} updatePaymentField={updatePaymentField} agents={fetchedAgents} selectedAgent={selectedAgent} agentSearch={agentSearch} setAgentSearch={setAgentSearch} isLoadingAgents={agentsQuery.isLoading || agentsQuery.isFetching} agentsError={!projectSlug ? 'Project information is missing.' : agentsQuery.isError ? agentsQuery.error?.message || 'Failed to load Seller / Network options.' : null} commissionPreview={commissionPreview} isLoadingPreview={previewQuery.isLoading || previewQuery.isFetching} previewError={previewQuery.isError ? previewQuery.error?.message || 'Failed to load the commission structure.' : null} /> : null}
         </div>
 
         <div className="flex shrink-0 flex-col gap-3 border-t border-slate-200 bg-white px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
@@ -741,5 +741,3 @@ const ReserveListingModal = ({
 }
 
 export default ReserveListingModal
-
-

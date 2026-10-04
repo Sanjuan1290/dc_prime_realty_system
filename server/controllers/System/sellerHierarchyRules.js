@@ -13,7 +13,7 @@ export const SELLER_ROLE_LABELS = Object.freeze({
   sales_director: 'Sales Director',
   unit_manager: 'Unit Manager',
   sales_agent: 'Sales Agent',
-  external_group: 'External Group',
+  external_group: 'External Network',
 });
 
 export const REQUIRED_PARENT_ROLE = Object.freeze({
@@ -41,7 +41,7 @@ export const getRoleRateType = (role) =>
     : 'override';
 
 export const getRoleRateLabel = (role) => {
-  if (String(role || '') === EXTERNAL_GROUP_ROLE) return 'External group pool rate';
+  if (String(role || '') === EXTERNAL_GROUP_ROLE) return 'External Network pool rate';
   return getRoleRateType(role) === 'sales'
     ? 'Sales commission rate'
     : 'Override commission rate';
@@ -54,7 +54,7 @@ const sellerLabel = (seller = {}) =>
  * Validates the live in-house reporting chain used for new reservations.
  * Historical commission rows remain untouched, but a new reservation must use
  * the exact Sales Agent -> Unit Manager -> Sales Director -> Division Manager
- * structure, ending at the in-house group head.
+ * structure, ending at the in-house Network hierarchy head.
  */
 export const validateSellerReportingChain = (
   chain = [],
@@ -87,11 +87,9 @@ export const validateSellerReportingChain = (
   if (requireGroupHead) {
     const terminal = chain[chain.length - 1] || {};
     if (!terminal.is_group_head || !isGroupHeadRole(terminal.role)) {
-      throw new Error('Assign a Division Manager or Sales Director as the in-house group head before reserving this listing.');
+      throw new Error('Assign a Division Manager or Sales Director as the in-house Network hierarchy head before reserving this listing.');
     }
   }
 
   return true;
 };
-
-

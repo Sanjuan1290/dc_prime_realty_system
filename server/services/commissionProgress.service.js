@@ -306,5 +306,3 @@ export const syncCommissionProgressForListing = async (connection, listing = {})
     cancellationFrozen,
   };
 };
-
-

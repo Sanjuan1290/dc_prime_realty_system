@@ -42,6 +42,16 @@ const StatusPill = ({ value, requirement }) => (
   </span>
 )
 
+const LibraryStatusPill = ({ value }) => {
+  const active = String(value || 'active').toLowerCase() === 'active'
+  return (
+    <span className={`inline-flex w-fit items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-black ${active ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-300 bg-slate-100 text-slate-600'}`}>
+      <span className="h-1.5 w-1.5 rounded-full bg-current" />
+      {active ? 'Active' : 'Deactivated'}
+    </span>
+  )
+}
+
 const RequirementPill = ({ value }) => (
   <span
     className={`inline-flex w-fit items-center rounded-full border px-3 py-1 text-xs font-black ${
@@ -334,7 +344,7 @@ const Documents = ({
         <table className="min-w-[1100px] w-full divide-y divide-slate-200 text-sm">
           <thead className="bg-slate-50">
             <tr>
-              {['Document', 'Requirement', 'Responsible Party', 'Status', 'File', 'Actions'].map(
+              {['Document', 'Requirement', 'Responsible Party', 'Library Status', 'Submission Status', 'File', 'Actions'].map(
                 (head) => (
                   <th
                     key={head}
@@ -372,6 +382,10 @@ const Documents = ({
 
                   <td className="px-4 py-4">
                     <ResponsibilityPill value={row.responsibleParty || row.responsible_party} />
+                  </td>
+
+                  <td className="px-4 py-4">
+                    <LibraryStatusPill value={row.libraryStatus} />
                   </td>
 
                   <td className="px-4 py-4">
@@ -522,5 +536,3 @@ const Documents = ({
 }
 
 export default Documents
-
-

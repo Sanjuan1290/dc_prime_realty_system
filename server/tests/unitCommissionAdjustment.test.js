@@ -58,11 +58,11 @@ test('overallocated unit commission is invalid to save', () => {
         { commissionId: 14, rate: 1 },
       ],
     }),
-    /exceeds the 8\.00% Unit Group Rate by 1\.00%/i
+    /exceeds the 8\.00% Unit Network Distribution Rate by 1\.00%/i
   );
 });
 
-test('an individual role cannot exceed the editable Unit Group Rate', () => {
+test('an individual role cannot exceed the editable Unit Network Distribution Rate', () => {
   assert.throws(
     () => normalizeUnitCommissionAdjustment({
       groupRate: 8,
@@ -74,7 +74,7 @@ test('an individual role cannot exceed the editable Unit Group Rate', () => {
         { commissionId: 14, rate: 1 },
       ],
     }),
-    /Sales Agent rate cannot be greater than the 8\.00% Unit Group Rate/i
+    /Sales Agent rate cannot be greater than the 8\.00% Unit Network Distribution Rate/i
   );
 });
 
@@ -115,3 +115,26 @@ test('verification payload is deterministic and scoped to one buyer account', ()
 });
 
 
+test('unit commission adjustment preserves four-decimal rates and allows a CP-reduced distribution below 6%', () => {
+  const rows = [
+    { commissionId: 21, role: 'sales_agent', roleLabel: 'Sales Agent', rate: 2.5 },
+    { commissionId: 22, role: 'unit_manager', roleLabel: 'Unit Manager', rate: 1 },
+    { commissionId: 23, role: 'sales_director', roleLabel: 'Sales Director', rate: 0.791 },
+    { commissionId: 24, role: 'division_manager', roleLabel: 'Division Manager', rate: 0.709 },
+  ];
+  const result = normalizeUnitCommissionAdjustment({
+    groupRate: 5,
+    currentRows: rows,
+    rates: [
+      { commissionId: 21, rate: 2.5 },
+      { commissionId: 22, rate: 1 },
+      { commissionId: 23, rate: 0.791 },
+      { commissionId: 24, rate: 0.709 },
+    ],
+  });
+  assert.equal(result.groupRate, 5);
+  assert.equal(result.allocatedRate, 5);
+  assert.equal(result.rates.find((row) => row.commissionId === 23).rate, 0.791);
+  const payload = buildUnitCommissionAdjustmentPayload({ groupRate: 5, rates: result.rates });
+  assert.equal(payload.rates.find((row) => row.commissionId === 23).rate, 0.791);
+});

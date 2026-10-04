@@ -51,5 +51,3 @@ const ListingImportDoubleCheck = ({ request, onConfirm, onCancel }) => {
 }
 
 export default ListingImportDoubleCheck
-
-

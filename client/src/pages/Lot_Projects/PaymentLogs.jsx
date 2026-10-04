@@ -284,5 +284,3 @@ const PaymentLogs = () => {
 }
 
 export default PaymentLogs
-
-

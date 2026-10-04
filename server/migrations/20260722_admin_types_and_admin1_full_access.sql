@@ -34,5 +34,3 @@ UPDATE users
 SET admin_type = NULL
 WHERE role <> 'admin'
   AND admin_type IS NOT NULL;
-
-

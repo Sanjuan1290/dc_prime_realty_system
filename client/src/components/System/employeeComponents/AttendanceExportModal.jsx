@@ -230,5 +230,3 @@ const AttendanceExportModal = ({ onClose, attendanceSettings = {} }) => {
 }
 
 export default AttendanceExportModal
-
-

@@ -1,7 +1,9 @@
 const RATE_EPSILON = 0.0001;
 
+const RATE_FACTOR = 10000;
+
 const roundRate = (value) =>
-  Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
+  Math.round((Number(value || 0) + Number.EPSILON) * RATE_FACTOR) / RATE_FACTOR;
 
 const finiteRate = (value) => {
   const parsed = Number(value);
@@ -14,13 +16,13 @@ export const normalizeUnitCommissionAdjustment = ({
   groupRate,
   rates = [],
   currentRows = [],
-  minimumGroupRate = 6,
+  minimumGroupRate = 0.0001,
   maximumGroupRate = 15,
 } = {}) => {
   const normalizedGroupRate = finiteRate(groupRate);
-  if (!Number.isFinite(normalizedGroupRate)) throw validationError('Unit Group Rate is required.');
+  if (!Number.isFinite(normalizedGroupRate)) throw validationError('Unit Network Distribution Rate is required.');
   if (normalizedGroupRate < minimumGroupRate || normalizedGroupRate > maximumGroupRate) {
-    throw validationError(`Unit Group Rate must be between ${minimumGroupRate}% and ${maximumGroupRate}%.`);
+    throw validationError(`Unit Network Distribution Rate must be between ${minimumGroupRate}% and ${maximumGroupRate}%.`);
   }
 
   const savedRows = Array.isArray(currentRows) ? currentRows : [];
@@ -54,7 +56,7 @@ export const normalizeUnitCommissionAdjustment = ({
       throw validationError(`${current.roleLabel || current.commission_role || current.role || 'Each commission role'} rate must be greater than 0%.`);
     }
     if (rate > normalizedGroupRate + RATE_EPSILON) {
-      throw validationError(`${current.roleLabel || current.commission_role || current.role || 'A commission role'} rate cannot be greater than the ${normalizedGroupRate.toFixed(2)}% Unit Group Rate.`);
+      throw validationError(`${current.roleLabel || current.commission_role || current.role || 'A commission role'} rate cannot be greater than the ${normalizedGroupRate.toFixed(2)}% Unit Network Distribution Rate.`);
     }
 
     return {
@@ -78,7 +80,7 @@ export const normalizeUnitCommissionAdjustment = ({
       );
     }
     throw validationError(
-      `Allocated commission is ${allocatedRate.toFixed(2)}%, which exceeds the ${normalizedGroupRate.toFixed(2)}% Unit Group Rate by ${Math.abs(unallocatedRate).toFixed(2)}%.`
+      `Allocated commission is ${allocatedRate.toFixed(2)}%, which exceeds the ${normalizedGroupRate.toFixed(2)}% Unit Network Distribution Rate by ${Math.abs(unallocatedRate).toFixed(2)}%.`
     );
   }
 
@@ -111,5 +113,3 @@ export const buildUnitCommissionAdjustmentPayload = ({
 });
 
 export const UNIT_COMMISSION_RATE_EPSILON = RATE_EPSILON;
-
-

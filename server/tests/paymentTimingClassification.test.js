@@ -116,4 +116,3 @@ test('legacy migration still normalizes old Advance schedule_status values to Pa
   assert.match(migration, /SET schedule_status = 'Paid'/)
   assert.match(migration, /WHERE schedule_status = 'Advance'/)
 })
-

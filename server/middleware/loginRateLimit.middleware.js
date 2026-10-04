@@ -45,5 +45,3 @@ export const loginRateLimit = (req, res, next) => {
 
   return next();
 };
-
-

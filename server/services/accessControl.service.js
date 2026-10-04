@@ -98,5 +98,3 @@ export const hydrateUserPermissions = async (user, connection = db) => {
   if (String(user.role) === 'super_admin') return { ...user, permissions: Object.values(PERMISSIONS) };
   return { ...user, permissions: await getUserPermissionKeys(user.id, connection) };
 };
-
-

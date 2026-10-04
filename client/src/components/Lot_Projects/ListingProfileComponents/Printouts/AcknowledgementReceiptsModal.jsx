@@ -103,5 +103,3 @@ const AcknowledgementReceiptsModal = ({
 }
 
 export default AcknowledgementReceiptsModal
-
-

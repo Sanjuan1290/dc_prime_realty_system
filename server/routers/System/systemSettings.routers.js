@@ -15,5 +15,3 @@ router.post('/code', requirePermission(PERMISSIONS.SYSTEM_SETTINGS_MANAGE), requ
 router.put('/', requirePermission(PERMISSIONS.SYSTEM_SETTINGS_MANAGE), requireExactRole('super_admin'), updateSystemSettings);
 
 export default router;
-
-

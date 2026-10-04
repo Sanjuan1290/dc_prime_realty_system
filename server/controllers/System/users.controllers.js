@@ -220,7 +220,7 @@ const refreshActorSessionAfterSelfEdit = (req, res, { userId, role, authVersion 
 
 const assertPermanentDeactivationTarget = (req, user, userId) => {
   if (!user) throw Object.assign(new Error('User not found.'), { statusCode: 404 });
-  if (user.role === 'external_group') throw Object.assign(new Error('Manage External Group accounts from the External Groups page.'), { statusCode: 400 });
+  if (user.role === 'external_group') throw Object.assign(new Error('Manage External Network accounts from the External Networks page.'), { statusCode: 400 });
   if (!actorCanPerformUserAction(req, user.role)) throw Object.assign(new Error('Only Super Admin can deactivate another Super Admin account.'), { statusCode: 403 });
   if (user.status !== 'active') {
     const error = new Error('This account is permanently deactivated and cannot be activated again. Create a new account if the employee returns or changes position.');
@@ -347,6 +347,7 @@ const getSellerDependencyState = async (connection, userId) => {
         SELECT
           seller.accredited_seller_id,
           seller.seller_group_id,
+          seller.accredited_seller_status,
           user.role
         FROM accredited_sellers seller
         INNER JOIN users user ON user.id = seller.user_id
@@ -389,7 +390,7 @@ const validateSellerRemovalOrRoleChange = async (connection, userId, requestedRo
 
   if (!isSellerRole(requestedRole)) {
     if (dependencies.headedGroup) {
-      throw createValidationError('Change the In-House Group Head before removing this user from the hierarchy.');
+      throw createValidationError('Change the In-House Network Head before removing this user from the hierarchy.');
     }
     if (dependencies.directReports.length) {
       throw createValidationError('Reassign this seller’s direct reports before changing the account to a non-seller role.');
@@ -412,7 +413,7 @@ const validateSellerHierarchyAssignment = async (
   const groupId = toNullableNumber(sellerGroupId);
   const parentUserId = toNullableNumber(reportsUnderUserId);
 
-  if (!groupId) throw createValidationError('Select an In-House Group.');
+  if (!groupId) throw createValidationError('Select an In-House Network.');
 
   const [groupRows] = await connection.query(
     `
@@ -430,12 +431,12 @@ const validateSellerHierarchyAssignment = async (
     [groupId]
   );
   const group = groupRows[0];
-  if (!group) throw createValidationError('The selected In-House Group was not found.');
+  if (!group) throw createValidationError('The selected In-House Network was not found.');
   if (group.seller_group_status !== 'active') {
-    throw createValidationError('The selected In-House Group is inactive.');
+    throw createValidationError('The selected In-House Network is inactive.');
   }
   if (group.seller_group_type !== 'in_house') {
-    throw createValidationError('In-house positions can only be assigned to an In-House Group.');
+    throw createValidationError('In-house positions can only be assigned to an In-House Network.');
   }
 
   const dependencies = dependencyState || await getSellerDependencyState(connection, userId);
@@ -443,10 +444,18 @@ const validateSellerHierarchyAssignment = async (
   const headedGroup = dependencies.headedGroup;
 
   if (headedGroup && !isGroupHeadRole(role)) {
-    throw createValidationError('Only a Division Manager or Sales Director can be the head of an In-House Group. Change the Group Head first.');
+    throw createValidationError('Only a Division Manager or Sales Director can be the internal hierarchy head of an In-House Network. Change the hierarchy head first.');
   }
   if (headedGroup && Number(headedGroup.seller_group_id) !== groupId) {
-    throw createValidationError('A Group Head cannot be moved to another In-House Group. Change the Group Head first.');
+    throw createValidationError('A Network Hierarchy Head cannot be moved to another In-House Network. Change the hierarchy head first.');
+  }
+
+  if (
+    currentSeller
+    && Number(currentSeller.seller_group_id || 0) !== groupId
+    && currentSeller.accredited_seller_status === 'active'
+  ) {
+    throw createValidationError('This seller is currently active in another Network. Set the seller’s current Network membership to Inactive before assigning them to another Network.');
   }
 
   if (
@@ -454,7 +463,7 @@ const validateSellerHierarchyAssignment = async (
     && Number(currentSeller.seller_group_id || 0) !== groupId
     && dependencies.directReports.length
   ) {
-    throw createValidationError('Reassign this seller’s direct reports before moving the seller to another group.');
+    throw createValidationError('Reassign this seller’s direct reports before moving the seller to another Network.');
   }
 
   const invalidDirectReport = dependencies.directReports.find(
@@ -474,18 +483,14 @@ const validateSellerHierarchyAssignment = async (
       && group.seller_group_head_role === 'sales_director'
       && !isCurrentGroupHead;
     if (group.seller_group_head_user_id && !isCurrentGroupHead && !canReplaceBrokerHead) {
-      throw createValidationError('This group already has a Division Manager as its Group Head.');
+      throw createValidationError('This group already has a Division Manager as its Network Hierarchy Head.');
     }
     return null;
   }
 
   if (!parentUserId) {
-    const canBeUnassignedBroker = role === 'sales_director'
-      && (!group.seller_group_head_user_id || isCurrentGroupHead);
-    if (canBeUnassignedBroker) return null;
-
     throw createValidationError(
-      `${SELLER_ROLE_LABELS[role] || 'This seller'} must report under a ${SELLER_ROLE_LABELS[getRequiredParentRole(role)] || 'valid parent seller'}.`
+      `${SELLER_ROLE_LABELS[role] || 'This seller'} must report under a ${SELLER_ROLE_LABELS[getRequiredParentRole(role)] || 'valid parent seller'}. In-House Networks use the full DM → SD → UM → SA distribution chain.`
     );
   }
 
@@ -493,7 +498,7 @@ const validateSellerHierarchyAssignment = async (
     throw createValidationError('A seller cannot report under themselves.');
   }
   if (isCurrentGroupHead) {
-    throw createValidationError('The In-House Group Head reports directly to the developer and cannot have a reporting parent.');
+    throw createValidationError('The In-House Network hierarchy head reports directly to the developer and cannot have a reporting parent.');
   }
 
   const [parentRows] = await connection.query(
@@ -520,7 +525,7 @@ const validateSellerHierarchyAssignment = async (
     throw createValidationError('The selected reporting parent must be active.');
   }
   if (Number(parent.seller_group_id) !== groupId) {
-    throw createValidationError('The seller and reporting parent must belong to the same In-House Group.');
+    throw createValidationError('The seller and reporting parent must belong to the same In-House Network.');
   }
 
   const expectedRole = getRequiredParentRole(role);
@@ -1559,7 +1564,7 @@ export const createUser = async (req, res) => {
       return res.status(400).json({ message: 'Select a valid user role.' });
     }
     if (role === 'external_group') {
-      return res.status(400).json({ message: 'Create External Group accounts from the External Groups page.' });
+      return res.status(400).json({ message: 'Create External Network accounts from the External Networks page.' });
     }
     if (!actorCanCreateTargetRole(req, role)) {
       return denyUserManagement(res, 'You do not have permission to create this account type.');
@@ -1852,7 +1857,7 @@ export const editUser = async (req, res) => {
     const targetUser = targetRows[0];
     if (!targetUser) return res.status(404).json({ message: 'User not found.' });
     if (targetUser.role === 'external_group' || role === 'external_group') {
-      return res.status(400).json({ message: 'Manage External Group accounts from the External Groups page.' });
+      return res.status(400).json({ message: 'Manage External Network accounts from the External Networks page.' });
     }
 
     if (!actorCanManageTargetRole(req, targetUser.role)) {

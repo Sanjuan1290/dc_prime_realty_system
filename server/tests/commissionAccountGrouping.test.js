@@ -88,7 +88,7 @@ test('commission page and modal expose one-row accounts and seller selector', as
   ]);
 
   assert.match(pageSource, /One row per unit and buyer/);
-  assert.match(pageSource, /\['Unit', 'Client', 'Sellers', 'Group Name', 'Commission Base \(Before Discount\)', 'Total Gross'/);
+  assert.match(pageSource, /\['Unit', 'Client', 'Sellers', 'Network Name', 'Commission Base \(Before Discount\)', 'Total Gross'/);
   assert.match(pageSource, /commissionGroup=\{selected\}/);
   assert.match(modalSource, /Commission Seller/);
   assert.match(modalSource, /Select commission seller/);
@@ -96,5 +96,3 @@ test('commission page and modal expose one-row accounts and seller selector', as
   assert.match(controllerSource, /return every commission recipient for the/);
   assert.match(controllerSource, /searchCommission\.lot_project_listing_id = c\.lot_project_listing_id/);
 });
-
-

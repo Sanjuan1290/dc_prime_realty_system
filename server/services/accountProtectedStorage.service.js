@@ -299,5 +299,3 @@ export const retargetAccountProtectedFileMetadata = async (connection, { account
 
   return result;
 };
-
-

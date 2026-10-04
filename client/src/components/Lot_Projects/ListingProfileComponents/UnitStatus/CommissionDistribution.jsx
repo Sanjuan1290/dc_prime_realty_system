@@ -200,5 +200,3 @@ const CommissionDistribution = ({
 }
 
 export default CommissionDistribution
-
-

@@ -3,6 +3,7 @@ import {
   createGroup,
   getGroups,
   getGroupOptions,
+  getNetworkPoolShares,
   editGroup,
   toggleGroupStatus,
   viewGroup,
@@ -19,6 +20,7 @@ router.use(authenticateUser);
 
 router.get('/', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW), getGroups);
 router.get('/options', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW), getGroupOptions);
+router.get('/pool-shares', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW), getNetworkPoolShares);
 
 router.get('/:groupId/projects', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW), getGroupProjectOptions);
 router.get('/:groupId/projects/:projectId/analytics', requireProjectPermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW, { projectIdParam: 'projectId' }), getGroupProjectAnalytics);
@@ -30,5 +32,3 @@ router.put('/edit/:id', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAG
 router.patch('/toggle-status/:id', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE), toggleGroupStatus);
 
 export default router;
-
-

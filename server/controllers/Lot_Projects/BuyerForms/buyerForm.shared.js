@@ -422,5 +422,3 @@ export const getPublicBuyerFormUrl = (req, token) => {
   const origin = String(req?.headers?.origin || corsOrigin || 'http://localhost:5174').replace(/\/$/, '');
   return `${origin}/buyer-form/${token}`;
 };
-
-

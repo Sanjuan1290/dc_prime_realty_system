@@ -187,5 +187,3 @@ BEGIN
     SET MESSAGE_TEXT = 'Audit archive events are append-only.';
 END$$
 DELIMITER ;
-
-

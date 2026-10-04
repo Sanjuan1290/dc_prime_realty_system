@@ -9,5 +9,3 @@ const DoubleCheckFields = ({ fields = [], columns = 2 }) => (
 )
 
 export default DoubleCheckFields
-
-

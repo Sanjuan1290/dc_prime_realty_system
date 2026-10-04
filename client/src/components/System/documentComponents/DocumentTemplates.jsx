@@ -153,5 +153,3 @@ const DocumentTemplates = ({ templates = [], templateDocuments = [], onEditTempl
 };
 
 export default DocumentTemplates;
-
-

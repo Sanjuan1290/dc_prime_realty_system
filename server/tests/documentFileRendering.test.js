@@ -67,5 +67,3 @@ test('document modal and print page use same-session blob content for protected 
   assert.doesNotMatch(modal, /data\?\.url/);
   assert.doesNotMatch(printPage, /data\?\.url/);
 });
-
-

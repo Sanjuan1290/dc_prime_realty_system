@@ -53,4 +53,3 @@ export const previewAccountCode = async (connection, { role }) => {
     userId: nextUserId,
   };
 };
-

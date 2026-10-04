@@ -51,5 +51,3 @@ test('repair migration fixes existing overwritten headers and records an audit e
   assert.match(migration, /previousPaymentPercent/);
   assert.match(migration, /repairedPaymentPercent/);
 });
-
-

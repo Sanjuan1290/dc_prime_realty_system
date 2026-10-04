@@ -15,5 +15,3 @@ const PageHero = ({ eyebrow, title, description, image, location, logo }) => (
 )
 
 export default PageHero
-
-

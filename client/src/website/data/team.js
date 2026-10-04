@@ -14,5 +14,3 @@ export const departments = [
   { name: 'IT', description: 'Website, internal systems and digital operations support.' },
   { name: 'Property Guidance', description: 'Buyer inquiries, project information and scheduled site visits.' },
 ]
-
-

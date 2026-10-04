@@ -872,9 +872,9 @@ export const mapProfileListing = (row = {}, project = {}, documents = []) => {
     reports_under: row.reports_under || '-',
     sale_channel_raw: row.sale_channel || '-',
     sale_channel: row.sale_channel === 'external_group'
-      ? 'External Group'
+      ? 'External Network'
       : row.sale_channel === 'distributed'
-        ? 'In-House Group'
+        ? 'In-House Network'
         : row.sale_channel === 'direct_to_developer'
           ? 'Direct to Developer'
           : row.sale_channel || '-',
@@ -1013,6 +1013,7 @@ export const getListingDocuments = async (
           d.document_name,
           d.document_code,
           d.document_description,
+          d.document_status AS library_document_status,
           cd.lot_project_client_document_file_name,
           cd.lot_project_client_document_file_url,
           cd.lot_project_client_document_status
@@ -1042,6 +1043,7 @@ export const getListingDocuments = async (
           d.document_name,
           d.document_code,
           d.document_description,
+          d.document_status AS library_document_status,
           NULL AS lot_project_client_document_file_name,
           NULL AS lot_project_client_document_file_url,
           'Missing' AS lot_project_client_document_status
@@ -1074,6 +1076,7 @@ export const getListingDocuments = async (
       requirement: document.lot_project_listing_document_is_required ? 'Required' : 'Optional',
       responsibleParty: normalizeDocumentResponsibleParty(document.lot_project_listing_document_responsible_party, 'client'),
       responsible_party: normalizeDocumentResponsibleParty(document.lot_project_listing_document_responsible_party, 'client'),
+      libraryStatus: document.library_document_status || 'active',
       status: document.lot_project_client_document_status || 'Missing',
       fileName: document.lot_project_client_document_file_name || (imageEntries.length ? `${imageEntries.length} file(s)` : '-'),
       fileUrl: imageUrls[0] || '',
@@ -2097,6 +2100,7 @@ export const getReserveSellerOptions = async (
 
   const requiredColumns = [
     'commission_structure_type',
+    'company_profit_rate',
     'division_manager_rate',
     'sales_director_rate',
     'unit_manager_rate',
@@ -2104,7 +2108,7 @@ export const getReserveSellerOptions = async (
   ];
   for (const columnName of requiredColumns) {
     if (!(await columnExists(connection, 'seller_group_lot_project_rates', columnName))) {
-      throw new Error('Run the In-House and External Groups migration before loading reservation seller options.');
+      throw new Error('Run the In-House and External Networks migration before loading reservation seller options.');
     }
   }
 
@@ -2142,6 +2146,11 @@ export const getReserveSellerOptions = async (
           ELSE group_rate.sales_agent_rate
         END AS rate,
         group_rate.seller_group_pool_rate AS pool_rate,
+        group_rate.company_profit_rate AS company_profit_rate,
+        CASE
+          WHEN sg.seller_group_type = 'in_house' THEN group_rate.seller_group_pool_rate - group_rate.company_profit_rate
+          ELSE group_rate.seller_group_pool_rate
+        END AS distribution_pool_rate,
         sg.seller_group_id,
         sg.seller_group_name,
         parent_acs.accredited_seller_id AS reports_under_accredited_seller_id,
@@ -2174,8 +2183,8 @@ export const getReserveSellerOptions = async (
               + group_rate.sales_director_rate
               + group_rate.unit_manager_rate
               + group_rate.sales_agent_rate,
-              2
-            ) = ROUND(group_rate.seller_group_pool_rate, 2)
+              4
+            ) = ROUND(group_rate.seller_group_pool_rate - group_rate.company_profit_rate, 4)
           )
           OR
           (
@@ -2203,9 +2212,9 @@ export const getReserveSellerOptions = async (
       id: Number(row.id),
       accredited_seller_id: Number(row.accredited_seller_id),
       user_id: Number(row.user_id),
-      name: row.name || (isExternalGroup ? 'External Group' : 'Unnamed Sales Agent'),
+      name: row.name || (isExternalGroup ? 'External Network' : 'Unnamed Sales Agent'),
       representativeName: row.representative_name || null,
-      role: isExternalGroup ? 'External Group' : 'Sales Agent',
+      role: isExternalGroup ? 'External Network' : 'Sales Agent',
       roleValue: row.role,
       groupType: row.seller_group_type,
       isExternalGroup,
@@ -2213,6 +2222,8 @@ export const getReserveSellerOptions = async (
       rateValue,
       directRate: rateValue,
       poolRate: Number(row.pool_rate || 0),
+      companyProfitRate: Number(row.company_profit_rate || 0),
+      distributionPoolRate: Number(row.distribution_pool_rate || 0),
       rateSource: isExternalGroup ? 'external_group_pool' : 'in_house_group_project',
       groupId: Number(row.seller_group_id),
       groupName: row.seller_group_name || '-',
@@ -2225,10 +2236,10 @@ export const getReserveSellerOptions = async (
       ownerName: null,
       ownerRole: null,
       allocation: isExternalGroup
-        ? 'Full project Pool Rate paid to the External Group'
+        ? 'Full project Pool Rate paid to the External Network'
         : row.reports_under_name
-          ? `Fixed In-House Group rate · Sales Agent under ${row.reports_under_name}`
-          : 'Fixed In-House Group project rate',
+          ? `Fixed In-House Network rate · Sales Agent under ${row.reports_under_name}`
+          : 'Fixed In-House Network project rate',
     };
   });
 };
@@ -4577,5 +4588,3 @@ export const addIfColumnExists = async (connection, tableName, columns, values, 
 };
 
 // End of lotProject.shared.js — verified complete.
-
-
