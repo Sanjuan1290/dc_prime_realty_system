@@ -325,7 +325,7 @@ const normalizeSystemProjectAccess = (body = {}) => ({
 });
 
 const assertSystemProjectSelection = (role, access) => {
-  if (['super_admin', 'system_admin', 'auditor'].includes(role)) return;
+  if (['super_admin', 'auditor'].includes(role)) return;
   if (configurableSystemRoles.has(role) && !access.allProjects && !access.projectIds.length) {
     throw createValidationError('Select at least one project this user can access, or choose All Projects.');
   }
@@ -1583,7 +1583,7 @@ export const createUser = async (req, res) => {
     }
 
     if (systemUserRoles.has(role)) {
-      const projectAccess = ['super_admin', 'system_admin', 'auditor'].includes(role)
+      const projectAccess = ['super_admin', 'auditor'].includes(role)
         ? { allProjects: true, projectIds: [] }
         : normalizeSystemProjectAccess(req.body);
       assertSystemProjectSelection(role, projectAccess);
@@ -2377,7 +2377,7 @@ export const changeUserPosition = async (req, res) => {
       return res.status(400).json({ message: 'Enter a clear reason for the role change.' });
     }
 
-    const projectAccess = ['system_admin', 'auditor'].includes(newRole)
+    const projectAccess = newRole === 'auditor'
       ? { allProjects: true, projectIds: [] }
       : normalizeSystemProjectAccess(req.body);
     assertSystemProjectSelection(newRole, projectAccess);
@@ -2403,7 +2403,7 @@ export const changeUserPosition = async (req, res) => {
     }
 
     const previousRole = user.role;
-    const forcedAllProjects = ['system_admin', 'auditor'].includes(newRole);
+    const forcedAllProjects = newRole === 'auditor';
     await connection.query(
       `UPDATE users
        SET role = ?,

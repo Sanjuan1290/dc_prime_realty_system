@@ -11,6 +11,11 @@ import { getStaticRolePolicy } from '../config/rolePolicies.js';
 
 const read = (relativePath) => readFileSync(new URL(`../${relativePath}`, import.meta.url), 'utf8');
 const workflowService = read('services/operationalReview.service.js');
+const projectAccess = read('services/projectAccess.service.js');
+const usersController = read('controllers/System/users.controllers.js');
+const clientPermissions = read('../client/src/config/permissions.js');
+const createSystemUser = read('../client/src/components/System/userComponents/CreateSystemUserModal.jsx');
+const usersPage = read('../client/src/pages/System/Users.jsx');
 
 // Intentional rule change: the former "System Admin = full authority" model was
 // retired by the Staff/Head/Auditor redesign. Super Admin is the only break-glass
@@ -48,4 +53,16 @@ test('governed actions distinguish Head approval and Super Admin emergency inste
   assert.match(workflowService, /HEAD_PREAPPROVED: 'head_preapproved'/);
   assert.doesNotMatch(workflowService, /SYSTEM_ADMIN_DIRECT: 'system_admin_direct'/);
   assert.match(workflowService, /actor\.role === 'super_admin'/);
+});
+
+
+test('System Admin uses configurable project scope while Super Admin and Auditor remain globally scoped', () => {
+  assert.match(projectAccess, /\['super_admin', 'auditor'\]\.includes\(String\(user\?\.role/);
+  assert.doesNotMatch(projectAccess, /\['super_admin', 'system_admin', 'auditor'\]/);
+  assert.match(usersController, /if \(\['super_admin', 'auditor'\]\.includes\(role\)\) return;/);
+  assert.match(usersController, /const projectAccess = \['super_admin', 'auditor'\]\.includes\(role\)/);
+  assert.match(usersController, /const forcedAllProjects = newRole === 'auditor'/);
+  assert.match(clientPermissions, /\['super_admin', 'auditor'\]\.includes\(user\.role\)/);
+  assert.doesNotMatch(createSystemUser, /\['super_admin','system_admin','auditor'\]/);
+  assert.doesNotMatch(usersPage, /\['super_admin','system_admin','auditor'\]\.includes\(user\.role\)/);
 });

@@ -21,6 +21,14 @@ const CODE_MAX_ATTEMPTS = Math.max(3, Math.min(Number(process.env.DESTRUCTIVE_AC
 const clean = (value) => String(value ?? '').trim();
 const escapeHtml = (value = '') => clean(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 const requestIp = (req) => clean(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || req.ip).split(',')[0].trim();
+const requirePurgeAuthority = async (req) => {
+  const actor = await getAuthenticatedUser(req);
+  if (!actor) throw Object.assign(new Error('You must be logged in to permanently delete account records.'), { statusCode: 401 });
+  if (String(actor.role || '').toLowerCase() !== 'super_admin') {
+    throw Object.assign(new Error('Only Super Admin can permanently delete account records.'), { statusCode: 403 });
+  }
+  return actor;
+};
 const maskEmail = (email = '') => {
   const [local = '', domain = ''] = clean(email).split('@');
   if (!domain) return 'your account email';
@@ -277,6 +285,7 @@ export const getLotProjectListingAccountHistory = async (req, res) => {
 export const getLotProjectAccountPurgePreview = async (req, res) => {
   const connection = await db.getConnection();
   try {
+    await requirePurgeAuthority(req);
     const context = await getAccountForProject(connection, req);
     if (context.errorStatus) return res.status(context.errorStatus).json({ message: context.errorMessage });
     const preview = await getPurgePreview(connection, context.account);
@@ -291,7 +300,7 @@ export const getLotProjectAccountPurgePreview = async (req, res) => {
 export const requestLotProjectAccountPurgeCode = async (req, res) => {
   const connection = await db.getConnection();
   try {
-    const actor = await getAuthenticatedUser(req);
+    const actor = await requirePurgeAuthority(req);
     if (!actor?.id || !actor.email) return res.status(400).json({ message: 'The administrator account must have an email address.' });
 
     const reason = clean(req.body.deletionReason || req.body.reason);
@@ -533,7 +542,7 @@ export const purgeLotProjectAccount = async (req, res) => {
   let purgeEventId = 0;
   let purgeAccountId = 0;
   try {
-    const actor = await getAuthenticatedUser(req);
+    const actor = await requirePurgeAuthority(req);
     const verificationId = Number(req.body.verificationId || 0);
     const code = clean(req.body.code);
     if (!verificationId || !/^\d{6}$/.test(code)) return res.status(400).json({ message: 'Enter the six-digit verification code.' });

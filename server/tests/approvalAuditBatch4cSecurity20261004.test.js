@@ -117,7 +117,8 @@ test('legacy project-access imports delegate to persisted-role-safe authoritativ
   assert.match(compatibilityProjectAccess, /replaceAdminProjectAccess = replaceUserProjectAccess/);
   assert.match(compatibilityProjectAccess, /hydrateAdminProjectAccess = hydrateUserProjectAccess/);
   assert.match(authoritativeProjectAccess, /persisted account role wins/);
-  assert.match(authoritativeProjectAccess, /\['super_admin', 'system_admin', 'auditor'\]/);
+  assert.match(authoritativeProjectAccess, /\['super_admin', 'auditor'\]/);
+  assert.doesNotMatch(authoritativeProjectAccess, /\['super_admin', 'system_admin', 'auditor'\]/);
 });
 
 test('Head approval is single-requester, exact-record, exact-action and exact-payload', () => {

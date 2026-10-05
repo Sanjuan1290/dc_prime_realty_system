@@ -40,7 +40,7 @@ const normalizePercent = (value, fallback) => {
   return Math.round((numeric + Number.EPSILON) * 10000) / 10000;
 };
 
-const isSettingsAuthority = (user) => ['super_admin','system_admin'].includes(String(user?.role || '').toLowerCase());
+const isSettingsAuthority = (user) => String(user?.role || '').toLowerCase() === 'super_admin';
 
 const syncInHouseNetworkRateCache = async (connection, payload) => {
   if (!(await tableExists(connection, 'seller_group_lot_project_rates'))) return;
@@ -96,7 +96,7 @@ const requireSettingsManager = async (req) => {
     throw error;
   }
   if (!isSettingsAuthority(user)) {
-    const error = new Error('Only System Admin or Super Admin can edit system settings.');
+    const error = new Error('Only Super Admin can edit system settings.');
     error.statusCode = 403;
     throw error;
   }

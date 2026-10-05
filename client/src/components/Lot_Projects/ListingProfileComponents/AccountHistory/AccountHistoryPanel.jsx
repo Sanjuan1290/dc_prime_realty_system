@@ -89,7 +89,7 @@ const AccountHistoryPanel = ({ projectSlug, listingId, canPermanentlyDelete = fa
                       }}
                       onKeyDown={(event) => event.stopPropagation()}
                       disabled={!canPermanentlyDelete}
-                      title={!canPermanentlyDelete ? 'System Admin or Super Admin authority is required for permanent account-record deletion.' : 'Permanently delete retained buyer-account records'}
+                      title={!canPermanentlyDelete ? 'Super Admin authority is required for permanent account-record deletion.' : 'Permanently delete retained buyer-account records'}
                       className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 text-sm font-black text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400"
                     >
                       <FiTrash2 /> Permanently Delete Records

@@ -370,7 +370,7 @@ export const getFirstAllowedLotProjectPath = (user = {}, projectSlug = '') => {
 
 export const hasProjectScope = (user = {}, projectSlug = '') => {
   if (!user || !projectSlug || !isSystemUserRole(user?.role)) return false
-  if (['super_admin', 'system_admin', 'auditor'].includes(user.role) || user.all_projects_access === true || Number(user.all_projects_access || user.admin_all_projects || 0) === 1) return true
+  if (['super_admin', 'auditor'].includes(user.role) || user.all_projects_access === true || Number(user.all_projects_access || user.admin_all_projects || 0) === 1) return true
   const projects = Array.isArray(user.projects) ? user.projects : (Array.isArray(user.admin_projects) ? user.admin_projects : [])
   const normalizedSlug = String(projectSlug).trim().toLowerCase()
   return projects.some((project) => String(project?.slug || project?.lot_project_slug || '').trim().toLowerCase() === normalizedSlug)

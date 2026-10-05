@@ -15,17 +15,22 @@ test('retained commission percentage drives 20 and 40 percent milestone eligibil
   assert.equal(calculateCommissionableRetainedPercent({ retainedAmount: 1200000, commissionBase: 1000000 }), 100);
 });
 
-test('secure purge accepts System Admin or Super Admin with password and email-code routes', () => {
+test('secure purge is owner-only with password and email-code routes', () => {
   const router = read('server/routers/System/projects.routers.js');
   const controller = read('server/controllers/Lot_Projects/Accounts/Accounts.controller.js');
+  const listingProfile = read('client/src/pages/Lot_Projects/ListingProfile.jsx');
+  const accountHistory = read('client/src/components/Lot_Projects/ListingProfileComponents/AccountHistory/AccountHistoryPanel.jsx');
   assert.match(router, /accounts\/:accountId\/purge-code/);
-  assert.match(router, /requireExactRole\('super_admin','system_admin'\)/);
+  assert.match(router, /requireExactRole\('super_admin'\)/);
   assert.match(router, /requireCurrentPassword/);
   assert.match(router, /accounts\/:accountId\/purge'/);
   assert.match(controller, /crypto\.randomInt\(100000, 1000000\)/);
   assert.match(controller, /timingSafeEqual/);
   assert.match(controller, /attempt_count/);
   assert.match(controller, /expires_at < NOW\(\)/);
+  assert.match(controller, /Only Super Admin can permanently delete account records/);
+  assert.match(listingProfile, /canPermanentlyDelete=\{currentUserData\?\.user\?\.role === 'super_admin'\}/);
+  assert.match(accountHistory, /Super Admin authority is required for permanent account-record deletion/);
 });
 
 test('document upload is server-signed and authenticated', () => {
