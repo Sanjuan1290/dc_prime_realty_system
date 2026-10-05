@@ -6,6 +6,7 @@ import {
   ROLE_PARENT,
   ROLE_DEFAULT_EDITABLE_ROLES,
   SYSTEM_ADMIN_MANAGEABLE_ROLES,
+  getAuditorAllowedPermissions,
   getAuditorEnforcedPermissions,
 } from './permissions.js';
 import { RECOMMENDED_ROLE_PERMISSIONS } from './recommendedRolePermissions.js';
@@ -45,6 +46,7 @@ const systemAdminRequired = Object.freeze([
 ]);
 
 const auditorRequired = Object.freeze(getAuditorEnforcedPermissions());
+const auditorCeiling = Object.freeze(getAuditorAllowedPermissions());
 
 // System Admin is deliberately NOT a second Super Admin. Its ceiling is the
 // governance/read baseline plus narrowly-scoped correction route permissions.
@@ -57,7 +59,7 @@ const systemAdminCeiling = unique([
 
 const roleCeiling = (role) => {
   if (role === 'system_admin') return systemAdminCeiling;
-  if (role === 'auditor') return auditorRequired;
+  if (role === 'auditor') return auditorCeiling;
   if (DEPARTMENT_STAFF_ROLES.includes(role)) {
     return unique([...(RECOMMENDED_ROLE_PERMISSIONS[role] || []), PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW]);
   }
@@ -89,7 +91,7 @@ export const getStaticRolePolicy = (role) => {
     parentRole: ROLE_PARENT[normalizedRole] || null,
     ceiling,
     required,
-    fixed: normalizedRole === 'auditor',
+    fixed: false,
     defaultEditable: ROLE_DEFAULT_EDITABLE_ROLES.includes(normalizedRole),
     systemAdminManageable: SYSTEM_ADMIN_MANAGEABLE_ROLES.includes(normalizedRole),
   };

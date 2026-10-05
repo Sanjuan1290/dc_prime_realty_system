@@ -172,7 +172,7 @@ test('Review Center exposes the required Head, Auditor, case, correction, approv
 
 test('Role & Access Control UI groups System, Audit, Staff/Head departments and Owner separately', () => {
   for (const label of ['SYSTEM','AUDIT','MARKETING','SALES','ACCOUNTING','OPERATIONS','OWNER']) assert.ok(roleAccessUi.includes(`'${label}'`), label);
-  assert.match(roleAccessUi, /Auditor · Enforced Global Read-Only/);
+  assert.match(roleAccessUi, /Auditor · Governed Global Read-Only/);
   assert.match(roleAccessUi, /Head inheritance/);
   assert.match(accessController, /Correct Reservation \(Governed\)/);
   assert.match(accessController, /Penalty \/ LMF Adjustment \(Governed\)/);

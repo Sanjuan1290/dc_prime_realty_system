@@ -159,6 +159,6 @@ test('Review Center preserves Batches 1-3 endpoints and adds Batch 4 protected-c
 
 test('Role & Access UI includes the new governance groups', () => {
   for (const label of ['SYSTEM','AUDIT','MARKETING','SALES','ACCOUNTING','OPERATIONS','OWNER']) assert.ok(roleAccessUi.includes(`'${label}'`), label);
-  assert.match(roleAccessUi, /Auditor · Enforced Global Read-Only/);
+  assert.match(roleAccessUi, /Auditor · Governed Global Read-Only/);
   assert.match(roleAccessUi, /Head inheritance/);
 });

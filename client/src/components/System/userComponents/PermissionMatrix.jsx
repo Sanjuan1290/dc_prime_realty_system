@@ -63,7 +63,6 @@ const PermissionMatrix = ({ catalog = [], selected = [], onChange, disabled = fa
             <label className={`flex items-center gap-3 ${disabled || !optional.length ? 'text-slate-500' : 'cursor-pointer text-slate-900'}`}>
               <input type="checkbox" checked={allSelected} disabled={disabled || !optional.length} onChange={() => toggleGroup(group)} className="h-4 w-4 rounded border-slate-300 text-blue-600" />
               <span className="font-black">{group.group}</span>
-              {group.kind ? <span className="ml-auto rounded-full bg-slate-100 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-slate-500">{group.kind}</span> : null}
             </label>
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
               {(group.items || []).map(([label, key]) => {

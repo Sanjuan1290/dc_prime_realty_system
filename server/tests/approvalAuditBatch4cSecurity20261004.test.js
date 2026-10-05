@@ -129,8 +129,9 @@ test('Head approval is single-requester, exact-record, exact-action and exact-pa
   assert.match(protectedChange, /status='used',used_at=NOW\(\)/);
 });
 
-test('Role & Access controller keeps Auditor fixed and System Admin within Staff/Head targets', () => {
-  assert.match(accessController, /Auditor access is enforced as global read-only and cannot be customized/);
+test('Role & Access keeps governance ceilings while Super Admin may tune System Admin and Auditor extras', () => {
+  assert.match(accessController, /\[\.\.\.ROLE_DEFAULT_EDITABLE_ROLES, 'system_admin', 'auditor'\]/);
+  assert.match(accessController, /if \(actor\?\.role === 'super_admin'\)/);
   assert.match(accessController, /SYSTEM_ADMIN_MANAGEABLE_ROLES\.includes\(targetRole\)/);
-  assert.match(accessController, /ROLE_DEFAULT_EDITABLE_ROLES\.includes\(role\)/);
+  assert.match(accessController, /actor\?\.role === 'system_admin'[\s\S]*ROLE_DEFAULT_EDITABLE_ROLES\.includes\(role\)/);
 });

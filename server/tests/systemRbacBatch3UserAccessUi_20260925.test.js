@@ -56,12 +56,13 @@ test('System Admin can manage Staff/Head accounts but governance roles remain co
   assert.match(usersPage, /SYSTEM_ADMIN_MANAGEABLE_ROLES/);
 });
 
-test('Auditor access is globally read-only and cannot be customized', () => {
+test('Auditor core access stays enforced while only whitelisted export/print extras are configurable by Super Admin', () => {
   assert.match(permissions, /AUDITOR_ENFORCED_PERMISSIONS/);
-  assert.match(permissions, /if \(actor\.role === 'auditor'\) return AUDITOR_ENFORCED_PERMISSIONS\.has\(permission\)/);
-  assert.match(accessController, /Auditor access is enforced as global read-only and cannot be customized/);
-  assert.match(accessController, /Auditor access is fixed by policy/);
-  assert.match(rolePolicies, /auditor/);
+  assert.match(permissions, /AUDITOR_OPTIONAL_PERMISSIONS/);
+  assert.match(permissions, /if \(!AUDITOR_OPTIONAL_PERMISSIONS\.has\(permission\)\) return false/);
+  assert.match(rolePolicies, /auditorCeiling/);
+  assert.match(accessController, /\[\.\.\.ROLE_DEFAULT_EDITABLE_ROLES, 'system_admin', 'auditor'\]/);
+  assert.match(accessController, /actor\?\.role === 'super_admin'/);
 });
 
 test('Head roles structurally inherit Staff defaults', () => {
@@ -88,7 +89,7 @@ test('Role & Access UI groups governance and department roles clearly', () => {
   assert.doesNotMatch(permissionMatrix, />Clear Optional<\/button>/);
 });
 
-test('per-account access UI keeps Super Admin full access and Auditor fixed policy visible', () => {
+test('per-account access UI keeps Super Admin full access and governed Auditor policy visible', () => {
   assert.match(userAccess, /All Projects · Required/);
   assert.match(userAccess, /governed at a higher authority level/);
   assert.match(userAccess, /auditor|Auditor/);

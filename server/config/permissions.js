@@ -257,7 +257,25 @@ const AUDITOR_ENFORCED_PERMISSIONS = new Set([
   PERMISSIONS.WORKFLOW_AUDIT_CORRECTION_VERIFY,
 ]);
 
+const AUDITOR_OPTIONAL_PERMISSIONS = new Set([
+  PERMISSIONS.SYSTEM_REPORTS_EXPORT,
+  PERMISSIONS.SYSTEM_PROJECTS_PRINT_PRICE_LIST,
+  PERMISSIONS.SYSTEM_ACCREDITED_PRINT,
+  PERMISSIONS.PAYROLL_RECEIPT_PRINT,
+  PERMISSIONS.PAYROLL_RECEIPT_EXPORT,
+  PERMISSIONS.PAYROLL_SUMMARY_EXPORT,
+  PERMISSIONS.LOT_REPORTS_EXPORT,
+  PERMISSIONS.LOT_PRINTOUTS_USE,
+]);
+
+const AUDITOR_ALLOWED_PERMISSIONS = new Set([
+  ...AUDITOR_ENFORCED_PERMISSIONS,
+  ...AUDITOR_OPTIONAL_PERMISSIONS,
+]);
+
 export const getAuditorEnforcedPermissions = () => [...AUDITOR_ENFORCED_PERMISSIONS];
+export const getAuditorOptionalPermissions = () => [...AUDITOR_OPTIONAL_PERMISSIONS];
+export const getAuditorAllowedPermissions = () => [...AUDITOR_ALLOWED_PERMISSIONS];
 export const isSystemUserRole = (role) => SYSTEM_USER_ROLES.includes(String(role || ''));
 export const isConfigurableSystemRole = (role) => CONFIGURABLE_SYSTEM_ROLES.includes(String(role || ''));
 export const isSellerUserRole = (role) => SELLER_USER_ROLES.includes(String(role || ''));
@@ -276,7 +294,11 @@ export const roleHasPermission = (userOrRole, permission) => {
   if (!permission) return false;
   const actor = normalizeActor(userOrRole);
   if (actor.role === 'super_admin') return allPermissions.has(permission);
-  if (actor.role === 'auditor') return AUDITOR_ENFORCED_PERMISSIONS.has(permission);
+  if (actor.role === 'auditor') {
+    if (AUDITOR_ENFORCED_PERMISSIONS.has(permission)) return true;
+    if (!AUDITOR_OPTIONAL_PERMISSIONS.has(permission)) return false;
+    return normalizedPermissionSet(actor).has(permission);
+  }
   return normalizedPermissionSet(actor).has(permission);
 };
 
@@ -317,5 +339,5 @@ export const canActorChangeUserRole = (userOrRole, currentRole, requestedRole) =
 
 export const ROLE_PERMISSIONS = Object.freeze({
   super_admin: allPermissions,
-  auditor: AUDITOR_ENFORCED_PERMISSIONS,
+  auditor: AUDITOR_ALLOWED_PERMISSIONS,
 });

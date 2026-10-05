@@ -68,7 +68,6 @@ const getDirectUserPermissionKeys = async (userId, connection = db) => {
 export const getRoleDefaultPermissionKeys = async (role, connection = db, seen = new Set()) => {
   const normalizedRole = String(role || '');
   if (!CONFIGURABLE_SYSTEM_ROLES.includes(normalizedRole)) return [];
-  if (normalizedRole === 'auditor') return getAuditorEnforcedPermissions();
   if (seen.has(normalizedRole)) {
     throw Object.assign(new Error('Role inheritance loop detected.'), { statusCode: 500, code: 'ROLE_INHERITANCE_LOOP' });
   }
@@ -89,8 +88,6 @@ export const getUserPermissionKeys = async (userId, connection = db) => {
   const identity = await loadUserRole(connection, id);
   if (!identity || identity.status !== 'active') return [];
   if (identity.role === 'super_admin') return Object.values(PERMISSIONS);
-  if (identity.role === 'auditor') return getAuditorEnforcedPermissions();
-
   const direct = await getDirectUserPermissionKeys(id, connection);
   const parentRole = ROLE_PARENT[identity.role] || null;
   const inherited = parentRole
@@ -113,10 +110,6 @@ export const replaceUserPermissions = async (connection, {
   if (!CONFIGURABLE_SYSTEM_ROLES.includes(identity.role)) {
     throw Object.assign(new Error('This account does not use configurable system permissions.'), { statusCode: 400 });
   }
-  if (identity.role === 'auditor') {
-    throw Object.assign(new Error('Auditor access is enforced as global read-only and cannot be customized.'), { statusCode: 409, code: 'AUDITOR_ACCESS_LOCKED' });
-  }
-
   const normalized = validatePermissionKeys(permissionKeys);
   assertPermissionKeysWithinRoleCeiling(identity.role, normalized);
 
@@ -143,17 +136,13 @@ export const replaceUserPermissions = async (connection, {
 
 export const copyRoleDefaultsToUser = async (connection, { userId, role, changedByUserId = null }) => {
   const defaults = await getRoleDefaultPermissionKeys(role, connection);
-  if (role === 'auditor') {
-    await connection.query('DELETE FROM user_permissions WHERE user_id = ?', [Number(userId)]);
-    return defaults;
-  }
   return replaceUserPermissions(connection, { userId, permissionKeys: defaults, changedByUserId });
 };
 
 export const replaceRoleDefaults = async (connection, { role, permissionKeys = [], changedByUserId = null }) => {
   const normalizedRole = String(role || '');
-  if (!ROLE_DEFAULT_EDITABLE_ROLES.includes(normalizedRole)) {
-    throw Object.assign(new Error('Only department Staff and Head default templates are editable here.'), {
+  if (![...ROLE_DEFAULT_EDITABLE_ROLES, 'system_admin', 'auditor'].includes(normalizedRole)) {
+    throw Object.assign(new Error('This role default template is governed and cannot be edited here.'), {
       statusCode: 400,
       code: 'ROLE_DEFAULT_LOCKED',
     });
@@ -211,6 +200,5 @@ export const getRolePolicyForAccessControl = async (role, connection = db) => {
 export const hydrateUserPermissions = async (user, connection = db) => {
   if (!user) return user;
   if (String(user.role) === 'super_admin') return { ...user, permissions: Object.values(PERMISSIONS) };
-  if (String(user.role) === 'auditor') return { ...user, permissions: getAuditorEnforcedPermissions() };
   return { ...user, permissions: await getUserPermissionKeys(user.id, connection) };
 };

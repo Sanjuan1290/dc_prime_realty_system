@@ -1,15 +1,31 @@
-# Role & Access Control — Optional Label Removal
+# Commission Rate Display Precision Update — 2026-10-04
 
-Date: 2026-10-04
+This patch changes commission-related percentage displays to four decimal places without changing monetary formatting or unrelated percentages.
 
-Changes:
-- Removed the visible `Optional` chip from the Role & Access Control legend.
-- Removed the visible `OPTIONAL` status line under editable permission items.
-- Renamed `Select All Optional` to `Select All`.
-- Renamed `Clear Optional` to `Clear All`.
-- Changed `Optional permissions may be adjusted below.` to `Permissions may be adjusted below.`
-- Permission behavior is unchanged: editable permissions remain selectable; Required, Inherited, and Not Allowed states remain visible and enforced.
+Examples:
+- 9% -> 9.0000%
+- 8% -> 8.0000%
+- 4% -> 4.0000%
+- 1.6% -> 1.6000%
+- 1.2656% -> 1.2656%
+- 1.1344% -> 1.1344%
+
+Updated surfaces include:
+- Automatic Hierarchy Commission Preview
+- Seller / Network rate picker during reservation
+- Saved Commission Distribution
+- Commission Release Details
+- Commission Release Final Double-Check
+- Accredited Seller income / receipt screens
+- Server-provided seller commission rate labels
+- Unit commission adjustment validation / verification messages
+
+Currency remains two decimal places. Payment progress percentages, interest rates, LMF rates, release milestones, and other non-commission percentages are unchanged.
+
+Database migration: none required. The existing Network/Company Profit migration already stores commission rates as DECIMAL(7,4).
 
 Validation:
-- Targeted RBAC/UI regression tests: 9/9 passing.
-- No database migration required.
+- 3/3 new precision-specific tests passed.
+- Reservation preview reuse + unit commission adjustment regression tests passed.
+- Commission historical release tests passed.
+- One separate commission recalculation test file cannot load in this reconstructed environment because bcrypt is not installed; it fails before executing assertions.

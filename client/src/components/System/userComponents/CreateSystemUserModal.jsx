@@ -189,7 +189,7 @@ const CreateSystemUserModal = ({ onClose, onSaved }) => {
 
           {step === 2 ? (
             ['super_admin','system_admin','auditor'].includes(form.role) ? (
-              <div className="rounded-2xl border border-blue-200 bg-blue-50 p-5 text-blue-900"><p className="text-lg font-black">Governed Access</p><p className="mt-1 text-sm font-semibold">{form.role === 'super_admin' ? 'Super Admin keeps owner-level Full System Access.' : form.role === 'auditor' ? 'Auditor receives enforced global read-only access plus audit workflow actions.' : 'System Admin receives the required administration policy and All Projects access.'}</p></div>
+              <div className="rounded-2xl border border-blue-200 bg-blue-50 p-5 text-blue-900"><p className="text-lg font-black">Governed Access</p><p className="mt-1 text-sm font-semibold">{form.role === 'super_admin' ? 'Super Admin keeps owner-level Full System Access.' : form.role === 'auditor' ? 'Auditor receives required global read-only + audit workflow access. Only Super Admin can later adjust the limited allowed export/print permissions.' : 'System Admin receives required administration + audit-correction access and All Projects. Super Admin can later adjust additional allowed permissions.'}</p></div>
             ) : (
               <section className="grid gap-3">
                 <div><h3 className="text-lg font-black">Customize Permissions</h3><p className="text-sm font-semibold text-slate-500">Loaded from the current {ROLE_LABELS[form.role]} role default. Changes here apply only to this new account.</p></div>

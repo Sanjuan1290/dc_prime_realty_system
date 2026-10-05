@@ -58,7 +58,9 @@ const permissionCatalog = [
 ];
 
 const actorCanManageRoleDefaults = (actor, role) => {
-  if (actor?.role === 'super_admin') return ROLE_DEFAULT_EDITABLE_ROLES.includes(role);
+  if (actor?.role === 'super_admin') {
+    return [...ROLE_DEFAULT_EDITABLE_ROLES, 'system_admin', 'auditor'].includes(role);
+  }
   return actor?.role === 'system_admin' && ROLE_DEFAULT_EDITABLE_ROLES.includes(role);
 };
 
@@ -69,7 +71,7 @@ const actorCanViewUserAccess = (actor, targetRole) => {
 };
 
 const actorCanManageUserAccess = (actor, targetRole) => {
-  if (actor?.role === 'super_admin') return targetRole !== 'super_admin' && targetRole !== 'auditor';
+  if (actor?.role === 'super_admin') return targetRole !== 'super_admin';
   return actor?.role === 'system_admin' && SYSTEM_ADMIN_MANAGEABLE_ROLES.includes(targetRole);
 };
 
@@ -146,12 +148,12 @@ export const getUserAccessControl = async (req, res) => {
       getUserProjectAccess(user),
       getRolePolicyForAccessControl(user.role),
     ]);
-    const manageable = actorCanManageUserAccess(req.authUser, user.role) && user.role !== 'auditor';
+    const manageable = actorCanManageUserAccess(req.authUser, user.role);
     return res.json({
       user: { ...user, permissions, all_projects_access: projectAccess.allProjects, project_ids: projectAccess.projectIds },
       policy,
       locked: !manageable,
-      lock_reason: user.role === 'auditor' ? 'auditor_read_only' : (!manageable ? 'governance' : null),
+      lock_reason: !manageable ? 'governance' : null,
     });
   } catch (error) {
     return res.status(500).json({ message: error?.message || 'Failed to load user access.' });
@@ -170,7 +172,6 @@ export const updateUserAccessControl = async (req, res) => {
     const user = rows[0];
     if (!user) throw Object.assign(new Error('User not found.'), { statusCode: 404 });
     if (!actorCanManageUserAccess(req.authUser, user.role)) throw Object.assign(new Error('You cannot modify access for this account.'), { statusCode: 403 });
-    if (user.role === 'auditor') throw Object.assign(new Error('Auditor access is enforced as global read-only and cannot be customized.'), { statusCode: 409 });
     if (user.status !== 'active') throw Object.assign(new Error('This historical account is permanently deactivated and its access can no longer be changed.'), { statusCode: 409, code: 'ACCOUNT_PERMANENTLY_DEACTIVATED' });
 
     const permissions = await replaceUserPermissions(connection, {
@@ -210,7 +211,6 @@ export const applyRoleDefaultsToUser = async (req, res) => {
     if (!user) throw Object.assign(new Error('User not found.'), { statusCode: 404 });
     if (!actorCanManageUserAccess(req.authUser, user.role)) throw Object.assign(new Error('You cannot reset access for this account.'), { statusCode: 403 });
     if (user.status !== 'active') throw Object.assign(new Error('This historical account is permanently deactivated and its permissions can no longer be reset.'), { statusCode: 409, code: 'ACCOUNT_PERMANENTLY_DEACTIVATED' });
-    if (user.role === 'auditor') throw Object.assign(new Error('Auditor access is fixed by policy.'), { statusCode: 409 });
 
     const permissions = await copyRoleDefaultsToUser(connection, { userId, role: user.role, changedByUserId: req.authUser?.id || null });
     await connection.query('UPDATE users SET auth_version = COALESCE(auth_version, 0) + 1 WHERE id = ?', [userId]);
