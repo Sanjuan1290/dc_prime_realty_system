@@ -280,7 +280,7 @@ const DateRangeFilter = ({
           </label>
         </div>
       </div>
-      <div className="mt-3 flex flex-wrap items-center gap-3 text-xs font-bold text-slate-500">
+      <div className="mt-3 flex flex-wrap items-center gap-3 t  ext-xs font-bold text-slate-500">
         <span>{isSystemAdmin || isSuperAdmin ? 'Administrators may load longer custom ranges after confirmation.' : 'Select a supported date range.'}</span>
         {daySpan > 0 ? <span className="rounded-full bg-slate-100 px-2.5 py-1">Selected: {number(daySpan)} day{daySpan === 1 ? '' : 's'}</span> : null}
         {isFetching ? <span className="text-blue-700">Updating report data...</span> : null}

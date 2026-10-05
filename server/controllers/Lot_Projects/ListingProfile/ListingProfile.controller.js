@@ -1139,18 +1139,26 @@ export const requestLotProjectListingCommissionAdjustmentCode = async (req, res)
       userId: actor.id,
     });
     const entityId = Number(context.listing.lot_project_account_id);
-    await assertEntityNotReviewLocked(connection, { actor: req.authUser, entityType: 'lot_project_commission_account', entityId });
 
-    if (actor.role === 'system_admin') {
+    if (actor.role === 'system_admin' || (actor.role === 'super_admin' && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
       const auditCase = await getPendingAuditCorrectionCase(connection, {
+        actor: req.authUser,
         auditCaseId: req.body?.auditCaseId || req.body?.audit_case_id,
         entityType: 'lot_project_commission_account',
         entityId,
       });
-      if (!auditCase) throw Object.assign(new Error('A valid Auditor-approved case is required for a System Admin commission correction.'), { statusCode: 409, code: 'AUDIT_CASE_REQUIRED' });
+      if (!auditCase) throw Object.assign(new Error('A valid Auditor-approved case is required for this controlled commission correction.'), { statusCode: 409, code: 'AUDIT_CASE_REQUIRED' });
+      await assertEntityNotReviewLocked(connection, {
+        actor: req.authUser,
+        entityType: 'lot_project_commission_account',
+        entityId,
+        allowReviewId: auditCase.operational_review_id,
+      });
       await connection.commit();
-      return res.json({ success: true, message: `${auditCase.case_number} authorizes this controlled System Admin commission correction.`, data: { status: 'approved', directCorrection: true, authorizationType: 'audit_case', auditCaseId: auditCase.audit_case_id, caseNumber: auditCase.case_number, before: context.currentRows, after: getAdjustedCommissionPreview(context, adjustment) } });
+      return res.json({ success: true, message: `${auditCase.case_number} authorizes this controlled commission correction.`, data: { status: 'approved', directCorrection: true, authorizationType: 'audit_case', auditCaseId: auditCase.audit_case_id, caseNumber: auditCase.case_number, before: context.currentRows, after: getAdjustedCommissionPreview(context, adjustment) } });
     }
+
+    await assertEntityNotReviewLocked(connection, { actor: req.authUser, entityType: 'lot_project_commission_account', entityId });
 
     if (actor.role === 'accounting_head') {
       await connection.commit();
@@ -1238,13 +1246,14 @@ export const adjustLotProjectListingCommission = async (req, res) => {
     let authorization = null;
     let allowReviewId = null;
 
-    if (actor.role === 'system_admin') {
+    if (actor.role === 'system_admin' || (actor.role === 'super_admin' && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
       const auditCase = await getPendingAuditCorrectionCase(connection, {
+        actor: req.authUser,
         auditCaseId: req.body?.auditCaseId || req.body?.audit_case_id,
         entityType: 'lot_project_commission_account',
         entityId,
       });
-      if (!auditCase) throw Object.assign(new Error('A valid Auditor-approved case is required for a System Admin commission correction.'), { statusCode: 409, code: 'AUDIT_CASE_REQUIRED' });
+      if (!auditCase) throw Object.assign(new Error('A valid Auditor-approved case is required for this controlled commission correction.'), { statusCode: 409, code: 'AUDIT_CASE_REQUIRED' });
       authorization = { type: 'audit_case', auditCase };
       allowReviewId = auditCase.operational_review_id;
     }
@@ -1708,3 +1717,4 @@ export const unholdLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
+

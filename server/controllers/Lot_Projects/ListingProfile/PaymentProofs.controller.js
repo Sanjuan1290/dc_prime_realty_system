@@ -143,14 +143,15 @@ const getPaymentProofWorkflowContext = async (connection, req, paymentId) => {
   let auditCase = null;
   let allowReviewId = null;
 
-  if (req.authUser?.role === 'system_admin') {
+  if (req.authUser?.role === 'system_admin' || (req.authUser?.role === 'super_admin' && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
     auditCase = await getPendingAuditCorrectionCase(connection, {
+      actor: req.authUser,
       auditCaseId: req.body?.auditCaseId || req.body?.audit_case_id,
       entityType: 'lot_project_payment_proof',
       entityId: paymentId,
     });
     if (!auditCase) {
-      throw Object.assign(new Error('A valid Auditor-approved case is required for a System Admin payment-proof correction.'), {
+      throw Object.assign(new Error('A valid Auditor-approved case is required for this controlled payment-proof correction.'), {
         statusCode: 409,
         code: 'AUDIT_CASE_REQUIRED',
       });
@@ -801,3 +802,4 @@ export const deleteLotProjectPaymentProof = async (req, res) => {
     connection.release();
   }
 };
+

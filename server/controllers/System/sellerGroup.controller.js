@@ -1188,21 +1188,23 @@ export const editGroup = async (req, res) => {
     let networkAuditCase = null;
     let rateAuditCase = null;
     let returnedReview = null;
-    if (req.authUser?.role === 'system_admin') {
+    if (req.authUser?.role === 'system_admin' || (req.authUser?.role === 'super_admin' && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
       networkAuditCase = await getPendingAuditCorrectionCase(connection, {
+        actor: req.authUser,
         auditCaseId: req.body?.auditCaseId,
         entityType: 'seller_group',
         entityId: groupId,
       });
       if (!networkAuditCase) {
         rateAuditCase = await getPendingAuditCorrectionCase(connection, {
+          actor: req.authUser,
           auditCaseId: req.body?.auditCaseId,
           entityType: 'seller_group_project_rates',
           entityId: groupId,
         });
       }
       if (!networkAuditCase && !rateAuditCase) {
-        throw Object.assign(new Error('System Admin may edit a Network only for an Auditor-approved correction case.'), { statusCode: 403, code: 'AUDIT_CORRECTION_REQUIRED' });
+        throw Object.assign(new Error('This administrative Network edit requires an Auditor-approved correction case.'), { statusCode: 403, code: 'AUDIT_CORRECTION_REQUIRED' });
       }
       if (rateAuditCase && JSON.stringify(beforeNetwork) !== JSON.stringify(afterNetwork)) {
         throw Object.assign(new Error('This Audit Case is limited to Network project rates. Leave the Network identity/status fields unchanged.'), { statusCode: 409, code: 'AUDIT_CORRECTION_SCOPE_MISMATCH' });
@@ -1388,14 +1390,15 @@ export const toggleGroupStatus = async (req, res) => {
 
     let auditCase = null;
     let returnedReview = null;
-    if (req.authUser?.role === 'system_admin') {
+    if (req.authUser?.role === 'system_admin' || (req.authUser?.role === 'super_admin' && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
       auditCase = await getPendingAuditCorrectionCase(connection, {
+        actor: req.authUser,
         auditCaseId: req.body?.auditCaseId,
         entityType: 'seller_group',
         entityId: groupId,
       });
       if (!auditCase) {
-        throw Object.assign(new Error('System Admin may change Network status only for an Auditor-approved correction case.'), { statusCode: 403, code: 'AUDIT_CORRECTION_REQUIRED' });
+        throw Object.assign(new Error('This administrative Network status change requires an Auditor-approved correction case.'), { statusCode: 403, code: 'AUDIT_CORRECTION_REQUIRED' });
       }
     } else {
       returnedReview = await getReturnedOperationalReviewForActor(connection, {
@@ -2055,14 +2058,15 @@ export const updateGroupProjectPool = async (req, res) => {
 
     let auditCase = null;
     let governance = null;
-    if (req.authUser?.role === 'system_admin') {
+    if (req.authUser?.role === 'system_admin' || (req.authUser?.role === 'super_admin' && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
       auditCase = await getPendingAuditCorrectionCase(connection, {
+        actor: req.authUser,
         auditCaseId: req.body?.auditCaseId,
         entityType: 'seller_group_project_rates',
         entityId,
       });
       if (!auditCase) {
-        throw Object.assign(new Error('System Admin may change Network project rates only for an Auditor-approved correction case.'), { statusCode: 403, code: 'AUDIT_CORRECTION_REQUIRED' });
+        throw Object.assign(new Error('This administrative Network rate change requires an Auditor-approved correction case.'), { statusCode: 403, code: 'AUDIT_CORRECTION_REQUIRED' });
       }
     } else {
       governance = await authorizeGovernedAction(connection, {
@@ -2559,3 +2563,4 @@ export const commitNetworkMemberImport = async (req, res) => {
     connection.release();
   }
 };
+

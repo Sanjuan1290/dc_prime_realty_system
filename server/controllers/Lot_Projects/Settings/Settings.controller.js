@@ -208,8 +208,9 @@ export const requestLotProjectSettingsCode = async (req, res) => {
 
     await connection.beginTransaction();
 
-    if (actor.role === 'system_admin') {
+    if (actor.role === 'system_admin' || (actor.role === 'super_admin' && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
       const auditCase = await getPendingAuditCorrectionCase(connection, {
+        actor: req.authUser,
         auditCaseId,
         entityType: PROJECT_SETTINGS_REVIEW_ENTITY,
         entityId: project.lot_project_id,
@@ -343,13 +344,14 @@ export const updateLotProjectSettings = async (req, res) => {
     let auditCase = null;
     let verificationId = null;
 
-    if (currentUser.role === 'system_admin') {
+    if (currentUser.role === 'system_admin' || (currentUser.role === 'super_admin' && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
       auditCase = await getPendingAuditCorrectionCase(connection, {
+        actor: req.authUser,
         auditCaseId,
         entityType: PROJECT_SETTINGS_REVIEW_ENTITY,
         entityId: project.lot_project_id,
       });
-      if (!auditCase) throw Object.assign(new Error('A valid Auditor-approved case is required for a System Admin project-settings correction.'), { statusCode: 409, code: 'AUDIT_CASE_REQUIRED' });
+      if (!auditCase) throw Object.assign(new Error('A valid Auditor-approved case is required for this controlled project-settings correction.'), { statusCode: 409, code: 'AUDIT_CASE_REQUIRED' });
       authorizationType = 'audit_case';
     } else if (currentUser.role === 'operations_head') {
       authorizationType = 'department_head';
@@ -504,4 +506,5 @@ export const updateLotProjectSettings = async (req, res) => {
     connection.release();
   }
 };
+
 

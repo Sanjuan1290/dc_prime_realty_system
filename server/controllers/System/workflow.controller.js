@@ -5,6 +5,7 @@ import { createInternalNotifications, notifyAuditors, notifySystemAdmins } from 
 import { appendReviewEvent, canActorSeeReview, getOperationalReviewForUpdate } from '../../services/operationalReview.service.js';
 import { approveProtectedChange } from '../../services/protectedChange.service.js';
 import { resolveAuditCaseResponders, RESPONDER_MODE_LABELS } from '../../services/auditCaseResponder.service.js';
+import { getAuditCorrectionRole } from '../../services/auditCaseAuthorization.service.js';
 
 const errorMessage = (error) => error?.message || 'Workflow operation failed.';
 const pageValues = (query = {}) => ({ page: Math.max(Number(query.page || 1),1), limit: Math.min(Math.max(Number(query.limit || 25),1),100) });
@@ -117,6 +118,9 @@ export const getOperationalReview = async (req, res) => {
       `SELECT * FROM audit_cases WHERE operational_review_id=? ORDER BY audit_case_id DESC LIMIT 1`, [reviewId]
     ).catch(() => [[]]);
     let auditCase = caseRows?.[0] || null;
+    if (auditCase) {
+      auditCase = { ...auditCase, correctionRole: getAuditCorrectionRole(review) };
+    }
     if (auditCase && auditCase.status === 'awaiting_head_response') {
       const responders = await resolveAuditCaseResponders(db, { ...review, ...auditCase });
       const [responderRows] = responders.userIds.length
@@ -229,9 +233,15 @@ export const auditorVerifyReview = async (req, res) => {
       await connection.query("UPDATE audit_cases SET status='pending_system_admin_correction',auditor_resolution=?,auditor_resolved_by_user_id=?,auditor_resolved_at=NOW() WHERE operational_review_id=? AND status='pending_auditor_recheck'", [note, req.authUser.id, review.operational_review_id]);
       await connection.query("UPDATE operational_reviews SET status='correction_required',auditor_reviewed_by_user_id=?,auditor_reviewed_at=NOW() WHERE operational_review_id=?", [req.authUser.id, review.operational_review_id]);
       await appendReviewEvent(connection, { reviewId:review.operational_review_id,eventType:'correction_rejected_by_auditor',actor:req.authUser,fromStatus:previous,toStatus:'correction_required',message:note });
-      await notifySystemAdmins(connection, { reviewId: review.operational_review_id, title: `Correction still needs work · ${review.review_number}`, message: note });
+      const correctionRole = getAuditCorrectionRole(review);
+      if (correctionRole === 'super_admin') {
+        const [ownerRows] = await connection.query("SELECT id FROM users WHERE role='super_admin' AND status='active' AND COALESCE(can_login,1)=1");
+        await createInternalNotifications(connection, { userIds: ownerRows.map((row) => row.id), type: 'audit_correction_rework', title: `Correction still needs work · ${review.review_number}`, message: note, reviewId: review.operational_review_id });
+      } else {
+        await notifySystemAdmins(connection, { reviewId: review.operational_review_id, type: 'audit_correction_rework', title: `Correction still needs work · ${review.review_number}`, message: note });
+      }
       await connection.commit();
-      return res.json({ message: 'Correction returned to System Admin for another controlled fix.' });
+      return res.json({ message: `Correction returned to ${correctionRole === 'super_admin' ? 'Super Admin' : 'System Admin'} for another controlled fix.` });
     }
     if (previous === 'pending_auditor_recheck') {
       await connection.query("UPDATE audit_cases SET status='closed',final_verified_by_auditor_user_id=?,final_verified_at=NOW() WHERE operational_review_id=? AND status='pending_auditor_recheck'", [req.authUser.id, review.operational_review_id]);
@@ -354,7 +364,7 @@ export const resolveAuditCase = async (req,res) => {
     if(!['valid','invalid'].includes(decision))return res.status(400).json({message:'Decision must be valid or invalid.'});
     if(resolution.length<5)return res.status(400).json({message:'Enter the Auditor resolution.'});
     await connection.beginTransaction();
-    const [rows]=await connection.query(`SELECT c.*,r.review_number,r.entity_label FROM audit_cases c INNER JOIN operational_reviews r ON r.operational_review_id=c.operational_review_id WHERE c.audit_case_id=? LIMIT 1 FOR UPDATE`,[Number(req.params.caseId)]); const c=rows[0];
+    const [rows]=await connection.query(`SELECT c.*,r.review_number,r.entity_label,r.approval_type,r.initiated_by_role,r.initiated_by_user_id FROM audit_cases c INNER JOIN operational_reviews r ON r.operational_review_id=c.operational_review_id WHERE c.audit_case_id=? LIMIT 1 FOR UPDATE`,[Number(req.params.caseId)]); const c=rows[0];
     if(!c)throw Object.assign(new Error('Audit Case not found.'),{statusCode:404}); if(c.status!=='under_auditor_review')throw Object.assign(new Error('The Head explanation must be submitted before the Auditor can decide the case.'),{statusCode:409});
     if(decision==='invalid'){
       await connection.query("UPDATE audit_cases SET status='finding_invalid',auditor_resolution=?,auditor_resolved_by_user_id=?,auditor_resolved_at=NOW() WHERE audit_case_id=?",[resolution,req.authUser.id,c.audit_case_id]);
@@ -363,11 +373,17 @@ export const resolveAuditCase = async (req,res) => {
       if(c.head_responded_by_user_id) await createInternalNotifications(connection,{userIds:[c.head_responded_by_user_id],type:'audit_case_closed',title:`Audit finding invalid · ${c.case_number}`,message:resolution,reviewId:c.operational_review_id,auditCaseId:c.audit_case_id});
       await connection.commit(); return res.json({message:'Finding marked invalid. Original record remains unchanged and the review is closed.'});
     }
+    const correctionRole = getAuditCorrectionRole(c);
     await connection.query("UPDATE audit_cases SET status='pending_system_admin_correction',auditor_resolution=?,auditor_resolved_by_user_id=?,auditor_resolved_at=NOW() WHERE audit_case_id=?",[resolution,req.authUser.id,c.audit_case_id]);
     await connection.query("UPDATE operational_reviews SET status='correction_required' WHERE operational_review_id=?",[c.operational_review_id]);
-    await appendReviewEvent(connection,{reviewId:c.operational_review_id,eventType:'audit_finding_valid',actor:req.authUser,fromStatus:'audit_case_open',toStatus:'correction_required',message:resolution,metadata:{auditCaseId:c.audit_case_id}});
-    await notifySystemAdmins(connection,{reviewId:c.operational_review_id,auditCaseId:c.audit_case_id,title:`System correction required · ${c.case_number}`,message:resolution});
-    await connection.commit(); return res.json({message:'Finding marked valid. System Admin has been notified for controlled correction.'});
+    await appendReviewEvent(connection,{reviewId:c.operational_review_id,eventType:'audit_finding_valid',actor:req.authUser,fromStatus:'audit_case_open',toStatus:'correction_required',message:resolution,metadata:{auditCaseId:c.audit_case_id,correctionRole}});
+    if (correctionRole === 'super_admin') {
+      const [ownerRows] = await connection.query("SELECT id FROM users WHERE role='super_admin' AND status='active' AND COALESCE(can_login,1)=1");
+      await createInternalNotifications(connection,{userIds:ownerRows.map((row)=>row.id),type:'system_correction_required',title:`Owner correction required · ${c.case_number}`,message:resolution,reviewId:c.operational_review_id,auditCaseId:c.audit_case_id});
+    } else {
+      await notifySystemAdmins(connection,{reviewId:c.operational_review_id,auditCaseId:c.audit_case_id,title:`System correction required · ${c.case_number}`,message:resolution});
+    }
+    await connection.commit(); return res.json({message:`Finding marked valid. ${correctionRole === 'super_admin' ? 'Super Admin' : 'System Admin'} has been notified for controlled correction.`});
   }catch(error){try{await connection.rollback()}catch{} return res.status(error.statusCode||500).json({code:error.code,message:errorMessage(error)});}finally{connection.release();}
 };
 
@@ -397,3 +413,4 @@ export const reviewProtectedChangeRequest = async (req,res) => {
     await connection.commit(); return res.json({message:`Protected change ${decision}d.`,data:{requestId:row.protected_change_request_id,requestNumber:row.request_number,status:row.status}});
   }catch(error){try{await connection.rollback()}catch{}return res.status(error.statusCode||500).json({code:error.code,message:errorMessage(error)});}finally{connection.release();}
 };
+

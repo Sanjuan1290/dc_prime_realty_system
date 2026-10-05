@@ -1553,6 +1553,7 @@ export const updateLotProjectListing = async (req, res) => {
     // item 18): Operations Head edits directly, Operations Staff need Head
     // approval, Super Admin is the emergency fallback. Contract/pricing fields
     // are frozen below either way.
+    let protectedAuditCase = null;
     if (isProtectedListing && !isCancellationAction) {
       governedActionKey = 'listing.protected_edit';
       governance = await authorizeGovernedAction(connection, {
@@ -1569,23 +1570,36 @@ export const updateLotProjectListing = async (req, res) => {
         await connection.commit();
         return res.status(409).json(headApprovalPendingResponse(governance, getReviewActionLabel(governedActionKey)));
       }
+      if (['system_admin','super_admin'].includes(req.authUser?.role) && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0) {
+        protectedAuditCase = await getPendingAuditCorrectionCase(connection, {
+          actor: req.authUser,
+          auditCaseId: req.body?.auditCaseId || req.body?.audit_case_id,
+          entityType: governance.entityType,
+          entityId: existingListing.lot_project_listing_id,
+        });
+        if (!protectedAuditCase) {
+          throw Object.assign(new Error('This protected listing correction requires the matching Auditor-approved case.'), { statusCode: 409, code: 'AUDIT_CASE_REQUIRED' });
+        }
+      }
       await assertEntityNotReviewLocked(connection, {
         actor: req.authUser,
         entityType: governance.entityType,
         entityId: existingListing.lot_project_listing_id,
+        allowReviewId: protectedAuditCase?.operational_review_id || null,
       });
     }
     let inventoryAuditCase = null;
     let returnedInventoryReview = null;
     if (isInventoryEditable && !isCancellationAction) {
-      if (req.authUser?.role === 'system_admin') {
+      if (req.authUser?.role === 'system_admin' || (req.authUser?.role === 'super_admin' && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
         inventoryAuditCase = await getPendingAuditCorrectionCase(connection, {
+          actor: req.authUser,
           auditCaseId: req.body?.auditCaseId,
           entityType: 'lot_project_listing',
           entityId: existingListing.lot_project_listing_id,
         });
         if (!inventoryAuditCase) {
-          throw Object.assign(new Error('System Admin may edit a listing only when an Auditor-approved correction case is open for this record.'), { statusCode: 403, code: 'AUDIT_CORRECTION_REQUIRED' });
+          throw Object.assign(new Error('This administrative listing edit requires an Auditor-approved correction case for this record.'), { statusCode: 403, code: 'AUDIT_CORRECTION_REQUIRED' });
         }
       } else {
         const returnedKeys = ['listing.edit', 'listing.documents.update', 'listing.create'];
@@ -2448,41 +2462,51 @@ export const updateLotProjectListing = async (req, res) => {
     // acted without a pre-approval, which governance does not allow here).
     let governedReview = null;
     if (governance?.authorized && governedActionKey) {
-      governedReview = await createOperationalReview(connection, {
-        actor: req.authUser,
-        actionKey: governedActionKey,
-        department: governance.department,
-        projectId: project.lot_project_id,
-        entityType: governance.entityType,
-        entityId: existingListing.lot_project_listing_id,
-        entityLabel: `Unit ${unitCode} — ${project.lot_project_name}`,
-        beforeSnapshot: {
-          projectSlug: slug,
-          listingId: existingListing.lot_project_listing_id,
-          unitCode: existingListing.lot_project_listing_unit_id,
-          status: existingListing.lot_project_listing_status,
-          soldSubstatus: existingListing.lot_project_listing_sold_substatus,
-          oldUnitIds: existingListing.lot_project_listing_old_unit_ids,
-          lotType: existingListing.lot_project_listing_unit_type,
-          lotAreaSqm: Number(existingListing.lot_project_listing_area_sqm || 0),
-        },
-        afterSnapshot: {
-          projectSlug: slug,
-          listingId: existingListing.lot_project_listing_id,
-          unitCode,
-          status: listingStatus.status,
-          soldSubstatus: listingStatus.soldSubstatus,
-          oldUnitIds: toNullable(oldUnitIdsValue),
-          lotType: normalizeLotType(req.body.lotType || req.body.lot_type),
-          lotAreaSqm,
-          statusTransitionAction,
-          refundAmount: req.body.refundAmount ?? null,
-          cancellationReason: req.body.cancellationReason || null,
-          authorizationType: governance.authorizationType,
-          approvalRequestId: governance.approvalRequestId || null,
-        },
-        headPreApprovedByUserId: governance.headPreApprovedByUserId,
-      });
+      const governedBeforeSnapshot = {
+        projectSlug: slug,
+        listingId: existingListing.lot_project_listing_id,
+        unitCode: existingListing.lot_project_listing_unit_id,
+        status: existingListing.lot_project_listing_status,
+        soldSubstatus: existingListing.lot_project_listing_sold_substatus,
+        oldUnitIds: existingListing.lot_project_listing_old_unit_ids,
+        lotType: existingListing.lot_project_listing_unit_type,
+        lotAreaSqm: Number(existingListing.lot_project_listing_area_sqm || 0),
+      };
+      const governedAfterSnapshot = {
+        projectSlug: slug,
+        listingId: existingListing.lot_project_listing_id,
+        unitCode,
+        status: listingStatus.status,
+        soldSubstatus: listingStatus.soldSubstatus,
+        oldUnitIds: toNullable(oldUnitIdsValue),
+        lotType: normalizeLotType(req.body.lotType || req.body.lot_type),
+        lotAreaSqm,
+        statusTransitionAction,
+        refundAmount: req.body.refundAmount ?? null,
+        cancellationReason: req.body.cancellationReason || null,
+        authorizationType: governance.authorizationType,
+        approvalRequestId: governance.approvalRequestId || null,
+      };
+      governedReview = protectedAuditCase
+        ? await advanceAuditCaseToRecheck(connection, {
+            auditCase: protectedAuditCase,
+            actor: req.authUser,
+            correctionSummary: String(req.body?.correctionSummary || req.body?.reason || 'Corrected protected listing details from the Audit Case.').trim(),
+            afterSnapshot: governedAfterSnapshot,
+            metadata: { actionKey: governedActionKey },
+          })
+        : await createOperationalReview(connection, {
+            actor: req.authUser,
+            actionKey: governedActionKey,
+            department: governance.department,
+            projectId: project.lot_project_id,
+            entityType: governance.entityType,
+            entityId: existingListing.lot_project_listing_id,
+            entityLabel: `Unit ${unitCode} — ${project.lot_project_name}`,
+            beforeSnapshot: governedBeforeSnapshot,
+            afterSnapshot: governedAfterSnapshot,
+            headPreApprovedByUserId: governance.headPreApprovedByUserId,
+          });
     }
 
     let inventoryReview = null;
@@ -3042,3 +3066,4 @@ export const deleteLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
+

@@ -78,7 +78,7 @@ test('Batch 2 creates reviews, immutable events and internal notifications', () 
   assert.match(batch2, /CREATE TABLE IF NOT EXISTS internal_notifications/);
   assert.match(workflowService, /actor\.role === expectedHeadRole[\s\S]*pending_auditor_review/);
   assert.match(workflowService, /notifyDepartmentHeads\(connection, \{ department, projectId/);
-  assert.match(workflowService, /pending_head_review','pending_auditor_review','audit_case_open','correction_required','pending_auditor_recheck/);
+  assert.match(workflowService, /returned_for_correction'[\s\S]*'audit_case_open'[\s\S]*'correction_required'[\s\S]*'pending_auditor_recheck/);
 });
 
 test('Review visibility prevents ordinary Staff from seeing the whole department queue', () => {
@@ -122,7 +122,7 @@ test('Accounting Head correction skips self-review and goes to Auditor', () => {
 });
 
 test('System Admin correction is restricted to the exact Auditor-approved payment case', () => {
-  assert.match(paymentController, /actor\.role === 'system_admin' && auditCaseId/);
+  assert.match(paymentController, /\['system_admin','super_admin'\]\.includes\(actor\.role\) && auditCaseId/);
   assert.match(paymentController, /auditCase\.status !== 'pending_system_admin_correction'/);
   assert.match(paymentController, /auditCase\.entity_type !== 'lot_project_payment'/);
   assert.match(paymentController, /String\(auditCase\.entity_id\) !== String\(existingPayment\.lot_project_payment_id\)/);
@@ -166,3 +166,4 @@ test('Role & Access UI includes the new governance groups', () => {
   assert.match(roleAccessUi, /Auditor · Governed Global Read-Only/);
   assert.match(roleAccessUi, /Head inheritance/);
 });
+

@@ -277,14 +277,15 @@ export const updateLotProjectListingDocumentRequirements = async (req, res) => {
 
     let auditCase = null;
     let returnedReview = null;
-    if (req.authUser?.role === 'system_admin') {
+    if (req.authUser?.role === 'system_admin' || (req.authUser?.role === 'super_admin' && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
       auditCase = await getPendingAuditCorrectionCase(connection, {
+        actor: req.authUser,
         auditCaseId: req.body?.auditCaseId,
         entityType: 'lot_project_listing',
         entityId: listing.lot_project_listing_id,
       });
       if (!auditCase) {
-        throw Object.assign(new Error('System Admin may change listing document requirements only for an Auditor-approved correction case.'), { statusCode: 403, code: 'AUDIT_CORRECTION_REQUIRED' });
+        throw Object.assign(new Error('This administrative document-requirement change requires an Auditor-approved correction case.'), { statusCode: 403, code: 'AUDIT_CORRECTION_REQUIRED' });
       }
     } else {
       returnedReview = await getReturnedOperationalReviewForActor(connection, {
@@ -1230,3 +1231,4 @@ export const clearLotProjectListingDocument = async (req, res) => {
     connection.release();
   }
 };
+

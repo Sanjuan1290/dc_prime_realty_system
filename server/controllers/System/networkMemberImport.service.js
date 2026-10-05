@@ -170,6 +170,7 @@ export const analyzeNetworkMemberImport = ({
   const analyzedRows = normalizedRows.map((row) => {
     const errors = [];
     const warnings = [];
+    const criticalWarnings = [];
     const accounts = accountBuckets.get(row.email) || [];
     const sellerAccounts = accounts.filter((account) => NETWORK_MEMBER_IMPORT_ROLES.includes(String(account.role || '')));
     const nonSellerAccounts = accounts.filter((account) => !NETWORK_MEMBER_IMPORT_ROLES.includes(String(account.role || '')));
@@ -201,7 +202,7 @@ export const analyzeNetworkMemberImport = ({
       const otherRows = matchingImportNames
         .filter((item) => Number(item.sourceRow) !== Number(row.sourceRow))
         .map((item) => `Row ${item.sourceRow}${item.email ? ` (${item.email})` : ''}`);
-      errors.push(`Full Name “${displayName}” is duplicated in this Excel file${otherRows.length ? `: ${otherRows.join(', ')}` : ''}. Each imported seller must have a unique full name.`);
+      warnings.push(`Possible duplicate name: Full Name “${displayName}” also appears in this Excel file${otherRows.length ? `: ${otherRows.join(', ')}` : ''}. Matching names are allowed, but verify these are different people before importing.`);
     }
 
     if (normalizedFullName) {
@@ -212,7 +213,7 @@ export const analyzeNetworkMemberImport = ({
           .slice(0, 3)
           .map((member) => `${currentMemberName(member)}${member.email ? ` (${normalizeNetworkMemberImportEmail(member.email)})` : ''}`)
           .join(', ');
-        errors.push(`Full Name “${displayName}” already belongs to another Accredited Seller in this Network: ${conflicts}. Use a different full name or verify the existing seller record before importing.`);
+        warnings.push(`Possible duplicate name: Full Name “${displayName}” matches another Accredited Seller in this Network: ${conflicts}. Matching names are allowed, but verify this is a different person before importing.`);
       }
     }
 
@@ -247,7 +248,9 @@ export const analyzeNetworkMemberImport = ({
           warnings.push('An existing seller-role account was found. Seller accreditation will be added without creating another login account.');
         } else if (existingGroupId === groupId) {
           action = 'UPDATE';
-          warnings.push('Existing member will be updated and kept Active. Blank optional fields will preserve current values.');
+          criticalWarnings.push(
+            'EXISTING SELLER WILL BE UPDATED. This email already belongs to an accredited seller in this Network. Confirming the import will overwrite the seller name and reporting relationship with the Excel values, overwrite Contact Number/TIN/PRC when those cells are not blank, and keep the seller Active. Blank optional Contact Number/TIN/PRC cells preserve their current values. Review this row carefully before continuing.'
+          );
         } else if (sellerStatus !== 'active') {
           action = existingGroupId ? 'TRANSFER' : 'UPDATE';
           warnings.push(existingGroupId
@@ -334,6 +337,8 @@ export const analyzeNetworkMemberImport = ({
       displayName,
       errors,
       warnings,
+      criticalWarnings,
+      requiresExistingSellerUpdateConfirmation: criticalWarnings.length > 0,
     };
   });
 
@@ -416,8 +421,9 @@ export const analyzeNetworkMemberImport = ({
   }
 
   const errorRows = analyzedRows.filter((row) => row.errors.length);
-  const warningRows = analyzedRows.filter((row) => !row.errors.length && row.warnings.length);
+  const warningRows = analyzedRows.filter((row) => !row.errors.length && (row.warnings.length || row.criticalWarnings.length));
   const readyRows = analyzedRows.filter((row) => !row.errors.length);
+  const existingUpdateRows = readyRows.filter((row) => row.requiresExistingSellerUpdateConfirmation);
   const counts = readyRows.reduce((summary, row) => {
     summary[row.action.toLowerCase()] = (summary[row.action.toLowerCase()] || 0) + 1;
     return summary;
@@ -440,6 +446,7 @@ export const analyzeNetworkMemberImport = ({
       ready: readyRows.length,
       warnings: warningRows.length,
       errors: errorRows.length,
+      existingUpdates: existingUpdateRows.length,
       ...counts,
     },
     canCommit: analyzedRows.length > 0 && errorRows.length === 0,
@@ -451,3 +458,4 @@ export const sortNetworkMemberImportRows = (rows = []) => [...rows].sort((a, b) 
   if (roleDelta) return roleDelta;
   return Number(a.sourceRow || 0) - Number(b.sourceRow || 0);
 });
+

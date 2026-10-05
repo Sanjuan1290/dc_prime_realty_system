@@ -110,7 +110,7 @@ test('Batches 2-4 create the review, immutable event, notification, Audit Case, 
 test('review engine skips Head self-review, routes Staff to project-aware Head, and locks active review states', () => {
   assert.match(workflowService, /actor\.role === expectedHeadRole[\s\S]*pending_auditor_review/);
   assert.match(workflowService, /notifyDepartmentHeads\(connection, \{ department, projectId/);
-  assert.match(workflowService, /pending_head_review','pending_auditor_review','audit_case_open','correction_required','pending_auditor_recheck/);
+  assert.match(workflowService, /returned_for_correction'[\s\S]*'audit_case_open'[\s\S]*'correction_required'[\s\S]*'pending_auditor_recheck/);
   assert.match(workflowService, /initiated_by_user_id/);
 });
 
@@ -154,10 +154,10 @@ test('penalty and LMF adjustments no longer hard-code routine Super Admin-only a
 test('Sales reservation correction and Accounting commission adjustment use the same governed Head/Auditor model', () => {
   assert.match(reservationController, /createProtectedChangeRequest/);
   assert.match(reservationController, /department: 'sales'/);
-  assert.match(reservationController, /A valid Auditor-approved case is required for a System Admin reservation correction/);
+  assert.match(reservationController, /A valid Auditor-approved case is required for this controlled reservation correction/);
   assert.match(listingProfileController, /createProtectedChangeRequest/);
   assert.match(listingProfileController, /department: 'accounting'/);
-  assert.match(listingProfileController, /A valid Auditor-approved case is required for a System Admin commission correction/);
+  assert.match(listingProfileController, /A valid Auditor-approved case is required for this controlled commission correction/);
 });
 
 test('Review Center exposes the required Head, Auditor, case, correction, approval and notification endpoints', () => {
@@ -193,3 +193,4 @@ test('true owner-level gates remain Super Admin only', () => {
   assert.match(projectsRouter, /purge-code[^\n]*requireExactRole\('super_admin'\)/);
   assert.match(settingsRouter, /\/code'[^\n]*requireExactRole\('super_admin'\)/);
 });
+

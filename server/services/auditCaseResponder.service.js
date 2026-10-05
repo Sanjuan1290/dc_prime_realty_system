@@ -77,8 +77,9 @@ export const RESPONDER_MODE_LABELS = Object.freeze({
   reassigned: 'Reassigned by System Admin',
   initiating_system_admin: 'System Admin who made the change',
   system_admin_fallback: 'Any active System Admin with project access',
-  emergency_super_admin: 'Super Admin (legacy emergency change)',
+  emergency_super_admin: 'Super Admin who made the direct entry',
   original_head: 'Head who confirmed the record',
   department_head_fallback: 'Any active Head of the department (original Head is no longer available)',
   department_head: 'Any active Head of the department',
 });
+

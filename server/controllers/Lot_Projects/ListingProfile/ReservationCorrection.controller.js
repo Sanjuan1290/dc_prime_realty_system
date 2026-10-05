@@ -32,7 +32,7 @@ import {
   verifyAndConsumeSensitiveAction,
 } from '../../../services/sensitiveActionVerification.service.js'
 import { createProtectedChangeRequest, consumeProtectedChange } from '../../../services/protectedChange.service.js'
-import { assertEntityNotReviewLocked, createOperationalReview } from '../../../services/operationalReview.service.js'
+import { assertEntityNotReviewLocked, createOperationalReview, getReturnedOperationalReviewForActor, resubmitReturnedOperationalReview } from '../../../services/operationalReview.service.js'
 import { getPendingAuditCorrectionCase, advanceAuditCaseToRecheck } from '../../../services/auditCaseAuthorization.service.js'
 
 const CORRECTION_TABLE = 'lot_project_reservation_corrections'
@@ -694,18 +694,26 @@ export const requestControlledReservationCorrectionCode = async (req, res) => {
     const computation = buildDestinationComputation(bundle, destination, req.body.terms || {})
     const payload = buildControlledCorrectionPayload({ actor, source, bundle, destination, computation, reason })
     const entityId = Number(bundle.lot_project_account_id)
-    await assertEntityNotReviewLocked(connection, { actor: req.authUser, entityType: 'lot_project_reservation', entityId })
 
-    if (actor.role === 'system_admin') {
+    if (actor.role === 'system_admin' || (actor.role === 'super_admin' && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
       const auditCase = await getPendingAuditCorrectionCase(connection, {
+        actor: req.authUser,
         auditCaseId: req.body.auditCaseId || req.body.audit_case_id,
         entityType: 'lot_project_reservation',
         entityId,
       })
-      if (!auditCase) throw Object.assign(new Error('A valid Auditor-approved case is required for a System Admin reservation correction.'), { statusCode: 409, code: 'AUDIT_CASE_REQUIRED' })
+      if (!auditCase) throw Object.assign(new Error('A valid Auditor-approved case is required for this controlled reservation correction.'), { statusCode: 409, code: 'AUDIT_CASE_REQUIRED' })
+      await assertEntityNotReviewLocked(connection, {
+        actor: req.authUser,
+        entityType: 'lot_project_reservation',
+        entityId,
+        allowReviewId: auditCase.operational_review_id,
+      })
       await connection.commit()
-      return res.json({ success: true, message: `${auditCase.case_number} authorizes this controlled System Admin reservation correction.`, data: { status: 'approved', directCorrection: true, authorizationType: 'audit_case', auditCaseId: auditCase.audit_case_id, caseNumber: auditCase.case_number } })
+      return res.json({ success: true, message: `${auditCase.case_number} authorizes this controlled reservation correction.`, data: { status: 'approved', directCorrection: true, authorizationType: 'audit_case', auditCaseId: auditCase.audit_case_id, caseNumber: auditCase.case_number } })
     }
+
+    await assertEntityNotReviewLocked(connection, { actor: req.authUser, entityType: 'lot_project_reservation', entityId })
 
     if (actor.role === 'sales_head') {
       await connection.commit()
@@ -816,6 +824,27 @@ export const correctReservationUnit = async (req, res) => {
     }
 
     const computation = buildDestinationComputation(bundle, destination, req.body.terms || {})
+    const reviewEntityId = Number(bundle.lot_project_account_id)
+    let returnedReview = null
+    if (!safety.controlledEligible) {
+      returnedReview = await getReturnedOperationalReviewForActor(connection, {
+        actor: req.authUser,
+        actionKey: 'reservation.correct_unit',
+        entityType: 'lot_project_reservation',
+        entityId: reviewEntityId,
+        reviewId: req.body?.reviewId || req.body?.review_id,
+      })
+      if ((req.body?.reviewId || req.body?.review_id) && !returnedReview) {
+        throw Object.assign(new Error('This returned reservation review is no longer available for correction.'), { statusCode: 409, code: 'RETURNED_REVIEW_NOT_AVAILABLE' })
+      }
+      await assertEntityNotReviewLocked(connection, {
+        actor: req.authUser,
+        entityType: 'lot_project_reservation',
+        entityId: reviewEntityId,
+        allowReviewId: returnedReview?.operational_review_id || null,
+      })
+    }
+
     let correctionAuthorization = null
     if (safety.controlledEligible) {
       const actor = req.authUser
@@ -823,13 +852,14 @@ export const correctReservationUnit = async (req, res) => {
       let allowReviewId = null
       let auditCase = null
 
-      if (actor?.role === 'system_admin') {
+      if (actor?.role === 'system_admin' || (actor?.role === 'super_admin' && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
         auditCase = await getPendingAuditCorrectionCase(connection, {
+          actor: req.authUser,
           auditCaseId: req.body.auditCaseId || req.body.audit_case_id,
           entityType: 'lot_project_reservation',
           entityId,
         })
-        if (!auditCase) throw Object.assign(new Error('A valid Auditor-approved case is required for a System Admin reservation correction.'), { statusCode: 409, code: 'AUDIT_CASE_REQUIRED' })
+        if (!auditCase) throw Object.assign(new Error('A valid Auditor-approved case is required for this controlled reservation correction.'), { statusCode: 409, code: 'AUDIT_CASE_REQUIRED' })
         allowReviewId = auditCase.operational_review_id
         correctionAuthorization = { authorizationType: 'audit_case', auditCase }
       }
@@ -1170,6 +1200,17 @@ export const correctReservationUnit = async (req, res) => {
         metadata: { correctionId: Number(correctionResult.insertId), sourceListingId: sourceId, destinationListingId: destinationId },
         notificationTitle: `Reservation correction needs Auditor recheck · ${correctionAuthorization.auditCase.case_number}`,
       })
+    } else if (returnedReview) {
+      workflow = await resubmitReturnedOperationalReview(connection, {
+        review: returnedReview,
+        actor: req.authUser,
+        department: 'sales',
+        projectId: project.lot_project_id,
+        entityLabel: `${source.lot_project_listing_unit_id} → ${destination.lot_project_listing_unit_id}`,
+        beforeSnapshot: { ...before, projectSlug: clean(req.params.projectSlug), listingId: sourceId, correctionId: Number(correctionResult.insertId) },
+        afterSnapshot: { ...after, projectSlug: clean(req.params.projectSlug), listingId: destinationId, sourceListingId: sourceId, correctionId: Number(correctionResult.insertId) },
+        message: `${returnedReview.review_number} reservation correction was fixed and resubmitted for Sales Head review.`,
+      })
     } else {
       workflow = await createOperationalReview(connection, {
         actor: req.authUser,
@@ -1220,3 +1261,4 @@ export const correctReservationUnit = async (req, res) => {
     connection.release()
   }
 }
+

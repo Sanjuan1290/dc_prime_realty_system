@@ -3,8 +3,14 @@ import { DEPARTMENT_HEAD_ROLE, getRoleDepartment } from '../config/permissions.j
 import { createInternalNotifications, notifyAuditors, notifyDepartmentHeads } from './internalNotification.service.js';
 import { assertRegisteredReviewAction } from '../config/reviewActions.js';
 
+// Routine Head/Auditor reviews are POST-ACTION checks and must never block
+// subsequent business operations. Only an active finding/correction cycle locks
+// the record so evidence and the required correction cannot be changed underneath
+// the Auditor/System Admin workflow.
 export const REVIEW_LOCKING_STATUSES = Object.freeze([
-  'pending_head_review','pending_auditor_review','audit_case_open','correction_required','pending_auditor_recheck',
+  // A Head/Auditor queue is only a post-action check. The record becomes
+  // controlled only after a reviewer has explicitly requested a correction.
+  'returned_for_correction', 'audit_case_open', 'correction_required', 'pending_auditor_recheck',
 ]);
 
 const jsonValue = (value) => value == null ? null : JSON.stringify(value);
@@ -43,6 +49,172 @@ export const REVIEW_APPROVAL_TYPES = Object.freeze({
   EMERGENCY_SUPER_ADMIN: 'emergency_super_admin',
 });
 
+
+const notifyInitiatorReviewState = async (connection, {
+  actor,
+  reviewId,
+  link = '/portal/review-center',
+  title,
+  message,
+}) => {
+  if (!Number(actor?.id || 0)) return [];
+  return createInternalNotifications(connection, {
+    userIds: [actor.id],
+    type: 'post_action_review_status',
+    title,
+    message,
+    reviewId,
+    link,
+  });
+};
+
+/**
+ * If the same user changes the same record again before its routine review is
+ * finished, keep one Review number and move its snapshot forward instead of
+ * creating a pile of stale Reviews.
+ *
+ * - Staff/System Admin change before Head check: stay pending Head check.
+ * - Staff/System Admin change after Head check but before audit: reopen Head check.
+ * - Department Head/Super Admin change before audit: keep the same audit queue.
+ *
+ * The original before-snapshot stays untouched. Every refresh is appended to the
+ * immutable event history so reviewers can see how the record evolved.
+ */
+const refreshOwnRoutineReview = async (connection, {
+  actor,
+  actionKey,
+  department,
+  projectId = null,
+  entityType,
+  entityId,
+  entityLabel = null,
+  afterSnapshot = null,
+  link = '/portal/review-center',
+}) => {
+  const [rows] = await connection.query(
+    `SELECT * FROM operational_reviews
+     WHERE entity_type=? AND entity_id=? AND department=? AND initiated_by_user_id=?
+       AND status IN ('pending_head_review','pending_auditor_review')
+     ORDER BY operational_review_id DESC LIMIT 1 FOR UPDATE`,
+    [entityType, String(entityId), department, actor.id]
+  );
+  const open = rows[0];
+  if (!open) return null;
+
+  const expectedHeadRole = DEPARTMENT_HEAD_ROLE[department];
+  const isDepartmentHead = actor.role === expectedHeadRole;
+  const isSuperAdmin = actor.role === 'super_admin';
+  const fromStatus = open.status;
+  const previousAfterSnapshot = open.after_snapshot_json ?? null;
+  const previousActionKey = open.action_key;
+
+  let nextStatus = 'pending_head_review';
+  let approvalType = REVIEW_APPROVAL_TYPES.STAFF_ENTRY;
+  let headReviewerId = null;
+  let eventType = fromStatus === 'pending_auditor_review'
+    ? 'record_changed_after_head_check'
+    : 'record_updated_before_head_check';
+  let eventMessage = fromStatus === 'pending_auditor_review'
+    ? `${actionKey} changed the record after the previous Department Head check. Head review was reopened for the latest values.`
+    : `${actionKey} updated the record before Department Head review. The same review now shows the latest values.`;
+
+  if (isSuperAdmin) {
+    nextStatus = 'pending_auditor_review';
+    approvalType = REVIEW_APPROVAL_TYPES.EMERGENCY_SUPER_ADMIN;
+    eventType = 'super_admin_updated_before_audit';
+    eventMessage = `${actionKey} updated the record before independent audit. The operation remains complete and the Auditor will review the latest values.`;
+  } else if (isDepartmentHead) {
+    nextStatus = 'pending_auditor_review';
+    approvalType = REVIEW_APPROVAL_TYPES.HEAD_SELF;
+    headReviewerId = actor.id;
+    eventType = 'head_updated_before_audit';
+    eventMessage = `${actionKey} updated the record before independent audit. Department self-review is complete and the Auditor will review the latest values.`;
+  }
+
+  const withType = await hasApprovalTypeColumn(connection);
+  await connection.query(
+    `UPDATE operational_reviews
+     SET action_key=?,
+         lot_project_id=COALESCE(?,lot_project_id),
+         entity_label=COALESCE(?,entity_label),
+         after_snapshot_json=?,
+         revision=revision+1,
+         status=?,
+         claimed_by_user_id=?, claimed_at=?,
+         head_reviewed_by_user_id=?, head_reviewed_at=?,
+         auditor_reviewed_by_user_id=NULL, auditor_reviewed_at=NULL
+         ${withType ? ', approval_type=?' : ''}
+     WHERE operational_review_id=?`,
+    [
+      actionKey,
+      projectId || null,
+      entityLabel,
+      jsonValue(afterSnapshot),
+      nextStatus,
+      headReviewerId,
+      headReviewerId ? new Date() : null,
+      headReviewerId,
+      headReviewerId ? new Date() : null,
+      ...(withType ? [approvalType] : []),
+      open.operational_review_id,
+    ]
+  );
+
+  await appendReviewEvent(connection, {
+    reviewId: open.operational_review_id,
+    eventType,
+    actor,
+    fromStatus,
+    toStatus: nextStatus,
+    message: eventMessage,
+    metadata: {
+      previousActionKey,
+      latestActionKey: actionKey,
+      previousAfterSnapshot,
+      reviewRevision: Number(open.revision || 1) + 1,
+    },
+  });
+
+  if (nextStatus === 'pending_head_review') {
+    await notifyDepartmentHeads(connection, {
+      department,
+      projectId: projectId || open.lot_project_id || null,
+      reviewId: open.operational_review_id,
+      title: `Post-action review updated · ${entityLabel || open.entity_label || entityType}`,
+      message: `${open.review_number} has newer saved values. Review the latest version; the operation is already complete.`,
+    });
+    await notifyInitiatorReviewState(connection, {
+      actor,
+      reviewId: open.operational_review_id,
+      link,
+      title: 'Saved successfully · Head check queued',
+      message: `${open.review_number} was updated to the latest saved values. You may continue normal work while the ${department} Head checks it.`,
+    });
+  } else {
+    await notifyAuditors(connection, {
+      reviewId: open.operational_review_id,
+      title: `Post-action audit updated · ${entityLabel || open.entity_label || entityType}`,
+      message: `${open.review_number} has newer saved values. Review the latest version; the operation is already complete.`,
+    });
+    await notifyInitiatorReviewState(connection, {
+      actor,
+      reviewId: open.operational_review_id,
+      link,
+      title: 'Saved successfully · Auditor check queued',
+      message: `${open.review_number} now contains the latest saved values and remains queued for independent audit.`,
+    });
+  }
+
+  return {
+    reviewId: Number(open.operational_review_id),
+    reviewNumber: open.review_number,
+    status: nextStatus,
+    approvalType,
+    refreshed: true,
+    reopenedForHeadReview: fromStatus === 'pending_auditor_review' && nextStatus === 'pending_head_review',
+  };
+};
+
 /**
  * Head "Correct & Confirm" (plan item 15): when a Department Head changes a
  * record that still has an open Staff review (pending Head review or returned
@@ -51,12 +223,12 @@ export const REVIEW_APPROVAL_TYPES = Object.freeze({
  * becomes the reviewer, and the review goes straight to the Auditor.
  */
 const absorbOpenStaffReviewIntoHeadCorrection = async (connection, {
-  actor, actionKey, department, entityType, entityId, entityLabel, beforeSnapshot, afterSnapshot,
+  actor, actionKey, department, projectId = null, entityType, entityId, entityLabel, beforeSnapshot, afterSnapshot,
 }) => {
   const [rows] = await connection.query(
     `SELECT * FROM operational_reviews
      WHERE entity_type = ? AND entity_id = ? AND department = ?
-       AND status IN ('pending_head_review','returned_for_correction')
+       AND status = 'pending_head_review'
      ORDER BY operational_review_id DESC LIMIT 1 FOR UPDATE`,
     [entityType, String(entityId), department]
   );
@@ -68,13 +240,16 @@ const absorbOpenStaffReviewIntoHeadCorrection = async (connection, {
   const withType = await hasApprovalTypeColumn(connection);
   await connection.query(
     `UPDATE operational_reviews
-     SET status = 'pending_auditor_review',
+     SET action_key = ?,
+         lot_project_id = COALESCE(?, lot_project_id),
+         entity_label = COALESCE(?, entity_label),
+         status = 'pending_auditor_review',
          revision = revision + 1,
          after_snapshot_json = ?,
          claimed_by_user_id = ?, claimed_at = COALESCE(claimed_at, NOW()),
          head_reviewed_by_user_id = ?, head_reviewed_at = NOW()${withType ? ", approval_type = 'head_corrected'" : ''}
      WHERE operational_review_id = ?`,
-    [jsonValue(afterSnapshot), actor.id, actor.id, open.operational_review_id]
+    [actionKey, projectId || null, entityLabel, jsonValue(afterSnapshot), actor.id, actor.id, open.operational_review_id]
   );
   await appendReviewEvent(connection, {
     reviewId: open.operational_review_id,
@@ -120,13 +295,19 @@ export const createOperationalReview = async (connection, {
 
   if (isDepartmentHead) {
     const absorbed = await absorbOpenStaffReviewIntoHeadCorrection(connection, {
-      actor, actionKey, department, entityType, entityId, entityLabel, beforeSnapshot, afterSnapshot,
+      actor, actionKey, department, projectId, entityType, entityId, entityLabel, beforeSnapshot, afterSnapshot,
     });
     if (absorbed) return absorbed;
   }
 
-  // Super Admin emergency edits are NOT recorded as a Head approval. Super Admin
-  // answers any Audit Case on them (fixes the stuck-case bug, plan item 16).
+  const refreshed = await refreshOwnRoutineReview(connection, {
+    actor, actionKey, department, projectId, entityType, entityId, entityLabel, afterSnapshot, link,
+  });
+  if (refreshed) return refreshed;
+
+  // Super Admin direct entries skip Department Head self-review and go straight
+  // to independent audit. The persisted approval_type value is retained for
+  // backward compatibility with existing Audit Case responder logic.
   const approvalType = isEmergency
     ? REVIEW_APPROVAL_TYPES.EMERGENCY_SUPER_ADMIN
     : isDepartmentHead
@@ -157,18 +338,31 @@ export const createOperationalReview = async (connection, {
 
   if (initialStatus === 'pending_auditor_review') {
     const message = {
-      [REVIEW_APPROVAL_TYPES.EMERGENCY_SUPER_ADMIN]: `${number} was an emergency Super Admin change and needs independent audit.`,
-      [REVIEW_APPROVAL_TYPES.HEAD_PREAPPROVED]: `${number} was pre-approved by the Department Head and is ready for independent audit.`,
-      [REVIEW_APPROVAL_TYPES.HEAD_SELF]: `${number} was entered by the ${expectedHeadRole.replaceAll('_',' ')} and skipped self-review.`,
+      [REVIEW_APPROVAL_TYPES.EMERGENCY_SUPER_ADMIN]: `${number} was entered directly by Super Admin. The operation is already complete and is queued for independent audit.`,
+      [REVIEW_APPROVAL_TYPES.HEAD_PREAPPROVED]: `${number} was completed after Department Head approval and is queued for independent audit.`,
+      [REVIEW_APPROVAL_TYPES.HEAD_SELF]: `${number} was completed by the ${expectedHeadRole.replaceAll('_',' ')} and is queued for independent audit.`,
     }[approvalType];
-    await notifyAuditors(connection, { reviewId, title: `Audit review required · ${entityLabel || entityType}`, message });
+    await notifyAuditors(connection, { reviewId, title: `Post-action audit queued · ${entityLabel || entityType}`, message });
   } else {
-    const recipients = await notifyDepartmentHeads(connection, { department, projectId, reviewId, title: `Department review required · ${entityLabel || entityType}`, message: `${number} requires ${department} Head review.` });
+    const recipients = await notifyDepartmentHeads(connection, { department, projectId, reviewId, title: `Post-action department check queued · ${entityLabel || entityType}`, message: `${number} is already completed and is waiting for the ${department} Head's post-action check.` });
     if (!recipients.length) {
       const [adminRows] = await connection.query("SELECT id FROM users WHERE role='system_admin' AND status='active'");
       await createInternalNotifications(connection, { userIds: adminRows.map((row) => row.id), type: 'review_has_no_head', title: `No ${department} Head available`, message: `${number} has no eligible Head for this project. Assign Head coverage.`, reviewId, link });
     }
   }
+
+  await notifyInitiatorReviewState(connection, {
+    actor,
+    reviewId,
+    link,
+    title: initialStatus === 'pending_head_review'
+      ? 'Saved successfully · Head check queued'
+      : 'Saved successfully · Auditor check queued',
+    message: initialStatus === 'pending_head_review'
+      ? `${number} is a post-action review. Your change is already active; the ${department} Head will check it in the background.`
+      : `${number} is a post-action review. Your change is already active and is queued for independent Auditor verification.`,
+  });
+
   return { reviewId, reviewNumber: number, status: initialStatus, approvalType };
 };
 
@@ -178,12 +372,13 @@ export const getOperationalReviewForUpdate = async (connection, reviewId) => {
 };
 
 /**
- * Blocks changes to a record while a review/case is open on it.
- * A Department Head may still change a record whose review is waiting for
- * THEIR department's Head review (Correct & Confirm), unless another Head
- * has claimed it. Pass `actor` to enable that exception.
+ * Routine review is intentionally non-blocking: pending Head/Auditor checks are
+ * evidence queues, not approval gates. Once a Head explicitly returns a record
+ * for correction, or an Auditor opens/validates a case, that exact record enters
+ * controlled correction mode. `allowReviewId` lets the authorized correction
+ * request work on the record that its own Review locks.
  */
-export const assertEntityNotReviewLocked = async (connection, { entityType, entityId, allowReviewId = null, actor = null }) => {
+export const assertEntityNotReviewLocked = async (connection, { entityType, entityId, allowReviewId = null }) => {
   const statuses = REVIEW_LOCKING_STATUSES.map(() => '?').join(',');
   const params = [entityType, String(entityId), ...REVIEW_LOCKING_STATUSES];
   let exclusion = '';
@@ -193,12 +388,14 @@ export const assertEntityNotReviewLocked = async (connection, { entityType, enti
   );
   const lock = rows[0];
   if (!lock) return true;
-  const headCanCorrect = Boolean(actor?.id)
-    && lock.status === 'pending_head_review'
-    && actor.role === DEPARTMENT_HEAD_ROLE[lock.department]
-    && (!lock.claimed_by_user_id || Number(lock.claimed_by_user_id) === Number(actor.id));
-  if (headCanCorrect) return true;
-  throw Object.assign(new Error(`This record is locked by ${lock.review_number || `Review #${lock.operational_review_id}`} (${lock.status.replaceAll('_',' ')}).`), { statusCode: 409, code: 'REVIEW_LOCKED', review: lock });
+  const label = lock.review_number || `Review #${lock.operational_review_id}`;
+  const returned = lock.status === 'returned_for_correction';
+  throw Object.assign(
+    new Error(returned
+      ? `${label} was returned for correction. Use the correction link from Review Center so the original staff entry can be fixed and resubmitted.`
+      : `${label} has an active controlled correction (${lock.status.replaceAll('_',' ')}). Complete that correction workflow before changing this exact record.`),
+    { statusCode: 409, code: returned ? 'REVIEW_RETURNED_FOR_CORRECTION' : 'REVIEW_CORRECTION_LOCKED', review: lock }
+  );
 };
 
 export const getReturnedOperationalReviewForActor = async (connection, {
@@ -282,3 +479,4 @@ export const canActorSeeReview = async (connection, actor, review) => {
 };
 
 export const buildReviewPayloadHash = (payload) => crypto.createHash('sha256').update(JSON.stringify(payload ?? null)).digest('hex');
+

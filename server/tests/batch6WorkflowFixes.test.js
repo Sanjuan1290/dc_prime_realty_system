@@ -101,11 +101,23 @@ test('Head change on a record with an open Staff review becomes Correct & Confir
   assert.ok(!connection.calls.some((call) => /INSERT INTO operational_reviews/.test(call.sql)), 'no second review');
 });
 
-test('Head may change a record locked by their own pending review; Staff and other Heads may not', async () => {
-  const lock = (claimed = null) => fakeConnection([[/FROM operational_reviews WHERE entity_type=\?/, () => [[{ operational_review_id: 1, review_number: 'REV-1', status: 'pending_head_review', department: 'accounting', claimed_by_user_id: claimed }]]]]);
-  assert.equal(await assertEntityNotReviewLocked(lock(), { entityType: 'p', entityId: 1, actor: { id: 4, role: 'accounting_head' } }), true);
-  await assert.rejects(assertEntityNotReviewLocked(lock(), { entityType: 'p', entityId: 1, actor: { id: 3, role: 'accounting_staff' } }), /locked by REV-1/);
-  await assert.rejects(assertEntityNotReviewLocked(lock(8), { entityType: 'p', entityId: 1, actor: { id: 4, role: 'accounting_head' } }), /locked by REV-1/);
+test('routine post-action Head/Auditor reviews do not lock the record; correction cases still do', async () => {
+  const routine = fakeConnection([[
+    /FROM operational_reviews WHERE entity_type=\?/,
+    (_sql, params) => [params.includes('pending_head_review') || params.includes('pending_auditor_review')
+      ? [{ operational_review_id: 1, review_number: 'REV-1', status: 'pending_auditor_review', department: 'accounting' }]
+      : []],
+  ]]);
+  assert.equal(await assertEntityNotReviewLocked(routine, { entityType: 'p', entityId: 1, actor: { id: 3, role: 'accounting_staff' } }), true);
+
+  const correction = fakeConnection([[
+    /FROM operational_reviews WHERE entity_type=\?/,
+    () => [[{ operational_review_id: 2, review_number: 'REV-2', status: 'correction_required', department: 'accounting' }]],
+  ]]);
+  await assert.rejects(
+    assertEntityNotReviewLocked(correction, { entityType: 'p', entityId: 1, actor: { id: 3, role: 'accounting_staff' } }),
+    /REV-2 has an active controlled correction/
+  );
 });
 
 test('Audit Case responders: emergency, original Head, fallback, reassigned', async () => {
@@ -155,10 +167,16 @@ test('Cancellations and reserved/sold edits are wired to Head approval and the A
   assert.match(listings, /consume: false/);
 });
 
-test('Review Center offers Correct & Confirm, responder reassignment and approval history', async () => {
+test('Review Center makes post-action checks explicit and keeps correction controls', async () => {
   const page = await readProjectFile('client/src/pages/System/ReviewCenter.jsx');
+  assert.match(page, /Completed · Head Check Pending/);
+  assert.match(page, /Completed · Auditor Check Pending/);
+  assert.match(page, /Operation completed successfully/);
+  assert.match(page, /do not block completed operations/);
+  assert.match(page, /Super Admin direct entry/);
   assert.match(page, /Correct &amp; Confirm/);
   assert.match(page, /reassign-responder/);
   assert.match(page, /responders\?\.canRespond/);
   assert.match(page, /approvalStatus/);
 });
+

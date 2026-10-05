@@ -325,7 +325,7 @@ const normalizeSystemProjectAccess = (body = {}) => ({
 });
 
 const assertSystemProjectSelection = (role, access) => {
-  if (['super_admin', 'auditor'].includes(role)) return;
+  if (['super_admin', 'system_admin', 'auditor'].includes(role)) return;
   if (configurableSystemRoles.has(role) && !access.allProjects && !access.projectIds.length) {
     throw createValidationError('Select at least one project this user can access, or choose All Projects.');
   }
@@ -1583,7 +1583,7 @@ export const createUser = async (req, res) => {
     }
 
     if (systemUserRoles.has(role)) {
-      const projectAccess = ['super_admin', 'auditor'].includes(role)
+      const projectAccess = ['super_admin', 'system_admin', 'auditor'].includes(role)
         ? { allProjects: true, projectIds: [] }
         : normalizeSystemProjectAccess(req.body);
       assertSystemProjectSelection(role, projectAccess);
@@ -1983,14 +1983,15 @@ export const editUser = async (req, res) => {
     let allowReviewId = null;
 
     if (sellerRoles.has(role) && existingAccreditedSellerId) {
-      if (req.authUser?.role === 'system_admin') {
+      if (req.authUser?.role === 'system_admin' || (req.authUser?.role === 'super_admin' && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
         auditCase = await getPendingAuditCorrectionCase(connection, {
+          actor: req.authUser,
           auditCaseId: req.body?.auditCaseId || req.body?.audit_case_id,
           entityType: 'accredited_seller',
           entityId: existingAccreditedSellerId,
         });
         if (!auditCase) {
-          throw Object.assign(new Error('A valid Auditor-approved case is required for a System Admin seller correction.'), { statusCode: 409, code: 'AUDIT_CASE_REQUIRED' });
+          throw Object.assign(new Error('A valid Auditor-approved case is required for this controlled seller correction.'), { statusCode: 409, code: 'AUDIT_CASE_REQUIRED' });
         }
         allowReviewId = auditCase.operational_review_id;
       } else {
@@ -2377,7 +2378,7 @@ export const changeUserPosition = async (req, res) => {
       return res.status(400).json({ message: 'Enter a clear reason for the role change.' });
     }
 
-    const projectAccess = newRole === 'auditor'
+    const projectAccess = ['system_admin', 'auditor'].includes(newRole)
       ? { allProjects: true, projectIds: [] }
       : normalizeSystemProjectAccess(req.body);
     assertSystemProjectSelection(newRole, projectAccess);
@@ -2403,7 +2404,7 @@ export const changeUserPosition = async (req, res) => {
     }
 
     const previousRole = user.role;
-    const forcedAllProjects = newRole === 'auditor';
+    const forcedAllProjects = ['system_admin', 'auditor'].includes(newRole);
     await connection.query(
       `UPDATE users
        SET role = ?,
@@ -2555,3 +2556,4 @@ export const resetUserPassword = async (req, res) => {
     connection.release();
   }
 };
+

@@ -58,6 +58,9 @@ const ResultBadge = ({ row }) => {
   if (row.errors?.length) {
     return <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-1 text-xs font-black text-rose-700 ring-1 ring-rose-100"><FiAlertTriangle /> Error</span>
   }
+  if (row.criticalWarnings?.length || row.requiresExistingSellerUpdateConfirmation) {
+    return <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-1 text-xs font-black text-rose-700 ring-1 ring-rose-200"><FiAlertTriangle /> UPDATE EXISTING</span>
+  }
   if (row.warnings?.length) {
     return <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-black text-amber-700 ring-1 ring-amber-100"><FiAlertTriangle /> {row.action}</span>
   }
@@ -223,12 +226,18 @@ const NetworkMemberImportModal = ({
         `Row ${row.sourceRow}: ${row.errors.join(' ')}`
       ).join(' ')
       const remainingErrors = Math.max(0, invalidRows.length - 3)
+      const existingUpdates = Number(result?.data?.summary?.existingUpdates || 0)
       setAlert(errors
         ? {
             type: 'error',
             message: `${errors} row${errors === 1 ? '' : 's'} need correction. ${errorDetails}${remainingErrors ? ` Plus ${remainingErrors} more row${remainingErrors === 1 ? '' : 's'} shown in the preview below.` : ''} Nothing has been imported.`,
           }
-        : { type: 'success', message: `${parsedRows.length} row${parsedRows.length === 1 ? '' : 's'} validated. Review the hierarchy preview, then Confirm Import.` })
+        : existingUpdates > 0
+          ? {
+              type: 'warning',
+              message: `${parsedRows.length} row${parsedRows.length === 1 ? '' : 's'} validated, but ${existingUpdates} existing seller${existingUpdates === 1 ? '' : 's'} will be updated. Review the red UPDATE EXISTING row${existingUpdates === 1 ? '' : 's'} carefully. Final Double-Check will show the affected seller${existingUpdates === 1 ? '' : 's'} again before saving.`,
+            }
+          : { type: 'success', message: `${parsedRows.length} row${parsedRows.length === 1 ? '' : 's'} validated. Review the hierarchy preview, then Confirm Import.` })
     } catch (error) {
       setFile(null)
       setRows([])
@@ -241,16 +250,28 @@ const NetworkMemberImportModal = ({
 
   const confirmImport = async () => {
     if (!preview?.canCommit || !rows.length) return
+    const existingUpdateRows = (preview.rows || []).filter((row) => row.requiresExistingSellerUpdateConfirmation)
+    const existingUpdateCount = Number(preview.summary?.existingUpdates || existingUpdateRows.length || 0)
+    const existingUpdateMembers = existingUpdateRows.map((row) => ({
+      row: row.sourceRow,
+      name: row.displayName || '-',
+      email: row.email || '-',
+    }))
     setIsWorking(true)
     setAlert({ type: 'loading', message: `Importing ${rows.length} member${rows.length === 1 ? '' : 's'} into ${networkName}...` })
     try {
-      const result = await useFetchPost(`/seller-groups/${groupId}/members/import/commit`, { rows }, {
+      const result = await useFetchPost(`/seller-groups/${groupId}/members/import/commit`, {
+        rows,
+        acknowledgedExistingSellerUpdateEmails: existingUpdateRows.map((row) => row.email).filter(Boolean),
+      }, {
         redirectOnUnavailable: false,
         timeoutMs: 180_000,
         doubleCheck: {
           type: 'network-member-import',
           title: 'Review Network Member Import',
-          confirmLabel: `Confirm & Import ${preview.summary?.ready || rows.length} Members`,
+          confirmLabel: existingUpdateCount > 0
+            ? `Confirm ${existingUpdateCount} Existing Seller Update${existingUpdateCount === 1 ? '' : 's'} & Import`
+            : `Confirm & Import ${preview.summary?.ready || rows.length} Members`,
           data: {
             network: preview.network?.name || networkName,
             filename: file?.name || 'Excel import',
@@ -258,6 +279,8 @@ const NetworkMemberImportModal = ({
             createCount: preview.summary?.create || 0,
             updateCount: preview.summary?.update || 0,
             transferCount: preview.summary?.transfer || 0,
+            existingUpdateCount,
+            existingUpdateMembers,
           },
         },
       })
@@ -305,17 +328,27 @@ const NetworkMemberImportModal = ({
               <div className="border-b border-slate-200 bg-slate-50 p-4">
                 <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
                   <div><h3 className="font-black text-slate-950">Import Preview</h3><p className="text-sm font-semibold text-slate-500">Target: {preview.network?.name || networkName} · All successful rows become Active</p></div>
-                  <div className="grid grid-cols-4 gap-2 sm:grid-cols-7">
+                  <div className="grid grid-cols-4 gap-2 sm:grid-cols-8">
                     <SummaryBox label="Total" value={preview.summary?.total} />
                     <SummaryBox label="Ready" value={preview.summary?.ready} tone="emerald" />
                     <SummaryBox label="Warnings" value={preview.summary?.warnings} tone="amber" />
                     <SummaryBox label="Errors" value={preview.summary?.errors} tone="rose" />
                     <SummaryBox label="Create" value={preview.summary?.create} tone="blue" />
                     <SummaryBox label="Update" value={preview.summary?.update} />
+                    <SummaryBox label="Overwrite Risk" value={preview.summary?.existingUpdates} tone="rose" />
                     <SummaryBox label="Transfer" value={preview.summary?.transfer} tone="amber" />
                   </div>
                 </div>
               </div>
+
+              {Number(preview.summary?.existingUpdates || 0) > 0 ? (
+                <div className="border-b border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-900">
+                  <div className="flex items-start gap-2">
+                    <FiAlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-700" />
+                    <p><span className="font-black">Existing seller update warning:</span> {preview.summary.existingUpdates} row{Number(preview.summary.existingUpdates) === 1 ? '' : 's'} will modify seller records that already exist in this Network. These rows are marked <span className="font-black">UPDATE EXISTING</span> in red and will be shown again in Final Double-Check before anything is saved.</p>
+                  </div>
+                </div>
+              ) : null}
 
               <div className="max-h-[420px] overflow-auto">
                 <div className="min-w-[1120px]">
@@ -330,7 +363,7 @@ const NetworkMemberImportModal = ({
                         <p className="break-all font-semibold text-slate-600">{row.email || '-'}</p>
                         <p className="font-semibold text-slate-700">{ROLE_LABELS[row.role] || row.roleRaw || '-'}</p>
                         <div><p className="font-semibold text-slate-700">{row.parentDisplayName || row.reportsUnderEmail || 'Direct to Developer'}</p>{row.reportsUnderEmail ? <p className="text-xs text-slate-500">{row.reportsUnderEmail}</p> : null}</div>
-                        <div><ResultBadge row={row} />{row.errors?.map((message, index) => <p key={`e-${index}`} className="mt-1 text-xs font-semibold leading-5 text-rose-700">{message}</p>)}{row.warnings?.map((message, index) => <p key={`w-${index}`} className="mt-1 text-xs font-semibold leading-5 text-amber-700">{message}</p>)}</div>
+                        <div><ResultBadge row={row} />{row.errors?.map((message, index) => <p key={`e-${index}`} className="mt-1 text-xs font-semibold leading-5 text-rose-700">{message}</p>)}{row.criticalWarnings?.map((message, index) => <p key={`cw-${index}`} className="mt-1 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-2 text-xs font-bold leading-5 text-rose-800">{message}</p>)}{row.warnings?.map((message, index) => <p key={`w-${index}`} className="mt-1 text-xs font-semibold leading-5 text-amber-700">{message}</p>)}</div>
                       </div>
                     ))}
                   </div>
@@ -342,10 +375,10 @@ const NetworkMemberImportModal = ({
         </div>
 
         <footer className="flex flex-col gap-3 border-t border-slate-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-          <p className="text-xs font-semibold text-slate-500">Confirm Import is disabled until every row passes validation. Import is transactional: a failure rolls back the entire file.</p>
+          <p className="text-xs font-semibold text-slate-500">{Number(preview?.summary?.existingUpdates || 0) > 0 ? 'Existing seller updates are allowed only after Final Double-Check. Review every red UPDATE EXISTING row before continuing.' : 'Confirm Import is disabled until every row passes validation. Import is transactional: a failure rolls back the entire file.'}</p>
           <div className="flex justify-end gap-2">
             <button type="button" onClick={onClose} disabled={isWorking} className="h-11 rounded-xl border border-slate-200 bg-white px-5 text-sm font-black text-slate-700 hover:bg-slate-50 disabled:opacity-60">Cancel</button>
-            <button type="button" onClick={confirmImport} disabled={isWorking || !preview?.canCommit} className="inline-flex h-11 items-center gap-2 rounded-xl bg-emerald-600 px-5 text-sm font-black text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"><FiUpload />{isWorking ? 'Working...' : `Confirm Import${preview?.summary?.ready ? ` (${preview.summary.ready})` : ''}`}</button>
+            <button type="button" onClick={confirmImport} disabled={isWorking || !preview?.canCommit} className={`inline-flex h-11 items-center gap-2 rounded-xl px-5 text-sm font-black text-white shadow-sm disabled:cursor-not-allowed disabled:bg-slate-300 ${Number(preview?.summary?.existingUpdates || 0) > 0 ? 'bg-rose-600 hover:bg-rose-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}><FiUpload />{isWorking ? 'Working...' : Number(preview?.summary?.existingUpdates || 0) > 0 ? `Review & Confirm Import (${preview.summary.ready || 0})` : `Confirm Import${preview?.summary?.ready ? ` (${preview.summary.ready})` : ''}`}</button>
           </div>
         </footer>
       </div>
@@ -354,3 +387,4 @@ const NetworkMemberImportModal = ({
 }
 
 export default NetworkMemberImportModal
+

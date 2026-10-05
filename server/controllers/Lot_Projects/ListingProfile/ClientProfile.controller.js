@@ -395,14 +395,15 @@ export const updateLotProjectClientProfile = async (req, res) => {
     let auditCase = null;
     let allowReviewId = null;
 
-    if (req.authUser?.role === 'system_admin') {
+    if (req.authUser?.role === 'system_admin' || (req.authUser?.role === 'super_admin' && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
       auditCase = await getPendingAuditCorrectionCase(connection, {
+        actor: req.authUser,
         auditCaseId: req.body.auditCaseId || req.body.audit_case_id,
         entityType: 'lot_project_client_profile',
         entityId: clientProfileId,
       });
       if (!auditCase) {
-        throw Object.assign(new Error('A valid Auditor-approved case is required for a System Admin buyer-profile correction.'), {
+        throw Object.assign(new Error('A valid Auditor-approved case is required for this controlled buyer-profile correction.'), {
           statusCode: 409,
           code: 'AUDIT_CASE_REQUIRED',
         });
@@ -532,3 +533,4 @@ export const updateLotProjectClientProfile = async (req, res) => {
     connection.release();
   }
 };
+

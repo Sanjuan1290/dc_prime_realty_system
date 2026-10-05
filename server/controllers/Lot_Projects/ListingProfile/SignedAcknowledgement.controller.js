@@ -285,14 +285,15 @@ export const saveLotProjectPaymentAcknowledgementSignedCopy = async (req, res) =
     let auditCase = null;
     let allowReviewId = null;
 
-    if (req.authUser?.role === 'system_admin') {
+    if (req.authUser?.role === 'system_admin' || (req.authUser?.role === 'super_admin' && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
       auditCase = await getPendingAuditCorrectionCase(connection, {
+        actor: req.authUser,
         auditCaseId: req.body.auditCaseId || req.body.audit_case_id,
         entityType: 'lot_project_signed_receipt',
         entityId: paymentId,
       });
       if (!auditCase) {
-        throw Object.assign(new Error('A valid Auditor-approved case is required for a System Admin signed-receipt correction.'), {
+        throw Object.assign(new Error('A valid Auditor-approved case is required for this controlled signed-receipt correction.'), {
           statusCode: 409,
           code: 'AUDIT_CASE_REQUIRED',
         });
@@ -541,3 +542,4 @@ export const getLotProjectPaymentAcknowledgementSignedCopyContent = async (req, 
     connection.release();
   }
 };
+

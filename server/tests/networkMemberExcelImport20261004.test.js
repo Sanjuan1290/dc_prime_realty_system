@@ -59,7 +59,7 @@ test('out-of-order Excel rows resolve hierarchy from DM to SD to UM to SA withou
     row({ source_row: 4, first_name: 'John', last_name: 'Cruz', email: 'john@example.com', role: 'SD', reports_under_email: 'rowena@example.com' }),
   ]);
   assert.equal(result.canCommit, true);
-  assert.deepEqual(result.summary, { total: 3, ready: 3, warnings: 0, errors: 0, create: 3, update: 0, transfer: 0 });
+  assert.deepEqual(result.summary, { total: 3, ready: 3, warnings: 0, errors: 0, existingUpdates: 0, create: 3, update: 0, transfer: 0 });
   assert.deepEqual(sortNetworkMemberImportRows(result.rows).map((item) => item.role), [
     'sales_director', 'unit_manager', 'sales_agent',
   ]);
@@ -240,28 +240,29 @@ test('duplicate email rows are rejected', () => {
   assert.match(result.rows[0].errors.join(' '), /appears more than once/i);
 });
 
-test('duplicate full names with different emails are rejected and identify the conflicting Excel rows', () => {
+test('duplicate full names with different emails are allowed with a duplicate-name warning', () => {
   const result = analyze([
     row({ source_row: 2, first_name: 'Robert', middle_name: 'Cortez', last_name: 'San Juan', email: 'robert1@example.com', role: 'SD', reports_under_email: 'rowena@example.com' }),
     row({ source_row: 3, first_name: 'Robert', middle_name: 'Cortez', last_name: 'San Juan', email: 'robert2@example.com', role: 'SD', reports_under_email: 'rowena@example.com' }),
   ]);
-  assert.equal(result.canCommit, false);
-  assert.equal(result.summary.errors, 2);
-  assert.match(result.rows[0].errors.join(' '), /Full Name .* duplicated in this Excel file/i);
-  assert.match(result.rows[0].errors.join(' '), /Row 3 \(robert2@example\.com\)/i);
-  assert.match(result.rows[1].errors.join(' '), /Row 2 \(robert1@example\.com\)/i);
+  assert.equal(result.canCommit, true);
+  assert.equal(result.summary.errors, 0);
+  assert.equal(result.summary.warnings, 2);
+  assert.match(result.rows[0].warnings.join(' '), /Possible duplicate name/i);
+  assert.match(result.rows[0].warnings.join(' '), /Row 3 \(robert2@example\.com\)/i);
+  assert.match(result.rows[1].warnings.join(' '), /Row 2 \(robert1@example\.com\)/i);
 });
 
-test('duplicate full-name validation ignores letter case and repeated spacing', () => {
+test('duplicate-name warning ignores letter case and repeated spacing', () => {
   const result = analyze([
     row({ source_row: 2, first_name: 'Robert', middle_name: 'Cortez', last_name: 'San Juan', email: 'robert1@example.com', role: 'SD', reports_under_email: 'rowena@example.com' }),
     row({ source_row: 3, first_name: '  robert ', middle_name: ' CORTEZ ', last_name: ' san   juan ', email: 'robert2@example.com', role: 'SD', reports_under_email: 'rowena@example.com' }),
   ]);
-  assert.equal(result.canCommit, false);
-  assert.match(result.rows[1].errors.join(' '), /unique full name/i);
+  assert.equal(result.canCommit, true);
+  assert.match(result.rows[1].warnings.join(' '), /Possible duplicate name/i);
 });
 
-test('full name matching another Accredited Seller in the target Network is rejected when email is different', () => {
+test('full name matching another Accredited Seller in the target Network is allowed with a warning when email is different', () => {
   const existingMember = {
     accredited_seller_id: 150, user_id: 50, seller_group_id: 10,
     accredited_seller_status: 'active', is_system_dummy: 0,
@@ -272,9 +273,9 @@ test('full name matching another Accredited Seller in the target Network is reje
   const result = analyze([
     row({ first_name: 'Robert', middle_name: 'Cortez', last_name: 'San Juan', email: 'new-robert@example.com', role: 'SD', reports_under_email: 'rowena@example.com' }),
   ], { currentMembers: [head, existingMember] });
-  assert.equal(result.canCommit, false);
-  assert.match(result.rows[0].errors.join(' '), /already belongs to another Accredited Seller in this Network/i);
-  assert.match(result.rows[0].errors.join(' '), /existing-robert@example\.com/i);
+  assert.equal(result.canCommit, true);
+  assert.match(result.rows[0].warnings.join(' '), /Possible duplicate name/i);
+  assert.match(result.rows[0].warnings.join(' '), /existing-robert@example\.com/i);
 });
 
 test('updating the same existing seller does not conflict with its own full name', () => {
@@ -291,6 +292,9 @@ test('updating the same existing seller does not conflict with its own full name
   ], { currentMembers: [head, existingMember], existingAccounts: [existingMember] });
   assert.equal(result.canCommit, true);
   assert.equal(result.rows[0].action, 'UPDATE');
+  assert.equal(result.rows[0].requiresExistingSellerUpdateConfirmation, true);
+  assert.equal(result.summary.existingUpdates, 1);
+  assert.match(result.rows[0].criticalWarnings.join(' '), /EXISTING SELLER WILL BE UPDATED/i);
   assert.doesNotMatch(result.rows[0].errors.join(' '), /Full Name/i);
 });
 
@@ -323,6 +327,29 @@ test('Network details UI exposes Import Members and the template contains a safe
   assert.doesNotMatch(modal, /Instructions and Examples for SD → UM → SA reporting/);
   assert.match(modal, /Download Template \(\.xlsx\)/);
   assert.match(modal, /All successful rows become Active/);
+});
+
+
+test('existing seller overwrites are shown as red risk and repeated in Final Double-Check', async () => {
+  const modal = await fs.readFile(path.join(root, 'client/src/components/System/sellerGroupComponents/NetworkMemberImportModal.jsx'), 'utf8');
+  const doubleCheck = await fs.readFile(path.join(root, 'client/src/components/Shared/DoubleCheckComponents/NetworkMemberImportDoubleCheck.jsx'), 'utf8');
+  assert.match(modal, /UPDATE EXISTING/);
+  assert.match(modal, /Overwrite Risk/);
+  assert.match(modal, /criticalWarnings/);
+  assert.match(modal, /existingUpdateMembers/);
+  assert.match(doubleCheck, /Existing Seller Records Will Be Updated/);
+  assert.match(doubleCheck, /tone="red"/);
+  assert.match(doubleCheck, /existingUpdateMembers/);
+});
+
+
+test('commit requires Final Double-Check acknowledgement for exact existing seller update emails', async () => {
+  const controller = await fs.readFile(path.join(root, 'server/controllers/System/sellerGroup.controller.js'), 'utf8');
+  const modal = await fs.readFile(path.join(root, 'client/src/components/System/sellerGroupComponents/NetworkMemberImportModal.jsx'), 'utf8');
+  assert.match(controller, /acknowledgedExistingSellerUpdateEmails/);
+  assert.match(controller, /EXISTING_SELLER_UPDATE_CONFIRMATION_REQUIRED/);
+  assert.match(controller, /newlyUnacknowledgedExistingUpdates/);
+  assert.match(modal, /acknowledgedExistingSellerUpdateEmails: existingUpdateRows\.map/);
 });
 
 test('server routes provide preview and transactional commit endpoints with seller/group permissions', async () => {
@@ -370,3 +397,4 @@ test('commit preserves an existing employee/system login by creating a non-login
   assert.match(controller, /if \(accreditedSellerId\)[\s\S]*UPDATE accredited_sellers[\s\S]*else \{[\s\S]*INSERT INTO accredited_sellers/);
   assert.match(controller, /UPDATE employees[\s\S]*linked_user_id = COALESCE\(linked_user_id, \?\)/);
 });
+

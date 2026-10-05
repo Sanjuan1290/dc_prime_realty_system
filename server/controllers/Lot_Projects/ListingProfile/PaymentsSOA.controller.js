@@ -456,7 +456,7 @@ const requirePaymentCorrectionVerification = async (connection, req, { action, l
   // A valid Auditor finding gives System Admin a correction right only for the
   // exact payment attached to that Audit Case.
   const auditCaseId = Number(req.body.auditCaseId || req.body.audit_case_id || 0);
-  if (actor.role === 'system_admin' && auditCaseId) {
+  if (['system_admin','super_admin'].includes(actor.role) && auditCaseId) {
     const [caseRows] = await connection.query(
       `SELECT c.*, r.entity_type, r.entity_id, r.operational_review_id, r.review_number
        FROM audit_cases c
@@ -764,15 +764,16 @@ const authorizeAccountingAdjustment = async (connection, {
     return { authorized: true, authorizationType: 'department_head', headPreApprovedByUserId: actor.id };
   }
 
-  if (actor.role === 'system_admin') {
+  if (actor.role === 'system_admin' || (actor.role === 'super_admin' && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
     const auditCase = await getPendingAuditCorrectionCase(connection, {
+      actor: req.authUser,
       auditCaseId: req.body.auditCaseId || req.body.audit_case_id,
       entityType,
       entityId,
       forUpdate: true,
     });
     if (!auditCase) {
-      throw Object.assign(new Error('A valid Auditor-approved case is required for a System Admin adjustment.'), {
+      throw Object.assign(new Error('A valid Auditor-approved case is required for this controlled adjustment.'), {
         statusCode: 409,
         code: 'AUDIT_CASE_REQUIRED',
       });
@@ -1169,7 +1170,7 @@ export const requestLotProjectPaymentCorrectionCode = async (req, res) => {
       });
     }
 
-    if (actor.role === 'system_admin') {
+    if (actor.role === 'system_admin' || (actor.role === 'super_admin' && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
       const auditCaseId = Number(req.body.auditCaseId || req.body.audit_case_id || 0);
       if (!auditCaseId) throw createHttpError(409, 'A valid Auditor-approved Audit Case is required for System Admin payment correction.');
       const [caseRows] = await connection.query(
@@ -1192,7 +1193,7 @@ export const requestLotProjectPaymentCorrectionCode = async (req, res) => {
       await connection.commit();
       return res.json({
         success: true,
-        message: `${auditCase.case_number} authorizes this controlled System Admin correction.`,
+        message: `${auditCase.case_number} authorizes this controlled correction.`,
         data: {
           directCorrection: true,
           authorizationType: 'audit_case',
@@ -2421,6 +2422,7 @@ export const restoreSeparateLegalMiscFeeFromAuditCase = async (req, res) => {
     if (!schedule || getStoredScheduleType(schedule) !== 'legal_misc') throw createHttpError(404, 'Legal / Misc Fee SOA row not found.');
 
     const auditCase = await getPendingAuditCorrectionCase(connection, {
+      actor: req.authUser,
       auditCaseId,
       entityType: ACCOUNTING_LMF_ENTITY,
       entityId: scheduleId,
@@ -3740,3 +3742,4 @@ export const restorePaymentSchedulePenaltyWaiver = async (req, res) => {
     connection.release();
   }
 };
+
