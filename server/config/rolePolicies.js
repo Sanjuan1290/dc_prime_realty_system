@@ -24,38 +24,15 @@ const headRequired = Object.freeze([
   PERMISSIONS.WORKFLOW_DEPARTMENT_CASE_RESPOND,
 ]);
 
-const systemAdminRequired = Object.freeze([
-  PERMISSIONS.SYSTEM_DASHBOARD_VIEW,
-  PERMISSIONS.SYSTEM_USERS_VIEW,
-  PERMISSIONS.SYSTEM_USERS_CREATE,
-  PERMISSIONS.SYSTEM_USERS_EDIT,
-  PERMISSIONS.SYSTEM_USERS_RESET_PASSWORD,
-  PERMISSIONS.SYSTEM_USERS_DEACTIVATE,
-  PERMISSIONS.SYSTEM_SETTINGS_VIEW,
-  PERMISSIONS.SYSTEM_ACCESS_CONTROL_VIEW,
-  PERMISSIONS.SYSTEM_ACCESS_CONTROL_MANAGE,
-  PERMISSIONS.AUDIT_LOGS_VIEW,
-  PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW,
-  PERMISSIONS.WORKFLOW_SYSTEM_CORRECTION_APPLY,
-  PERMISSIONS.LOT_PAYMENTS_EDIT,
-  PERMISSIONS.LOT_PAYMENT_DELETE,
-  PERMISSIONS.LOT_RESERVATION_CORRECT,
-  PERMISSIONS.LOT_COMMISSIONS_ADJUST,
-  PERMISSIONS.LOT_PENALTY_CORRECT,
-  PERMISSIONS.LOT_SETTINGS_MANAGE,
-]);
+const systemAdminRequired = Object.freeze([...allPermissionKeys]);
 
 const auditorRequired = Object.freeze(getAuditorEnforcedPermissions());
 const auditorCeiling = Object.freeze(getAuditorAllowedPermissions());
 
-// System Admin is deliberately NOT a second Super Admin. Its ceiling is the
-// governance/read baseline plus narrowly-scoped correction route permissions.
-// Controllers still require a valid Auditor-approved case before a correction
-// mutation can execute.
-const systemAdminCeiling = unique([
-  ...(RECOMMENDED_ROLE_PERMISSIONS.system_admin || []),
-  ...systemAdminRequired,
-]);
+// System Admin is the day-to-day full administrator. The permission ceiling is
+// intentionally the complete catalog; project scope determines which projects a
+// System Admin can operate on. Super Admin controls each System Admin's project scope.
+const systemAdminCeiling = [...allPermissionKeys];
 
 const roleCeiling = (role) => {
   if (role === 'system_admin') return systemAdminCeiling;
@@ -91,7 +68,7 @@ export const getStaticRolePolicy = (role) => {
     parentRole: ROLE_PARENT[normalizedRole] || null,
     ceiling,
     required,
-    fixed: false,
+    fixed: normalizedRole === 'system_admin',
     defaultEditable: ROLE_DEFAULT_EDITABLE_ROLES.includes(normalizedRole),
     systemAdminManageable: SYSTEM_ADMIN_MANAGEABLE_ROLES.includes(normalizedRole),
   };

@@ -51,7 +51,7 @@ const payloadHash = ({ accountId, accountReference, reason, userId }) => crypto
 const sendDeletionCodeEmail = async ({ to, name, code, accountReference, unitId, buyerName }) => {
   const companyName = clean(process.env.COMPANY_NAME) || 'D&C Prime Realty';
   const safeCompanyName = escapeHtml(companyName);
-  const safeName = escapeHtml(name || 'Super Admin');
+  const safeName = escapeHtml(name || 'Administrator');
   const safeAccountReference = escapeHtml(accountReference);
   const safeUnitId = escapeHtml(unitId);
 
@@ -59,7 +59,7 @@ const sendDeletionCodeEmail = async ({ to, name, code, accountReference, unitId,
     to,
     subject: `Permanent account deletion code - ${accountReference}`,
     text: [
-      `Hello ${name || 'Super Admin'},`,
+      `Hello ${name || 'Administrator'},`,
       '',
       `Your verification code is ${code}.`,
       `Account: ${accountReference}`,
@@ -292,7 +292,7 @@ export const requestLotProjectAccountPurgeCode = async (req, res) => {
   const connection = await db.getConnection();
   try {
     const actor = await getAuthenticatedUser(req);
-    if (!actor?.id || !actor.email) return res.status(400).json({ message: 'The Super Admin account must have an email address.' });
+    if (!actor?.id || !actor.email) return res.status(400).json({ message: 'The administrator account must have an email address.' });
 
     const reason = clean(req.body.deletionReason || req.body.reason);
     const confirmationText = clean(req.body.confirmationText);

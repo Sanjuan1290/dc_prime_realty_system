@@ -25,13 +25,21 @@ export const requireRole = (...allowedRoles) => (req, res, next) => {
 export const requireExactRole = (...allowedRoles) => (req, res, next) => {
   const role = req.authUser?.role;
   if (!allowedRoles.includes(role)) {
-    return denied(res, 403, 'This owner-only action requires a Super Admin account.');
+    const authority = allowedRoles.includes('system_admin') ? 'System Admin or Super Admin authority' : 'Super Admin authority';
+    return denied(res, 403, `This action requires ${authority}.`);
   }
   return next();
 };
 
 export const requirePermission = (permission) => (req, res, next) => {
   if (!roleHasPermission(req.authUser, permission)) {
+    return denied(res, 403, 'You do not have permission to perform this action.');
+  }
+  return next();
+};
+
+export const requireAnyPermission = (...permissions) => (req, res, next) => {
+  if (!permissions.some((permission) => roleHasPermission(req.authUser, permission))) {
     return denied(res, 403, 'You do not have permission to perform this action.');
   }
   return next();
@@ -72,9 +80,42 @@ export const requireProjectPermission = (permission, {
   }
 };
 
+export const requireProjectAnyPermission = (permissions = [], {
+  projectIdParam = 'id',
+  projectSlugParam = null,
+} = {}) => async (req, res, next) => {
+  try {
+    const keys = Array.isArray(permissions) ? permissions : [permissions];
+    if (!keys.some((permission) => roleHasPermission(req.authUser, permission))) {
+      return denied(res, 403, 'You do not have permission to perform this action.');
+    }
+
+    let projectId = 0;
+    if (projectSlugParam) {
+      const slug = String(req.params?.[projectSlugParam] || '').trim();
+      if (!slug) return denied(res, 400, 'Invalid project slug.');
+      const [rows] = await db.query('SELECT lot_project_id FROM lot_projects WHERE lot_project_slug = ? LIMIT 1', [slug]);
+      projectId = Number(rows[0]?.lot_project_id || 0);
+      if (!projectId) return denied(res, 404, 'Lot project not found.');
+    } else {
+      projectId = Number(req.params?.[projectIdParam] || 0);
+      if (!projectId) return denied(res, 400, 'Invalid project id.');
+    }
+
+    if (!(await canAccessProject(req.authUser, projectId))) {
+      return denied(res, 403, 'You do not have access to this project.');
+    }
+
+    req.authorizedLotProjectId = projectId;
+    return next();
+  } catch (error) {
+    return denied(res, 500, error?.message || 'Unable to verify project permission.');
+  }
+};
+
 export const requireProjectAccessBySlug = async (req, res, next, projectSlug) => {
   try {
-    if (['super_admin','system_admin','auditor'].includes(req.authUser?.role)) return next();
+    if (['super_admin','auditor'].includes(req.authUser?.role)) return next();
     const slug = String(projectSlug || '').trim();
     const [rows] = await db.query('SELECT lot_project_id FROM lot_projects WHERE lot_project_slug = ? LIMIT 1', [slug]);
     const projectId = Number(rows[0]?.lot_project_id || 0);
@@ -91,7 +132,7 @@ export const requireProjectAccessBySlug = async (req, res, next, projectSlug) =>
 
 export const requireProjectAccessById = (paramName = 'id') => async (req, res, next) => {
   try {
-    if (['super_admin','system_admin','auditor'].includes(req.authUser?.role)) return next();
+    if (['super_admin','auditor'].includes(req.authUser?.role)) return next();
     const projectId = Number(req.params?.[paramName] || 0);
     if (!projectId) return denied(res, 400, 'Invalid project id.');
     if (!(await canAccessProject(req.authUser, projectId))) {

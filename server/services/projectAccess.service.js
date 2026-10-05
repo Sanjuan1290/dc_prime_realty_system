@@ -6,7 +6,7 @@ const uniquePositiveIds = (values = []) => [...new Set((Array.isArray(values) ? 
   .filter((value) => Number.isInteger(value) && value > 0))];
 
 export const isSuperAdmin = (user = {}) => String(user?.role || '').toLowerCase() === 'super_admin';
-export const hasForcedAllProjectsAccess = (user = {}) => ['super_admin', 'system_admin', 'auditor'].includes(String(user?.role || '').toLowerCase());
+export const hasForcedAllProjectsAccess = (user = {}) => ['super_admin', 'auditor'].includes(String(user?.role || '').toLowerCase());
 export const isProjectScopedSystemUser = (user = {}) => CONFIGURABLE_SYSTEM_ROLES.includes(String(user?.role || '').toLowerCase());
 
 const loadProjectScopeIdentity = async (connection, userId, { forUpdate = false } = {}) => {
@@ -27,7 +27,7 @@ export const getUserProjectAccess = async (user, connection = db) => {
 
   const identity = await loadProjectScopeIdentity(connection, user.id);
   if (!identity || identity.status !== 'active') return { allProjects: false, projectIds: [] };
-  if (['super_admin', 'system_admin', 'auditor'].includes(identity.role)) return { allProjects: true, projectIds: [] };
+  if (['super_admin', 'auditor'].includes(identity.role)) return { allProjects: true, projectIds: [] };
   if (!CONFIGURABLE_SYSTEM_ROLES.includes(identity.role)) return { allProjects: false, projectIds: [] };
 
   if (Number(identity.all_projects_access || 0) === 1) {
@@ -78,7 +78,7 @@ export const replaceUserProjectAccess = async (connection, {
 
   await connection.query('DELETE FROM user_project_access WHERE user_id = ?', [id]);
 
-  if (['super_admin', 'system_admin', 'auditor'].includes(identity.role)) {
+  if (['super_admin', 'auditor'].includes(identity.role)) {
     await connection.query('UPDATE users SET all_projects_access = 1 WHERE id = ?', [id]);
     return { allProjects: true, projectIds: [] };
   }

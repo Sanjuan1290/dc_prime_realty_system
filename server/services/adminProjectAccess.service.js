@@ -1,7 +1,7 @@
 // Backward-compatible import surface for older controllers/tests.
 // The authoritative implementation lives in projectAccess.service.js.
 // Do not duplicate scope logic here: persisted-role checks and forced global
-// scope for Super Admin / System Admin / Auditor must remain centralized.
+// scope for Super Admin / Auditor and project-scoped System Admin behavior must remain centralized.
 import {
   isSuperAdmin,
   hasForcedAllProjectsAccess,

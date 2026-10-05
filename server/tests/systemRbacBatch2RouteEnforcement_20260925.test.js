@@ -43,10 +43,11 @@ test('project-bound numeric mutations combine permission and project scope', () 
   assert.match(projectRouter, /router\.param\('projectSlug', requireProjectAccessBySlug\)/);
 });
 
-test('project-specific seller-group routes enforce project scope at middleware level', () => {
+test('project-specific seller-group routes enforce project scope with granular Network permissions', () => {
   assert.match(sellerGroupRouter, /requireProjectPermission/);
+  assert.match(sellerGroupRouter, /requireProjectAnyPermission/);
   assert.match(sellerGroupRouter, /projects\/:projectId\/analytics'[\s\S]*requireProjectPermission\(PERMISSIONS\.SYSTEM_SELLER_GROUPS_VIEW, \{ projectIdParam: 'projectId' \}\)/);
-  assert.match(sellerGroupRouter, /projects\/:projectId\/pool'[\s\S]*requireProjectPermission\(PERMISSIONS\.SYSTEM_SELLER_GROUPS_MANAGE, \{ projectIdParam: 'projectId' \}\)/);
+  assert.match(sellerGroupRouter, /projects\/:projectId\/pool'[\s\S]*SYSTEM_NETWORK_RATES_UPDATE[\s\S]*SYSTEM_SELLER_GROUPS_MANAGE/);
 });
 
 test('read-side routes use the dedicated data permission instead of generic listing view', () => {
@@ -86,8 +87,8 @@ test('commission release, hold, and unhold remain independent', () => {
   assert.match(projectRouter, /\['unhold', 'unhold_stage'\][\s\S]*LOT_COMMISSIONS_UNHOLD/);
 });
 
-test('sensitive owner-level safeguards remain stronger than ordinary permissions', () => {
-  assert.match(routeLine("accounts/:accountId/purge-preview"), /requireExactRole\('super_admin'\)/);
+test('sensitive administrative safeguards remain stronger than ordinary permissions', () => {
+  assert.match(routeLine("accounts/:accountId/purge-preview"), /requireExactRole\('super_admin','system_admin'\)/);
   assert.match(projectRouter, /commission-adjustment-code'[\s\S]*LOT_COMMISSIONS_ADJUST/);
   assert.doesNotMatch(projectRouter, /commission-adjustment-code'[^\n]*requireExactRole/);
   assert.match(projectRouter, /reservation-correction\/code'[\s\S]*LOT_RESERVATION_CORRECT/);

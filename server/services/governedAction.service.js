@@ -3,8 +3,9 @@
 // (plan items 18-19: reserved/sold listing edits and cancellations).
 //
 //   * The owning department's Head acts directly.
-//   * Super Admin acts as the emergency fallback.
-//   * Everyone else (Staff, other departments, System Admin) needs an
+//   * System Admin acts directly as the day-to-day full administrator.
+//   * Super Admin remains available as the owner fallback.
+//   * Everyone else (Staff and other departments) needs an
 //     approved Head request for the exact same change. The first attempt
 //     files the request automatically and returns HEAD_APPROVAL_PENDING;
 //     submitting the same change again after approval applies it.
@@ -41,6 +42,9 @@ export const authorizeGovernedAction = async (connection, {
   const { department, entityType } = definition;
   if (!actor?.id) throw Object.assign(new Error('Authentication is required.'), { statusCode: 401 });
 
+  if (actor.role === 'system_admin') {
+    return { authorized: true, authorizationType: 'system_admin_direct', headPreApprovedByUserId: null, department, entityType };
+  }
   if (actor.role === 'super_admin') {
     return { authorized: true, authorizationType: 'emergency_super_admin', headPreApprovedByUserId: null, department, entityType };
   }

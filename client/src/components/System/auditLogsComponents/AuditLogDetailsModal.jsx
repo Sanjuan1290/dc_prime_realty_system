@@ -97,8 +97,8 @@ const getSettingsChanges = (log = {}) => {
 }
 
 const getAuthorizationLabel = (verificationMethod) => (
-  verificationMethod === 'super_admin_password_email_code'
-    ? 'Super Admin password + email verification'
+  ['super_admin_password_email_code','administrator_password_email_code'].includes(verificationMethod)
+    ? 'Administrator password + email verification'
     : verificationMethod
       ? titleCase(verificationMethod)
       : '-'

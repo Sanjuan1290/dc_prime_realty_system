@@ -69,30 +69,20 @@ test('Auditor is enforced read-only for normal business permissions even if a wr
   assert.ok(getAuditorEnforcedPermissions().every((key) => !key.endsWith('.edit') && !key.endsWith('.create') || key.startsWith('workflow.audit.')));
 });
 
-test('System Admin has a governance/case-correction ceiling instead of full operational access', () => {
+test('System Admin has full operational and governance permissions with project scope as the boundary', () => {
   const policy = getStaticRolePolicy('system_admin');
-  for (const required of [
-    PERMISSIONS.SYSTEM_ACCESS_CONTROL_MANAGE,
-    PERMISSIONS.WORKFLOW_SYSTEM_CORRECTION_APPLY,
-    PERMISSIONS.LOT_PAYMENTS_EDIT,
-    PERMISSIONS.LOT_PAYMENT_DELETE,
-    PERMISSIONS.LOT_RESERVATION_CORRECT,
-    PERMISSIONS.LOT_COMMISSIONS_ADJUST,
-    PERMISSIONS.LOT_PENALTY_CORRECT,
-  ]) assert.ok(policy.required.includes(required), required);
-  assert.ok(policy.required.includes(PERMISSIONS.LOT_SETTINGS_MANAGE));
-  assert.ok(!policy.ceiling.includes(PERMISSIONS.SYSTEM_SETTINGS_MANAGE));
-  assert.ok(!policy.ceiling.includes(PERMISSIONS.AUDIT_LOGS_ARCHIVE));
-  assert.ok(!policy.ceiling.includes(PERMISSIONS.WORKFLOW_EMERGENCY_OVERRIDE));
-  assert.ok(!RECOMMENDED_ROLE_PERMISSIONS.system_admin.includes(PERMISSIONS.LOT_PAYMENTS_CREATE));
-  assert.ok(!RECOMMENDED_ROLE_PERMISSIONS.system_admin.includes(PERMISSIONS.LOT_LISTINGS_CREATE));
+  for (const permission of Object.values(PERMISSIONS)) {
+    assert.ok(policy.required.includes(permission), permission);
+    assert.ok(policy.ceiling.includes(permission), permission);
+  }
+  assert.equal(policy.fixed, true);
 });
 
-test('System Admin can manage department Staff/Head but not Auditor, System Admin, or Super Admin', () => {
+test('System Admin can manage Auditor and department Staff/Head but not System Admin or Super Admin accounts', () => {
   const actor = { role: 'system_admin' };
   assert.equal(canActorManageUserRole(actor, 'accounting_staff'), true);
   assert.equal(canActorManageUserRole(actor, 'accounting_head'), true);
-  assert.equal(canActorManageUserRole(actor, 'auditor'), false);
+  assert.equal(canActorManageUserRole(actor, 'auditor'), true);
   assert.equal(canActorManageUserRole(actor, 'system_admin'), false);
   assert.equal(canActorManageUserRole(actor, 'super_admin'), false);
 });
@@ -173,7 +163,7 @@ test('Review Center exposes the required Head, Auditor, case, correction, approv
 test('Role & Access Control UI groups System, Audit, Staff/Head departments and Owner separately', () => {
   for (const label of ['SYSTEM','AUDIT','MARKETING','SALES','ACCOUNTING','OPERATIONS','OWNER']) assert.ok(roleAccessUi.includes(`'${label}'`), label);
   assert.match(roleAccessUi, /Auditor · Governed Global Read-Only/);
-  assert.match(roleAccessUi, /Head inheritance/);
+  assert.match(roleAccessUi, /includes all access from/);
   assert.match(accessController, /Correct Reservation \(Governed\)/);
   assert.match(accessController, /Penalty \/ LMF Adjustment \(Governed\)/);
   assert.match(accessController, /Adjust Distribution \(Governed\)/);
@@ -185,10 +175,10 @@ test('routine Role & Access administration is no longer exact-Super-Admin-only',
   assert.match(accessController, /SYSTEM_ADMIN_MANAGEABLE_ROLES/);
 });
 
-test('true owner-level gates remain Super Admin only', () => {
+test('normal protected administration no longer requires Super Admin', () => {
   const auditRouter = read('routers/System/auditLogs.router.js');
   const settingsRouter = read('routers/System/systemSettings.routers.js');
-  assert.match(auditRouter, /archive\/request[^\n]*requireExactRole\('super_admin'\)/);
-  assert.match(projectsRouter, /purge-code[^\n]*requireExactRole\('super_admin'\)/);
-  assert.match(settingsRouter, /\/code'[^\n]*requireExactRole\('super_admin'\)/);
+  assert.match(auditRouter, /archive\/request[^\n]*requireExactRole\('super_admin','system_admin'\)/);
+  assert.match(projectsRouter, /purge-code[^\n]*requireExactRole\('super_admin','system_admin'\)/);
+  assert.match(settingsRouter, /\/code'[^\n]*requireExactRole\('super_admin','system_admin'\)/);
 });

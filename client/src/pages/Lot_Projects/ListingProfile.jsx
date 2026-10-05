@@ -141,7 +141,15 @@ const ListingProfile = () => {
     ? `/projects/lot-projects/${projectSlug}/listings/${listingId}/accounts/${accountId}`
     : `/projects/lot-projects/${projectSlug}/listings/${listingId}`
 
-  const [activeTab, setActiveTab] = useState(['payment_correction','penalty_adjustment','lmf_correction'].includes(workflowAction) ? 'payments' : 'unit')
+  const [activeTab, setActiveTab] = useState(
+    ['payment_correction','penalty_adjustment','lmf_correction'].includes(workflowAction)
+      ? 'payments'
+      : workflowAction === 'buyer_profile_edit'
+        ? 'client'
+        : workflowAction === 'listing_documents_update'
+          ? 'documents'
+          : 'unit'
+  )
   const [showReserveModal, setShowReserveModal] = useState(false)
   const [reserveMode, setReserveMode] = useState('manual')
   const [showBuyerFormLinkModal, setShowBuyerFormLinkModal] = useState(false)
@@ -183,7 +191,9 @@ const ListingProfile = () => {
   const readOnly = Boolean(profile.readOnly)
   useEffect(() => {
     if (['payment_correction','penalty_adjustment','lmf_correction'].includes(workflowAction)) setActiveTab('payments')
-    if (workflowAction === 'commission_adjustment') setActiveTab('unit')
+    if (workflowAction === 'buyer_profile_edit') setActiveTab('client')
+    if (workflowAction === 'listing_documents_update') setActiveTab('documents')
+    if (['commission_adjustment','listing_edit_review'].includes(workflowAction)) setActiveTab('unit')
     if (workflowAction === 'reservation_correction' && canCorrectReservation && !readOnly) {
       setActiveTab('unit')
       setShowReservationCorrectionModal(true)
@@ -260,8 +270,11 @@ const ListingProfile = () => {
   )
 
   const updateListingMutation = useMutation({
-    mutationFn: (payload) =>
-      useFetchPut(`/projects/lot-projects/${projectSlug}/listings/${listingId}`, payload, {
+    mutationFn: (payload) => {
+      const requestPayload = workflowAction === 'listing_edit_review' && workflowAuditCaseId
+        ? { ...payload, auditCaseId: workflowAuditCaseId }
+        : payload
+      return useFetchPut(`/projects/lot-projects/${projectSlug}/listings/${listingId}`, requestPayload, {
         doubleCheck: {
           type: 'listing',
           mode: 'edit',
@@ -285,7 +298,8 @@ const ListingProfile = () => {
             },
           },
         },
-      }),
+      })
+    },
     onMutate: (payload) => {
       setAlert({ type: 'loading', message: `Preparing ${payload.unitCode || payload.unit_id || 'listing'} review...` })
     },
@@ -583,7 +597,10 @@ const ListingProfile = () => {
     mutationFn: (nextDocuments) =>
       useFetchPut(
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/document-requirements`,
-        { documents: nextDocuments },
+        {
+          documents: nextDocuments,
+          ...(workflowAction === 'listing_documents_update' && workflowAuditCaseId ? { auditCaseId: workflowAuditCaseId } : {}),
+        },
         {
           doubleCheck: {
             type: 'listing-documents',
@@ -609,10 +626,14 @@ const ListingProfile = () => {
   })
 
   const updateClientProfileMutation = useMutation({
-    mutationFn: (payload) =>
-      useFetchPut(`/projects/lot-projects/${projectSlug}/listings/${listingId}/client-profile`, payload, {
-        doubleCheck: { type: 'buyer-profile', mode: 'edit', data: payload },
-      }),
+    mutationFn: (payload) => {
+      const requestPayload = workflowAction === 'buyer_profile_edit' && workflowAuditCaseId
+        ? { ...payload, auditCaseId: workflowAuditCaseId }
+        : payload
+      return useFetchPut(`/projects/lot-projects/${projectSlug}/listings/${listingId}/client-profile`, requestPayload, {
+        doubleCheck: { type: 'buyer-profile', mode: 'edit', data: requestPayload },
+      })
+    },
     onMutate: (payload) => {
       setAlert({ type: 'loading', message: `Preparing ${payload.buyerName || 'buyer profile'} review...` })
     },
@@ -895,6 +916,7 @@ const ListingProfile = () => {
           onSave={(payload) => updateClientProfileMutation.mutateAsync(payload)}
           isSaving={updateClientProfileMutation.isPending}
           readOnly={readOnly || !canEditBuyerProfile}
+          autoOpenEdit={workflowAction === 'buyer_profile_edit'}
         />
       ) : null}
 
@@ -945,7 +967,7 @@ const ListingProfile = () => {
         <AccountHistoryPanel
           projectSlug={projectSlug}
           listingId={listingId}
-          isSuperAdmin={currentUserData?.user?.role === 'super_admin'}
+          canPermanentlyDelete={['super_admin','system_admin'].includes(currentUserData?.user?.role)}
         />
       ) : null}
 

@@ -40,7 +40,7 @@ const normalizePercent = (value, fallback) => {
   return Math.round((numeric + Number.EPSILON) * 10000) / 10000;
 };
 
-const isExactSuperAdmin = (user) => String(user?.role || '').toLowerCase() === 'super_admin';
+const isSettingsAuthority = (user) => ['super_admin','system_admin'].includes(String(user?.role || '').toLowerCase());
 
 const syncInHouseNetworkRateCache = async (connection, payload) => {
   if (!(await tableExists(connection, 'seller_group_lot_project_rates'))) return;
@@ -95,8 +95,8 @@ const requireSettingsManager = async (req) => {
     error.statusCode = 401;
     throw error;
   }
-  if (!isExactSuperAdmin(user)) {
-    const error = new Error('Only the exact Super Admin can edit system settings.');
+  if (!isSettingsAuthority(user)) {
+    const error = new Error('Only System Admin or Super Admin can edit system settings.');
     error.statusCode = 403;
     throw error;
   }
@@ -286,7 +286,7 @@ export const requestSystemSettingsCode = async (req, res) => {
 
   try {
     const actor = await requireSettingsManager(req);
-    if (!actor.email) return res.status(400).json({ message: 'The Super Admin account must have an email address.' });
+    if (!actor.email) return res.status(400).json({ message: 'The administrator account must have an email address.' });
     await ensureSystemSettingsTable(connection);
     if (!(await tableExists(connection, 'destructive_action_verifications'))) {
       return res.status(500).json({ message: 'Sensitive-action verification table is missing. Apply the latest database schema first.' });
@@ -347,7 +347,7 @@ export const updateSystemSettings = async (req, res) => {
     const code = cleanText(req.body.code || req.body.verificationCode || req.body.verification_code);
     if (reason.length < 5) return res.status(400).json({ message: 'A clear reason for changing settings is required.' });
     if (!verificationId || !/^\d{6}$/.test(code)) {
-      return res.status(400).json({ message: 'Super Admin password and six-digit email verification are required to save system settings.' });
+      return res.status(400).json({ message: 'Administrator password and six-digit email verification are required to save system settings.' });
     }
 
     await connection.beginTransaction();
@@ -436,7 +436,7 @@ export const updateSystemSettings = async (req, res) => {
       metadata: {
         reason,
         verificationId,
-        verificationMethod: 'super_admin_password_email_code',
+        verificationMethod: 'administrator_password_email_code',
         before,
         after: payload,
         releaseDayChangesApplyProspectively: true,

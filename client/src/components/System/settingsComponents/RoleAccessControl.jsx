@@ -18,7 +18,7 @@ const groups = [
 const sameSet = (left = [], right = []) => left.length === right.length && left.every((key) => right.includes(key))
 
 // Effective permissions of a role: its saved (or in-progress) defaults plus
-// whatever its policy makes Required or Inherited, limited to its ceiling.
+// whatever its policy makes Required or From Staff Role, limited to its ceiling.
 const effectiveFor = (role, data, overrideSelected = null) => {
   const policy = data?.policies?.[role] || {}
   const ceiling = policy.ceiling ? new Set(policy.ceiling) : null
@@ -101,7 +101,7 @@ const RoleAccessControl = () => {
 
   return <section className="rounded-3xl border border-slate-200 bg-white p-5 pb-0 shadow-sm">
     {/* The page card above already carries the "Role & Access Control" title (plan item 31). */}
-    <p className="text-sm font-semibold text-slate-500">Staff permissions, Head inheritance, Auditor read-only policy, and System Admin governance are enforced by the server.</p>
+    <p className="text-sm font-semibold text-slate-500">Staff permissions, automatic Staff-to-Head access, Auditor read-only policy, and System Admin authority are enforced by the server.</p>
     {alert ? <div className="mt-4"><StatusAlert type={alert.type} message={alert.message} onClose={alert.type === 'loading' ? undefined : () => setAlert(null)} /></div> : null}
     {isLoading ? <div className="mt-4"><StatusAlert type="loading" message="Loading role defaults..." /></div> : null}
     {isError ? <div className="mt-4"><StatusAlert type="error" message={error?.message || 'Failed to load role defaults.'} /></div> : null}
@@ -122,14 +122,14 @@ const RoleAccessControl = () => {
           <div>
             <p className="text-xs font-black uppercase tracking-wide text-slate-400">{editable ? 'Editing' : 'Viewing'}</p>
             <h3 className="text-xl font-black text-slate-950">{roleLabels[role] || role} <span className="text-base font-bold text-slate-500">({effectiveCount} permission{effectiveCount === 1 ? '' : 's'})</span></h3>
-            {policy?.parentRole ? <p className="mt-1 text-sm font-semibold text-blue-700">Inherits everything from {roleLabels[policy.parentRole] || policy.parentRole}.</p> : null}
+            {policy?.parentRole ? <p className="mt-1 text-sm font-semibold text-blue-700">Includes all access from {roleLabels[policy.parentRole] || policy.parentRole}.</p> : null}
           </div>
           {hasDepartmentPair ? <div className="flex rounded-xl border border-slate-300 bg-white p-1 text-xs font-black" role="group" aria-label="View">
             {[['edit', 'Permissions'], ['compare', 'Compare Staff vs Head']].map(([value, label]) => <button key={value} type="button" onClick={() => setView(value)} className={`rounded-lg px-3 py-1.5 ${view === value ? 'bg-blue-600 text-white' : 'text-slate-600'}`}>{label}</button>)}
           </div> : null}
         </div>
 
-        {role === 'system_admin' ? <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm font-semibold text-blue-800"><span className="font-black text-blue-950">System Admin · Governed Administration</span> Core administration, Review Center, and audit-approved correction permissions are Required. Super Admin may adjust additional allowed permissions within the System Admin ceiling. System Admin cannot expand its own governance level.</div> : role === 'auditor' ? <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4 text-sm font-semibold text-violet-800"><span className="font-black text-violet-950">Auditor · Governed Global Read-Only</span> Global read access and audit workflow actions are Required. Operational write permissions remain Not Allowed. Only Super Admin may adjust the limited export/print permissions allowed for Auditor.</div> : <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-600"><span className="font-black text-slate-900">{roleLabels[role] || role}</span>{policy?.parentRole ? <> inherits operational access from <span className="font-black text-blue-700">{roleLabels[policy.parentRole] || policy.parentRole}</span>.</> : null} {editable ? 'Permissions may be adjusted below.' : 'This governance role is view-only here.'}</div>}
+        {role === 'system_admin' ? <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm font-semibold text-blue-800"><span className="font-black text-blue-950">System Admin · Full Administrative Authority</span> System Admin has the full permission catalog for day-to-day administration. Its project scope is configured per System Admin account by Super Admin, so project-level power applies only to assigned projects.</div> : role === 'auditor' ? <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4 text-sm font-semibold text-violet-800"><span className="font-black text-violet-950">Auditor · Governed Global Read-Only</span> Global read access and audit workflow actions are Required. Operational write permissions remain Not Allowed. System Admin or Super Admin may adjust the limited export/print permissions allowed for Auditor.</div> : <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-600"><span className="font-black text-slate-900">{roleLabels[role] || role}</span>{policy?.parentRole ? <> includes all access from <span className="font-black text-blue-700">{roleLabels[policy.parentRole] || policy.parentRole}</span>.</> : null} {editable ? 'Permissions may be adjusted below.' : 'This governance role is view-only here.'}</div>}
 
         {view === 'compare' && hasDepartmentPair ? <StaffHeadComparison data={data} department={department} editingRole={role} selected={selected} roleLabels={roleLabels} /> : <>
           {editable ? <div className="flex justify-end"><button type="button" onClick={() => setSelected(data.recommendedDefaults?.[role] || [])} className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-black text-violet-700">Load Recommended Defaults</button></div> : null}

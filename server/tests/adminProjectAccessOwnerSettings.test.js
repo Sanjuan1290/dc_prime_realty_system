@@ -43,7 +43,7 @@ test('notifications and seller-group project data respect assigned project scope
   assert.match(groups, /canAccessProject\(req\.authUser, projectId, connection\)/);
 });
 
-test('System Settings stay Super Admin-only while Lot Project Settings use Operations Head / Auditor governance', () => {
+test('System Admin has normal System Settings authority while Lot Project Settings keep department/Auditor governance', () => {
   const systemRouter = read('server/routers/System/systemSettings.routers.js');
   const projectRouter = read('server/routers/System/projects.routers.js');
   const systemController = read('server/controllers/System/systemSettings.controller.js');
@@ -53,7 +53,7 @@ test('System Settings stay Super Admin-only while Lot Project Settings use Opera
   const authorizationModal = read('client/src/components/Lot_Projects/SettingsComponents/ProjectSettingsAuthorizationModal.jsx');
   const settingsReview = read('client/src/components/Shared/DoubleCheckComponents/SettingsDoubleCheck.jsx');
 
-  assert.match(systemRouter, /post\('\/code'[\s\S]*SYSTEM_SETTINGS_MANAGE[\s\S]*requireExactRole\('super_admin'\)[\s\S]*requireCurrentPassword/);
+  assert.match(systemRouter, /post\('\/code'[\s\S]*SYSTEM_SETTINGS_MANAGE[\s\S]*requireExactRole\('super_admin','system_admin'\)[\s\S]*requireCurrentPassword/);
   assert.match(projectRouter, /settings\/code'[\s\S]*LOT_SETTINGS_MANAGE[\s\S]*requestLotProjectSettingsCode/);
   assert.doesNotMatch(projectRouter, /settings\/code'[^\n]*requireCurrentPassword/);
   assert.doesNotMatch(projectRouter, /settings\/code'[^\n]*requireExactRole/);
@@ -68,13 +68,14 @@ test('System Settings stay Super Admin-only while Lot Project Settings use Opera
   assert.match(authorizationModal, /Auditor Case/);
   assert.match(authorizationModal, /Super Admin Emergency Override/);
   assert.match(authorizationModal, /Email Verification Code/);
+  assert.match(systemPage, /\['super_admin','system_admin'\]\.includes/);
   assert.match(systemPage, /disabled=\{!canManage/);
   assert.match(projectPage, /ProjectSettingsAuthorizationModal/);
   assert.match(projectPage, /disabled=\{!canEdit/);
   assert.match(settingsReview, /Reason for Change/);
 });
 
-test('owner-level destructive controls stay owner-only while normal payment and user actions follow granular permissions', () => {
+test('System Admin can perform day-to-day destructive administration while Super Admin account identity stays protected', () => {
   const payments = read('client/src/components/Lot_Projects/ListingProfileComponents/PaymentsSOA/Payments_SOA.jsx');
   const accountHistory = read('client/src/components/Lot_Projects/ListingProfileComponents/AccountHistory/AccountHistoryPanel.jsx');
   const unitStatus = read('client/src/components/Lot_Projects/ListingProfileComponents/UnitStatus/UnitStatus.jsx');
@@ -85,7 +86,7 @@ test('owner-level destructive controls stay owner-only while normal payment and 
   assert.match(payments, /canDelete = false/);
   assert.match(payments, /You do not have permission to edit recorded payments/);
   assert.match(payments, /You do not have permission to void recorded payments/);
-  assert.match(accountHistory, /disabled=\{!isSuperAdmin\}/);
+  assert.match(accountHistory, /canPermanentlyDelete = false/);
   assert.match(unitStatus, /disabled=\{!canAdjustCommission \|\| isAdjustingCommission\}/);
   assert.match(correction, /sales_staff|sales_head/);
   assert.match(users, /canCreate && \['super_admin','system_admin'\]\.includes\(actor\.role\)/);

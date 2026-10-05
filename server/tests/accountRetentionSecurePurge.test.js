@@ -15,11 +15,11 @@ test('retained commission percentage drives 20 and 40 percent milestone eligibil
   assert.equal(calculateCommissionableRetainedPercent({ retainedAmount: 1200000, commissionBase: 1000000 }), 100);
 });
 
-test('secure purge requires super admin password and email-code routes', () => {
+test('secure purge accepts System Admin or Super Admin with password and email-code routes', () => {
   const router = read('server/routers/System/projects.routers.js');
   const controller = read('server/controllers/Lot_Projects/Accounts/Accounts.controller.js');
   assert.match(router, /accounts\/:accountId\/purge-code/);
-  assert.match(router, /requireExactRole\('super_admin'\)/);
+  assert.match(router, /requireExactRole\('super_admin','system_admin'\)/);
   assert.match(router, /requireCurrentPassword/);
   assert.match(router, /accounts\/:accountId\/purge'/);
   assert.match(controller, /crypto\.randomInt\(100000, 1000000\)/);

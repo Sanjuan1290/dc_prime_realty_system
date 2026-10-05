@@ -155,7 +155,7 @@ const Login = () => {
               >
                 {systemStatus?.status === 'maintenance' ? (
                   <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold leading-6 text-amber-800">
-                    {systemStatus.maintenanceMessage || 'The system is under scheduled maintenance. Only the Super Admin can continue.'}
+                    {systemStatus.maintenanceMessage || 'The system is under scheduled maintenance. System Admin or Super Admin can continue.'}
                   </div>
                 ) : null}
 

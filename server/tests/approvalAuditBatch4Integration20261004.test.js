@@ -33,14 +33,13 @@ test('Batch 4 persists exact-payload protected approvals and governed permission
   ]) assert.ok(migration.includes(`('${pair[0]}', '${pair[1]}'`), pair.join(':'));
 });
 
-test('System Admin correction ceiling includes all Batch 4 governed correction routes but not owner-only settings', () => {
+test('System Admin has full Batch 4 and system authority while project scope limits where project actions apply', () => {
   const policy = getStaticRolePolicy('system_admin');
-  for (const key of [PERMISSIONS.LOT_RESERVATION_CORRECT, PERMISSIONS.LOT_COMMISSIONS_ADJUST, PERMISSIONS.LOT_PENALTY_CORRECT, PERMISSIONS.LOT_SETTINGS_MANAGE]) {
+  for (const key of Object.values(PERMISSIONS)) {
     assert.ok(policy.required.includes(key), key);
+    assert.ok(policy.ceiling.includes(key), key);
   }
-  assert.ok(!policy.ceiling.includes(PERMISSIONS.SYSTEM_SETTINGS_MANAGE));
-  assert.ok(!policy.ceiling.includes(PERMISSIONS.AUDIT_LOGS_ARCHIVE));
-  assert.ok(!policy.ceiling.includes(PERMISSIONS.WORKFLOW_EMERGENCY_OVERRIDE));
+  assert.equal(policy.fixed, true);
 });
 
 test('Project Settings follows Operations Staff -> Head -> Auditor and exact Audit Case correction', () => {
@@ -99,7 +98,7 @@ test('Review Center deep-links every Batch 4 correction class to the exact recor
   assert.match(reviewCenter, /Open LMF Correction/);
 });
 
-test('owner-level destructive/system governance remains outside routine Head approvals', () => {
-  assert.match(projectsRouter, /purge-code[^\n]*requireExactRole\('super_admin'\)/);
+test('System Admin can perform protected administration without routing normal work to Super Admin', () => {
+  assert.match(projectsRouter, /purge-code[^\n]*requireExactRole\('super_admin','system_admin'\)/);
   assert.match(workflowRouter, /protected-changes/);
 });

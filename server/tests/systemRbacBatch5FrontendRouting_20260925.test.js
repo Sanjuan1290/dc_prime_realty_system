@@ -51,7 +51,7 @@ test('system role URLs canonicalize to the signed-in account role', () => {
   assert.match(systemLayout, /canonicalPath = suffix \? `\/portal\/\$\{user\.role\}\/\$\{suffix\}` : `\/portal\/\$\{user\.role\}`/);
 });
 
-test('login is email-only, maintenance-aware, and lands on the first permitted module', () => {
+test('login is email-only, maintenance-aware for System Admin/Super Admin, and lands on the first permitted module', () => {
   assert.match(login, />Email<\/span>/);
   assert.match(login, /type="email"/);
   assert.match(login, /JSON\.stringify\(\{ email, password, rememberMe \}\)/);
@@ -59,7 +59,7 @@ test('login is email-only, maintenance-aware, and lands on the first permitted m
   assert.match(usersController, /Invalid email or password/);
   assert.match(usersController, /getSystemAvailability\(\{ force: true \}\)/);
   assert.match(usersController, /code: 'MAINTENANCE_MODE'/);
-  assert.match(usersController, /user\.role !== 'super_admin'/);
+  assert.match(usersController, /!\['super_admin','system_admin'\]\.includes\(user\.role\)/);
   assert.match(login, /getFirstAllowedSystemPath/);
   assert.match(changePassword, /getFirstAllowedSystemPath/);
   assert.match(clientPermissions, /SYSTEM_LANDING_CANDIDATES/);

@@ -70,7 +70,7 @@ const DeleteAccountRecordsModal = ({ projectSlug, account, onClose, onDeleted })
           <div className="flex gap-3">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-red-700 shadow-sm"><FiAlertTriangle className="h-5 w-5" /></div>
             <div>
-              <p className="text-xs font-black uppercase tracking-wide text-red-700">Full-access administrator only</p>
+              <p className="text-xs font-black uppercase tracking-wide text-red-700">Administrator-authorized permanent action</p>
               <h2 className="mt-1 text-xl font-black text-red-950">Permanently Delete Account Records</h2>
               <p className="mt-1 text-sm font-semibold text-red-800">{account?.accountReference} · {account?.buyerName} · {account?.unitId}</p>
             </div>

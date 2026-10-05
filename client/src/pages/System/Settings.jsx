@@ -55,7 +55,7 @@ const mapSettingsToForm = (settings = {}) => ({
 const Settings = () => {
   const { data: currentUserData } = useCurrentUser()
   const actor = currentUserData?.user || {}
-  const canManage = actor.role === 'super_admin'
+  const canManage = ['super_admin','system_admin'].includes(actor.role)
   const canViewRoleAccess = hasPermission(actor, PERMISSIONS.SYSTEM_ACCESS_CONTROL_VIEW)
   const canManageRoleAccess = hasPermission(actor, PERMISSIONS.SYSTEM_ACCESS_CONTROL_MANAGE)
   const queryClient = useQueryClient()
@@ -129,7 +129,7 @@ const Settings = () => {
               type="button"
               onClick={() => canManage && setIsEditing(true)}
               disabled={!canManage || isLoading || isError || !settings}
-              title={!canManage ? 'Only the Super Admin can change System Settings. Saving requires the Super Admin password and email verification code.' : 'Edit protected System Settings'}
+              title={!canManage ? 'Only System Admin or Super Admin can change System Settings. Saving requires the current administrator password and email verification code.' : 'Edit protected System Settings'}
               className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none"
             >
               <FiEdit2 className="h-4 w-4" />
@@ -139,7 +139,7 @@ const Settings = () => {
         </div>
       </div>
 
-      {!canManage ? <ReadOnlyNotice message="System Settings are owner-controlled. The Edit Settings button remains visible for reference but only the Super Admin can use it with password and email verification." /> : null}
+      {!canManage ? <ReadOnlyNotice message="System Settings require administrator authority. System Admin handles normal administration; Super Admin remains the owner fallback." /> : null}
 
       {alert ? (
         <StatusAlert type={alert.type} message={alert.message} onClose={alert.type === 'loading' ? undefined : () => setAlert(null)} />
@@ -169,7 +169,7 @@ const Settings = () => {
             <div>
               <h2 className="text-lg font-black text-slate-950">Role &amp; Access Control</h2>
               <p className="mt-1 text-sm font-semibold leading-6 text-slate-500">
-                Manage Staff/Head role defaults, System Admin governance, and Auditor read-only policy. Super Admin keeps emergency Full System Access.
+                Manage Staff/Head role defaults, System Admin project scope, and Auditor read-only policy. System Admin is the day-to-day full administrator.
               </p>
             </div>
           </div>
@@ -187,7 +187,7 @@ const Settings = () => {
           <div className="grid gap-3 p-5 text-sm sm:grid-cols-2 xl:grid-cols-3">
             <div className="rounded-2xl bg-slate-50 p-4"><p className="font-black text-slate-900">8 department Staff/Head templates</p><p className="mt-1 font-semibold text-slate-500">Defaults are copied into new system-user accounts.</p></div>
             <div className="rounded-2xl bg-slate-50 p-4"><p className="font-black text-slate-900">Per-account access stays independent</p><p className="mt-1 font-semibold text-slate-500">Changing a role template does not silently change existing users.</p></div>
-            <div className="rounded-2xl bg-emerald-50 p-4"><p className="font-black text-emerald-900">Super Admin · Full System Access</p><p className="mt-1 font-semibold text-emerald-700">Permissions cannot be restricted.</p></div>
+            <div className="rounded-2xl bg-emerald-50 p-4"><p className="font-black text-emerald-900">System Admin · Full Administrative Authority</p><p className="mt-1 font-semibold text-emerald-700">Super Admin assigns each System Admin's project scope.</p></div>
           </div>
         ) : null}
       </section>
@@ -206,7 +206,7 @@ const Settings = () => {
       {pendingAuthorization ? (
         <SettingsAuthorizationModal
           title="Authorize System Settings Change"
-          description="System Settings are owner-controlled. Verify the current Super Admin password, reason, and email code before the final review."
+          description="Verify the current administrator password, reason, and email code before the final review."
           codeEndpoint="/system-settings/code"
           settingsPayload={pendingAuthorization}
           isSaving={saveMutation.isPending}

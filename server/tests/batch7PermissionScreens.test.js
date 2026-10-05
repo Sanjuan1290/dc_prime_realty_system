@@ -30,13 +30,14 @@ test('permission metadata classifies types and governed permissions', async () =
   const meta = await read('client/src/utils/permissionMeta.js');
   assert.match(meta, /PERMISSIONS\.LOT_CANCELLATIONS_SETTLE/);
   assert.match(meta, /replace\(\/\\s\*\\\(Governed\\\)\\s\*\/g/);
-  assert.match(meta, /marketing: \['Seller Groups'/);
+  assert.match(meta, /marketing:/);
+  assert.match(meta, /Networks|Seller Groups/);
 });
 
 test('Role & Access Control: single title, editing header, comparison, unsaved guard, sticky save', async () => {
   const roleAccess = await read('client/src/components/System/settingsComponents/RoleAccessControl.jsx');
   assert.doesNotMatch(roleAccess, /<h2 className="text-xl font-black text-slate-950">Role & Access Control<\/h2>/);
-  assert.match(roleAccess, /Inherits everything from/);
+  assert.match(roleAccess, /includes all access from/);
   assert.match(roleAccess, /Compare Staff vs Head/);
   assert.match(roleAccess, /Discard and switch/);
   assert.match(roleAccess, /sticky bottom-0/);

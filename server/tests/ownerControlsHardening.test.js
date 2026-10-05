@@ -16,22 +16,22 @@ test('Admin informational access banner is no longer displayed on Users', () => 
   assert.doesNotMatch(users, /Dashboard reports are limited to 12 months/);
 });
 
-test('Archive Old Audit Logs is an exact Super Admin action with password plus email verification', () => {
+test('Archive Old Audit Logs accepts System Admin or Super Admin with password plus email verification', () => {
   const page = read('client/src/pages/System/AuditLogs.jsx');
   const modal = read('client/src/components/System/auditLogsComponents/ArchiveAuditLogsModal.jsx');
   const router = read('server/routers/System/auditLogs.router.js');
   const controller = read('server/controllers/System/auditLogs.controller.js');
 
-  assert.match(page, /const isSuperAdmin = currentUserData\?\.user\?\.role === 'super_admin'/);
-  assert.match(page, /disabled=\{!isSuperAdmin\}/);
-  assert.match(page, /Only the Super Admin can archive old audit logs/);
-  assert.match(router, /archive\/request'[\s\S]*requireExactRole\('super_admin'\)/);
-  assert.match(router, /archive\/confirm'[\s\S]*requireExactRole\('super_admin'\)/);
-  assert.match(router, /archive\/exports\/:batchId'[\s\S]*requireExactRole\('super_admin'\)/);
-  assert.match(controller, /if \(user\.role !== 'super_admin'\)/);
-  assert.match(controller, /Only the Super Admin can archive audit logs/);
+  assert.match(page, /const canArchive = \['super_admin','system_admin'\]\.includes/);
+  assert.match(page, /disabled=\{!canArchive\}/);
+  assert.match(page, /System Admin or Super Admin authority is required/);
+  assert.match(router, /archive\/request'[\s\S]*requireExactRole\('super_admin','system_admin'\)/);
+  assert.match(router, /archive\/confirm'[\s\S]*requireExactRole\('super_admin','system_admin'\)/);
+  assert.match(router, /archive\/exports\/:batchId'[\s\S]*requireExactRole\('super_admin','system_admin'\)/);
+  assert.match(controller, /requireArchiveAuthority/);
+  assert.match(controller, /\['super_admin','system_admin'\]/);
   assert.match(controller, /bcrypt\.compare/);
-  assert.match(modal, /Super Admin password/);
+  assert.match(modal, /Administrator password/);
   assert.match(modal, /Verify Password & Send Code/);
   assert.match(modal, /6-digit email code/);
   assert.match(modal, /requestData\.maskedEmail/);

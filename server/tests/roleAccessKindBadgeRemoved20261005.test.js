@@ -12,6 +12,7 @@ test('Role & Access permission group cards do not render READ/OPERATE/SYSTEM/REV
 test('Role & Access still renders group names and permission-state indicators', () => {
   assert.match(matrix, /\{group\.group\}/);
   assert.match(matrix, />Required</);
-  assert.match(matrix, />Inherited</);
+  assert.match(matrix, />From Staff Role</);
+  assert.doesNotMatch(matrix, />Inherited</);
   assert.match(matrix, />Not Allowed</);
 });

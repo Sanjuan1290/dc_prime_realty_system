@@ -16,6 +16,15 @@ const projectAccessSql = `(COALESCE(u.all_projects_access, u.admin_all_projects,
   OR ? IS NULL
   OR EXISTS (SELECT 1 FROM user_project_access upa WHERE upa.user_id = u.id AND upa.lot_project_id = ?))`;
 
+
+const loadEligibleSystemAdmins = async (connection, { projectId }) => {
+  const [rows] = await connection.query(
+    `SELECT u.id FROM users u WHERE u.role = 'system_admin' AND u.status = 'active' AND ${projectAccessSql}`,
+    [projectId || null, projectId || null]
+  );
+  return rows.map((row) => Number(row.id));
+};
+
 const loadEligibleHeads = async (connection, { department, projectId }) => {
   const role = DEPARTMENT_HEAD_ROLE[department];
   if (!role) return [];
@@ -39,6 +48,15 @@ export const resolveAuditCaseResponders = async (connection, caseRow = {}) => {
     if (rows.length) return { mode: 'reassigned', userIds: [assigned], originalHeadUserId: Number(caseRow.head_reviewed_by_user_id || 0) || null };
   }
 
+  if (caseRow.approval_type === 'system_admin_direct') {
+    const eligibleAdmins = await loadEligibleSystemAdmins(connection, { projectId: caseRow.lot_project_id });
+    const initiatingAdmin = Number(caseRow.initiated_by_user_id || 0) || null;
+    if (initiatingAdmin && eligibleAdmins.includes(initiatingAdmin)) {
+      return { mode: 'initiating_system_admin', userIds: [initiatingAdmin], originalHeadUserId: null };
+    }
+    return { mode: 'system_admin_fallback', userIds: eligibleAdmins, originalHeadUserId: null };
+  }
+
   if (caseRow.approval_type === 'emergency_super_admin') {
     const [rows] = await connection.query("SELECT id FROM users WHERE role = 'super_admin' AND status = 'active'");
     return { mode: 'emergency_super_admin', userIds: rows.map((row) => Number(row.id)), originalHeadUserId: null };
@@ -57,7 +75,9 @@ export const resolveAuditCaseResponders = async (connection, caseRow = {}) => {
 
 export const RESPONDER_MODE_LABELS = Object.freeze({
   reassigned: 'Reassigned by System Admin',
-  emergency_super_admin: 'Super Admin (emergency change)',
+  initiating_system_admin: 'System Admin who made the change',
+  system_admin_fallback: 'Any active System Admin with project access',
+  emergency_super_admin: 'Super Admin (legacy emergency change)',
   original_head: 'Head who confirmed the record',
   department_head_fallback: 'Any active Head of the department (original Head is no longer available)',
   department_head: 'Any active Head of the department',

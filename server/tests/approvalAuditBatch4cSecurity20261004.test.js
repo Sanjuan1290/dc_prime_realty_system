@@ -65,29 +65,26 @@ test('Auditor is hard-enforced read-only for normal business mutations', () => {
   ]) assert.equal(roleHasPermission({ role: 'auditor' }, permission), true, permission);
 });
 
-test('System Admin cannot create/manage/promote protected governance roles', () => {
+test('System Admin can administer Auditor and department roles but cannot manage or promote to Super Admin/System Admin', () => {
   const actor = { role: 'system_admin' };
-  for (const role of ['super_admin', 'system_admin', 'auditor']) {
-    assert.equal(canActorManageUserRole(actor, role), false, role);
-    assert.equal(canActorCreateUserRole(actor, role), false, role);
-  }
+  assert.equal(canActorManageUserRole(actor, 'auditor'), true);
+  assert.equal(canActorCreateUserRole(actor, 'auditor'), true);
+  assert.equal(canActorManageUserRole(actor, 'system_admin'), false);
+  assert.equal(canActorCreateUserRole(actor, 'system_admin'), false);
+  assert.equal(canActorManageUserRole(actor, 'super_admin'), false);
+  assert.equal(canActorCreateUserRole(actor, 'super_admin'), false);
   assert.equal(canActorChangeUserRole(actor, 'accounting_staff', 'accounting_head'), true);
-  assert.equal(canActorChangeUserRole(actor, 'accounting_staff', 'auditor'), false);
+  assert.equal(canActorChangeUserRole(actor, 'accounting_staff', 'auditor'), true);
   assert.equal(canActorChangeUserRole(actor, 'accounting_head', 'system_admin'), false);
 });
 
-test('System Admin ceiling excludes owner and Auditor authority', () => {
+test('System Admin permission ceiling is full while project scope and Super Admin account protection remain separate controls', () => {
   const policy = getStaticRolePolicy('system_admin');
-  for (const forbidden of [
-    PERMISSIONS.SYSTEM_SETTINGS_MANAGE,
-    PERMISSIONS.AUDIT_LOGS_ARCHIVE,
-    PERMISSIONS.WORKFLOW_AUDIT_REVIEW,
-    PERMISSIONS.WORKFLOW_AUDIT_CASE_CREATE,
-    PERMISSIONS.WORKFLOW_AUDIT_CASE_RESOLVE,
-    PERMISSIONS.WORKFLOW_AUDIT_CORRECTION_VERIFY,
-    PERMISSIONS.WORKFLOW_EMERGENCY_OVERRIDE,
-  ]) assert.equal(policy.ceiling.includes(forbidden), false, forbidden);
-  assert.ok(policy.required.includes(PERMISSIONS.WORKFLOW_SYSTEM_CORRECTION_APPLY));
+  for (const permission of Object.values(PERMISSIONS)) {
+    assert.equal(policy.ceiling.includes(permission), true, permission);
+    assert.equal(policy.required.includes(permission), true, permission);
+  }
+  assert.equal(policy.fixed, true);
 });
 
 test('generic System Admin correction acknowledgement endpoint is removed', () => {
@@ -96,12 +93,12 @@ test('generic System Admin correction acknowledgement endpoint is removed', () =
   for (const handler of ['correctReservationUnit','adjustLotProjectListingCommission','updateLotProjectSettings','updateLotProjectListingPayment','deleteLotProjectListingPayment','restoreSeparateLegalMiscFeeFromAuditCase']) assert.ok(projectsRouter.includes(handler), handler);
 });
 
-test('owner-only break-glass and destructive routes remain exact Super Admin', () => {
-  assert.match(ownerSettingsRouter, /requireExactRole\('super_admin'\)/);
-  assert.match(auditRouter, /archive\/request[\s\S]*requireExactRole\('super_admin'\)/);
-  assert.match(auditRouter, /archive\/confirm[\s\S]*requireExactRole\('super_admin'\)/);
-  assert.match(projectsRouter, /purge-code[^\n]*requireExactRole\('super_admin'\)/);
-  assert.match(projectsRouter, /accounts\/:accountId\/purge'[^\n]*requireExactRole\('super_admin'\)/);
+test('day-to-day protected administration accepts System Admin while Super Admin remains the owner identity', () => {
+  assert.match(ownerSettingsRouter, /requireExactRole\('super_admin','system_admin'\)/);
+  assert.match(auditRouter, /archive\/request[\s\S]*requireExactRole\('super_admin','system_admin'\)/);
+  assert.match(auditRouter, /archive\/confirm[\s\S]*requireExactRole\('super_admin','system_admin'\)/);
+  assert.match(projectsRouter, /purge-code[^\n]*requireExactRole\('super_admin','system_admin'\)/);
+  assert.match(projectsRouter, /accounts\/:accountId\/purge'[^\n]*requireExactRole\('super_admin','system_admin'\)/);
 });
 
 test('legacy document router can never become an unauthenticated mutation backdoor', () => {
@@ -112,12 +109,13 @@ test('legacy document router can never become an unauthenticated mutation backdo
   ]) assert.ok(legacyDocumentsRouter.includes(`PERMISSIONS.${permission}`), permission);
 });
 
-test('legacy project-access imports delegate to persisted-role-safe authoritative service', () => {
+test('legacy project-access imports delegate to the authoritative project-scoped System Admin service', () => {
   assert.match(compatibilityProjectAccess, /authoritative implementation lives in projectAccess\.service\.js/);
   assert.match(compatibilityProjectAccess, /replaceAdminProjectAccess = replaceUserProjectAccess/);
   assert.match(compatibilityProjectAccess, /hydrateAdminProjectAccess = hydrateUserProjectAccess/);
   assert.match(authoritativeProjectAccess, /persisted account role wins/);
-  assert.match(authoritativeProjectAccess, /\['super_admin', 'system_admin', 'auditor'\]/);
+  assert.match(authoritativeProjectAccess, /\['super_admin', 'auditor'\]/);
+  assert.doesNotMatch(authoritativeProjectAccess, /\['super_admin', 'system_admin', 'auditor'\]/);
 });
 
 test('Head approval is single-requester, exact-record, exact-action and exact-payload', () => {
@@ -129,9 +127,10 @@ test('Head approval is single-requester, exact-record, exact-action and exact-pa
   assert.match(protectedChange, /status='used',used_at=NOW\(\)/);
 });
 
-test('Role & Access keeps governance ceilings while Super Admin may tune System Admin and Auditor extras', () => {
-  assert.match(accessController, /\[\.\.\.ROLE_DEFAULT_EDITABLE_ROLES, 'system_admin', 'auditor'\]/);
+test('Role & Access fixes System Admin to full permissions while Super Admin controls its per-account project scope', () => {
+  assert.match(accessController, /\[\.\.\.ROLE_DEFAULT_EDITABLE_ROLES, 'auditor'\]/);
   assert.match(accessController, /if \(actor\?\.role === 'super_admin'\)/);
-  assert.match(accessController, /SYSTEM_ADMIN_MANAGEABLE_ROLES\.includes\(targetRole\)/);
-  assert.match(accessController, /actor\?\.role === 'system_admin'[\s\S]*ROLE_DEFAULT_EDITABLE_ROLES\.includes\(role\)/);
+  assert.match(accessController, /targetRole !== 'super_admin'/);
+  assert.match(accessController, /targetRole === 'system_admin'/);
+  assert.match(accessController, /actor\?\.role === 'system_admin'[\s\S]*targetRole !== 'system_admin'/);
 });

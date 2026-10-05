@@ -11,7 +11,7 @@ const dateText = (value) => value ? new Intl.DateTimeFormat('en-PH', { year: 'nu
 const statusLabel = (value) => String(value || '-').replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
 const statusTone = (value) => ({ active: 'bg-emerald-50 text-emerald-700 ring-emerald-100', pending_cancellation: 'bg-amber-50 text-amber-700 ring-amber-100', cancelled: 'bg-red-50 text-red-700 ring-red-100', closed_fully_paid: 'bg-blue-50 text-blue-700 ring-blue-100', deletion_pending: 'bg-violet-50 text-violet-700 ring-violet-100' }[value] || 'bg-slate-100 text-slate-700 ring-slate-200')
 
-const AccountHistoryPanel = ({ projectSlug, listingId, isSuperAdmin = false }) => {
+const AccountHistoryPanel = ({ projectSlug, listingId, canPermanentlyDelete = false }) => {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [deleteAccount, setDeleteAccount] = useState(null)
@@ -85,11 +85,11 @@ const AccountHistoryPanel = ({ projectSlug, listingId, isSuperAdmin = false }) =
                       type="button"
                       onClick={(event) => {
                         event.stopPropagation()
-                        if (isSuperAdmin) setDeleteAccount(account)
+                        if (canPermanentlyDelete) setDeleteAccount(account)
                       }}
                       onKeyDown={(event) => event.stopPropagation()}
-                      disabled={!isSuperAdmin}
-                      title={!isSuperAdmin ? 'Only the Super Admin can permanently delete retained buyer-account records because this action requires owner password and email verification.' : 'Permanently delete retained buyer-account records'}
+                      disabled={!canPermanentlyDelete}
+                      title={!canPermanentlyDelete ? 'System Admin or Super Admin authority is required for permanent account-record deletion.' : 'Permanently delete retained buyer-account records'}
                       className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 text-sm font-black text-red-700 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400"
                     >
                       <FiTrash2 /> Permanently Delete Records

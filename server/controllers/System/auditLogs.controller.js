@@ -168,7 +168,7 @@ const requireAdmin = async (req) => {
   return user;
 };
 
-const requireSuperAdmin = async (req) => {
+const requireArchiveAuthority = async (req) => {
   const user = await getAuthenticatedUser(req);
   if (!user) {
     const error = new Error('You must be logged in to archive audit logs.');
@@ -176,8 +176,8 @@ const requireSuperAdmin = async (req) => {
     throw error;
   }
 
-  if (user.role !== 'super_admin') {
-    const error = new Error('Only the Super Admin can archive audit logs.');
+  if (!['super_admin','system_admin'].includes(user.role)) {
+    const error = new Error('Only System Admin or Super Admin can archive audit logs.');
     error.statusCode = 403;
     throw error;
   }
@@ -455,7 +455,7 @@ const verificationCodeMatches = (code, expectedHash) => {
 };
 
 const sendAuditArchiveCodeEmail = async ({ to, name, code, retentionDays, cutoffAt, eligibleCount }) => {
-  const safeName = cleanText(name, 'Super Admin');
+  const safeName = cleanText(name, 'Administrator');
   const safeHtmlName = escapeHtml(safeName);
   const safeCutoff = cleanText(cutoffAt);
   const subject = 'D&C Prime audit archive verification code';
@@ -663,12 +663,12 @@ export const requestAuditLogArchive = async (req, res) => {
   const connection = await db.getConnection();
 
   try {
-    const actor = await requireSuperAdmin(req);
+    const actor = await requireArchiveAuthority(req);
     const password = String(req.body.password || '');
     const retentionDays = normalizeRetentionDays(req.body.retentionDays);
 
     if (!password) return res.status(400).json({ message: 'Your password is required.' });
-    if (!actor.email) return res.status(400).json({ message: 'Your Super Admin account has no email address.' });
+    if (!actor.email) return res.status(400).json({ message: 'Your administrator account has no email address.' });
 
     const passwordMatches = await bcrypt.compare(password, actor.password_hash);
     if (!passwordMatches) return res.status(401).json({ message: 'Password is incorrect.' });
@@ -787,7 +787,7 @@ export const confirmAuditLogArchive = async (req, res) => {
   const connection = await db.getConnection();
 
   try {
-    const actor = await requireSuperAdmin(req);
+    const actor = await requireArchiveAuthority(req);
     const verificationId = Number(req.body.verificationId);
     const code = String(req.body.code || '').trim();
 
@@ -1080,7 +1080,7 @@ export const downloadAuditLogArchiveExport = async (req, res) => {
   const connection = await db.getConnection();
 
   try {
-    const actor = await requireSuperAdmin(req);
+    const actor = await requireArchiveAuthority(req);
     const batchId = Number(req.params.batchId);
     if (!batchId) return res.status(400).json({ message: 'Archive batch id is required.' });
 

@@ -135,7 +135,7 @@ const PermissionMatrix = ({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap gap-2 text-[11px] font-black uppercase tracking-wide">
             <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-700">Required</span>
-            <span className="rounded-full bg-blue-100 px-2.5 py-1 text-blue-700">Inherited</span>
+            <span className="rounded-full bg-blue-100 px-2.5 py-1 text-blue-700">From Staff Role</span>
             <span className="rounded-full bg-slate-100 px-2.5 py-1 text-slate-400">Not Allowed</span>
           </div>
           <p className="text-sm font-black text-slate-700">{grantedCount} permission{grantedCount === 1 ? '' : 's'} granted</p>
@@ -199,7 +199,7 @@ const PermissionMatrix = ({
                       <span className={`rounded px-1.5 py-0.5 ${typeTone[type]}`}>{type}</span>
                       {isSensitivePermission(key) ? <span className="rounded bg-red-100 px-1.5 py-0.5 text-red-700">Sensitive</span> : null}
                       {needsHeadApproval(key) ? <span className="rounded bg-violet-100 px-1.5 py-0.5 text-violet-700">Needs Head approval</span> : null}
-                      {state !== 'optional' ? <span className="rounded bg-white/70 px-1.5 py-0.5 uppercase tracking-wide opacity-80">{state === 'forbidden' ? 'Not allowed' : state}</span> : null}
+                      {state !== 'optional' ? <span className="rounded bg-white/70 px-1.5 py-0.5 uppercase tracking-wide opacity-80">{state === 'forbidden' ? 'Not allowed' : state === 'inherited' ? 'From Staff Role' : state}</span> : null}
                       {changed ? <span className="rounded bg-amber-100 px-1.5 py-0.5 text-amber-800">{selectedSet.has(key) ? 'Added' : 'Removed'}</span> : null}
                     </span>
                   </span>

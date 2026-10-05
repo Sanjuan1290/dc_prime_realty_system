@@ -39,6 +39,8 @@ import {
 } from '../../services/accessControl.service.js';
 import { buildAccountCode, previewAccountCode } from '../../services/systemAccountCode.service.js';
 import { getSystemAvailability } from '../../services/systemAvailability.service.js';
+import { assertEntityNotReviewLocked, createOperationalReview } from '../../services/operationalReview.service.js';
+import { advanceAuditCaseToRecheck, getPendingAuditCorrectionCase } from '../../services/auditCaseAuthorization.service.js';
 import {
   createSensitiveActionVerification,
   getSensitiveActionRequestIp,
@@ -317,7 +319,7 @@ const normalizeSystemProjectAccess = (body = {}) => ({
 });
 
 const assertSystemProjectSelection = (role, access) => {
-  if (['super_admin', 'system_admin', 'auditor'].includes(role)) return;
+  if (['super_admin', 'auditor'].includes(role)) return;
   if (configurableSystemRoles.has(role) && !access.allProjects && !access.projectIds.length) {
     throw createValidationError('Select at least one project this user can access, or choose All Projects.');
   }
@@ -682,7 +684,7 @@ export const login = async (req, res) => {
   if (!isPasswordCorrect) return res.status(401).json({ message: 'Invalid email or password.' });
 
   const availability = await getSystemAvailability({ force: true });
-  if (availability.status === 'maintenance' && user.role !== 'super_admin') {
+  if (availability.status === 'maintenance' && !['super_admin','system_admin'].includes(user.role)) {
     return res.status(503).json({
       code: 'MAINTENANCE_MODE',
       message:
@@ -1575,7 +1577,7 @@ export const createUser = async (req, res) => {
     }
 
     if (systemUserRoles.has(role)) {
-      const projectAccess = ['super_admin', 'system_admin', 'auditor'].includes(role)
+      const projectAccess = ['super_admin', 'auditor'].includes(role)
         ? { allProjects: true, projectIds: [] }
         : normalizeSystemProjectAccess(req.body);
       assertSystemProjectSelection(role, projectAccess);
@@ -1784,6 +1786,28 @@ export const createUser = async (req, res) => {
         description: `Accredited ${first_name.trim()} ${last_name.trim()} as ${role}.`,
         metadata: { role, admin_type: normalizedAdminType, status: normalizeStatus(status), seller_group_id, reports_under_user_id: normalizedReportsUnderUserId },
       });
+      await createOperationalReview(connection, {
+        actor: req.authUser,
+        actionKey: 'seller.create',
+        department: 'marketing',
+        projectId: null,
+        entityType: 'accredited_seller',
+        entityId: String(accreditedSellerId),
+        entityLabel: `${first_name.trim()} ${last_name.trim()}`,
+        beforeSnapshot: null,
+        afterSnapshot: {
+          accreditedSellerId: Number(accreditedSellerId),
+          userId: Number(userId),
+          name: `${first_name.trim()} ${middle_name?.trim() || ''} ${last_name.trim()}`.replace(/\s+/g, ' ').trim(),
+          email: normalizedEmail,
+          role,
+          status: normalizeStatus(status),
+          sellerGroupId: toNullableNumber(seller_group_id),
+          reportsUnderUserId: normalizedReportsUnderUserId,
+          prcNo: prc_no?.trim() || null,
+          tinNo: tin_no?.trim() || null,
+        },
+      });
     }
 
     await connection.commit();
@@ -1856,6 +1880,7 @@ export const editUser = async (req, res) => {
 
     const [targetRows] = await connection.query(
       `SELECT id, account_code, account_category, person_key, role_sequence, role, status, email, admin_type,
+              first_name, middle_name, last_name, contact_no, tin_no, prc_no, address,
               COALESCE(all_projects_access, admin_all_projects, 0) AS all_projects_access,
               COALESCE(auth_version, 0) AS auth_version
        FROM users WHERE id = ? LIMIT 1`,
@@ -1943,6 +1968,26 @@ export const editUser = async (req, res) => {
     const previousSellerGroupId = Number(dependencyState.seller?.seller_group_id || 0);
 
     await connection.beginTransaction();
+
+    const existingAccreditedSellerId = Number(dependencyState.seller?.accredited_seller_id || 0) || null;
+    const sellerAuditCase = req.authUser?.role === 'system_admin' && existingAccreditedSellerId && sellerRoles.has(role)
+      ? await getPendingAuditCorrectionCase(connection, {
+          auditCaseId: req.body?.auditCaseId,
+          entityType: 'accredited_seller',
+          entityId: String(existingAccreditedSellerId),
+        })
+      : null;
+    if (req.authUser?.role === 'system_admin' && existingAccreditedSellerId && sellerRoles.has(role) && !sellerAuditCase) {
+      throw Object.assign(new Error('A valid Auditor-approved Audit Case is required for a System Admin accredited seller correction.'), { statusCode: 409 });
+    }
+    if (existingAccreditedSellerId && sellerRoles.has(role)) {
+      await assertEntityNotReviewLocked(connection, {
+        actor: req.authUser,
+        entityType: 'accredited_seller',
+        entityId: String(existingAccreditedSellerId),
+        allowReviewId: sellerAuditCase?.operational_review_id || null,
+      });
+    }
 
     let sellerIdentity = { warnings: [] };
     if (sellerRoles.has(role)) {
@@ -2083,6 +2128,49 @@ export const editUser = async (req, res) => {
         description: `Updated accreditation for ${first_name.trim()} ${last_name.trim()}.`,
         metadata: { role, status: normalizeStatus(status), seller_group_id, reports_under_user_id: normalizedReportsUnderUserId },
       });
+      const beforeSnapshot = {
+        accreditedSellerId: Number(existingAccreditedSellerId || accreditedSellerId),
+        userId,
+        name: `${targetUser.first_name || ''} ${targetUser.middle_name || ''} ${targetUser.last_name || ''}`.replace(/\s+/g, ' ').trim(),
+        email: targetUser.email,
+        role: targetUser.role,
+        status: targetUser.status,
+        sellerGroupId: dependencyState.seller?.seller_group_id || null,
+        prcNo: targetUser.prc_no || null,
+        tinNo: targetUser.tin_no || null,
+      };
+      const afterSnapshot = {
+        accreditedSellerId: Number(accreditedSellerId),
+        userId,
+        name: `${first_name.trim()} ${middle_name?.trim() || ''} ${last_name.trim()}`.replace(/\s+/g, ' ').trim(),
+        email: email.trim(),
+        role,
+        status: normalizeStatus(status),
+        sellerGroupId: toNullableNumber(seller_group_id),
+        reportsUnderUserId: normalizedReportsUnderUserId,
+        prcNo: prc_no?.trim() || null,
+        tinNo: tin_no?.trim() || null,
+      };
+      if (sellerAuditCase) {
+        await advanceAuditCaseToRecheck(connection, {
+          auditCase: sellerAuditCase,
+          actor: req.authUser,
+          correctionSummary: req.body?.correctionSummary || `Corrected accredited seller ${first_name.trim()} ${last_name.trim()}.`,
+          afterSnapshot,
+        });
+      } else {
+        await createOperationalReview(connection, {
+          actor: req.authUser,
+          actionKey: 'seller.edit',
+          department: 'marketing',
+          projectId: null,
+          entityType: 'accredited_seller',
+          entityId: String(accreditedSellerId),
+          entityLabel: `${first_name.trim()} ${last_name.trim()}`,
+          beforeSnapshot,
+          afterSnapshot,
+        });
+      }
     }
 
     await connection.commit();
@@ -2241,7 +2329,7 @@ export const changeUserPosition = async (req, res) => {
       return res.status(400).json({ message: 'Enter a clear reason for the role change.' });
     }
 
-    const projectAccess = ['system_admin', 'auditor'].includes(newRole)
+    const projectAccess = newRole === 'auditor'
       ? { allProjects: true, projectIds: [] }
       : normalizeSystemProjectAccess(req.body);
     assertSystemProjectSelection(newRole, projectAccess);
@@ -2267,7 +2355,7 @@ export const changeUserPosition = async (req, res) => {
     }
 
     const previousRole = user.role;
-    const forcedAllProjects = ['system_admin', 'auditor'].includes(newRole);
+    const forcedAllProjects = newRole === 'auditor';
     await connection.query(
       `UPDATE users
        SET role = ?,

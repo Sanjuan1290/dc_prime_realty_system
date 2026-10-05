@@ -277,7 +277,8 @@ export const openAuditCase = async (req,res) => {
     await connection.query('UPDATE audit_cases SET case_number=? WHERE audit_case_id=?',[number,caseId]);
     await connection.query("UPDATE operational_reviews SET status='audit_case_open',auditor_reviewed_by_user_id=?,auditor_reviewed_at=NOW() WHERE operational_review_id=?",[req.authUser.id,review.operational_review_id]);
     await appendReviewEvent(connection,{reviewId:review.operational_review_id,eventType:'audit_case_opened',actor:req.authUser,fromStatus:review.status,toStatus:'audit_case_open',message:finding,metadata:{auditCaseId:caseId,caseNumber:number}});
-    // Original Head, Super Admin for emergency changes, or any eligible Head when the original Head is gone.
+    // Resolve the accountable responder: Department Head for normal department work,
+    // System Admin for System Admin direct changes, or legacy Super Admin for old emergency changes.
     const responders=await resolveAuditCaseResponders(connection,{...review,assigned_responder_user_id:null});
     let recipients=responders.userIds;
     if(!recipients.length){
@@ -287,7 +288,8 @@ export const openAuditCase = async (req,res) => {
     await createInternalNotifications(connection,{userIds:recipients,type:'audit_case_response_required',title:`Audit Case requires explanation · ${number}`,message:finding,reviewId:review.operational_review_id,auditCaseId:caseId});
     await writeAuditLog(connection,req,{action:'create',module:'Audit Cases',entityType:'audit_case',entityId:String(caseId),entityLabel:number,title:'Opened Audit Case',description:`${number} opened for ${review.review_number}.`,metadata:{finding,reviewId:review.operational_review_id}});
     await connection.commit();
-    return res.status(201).json({message:'Audit Case opened. The Department Head must explain before resolution.',data:{auditCaseId:caseId,caseNumber:number,status:'awaiting_head_response'}});
+    const responderLabel=RESPONDER_MODE_LABELS[responders.mode]||'assigned responder';
+    return res.status(201).json({message:`Audit Case opened. ${responderLabel} must explain before resolution.`,data:{auditCaseId:caseId,caseNumber:number,status:'awaiting_head_response'}});
   }catch(error){try{await connection.rollback()}catch{} return res.status(error.statusCode||500).json({code:error.code,message:errorMessage(error)});}finally{connection.release();}
 };
 
@@ -329,9 +331,9 @@ export const reassignAuditCaseResponder = async (req,res) => {
     if(!Object.prototype.hasOwnProperty.call(c,'assigned_responder_user_id'))throw Object.assign(new Error('Apply the latest workflow migration (batch6) before reassigning responders.'),{statusCode:409});
     const [targetRows]=await connection.query("SELECT id,role,status,COALESCE(all_projects_access,admin_all_projects,0) all_projects_access FROM users WHERE id=? LIMIT 1",[targetUserId]);
     const target=targetRows[0];
-    const expectedRole=DEPARTMENT_HEAD_ROLE[c.department];
+    const expectedRole=c.approval_type==='system_admin_direct'?'system_admin':DEPARTMENT_HEAD_ROLE[c.department];
     if(!target||target.status!=='active')throw Object.assign(new Error('The selected user is not active.'),{statusCode:400});
-    if(target.role!==expectedRole && target.role!=='super_admin')throw Object.assign(new Error(`The responder must be an active ${String(c.department)} Head.`),{statusCode:400});
+    if(target.role!==expectedRole && target.role!=='super_admin')throw Object.assign(new Error(expectedRole==='system_admin'?'The responder must be an active System Admin.':`The responder must be an active ${String(c.department)} Head.`),{statusCode:400});
     if(target.role===expectedRole && c.lot_project_id && Number(target.all_projects_access)!==1){
       const [scope]=await connection.query('SELECT 1 FROM user_project_access WHERE user_id=? AND lot_project_id=? LIMIT 1',[target.id,c.lot_project_id]);
       if(!scope.length)throw Object.assign(new Error('The selected Head has no access to this project.'),{statusCode:400});

@@ -129,7 +129,7 @@ const AuditLogs = () => {
   const [archiveRequest, setArchiveRequest] = useState(null)
   const [archiveError, setArchiveError] = useState('')
 
-  const isSuperAdmin = currentUserData?.user?.role === 'super_admin'
+  const canArchive = ['super_admin','system_admin'].includes(currentUserData?.user?.role)
 
   const resolvedDateRange = useMemo(
     () => resolveAuditDateRange(dateRange, from, to),
@@ -275,9 +275,9 @@ const AuditLogs = () => {
 
           <button
             type="button"
-            onClick={() => isSuperAdmin && openArchiveModal()}
-            disabled={!isSuperAdmin}
-            title={!isSuperAdmin ? 'Only the Super Admin can archive old audit logs. Password and email verification are required.' : 'Archive old audit logs'}
+            onClick={() => canArchive && openArchiveModal()}
+            disabled={!canArchive}
+            title={!canArchive ? 'System Admin or Super Admin authority is required to archive old audit logs.' : 'Archive old audit logs'}
             className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none disabled:hover:bg-slate-100"
           >
             <FiArchive className="h-4 w-4" />
@@ -309,7 +309,7 @@ const AuditLogs = () => {
 
       <section className="rounded-2xl border border-blue-100 bg-blue-50 px-5 py-4 text-sm font-semibold text-blue-900">
         <p className="font-black">Audit retention: {archivePolicy.retentionDays} days</p>
-        <p className="mt-1">Permanent delete-all is disabled. Only the Super Admin can export and archive records older than the retention period after password and email verification.</p>
+        <p className="mt-1">Permanent delete-all is disabled. System Admin or Super Admin can export and archive records older than the retention period after password and email verification.</p>
       </section>
 
       <AuditLogFilters

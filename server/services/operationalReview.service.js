@@ -40,6 +40,7 @@ export const REVIEW_APPROVAL_TYPES = Object.freeze({
   HEAD_SELF: 'head_self',
   HEAD_PREAPPROVED: 'head_preapproved',
   HEAD_CORRECTED: 'head_corrected',
+  SYSTEM_ADMIN_DIRECT: 'system_admin_direct',
   EMERGENCY_SUPER_ADMIN: 'emergency_super_admin',
 });
 
@@ -115,8 +116,9 @@ export const createOperationalReview = async (connection, {
   assertRegisteredReviewAction(actionKey, department);
 
   const isEmergency = actor.role === 'super_admin';
+  const isSystemAdminDirect = actor.role === 'system_admin';
   const isDepartmentHead = actor.role === expectedHeadRole;
-  const preApprovedHeadId = isEmergency ? 0 : Number(headPreApprovedByUserId || 0);
+  const preApprovedHeadId = (isEmergency || isSystemAdminDirect) ? 0 : Number(headPreApprovedByUserId || 0);
 
   if (isDepartmentHead) {
     const absorbed = await absorbOpenStaffReviewIntoHeadCorrection(connection, {
@@ -129,13 +131,15 @@ export const createOperationalReview = async (connection, {
   // answers any Audit Case on them (fixes the stuck-case bug, plan item 16).
   const approvalType = isEmergency
     ? REVIEW_APPROVAL_TYPES.EMERGENCY_SUPER_ADMIN
-    : isDepartmentHead
+    : isSystemAdminDirect
+      ? REVIEW_APPROVAL_TYPES.SYSTEM_ADMIN_DIRECT
+      : isDepartmentHead
       ? REVIEW_APPROVAL_TYPES.HEAD_SELF
       : preApprovedHeadId > 0
         ? REVIEW_APPROVAL_TYPES.HEAD_PREAPPROVED
         : REVIEW_APPROVAL_TYPES.STAFF_ENTRY;
   const initialStatus = approvalType === REVIEW_APPROVAL_TYPES.STAFF_ENTRY ? 'pending_head_review' : 'pending_auditor_review';
-  const headReviewerId = initialStatus === 'pending_auditor_review' && !isEmergency
+  const headReviewerId = initialStatus === 'pending_auditor_review' && !isEmergency && !isSystemAdminDirect
     ? (preApprovedHeadId || actor.id)
     : null;
 
@@ -157,6 +161,7 @@ export const createOperationalReview = async (connection, {
 
   if (initialStatus === 'pending_auditor_review') {
     const message = {
+      [REVIEW_APPROVAL_TYPES.SYSTEM_ADMIN_DIRECT]: `${number} was entered by System Admin and needs independent audit.`,
       [REVIEW_APPROVAL_TYPES.EMERGENCY_SUPER_ADMIN]: `${number} was an emergency Super Admin change and needs independent audit.`,
       [REVIEW_APPROVAL_TYPES.HEAD_PREAPPROVED]: `${number} was pre-approved by the Department Head and is ready for independent audit.`,
       [REVIEW_APPROVAL_TYPES.HEAD_SELF]: `${number} was entered by the ${expectedHeadRole.replaceAll('_',' ')} and skipped self-review.`,

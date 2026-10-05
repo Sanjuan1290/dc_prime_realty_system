@@ -87,7 +87,7 @@ export const getUserPermissionKeys = async (userId, connection = db) => {
   if (!id) return [];
   const identity = await loadUserRole(connection, id);
   if (!identity || identity.status !== 'active') return [];
-  if (identity.role === 'super_admin') return Object.values(PERMISSIONS);
+  if (['super_admin', 'system_admin'].includes(identity.role)) return Object.values(PERMISSIONS);
   const direct = await getDirectUserPermissionKeys(id, connection);
   const parentRole = ROLE_PARENT[identity.role] || null;
   const inherited = parentRole
@@ -110,6 +110,9 @@ export const replaceUserPermissions = async (connection, {
   if (!CONFIGURABLE_SYSTEM_ROLES.includes(identity.role)) {
     throw Object.assign(new Error('This account does not use configurable system permissions.'), { statusCode: 400 });
   }
+  // System Admin always has the complete permission catalog. Its effective
+  // operational boundary is project scope, controlled separately by Super Admin.
+  if (identity.role === 'system_admin') return Object.values(PERMISSIONS).sort();
   const normalized = validatePermissionKeys(permissionKeys);
   assertPermissionKeysWithinRoleCeiling(identity.role, normalized);
 
@@ -141,7 +144,7 @@ export const copyRoleDefaultsToUser = async (connection, { userId, role, changed
 
 export const replaceRoleDefaults = async (connection, { role, permissionKeys = [], changedByUserId = null }) => {
   const normalizedRole = String(role || '');
-  if (![...ROLE_DEFAULT_EDITABLE_ROLES, 'system_admin', 'auditor'].includes(normalizedRole)) {
+  if (![...ROLE_DEFAULT_EDITABLE_ROLES, 'auditor'].includes(normalizedRole)) {
     throw Object.assign(new Error('This role default template is governed and cannot be edited here.'), {
       statusCode: 400,
       code: 'ROLE_DEFAULT_LOCKED',
