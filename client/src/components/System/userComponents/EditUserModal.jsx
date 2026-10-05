@@ -327,7 +327,7 @@ const EditUserModal = ({
       queryClient.invalidateQueries({ queryKey: ["seller-groups"] });
       queryClient.invalidateQueries({ queryKey: ["parent-sellers"] });
       setShowEditUser(false);
-      onSaved?.(data.message || "User updated successfully.");
+      onSaved?.([data.message || "User updated successfully.", ...(Array.isArray(data.warnings) ? data.warnings : [])].join(" "));
     },
     onError: (error) => {
       const notice = getDoubleCheckNotice(error, 'Failed to save user.');
@@ -355,6 +355,11 @@ const EditUserModal = ({
       return false;
     }
 
+    if (isSellerRole && !String(form.prc_no || "").trim()) {
+      setWarning("PRC No. is required for in-house sellers.");
+      return false;
+    }
+
     if (!allowedRoles.includes(form.role)) {
       setWarning("You do not have permission to assign this user role.");
       return false;
@@ -373,7 +378,7 @@ const EditUserModal = ({
     }
 
     if (roleConflictsWithGroupHead) {
-      setWarning("This group already has a Division Manager as its head.");
+      setWarning("This Network already has a Division Manager as its head.");
       return false;
     }
 
@@ -483,7 +488,7 @@ const EditUserModal = ({
                 </span>
                 <span>
                   <span className="block text-sm font-black text-slate-950">2. In-House Hierarchy</span>
-                  <span className="block text-xs font-semibold text-slate-500">Group and reporting line</span>
+                  <span className="block text-xs font-semibold text-slate-500">Network and reporting line</span>
                 </span>
               </button>
             ) : null}
@@ -538,7 +543,7 @@ const EditUserModal = ({
                     <input type="text" data-example="123-456-789-000" value={form.tin_no} onChange={(event) => updateForm("tin_no", event.target.value)} placeholder="000-000-000-000" className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" />
                   </label>
                   <label className="flex flex-col gap-2">
-                    <p className="min-h-10 text-sm font-bold leading-5 text-slate-700">PRC No. <span className="font-medium text-slate-400">(optional)</span></p>
+                    <p className="min-h-10 text-sm font-bold leading-5 text-slate-700">PRC No. {isSellerRole ? <span className="text-red-500">*</span> : <span className="font-medium text-slate-400">(optional)</span>}</p>
                     <input type="text" data-example="0123456" value={form.prc_no} onChange={(event) => updateForm("prc_no", event.target.value)} placeholder="PRC registration number" className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-50" />
                   </label>
                 </div>
@@ -601,7 +606,7 @@ const EditUserModal = ({
                   <FiUserCheck className="h-5 w-5 text-blue-700" />
                   <div>
                     <h4 className="font-bold text-slate-950">In-House Hierarchy</h4>
-                    <p className="text-sm text-slate-500">Search the group and reporting list instead of scrolling through every record.</p>
+                    <p className="text-sm text-slate-500">Search the Network and reporting list instead of scrolling through every record.</p>
                   </div>
                 </div>
 

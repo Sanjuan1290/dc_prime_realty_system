@@ -107,8 +107,33 @@ import {
   buildCancellationVerificationPayload,
   cancellationActionRequiresVerification,
   cancellationPermissionForAction,
+  cancellationReviewActionKey,
   sendCancellationVerificationCodeEmail,
 } from '../../../services/cancellationVerification.service.js';
+import { authorizeGovernedAction, headApprovalPendingResponse } from '../../../services/governedAction.service.js';
+import { assertEntityNotReviewLocked, createOperationalReview } from '../../../services/operationalReview.service.js';
+import { getReviewActionLabel } from '../../../config/reviewActions.js';
+
+// Fields a reserved/sold listing edit can change. The Head approves exactly
+// these values; submitting different values needs a new approval.
+const buildProtectedListingEditPayload = (body = {}, listing = {}) => {
+  const text = (value) => String(value ?? '').trim();
+  const number = (value) => (value === undefined || value === null || value === '' ? null : Number(Number(value).toFixed(4)));
+  return {
+    listingId: Number(listing.lot_project_listing_id || 0),
+    unitCode: text(body.unitCode || body.unit_id).toUpperCase(),
+    oldUnitIds: text(body.oldUnitIds ?? body.old_unit_ids),
+    lotType: text(body.lotType || body.lot_type).toLowerCase(),
+    lotAreaSqm: number(body.lotAreaSqm ?? body.lot_area_sqm),
+    installmentPricePerSqm: number(body.installmentPricePerSqm ?? body.pricePerSqm),
+    cashPricePerSqm: number(body.cashPricePerSqm ?? body.pricePerSqm),
+    legalMiscRate: number(body.legalMiscRate),
+    annualInterestRate: number(body.annualInterestRate),
+    reservationFee: number(body.reservationFee),
+    status: text(body.status || body.listing_status).toLowerCase(),
+    cadastralLots: Array.isArray(body.cadastralLots) ? body.cadastralLots.map((item) => text(item)).filter(Boolean).sort() : null,
+  };
+};
 
 const normalizeListingDocumentRequirements = (documents = []) => {
   const documentMap = new Map();
@@ -1242,6 +1267,24 @@ export const requestLotProjectCancellationActionCode = async (req, res) => {
     const account = await getCurrentLotProjectAccount(connection, listing.lot_project_listing_id, { forUpdate: true });
     const payload = buildCancellationVerificationPayload({ actor, project, listing, account, body: req.body });
 
+    // Head approval comes first so a code is never emailed for a change the Head has not approved.
+    const governedActionKey = cancellationReviewActionKey(action);
+    const governance = await authorizeGovernedAction(connection, {
+      actor,
+      actionKey: governedActionKey,
+      projectId: project.lot_project_id,
+      entityId: listing.lot_project_listing_id,
+      entityLabel: listing.lot_project_listing_unit_id,
+      payload,
+      reason: payload.cancellationReason,
+      approvalRequestId: req.body?.approvalRequestId,
+      consume: false,
+    });
+    if (!governance.authorized) {
+      await connection.commit();
+      return res.status(409).json(headApprovalPendingResponse(governance, getReviewActionLabel(governedActionKey)));
+    }
+
     const { verificationId, code } = await createSensitiveActionVerification(connection, {
       userId: actor.id,
       actionType: CANCELLATION_VERIFICATION_ACTION,
@@ -1434,6 +1477,40 @@ export const updateLotProjectListing = async (req, res) => {
       }
     }
 
+    // Head approval for cancellations (plan item 19). The owning Head acts
+    // directly; Super Admin is the emergency fallback; everyone else needs an
+    // approved request for this exact cancellation.
+    let governance = null;
+    let governedActionKey = null;
+    if (isCancellationAction) {
+      governedActionKey = cancellationReviewActionKey(statusTransitionAction);
+      governance = await authorizeGovernedAction(connection, {
+        actor: req.authUser,
+        actionKey: governedActionKey,
+        projectId: project.lot_project_id,
+        entityId: existingListing.lot_project_listing_id,
+        entityLabel: existingListing.lot_project_listing_unit_id,
+        payload: buildCancellationVerificationPayload({
+          actor: req.authUser,
+          project,
+          listing: existingListing,
+          account: currentAccount,
+          body: req.body,
+        }),
+        reason: req.body.cancellationReason,
+        approvalRequestId: req.body.approvalRequestId,
+      });
+      if (!governance.authorized) {
+        await connection.commit();
+        return res.status(409).json(headApprovalPendingResponse(governance, getReviewActionLabel(governedActionKey)));
+      }
+      await assertEntityNotReviewLocked(connection, {
+        actor: req.authUser,
+        entityType: governance.entityType,
+        entityId: existingListing.lot_project_listing_id,
+      });
+    }
+
     // A generic Edit Listing form submits raw status values such as "sold".
     // Preserve the existing sold substatus (especially fully_paid) unless the
     // request explicitly changes status/substatus through a business action.
@@ -1459,15 +1536,33 @@ export const updateLotProjectListing = async (req, res) => {
 
     // Available and Hold are inventory states and remain editable by users with
     // LOT_LISTINGS_MANAGE. Once a real sale/reservation state exists, the
-    // generic Edit Listing endpoint becomes a Super Admin administrative-only
-    // correction surface. Contract/pricing fields are frozen below.
-    if (isProtectedListing && !isSuperAdmin && !isCancellationAction) {
-      await connection.rollback();
-      return res.status(403).json({
-        code: 'PROTECTED_LISTING_EDIT_REQUIRES_SUPER_ADMIN',
-        message: 'Only the Super Admin can edit a reserved, sold, or protected listing outside the permissioned cancellation workflow.',
+    // generic Edit Listing endpoint is a governed correction surface (plan
+    // item 18): Operations Head edits directly, Operations Staff need Head
+    // approval, Super Admin is the emergency fallback. Contract/pricing fields
+    // are frozen below either way.
+    if (isProtectedListing && !isCancellationAction) {
+      governedActionKey = 'listing.protected_edit';
+      governance = await authorizeGovernedAction(connection, {
+        actor: req.authUser,
+        actionKey: governedActionKey,
+        projectId: project.lot_project_id,
+        entityId: existingListing.lot_project_listing_id,
+        entityLabel: existingListing.lot_project_listing_unit_id,
+        payload: buildProtectedListingEditPayload(req.body, existingListing),
+        reason: req.body.reason || req.body.editReason,
+        approvalRequestId: req.body.approvalRequestId,
+      });
+      if (!governance.authorized) {
+        await connection.commit();
+        return res.status(409).json(headApprovalPendingResponse(governance, getReviewActionLabel(governedActionKey)));
+      }
+      await assertEntityNotReviewLocked(connection, {
+        actor: req.authUser,
+        entityType: governance.entityType,
+        entityId: existingListing.lot_project_listing_id,
       });
     }
+    void isSuperAdmin;
 
     const existingInstallmentPricePerSqm = Number(
       existingListing.lot_project_listing_installment_price_per_sqm
@@ -2304,6 +2399,47 @@ export const updateLotProjectListing = async (req, res) => {
       },
     });
 
+    // Every governed change reaches the Auditor (and the Head first when Staff
+    // acted without a pre-approval, which governance does not allow here).
+    let governedReview = null;
+    if (governance?.authorized && governedActionKey) {
+      governedReview = await createOperationalReview(connection, {
+        actor: req.authUser,
+        actionKey: governedActionKey,
+        department: governance.department,
+        projectId: project.lot_project_id,
+        entityType: governance.entityType,
+        entityId: existingListing.lot_project_listing_id,
+        entityLabel: `Unit ${unitCode} — ${project.lot_project_name}`,
+        beforeSnapshot: {
+          projectSlug: slug,
+          listingId: existingListing.lot_project_listing_id,
+          unitCode: existingListing.lot_project_listing_unit_id,
+          status: existingListing.lot_project_listing_status,
+          soldSubstatus: existingListing.lot_project_listing_sold_substatus,
+          oldUnitIds: existingListing.lot_project_listing_old_unit_ids,
+          lotType: existingListing.lot_project_listing_unit_type,
+          lotAreaSqm: Number(existingListing.lot_project_listing_area_sqm || 0),
+        },
+        afterSnapshot: {
+          projectSlug: slug,
+          listingId: existingListing.lot_project_listing_id,
+          unitCode,
+          status: listingStatus.status,
+          soldSubstatus: listingStatus.soldSubstatus,
+          oldUnitIds: toNullable(oldUnitIdsValue),
+          lotType: normalizeLotType(req.body.lotType || req.body.lot_type),
+          lotAreaSqm,
+          statusTransitionAction,
+          refundAmount: req.body.refundAmount ?? null,
+          cancellationReason: req.body.cancellationReason || null,
+          authorizationType: governance.authorizationType,
+          approvalRequestId: governance.approvalRequestId || null,
+        },
+        headPreApprovedByUserId: governance.headPreApprovedByUserId,
+      });
+    }
+
     await connection.commit();
 
     return res.json({
@@ -2322,6 +2458,7 @@ export const updateLotProjectListing = async (req, res) => {
               ? `${unitCode} updated successfully. Existing SOA was not changed because it has payments or a custom SOA rate.`
               : `${unitCode} updated successfully.`,
       cloudinary_folder_sync: cloudinarySyncResult,
+      review: governedReview,
       listing_id: existingListing.lot_project_listing_id,
       unit_id: unitCode,
     });

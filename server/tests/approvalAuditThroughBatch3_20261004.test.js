@@ -91,7 +91,10 @@ test('Batch 3 creates Audit Cases with Head explanation and System Admin correct
   for (const state of ['awaiting_head_response','under_auditor_review','finding_invalid','pending_system_admin_correction','pending_auditor_recheck','closed']) {
     assert.ok(batch3.includes(`'${state}'`), state);
   }
-  assert.match(workflowController, /ORIGINAL_HEAD_RESPONSE_REQUIRED/);
+  // 2026-10-05: responder rules moved to auditCaseResponder.service (original Head
+  // first, fallback Head, reassignment, Super Admin for emergency changes).
+  assert.match(workflowController, /resolveAuditCaseResponders/);
+  assert.match(workflowController, /AUDIT_CASE_RESPONDER_REQUIRED/);
   assert.match(workflowController, /pending_system_admin_correction/);
   assert.match(workflowController, /pending_auditor_recheck/);
 });

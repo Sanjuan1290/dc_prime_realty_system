@@ -391,7 +391,7 @@ export const updateLotProjectSettings = async (req, res) => {
       throw Object.assign(new Error('Your role cannot authorize this protected settings change.'), { statusCode: 403 });
     }
 
-    await assertEntityNotReviewLocked(connection, {
+    await assertEntityNotReviewLocked(connection, { actor: req.authUser,
       entityType: PROJECT_SETTINGS_REVIEW_ENTITY,
       entityId: project.lot_project_id,
       allowReviewId: auditCase?.operational_review_id || null,

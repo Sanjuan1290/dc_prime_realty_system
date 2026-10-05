@@ -11,18 +11,7 @@ import {
 } from 'react-icons/fi'
 import StatusAlert from '../../Shared/StatusAlert'
 import { useFetchPost } from '../../../utils/useFetch'
-
-const HEADERS = [
-  'First Name',
-  'Middle Name',
-  'Last Name',
-  'Email',
-  'Contact Number',
-  'Role',
-  'Reports Under Email',
-  'TIN',
-  'PRC Number',
-]
+import { NETWORK_MEMBER_EXCEL_HEADERS as HEADERS } from '../../../utils/networkMemberExcel'
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
 const MAX_IMPORT_ROWS = 2000
@@ -167,7 +156,9 @@ const NetworkMemberImportModal = ({
       ['UM', 'Unit Manager. Reports Under Email must be an active SD in this Network or another valid SD in the same import file.'],
       ['SA', 'Sales Agent. Reports Under Email must be an active UM in this Network or another valid UM in the same import file.'],
       ['Existing Seller', 'An Active seller in another Network is blocked. Set the seller Inactive first. Seller role changes are not allowed through bulk import.'],
+      ['PRC Number', 'Required for every new member. PRC Number and TIN cannot belong to another Active seller, even one registered with a different email. Set that seller Inactive first.'],
       ['Optional Fields', 'For an existing member, blank Contact Number, TIN, and PRC Number preserve the existing values.'],
+      ['Round Trip', 'Export Members on the Network page produces this same layout, so you can export, edit, and import again.'],
       ['Sample Row', 'The Members sheet starts with one highlighted sample row. Delete it before entering your sellers. If left unchanged, the importer ignores it automatically.'],
       ['Maximum Rows', `${MAX_IMPORT_ROWS.toLocaleString()} members per Excel file.`],
     ]
@@ -178,9 +169,9 @@ const NetworkMemberImportModal = ({
     const examples = [
       HEADERS,
       ['Existing', '', 'Division Manager', exampleHeadEmail, '', 'DM', '', '', ''],
-      ['Juan', '', 'Santos', 'sales.director@example.com', '09171234567', 'SD', exampleHeadEmail, '', ''],
-      ['Maria', '', 'Reyes', 'unit.manager@example.com', '09181234567', 'UM', 'sales.director@example.com', '', ''],
-      ['Pedro', '', 'Cruz', 'sales.agent@example.com', '09191234567', 'SA', 'unit.manager@example.com', '', ''],
+      ['Juan', '', 'Santos', 'sales.director@example.com', '09171234567', 'SD', exampleHeadEmail, '', 'PRC-0002'],
+      ['Maria', '', 'Reyes', 'unit.manager@example.com', '09181234567', 'UM', 'sales.director@example.com', '', 'PRC-0003'],
+      ['Pedro', '', 'Cruz', 'sales.agent@example.com', '09191234567', 'SA', 'unit.manager@example.com', '', 'PRC-0004'],
     ]
     const exampleSheet = XLSX.utils.aoa_to_sheet(examples)
     exampleSheet['!cols'] = membersSheet['!cols']

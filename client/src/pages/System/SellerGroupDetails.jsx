@@ -6,6 +6,7 @@ import {
   FiBriefcase,
   FiCheckCircle,
   FiDollarSign,
+  FiDownload,
   FiEdit2,
   FiExternalLink,
   FiMail,
@@ -27,6 +28,9 @@ import CreateUserModal from '../../components/System/userComponents/CreateUserMo
 import EditUserModal from '../../components/System/userComponents/EditUserModal'
 import { getSellerRoleLabel } from '../../config/sellerRoles'
 import { useFetch as fetchJson } from '../../utils/useFetch'
+import useCurrentUser from '../../utils/useCurrentUser'
+import { PERMISSIONS, hasPermission } from '../../config/permissions'
+import { exportNetworkMembersWorkbook } from '../../utils/networkMemberExcel'
 
 const money = (value) =>
   new Intl.NumberFormat('en-PH', {
@@ -222,7 +226,33 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
   const [selectedMember, setSelectedMember] = useState(null)
   const [showEditGroupModal, setShowEditGroupModal] = useState(false)
   const [range, setRange] = useState(defaultRange)
+  const [isExportingMembers, setIsExportingMembers] = useState(false)
   const selectedProjectId = Number(searchParams.get('project') || 0)
+  const { data: currentUserData } = useCurrentUser()
+  const actor = currentUserData?.user
+  const canAddMember = hasPermission(actor, PERMISSIONS.SYSTEM_USERS_CREATE)
+  const canImportMembers = hasPermission(actor, PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE)
+    && hasPermission(actor, PERMISSIONS.SYSTEM_USERS_CREATE)
+    && hasPermission(actor, PERMISSIONS.SYSTEM_USERS_EDIT)
+  const canExportMembers = hasPermission(actor, PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW)
+
+  const exportMembers = async () => {
+    setIsExportingMembers(true)
+    setAlert({ type: 'loading', message: 'Preparing the Network member export...' })
+    try {
+      const result = await fetchJson(`/seller-groups/${groupId}`)
+      const count = exportNetworkMembersWorkbook({
+        network: result?.data?.group || {},
+        members: result?.data?.members || [],
+        projectRates: result?.data?.group?.project_rates || [],
+      })
+      setAlert({ type: 'success', message: `${count} member${count === 1 ? '' : 's'} exported.` })
+    } catch (error) {
+      setAlert({ type: 'error', message: error?.message || 'Could not export this Network.' })
+    } finally {
+      setIsExportingMembers(false)
+    }
+  }
 
   const projectOptionsQuery = useQuery({
     queryKey: ['seller-group-project-options', Number(groupId)],
@@ -417,7 +447,7 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
             Refresh
           </button>
 
-          {!isExternal ? (
+          {!isExternal && canAddMember ? (
             <button
               type="button"
               onClick={() => setShowCreateUser(true)}
@@ -428,7 +458,7 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
             </button>
           ) : null}
 
-          {!isExternal ? (
+          {!isExternal && canImportMembers ? (
             <button
               type="button"
               onClick={() => setShowMemberImport(true)}
@@ -436,6 +466,18 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
             >
               <FiUpload />
               Import Members
+            </button>
+          ) : null}
+
+          {!isExternal && canExportMembers ? (
+            <button
+              type="button"
+              onClick={exportMembers}
+              disabled={isExportingMembers}
+              className="inline-flex h-10 items-center gap-2 rounded-xl border border-emerald-200 bg-white px-4 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <FiDownload className={isExportingMembers ? 'animate-bounce' : ''} />
+              {isExportingMembers ? 'Exporting...' : 'Export Members'}
             </button>
           ) : null}
 

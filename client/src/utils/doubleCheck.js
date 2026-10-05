@@ -82,10 +82,19 @@ export const consumeDoubleCheckToken = (token) => {
 export const isDoubleCheckCancelled = (error) =>
   error?.code === 'REVIEW_CANCELLED' || Number(error?.status || 0) === 499
 
+// A governed change filed a Head approval request instead of saving
+// (server code HEAD_APPROVAL_PENDING). Shown as information, not an error.
+export const isHeadApprovalPending = (error) => {
+  const code = error?.code || error?.data?.code || error?.response?.code
+  return code === 'HEAD_APPROVAL_PENDING'
+}
+
 export const getDoubleCheckNotice = (
   error,
   fallbackMessage = 'The action could not be completed.',
   cancelledMessage = 'Final review closed. You can continue editing; nothing was saved.'
 ) => isDoubleCheckCancelled(error)
   ? { type: 'info', message: cancelledMessage }
-  : { type: 'error', message: error?.message || fallbackMessage }
+  : isHeadApprovalPending(error)
+    ? { type: 'info', message: error?.message || 'Sent to the Department Head for approval. Nothing was changed yet.' }
+    : { type: 'error', message: error?.message || fallbackMessage }

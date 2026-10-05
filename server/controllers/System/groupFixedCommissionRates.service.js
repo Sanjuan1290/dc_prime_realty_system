@@ -82,6 +82,73 @@ export const loadInHousePoolShares = async (connection) => {
   }
 };
 
+// -----------------------------------------------------------------------------
+// Company Profit policy (2026-10-05 plan, items 4-5).
+// Applied only on WRITE paths (create/edit Network, project pool update).
+// Read paths and commission calculation never call it, so a Network saved
+// before the policy existed keeps working until someone edits it.
+// -----------------------------------------------------------------------------
+export const DEFAULT_MAX_COMPANY_PROFIT_PERCENT_OF_POOL = 50;
+export const MIN_ROLE_DISTRIBUTION_RATE = 0.0001;
+
+export const normalizeMaxCompanyProfitPercent = (value) => {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0 || numeric > 100) return DEFAULT_MAX_COMPANY_PROFIT_PERCENT_OF_POOL;
+  return roundCommissionRate(numeric);
+};
+
+export const loadCompanyProfitPolicy = async (connection) => {
+  try {
+    const [rows] = await connection.query(
+      'SELECT max_company_profit_percent_of_pool FROM system_settings WHERE system_setting_id = 1 LIMIT 1'
+    );
+    return { maxPercentOfPool: normalizeMaxCompanyProfitPercent(rows[0]?.max_company_profit_percent_of_pool ?? DEFAULT_MAX_COMPANY_PROFIT_PERCENT_OF_POOL) };
+  } catch (error) {
+    if (error?.code === 'ER_BAD_FIELD_ERROR' || error?.code === 'ER_NO_SUCH_TABLE') {
+      return { maxPercentOfPool: DEFAULT_MAX_COMPANY_PROFIT_PERCENT_OF_POOL };
+    }
+    throw error;
+  }
+};
+
+export const getMaxCompanyProfitRate = (poolRate, maxPercentOfPool = DEFAULT_MAX_COMPANY_PROFIT_PERCENT_OF_POOL) =>
+  Math.floor(((Number(poolRate || 0) * Number(maxPercentOfPool || 0)) / 100 + Number.EPSILON) * 10000) / 10000;
+
+/**
+ * Throws when a derived In-House allocation breaks the Company Profit policy:
+ *   * CP may not exceed maxPercentOfPool % of the Pool Rate.
+ *   * After CP, each of DM / SD / UM / SA must receive at least 0.0001%.
+ * External Networks have no CP, so they always pass.
+ */
+export const assertCompanyProfitWithinPolicy = (allocation = {}, {
+  maxPercentOfPool = DEFAULT_MAX_COMPANY_PROFIT_PERCENT_OF_POOL,
+  projectName = 'Project',
+  groupType = allocation.seller_group_type || 'in_house',
+} = {}) => {
+  if (normalizeSellerGroupType(groupType) === 'external') return allocation;
+  const poolRate = roundCommissionRate(allocation.seller_group_pool_rate);
+  const companyProfitRate = roundCommissionRate(allocation.company_profit_rate);
+  const maxRate = getMaxCompanyProfitRate(poolRate, maxPercentOfPool);
+  if (companyProfitRate - maxRate > 0.00001) {
+    throw createValidationError(
+      `${projectName} Company Profit can be at most ${maxRate.toFixed(4)}% (${Number(maxPercentOfPool).toFixed(2)}% of the ${poolRate.toFixed(4)}% Pool Rate).`
+    );
+  }
+  const roleRates = [
+    ['Division Manager', allocation.division_manager_rate],
+    ['Sales Director', allocation.sales_director_rate],
+    ['Unit Manager', allocation.unit_manager_rate],
+    ['Sales Agent', allocation.sales_agent_rate],
+  ];
+  const starved = roleRates.find(([, rate]) => roundCommissionRate(rate) < MIN_ROLE_DISTRIBUTION_RATE);
+  if (starved) {
+    throw createValidationError(
+      `${projectName} Company Profit leaves ${starved[0]} with 0%. Lower the Company Profit so every role receives at least ${MIN_ROLE_DISTRIBUTION_RATE.toFixed(4)}%.`
+    );
+  }
+  return allocation;
+};
+
 export const normalizeSellerGroupType = (value) =>
   String(value || '').trim().toLowerCase() === 'external' ? 'external' : 'in_house';
 

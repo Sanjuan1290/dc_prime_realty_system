@@ -44,3 +44,17 @@ Apply this SQL migration before running `npm run migrate:cloudinary-documents`. 
 
 ## 2026-09-26 — Payment notifications and cancellation access
 Run `20260926_payment_notifications_and_cancellation_access.sql` after the RBAC migrations. It adds the Add Payment email-notification toggle. The three new cancellation permissions default OFF for configurable roles and can be enabled from Role & Access Control.
+
+## 2026-10-05 Batch 5: Broker Name and Company Profit cap
+
+`20261005_batch5_broker_name_and_company_profit_cap.sql` drops the unique index on Broker Name (License No., Realty Name and PRC No. stay unique) and adds `system_settings.max_company_profit_percent_of_pool` (default 50).
+
+Run the read-only report `server/scripts/verify-company-profit-and-seller-identity.sql` before and after. It lists In-House Network rates above the new Company Profit cap, active sellers without a PRC No., and PRC/TIN numbers shared by more than one active seller. The new rules only apply when a Network or seller is next saved.
+
+Seller PRC/TIN uniqueness is enforced in the application (`server/services/sellerIdentity.service.js`) inside the save transaction, not by a database index, because PRC/TIN live on `users` while Network membership status lives on `accredited_sellers`.
+
+## 2026-10-05 Batch 6: review workflow fixes
+
+`20261005_batch6_workflow_responders_and_approval_types.sql` adds `operational_reviews.approval_type` and the Audit Case responder reassignment columns, and backfills existing Super Admin reviews as emergency changes so open Audit Cases on them can be answered. The two `ADD CONSTRAINT` statements are the only non-idempotent lines; on a re-run their duplicate-name error can be ignored.
+
+Every action that creates an Operational Review must be registered in `server/config/reviewActions.js` with its department. `createOperationalReview()` rejects unregistered keys.

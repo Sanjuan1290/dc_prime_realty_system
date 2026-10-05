@@ -6,6 +6,7 @@ import { ROLE_LABELS, SYSTEM_ADMIN_MANAGEABLE_ROLES, SYSTEM_USER_ROLES } from '.
 import { useFetch, useFetchPost } from '../../../utils/useFetch'
 import AdminProjectAccessFields from './AdminProjectAccessFields'
 import PermissionMatrix from './PermissionMatrix'
+import { DEPARTMENT_PRIORITY_GROUPS, getRoleDepartment } from '../../../utils/permissionMeta'
 
 const initial = { first_name: '', middle_name: '', last_name: '', email: '', contact_no: '', tin_no: '', prc_no: '', address: '', role: 'marketing_staff', status: 'active' }
 const steps = ['Personal Information', 'Role & Account Code', 'Permissions', 'Project Access', 'Final Review']
@@ -18,6 +19,7 @@ const CreateSystemUserModal = ({ onClose, onSaved }) => {
   const [allProjects, setAllProjects] = useState(false)
   const [projectIds, setProjectIds] = useState([])
   const [permissions, setPermissions] = useState([])
+  const [customizing, setCustomizing] = useState(false)
   const [step, setStep] = useState(0)
   const [alert, setAlert] = useState(null)
 
@@ -47,7 +49,14 @@ const CreateSystemUserModal = ({ onClose, onSaved }) => {
       return
     }
     setPermissions(roleData?.defaults?.[form.role] || [])
+    setCustomizing(false)
   }, [form.role, roleData])
+
+  // Plan item 24: load the role's rules so Required / Inherited / Not Allowed
+  // are shown and locked, exactly as the server will enforce them.
+  const rolePolicy = roleData?.policies?.[form.role] || null
+  const roleDefaults = roleData?.defaults?.[form.role] || []
+  const parentRole = rolePolicy?.parentRole || null
 
   const mutation = useMutation({
     mutationFn: () => useFetchPost('/user/createUser', {
@@ -192,8 +201,26 @@ const CreateSystemUserModal = ({ onClose, onSaved }) => {
               <div className="rounded-2xl border border-blue-200 bg-blue-50 p-5 text-blue-900"><p className="text-lg font-black">Governed Access</p><p className="mt-1 text-sm font-semibold">{form.role === 'super_admin' ? 'Super Admin keeps owner-level Full System Access.' : form.role === 'auditor' ? 'Auditor receives required global read-only + audit workflow access. Only Super Admin can later adjust the limited allowed export/print permissions.' : 'System Admin receives required administration + audit-correction access and All Projects. Super Admin can later adjust additional allowed permissions.'}</p></div>
             ) : (
               <section className="grid gap-3">
-                <div><h3 className="text-lg font-black">Customize Permissions</h3><p className="text-sm font-semibold text-slate-500">Loaded from the current {ROLE_LABELS[form.role]} role default. Changes here apply only to this new account.</p></div>
-                <PermissionMatrix catalog={roleData?.catalog || []} selected={permissions} onChange={setPermissions} />
+                <div><h3 className="text-lg font-black">Permissions</h3><p className="text-sm font-semibold text-slate-500">Most accounts should use the {ROLE_LABELS[form.role]} defaults. Customize only for exceptions; changes apply to this new account only.{parentRole ? ` ${ROLE_LABELS[form.role]} also inherits everything from ${ROLE_LABELS[parentRole] || parentRole}.` : ''}</p></div>
+                {!customizing ? (
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-4">
+                    <div>
+                      <p className="font-black text-blue-950">{permissions.length === roleDefaults.length && permissions.every((key) => roleDefaults.includes(key)) ? `Using ${ROLE_LABELS[form.role]} defaults` : `Customized from ${ROLE_LABELS[form.role]} defaults`}</p>
+                      <p className="mt-1 text-sm font-semibold text-blue-800">{permissions.length} selected permission{permissions.length === 1 ? '' : 's'}{rolePolicy?.required?.length ? `, plus ${rolePolicy.required.length} required` : ''}{rolePolicy?.inherited?.length ? ` and ${rolePolicy.inherited.length} inherited` : ''}.</p>
+                    </div>
+                    <button type="button" onClick={() => setCustomizing(true)} className="h-10 rounded-xl border border-blue-300 bg-white px-4 text-sm font-black text-blue-700">Customize</button>
+                  </div>
+                ) : (
+                  <PermissionMatrix
+                    catalog={roleData?.catalog || []}
+                    selected={permissions}
+                    onChange={setPermissions}
+                    policy={rolePolicy}
+                    baseline={roleDefaults}
+                    baselineLabel={`${ROLE_LABELS[form.role]} default`}
+                    priorityGroups={DEPARTMENT_PRIORITY_GROUPS[getRoleDepartment(form.role)] || []}
+                  />
+                )}
               </section>
             )
           ) : null}

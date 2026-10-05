@@ -33,12 +33,15 @@ const head = {
   user_status: 'active',
 };
 
+// PRC No. became required for in-house sellers on 2026-10-05; each fixture row
+// gets a unique PRC derived from its email unless a test sets one explicitly.
 const row = (overrides = {}) => ({
   first_name: 'Pedro',
   last_name: 'Reyes',
   email: 'pedro@example.com',
   role: 'SA',
   reports_under_email: 'maria@example.com',
+  prc_number: `PRC-${String(overrides.email || 'pedro@example.com').split('@')[0]}`,
   ...overrides,
 });
 
@@ -305,8 +308,11 @@ test('Network details UI exposes Import Members and the template contains a safe
   const details = await fs.readFile(path.join(root, 'client/src/pages/System/SellerGroupDetails.jsx'), 'utf8');
   const modal = await fs.readFile(path.join(root, 'client/src/components/System/sellerGroupComponents/NetworkMemberImportModal.jsx'), 'utf8');
   assert.match(details, /Add Member[\s\S]*Import Members/);
-  assert.match(modal, /const HEADERS = \[[\s\S]*'Reports Under Email'[\s\S]*'PRC Number'/);
-  const headersBlock = modal.match(/const HEADERS = \[([\s\S]*?)\]\n/)?.[1] || '';
+  // Headers moved to a shared util so Export Members uses the same layout (2026-10-05).
+  const excelUtil = await fs.readFile(path.join(root, 'client/src/utils/networkMemberExcel.js'), 'utf8');
+  assert.match(modal, /NETWORK_MEMBER_EXCEL_HEADERS as HEADERS/);
+  assert.match(excelUtil, /NETWORK_MEMBER_EXCEL_HEADERS = Object\.freeze\(\[[\s\S]*'Reports Under Email'[\s\S]*'PRC Number'/);
+  const headersBlock = excelUtil.match(/NETWORK_MEMBER_EXCEL_HEADERS = Object\.freeze\(\[([\s\S]*?)\]\)/)?.[1] || '';
   assert.doesNotMatch(headersBlock, /Network Name|Status/);
   assert.match(modal, /SAMPLE - DELETE THIS ROW/);
   assert.match(modal, /aoa_to_sheet\(\[HEADERS, sampleMemberRow\]\)/);

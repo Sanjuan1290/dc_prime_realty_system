@@ -4,6 +4,7 @@ import { writeAuditLog } from './auditLogs.controller.js';
 import { createInternalNotifications, notifyAuditors, notifySystemAdmins } from '../../services/internalNotification.service.js';
 import { appendReviewEvent, canActorSeeReview, getOperationalReviewForUpdate } from '../../services/operationalReview.service.js';
 import { approveProtectedChange } from '../../services/protectedChange.service.js';
+import { resolveAuditCaseResponders, RESPONDER_MODE_LABELS } from '../../services/auditCaseResponder.service.js';
 
 const errorMessage = (error) => error?.message || 'Workflow operation failed.';
 const pageValues = (query = {}) => ({ page: Math.max(Number(query.page || 1),1), limit: Math.min(Math.max(Number(query.limit || 25),1),100) });
@@ -115,7 +116,36 @@ export const getOperationalReview = async (req, res) => {
     const [caseRows] = await db.query(
       `SELECT * FROM audit_cases WHERE operational_review_id=? ORDER BY audit_case_id DESC LIMIT 1`, [reviewId]
     ).catch(() => [[]]);
-    return res.json({ data: { ...review, events, auditCase: caseRows?.[0] || null } });
+    let auditCase = caseRows?.[0] || null;
+    if (auditCase && auditCase.status === 'awaiting_head_response') {
+      const responders = await resolveAuditCaseResponders(db, { ...review, ...auditCase });
+      const [responderRows] = responders.userIds.length
+        ? await db.query(`SELECT id, role, TRIM(CONCAT_WS(' ', first_name, middle_name, last_name)) full_name FROM users WHERE id IN (${responders.userIds.map(() => '?').join(',')})`, responders.userIds)
+        : [[]];
+      let headOptions = [];
+      if (['system_admin', 'super_admin'].includes(req.authUser?.role)) {
+        const [optionRows] = await db.query(
+          `SELECT u.id, TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) full_name FROM users u
+           WHERE u.role = ? AND u.status = 'active'
+             AND (COALESCE(u.all_projects_access, u.admin_all_projects, 0) = 1 OR ? IS NULL
+               OR EXISTS (SELECT 1 FROM user_project_access upa WHERE upa.user_id = u.id AND upa.lot_project_id = ?))
+           ORDER BY full_name`,
+          [DEPARTMENT_HEAD_ROLE[review.department] || '', review.lot_project_id || null, review.lot_project_id || null]
+        );
+        headOptions = optionRows;
+      }
+      auditCase = {
+        ...auditCase,
+        responders: {
+          mode: responders.mode,
+          label: RESPONDER_MODE_LABELS[responders.mode] || responders.mode,
+          users: responderRows,
+          canRespond: responders.userIds.includes(Number(req.authUser?.id || 0)),
+        },
+        headOptions,
+      };
+    }
+    return res.json({ data: { ...review, events, auditCase } });
   } catch (error) { return res.status(500).json({ message: errorMessage(error) }); }
 };
 
@@ -152,7 +182,8 @@ export const confirmHeadReview = async (req, res) => {
       throw Object.assign(new Error('Another Head already claimed this review.'), { statusCode: 409 });
     }
     if (review.status !== 'pending_head_review') throw Object.assign(new Error('This review is no longer pending Head confirmation.'), { statusCode: 409 });
-    await connection.query(`UPDATE operational_reviews SET status='pending_auditor_review',claimed_by_user_id=COALESCE(claimed_by_user_id,?),claimed_at=COALESCE(claimed_at,NOW()),head_reviewed_by_user_id=?,head_reviewed_at=NOW() WHERE operational_review_id=?`, [req.authUser.id,req.authUser.id,review.operational_review_id]);
+    const withApprovalType = Object.prototype.hasOwnProperty.call(review, 'approval_type');
+    await connection.query(`UPDATE operational_reviews SET status='pending_auditor_review',claimed_by_user_id=COALESCE(claimed_by_user_id,?),claimed_at=COALESCE(claimed_at,NOW()),head_reviewed_by_user_id=?,head_reviewed_at=NOW()${withApprovalType ? ",approval_type='head_confirmed'" : ''} WHERE operational_review_id=?`, [req.authUser.id,req.authUser.id,review.operational_review_id]);
     await appendReviewEvent(connection, { reviewId: review.operational_review_id, eventType: 'head_confirmed', actor: req.authUser, fromStatus: review.status, toStatus: 'pending_auditor_review', message: String(req.body?.note || 'Head confirmed no mistake.').slice(0,1000) });
     await notifyAuditors(connection, { reviewId: review.operational_review_id, title: `Audit review required · ${review.entity_label || review.entity_type}`, message: `${review.review_number} was confirmed by the ${review.department} Head.` });
     await writeAuditLog(connection, req, { action:'approve',module:'Review Center',entityType:'operational_review',entityId:String(review.operational_review_id),entityLabel:review.review_number,title:'Department Head confirmed review',description:`${review.review_number} moved to Auditor review.`,metadata:{department:review.department,action_key:review.action_key} });
@@ -246,12 +277,12 @@ export const openAuditCase = async (req,res) => {
     await connection.query('UPDATE audit_cases SET case_number=? WHERE audit_case_id=?',[number,caseId]);
     await connection.query("UPDATE operational_reviews SET status='audit_case_open',auditor_reviewed_by_user_id=?,auditor_reviewed_at=NOW() WHERE operational_review_id=?",[req.authUser.id,review.operational_review_id]);
     await appendReviewEvent(connection,{reviewId:review.operational_review_id,eventType:'audit_case_opened',actor:req.authUser,fromStatus:review.status,toStatus:'audit_case_open',message:finding,metadata:{auditCaseId:caseId,caseNumber:number}});
-    let recipients=[];
-    if(review.head_reviewed_by_user_id) recipients=[review.head_reviewed_by_user_id];
-    else {
-      const expectedRole=DEPARTMENT_HEAD_ROLE[review.department];
-      const [headRows]=await connection.query(`SELECT u.id FROM users u WHERE u.role=? AND u.status='active' AND (COALESCE(u.all_projects_access,u.admin_all_projects,0)=1 OR ? IS NULL OR EXISTS(SELECT 1 FROM user_project_access upa WHERE upa.user_id=u.id AND upa.lot_project_id=?))`,[expectedRole,review.lot_project_id,review.lot_project_id]);
-      recipients=headRows.map((r)=>r.id);
+    // Original Head, Super Admin for emergency changes, or any eligible Head when the original Head is gone.
+    const responders=await resolveAuditCaseResponders(connection,{...review,assigned_responder_user_id:null});
+    let recipients=responders.userIds;
+    if(!recipients.length){
+      const [adminRows]=await connection.query("SELECT id FROM users WHERE role='system_admin' AND status='active'");
+      await createInternalNotifications(connection,{userIds:adminRows.map((r)=>r.id),type:'audit_case_no_responder',title:`Audit Case has no available responder · ${number}`,message:`No active ${review.department} Head can answer ${number}. Reassign a responder in the Review Center.`,reviewId:review.operational_review_id,auditCaseId:caseId});
     }
     await createInternalNotifications(connection,{userIds:recipients,type:'audit_case_response_required',title:`Audit Case requires explanation · ${number}`,message:finding,reviewId:review.operational_review_id,auditCaseId:caseId});
     await writeAuditLog(connection,req,{action:'create',module:'Audit Cases',entityType:'audit_case',entityId:String(caseId),entityLabel:number,title:'Opened Audit Case',description:`${number} opened for ${review.review_number}.`,metadata:{finding,reviewId:review.operational_review_id}});
@@ -265,18 +296,51 @@ export const respondToAuditCase = async (req,res) => {
   try {
     const response=String(req.body?.response||req.body?.explanation||'').trim(); if(response.length<5)return res.status(400).json({message:'Enter a clear explanation for the Auditor.'});
     await connection.beginTransaction();
-    const [rows]=await connection.query(`SELECT c.*,r.department,r.lot_project_id,r.review_number,r.head_reviewed_by_user_id FROM audit_cases c INNER JOIN operational_reviews r ON r.operational_review_id=c.operational_review_id WHERE c.audit_case_id=? LIMIT 1 FOR UPDATE`,[Number(req.params.caseId)]);
+    // r.* first so the audit case's own columns (status, created_at...) win.
+    const [rows]=await connection.query(`SELECT r.*,c.* FROM audit_cases c INNER JOIN operational_reviews r ON r.operational_review_id=c.operational_review_id WHERE c.audit_case_id=? LIMIT 1 FOR UPDATE`,[Number(req.params.caseId)]);
     const c=rows[0]; if(!c)throw Object.assign(new Error('Audit Case not found.'),{statusCode:404});
-    const expected=DEPARTMENT_HEAD_ROLE[c.department]; if(req.authUser?.role!==expected)throw Object.assign(new Error(`Only the ${c.department} Head can respond to this case.`),{statusCode:403});
-    if (c.head_reviewed_by_user_id && Number(c.head_reviewed_by_user_id) !== Number(req.authUser.id)) {
-      throw Object.assign(new Error('The Department Head who confirmed this review must provide the explanation.'), { statusCode: 403, code: 'ORIGINAL_HEAD_RESPONSE_REQUIRED' });
+    if(c.status!=='awaiting_head_response')throw Object.assign(new Error('This case is not awaiting an explanation.'),{statusCode:409});
+    const responders=await resolveAuditCaseResponders(connection,c);
+    if(!responders.userIds.includes(Number(req.authUser?.id||0))){
+      const who=RESPONDER_MODE_LABELS[responders.mode]||'the assigned responder';
+      throw Object.assign(new Error(`This case must be answered by: ${who}.`),{statusCode:403,code:'AUDIT_CASE_RESPONDER_REQUIRED'});
     }
-    if(c.status!=='awaiting_head_response')throw Object.assign(new Error('This case is not awaiting a Head explanation.'),{statusCode:409});
-    const visible=await canActorSeeReview(connection,req.authUser,{department:c.department,lot_project_id:c.lot_project_id}); if(!visible)throw Object.assign(new Error('This case is outside your project scope.'),{statusCode:403});
     await connection.query("UPDATE audit_cases SET status='under_auditor_review',head_response=?,head_responded_by_user_id=?,head_responded_at=NOW() WHERE audit_case_id=?",[response,req.authUser.id,c.audit_case_id]);
-    await appendReviewEvent(connection,{reviewId:c.operational_review_id,eventType:'head_explanation_submitted',actor:req.authUser,fromStatus:'audit_case_open',toStatus:'audit_case_open',message:response,metadata:{auditCaseId:c.audit_case_id,caseNumber:c.case_number}});
-    await notifyAuditors(connection,{reviewId:c.operational_review_id,auditCaseId:c.audit_case_id,type:'audit_case_head_response',title:`Head explanation received · ${c.case_number}`,message:response});
+    await appendReviewEvent(connection,{reviewId:c.operational_review_id,eventType:'head_explanation_submitted',actor:req.authUser,fromStatus:'audit_case_open',toStatus:'audit_case_open',message:response,metadata:{auditCaseId:c.audit_case_id,caseNumber:c.case_number,responderMode:responders.mode}});
+    await notifyAuditors(connection,{reviewId:c.operational_review_id,auditCaseId:c.audit_case_id,type:'audit_case_head_response',title:`Explanation received · ${c.case_number}`,message:response});
     await connection.commit(); return res.json({message:'Explanation submitted to the Auditor.'});
+  }catch(error){try{await connection.rollback()}catch{} return res.status(error.statusCode||500).json({code:error.code,message:errorMessage(error)});}finally{connection.release();}
+};
+
+// System Admin (or Super Admin) assigns who must answer a case, e.g. when the
+// original Head left or no Head covers the project (plan item 17).
+export const reassignAuditCaseResponder = async (req,res) => {
+  const connection=await db.getConnection();
+  try {
+    if(!['system_admin','super_admin'].includes(req.authUser?.role))return res.status(403).json({message:'Only System Admin can reassign an Audit Case responder.'});
+    const targetUserId=Number(req.body?.userId||req.body?.user_id||0);
+    const reason=String(req.body?.reason||'').trim();
+    if(!targetUserId)return res.status(400).json({message:'Select the Head who will answer this case.'});
+    if(reason.length<5)return res.status(400).json({message:'Enter a reason for the reassignment.'});
+    await connection.beginTransaction();
+    const [rows]=await connection.query(`SELECT r.*,c.* FROM audit_cases c INNER JOIN operational_reviews r ON r.operational_review_id=c.operational_review_id WHERE c.audit_case_id=? LIMIT 1 FOR UPDATE`,[Number(req.params.caseId)]);
+    const c=rows[0]; if(!c)throw Object.assign(new Error('Audit Case not found.'),{statusCode:404});
+    if(c.status!=='awaiting_head_response')throw Object.assign(new Error('Only a case waiting for an explanation can be reassigned.'),{statusCode:409});
+    if(!Object.prototype.hasOwnProperty.call(c,'assigned_responder_user_id'))throw Object.assign(new Error('Apply the latest workflow migration (batch6) before reassigning responders.'),{statusCode:409});
+    const [targetRows]=await connection.query("SELECT id,role,status,COALESCE(all_projects_access,admin_all_projects,0) all_projects_access FROM users WHERE id=? LIMIT 1",[targetUserId]);
+    const target=targetRows[0];
+    const expectedRole=DEPARTMENT_HEAD_ROLE[c.department];
+    if(!target||target.status!=='active')throw Object.assign(new Error('The selected user is not active.'),{statusCode:400});
+    if(target.role!==expectedRole && target.role!=='super_admin')throw Object.assign(new Error(`The responder must be an active ${String(c.department)} Head.`),{statusCode:400});
+    if(target.role===expectedRole && c.lot_project_id && Number(target.all_projects_access)!==1){
+      const [scope]=await connection.query('SELECT 1 FROM user_project_access WHERE user_id=? AND lot_project_id=? LIMIT 1',[target.id,c.lot_project_id]);
+      if(!scope.length)throw Object.assign(new Error('The selected Head has no access to this project.'),{statusCode:400});
+    }
+    await connection.query('UPDATE audit_cases SET assigned_responder_user_id=?,responder_reassigned_by_user_id=?,responder_reassigned_at=NOW() WHERE audit_case_id=?',[target.id,req.authUser.id,c.audit_case_id]);
+    await appendReviewEvent(connection,{reviewId:c.operational_review_id,eventType:'audit_case_responder_reassigned',actor:req.authUser,fromStatus:'audit_case_open',toStatus:'audit_case_open',message:reason,metadata:{auditCaseId:c.audit_case_id,assignedResponderUserId:target.id,previousHeadUserId:c.head_reviewed_by_user_id||null}});
+    await createInternalNotifications(connection,{userIds:[target.id],type:'audit_case_response_required',title:`Audit Case reassigned to you · ${c.case_number}`,message:c.finding,reviewId:c.operational_review_id,auditCaseId:c.audit_case_id});
+    await writeAuditLog(connection,req,{action:'update',module:'Audit Cases',entityType:'audit_case',entityId:String(c.audit_case_id),entityLabel:c.case_number,title:'Reassigned Audit Case responder',description:`${c.case_number} responder reassigned.`,metadata:{reason,assignedResponderUserId:target.id}});
+    await connection.commit(); return res.json({message:'Responder reassigned and notified.'});
   }catch(error){try{await connection.rollback()}catch{} return res.status(error.statusCode||500).json({code:error.code,message:errorMessage(error)});}finally{connection.release();}
 };
 

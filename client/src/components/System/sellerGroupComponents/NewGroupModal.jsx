@@ -4,18 +4,19 @@ import { FiUsers, FiX } from 'react-icons/fi'
 import StatusAlert from '../../Shared/StatusAlert'
 import ConfirmActionModal from '../../Shared/ConfirmActionModal'
 import ProjectAccreditationFields from './ProjectAccreditationFields'
+import { getCompanyProfitError, getMaxCompanyProfitPercent } from '../../../utils/companyProfitPolicy'
 import { getSellerRoleLabel } from '../../../config/sellerRoles'
 import {useFetch as fetchJson, useFetchPost as postJson, getDoubleCheckNotice} from '../../../utils/useFetch'
 
-const validateProjectRates = (projectRates, groupType) => {
+const validateProjectRates = (projectRates, groupType, poolSharesData = {}) => {
   if (!projectRates.length) return 'Select at least one accredited project.'
+  const maxPercentOfPool = getMaxCompanyProfitPercent(poolSharesData)
   for (const rate of projectRates) {
     const pool = Number(rate.seller_group_pool_rate)
     if (!Number.isFinite(pool) || pool < 6 || pool > 15) return 'Each selected project Pool Rate must be between 6% and 15%.'
     if (groupType === 'external') continue
-    const companyProfit = Number(rate.company_profit_rate || 0)
-    if (!Number.isFinite(companyProfit) || companyProfit < 0) return 'Company Profit must be 0% or greater.'
-    if (companyProfit >= pool) return 'Company Profit must be lower than the Pool Rate.'
+    const companyProfitError = getCompanyProfitError(rate, { maxPercentOfPool, shares: poolSharesData })
+    if (companyProfitError) return companyProfitError
   }
   return ''
 }
@@ -107,7 +108,7 @@ const NewGroupModal = ({ setShowNewGroupModal, onSaved, groupType = 'in_house' }
       queryClient.invalidateQueries({ queryKey: ['users'] })
       queryClient.invalidateQueries({ queryKey: ['accredited'] })
       setShowNewGroupModal(false)
-      onSaved?.(data?.message || `${groupLabel} created successfully.`)
+      onSaved?.([data?.message || `${groupLabel} created successfully.`, ...(Array.isArray(data?.warnings) ? data.warnings : [])].join(' '))
     },
     onError: (error) => setNotice(getDoubleCheckNotice(error, `Failed to create ${groupLabel}.`)),
   })
@@ -141,7 +142,7 @@ const NewGroupModal = ({ setShowNewGroupModal, onSaved, groupType = 'in_house' }
         return
       }
     }
-    const projectError = validateProjectRates(form.project_rates, groupType)
+    const projectError = validateProjectRates(form.project_rates, groupType, poolShares)
     if (projectError) {
       setNotice({ type: 'error', message: projectError })
       return

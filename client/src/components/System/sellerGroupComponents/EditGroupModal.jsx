@@ -4,6 +4,7 @@ import { FiEdit3, FiX } from 'react-icons/fi'
 import StatusAlert from '../../Shared/StatusAlert'
 import ConfirmActionModal from '../../Shared/ConfirmActionModal'
 import ProjectAccreditationFields from './ProjectAccreditationFields'
+import { getCompanyProfitError, getMaxCompanyProfitPercent } from '../../../utils/companyProfitPolicy'
 import { getSellerRoleLabel } from '../../../config/sellerRoles'
 import {useFetch as fetchJson, useFetchPut as putJson, getDoubleCheckNotice} from '../../../utils/useFetch'
 
@@ -18,15 +19,15 @@ const normalizeRates = (rates = [], groupType = 'in_house') => rates.map((rate) 
   commission_structure_type: groupType,
 }))
 
-const validateProjectRates = (projectRates, groupType) => {
+const validateProjectRates = (projectRates, groupType, poolSharesData = {}) => {
   if (!projectRates.length) return 'Select at least one accredited project.'
+  const maxPercentOfPool = getMaxCompanyProfitPercent(poolSharesData)
   for (const rate of projectRates) {
     const pool = Number(rate.seller_group_pool_rate)
     if (!Number.isFinite(pool) || pool < 6 || pool > 15) return 'Each selected project Pool Rate must be between 6% and 15%.'
     if (groupType === 'external') continue
-    const companyProfit = Number(rate.company_profit_rate || 0)
-    if (!Number.isFinite(companyProfit) || companyProfit < 0) return 'Company Profit must be 0% or greater.'
-    if (companyProfit >= pool) return 'Company Profit must be lower than the Pool Rate.'
+    const companyProfitError = getCompanyProfitError(rate, { maxPercentOfPool, shares: poolSharesData })
+    if (companyProfitError) return companyProfitError
   }
   return ''
 }
@@ -134,7 +135,7 @@ const EditGroupModal = ({ setShowEditGroupModal, selectedGroup, onSaved, groupTy
       queryClient.invalidateQueries({ queryKey: ['users'] })
       queryClient.invalidateQueries({ queryKey: ['accredited'] })
       setShowEditGroupModal(false)
-      onSaved?.(data?.message || `${groupLabel} updated successfully.`)
+      onSaved?.([data?.message || `${groupLabel} updated successfully.`, ...(Array.isArray(data?.warnings) ? data.warnings : [])].join(' '))
     },
     onError: (error) => setNotice(getDoubleCheckNotice(error, `Failed to update ${groupLabel}.`)),
   })
@@ -147,7 +148,7 @@ const EditGroupModal = ({ setShowEditGroupModal, selectedGroup, onSaved, groupTy
     if (!form.seller_group_name.trim()) return setNotice({ type: 'error', message: 'Network Name is required.' })
     if (!form.broker_name.trim() || !form.broker_license_number.trim() || !form.realty_name.trim() || !form.broker_prc_number.trim()) return setNotice({ type: 'error', message: 'Broker Name, Broker License Number, Realty Name, and PRC Number are required.' })
     if (isExternal && (!form.external_account.first_name.trim() || !form.external_account.last_name.trim() || !form.external_account.email.trim())) return setNotice({ type: 'error', message: 'Representative first name, last name, and email are required.' })
-    const projectError = validateProjectRates(form.project_rates, groupType)
+    const projectError = validateProjectRates(form.project_rates, groupType, poolShares)
     if (projectError) return setNotice({ type: 'error', message: projectError })
     mutation.mutate()
   }

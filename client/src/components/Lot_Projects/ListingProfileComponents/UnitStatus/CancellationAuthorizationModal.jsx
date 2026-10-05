@@ -41,7 +41,8 @@ const CancellationAuthorizationModal = ({
       setPassword('')
       setAlert({ type: 'success', message: result?.message || 'Verification code sent.' })
     } catch (error) {
-      setAlert({ type: 'error', message: error?.message || 'Failed to send verification code.' })
+      // HEAD_APPROVAL_PENDING: the request went to the Department Head; not an error.
+      setAlert({ type: error?.code === 'HEAD_APPROVAL_PENDING' ? 'info' : 'error', message: error?.message || 'Failed to send verification code.' })
     }
   }
 
@@ -69,7 +70,7 @@ const CancellationAuthorizationModal = ({
         <div className="border-b border-slate-200 p-5">
           <p className="text-xs font-black uppercase tracking-[0.16em] text-orange-700">Protected Authorization</p>
           <h2 className="mt-1 text-xl font-black text-slate-950">{actionLabel}</h2>
-          <p className="mt-1 text-sm font-semibold text-slate-500">This sensitive buyer/account action requires your current password and a one-time code sent to your account email.</p>
+          <p className="mt-1 text-sm font-semibold text-slate-500">This sensitive buyer/account action requires your current password and a one-time code sent to your account email. If you are not the Department Head, the first attempt sends an approval request to the Head instead.</p>
         </div>
 
         <div className="grid gap-5 p-5">

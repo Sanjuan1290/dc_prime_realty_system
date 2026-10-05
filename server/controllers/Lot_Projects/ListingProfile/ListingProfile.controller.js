@@ -1139,7 +1139,7 @@ export const requestLotProjectListingCommissionAdjustmentCode = async (req, res)
       userId: actor.id,
     });
     const entityId = Number(context.listing.lot_project_account_id);
-    await assertEntityNotReviewLocked(connection, { entityType: 'lot_project_commission_account', entityId });
+    await assertEntityNotReviewLocked(connection, { actor: req.authUser, entityType: 'lot_project_commission_account', entityId });
 
     if (actor.role === 'system_admin') {
       const auditCase = await getPendingAuditCorrectionCase(connection, {
@@ -1248,7 +1248,7 @@ export const adjustLotProjectListingCommission = async (req, res) => {
       authorization = { type: 'audit_case', auditCase };
       allowReviewId = auditCase.operational_review_id;
     }
-    await assertEntityNotReviewLocked(connection, { entityType: 'lot_project_commission_account', entityId, allowReviewId });
+    await assertEntityNotReviewLocked(connection, { actor: req.authUser, entityType: 'lot_project_commission_account', entityId, allowReviewId });
 
     if (!authorization && actor.role === 'accounting_head') {
       authorization = { type: 'department_head', headPreApprovedByUserId: actor.id };

@@ -327,7 +327,7 @@ const PerformanceTable = ({ rows = [], type = 'seller' }) => (
     <table className="min-w-[880px] w-full divide-y divide-slate-200 text-sm">
       <thead className="bg-slate-50">
         <tr>
-          {[type === 'seller' ? 'Seller' : 'Group', 'Sales', 'Sales Value', 'Gross', 'Eligible', 'Released', 'Remaining'].map((head) => (
+          {[type === 'seller' ? 'Seller' : 'Network', 'Sales', 'Sales Value', 'Gross', 'Eligible', 'Released', 'Remaining'].map((head) => (
             <th key={head} className="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-slate-500">{head}</th>
           ))}
         </tr>
@@ -573,7 +573,7 @@ const Reports = () => {
       </section>
 
       <section className="grid gap-6 grid-cols-1">
-        <ChartCard title="Group Sales Comparison" description="Column-line chart for sales value and sales count by seller group.">
+        <ChartCard title="Network Sales Comparison" description="Column-line chart for sales value and sales count by Network.">
           {groupChartData.length ? (
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={groupChartData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
@@ -587,7 +587,7 @@ const Reports = () => {
                 <Line yAxisId="count" type="monotone" dataKey="salesCount" name="Sales Count" stroke={chartColors.amber} strokeWidth={3} dot />
               </ComposedChart>
             </ResponsiveContainer>
-          ) : <EmptyChart message="No group performance data yet." />}
+          ) : <EmptyChart message="No Network performance data yet." />}
         </ChartCard>
       </section>
 

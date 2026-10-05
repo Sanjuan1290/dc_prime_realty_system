@@ -132,7 +132,7 @@ const CommissionDistribution = ({
                       <td className="px-4 py-4 font-black text-slate-500">{index + 1}</td>
                       <td className="px-4 py-4">
                         <p className="font-black text-slate-950">{row.sellerName || '-'}</p>
-                        <p className="mt-0.5 text-xs font-semibold text-slate-500">{row.sellerGroup || 'No group'}</p>
+                        <p className="mt-0.5 text-xs font-semibold text-slate-500">{row.sellerGroup || 'No Network'}</p>
                       </td>
                       <td className="px-4 py-4 font-semibold text-slate-700">{row.roleLabel || roleLabel(row.role)}</td>
                       <td className="px-4 py-4">

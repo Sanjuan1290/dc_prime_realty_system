@@ -1,4 +1,5 @@
 import { db } from '../../db/connect.js';
+import { assertSellerIdentityAvailable } from '../../services/sellerIdentity.service.js';
 import crypto from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
@@ -1674,6 +1675,18 @@ export const createUser = async (req, res) => {
 
     await connection.beginTransaction();
 
+    // One person cannot be an active seller twice (PRC/TIN), even under a different email.
+    const sellerIdentity = await assertSellerIdentityAvailable(connection, {
+      role,
+      status: normalizeStatus(status),
+      firstName: first_name,
+      middleName: middle_name,
+      lastName: last_name,
+      contactNo: contact_no,
+      prcNo: prc_no,
+      tinNo: tin_no,
+    });
+
     const isAdminLoginAccount = ADMIN_LOGIN_ROLES.has(role);
     const temporaryPassword = isAdminLoginAccount ? generateTemporaryPassword() : String(password || 'password');
     const passwordHash = await bcrypt.hash(temporaryPassword, 10);
@@ -1794,6 +1807,7 @@ export const createUser = async (req, res) => {
       message: isAdminLoginAccount
         ? (credentialsEmailSent ? 'User created successfully. Login credentials were sent by email.' : credentialsEmailWarning)
         : 'User created successfully.',
+      warnings: sellerIdentity.warnings,
       user_id: userId,
       credentials_email_sent: credentialsEmailSent,
       credentials_email_warning: credentialsEmailWarning,
@@ -1930,6 +1944,36 @@ export const editUser = async (req, res) => {
 
     await connection.beginTransaction();
 
+    let sellerIdentity = { warnings: [] };
+    if (sellerRoles.has(role)) {
+      const [identityRows] = await connection.query(
+        `SELECT user.prc_no, user.tin_no, user.status, seller.accredited_seller_status, seller.seller_group_id
+           FROM users user
+           LEFT JOIN accredited_sellers seller ON seller.user_id = user.id
+          WHERE user.id = ? LIMIT 1 FOR UPDATE`,
+        [userId]
+      );
+      const previous = identityRows[0] || {};
+      const sameNumber = (left, right) => String(left || '').toUpperCase().replace(/[^A-Z0-9]/g, '') === String(right || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const wasActiveSeller = previous.status === 'active' && previous.accredited_seller_status === 'active';
+      const identityChanged = !sameNumber(previous.prc_no, prc_no) || !sameNumber(previous.tin_no, tin_no);
+      const becomesActive = normalizeStatus(status) === 'active' && !wasActiveSeller;
+      const changesNetwork = Number(previous.seller_group_id || 0) !== Number(seller_group_id || 0);
+      sellerIdentity = await assertSellerIdentityAvailable(connection, {
+        role,
+        status: normalizeStatus(status),
+        userId,
+        firstName: first_name,
+        middleName: middle_name,
+        lastName: last_name,
+        contactNo: contact_no,
+        prcNo: prc_no,
+        tinNo: tin_no,
+        // Unrelated edits (address, phone) never get blocked by a legacy duplicate.
+        checkUniqueness: identityChanged || becomesActive || changesNetwork || !sellerRoles.has(targetUser.role),
+      });
+    }
+
     await connection.query(
       `
         UPDATE users
@@ -2043,7 +2087,7 @@ export const editUser = async (req, res) => {
 
     await connection.commit();
 
-    return res.json({ message: 'User updated successfully.' });
+    return res.json({ message: 'User updated successfully.', warnings: sellerIdentity.warnings });
   } catch (error) {
     await connection.rollback();
     return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });

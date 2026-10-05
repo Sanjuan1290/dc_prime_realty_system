@@ -694,7 +694,7 @@ export const requestControlledReservationCorrectionCode = async (req, res) => {
     const computation = buildDestinationComputation(bundle, destination, req.body.terms || {})
     const payload = buildControlledCorrectionPayload({ actor, source, bundle, destination, computation, reason })
     const entityId = Number(bundle.lot_project_account_id)
-    await assertEntityNotReviewLocked(connection, { entityType: 'lot_project_reservation', entityId })
+    await assertEntityNotReviewLocked(connection, { actor: req.authUser, entityType: 'lot_project_reservation', entityId })
 
     if (actor.role === 'system_admin') {
       const auditCase = await getPendingAuditCorrectionCase(connection, {
@@ -833,7 +833,7 @@ export const correctReservationUnit = async (req, res) => {
         allowReviewId = auditCase.operational_review_id
         correctionAuthorization = { authorizationType: 'audit_case', auditCase }
       }
-      await assertEntityNotReviewLocked(connection, { entityType: 'lot_project_reservation', entityId, allowReviewId })
+      await assertEntityNotReviewLocked(connection, { actor: req.authUser, entityType: 'lot_project_reservation', entityId, allowReviewId })
 
       if (!correctionAuthorization && actor?.role === 'sales_head') {
         correctionAuthorization = { authorizationType: 'department_head', headPreApprovedByUserId: actor.id }
@@ -1181,7 +1181,8 @@ export const correctReservationUnit = async (req, res) => {
         entityLabel: `${source.lot_project_listing_unit_id} → ${destination.lot_project_listing_unit_id}`,
         beforeSnapshot: { ...before, projectSlug: clean(req.params.projectSlug), listingId: sourceId, correctionId: Number(correctionResult.insertId) },
         afterSnapshot: { ...after, projectSlug: clean(req.params.projectSlug), listingId: destinationId, sourceListingId: sourceId, correctionId: Number(correctionResult.insertId) },
-        headPreApprovedByUserId: safety.controlledEligible ? (correctionAuthorization?.headPreApprovedByUserId || null) : null,
+        // Any Head approval (controlled or not) goes straight to the Auditor; no second Head review.
+        headPreApprovedByUserId: correctionAuthorization?.headPreApprovedByUserId || null,
       })
     }
 

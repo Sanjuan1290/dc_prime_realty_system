@@ -3,6 +3,12 @@ import {
   isGroupHeadRole,
   SELLER_ROLE_LABELS,
 } from './sellerHierarchyRules.js';
+import {
+  findSellerIdentityConflicts,
+  normalizeSellerContact,
+  normalizeSellerIdentityNumber,
+  normalizeSellerName,
+} from '../../services/sellerIdentity.service.js';
 
 export const NETWORK_MEMBER_IMPORT_MAX_ROWS = 2000;
 
@@ -103,6 +109,8 @@ export const analyzeNetworkMemberImport = ({
   group = {},
   existingAccounts = [],
   currentMembers = [],
+  identityMatches = [],
+  nameContactSellers = [],
 } = {}) => {
   const normalizedRows = normalizeNetworkMemberImportRows(rows);
   const groupId = Number(group.seller_group_id || group.id || 0);
@@ -147,6 +155,16 @@ export const analyzeNetworkMemberImport = ({
         displayName,
       });
     }
+  });
+
+  // PRC/TIN duplicates inside the same Excel file.
+  const filePrcCounts = new Map();
+  const fileTinCounts = new Map();
+  normalizedRows.forEach((row) => {
+    const prc = normalizeSellerIdentityNumber(row.prcNo);
+    const tin = normalizeSellerIdentityNumber(row.tinNo);
+    if (prc) filePrcCounts.set(prc, (filePrcCounts.get(prc) || 0) + 1);
+    if (tin) fileTinCounts.set(tin, (fileTinCounts.get(tin) || 0) + 1);
   });
 
   const analyzedRows = normalizedRows.map((row) => {
@@ -245,6 +263,48 @@ export const analyzeNetworkMemberImport = ({
         errors.push('This email belongs to a protected system-generated account and cannot be used for seller accreditation.');
       } else {
         warnings.push('Existing employee/system account will be preserved. A separate seller identity will be created for Network hierarchy and commissions.');
+      }
+    }
+
+    // Duplicate-person guard: PRC required, PRC/TIN unique among active sellers.
+    const effectivePrc = row.prcNo || existing?.prc_no || '';
+    const effectiveTin = row.tinNo || existing?.tin_no || '';
+    if (!normalizeSellerIdentityNumber(effectivePrc)) {
+      errors.push('PRC No. is required for in-house sellers.');
+    }
+    if (row.prcNo && (filePrcCounts.get(normalizeSellerIdentityNumber(row.prcNo)) || 0) > 1) {
+      errors.push(`PRC No. ${row.prcNo} appears more than once in this Excel file.`);
+    }
+    if (row.tinNo && (fileTinCounts.get(normalizeSellerIdentityNumber(row.tinNo)) || 0) > 1) {
+      errors.push(`TIN ${row.tinNo} appears more than once in this Excel file.`);
+    }
+    const existingIsActiveHere = Boolean(existing)
+      && String(existing.user_status || '') === 'active'
+      && String(existing.accredited_seller_status || '') === 'active'
+      && Number(existing.seller_group_id || 0) === groupId;
+    const identityChanged = Boolean(existing) && (
+      normalizeSellerIdentityNumber(effectivePrc) !== normalizeSellerIdentityNumber(existing.prc_no)
+      || normalizeSellerIdentityNumber(effectiveTin) !== normalizeSellerIdentityNumber(existing.tin_no)
+    );
+    if (!existingIsActiveHere || identityChanged) {
+      const { errors: identityErrors } = findSellerIdentityConflicts({
+        prcNo: effectivePrc,
+        tinNo: effectiveTin,
+        excludeUserIds: existing ? [existing.user_id] : [],
+        matches: identityMatches,
+      });
+      errors.push(...identityErrors);
+    }
+    const rowContact = normalizeSellerContact(row.contactNumber || existing?.contact_no);
+    const rowFullName = normalizeSellerName([row.firstName, row.middleName, row.lastName].filter(Boolean).join(' '));
+    if (rowContact && rowFullName) {
+      const lookalike = nameContactSellers.find((seller) => (
+        Number(seller.user_id) !== Number(existing?.user_id || 0)
+        && normalizeSellerName([seller.first_name, seller.middle_name, seller.last_name].filter(Boolean).join(' ')) === rowFullName
+        && normalizeSellerContact(seller.contact_no) === rowContact
+      ));
+      if (lookalike) {
+        warnings.push(`Possible duplicate: ${accountName(lookalike)}${lookalike.seller_group_name ? ` in ${lookalike.seller_group_name}` : ''} has the same full name and contact number. Check that this is a different person.`);
       }
     }
 

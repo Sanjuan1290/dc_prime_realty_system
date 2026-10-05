@@ -210,7 +210,10 @@ const ListingProfile = () => {
       ''
   ).trim().toLowerCase()
   const listingIsFreelyEditableInventory = ['available', 'hold'].includes(listingInventoryStatus)
-  const canEditListing = Boolean(!readOnly && canEditListingPermission && (listingIsFreelyEditableInventory || isSuperAdmin))
+  // Reserved/sold listings: Operations Head edits directly, Operations Staff
+  // get a Head approval request, Super Admin is the emergency fallback.
+  const canEditProtectedListing = isSuperAdmin || ['operations_head', 'operations_staff'].includes(user?.role)
+  const canEditListing = Boolean(!readOnly && canEditListingPermission && (listingIsFreelyEditableInventory || canEditProtectedListing))
   const canEditListingRequirements = Boolean(!readOnly && canUpdateBuyerDocuments && listingIsFreelyEditableInventory)
 
   const reserveDocumentsQuery = useQuery({

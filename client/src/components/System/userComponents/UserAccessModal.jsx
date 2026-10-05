@@ -4,6 +4,7 @@ import StatusAlert from '../../Shared/StatusAlert'
 import { useFetch, useFetchPost, useFetchPut } from '../../../utils/useFetch'
 import AdminProjectAccessFields from './AdminProjectAccessFields'
 import PermissionMatrix from './PermissionMatrix'
+import { DEPARTMENT_PRIORITY_GROUPS, getRoleDepartment } from '../../../utils/permissionMeta'
 
 const UserAccessModal = ({ user, onClose, onSaved }) => {
   const queryClient = useQueryClient()
@@ -48,7 +49,7 @@ const UserAccessModal = ({ user, onClose, onSaved }) => {
       {!isLoading && accessData?.user ? <>
         {forcedAllProjects ? <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4"><p className="font-black text-blue-950">All Projects · Required</p><p className="mt-1 text-sm font-semibold text-blue-700">{roleLabel} always has global project scope.</p>{user.role === 'system_admin' ? <p className="mt-2 text-xs font-semibold text-blue-700">Core administration and audit-approved correction permissions are Required; additional allowed permissions can be adjusted by Super Admin.</p> : user.role === 'auditor' ? <p className="mt-2 text-xs font-semibold text-blue-700">Core global read-only and audit workflow permissions are Required; Super Admin may adjust only the allowed export/print permissions.</p> : null}</div> : <AdminProjectAccessFields allProjects={allProjects} setAllProjects={setAllProjects} projectIds={projectIds} setProjectIds={setProjectIds} projects={projectData?.data || []} disabled={locked} />}
         <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="font-black text-slate-950">Permissions</p><p className="text-sm font-semibold text-slate-500">Required and inherited permissions are locked. Not Allowed permissions can never be granted.</p></div>{!locked ? <button type="button" onClick={() => reset.mutate()} disabled={reset.isPending} className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-black text-violet-700">Apply Latest Role Default</button> : null}</div>
-        <PermissionMatrix catalog={roleData?.catalog || []} selected={permissions} onChange={setPermissions} policy={policy} disabled={locked} />
+        <PermissionMatrix catalog={roleData?.catalog || []} selected={permissions} onChange={setPermissions} policy={policy} baseline={roleData?.defaults?.[user.role] || null} baselineLabel={`${roleLabel} default`} priorityGroups={DEPARTMENT_PRIORITY_GROUPS[getRoleDepartment(user.role)] || []} disabled={locked} />
       </> : null}
     </div>
     <footer className="flex justify-end gap-2 border-t border-slate-200 p-5"><button type="button" onClick={onClose} className="h-11 rounded-xl border border-slate-200 px-5 font-black">Close</button>{!locked ? <button type="button" onClick={() => save.mutate()} disabled={save.isPending} className="h-11 rounded-xl bg-blue-600 px-5 font-black text-white disabled:opacity-50">{save.isPending ? 'Saving...' : 'Save Access'}</button> : null}</footer>

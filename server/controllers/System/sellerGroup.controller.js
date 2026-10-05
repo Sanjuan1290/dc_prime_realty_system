@@ -8,6 +8,8 @@ import {
   normalizeSellerGroupType,
   validateGroupFixedRateStructure,
   loadInHousePoolShares,
+  loadCompanyProfitPolicy,
+  assertCompanyProfitWithinPolicy,
 } from './groupFixedCommissionRates.service.js';
 import {
   EXTERNAL_GROUP_ROLE,
@@ -21,6 +23,7 @@ import {
   normalizeNetworkMemberImportEmail,
   sortNetworkMemberImportRows,
 } from './networkMemberImport.service.js';
+import { loadActiveSellerIdentityMatches } from '../../services/sellerIdentity.service.js';
 
 const toNullableNumber = (value) => {
   if (value === undefined || value === null || value === '') return null;
@@ -77,15 +80,17 @@ const normalizeNetworkBrokerFields = (body = {}) => {
   };
 };
 
+// Broker License No., Realty Name and PRC No. are unique across all Networks
+// (In-House and External). Broker Name may repeat because two different
+// brokers can share a name, so a matching Broker Name only returns a warning.
 const assertUniqueNetworkBrokerIdentity = async (connection, broker, excludeGroupId = null) => {
   const [rows] = await connection.query(
     `SELECT seller_group_id, seller_group_name,
-            broker_name_normalized, broker_license_number_normalized,
+            broker_license_number_normalized,
             realty_name_normalized, broker_prc_number_normalized
      FROM seller_groups
      WHERE (? IS NULL OR seller_group_id <> ?)
        AND (
-         broker_name_normalized = ? OR
          broker_license_number_normalized = ? OR
          realty_name_normalized = ? OR
          broker_prc_number_normalized = ?
@@ -93,20 +98,32 @@ const assertUniqueNetworkBrokerIdentity = async (connection, broker, excludeGrou
      LIMIT 1`,
     [
       excludeGroupId, excludeGroupId,
-      broker.broker_name_normalized,
       broker.broker_license_number_normalized,
       broker.realty_name_normalized,
       broker.broker_prc_number_normalized,
     ]
   );
   const existing = rows[0];
-  if (!existing) return;
-  const conflicts = [];
-  if (existing.broker_name_normalized === broker.broker_name_normalized) conflicts.push('Broker Name');
-  if (existing.broker_license_number_normalized === broker.broker_license_number_normalized) conflicts.push('Broker License Number');
-  if (existing.realty_name_normalized === broker.realty_name_normalized) conflicts.push('Realty Name');
-  if (existing.broker_prc_number_normalized === broker.broker_prc_number_normalized) conflicts.push('PRC Number');
-  throw createValidationError(`${conflicts.join(', ')} already ${conflicts.length === 1 ? 'exists' : 'exist'} in another Network (${existing.seller_group_name}).`);
+  if (existing) {
+    const conflicts = [];
+    if (existing.broker_license_number_normalized === broker.broker_license_number_normalized) conflicts.push('Broker License Number');
+    if (existing.realty_name_normalized === broker.realty_name_normalized) conflicts.push('Realty Name');
+    if (existing.broker_prc_number_normalized === broker.broker_prc_number_normalized) conflicts.push('PRC Number');
+    throw createValidationError(`${conflicts.join(', ')} already ${conflicts.length === 1 ? 'exists' : 'exist'} in another Network (${existing.seller_group_name}).`);
+  }
+
+  const [nameRows] = await connection.query(
+    `SELECT seller_group_name, realty_name
+     FROM seller_groups
+     WHERE (? IS NULL OR seller_group_id <> ?)
+       AND broker_name_normalized = ?
+     ORDER BY seller_group_id ASC
+     LIMIT 3`,
+    [excludeGroupId, excludeGroupId, broker.broker_name_normalized]
+  );
+  return nameRows.map((row) =>
+    `${broker.broker_name} is already the broker of ${row.realty_name || row.seller_group_name}. Check that this is a different broker.`
+  );
 };
 
 const requireGroupTypeSchema = async (connection) => {
@@ -460,6 +477,17 @@ export const normalizeGroupProjectRates = (
   });
 };
 
+const assertGroupRatesWithinCompanyProfitPolicy = async (connection, normalizedRates, projects, groupType) => {
+  if (normalizeSellerGroupType(groupType) === 'external') return;
+  const policy = await loadCompanyProfitPolicy(connection);
+  const projectNames = new Map(projects.map((project) => [Number(project.lot_project_id), project.lot_project_name]));
+  normalizedRates.forEach((rate) => assertCompanyProfitWithinPolicy(rate, {
+    maxPercentOfPool: policy.maxPercentOfPool,
+    projectName: projectNames.get(Number(rate.lot_project_id)) || 'Project',
+    groupType,
+  }));
+};
+
 const upsertGroupProjectRates = async (connection, groupId, projectRates, groupType) => {
   if (!projectRates.length) return;
   await connection.query(
@@ -735,7 +763,7 @@ export const createGroup = async (req, res) => {
     const broker = normalizeNetworkBrokerFields(req.body);
 
     await connection.beginTransaction();
-    await assertUniqueNetworkBrokerIdentity(connection, broker);
+    const brokerWarnings = await assertUniqueNetworkBrokerIdentity(connection, broker);
     const groupHead = groupType === 'in_house'
       ? await validateGroupHead(connection, seller_group_head_user_id)
       : null;
@@ -771,6 +799,7 @@ export const createGroup = async (req, res) => {
       groupType,
       poolShares,
     });
+    await assertGroupRatesWithinCompanyProfitPolicy(connection, normalizedRates, projects, groupType);
     await syncGroupProjectAccreditations(connection, groupId, normalizedRates, groupType, accessibleProjectIds);
 
     await writeAuditLog(connection, req, {
@@ -784,7 +813,7 @@ export const createGroup = async (req, res) => {
       metadata: { groupType, status: normalizeStatus(seller_group_status), broker, projectRates: normalizedRates },
     });
     await connection.commit();
-    return res.status(201).json({ message: `${groupTypeLabel(groupType)} created successfully.`, seller_group_id: groupId });
+    return res.status(201).json({ message: `${groupTypeLabel(groupType)} created successfully.`, seller_group_id: groupId, warnings: brokerWarnings });
   } catch (error) {
     await connection.rollback();
     return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
@@ -936,7 +965,11 @@ export const getGroups = async (req, res) => {
 export const getNetworkPoolShares = async (_req, res) => {
   try {
     const poolShares = await loadInHousePoolShares(db);
-    return res.json({ success: true, data: poolShares });
+    const companyProfitPolicy = await loadCompanyProfitPolicy(db);
+    return res.json({
+      success: true,
+      data: { ...poolShares, max_company_profit_percent_of_pool: companyProfitPolicy.maxPercentOfPool },
+    });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
   }
@@ -1003,7 +1036,7 @@ export const editGroup = async (req, res) => {
     const broker = normalizeNetworkBrokerFields(req.body);
 
     await connection.beginTransaction();
-    await assertUniqueNetworkBrokerIdentity(connection, broker, groupId);
+    const brokerWarnings = await assertUniqueNetworkBrokerIdentity(connection, broker, groupId);
     const previousHead = groupType === 'in_house' ? await getCurrentGroupHead(connection, groupId) : null;
     const nextHead = groupType === 'in_house'
       ? await validateGroupHead(connection, seller_group_head_user_id, groupId)
@@ -1039,6 +1072,7 @@ export const editGroup = async (req, res) => {
       groupType,
       poolShares,
     });
+    await assertGroupRatesWithinCompanyProfitPolicy(connection, normalizedRates, projects, groupType);
     await syncGroupProjectAccreditations(connection, groupId, normalizedRates, groupType, accessibleProjectIds);
 
     await writeAuditLog(connection, req, {
@@ -1048,7 +1082,7 @@ export const editGroup = async (req, res) => {
       metadata: { groupType, status: normalizeStatus(seller_group_status), broker, projectRates: normalizedRates },
     });
     await connection.commit();
-    return res.json({ message: `${groupTypeLabel(groupType)} updated successfully.` });
+    return res.json({ message: `${groupTypeLabel(groupType)} updated successfully.`, warnings: brokerWarnings });
   } catch (error) {
     await connection.rollback();
     return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
@@ -1138,9 +1172,13 @@ export const viewGroup = async (req, res) => {
     const groupType = normalizeSellerGroupType(group.seller_group_type);
     const [members] = await db.query(
       `SELECT a.accredited_seller_id, a.user_id, ${fullNameSql('u')} AS full_name,
+              u.first_name, u.middle_name, u.last_name,
               u.email, u.contact_no, u.tin_no, u.prc_no, u.address, u.role, u.status AS user_status,
               a.accredited_seller_reports_under_user_id AS reports_under_user_id,
               ${fullNameSql('parent')} AS reports_under_name,
+              parent.email AS reports_under_email,
+              COALESCE(a.is_system_dummy, 0) AS is_system_dummy,
+              a.accredited_seller_accreditation_date,
               a.accredited_seller_status
        FROM accredited_sellers a
        INNER JOIN users u ON u.id = a.user_id
@@ -1630,6 +1668,12 @@ export const updateGroupProjectPool = async (req, res) => {
       groupType,
       poolShares,
     });
+    const companyProfitPolicy = await loadCompanyProfitPolicy(connection);
+    assertCompanyProfitWithinPolicy(rates, {
+      maxPercentOfPool: companyProfitPolicy.maxPercentOfPool,
+      projectName: group.lot_project_name,
+      groupType,
+    });
     const status = normalizeStatus(req.body.status);
     await connection.query(
       `UPDATE seller_group_lot_project_rates SET
@@ -1746,7 +1790,42 @@ const loadNetworkMemberImportContext = async (connection, groupId, rawRows = [],
     existingAccounts = accountRows;
   }
 
-  return { group, currentMembers, existingAccounts };
+  // Duplicate-person data: active sellers sharing a PRC/TIN, plus active sellers
+  // with the same last name (for the full name + contact number warning).
+  const sourceRows = Array.isArray(rawRows) ? rawRows : [];
+  const pickValue = (row, keys) => keys.map((key) => row?.[key]).find((value) => value !== undefined && value !== null && value !== '') ?? '';
+  const identityMatches = await loadActiveSellerIdentityMatches(connection, {
+    prcNumbers: [
+      ...sourceRows.map((row) => pickValue(row, ['prc_no', 'prc_number', 'prcNo', 'PRC Number'])),
+      ...existingAccounts.map((account) => account.prc_no),
+    ],
+    tinNumbers: [
+      ...sourceRows.map((row) => pickValue(row, ['tin_no', 'tin', 'tinNo', 'TIN'])),
+      ...existingAccounts.map((account) => account.tin_no),
+    ],
+    lock,
+  });
+  const lastNames = [...new Set(sourceRows
+    .map((row) => String(pickValue(row, ['last_name', 'lastName', 'Last Name'])).trim().toLowerCase())
+    .filter(Boolean))].slice(0, 2000);
+  let nameContactSellers = [];
+  if (lastNames.length) {
+    const [nameRows] = await connection.query(
+      `SELECT user.id AS user_id, user.first_name, user.middle_name, user.last_name, user.email,
+              user.contact_no, group_row.seller_group_name
+         FROM users user
+         INNER JOIN accredited_sellers seller ON seller.user_id = user.id
+         LEFT JOIN seller_groups group_row ON group_row.seller_group_id = seller.seller_group_id
+        WHERE user.status = 'active'
+          AND seller.accredited_seller_status = 'active'
+          AND COALESCE(seller.is_system_dummy, 0) = 0
+          AND LOWER(TRIM(user.last_name)) IN (${lastNames.map(() => '?').join(', ')})`,
+      lastNames
+    );
+    nameContactSellers = nameRows;
+  }
+
+  return { group, currentMembers, existingAccounts, identityMatches, nameContactSellers };
 };
 
 const syncImportedManagedSellerLink = async (connection, accreditedSellerId, reportsUnderUserId) => {

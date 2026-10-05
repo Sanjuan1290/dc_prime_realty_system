@@ -35,6 +35,18 @@ export const cancellationPermissionForAction = (action) => {
   return null;
 };
 
+// Each cancellation action maps to a registered review action
+// (server/config/reviewActions.js), which decides the owning Head.
+export const CANCELLATION_REVIEW_ACTION_KEYS = Object.freeze({
+  [CANCELLATION_ACTIONS.START]: 'cancellation.start',
+  [CANCELLATION_ACTIONS.CANCEL]: 'cancellation.cancel',
+  [CANCELLATION_ACTIONS.SETTLE]: 'cancellation.settle',
+  [CANCELLATION_ACTIONS.VOID_UNPAID]: 'cancellation.void_unpaid',
+  [CANCELLATION_ACTIONS.RELEASE_UNIT]: 'cancellation.release_unit',
+});
+
+export const cancellationReviewActionKey = (action) => CANCELLATION_REVIEW_ACTION_KEYS[clean(action).toLowerCase()] || null;
+
 export const cancellationActionRequiresVerification = (action) => [
   CANCELLATION_ACTIONS.SETTLE,
   CANCELLATION_ACTIONS.VOID_UNPAID,

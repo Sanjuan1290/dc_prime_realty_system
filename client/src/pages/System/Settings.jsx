@@ -29,6 +29,7 @@ const defaultForm = {
   inHouseSdPoolSharePercent: 15.82,
   inHouseUmPoolSharePercent: 20,
   inHouseSaPoolSharePercent: 50,
+  maxCompanyProfitPercentOfPool: 50,
 }
 
 const mapSettingsToForm = (settings = {}) => ({
@@ -48,6 +49,7 @@ const mapSettingsToForm = (settings = {}) => ({
   inHouseSdPoolSharePercent: settings.inHouseSdPoolSharePercent ?? 15.82,
   inHouseUmPoolSharePercent: settings.inHouseUmPoolSharePercent ?? 20,
   inHouseSaPoolSharePercent: settings.inHouseSaPoolSharePercent ?? 50,
+  maxCompanyProfitPercentOfPool: settings.maxCompanyProfitPercentOfPool ?? 50,
 })
 
 const Settings = () => {

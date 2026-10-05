@@ -15,9 +15,13 @@ test('Available and Hold remain freely editable inventory states', () => {
   assert.match(listingProfile, /\['available', 'hold'\]\.includes\(listingInventoryStatus\)/);
 });
 
-test('protected listing edits require Super Admin on the server', () => {
-  assert.match(listingController, /PROTECTED_LISTING_EDIT_REQUIRES_SUPER_ADMIN/);
-  assert.match(listingController, /isProtectedListing && !isSuperAdmin/);
+// 2026-10-05 (plan item 18): reserved/sold edits moved from Super Admin only to
+// Operations Head (direct) / Operations Staff (Head approval) / Super Admin (emergency).
+test('protected listing edits are governed by Operations Head approval on the server', () => {
+  assert.doesNotMatch(listingController, /PROTECTED_LISTING_EDIT_REQUIRES_SUPER_ADMIN/);
+  assert.match(listingController, /governedActionKey = 'listing\.protected_edit'/);
+  assert.match(listingController, /authorizeGovernedAction\(connection/);
+  assert.match(listingController, /HEAD_APPROVAL_PENDING|headApprovalPendingResponse/);
 });
 
 test('protected listing financial fields are rejected and never written by generic edit', () => {
@@ -41,8 +45,9 @@ test('listing document requirements lock after reservation on both routes', () =
   assert.match(listingController, /Listing document requirements are locked after this listing has been reserved/);
 });
 
-test('frontend exposes protected administrative edit only to Super Admin and locks contract inputs', () => {
-  assert.match(listingProfile, /canEditListing = Boolean\(!readOnly && canEditListingPermission && \(listingIsFreelyEditableInventory \|\| isSuperAdmin\)\)/);
+test('frontend exposes protected edit to Operations and Super Admin and locks contract inputs', () => {
+  assert.match(listingProfile, /canEditProtectedListing = isSuperAdmin \|\| \['operations_head', 'operations_staff'\]\.includes\(user\?\.role\)/);
+  assert.match(listingProfile, /canEditListing = Boolean\(!readOnly && canEditListingPermission && \(listingIsFreelyEditableInventory \|\| canEditProtectedListing\)\)/);
   assert.match(unitStatus, /disabled=\{isSaving \|\| !canEditListing\}/);
   assert.match(editModal, /const isProtectedListing = !\['available', 'hold'\]\.includes\(currentStatus\)/);
   assert.match(editModal, /disabled=\{isProtectedListing\}/);

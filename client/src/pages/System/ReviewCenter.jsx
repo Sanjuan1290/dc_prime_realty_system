@@ -16,7 +16,7 @@ import {
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
 import useCurrentUser from '../../utils/useCurrentUser'
-import { useFetch, useFetchPatch, useFetchPost } from '../../utils/useFetch'
+import { useFetch, useFetchPatch, useFetchPost, useFetchPost as postWorkflow } from '../../utils/useFetch'
 import { DEPARTMENT_HEAD_ROLE, ROLE_LABELS } from '../../config/permissions'
 
 const parseJson = (value) => {
@@ -60,6 +60,38 @@ const TextActionModal = ({ title, label, placeholder, confirmLabel, tone = 'blue
   </div>
 }
 
+const APPROVAL_TYPE_LABELS = {
+  staff_entry: 'Staff entry',
+  head_self: 'Entered by Head',
+  head_preapproved: 'Head pre-approved',
+  head_confirmed: 'Head confirmed',
+  head_corrected: 'Head corrected',
+  emergency_super_admin: 'Emergency Super Admin change',
+}
+
+const ReassignResponderModal = ({ options = [], onClose, onConfirm, busy }) => {
+  const [userId, setUserId] = useState('')
+  const [reason, setReason] = useState('')
+  return <div className="fixed inset-0 z-[95] flex items-center justify-center bg-slate-950/60 p-4">
+    <div className="w-full max-w-xl rounded-3xl bg-white shadow-2xl">
+      <header className="flex items-start justify-between border-b border-slate-200 p-5"><div><h3 className="text-xl font-black">Reassign who answers this case</h3><p className="mt-1 text-sm font-semibold text-slate-500">Use this when the Head who confirmed the record left or no Head covers the project.</p></div><button type="button" onClick={onClose} disabled={busy} className="rounded-xl p-2 text-slate-500 hover:bg-slate-100" aria-label="Close"><FiX /></button></header>
+      <div className="grid gap-4 p-5">
+        <label className="grid gap-2 text-sm font-black text-slate-700">Department Head
+          <select value={userId} onChange={(e) => setUserId(e.target.value)} className="h-11 rounded-xl border border-slate-300 px-3 font-semibold outline-none focus:border-blue-400">
+            <option value="">Select a Head</option>
+            {options.map((option) => <option key={option.id} value={option.id}>{option.full_name}</option>)}
+          </select>
+          {!options.length ? <span className="text-xs font-semibold text-amber-700">No active Head covers this project. Create or assign a Head first.</span> : null}
+        </label>
+        <label className="grid gap-2 text-sm font-black text-slate-700">Reason
+          <textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Example: The original Accounting Head has left the company." className="rounded-xl border border-slate-300 p-3 font-semibold outline-none focus:border-blue-400" />
+        </label>
+      </div>
+      <footer className="flex justify-end gap-2 border-t p-5"><button type="button" onClick={onClose} disabled={busy} className="h-11 rounded-xl border px-5 font-black">Cancel</button><button type="button" onClick={() => onConfirm({ userId: Number(userId), reason: reason.trim() })} disabled={busy || !userId || reason.trim().length < 5} className="h-11 rounded-xl bg-violet-700 px-5 font-black text-white disabled:opacity-50">Reassign Responder</button></footer>
+    </div>
+  </div>
+}
+
 const ReviewDetails = ({ reviewId, onClose, onChanged }) => {
   const navigate = useNavigate()
   const { data: me } = useCurrentUser()
@@ -80,6 +112,7 @@ const ReviewDetails = ({ reviewId, onClose, onChanged }) => {
       if (type === 'open-case') return useFetchPost(`/workflow/reviews/${reviewId}/audit-case`, { finding: text }, { confirmationHandled: 'compact' })
       if (type === 'head-response') return useFetchPost(`/workflow/audit-cases/${auditCase.audit_case_id}/head-response`, { response: text }, { confirmationHandled: 'compact' })
       if (type === 'resolve-case') return useFetchPost(`/workflow/audit-cases/${auditCase.audit_case_id}/resolve`, { decision, resolution: text }, { confirmationHandled: 'compact' })
+      if (type === 'reassign') return postWorkflow(`/workflow/audit-cases/${auditCase.audit_case_id}/reassign-responder`, { userId: decision, reason: text }, { confirmationHandled: 'compact' })
       throw new Error('Unknown workflow action.')
     },
     onSuccess: async (result) => { setNotice({ type: 'success', message: result.message }); setAction(null); await query.refetch(); onChanged?.() },
@@ -102,7 +135,11 @@ const ReviewDetails = ({ reviewId, onClose, onChanged }) => {
             ? 'lmf_correction'
             : review?.entity_type === 'lot_project_settings'
               ? 'project_settings_correction'
-              : ''
+              : review?.entity_type === 'lot_project_cancellation'
+                ? 'cancellation_review'
+                : review?.entity_type === 'lot_project_listing'
+                  ? 'listing_edit_review'
+                  : ''
   const recordLink = review?.entity_type === 'lot_project_settings' && review?.lot_project_slug
     ? `/portal/lot-projects/${review.lot_project_slug}/settings?workflowAction=project_settings_correction&reviewId=${reviewId}${auditSuffix}`
     : workflowAction && review?.lot_project_slug && recordListingId
@@ -120,25 +157,45 @@ const ReviewDetails = ({ reviewId, onClose, onChanged }) => {
             ? 'Open LMF Correction'
             : review?.entity_type === 'lot_project_settings'
               ? 'Open Project Settings Correction'
-              : 'Open Record'
+              : ['lot_project_cancellation', 'lot_project_listing'].includes(review?.entity_type)
+                ? 'Open Unit'
+                : 'Open Record'
+
+  // Correct & Confirm (plan item 15): the Head claims the review, opens the
+  // record, and saves the corrected values there. The save folds into this
+  // review and sends it to the Auditor.
+  const correctAndConfirm = async () => {
+    try {
+      if (!review.claimed_by_user_id) await postWorkflow(`/workflow/reviews/${reviewId}/claim`, {}, { confirmationHandled: 'technical' })
+      onClose()
+      navigate(`${recordLink}${recordLink.includes('?') ? '&' : '?'}headCorrection=1`)
+    } catch (error) {
+      setNotice({ type: 'error', message: error.message })
+    }
+  }
+  const responders = auditCase?.responders || null
+  const canRespondToCase = auditCase?.status === 'awaiting_head_response' && Boolean(responders?.canRespond)
+  const canReassignResponder = auditCase?.status === 'awaiting_head_response' && ['system_admin', 'super_admin'].includes(actor.role)
 
   if (query.isLoading) return <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/60 p-4"><div className="w-full max-w-xl rounded-3xl bg-white p-5"><StatusAlert type="loading" message="Loading review..." /></div></div>
   if (!review) return null
 
   return <div className="fixed inset-0 z-[90] overflow-y-auto bg-slate-950/60 p-4">
     <div className="mx-auto my-5 max-w-5xl rounded-3xl bg-white shadow-2xl">
-      <header className="flex items-start justify-between gap-4 border-b border-slate-200 p-5 sm:p-6"><div><div className="flex flex-wrap items-center gap-2"><span className="font-mono text-sm font-black text-blue-700">{review.review_number}</span><span className={`rounded-full border px-2.5 py-1 text-[11px] font-black ${statusClass(review.status)}`}>{titleCase(review.status)}</span></div><h2 className="mt-2 text-2xl font-black">{review.entity_label || titleCase(review.entity_type)}</h2><p className="mt-1 text-sm font-semibold text-slate-500">{titleCase(review.department)} · {titleCase(review.action_key)} · {review.lot_project_name || 'No project scope'}</p></div><button type="button" onClick={onClose} className="rounded-xl border p-2"><FiX /></button></header>
+      <header className="flex items-start justify-between gap-4 border-b border-slate-200 p-5 sm:p-6"><div><div className="flex flex-wrap items-center gap-2"><span className="font-mono text-sm font-black text-blue-700">{review.review_number}</span><span className={`rounded-full border px-2.5 py-1 text-[11px] font-black ${statusClass(review.status)}`}>{titleCase(review.status)}</span>{review.approval_type ? <span className={`rounded-full border px-2.5 py-1 text-[11px] font-black ${review.approval_type === 'emergency_super_admin' ? 'border-red-200 bg-red-50 text-red-700' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>{APPROVAL_TYPE_LABELS[review.approval_type] || titleCase(review.approval_type)}</span> : null}</div><h2 className="mt-2 text-2xl font-black">{review.entity_label || titleCase(review.entity_type)}</h2><p className="mt-1 text-sm font-semibold text-slate-500">{titleCase(review.department)} · {titleCase(review.action_key)} · {review.lot_project_name || 'No project scope'}</p></div><button type="button" onClick={onClose} className="rounded-xl border p-2"><FiX /></button></header>
       <div className="grid gap-5 p-5 sm:p-6">
         {notice ? <StatusAlert type={notice.type} message={notice.message} onClose={() => setNotice(null)} /> : null}
         <section className="grid gap-3 rounded-2xl border border-slate-200 p-4 sm:grid-cols-3"><div><p className="text-xs font-black uppercase text-slate-400">Entered by</p><p className="mt-1 font-black">{review.initiated_by_name || `User #${review.initiated_by_user_id}`}</p><p className="text-xs font-semibold text-slate-500">{ROLE_LABELS[review.initiated_by_role] || titleCase(review.initiated_by_role)}</p></div><div><p className="text-xs font-black uppercase text-slate-400">Head Review</p><p className="mt-1 font-black">{review.head_reviewed_by_name || 'Pending / not required yet'}</p><p className="text-xs font-semibold text-slate-500">{fmtDate(review.head_reviewed_at)}</p></div><div><p className="text-xs font-black uppercase text-slate-400">Auditor</p><p className="mt-1 font-black">{review.auditor_reviewed_by_name || 'Pending'}</p><p className="text-xs font-semibold text-slate-500">{fmtDate(review.auditor_reviewed_at)}</p></div></section>
         <div className="grid gap-4 lg:grid-cols-2"><Snapshot title="Before" value={review.before_snapshot_json} /><Snapshot title="After" value={review.after_snapshot_json} /></div>
-        {auditCase ? <section className="rounded-2xl border border-red-200 bg-red-50 p-4"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-xs font-black uppercase tracking-wide text-red-600">Audit Case</p><p className="text-lg font-black text-red-950">{auditCase.case_number}</p></div><span className="rounded-full border border-red-200 bg-white px-3 py-1 text-xs font-black text-red-700">{titleCase(auditCase.status)}</span></div><div className="mt-3 grid gap-3"><div><p className="text-xs font-black uppercase text-red-600">Finding</p><p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-red-950">{auditCase.finding}</p></div>{auditCase.head_response ? <div><p className="text-xs font-black uppercase text-red-600">Head Explanation</p><p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-red-950">{auditCase.head_response}</p></div> : null}{auditCase.auditor_resolution ? <div><p className="text-xs font-black uppercase text-red-600">Auditor Resolution</p><p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-red-950">{auditCase.auditor_resolution}</p></div> : null}{auditCase.correction_summary ? <div><p className="text-xs font-black uppercase text-red-600">System Admin Correction</p><p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-red-950">{auditCase.correction_summary}</p></div> : null}</div></section> : null}
+        {auditCase ? <section className="rounded-2xl border border-red-200 bg-red-50 p-4"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-xs font-black uppercase tracking-wide text-red-600">Audit Case</p><p className="text-lg font-black text-red-950">{auditCase.case_number}</p></div><span className="rounded-full border border-red-200 bg-white px-3 py-1 text-xs font-black text-red-700">{titleCase(auditCase.status)}</span></div><div className="mt-3 grid gap-3"><div><p className="text-xs font-black uppercase text-red-600">Finding</p><p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-red-950">{auditCase.finding}</p></div>{auditCase.head_response ? <div><p className="text-xs font-black uppercase text-red-600">Head Explanation</p><p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-red-950">{auditCase.head_response}</p></div> : null}{auditCase.auditor_resolution ? <div><p className="text-xs font-black uppercase text-red-600">Auditor Resolution</p><p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-red-950">{auditCase.auditor_resolution}</p></div> : null}{auditCase.correction_summary ? <div><p className="text-xs font-black uppercase text-red-600">System Admin Correction</p><p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-red-950">{auditCase.correction_summary}</p></div> : null}{responders ? <div><p className="text-xs font-black uppercase text-red-600">Who must answer</p><p className="mt-1 text-sm font-semibold text-red-950">{responders.label}{responders.users?.length ? `: ${responders.users.map((user) => user.full_name).join(', ')}` : ': nobody is available. System Admin must reassign.'}</p></div> : null}</div></section> : null}
         <section className="rounded-2xl border border-slate-200 p-4"><p className="text-xs font-black uppercase tracking-wide text-slate-500">Review History</p><div className="mt-3 space-y-3">{(review.events || []).map((event) => <div key={event.operational_review_event_id} className="flex gap-3 border-l-2 border-blue-200 pl-3"><div className="min-w-0"><p className="font-black text-slate-800">{titleCase(event.event_type)}</p><p className="text-xs font-semibold text-slate-500">{event.actor_name || ROLE_LABELS[event.actor_role] || 'System'} · {fmtDate(event.created_at)}</p>{event.message ? <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{event.message}</p> : null}</div></div>)}</div></section>
 
         <section className="flex flex-wrap gap-2 border-t border-slate-200 pt-4">
           {isHead && review.status === 'pending_head_review' ? <><button type="button" onClick={() => mutation.mutate({ type: 'claim' })} disabled={mutation.isPending} className="h-10 rounded-xl border border-blue-200 bg-blue-50 px-4 font-black text-blue-700"><FiUserCheck className="mr-2 inline" />Claim Review</button><button type="button" onClick={() => mutation.mutate({ type: 'head-confirm' })} disabled={mutation.isPending} className="h-10 rounded-xl bg-emerald-600 px-4 font-black text-white"><FiCheckCircle className="mr-2 inline" />Confirm — No Mistake</button><button type="button" onClick={() => setAction('return')} disabled={mutation.isPending} className="h-10 rounded-xl bg-amber-600 px-4 font-black text-white">Return for Correction</button></> : null}
           {actor.role === 'auditor' && review.status === 'pending_auditor_review' ? <><button type="button" onClick={() => mutation.mutate({ type: 'audit-verify' })} disabled={mutation.isPending} className="h-10 rounded-xl bg-emerald-600 px-4 font-black text-white"><FiCheckCircle className="mr-2 inline" />Verified — No Issue</button><button type="button" onClick={() => setAction('open-case')} disabled={mutation.isPending} className="h-10 rounded-xl bg-red-600 px-4 font-black text-white"><FiAlertTriangle className="mr-2 inline" />Open Audit Case</button></> : null}
-          {isHead && auditCase?.status === 'awaiting_head_response' ? <button type="button" onClick={() => setAction('head-response')} className="h-10 rounded-xl bg-blue-600 px-4 font-black text-white">Submit Explanation</button> : null}
+          {canRespondToCase ? <button type="button" onClick={() => setAction('head-response')} className="h-10 rounded-xl bg-blue-600 px-4 font-black text-white">Submit Explanation</button> : null}
+          {canReassignResponder ? <button type="button" onClick={() => setAction('reassign')} className="h-10 rounded-xl border border-violet-300 bg-violet-50 px-4 font-black text-violet-800">Reassign Responder</button> : null}
+          {isHead && review.status === 'pending_head_review' && recordLink && (!review.claimed_by_user_id || Number(review.claimed_by_user_id) === Number(actor.id)) ? <button type="button" onClick={correctAndConfirm} className="h-10 rounded-xl border border-blue-300 bg-white px-4 font-black text-blue-700"><FiExternalLink className="mr-2 inline" />Correct &amp; Confirm</button> : null}
           {actor.role === 'auditor' && auditCase?.status === 'under_auditor_review' ? <><button type="button" onClick={() => setAction('resolve-invalid')} className="h-10 rounded-xl border border-emerald-300 bg-emerald-50 px-4 font-black text-emerald-700">Finding Invalid</button><button type="button" onClick={() => setAction('resolve-valid')} className="h-10 rounded-xl bg-red-600 px-4 font-black text-white">Finding Valid</button></> : null}
           {actor.role === 'system_admin' && review.status === 'correction_required' && recordLink ? <button type="button" onClick={() => { onClose(); navigate(recordLink) }} className="h-10 rounded-xl bg-violet-700 px-4 font-black text-white"><FiExternalLink className="mr-2 inline" />{recordActionLabel}</button> : null}
           {actor.role === 'auditor' && review.status === 'pending_auditor_recheck' ? <><button type="button" onClick={() => mutation.mutate({ type: 'audit-verify' })} className="h-10 rounded-xl bg-emerald-600 px-4 font-black text-white">Verify Correction & Close</button><button type="button" onClick={() => setAction('recheck-reject')} className="h-10 rounded-xl bg-red-600 px-4 font-black text-white">Correction Still Wrong</button></> : null}
@@ -148,9 +205,10 @@ const ReviewDetails = ({ reviewId, onClose, onChanged }) => {
     </div>
     {action === 'return' ? <TextActionModal title="Return for Correction" label="What needs to be corrected?" placeholder="Example: Reference ID does not match the deposit slip." confirmLabel="Return to Staff" tone="red" busy={mutation.isPending} onClose={() => setAction(null)} onConfirm={(text) => mutation.mutate({ type: 'return', text })} /> : null}
     {action === 'open-case' ? <TextActionModal title="Open Audit Case" label="Audit finding" placeholder="Describe the exact mismatch or error." confirmLabel="Open Audit Case" tone="red" busy={mutation.isPending} onClose={() => setAction(null)} onConfirm={(text) => mutation.mutate({ type: 'open-case', text })} /> : null}
-    {action === 'head-response' ? <TextActionModal title="Explain Audit Finding" label="Department Head explanation" placeholder="Explain why the recorded values are correct, or acknowledge the mistake." confirmLabel="Submit Explanation" busy={mutation.isPending} onClose={() => setAction(null)} onConfirm={(text) => mutation.mutate({ type: 'head-response', text })} /> : null}
+    {action === 'head-response' ? <TextActionModal title="Explain Audit Finding" label="Explanation" placeholder="Explain why the recorded values are correct, or acknowledge the mistake." confirmLabel="Submit Explanation" busy={mutation.isPending} onClose={() => setAction(null)} onConfirm={(text) => mutation.mutate({ type: 'head-response', text })} /> : null}
     {action === 'resolve-invalid' ? <TextActionModal title="Mark Finding Invalid" label="Auditor resolution" placeholder="Explain why the original record is valid." confirmLabel="Close as Invalid" tone="emerald" busy={mutation.isPending} onClose={() => setAction(null)} onConfirm={(text) => mutation.mutate({ type: 'resolve-case', decision: 'invalid', text })} /> : null}
     {action === 'resolve-valid' ? <TextActionModal title="Mark Finding Valid" label="Required correction" placeholder="Explain exactly what System Admin must correct." confirmLabel="Send to System Admin" tone="red" busy={mutation.isPending} onClose={() => setAction(null)} onConfirm={(text) => mutation.mutate({ type: 'resolve-case', decision: 'valid', text })} /> : null}
+    {action === 'reassign' ? <ReassignResponderModal options={auditCase?.headOptions || []} busy={mutation.isPending} onClose={() => setAction(null)} onConfirm={({ userId, reason }) => mutation.mutate({ type: 'reassign', decision: userId, text: reason })} /> : null}
     {action === 'recheck-reject' ? <TextActionModal title="Correction Still Wrong" label="What still needs to be fixed?" placeholder="Describe the remaining error." confirmLabel="Return to System Admin" tone="red" busy={mutation.isPending} onClose={() => setAction(null)} onConfirm={(text) => mutation.mutate({ type: 'audit-recheck-reject', text })} /> : null}
   </div>
 }
@@ -163,10 +221,11 @@ const ReviewCenter = () => {
   const [status, setStatus] = useState('')
   const [search, setSearch] = useState('')
   const [selectedReviewId, setSelectedReviewId] = useState(null)
+  const [approvalStatus, setApprovalStatus] = useState('')
   const [notice, setNotice] = useState(null)
   const summary = useQuery({ queryKey: ['workflow-summary'], queryFn: () => useFetch('/workflow/summary'), refetchInterval: 30_000 })
   const reviews = useQuery({ queryKey: ['workflow-reviews', status], queryFn: () => useFetch(`/workflow/reviews?limit=100${status ? `&status=${encodeURIComponent(status)}` : ''}`), enabled: tab === 'reviews' })
-  const approvals = useQuery({ queryKey: ['workflow-protected-changes'], queryFn: () => useFetch('/workflow/protected-changes?limit=100'), enabled: tab === 'approvals' })
+  const approvals = useQuery({ queryKey: ['workflow-protected-changes', approvalStatus], queryFn: () => useFetch(`/workflow/protected-changes?limit=100${approvalStatus ? `&status=${encodeURIComponent(approvalStatus)}` : ''}`), enabled: tab === 'approvals' })
   const notifications = useQuery({ queryKey: ['workflow-notifications'], queryFn: () => useFetch('/workflow/notifications?limit=100'), enabled: tab === 'notifications' })
   const approvalMutation = useMutation({
     mutationFn: ({ id, decision }) => useFetchPost(`/workflow/protected-changes/${id}/review`, { decision }, { confirmationHandled: 'compact' }),
@@ -205,7 +264,7 @@ const ReviewCenter = () => {
         {reviews.isLoading ? <StatusAlert type="loading" message="Loading reviews..." /> : reviewRows.length ? <div className="overflow-x-auto"><table className="min-w-full text-left text-sm"><thead><tr className="border-b bg-slate-50 text-xs uppercase text-slate-500"><th className="px-3 py-3">Review</th><th className="px-3 py-3">Record</th><th className="px-3 py-3">Department</th><th className="px-3 py-3">Entered By</th><th className="px-3 py-3">Status</th><th className="px-3 py-3"></th></tr></thead><tbody>{reviewRows.map((row) => <tr key={row.operational_review_id} className="border-b last:border-0"><td className="px-3 py-3"><p className="font-mono font-black text-blue-700">{row.review_number}</p><p className="text-xs font-semibold text-slate-500">{fmtDate(row.created_at)}</p></td><td className="px-3 py-3"><p className="font-black">{row.entity_label || titleCase(row.entity_type)}</p><p className="text-xs font-semibold text-slate-500">{titleCase(row.action_key)} · {row.lot_project_name || '—'}</p></td><td className="px-3 py-3 font-bold">{titleCase(row.department)}</td><td className="px-3 py-3"><p className="font-bold">{row.initiated_by_name || `User #${row.initiated_by_user_id}`}</p><p className="text-xs text-slate-500">{ROLE_LABELS[row.initiated_by_role] || titleCase(row.initiated_by_role)}</p></td><td className="px-3 py-3"><span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-black ${statusClass(row.status)}`}>{titleCase(row.status)}</span></td><td className="px-3 py-3 text-right"><button type="button" onClick={() => setSelectedReviewId(row.operational_review_id)} className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 font-black text-blue-700">Open</button></td></tr>)}</tbody></table></div> : <StatusAlert type="info" message="No reviews match this queue." />}
       </div> : null}
 
-      {tab === 'approvals' ? <div className="p-4 sm:p-5">{approvals.isLoading ? <StatusAlert type="loading" message="Loading approval requests..." /> : (approvals.data?.data || []).length ? <div className="grid gap-3">{approvals.data.data.map((row) => <div key={row.protected_change_request_id} className="rounded-2xl border border-slate-200 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-mono text-sm font-black text-blue-700">{row.request_number}</p><p className="mt-1 text-lg font-black">{row.entity_label || titleCase(row.entity_type)}</p><p className="text-sm font-semibold text-slate-500">{titleCase(row.action_key)} · {titleCase(row.department)} · {row.lot_project_name || '—'}</p><p className="mt-2 text-sm text-slate-600"><strong>Reason:</strong> {row.reason}</p><p className="mt-1 text-xs font-semibold text-slate-500">Requested by {row.requested_by_name || `User #${row.requested_by_user_id}`} · {fmtDate(row.created_at)}</p></div><span className={`rounded-full border px-3 py-1 text-xs font-black ${row.status === 'approved' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : row.status === 'rejected' ? 'border-red-200 bg-red-50 text-red-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>{titleCase(row.status)}</span></div>{row.status === 'pending' && DEPARTMENT_HEAD_ROLE[row.department] === actor.role ? <div className="mt-4 flex gap-2 border-t pt-4"><button type="button" onClick={() => approvalMutation.mutate({ id: row.protected_change_request_id, decision: 'approve' })} className="h-10 rounded-xl bg-emerald-600 px-4 font-black text-white">Approve Exact Change</button><button type="button" onClick={() => approvalMutation.mutate({ id: row.protected_change_request_id, decision: 'reject' })} className="h-10 rounded-xl bg-red-600 px-4 font-black text-white">Reject</button></div> : null}</div>)}</div> : <StatusAlert type="info" message="No protected change requests are visible to your account." />}</div> : null}
+      {tab === 'approvals' ? <div className="p-4 sm:p-5"><div className="mb-4 flex flex-wrap items-center justify-between gap-3"><p className="text-sm font-semibold text-slate-500">{actor.role === 'auditor' ? 'Full approval history, read-only. Approved changes reach your Reviews queue once they are saved.' : 'Head approvals for protected changes.'}</p><label className="flex items-center gap-2 text-sm font-black text-slate-700">Status<select value={approvalStatus} onChange={(e) => setApprovalStatus(e.target.value)} className="h-10 rounded-xl border border-slate-300 px-3 font-semibold">{[['','All'],['pending','Pending'],['approved','Approved, not yet used'],['used','Used'],['rejected','Rejected'],['expired','Expired'],['cancelled','Cancelled']].map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label></div>{approvals.isLoading ? <StatusAlert type="loading" message="Loading approval requests..." /> : (approvals.data?.data || []).length ? <div className="grid gap-3">{approvals.data.data.map((row) => <div key={row.protected_change_request_id} className="rounded-2xl border border-slate-200 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-mono text-sm font-black text-blue-700">{row.request_number}</p><p className="mt-1 text-lg font-black">{row.entity_label || titleCase(row.entity_type)}</p><p className="text-sm font-semibold text-slate-500">{titleCase(row.action_key)} · {titleCase(row.department)} · {row.lot_project_name || '—'}</p><p className="mt-2 text-sm text-slate-600"><strong>Reason:</strong> {row.reason}</p><p className="mt-1 text-xs font-semibold text-slate-500">Requested by {row.requested_by_name || `User #${row.requested_by_user_id}`} on {fmtDate(row.created_at)}</p>{row.reviewed_at ? <p className="mt-1 text-xs font-semibold text-slate-500">{row.status === 'rejected' ? 'Rejected' : 'Approved'} by {row.reviewed_by_head_name || `User #${row.reviewed_by_head_user_id}`} on {fmtDate(row.reviewed_at)}{row.head_note ? `. Note: ${row.head_note}` : ''}</p> : null}{row.used_at ? <p className="mt-1 text-xs font-semibold text-emerald-700">Change applied on {fmtDate(row.used_at)}</p> : null}{row.status === 'pending' ? <p className="mt-1 text-xs font-semibold text-amber-700">Expires {fmtDate(row.expires_at)}</p> : null}</div><span className={`rounded-full border px-3 py-1 text-xs font-black ${row.status === 'approved' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : row.status === 'rejected' ? 'border-red-200 bg-red-50 text-red-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>{titleCase(row.status)}</span></div>{row.status === 'pending' && DEPARTMENT_HEAD_ROLE[row.department] === actor.role ? <div className="mt-4 flex gap-2 border-t pt-4"><button type="button" onClick={() => approvalMutation.mutate({ id: row.protected_change_request_id, decision: 'approve' })} className="h-10 rounded-xl bg-emerald-600 px-4 font-black text-white">Approve Exact Change</button><button type="button" onClick={() => approvalMutation.mutate({ id: row.protected_change_request_id, decision: 'reject' })} className="h-10 rounded-xl bg-red-600 px-4 font-black text-white">Reject</button></div> : null}</div>)}</div> : <StatusAlert type="info" message="No protected change requests are visible to your account." />}</div> : null}
 
       {tab === 'notifications' ? <div className="p-4 sm:p-5">{notifications.isLoading ? <StatusAlert type="loading" message="Loading notifications..." /> : (notifications.data?.data || []).length ? <div className="grid gap-2">{notifications.data.data.map((row) => <button key={row.internal_notification_id} type="button" onClick={() => { if (!row.read_at) markRead.mutate(row.internal_notification_id); if (row.operational_review_id) { setTab('reviews'); setSelectedReviewId(row.operational_review_id) } }} className={`w-full rounded-2xl border p-4 text-left ${row.read_at ? 'border-slate-200 bg-white' : 'border-blue-200 bg-blue-50'}`}><div className="flex items-start justify-between gap-3"><div><p className="font-black text-slate-900">{row.title}</p><p className="mt-1 text-sm font-semibold text-slate-600">{row.message || ''}</p><p className="mt-2 text-xs font-semibold text-slate-400">{fmtDate(row.created_at)}</p></div>{!row.read_at ? <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-blue-600" /> : null}</div></button>)}</div> : <StatusAlert type="info" message="No internal workflow notifications yet." />}</div> : null}
     </section>

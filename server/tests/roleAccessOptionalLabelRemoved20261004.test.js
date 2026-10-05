@@ -11,7 +11,9 @@ test('Role & Access Control hides Optional status labels while preserving select
   assert.doesNotMatch(matrix, />Optional<\/span>/);
   assert.doesNotMatch(matrix, />Select All Optional<\/button>/);
   assert.doesNotMatch(matrix, />Clear Optional<\/button>/);
-  assert.match(matrix, />Select All<\/button>/);
+  // 2026-10-05 (plan item 26): Select All was limited to view permissions with a confirm click.
+  assert.doesNotMatch(matrix, />Select All<\/button>/);
+  assert.match(matrix, /Select all View/);
   assert.match(matrix, />Clear All<\/button>/);
   assert.match(matrix, /state !== 'optional'/);
   assert.match(matrix, /stateFor\(key\) !== 'optional'/);

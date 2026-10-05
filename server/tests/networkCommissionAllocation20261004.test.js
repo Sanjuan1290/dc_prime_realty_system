@@ -94,7 +94,9 @@ test('Network controller requires unique broker identity across Network types', 
   const controller = await readSource('../controllers/System/sellerGroup.controller.js');
   assert.match(controller, /normalizeNetworkBrokerFields/);
   assert.match(controller, /assertUniqueNetworkBrokerIdentity/);
-  assert.match(controller, /broker_name_normalized = \? OR/);
+  // 2026-10-05: Broker Name may repeat (warning only); the other three stay unique.
+  assert.doesNotMatch(controller, /broker_name_normalized = \? OR/);
+  assert.match(controller, /AND broker_name_normalized = \?/);
   assert.match(controller, /broker_license_number_normalized = \? OR/);
   assert.match(controller, /realty_name_normalized = \? OR/);
   assert.match(controller, /broker_prc_number_normalized = \?/);

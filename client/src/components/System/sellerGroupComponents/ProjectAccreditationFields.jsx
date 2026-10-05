@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { FiCheckCircle, FiChevronLeft, FiChevronRight, FiMapPin, FiSearch } from 'react-icons/fi'
+import { getCompanyProfitError, getMaxCompanyProfitPercent, getMaxCompanyProfitRate } from '../../../utils/companyProfitPolicy'
 
 const PROJECTS_PER_PAGE = 5
 const DEFAULT_POOL_SHARES = Object.freeze({
@@ -68,6 +69,7 @@ const ProjectAccreditationFields = ({
   const [page, setPage] = useState(1)
   const isExternal = groupType === 'external'
   const poolShares = useMemo(() => normalizeShares(poolSharesProp), [poolSharesProp])
+  const maxCompanyProfitPercent = getMaxCompanyProfitPercent(poolSharesProp)
 
   const selectedMap = useMemo(
     () => new Map(projectRates.map((rate) => [Number(rate.lot_project_id), rate])),
@@ -134,10 +136,14 @@ const ProjectAccreditationFields = ({
           const checked = Boolean(selectedRate)
           const location = project.lot_project_location || project.location || 'No location set'
           const allocation = calculateAllocation(selectedRate || {}, poolShares, isExternal)
+          const maxCompanyProfitRate = getMaxCompanyProfitRate(allocation.pool, maxCompanyProfitPercent)
+          const companyProfitError = !isExternal && checked
+            ? getCompanyProfitError(selectedRate, { maxPercentOfPool: maxCompanyProfitPercent, shares: poolShares })
+            : ''
           const valid = checked
             && allocation.pool >= 6
             && allocation.pool <= 15
-            && (isExternal || (allocation.companyProfit >= 0 && allocation.companyProfit < allocation.pool && Math.abs(allocation.accounted - allocation.pool) < 0.0001))
+            && (isExternal || (!companyProfitError && Math.abs(allocation.accounted - allocation.pool) < 0.0001))
 
           return (
             <article key={projectId} className={`rounded-2xl border p-4 transition ${checked ? 'border-blue-300 bg-white ring-4 ring-blue-50' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
@@ -155,7 +161,7 @@ const ProjectAccreditationFields = ({
                     <label className="flex flex-col gap-1.5">
                       <span className="text-xs font-black text-slate-700">Pool Rate</span>
                       <div className="relative">
-                        <input type="number" min="6" max="15" step="0.01" data-example="8%" value={selectedRate.seller_group_pool_rate} onChange={(event) => updateRate(projectId, 'seller_group_pool_rate', event.target.value)} disabled={disabled} className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 pr-8 text-sm font-black outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100" />
+                        <input type="number" min="6" max="15" step="0.0001" data-example="8%" value={selectedRate.seller_group_pool_rate} onChange={(event) => updateRate(projectId, 'seller_group_pool_rate', event.target.value)} disabled={disabled} className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 pr-8 text-sm font-black outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100" />
                         <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm font-black text-slate-400">%</span>
                       </div>
                     </label>
@@ -164,10 +170,10 @@ const ProjectAccreditationFields = ({
                       <label className="flex flex-col gap-1.5">
                         <span className="text-xs font-black text-slate-700">Company Profit (CP)</span>
                         <div className="relative">
-                          <input type="number" min="0" max={Math.max(allocation.pool - 0.0001, 0)} step="0.01" data-example="2%" value={selectedRate.company_profit_rate ?? 0} onChange={(event) => updateRate(projectId, 'company_profit_rate', event.target.value)} disabled={disabled} className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 pr-8 text-sm font-black outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100" />
+                          <input type="number" min="0" max={maxCompanyProfitRate} step="0.0001" data-example="2%" value={selectedRate.company_profit_rate ?? 0} onChange={(event) => updateRate(projectId, 'company_profit_rate', event.target.value)} disabled={disabled} className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 pr-8 text-sm font-black outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100" />
                           <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm font-black text-slate-400">%</span>
                         </div>
-                        <span className="text-[11px] font-semibold text-slate-500">Actual retained rate, not a share of the pool.</span>
+                        <span className="text-[11px] font-semibold text-slate-500">Actual retained rate, not a share of the pool. Max {maxCompanyProfitRate.toFixed(4)}%.</span>
                       </label>
                     ) : null}
 
@@ -197,7 +203,7 @@ const ProjectAccreditationFields = ({
 
                   <div className={`mt-3 flex flex-col gap-2 rounded-xl border px-4 py-3 sm:flex-row sm:items-center sm:justify-between ${valid ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50'}`}>
                     <p className={`flex items-center gap-2 text-xs font-black ${valid ? 'text-emerald-700' : 'text-amber-800'}`}>{valid ? <FiCheckCircle /> : null}{isExternal ? `Full Pool Rate: ${rate4(allocation.pool)}%` : `Distributable: ${rate4(allocation.distributable)}%`}</p>
-                    <p className={`text-xs font-black ${valid ? 'text-emerald-700' : 'text-amber-800'}`}>{valid ? 'Ready' : allocation.companyProfit >= allocation.pool ? 'CP must be lower than Pool Rate' : 'Check Pool Rate and CP'}</p>
+                    <p className={`text-xs font-black ${valid ? 'text-emerald-700' : 'text-amber-800'}`}>{valid ? 'Ready' : companyProfitError || 'Check Pool Rate and CP'}</p>
                   </div>
                 </div>
               ) : null}

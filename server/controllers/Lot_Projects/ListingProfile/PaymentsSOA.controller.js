@@ -1537,7 +1537,7 @@ export const createLotProjectListingPayment = async (req, res) => {
               approvalMessage: penaltyWaiverAuthorization.message,
             };
           }
-          await assertEntityNotReviewLocked(connection, {
+          await assertEntityNotReviewLocked(connection, { actor: req.authUser,
             entityType: ACCOUNTING_ADJUSTMENT_ENTITY,
             entityId: scheduleId,
             allowReviewId: penaltyWaiverAuthorization.allowReviewId || null,
@@ -1784,7 +1784,7 @@ export const updateLotProjectListingPayment = async (req, res) => {
         existingPayment,
       });
       if (!correctionAuthorization.ok) return { authorizationError: correctionAuthorization };
-      await assertEntityNotReviewLocked(connection, { entityType: 'lot_project_payment', entityId: paymentId, allowReviewId: correctionAuthorization.allowReviewId || null });
+      await assertEntityNotReviewLocked(connection, { actor: req.authUser, entityType: 'lot_project_payment', entityId: paymentId, allowReviewId: correctionAuthorization.allowReviewId || null });
       const existingPaymentPenaltyWaiver = await getPaymentLinkedPenaltyWaiver(connection, paymentId, { forUpdate: true });
 
       const amount = parseMoneyValue(req.body.amount);
@@ -2428,7 +2428,7 @@ export const restoreSeparateLegalMiscFeeFromAuditCase = async (req, res) => {
     });
     if (!auditCase) throw createHttpError(409, 'This Audit Case does not authorize correction of this Legal / Misc Fee row.');
 
-    await assertEntityNotReviewLocked(connection, {
+    await assertEntityNotReviewLocked(connection, { actor: req.authUser,
       entityType: ACCOUNTING_LMF_ENTITY,
       entityId: scheduleId,
       allowReviewId: auditCase.operational_review_id,
@@ -2678,7 +2678,7 @@ export const waiveSeparateLegalMiscFee = async (req, res) => {
         message: authorization.message,
       });
     }
-    await assertEntityNotReviewLocked(connection, {
+    await assertEntityNotReviewLocked(connection, { actor: req.authUser,
       entityType: ACCOUNTING_LMF_ENTITY,
       entityId: scheduleId,
       allowReviewId: authorization.allowReviewId || null,
@@ -2867,7 +2867,7 @@ export const deleteLotProjectListingPayment = async (req, res) => {
         existingPayment,
       });
       if (!correctionAuthorization.ok) return { authorizationError: correctionAuthorization };
-      await assertEntityNotReviewLocked(connection, { entityType: 'lot_project_payment', entityId: paymentId, allowReviewId: correctionAuthorization.allowReviewId || null });
+      await assertEntityNotReviewLocked(connection, { actor: req.authUser, entityType: 'lot_project_payment', entityId: paymentId, allowReviewId: correctionAuthorization.allowReviewId || null });
 
       await reversePaymentAllocations(connection, listing, paymentId);
 
@@ -3038,7 +3038,7 @@ export const grantPaymentSchedulePenaltyExtension = async (req, res) => {
       await connection.commit();
       return res.status(202).json({ success: false, approval_required: true, approval_request_id: authorization.approvalRequestId, request_number: authorization.requestNumber, message: authorization.message });
     }
-    await assertEntityNotReviewLocked(connection, { entityType: ACCOUNTING_ADJUSTMENT_ENTITY, entityId: scheduleId, allowReviewId: authorization.allowReviewId || null });
+    await assertEntityNotReviewLocked(connection, { actor: req.authUser, entityType: ACCOUNTING_ADJUSTMENT_ENTITY, entityId: scheduleId, allowReviewId: authorization.allowReviewId || null });
 
     const [result] = await connection.query(
       `
@@ -3172,7 +3172,7 @@ export const updatePaymentSchedulePenaltyExtension = async (req, res) => {
       await connection.commit();
       return res.status(202).json({ success: false, approval_required: true, approval_request_id: authorization.approvalRequestId, request_number: authorization.requestNumber, message: authorization.message });
     }
-    await assertEntityNotReviewLocked(connection, { entityType: ACCOUNTING_ADJUSTMENT_ENTITY, entityId: scheduleId, allowReviewId: authorization.allowReviewId || null });
+    await assertEntityNotReviewLocked(connection, { actor: req.authUser, entityType: ACCOUNTING_ADJUSTMENT_ENTITY, entityId: scheduleId, allowReviewId: authorization.allowReviewId || null });
 
     const [result] = await connection.query(
       `
@@ -3286,7 +3286,7 @@ export const correctPaymentSchedulePenalty = async (req, res) => {
       await connection.commit();
       return res.status(202).json({ success: false, approval_required: true, approval_request_id: authorization.approvalRequestId, request_number: authorization.requestNumber, message: authorization.message });
     }
-    await assertEntityNotReviewLocked(connection, { entityType: ACCOUNTING_ADJUSTMENT_ENTITY, entityId: scheduleId, allowReviewId: authorization.allowReviewId || null });
+    await assertEntityNotReviewLocked(connection, { actor: req.authUser, entityType: ACCOUNTING_ADJUSTMENT_ENTITY, entityId: scheduleId, allowReviewId: authorization.allowReviewId || null });
 
     const [result] = await connection.query(
       `
@@ -3427,7 +3427,7 @@ export const waivePaymentSchedulePenalty = async (req, res) => {
       await connection.commit();
       return res.status(202).json({ success: false, approval_required: true, approval_request_id: authorization.approvalRequestId, request_number: authorization.requestNumber, message: authorization.message });
     }
-    await assertEntityNotReviewLocked(connection, { entityType: ACCOUNTING_ADJUSTMENT_ENTITY, entityId: scheduleId, allowReviewId: authorization.allowReviewId || null });
+    await assertEntityNotReviewLocked(connection, { actor: req.authUser, entityType: ACCOUNTING_ADJUSTMENT_ENTITY, entityId: scheduleId, allowReviewId: authorization.allowReviewId || null });
 
     const [result] = await connection.query(
       `
@@ -3641,7 +3641,7 @@ export const restorePaymentSchedulePenaltyWaiver = async (req, res) => {
       await connection.commit();
       return res.status(202).json({ success: false, approval_required: true, approval_request_id: authorization.approvalRequestId, request_number: authorization.requestNumber, message: authorization.message });
     }
-    await assertEntityNotReviewLocked(connection, { entityType: ACCOUNTING_ADJUSTMENT_ENTITY, entityId: scheduleId, allowReviewId: authorization.allowReviewId || null });
+    await assertEntityNotReviewLocked(connection, { actor: req.authUser, entityType: ACCOUNTING_ADJUSTMENT_ENTITY, entityId: scheduleId, allowReviewId: authorization.allowReviewId || null });
 
     const [result] = await connection.query(
       `

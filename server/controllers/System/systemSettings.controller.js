@@ -122,6 +122,7 @@ const systemSettingsTableSql = `
     in_house_sd_pool_share_percent DECIMAL(7,4) NOT NULL DEFAULT 15.8200,
     in_house_um_pool_share_percent DECIMAL(7,4) NOT NULL DEFAULT 20.0000,
     in_house_sa_pool_share_percent DECIMAL(7,4) NOT NULL DEFAULT 50.0000,
+    max_company_profit_percent_of_pool DECIMAL(7,4) NOT NULL DEFAULT 50.0000,
     attendance_default_time_out TIME NOT NULL DEFAULT '20:00:00',
     attendance_scheduled_time_in TIME NOT NULL DEFAULT '09:00:00',
     attendance_scheduled_time_out TIME NOT NULL DEFAULT '20:00:00',
@@ -149,6 +150,7 @@ const ensureSystemSettingsTable = async (connection = db) => {
   await connection.query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS in_house_sd_pool_share_percent DECIMAL(7,4) NOT NULL DEFAULT 15.8200 AFTER in_house_dm_pool_share_percent`);
   await connection.query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS in_house_um_pool_share_percent DECIMAL(7,4) NOT NULL DEFAULT 20.0000 AFTER in_house_sd_pool_share_percent`);
   await connection.query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS in_house_sa_pool_share_percent DECIMAL(7,4) NOT NULL DEFAULT 50.0000 AFTER in_house_um_pool_share_percent`);
+  await connection.query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS max_company_profit_percent_of_pool DECIMAL(7,4) NOT NULL DEFAULT 50.0000 AFTER in_house_sa_pool_share_percent`);
   await connection.query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS attendance_default_time_out TIME NOT NULL DEFAULT '20:00:00' AFTER default_release_day_two`);
   await connection.query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS attendance_scheduled_time_in TIME NOT NULL DEFAULT '09:00:00' AFTER attendance_default_time_out`);
   await connection.query(`ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS attendance_scheduled_time_out TIME NOT NULL DEFAULT '20:00:00' AFTER attendance_scheduled_time_in`);
@@ -188,6 +190,7 @@ const mapSettings = (row = {}) => ({
   inHouseSdPoolSharePercent: Number(row.in_house_sd_pool_share_percent ?? 15.82),
   inHouseUmPoolSharePercent: Number(row.in_house_um_pool_share_percent ?? 20),
   inHouseSaPoolSharePercent: Number(row.in_house_sa_pool_share_percent ?? 50),
+  maxCompanyProfitPercentOfPool: Number(row.max_company_profit_percent_of_pool ?? 50),
   attendanceDefaultTimeOut: String(row.attendance_default_time_out || '20:00:00').slice(0, 8),
   employeeDepartmentCodes: normalizeDepartmentConfigs(row.employee_department_codes_json, row.employee_departments_json),
   employeeDepartments: normalizeDepartmentConfigs(row.employee_department_codes_json, row.employee_departments_json).map((item) => item.name),
@@ -214,6 +217,7 @@ const normalizeSettingsPayload = (body = {}) => ({
   inHouseSdPoolSharePercent: normalizePercent(body.inHouseSdPoolSharePercent, 15.82),
   inHouseUmPoolSharePercent: normalizePercent(body.inHouseUmPoolSharePercent, 20),
   inHouseSaPoolSharePercent: normalizePercent(body.inHouseSaPoolSharePercent, 50),
+  maxCompanyProfitPercentOfPool: normalizePercent(body.maxCompanyProfitPercentOfPool, 50),
 });
 
 
@@ -392,6 +396,7 @@ export const updateSystemSettings = async (req, res) => {
           in_house_sd_pool_share_percent = ?,
           in_house_um_pool_share_percent = ?,
           in_house_sa_pool_share_percent = ?,
+          max_company_profit_percent_of_pool = ?,
           updated_by_user_id = ?
         WHERE system_setting_id = 1
       `,
@@ -412,6 +417,7 @@ export const updateSystemSettings = async (req, res) => {
         payload.inHouseSdPoolSharePercent,
         payload.inHouseUmPoolSharePercent,
         payload.inHouseSaPoolSharePercent,
+        payload.maxCompanyProfitPercentOfPool,
         actor.id,
       ]
     );

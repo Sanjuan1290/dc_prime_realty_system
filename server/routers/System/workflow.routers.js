@@ -2,7 +2,7 @@ import express from 'express';
 import { authenticateUser, requirePermission } from '../../middleware/auth.middleware.js';
 import { PERMISSIONS } from '../../config/permissions.js';
 import {
-  listOperationalReviews,getReviewCenterSummary,getOperationalReview,claimOperationalReview,confirmHeadReview,returnReviewForCorrection,auditorVerifyReview,listInternalNotifications,markInternalNotificationRead,openAuditCase,respondToAuditCase,resolveAuditCase,getAuditCase,listProtectedChangeRequests,reviewProtectedChangeRequest,
+  listOperationalReviews,getReviewCenterSummary,getOperationalReview,claimOperationalReview,confirmHeadReview,returnReviewForCorrection,auditorVerifyReview,listInternalNotifications,markInternalNotificationRead,openAuditCase,respondToAuditCase,reassignAuditCaseResponder,resolveAuditCase,getAuditCase,listProtectedChangeRequests,reviewProtectedChangeRequest,
 } from '../../controllers/System/workflow.controller.js';
 
 const router=express.Router();
@@ -17,6 +17,7 @@ router.post('/reviews/:id/auditor-verify',requirePermission(PERMISSIONS.WORKFLOW
 router.post('/reviews/:id/audit-case',requirePermission(PERMISSIONS.WORKFLOW_AUDIT_CASE_CREATE),openAuditCase);
 router.get('/audit-cases/:caseId',requirePermission(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW),getAuditCase);
 router.post('/audit-cases/:caseId/head-response',requirePermission(PERMISSIONS.WORKFLOW_DEPARTMENT_CASE_RESPOND),respondToAuditCase);
+router.post('/audit-cases/:caseId/reassign-responder',requirePermission(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW),reassignAuditCaseResponder);
 router.post('/audit-cases/:caseId/resolve',requirePermission(PERMISSIONS.WORKFLOW_AUDIT_CASE_RESOLVE),resolveAuditCase);
 router.get('/protected-changes',requirePermission(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW),listProtectedChangeRequests);
 router.post('/protected-changes/:requestId/review',requirePermission(PERMISSIONS.WORKFLOW_DEPARTMENT_APPROVE_PROTECTED_CHANGE),reviewProtectedChangeRequest);

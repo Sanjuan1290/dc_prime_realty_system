@@ -45,6 +45,7 @@ const systemChangeDefinitions = [
   { key: 'inHouseSdPoolSharePercent', label: 'Sales Director Pool Share', formatter: percent },
   { key: 'inHouseUmPoolSharePercent', label: 'Unit Manager Pool Share', formatter: percent },
   { key: 'inHouseSaPoolSharePercent', label: 'Sales Agent Pool Share', formatter: percent },
+  { key: 'maxCompanyProfitPercentOfPool', label: 'Maximum Company Profit (% of pool)', formatter: percent },
   { key: 'systemStatus', label: 'System Status', formatter: titleCase },
   { key: 'maintenanceMessage', label: 'Maintenance Message' },
 ]
@@ -102,6 +103,7 @@ const SystemSettingsReview = ({ data }) => [
           { label: 'Sales Director', value: data.inHouseSdPoolSharePercent, formatter: percent },
           { label: 'Unit Manager', value: data.inHouseUmPoolSharePercent, formatter: percent },
           { label: 'Sales Agent', value: data.inHouseSaPoolSharePercent, formatter: percent },
+          { label: 'Maximum Company Profit (% of pool)', value: data.maxCompanyProfitPercentOfPool, formatter: percent },
           { label: 'Total', value: Number(data.inHouseDmPoolSharePercent || 0) + Number(data.inHouseSdPoolSharePercent || 0) + Number(data.inHouseUmPoolSharePercent || 0) + Number(data.inHouseSaPoolSharePercent || 0), formatter: percent, tone: 'important' },
         ]} />
       </DoubleCheckSection>

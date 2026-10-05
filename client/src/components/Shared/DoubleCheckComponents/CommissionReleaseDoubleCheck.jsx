@@ -21,7 +21,7 @@ const CommissionReleaseDoubleCheck = ({ request, onConfirm, onCancel }) => {
       { label: 'Buyer', value: pick(beneficiary, 'buyer'), wide: true },
       { label: 'Beneficiary', value: pick(beneficiary, 'beneficiary', 'seller'), wide: true },
       { label: 'Role', value: pick(beneficiary, 'role'), formatter: roleLabel },
-      { label: 'Group', value: pick(beneficiary, 'group') },
+      { label: 'Network', value: pick(beneficiary, 'group') },
       { label: 'Commission Base', value: pick(beneficiary, 'commissionBase'), formatter: money, tone: 'financial' },
       { label: 'Commission Rate', value: pick(beneficiary, 'commissionRate'), formatter: commissionPercent, tone: 'financial' },
       { label: 'Gross Commission', value: pick(beneficiary, 'grossCommission'), formatter: money, tone: 'financial' },
