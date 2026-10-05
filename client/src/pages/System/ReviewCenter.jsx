@@ -16,7 +16,7 @@ import {
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
 import useCurrentUser from '../../utils/useCurrentUser'
-import { useFetch, useFetchPatch, useFetchPost, useFetchPost as postWorkflow } from '../../utils/useFetch'
+import { getDoubleCheckNotice, useFetch, useFetchPatch, useFetchPost, useFetchPost as postWorkflow } from '../../utils/useFetch'
 import { DEPARTMENT_HEAD_ROLE, ROLE_LABELS } from '../../config/permissions'
 
 const parseJson = (value) => {
@@ -116,50 +116,131 @@ const ReviewDetails = ({ reviewId, onClose, onChanged }) => {
       throw new Error('Unknown workflow action.')
     },
     onSuccess: async (result) => { setNotice({ type: 'success', message: result.message }); setAction(null); await query.refetch(); onChanged?.() },
-    onError: (error) => setNotice({ type: 'error', message: error.message }),
+    onError: (error) => setNotice(getDoubleCheckNotice(error, 'Workflow action failed.')),
   })
 
   const before = parseJson(review?.before_snapshot_json) || {}
   const after = parseJson(review?.after_snapshot_json) || {}
   const recordListingId = after?.listingId || before?.listingId || null
+  const recordPaymentId = after?.paymentId || before?.paymentId || null
   const auditSuffix = auditCase?.audit_case_id ? `&auditCaseId=${auditCase.audit_case_id}` : ''
+  const actorRoot = `/portal/${actor.role || 'super_admin'}`
+  const reviewActionKey = String(review?.action_key || '')
+  const listingWorkflowAction = reviewActionKey === 'listing.documents.update'
+    ? 'listing_documents_update_review'
+    : 'listing_edit_review'
   const workflowAction = review?.entity_type === 'lot_project_payment'
     ? 'payment_correction'
     : review?.entity_type === 'lot_project_reservation'
       ? 'reservation_correction'
-      : review?.entity_type === 'lot_project_commission_account'
-        ? 'commission_adjustment'
-        : review?.entity_type === 'lot_project_penalty_schedule'
-          ? 'penalty_adjustment'
-          : review?.entity_type === 'lot_project_lmf_schedule'
-            ? 'lmf_correction'
-            : review?.entity_type === 'lot_project_settings'
-              ? 'project_settings_correction'
-              : review?.entity_type === 'lot_project_cancellation'
-                ? 'cancellation_review'
-                : review?.entity_type === 'lot_project_listing'
-                  ? 'listing_edit_review'
-                  : ''
+      : review?.entity_type === 'lot_project_account'
+        ? 'reservation_entry_review'
+        : review?.entity_type === 'lot_project_client_profile'
+          ? 'buyer_profile_edit_review'
+          : review?.entity_type === 'lot_project_buyer_form'
+            ? 'buyer_form_review'
+            : review?.entity_type === 'lot_project_commission'
+              ? 'commission_stage_review'
+              : review?.entity_type === 'lot_project_payment_proof'
+                ? 'payment_proof_review'
+                : review?.entity_type === 'lot_project_signed_receipt'
+                  ? 'signed_receipt_review'
+                  : review?.entity_type === 'lot_project_commission_account'
+                    ? 'commission_adjustment'
+                    : review?.entity_type === 'lot_project_penalty_schedule'
+                      ? 'penalty_adjustment'
+                      : review?.entity_type === 'lot_project_lmf_schedule'
+                        ? 'lmf_correction'
+                        : review?.entity_type === 'lot_project_settings'
+                          ? 'project_settings_correction'
+                          : review?.entity_type === 'lot_project_cancellation'
+                            ? 'cancellation_review'
+                            : review?.entity_type === 'lot_project_listing'
+                              ? listingWorkflowAction
+                              : review?.entity_type === 'lot_project_listing_import'
+                                ? 'listing_import_review'
+                                : review?.entity_type === 'seller_group_project_rates'
+                                  ? 'network_rates_review'
+                                  : review?.entity_type === 'seller_group'
+                                    ? (reviewActionKey === 'network.status' ? 'network_status_review' : 'network_edit_review')
+                                    : review?.entity_type === 'accredited_seller'
+                                      ? 'seller_edit_review'
+                                      : ''
+  const groupId = Number(after?.groupId || before?.groupId || (review?.entity_type === 'seller_group' ? review?.entity_id : String(review?.entity_id || '').split(':')[0]) || 0) || null
+  const groupType = String(after?.groupType || before?.groupType || 'in_house') === 'external' ? 'external' : 'in-house'
+  const sellerGroupId = Number(after?.sellerGroupId || before?.sellerGroupId || 0) || null
+  const sellerUserId = Number(after?.userId || before?.userId || 0) || null
+  const networkLink = groupId
+    ? `${actorRoot}/accredited/groups/${groupType}/${groupId}?workflowAction=${workflowAction}&reviewId=${reviewId}${auditSuffix}`
+    : null
+  const sellerLink = sellerGroupId
+    ? `${actorRoot}/accredited/groups/in-house/${sellerGroupId}?workflowAction=seller_edit_review&reviewId=${reviewId}${sellerUserId ? `&sellerId=${sellerUserId}` : ''}${auditSuffix}`
+    : `${actorRoot}/accredited?workflowAction=seller_edit_review&reviewId=${reviewId}${auditSuffix}`
   const recordLink = review?.entity_type === 'lot_project_settings' && review?.lot_project_slug
     ? `/portal/lot-projects/${review.lot_project_slug}/settings?workflowAction=project_settings_correction&reviewId=${reviewId}${auditSuffix}`
-    : workflowAction && review?.lot_project_slug && recordListingId
-      ? `/portal/lot-projects/${review.lot_project_slug}/listings/${recordListingId}?workflowAction=${workflowAction}&reviewId=${reviewId}${review?.entity_type === 'lot_project_payment' ? `&paymentId=${review.entity_id}` : ''}${['lot_project_penalty_schedule','lot_project_lmf_schedule'].includes(review?.entity_type) ? `&scheduleId=${review.entity_id}` : ''}${auditSuffix}`
-      : null
+    : review?.entity_type === 'lot_project_commission' && review?.lot_project_slug
+      ? `/portal/lot-projects/${review.lot_project_slug}/commissions?workflowAction=commission_stage_review&reviewId=${reviewId}&commissionId=${review.entity_id}${auditSuffix}`
+      : review?.entity_type === 'lot_project_listing_import' && review?.lot_project_slug
+        ? `/portal/lot-projects/${review.lot_project_slug}/listings?workflowAction=listing_import_review&reviewId=${reviewId}${auditSuffix}`
+        : review?.entity_type === 'lot_project_listing' && reviewActionKey === 'listing.delete' && review?.lot_project_slug
+          ? `/portal/lot-projects/${review.lot_project_slug}/listings?workflowAction=listing_delete_review&reviewId=${reviewId}${auditSuffix}`
+          : ['seller_group', 'seller_group_project_rates'].includes(review?.entity_type)
+            ? networkLink
+            : review?.entity_type === 'accredited_seller'
+              ? sellerLink
+              : workflowAction && review?.lot_project_slug && recordListingId
+                ? `/portal/lot-projects/${review.lot_project_slug}/listings/${recordListingId}?workflowAction=${workflowAction}&reviewId=${reviewId}${['lot_project_payment','lot_project_payment_proof','lot_project_signed_receipt'].includes(review?.entity_type) && recordPaymentId ? `&paymentId=${recordPaymentId}` : ''}${['lot_project_penalty_schedule','lot_project_lmf_schedule'].includes(review?.entity_type) ? `&scheduleId=${review.entity_id}` : ''}${auditSuffix}`
+                : null
   const recordActionLabel = review?.entity_type === 'lot_project_payment'
     ? 'Open Payment for Controlled Correction'
     : review?.entity_type === 'lot_project_reservation'
       ? 'Open Reservation Correction'
-      : review?.entity_type === 'lot_project_commission_account'
-        ? 'Open Commission Adjustment'
-        : review?.entity_type === 'lot_project_penalty_schedule'
-          ? 'Open Penalty Adjustment'
-          : review?.entity_type === 'lot_project_lmf_schedule'
-            ? 'Open LMF Correction'
-            : review?.entity_type === 'lot_project_settings'
-              ? 'Open Project Settings Correction'
-              : ['lot_project_cancellation', 'lot_project_listing'].includes(review?.entity_type)
-                ? 'Open Unit'
-                : 'Open Record'
+      : review?.entity_type === 'lot_project_account'
+        ? 'Open Reservation'
+        : review?.entity_type === 'lot_project_client_profile'
+          ? 'Open Buyer Profile Correction'
+          : review?.entity_type === 'lot_project_buyer_form'
+            ? 'Open Buyer Form Decision'
+            : review?.entity_type === 'lot_project_commission'
+              ? 'Open Commission'
+              : review?.entity_type === 'lot_project_payment_proof'
+                ? 'Open Payment Proof Correction'
+                : review?.entity_type === 'lot_project_signed_receipt'
+                  ? 'Open Signed Receipt Correction'
+                  : review?.entity_type === 'lot_project_commission_account'
+                    ? 'Open Commission Adjustment'
+                    : review?.entity_type === 'lot_project_penalty_schedule'
+                      ? 'Open Penalty Adjustment'
+                      : review?.entity_type === 'lot_project_lmf_schedule'
+                        ? 'Open LMF Correction'
+                        : review?.entity_type === 'lot_project_settings'
+                          ? 'Open Project Settings Correction'
+                          : review?.entity_type === 'lot_project_listing_import'
+                            ? 'Open Listing Import History'
+                            : review?.entity_type === 'seller_group_project_rates'
+                              ? 'Open Network Rates'
+                              : review?.entity_type === 'seller_group'
+                                ? 'Open Network'
+                                : review?.entity_type === 'accredited_seller'
+                                  ? 'Open Accredited Seller'
+                                  : ['lot_project_cancellation', 'lot_project_listing'].includes(review?.entity_type)
+                                    ? 'Open Unit'
+                                    : 'Open Record'
+
+  const nonCorrectableActionKeys = new Set([
+    'reservation.create',
+    'buyer_form.approve',
+    'commission.release',
+    'commission.hold',
+    'commission.unhold',
+    'listing.delete',
+    'listing.import',
+    'listing.import_undo',
+    'network.members.import',
+  ])
+  const supportsRecordCorrection = !nonCorrectableActionKeys.has(reviewActionKey)
+    && !['lot_project_account', 'lot_project_buyer_form', 'lot_project_commission'].includes(review?.entity_type)
+
 
   // Correct & Confirm (plan item 15): the Head claims the review, opens the
   // record, and saves the corrected values there. The save folds into this
@@ -190,14 +271,15 @@ const ReviewDetails = ({ reviewId, onClose, onChanged }) => {
         {auditCase ? <section className="rounded-2xl border border-red-200 bg-red-50 p-4"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-xs font-black uppercase tracking-wide text-red-600">Audit Case</p><p className="text-lg font-black text-red-950">{auditCase.case_number}</p></div><span className="rounded-full border border-red-200 bg-white px-3 py-1 text-xs font-black text-red-700">{titleCase(auditCase.status)}</span></div><div className="mt-3 grid gap-3"><div><p className="text-xs font-black uppercase text-red-600">Finding</p><p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-red-950">{auditCase.finding}</p></div>{auditCase.head_response ? <div><p className="text-xs font-black uppercase text-red-600">Head Explanation</p><p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-red-950">{auditCase.head_response}</p></div> : null}{auditCase.auditor_resolution ? <div><p className="text-xs font-black uppercase text-red-600">Auditor Resolution</p><p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-red-950">{auditCase.auditor_resolution}</p></div> : null}{auditCase.correction_summary ? <div><p className="text-xs font-black uppercase text-red-600">System Admin Correction</p><p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-red-950">{auditCase.correction_summary}</p></div> : null}{responders ? <div><p className="text-xs font-black uppercase text-red-600">Who must answer</p><p className="mt-1 text-sm font-semibold text-red-950">{responders.label}{responders.users?.length ? `: ${responders.users.map((user) => user.full_name).join(', ')}` : ': nobody is available. System Admin must reassign.'}</p></div> : null}</div></section> : null}
         <section className="rounded-2xl border border-slate-200 p-4"><p className="text-xs font-black uppercase tracking-wide text-slate-500">Review History</p><div className="mt-3 space-y-3">{(review.events || []).map((event) => <div key={event.operational_review_event_id} className="flex gap-3 border-l-2 border-blue-200 pl-3"><div className="min-w-0"><p className="font-black text-slate-800">{titleCase(event.event_type)}</p><p className="text-xs font-semibold text-slate-500">{event.actor_name || ROLE_LABELS[event.actor_role] || 'System'} · {fmtDate(event.created_at)}</p>{event.message ? <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{event.message}</p> : null}</div></div>)}</div></section>
 
+        {isHead && review.status === 'pending_head_review' && !supportsRecordCorrection ? <StatusAlert type="info" message="This action is already completed and has no safe in-place correction endpoint. Open the record for any compensating action, then confirm the review only when the recorded action is accurate." /> : null}
         <section className="flex flex-wrap gap-2 border-t border-slate-200 pt-4">
-          {isHead && review.status === 'pending_head_review' ? <><button type="button" onClick={() => mutation.mutate({ type: 'claim' })} disabled={mutation.isPending} className="h-10 rounded-xl border border-blue-200 bg-blue-50 px-4 font-black text-blue-700"><FiUserCheck className="mr-2 inline" />Claim Review</button><button type="button" onClick={() => mutation.mutate({ type: 'head-confirm' })} disabled={mutation.isPending} className="h-10 rounded-xl bg-emerald-600 px-4 font-black text-white"><FiCheckCircle className="mr-2 inline" />Confirm — No Mistake</button><button type="button" onClick={() => setAction('return')} disabled={mutation.isPending} className="h-10 rounded-xl bg-amber-600 px-4 font-black text-white">Return for Correction</button></> : null}
+          {isHead && review.status === 'pending_head_review' ? <><button type="button" onClick={() => mutation.mutate({ type: 'claim' })} disabled={mutation.isPending} className="h-10 rounded-xl border border-blue-200 bg-blue-50 px-4 font-black text-blue-700"><FiUserCheck className="mr-2 inline" />Claim Review</button><button type="button" onClick={() => mutation.mutate({ type: 'head-confirm' })} disabled={mutation.isPending} className="h-10 rounded-xl bg-emerald-600 px-4 font-black text-white"><FiCheckCircle className="mr-2 inline" />Confirm — No Mistake</button>{supportsRecordCorrection ? <button type="button" onClick={() => setAction('return')} disabled={mutation.isPending} className="h-10 rounded-xl bg-amber-600 px-4 font-black text-white">Return for Correction</button> : null}</> : null}
           {actor.role === 'auditor' && review.status === 'pending_auditor_review' ? <><button type="button" onClick={() => mutation.mutate({ type: 'audit-verify' })} disabled={mutation.isPending} className="h-10 rounded-xl bg-emerald-600 px-4 font-black text-white"><FiCheckCircle className="mr-2 inline" />Verified — No Issue</button><button type="button" onClick={() => setAction('open-case')} disabled={mutation.isPending} className="h-10 rounded-xl bg-red-600 px-4 font-black text-white"><FiAlertTriangle className="mr-2 inline" />Open Audit Case</button></> : null}
           {canRespondToCase ? <button type="button" onClick={() => setAction('head-response')} className="h-10 rounded-xl bg-blue-600 px-4 font-black text-white">Submit Explanation</button> : null}
           {canReassignResponder ? <button type="button" onClick={() => setAction('reassign')} className="h-10 rounded-xl border border-violet-300 bg-violet-50 px-4 font-black text-violet-800">Reassign Responder</button> : null}
-          {isHead && review.status === 'pending_head_review' && recordLink && (!review.claimed_by_user_id || Number(review.claimed_by_user_id) === Number(actor.id)) ? <button type="button" onClick={correctAndConfirm} className="h-10 rounded-xl border border-blue-300 bg-white px-4 font-black text-blue-700"><FiExternalLink className="mr-2 inline" />Correct &amp; Confirm</button> : null}
+          {isHead && review.status === 'pending_head_review' && supportsRecordCorrection && recordLink && (!review.claimed_by_user_id || Number(review.claimed_by_user_id) === Number(actor.id)) ? <button type="button" onClick={correctAndConfirm} className="h-10 rounded-xl border border-blue-300 bg-white px-4 font-black text-blue-700"><FiExternalLink className="mr-2 inline" />Correct &amp; Confirm</button> : null}
           {actor.role === 'auditor' && auditCase?.status === 'under_auditor_review' ? <><button type="button" onClick={() => setAction('resolve-invalid')} className="h-10 rounded-xl border border-emerald-300 bg-emerald-50 px-4 font-black text-emerald-700">Finding Invalid</button><button type="button" onClick={() => setAction('resolve-valid')} className="h-10 rounded-xl bg-red-600 px-4 font-black text-white">Finding Valid</button></> : null}
-          {actor.role === 'system_admin' && review.status === 'correction_required' && recordLink ? <button type="button" onClick={() => { onClose(); navigate(recordLink) }} className="h-10 rounded-xl bg-violet-700 px-4 font-black text-white"><FiExternalLink className="mr-2 inline" />{recordActionLabel}</button> : null}
+          {actor.role === 'system_admin' && review.status === 'correction_required' && supportsRecordCorrection && recordLink ? <button type="button" onClick={() => { onClose(); navigate(recordLink) }} className="h-10 rounded-xl bg-violet-700 px-4 font-black text-white"><FiExternalLink className="mr-2 inline" />{recordActionLabel}</button> : null}
           {actor.role === 'auditor' && review.status === 'pending_auditor_recheck' ? <><button type="button" onClick={() => mutation.mutate({ type: 'audit-verify' })} className="h-10 rounded-xl bg-emerald-600 px-4 font-black text-white">Verify Correction & Close</button><button type="button" onClick={() => setAction('recheck-reject')} className="h-10 rounded-xl bg-red-600 px-4 font-black text-white">Correction Still Wrong</button></> : null}
           {recordLink && actor.role !== 'system_admin' ? <button type="button" onClick={() => { onClose(); navigate(recordLink) }} className="h-10 rounded-xl border border-slate-300 px-4 font-black text-slate-700"><FiExternalLink className="mr-2 inline" />Open Record</button> : null}
         </section>

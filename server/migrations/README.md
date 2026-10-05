@@ -58,3 +58,9 @@ Seller PRC/TIN uniqueness is enforced in the application (`server/services/selle
 `20261005_batch6_workflow_responders_and_approval_types.sql` adds `operational_reviews.approval_type` and the Audit Case responder reassignment columns, and backfills existing Super Admin reviews as emergency changes so open Audit Cases on them can be answered. The two `ADD CONSTRAINT` statements are the only non-idempotent lines; on a re-run their duplicate-name error can be ignored.
 
 Every action that creates an Operational Review must be registered in `server/config/reviewActions.js` with its department. `createOperationalReview()` rejects unregistered keys.
+
+## 2026-10-06 Batch 7: Marketing Network review permissions
+
+`20261006_batch7_marketing_network_permissions.sql` adds the Network-management and in-house seller create/edit permission keys to the `marketing_staff` and `marketing_head` role defaults. It is TiDB-safe and idempotent through `INSERT ... ON DUPLICATE KEY UPDATE`.
+
+The migration **does not modify existing `user_permissions` rows**. After deployment, use **System > Settings > Role & Access Control > Apply Latest Role Default** for each existing Marketing Staff/Head account that should receive the new defaults. Head inheritance remains structural in the application.

@@ -199,6 +199,7 @@ const UnitStatus = ({
   isAdjustingCommission = false,
   actorRole = '',
   workflowAuditCaseId = null,
+  autoOpenEdit = false,
   autoOpenCommissionAdjustment = false,
   readOnly = false,
 }) => {
@@ -208,6 +209,10 @@ const UnitStatus = ({
   const [confirmAction, setConfirmAction] = useState(null)
   const [pendingCancellationAuthorization, setPendingCancellationAuthorization] = useState(null)
   const [alert, setAlert] = useState(null)
+
+  useEffect(() => {
+    if (autoOpenEdit && canEditListing && !readOnly) setShowEditModal(true)
+  }, [autoOpenEdit, canEditListing, readOnly])
 
   useEffect(() => {
     if (autoOpenCommissionAdjustment && canAdjustCommission && !readOnly) setShowRecalculateModal(true)

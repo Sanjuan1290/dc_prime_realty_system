@@ -8,6 +8,13 @@ import {
 } from '../_shared/lotProject.shared.js';
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
 import {
+  assertEntityNotReviewLocked,
+  createOperationalReview,
+  getReturnedOperationalReviewForActor,
+  resubmitReturnedOperationalReview,
+} from '../../../services/operationalReview.service.js';
+import { getPendingAuditCorrectionCase, advanceAuditCaseToRecheck } from '../../../services/auditCaseAuthorization.service.js';
+import {
   buildPaymentProofFolder,
   sendAuthenticatedAssetContent,
   createAuthenticatedPaymentProofUploadSignature,
@@ -110,6 +117,63 @@ const getPaymentProofContext = async (connection, req) => {
   if (!payment) return { errorStatus: 404, errorMessage: 'Payment not found for this listing.' };
 
   return { project, payment };
+};
+
+const getActiveProofRows = async (connection, paymentId, { forUpdate = false } = {}) => {
+  const [rows] = await connection.query(
+    `SELECT * FROM lot_project_payment_proofs
+     WHERE lot_project_payment_id = ? AND proof_status = 'active'
+     ORDER BY lot_project_payment_proof_id ASC${forUpdate ? ' FOR UPDATE' : ''}`,
+    [Number(paymentId)]
+  );
+  return rows;
+};
+
+const proofSnapshot = (rows = []) => rows.map((row) => ({
+  proofId: Number(row.lot_project_payment_proof_id || 0),
+  fileName: row.file_name || null,
+  proofSequence: Number(row.proof_sequence || 0) || null,
+  proofStatus: row.proof_status || null,
+  malwareScanStatus: row.malware_scan_status || null,
+}));
+
+const getPaymentProofWorkflowContext = async (connection, req, paymentId) => {
+  const requestedReviewId = Number(req.body?.reviewId || req.body?.review_id || 0) || null;
+  let returnedReview = null;
+  let auditCase = null;
+  let allowReviewId = null;
+
+  if (req.authUser?.role === 'system_admin') {
+    auditCase = await getPendingAuditCorrectionCase(connection, {
+      auditCaseId: req.body?.auditCaseId || req.body?.audit_case_id,
+      entityType: 'lot_project_payment_proof',
+      entityId: paymentId,
+    });
+    if (!auditCase) {
+      throw Object.assign(new Error('A valid Auditor-approved case is required for a System Admin payment-proof correction.'), {
+        statusCode: 409,
+        code: 'AUDIT_CASE_REQUIRED',
+      });
+    }
+    allowReviewId = auditCase.operational_review_id;
+  } else if (req.authUser?.role === 'accounting_staff') {
+    returnedReview = await getReturnedOperationalReviewForActor(connection, {
+      actor: req.authUser,
+      actionKey: 'payment_proof.verify',
+      entityType: 'lot_project_payment_proof',
+      entityId: paymentId,
+      reviewId: requestedReviewId,
+    });
+    if (requestedReviewId && !returnedReview) {
+      throw Object.assign(new Error('This returned payment-proof review is no longer available for correction.'), {
+        statusCode: 409,
+        code: 'RETURNED_REVIEW_NOT_AVAILABLE',
+      });
+    }
+    allowReviewId = returnedReview?.operational_review_id || null;
+  }
+
+  return { returnedReview, auditCase, allowReviewId };
 };
 
 const mapProof = (req, row = {}) => ({
@@ -343,7 +407,30 @@ export const saveLotProjectPaymentProofs = async (req, res) => {
       });
     }
 
+    const paymentId = Number(context.payment.lot_project_payment_id);
     await connection.beginTransaction();
+    await connection.query(
+      `SELECT lot_project_payment_id FROM lot_project_payments WHERE lot_project_payment_id = ? AND lot_project_id = ? LIMIT 1 FOR UPDATE`,
+      [paymentId, context.project.lot_project_id]
+    );
+    const beforeRows = await getActiveProofRows(connection, paymentId, { forUpdate: true });
+    const workflowContext = await getPaymentProofWorkflowContext(connection, req, paymentId);
+    await assertEntityNotReviewLocked(connection, {
+      actor: req.authUser,
+      entityType: 'lot_project_payment_proof',
+      entityId: paymentId,
+      allowReviewId: workflowContext.allowReviewId,
+    });
+
+    const beforeSnapshot = {
+      projectSlug: clean(req.params.projectSlug),
+      listingId: Number(context.payment.lot_project_listing_id),
+      unitId: context.payment.lot_project_listing_unit_id || null,
+      paymentId,
+      referenceId: context.payment.lot_project_payment_reference_id || null,
+      proofs: proofSnapshot(beforeRows),
+    };
+
     const insertedIds = [];
     for (const { file, asset } of verified) {
       const [result] = await connection.query(
@@ -380,7 +467,7 @@ export const saveLotProjectPaymentProofs = async (req, res) => {
           context.payment.lot_project_listing_id,
           context.payment.lot_project_client_profile_id,
           context.payment.lot_project_account_id || null,
-          context.payment.lot_project_payment_id,
+          paymentId,
           file.fileName,
           file.storedFileName || file.fileName,
           Number(file.proofSequence || parsePaymentProofSequenceFromName(file.storedFileName) || 1),
@@ -404,24 +491,63 @@ export const saveLotProjectPaymentProofs = async (req, res) => {
       insertedIds.push(result.insertId);
     }
 
+    const afterRows = await getActiveProofRows(connection, paymentId);
+    const afterSnapshot = { ...beforeSnapshot, proofs: proofSnapshot(afterRows) };
+
     await writeAuditLog(connection, req, {
       action: 'create',
       module: 'Payments',
       entityType: 'lot_project_payment_proof',
-      entityId: String(context.payment.lot_project_payment_id),
-      entityLabel: `${context.payment.lot_project_payment_reference_id || `Payment #${context.payment.lot_project_payment_id}`} — ${context.payment.lot_project_listing_unit_id}`,
+      entityId: String(paymentId),
+      entityLabel: `${context.payment.lot_project_payment_reference_id || `Payment #${paymentId}`} — ${context.payment.lot_project_listing_unit_id}`,
       title: 'Uploaded payment proof',
       description: `Uploaded ${insertedIds.length} protected payment proof file(s).`,
       metadata: {
-        paymentId: context.payment.lot_project_payment_id,
+        paymentId,
         listingId: context.payment.lot_project_listing_id,
         proofIds: insertedIds,
         fileCount: insertedIds.length,
       },
     });
 
+    const entityLabel = `${context.payment.lot_project_payment_reference_id || `Payment #${paymentId}`} — ${context.payment.lot_project_listing_unit_id}`;
+    let workflow = null;
+    if (workflowContext.auditCase) {
+      workflow = await advanceAuditCaseToRecheck(connection, {
+        auditCase: workflowContext.auditCase,
+        actor: req.authUser,
+        correctionSummary: `Updated payment proof files for ${context.payment.lot_project_payment_reference_id || `payment #${paymentId}`}.`,
+        afterSnapshot,
+        metadata: { paymentId, proofIds: insertedIds, listingId: Number(context.payment.lot_project_listing_id) },
+        notificationTitle: `Payment-proof correction needs Auditor recheck · ${workflowContext.auditCase.case_number}`,
+      });
+    } else if (workflowContext.returnedReview) {
+      workflow = await resubmitReturnedOperationalReview(connection, {
+        review: workflowContext.returnedReview,
+        actor: req.authUser,
+        department: 'accounting',
+        projectId: context.project.lot_project_id,
+        entityLabel,
+        beforeSnapshot,
+        afterSnapshot,
+        message: 'Payment proof files corrected and resubmitted for Accounting Head review.',
+      });
+    } else {
+      workflow = await createOperationalReview(connection, {
+        actor: req.authUser,
+        actionKey: 'payment_proof.verify',
+        department: 'accounting',
+        projectId: context.project.lot_project_id,
+        entityType: 'lot_project_payment_proof',
+        entityId: paymentId,
+        entityLabel,
+        beforeSnapshot,
+        afterSnapshot,
+      });
+    }
+
     await connection.commit();
-    return res.status(201).json({ success: true, message: `${insertedIds.length} payment proof file(s) uploaded successfully.`, proofIds: insertedIds });
+    return res.status(201).json({ success: true, message: `${insertedIds.length} payment proof file(s) uploaded successfully.`, proofIds: insertedIds, review: workflow });
   } catch (error) {
     try { await connection.rollback(); } catch {}
     return res.status(error.statusCode || 500).json({ code: error.code || undefined, message: getErrorMessage(error) });
@@ -543,19 +669,38 @@ export const deleteLotProjectPaymentProof = async (req, res) => {
     const proofId = Number(req.params.proofId || 0);
     if (!proofId) return res.status(400).json({ message: 'Payment proof id is required.' });
 
+    const paymentId = Number(context.payment.lot_project_payment_id);
     await connection.beginTransaction();
     transactionStarted = true;
-
-    const [rows] = await connection.query(
-      `SELECT * FROM lot_project_payment_proofs WHERE lot_project_payment_proof_id = ? AND lot_project_payment_id = ? AND proof_status = 'active' LIMIT 1 FOR UPDATE`,
-      [proofId, context.payment.lot_project_payment_id]
+    await connection.query(
+      `SELECT lot_project_payment_id FROM lot_project_payments WHERE lot_project_payment_id = ? AND lot_project_id = ? LIMIT 1 FOR UPDATE`,
+      [paymentId, context.project.lot_project_id]
     );
-    const proof = rows[0];
+
+    const beforeRows = await getActiveProofRows(connection, paymentId, { forUpdate: true });
+    const proof = beforeRows.find((row) => Number(row.lot_project_payment_proof_id) === proofId) || null;
     if (!proof) {
       await connection.rollback();
       transactionStarted = false;
       return res.status(404).json({ message: 'Payment proof not found.' });
     }
+
+    const workflowContext = await getPaymentProofWorkflowContext(connection, req, paymentId);
+    await assertEntityNotReviewLocked(connection, {
+      actor: req.authUser,
+      entityType: 'lot_project_payment_proof',
+      entityId: paymentId,
+      allowReviewId: workflowContext.allowReviewId,
+    });
+
+    const beforeSnapshot = {
+      projectSlug: clean(req.params.projectSlug),
+      listingId: Number(context.payment.lot_project_listing_id),
+      unitId: context.payment.lot_project_listing_unit_id || null,
+      paymentId,
+      referenceId: context.payment.lot_project_payment_reference_id || null,
+      proofs: proofSnapshot(beforeRows),
+    };
 
     const cloudinaryCleanup = await destroyCloudinaryAssets([{
       publicId: proof.cloudinary_public_id,
@@ -575,6 +720,9 @@ export const deleteLotProjectPaymentProof = async (req, res) => {
       [user?.id || null, proofId]
     );
 
+    const afterRows = await getActiveProofRows(connection, paymentId);
+    const afterSnapshot = { ...beforeSnapshot, proofs: proofSnapshot(afterRows) };
+
     await writeAuditLog(connection, req, {
       action: 'delete',
       module: 'Payments',
@@ -582,9 +730,9 @@ export const deleteLotProjectPaymentProof = async (req, res) => {
       entityId: String(proofId),
       entityLabel: `${proof.file_name} — ${context.payment.lot_project_listing_unit_id}`,
       title: 'Removed payment proof',
-      description: `Removed payment proof ${proof.file_name} from payment ${context.payment.lot_project_payment_reference_id || context.payment.lot_project_payment_id} and deleted its Cloudinary asset.`,
+      description: `Removed payment proof ${proof.file_name} from payment ${context.payment.lot_project_payment_reference_id || paymentId} and deleted its Cloudinary asset.`,
       metadata: {
-        paymentId: context.payment.lot_project_payment_id,
+        paymentId,
         proofId,
         fileName: proof.file_name,
         cloudinaryPublicId: proof.cloudinary_public_id,
@@ -593,12 +741,49 @@ export const deleteLotProjectPaymentProof = async (req, res) => {
       },
     });
 
+    const entityLabel = `${context.payment.lot_project_payment_reference_id || `Payment #${paymentId}`} — ${context.payment.lot_project_listing_unit_id}`;
+    let workflow = null;
+    if (workflowContext.auditCase) {
+      workflow = await advanceAuditCaseToRecheck(connection, {
+        auditCase: workflowContext.auditCase,
+        actor: req.authUser,
+        correctionSummary: `Removed incorrect payment proof ${proof.file_name} from ${context.payment.lot_project_payment_reference_id || `payment #${paymentId}`}.`,
+        afterSnapshot,
+        metadata: { paymentId, proofId, listingId: Number(context.payment.lot_project_listing_id) },
+        notificationTitle: `Payment-proof correction needs Auditor recheck · ${workflowContext.auditCase.case_number}`,
+      });
+    } else if (workflowContext.returnedReview) {
+      workflow = await resubmitReturnedOperationalReview(connection, {
+        review: workflowContext.returnedReview,
+        actor: req.authUser,
+        department: 'accounting',
+        projectId: context.project.lot_project_id,
+        entityLabel,
+        beforeSnapshot,
+        afterSnapshot,
+        message: 'Payment proof files corrected and resubmitted for Accounting Head review.',
+      });
+    } else {
+      workflow = await createOperationalReview(connection, {
+        actor: req.authUser,
+        actionKey: 'payment_proof.verify',
+        department: 'accounting',
+        projectId: context.project.lot_project_id,
+        entityType: 'lot_project_payment_proof',
+        entityId: paymentId,
+        entityLabel,
+        beforeSnapshot,
+        afterSnapshot,
+      });
+    }
+
     await connection.commit();
     transactionStarted = false;
 
     return res.json({
       success: true,
       message: 'Payment proof removed successfully and deleted from Cloudinary.',
+      review: workflow,
       data: {
         cloudinaryDeletedCount: cloudinaryCleanup.deletedCount,
         cloudinaryAlreadyMissingCount: cloudinaryCleanup.alreadyMissingCount,

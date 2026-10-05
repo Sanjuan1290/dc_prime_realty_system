@@ -70,6 +70,13 @@ import {
 } from '../_shared/lotProject.shared.js';
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
 import { toFormalTitleCase } from '../_shared/buyerProfileText.js';
+import {
+  assertEntityNotReviewLocked,
+  createOperationalReview,
+  getReturnedOperationalReviewForActor,
+  resubmitReturnedOperationalReview,
+} from '../../../services/operationalReview.service.js';
+import { getPendingAuditCorrectionCase, advanceAuditCaseToRecheck } from '../../../services/auditCaseAuthorization.service.js';
 
 const cleanNamePart = (value) => toFormalTitleCase(value, 255);
 
@@ -364,7 +371,7 @@ export const updateLotProjectClientProfile = async (req, res) => {
 
     const [currentProfileRows] = await connection.query(
       `
-        SELECT lot_project_client_profile_id
+        SELECT *
         FROM lot_project_client_profiles
         WHERE lot_project_client_profile_id = ?
           AND lot_project_id = ?
@@ -375,12 +382,64 @@ export const updateLotProjectClientProfile = async (req, res) => {
       [clientProfileId, project.lot_project_id, listing.lot_project_listing_id]
     );
 
-    if (!currentProfileRows[0]) {
+    const currentProfile = currentProfileRows[0] || null;
+    if (!currentProfile) {
       await connection.rollback();
       return res.status(409).json({
         message: 'The buyer profile linked to the current account could not be found.',
       });
     }
+
+    const requestedReviewId = Number(req.body.reviewId || req.body.review_id || 0) || null;
+    let returnedReview = null;
+    let auditCase = null;
+    let allowReviewId = null;
+
+    if (req.authUser?.role === 'system_admin') {
+      auditCase = await getPendingAuditCorrectionCase(connection, {
+        auditCaseId: req.body.auditCaseId || req.body.audit_case_id,
+        entityType: 'lot_project_client_profile',
+        entityId: clientProfileId,
+      });
+      if (!auditCase) {
+        throw Object.assign(new Error('A valid Auditor-approved case is required for a System Admin buyer-profile correction.'), {
+          statusCode: 409,
+          code: 'AUDIT_CASE_REQUIRED',
+        });
+      }
+      allowReviewId = auditCase.operational_review_id;
+    } else if (req.authUser?.role === 'sales_staff') {
+      returnedReview = await getReturnedOperationalReviewForActor(connection, {
+        actor: req.authUser,
+        actionKey: 'buyer_profile.edit',
+        entityType: 'lot_project_client_profile',
+        entityId: clientProfileId,
+        reviewId: requestedReviewId,
+      });
+      if (requestedReviewId && !returnedReview) {
+        throw Object.assign(new Error('This returned buyer-profile review is no longer available for correction.'), {
+          statusCode: 409,
+          code: 'RETURNED_REVIEW_NOT_AVAILABLE',
+        });
+      }
+      allowReviewId = returnedReview?.operational_review_id || null;
+    }
+
+    await assertEntityNotReviewLocked(connection, {
+      actor: req.authUser,
+      entityType: 'lot_project_client_profile',
+      entityId: clientProfileId,
+      allowReviewId,
+    });
+
+    const beforeSnapshot = {
+      projectSlug: slug,
+      listingId: listing.lot_project_listing_id,
+      unitId: listing.lot_project_listing_unit_id,
+      accountId: currentAccountId,
+      clientProfileId,
+      profile: mapClientProfile(currentProfile),
+    };
 
     await connection.query(
       `
@@ -393,6 +452,19 @@ export const updateLotProjectClientProfile = async (req, res) => {
       `,
       [...values, clientProfileId, project.lot_project_id, listing.lot_project_listing_id]
     );
+
+    const [[updatedProfile]] = await connection.query(
+      `SELECT * FROM lot_project_client_profiles WHERE lot_project_client_profile_id = ? LIMIT 1`,
+      [clientProfileId]
+    );
+    const afterSnapshot = {
+      projectSlug: slug,
+      listingId: listing.lot_project_listing_id,
+      unitId: listing.lot_project_listing_unit_id,
+      accountId: currentAccountId,
+      clientProfileId,
+      profile: mapClientProfile(updatedProfile || currentProfile),
+    };
 
     await writeAuditLog(connection, req, {
       action: 'update',
@@ -410,16 +482,52 @@ export const updateLotProjectClientProfile = async (req, res) => {
       },
     });
 
+    let workflow = null;
+    if (auditCase) {
+      workflow = await advanceAuditCaseToRecheck(connection, {
+        auditCase,
+        actor: req.authUser,
+        correctionSummary: `Corrected buyer profile for ${buyerName}.`,
+        afterSnapshot,
+        metadata: { clientProfileId, listingId: listing.lot_project_listing_id },
+        notificationTitle: `Buyer-profile correction needs Auditor recheck · ${auditCase.case_number}`,
+      });
+    } else if (returnedReview) {
+      workflow = await resubmitReturnedOperationalReview(connection, {
+        review: returnedReview,
+        actor: req.authUser,
+        department: 'sales',
+        projectId: project.lot_project_id,
+        entityLabel: `${listing.lot_project_listing_unit_id} — ${buyerName}`,
+        beforeSnapshot,
+        afterSnapshot,
+        message: 'Buyer profile corrected and resubmitted for Sales Head review.',
+      });
+    } else {
+      workflow = await createOperationalReview(connection, {
+        actor: req.authUser,
+        actionKey: 'buyer_profile.edit',
+        department: 'sales',
+        projectId: project.lot_project_id,
+        entityType: 'lot_project_client_profile',
+        entityId: clientProfileId,
+        entityLabel: `${listing.lot_project_listing_unit_id} — ${buyerName}`,
+        beforeSnapshot,
+        afterSnapshot,
+      });
+    }
+
     await connection.commit();
 
     return res.json({
       success: true,
       message: `${buyerName} buyer profile saved successfully.`,
       listing_id: listing.lot_project_listing_id,
+      review: workflow,
     });
   } catch (error) {
     try { await connection.rollback(); } catch {}
-    return res.status(500).json({ message: getErrorMessage(error) });
+    return res.status(error?.statusCode || 500).json({ code: error?.code, message: getErrorMessage(error) });
   } finally {
     connection.release();
   }

@@ -47,16 +47,8 @@ const permissionCatalog = [
     ['Apply Audit-Approved Correction', PERMISSIONS.WORKFLOW_SYSTEM_CORRECTION_APPLY],
     ['Emergency Override', PERMISSIONS.WORKFLOW_EMERGENCY_OVERRIDE],
   ] },
-  { group: 'Accredited Sellers', kind: 'OPERATE', items: [
-    ['View', PERMISSIONS.SYSTEM_ACCREDITED_VIEW], ['Print', PERMISSIONS.SYSTEM_ACCREDITED_PRINT], ['Upload Proof of Income', PERMISSIONS.SYSTEM_ACCREDITED_UPLOAD_PROOF],
-    ['Create Accredited Seller', PERMISSIONS.SYSTEM_SELLERS_CREATE], ['Edit Accredited Seller', PERMISSIONS.SYSTEM_SELLERS_EDIT],
-  ] },
-  { group: 'Networks', kind: 'OPERATE', items: [
-    ['View Networks', PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW],
-    ['Create Network', PERMISSIONS.SYSTEM_NETWORKS_CREATE], ['Edit Network', PERMISSIONS.SYSTEM_NETWORKS_EDIT], ['Change Network Status', PERMISSIONS.SYSTEM_NETWORKS_STATUS],
-    ['Update Network Rates', PERMISSIONS.SYSTEM_NETWORK_RATES_UPDATE], ['Import Network Members', PERMISSIONS.SYSTEM_NETWORK_MEMBERS_IMPORT],
-    ['Legacy Full Network Management', PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE],
-  ] },
+  { group: 'Accredited Sellers', kind: 'OPERATE', items: [['View', PERMISSIONS.SYSTEM_ACCREDITED_VIEW], ['Print', PERMISSIONS.SYSTEM_ACCREDITED_PRINT], ['Upload Proof of Income', PERMISSIONS.SYSTEM_ACCREDITED_UPLOAD_PROOF]] },
+  { group: 'Seller Groups', kind: 'OPERATE', items: [['View', PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW], ['Manage', PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE]] },
   { group: 'Employees', kind: 'OPERATE', items: [['View', PERMISSIONS.EMPLOYEES_VIEW], ['Manage Employee Profile', PERMISSIONS.EMPLOYEES_MANAGE], ['Manage Compensation', PERMISSIONS.EMPLOYEE_COMPENSATION_MANAGE], ['Create Employment Change', PERMISSIONS.EMPLOYMENT_CHANGE_CREATE], ['View Employment History', PERMISSIONS.EMPLOYMENT_HISTORY_VIEW]] },
   { group: 'Employee Salary', kind: 'OPERATE', items: [['View Employee Salary', PERMISSIONS.EMPLOYEE_SALARY_VIEW], ['Generate Payroll', PERMISSIONS.PAYROLL_GENERATE], ['Recalculate Draft Payroll', PERMISSIONS.PAYROLL_RECALCULATE_DRAFT], ['Finalize Payroll', PERMISSIONS.PAYROLL_FINALIZE], ['Correct Finalized Payroll', PERMISSIONS.PAYROLL_CORRECT_FINALIZED], ['Mark Payroll as Released', PERMISSIONS.PAYROLL_RELEASE], ['View Payroll History', PERMISSIONS.PAYROLL_HISTORY_VIEW], ['Print Payroll Receipt', PERMISSIONS.PAYROLL_RECEIPT_PRINT], ['Export Payroll Receipt', PERMISSIONS.PAYROLL_RECEIPT_EXPORT], ['Export Payroll Summary', PERMISSIONS.PAYROLL_SUMMARY_EXPORT], ['Manage Payroll Settings', PERMISSIONS.PAYROLL_SETTINGS_MANAGE]] },
   { group: 'Attendance', kind: 'OPERATE', items: [['View', PERMISSIONS.ATTENDANCE_VIEW], ['Manage', PERMISSIONS.ATTENDANCE_MANAGE]] },
@@ -67,9 +59,9 @@ const permissionCatalog = [
 
 const actorCanManageRoleDefaults = (actor, role) => {
   if (actor?.role === 'super_admin') {
-    return [...ROLE_DEFAULT_EDITABLE_ROLES, 'auditor'].includes(role);
+    return [...ROLE_DEFAULT_EDITABLE_ROLES, 'system_admin', 'auditor'].includes(role);
   }
-  return actor?.role === 'system_admin' && [...ROLE_DEFAULT_EDITABLE_ROLES, 'auditor'].includes(role);
+  return actor?.role === 'system_admin' && ROLE_DEFAULT_EDITABLE_ROLES.includes(role);
 };
 
 const actorCanViewUserAccess = (actor, targetRole) => {
@@ -80,9 +72,7 @@ const actorCanViewUserAccess = (actor, targetRole) => {
 
 const actorCanManageUserAccess = (actor, targetRole) => {
   if (actor?.role === 'super_admin') return targetRole !== 'super_admin';
-  // Only Super Admin may change a System Admin's project scope. System Admin
-  // can administer every lower governance/department role, including Auditor.
-  return actor?.role === 'system_admin' && targetRole !== 'system_admin' && SYSTEM_ADMIN_MANAGEABLE_ROLES.includes(targetRole);
+  return actor?.role === 'system_admin' && SYSTEM_ADMIN_MANAGEABLE_ROLES.includes(targetRole);
 };
 
 export const getRoleAccessDefaults = async (req, res) => {

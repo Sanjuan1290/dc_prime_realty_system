@@ -56,14 +56,13 @@ test('System Admin can manage Staff/Head accounts but governance roles remain co
   assert.match(usersPage, /SYSTEM_ADMIN_MANAGEABLE_ROLES/);
 });
 
-test('Auditor core access stays enforced while whitelisted export/print extras are configurable by administrators', () => {
+test('Auditor core access stays enforced while only whitelisted export/print extras are configurable by Super Admin', () => {
   assert.match(permissions, /AUDITOR_ENFORCED_PERMISSIONS/);
   assert.match(permissions, /AUDITOR_OPTIONAL_PERMISSIONS/);
   assert.match(permissions, /if \(!AUDITOR_OPTIONAL_PERMISSIONS\.has\(permission\)\) return false/);
   assert.match(rolePolicies, /auditorCeiling/);
-  assert.match(accessController, /\[\.\.\.ROLE_DEFAULT_EDITABLE_ROLES, 'auditor'\]/);
+  assert.match(accessController, /\[\.\.\.ROLE_DEFAULT_EDITABLE_ROLES, 'system_admin', 'auditor'\]/);
   assert.match(accessController, /actor\?\.role === 'super_admin'/);
-  assert.match(accessController, /actor\?\.role === 'system_admin'/);
 });
 
 test('Head roles structurally inherit Staff defaults', () => {
@@ -83,9 +82,12 @@ test('Role & Access UI groups governance and department roles clearly', () => {
   assert.match(roleAccess, /auditor/);
   assert.match(roleAccess, /super_admin/);
   assert.match(permissionMatrix, /Required/);
+  // Intentional UI change: cross-department business access is warning-based,
+  // while only governance/security restrictions remain locked.
   assert.match(permissionMatrix, /From Staff Role/);
-  assert.doesNotMatch(permissionMatrix, />Inherited<\/span>/);
-  assert.match(permissionMatrix, /Not Allowed/);
+  assert.match(permissionMatrix, /Outside normal role/);
+  assert.match(permissionMatrix, /Restricted governance/);
+  assert.doesNotMatch(permissionMatrix, />Not Allowed</);
   assert.doesNotMatch(permissionMatrix, />Optional<\/span>/);
   assert.doesNotMatch(permissionMatrix, />Select All Optional<\/button>/);
   assert.doesNotMatch(permissionMatrix, />Clear Optional<\/button>/);

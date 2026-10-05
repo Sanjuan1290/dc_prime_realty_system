@@ -9,15 +9,15 @@ import {
 } from '../config/permissions.js';
 import { getStaticRolePolicy } from '../config/rolePolicies.js';
 
-test('System Admin has the full permission catalog as a fixed authority model', () => {
+// Intentional policy change: System Admin stays adjustable inside a safe governance ceiling, not the full catalog.
+test('System Admin has required governance baseline plus adjustable permissions within its safe ceiling', () => {
   const policy = getStaticRolePolicy('system_admin');
-  for (const permission of Object.values(PERMISSIONS)) {
-    assert.ok(policy.required.includes(permission), permission);
-    assert.ok(policy.ceiling.includes(permission), permission);
-  }
-  assert.equal(policy.fixed, true);
-  assert.ok(policy.required.includes(PERMISSIONS.SYSTEM_SETTINGS_MANAGE));
-  assert.ok(policy.required.includes(PERMISSIONS.WORKFLOW_EMERGENCY_OVERRIDE));
+  assert.ok(policy.required.includes(PERMISSIONS.SYSTEM_ACCESS_CONTROL_MANAGE));
+  assert.ok(policy.required.includes(PERMISSIONS.WORKFLOW_SYSTEM_CORRECTION_APPLY));
+  assert.ok(policy.ceiling.includes(PERMISSIONS.SYSTEM_REPORTS_VIEW));
+  assert.ok(!policy.required.includes(PERMISSIONS.SYSTEM_REPORTS_VIEW));
+  assert.ok(!policy.ceiling.includes(PERMISSIONS.SYSTEM_SETTINGS_MANAGE));
+  assert.ok(!policy.ceiling.includes(PERMISSIONS.WORKFLOW_EMERGENCY_OVERRIDE));
 });
 
 test('Auditor core permissions are mandatory and optional ceiling is export/print only', () => {

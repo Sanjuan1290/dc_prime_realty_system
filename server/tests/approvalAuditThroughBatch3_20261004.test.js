@@ -54,18 +54,22 @@ test('Auditor is enforced read-only for normal business permissions', () => {
   assert.ok(getAuditorEnforcedPermissions().includes(PERMISSIONS.WORKFLOW_AUDIT_CASE_CREATE));
 });
 
-test('System Admin can manage Auditor and department roles but cannot manage System Admin or Super Admin identities', () => {
+test('System Admin can manage department Staff/Head but not protected governance roles', () => {
   const actor = { role: 'system_admin' };
   assert.equal(canActorManageUserRole(actor, 'accounting_staff'), true);
   assert.equal(canActorManageUserRole(actor, 'accounting_head'), true);
-  assert.equal(canActorManageUserRole(actor, 'auditor'), true);
+  assert.equal(canActorManageUserRole(actor, 'auditor'), false);
   assert.equal(canActorManageUserRole(actor, 'system_admin'), false);
   assert.equal(canActorManageUserRole(actor, 'super_admin'), false);
   const policy = getStaticRolePolicy('system_admin');
-  for (const key of Object.values(PERMISSIONS)) {
-    assert.ok(policy.required.includes(key), key);
-    assert.ok(policy.ceiling.includes(key), key);
-  }
+  assert.ok(policy.required.includes(PERMISSIONS.WORKFLOW_SYSTEM_CORRECTION_APPLY));
+  assert.ok(policy.required.includes(PERMISSIONS.LOT_PAYMENTS_EDIT));
+  assert.ok(policy.required.includes(PERMISSIONS.LOT_PAYMENT_DELETE));
+  assert.ok(policy.required.includes(PERMISSIONS.LOT_RESERVATION_CORRECT));
+  assert.ok(policy.required.includes(PERMISSIONS.LOT_COMMISSIONS_ADJUST));
+  assert.ok(policy.required.includes(PERMISSIONS.LOT_PENALTY_CORRECT));
+  assert.ok(policy.required.includes(PERMISSIONS.LOT_SETTINGS_MANAGE));
+  assert.ok(!policy.ceiling.includes(PERMISSIONS.WORKFLOW_EMERGENCY_OVERRIDE));
 });
 
 test('Batch 2 creates reviews, immutable events and internal notifications', () => {
@@ -140,7 +144,8 @@ test('Payment correction UI sends Review/Audit Case IDs and supports direct auth
   assert.match(paymentUi, /paymentCorrectionAuthorization\?\.approved/);
   assert.match(paymentUi, /Check Correction Authority/);
   assert.match(paymentUi, /auditCaseId: paymentCorrectionAuthorization\?\.auditCaseId \|\| workflowAuditCaseId/);
-  assert.match(listingProfileUi, /\['payment_correction','penalty_adjustment','lmf_correction'\]\.includes\(workflowAction\)/);
+  // Batch 2 intentionally routes payment-proof review corrections through the same Payments tab.
+  assert.match(listingProfileUi, /\['payment_correction','penalty_adjustment','lmf_correction','payment_proof_review'\]\.includes\(workflowAction\)/);
 });
 
 test('Review Center preserves Batches 1-3 endpoints and adds Batch 4 protected-change approvals', () => {
@@ -156,8 +161,8 @@ test('Review Center preserves Batches 1-3 endpoints and adds Batch 4 protected-c
   assert.match(systemLayout, /Review Center/);
 });
 
-test('Role & Access UI includes the governance groups and clearer Staff-role inheritance wording', () => {
+test('Role & Access UI includes the new governance groups', () => {
   for (const label of ['SYSTEM','AUDIT','MARKETING','SALES','ACCOUNTING','OPERATIONS','OWNER']) assert.ok(roleAccessUi.includes(`'${label}'`), label);
   assert.match(roleAccessUi, /Auditor · Governed Global Read-Only/);
-  assert.match(roleAccessUi, /includes all access from/);
+  assert.match(roleAccessUi, /Head inheritance/);
 });

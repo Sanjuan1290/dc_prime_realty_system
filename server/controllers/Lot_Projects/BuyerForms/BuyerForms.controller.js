@@ -6,6 +6,7 @@ import {
   getProjectBySlug,
 } from '../_shared/lotProject.shared.js';
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
+import { assertEntityNotReviewLocked, createOperationalReview } from '../../../services/operationalReview.service.js';
 import {
   assertBuyerFormSchema,
   createBuyerFormToken,
@@ -490,6 +491,12 @@ export const rejectBuyerFormSubmission = async (req, res) => {
       return res.status(400).json({ message: 'The buyer form submission is no longer pending review.' });
     }
 
+    await assertEntityNotReviewLocked(connection, {
+      actor: req.authUser,
+      entityType: 'lot_project_buyer_form',
+      entityId: submissionId,
+    });
+
     const reason = safeReason(req.body.reason) || 'Rejected by admin.';
     await connection.query(
       `
@@ -541,6 +548,31 @@ export const rejectBuyerFormSubmission = async (req, res) => {
       title: 'Rejected buyer form submission',
       description: `Rejected the buyer form submission for ${listing.lot_project_listing_unit_id}.`,
       metadata: { reason, listingId: listing.lot_project_listing_id },
+    });
+
+    await createOperationalReview(connection, {
+      actor: req.authUser,
+      actionKey: 'buyer_form.approve',
+      department: 'sales',
+      projectId: project.lot_project_id,
+      entityType: 'lot_project_buyer_form',
+      entityId: submissionId,
+      entityLabel: `Buyer form · ${listing.lot_project_listing_unit_id} · ${submission.buyer_full_name || 'Buyer'}`,
+      beforeSnapshot: {
+        projectSlug: String(req.params.projectSlug || '').trim(),
+        listingId: listing.lot_project_listing_id,
+        unitId: listing.lot_project_listing_unit_id,
+        submissionId,
+        status: submission.submission_status,
+      },
+      afterSnapshot: {
+        projectSlug: String(req.params.projectSlug || '').trim(),
+        listingId: listing.lot_project_listing_id,
+        unitId: listing.lot_project_listing_unit_id,
+        submissionId,
+        status: 'rejected',
+        reason,
+      },
     });
 
     await connection.commit();

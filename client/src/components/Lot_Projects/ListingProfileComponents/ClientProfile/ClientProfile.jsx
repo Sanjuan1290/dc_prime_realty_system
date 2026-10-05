@@ -262,7 +262,7 @@ const PersonDetails = ({ title, data, second = false }) => {
   )
 }
 
-const ClientProfile = ({ client = fallbackClient, listing = {}, onSave, isSaving = false, readOnly = false }) => {
+const ClientProfile = ({ client = fallbackClient, listing = {}, onSave, isSaving = false, readOnly = false, autoOpenEdit = false }) => {
   const [profile, setProfile] = useState(() => buildProfile(client))
   const [showEditModal, setShowEditModal] = useState(false)
   const [alert, setAlert] = useState(null)
@@ -292,6 +292,10 @@ const ClientProfile = ({ client = fallbackClient, listing = {}, onSave, isSaving
     : listingStatusKey === 'hold'
       ? 'This unit is on hold. Reserve or sell this unit first before editing the buyer profile.'
       : 'Reserve this unit first before editing the buyer profile.'
+
+  useEffect(() => {
+    if (autoOpenEdit && isReservedListing) setShowEditModal(true)
+  }, [autoOpenEdit, isReservedListing])
 
   const profileIsIncomplete = useMemo(() => {
     const requiredFields = [...principalRequiredProfileFields]

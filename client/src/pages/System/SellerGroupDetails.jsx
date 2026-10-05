@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { NavLink, useLocation, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -227,6 +227,11 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
   const [showEditGroupModal, setShowEditGroupModal] = useState(false)
   const [range, setRange] = useState(defaultRange)
   const [isExportingMembers, setIsExportingMembers] = useState(false)
+  const workflowAutoOpenedRef = useRef(false)
+  const workflowAction = searchParams.get('workflowAction') || ''
+  const workflowReviewId = Number(searchParams.get('reviewId') || 0) || null
+  const workflowAuditCaseId = Number(searchParams.get('auditCaseId') || 0) || null
+  const workflowSellerId = Number(searchParams.get('sellerId') || 0) || null
   const selectedProjectId = Number(searchParams.get('project') || 0)
   const { data: currentUserData } = useCurrentUser()
   const actor = currentUserData?.user
@@ -338,6 +343,27 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
     () => members.find((member) => Number(member.user_id) === Number(group.headUserId || 0)) || null,
     [members, group.headUserId]
   )
+
+  useEffect(() => {
+    if (workflowAutoOpenedRef.current) return
+    if (['network_edit_review', 'network_status_review', 'network_rates_review'].includes(workflowAction) && configuration) {
+      workflowAutoOpenedRef.current = true
+      setShowEditGroupModal(true)
+      return
+    }
+    if (workflowAction === 'seller_edit_review' && workflowSellerId && members.length) {
+      const member = members.find((item) => Number(item.user_id) === workflowSellerId)
+      if (!member) return
+      workflowAutoOpenedRef.current = true
+      setSelectedMember({
+        ...member,
+        id: Number(member.user_id),
+        status: member.user_status || member.accredited_seller_status,
+        seller_group_id: Number(group.id || groupId),
+        reports_under_user_id: member.accredited_seller_reports_under_user_id || '',
+      })
+    }
+  }, [configuration, group.id, groupId, members, workflowAction, workflowSellerId])
   const analytics = analyticsQuery.data?.data?.summary || {}
   const recentSales = analyticsQuery.data?.data?.recentSales || []
   const filteredMembers = useMemo(() => {
@@ -1125,6 +1151,8 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
           actorRole={portalRole}
           initialSellerGroupId={String(group.id || groupId)}
           lockSellerGroup
+          workflowReviewId={workflowReviewId}
+          workflowAuditCaseId={workflowAuditCaseId}
           onSaved={(message) => {
             setSelectedMember(null)
             setAlert({ type: 'success', message })
@@ -1138,6 +1166,8 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
           setShowEditGroupModal={setShowEditGroupModal}
           selectedGroup={selectedGroupForEdit}
           groupType={groupType}
+          workflowReviewId={workflowReviewId}
+          workflowAuditCaseId={workflowAuditCaseId}
           onSaved={(message) => {
             setAlert({ type: 'success', message })
             refresh()

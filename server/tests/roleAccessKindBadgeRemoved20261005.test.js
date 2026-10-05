@@ -12,7 +12,10 @@ test('Role & Access permission group cards do not render READ/OPERATE/SYSTEM/REV
 test('Role & Access still renders group names and permission-state indicators', () => {
   assert.match(matrix, /\{group\.group\}/);
   assert.match(matrix, />Required</);
-  assert.match(matrix, />From Staff Role</);
-  assert.doesNotMatch(matrix, />Inherited</);
-  assert.match(matrix, />Not Allowed</);
+  // Intentional UI change: inherited access is labeled in plain language and
+  // normal cross-department permissions warn instead of being blocked.
+  assert.match(matrix, /From Staff Role/);
+  assert.match(matrix, /Outside normal role/);
+  assert.match(matrix, /Restricted governance/);
+  assert.doesNotMatch(matrix, />Not Allowed</);
 });

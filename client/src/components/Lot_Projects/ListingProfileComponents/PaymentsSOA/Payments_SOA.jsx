@@ -1386,6 +1386,15 @@ const PaymentsSOA = ({
     }
   }, [workflowAction, workflowPaymentId, canEdit, readOnly, paymentRecords])
 
+  useEffect(() => {
+    if (workflowAction !== 'payment_proof_review' || !workflowPaymentId || !canEdit || readOnly) return
+    const target = paymentRecords.find((payment) => Number(payment.paymentId || payment.id) === workflowPaymentId)
+    if (target) {
+      setPaymentProof(target)
+      setAlert({ type: 'info', message: `Payment-proof review opened for ${target.referenceId || target.payment_reference_id || workflowPaymentId}. Upload or remove the proof needed to correct this review.` })
+    }
+  }, [workflowAction, workflowPaymentId, canEdit, readOnly, paymentRecords])
+
   const handlePreviewPayment = (payload) =>
     useFetchPost(`/projects/lot-projects/${projectSlug}/listings/${listingId}/payments/preview`, payload, { confirmationHandled: 'technical' })
 
@@ -2112,6 +2121,8 @@ const PaymentsSOA = ({
           payment={paymentProof}
           readOnly={readOnly || !canEdit}
           canDelete={canDeletePaymentProof}
+          workflowReviewId={workflowReviewId || null}
+          workflowAuditCaseId={workflowAuditCaseId || null}
           onClose={() => setPaymentProof(null)}
           onChanged={refreshProfile}
           onCountChange={(count) => setPaymentProofCounts((current) => ({

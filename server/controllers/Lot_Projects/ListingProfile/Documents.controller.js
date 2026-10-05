@@ -31,6 +31,13 @@ import {
   resolveProjectStorageCode,
 } from '../../../services/storageCodes.service.js';
 import { resolveDocumentRequiredFlag, resolveDocumentResponsibleParty } from '../../../utils/documentRequirement.js';
+import {
+  assertEntityNotReviewLocked,
+  createOperationalReview,
+  getReturnedOperationalReviewForActor,
+  resubmitReturnedOperationalReview,
+} from '../../../services/operationalReview.service.js';
+import { getPendingAuditCorrectionCase, advanceAuditCaseToRecheck } from '../../../services/auditCaseAuthorization.service.js';
 
 const normalizeUploadedDocumentFiles = (body = {}) => {
   const rawFiles = Array.isArray(body.files)
@@ -215,7 +222,7 @@ export const updateLotProjectListingDocumentRequirements = async (req, res) => {
     const lookup = getListingLookupWhere(listingLookup);
     const [listingRows] = await connection.query(
       `
-        SELECT lot_project_listing_id, lot_project_listing_status
+        SELECT lot_project_listing_id, lot_project_listing_unit_id, lot_project_listing_status
         FROM lot_project_listings l
         WHERE l.lot_project_id = ?
           AND ${lookup.sql}
@@ -257,6 +264,43 @@ export const updateLotProjectListingDocumentRequirements = async (req, res) => {
     const cleanDocuments = [...documentMap.values()];
 
     await connection.beginTransaction();
+
+    const [beforeRows] = await connection.query(
+      `SELECT document_id, lot_project_listing_document_is_required AS is_required,
+              lot_project_listing_document_responsible_party AS responsible_party,
+              lot_project_listing_document_status AS status
+       FROM lot_project_listing_documents
+       WHERE lot_project_id = ? AND lot_project_listing_id = ?
+       ORDER BY document_id`,
+      [project.lot_project_id, listing.lot_project_listing_id]
+    );
+
+    let auditCase = null;
+    let returnedReview = null;
+    if (req.authUser?.role === 'system_admin') {
+      auditCase = await getPendingAuditCorrectionCase(connection, {
+        auditCaseId: req.body?.auditCaseId,
+        entityType: 'lot_project_listing',
+        entityId: listing.lot_project_listing_id,
+      });
+      if (!auditCase) {
+        throw Object.assign(new Error('System Admin may change listing document requirements only for an Auditor-approved correction case.'), { statusCode: 403, code: 'AUDIT_CORRECTION_REQUIRED' });
+      }
+    } else {
+      returnedReview = await getReturnedOperationalReviewForActor(connection, {
+        actor: req.authUser,
+        actionKey: 'listing.documents.update',
+        entityType: 'lot_project_listing',
+        entityId: listing.lot_project_listing_id,
+        reviewId: req.body?.reviewId,
+      });
+    }
+    await assertEntityNotReviewLocked(connection, {
+      actor: req.authUser,
+      entityType: 'lot_project_listing',
+      entityId: listing.lot_project_listing_id,
+      allowReviewId: auditCase?.operational_review_id || returnedReview?.operational_review_id || null,
+    });
 
     if (cleanDocuments.length > 0) {
       await connection.query(
@@ -307,16 +351,72 @@ export const updateLotProjectListingDocumentRequirements = async (req, res) => {
       );
     }
 
+    const beforeSnapshot = {
+      projectSlug: slug,
+      listingId: listing.lot_project_listing_id,
+      unitCode: listing.lot_project_listing_unit_id,
+      documents: beforeRows.map((row) => ({
+        documentId: Number(row.document_id),
+        isRequired: Number(row.is_required || 0),
+        responsibleParty: row.responsible_party,
+        status: row.status,
+      })),
+    };
+    const afterSnapshot = {
+      projectSlug: slug,
+      listingId: listing.lot_project_listing_id,
+      unitCode: listing.lot_project_listing_unit_id,
+      documents: cleanDocuments.map((row) => ({
+        documentId: Number(row.document_id),
+        isRequired: Number(row.is_required || 0),
+        responsibleParty: row.responsible_party,
+        status: row.status,
+      })),
+    };
+    let workflow = null;
+    if (auditCase) {
+      workflow = await advanceAuditCaseToRecheck(connection, {
+        auditCase,
+        actor: req.authUser,
+        correctionSummary: String(req.body?.correctionSummary || 'Corrected listing document requirements from the Audit Case.').trim(),
+        afterSnapshot,
+        metadata: { actionKey: 'listing.documents.update' },
+      });
+    } else if (returnedReview) {
+      workflow = await resubmitReturnedOperationalReview(connection, {
+        review: returnedReview,
+        actor: req.authUser,
+        department: 'operations',
+        projectId: project.lot_project_id,
+        entityLabel: `Unit ${listing.lot_project_listing_unit_id} — ${project.lot_project_name}`,
+        beforeSnapshot,
+        afterSnapshot,
+      });
+    } else {
+      workflow = await createOperationalReview(connection, {
+        actor: req.authUser,
+        actionKey: 'listing.documents.update',
+        department: 'operations',
+        projectId: project.lot_project_id,
+        entityType: 'lot_project_listing',
+        entityId: listing.lot_project_listing_id,
+        entityLabel: `Unit ${listing.lot_project_listing_unit_id} — ${project.lot_project_name}`,
+        beforeSnapshot,
+        afterSnapshot,
+      });
+    }
+
     await connection.commit();
 
     return res.json({
       success: true,
       message: 'Document requirements updated successfully.',
       document_count: cleanDocuments.length,
+      review: workflow,
     });
   } catch (error) {
     await connection.rollback();
-    return res.status(500).json({ message: getErrorMessage(error) });
+    return res.status(error?.statusCode || 500).json({ message: getErrorMessage(error) });
   } finally {
     connection.release();
   }

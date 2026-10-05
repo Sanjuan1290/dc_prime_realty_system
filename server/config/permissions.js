@@ -1,5 +1,5 @@
-// Central permission names. Super Admin and System Admin have full system permission coverage.
-// System Admin remains project-scoped: project access decides where project-level powers apply.
+// Central permission names. Super Admin always has all permissions; every other
+// internal system account is evaluated from its database-backed user_permissions rows.
 export const PERMISSIONS = Object.freeze({
   SYSTEM_DASHBOARD_VIEW: 'system.dashboard.view',
   SYSTEM_REPORTS_VIEW: 'system.reports.view',
@@ -14,13 +14,6 @@ export const PERMISSIONS = Object.freeze({
   SYSTEM_ACCREDITED_UPLOAD_PROOF: 'system.accredited.upload_proof',
   SYSTEM_SELLER_GROUPS_VIEW: 'system.seller_groups.view',
   SYSTEM_SELLER_GROUPS_MANAGE: 'system.seller_groups.manage',
-  SYSTEM_NETWORKS_CREATE: 'system.networks.create',
-  SYSTEM_NETWORKS_EDIT: 'system.networks.edit',
-  SYSTEM_NETWORKS_STATUS: 'system.networks.status',
-  SYSTEM_NETWORK_RATES_UPDATE: 'system.networks.rates.update',
-  SYSTEM_NETWORK_MEMBERS_IMPORT: 'system.networks.members.import',
-  SYSTEM_SELLERS_CREATE: 'system.sellers.create',
-  SYSTEM_SELLERS_EDIT: 'system.sellers.edit',
   SYSTEM_DOCUMENTS_VIEW: 'system.documents.view',
   SYSTEM_DOCUMENTS_CREATE: 'system.documents.create',
   SYSTEM_DOCUMENTS_EDIT: 'system.documents.edit',
@@ -147,7 +140,6 @@ export const ROLE_DEFAULT_EDITABLE_ROLES = Object.freeze([
 ]);
 
 export const SYSTEM_ADMIN_MANAGEABLE_ROLES = Object.freeze([
-  'auditor',
   ...DEPARTMENT_STAFF_ROLES,
   ...DEPARTMENT_HEAD_ROLES,
 ]);
@@ -295,14 +287,13 @@ export const isDepartmentHead = (userOrRole) => DEPARTMENT_HEAD_ROLES.includes(n
 export const isDepartmentStaff = (userOrRole) => DEPARTMENT_STAFF_ROLES.includes(normalizeActor(userOrRole).role);
 export const getRoleDepartment = (userOrRole) => ROLE_DEPARTMENT[normalizeActor(userOrRole).role] || null;
 
-// Full operational/system access. Super Admin is the owner account; System Admin is the
-// day-to-day administrator. Project scope still limits System Admin on project-level routes.
-export const isFullAccessAdministrator = (userOrRole = {}) => ['super_admin', 'system_admin'].includes(normalizeActor(userOrRole).role);
+// Full-access means owner-level break-glass bypass. System Admin is intentionally NOT included.
+export const isFullAccessAdministrator = (userOrRole = {}) => normalizeActor(userOrRole).role === 'super_admin';
 
 export const roleHasPermission = (userOrRole, permission) => {
   if (!permission) return false;
   const actor = normalizeActor(userOrRole);
-  if (['super_admin', 'system_admin'].includes(actor.role)) return allPermissions.has(permission);
+  if (actor.role === 'super_admin') return allPermissions.has(permission);
   if (actor.role === 'auditor') {
     if (AUDITOR_ENFORCED_PERMISSIONS.has(permission)) return true;
     if (!AUDITOR_OPTIONAL_PERMISSIONS.has(permission)) return false;
@@ -316,12 +307,11 @@ export const canActorManageUserRole = (userOrRole, targetRole) => {
   const target = String(targetRole || '');
   if (!knownUserRoles.has(target)) return false;
   if (actor.role === 'super_admin') return true;
-  if (SELLER_USER_ROLES.includes(target)) {
-    return roleHasPermission(actor, PERMISSIONS.SYSTEM_SELLERS_EDIT)
-      || roleHasPermission(actor, PERMISSIONS.SYSTEM_USERS_EDIT);
+  if ([...DEPARTMENT_STAFF_ROLES, ...DEPARTMENT_HEAD_ROLES].includes(actor.role) && SELLER_USER_ROLES.includes(target)) {
+    return roleHasPermission(actor, PERMISSIONS.SYSTEM_USERS_EDIT);
   }
   if (actor.role !== 'system_admin') return false;
-  return target !== 'super_admin' && SYSTEM_ADMIN_MANAGEABLE_ROLES.includes(target);
+  return SYSTEM_ADMIN_MANAGEABLE_ROLES.includes(target);
 };
 
 export const canActorCreateUserRole = (userOrRole, requestedRole) => {
@@ -329,12 +319,11 @@ export const canActorCreateUserRole = (userOrRole, requestedRole) => {
   const requested = String(requestedRole || '');
   if (!knownUserRoles.has(requested)) return false;
   if (actor.role === 'super_admin') return SYSTEM_USER_ROLES.includes(requested) || SELLER_USER_ROLES.includes(requested) || requested === 'external_group';
-  if (SELLER_USER_ROLES.includes(requested)) {
-    return roleHasPermission(actor, PERMISSIONS.SYSTEM_SELLERS_CREATE)
-      || roleHasPermission(actor, PERMISSIONS.SYSTEM_USERS_CREATE);
+  if ([...DEPARTMENT_STAFF_ROLES, ...DEPARTMENT_HEAD_ROLES].includes(actor.role) && SELLER_USER_ROLES.includes(requested)) {
+    return roleHasPermission(actor, PERMISSIONS.SYSTEM_USERS_CREATE);
   }
   if (actor.role !== 'system_admin') return false;
-  return requested !== 'super_admin' && SYSTEM_ADMIN_MANAGEABLE_ROLES.includes(requested);
+  return SYSTEM_ADMIN_MANAGEABLE_ROLES.includes(requested);
 };
 
 export const canActorChangeUserRole = (userOrRole, currentRole, requestedRole) => {
@@ -346,19 +335,15 @@ export const canActorChangeUserRole = (userOrRole, currentRole, requestedRole) =
 
   // Accredited-seller hierarchy keeps its own legacy behavior.
   if (!SYSTEM_USER_ROLES.includes(current) && !SYSTEM_USER_ROLES.includes(requested)) {
-    return actor.role === 'super_admin'
-      || roleHasPermission(actor, PERMISSIONS.SYSTEM_SELLERS_EDIT)
-      || roleHasPermission(actor, PERMISSIONS.SYSTEM_USERS_EDIT);
+    return actor.role === 'super_admin' || roleHasPermission(actor, PERMISSIONS.SYSTEM_USERS_EDIT);
   }
 
   if (actor.role === 'super_admin') return current !== 'super_admin';
   if (actor.role !== 'system_admin') return false;
-  return current !== 'super_admin' && requested !== 'super_admin'
-    && SYSTEM_ADMIN_MANAGEABLE_ROLES.includes(current) && SYSTEM_ADMIN_MANAGEABLE_ROLES.includes(requested);
+  return SYSTEM_ADMIN_MANAGEABLE_ROLES.includes(current) && SYSTEM_ADMIN_MANAGEABLE_ROLES.includes(requested);
 };
 
 export const ROLE_PERMISSIONS = Object.freeze({
   super_admin: allPermissions,
-  system_admin: allPermissions,
   auditor: AUDITOR_ALLOWED_PERMISSIONS,
 });

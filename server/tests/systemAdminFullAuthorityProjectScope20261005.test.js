@@ -3,82 +3,49 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   PERMISSIONS,
-  SYSTEM_ADMIN_MANAGEABLE_ROLES,
+  canActorManageUserRole,
   isFullAccessAdministrator,
   roleHasPermission,
 } from '../config/permissions.js';
 import { getStaticRolePolicy } from '../config/rolePolicies.js';
-import { authorizeGovernedAction } from '../services/governedAction.service.js';
 
-const read = (relative) => readFileSync(new URL(`../${relative}`, import.meta.url), 'utf8');
-const readClient = (relative) => readFileSync(new URL(`../../client/src/${relative}`, import.meta.url), 'utf8');
+const read = (relativePath) => readFileSync(new URL(`../${relativePath}`, import.meta.url), 'utf8');
+const workflowService = read('services/operationalReview.service.js');
 
-test('System Admin has the full permission catalog while Super Admin identity remains protected', () => {
-  const systemAdmin = { id: 22, role: 'system_admin', permissions: [] };
-  assert.equal(isFullAccessAdministrator(systemAdmin), true);
-  for (const permission of Object.values(PERMISSIONS)) {
-    assert.equal(roleHasPermission(systemAdmin, permission), true, permission);
-  }
+// Intentional rule change: the former "System Admin = full authority" model was
+// retired by the Staff/Head/Auditor redesign. Super Admin is the only break-glass
+// full-access identity; System Admin is permission-backed and handles governed
+// administration plus Auditor-authorized corrections.
+test('Super Admin is the only full-access identity while System Admin remains permission-backed', () => {
+  assert.equal(isFullAccessAdministrator({ role: 'super_admin' }), true);
+  assert.equal(isFullAccessAdministrator({ role: 'system_admin' }), false);
+  assert.equal(roleHasPermission({ role: 'system_admin', permissions: [] }, PERMISSIONS.SYSTEM_REPORTS_VIEW), false);
+  assert.equal(roleHasPermission({ role: 'system_admin', permissions: [PERMISSIONS.SYSTEM_REPORTS_VIEW] }, PERMISSIONS.SYSTEM_REPORTS_VIEW), true);
+});
+
+test('System Admin ceiling contains governed correction authority but excludes owner and Auditor authority', () => {
   const policy = getStaticRolePolicy('system_admin');
-  assert.deepEqual(new Set(policy.ceiling), new Set(Object.values(PERMISSIONS)));
-  assert.deepEqual(new Set(policy.required), new Set(Object.values(PERMISSIONS)));
-  assert.equal(policy.fixed, true);
-  assert.ok(SYSTEM_ADMIN_MANAGEABLE_ROLES.includes('auditor'));
-  assert.ok(!SYSTEM_ADMIN_MANAGEABLE_ROLES.includes('system_admin'));
-  assert.ok(!SYSTEM_ADMIN_MANAGEABLE_ROLES.includes('super_admin'));
+  assert.ok(policy.required.includes(PERMISSIONS.SYSTEM_ACCESS_CONTROL_MANAGE));
+  assert.ok(policy.required.includes(PERMISSIONS.WORKFLOW_SYSTEM_CORRECTION_APPLY));
+  assert.ok(policy.ceiling.includes(PERMISSIONS.SYSTEM_REPORTS_VIEW));
+  assert.equal(policy.ceiling.includes(PERMISSIONS.SYSTEM_SETTINGS_MANAGE), false);
+  assert.equal(policy.ceiling.includes(PERMISSIONS.AUDIT_LOGS_ARCHIVE), false);
+  assert.equal(policy.ceiling.includes(PERMISSIONS.WORKFLOW_AUDIT_REVIEW), false);
+  assert.equal(policy.ceiling.includes(PERMISSIONS.WORKFLOW_EMERGENCY_OVERRIDE), false);
 });
 
-test('System Admin is project-scoped while Super Admin and Auditor remain global', () => {
-  const projectAccess = read('services/projectAccess.service.js');
-  const auth = read('middleware/auth.middleware.js');
-  assert.match(projectAccess, /hasForcedAllProjectsAccess[\s\S]*\['super_admin', 'auditor'\]/);
-  assert.doesNotMatch(projectAccess, /hasForcedAllProjectsAccess[\s\S]*\['super_admin', 'system_admin', 'auditor'\]/);
-  assert.match(auth, /\['super_admin','auditor'\]\.includes\(req\.authUser\?\.role\)/);
+test('System Admin can manage department Staff/Head but protected governance identities stay owner-controlled', () => {
+  const actor = { role: 'system_admin' };
+  assert.equal(canActorManageUserRole(actor, 'marketing_staff'), true);
+  assert.equal(canActorManageUserRole(actor, 'sales_head'), true);
+  assert.equal(canActorManageUserRole(actor, 'auditor'), false);
+  assert.equal(canActorManageUserRole(actor, 'system_admin'), false);
+  assert.equal(canActorManageUserRole(actor, 'super_admin'), false);
 });
 
-test('Super Admin can assign System Admin project scope in account access UI', () => {
-  const create = readClient('components/System/userComponents/CreateSystemUserModal.jsx');
-  const access = readClient('components/System/userComponents/UserAccessModal.jsx');
-  const changePosition = readClient('components/System/userComponents/ChangePositionModal.jsx');
-  const users = readClient('pages/System/Users.jsx');
-  assert.match(create, /enabled: canCreateSystemUsers && !\['super_admin','auditor'\]\.includes\(form\.role\)/);
-  assert.match(create, /all_projects_access: \['super_admin','auditor'\]\.includes\(form\.role\) \? true : allProjects/);
-  assert.match(access, /const forcedAllProjects = \['super_admin', 'auditor'\]\.includes\(user\.role\)/);
-  assert.match(access, /System Admin has every system permission\. Super Admin controls which projects this account can operate on\./);
-  assert.match(changePosition, /const forcedAll = role === 'auditor'/);
-  assert.match(users, /\['super_admin','auditor'\]\.includes\(user\.role\) \|\| user\.all_projects_access/);
-});
-
-test('Role & Access uses From Staff Role instead of Inherited wording', () => {
-  const matrix = readClient('components/System/userComponents/PermissionMatrix.jsx');
-  const roleAccess = readClient('components/System/settingsComponents/RoleAccessControl.jsx');
-  assert.match(matrix, /From Staff Role/);
-  assert.doesNotMatch(matrix, />Inherited<\/span>/);
-  assert.match(roleAccess, /includes all access from/);
-});
-
-test('System Admin can perform protected governed actions directly and still goes to audit', async () => {
-  const result = await authorizeGovernedAction({}, {
-    actor: { id: 22, role: 'system_admin' },
-    actionKey: 'payment.edit',
-    projectId: 7,
-    entityId: 99,
-    payload: { amount: 1000 },
-  });
-  assert.equal(result.authorized, true);
-  assert.equal(result.authorizationType, 'system_admin_direct');
-  const reviewService = read('services/operationalReview.service.js');
-  assert.match(reviewService, /SYSTEM_ADMIN_DIRECT: 'system_admin_direct'/);
-  assert.match(reviewService, /was entered by System Admin and needs independent audit/);
-});
-
-test('formerly owner-only operational tools accept System Admin authority', () => {
-  for (const file of ['routers/System/systemSettings.routers.js','routers/System/auditLogs.router.js','routers/System/projects.routers.js']) {
-    const source = read(file);
-    assert.match(source, /requireExactRole\('super_admin','system_admin'\)/, file);
-  }
-  const settingsPage = readClient('pages/System/Settings.jsx');
-  const auditPage = readClient('pages/System/AuditLogs.jsx');
-  assert.match(settingsPage, /\['super_admin','system_admin'\]\.includes\(actor\.role\)/);
-  assert.match(auditPage, /\['super_admin','system_admin'\]\.includes\(currentUserData\?\.user\?\.role\)/);
+test('governed actions distinguish Head approval and Super Admin emergency instead of System Admin direct approval', () => {
+  assert.match(workflowService, /EMERGENCY_SUPER_ADMIN: 'emergency_super_admin'/);
+  assert.match(workflowService, /HEAD_PREAPPROVED: 'head_preapproved'/);
+  assert.doesNotMatch(workflowService, /SYSTEM_ADMIN_DIRECT: 'system_admin_direct'/);
+  assert.match(workflowService, /actor\.role === 'super_admin'/);
 });

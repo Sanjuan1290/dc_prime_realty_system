@@ -134,6 +134,7 @@ const ListingProfile = () => {
   const canReleaseCancelledUnit = hasPermission(user, PERMISSIONS.LOT_CANCELLATIONS_RELEASE_UNIT)
   const canCorrectReservation = hasPermission(user, PERMISSIONS.LOT_RESERVATION_CORRECT)
   const workflowAuditCaseId = Number(searchParams.get('auditCaseId') || 0)
+  const workflowReviewId = Number(searchParams.get('reviewId') || 0)
   const workflowAction = String(searchParams.get('workflowAction') || '').trim()
   const isAccountRoute = Boolean(accountId)
   const profileKey = ['lot-listing-profile', projectSlug, listingId, accountId || 'current']
@@ -142,13 +143,11 @@ const ListingProfile = () => {
     : `/projects/lot-projects/${projectSlug}/listings/${listingId}`
 
   const [activeTab, setActiveTab] = useState(
-    ['payment_correction','penalty_adjustment','lmf_correction'].includes(workflowAction)
+    ['payment_correction','penalty_adjustment','lmf_correction','payment_proof_review'].includes(workflowAction)
       ? 'payments'
-      : workflowAction === 'buyer_profile_edit'
+      : workflowAction === 'buyer_profile_edit_review'
         ? 'client'
-        : workflowAction === 'listing_documents_update'
-          ? 'documents'
-          : 'unit'
+        : 'unit'
   )
   const [showReserveModal, setShowReserveModal] = useState(false)
   const [reserveMode, setReserveMode] = useState('manual')
@@ -190,10 +189,10 @@ const ListingProfile = () => {
   const account = profile.account || null
   const readOnly = Boolean(profile.readOnly)
   useEffect(() => {
-    if (['payment_correction','penalty_adjustment','lmf_correction'].includes(workflowAction)) setActiveTab('payments')
-    if (workflowAction === 'buyer_profile_edit') setActiveTab('client')
-    if (workflowAction === 'listing_documents_update') setActiveTab('documents')
-    if (['commission_adjustment','listing_edit_review'].includes(workflowAction)) setActiveTab('unit')
+    if (['payment_correction','penalty_adjustment','lmf_correction','payment_proof_review'].includes(workflowAction)) setActiveTab('payments')
+    if (workflowAction === 'signed_receipt_review') setActiveTab('printouts')
+    if (workflowAction === 'buyer_profile_edit_review') setActiveTab('client')
+    if (workflowAction === 'commission_adjustment') setActiveTab('unit')
     if (workflowAction === 'reservation_correction' && canCorrectReservation && !readOnly) {
       setActiveTab('unit')
       setShowReservationCorrectionModal(true)
@@ -271,10 +270,14 @@ const ListingProfile = () => {
 
   const updateListingMutation = useMutation({
     mutationFn: (payload) => {
-      const requestPayload = workflowAction === 'listing_edit_review' && workflowAuditCaseId
-        ? { ...payload, auditCaseId: workflowAuditCaseId }
+      const workflowPayload = ['listing_edit_review', 'listing_documents_update_review'].includes(workflowAction)
+        ? {
+            ...payload,
+            ...(workflowReviewId ? { reviewId: workflowReviewId } : {}),
+            ...(workflowAuditCaseId ? { auditCaseId: workflowAuditCaseId } : {}),
+          }
         : payload
-      return useFetchPut(`/projects/lot-projects/${projectSlug}/listings/${listingId}`, requestPayload, {
+      return useFetchPut(`/projects/lot-projects/${projectSlug}/listings/${listingId}`, workflowPayload, {
         doubleCheck: {
           type: 'listing',
           mode: 'edit',
@@ -599,7 +602,8 @@ const ListingProfile = () => {
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/document-requirements`,
         {
           documents: nextDocuments,
-          ...(workflowAction === 'listing_documents_update' && workflowAuditCaseId ? { auditCaseId: workflowAuditCaseId } : {}),
+          ...(['listing_documents_update_review', 'listing_edit_review'].includes(workflowAction) && workflowReviewId ? { reviewId: workflowReviewId } : {}),
+          ...(['listing_documents_update_review', 'listing_edit_review'].includes(workflowAction) && workflowAuditCaseId ? { auditCaseId: workflowAuditCaseId } : {}),
         },
         {
           doubleCheck: {
@@ -627,11 +631,15 @@ const ListingProfile = () => {
 
   const updateClientProfileMutation = useMutation({
     mutationFn: (payload) => {
-      const requestPayload = workflowAction === 'buyer_profile_edit' && workflowAuditCaseId
-        ? { ...payload, auditCaseId: workflowAuditCaseId }
+      const workflowPayload = workflowAction === 'buyer_profile_edit_review'
+        ? {
+            ...payload,
+            ...(workflowReviewId ? { reviewId: workflowReviewId } : {}),
+            ...(workflowAuditCaseId ? { auditCaseId: workflowAuditCaseId } : {}),
+          }
         : payload
-      return useFetchPut(`/projects/lot-projects/${projectSlug}/listings/${listingId}/client-profile`, requestPayload, {
-        doubleCheck: { type: 'buyer-profile', mode: 'edit', data: requestPayload },
+      return useFetchPut(`/projects/lot-projects/${projectSlug}/listings/${listingId}/client-profile`, workflowPayload, {
+        doubleCheck: { type: 'buyer-profile', mode: 'edit', data: payload },
       })
     },
     onMutate: (payload) => {
@@ -904,6 +912,7 @@ const ListingProfile = () => {
           isAdjustingCommission={adjustCommissionMutation.isPending}
           actorRole={user?.role || ''}
           workflowAuditCaseId={workflowAuditCaseId || null}
+          autoOpenEdit={['listing_edit_review', 'listing_documents_update_review'].includes(workflowAction)}
           autoOpenCommissionAdjustment={workflowAction === 'commission_adjustment'}
           readOnly={readOnly}
         />
@@ -916,7 +925,7 @@ const ListingProfile = () => {
           onSave={(payload) => updateClientProfileMutation.mutateAsync(payload)}
           isSaving={updateClientProfileMutation.isPending}
           readOnly={readOnly || !canEditBuyerProfile}
-          autoOpenEdit={workflowAction === 'buyer_profile_edit'}
+          autoOpenEdit={workflowAction === 'buyer_profile_edit_review'}
         />
       ) : null}
 
@@ -967,7 +976,7 @@ const ListingProfile = () => {
         <AccountHistoryPanel
           projectSlug={projectSlug}
           listingId={listingId}
-          canPermanentlyDelete={['super_admin','system_admin'].includes(currentUserData?.user?.role)}
+          isSuperAdmin={currentUserData?.user?.role === 'super_admin'}
         />
       ) : null}
 
@@ -982,6 +991,10 @@ const ListingProfile = () => {
           documents={documents}
           account={account}
           readOnly={readOnly}
+          autoOpenAcknowledgements={workflowAction === 'signed_receipt_review'}
+          workflowPaymentId={Number(searchParams.get('paymentId') || 0)}
+          workflowReviewId={workflowReviewId || null}
+          workflowAuditCaseId={workflowAuditCaseId || null}
         />
       ) : null}
       </TabErrorBoundary>

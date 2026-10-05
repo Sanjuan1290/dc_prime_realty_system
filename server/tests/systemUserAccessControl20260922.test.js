@@ -29,10 +29,13 @@ test('system roles and account codes follow the Staff/Head governance model', ()
   assert.match(batch1, /division_manager[\s\S]*sales_director[\s\S]*unit_manager[\s\S]*sales_agent[\s\S]*external_group/);
 });
 
-test('System Admin and Super Admin have full permissions while Auditor remains enforced read-only', () => {
-  assert.match(permissions, /isFullAccessAdministrator[\s\S]*super_admin[\s\S]*system_admin/);
+// Intentional authority-model change: System Admin no longer receives the full catalog by role name;
+// only Super Admin bypasses permission rows, while Auditor remains hard read-only.
+test('System Admin is permission-backed, Auditor is enforced read-only, and Super Admin is the only full-access bypass', () => {
+  assert.match(permissions, /isFullAccessAdministrator[\s\S]*role === 'super_admin'/);
   assert.match(permissions, /AUDITOR_ENFORCED_PERMISSIONS/);
-  assert.match(permissions, /\['super_admin', 'system_admin'\]\.includes\(actor\.role\)/);
+  assert.match(permissions, /return normalizedPermissionSet\(actor\)\.has\(permission\)/);
+  assert.doesNotMatch(permissions, /actor\.role === 'system_admin'\) return allPermissions/);
 });
 
 test('role defaults, per-user permissions and generalized project scope remain database backed', () => {
@@ -76,10 +79,9 @@ test('legacy system roles migrate without touching accredited seller roles', () 
   assert.match(batch1, /sales_director/);
 });
 
-test('Role & Access Control is permission-managed while System Admin handles normal System Settings administration', () => {
+test('Role & Access Control is permission-managed while protected System Settings remain owner-controlled', () => {
   assert.match(settingsPage, /SYSTEM_ACCESS_CONTROL_MANAGE/);
   assert.match(settingsPage, /canManageRoleAccess/);
-  assert.match(settingsPage, /System Admin is the day-to-day full administrator/);
-  assert.match(settingsPage, /\['super_admin','system_admin'\]\.includes/);
+  assert.match(settingsPage, /only the Super Admin can use it with password and email verification/i);
   assert.match(roleAccess, /SYSTEM|AUDIT|MARKETING|SALES|ACCOUNTING|OPERATIONS|OWNER/);
 });

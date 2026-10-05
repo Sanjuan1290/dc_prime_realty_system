@@ -97,7 +97,7 @@ const Listings = () => {
       queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] })
     },
     onError: (mutationError) => {
-      setAlert({ type: 'error', message: mutationError?.message || 'Failed to delete listing.' })
+      setAlert(getDoubleCheckNotice(mutationError, 'Failed to delete listing.'))
     },
   })
 

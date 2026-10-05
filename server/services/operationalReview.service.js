@@ -40,7 +40,6 @@ export const REVIEW_APPROVAL_TYPES = Object.freeze({
   HEAD_SELF: 'head_self',
   HEAD_PREAPPROVED: 'head_preapproved',
   HEAD_CORRECTED: 'head_corrected',
-  SYSTEM_ADMIN_DIRECT: 'system_admin_direct',
   EMERGENCY_SUPER_ADMIN: 'emergency_super_admin',
 });
 
@@ -116,9 +115,8 @@ export const createOperationalReview = async (connection, {
   assertRegisteredReviewAction(actionKey, department);
 
   const isEmergency = actor.role === 'super_admin';
-  const isSystemAdminDirect = actor.role === 'system_admin';
   const isDepartmentHead = actor.role === expectedHeadRole;
-  const preApprovedHeadId = (isEmergency || isSystemAdminDirect) ? 0 : Number(headPreApprovedByUserId || 0);
+  const preApprovedHeadId = isEmergency ? 0 : Number(headPreApprovedByUserId || 0);
 
   if (isDepartmentHead) {
     const absorbed = await absorbOpenStaffReviewIntoHeadCorrection(connection, {
@@ -131,15 +129,13 @@ export const createOperationalReview = async (connection, {
   // answers any Audit Case on them (fixes the stuck-case bug, plan item 16).
   const approvalType = isEmergency
     ? REVIEW_APPROVAL_TYPES.EMERGENCY_SUPER_ADMIN
-    : isSystemAdminDirect
-      ? REVIEW_APPROVAL_TYPES.SYSTEM_ADMIN_DIRECT
-      : isDepartmentHead
+    : isDepartmentHead
       ? REVIEW_APPROVAL_TYPES.HEAD_SELF
       : preApprovedHeadId > 0
         ? REVIEW_APPROVAL_TYPES.HEAD_PREAPPROVED
         : REVIEW_APPROVAL_TYPES.STAFF_ENTRY;
   const initialStatus = approvalType === REVIEW_APPROVAL_TYPES.STAFF_ENTRY ? 'pending_head_review' : 'pending_auditor_review';
-  const headReviewerId = initialStatus === 'pending_auditor_review' && !isEmergency && !isSystemAdminDirect
+  const headReviewerId = initialStatus === 'pending_auditor_review' && !isEmergency
     ? (preApprovedHeadId || actor.id)
     : null;
 
@@ -161,7 +157,6 @@ export const createOperationalReview = async (connection, {
 
   if (initialStatus === 'pending_auditor_review') {
     const message = {
-      [REVIEW_APPROVAL_TYPES.SYSTEM_ADMIN_DIRECT]: `${number} was entered by System Admin and needs independent audit.`,
       [REVIEW_APPROVAL_TYPES.EMERGENCY_SUPER_ADMIN]: `${number} was an emergency Super Admin change and needs independent audit.`,
       [REVIEW_APPROVAL_TYPES.HEAD_PREAPPROVED]: `${number} was pre-approved by the Department Head and is ready for independent audit.`,
       [REVIEW_APPROVAL_TYPES.HEAD_SELF]: `${number} was entered by the ${expectedHeadRole.replaceAll('_',' ')} and skipped self-review.`,
@@ -204,6 +199,73 @@ export const assertEntityNotReviewLocked = async (connection, { entityType, enti
     && (!lock.claimed_by_user_id || Number(lock.claimed_by_user_id) === Number(actor.id));
   if (headCanCorrect) return true;
   throw Object.assign(new Error(`This record is locked by ${lock.review_number || `Review #${lock.operational_review_id}`} (${lock.status.replaceAll('_',' ')}).`), { statusCode: 409, code: 'REVIEW_LOCKED', review: lock });
+};
+
+export const getReturnedOperationalReviewForActor = async (connection, {
+  actor, actionKey, entityType, entityId, reviewId = null,
+}) => {
+  if (!actor?.id) return null;
+  const params = [];
+  const clauses = [
+    "status='returned_for_correction'",
+    'initiated_by_user_id=?',
+    'action_key=?',
+    'entity_type=?',
+    'entity_id=?',
+  ];
+  params.push(actor.id, actionKey, entityType, String(entityId));
+  if (reviewId) {
+    clauses.unshift('operational_review_id=?');
+    params.unshift(Number(reviewId));
+  }
+  const [rows] = await connection.query(
+    `SELECT * FROM operational_reviews
+     WHERE ${clauses.join(' AND ')}
+     ORDER BY operational_review_id DESC LIMIT 1 FOR UPDATE`,
+    params
+  );
+  return rows[0] || null;
+};
+
+export const resubmitReturnedOperationalReview = async (connection, {
+  review, actor, department, projectId = null, entityLabel = null, beforeSnapshot = null, afterSnapshot = null, message = null,
+}) => {
+  if (!review?.operational_review_id || review.status !== 'returned_for_correction') {
+    throw Object.assign(new Error('A returned Operational Review is required for resubmission.'), { statusCode: 409, code: 'RETURNED_REVIEW_REQUIRED' });
+  }
+  await connection.query(
+    `UPDATE operational_reviews
+     SET status='pending_head_review',
+         revision=revision+1,
+         before_snapshot_json=?,
+         after_snapshot_json=?,
+         claimed_by_user_id=NULL, claimed_at=NULL,
+         head_reviewed_by_user_id=NULL, head_reviewed_at=NULL,
+         auditor_reviewed_by_user_id=NULL, auditor_reviewed_at=NULL
+     WHERE operational_review_id=? AND status='returned_for_correction'`,
+    [jsonValue(beforeSnapshot), jsonValue(afterSnapshot), review.operational_review_id]
+  );
+  await appendReviewEvent(connection, {
+    reviewId: review.operational_review_id,
+    eventType: 'staff_correction_submitted',
+    actor,
+    fromStatus: 'returned_for_correction',
+    toStatus: 'pending_head_review',
+    message: message || `${review.action_key} corrected and resubmitted for Head review.`,
+  });
+  await notifyDepartmentHeads(connection, {
+    department,
+    projectId,
+    reviewId: review.operational_review_id,
+    title: `Corrected record ready for Head review · ${review.review_number}`,
+    message: `${entityLabel || review.entity_label || review.entity_type} was corrected by the original staff member. Please review the new values.`,
+  });
+  return {
+    reviewId: Number(review.operational_review_id),
+    reviewNumber: review.review_number,
+    status: 'pending_head_review',
+    resubmitted: true,
+  };
 };
 
 export const canActorSeeReview = async (connection, actor, review) => {

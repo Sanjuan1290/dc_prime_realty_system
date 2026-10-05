@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { FiFileText, FiPrinter, FiX } from 'react-icons/fi'
 import SignedCopyUploadModal from '../../../Shared/SignedCopyUploadModal'
 import StatusAlert from '../../../Shared/StatusAlert'
@@ -10,6 +10,9 @@ const AcknowledgementReceiptsModal = ({
   listingId,
   payments = [],
   readOnly = false,
+  autoOpenPaymentId = null,
+  workflowReviewId = null,
+  workflowAuditCaseId = null,
   onClose,
   onPrintAllUnsigned,
   onPrintAllSigned,
@@ -23,6 +26,13 @@ const AcknowledgementReceiptsModal = ({
     const signedCopy = payment?.acknowledgementSignedCopy || null
     return signedCopy && String(signedCopy.malwareScanStatus || '').toLowerCase() === 'approved'
   }), [verifiedPayments])
+
+  useEffect(() => {
+    const paymentId = Number(autoOpenPaymentId || 0)
+    if (!paymentId) return
+    const target = verifiedPayments.find((payment) => Number(payment.paymentId || payment.id) === paymentId)
+    if (target) setSelectedPayment(target)
+  }, [autoOpenPaymentId, verifiedPayments])
 
   const updateSignedCopy = (paymentId, result) => {
     const signedCopy = result?.data?.signedCopy || null
@@ -95,6 +105,8 @@ const AcknowledgementReceiptsModal = ({
         basePath={`/projects/lot-projects/${projectSlug}/listings/${listingId}/payments/${selectedPayment.paymentId || selectedPayment.id}/acknowledgement-signed-copy`}
         readOnly={readOnly}
         viewLabel="View"
+        workflowReviewId={workflowReviewId}
+        workflowAuditCaseId={workflowAuditCaseId}
         onClose={() => setSelectedPayment(null)}
         onChanged={(result) => updateSignedCopy(selectedPayment.paymentId || selectedPayment.id, result)}
       /> : null}

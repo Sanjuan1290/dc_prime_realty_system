@@ -12,40 +12,36 @@ import {
 const admin = { role: 'system_admin', permissions: [] };
 const superAdmin = { role: 'super_admin', permissions: [] };
 
-test('System Admin has full permission authority while project scope remains the operating boundary', () => {
+test('System Admin uses persisted per-account permissions and is not an implicit full-access role', () => {
   for (const permission of Object.values(PERMISSIONS)) {
-    assert.equal(roleHasPermission(admin, permission), true, permission);
+    assert.equal(roleHasPermission(admin, permission), false, permission);
   }
 
-  const scopedAdmin = {
+  const delegated = {
     role: 'system_admin',
-    permissions: [],
-    all_projects_access: false,
-    project_ids: [11],
+    permissions: [PERMISSIONS.SYSTEM_REPORTS_VIEW, PERMISSIONS.LOT_LISTINGS_EDIT],
   };
-  assert.equal(roleHasPermission(scopedAdmin, PERMISSIONS.SYSTEM_REPORTS_VIEW), true);
-  assert.equal(roleHasPermission(scopedAdmin, PERMISSIONS.LOT_LISTINGS_EDIT), true);
-  assert.equal(roleHasPermission(scopedAdmin, PERMISSIONS.LOT_PAYMENT_DELETE), true);
-  assert.equal(isFullAccessAdministrator(admin), true);
-  assert.equal(isFullAccessAdministrator(scopedAdmin), true);
+  assert.equal(roleHasPermission(delegated, PERMISSIONS.SYSTEM_REPORTS_VIEW), true);
+  assert.equal(roleHasPermission(delegated, PERMISSIONS.LOT_LISTINGS_EDIT), true);
+  assert.equal(roleHasPermission(delegated, PERMISSIONS.LOT_PAYMENT_DELETE), false);
+  assert.equal(isFullAccessAdministrator(admin), false);
+  assert.equal(isFullAccessAdministrator(delegated), false);
 });
 
-test('user-management helpers let System Admin administer lower roles while Super Admin identity stays protected', () => {
-  const manager = { role: 'system_admin', permissions: [] };
+test('user-management helpers enforce System Admin Staff/Head boundaries and owner governance', () => {
+  const manager = { role: 'system_admin', permissions: [PERMISSIONS.SYSTEM_USERS_EDIT, PERMISSIONS.SYSTEM_USERS_CREATE] };
 
   assert.equal(canActorManageUserRole(manager, 'accounting_staff'), true);
   assert.equal(canActorManageUserRole(manager, 'accounting_head'), true);
   assert.equal(canActorCreateUserRole(manager, 'sales_staff'), true);
-  assert.equal(canActorManageUserRole(manager, 'auditor'), true);
-  assert.equal(canActorCreateUserRole(manager, 'auditor'), true);
+  assert.equal(canActorManageUserRole(manager, 'auditor'), false);
   assert.equal(canActorManageUserRole(manager, 'system_admin'), false);
   assert.equal(canActorManageUserRole(manager, 'super_admin'), false);
   assert.equal(canActorCreateUserRole(manager, 'super_admin'), false);
 
   assert.equal(canActorChangeUserRole(manager, 'marketing_staff', 'marketing_head'), true);
   assert.equal(canActorChangeUserRole(manager, 'marketing_head', 'sales_staff'), true);
-  assert.equal(canActorChangeUserRole(manager, 'auditor', 'operations_staff'), true);
-  assert.equal(canActorChangeUserRole(manager, 'accounting_head', 'system_admin'), false);
+  assert.equal(canActorChangeUserRole(manager, 'auditor', 'operations_staff'), false);
   assert.equal(canActorChangeUserRole(superAdmin, 'marketing_staff', 'sales_head'), true);
 
   // Seller hierarchy roles retain their existing role-change behavior for authorized actors.

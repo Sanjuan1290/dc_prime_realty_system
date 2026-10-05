@@ -10,7 +10,7 @@ import {
   FiX,
 } from 'react-icons/fi'
 import StatusAlert from '../../Shared/StatusAlert'
-import { useFetchPost } from '../../../utils/useFetch'
+import { useFetchPost, getDoubleCheckNotice } from '../../../utils/useFetch'
 import { NETWORK_MEMBER_EXCEL_HEADERS as HEADERS } from '../../../utils/networkMemberExcel'
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024
@@ -265,7 +265,7 @@ const NetworkMemberImportModal = ({
     } catch (error) {
       if (error?.data?.data) setPreview(error.data.data)
       else if (error?.data?.rows) setPreview(error.data)
-      setAlert({ type: 'error', message: error?.message || 'Member import failed. No partial import was saved.' })
+      setAlert(getDoubleCheckNotice(error, 'Member import failed. No partial import was saved.'))
     } finally {
       setIsWorking(false)
     }

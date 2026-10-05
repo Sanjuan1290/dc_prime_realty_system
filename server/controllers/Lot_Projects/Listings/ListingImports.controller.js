@@ -12,6 +12,7 @@ import { calculateContractPricing } from '../_shared/listingPricing.js'
 import { createListingStorageCode } from '../../../services/storageCodes.service.js'
 import { writeAuditLog } from '../../System/auditLogs.controller.js'
 import { replaceListingDocumentRequirements } from './Listings.controller.js'
+import { assertEntityNotReviewLocked, createOperationalReview } from '../../../services/operationalReview.service.js'
 
 const IMPORT_BATCH_TABLE = 'lot_project_listing_import_batches'
 const IMPORT_ROW_TABLE = 'lot_project_listing_import_rows'
@@ -360,11 +361,30 @@ export const importLotProjectListings = async (req, res) => {
       metadata: { batchReference, filename, fileSha256: fileSha256 || null, projectId: project.lot_project_id, projectName: project.lot_project_name, importedRows: imported.length },
     })
 
+    const importReview = await createOperationalReview(connection, {
+      actor: req.authUser,
+      actionKey: 'listing.import',
+      department: 'operations',
+      projectId: project.lot_project_id,
+      entityType: 'lot_project_listing_import',
+      entityId: batchId,
+      entityLabel: `${batchReference} — ${filename}`,
+      beforeSnapshot: null,
+      afterSnapshot: {
+        projectSlug: clean(req.params.projectSlug),
+        batchId,
+        batchReference,
+        filename,
+        importedRows: imported.length,
+        listingIds: imported.map((item) => item.listingId),
+      },
+    })
+
     await connection.commit()
     return res.status(201).json({
       success: true,
       message: `${imported.length} listing(s) imported successfully.`,
-      data: { batchId, batchReference, filename, importedRows: imported.length, listings: imported },
+      data: { batchId, batchReference, filename, importedRows: imported.length, listings: imported, review: importReview },
     })
   } catch (error) {
     try { await connection.rollback() } catch {}
@@ -482,6 +502,12 @@ export const revertLotProjectListingImport = async (req, res) => {
     )
     if (!batch) { await connection.rollback(); return res.status(404).json({ message: 'Import batch not found.' }) }
 
+    await assertEntityNotReviewLocked(connection, {
+      actor: req.authUser,
+      entityType: 'lot_project_listing_import',
+      entityId: batchId,
+    })
+
     const [rows] = await connection.query(
       `SELECT import_row.*, listing.lot_project_listing_status, listing.current_account_id
        FROM ${IMPORT_ROW_TABLE} import_row
@@ -566,11 +592,36 @@ export const revertLotProjectListingImport = async (req, res) => {
       description: `Removed ${removed.length} listing(s) from ${batch.batch_reference}.`,
       metadata: { batchReference: batch.batch_reference, filename: batch.original_filename, reason, mode, removedCount: removed.length, remainingCount: remaining, protectedListings: protectedRows },
     })
+    const undoReview = await createOperationalReview(connection, {
+      actor: req.authUser,
+      actionKey: 'listing.import_undo',
+      department: 'operations',
+      projectId: project.lot_project_id,
+      entityType: 'lot_project_listing_import',
+      entityId: batchId,
+      entityLabel: `${batch.batch_reference} — ${batch.original_filename}`,
+      beforeSnapshot: {
+        projectSlug: clean(req.params.projectSlug),
+        batchId,
+        batchReference: batch.batch_reference,
+        status: batch.import_status,
+      },
+      afterSnapshot: {
+        projectSlug: clean(req.params.projectSlug),
+        batchId,
+        batchReference: batch.batch_reference,
+        status: nextStatus,
+        removedCount: removed.length,
+        remainingCount: remaining,
+        removedListingIds: removed.map((item) => item.listingId),
+      },
+    })
+
     await connection.commit()
     return res.json({
       success: true,
       message: remaining === 0 ? `Import ${batch.batch_reference} was fully reverted.` : `${removed.length} safe listing(s) removed; ${remaining} imported listing(s) remain.`,
-      data: { removed, protectedListings: protectedRows, remaining, status: nextStatus },
+      data: { removed, protectedListings: protectedRows, remaining, status: nextStatus, review: undoReview },
     })
   } catch (error) {
     try { await connection.rollback() } catch {}

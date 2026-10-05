@@ -12,6 +12,16 @@ import {
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
 import { reconcileCommission } from '../../../services/commissionReconciliation.service.js';
 import { buildAccountContext } from '../../../services/accountContext.service.js';
+import { assertEntityNotReviewLocked, createOperationalReview } from '../../../services/operationalReview.service.js';
+
+const COMMISSION_REVIEW_ACTION_BY_MUTATION = Object.freeze({
+  release_stage: 'commission.release',
+  hold_stage: 'commission.hold',
+  unhold_stage: 'commission.unhold',
+  release: 'commission.release',
+  hold: 'commission.hold',
+  unhold: 'commission.unhold',
+});
 
 const toNumber = (value) => Number(value || 0);
 const roundMoney = (value) => Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
@@ -972,6 +982,7 @@ export const updateLotProjectCommission = async (req, res) => {
     const requestedAgentReceiptStatus = String(
       req.body.agentReceiptStatus || req.body.agent_receipt_status || ''
     ).trim().toLowerCase();
+    const reviewActionKey = COMMISSION_REVIEW_ACTION_BY_MUTATION[action] || null;
     const project = await getProjectBySlug(slug);
 
     if (!project) {
@@ -1061,8 +1072,11 @@ export const updateLotProjectCommission = async (req, res) => {
           SELECT
             r.*,
             c.lot_project_id,
+            c.lot_project_listing_id,
             c.commission_role,
             c.payment_percent,
+            l.lot_project_listing_unit_id,
+            cp.buyer_full_name,
             cp.soa_starting_date,
             COALESCE(cp.soa_is_historical_entry, 0) AS soa_is_historical_entry,
             ${releaseActualRemainingBalanceSql} AS actual_remaining_balance,
@@ -1107,6 +1121,27 @@ export const updateLotProjectCommission = async (req, res) => {
         await connection.rollback();
         return res.status(404).json({ success: false, message: 'Commission release stage not found.' });
       }
+
+      if (reviewActionKey) {
+        await assertEntityNotReviewLocked(connection, {
+          actor: req.authUser,
+          entityType: 'lot_project_commission',
+          entityId: commissionId,
+        });
+      }
+      const beforeReviewSnapshot = reviewActionKey ? {
+        projectSlug: slug,
+        listingId: Number(release.lot_project_listing_id || 0) || null,
+        unitId: release.lot_project_listing_unit_id || null,
+        buyerName: release.buyer_full_name || null,
+        commissionId,
+        releaseId,
+        releaseStage: release.release_stage,
+        status: release.release_status,
+        actualReleaseDate: release.actual_release_date || null,
+        releasedByUserId: release.released_by_user_id || null,
+        releaseEntryMode: release.release_entry_mode || 'live',
+      } : null;
 
       const releaseAccountContext = buildAccountContext({ account: release });
       if (isHistoricalRelease && !releaseAccountContext.isHistoricalEntry) {
@@ -1448,9 +1483,31 @@ export const updateLotProjectCommission = async (req, res) => {
         });
       }
 
+      let workflow = null;
+      if (reviewActionKey) {
+        workflow = await createOperationalReview(connection, {
+          actor: req.authUser,
+          actionKey: reviewActionKey,
+          department: 'accounting',
+          projectId: project.lot_project_id,
+          entityType: 'lot_project_commission',
+          entityId: commissionId,
+          entityLabel: `${release.lot_project_listing_unit_id || `Commission #${commissionId}`} — ${release.release_stage || 'Commission stage'}`,
+          beforeSnapshot: beforeReviewSnapshot,
+          afterSnapshot: {
+            ...beforeReviewSnapshot,
+            status: nextStatus,
+            actualReleaseDate: actualReleaseDate || null,
+            releasedByUserId: releasedByUserId || null,
+            releaseEntryMode,
+            historicalReleaseNote: historicalReleaseNote || null,
+          },
+        });
+      }
+
       await connection.commit();
 
-      return res.json({ success: true, message, data });
+      return res.json({ success: true, message, data, review: workflow });
     }
 
     // Fallback for old actions when the release table is unavailable.
@@ -1475,6 +1532,22 @@ export const updateLotProjectCommission = async (req, res) => {
       await connection.rollback();
       return res.status(404).json({ success: false, message: 'Commission record not found.' });
     }
+
+    if (reviewActionKey) {
+      await assertEntityNotReviewLocked(connection, {
+        actor: req.authUser,
+        entityType: 'lot_project_commission',
+        entityId: commissionId,
+      });
+    }
+    const beforeReviewSnapshot = reviewActionKey ? {
+      projectSlug: slug,
+      listingId: Number(commission.lot_project_listing_id || 0) || null,
+      commissionId,
+      status: commission.commission_status || null,
+      released: toNumber(commission.released_commission_amount),
+      netRemaining: toNumber(commission.net_remaining_commission_amount),
+    } : null;
 
     const gross = toNumber(commission.gross_commission_amount);
     const currentReleased = toNumber(commission.released_commission_amount);
@@ -1566,11 +1639,32 @@ export const updateLotProjectCommission = async (req, res) => {
       });
     }
 
+    let workflow = null;
+    if (reviewActionKey) {
+      workflow = await createOperationalReview(connection, {
+        actor: req.authUser,
+        actionKey: reviewActionKey,
+        department: 'accounting',
+        projectId: project.lot_project_id,
+        entityType: 'lot_project_commission',
+        entityId: commissionId,
+        entityLabel: `Commission #${commissionId}`,
+        beforeSnapshot: beforeReviewSnapshot,
+        afterSnapshot: {
+          ...beforeReviewSnapshot,
+          status: nextStatus,
+          released: nextReleased,
+          netRemaining: nextRemaining,
+        },
+      });
+    }
+
     await connection.commit();
 
     return res.json({
       success: true,
       message,
+      review: workflow,
       data: {
         id: commissionId,
         commissionId,

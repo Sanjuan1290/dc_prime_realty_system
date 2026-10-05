@@ -89,12 +89,18 @@ const PaymentProofModal = ({
   payment,
   readOnly = false,
   canDelete = false,
+  workflowReviewId = null,
+  workflowAuditCaseId = null,
   onClose,
   onChanged,
   onCountChange,
 }) => {
   const paymentId = Number(payment?.paymentId || payment?.id || 0)
   const basePath = `/projects/lot-projects/${projectSlug}/listings/${listingId}/payments/${paymentId}/proofs`
+  const workflowPayload = {
+    ...(workflowReviewId ? { reviewId: Number(workflowReviewId) } : {}),
+    ...(workflowAuditCaseId ? { auditCaseId: Number(workflowAuditCaseId) } : {}),
+  }
 
   const [proofs, setProofs] = useState([])
   const [paymentDetails, setPaymentDetails] = useState(payment || {})
@@ -319,7 +325,7 @@ const PaymentProofModal = ({
       }
 
       setNotice({ type: 'loading', message: 'Saving protected payment proof records...' })
-      const result = await useFetchPost(basePath, { files: completed, note: note.trim() }, { confirmationToken: confirmationToken })
+      const result = await useFetchPost(basePath, { files: completed, note: note.trim(), ...workflowPayload }, { confirmationToken: confirmationToken })
       startSavedProofScans(completed, result || {})
       setFiles([])
       setNote('')
@@ -458,7 +464,7 @@ const PaymentProofModal = ({
     setDeletingProofId(proof.proofId)
     setNotice({ type: 'loading', message: `Removing ${proof.fileName}...` })
     try {
-      const result = await useFetchPost(`${basePath}/${proof.proofId}/delete`, {}, { confirmationHandled: 'compact' })
+      const result = await useFetchPost(`${basePath}/${proof.proofId}/delete`, workflowPayload, { confirmationHandled: 'compact' })
       removeUploadByAccessPath(proof.accessPath || `${basePath}/${proof.proofId}/access-url`)
       setNotice({ type: 'success', message: result?.message || 'Payment proof removed successfully.' })
       await loadProofs({ quiet: true })

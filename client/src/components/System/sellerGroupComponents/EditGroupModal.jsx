@@ -36,7 +36,7 @@ const Field = ({ label, required = false, ...props }) => (
   <label className="flex flex-col gap-1.5"><span className="text-xs font-black text-slate-700">{label}{required ? <span className="text-red-500"> *</span> : null}</span><input {...props} className="h-11 rounded-xl border border-slate-300 px-4 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100" /></label>
 )
 
-const EditGroupModal = ({ setShowEditGroupModal, selectedGroup, onSaved, groupType: propGroupType }) => {
+const EditGroupModal = ({ setShowEditGroupModal, selectedGroup, onSaved, groupType: propGroupType, workflowReviewId = null, workflowAuditCaseId = null }) => {
   const queryClient = useQueryClient()
   const groupType = propGroupType || selectedGroup?.seller_group_type || 'in_house'
   const isExternal = groupType === 'external'
@@ -109,7 +109,7 @@ const EditGroupModal = ({ setShowEditGroupModal, selectedGroup, onSaved, groupTy
   const poolShares = poolSharesQuery.data?.data || { division_manager: 14.18, sales_director: 15.82, unit_manager: 20, sales_agent: 50 }
 
   const mutation = useMutation({
-    mutationFn: () => putJson(`/seller-groups/edit/${selectedGroup.seller_group_id}`, form, {
+    mutationFn: () => putJson(`/seller-groups/edit/${selectedGroup.seller_group_id}`, { ...form, ...(workflowReviewId ? { reviewId: workflowReviewId } : {}), ...(workflowAuditCaseId ? { auditCaseId: workflowAuditCaseId } : {}) }, {
       doubleCheck: {
         type: 'seller-group',
         mode: 'edit',

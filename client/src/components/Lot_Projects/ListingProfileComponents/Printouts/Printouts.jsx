@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { FiFileText, FiImage, FiPrinter } from 'react-icons/fi'
 import AcknowledgementReceiptsModal from './AcknowledgementReceiptsModal'
 import { openSignedReceiptPrintPreview } from './signedReceiptPrint'
@@ -45,9 +45,17 @@ const Printouts = ({
   documents = [],
   account = null,
   readOnly = false,
+  autoOpenAcknowledgements = false,
+  workflowPaymentId = null,
+  workflowReviewId = null,
+  workflowAuditCaseId = null,
 }) => {
   const [showAcknowledgementReceipts, setShowAcknowledgementReceipts] = useState(false)
   const listingLookup = listing?.id || listing?.listingId || listing?.lot_project_listing_id || listing?.unitId || listing?.unitCode
+
+  useEffect(() => {
+    if (autoOpenAcknowledgements) setShowAcknowledgementReceipts(true)
+  }, [autoOpenAcknowledgements])
 
   const handlePreview = (item, extraPayload = {}) => {
     const printKey = window.crypto?.randomUUID?.()
@@ -158,6 +166,9 @@ const Printouts = ({
           listingId={listingLookup}
           payments={payments}
           readOnly={readOnly}
+          autoOpenPaymentId={workflowPaymentId}
+          workflowReviewId={workflowReviewId}
+          workflowAuditCaseId={workflowAuditCaseId}
           onClose={() => setShowAcknowledgementReceipts(false)}
           onPrintAllUnsigned={() => handlePreview(printItems.find((item) => item.type === 'acknowledgement-receipts'))}
           onPrintAllSigned={handlePrintAllSignedAcknowledgements}

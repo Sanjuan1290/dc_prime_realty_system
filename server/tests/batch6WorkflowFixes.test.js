@@ -43,6 +43,17 @@ test('every actionKey used in the code is registered', async () => {
     'server/controllers/Lot_Projects/ListingProfile/PaymentsSOA.controller.js',
     'server/controllers/Lot_Projects/ListingProfile/ListingProfile.controller.js',
     'server/controllers/Lot_Projects/ListingProfile/ReservationCorrection.controller.js',
+    'server/controllers/Lot_Projects/ListingProfile/ReserveListing.controller.js',
+    'server/controllers/Lot_Projects/ListingProfile/ClientProfile.controller.js',
+    'server/controllers/Lot_Projects/BuyerForms/BuyerForms.controller.js',
+    'server/controllers/Lot_Projects/Commissions/Commissions.controller.js',
+    'server/controllers/Lot_Projects/ListingProfile/PaymentProofs.controller.js',
+    'server/controllers/Lot_Projects/ListingProfile/SignedAcknowledgement.controller.js',
+    'server/controllers/Lot_Projects/ListingProfile/Documents.controller.js',
+    'server/controllers/Lot_Projects/Listings/Listings.controller.js',
+    'server/controllers/Lot_Projects/Listings/ListingImports.controller.js',
+    'server/controllers/System/sellerGroup.controller.js',
+    'server/controllers/System/users.controllers.js',
     'server/controllers/Lot_Projects/Settings/Settings.controller.js',
   ].map(readProjectFile));
   const keys = new Set(sources.join('\n').match(/actionKey: '([a-z_.]+)'/g)?.map((match) => match.slice(12, -1)) || []);

@@ -33,6 +33,7 @@ import {
   revokeOpenBuyerFormLinks,
 } from '../BuyerForms/buyerForm.shared.js';
 import { resolveDocumentRequiredFlag, resolveDocumentResponsibleParty } from '../../../utils/documentRequirement.js';
+import { assertEntityNotReviewLocked, createOperationalReview } from '../../../services/operationalReview.service.js';
 
 const cleanNamePart = (value) => toFormalTitleCase(value, 255);
 
@@ -861,6 +862,16 @@ export const reserveLotProjectListing = async (req, res) => {
       return res.status(409).json({ message: 'This unit is no longer available for reservation.' });
     }
 
+    // reservation.create uses the new account id as its review entity, so there
+    // is no account record to lock before the INSERT. Lock the existing unit
+    // review surface before any reservation writes to prevent a reservation from
+    // racing an open listing correction.
+    await assertEntityNotReviewLocked(connection, {
+      actor: req.authUser,
+      entityType: 'lot_project_listing',
+      entityId: listing.lot_project_listing_id,
+    });
+
     let buyerFormSubmission = null;
     if (buyerFormSubmissionId) {
       const [submissionRows] = await connection.query(
@@ -890,6 +901,12 @@ export const reserveLotProjectListing = async (req, res) => {
         await connection.rollback();
         return res.status(409).json({ message: 'This submission is not the active buyer form submission for the unit.' });
       }
+
+      await assertEntityNotReviewLocked(connection, {
+        actor: req.authUser,
+        entityType: 'lot_project_buyer_form',
+        entityId: buyerFormSubmissionId,
+      });
     } else if (buyerFormSchemaAvailable) {
       if (Number(lockedListing.pending_buyer_form_submission_id || 0) > 0) {
         await connection.rollback();
@@ -1157,6 +1174,65 @@ export const reserveLotProjectListing = async (req, res) => {
           monthlyTerms,
           dpDiscountPercentage,
         },
+      },
+    });
+
+    if (buyerFormSubmission) {
+      await createOperationalReview(connection, {
+        actor: req.authUser,
+        actionKey: 'buyer_form.approve',
+        department: 'sales',
+        projectId: project.lot_project_id,
+        entityType: 'lot_project_buyer_form',
+        entityId: buyerFormSubmissionId,
+        entityLabel: `Buyer form · ${listing.lot_project_listing_unit_id} · ${buyerName}`,
+        beforeSnapshot: {
+          projectSlug: slug,
+          listingId: listing.lot_project_listing_id,
+          unitId: listing.lot_project_listing_unit_id,
+          submissionId: buyerFormSubmissionId,
+          status: buyerFormSubmission.submission_status,
+        },
+        afterSnapshot: {
+          projectSlug: slug,
+          listingId: listing.lot_project_listing_id,
+          unitId: listing.lot_project_listing_unit_id,
+          submissionId: buyerFormSubmissionId,
+          status: 'approved',
+          accountId: account.accountId,
+          clientProfileId,
+          buyerName,
+        },
+      });
+    }
+
+    await createOperationalReview(connection, {
+      actor: req.authUser,
+      actionKey: 'reservation.create',
+      department: 'sales',
+      projectId: project.lot_project_id,
+      entityType: 'lot_project_account',
+      entityId: account.accountId,
+      entityLabel: `${listing.lot_project_listing_unit_id} — ${buyerName}`,
+      beforeSnapshot: {
+        projectSlug: slug,
+        listingId: listing.lot_project_listing_id,
+        unitId: listing.lot_project_listing_unit_id,
+        listingStatus: lockedStatus,
+        buyerFormSubmissionId,
+      },
+      afterSnapshot: {
+        projectSlug: slug,
+        listingId: listing.lot_project_listing_id,
+        unitId: listing.lot_project_listing_unit_id,
+        accountId: account.accountId,
+        accountReference: account.accountReference || null,
+        clientProfileId,
+        buyerName,
+        buyerType,
+        modeOfPayment,
+        reservationFee,
+        status: 'active',
       },
     });
 

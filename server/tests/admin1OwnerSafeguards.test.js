@@ -8,7 +8,7 @@ const dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(dirname, '..', '..');
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8');
 
-test('System Admin has full permissions while generalized project access replaces legacy Admin Type', () => {
+test('Admin is permission-backed and generalized project access replaces legacy Admin Type', () => {
   const serverPermissions = read('server/config/permissions.js');
   const clientPermissions = read('client/src/config/permissions.js');
   const usersController = read('server/controllers/System/users.controllers.js');
@@ -18,15 +18,13 @@ test('System Admin has full permissions while generalized project access replace
   const accessModal = read('client/src/components/System/userComponents/UserAccessModal.jsx');
   const migration = read('server/migrations/20260925_system_rbac_roles_and_access.sql');
 
-  assert.match(serverPermissions, /\['super_admin', 'system_admin'\]\.includes\(actor\.role\)/);
-  assert.match(serverPermissions, /isFullAccessAdministrator[\s\S]*super_admin[\s\S]*system_admin/);
-  assert.match(clientPermissions, /\['super_admin', 'system_admin'\]/);
+  assert.match(serverPermissions, /if \(actor\.role === 'super_admin'\) return allPermissions\.has\(permission\)/);
+  assert.match(serverPermissions, /return normalizedPermissionSet\(actor\)\.has\(permission\)/);
+  assert.match(serverPermissions, /isFullAccessAdministrator[\s\S]*role === 'super_admin'/);
   assert.doesNotMatch(clientPermissions, /ADMIN_TYPES/);
   assert.match(usersController, /replaceAdminProjectAccess/);
   assert.match(projectAccess, /user_project_access/);
   assert.match(projectAccess, /all_projects_access/);
-  assert.match(projectAccess, /\['super_admin', 'auditor'\]/);
-  assert.doesNotMatch(projectAccess, /\['super_admin', 'system_admin', 'auditor'\]/);
   assert.match(createUser, /AdminProjectAccessFields/);
   assert.match(accessModal, /AdminProjectAccessFields/);
   assert.match(editUser, /Role is locked after creation/);
@@ -35,7 +33,7 @@ test('System Admin has full permissions while generalized project access replace
   assert.match(migration, /INSERT IGNORE INTO user_project_access[\s\S]*FROM admin_project_access/);
 });
 
-test('System Admin handles normal protected administration while routine department corrections keep governed workflows', () => {
+test('owner-only operations remain Super Admin-only while routine protected corrections use governed department workflows', () => {
   const router = read('server/routers/System/projects.routers.js');
   const settingsRouter = read('server/routers/System/systemSettings.routers.js');
   const middleware = read('server/middleware/auth.middleware.js');
@@ -43,14 +41,15 @@ test('System Admin handles normal protected administration while routine departm
   const payments = read('client/src/components/Lot_Projects/ListingProfileComponents/PaymentsSOA/Payments_SOA.jsx');
 
   assert.match(middleware, /export const requireExactRole/);
-  assert.match(router, /purge-preview'[\s\S]*requireExactRole\('super_admin','system_admin'\)/);
+  assert.match(router, /purge-preview'[\s\S]*requireExactRole\('super_admin'\)/);
   assert.match(router, /commission-adjustment-code'[\s\S]*LOT_COMMISSIONS_ADJUST/);
   assert.doesNotMatch(router, /commission-adjustment-code'[^\n]*requireExactRole/);
   assert.match(router, /reservation-correction\/code'[\s\S]*LOT_RESERVATION_CORRECT/);
   assert.doesNotMatch(router, /reservation-correction\/code'[^\n]*requireExactRole/);
-  assert.match(settingsRouter, /\/code'[\s\S]*requireExactRole\('super_admin','system_admin'\)[\s\S]*requireCurrentPassword/);
+  assert.match(settingsRouter, /\/code'[\s\S]*requireExactRole\('super_admin'\)[\s\S]*requireCurrentPassword/);
 
   assert.match(router, /payments\/:paymentId\/correction-code'[\s\S]*requirePaymentCorrectionPermission/);
+  assert.doesNotMatch(router, /payments\/:paymentId\/correction-code'[^\n]*requireExactRole/);
   assert.doesNotMatch(router, /payments\/:paymentId\/correction-code'[^\n]*requireExactRole/);
   assert.match(paymentController, /verifyAndConsumeSensitiveAction/);
   assert.match(payments, /You do not have permission to edit recorded payments/);

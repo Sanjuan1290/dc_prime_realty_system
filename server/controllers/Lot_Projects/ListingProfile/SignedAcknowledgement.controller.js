@@ -8,6 +8,13 @@ import {
 } from '../_shared/lotProject.shared.js';
 import { writeAuditLog } from '../../System/auditLogs.controller.js';
 import {
+  assertEntityNotReviewLocked,
+  createOperationalReview,
+  getReturnedOperationalReviewForActor,
+  resubmitReturnedOperationalReview,
+} from '../../../services/operationalReview.service.js';
+import { getPendingAuditCorrectionCase, advanceAuditCaseToRecheck } from '../../../services/auditCaseAuthorization.service.js';
+import {
   authorizeMalwareQuotaFallback,
   buildMalwareQuotaError,
   buildPaymentAcknowledgementSignedCopyFolder,
@@ -261,21 +268,88 @@ export const saveLotProjectPaymentAcknowledgementSignedCopy = async (req, res) =
       throw error;
     }
 
+    const paymentId = Number(context.payment.lot_project_payment_id);
+    await connection.beginTransaction();
+    await connection.query(
+      `SELECT lot_project_payment_id FROM lot_project_payments WHERE lot_project_payment_id = ? AND lot_project_id = ? LIMIT 1 FOR UPDATE`,
+      [paymentId, context.project.lot_project_id]
+    );
+
+    const [[currentFile]] = await connection.query(
+      `SELECT * FROM lot_project_payment_acknowledgement_files WHERE lot_project_payment_id = ? AND file_status = 'active' ORDER BY lot_project_payment_acknowledgement_file_id DESC LIMIT 1 FOR UPDATE`,
+      [paymentId]
+    );
+
+    const requestedReviewId = Number(req.body.reviewId || req.body.review_id || 0) || null;
+    let returnedReview = null;
+    let auditCase = null;
+    let allowReviewId = null;
+
+    if (req.authUser?.role === 'system_admin') {
+      auditCase = await getPendingAuditCorrectionCase(connection, {
+        auditCaseId: req.body.auditCaseId || req.body.audit_case_id,
+        entityType: 'lot_project_signed_receipt',
+        entityId: paymentId,
+      });
+      if (!auditCase) {
+        throw Object.assign(new Error('A valid Auditor-approved case is required for a System Admin signed-receipt correction.'), {
+          statusCode: 409,
+          code: 'AUDIT_CASE_REQUIRED',
+        });
+      }
+      allowReviewId = auditCase.operational_review_id;
+    } else if (req.authUser?.role === 'accounting_staff') {
+      returnedReview = await getReturnedOperationalReviewForActor(connection, {
+        actor: req.authUser,
+        actionKey: 'signed_receipt.upload',
+        entityType: 'lot_project_signed_receipt',
+        entityId: paymentId,
+        reviewId: requestedReviewId,
+      });
+      if (requestedReviewId && !returnedReview) {
+        throw Object.assign(new Error('This returned signed-receipt review is no longer available for correction.'), {
+          statusCode: 409,
+          code: 'RETURNED_REVIEW_NOT_AVAILABLE',
+        });
+      }
+      allowReviewId = returnedReview?.operational_review_id || null;
+    }
+
+    await assertEntityNotReviewLocked(connection, {
+      actor: req.authUser,
+      entityType: 'lot_project_signed_receipt',
+      entityId: paymentId,
+      allowReviewId,
+    });
+
+    const beforeSnapshot = {
+      projectSlug: clean(req.params.projectSlug),
+      listingId: Number(context.payment.lot_project_listing_id),
+      unitId: context.payment.lot_project_listing_unit_id || null,
+      paymentId,
+      referenceId: context.payment.lot_project_payment_reference_id || null,
+      signedCopy: currentFile ? {
+        signedCopyId: Number(currentFile.lot_project_payment_acknowledgement_file_id),
+        fileName: currentFile.file_name,
+        fileVersion: Number(currentFile.file_version || 1),
+        fileStatus: currentFile.file_status,
+      } : null,
+    };
+
     const [[versionRow]] = await connection.query(
       `SELECT COALESCE(MAX(file_version), 0) + 1 AS next_version FROM lot_project_payment_acknowledgement_files WHERE lot_project_payment_id = ?`,
-      [context.payment.lot_project_payment_id]
+      [paymentId]
     );
     const nextVersion = Math.max(1, Number(versionRow?.next_version || 1));
     const storedFileName = deriveStoredFileNameFromPublicId(asset.public_id, getFileExtension(file)) || file.storedFileName || file.fileName;
 
-    await connection.beginTransaction();
     await connection.query(
       `
         UPDATE lot_project_payment_acknowledgement_files
         SET file_status = 'replaced', replaced_at = NOW(), updated_at = NOW()
         WHERE lot_project_payment_id = ? AND file_status = 'active'
       `,
-      [context.payment.lot_project_payment_id]
+      [paymentId]
     );
     const [result] = await connection.query(
       `
@@ -306,7 +380,7 @@ export const saveLotProjectPaymentAcknowledgementSignedCopy = async (req, res) =
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active')
       `,
       [
-        context.payment.lot_project_payment_id,
+        paymentId,
         context.project.lot_project_id,
         context.payment.lot_project_listing_id,
         context.payment.lot_project_client_profile_id,
@@ -331,29 +405,77 @@ export const saveLotProjectPaymentAcknowledgementSignedCopy = async (req, res) =
       ]
     );
 
+    const afterSnapshot = {
+      ...beforeSnapshot,
+      signedCopy: {
+        signedCopyId: Number(result.insertId),
+        fileName: file.fileName,
+        fileVersion: nextVersion,
+        fileStatus: 'active',
+      },
+    };
+
     await writeAuditLog(connection, req, {
       action: 'create',
       module: 'Payments',
       entityType: 'lot_project_payment_acknowledgement_file',
       entityId: String(result.insertId),
-      entityLabel: `${context.payment.lot_project_payment_reference_id || `Payment #${context.payment.lot_project_payment_id}`} — ${context.payment.lot_project_listing_unit_id}`,
+      entityLabel: `${context.payment.lot_project_payment_reference_id || `Payment #${paymentId}`} — ${context.payment.lot_project_listing_unit_id}`,
       title: nextVersion > 1 ? 'Replaced signed acknowledgement receipt' : 'Uploaded signed acknowledgement receipt',
-      description: `Stored signed acknowledgement receipt version ${nextVersion} for payment ${context.payment.lot_project_payment_reference_id || context.payment.lot_project_payment_id}.`,
+      description: `Stored signed acknowledgement receipt version ${nextVersion} for payment ${context.payment.lot_project_payment_reference_id || paymentId}.`,
       metadata: {
-        paymentId: context.payment.lot_project_payment_id,
+        paymentId,
         accountId: context.payment.lot_project_account_id,
         signedCopyId: result.insertId,
         fileVersion: nextVersion,
         fileName: file.fileName,
       },
     });
+
+    let workflow = null;
+    const entityLabel = `${context.payment.lot_project_payment_reference_id || `Payment #${paymentId}`} — ${context.payment.lot_project_listing_unit_id}`;
+    if (auditCase) {
+      workflow = await advanceAuditCaseToRecheck(connection, {
+        auditCase,
+        actor: req.authUser,
+        correctionSummary: `Replaced the signed acknowledgement receipt for ${context.payment.lot_project_payment_reference_id || `payment #${paymentId}`}.`,
+        afterSnapshot,
+        metadata: { paymentId, signedCopyId: Number(result.insertId), listingId: Number(context.payment.lot_project_listing_id) },
+        notificationTitle: `Signed-receipt correction needs Auditor recheck · ${auditCase.case_number}`,
+      });
+    } else if (returnedReview) {
+      workflow = await resubmitReturnedOperationalReview(connection, {
+        review: returnedReview,
+        actor: req.authUser,
+        department: 'accounting',
+        projectId: context.project.lot_project_id,
+        entityLabel,
+        beforeSnapshot,
+        afterSnapshot,
+        message: 'Signed acknowledgement receipt corrected and resubmitted for Accounting Head review.',
+      });
+    } else {
+      workflow = await createOperationalReview(connection, {
+        actor: req.authUser,
+        actionKey: 'signed_receipt.upload',
+        department: 'accounting',
+        projectId: context.project.lot_project_id,
+        entityType: 'lot_project_signed_receipt',
+        entityId: paymentId,
+        entityLabel,
+        beforeSnapshot,
+        afterSnapshot,
+      });
+    }
+
     await connection.commit();
 
-    const activeFile = await getActiveFile(connection, context.payment.lot_project_payment_id);
+    const activeFile = await getActiveFile(connection, paymentId);
     return res.status(201).json({
       success: true,
       message: nextVersion > 1 ? 'Signed acknowledgement receipt replaced successfully.' : 'Signed acknowledgement receipt uploaded successfully.',
       signedCopyId: Number(result.insertId),
+      review: workflow,
       data: { signedCopy: mapSignedCopy(req, activeFile) },
     });
   } catch (error) {

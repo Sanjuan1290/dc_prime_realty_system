@@ -214,6 +214,8 @@ const EditUserModal = ({
   actorRole = "super_admin",
   initialSellerGroupId = "",
   lockSellerGroup = false,
+  workflowReviewId = null,
+  workflowAuditCaseId = null,
 }) => {
   const queryClient = useQueryClient();
   const availableRoleEntries = useMemo(() => Object.entries(roleLabels).filter(([value]) => allowedRoles.includes(value)), [allowedRoles]);
@@ -310,7 +312,7 @@ const EditUserModal = ({
 
   const updateMutation = useMutation({
     mutationFn: () =>
-      putApi(`/user/editUser/${selectedUser.id}`, form, {
+      putApi(`/user/editUser/${selectedUser.id}`, { ...form, ...(workflowReviewId ? { reviewId: workflowReviewId } : {}), ...(workflowAuditCaseId ? { auditCaseId: workflowAuditCaseId } : {}) }, {
         doubleCheck: {
           type: 'user',
           mode: 'edit',

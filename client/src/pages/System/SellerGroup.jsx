@@ -8,7 +8,7 @@ import StatusAlert from '../../components/Shared/StatusAlert'
 import ConfirmActionModal from '../../components/Shared/ConfirmActionModal'
 import NewGroupModal from '../../components/System/sellerGroupComponents/NewGroupModal'
 import EditGroupModal from '../../components/System/sellerGroupComponents/EditGroupModal'
-import { useFetch as fetchJson, useFetchPatch as patchJson } from '../../utils/useFetch'
+import { useFetch as fetchJson, useFetchPatch as patchJson, getDoubleCheckNotice } from '../../utils/useFetch'
 
 const rateLabel = (rate) => rate.lot_project_location_code || rate.lot_project_name || `Project ${rate.lot_project_id}`
 
@@ -140,7 +140,7 @@ const SellerGroup = ({ groupType = 'in_house' }) => {
     mutationFn: (group) => patchJson(`/seller-groups/toggle-status/${group.seller_group_id}`, { status: group.seller_group_status === 'active' ? 'inactive' : 'active' }, { confirmationHandled: 'compact' }),
     onMutate: (group) => setModalNotice({ type: 'loading', message: `${group.seller_group_status === 'active' ? 'Deactivating' : 'Activating'} Network...` }),
     onSuccess: (result) => { setConfirmGroup(null); setModalNotice(null); setAlert({ type: 'success', message: result?.message || 'Network status updated.' }); queryClient.invalidateQueries({ queryKey: ['seller-groups'] }); queryClient.invalidateQueries({ queryKey: ['seller-group-options'] }) },
-    onError: (error) => setModalNotice({ type: 'error', message: error?.message || 'Failed to update Network.' }),
+    onError: (error) => setModalNotice(getDoubleCheckNotice(error, 'Failed to update Network.')),
   })
 
   const handleSaved = (message) => {

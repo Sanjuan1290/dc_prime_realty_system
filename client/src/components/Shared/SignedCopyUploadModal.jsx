@@ -55,6 +55,8 @@ const SignedCopyUploadModal = ({
   viewLabel = 'View / Print',
   allowDelete = false,
   deleteLabel = 'Delete Signed Copy',
+  workflowReviewId = null,
+  workflowAuditCaseId = null,
   onClose,
   onChanged,
 }) => {
@@ -67,6 +69,10 @@ const SignedCopyUploadModal = ({
   const [isOpening, setIsOpening] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [scanFallback, setScanFallback] = useState(null)
+  const workflowPayload = {
+    ...(workflowReviewId ? { reviewId: Number(workflowReviewId) } : {}),
+    ...(workflowAuditCaseId ? { auditCaseId: Number(workflowAuditCaseId) } : {}),
+  }
   const taskIdRef = useRef('')
   const { addUpload, updateUpload, beginSecurityScan, failUpload } = useUploadSecurity()
 
@@ -121,7 +127,7 @@ const SignedCopyUploadModal = ({
     setIsDeleting(true)
     setNotice({ type: 'loading', message: 'Deleting signed copy...' })
     try {
-      const result = await useFetchPost(`${basePath}/delete`, {}, { confirmationHandled: 'compact' })
+      const result = await useFetchPost(`${basePath}/delete`, workflowPayload, { confirmationHandled: 'compact' })
       setSignedCopy(null)
       setFile(null)
       setNotice({ type: 'success', message: result?.message || 'Signed copy deleted successfully.' })
@@ -198,7 +204,7 @@ const SignedCopyUploadModal = ({
       updateUpload(taskIdRef.current, { status: 'uploading', message: 'Uploading protected signed copy...' })
       const uploadedFile = await uploadOne({ allowUnscanned, fallbackToken })
       updateUpload(taskIdRef.current, { status: 'saving', message: 'Saving signed-copy record...' })
-      const saveResult = await useFetchPost(basePath, { file: uploadedFile }, { confirmationToken: confirmationToken })
+      const saveResult = await useFetchPost(basePath, { file: uploadedFile, ...workflowPayload }, { confirmationToken: confirmationToken })
       const signedCopyId = Number(saveResult?.signedCopyId || saveResult?.data?.signedCopy?.signedCopyId || 0)
       beginSecurityScan(taskIdRef.current, {
         accessPath: `${basePath}/access-url`,

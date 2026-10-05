@@ -18,7 +18,12 @@ const HEAD_APPROVAL = new Set([
   PERMISSIONS.LOT_CANCELLATIONS_SETTLE,
   PERMISSIONS.LOT_CANCELLATIONS_RELEASE_UNIT,
   PERMISSIONS.LOT_LISTINGS_EDIT,
+  PERMISSIONS.LOT_LISTINGS_DELETE,
 ])
+
+// Network project-rate changes are action-level governed under the broader
+// SYSTEM_SELLER_GROUPS_MANAGE permission. Do not mark that broad permission
+// here or ordinary Network create/edit/status actions would be mislabeled.
 
 const SENSITIVE_PATTERN = /delete|purge|archive|deactivate|cancellation|refund|settle|penalt|commissions\.(adjust|release|hold|unhold)|payments\.(edit|delete)|employee_salary\.(finalize|correct_finalized|release)|compensation|access_control\.manage|settings\.manage|emergency|reservation\.correct|system_correction/
 

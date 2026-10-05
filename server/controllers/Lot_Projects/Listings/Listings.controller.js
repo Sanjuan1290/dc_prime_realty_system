@@ -111,7 +111,13 @@ import {
   sendCancellationVerificationCodeEmail,
 } from '../../../services/cancellationVerification.service.js';
 import { authorizeGovernedAction, headApprovalPendingResponse } from '../../../services/governedAction.service.js';
-import { assertEntityNotReviewLocked, createOperationalReview } from '../../../services/operationalReview.service.js';
+import {
+  assertEntityNotReviewLocked,
+  createOperationalReview,
+  getReturnedOperationalReviewForActor,
+  resubmitReturnedOperationalReview,
+} from '../../../services/operationalReview.service.js';
+import { getPendingAuditCorrectionCase, advanceAuditCaseToRecheck } from '../../../services/auditCaseAuthorization.service.js';
 import { getReviewActionLabel } from '../../../config/reviewActions.js';
 
 // Fields a reserved/sold listing edit can change. The Head approves exactly
@@ -134,6 +140,13 @@ const buildProtectedListingEditPayload = (body = {}, listing = {}) => {
     cadastralLots: Array.isArray(body.cadastralLots) ? body.cadastralLots.map((item) => text(item)).filter(Boolean).sort() : null,
   };
 };
+
+const buildListingDeletePayload = (project, listing) => ({
+  projectId: Number(project?.lot_project_id || 0),
+  listingId: Number(listing?.lot_project_listing_id || 0),
+  unitCode: String(listing?.lot_project_listing_unit_id || '').trim().toUpperCase(),
+  status: String(listing?.lot_project_listing_status || '').trim().toLowerCase(),
+});
 
 const normalizeListingDocumentRequirements = (documents = []) => {
   const documentMap = new Map();
@@ -1562,6 +1575,38 @@ export const updateLotProjectListing = async (req, res) => {
         entityId: existingListing.lot_project_listing_id,
       });
     }
+    let inventoryAuditCase = null;
+    let returnedInventoryReview = null;
+    if (isInventoryEditable && !isCancellationAction) {
+      if (req.authUser?.role === 'system_admin') {
+        inventoryAuditCase = await getPendingAuditCorrectionCase(connection, {
+          auditCaseId: req.body?.auditCaseId,
+          entityType: 'lot_project_listing',
+          entityId: existingListing.lot_project_listing_id,
+        });
+        if (!inventoryAuditCase) {
+          throw Object.assign(new Error('System Admin may edit a listing only when an Auditor-approved correction case is open for this record.'), { statusCode: 403, code: 'AUDIT_CORRECTION_REQUIRED' });
+        }
+      } else {
+        const returnedKeys = ['listing.edit', 'listing.documents.update', 'listing.create'];
+        for (const actionKey of returnedKeys) {
+          returnedInventoryReview = await getReturnedOperationalReviewForActor(connection, {
+            actor: req.authUser,
+            actionKey,
+            entityType: 'lot_project_listing',
+            entityId: existingListing.lot_project_listing_id,
+            reviewId: req.body?.reviewId,
+          });
+          if (returnedInventoryReview) break;
+        }
+      }
+      await assertEntityNotReviewLocked(connection, {
+        actor: req.authUser,
+        entityType: 'lot_project_listing',
+        entityId: existingListing.lot_project_listing_id,
+        allowReviewId: inventoryAuditCase?.operational_review_id || returnedInventoryReview?.operational_review_id || null,
+      });
+    }
     void isSuperAdmin;
 
     const existingInstallmentPricePerSqm = Number(
@@ -2440,6 +2485,66 @@ export const updateLotProjectListing = async (req, res) => {
       });
     }
 
+    let inventoryReview = null;
+    if (isInventoryEditable && !isCancellationAction) {
+      // The general inventory-edit endpoint is always classified as listing.edit.
+      // The dedicated listing-document endpoint owns listing.documents.update.
+      const inventoryActionKey = 'listing.edit';
+      const beforeSnapshot = {
+        projectSlug: slug,
+        listingId: existingListing.lot_project_listing_id,
+        unitCode: existingListing.lot_project_listing_unit_id,
+        status: existingListing.lot_project_listing_status,
+        soldSubstatus: existingListing.lot_project_listing_sold_substatus,
+        oldUnitIds: existingListing.lot_project_listing_old_unit_ids,
+        lotType: existingListing.lot_project_listing_unit_type,
+        lotAreaSqm: Number(existingListing.lot_project_listing_area_sqm || 0),
+      };
+      const afterSnapshot = {
+        projectSlug: slug,
+        listingId: existingListing.lot_project_listing_id,
+        unitCode,
+        status: listingStatus.status,
+        soldSubstatus: listingStatus.soldSubstatus,
+        oldUnitIds: toNullable(oldUnitIdsValue),
+        lotType: normalizeLotType(req.body.lotType || req.body.lot_type),
+        lotAreaSqm,
+        documentRequirementsChanged: listingDocumentSyncResult?.skipped === false,
+      };
+      if (inventoryAuditCase) {
+        inventoryReview = await advanceAuditCaseToRecheck(connection, {
+          auditCase: inventoryAuditCase,
+          actor: req.authUser,
+          correctionSummary: String(req.body?.correctionSummary || req.body?.reason || 'Corrected listing details from the Audit Case.').trim(),
+          afterSnapshot,
+          metadata: { actionKey: inventoryActionKey },
+        });
+      } else if (returnedInventoryReview) {
+        inventoryReview = await resubmitReturnedOperationalReview(connection, {
+          review: returnedInventoryReview,
+          actor: req.authUser,
+          department: 'operations',
+          projectId: project.lot_project_id,
+          entityLabel: `Unit ${unitCode} — ${project.lot_project_name}`,
+          beforeSnapshot,
+          afterSnapshot,
+          message: `${returnedInventoryReview.action_key} corrected and resubmitted for Operations Head review.`,
+        });
+      } else {
+        inventoryReview = await createOperationalReview(connection, {
+          actor: req.authUser,
+          actionKey: inventoryActionKey,
+          department: 'operations',
+          projectId: project.lot_project_id,
+          entityType: 'lot_project_listing',
+          entityId: existingListing.lot_project_listing_id,
+          entityLabel: `Unit ${unitCode} — ${project.lot_project_name}`,
+          beforeSnapshot,
+          afterSnapshot,
+        });
+      }
+    }
+
     await connection.commit();
 
     return res.json({
@@ -2458,7 +2563,7 @@ export const updateLotProjectListing = async (req, res) => {
               ? `${unitCode} updated successfully. Existing SOA was not changed because it has payments or a custom SOA rate.`
               : `${unitCode} updated successfully.`,
       cloudinary_folder_sync: cloudinarySyncResult,
-      review: governedReview,
+      review: governedReview || inventoryReview,
       listing_id: existingListing.lot_project_listing_id,
       unit_id: unitCode,
     });
@@ -2711,6 +2816,27 @@ export const createLotProjectListing = async (req, res) => {
       },
     });
 
+    const listingReview = await createOperationalReview(connection, {
+      actor: req.authUser,
+      actionKey: 'listing.create',
+      department: 'operations',
+      projectId: project.lot_project_id,
+      entityType: 'lot_project_listing',
+      entityId: listingId,
+      entityLabel: `Unit ${unitCode} — ${project.lot_project_name}`,
+      beforeSnapshot: null,
+      afterSnapshot: {
+        projectSlug: slug,
+        listingId,
+        unitCode,
+        status: listingStatus.status,
+        soldSubstatus: listingStatus.soldSubstatus,
+        lotType: normalizeLotType(req.body.lotType || req.body.unitType),
+        lotAreaSqm,
+        documentCount: listingDocuments.length,
+      },
+    });
+
     await connection.commit();
 
     return res.status(201).json({
@@ -2799,6 +2925,26 @@ export const deleteLotProjectListing = async (req, res) => {
       }
     }
 
+    const deleteGovernance = await authorizeGovernedAction(connection, {
+      actor: req.authUser,
+      actionKey: 'listing.delete',
+      projectId: project.lot_project_id,
+      entityId: existingListing.lot_project_listing_id,
+      entityLabel: existingListing.lot_project_listing_unit_id,
+      payload: buildListingDeletePayload(project, existingListing),
+      reason: req.body?.reason || `Delete empty listing ${existingListing.lot_project_listing_unit_id}`,
+      approvalRequestId: req.body?.approvalRequestId,
+    });
+    if (!deleteGovernance.authorized) {
+      await connection.commit();
+      return res.status(409).json(headApprovalPendingResponse(deleteGovernance, getReviewActionLabel('listing.delete')));
+    }
+    await assertEntityNotReviewLocked(connection, {
+      actor: req.authUser,
+      entityType: 'lot_project_listing',
+      entityId: existingListing.lot_project_listing_id,
+    });
+
     if (
       (await tableExists(connection, 'lot_project_commission_releases')) &&
       (await tableExists(connection, 'lot_project_commissions')) &&
@@ -2864,12 +3010,34 @@ export const deleteLotProjectListing = async (req, res) => {
       },
     });
 
+    const deleteReview = await createOperationalReview(connection, {
+      actor: req.authUser,
+      actionKey: 'listing.delete',
+      department: 'operations',
+      projectId: project.lot_project_id,
+      entityType: 'lot_project_listing',
+      entityId: existingListing.lot_project_listing_id,
+      entityLabel: `Unit ${existingListing.lot_project_listing_unit_id} — ${project.lot_project_name}`,
+      beforeSnapshot: {
+        projectSlug: slug,
+        listingId: existingListing.lot_project_listing_id,
+        unitCode: existingListing.lot_project_listing_unit_id,
+        status: existingListing.lot_project_listing_status,
+      },
+      afterSnapshot: {
+        projectSlug: slug,
+        listingId: existingListing.lot_project_listing_id,
+        deleted: true,
+      },
+      headPreApprovedByUserId: deleteGovernance.headPreApprovedByUserId,
+    });
+
     await connection.commit();
 
-    return res.json({ success: true, message: 'Listing deleted successfully.' });
+    return res.json({ success: true, message: 'Listing deleted successfully.', review: deleteReview });
   } catch (error) {
     await connection.rollback();
-    return res.status(500).json({ message: getErrorMessage(error) });
+    return res.status(error?.statusCode || 500).json({ message: getErrorMessage(error) });
   } finally {
     connection.release();
   }
