@@ -53,6 +53,7 @@ const permissionCatalog = [
   { group: 'Employee Salary', kind: 'OPERATE', items: [['View Employee Salary', PERMISSIONS.EMPLOYEE_SALARY_VIEW], ['Generate Payroll', PERMISSIONS.PAYROLL_GENERATE], ['Recalculate Draft Payroll', PERMISSIONS.PAYROLL_RECALCULATE_DRAFT], ['Finalize Payroll', PERMISSIONS.PAYROLL_FINALIZE], ['Correct Finalized Payroll', PERMISSIONS.PAYROLL_CORRECT_FINALIZED], ['Mark Payroll as Released', PERMISSIONS.PAYROLL_RELEASE], ['View Payroll History', PERMISSIONS.PAYROLL_HISTORY_VIEW], ['Print Payroll Receipt', PERMISSIONS.PAYROLL_RECEIPT_PRINT], ['Export Payroll Receipt', PERMISSIONS.PAYROLL_RECEIPT_EXPORT], ['Export Payroll Summary', PERMISSIONS.PAYROLL_SUMMARY_EXPORT], ['Manage Payroll Settings', PERMISSIONS.PAYROLL_SETTINGS_MANAGE]] },
   { group: 'Attendance', kind: 'OPERATE', items: [['View', PERMISSIONS.ATTENDANCE_VIEW], ['Manage', PERMISSIONS.ATTENDANCE_MANAGE]] },
   { group: 'Audit Logs', kind: 'AUDIT', items: [['View', PERMISSIONS.AUDIT_LOGS_VIEW], ['Archive (Owner Only)', PERMISSIONS.AUDIT_LOGS_ARCHIVE]] },
+  { group: 'Data Integrity', kind: 'AUDIT', items: [['View Data Integrity', PERMISSIONS.SYSTEM_DATA_INTEGRITY_VIEW]] },
   { group: 'Notifications', kind: 'OPERATE', items: [['View', PERMISSIONS.SYSTEM_NOTIFICATIONS_VIEW], ['Manage', PERMISSIONS.SYSTEM_NOTIFICATIONS_MANAGE]] },
   { group: 'Documents', kind: 'OPERATE', items: [['View Documents', PERMISSIONS.SYSTEM_DOCUMENTS_VIEW], ['Create Documents', PERMISSIONS.SYSTEM_DOCUMENTS_CREATE], ['Edit Documents', PERMISSIONS.SYSTEM_DOCUMENTS_EDIT], ['Delete Documents', PERMISSIONS.SYSTEM_DOCUMENTS_DELETE], ['View Templates', PERMISSIONS.SYSTEM_DOCUMENT_TEMPLATES_VIEW], ['Create Templates', PERMISSIONS.SYSTEM_DOCUMENT_TEMPLATES_CREATE], ['Edit Templates', PERMISSIONS.SYSTEM_DOCUMENT_TEMPLATES_EDIT], ['Delete Templates', PERMISSIONS.SYSTEM_DOCUMENT_TEMPLATES_DELETE]] },
 ];
@@ -227,3 +228,4 @@ export const applyRoleDefaultsToUser = async (req, res) => {
     return res.status(error?.statusCode || 500).json({ code: error?.code, message: error?.message || 'Failed to apply role defaults.' });
   } finally { connection.release(); }
 };
+

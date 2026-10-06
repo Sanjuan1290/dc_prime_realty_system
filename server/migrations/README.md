@@ -64,3 +64,10 @@ Every action that creates an Operational Review must be registered in `server/co
 `20261006_batch7_marketing_network_permissions.sql` adds the Network-management and in-house seller create/edit permission keys to the `marketing_staff` and `marketing_head` role defaults. It is TiDB-safe and idempotent through `INSERT ... ON DUPLICATE KEY UPDATE`.
 
 The migration **does not modify existing `user_permissions` rows**. After deployment, use **System > Settings > Role & Access Control > Apply Latest Role Default** for each existing Marketing Staff/Head account that should receive the new defaults. Head inheritance remains structural in the application.
+
+
+## 2026-10-06 Batch 8: role permission default cleanup
+
+`20261006_batch8_role_default_cleanup.sql` removes System Admin and Auditor role-default rows that sit outside their permission ceiling (including the 29 legacy Admin rows still stored for System Admin, which the application already ignored) and adds `system.data_integrity.view` to the System Admin default. Run it after Batch 7. It is idempotent and TiDB-safe.
+
+Role defaults customised in Role & Access Control are kept, and existing `user_permissions` rows are not changed. Use **Apply Latest Role Default** on existing System Admin accounts that should receive Data Integrity access.
