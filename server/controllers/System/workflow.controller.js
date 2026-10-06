@@ -1,7 +1,7 @@
 import { db } from '../../db/connect.js';
 import { DEPARTMENT_HEAD_ROLE, getRoleDepartment } from '../../config/permissions.js';
 import { writeAuditLog } from './auditLogs.controller.js';
-import { activeNotificationSql, createInternalNotifications, notifyAuditors, notifySystemAdmins } from '../../services/internalNotification.service.js';
+import { activeNotificationSql, createInternalNotifications, notifyAuditors, notifySystemAdmins, REVIEW_ACTION_NOTIFICATION_STAGES } from '../../services/internalNotification.service.js';
 import { appendReviewEvent, canActorSeeReview, getOperationalReviewForUpdate } from '../../services/operationalReview.service.js';
 import { approveProtectedChange } from '../../services/protectedChange.service.js';
 import { resolveAuditCaseResponders, RESPONDER_MODE_LABELS } from '../../services/auditCaseResponder.service.js';
@@ -91,7 +91,13 @@ const canActorOpenReview = async (connection, actor, review) => {
 // still limited by canActorOpenReview() and by each action endpoint.
 const canActorViewReview = async (connection, actor, review) => {
   if (!actor || !review) return false;
-  if (await canActorSeeReview(connection, actor, review)) return true;
+  // Same rule as the History & Tracking list, so anything listed there opens.
+  const history = reviewHistoryWhere(actor);
+  const [historyRows] = await connection.query(
+    `SELECT 1 FROM operational_reviews r WHERE r.operational_review_id=? AND ${history.sql} LIMIT 1`,
+    [review.operational_review_id, ...history.params]
+  ).catch(() => [[]]);
+  if (historyRows?.length) return true;
   const actorId = Number(actor.id || 0);
   if (!actorId) return false;
   const participants = [review.initiated_by_user_id, review.claimed_by_user_id, review.head_reviewed_by_user_id, review.auditor_reviewed_by_user_id].map(Number);
@@ -103,21 +109,52 @@ const canActorViewReview = async (connection, actor, review) => {
   return Boolean(rows?.length);
 };
 
-// History scope for the Review Center "All reviews" view (read-only).
-const reviewVisibilityWhere = (actor, { alias = 'r' } = {}) => {
+// History & Tracking scope (read-only). Lets a Head or Auditor keep following a
+// review after their own step is done, without it staying in Needs My Action.
+//   Auditor:            everything that reached the audit stage
+//   System/Super Admin: every review
+//   Department Head:    their department, within their project access
+//   Anyone else:        reviews they entered
+const AUDIT_STAGE_STATUSES = ['pending_auditor_review', 'audit_case_open', 'correction_required', 'pending_auditor_recheck', 'closed', 'auditor_verified'];
+const reviewHistoryWhere = (actor, { alias = 'r' } = {}) => {
   const role = String(actor?.role || '');
   const actorId = Number(actor?.id || 0);
-  if (['auditor', 'system_admin', 'super_admin'].includes(role)) return { sql: '1=1', params: [] };
+  if (role === 'auditor') {
+    return {
+      sql: `((${alias}.head_reviewed_at IS NOT NULL AND ${alias}.status NOT IN ('pending_head_review','returned_for_correction')) OR ${alias}.status IN (${AUDIT_STAGE_STATUSES.map((status) => `'${status}'`).join(',')}))`,
+      params: [],
+    };
+  }
+  if (['system_admin', 'super_admin'].includes(role)) return { sql: '1=1', params: [] };
   const department = getRoleDepartment(actor);
   const isHead = department && DEPARTMENT_HEAD_ROLE[department] === role;
   if (isHead) {
     return {
       sql: `(${alias}.department = ?
-        AND (${alias}.lot_project_id IS NULL OR COALESCE(?,0)=1 OR EXISTS (SELECT 1 FROM user_project_access vupa WHERE vupa.user_id=? AND vupa.lot_project_id=${alias}.lot_project_id)))`,
+        AND (${alias}.lot_project_id IS NULL OR COALESCE(?,0)=1 OR EXISTS (SELECT 1 FROM user_project_access hupa WHERE hupa.user_id=? AND hupa.lot_project_id=${alias}.lot_project_id)))`,
       params: [department, Number(actor?.all_projects_access || actor?.admin_all_projects || 0), actorId],
     };
   }
   return { sql: `${alias}.initiated_by_user_id = ?`, params: [actorId] };
+};
+
+// Internal Notifications shown to an account. Action notifications (do this
+// review now) appear only while that review is still in this account's own
+// queue: once someone else acts, or it is reassigned, it disappears for
+// everyone else. Informational notifications always stay.
+const QUEUE_GATED_NOTIFICATION_TYPES = Object.keys(REVIEW_ACTION_NOTIFICATION_STAGES).filter((type) => type !== 'review_returned');
+const notificationVisibilityWhere = (actor, { reviewAlias = 'nr' } = {}) => {
+  const queue = reviewQueueWhere(actor, { alias: reviewAlias });
+  return {
+    join: `LEFT JOIN operational_reviews nr ON nr.operational_review_id=n.operational_review_id`,
+    sql: `(${activeNotificationSql('n')}
+      AND (
+        n.operational_review_id IS NULL
+        OR n.notification_type NOT IN (${QUEUE_GATED_NOTIFICATION_TYPES.map((type) => `'${type}'`).join(',')})
+        OR (${reviewAlias}.operational_review_id IS NOT NULL AND ${queue.sql})
+      ))`,
+    params: queue.params,
+  };
 };
 
 // Returns names for ids found in review snapshots so the Review Center can show
@@ -182,9 +219,9 @@ export const listOperationalReviews = async (req, res) => {
   try {
     const { page, limit } = pageValues(req.query);
     const offset = (page - 1) * limit;
-    const scope = String(req.query.scope || 'queue') === 'all' ? 'all' : 'queue';
+    const scope = String(req.query.scope || 'queue') === 'history' ? 'history' : 'queue';
     const queue = reviewQueueWhere(req.authUser);
-    const access = scope === 'all' ? reviewVisibilityWhere(req.authUser) : queue;
+    const access = scope === 'history' ? reviewHistoryWhere(req.authUser) : reviewQueueWhere(req.authUser);
     const statuses = String(req.query.status || '').trim().split(',').map((v) => v.trim()).filter(Boolean);
     const params = [...access.params];
     let statusSql = '';
@@ -241,7 +278,8 @@ export const getReviewCenterSummary = async (req, res) => {
     const [protectedRows] = await db.query(`SELECT COUNT(*) total FROM protected_change_requests p WHERE ${protectedSql}`, protectedParams).catch(() => [[{ total: 0 }]]);
     const pendingProtectedChanges = Number(protectedRows?.[0]?.total || 0);
 
-    const [notificationRows] = await db.query(`SELECT COUNT(*) unread FROM internal_notifications n WHERE n.user_id=? AND n.read_at IS NULL AND ${activeNotificationSql('n')}`, [actor.id]);
+    const notificationAccess = notificationVisibilityWhere(actor);
+    const [notificationRows] = await db.query(`SELECT COUNT(*) unread FROM internal_notifications n ${notificationAccess.join} WHERE n.user_id=? AND n.read_at IS NULL AND ${notificationAccess.sql}`, [actor.id, ...notificationAccess.params]);
     const unreadNotifications = Number(notificationRows[0]?.unread || 0);
     return res.json({ data: { counts, actionable, pendingProtectedChanges, unreadNotifications, badgeCount: actionable + pendingProtectedChanges + unreadNotifications } });
   } catch (error) { return res.status(500).json({ message: errorMessage(error) }); }
@@ -360,7 +398,7 @@ export const confirmHeadReview = async (req, res) => {
     await notifyAuditors(connection, { reviewId: review.operational_review_id, title: `Audit review required · ${review.entity_label || review.entity_type}`, message: `${review.review_number} was confirmed by the ${review.department} Head.` });
     await writeAuditLog(connection, req, { action:'approve',module:'Review Center',entityType:'operational_review',entityId:String(review.operational_review_id),entityLabel:review.review_number,title:'Department Head confirmed review',description:`${review.review_number} moved to Auditor review.`,metadata:{department:review.department,action_key:review.action_key} });
     await connection.commit();
-    return res.json({ message: 'Confirmed. The Auditor has been notified.' });
+    return res.json({ message: 'Confirmed. The Auditor has been notified. You can continue tracking this review in History & Tracking.' });
   } catch (error) { try { await connection.rollback(); } catch {} return res.status(error.statusCode || 500).json({ code:error.code,message:errorMessage(error) }); } finally { connection.release(); }
 };
 
@@ -418,7 +456,7 @@ export const auditorVerifyReview = async (req, res) => {
     await appendReviewEvent(connection, { reviewId:review.operational_review_id,eventType:previous==='pending_auditor_recheck'?'correction_verified':'auditor_verified',actor:req.authUser,fromStatus:previous,toStatus:'closed',message:String(req.body?.note || 'Auditor verified no issue.').slice(0,1000) });
     await writeAuditLog(connection, req, { action:'approve',module:'Review Center',entityType:'operational_review',entityId:String(review.operational_review_id),entityLabel:review.review_number,title:'Auditor verified operational review',description:`${review.review_number} closed after independent verification.`,metadata:{action_key:review.action_key} });
     await connection.commit();
-    return res.json({ message: 'Audit verification completed. Review closed.' });
+    return res.json({ message: 'Audit verification completed. Review closed. It remains available in History & Tracking.' });
   } catch (error) { try { await connection.rollback(); } catch {} return res.status(error.statusCode || 500).json({ code:error.code,message:errorMessage(error) }); } finally { connection.release(); }
 };
 
@@ -427,9 +465,9 @@ export const listInternalNotifications = async (req, res) => {
     const { page,limit } = pageValues(req.query); const offset=(page-1)*limit;
     // Action notifications for work that already moved on (another Head or
     // Auditor acted, or the case was reassigned) are hidden for everyone.
-    const active = activeNotificationSql('n');
-    const [countRows] = await db.query(`SELECT COUNT(*) total FROM internal_notifications n WHERE n.user_id=? AND ${active}`,[req.authUser.id]);
-    const [rows] = await db.query(`SELECT n.* FROM internal_notifications n WHERE n.user_id=? AND ${active} ORDER BY n.created_at DESC,n.internal_notification_id DESC LIMIT ? OFFSET ?`,[req.authUser.id,limit,offset]);
+    const access = notificationVisibilityWhere(req.authUser);
+    const [countRows] = await db.query(`SELECT COUNT(*) total FROM internal_notifications n ${access.join} WHERE n.user_id=? AND ${access.sql}`,[req.authUser.id,...access.params]);
+    const [rows] = await db.query(`SELECT n.* FROM internal_notifications n ${access.join} WHERE n.user_id=? AND ${access.sql} ORDER BY n.created_at DESC,n.internal_notification_id DESC LIMIT ? OFFSET ?`,[req.authUser.id,...access.params,limit,offset]);
     return res.json({ data:rows,pagination:{page,limit,total:Number(countRows[0]?.total||0)} });
   } catch(error){ return res.status(500).json({message:errorMessage(error)}); }
 };
@@ -591,6 +629,8 @@ export const reviewProtectedChangeRequest = async (req,res) => {
     await connection.commit(); return res.json({message:`Protected change ${decision}d.`,data:{requestId:row.protected_change_request_id,requestNumber:row.request_number,status:row.status}});
   }catch(error){try{await connection.rollback()}catch{}return res.status(error.statusCode||500).json({code:error.code,message:errorMessage(error)});}finally{connection.release();}
 };
+
+
 
 
 

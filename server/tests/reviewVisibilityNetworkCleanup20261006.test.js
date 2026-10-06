@@ -12,15 +12,15 @@ test('Head audit-case access check uses the actor id (no undefined variable)', (
   assert.match(controller, /responders\.userIds\.includes\(Number\(actor\.id \|\| 0\)\)/);
 });
 
-test('Review list supports an All reviews history scope and flags work waiting on the viewer', () => {
+test('Review list supports a History & Tracking scope and flags work waiting on the viewer', () => {
   const controller = read('server/controllers/System/workflow.controller.js');
   assert.match(controller, /req\.query\.scope/);
-  assert.match(controller, /reviewVisibilityWhere/);
+  assert.match(controller, /reviewHistoryWhere/);
   assert.match(controller, /needs_my_action/);
   const center = read('client/src/pages/System/ReviewCenter.jsx');
-  assert.match(center, /Needs my action/);
-  assert.match(center, /All reviews/);
-  assert.match(center, /&scope=\$\{scope\}/);
+  assert.match(center, /Needs My Action/);
+  assert.match(center, /History &amp; Tracking/);
+  assert.match(center, /&scope=\$\{reviewScope\}/);
 });
 
 test('Review details do not retry 4xx answers and reload after a failed action', () => {
@@ -58,8 +58,10 @@ test('settling notifications selects first, then updates by id (MySQL safe)', as
 
 test('notification list and unread count both hide moved-on action notifications', () => {
   const controller = read('server/controllers/System/workflow.controller.js');
-  assert.match(controller, /SELECT COUNT\(\*\) unread FROM internal_notifications n WHERE n\.user_id=\? AND n\.read_at IS NULL AND \$\{activeNotificationSql\('n'\)\}/);
-  assert.match(controller, /SELECT n\.\* FROM internal_notifications n WHERE n\.user_id=\? AND \$\{active\}/);
+  assert.match(controller, /SELECT COUNT\(\*\) unread FROM internal_notifications n \$\{notificationAccess\.join\} WHERE n\.user_id=\? AND n\.read_at IS NULL AND \$\{notificationAccess\.sql\}/);
+  assert.match(controller, /SELECT n\.\* FROM internal_notifications n \$\{access\.join\} WHERE n\.user_id=\? AND \$\{access\.sql\}/);
+  // Stale-stage filtering still applies inside the account visibility rule.
+  assert.match(controller, /sql: `\(\$\{activeNotificationSql\('n'\)\}/);
 });
 
 test('duplicate broker name requires confirmation on create and on a changed edit', () => {
@@ -92,4 +94,22 @@ test('review snapshots never store internal normalized broker keys', () => {
   const snapshot = controller.slice(controller.indexOf('const buildNetworkSnapshot'), controller.indexOf('const normalizeNetworkIdentity'));
   assert.doesNotMatch(snapshot, /broker: broker \|\|/);
   assert.doesNotMatch(snapshot, /broker_[a-z_]+_normalized/);
+});
+
+
+
+test('repeated status updates for the same review show only the newest one', () => {
+  const sql = activeNotificationSql('n');
+  assert.match(sql, /post_action_review_status/);
+  assert.match(sql, /newer_info\.internal_notification_id > n\.internal_notification_id/);
+});
+
+test('History & Tracking keeps Head-stage work out of the Auditor view', () => {
+  const controller = read('server/controllers/System/workflow.controller.js');
+  assert.match(controller, /head_reviewed_at IS NOT NULL AND \$\{alias\}\.status NOT IN \('pending_head_review','returned_for_correction'\)/);
+});
+
+test('Listings page has no imports from recharts internal type paths', () => {
+  const listings = read('client/src/pages/Lot_Projects/Listings.jsx');
+  assert.doesNotMatch(listings, /from 'recharts\/types\//);
 });

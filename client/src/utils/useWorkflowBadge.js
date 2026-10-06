@@ -7,7 +7,8 @@ const REVIEW_CENTER_ROLES = new Set(['super_admin','system_admin','auditor','mar
 const useWorkflowBadge = (user) => {
   const enabled = Boolean(user) && !user?.must_change_password && REVIEW_CENTER_ROLES.has(user?.role) && hasPermission(user, PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW)
   const query = useQuery({
-    queryKey: ['workflow-summary'],
+    // Same account-aware key as the Review Center summary.
+    queryKey: ['workflow-summary', user?.id || 0, user?.role || ''],
     queryFn: () => useFetch('/workflow/summary'),
     enabled,
     staleTime: 15_000,
@@ -23,3 +24,5 @@ const useWorkflowBadge = (user) => {
 }
 
 export default useWorkflowBadge
+
+

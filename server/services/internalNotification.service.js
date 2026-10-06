@@ -30,6 +30,8 @@ export const REVIEW_ACTION_NOTIFICATION_STAGES = Object.freeze({
 const ACTION_TYPES = Object.keys(REVIEW_ACTION_NOTIFICATION_STAGES);
 // Head approval requests (no Review yet) that point at an APR-... request.
 const PROTECTED_APPROVAL_TYPES = ['department_review_required', 'approval_has_no_head'];
+// Status updates where only the newest one per review matters.
+const LATEST_ONLY_INFO_TYPES = ['post_action_review_status'];
 const sqlList = (values) => values.map((value) => `'${value}'`).join(',');
 
 /**
@@ -55,7 +57,21 @@ export const activeNotificationSql = (alias = 'n') => {
         )
       )
     )
-    OR (${alias}.operational_review_id IS NOT NULL AND ${alias}.notification_type NOT IN (${sqlList(ACTION_TYPES)}))
+    OR (
+      ${alias}.operational_review_id IS NOT NULL
+      AND ${alias}.notification_type NOT IN (${sqlList(ACTION_TYPES)})
+      /* Repeated "Saved successfully" updates for the same review: keep only the latest. */
+      AND NOT (
+        ${alias}.notification_type IN (${sqlList(LATEST_ONLY_INFO_TYPES)})
+        AND EXISTS (
+          SELECT 1 FROM internal_notifications newer_info
+          WHERE newer_info.user_id = ${alias}.user_id
+            AND newer_info.operational_review_id = ${alias}.operational_review_id
+            AND newer_info.notification_type = ${alias}.notification_type
+            AND newer_info.internal_notification_id > ${alias}.internal_notification_id
+        )
+      )
+    )
     OR EXISTS (
       SELECT 1
       FROM operational_reviews r
@@ -149,3 +165,5 @@ export const notifySystemAdmins = async (connection, { reviewId, auditCaseId = n
   const userIds = await getEligibleRoleUserIds(connection, { role: 'system_admin' });
   return createInternalNotifications(connection, { userIds, type, title, message, reviewId, auditCaseId });
 };
+
+
