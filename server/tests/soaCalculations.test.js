@@ -52,8 +52,8 @@ test('reservation preview uses amortized interest instead of principal divided b
   assert.equal(result.preview.principalBase, 1522600);
   assert.equal(result.preview.dpTarget, 304520);
   assert.equal(result.preview.dpGross, 254520);
-  assert.equal(result.preview.balance, 1268080);
-  assert.equal(result.preview.monthlyAmortization, 59397.27);
+  assert.equal(result.preview.balance, 1218080);
+  assert.equal(result.preview.monthlyAmortization, 57055.25);
 });
 
 test('monthly amortization helper handles zero and interest-bearing rates', () => {
@@ -68,8 +68,8 @@ test('backend SOA terms match the reservation preview', () => {
   assert.equal(terms.downpaymentTargetTotal, 304520);
   assert.equal(terms.reservationFeeDownpaymentCredit, 50000);
   assert.equal(terms.downpaymentGrossTotal, 254520);
-  assert.equal(terms.financedBalance, 1268080);
-  assert.equal(terms.monthlyAmortization, 59397.27);
+  assert.equal(terms.financedBalance, 1218080);
+  assert.equal(terms.monthlyAmortization, 57055.25);
 });
 
 test('undated Legal/Misc fee stays unpaid and is excluded from remaining principal', () => {
@@ -138,8 +138,8 @@ test('LA-1804 applies the DP discount before the reservation credit', () => {
   assert.equal(preview.dpGross, 100000);
   assert.equal(preview.dpNet, 77500);
   assert.equal(preview.dpAmountPerTerm, 12916.67);
-  assert.equal(preview.balance, 650000);
-  assert.equal(preview.monthlyAmortization, 54166.67);
+  assert.equal(preview.balance, 600000);
+  assert.equal(preview.monthlyAmortization, 50000);
 });
 
 test('LA-1804 backend schedule stores gross DP principal and the full discount', () => {
@@ -154,8 +154,8 @@ test('LA-1804 backend schedule stores gross DP principal and the full discount',
   assert.equal(terms.reservationFeeDownpaymentCredit, 50000);
   assert.equal(terms.downpaymentGrossTotal, 100000);
   assert.equal(terms.downpaymentTotal, 77500);
-  assert.equal(terms.financedBalance, 650000);
-  assert.equal(terms.monthlyAmortization, 54166.67);
+  assert.equal(terms.financedBalance, 600000);
+  assert.equal(terms.monthlyAmortization, 50000);
 
   assert.equal(downpaymentRows.length, 6);
   assert.equal(downpaymentRows.reduce((sum, row) => sum + row.dueAmount, 0), 100000);
@@ -169,7 +169,7 @@ test('LA-1804 backend schedule stores gross DP principal and the full discount',
   assert.equal(Math.round((downpaymentRows[0].dueAmount - downpaymentRows[0].discountAmount) * 100) / 100, 12916.67);
 });
 
-test('LA-1804 reservation credited to DP leaves 650,000 financed principal after discounted DP payments', () => {
+test('LA-1804 reservation credited to DP leaves 600,000 financed principal after discounted DP payments', () => {
   const terms = getComputedSoaTerms(la1804ListingTerms, []);
   const rows = createComputedSoaRows(terms);
 
@@ -189,11 +189,11 @@ test('LA-1804 reservation credited to DP leaves 650,000 financed principal after
   const firstMonthly = computed.find((row) => row.description === '1st Monthly Payment');
   const legalMisc = computed.find((row) => row.description === 'Legal / Misc Fee');
 
-  assert.equal(sixthDownpayment.endingBalance, 650000);
-  assert.equal(firstMonthly.beginningBalance, 650000);
-  assert.equal(firstMonthly.dueAmount, 54166.67);
-  assert.equal(legalMisc.beginningBalance, 650000);
-  assert.equal(legalMisc.endingBalance, 650000);
+  assert.equal(sixthDownpayment.endingBalance, 600000);
+  assert.equal(firstMonthly.beginningBalance, 600000);
+  assert.equal(firstMonthly.dueAmount, 50000);
+  assert.equal(legalMisc.beginningBalance, 600000);
+  assert.equal(legalMisc.endingBalance, 600000);
 });
 
 test('paying a separate Legal Misc Fee does not reduce the lot principal', () => {
@@ -212,7 +212,7 @@ test('paying a separate Legal Misc Fee does not reduce the lot principal', () =>
     }
 
     if (row.description === '1st Monthly Payment') {
-      row.amountPaid = 54166.67;
+      row.amountPaid = 50000;
       row.datePaid = '2026-07-24';
     }
 
@@ -228,9 +228,9 @@ test('paying a separate Legal Misc Fee does not reduce the lot principal', () =>
   const firstMonthly = computed.find((row) => row.description === '1st Monthly Payment');
   const legalMisc = computed.find((row) => row.description === 'Legal / Misc Fee');
 
-  assert.equal(firstMonthly.endingBalance, 595833.33);
-  assert.equal(legalMisc.beginningBalance, 595833.33);
-  assert.equal(legalMisc.endingBalance, 595833.33);
+  assert.equal(firstMonthly.endingBalance, 550000);
+  assert.equal(legalMisc.beginningBalance, 550000);
+  assert.equal(legalMisc.endingBalance, 550000);
   assert.equal(legalMisc.amountPaid, 75000);
   assert.equal(legalMisc.paidPrincipalAmount, 0);
   assert.equal(legalMisc.status, 'Paid');
@@ -269,7 +269,7 @@ const pe0103BaseTerms = {
   annual_interest_rate: 11.5,
 };
 
-test('PE-0103 separate reservation keeps full DP and produces 28,681.88 monthly', () => {
+test('PE-0103 separate reservation keeps full DP, takes the fee off the balance and produces 27,582.25 monthly', () => {
   const preview = getPaymentCalculations(1630200, {
     ...pe0103BasePaymentForm,
     reservationFeeTreatment: 'separate',
@@ -282,15 +282,15 @@ test('PE-0103 separate reservation keeps full DP and produces 28,681.88 monthly'
   assert.equal(preview.dpTarget, 326040);
   assert.equal(preview.reservationFeeDownpaymentCredit, 0);
   assert.equal(preview.dpGross, 326040);
-  assert.equal(preview.balance, 1304160);
-  assert.equal(preview.monthlyAmortization, 28681.88);
+  assert.equal(preview.balance, 1254160);
+  assert.equal(preview.monthlyAmortization, 27582.25);
 
   assert.equal(terms.downpaymentGrossTotal, 326040);
-  assert.equal(terms.financedBalance, 1304160);
-  assert.equal(terms.monthlyAmortization, 28681.88);
+  assert.equal(terms.financedBalance, 1254160);
+  assert.equal(terms.monthlyAmortization, 27582.25);
 });
 
-test('PE-0103 reservation applied to DP reduces DP to 276,040 and produces 29,781.51 monthly', () => {
+test('PE-0103 reservation applied to DP reduces DP to 276,040 and produces 28,681.88 monthly', () => {
   const preview = getPaymentCalculations(1630200, {
     ...pe0103BasePaymentForm,
     reservationFeeTreatment: 'apply_to_downpayment',
@@ -303,15 +303,15 @@ test('PE-0103 reservation applied to DP reduces DP to 276,040 and produces 29,78
   assert.equal(preview.dpTarget, 326040);
   assert.equal(preview.reservationFeeDownpaymentCredit, 50000);
   assert.equal(preview.dpGross, 276040);
-  assert.equal(preview.balance, 1354160);
-  assert.equal(preview.monthlyAmortization, 29781.51);
+  assert.equal(preview.balance, 1304160);
+  assert.equal(preview.monthlyAmortization, 28681.88);
 
   assert.equal(terms.downpaymentGrossTotal, 276040);
-  assert.equal(terms.financedBalance, 1354160);
-  assert.equal(terms.monthlyAmortization, 29781.51);
+  assert.equal(terms.financedBalance, 1304160);
+  assert.equal(terms.monthlyAmortization, 28681.88);
 });
 
-test('installment reservation payment does not reduce principal a second time', () => {
+test('installment reservation payment reduces principal exactly once', () => {
   const terms = getComputedSoaTerms({
     ...pe0103BaseTerms,
     soa_reservation_fee_applied_to_downpayment: 1,
@@ -334,11 +334,11 @@ test('installment reservation payment does not reduce principal a second time', 
   const lastDp = computed.filter((row) => row.scheduleType === 'downpayment').at(-1);
   const firstMonthly = computed.find((row) => row.scheduleType === 'monthly');
 
-  assert.equal(reservation.paidPrincipalAmount, 0);
-  assert.equal(reservation.endingBalance, 1630200);
-  assert.equal(lastDp.endingBalance, 1354160);
-  assert.equal(firstMonthly.beginningBalance, 1354160);
-  assert.equal(firstMonthly.dueAmount, 29781.51);
+  assert.equal(reservation.paidPrincipalAmount, 50000);
+  assert.equal(reservation.endingBalance, 1580200);
+  assert.equal(lastDp.endingBalance, 1304160);
+  assert.equal(firstMonthly.beginningBalance, 1304160);
+  assert.equal(firstMonthly.dueAmount, 28681.88);
 });
 
 test('cash reservation continues to reduce remaining full-payment cash balance', () => {
@@ -359,3 +359,37 @@ test('cash reservation continues to reduce remaining full-payment cash balance',
   assert.equal(terms.financedBalance, 1580200);
   assert.equal(reservation.principalAmount, 50000);
 });
+
+
+
+
+// Reservation + DP + monthly principal must equal the principal TCP in both
+// reservation treatments; the fee is never collected on top of the price.
+for (const [label, applied] of [['applied to DP', 1], ['separate', 0]]) {
+  test(`reservation ${label}: schedule principal totals exactly the TCP (858,000 Bailen case)`, () => {
+    const terms = getComputedSoaTerms({
+      soa_selected_tcp: 858000,
+      soa_selected_lmf_amount: 78000,
+      soa_mode_of_payment: 'installment',
+      soa_reservation_fee: 50000,
+      soa_reservation_fee_applied_to_downpayment: applied,
+      soa_starting_date: '2026-10-06',
+      soa_first_due_date: '2026-10-30',
+      soa_downpayment_percentage: 20,
+      soa_downpayment_terms: 3,
+      soa_monthly_terms: 12,
+      soa_dp_discount_percentage: 0,
+      soa_legal_misc_fee_mode: 'include_in_monthly',
+      soa_legal_misc_fee_amount: 78000,
+      annual_interest_rate: 0,
+    }, []);
+    const rows = recomputeComputedSoaBalances(createComputedSoaRows(terms), terms);
+    const scheduledPrincipal = Math.round(rows.reduce((sum, row) => sum + Number(row.principalAmount || 0), 0) * 100) / 100;
+    const scheduledDue = Math.round(rows.reduce((sum, row) => sum + Number(row.totalDue || 0), 0) * 100) / 100;
+
+    assert.equal(scheduledPrincipal, 858000);
+    assert.equal(scheduledDue, 858000);
+    assert.equal(rows.find((row) => row.scheduleType === 'reservation').principalAmount, 50000);
+    assert.equal(terms.financedBalance, applied ? 686400 : 636400);
+  });
+}

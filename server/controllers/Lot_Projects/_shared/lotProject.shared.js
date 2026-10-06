@@ -2409,15 +2409,15 @@ export const getComputedSoaTerms = (listingRow = {}, existingScheduleRows = []) 
   const annualInterestRate = getEffectiveSoaInterestRate(listingRow);
   const interestRateSource = Number(listingRow.soa_interest_rate_overridden || 0) === 1 ? 'custom' : 'listing';
   const modeOfPayment = String(listingRow.soa_mode_of_payment || listingRow.mode_of_payment || 'installment').toLowerCase();
-  // For installment accounts the reservation fee is either separate from the DP
-  // or credited against the DP cash requirement. It must not also be deducted a
-  // second time from the financed principal. downpaymentGrossTotal already
-  // represents the principal scheduled through the DP rows after any reservation
-  // credit. Cash accounts continue to use reservation as a payment toward cash due.
+  // The reservation fee is part of the price and is counted exactly once, so
+  // Reservation + DP rows + monthly principal always add up to the principal TCP:
+  //   applied to DP:  DP rows = DP target - fee, monthly = TCP - DP target
+  //   separate:       DP rows = DP target,       monthly = TCP - DP target - fee
+  // Both cases are TCP - fee - downpaymentGrossTotal. Cash accounts: TCP - fee.
   const financedBalance = roundMoneyValue(Math.max(
     modeOfPayment === 'cash'
       ? principalTcp - reservationFee
-      : principalTcp - downpaymentGrossTotal,
+      : principalTcp - reservationFee - downpaymentGrossTotal,
     0
   ));
   const monthlyPrincipal = roundMoneyValue(monthlyTerms > 0 ? financedBalance / monthlyTerms : financedBalance);
@@ -2467,13 +2467,8 @@ export const createComputedSoaRows = (terms = {}) => {
       description: 'Reservation Fee',
       beginningBalance: terms.tcp,
       dueAmount: terms.reservationFee,
-      // Installment reservation fees are tracked as cash obligations but do not
-      // directly reduce lot principal. If applied to DP, their effect is already
-      // reflected by the smaller DP schedule. Cash sales still treat reservation
-      // as principal paid toward the remaining cash balance.
-      principalAmount: String(terms.modeOfPayment || '').toLowerCase() === 'cash'
-        ? terms.reservationFee
-        : 0,
+      // The reservation fee is principal paid toward the lot (cash and installment).
+      principalAmount: terms.reservationFee,
       interest: 0,
       penalty: 0,
       datePaid: '-',
@@ -2769,6 +2764,11 @@ export const recomputeComputedSoaBalances = (rows = [], terms = {}) => {
       row.monthlyAmortizationAmount = row.dueAmount;
     }
 
+    if (scheduleType === 'reservation') {
+      // Older schedules stored 0 principal on installment reservation rows.
+      row.principalAmount = Number(row.dueAmount ?? 0);
+    }
+
     if (scheduleType !== 'monthly') {
       row.principalAmount = Number(row.principalAmount ?? row.dueAmount ?? 0);
       row.monthlyAmortizationAmount = Number(row.monthlyAmortizationAmount ?? row.dueAmount ?? 0);
@@ -3037,6 +3037,14 @@ export const getListingSoaRows = async (
 
     return paidPrincipal > 0.009 || endingBalance + 0.009 < beginningBalance;
   });
+  // Schedules saved before the reservation fee counted as principal stored 0 on
+  // the installment reservation row. Recompute once so balances heal in place.
+  const hasLegacyReservationPrincipal = existingScheduleRows.some((row) => (
+    getStoredScheduleType(row) === 'reservation'
+      && String(row.schedule_status || '').toLowerCase() !== 'cancelled'
+      && row.principal_amount !== undefined
+      && Number(row.principal_amount || 0) + 0.009 < Number(row.due_amount || 0)
+  ));
   const hasLegacyBalloonAllocation = existingScheduleRows.length
     ? await hasLegacyBalloonAllocations(connection, {
         lot_project_id: lotProjectId,
@@ -3046,7 +3054,7 @@ export const getListingSoaRows = async (
       })
     : false;
 
-  if (!readOnly && existingScheduleRows.length && (hasLegacyBalloonAllocation || hasLegacyLegalMiscPrincipalReduction)) {
+  if (!readOnly && existingScheduleRows.length && (hasLegacyBalloonAllocation || hasLegacyLegalMiscPrincipalReduction || hasLegacyReservationPrincipal)) {
     await recomputeListingScheduleBalances(connection, {
       ...(listingRow || {}),
       lot_project_id: lotProjectId,
@@ -4064,7 +4072,10 @@ export const recomputeListingScheduleBalances = async (connection, listing, { as
       ? 0
       : scheduleType === 'monthly'
         ? roundMoneyValue(adjustment?.principalAmount || 0)
-        : roundMoneyValue(row.principal_amount ?? row.due_amount ?? 0);
+        : scheduleType === 'reservation'
+          // Older schedules stored 0 principal on installment reservation rows.
+          ? roundMoneyValue(row.due_amount || 0)
+          : roundMoneyValue(row.principal_amount ?? row.due_amount ?? 0);
     const monthlyAmount = scheduleType === 'monthly'
       ? roundMoneyValue(adjustment?.monthlyAmortizationAmount || dueAmount)
       : roundMoneyValue(row.monthly_amortization_amount ?? row.due_amount ?? 0);
@@ -4588,3 +4599,5 @@ export const addIfColumnExists = async (connection, tableName, columns, values, 
 };
 
 // End of lotProject.shared.js — verified complete.
+
+

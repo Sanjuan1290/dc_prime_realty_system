@@ -202,14 +202,15 @@ export const getPaymentCalculations = (tcp, paymentForm) => {
   const dpGross = roundMoney(Math.max(dpTarget - reservationFeeDownpaymentCredit, 0))
   const dpNet = roundMoney(Math.max(discountedDpTarget - reservationFeeDownpaymentCredit, 0))
   const downpaymentCredit = roundMoney(dpNet + dpDiscountAmount)
-  // Reservation fee treatment changes the installment DP cash requirement, not
-  // a second principal reduction. For installment accounts the financed balance
-  // is therefore TCP principal less the scheduled DP principal (dpGross).
-  // Cash accounts still deduct the reservation from the remaining cash balance.
+  // The reservation fee is counted exactly once, so Reservation + DP + balance
+  // always equals the principal TCP:
+  //   applied to DP:  DP = target - fee, balance = TCP - target
+  //   separate:       DP = target,       balance = TCP - target - fee
+  // Both are TCP - fee - dpGross. Must match getComputedSoaTerms() on the server.
   const balance = roundMoney(Math.max(
     isCash
       ? principalBase - reservationFee
-      : principalBase - dpGross,
+      : principalBase - reservationFee - dpGross,
     0
   ))
   const monthlyAmortization = !isCash
@@ -252,3 +253,5 @@ export const getPaymentCalculations = (tcp, paymentForm) => {
     },
   }
 }
+
+
