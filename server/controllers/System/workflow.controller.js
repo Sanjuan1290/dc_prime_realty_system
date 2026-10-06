@@ -103,6 +103,14 @@ const reviewHistoryWhere = (actor, { alias = 'r' } = {}) => {
   };
 };
 
+const notificationVisibilityWhere = (actor, { notificationAlias = 'n', reviewAlias = 'nr' } = {}) => {
+  const reviewAccess = reviewQueueWhere(actor, { alias: reviewAlias });
+  return {
+    sql: `(${notificationAlias}.operational_review_id IS NULL OR (${reviewAlias}.operational_review_id IS NOT NULL AND ${reviewAccess.sql}))`,
+    params: reviewAccess.params,
+  };
+};
+
 const canActorOpenReview = async (connection, actor, review) => {
   if (!actor || !review) return false;
   const access = reviewHistoryWhere(actor);
@@ -175,7 +183,14 @@ export const getReviewCenterSummary = async (req, res) => {
     const [protectedRows] = await db.query(`SELECT COUNT(*) total FROM protected_change_requests p WHERE ${protectedSql}`, protectedParams).catch(() => [[{ total: 0 }]]);
     const pendingProtectedChanges = Number(protectedRows?.[0]?.total || 0);
 
-    const [notificationRows] = await db.query('SELECT COUNT(*) unread FROM internal_notifications WHERE user_id=? AND read_at IS NULL', [actor.id]);
+    const notificationAccess = notificationVisibilityWhere(actor);
+    const [notificationRows] = await db.query(
+      `SELECT COUNT(*) unread
+       FROM internal_notifications n
+       LEFT JOIN operational_reviews nr ON nr.operational_review_id=n.operational_review_id
+       WHERE n.user_id=? AND n.read_at IS NULL AND ${notificationAccess.sql}`,
+      [actor.id, ...notificationAccess.params]
+    );
     const unreadNotifications = Number(notificationRows[0]?.unread || 0);
     return res.json({ data: { counts, actionable, pendingProtectedChanges, unreadNotifications, badgeCount: actionable + pendingProtectedChanges + unreadNotifications } });
   } catch (error) { return res.status(500).json({ message: errorMessage(error) }); }
@@ -344,8 +359,24 @@ export const auditorVerifyReview = async (req, res) => {
 export const listInternalNotifications = async (req, res) => {
   try {
     const { page,limit } = pageValues(req.query); const offset=(page-1)*limit;
-    const [countRows] = await db.query('SELECT COUNT(*) total FROM internal_notifications WHERE user_id=?',[req.authUser.id]);
-    const [rows] = await db.query('SELECT * FROM internal_notifications WHERE user_id=? ORDER BY created_at DESC,internal_notification_id DESC LIMIT ? OFFSET ?',[req.authUser.id,limit,offset]);
+    const access = notificationVisibilityWhere(req.authUser);
+    const whereSql = `n.user_id=? AND ${access.sql}`;
+    const params = [req.authUser.id, ...access.params];
+    const [countRows] = await db.query(
+      `SELECT COUNT(*) total
+       FROM internal_notifications n
+       LEFT JOIN operational_reviews nr ON nr.operational_review_id=n.operational_review_id
+       WHERE ${whereSql}`,
+      params
+    );
+    const [rows] = await db.query(
+      `SELECT n.*
+       FROM internal_notifications n
+       LEFT JOIN operational_reviews nr ON nr.operational_review_id=n.operational_review_id
+       WHERE ${whereSql}
+       ORDER BY n.created_at DESC,n.internal_notification_id DESC LIMIT ? OFFSET ?`,
+      [...params,limit,offset]
+    );
     return res.json({ data:rows,pagination:{page,limit,total:Number(countRows[0]?.total||0)} });
   } catch(error){ return res.status(500).json({message:errorMessage(error)}); }
 };

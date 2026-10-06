@@ -60,77 +60,174 @@ const isRoutinePostActionReview = (status = '') => ['pending_head_review', 'pend
 
 const SNAPSHOT_LABELS = Object.freeze({
   broker: 'Broker Details',
-  broker_license_number: 'Broker License Number',
+  broker_license_number: 'License Number',
   broker_name: 'Broker Name',
-  broker_prc_number: 'Broker PRC Number',
-  realty_name: 'Realty Name',
+  broker_prc_number: 'PRC Number',
+  realty_name: 'Realty / Company',
   description: 'Description',
-  groupId: 'Network ID',
+  groupId: 'Network Reference',
   groupType: 'Network Type',
-  headUserId: 'Network Head',
+  headUserId: 'Network Head Reference',
   name: 'Network Name',
   rates: 'Project Rates',
-  projectId: 'Project ID',
+  projectId: 'Project Reference',
+  projectName: 'Project',
+  lotProjectName: 'Project',
   poolRate: 'Pool Rate',
   companyProfitRate: 'Company Profit',
-  divisionManagerRate: 'Division Manager',
-  salesDirectorRate: 'Sales Director',
-  unitManagerRate: 'Unit Manager',
-  salesAgentRate: 'Sales Agent',
+  divisionManagerRate: 'Division Manager Share',
+  salesDirectorRate: 'Sales Director Share',
+  unitManagerRate: 'Unit Manager Share',
+  salesAgentRate: 'Sales Agent Share',
   status: 'Status',
-  listingIds: 'Listing IDs',
+  listingIds: 'Affected Listings',
+  listingId: 'Listing Reference',
   projectSlug: 'Project',
-  batchId: 'Batch ID',
-  batchReference: 'Batch Reference',
+  batchId: 'Batch Reference',
+  batchReference: 'Import Reference',
   importedRows: 'Imported Rows',
   filename: 'File Name',
+  fileName: 'File Name',
+  fileStatus: 'File Status',
+  fileVersion: 'File Version',
+  lotAreaSqm: 'Lot Area',
+  lotType: 'Lot Type',
+  unitCode: 'Unit',
+  unitId: 'Unit',
+  oldUnitIds: 'Previous Unit IDs',
+  soldSubstatus: 'Sold Status',
+  documentRequirementsChanged: 'Document Requirements Changed',
+  documents: 'Documents',
+  documentId: 'Document Reference',
+  isRequired: 'Required',
+  responsibleParty: 'Responsible Party',
+  paymentId: 'Payment Reference',
+  referenceId: 'Reference Number',
+  amount: 'Amount',
+  paymentDate: 'Payment Date',
+  paymentMethod: 'Payment Method',
+  paymentType: 'Payment Type',
+  proofId: 'Proof Reference',
+  proofIds: 'Proof References',
+  proofs: 'Payment Proofs',
+  scheduleId: 'Schedule Reference',
+  scheduleStatus: 'Schedule Status',
+  clientProfileId: 'Buyer Profile Reference',
+  accountId: 'Account Reference',
+  profile: 'Buyer Profile',
+  signedCopy: 'Signed Copy',
+  signedCopyId: 'Signed Copy Reference',
+  restoredLmfAmount: 'Restored Legal / Misc. Fee',
+  restoredTcp: 'Restored Total Contract Price',
 })
 
 const snapshotLabel = (key = '') => SNAPSHOT_LABELS[key] || titleCase(key)
-const isTechnicalSnapshotField = (key = '') => String(key).endsWith('_normalized')
+const isTechnicalSnapshotField = (key = '') => {
+  const text = String(key || '')
+  return text.endsWith('_normalized') || text.startsWith('_')
+}
 
 const formatSnapshotPrimitive = (value, key = '') => {
   if (value == null || value === '') return '—'
   if (typeof value === 'boolean') return value ? 'Yes' : 'No'
   if (key === 'groupType') return String(value) === 'external' ? 'External Network' : 'In-House Network'
-  if (key === 'status') return titleCase(value)
+  if (key === 'status' || key.endsWith('Status')) return titleCase(value)
   if (/Rate$/.test(key) && Number.isFinite(Number(value))) return `${Number(value)}%`
+  if (key === 'lotAreaSqm' && Number.isFinite(Number(value))) return `${Number(value).toLocaleString()} sqm`
+  if (/Amount$/.test(key) && Number.isFinite(Number(value))) return Number(value).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   return String(value)
 }
 
-const SnapshotValue = ({ value, fieldKey = '', depth = 0 }) => {
-  if (value == null || value === '') return <p className="mt-1 text-sm font-black text-slate-500">—</p>
+const FriendlyValue = ({ label, value, tone = 'plain' }) => {
+  const toneClass = tone === 'before'
+    ? 'border-red-100 bg-red-50/60'
+    : tone === 'after'
+      ? 'border-emerald-100 bg-emerald-50/60'
+      : 'border-slate-200 bg-white'
+  return <div className={`rounded-xl border p-3 ${toneClass}`}>
+    {label ? <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">{label}</p> : null}
+    <p className="mt-1 break-words text-sm font-black text-slate-800">{value}</p>
+  </div>
+}
+
+const BrokerValue = ({ value, tone = 'plain' }) => {
+  const broker = value && typeof value === 'object' ? value : {}
+  const rows = [
+    ['Broker Name', broker.broker_name],
+    ['License Number', broker.broker_license_number],
+    ['PRC Number', broker.broker_prc_number],
+    ['Realty / Company', broker.realty_name],
+  ].filter(([, item]) => item != null && item !== '')
+  if (!rows.length) return <FriendlyValue value="No broker information" tone={tone} />
+  return <div className="grid gap-2 sm:grid-cols-2">
+    {rows.map(([label, item]) => <FriendlyValue key={label} label={label} value={String(item)} tone={tone} />)}
+  </div>
+}
+
+const ProjectRatesValue = ({ value, tone = 'plain' }) => {
+  const rates = Array.isArray(value) ? value : []
+  if (!rates.length) return <FriendlyValue value="No project rates" tone={tone} />
+  return <div className="grid gap-3">
+    {rates.map((rate, index) => {
+      const item = rate && typeof rate === 'object' ? rate : {}
+      const projectLabel = item.projectName || item.lotProjectName || item.projectSlug || (item.projectId ? `Project #${item.projectId}` : `Project ${index + 1}`)
+      const rows = [
+        ['Pool Rate', formatSnapshotPrimitive(item.poolRate, 'poolRate')],
+        ['Company Profit', formatSnapshotPrimitive(item.companyProfitRate, 'companyProfitRate')],
+        ['Division Manager Share', formatSnapshotPrimitive(item.divisionManagerRate, 'divisionManagerRate')],
+        ['Sales Director Share', formatSnapshotPrimitive(item.salesDirectorRate, 'salesDirectorRate')],
+        ['Unit Manager Share', formatSnapshotPrimitive(item.unitManagerRate, 'unitManagerRate')],
+        ['Sales Agent Share', formatSnapshotPrimitive(item.salesAgentRate, 'salesAgentRate')],
+        ['Status', formatSnapshotPrimitive(item.status, 'status')],
+      ]
+      return <section key={`${projectLabel}-${index}`} className={`rounded-2xl border p-3 ${tone === 'before' ? 'border-red-100 bg-red-50/40' : tone === 'after' ? 'border-emerald-100 bg-emerald-50/40' : 'border-slate-200 bg-slate-50'}`}>
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <p className="text-sm font-black text-slate-900">{projectLabel}</p>
+          <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[10px] font-black uppercase tracking-wide text-slate-500">Project Rate</span>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {rows.map(([label, item]) => <FriendlyValue key={label} label={label} value={item} />)}
+        </div>
+      </section>
+    })}
+  </div>
+}
+
+const SnapshotValue = ({ value, fieldKey = '', depth = 0, tone = 'plain' }) => {
+  if (fieldKey === 'broker') return <BrokerValue value={value} tone={tone} />
+  if (fieldKey === 'rates') return <ProjectRatesValue value={value} tone={tone} />
+  if (value == null || value === '') return <FriendlyValue value="—" tone={tone} />
 
   if (Array.isArray(value)) {
-    if (!value.length) return <p className="mt-1 text-sm font-black text-slate-500">None</p>
+    if (!value.length) return <FriendlyValue value="None" tone={tone} />
     const objectItems = value.some((item) => item && typeof item === 'object')
     if (!objectItems) {
-      const visible = value.slice(0, 24)
-      return <div className="mt-2 flex flex-wrap gap-1.5">
-        {visible.map((item, index) => <span key={`${fieldKey}-${index}`} className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-bold text-slate-700">{formatSnapshotPrimitive(item, fieldKey)}</span>)}
-        {value.length > visible.length ? <span className="rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-black text-blue-700">+{value.length - visible.length} more</span> : null}
+      return <div className="flex flex-wrap gap-1.5">
+        {value.slice(0, 24).map((item, index) => <span key={`${fieldKey}-${index}`} className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-bold text-slate-700">{formatSnapshotPrimitive(item, fieldKey)}</span>)}
+        {value.length > 24 ? <span className="rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-black text-blue-700">+{value.length - 24} more</span> : null}
       </div>
     }
-    return <div className="mt-2 grid gap-2">
-      {value.map((item, index) => <div key={`${fieldKey}-${index}`} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-        <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">{fieldKey === 'rates' ? `Project Rate ${index + 1}` : `Item ${index + 1}`}</p>
-        <SnapshotValue value={item} fieldKey={fieldKey} depth={depth + 1} />
-      </div>)}
+    return <div className="grid gap-2">
+      {value.map((item, index) => <section key={`${fieldKey}-${index}`} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+        <p className="mb-2 text-xs font-black text-slate-700">Item {index + 1}</p>
+        <SnapshotValue value={item} fieldKey="" depth={depth + 1} tone={tone} />
+      </section>)}
     </div>
   }
 
   if (typeof value === 'object') {
     const entries = Object.entries(value).filter(([key]) => !isTechnicalSnapshotField(key))
-    if (!entries.length) return <p className="mt-1 text-sm font-black text-slate-500">No displayable values</p>
-    return <div className={`mt-2 grid gap-2 ${depth < 2 ? 'sm:grid-cols-2' : ''}`}>
-      {entries.map(([key, item]) => <div key={key} className={`rounded-xl border border-slate-200 bg-white p-3 ${item && typeof item === 'object' ? 'sm:col-span-2' : ''}`}>
-        <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">{snapshotLabel(key)}</p>
-        <SnapshotValue value={item} fieldKey={key} depth={depth + 1} />
+    if (!entries.length) return <FriendlyValue value="No displayable details" tone={tone} />
+    return <div className={`grid gap-2 ${depth < 2 ? 'sm:grid-cols-2' : ''}`}>
+      {entries.map(([key, item]) => <div key={key} className={item && typeof item === 'object' ? 'sm:col-span-2' : ''}>
+        {item && typeof item === 'object'
+          ? <section className="rounded-xl border border-slate-200 bg-slate-50 p-3"><p className="mb-2 text-xs font-black text-slate-700">{snapshotLabel(key)}</p><SnapshotValue value={item} fieldKey={key} depth={depth + 1} tone={tone} /></section>
+          : <FriendlyValue label={snapshotLabel(key)} value={formatSnapshotPrimitive(item, key)} tone={tone} />}
       </div>)}
     </div>
   }
 
-  return <p className="mt-1 break-words text-sm font-black text-slate-800">{formatSnapshotPrimitive(value, fieldKey)}</p>
+  return <FriendlyValue value={formatSnapshotPrimitive(value, fieldKey)} tone={tone} />
 }
 
 const Snapshot = ({ title, value }) => {
@@ -140,9 +237,10 @@ const Snapshot = ({ title, value }) => {
   return <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
     <p className="text-xs font-black uppercase tracking-wide text-slate-500">{title}</p>
     <div className="mt-3 grid gap-2 sm:grid-cols-2">
-      {entries.map(([key, item]) => <div key={key} className={`rounded-xl border border-slate-200 bg-white p-3 ${typeof item === 'object' && item !== null ? 'sm:col-span-2' : ''}`}>
-        <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">{snapshotLabel(key)}</p>
-        <SnapshotValue value={item} fieldKey={key} />
+      {entries.map(([key, item]) => <div key={key} className={item && typeof item === 'object' ? 'sm:col-span-2' : ''}>
+        {item && typeof item === 'object'
+          ? <section className="rounded-xl border border-slate-200 bg-white p-3"><p className="mb-2 text-xs font-black text-slate-700">{snapshotLabel(key)}</p><SnapshotValue value={item} fieldKey={key} /></section>
+          : <FriendlyValue label={snapshotLabel(key)} value={formatSnapshotPrimitive(item, key)} />}
       </div>)}
     </div>
   </section>
@@ -164,13 +262,13 @@ const ChangedFields = ({ beforeValue, afterValue }) => {
   return <section className="rounded-2xl border border-slate-200 bg-white">
     <div className="border-b border-slate-200 px-4 py-3">
       <p className="text-xs font-black uppercase tracking-wide text-slate-500">Changed Fields</p>
-      <p className="mt-1 text-sm font-semibold text-slate-500">Review the actual differences first. Full snapshots are available below only when needed.</p>
+      <p className="mt-1 text-sm font-semibold text-slate-500">Only user-facing values are shown here. Internal field names and raw JSON are intentionally hidden.</p>
     </div>
     <div className="divide-y divide-slate-100">
       {changed.map((key) => <div key={key} className="grid gap-3 p-4 lg:grid-cols-[180px_1fr_1fr]">
         <div><p className="text-xs font-black uppercase tracking-wide text-slate-500">{snapshotLabel(key)}</p></div>
-        <div className="rounded-xl border border-red-100 bg-red-50/50 p-3"><p className="text-[10px] font-black uppercase tracking-wide text-red-500">Before</p><SnapshotValue value={before[key]} fieldKey={key} /></div>
-        <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 p-3"><p className="text-[10px] font-black uppercase tracking-wide text-emerald-600">After</p><SnapshotValue value={after[key]} fieldKey={key} /></div>
+        <div><p className="mb-2 text-[10px] font-black uppercase tracking-wide text-red-500">Before</p><SnapshotValue value={before[key]} fieldKey={key} tone="before" /></div>
+        <div><p className="mb-2 text-[10px] font-black uppercase tracking-wide text-emerald-600">After</p><SnapshotValue value={after[key]} fieldKey={key} tone="after" /></div>
       </div>)}
     </div>
   </section>
@@ -226,7 +324,7 @@ export const ReviewDetails = ({ reviewId, onClose, onChanged }) => {
   const actor = me?.user || {}
   const [action, setAction] = useState(null)
   const [notice, setNotice] = useState(null)
-  const query = useQuery({ queryKey: ['workflow-review', reviewId], queryFn: () => useFetch(`/workflow/reviews/${reviewId}`) })
+  const query = useQuery({ queryKey: ['workflow-review', actor.id || 0, actor.role || '', reviewId], queryFn: () => useFetch(`/workflow/reviews/${reviewId}`), enabled: Boolean(actor.id && reviewId) })
   const review = query.data?.data || null
   const auditCase = review?.auditCase || null
   const isHead = Boolean(review && DEPARTMENT_HEAD_ROLE[review.department] === actor.role)
@@ -474,14 +572,14 @@ const ReviewCenter = () => {
   const [search, setSearch] = useState('')
   const [approvalStatus, setApprovalStatus] = useState('')
   const [notice, setNotice] = useState(null)
-  const summary = useQuery({ queryKey: ['workflow-summary'], queryFn: () => useFetch('/workflow/summary'), enabled: REVIEW_CENTER_ROLES.has(actor.role), refetchInterval: 30_000 })
+  const summary = useQuery({ queryKey: ['workflow-summary', actor.id || 0, actor.role || ''], queryFn: () => useFetch('/workflow/summary'), enabled: REVIEW_CENTER_ROLES.has(actor.role), refetchInterval: 30_000 })
   const reviews = useQuery({
-    queryKey: ['workflow-reviews', reviewScope, status, reviewPage],
+    queryKey: ['workflow-reviews', actor.id || 0, actor.role || '', reviewScope, status, reviewPage],
     queryFn: () => useFetch(`/workflow/reviews?scope=${reviewScope}&page=${reviewPage}&limit=10${status ? `&status=${encodeURIComponent(status)}` : ''}`),
     enabled: REVIEW_CENTER_ROLES.has(actor.role) && tab === 'reviews',
   })
-  const approvals = useQuery({ queryKey: ['workflow-protected-changes', approvalStatus], queryFn: () => useFetch(`/workflow/protected-changes?limit=100${approvalStatus ? `&status=${encodeURIComponent(approvalStatus)}` : ''}`), enabled: REVIEW_CENTER_ROLES.has(actor.role) && isHead && tab === 'approvals' })
-  const notifications = useQuery({ queryKey: ['workflow-notifications'], queryFn: () => useFetch('/workflow/notifications?limit=100'), enabled: REVIEW_CENTER_ROLES.has(actor.role) && tab === 'notifications' })
+  const approvals = useQuery({ queryKey: ['workflow-protected-changes', actor.id || 0, actor.role || '', approvalStatus], queryFn: () => useFetch(`/workflow/protected-changes?limit=100${approvalStatus ? `&status=${encodeURIComponent(approvalStatus)}` : ''}`), enabled: REVIEW_CENTER_ROLES.has(actor.role) && isHead && tab === 'approvals' })
+  const notifications = useQuery({ queryKey: ['workflow-notifications', actor.id || 0, actor.role || ''], queryFn: () => useFetch('/workflow/notifications?limit=100'), enabled: REVIEW_CENTER_ROLES.has(actor.role) && tab === 'notifications' })
   const approvalMutation = useMutation({
     mutationFn: ({ id, decision }) => useFetchPost(`/workflow/protected-changes/${id}/review`, { decision }, { confirmationHandled: 'compact' }),
     onSuccess: async (result) => { setNotice({ type: 'success', message: result.message }); await Promise.all([approvals.refetch(), summary.refetch()]) },
