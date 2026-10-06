@@ -976,7 +976,7 @@ const ListingProfile = () => {
         <AccountHistoryPanel
           projectSlug={projectSlug}
           listingId={listingId}
-          canPermanentlyDelete={['super_admin', 'system_admin'].includes(currentUserData?.user?.role)}
+          canPermanentlyDelete={currentUserData?.user?.role === 'super_admin'}
         />
       ) : null}
 
@@ -1076,4 +1076,3 @@ const ListingProfile = () => {
 }
 
 export default ListingProfile
-
