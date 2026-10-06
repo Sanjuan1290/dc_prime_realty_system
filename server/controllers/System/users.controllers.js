@@ -77,7 +77,7 @@ import {
 const userRoles = new Set([...SYSTEM_USER_ROLES, 'division_manager', 'sales_director', 'unit_manager', 'sales_agent', 'external_group']);
 const systemUserRoles = new Set(SYSTEM_USER_ROLES);
 const configurableSystemRoles = new Set(CONFIGURABLE_SYSTEM_ROLES);
-const USER_DEACTIVATION_ACTION = 'user_permanent_deactivation';
+const USER_DEACTIVATION_ACTION = 'user_deactivation';
 const USER_DEACTIVATION_ENTITY = 'user';
 
 const sellerRoles = new Set([
@@ -229,18 +229,18 @@ const refreshActorSessionAfterSelfEdit = (req, res, { userId, role, authVersion 
   return true;
 };
 
-const assertPermanentDeactivationTarget = (req, user, userId) => {
+const assertDeactivationTarget = (req, user, userId) => {
   if (!user) throw Object.assign(new Error('User not found.'), { statusCode: 404 });
   if (user.role === 'external_group') throw Object.assign(new Error('Manage External Network accounts from the External Networks page.'), { statusCode: 400 });
   if (!actorCanPerformUserAction(req, user.role)) throw Object.assign(new Error('You cannot deactivate an account at this authority level.'), { statusCode: 403 });
   if (user.status !== 'active') {
-    const error = new Error('This account is permanently deactivated and cannot be activated again. Create a new account if the employee returns or changes position.');
+    const error = new Error('This account is already deactivated.');
     error.statusCode = 409;
     error.code = PERMANENT_DEACTIVATION_CODE;
     throw error;
   }
   if (Number(userId) === Number(req.authUser?.id || 0)) {
-    throw Object.assign(new Error('You cannot permanently deactivate the account you are currently using.'), { statusCode: 409 });
+    throw Object.assign(new Error('You cannot deactivate the account you are currently using.'), { statusCode: 409 });
   }
 };
 
@@ -1425,106 +1425,6 @@ export const previewSystemAccountCode = async (req, res) => {
   }
 };
 
-export const previewChangeUserPosition = async (req, res) => {
-  const connection = await db.getConnection();
-  try {
-    const sourceUserId = Number(req.params.id || 0);
-    const newRole = String(req.query?.role || req.query?.new_role || '').trim();
-
-    if (!sourceUserId) return res.status(400).json({ message: 'Invalid user id.' });
-    if (!CONFIGURABLE_SYSTEM_ROLES.includes(newRole)) {
-      return res.status(400).json({ message: 'Select a valid internal system position.' });
-    }
-
-    const [rows] = await connection.query(
-      `SELECT id, account_code, person_key, first_name, middle_name, last_name, email, role, status,
-              COALESCE(all_projects_access, admin_all_projects, 0) AS all_projects_access
-       FROM users WHERE id = ? LIMIT 1`,
-      [sourceUserId]
-    );
-    const source = rows[0];
-    if (!source) return res.status(404).json({ message: 'User not found.' });
-    if (!systemUserRoles.has(source.role)) {
-      return res.status(400).json({ message: 'Change Position applies only to internal system users.' });
-    }
-    if (source.role === 'super_admin') {
-      return res.status(409).json({ message: 'A Super Admin account cannot be changed through the position workflow.' });
-    }
-    if (!actorCanChangeTargetRole(req, source.role, newRole)) {
-      return res.status(403).json({ message: 'You cannot change this account to the selected position.' });
-    }
-    if (source.status !== 'active') {
-      return res.status(409).json({ code: PERMANENT_DEACTIVATION_CODE, message: 'Only an active account can be changed to a new position.' });
-    }
-    if (source.role === newRole) {
-      return res.status(400).json({ message: 'Choose a different position. The current role is already assigned to this account.' });
-    }
-
-    return res.json({
-      preview: true,
-      source: {
-        id: source.id,
-        account_code: source.account_code,
-        role: source.role,
-        role_label: ROLE_LABELS[source.role] || source.role,
-      },
-      replacement: {
-        id: source.id,
-        account_code: source.account_code,
-        role: newRole,
-        role_label: ROLE_LABELS[newRole] || newRole,
-        email: source.email,
-        same_account: true,
-      },
-      message: 'The same user account will be retained. Login email, password, employee link, user id, and account code stay unchanged.',
-    });
-  } catch (error) {
-    return res.status(error.statusCode || 500).json({ code: error.code, message: getErrorMessage(error) });
-  } finally {
-    connection.release();
-  }
-};
-
-export const checkSystemUserEmailAvailability = async (req, res) => {
-  try {
-    const email = normalizeResetEmail(req.query?.email);
-    if (!isValidResetEmail(email)) {
-      return res.status(400).json({
-        available: false,
-        code: 'INVALID_EMAIL',
-        message: 'Enter a valid email address.',
-      });
-    }
-
-    const [rows] = await db.query(
-      `
-        SELECT id
-        FROM users
-        WHERE LOWER(TRIM(email)) = LOWER(?)
-          AND status = 'active'
-        LIMIT 1
-      `,
-      [email]
-    );
-
-    if (rows.length) {
-      return res.status(200).json({
-        available: false,
-        code: 'USER_EMAIL_ALREADY_EXISTS',
-        message: 'That email is already assigned to an active account. Use a different email address.',
-      });
-    }
-
-    return res.status(200).json({
-      available: true,
-      email,
-      message: 'Email is available.',
-    });
-  } catch (error) {
-    return res.status(500).json({ message: getErrorMessage(error) });
-  }
-};
-
 export const createUser = async (req, res) => {
   const connection = await db.getConnection();
 
@@ -1908,7 +1808,7 @@ export const editUser = async (req, res) => {
       if (String(role || targetUser.role) !== targetUser.role) {
         return res.status(409).json({
           code: 'SYSTEM_ROLE_IMMUTABLE',
-          message: 'A system account role cannot be changed. Use Change Position / Create New Account instead.',
+          message: 'A system account role cannot be changed. Deactivate the old account and create a new account for the new role.',
         });
       }
       if (targetUser.status !== 'active') {
@@ -2240,7 +2140,7 @@ export const requestUserDeactivationCode = async (req, res) => {
     const userId = Number(req.params.id || 0);
     if (!userId) return res.status(400).json({ message: 'Invalid user id.' });
     const actor = req.authUser;
-    if (!actor?.email) return res.status(400).json({ message: 'Your administrator account must have an email address before permanent deactivation can be authorized.' });
+    if (!actor?.email) return res.status(400).json({ message: 'Your administrator account must have an email address before deactivation can be authorized.' });
 
     const reason = String(req.body?.reason || req.body?.deactivation_reason || '').trim().slice(0, 500);
     if (reason.length < 5) return res.status(400).json({ message: 'Enter a clear deactivation reason before requesting an email verification code.' });
@@ -2252,7 +2152,7 @@ export const requestUserDeactivationCode = async (req, res) => {
       [userId]
     );
     const user = rows[0];
-    assertPermanentDeactivationTarget(req, user, userId);
+    assertDeactivationTarget(req, user, userId);
 
     const payload = buildUserDeactivationVerificationPayload({ actor, target: user, reason });
     const { verificationId, code } = await createSensitiveActionVerification(connection, {
@@ -2269,7 +2169,7 @@ export const requestUserDeactivationCode = async (req, res) => {
 
     return res.json({
       success: true,
-      message: `A permanent-deactivation verification code was sent to ${maskSensitiveActionEmail(actor.email)}.`,
+      message: `A deactivation verification code was sent to ${maskSensitiveActionEmail(actor.email)}.`,
       data: {
         verificationId,
         maskedEmail: maskSensitiveActionEmail(actor.email),
@@ -2290,21 +2190,12 @@ export const deactivateUserPermanently = async (req, res) => {
     const userId = Number(req.params.id);
     if (!userId) return res.status(400).json({ message: 'Invalid user id.' });
 
-    const requestedStatus = req.body?.status == null ? 'inactive' : String(req.body.status).trim().toLowerCase();
-    if (requestedStatus !== 'inactive') {
-      return res.status(409).json({
-        code: PERMANENT_DEACTIVATION_CODE,
-        legacy_code: LEGACY_PERMANENT_DEACTIVATION_CODE,
-        message: 'Accounts cannot be reactivated. Create a new account if the employee returns or changes position.',
-      });
-    }
-
     const reason = String(req.body?.reason || req.body?.deactivation_reason || '').trim().slice(0, 500);
     const verificationId = Number(req.body?.verificationId || req.body?.verification_id || 0);
     const code = String(req.body?.code || req.body?.verificationCode || req.body?.verification_code || '').trim();
     if (reason.length < 5) return res.status(400).json({ message: 'A clear deactivation reason is required.' });
     if (!verificationId || !/^\d{6}$/.test(code)) {
-      return res.status(400).json({ message: 'Administrator password verification and the six-digit email verification code are required before permanent deactivation.' });
+      return res.status(400).json({ message: 'Administrator password verification and the six-digit email verification code are required before deactivation.' });
     }
 
     await connection.beginTransaction();
@@ -2314,7 +2205,7 @@ export const deactivateUserPermanently = async (req, res) => {
       [userId]
     );
     const user = rows[0];
-    assertPermanentDeactivationTarget(req, user, userId);
+    assertDeactivationTarget(req, user, userId);
 
     const verificationPayload = buildUserDeactivationVerificationPayload({ actor: req.authUser, target: user, reason });
     const verificationResult = await verifyAndConsumeSensitiveAction(connection, {
@@ -2345,14 +2236,14 @@ export const deactivateUserPermanently = async (req, res) => {
 
     await writeAuditLog(connection, req, {
       action: 'update', module: 'Users', entityType: 'user', entityId: String(userId),
-      entityLabel: user.account_code || buildPersonName(user), title: 'Permanently deactivated user account',
-      description: `${user.account_code || user.email} was permanently deactivated. The account cannot be reactivated.`,
-      metadata: { previousStatus: 'active', nextStatus: 'inactive', permanent: true, reason, verificationId, verificationMethod: 'administrator_password_email_code' },
+      entityLabel: user.account_code || buildPersonName(user), title: 'Deactivated user account',
+      description: `${user.account_code || user.email} was deactivated.`,
+      metadata: { previousStatus: 'active', nextStatus: 'inactive', reason, verificationId, verificationMethod: 'administrator_password_email_code' },
     });
 
     await connection.commit();
     return res.json({
-      message: 'Account permanently deactivated. It cannot be activated again.',
+      message: 'Account deactivated. Only Super Admin or System Admin can reactivate it.',
       status: 'inactive',
       permanent: true,
     });
@@ -2364,118 +2255,50 @@ export const deactivateUserPermanently = async (req, res) => {
   }
 };
 
-export const changeUserPosition = async (req, res) => {
+export const reactivateUser = async (req, res) => {
   const connection = await db.getConnection();
   try {
     const userId = Number(req.params.id || 0);
-    const newRole = String(req.body?.new_role || req.body?.role || '').trim();
-    const reason = String(req.body?.reason || '').trim().slice(0, 500);
-
     if (!userId) return res.status(400).json({ message: 'Invalid user id.' });
-    if (!CONFIGURABLE_SYSTEM_ROLES.includes(newRole)) {
-      return res.status(400).json({ message: 'Select a valid internal system position.' });
-    }
-    if (!reason || reason.length < 5) {
-      return res.status(400).json({ message: 'Enter a clear reason for the role change.' });
-    }
-
-    const projectAccess = ['system_admin', 'auditor'].includes(newRole)
-      ? { allProjects: true, projectIds: [] }
-      : normalizeSystemProjectAccess(req.body);
-    assertSystemProjectSelection(newRole, projectAccess);
-    await assertActorCanAssignAdminProjects(req, connection, projectAccess.allProjects, projectAccess.projectIds);
+    const actor = req.authUser || {};
+    if (!['super_admin', 'system_admin'].includes(actor.role)) return res.status(403).json({ message: 'Only Super Admin or System Admin can reactivate accounts.' });
+    const reason = String(req.body?.reason || '').trim().slice(0, 500);
+    if (reason.length < 5) return res.status(400).json({ message: 'A clear reactivation reason is required.' });
 
     await connection.beginTransaction();
-
     const [rows] = await connection.query(
-      `SELECT id, account_code, account_category, person_key, role_sequence,
-              first_name, last_name, middle_name, contact_no, tin_no, prc_no, address, email,
-              role, status
+      `SELECT id, account_code, first_name, middle_name, last_name, email, role, status
        FROM users WHERE id = ? LIMIT 1 FOR UPDATE`,
       [userId]
     );
     const user = rows[0];
     if (!user) throw Object.assign(new Error('User not found.'), { statusCode: 404 });
-    if (!systemUserRoles.has(user.role)) throw Object.assign(new Error('Change Position applies only to internal system users.'), { statusCode: 400 });
-    if (user.role === 'super_admin') throw Object.assign(new Error('A Super Admin account cannot be changed through the position workflow.'), { statusCode: 409 });
-    if (user.status !== 'active') throw Object.assign(new Error('Only an active account can be changed to a new position.'), { statusCode: 409, code: PERMANENT_DEACTIVATION_CODE });
-    if (user.role === newRole) throw Object.assign(new Error('Choose a different position.'), { statusCode: 400 });
-    if (!actorCanChangeTargetRole(req, user.role, newRole)) {
-      throw Object.assign(new Error('You cannot change this account to the selected position.'), { statusCode: 403 });
+    if (user.role === 'external_group') throw Object.assign(new Error('Manage External Network accounts from the External Networks page.'), { statusCode: 400 });
+    if (actor.role === 'system_admin' && ['super_admin', 'system_admin'].includes(user.role)) {
+      throw Object.assign(new Error('System Admin cannot reactivate owner-level accounts.'), { statusCode: 403 });
     }
+    if (user.status === 'active') throw Object.assign(new Error('This account is already active.'), { statusCode: 409 });
 
-    const previousRole = user.role;
-    const forcedAllProjects = ['system_admin', 'auditor'].includes(newRole);
     await connection.query(
       `UPDATE users
-       SET role = ?,
-           account_category = 'system',
-           all_projects_access = ?,
-           admin_all_projects = ?,
-           auth_version = COALESCE(auth_version, 0) + 1
-       WHERE id = ?`,
-      [newRole, forcedAllProjects || projectAccess.allProjects ? 1 : 0, forcedAllProjects || projectAccess.allProjects ? 1 : 0, userId]
-    );
-
-    await replaceAdminProjectAccess(connection, {
-      userId,
-      role: newRole,
-      allProjects: forcedAllProjects || projectAccess.allProjects,
-      projectIds: forcedAllProjects ? [] : projectAccess.projectIds,
-      changedByUserId: req.authUser?.id || null,
-    });
-
-    await copyRoleDefaultsToUser(connection, {
-      userId,
-      role: newRole,
-      changedByUserId: req.authUser?.id || null,
-    });
-
-    await connection.query(
-      `INSERT INTO user_role_history (
-         user_id, previous_role, new_role, previous_account_code, current_account_code, reason, changed_by_user_id
-       ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [userId, previousRole, newRole, user.account_code || null, user.account_code || null, reason, req.authUser?.id || null]
+       SET status='active', deactivated_at=NULL, deactivated_by_user_id=NULL, deactivation_reason=NULL,
+           can_login=1, auth_version=COALESCE(auth_version,0)+1
+       WHERE id=?`,
+      [userId]
     );
 
     await writeAuditLog(connection, req, {
-      action: 'update',
-      module: 'Access Control',
-      entityType: 'user_role',
-      entityId: String(userId),
-      entityLabel: user.account_code || user.email,
-      title: 'Changed internal system role',
-      description: `${user.account_code || user.email} changed from ${ROLE_LABELS[previousRole] || previousRole} to ${ROLE_LABELS[newRole] || newRole}. The same account identity was retained.`,
-      metadata: {
-        previous_role: previousRole,
-        new_role: newRole,
-        same_user_id: true,
-        account_code_preserved: user.account_code || null,
-        reason,
-        all_projects_access: forcedAllProjects || projectAccess.allProjects,
-        project_ids: forcedAllProjects ? [] : projectAccess.projectIds,
-      },
+      action: 'update', module: 'Users', entityType: 'user', entityId: String(userId),
+      entityLabel: user.account_code || buildPersonName(user), title: 'Reactivated user account',
+      description: `${user.account_code || user.email} was reactivated by ${actor.role}.`,
+      metadata: { previousStatus: user.status, nextStatus: 'active', reason },
     });
 
     await connection.commit();
-
-    return res.json({
-      message: `Position changed to ${ROLE_LABELS[newRole] || newRole}. The same login account was retained and existing sessions were invalidated.`,
-      user: {
-        id: userId,
-        account_code: user.account_code,
-        role: newRole,
-        email: user.email,
-        first_name: user.first_name,
-        middle_name: user.middle_name,
-        last_name: user.last_name,
-      },
-      previous_role: previousRole,
-      same_account: true,
-    });
+    return res.json({ message: 'Account reactivated successfully.' });
   } catch (error) {
     try { await connection.rollback(); } catch {}
-    return res.status(error.statusCode || 500).json({ code: error.code, message: getErrorMessage(error) });
+    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
   } finally {
     connection.release();
   }
@@ -2557,5 +2380,6 @@ export const resetUserPassword = async (req, res) => {
     connection.release();
   }
 };
+
 
 

@@ -41,9 +41,9 @@ const DeactivateSystemUserModal = ({ user, onClose, onSaved }) => {
       },
       { confirmationHandled: 'compact' }
     ),
-    onMutate: () => setAlert({ type: 'loading', message: 'Permanently deactivating account...' }),
+    onMutate: () => setAlert({ type: 'loading', message: 'Deactivating account...' }),
     onSuccess: (result) => {
-      onSaved?.(result.message || 'Account permanently deactivated.')
+      onSaved?.(result.message || 'Account deactivated.')
       onClose?.()
     },
     onError: (error) => setAlert({ type: 'error', message: error.message }),
@@ -88,9 +88,8 @@ const DeactivateSystemUserModal = ({ user, onClose, onSaved }) => {
           {alert ? <StatusAlert type={alert.type} message={alert.message} onClose={alert.type === 'loading' ? undefined : () => setAlert(null)} /> : null}
 
           <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold leading-6 text-red-900">
-            <strong>This action is permanent.</strong><br />
-            This account can never be activated again.<br />
-            If the employee changes position or returns later, create a new account.
+            <strong>This disables the account and immediately ends its active sessions.</strong><br />
+            Keep this account deactivated when a person changes position. Create a new account for the new role. Only Super Admin or System Admin can reactivate this historical account later.
           </div>
 
           <label className="grid gap-1.5 text-sm font-bold">
@@ -102,7 +101,7 @@ const DeactivateSystemUserModal = ({ user, onClose, onSaved }) => {
               disabled={Boolean(verificationId) || busy}
               onChange={(event) => setReason(event.target.value)}
               className="rounded-xl border border-slate-300 p-3 disabled:bg-slate-100"
-              placeholder="Why is this account being permanently deactivated?"
+              placeholder="Why is this account being deactivated?"
             />
           </label>
 
@@ -144,7 +143,7 @@ const DeactivateSystemUserModal = ({ user, onClose, onSaved }) => {
               </button>
             ) : (
               <button type="submit" disabled={busy || code.trim().length !== 6} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-red-600 px-5 font-black text-white disabled:opacity-50">
-                <FiLock /> {mutation.isPending ? 'Deactivating...' : 'Permanently Deactivate'}
+                <FiLock /> {mutation.isPending ? 'Deactivating...' : 'Deactivate Account'}
               </button>
             )}
           </div>
@@ -155,3 +154,4 @@ const DeactivateSystemUserModal = ({ user, onClose, onSaved }) => {
 }
 
 export default DeactivateSystemUserModal
+

@@ -169,7 +169,7 @@ const finalMarketingActions = Object.freeze({
   'network.create': { department: 'marketing', entityType: 'seller_group', headApprovalBefore: false },
   'network.edit': { department: 'marketing', entityType: 'seller_group', headApprovalBefore: false },
   'network.status': { department: 'marketing', entityType: 'seller_group', headApprovalBefore: false },
-  'network.rates.update': { department: 'marketing', entityType: 'seller_group_project_rates', headApprovalBefore: true },
+  'network.rates.update': { department: 'marketing', entityType: 'seller_group_project_rates', headApprovalBefore: false },
   'network.members.import': { department: 'marketing', entityType: 'seller_group', headApprovalBefore: false },
   'seller.create': { department: 'marketing', entityType: 'accredited_seller', headApprovalBefore: false },
   'seller.edit': { department: 'marketing', entityType: 'accredited_seller', headApprovalBefore: false },
@@ -202,13 +202,14 @@ test('Operations controllers record create/edit/delete/import/document reviews a
   assert.match(documents, /getPendingAuditCorrectionCase/);
 });
 
-test('Marketing controllers review Network/member/seller mutations and pre-authorize project-rate changes', async () => {
+test('Marketing controllers review Network/member/seller mutations and save project-rate changes before Head review', async () => {
   const [groups, users] = await Promise.all([
     readProjectFile('server/controllers/System/sellerGroup.controller.js'),
     readProjectFile('server/controllers/System/users.controllers.js'),
   ]);
   for (const key of ['network.create', 'network.edit', 'network.status', 'network.rates.update', 'network.members.import']) assert.match(groups, new RegExp(key.replaceAll('.', '\\.')));
   assert.match(groups, /authorizeGovernedAction\(connection, \{[\s\S]*actionKey: 'network\.rates\.update'/);
+  assert.doesNotMatch(groups, /headApprovalPendingResponse/);
   assert.match(groups, /actionKey: 'network\.members\.import'[\s\S]*entityType: 'seller_group'/);
   for (const key of ['seller.create', 'seller.edit']) assert.match(users, new RegExp(key.replaceAll('.', '\\.')));
   assert.match(users, /entityType: 'accredited_seller'/);
@@ -254,4 +255,3 @@ test('Review Center routes Operations and Marketing records and marks destructiv
   for (const workflow of ['listing_documents_update_review', 'listing_import_review', 'network_rates_review', 'network_edit_review', 'seller_edit_review']) assert.match(source, new RegExp(workflow));
   for (const key of ['listing.delete', 'listing.import', 'listing.import_undo', 'network.members.import']) assert.match(source, new RegExp(key.replaceAll('.', '\\.')));
 });
-

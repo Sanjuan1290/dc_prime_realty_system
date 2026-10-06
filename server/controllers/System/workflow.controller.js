@@ -10,29 +10,86 @@ import { getAuditCorrectionRole } from '../../services/auditCaseAuthorization.se
 const errorMessage = (error) => error?.message || 'Workflow operation failed.';
 const pageValues = (query = {}) => ({ page: Math.max(Number(query.page || 1),1), limit: Math.min(Math.max(Number(query.limit || 25),1),100) });
 
-const accessibleReviewWhere = (actor, { alias = 'r' } = {}) => {
-  if (['super_admin','system_admin','auditor'].includes(actor?.role)) return { sql: '1=1', params: [] };
-  const department = getRoleDepartment(actor);
-  if (!department) return { sql: '1=0', params: [] };
+const reviewQueueWhere = (actor, { alias = 'r' } = {}) => {
+  const role = String(actor?.role || '');
   const actorId = Number(actor?.id || 0);
-  const isHead = DEPARTMENT_HEAD_ROLE[department] === actor?.role;
-  if (!isHead) {
+
+  if (role === 'auditor') {
     return {
-      sql: `${alias}.department = ? AND ${alias}.initiated_by_user_id = ?`,
-      params: [department, actorId],
+      sql: `(${alias}.status IN ('pending_auditor_review','pending_auditor_recheck') OR (${alias}.status='audit_case_open' AND EXISTS (SELECT 1 FROM audit_cases qac WHERE qac.operational_review_id=${alias}.operational_review_id AND qac.status='under_auditor_review')))`,
+      params: [],
     };
   }
+
+  if (role === 'system_admin') {
+    return {
+      sql: `((${alias}.status='correction_required' AND NOT (COALESCE(${alias}.approval_type,'')='emergency_super_admin' OR ${alias}.initiated_by_role='super_admin')) OR (${alias}.status='audit_case_open' AND EXISTS (SELECT 1 FROM audit_cases qac WHERE qac.operational_review_id=${alias}.operational_review_id AND qac.status='awaiting_head_response' AND qac.assigned_responder_user_id IS NULL)))`,
+      params: [],
+    };
+  }
+
+  if (role === 'super_admin') {
+    return {
+      sql: `${alias}.status='correction_required' AND (COALESCE(${alias}.approval_type,'')='emergency_super_admin' OR ${alias}.initiated_by_role='super_admin')`,
+      params: [],
+    };
+  }
+
+  const department = getRoleDepartment(actor);
+  const isHead = department && DEPARTMENT_HEAD_ROLE[department] === role;
+  if (!isHead) return { sql: '1=0', params: [] };
+
   return {
-    sql: `${alias}.department = ? AND (${alias}.lot_project_id IS NULL OR COALESCE(?,0)=1 OR EXISTS (SELECT 1 FROM user_project_access wupa WHERE wupa.user_id=? AND wupa.lot_project_id=${alias}.lot_project_id))`,
-    params: [department, Number(actor?.all_projects_access || actor?.admin_all_projects || 0), actorId],
+    sql: `${alias}.department = ?
+      AND (${alias}.lot_project_id IS NULL OR COALESCE(?,0)=1 OR EXISTS (SELECT 1 FROM user_project_access wupa WHERE wupa.user_id=? AND wupa.lot_project_id=${alias}.lot_project_id))
+      AND (
+        ${alias}.status='pending_head_review'
+        OR (${alias}.status='audit_case_open' AND EXISTS (
+          SELECT 1 FROM audit_cases qac
+          WHERE qac.operational_review_id=${alias}.operational_review_id
+            AND qac.status='awaiting_head_response'
+            AND (qac.assigned_responder_user_id IS NULL OR qac.assigned_responder_user_id=?)
+        ))
+      )`,
+    params: [department, Number(actor?.all_projects_access || actor?.admin_all_projects || 0), actorId, actorId],
   };
+};
+
+const canActorOpenReview = async (connection, actor, review) => {
+  if (!actor || !review) return false;
+  const role = String(actor.role || '');
+  if (role === 'auditor') {
+    if (['pending_auditor_review','pending_auditor_recheck'].includes(review.status)) return true;
+    if (review.status !== 'audit_case_open') return false;
+    const [rows] = await connection.query(`SELECT status FROM audit_cases WHERE operational_review_id=? ORDER BY audit_case_id DESC LIMIT 1`, [review.operational_review_id]);
+    return rows[0]?.status === 'under_auditor_review';
+  }
+  if (role === 'system_admin') {
+    if (review.status === 'correction_required') return !(review.approval_type === 'emergency_super_admin' || review.initiated_by_role === 'super_admin');
+    if (review.status !== 'audit_case_open') return false;
+    const [rows] = await connection.query(`SELECT status,assigned_responder_user_id FROM audit_cases WHERE operational_review_id=? ORDER BY audit_case_id DESC LIMIT 1`, [review.operational_review_id]);
+    return rows[0]?.status === 'awaiting_head_response' && !rows[0]?.assigned_responder_user_id;
+  }
+  if (role === 'super_admin') {
+    return review.status === 'correction_required' && (review.approval_type === 'emergency_super_admin' || review.initiated_by_role === 'super_admin');
+  }
+  const department = getRoleDepartment(actor);
+  if (!department || DEPARTMENT_HEAD_ROLE[department] !== role || review.department !== department) return false;
+  if (!(await canActorSeeReview(connection, actor, review))) return false;
+  if (review.status === 'pending_head_review') return true;
+  if (review.status !== 'audit_case_open') return false;
+  const [rows] = await connection.query(`SELECT * FROM audit_cases WHERE operational_review_id=? ORDER BY audit_case_id DESC LIMIT 1`, [review.operational_review_id]);
+  const auditCase = rows[0];
+  if (!auditCase || auditCase.status !== 'awaiting_head_response') return false;
+  const responders = await resolveAuditCaseResponders(connection, { ...review, ...auditCase });
+  return responders.userIds.includes(Number(actorId));
 };
 
 export const listOperationalReviews = async (req, res) => {
   try {
     const { page, limit } = pageValues(req.query);
     const offset = (page - 1) * limit;
-    const access = accessibleReviewWhere(req.authUser);
+    const access = reviewQueueWhere(req.authUser);
     const statuses = String(req.query.status || '').trim().split(',').map((v) => v.trim()).filter(Boolean);
     const params = [...access.params];
     let statusSql = '';
@@ -60,15 +117,16 @@ export const listOperationalReviews = async (req, res) => {
 
 export const getReviewCenterSummary = async (req, res) => {
   try {
-    const access = accessibleReviewWhere(req.authUser);
+    const access = reviewQueueWhere(req.authUser);
     const [rows] = await db.query(
       `SELECT status,COUNT(*) total FROM operational_reviews r WHERE ${access.sql} GROUP BY status`, access.params
     );
     const counts = Object.fromEntries(rows.map((row) => [row.status, Number(row.total || 0)]));
     const actor = req.authUser || {};
     let actionable = 0;
-    if (actor.role === 'auditor') actionable = Number(counts.pending_auditor_review || 0) + Number(counts.pending_auditor_recheck || 0);
-    else if (actor.role === 'system_admin') actionable = Number(counts.correction_required || 0);
+    if (actor.role === 'auditor') actionable = Number(counts.pending_auditor_review || 0) + Number(counts.pending_auditor_recheck || 0) + Number(counts.audit_case_open || 0);
+    else if (actor.role === 'system_admin') actionable = Number(counts.correction_required || 0) + Number(counts.audit_case_open || 0);
+    else if (actor.role === 'super_admin') actionable = Number(counts.correction_required || 0);
     else {
       const department = getRoleDepartment(actor);
       const isHead = department && DEPARTMENT_HEAD_ROLE[department] === actor.role;
@@ -82,7 +140,7 @@ export const getReviewCenterSummary = async (req, res) => {
       protectedSql = `p.department = ? AND p.status = 'pending' AND (p.lot_project_id IS NULL OR COALESCE(?,0)=1 OR EXISTS(SELECT 1 FROM user_project_access upa WHERE upa.user_id=? AND upa.lot_project_id=p.lot_project_id))`;
       protectedParams = [actorDepartment, Number(actor.all_projects_access || actor.admin_all_projects || 0), actor.id];
     } else if (['super_admin','system_admin','auditor'].includes(actor.role)) {
-      protectedSql = `p.status = 'pending'`;
+      protectedSql = '1=0';
       protectedParams = [];
     }
     const [protectedRows] = await db.query(`SELECT COUNT(*) total FROM protected_change_requests p WHERE ${protectedSql}`, protectedParams).catch(() => [[{ total: 0 }]]);
@@ -110,7 +168,7 @@ export const getOperationalReview = async (req, res) => {
       WHERE r.operational_review_id=? LIMIT 1`, [reviewId]);
     const review = rows[0];
     if (!review) return res.status(404).json({ message: 'Review not found.' });
-    if (!(await canActorSeeReview(db, req.authUser, review))) return res.status(403).json({ message: 'You cannot view this review.' });
+    if (!(await canActorOpenReview(db, req.authUser, review))) return res.status(403).json({ message: 'This review is not currently assigned to your role.' });
     const [events] = await db.query(
       `SELECT e.*,TRIM(CONCAT_WS(' ',u.first_name,u.middle_name,u.last_name)) actor_name FROM operational_review_events e LEFT JOIN users u ON u.id=e.actor_user_id WHERE e.operational_review_id=? ORDER BY e.operational_review_event_id`, [reviewId]
     );
@@ -388,19 +446,26 @@ export const resolveAuditCase = async (req,res) => {
 };
 
 export const getAuditCase = async (req,res) => {
-  try{const [rows]=await db.query(`SELECT c.*,r.review_number,r.action_key,r.department,r.lot_project_id,r.entity_type,r.entity_id,r.entity_label,r.initiated_by_user_id FROM audit_cases c INNER JOIN operational_reviews r ON r.operational_review_id=c.operational_review_id WHERE c.audit_case_id=? LIMIT 1`,[Number(req.params.caseId)]); if(!rows[0])return res.status(404).json({message:'Audit Case not found.'}); if(!(await canActorSeeReview(db,req.authUser,rows[0])))return res.status(403).json({message:'You cannot view this Audit Case.'}); return res.json({data:rows[0]});}catch(error){return res.status(500).json({message:errorMessage(error)});}
+  try {
+    const [rows]=await db.query(`SELECT c.*,r.review_number,r.action_key,r.department,r.lot_project_id,r.entity_type,r.entity_id,r.entity_label,r.initiated_by_user_id,r.initiated_by_role,r.approval_type,r.status AS review_status FROM audit_cases c INNER JOIN operational_reviews r ON r.operational_review_id=c.operational_review_id WHERE c.audit_case_id=? LIMIT 1`,[Number(req.params.caseId)]);
+    const row=rows[0];
+    if(!row)return res.status(404).json({message:'Audit Case not found.'});
+    const reviewView={...row,status:row.review_status,operational_review_id:row.operational_review_id};
+    if(!(await canActorOpenReview(db,req.authUser,reviewView)))return res.status(403).json({message:'This Audit Case is not currently assigned to your role.'});
+    return res.json({data:row});
+  }catch(error){return res.status(500).json({message:errorMessage(error)});}
 };
 
 export const listProtectedChangeRequests = async (req,res) => {
   try{
     const actor=req.authUser||{}; const {page,limit}=pageValues(req.query); const offset=(page-1)*limit;
     let where='1=0',params=[];
-    if(actor.role==='super_admin'||actor.role==='system_admin'||actor.role==='auditor'){where='1=1';}
-    else {const department=getRoleDepartment(actor);if(DEPARTMENT_HEAD_ROLE[department]===actor.role){where="p.department=? AND (p.lot_project_id IS NULL OR COALESCE(?,0)=1 OR EXISTS(SELECT 1 FROM user_project_access upa WHERE upa.user_id=? AND upa.lot_project_id=p.lot_project_id))";params=[department,Number(actor.all_projects_access||actor.admin_all_projects||0),actor.id];}else{where='p.requested_by_user_id=?';params=[actor.id];}}
+    const department=getRoleDepartment(actor);
+    if(DEPARTMENT_HEAD_ROLE[department]===actor.role){where="p.department=? AND (p.lot_project_id IS NULL OR COALESCE(?,0)=1 OR EXISTS(SELECT 1 FROM user_project_access upa WHERE upa.user_id=? AND upa.lot_project_id=p.lot_project_id))";params=[department,Number(actor.all_projects_access||actor.admin_all_projects||0),actor.id];}
     const requestedStatus=String(req.query.status||'').trim();if(requestedStatus){where+=` AND p.status=?`;params.push(requestedStatus);}
     const [countRows]=await db.query(`SELECT COUNT(*) total FROM protected_change_requests p WHERE ${where}`,params);
     const [rows]=await db.query(`SELECT p.*,TRIM(CONCAT_WS(' ',u.first_name,u.middle_name,u.last_name)) requested_by_name,TRIM(CONCAT_WS(' ',h.first_name,h.middle_name,h.last_name)) reviewed_by_head_name,lp.lot_project_name FROM protected_change_requests p LEFT JOIN users u ON u.id=p.requested_by_user_id LEFT JOIN users h ON h.id=p.reviewed_by_head_user_id LEFT JOIN lot_projects lp ON lp.lot_project_id=p.lot_project_id WHERE ${where} ORDER BY p.created_at DESC,p.protected_change_request_id DESC LIMIT ? OFFSET ?`,[...params,limit,offset]);
-    return res.json({data:rows,pagination:{page,limit,total:Number(countRows[0]?.total||0)}});
+    const total=Number(countRows[0]?.total||0); const totalPages=Math.max(1,Math.ceil(total/limit)); return res.json({data:rows,pagination:{page,limit,total,totalPages,hasNext:page<totalPages,hasPrev:page>1}});
   }catch(error){return res.status(500).json({message:errorMessage(error)});}
 };
 
@@ -413,4 +478,5 @@ export const reviewProtectedChangeRequest = async (req,res) => {
     await connection.commit(); return res.json({message:`Protected change ${decision}d.`,data:{requestId:row.protected_change_request_id,requestNumber:row.request_number,status:row.status}});
   }catch(error){try{await connection.rollback()}catch{}return res.status(error.statusCode||500).json({code:error.code,message:errorMessage(error)});}finally{connection.release();}
 };
+
 

@@ -1,17 +1,14 @@
 // D&C Prime Realty
-// Head-approval gate for actions that used to need the Super Admin
-// (plan items 18-19: reserved/sold listing edits and cancellations).
+// Governance helper for reviewable business actions.
 //
-//   * The owning department's Head acts directly.
-//   * System Admin acts directly as the day-to-day full administrator.
-//   * Super Admin remains available as the owner fallback.
-//   * Everyone else (Staff and other departments) needs an
-//     approved Head request for the exact same change. The first attempt
-//     files the request automatically and returns HEAD_APPROVAL_PENDING;
-//     submitting the same change again after approval applies it.
+//   * headApprovalBefore = true: Staff must obtain the owning Department Head's
+//     approval before the exact change is saved.
+//   * headApprovalBefore = false: the change is saved immediately and the caller
+//     creates an Operational Review afterward for the Head to check.
+//   * Department Heads, System Admin and Super Admin act directly.
 //
-// After the change is saved the caller records an Operational Review, so the
-// Auditor is always notified.
+// This keeps routine post-action checks non-blocking while preserving explicit
+// pre-approval only for the small set of protected/destructive actions that need it.
 
 import { DEPARTMENT_HEAD_ROLE } from '../config/permissions.js';
 import { assertRegisteredReviewAction } from '../config/reviewActions.js';
@@ -50,6 +47,13 @@ export const authorizeGovernedAction = async (connection, {
   }
   if (actor.role === DEPARTMENT_HEAD_ROLE[department]) {
     return { authorized: true, authorizationType: 'department_head', headPreApprovedByUserId: actor.id, department, entityType };
+  }
+
+  // Post-action reviews never block the save. Staff submits once, the business
+  // change becomes active immediately, and createOperationalReview() routes the
+  // saved result to the owning Department Head afterward.
+  if (!definition.headApprovalBefore) {
+    return { authorized: true, authorizationType: 'post_action_review', headPreApprovedByUserId: null, department, entityType };
   }
 
   let requestId = Number(approvalRequestId || 0) || null;

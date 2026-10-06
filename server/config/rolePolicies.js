@@ -34,7 +34,7 @@ const headRequired = Object.freeze([
 
 // Starting-point templates. These fold in what used to be "Required" or
 // "From Staff Role" so the defaults keep the same content.
-const staffBaseline = [PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW];
+const staffBaseline = [];
 
 const recommendedForRole = (role) => {
   if (role === 'system_admin') return [...allPermissionKeys];
@@ -102,4 +102,5 @@ export const assertPermissionKeysWithinRoleCeiling = (role, permissionKeys = [])
 };
 
 export const getRequiredPermissionsForRole = (role) => getStaticRolePolicy(role).required;
+
 

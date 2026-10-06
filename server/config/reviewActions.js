@@ -64,7 +64,7 @@ export const REVIEW_ACTIONS = Object.freeze({
   'network.create': { department: 'marketing', entityType: 'seller_group', label: 'Network creation', headApprovalBefore: false },
   'network.edit': { department: 'marketing', entityType: 'seller_group', label: 'Network edit', headApprovalBefore: false },
   'network.status': { department: 'marketing', entityType: 'seller_group', label: 'Network status change', headApprovalBefore: false },
-  'network.rates.update': { department: 'marketing', entityType: 'seller_group_project_rates', label: 'Network project rates', headApprovalBefore: true },
+  'network.rates.update': { department: 'marketing', entityType: 'seller_group_project_rates', label: 'Network project rates', headApprovalBefore: false },
   'network.members.import': { department: 'marketing', entityType: 'seller_group', label: 'Network member import', headApprovalBefore: false },
   'seller.create': { department: 'marketing', entityType: 'accredited_seller', label: 'Accredited seller creation', headApprovalBefore: false },
   'seller.edit': { department: 'marketing', entityType: 'accredited_seller', label: 'Accredited seller edit', headApprovalBefore: false },

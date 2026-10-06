@@ -86,10 +86,10 @@ const systemAdminExtras = Object.freeze([
 
 export const RECOMMENDED_ROLE_PERMISSIONS = Object.freeze({
   ...BASE_ROLE_PERMISSIONS,
-  marketing_staff: Object.freeze([...new Set([...(BASE_ROLE_PERMISSIONS.marketing_staff || []), PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW])]),
-  sales_staff: Object.freeze([...new Set([...(BASE_ROLE_PERMISSIONS.sales_staff || []), PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW])]),
-  accounting_staff: Object.freeze([...new Set([...(BASE_ROLE_PERMISSIONS.accounting_staff || []), PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW])]),
-  operations_staff: Object.freeze([...new Set([...(BASE_ROLE_PERMISSIONS.operations_staff || []), PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW])]),
+  marketing_staff: BASE_ROLE_PERMISSIONS.marketing_staff,
+  sales_staff: BASE_ROLE_PERMISSIONS.sales_staff,
+  accounting_staff: BASE_ROLE_PERMISSIONS.accounting_staff,
+  operations_staff: BASE_ROLE_PERMISSIONS.operations_staff,
   system_admin: Object.freeze([...new Set([
     ...(BASE_ROLE_PERMISSIONS.system_admin || []),
     ...systemAdminExtras,
@@ -100,3 +100,4 @@ export const RECOMMENDED_ROLE_PERMISSIONS = Object.freeze({
   accounting_head: Object.freeze([...new Set([...(BASE_ROLE_PERMISSIONS.accounting_staff || []), ...headExtras])]),
   operations_head: Object.freeze([...new Set([...(BASE_ROLE_PERMISSIONS.operations_staff || []), ...headExtras])]),
 });
+

@@ -132,7 +132,7 @@ const SystemLayout = () => {
         title: "REVIEW & COMPLIANCE",
         description: "Department review, audit, and system records",
         items: [
-          { label: "Review Center", pathname: "review-center", icon: FiShield, badge: workflowBadgeCount, permission: PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW },
+          { label: "Review Center", pathname: "review-center", icon: FiShield, badge: workflowBadgeCount, permission: PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW, roles: ['super_admin','system_admin','auditor','marketing_head','sales_head','accounting_head','operations_head'] },
           { label: "Documents", pathname: "documents", icon: FiFileText, permission: PERMISSIONS.SYSTEM_DOCUMENTS_VIEW },
           { label: "Notifications", pathname: "notifications", icon: FiBell, badge: notificationCount, permission: PERMISSIONS.SYSTEM_NOTIFICATIONS_VIEW },
           { label: "Audit Logs", pathname: "audit-logs", icon: FiActivity, permission: PERMISSIONS.AUDIT_LOGS_VIEW },
@@ -160,7 +160,7 @@ const SystemLayout = () => {
   );
 
   const visibleNavGroups = useMemo(() => navGroups
-    .map((group) => ({ ...group, items: group.items.filter((item) => hasPermission(user, item.permission)) }))
+    .map((group) => ({ ...group, items: group.items.filter((item) => hasPermission(user, item.permission) && (!item.roles || item.roles.includes(user?.role))) }))
     .filter((group) => group.items.length > 0), [navGroups, user]);
 
   const activeItem = useMemo(() => {
@@ -433,3 +433,4 @@ const SystemLayout = () => {
 };
 
 export default SystemLayout;
+

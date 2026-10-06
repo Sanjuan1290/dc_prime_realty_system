@@ -31,9 +31,8 @@ import {
   getReturnedOperationalReviewForActor,
   resubmitReturnedOperationalReview,
 } from '../../services/operationalReview.service.js';
-import { authorizeGovernedAction, headApprovalPendingResponse } from '../../services/governedAction.service.js';
+import { authorizeGovernedAction } from '../../services/governedAction.service.js';
 import { getPendingAuditCorrectionCase, advanceAuditCaseToRecheck } from '../../services/auditCaseAuthorization.service.js';
-import { getReviewActionLabel } from '../../config/reviewActions.js';
 
 const toNullableNumber = (value) => {
   if (value === undefined || value === null || value === '') return null;
@@ -812,9 +811,9 @@ export const createGroup = async (req, res) => {
       throw createValidationError('External Networks do not use an in-house Network Hierarchy Head.');
     }
 
-    // Rate approval must happen before the Network row is created so a pending
-    // request never leaves a half-created Network behind. The temporary entity
-    // id is deterministic, so an approved resubmission consumes the same request.
+    // Network project rates are a post-action review. Staff saves once; the
+    // rates are applied in this transaction and the Marketing Head reviews the
+    // resulting Operational Review afterward.
     const accessibleProjectIds = await getAccessibleProjectIds(req.authUser, connection);
     const projects = await getActiveLotProjects(connection, req.authUser);
     const poolShares = await loadInHousePoolShares(connection);
@@ -836,12 +835,7 @@ export const createGroup = async (req, res) => {
         entityLabel: `${name} project rates`,
         payload: { groupType, network: name, rates: normalizeRateReviewPayload(normalizedRates) },
         reason: req.body?.rateChangeReason || `Initial project rates for ${name}`,
-        approvalRequestId: req.body?.rateApprovalRequestId || req.body?.approvalRequestId,
       });
-      if (!ratesGovernance.authorized) {
-        await connection.commit();
-        return res.status(409).json(headApprovalPendingResponse(ratesGovernance, getReviewActionLabel('network.rates.update')));
-      }
     }
 
     const [result] = await connection.query(
@@ -902,7 +896,7 @@ export const createGroup = async (req, res) => {
     });
 
     let rateReview = null;
-    if (ratesGovernance?.authorized) {
+    if (normalizedRates.length) {
       rateReview = await createOperationalReview(connection, {
         actor: req.authUser,
         actionKey: 'network.rates.update',
@@ -1259,12 +1253,7 @@ export const editGroup = async (req, res) => {
           entityLabel: `${name} project rates`,
           payload: { groupId, rates: normalizeRateReviewPayload(normalizedRates) },
           reason: req.body?.rateChangeReason || `Update project rates for ${name}`,
-          approvalRequestId: req.body?.rateApprovalRequestId || req.body?.approvalRequestId,
         });
-        if (!ratesGovernance.authorized) {
-          await connection.commit();
-          return res.status(409).json(headApprovalPendingResponse(ratesGovernance, getReviewActionLabel('network.rates.update')));
-        }
       }
     }
 
@@ -2078,12 +2067,7 @@ export const updateGroupProjectPool = async (req, res) => {
         entityLabel: `${group.seller_group_name} — ${group.lot_project_name}`,
         payload: afterSnapshot,
         reason: req.body?.reason || `Update Network project rates for ${group.seller_group_name}`,
-        approvalRequestId: req.body?.approvalRequestId,
       });
-      if (!governance.authorized) {
-        await connection.commit();
-        return res.status(409).json(headApprovalPendingResponse(governance, getReviewActionLabel('network.rates.update')));
-      }
     }
 
     await assertEntityNotReviewLocked(connection, {
@@ -2587,5 +2571,3 @@ export const commitNetworkMemberImport = async (req, res) => {
     connection.release();
   }
 };
-
-

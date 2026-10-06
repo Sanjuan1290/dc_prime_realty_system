@@ -2,8 +2,10 @@ import { useQuery } from '@tanstack/react-query'
 import { hasPermission, PERMISSIONS } from '../config/permissions'
 import { useFetch } from './useFetch'
 
+const REVIEW_CENTER_ROLES = new Set(['super_admin','system_admin','auditor','marketing_head','sales_head','accounting_head','operations_head'])
+
 const useWorkflowBadge = (user) => {
-  const enabled = Boolean(user) && !user?.must_change_password && hasPermission(user, PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW)
+  const enabled = Boolean(user) && !user?.must_change_password && REVIEW_CENTER_ROLES.has(user?.role) && hasPermission(user, PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW)
   const query = useQuery({
     queryKey: ['workflow-summary'],
     queryFn: () => useFetch('/workflow/summary'),
