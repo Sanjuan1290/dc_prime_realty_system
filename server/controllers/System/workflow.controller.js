@@ -1,11 +1,12 @@
 import { db } from '../../db/connect.js';
 import { DEPARTMENT_HEAD_ROLE, getRoleDepartment } from '../../config/permissions.js';
 import { writeAuditLog } from './auditLogs.controller.js';
-import { createInternalNotifications, notifyAuditors, notifySystemAdmins } from '../../services/internalNotification.service.js';
+import { activeNotificationSql, createInternalNotifications, notifyAuditors, notifySystemAdmins } from '../../services/internalNotification.service.js';
 import { appendReviewEvent, canActorSeeReview, getOperationalReviewForUpdate } from '../../services/operationalReview.service.js';
 import { approveProtectedChange } from '../../services/protectedChange.service.js';
 import { resolveAuditCaseResponders, RESPONDER_MODE_LABELS } from '../../services/auditCaseResponder.service.js';
 import { getAuditCorrectionRole } from '../../services/auditCaseAuthorization.service.js';
+import { getReviewActionLabel, REVIEW_ACTIONS } from '../../config/reviewActions.js';
 
 const errorMessage = (error) => error?.message || 'Workflow operation failed.';
 const pageValues = (query = {}) => ({ page: Math.max(Number(query.page || 1),1), limit: Math.min(Math.max(Number(query.limit || 25),1),100) });
@@ -55,85 +56,142 @@ const reviewQueueWhere = (actor, { alias = 'r' } = {}) => {
   };
 };
 
-const reviewHistoryWhere = (actor, { alias = 'r' } = {}) => {
-  const role = String(actor?.role || '');
-  const actorId = Number(actor?.id || 0);
-
-  if (role === 'auditor') {
-    return {
-      sql: `(
-        ${alias}.head_reviewed_at IS NOT NULL
-        OR ${alias}.auditor_reviewed_by_user_id IS NOT NULL
-        OR COALESCE(${alias}.approval_type,'') IN ('head_self','head_preapproved','head_confirmed','head_corrected','emergency_super_admin')
-        OR EXISTS (SELECT 1 FROM audit_cases hac WHERE hac.operational_review_id=${alias}.operational_review_id)
-      )`,
-      params: [],
-    };
-  }
-
-  if (role === 'system_admin') {
-    return {
-      sql: `EXISTS (
-        SELECT 1 FROM audit_cases hac
-        WHERE hac.operational_review_id=${alias}.operational_review_id
-          AND NOT (COALESCE(${alias}.approval_type,'')='emergency_super_admin' OR ${alias}.initiated_by_role='super_admin')
-      )`,
-      params: [],
-    };
-  }
-
-  if (role === 'super_admin') {
-    return {
-      sql: `(COALESCE(${alias}.approval_type,'')='emergency_super_admin' OR ${alias}.initiated_by_role='super_admin')`,
-      params: [],
-    };
-  }
-
-  const department = getRoleDepartment(actor);
-  const isHead = department && DEPARTMENT_HEAD_ROLE[department] === role;
-  if (!isHead) return { sql: '1=0', params: [] };
-
-  return {
-    sql: `${alias}.department = ?
-      AND (${alias}.lot_project_id IS NULL OR COALESCE(?,0)=1 OR EXISTS (
-        SELECT 1 FROM user_project_access hupa
-        WHERE hupa.user_id=? AND hupa.lot_project_id=${alias}.lot_project_id
-      ))`,
-    params: [department, Number(actor?.all_projects_access || actor?.admin_all_projects || 0), actorId],
-  };
-};
-
-const notificationVisibilityWhere = (actor, { notificationAlias = 'n', reviewAlias = 'nr' } = {}) => {
-  const reviewAccess = reviewQueueWhere(actor, { alias: reviewAlias });
-  return {
-    sql: `(${notificationAlias}.operational_review_id IS NULL OR (${reviewAlias}.operational_review_id IS NOT NULL AND ${reviewAccess.sql}))`,
-    params: reviewAccess.params,
-  };
-};
-
 const canActorOpenReview = async (connection, actor, review) => {
   if (!actor || !review) return false;
-  const access = reviewHistoryWhere(actor);
+  const role = String(actor.role || '');
+  if (role === 'auditor') {
+    if (['pending_auditor_review','pending_auditor_recheck'].includes(review.status)) return true;
+    if (review.status !== 'audit_case_open') return false;
+    const [rows] = await connection.query(`SELECT status FROM audit_cases WHERE operational_review_id=? ORDER BY audit_case_id DESC LIMIT 1`, [review.operational_review_id]);
+    return rows[0]?.status === 'under_auditor_review';
+  }
+  if (role === 'system_admin') {
+    if (review.status === 'correction_required') return !(review.approval_type === 'emergency_super_admin' || review.initiated_by_role === 'super_admin');
+    if (review.status !== 'audit_case_open') return false;
+    const [rows] = await connection.query(`SELECT status,assigned_responder_user_id FROM audit_cases WHERE operational_review_id=? ORDER BY audit_case_id DESC LIMIT 1`, [review.operational_review_id]);
+    return rows[0]?.status === 'awaiting_head_response' && !rows[0]?.assigned_responder_user_id;
+  }
+  if (role === 'super_admin') {
+    return review.status === 'correction_required' && (review.approval_type === 'emergency_super_admin' || review.initiated_by_role === 'super_admin');
+  }
+  const department = getRoleDepartment(actor);
+  if (!department || DEPARTMENT_HEAD_ROLE[department] !== role || review.department !== department) return false;
+  if (!(await canActorSeeReview(connection, actor, review))) return false;
+  if (review.status === 'pending_head_review') return true;
+  if (review.status !== 'audit_case_open') return false;
+  const [rows] = await connection.query(`SELECT * FROM audit_cases WHERE operational_review_id=? ORDER BY audit_case_id DESC LIMIT 1`, [review.operational_review_id]);
+  const auditCase = rows[0];
+  if (!auditCase || auditCase.status !== 'awaiting_head_response') return false;
+  const responders = await resolveAuditCaseResponders(connection, { ...review, ...auditCase });
+  return responders.userIds.includes(Number(actor.id || 0));
+};
+
+// Read-only access. Anyone who could act on a Review at any stage, or who took
+// part in it, can still open it afterwards to see what happened. Acting is
+// still limited by canActorOpenReview() and by each action endpoint.
+const canActorViewReview = async (connection, actor, review) => {
+  if (!actor || !review) return false;
+  if (await canActorSeeReview(connection, actor, review)) return true;
+  const actorId = Number(actor.id || 0);
+  if (!actorId) return false;
+  const participants = [review.initiated_by_user_id, review.claimed_by_user_id, review.head_reviewed_by_user_id, review.auditor_reviewed_by_user_id].map(Number);
+  if (participants.includes(actorId)) return true;
   const [rows] = await connection.query(
-    `SELECT 1 FROM operational_reviews r WHERE r.operational_review_id=? AND ${access.sql} LIMIT 1`,
-    [Number(review.operational_review_id || 0), ...access.params]
-  );
-  return Boolean(rows.length);
+    `SELECT 1 FROM audit_cases WHERE operational_review_id=? AND (assigned_responder_user_id=? OR head_responded_by_user_id=? OR system_admin_user_id=?) LIMIT 1`,
+    [review.operational_review_id, actorId, actorId, actorId]
+  ).catch(() => [[]]);
+  return Boolean(rows?.length);
+};
+
+// History scope for the Review Center "All reviews" view (read-only).
+const reviewVisibilityWhere = (actor, { alias = 'r' } = {}) => {
+  const role = String(actor?.role || '');
+  const actorId = Number(actor?.id || 0);
+  if (['auditor', 'system_admin', 'super_admin'].includes(role)) return { sql: '1=1', params: [] };
+  const department = getRoleDepartment(actor);
+  const isHead = department && DEPARTMENT_HEAD_ROLE[department] === role;
+  if (isHead) {
+    return {
+      sql: `(${alias}.department = ?
+        AND (${alias}.lot_project_id IS NULL OR COALESCE(?,0)=1 OR EXISTS (SELECT 1 FROM user_project_access vupa WHERE vupa.user_id=? AND vupa.lot_project_id=${alias}.lot_project_id)))`,
+      params: [department, Number(actor?.all_projects_access || actor?.admin_all_projects || 0), actorId],
+    };
+  }
+  return { sql: `${alias}.initiated_by_user_id = ?`, params: [actorId] };
+};
+
+// Returns names for ids found in review snapshots so the Review Center can show
+// "Bailen Project" or "Juan Dela Cruz" instead of raw keys and numbers.
+const ID_LOOKUP_RULES = [
+  { kind: 'project', test: (key) => /^(projectId|lotProjectId|lot_project_id|project_id)$/.test(key) },
+  { kind: 'listing', test: (key) => /^(listingId|lot_project_listing_id|listing_id)$/.test(key) },
+  { kind: 'group', test: (key) => /^(groupId|sellerGroupId|seller_group_id|networkId)$/.test(key) },
+  { kind: 'seller', test: (key) => /(SellerId|seller_id)$/i.test(key) && !/user/i.test(key) },
+  { kind: 'user', test: (key) => /(^userId$|UserId$|user_id$)/.test(key) },
+];
+
+const collectSnapshotIds = (value, bucket) => {
+  if (Array.isArray(value)) { value.forEach((item) => collectSnapshotIds(item, bucket)); return; }
+  if (!value || typeof value !== 'object') return;
+  for (const [key, item] of Object.entries(value)) {
+    const rule = ID_LOOKUP_RULES.find((entry) => entry.test(key));
+    if (rule) {
+      const ids = (Array.isArray(item) ? item : [item]).map(Number).filter((id) => Number.isInteger(id) && id > 0);
+      ids.forEach((id) => bucket[rule.kind].add(id));
+    }
+    if (item && typeof item === 'object') collectSnapshotIds(item, bucket);
+  }
+};
+
+const parseSnapshot = (value) => {
+  if (!value) return null;
+  if (typeof value === 'object') return value;
+  try { return JSON.parse(value); } catch { return null; }
+};
+
+const buildReviewLookups = async (connection, review) => {
+  const bucket = { project: new Set(), listing: new Set(), group: new Set(), seller: new Set(), user: new Set() };
+  collectSnapshotIds(parseSnapshot(review.before_snapshot_json), bucket);
+  collectSnapshotIds(parseSnapshot(review.after_snapshot_json), bucket);
+  const lookups = { project: {}, listing: {}, group: {}, seller: {}, user: {} };
+  const load = async (kind, sql) => {
+    const ids = [...bucket[kind]].slice(0, 200);
+    if (!ids.length) return;
+    const [rows] = await connection.query(sql.replace('(?)', `(${ids.map(() => '?').join(',')})`), ids).catch(() => [[]]);
+    for (const row of rows || []) lookups[kind][String(row.id)] = row.label;
+  };
+  await load('project', `SELECT lot_project_id id, lot_project_name label FROM lot_projects WHERE lot_project_id IN (?)`);
+  await load('listing', `SELECT lot_project_listing_id id, lot_project_listing_unit_id label FROM lot_project_listings WHERE lot_project_listing_id IN (?)`);
+  await load('group', `SELECT seller_group_id id, seller_group_name label FROM seller_groups WHERE seller_group_id IN (?)`);
+  await load('seller', `SELECT a.accredited_seller_id id, TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) label FROM accredited_sellers a INNER JOIN users u ON u.id=a.user_id WHERE a.accredited_seller_id IN (?)`);
+  await load('user', `SELECT id, TRIM(CONCAT_WS(' ', first_name, middle_name, last_name)) label FROM users WHERE id IN (?)`);
+  return lookups;
+};
+
+// Whether the reviewed record still exists (e.g. a Network deleted while empty).
+const reviewEntityExists = async (connection, review) => {
+  const groupEntity = ['seller_group', 'seller_group_project_rates'].includes(review.entity_type);
+  if (!groupEntity) return true;
+  const groupId = Number(String(review.entity_id || '').split(':')[0] || 0);
+  if (!groupId) return true;
+  const [rows] = await connection.query('SELECT 1 FROM seller_groups WHERE seller_group_id=? LIMIT 1', [groupId]).catch(() => [[{ 1: 1 }]]);
+  return Boolean(rows?.length);
 };
 
 export const listOperationalReviews = async (req, res) => {
   try {
     const { page, limit } = pageValues(req.query);
     const offset = (page - 1) * limit;
-    const scope = String(req.query.scope || 'action').trim().toLowerCase() === 'history' ? 'history' : 'action';
-    const access = scope === 'history' ? reviewHistoryWhere(req.authUser) : reviewQueueWhere(req.authUser);
+    const scope = String(req.query.scope || 'queue') === 'all' ? 'all' : 'queue';
+    const queue = reviewQueueWhere(req.authUser);
+    const access = scope === 'all' ? reviewVisibilityWhere(req.authUser) : queue;
     const statuses = String(req.query.status || '').trim().split(',').map((v) => v.trim()).filter(Boolean);
     const params = [...access.params];
     let statusSql = '';
     if (statuses.length) { statusSql = ` AND r.status IN (${statuses.map(() => '?').join(',')})`; params.push(...statuses); }
     const [countRows] = await db.query(`SELECT COUNT(*) total FROM operational_reviews r WHERE ${access.sql}${statusSql}`, params);
     const [rows] = await db.query(
-      `SELECT r.*, p.lot_project_name,
+      `SELECT r.*, p.lot_project_name, (CASE WHEN ${queue.sql} THEN 1 ELSE 0 END) needs_my_action,
               TRIM(CONCAT_WS(' ', initiator.first_name,initiator.middle_name,initiator.last_name)) initiated_by_name,
               TRIM(CONCAT_WS(' ', claimant.first_name,claimant.middle_name,claimant.last_name)) claimed_by_name,
               TRIM(CONCAT_WS(' ', head.first_name,head.middle_name,head.last_name)) head_reviewed_by_name,
@@ -146,9 +204,9 @@ export const listOperationalReviews = async (req, res) => {
        LEFT JOIN users auditor ON auditor.id=r.auditor_reviewed_by_user_id
        WHERE ${access.sql}${statusSql}
        ORDER BY r.updated_at DESC,r.operational_review_id DESC LIMIT ? OFFSET ?`,
-      [...params, limit, offset]
+      [...queue.params, ...params, limit, offset]
     );
-    return res.json({ data: rows, scope, pagination: { page, limit, total: Number(countRows[0]?.total || 0), totalPages: Math.max(1,Math.ceil(Number(countRows[0]?.total || 0)/limit)) } });
+    return res.json({ data: rows.map((row) => ({ ...row, action_label: getReviewActionLabel(row.action_key), needs_my_action: Number(row.needs_my_action || 0) === 1 })), scope, pagination: { page, limit, total: Number(countRows[0]?.total || 0), totalPages: Math.max(1,Math.ceil(Number(countRows[0]?.total || 0)/limit)) } });
   } catch (error) { return res.status(500).json({ message: errorMessage(error) }); }
 };
 
@@ -183,14 +241,7 @@ export const getReviewCenterSummary = async (req, res) => {
     const [protectedRows] = await db.query(`SELECT COUNT(*) total FROM protected_change_requests p WHERE ${protectedSql}`, protectedParams).catch(() => [[{ total: 0 }]]);
     const pendingProtectedChanges = Number(protectedRows?.[0]?.total || 0);
 
-    const notificationAccess = notificationVisibilityWhere(actor);
-    const [notificationRows] = await db.query(
-      `SELECT COUNT(*) unread
-       FROM internal_notifications n
-       LEFT JOIN operational_reviews nr ON nr.operational_review_id=n.operational_review_id
-       WHERE n.user_id=? AND n.read_at IS NULL AND ${notificationAccess.sql}`,
-      [actor.id, ...notificationAccess.params]
-    );
+    const [notificationRows] = await db.query(`SELECT COUNT(*) unread FROM internal_notifications n WHERE n.user_id=? AND n.read_at IS NULL AND ${activeNotificationSql('n')}`, [actor.id]);
     const unreadNotifications = Number(notificationRows[0]?.unread || 0);
     return res.json({ data: { counts, actionable, pendingProtectedChanges, unreadNotifications, badgeCount: actionable + pendingProtectedChanges + unreadNotifications } });
   } catch (error) { return res.status(500).json({ message: errorMessage(error) }); }
@@ -203,16 +254,21 @@ export const getOperationalReview = async (req, res) => {
       SELECT r.*, p.lot_project_name, p.lot_project_slug,
              TRIM(CONCAT_WS(' ', initiator.first_name,initiator.middle_name,initiator.last_name)) initiated_by_name,
              TRIM(CONCAT_WS(' ', head.first_name,head.middle_name,head.last_name)) head_reviewed_by_name,
-             TRIM(CONCAT_WS(' ', auditor.first_name,auditor.middle_name,auditor.last_name)) auditor_reviewed_by_name
+             TRIM(CONCAT_WS(' ', auditor.first_name,auditor.middle_name,auditor.last_name)) auditor_reviewed_by_name,
+             TRIM(CONCAT_WS(' ', claimant.first_name,claimant.middle_name,claimant.last_name)) claimed_by_name
       FROM operational_reviews r
       LEFT JOIN lot_projects p ON p.lot_project_id=r.lot_project_id
       LEFT JOIN users initiator ON initiator.id=r.initiated_by_user_id
       LEFT JOIN users head ON head.id=r.head_reviewed_by_user_id
       LEFT JOIN users auditor ON auditor.id=r.auditor_reviewed_by_user_id
+      LEFT JOIN users claimant ON claimant.id=r.claimed_by_user_id
       WHERE r.operational_review_id=? LIMIT 1`, [reviewId]);
     const review = rows[0];
     if (!review) return res.status(404).json({ message: 'Review not found.' });
-    if (!(await canActorOpenReview(db, req.authUser, review))) return res.status(403).json({ message: 'This review is not currently assigned to your role.' });
+    const canAct = await canActorOpenReview(db, req.authUser, review);
+    if (!canAct && !(await canActorViewReview(db, req.authUser, review))) {
+      return res.status(403).json({ code: 'REVIEW_NOT_VISIBLE', message: 'You do not have access to this review.' });
+    }
     const [events] = await db.query(
       `SELECT e.*,TRIM(CONCAT_WS(' ',u.first_name,u.middle_name,u.last_name)) actor_name FROM operational_review_events e LEFT JOIN users u ON u.id=e.actor_user_id WHERE e.operational_review_id=? ORDER BY e.operational_review_event_id`, [reviewId]
     );
@@ -251,7 +307,17 @@ export const getOperationalReview = async (req, res) => {
         headOptions,
       };
     }
-    return res.json({ data: { ...review, events, auditCase } });
+    // Older events stored raw action keys ("network.rates.update ...").
+    // Show the readable action name instead.
+    const actionKeys = Object.keys(REVIEW_ACTIONS).sort((a, b) => b.length - a.length);
+    const readableEvents = events.map((event) => ({
+      ...event,
+      message: event.message
+        ? actionKeys.reduce((text, key) => text.split(key).join(getReviewActionLabel(key)), String(event.message))
+        : event.message,
+    }));
+    const [lookups, entityExists] = await Promise.all([buildReviewLookups(db, review), reviewEntityExists(db, review)]);
+    return res.json({ data: { ...review, action_label: getReviewActionLabel(review.action_key), events: readableEvents, auditCase, lookups, entityExists, viewer: { canAct, readOnly: !canAct } } });
   } catch (error) { return res.status(500).json({ message: errorMessage(error) }); }
 };
 
@@ -294,7 +360,7 @@ export const confirmHeadReview = async (req, res) => {
     await notifyAuditors(connection, { reviewId: review.operational_review_id, title: `Audit review required · ${review.entity_label || review.entity_type}`, message: `${review.review_number} was confirmed by the ${review.department} Head.` });
     await writeAuditLog(connection, req, { action:'approve',module:'Review Center',entityType:'operational_review',entityId:String(review.operational_review_id),entityLabel:review.review_number,title:'Department Head confirmed review',description:`${review.review_number} moved to Auditor review.`,metadata:{department:review.department,action_key:review.action_key} });
     await connection.commit();
-    return res.json({ message: 'Confirmed. The Auditor has been notified. You can continue tracking this review in History & Tracking.' });
+    return res.json({ message: 'Confirmed. The Auditor has been notified.' });
   } catch (error) { try { await connection.rollback(); } catch {} return res.status(error.statusCode || 500).json({ code:error.code,message:errorMessage(error) }); } finally { connection.release(); }
 };
 
@@ -352,31 +418,18 @@ export const auditorVerifyReview = async (req, res) => {
     await appendReviewEvent(connection, { reviewId:review.operational_review_id,eventType:previous==='pending_auditor_recheck'?'correction_verified':'auditor_verified',actor:req.authUser,fromStatus:previous,toStatus:'closed',message:String(req.body?.note || 'Auditor verified no issue.').slice(0,1000) });
     await writeAuditLog(connection, req, { action:'approve',module:'Review Center',entityType:'operational_review',entityId:String(review.operational_review_id),entityLabel:review.review_number,title:'Auditor verified operational review',description:`${review.review_number} closed after independent verification.`,metadata:{action_key:review.action_key} });
     await connection.commit();
-    return res.json({ message: 'Audit verification completed. Review closed. It remains available in History & Tracking.' });
+    return res.json({ message: 'Audit verification completed. Review closed.' });
   } catch (error) { try { await connection.rollback(); } catch {} return res.status(error.statusCode || 500).json({ code:error.code,message:errorMessage(error) }); } finally { connection.release(); }
 };
 
 export const listInternalNotifications = async (req, res) => {
   try {
     const { page,limit } = pageValues(req.query); const offset=(page-1)*limit;
-    const access = notificationVisibilityWhere(req.authUser);
-    const whereSql = `n.user_id=? AND ${access.sql}`;
-    const params = [req.authUser.id, ...access.params];
-    const [countRows] = await db.query(
-      `SELECT COUNT(*) total
-       FROM internal_notifications n
-       LEFT JOIN operational_reviews nr ON nr.operational_review_id=n.operational_review_id
-       WHERE ${whereSql}`,
-      params
-    );
-    const [rows] = await db.query(
-      `SELECT n.*
-       FROM internal_notifications n
-       LEFT JOIN operational_reviews nr ON nr.operational_review_id=n.operational_review_id
-       WHERE ${whereSql}
-       ORDER BY n.created_at DESC,n.internal_notification_id DESC LIMIT ? OFFSET ?`,
-      [...params,limit,offset]
-    );
+    // Action notifications for work that already moved on (another Head or
+    // Auditor acted, or the case was reassigned) are hidden for everyone.
+    const active = activeNotificationSql('n');
+    const [countRows] = await db.query(`SELECT COUNT(*) total FROM internal_notifications n WHERE n.user_id=? AND ${active}`,[req.authUser.id]);
+    const [rows] = await db.query(`SELECT n.* FROM internal_notifications n WHERE n.user_id=? AND ${active} ORDER BY n.created_at DESC,n.internal_notification_id DESC LIMIT ? OFFSET ?`,[req.authUser.id,limit,offset]);
     return res.json({ data:rows,pagination:{page,limit,total:Number(countRows[0]?.total||0)} });
   } catch(error){ return res.status(500).json({message:errorMessage(error)}); }
 };
@@ -511,7 +564,7 @@ export const getAuditCase = async (req,res) => {
     const row=rows[0];
     if(!row)return res.status(404).json({message:'Audit Case not found.'});
     const reviewView={...row,status:row.review_status,operational_review_id:row.operational_review_id};
-    if(!(await canActorOpenReview(db,req.authUser,reviewView)))return res.status(403).json({message:'This Audit Case is not currently assigned to your role.'});
+    if(!(await canActorOpenReview(db,req.authUser,reviewView)) && !(await canActorViewReview(db,req.authUser,reviewView)))return res.status(403).json({message:'You do not have access to this Audit Case.'});
     return res.json({data:row});
   }catch(error){return res.status(500).json({message:errorMessage(error)});}
 };
@@ -538,5 +591,7 @@ export const reviewProtectedChangeRequest = async (req,res) => {
     await connection.commit(); return res.json({message:`Protected change ${decision}d.`,data:{requestId:row.protected_change_request_id,requestNumber:row.request_number,status:row.status}});
   }catch(error){try{await connection.rollback()}catch{}return res.status(error.statusCode||500).json({code:error.code,message:errorMessage(error)});}finally{connection.release();}
 };
+
+
 
 

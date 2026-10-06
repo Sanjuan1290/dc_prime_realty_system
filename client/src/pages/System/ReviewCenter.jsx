@@ -16,6 +16,7 @@ import {
 } from 'react-icons/fi'
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
+import ReviewSnapshotDiff from '../../components/Shared/ReviewSnapshotDiff'
 import useCurrentUser from '../../utils/useCurrentUser'
 import { getDoubleCheckNotice, useFetch, useFetchPatch, useFetchPost, useFetchPost as postWorkflow } from '../../utils/useFetch'
 import { DEPARTMENT_HEAD_ROLE, ROLE_LABELS } from '../../config/permissions'
@@ -35,7 +36,7 @@ const parseJson = (value) => {
   try { return JSON.parse(value) } catch { return null }
 }
 
-const titleCase = (value = '') => String(value || '').replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/[._-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+const titleCase = (value = '') => String(value || '').replace(/[._-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 const fmtDate = (value) => value ? new Date(value).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' }) : '—'
 const statusClass = (status = '') => {
   if (['closed', 'auditor_verified'].includes(status)) return 'bg-emerald-50 text-emerald-700 border-emerald-200'
@@ -55,224 +56,15 @@ const REVIEW_STATUS_LABELS = Object.freeze({
   auditor_verified: 'Review Complete',
 })
 
+// System Admin and Super Admin share the owner-level direct-entry path (stored
+// as emergency_super_admin), so the label must name whoever actually entered it.
+const directEntryRoleLabel = (review = {}) => (review?.initiated_by_role === 'system_admin' ? 'System Admin' : 'Super Admin')
+const approvalTypeLabel = (review = {}) => (review?.approval_type === 'emergency_super_admin'
+  ? `${directEntryRoleLabel(review)} direct entry`
+  : APPROVAL_TYPE_LABELS[review?.approval_type] || titleCase(review?.approval_type))
+
 const reviewStatusLabel = (status = '') => REVIEW_STATUS_LABELS[status] || titleCase(status)
 const isRoutinePostActionReview = (status = '') => ['pending_head_review', 'pending_auditor_review'].includes(status)
-
-const SNAPSHOT_LABELS = Object.freeze({
-  broker: 'Broker Details',
-  broker_license_number: 'License Number',
-  broker_name: 'Broker Name',
-  broker_prc_number: 'PRC Number',
-  realty_name: 'Realty / Company',
-  description: 'Description',
-  groupId: 'Network Reference',
-  groupType: 'Network Type',
-  headUserId: 'Network Head Reference',
-  name: 'Network Name',
-  rates: 'Project Rates',
-  projectId: 'Project Reference',
-  projectName: 'Project',
-  lotProjectName: 'Project',
-  poolRate: 'Pool Rate',
-  companyProfitRate: 'Company Profit',
-  divisionManagerRate: 'Division Manager Share',
-  salesDirectorRate: 'Sales Director Share',
-  unitManagerRate: 'Unit Manager Share',
-  salesAgentRate: 'Sales Agent Share',
-  status: 'Status',
-  listingIds: 'Affected Listings',
-  listingId: 'Listing Reference',
-  projectSlug: 'Project',
-  batchId: 'Batch Reference',
-  batchReference: 'Import Reference',
-  importedRows: 'Imported Rows',
-  filename: 'File Name',
-  fileName: 'File Name',
-  fileStatus: 'File Status',
-  fileVersion: 'File Version',
-  lotAreaSqm: 'Lot Area',
-  lotType: 'Lot Type',
-  unitCode: 'Unit',
-  unitId: 'Unit',
-  oldUnitIds: 'Previous Unit IDs',
-  soldSubstatus: 'Sold Status',
-  documentRequirementsChanged: 'Document Requirements Changed',
-  documents: 'Documents',
-  documentId: 'Document Reference',
-  isRequired: 'Required',
-  responsibleParty: 'Responsible Party',
-  paymentId: 'Payment Reference',
-  referenceId: 'Reference Number',
-  amount: 'Amount',
-  paymentDate: 'Payment Date',
-  paymentMethod: 'Payment Method',
-  paymentType: 'Payment Type',
-  proofId: 'Proof Reference',
-  proofIds: 'Proof References',
-  proofs: 'Payment Proofs',
-  scheduleId: 'Schedule Reference',
-  scheduleStatus: 'Schedule Status',
-  clientProfileId: 'Buyer Profile Reference',
-  accountId: 'Account Reference',
-  profile: 'Buyer Profile',
-  signedCopy: 'Signed Copy',
-  signedCopyId: 'Signed Copy Reference',
-  restoredLmfAmount: 'Restored Legal / Misc. Fee',
-  restoredTcp: 'Restored Total Contract Price',
-})
-
-const snapshotLabel = (key = '') => SNAPSHOT_LABELS[key] || titleCase(key)
-const isTechnicalSnapshotField = (key = '') => {
-  const text = String(key || '')
-  return text.endsWith('_normalized') || text.startsWith('_')
-}
-
-const formatSnapshotPrimitive = (value, key = '') => {
-  if (value == null || value === '') return '—'
-  if (typeof value === 'boolean') return value ? 'Yes' : 'No'
-  if (key === 'groupType') return String(value) === 'external' ? 'External Network' : 'In-House Network'
-  if (key === 'status' || key.endsWith('Status')) return titleCase(value)
-  if (/Rate$/.test(key) && Number.isFinite(Number(value))) return `${Number(value)}%`
-  if (key === 'lotAreaSqm' && Number.isFinite(Number(value))) return `${Number(value).toLocaleString()} sqm`
-  if (/Amount$/.test(key) && Number.isFinite(Number(value))) return Number(value).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-  return String(value)
-}
-
-const FriendlyValue = ({ label, value, tone = 'plain' }) => {
-  const toneClass = tone === 'before'
-    ? 'border-red-100 bg-red-50/60'
-    : tone === 'after'
-      ? 'border-emerald-100 bg-emerald-50/60'
-      : 'border-slate-200 bg-white'
-  return <div className={`rounded-xl border p-3 ${toneClass}`}>
-    {label ? <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">{label}</p> : null}
-    <p className="mt-1 break-words text-sm font-black text-slate-800">{value}</p>
-  </div>
-}
-
-const BrokerValue = ({ value, tone = 'plain' }) => {
-  const broker = value && typeof value === 'object' ? value : {}
-  const rows = [
-    ['Broker Name', broker.broker_name],
-    ['License Number', broker.broker_license_number],
-    ['PRC Number', broker.broker_prc_number],
-    ['Realty / Company', broker.realty_name],
-  ].filter(([, item]) => item != null && item !== '')
-  if (!rows.length) return <FriendlyValue value="No broker information" tone={tone} />
-  return <div className="grid gap-2 sm:grid-cols-2">
-    {rows.map(([label, item]) => <FriendlyValue key={label} label={label} value={String(item)} tone={tone} />)}
-  </div>
-}
-
-const ProjectRatesValue = ({ value, tone = 'plain' }) => {
-  const rates = Array.isArray(value) ? value : []
-  if (!rates.length) return <FriendlyValue value="No project rates" tone={tone} />
-  return <div className="grid gap-3">
-    {rates.map((rate, index) => {
-      const item = rate && typeof rate === 'object' ? rate : {}
-      const projectLabel = item.projectName || item.lotProjectName || item.projectSlug || (item.projectId ? `Project #${item.projectId}` : `Project ${index + 1}`)
-      const rows = [
-        ['Pool Rate', formatSnapshotPrimitive(item.poolRate, 'poolRate')],
-        ['Company Profit', formatSnapshotPrimitive(item.companyProfitRate, 'companyProfitRate')],
-        ['Division Manager Share', formatSnapshotPrimitive(item.divisionManagerRate, 'divisionManagerRate')],
-        ['Sales Director Share', formatSnapshotPrimitive(item.salesDirectorRate, 'salesDirectorRate')],
-        ['Unit Manager Share', formatSnapshotPrimitive(item.unitManagerRate, 'unitManagerRate')],
-        ['Sales Agent Share', formatSnapshotPrimitive(item.salesAgentRate, 'salesAgentRate')],
-        ['Status', formatSnapshotPrimitive(item.status, 'status')],
-      ]
-      return <section key={`${projectLabel}-${index}`} className={`rounded-2xl border p-3 ${tone === 'before' ? 'border-red-100 bg-red-50/40' : tone === 'after' ? 'border-emerald-100 bg-emerald-50/40' : 'border-slate-200 bg-slate-50'}`}>
-        <div className="mb-2 flex items-center justify-between gap-3">
-          <p className="text-sm font-black text-slate-900">{projectLabel}</p>
-          <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[10px] font-black uppercase tracking-wide text-slate-500">Project Rate</span>
-        </div>
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-          {rows.map(([label, item]) => <FriendlyValue key={label} label={label} value={item} />)}
-        </div>
-      </section>
-    })}
-  </div>
-}
-
-const SnapshotValue = ({ value, fieldKey = '', depth = 0, tone = 'plain' }) => {
-  if (fieldKey === 'broker') return <BrokerValue value={value} tone={tone} />
-  if (fieldKey === 'rates') return <ProjectRatesValue value={value} tone={tone} />
-  if (value == null || value === '') return <FriendlyValue value="—" tone={tone} />
-
-  if (Array.isArray(value)) {
-    if (!value.length) return <FriendlyValue value="None" tone={tone} />
-    const objectItems = value.some((item) => item && typeof item === 'object')
-    if (!objectItems) {
-      return <div className="flex flex-wrap gap-1.5">
-        {value.slice(0, 24).map((item, index) => <span key={`${fieldKey}-${index}`} className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-bold text-slate-700">{formatSnapshotPrimitive(item, fieldKey)}</span>)}
-        {value.length > 24 ? <span className="rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-black text-blue-700">+{value.length - 24} more</span> : null}
-      </div>
-    }
-    return <div className="grid gap-2">
-      {value.map((item, index) => <section key={`${fieldKey}-${index}`} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-        <p className="mb-2 text-xs font-black text-slate-700">Item {index + 1}</p>
-        <SnapshotValue value={item} fieldKey="" depth={depth + 1} tone={tone} />
-      </section>)}
-    </div>
-  }
-
-  if (typeof value === 'object') {
-    const entries = Object.entries(value).filter(([key]) => !isTechnicalSnapshotField(key))
-    if (!entries.length) return <FriendlyValue value="No displayable details" tone={tone} />
-    return <div className={`grid gap-2 ${depth < 2 ? 'sm:grid-cols-2' : ''}`}>
-      {entries.map(([key, item]) => <div key={key} className={item && typeof item === 'object' ? 'sm:col-span-2' : ''}>
-        {item && typeof item === 'object'
-          ? <section className="rounded-xl border border-slate-200 bg-slate-50 p-3"><p className="mb-2 text-xs font-black text-slate-700">{snapshotLabel(key)}</p><SnapshotValue value={item} fieldKey={key} depth={depth + 1} tone={tone} /></section>
-          : <FriendlyValue label={snapshotLabel(key)} value={formatSnapshotPrimitive(item, key)} tone={tone} />}
-      </div>)}
-    </div>
-  }
-
-  return <FriendlyValue value={formatSnapshotPrimitive(value, fieldKey)} tone={tone} />
-}
-
-const Snapshot = ({ title, value }) => {
-  const data = parseJson(value)
-  if (!data || typeof data !== 'object') return null
-  const entries = Object.entries(data).filter(([key]) => !isTechnicalSnapshotField(key))
-  return <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-    <p className="text-xs font-black uppercase tracking-wide text-slate-500">{title}</p>
-    <div className="mt-3 grid gap-2 sm:grid-cols-2">
-      {entries.map(([key, item]) => <div key={key} className={item && typeof item === 'object' ? 'sm:col-span-2' : ''}>
-        {item && typeof item === 'object'
-          ? <section className="rounded-xl border border-slate-200 bg-white p-3"><p className="mb-2 text-xs font-black text-slate-700">{snapshotLabel(key)}</p><SnapshotValue value={item} fieldKey={key} /></section>
-          : <FriendlyValue label={snapshotLabel(key)} value={formatSnapshotPrimitive(item, key)} />}
-      </div>)}
-    </div>
-  </section>
-}
-
-const ChangedFields = ({ beforeValue, afterValue }) => {
-  const before = parseJson(beforeValue) || {}
-  const after = parseJson(afterValue) || {}
-  const keys = [...new Set([...Object.keys(before), ...Object.keys(after)])].filter((key) => !isTechnicalSnapshotField(key))
-  const changed = keys.filter((key) => JSON.stringify(before[key] ?? null) !== JSON.stringify(after[key] ?? null))
-
-  if (!changed.length) {
-    return <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-      <p className="text-xs font-black uppercase tracking-wide text-emerald-700">Changed Fields</p>
-      <p className="mt-2 text-sm font-semibold text-emerald-900">No visible field difference is available in the saved snapshots.</p>
-    </section>
-  }
-
-  return <section className="rounded-2xl border border-slate-200 bg-white">
-    <div className="border-b border-slate-200 px-4 py-3">
-      <p className="text-xs font-black uppercase tracking-wide text-slate-500">Changed Fields</p>
-      <p className="mt-1 text-sm font-semibold text-slate-500">Only user-facing values are shown here. Internal field names and raw JSON are intentionally hidden.</p>
-    </div>
-    <div className="divide-y divide-slate-100">
-      {changed.map((key) => <div key={key} className="grid gap-3 p-4 lg:grid-cols-[180px_1fr_1fr]">
-        <div><p className="text-xs font-black uppercase tracking-wide text-slate-500">{snapshotLabel(key)}</p></div>
-        <div><p className="mb-2 text-[10px] font-black uppercase tracking-wide text-red-500">Before</p><SnapshotValue value={before[key]} fieldKey={key} tone="before" /></div>
-        <div><p className="mb-2 text-[10px] font-black uppercase tracking-wide text-emerald-600">After</p><SnapshotValue value={after[key]} fieldKey={key} tone="after" /></div>
-      </div>)}
-    </div>
-  </section>
-}
 
 const TextActionModal = ({ title, label, placeholder, confirmLabel, tone = 'blue', onClose, onConfirm, busy }) => {
   const [text, setText] = useState('')
@@ -324,10 +116,18 @@ export const ReviewDetails = ({ reviewId, onClose, onChanged }) => {
   const actor = me?.user || {}
   const [action, setAction] = useState(null)
   const [notice, setNotice] = useState(null)
-  const query = useQuery({ queryKey: ['workflow-review', actor.id || 0, actor.role || '', reviewId], queryFn: () => useFetch(`/workflow/reviews/${reviewId}`), enabled: Boolean(actor.id && reviewId) })
+  // 4xx answers (no access, not found) are final, so do not retry them; a
+  // retry would keep stale action buttons on screen while it waits.
+  const query = useQuery({
+    queryKey: ['workflow-review', reviewId],
+    queryFn: () => useFetch(`/workflow/reviews/${reviewId}`),
+    retry: (count, error) => !(Number(error?.status || 0) >= 400 && Number(error?.status || 0) < 500) && count < 2,
+  })
   const review = query.data?.data || null
   const auditCase = review?.auditCase || null
-  const isHead = Boolean(review && DEPARTMENT_HEAD_ROLE[review.department] === actor.role)
+  const canAct = review?.viewer ? Boolean(review.viewer.canAct) : true
+  const isHead = Boolean(review && canAct && DEPARTMENT_HEAD_ROLE[review.department] === actor.role)
+  const isActingAuditor = actor.role === 'auditor' && canAct
   const mutation = useMutation({
     mutationFn: async ({ type, text = '', decision = '' }) => {
       if (type === 'claim') return useFetchPost(`/workflow/reviews/${reviewId}/claim`, {}, { confirmationHandled: 'compact' })
@@ -348,14 +148,12 @@ export const ReviewDetails = ({ reviewId, onClose, onChanged }) => {
       await query.refetch()
     },
     onError: async (error) => {
-      if (Number(error?.status || 0) === 409) {
-        await query.refetch()
-        await onChanged?.()
-        setAction(null)
-        setNotice({ type: 'info', message: 'This review already moved to its next workflow stage. The latest status is now shown below.' })
-        return
-      }
       setNotice(getDoubleCheckNotice(error, 'Workflow action failed.'))
+      setAction(null)
+      // Someone else may have already acted (409). Reload so the page shows
+      // the real stage instead of buttons that no longer apply.
+      await onChanged?.()
+      await query.refetch()
     },
   })
 
@@ -416,7 +214,9 @@ export const ReviewDetails = ({ reviewId, onClose, onChanged }) => {
   const sellerLink = sellerGroupId
     ? `${actorRoot}/accredited/groups/in-house/${sellerGroupId}?workflowAction=seller_edit_review&reviewId=${reviewId}${sellerUserId ? `&sellerId=${sellerUserId}` : ''}${auditSuffix}`
     : `${actorRoot}/accredited?workflowAction=seller_edit_review&reviewId=${reviewId}${auditSuffix}`
-  const recordLink = review?.entity_type === 'lot_project_settings' && review?.lot_project_slug
+  const recordLink = review?.entityExists === false || reviewActionKey === 'network.delete'
+    ? null
+    : review?.entity_type === 'lot_project_settings' && review?.lot_project_slug
     ? `/portal/lot-projects/${review.lot_project_slug}/settings?workflowAction=project_settings_correction&reviewId=${reviewId}${auditSuffix}`
     : review?.entity_type === 'lot_project_commission' && review?.lot_project_slug
       ? `/portal/lot-projects/${review.lot_project_slug}/commissions?workflowAction=commission_stage_review&reviewId=${reviewId}&commissionId=${review.entity_id}${auditSuffix}`
@@ -483,7 +283,7 @@ export const ReviewDetails = ({ reviewId, onClose, onChanged }) => {
   const operationAlreadyCompleted = isRoutinePostActionReview(review?.status)
   const headReviewLabel = review?.head_reviewed_by_name
     || (review?.approval_type === 'emergency_super_admin'
-      ? 'Not required — direct Super Admin entry'
+      ? `Not required, direct ${directEntryRoleLabel(review)} entry`
       : review?.status === 'pending_head_review'
         ? 'Post-action check pending'
         : 'Not required / already completed')
@@ -504,12 +304,12 @@ export const ReviewDetails = ({ reviewId, onClose, onChanged }) => {
   }
   const responders = auditCase?.responders || null
   const canRespondToCase = auditCase?.status === 'awaiting_head_response' && Boolean(responders?.canRespond)
-  const canReassignResponder = auditCase?.status === 'awaiting_head_response' && ['system_admin', 'super_admin'].includes(actor.role)
+  const canReassignResponder = canAct && auditCase?.status === 'awaiting_head_response' && ['system_admin', 'super_admin'].includes(actor.role)
   const correctionRole = auditCase?.correctionRole || (review?.approval_type === 'emergency_super_admin' || review?.initiated_by_role === 'super_admin' ? 'super_admin' : 'system_admin')
   const correctionRoleLabel = correctionRole === 'super_admin' ? 'Super Admin' : 'System Admin'
   const isOriginalStaffCorrection = review?.status === 'returned_for_correction'
     && Number(review?.initiated_by_user_id || 0) === Number(actor?.id || 0)
-  const canApplyAuditCorrection = review?.status === 'correction_required' && actor?.role === correctionRole
+  const canApplyAuditCorrection = canAct && review?.status === 'correction_required' && actor?.role === correctionRole
 
   if (query.isLoading) return <main className="grid gap-4"><StatusAlert type="loading" message="Loading review..." /></main>
   if (query.isError) return <main className="grid gap-4"><button type="button" onClick={onClose} className="inline-flex w-fit items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 font-black text-slate-700"><FiArrowLeft />Back to Review Center</button><StatusAlert type="error" message={query.error?.message || 'Failed to load this review.'} /></main>
@@ -518,17 +318,25 @@ export const ReviewDetails = ({ reviewId, onClose, onChanged }) => {
   return <div className="grid gap-4">
     <div className="flex flex-wrap items-center justify-between gap-3"><button type="button" onClick={onClose} className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 shadow-sm hover:bg-slate-50"><FiArrowLeft />Back to Review Center</button><p className="text-xs font-semibold text-slate-500">Dedicated review workspace</p></div>
     <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
-      <header className="flex items-start justify-between gap-4 border-b border-slate-200 p-5 sm:p-6"><div><div className="flex flex-wrap items-center gap-2"><span className="font-mono text-sm font-black text-blue-700">{review.review_number}</span><span className={`rounded-full border px-2.5 py-1 text-[11px] font-black ${statusClass(review.status)}`}>{reviewStatusLabel(review.status)}</span>{review.approval_type ? <span className={`rounded-full border px-2.5 py-1 text-[11px] font-black ${review.approval_type === 'emergency_super_admin' ? 'border-red-200 bg-red-50 text-red-700' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>{APPROVAL_TYPE_LABELS[review.approval_type] || titleCase(review.approval_type)}</span> : null}</div><h2 className="mt-2 text-2xl font-black">{review.entity_label || titleCase(review.entity_type)}</h2><p className="mt-1 text-sm font-semibold text-slate-500">{titleCase(review.department)} · {titleCase(review.action_key)} · {review.lot_project_name || 'No project scope'}</p></div></header>
+      <header className="flex items-start justify-between gap-4 border-b border-slate-200 p-5 sm:p-6"><div><div className="flex flex-wrap items-center gap-2"><span className="font-mono text-sm font-black text-blue-700">{review.review_number}</span><span className={`rounded-full border px-2.5 py-1 text-[11px] font-black ${statusClass(review.status)}`}>{reviewStatusLabel(review.status)}</span>{review.approval_type ? <span className={`rounded-full border px-2.5 py-1 text-[11px] font-black ${review.approval_type === 'emergency_super_admin' ? 'border-red-200 bg-red-50 text-red-700' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>{approvalTypeLabel(review)}</span> : null}</div><h2 className="mt-2 text-2xl font-black">{review.entity_label || titleCase(review.entity_type)}</h2><p className="mt-1 text-sm font-semibold text-slate-500">{titleCase(review.department)} department, {review.action_label || titleCase(review.action_key)}{review.lot_project_name ? `, ${review.lot_project_name}` : ''}</p></div></header>
       <div className="grid gap-5 p-5 sm:p-6">
         {notice ? <StatusAlert type={notice.type} message={notice.message} onClose={() => setNotice(null)} /> : null}
-        {operationAlreadyCompleted ? <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-950"><div className="flex items-start gap-3"><FiCheckCircle className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" /><div><p className="font-black">Operation completed successfully</p><p className="mt-1 text-sm font-semibold leading-6 text-emerald-800">This is a post-action quality check. Routine review queues do not block completed operations. The record remains usable and other operations may continue while the Head/Auditor reviews this entry. If the same user edits it again before the check is finished, this Review is refreshed to the latest saved values.</p></div></div></section> : null}
+        {!canAct ? <StatusAlert type="info" title="View only" message={review.status === 'closed' || review.status === 'auditor_verified' ? 'This review is complete. Nothing else is needed from anyone.' : `This review is now at "${reviewStatusLabel(review.status)}". Nothing is waiting on your account, so it is shown for reference only.`} /> : null}
+        {review.entityExists === false ? <StatusAlert type="info" message="The original record was deleted. The values below are what was saved at the time of this review." /> : null}
+        {operationAlreadyCompleted && canAct ? <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-950"><div className="flex items-start gap-3"><FiCheckCircle className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" /><div><p className="font-black">Operation completed successfully</p><p className="mt-1 text-sm font-semibold leading-6 text-emerald-800">This is a post-action quality check. The record remains usable and other operations may continue while the Head/Auditor reviews this entry. If the same user edits it again before the check is finished, this Review is refreshed to the latest saved values.</p></div></div></section> : null}
         {review.status === 'returned_for_correction' ? <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950"><div className="flex items-start gap-3"><FiAlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" /><div><p className="font-black">Department Head requested a correction</p><p className="mt-1 text-sm font-semibold leading-6 text-amber-900">Normal operations elsewhere may continue, but this exact record is now in correction mode. The original staff member should open it from this Review, fix the requested values, and resubmit the same Review to the Head.</p></div></div></section> : null}
         {review.status === 'correction_required' ? <section className="rounded-2xl border border-red-300 bg-red-50 p-4 text-red-950"><div className="flex items-start gap-3"><FiAlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-700" /><div><p className="font-black">Controlled correction required</p><p className="mt-1 text-sm font-semibold leading-6 text-red-900">The Auditor confirmed a real issue. This exact record is temporarily held while {correctionRoleLabel} applies the authorized correction. After saving, the Auditor must recheck it before the case closes.</p></div></div></section> : null}
         <section className="grid gap-3 rounded-2xl border border-slate-200 p-4 sm:grid-cols-3"><div><p className="text-xs font-black uppercase text-slate-400">Entered by</p><p className="mt-1 font-black">{review.initiated_by_name || `User #${review.initiated_by_user_id}`}</p><p className="text-xs font-semibold text-slate-500">{ROLE_LABELS[review.initiated_by_role] || titleCase(review.initiated_by_role)}</p></div><div><p className="text-xs font-black uppercase text-slate-400">Department Check</p><p className="mt-1 font-black">{headReviewLabel}</p><p className="text-xs font-semibold text-slate-500">{review.head_reviewed_at ? fmtDate(review.head_reviewed_at) : 'Does not block operations'}</p></div><div><p className="text-xs font-black uppercase text-slate-400">Independent Audit</p><p className="mt-1 font-black">{auditorReviewLabel}</p><p className="text-xs font-semibold text-slate-500">{review.auditor_reviewed_at ? fmtDate(review.auditor_reviewed_at) : 'Runs after the operation'}</p></div></section>
-        <ChangedFields beforeValue={review.before_snapshot_json} afterValue={review.after_snapshot_json} />
+        <section className="rounded-2xl border border-slate-200 bg-white">
+          <div className="border-b border-slate-200 px-4 py-3">
+            <h3 className="text-base font-black text-slate-900">What changed</h3>
+            <p className="mt-0.5 text-sm font-semibold text-slate-500">Only the values that differ are listed. Open the full record below if you need everything.</p>
+          </div>
+          <div className="p-4"><ReviewSnapshotDiff beforeValue={review.before_snapshot_json} afterValue={review.after_snapshot_json} lookups={review.lookups} mode="changes" /></div>
+        </section>
         <details className="rounded-2xl border border-slate-200 bg-slate-50">
-          <summary className="cursor-pointer px-4 py-3 text-sm font-black text-slate-700">View full Before / After snapshots</summary>
-          <div className="grid gap-4 border-t border-slate-200 p-4 lg:grid-cols-2"><Snapshot title="Before" value={review.before_snapshot_json} /><Snapshot title="After" value={review.after_snapshot_json} /></div>
+          <summary className="cursor-pointer px-4 py-3 text-sm font-black text-slate-700">Show the full record before and after</summary>
+          <div className="border-t border-slate-200 bg-white p-4"><ReviewSnapshotDiff beforeValue={review.before_snapshot_json} afterValue={review.after_snapshot_json} lookups={review.lookups} mode="full" /></div>
         </details>
         {auditCase ? <section className="rounded-2xl border border-red-200 bg-red-50 p-4"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-xs font-black uppercase tracking-wide text-red-600">Audit Case</p><p className="text-lg font-black text-red-950">{auditCase.case_number}</p></div><span className="rounded-full border border-red-200 bg-white px-3 py-1 text-xs font-black text-red-700">{titleCase(auditCase.status)}</span></div><div className="mt-3 grid gap-3"><div><p className="text-xs font-black uppercase text-red-600">Finding</p><p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-red-950">{auditCase.finding}</p></div>{auditCase.head_response ? <div><p className="text-xs font-black uppercase text-red-600">Responder Explanation</p><p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-red-950">{auditCase.head_response}</p></div> : null}{auditCase.auditor_resolution ? <div><p className="text-xs font-black uppercase text-red-600">Auditor Resolution</p><p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-red-950">{auditCase.auditor_resolution}</p></div> : null}{auditCase.correction_summary ? <div><p className="text-xs font-black uppercase text-red-600">{correctionRoleLabel} Correction</p><p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-red-950">{auditCase.correction_summary}</p></div> : null}{responders ? <div><p className="text-xs font-black uppercase text-red-600">Who must answer</p><p className="mt-1 text-sm font-semibold text-red-950">{responders.label}{responders.users?.length ? `: ${responders.users.map((user) => user.full_name).join(', ')}` : ': nobody is available. An administrator must reassign the responder.'}</p></div> : null}</div></section> : null}
         <section className="rounded-2xl border border-slate-200 p-4"><p className="text-xs font-black uppercase tracking-wide text-slate-500">Review History</p><div className="mt-3 space-y-3">{(review.events || []).map((event) => <div key={event.operational_review_event_id} className="flex gap-3 border-l-2 border-blue-200 pl-3"><div className="min-w-0"><p className="font-black text-slate-800">{titleCase(event.event_type)}</p><p className="text-xs font-semibold text-slate-500">{event.actor_name || ROLE_LABELS[event.actor_role] || 'System'} · {fmtDate(event.created_at)}</p>{event.message ? <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{event.message}</p> : null}</div></div>)}</div></section>
@@ -537,13 +345,13 @@ export const ReviewDetails = ({ reviewId, onClose, onChanged }) => {
         <section className="flex flex-wrap gap-2 border-t border-slate-200 pt-4">
           {isOriginalStaffCorrection && supportsRecordCorrection && recordLink ? <button type="button" onClick={() => navigate(recordLink)} className="h-10 rounded-xl bg-amber-600 px-4 font-black text-white"><FiExternalLink className="mr-2 inline" />Correct &amp; Resubmit</button> : null}
           {isHead && review.status === 'pending_head_review' ? <><button type="button" onClick={() => mutation.mutate({ type: 'claim' })} disabled={mutation.isPending} className="h-10 rounded-xl border border-blue-200 bg-blue-50 px-4 font-black text-blue-700"><FiUserCheck className="mr-2 inline" />Claim Review</button><button type="button" onClick={() => mutation.mutate({ type: 'head-confirm' })} disabled={mutation.isPending} className="h-10 rounded-xl bg-emerald-600 px-4 font-black text-white"><FiCheckCircle className="mr-2 inline" />Confirm — No Mistake</button>{supportsRecordCorrection ? <button type="button" onClick={() => setAction('return')} disabled={mutation.isPending} className="h-10 rounded-xl bg-amber-600 px-4 font-black text-white">Return for Correction</button> : null}</> : null}
-          {actor.role === 'auditor' && review.status === 'pending_auditor_review' ? <><button type="button" onClick={() => mutation.mutate({ type: 'audit-verify' })} disabled={mutation.isPending} className="h-10 rounded-xl bg-emerald-600 px-4 font-black text-white"><FiCheckCircle className="mr-2 inline" />Verified — No Issue</button><button type="button" onClick={() => setAction('open-case')} disabled={mutation.isPending} className="h-10 rounded-xl bg-red-600 px-4 font-black text-white"><FiAlertTriangle className="mr-2 inline" />Open Audit Case</button></> : null}
+          {isActingAuditor && review.status === 'pending_auditor_review' ? <><button type="button" onClick={() => mutation.mutate({ type: 'audit-verify' })} disabled={mutation.isPending} className="h-10 rounded-xl bg-emerald-600 px-4 font-black text-white"><FiCheckCircle className="mr-2 inline" />Verified — No Issue</button><button type="button" onClick={() => setAction('open-case')} disabled={mutation.isPending} className="h-10 rounded-xl bg-red-600 px-4 font-black text-white"><FiAlertTriangle className="mr-2 inline" />Open Audit Case</button></> : null}
           {canRespondToCase ? <button type="button" onClick={() => setAction('head-response')} className="h-10 rounded-xl bg-blue-600 px-4 font-black text-white">Submit Explanation</button> : null}
           {canReassignResponder ? <button type="button" onClick={() => setAction('reassign')} className="h-10 rounded-xl border border-violet-300 bg-violet-50 px-4 font-black text-violet-800">Reassign Responder</button> : null}
           {isHead && review.status === 'pending_head_review' && supportsRecordCorrection && recordLink && (!review.claimed_by_user_id || Number(review.claimed_by_user_id) === Number(actor.id)) ? <button type="button" onClick={correctAndConfirm} className="h-10 rounded-xl border border-blue-300 bg-white px-4 font-black text-blue-700"><FiExternalLink className="mr-2 inline" />Correct &amp; Confirm</button> : null}
-          {actor.role === 'auditor' && auditCase?.status === 'under_auditor_review' ? <><button type="button" onClick={() => setAction('resolve-invalid')} className="h-10 rounded-xl border border-emerald-300 bg-emerald-50 px-4 font-black text-emerald-700">Finding Invalid</button><button type="button" onClick={() => setAction('resolve-valid')} className="h-10 rounded-xl bg-red-600 px-4 font-black text-white">Finding Valid</button></> : null}
+          {isActingAuditor && auditCase?.status === 'under_auditor_review' ? <><button type="button" onClick={() => setAction('resolve-invalid')} className="h-10 rounded-xl border border-emerald-300 bg-emerald-50 px-4 font-black text-emerald-700">Finding Invalid</button><button type="button" onClick={() => setAction('resolve-valid')} className="h-10 rounded-xl bg-red-600 px-4 font-black text-white">Finding Valid</button></> : null}
           {canApplyAuditCorrection && supportsRecordCorrection && recordLink ? <button type="button" onClick={() => navigate(recordLink)} className="h-10 rounded-xl bg-violet-700 px-4 font-black text-white"><FiExternalLink className="mr-2 inline" />{recordActionLabel}</button> : null}
-          {actor.role === 'auditor' && review.status === 'pending_auditor_recheck' ? <><button type="button" onClick={() => mutation.mutate({ type: 'audit-verify' })} className="h-10 rounded-xl bg-emerald-600 px-4 font-black text-white">Verify Correction & Close</button><button type="button" onClick={() => setAction('recheck-reject')} className="h-10 rounded-xl bg-red-600 px-4 font-black text-white">Correction Still Wrong</button></> : null}
+          {isActingAuditor && review.status === 'pending_auditor_recheck' ? <><button type="button" onClick={() => mutation.mutate({ type: 'audit-verify' })} className="h-10 rounded-xl bg-emerald-600 px-4 font-black text-white">Verify Correction & Close</button><button type="button" onClick={() => setAction('recheck-reject')} className="h-10 rounded-xl bg-red-600 px-4 font-black text-white">Correction Still Wrong</button></> : null}
           {recordLink && !canApplyAuditCorrection ? <button type="button" onClick={() => navigate(recordLink)} className="h-10 rounded-xl border border-slate-300 px-4 font-black text-slate-700"><FiExternalLink className="mr-2 inline" />Open Record</button> : null}
         </section>
       </div>
@@ -566,20 +374,15 @@ const ReviewCenter = () => {
   const queueCopy = getQueueCopy(actor.role)
   const actorRoot = `/portal/${actor.role || 'super_admin'}`
   const [tab, setTab] = useState('reviews')
-  const [reviewScope, setReviewScope] = useState('action')
   const [status, setStatus] = useState('')
-  const [reviewPage, setReviewPage] = useState(1)
+  const [scope, setScope] = useState('queue')
   const [search, setSearch] = useState('')
   const [approvalStatus, setApprovalStatus] = useState('')
   const [notice, setNotice] = useState(null)
-  const summary = useQuery({ queryKey: ['workflow-summary', actor.id || 0, actor.role || ''], queryFn: () => useFetch('/workflow/summary'), enabled: REVIEW_CENTER_ROLES.has(actor.role), refetchInterval: 30_000 })
-  const reviews = useQuery({
-    queryKey: ['workflow-reviews', actor.id || 0, actor.role || '', reviewScope, status, reviewPage],
-    queryFn: () => useFetch(`/workflow/reviews?scope=${reviewScope}&page=${reviewPage}&limit=10${status ? `&status=${encodeURIComponent(status)}` : ''}`),
-    enabled: REVIEW_CENTER_ROLES.has(actor.role) && tab === 'reviews',
-  })
-  const approvals = useQuery({ queryKey: ['workflow-protected-changes', actor.id || 0, actor.role || '', approvalStatus], queryFn: () => useFetch(`/workflow/protected-changes?limit=100${approvalStatus ? `&status=${encodeURIComponent(approvalStatus)}` : ''}`), enabled: REVIEW_CENTER_ROLES.has(actor.role) && isHead && tab === 'approvals' })
-  const notifications = useQuery({ queryKey: ['workflow-notifications', actor.id || 0, actor.role || ''], queryFn: () => useFetch('/workflow/notifications?limit=100'), enabled: REVIEW_CENTER_ROLES.has(actor.role) && tab === 'notifications' })
+  const summary = useQuery({ queryKey: ['workflow-summary'], queryFn: () => useFetch('/workflow/summary'), enabled: REVIEW_CENTER_ROLES.has(actor.role), refetchInterval: 30_000 })
+  const reviews = useQuery({ queryKey: ['workflow-reviews', scope, status], queryFn: () => useFetch(`/workflow/reviews?limit=100&scope=${scope}${status ? `&status=${encodeURIComponent(status)}` : ''}`), enabled: REVIEW_CENTER_ROLES.has(actor.role) && tab === 'reviews' })
+  const approvals = useQuery({ queryKey: ['workflow-protected-changes', approvalStatus], queryFn: () => useFetch(`/workflow/protected-changes?limit=100${approvalStatus ? `&status=${encodeURIComponent(approvalStatus)}` : ''}`), enabled: REVIEW_CENTER_ROLES.has(actor.role) && isHead && tab === 'approvals' })
+  const notifications = useQuery({ queryKey: ['workflow-notifications'], queryFn: () => useFetch('/workflow/notifications?limit=100'), enabled: REVIEW_CENTER_ROLES.has(actor.role) && tab === 'notifications' })
   const approvalMutation = useMutation({
     mutationFn: ({ id, decision }) => useFetchPost(`/workflow/protected-changes/${id}/review`, { decision }, { confirmationHandled: 'compact' }),
     onSuccess: async (result) => { setNotice({ type: 'success', message: result.message }); await Promise.all([approvals.refetch(), summary.refetch()]) },
@@ -594,29 +397,9 @@ const ReviewCenter = () => {
     const needle = search.trim().toLowerCase()
     const rows = reviews.data?.data || []
     if (!needle) return rows
-    return rows.filter((row) => [row.review_number, row.entity_label, row.action_key, row.lot_project_name, row.initiated_by_name].some((v) => String(v || '').toLowerCase().includes(needle)))
+    return rows.filter((row) => [row.review_number, row.entity_label, row.action_label, row.action_key, row.lot_project_name, row.initiated_by_name].some((v) => String(v || '').toLowerCase().includes(needle)))
   }, [reviews.data, search])
   const counts = summary.data?.data || {}
-  const actionStatuses = actor.role === 'auditor'
-    ? ['pending_auditor_review', 'audit_case_open', 'pending_auditor_recheck']
-    : actor.role === 'system_admin'
-      ? ['correction_required', 'audit_case_open']
-      : actor.role === 'super_admin'
-        ? ['correction_required']
-        : ['pending_head_review', 'audit_case_open']
-  const visibleStatuses = reviewScope === 'action'
-    ? actionStatuses
-    : ['pending_head_review', 'returned_for_correction', 'pending_auditor_review', 'audit_case_open', 'correction_required', 'pending_auditor_recheck', 'closed']
-  const reviewPagination = reviews.data?.pagination || { page: reviewPage, totalPages: 1, total: 0 }
-  const changeReviewScope = (scope) => {
-    setReviewScope(scope)
-    setStatus('')
-    setReviewPage(1)
-  }
-  const changeReviewStatus = (nextStatus) => {
-    setStatus(nextStatus)
-    setReviewPage(1)
-  }
   const refreshAll = async () => { await Promise.all([summary.refetch(), reviews.refetch(), approvals.refetch(), notifications.refetch()]) }
 
   if (actor.role && !REVIEW_CENTER_ROLES.has(actor.role)) return <Navigate to={`/portal/${actor.role}`} replace />
@@ -635,15 +418,8 @@ const ReviewCenter = () => {
       <div className="flex flex-wrap gap-2 border-b border-slate-200 p-4">{[['reviews','Reviews',FiClock], ...(isHead ? [['approvals','Protected Approvals',FiUserCheck]] : []), ['notifications','Internal Notifications',FiBell]].map(([key,label,Icon]) => <button key={key} type="button" onClick={() => setTab(key)} className={`inline-flex h-10 items-center gap-2 rounded-xl px-4 text-sm font-black ${tab === key ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'}`}><Icon />{label}</button>)}</div>
 
       {tab === 'reviews' ? <div className="p-4 sm:p-5">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
-            <button type="button" onClick={() => changeReviewScope('action')} className={`h-9 rounded-lg px-3 text-sm font-black ${reviewScope === 'action' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600'}`}>Needs My Action</button>
-            <button type="button" onClick={() => changeReviewScope('history')} className={`h-9 rounded-lg px-3 text-sm font-black ${reviewScope === 'history' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-600'}`}>History &amp; Tracking</button>
-          </div>
-          <p className="text-sm font-semibold text-slate-500">{reviewScope === 'action' ? 'Only reviews currently waiting for your role.' : 'Read-only tracking of reviews your role has already handled or can legitimately follow.'}</p>
-        </div>
-        <div className="mb-4 flex flex-wrap gap-2"><label className="relative min-w-[240px] flex-1"><FiSearch className="absolute left-3 top-3.5 text-slate-400" /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search review, unit, action, project..." className="h-11 w-full rounded-xl border border-slate-300 pl-10 pr-3 font-semibold" /></label><select value={status} onChange={(e) => changeReviewStatus(e.target.value)} className="h-11 rounded-xl border border-slate-300 px-3 font-bold"><option value="">All visible statuses</option>{visibleStatuses.map((item) => <option key={item} value={item}>{reviewStatusLabel(item)}</option>)}</select></div>
-        {reviews.isLoading ? <StatusAlert type="loading" message="Loading reviews..." /> : reviewRows.length ? <><div className="overflow-x-auto"><table className="min-w-full text-left text-sm"><thead><tr className="border-b bg-slate-50 text-xs uppercase text-slate-500"><th className="px-3 py-3">Review</th><th className="px-3 py-3">Record</th><th className="px-3 py-3">Department</th><th className="px-3 py-3">Entered By</th><th className="px-3 py-3">Status</th><th className="px-3 py-3"></th></tr></thead><tbody>{reviewRows.map((row) => <tr key={row.operational_review_id} className="border-b last:border-0"><td className="px-3 py-3"><p className="font-mono font-black text-blue-700">{row.review_number}</p><p className="text-xs font-semibold text-slate-500">{fmtDate(row.created_at)}</p></td><td className="px-3 py-3"><p className="font-black">{row.entity_label || titleCase(row.entity_type)}</p><p className="text-xs font-semibold text-slate-500">{titleCase(row.action_key)} · {row.lot_project_name || '—'}</p></td><td className="px-3 py-3 font-bold">{titleCase(row.department)}</td><td className="px-3 py-3"><p className="font-bold">{row.initiated_by_name || `User #${row.initiated_by_user_id}`}</p><p className="text-xs text-slate-500">{ROLE_LABELS[row.initiated_by_role] || titleCase(row.initiated_by_role)}</p></td><td className="px-3 py-3"><span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-black ${statusClass(row.status)}`}>{reviewStatusLabel(row.status)}</span></td><td className="px-3 py-3 text-right"><button type="button" onClick={() => navigate(`${actorRoot}/review-center/reviews/${row.operational_review_id}`)} className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 font-black text-blue-700">Open</button></td></tr>)}</tbody></table></div><div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4"><p className="text-sm font-semibold text-slate-500">Page {Number(reviewPagination.page || 1)} of {Number(reviewPagination.totalPages || 1)} · {Number(reviewPagination.total || 0)} review{Number(reviewPagination.total || 0) === 1 ? '' : 's'}</p><div className="flex gap-2"><button type="button" onClick={() => setReviewPage((page) => Math.max(1, page - 1))} disabled={Number(reviewPagination.page || 1) <= 1} className="h-9 rounded-xl border border-slate-300 px-3 font-black text-slate-700 disabled:cursor-not-allowed disabled:opacity-40">Previous</button><button type="button" onClick={() => setReviewPage((page) => Math.min(Number(reviewPagination.totalPages || 1), page + 1))} disabled={Number(reviewPagination.page || 1) >= Number(reviewPagination.totalPages || 1)} className="h-9 rounded-xl border border-slate-300 px-3 font-black text-slate-700 disabled:cursor-not-allowed disabled:opacity-40">Next</button></div></div></> : <StatusAlert type="info" message={reviewScope === 'action' ? 'No reviews are waiting for your action.' : 'No review history matches these filters.'} />}
+        <div className="mb-4 flex flex-wrap gap-2"><label className="relative min-w-[240px] flex-1"><FiSearch className="absolute left-3 top-3.5 text-slate-400" /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search review, unit, action, project..." className="h-11 w-full rounded-xl border border-slate-300 pl-10 pr-3 font-semibold" /></label><div role="group" aria-label="Which reviews to show" className="inline-flex h-11 rounded-xl border border-slate-300 bg-slate-50 p-1">{[['queue', 'Needs my action'], ['all', 'All reviews']].map(([value, label]) => <button key={value} type="button" aria-pressed={scope === value} onClick={() => { setScope(value); if (value === 'queue') setStatus('') }} className={`rounded-lg px-3 text-sm font-black ${scope === value ? 'bg-white text-blue-700 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-700'}`}>{label}</button>)}</div><select value={status} onChange={(e) => { setStatus(e.target.value); if (e.target.value) setScope('all') }} className="h-11 rounded-xl border border-slate-300 px-3 font-bold"><option value="">All statuses</option>{['pending_head_review','returned_for_correction','pending_auditor_review','audit_case_open','correction_required','pending_auditor_recheck','closed'].map((item) => <option key={item} value={item}>{reviewStatusLabel(item)}</option>)}</select></div>
+        {reviews.isLoading ? <StatusAlert type="loading" message="Loading reviews..." /> : reviewRows.length ? <div className="overflow-x-auto"><table className="min-w-full text-left text-sm"><thead><tr className="border-b bg-slate-50 text-xs uppercase text-slate-500"><th className="px-3 py-3">Review</th><th className="px-3 py-3">Record</th><th className="px-3 py-3">Department</th><th className="px-3 py-3">Entered By</th><th className="px-3 py-3">Status</th><th className="px-3 py-3"></th></tr></thead><tbody>{reviewRows.map((row) => <tr key={row.operational_review_id} className="border-b last:border-0"><td className="px-3 py-3"><p className="font-mono font-black text-blue-700">{row.review_number}</p><p className="text-xs font-semibold text-slate-500">{fmtDate(row.created_at)}</p></td><td className="px-3 py-3"><p className="font-black">{row.entity_label || titleCase(row.entity_type)}</p><p className="text-xs font-semibold text-slate-500">{row.action_label || titleCase(row.action_key)}{row.lot_project_name ? `, ${row.lot_project_name}` : ''}</p></td><td className="px-3 py-3 font-bold">{titleCase(row.department)}</td><td className="px-3 py-3"><p className="font-bold">{row.initiated_by_name || `User #${row.initiated_by_user_id}`}</p><p className="text-xs text-slate-500">{ROLE_LABELS[row.initiated_by_role] || titleCase(row.initiated_by_role)}</p></td><td className="px-3 py-3"><span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-black ${statusClass(row.status)}`}>{reviewStatusLabel(row.status)}</span>{scope === 'all' && row.needs_my_action ? <p className="mt-1 text-xs font-black text-blue-700">Waiting on you</p> : null}</td><td className="px-3 py-3 text-right"><button type="button" onClick={() => navigate(`${actorRoot}/review-center/reviews/${row.operational_review_id}`)} className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 font-black text-blue-700">{scope === 'all' && !row.needs_my_action ? 'View' : 'Open'}</button></td></tr>)}</tbody></table></div> : <StatusAlert type="info" message={scope === 'queue' ? (status ? 'Nothing in that status is waiting on you. Switch to All reviews to see the full history.' : 'Nothing is waiting on you right now. Switch to All reviews to see past reviews.') : 'No reviews match these filters.'} />}
       </div> : null}
 
       {tab === 'approvals' && isHead ? <div className="p-4 sm:p-5"><div className="mb-4 flex flex-wrap items-center justify-between gap-3"><p className="text-sm font-semibold text-slate-500">{actor.role === 'auditor' ? 'Full approval history, read-only. Approved changes reach your Reviews queue once they are saved.' : 'Head approvals for protected changes.'}</p><label className="flex items-center gap-2 text-sm font-black text-slate-700">Status<select value={approvalStatus} onChange={(e) => setApprovalStatus(e.target.value)} className="h-10 rounded-xl border border-slate-300 px-3 font-semibold">{[['','All'],['pending','Pending'],['approved','Approved, not yet used'],['used','Used'],['rejected','Rejected'],['expired','Expired'],['cancelled','Cancelled']].map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label></div>{approvals.isLoading ? <StatusAlert type="loading" message="Loading approval requests..." /> : (approvals.data?.data || []).length ? <div className="grid gap-3">{approvals.data.data.map((row) => <div key={row.protected_change_request_id} className="rounded-2xl border border-slate-200 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-mono text-sm font-black text-blue-700">{row.request_number}</p><p className="mt-1 text-lg font-black">{row.entity_label || titleCase(row.entity_type)}</p><p className="text-sm font-semibold text-slate-500">{titleCase(row.action_key)} · {titleCase(row.department)} · {row.lot_project_name || '—'}</p><p className="mt-2 text-sm text-slate-600"><strong>Reason:</strong> {row.reason}</p><p className="mt-1 text-xs font-semibold text-slate-500">Requested by {row.requested_by_name || `User #${row.requested_by_user_id}`} on {fmtDate(row.created_at)}</p>{row.reviewed_at ? <p className="mt-1 text-xs font-semibold text-slate-500">{row.status === 'rejected' ? 'Rejected' : 'Approved'} by {row.reviewed_by_head_name || `User #${row.reviewed_by_head_user_id}`} on {fmtDate(row.reviewed_at)}{row.head_note ? `. Note: ${row.head_note}` : ''}</p> : null}{row.used_at ? <p className="mt-1 text-xs font-semibold text-emerald-700">Change applied on {fmtDate(row.used_at)}</p> : null}{row.status === 'pending' ? <p className="mt-1 text-xs font-semibold text-amber-700">Expires {fmtDate(row.expires_at)}</p> : null}</div><span className={`rounded-full border px-3 py-1 text-xs font-black ${row.status === 'approved' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : row.status === 'rejected' ? 'border-red-200 bg-red-50 text-red-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>{titleCase(row.status)}</span></div>{row.status === 'pending' && DEPARTMENT_HEAD_ROLE[row.department] === actor.role ? <div className="mt-4 flex gap-2 border-t pt-4"><button type="button" onClick={() => approvalMutation.mutate({ id: row.protected_change_request_id, decision: 'approve' })} className="h-10 rounded-xl bg-emerald-600 px-4 font-black text-white">Approve Exact Change</button><button type="button" onClick={() => approvalMutation.mutate({ id: row.protected_change_request_id, decision: 'reject' })} className="h-10 rounded-xl bg-red-600 px-4 font-black text-white">Reject</button></div> : null}</div>)}</div> : <StatusAlert type="info" message="No protected change requests are visible to your account." />}</div> : null}
@@ -654,5 +430,7 @@ const ReviewCenter = () => {
 }
 
 export default ReviewCenter
+
+
 
 

@@ -4,6 +4,8 @@ import { FiUsers, FiX } from 'react-icons/fi'
 import StatusAlert from '../../Shared/StatusAlert'
 import ConfirmActionModal from '../../Shared/ConfirmActionModal'
 import ProjectAccreditationFields from './ProjectAccreditationFields'
+import { BrokerNameWarning } from './BrokerNameWarning'
+import { getDuplicateBrokerMatches, useBrokerNameMatches } from './useBrokerNameMatches'
 import { getCompanyProfitError, getMaxCompanyProfitPercent } from '../../../utils/companyProfitPolicy'
 import { getSellerRoleLabel } from '../../../config/sellerRoles'
 import {useFetch as fetchJson, useFetchPost as postJson, getDoubleCheckNotice} from '../../../utils/useFetch'
@@ -34,7 +36,9 @@ const NewGroupModal = ({ setShowNewGroupModal, onSaved, groupType = 'in_house' }
   const groupLabel = isExternal ? 'External Network' : 'In-House Network'
   const [notice, setNotice] = useState(null)
   const [projectPendingRemoval, setProjectPendingRemoval] = useState(null)
+  const [serverBrokerMatches, setServerBrokerMatches] = useState(null)
   const [form, setForm] = useState({
+    confirm_duplicate_broker: false,
     seller_group_type: groupType,
     seller_group_name: '',
     broker_name: '',
@@ -81,6 +85,8 @@ const NewGroupModal = ({ setShowNewGroupModal, onSaved, groupType = 'in_house' }
     (seller) => String(seller.user_id) === String(form.seller_group_head_user_id)
   )
   const groupHeadRole = selectedGroupHead?.role || 'division_manager'
+  const brokerCheck = useBrokerNameMatches(form.broker_name)
+  const brokerMatches = brokerCheck.matches.length ? brokerCheck.matches : (serverBrokerMatches || [])
 
   const mutation = useMutation({
     mutationFn: () => postJson('/seller-groups/create', form, {
@@ -89,6 +95,7 @@ const NewGroupModal = ({ setShowNewGroupModal, onSaved, groupType = 'in_house' }
         mode: 'create',
         data: {
           ...form,
+          duplicate_broker_matches: brokerMatches,
           seller_group_head_name: selectedGroupHead?.full_name || '',
           seller_group_head_role: groupHeadRole,
           pool_shares: poolShares,
@@ -108,14 +115,30 @@ const NewGroupModal = ({ setShowNewGroupModal, onSaved, groupType = 'in_house' }
       queryClient.invalidateQueries({ queryKey: ['users'] })
       queryClient.invalidateQueries({ queryKey: ['accredited'] })
       setShowNewGroupModal(false)
-      onSaved?.([data?.message || `${groupLabel} created successfully.`, ...(Array.isArray(data?.warnings) ? data.warnings : [])].join(' '))
+      const warnings = Array.isArray(data?.warnings) ? data.warnings : []
+      onSaved?.(
+        warnings.length
+          ? `${data?.message || `${groupLabel} created successfully.`} Same broker name as another Network; you confirmed this is a different broker.`
+          : (data?.message || `${groupLabel} created successfully.`),
+        warnings.length ? 'warning' : 'success'
+      )
     },
-    onError: (error) => setNotice(getDoubleCheckNotice(error, `Failed to create ${groupLabel}.`)),
+    onError: (error) => {
+      const duplicates = getDuplicateBrokerMatches(error)
+      if (duplicates) {
+        setServerBrokerMatches(duplicates)
+        setForm((current) => ({ ...current, confirm_duplicate_broker: false }))
+        setNotice({ type: 'warning', message: 'This broker name is already used by another Network. Check the warning under Broker Name, then confirm before saving.' })
+        return
+      }
+      setNotice(getDoubleCheckNotice(error, `Failed to create ${groupLabel}.`))
+    },
   })
 
   const updateForm = (field, value) => {
     setNotice(null)
-    setForm((current) => ({ ...current, [field]: value }))
+    if (field === 'broker_name') setServerBrokerMatches(null)
+    setForm((current) => ({ ...current, [field]: value, ...(field === 'broker_name' ? { confirm_duplicate_broker: false } : {}) }))
   }
   const updateExternalAccount = (field, value) => {
     setNotice(null)
@@ -133,6 +156,10 @@ const NewGroupModal = ({ setShowNewGroupModal, onSaved, groupType = 'in_house' }
     }
     if (!form.broker_name.trim() || !form.broker_license_number.trim() || !form.realty_name.trim() || !form.broker_prc_number.trim()) {
       setNotice({ type: 'error', message: 'Broker Name, Broker License Number, Realty Name, and PRC Number are required.' })
+      return
+    }
+    if (brokerMatches.length && !form.confirm_duplicate_broker) {
+      setNotice({ type: 'warning', message: 'This broker name is already used by another Network. Confirm it is a different broker, or edit the existing Network instead.' })
       return
     }
     if (isExternal) {
@@ -180,6 +207,7 @@ const NewGroupModal = ({ setShowNewGroupModal, onSaved, groupType = 'in_house' }
                 <InputField label="Broker Name" required value={form.broker_name} onChange={(event) => updateForm('broker_name', event.target.value)} placeholder="Licensed broker full name" disabled={mutation.isPending} />
                 <InputField label="Broker License Number" required value={form.broker_license_number} onChange={(event) => updateForm('broker_license_number', event.target.value)} placeholder="Broker license number" disabled={mutation.isPending} />
                 <InputField label="Realty Name" required value={form.realty_name} onChange={(event) => updateForm('realty_name', event.target.value)} placeholder="Registered realty name" disabled={mutation.isPending} />
+                <BrokerNameWarning brokerName={form.broker_name} matches={brokerMatches} confirmed={form.confirm_duplicate_broker} onConfirmChange={(value) => { setNotice(null); setForm((current) => ({ ...current, confirm_duplicate_broker: value })) }} disabled={mutation.isPending} />
                 <InputField label="PRC Number" required value={form.broker_prc_number} onChange={(event) => updateForm('broker_prc_number', event.target.value)} placeholder="PRC number" disabled={mutation.isPending} />
                 {!isExternal ? (
                   <label className="flex flex-col gap-1.5">
@@ -250,3 +278,5 @@ const NewGroupModal = ({ setShowNewGroupModal, onSaved, groupType = 'in_house' }
 }
 
 export default NewGroupModal
+
+

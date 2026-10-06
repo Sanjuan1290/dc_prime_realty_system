@@ -1168,8 +1168,8 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
           groupType={groupType}
           workflowReviewId={workflowReviewId}
           workflowAuditCaseId={workflowAuditCaseId}
-          onSaved={(message) => {
-            setAlert({ type: 'success', message })
+          onSaved={(message, type = 'success') => {
+            setAlert({ type, message })
             refresh()
           }}
         />
@@ -1179,3 +1179,5 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
 }
 
 export default SellerGroupDetails
+
+

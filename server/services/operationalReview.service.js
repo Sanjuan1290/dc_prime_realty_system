@@ -1,8 +1,8 @@
 import { isOwnerAdministrator } from '../config/permissions.js';
 import crypto from 'node:crypto';
 import { DEPARTMENT_HEAD_ROLE, getRoleDepartment } from '../config/permissions.js';
-import { createInternalNotifications, notifyAuditors, notifyDepartmentHeads } from './internalNotification.service.js';
-import { assertRegisteredReviewAction } from '../config/reviewActions.js';
+import { createInternalNotifications, notifyAuditors, notifyDepartmentHeads, settleReviewNotifications } from './internalNotification.service.js';
+import { assertRegisteredReviewAction, getReviewActionLabel } from '../config/reviewActions.js';
 
 // Routine Head/Auditor reviews are POST-ACTION checks and must never block
 // subsequent business operations. Only an active finding/correction cycle locks
@@ -25,6 +25,12 @@ export const appendReviewEvent = async (connection, {
      VALUES (?,?,?,?,?,?,?,?)`,
     [reviewId, eventType, fromStatus, toStatus, actor?.id || null, actor?.role || null, message, jsonValue(metadata)]
   );
+  // Every stage change is recorded through this event. Settle action
+  // notifications that belong to the previous stage so other accounts stop
+  // seeing work that was already done or is no longer assigned to them.
+  if (toStatus || fromStatus) {
+    try { await settleReviewNotifications(connection, reviewId); } catch { /* notifications are best-effort */ }
+  }
 };
 
 // approval_type records HOW a review reached the Auditor. Older databases
@@ -116,20 +122,20 @@ const refreshOwnRoutineReview = async (connection, {
     ? 'record_changed_after_head_check'
     : 'record_updated_before_head_check';
   let eventMessage = fromStatus === 'pending_auditor_review'
-    ? `${actionKey} changed the record after the previous Department Head check. Head review was reopened for the latest values.`
-    : `${actionKey} updated the record before Department Head review. The same review now shows the latest values.`;
+    ? `${getReviewActionLabel(actionKey)} changed the record after the previous Department Head check. Head review was reopened for the latest values.`
+    : `${getReviewActionLabel(actionKey)} updated the record before Department Head review. The same review now shows the latest values.`;
 
   if (isSuperAdmin) {
     nextStatus = 'pending_auditor_review';
     approvalType = REVIEW_APPROVAL_TYPES.EMERGENCY_SUPER_ADMIN;
     eventType = 'super_admin_updated_before_audit';
-    eventMessage = `${actionKey} updated the record before independent audit. The operation remains complete and the Auditor will review the latest values.`;
+    eventMessage = `${getReviewActionLabel(actionKey)} updated the record before independent audit. The operation remains complete and the Auditor will review the latest values.`;
   } else if (isDepartmentHead) {
     nextStatus = 'pending_auditor_review';
     approvalType = REVIEW_APPROVAL_TYPES.HEAD_SELF;
     headReviewerId = actor.id;
     eventType = 'head_updated_before_audit';
-    eventMessage = `${actionKey} updated the record before independent audit. Department self-review is complete and the Auditor will review the latest values.`;
+    eventMessage = `${getReviewActionLabel(actionKey)} updated the record before independent audit. Department self-review is complete and the Auditor will review the latest values.`;
   }
 
   const withType = await hasApprovalTypeColumn(connection);
@@ -258,7 +264,7 @@ const absorbOpenStaffReviewIntoHeadCorrection = async (connection, {
     actor,
     fromStatus: open.status,
     toStatus: 'pending_auditor_review',
-    message: `${actionKey} corrected by the Department Head and confirmed for audit.`,
+    message: `${getReviewActionLabel(actionKey)} corrected by the Department Head and confirmed for audit.`,
     metadata: {
       headActionKey: actionKey,
       staffAfterSnapshot: open.after_snapshot_json ?? null,
@@ -333,7 +339,7 @@ export const createOperationalReview = async (connection, {
   await connection.query('UPDATE operational_reviews SET review_number = ? WHERE operational_review_id = ?', [number, reviewId]);
   await appendReviewEvent(connection, {
     reviewId, eventType: 'created', actor, toStatus: initialStatus,
-    message: `${actionKey} created for independent review.`,
+    message: `${getReviewActionLabel(actionKey)} saved and queued for review.`,
     metadata: { approvalType },
   });
 
@@ -449,7 +455,7 @@ export const resubmitReturnedOperationalReview = async (connection, {
     actor,
     fromStatus: 'returned_for_correction',
     toStatus: 'pending_head_review',
-    message: message || `${review.action_key} corrected and resubmitted for Head review.`,
+    message: message || `${getReviewActionLabel(review.action_key)} corrected and resubmitted for Head review.`,
   });
   await notifyDepartmentHeads(connection, {
     department,
@@ -480,5 +486,7 @@ export const canActorSeeReview = async (connection, actor, review) => {
 };
 
 export const buildReviewPayloadHash = (payload) => crypto.createHash('sha256').update(JSON.stringify(payload ?? null)).digest('hex');
+
+
 
 

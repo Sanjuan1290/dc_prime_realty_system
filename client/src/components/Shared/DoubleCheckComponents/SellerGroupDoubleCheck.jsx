@@ -43,12 +43,13 @@ const SellerGroupDoubleCheck = ({ request, onConfirm, onCancel }) => {
   const rates = Array.isArray(data.project_rates) ? data.project_rates : []
   const representative = data.external_account || {}
   const shares = getShares(data)
+  const duplicateBrokers = Array.isArray(data.duplicate_broker_matches) ? data.duplicate_broker_matches : []
 
   const steps = [
     {
       key: 'info',
       title: 'Network Information',
-      content: <DoubleCheckSection title="Network Information" helper="Verify the Network identity, broker details, hierarchy, description, and status." tone="blue"><DoubleCheckFields fields={[
+      content: <DoubleCheckSection title="Network Information" helper="Verify the Network identity, broker details, hierarchy, description, and status." tone="blue">{duplicateBrokers.length ? <div role="alert" className="mb-4 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-950"><p className="font-black">Same broker name as {duplicateBrokers.map((match) => match.seller_group_name).join(', ')}</p><p className="mt-1">You confirmed this is a different broker. Go back if that is not right.</p></div> : null}<DoubleCheckFields fields={[
         { label: 'Network Name', value: pick(data, 'seller_group_name'), wide: true },
         { label: 'Network Type', value: type, formatter: titleCase },
         { label: 'Broker Name', value: pick(data, 'broker_name') },
@@ -102,3 +103,5 @@ const SellerGroupDoubleCheck = ({ request, onConfirm, onCancel }) => {
 }
 
 export default SellerGroupDoubleCheck
+
+

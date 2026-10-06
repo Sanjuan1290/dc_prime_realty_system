@@ -22,7 +22,10 @@ test('role queues are action-specific', () => {
   assert.match(controller, /role === 'system_admin'[\s\S]*correction_required/);
   assert.match(controller, /role === 'super_admin'[\s\S]*emergency_super_admin/);
   assert.match(controller, /pending_head_review[\s\S]*awaiting_head_response/);
-  assert.match(controller, /This review is not currently assigned to your role/);
+  // Acting stays role-specific; viewing a past or moved-on review is read-only.
+  assert.match(controller, /const canAct = await canActorOpenReview/);
+  assert.match(controller, /canActorViewReview/);
+  assert.match(controller, /viewer: \{ canAct, readOnly: !canAct \}/);
 });
 
 test('Staff defaults do not include Review Center', () => {
@@ -31,3 +34,5 @@ test('Staff defaults do not include Review Center', () => {
   assert.doesNotMatch(recommended, /marketing_staff:\s*Object\.freeze\([^\n]*WORKFLOW_REVIEW_CENTER_VIEW/);
   assert.match(policy, /const staffBaseline = \[\]/);
 });
+
+

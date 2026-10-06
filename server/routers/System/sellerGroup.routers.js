@@ -13,6 +13,8 @@ import {
   updateGroupProjectPool,
   previewNetworkMemberImport,
   commitNetworkMemberImport,
+  checkNetworkBrokerName,
+  deleteGroup,
 } from '../../controllers/System/sellerGroup.controller.js';
 import { authenticateUser, requirePermission, requireProjectPermission } from '../../middleware/auth.middleware.js';
 import { PERMISSIONS } from '../../config/permissions.js';
@@ -23,6 +25,7 @@ router.use(authenticateUser);
 router.get('/', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW), getGroups);
 router.get('/options', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW), getGroupOptions);
 router.get('/pool-shares', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW), getNetworkPoolShares);
+router.get('/broker-check', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE), checkNetworkBrokerName);
 
 router.post('/:groupId/members/import/preview',
   requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE),
@@ -45,5 +48,8 @@ router.get('/:id', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW), vie
 router.post('/create', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE), createGroup);
 router.put('/edit/:id', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE), editGroup);
 router.patch('/toggle-status/:id', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE), toggleGroupStatus);
+router.delete('/:id', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE), deleteGroup);
 
 export default router;
+
+

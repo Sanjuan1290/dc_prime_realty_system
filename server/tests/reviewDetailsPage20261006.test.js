@@ -22,8 +22,12 @@ test('Review Center opens a dedicated review route instead of rendering the over
 test('Dedicated review workspace prioritizes changed fields and keeps full snapshots collapsed', () => {
   const center = read('client/src/pages/System/ReviewCenter.jsx')
   assert.match(center, /Dedicated review workspace/)
-  assert.match(center, /Changed Fields/)
-  assert.match(center, /View full Before \/ After snapshots/)
+  assert.match(center, /What changed/)
+  assert.match(center, /Show the full record before and after/)
+  assert.match(center, /<ReviewSnapshotDiff[^>]*mode="changes"/)
+  assert.match(center, /<details[\s\S]*<ReviewSnapshotDiff[^>]*mode="full"/)
+  // Snapshots are rendered as labelled fields, never as raw JSON text.
+  assert.doesNotMatch(center, /JSON\.stringify\(value, null, 2\)/)
   assert.match(center, /Back to Review Center/)
 })
 
@@ -43,3 +47,5 @@ test('Dedicated review page preserves Head, Auditor and correction actions', () 
     'Correct &amp; Resubmit',
   ]) assert.match(center, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
 })
+
+

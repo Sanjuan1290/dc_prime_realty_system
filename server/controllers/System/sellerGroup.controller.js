@@ -85,11 +85,13 @@ const buildNetworkSnapshot = ({ group = {}, name = null, headUserId = null, desc
   headUserId: toNullableNumber(headUserId ?? group.seller_group_head_user_id),
   description: String(description ?? group.seller_group_description ?? '').trim() || null,
   status: normalizeStatus(status ?? group.seller_group_status),
-  broker: broker || {
-    broker_name: group.broker_name || '',
-    broker_license_number: group.broker_license_number || '',
-    realty_name: group.realty_name || '',
-    broker_prc_number: group.broker_prc_number || '',
+  // Only the human-entered broker fields belong in a review snapshot; the
+  // *_normalized copies are internal matching keys.
+  broker: {
+    broker_name: (broker || group).broker_name || '',
+    broker_license_number: (broker || group).broker_license_number || '',
+    realty_name: (broker || group).realty_name || '',
+    broker_prc_number: (broker || group).broker_prc_number || '',
   },
 });
 
@@ -152,18 +154,57 @@ const assertUniqueNetworkBrokerIdentity = async (connection, broker, excludeGrou
     throw createValidationError(`${conflicts.join(', ')} already ${conflicts.length === 1 ? 'exists' : 'exist'} in another Network (${existing.seller_group_name}).`);
   }
 
-  const [nameRows] = await connection.query(
-    `SELECT seller_group_name, realty_name
+  const nameRows = await findBrokerNameMatches(connection, broker.broker_name_normalized, excludeGroupId);
+  return nameRows.map((row) => brokerNameWarning(broker.broker_name, row));
+};
+
+const brokerNameWarning = (brokerName, row) =>
+  `${brokerName} is already the broker of ${row.seller_group_name}${row.realty_name ? ` (${row.realty_name})` : ''}. Check that this is a different broker.`;
+
+const findBrokerNameMatches = async (connection, brokerNameNormalized, excludeGroupId = null) => {
+  const normalized = normalizeNetworkIdentity(brokerNameNormalized);
+  if (!normalized) return [];
+  const [rows] = await connection.query(
+    `SELECT seller_group_id, seller_group_name, seller_group_type, seller_group_status, realty_name, broker_name
      FROM seller_groups
      WHERE (? IS NULL OR seller_group_id <> ?)
        AND broker_name_normalized = ?
      ORDER BY seller_group_id ASC
-     LIMIT 3`,
-    [excludeGroupId, excludeGroupId, broker.broker_name_normalized]
+     LIMIT 5`,
+    [excludeGroupId, excludeGroupId, normalized]
   );
-  return nameRows.map((row) =>
-    `${broker.broker_name} is already the broker of ${row.realty_name || row.seller_group_name}. Check that this is a different broker.`
+  return rows;
+};
+
+const isTruthyFlag = (value) => value === true || ['1', 'true', 'yes'].includes(String(value || '').toLowerCase());
+
+// A shared Broker Name is allowed (two brokers can have the same name), but it
+// must never be saved silently. The user has to see the matching Networks and
+// confirm that this is a different broker.
+const assertDuplicateBrokerNameConfirmed = async (connection, broker, body = {}, { excludeGroupId = null, previousNormalized = null } = {}) => {
+  if (previousNormalized && previousNormalized === broker.broker_name_normalized) return [];
+  const matches = await findBrokerNameMatches(connection, broker.broker_name_normalized, excludeGroupId);
+  if (!matches.length || isTruthyFlag(body.confirm_duplicate_broker ?? body.confirmDuplicateBroker)) return matches;
+  throw Object.assign(
+    new Error(`${broker.broker_name} is already the broker of ${matches.map((row) => row.seller_group_name).join(', ')}. Confirm that this is a different broker before saving.`),
+    {
+      statusCode: 409,
+      code: 'DUPLICATE_BROKER_NAME',
+      details: { matches: matches.map((row) => ({ ...row, warning: brokerNameWarning(broker.broker_name, row) })) },
+    }
   );
+};
+
+export const checkNetworkBrokerName = async (req, res) => {
+  try {
+    const brokerName = String(req.query.broker_name || req.query.brokerName || '').trim().replace(/\s+/g, ' ');
+    const excludeGroupId = Number(req.query.excludeGroupId || req.query.exclude || 0) || null;
+    if (!brokerName) return res.json({ data: { matches: [] } });
+    const matches = await findBrokerNameMatches(db, brokerName, excludeGroupId);
+    return res.json({ data: { matches: matches.map((row) => ({ ...row, warning: brokerNameWarning(brokerName, row) })) } });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
+  }
 };
 
 const requireGroupTypeSchema = async (connection) => {
@@ -804,6 +845,7 @@ export const createGroup = async (req, res) => {
 
     await connection.beginTransaction();
     const brokerWarnings = await assertUniqueNetworkBrokerIdentity(connection, broker);
+    await assertDuplicateBrokerNameConfirmed(connection, broker, req.body);
     const groupHead = groupType === 'in_house'
       ? await validateGroupHead(connection, seller_group_head_user_id)
       : null;
@@ -921,7 +963,7 @@ export const createGroup = async (req, res) => {
     });
   } catch (error) {
     try { await connection.rollback(); } catch {}
-    return res.status(error.statusCode || 500).json({ code: error?.code, message: getErrorMessage(error) });
+    return res.status(error.statusCode || 500).json({ code: error?.code, message: getErrorMessage(error), ...(error?.details ? { details: error.details } : {}) });
   } finally {
     connection.release();
   }
@@ -1013,7 +1055,9 @@ export const getGroups = async (req, res) => {
       `,
       [...params, limit, offset]
     );
-    const hydrated = await hydrateGroupRates(rows, db, accessibleProjectIds);
+    const hydratedRows = await hydrateGroupRates(rows, db, accessibleProjectIds);
+    const deletion = await getNetworkDeletionStatus(db, rows);
+    const hydrated = hydratedRows.map((row) => ({ ...row, deletion: deletion.get(Number(row.seller_group_id)) || { canDelete: false, reason: '' } }));
 
     const metaAccessSql = accessibleProjectIds === null
       ? ''
@@ -1142,6 +1186,10 @@ export const editGroup = async (req, res) => {
     if (!name) throw createValidationError('Network Name is required.');
     const broker = normalizeNetworkBrokerFields(req.body);
     const brokerWarnings = await assertUniqueNetworkBrokerIdentity(connection, broker, groupId);
+    await assertDuplicateBrokerNameConfirmed(connection, broker, req.body, {
+      excludeGroupId: groupId,
+      previousNormalized: existing.broker_name_normalized || normalizeNetworkIdentity(existing.broker_name),
+    });
     const previousHead = groupType === 'in_house' ? await getCurrentGroupHead(connection, groupId) : null;
     const nextHead = groupType === 'in_house'
       ? await validateGroupHead(connection, seller_group_head_user_id, groupId)
@@ -1355,7 +1403,7 @@ export const editGroup = async (req, res) => {
     });
   } catch (error) {
     try { await connection.rollback(); } catch {}
-    return res.status(error.statusCode || 500).json({ code: error?.code, message: getErrorMessage(error) });
+    return res.status(error.statusCode || 500).json({ code: error?.code, message: getErrorMessage(error), ...(error?.details ? { details: error.details } : {}) });
   } finally {
     connection.release();
   }
@@ -1456,6 +1504,160 @@ export const toggleGroupStatus = async (req, res) => {
 
     await connection.commit();
     return res.json({ message: `${groupTypeLabel(group.seller_group_type)} is now ${nextStatus}.`, status: nextStatus, review: workflow });
+  } catch (error) {
+    try { await connection.rollback(); } catch {}
+    return res.status(error.statusCode || 500).json({ code: error?.code, message: getErrorMessage(error) });
+  } finally {
+    connection.release();
+  }
+};
+
+// A Network can be permanently deleted only while it is still empty: no
+// members (other than an External Network's own representative account) and
+// no sale or commission ever linked to it. Anything else must be deactivated so
+// history stays intact.
+const getNetworkDeletionStatus = async (connection, groups = []) => {
+  const list = groups.filter((group) => Number(group?.seller_group_id || 0) > 0);
+  const result = new Map();
+  if (!list.length) return result;
+  const ids = list.map((group) => Number(group.seller_group_id));
+  const placeholders = ids.map(() => '?').join(',');
+  const externalAccountIds = new Map(list.map((group) => [Number(group.seller_group_id), Number(group.seller_group_external_account_user_id || 0)]));
+
+  const [memberRows] = await connection.query(
+    `SELECT seller_group_id, user_id, accredited_seller_id FROM accredited_sellers WHERE seller_group_id IN (${placeholders})`,
+    ids
+  );
+  const [saleRows] = await connection.query(
+    `SELECT member.seller_group_id, COUNT(DISTINCT profile.lot_project_client_profile_id) total
+     FROM accredited_sellers member
+     INNER JOIN lot_project_client_profiles profile ON profile.assigned_accredited_seller_id = member.accredited_seller_id
+     WHERE member.seller_group_id IN (${placeholders})
+     GROUP BY member.seller_group_id`,
+    ids
+  ).catch(() => [[]]);
+  const [commissionRows] = await connection.query(
+    `SELECT member.seller_group_id, COUNT(DISTINCT commission.lot_project_commission_id) total
+     FROM accredited_sellers member
+     INNER JOIN lot_project_commissions commission
+       ON commission.accredited_seller_id = member.accredited_seller_id
+       OR commission.sale_origin_accredited_seller_id = member.accredited_seller_id
+       OR commission.sale_owner_accredited_seller_id = member.accredited_seller_id
+     WHERE member.seller_group_id IN (${placeholders})
+     GROUP BY member.seller_group_id`,
+    ids
+  ).catch(() => [[]]);
+  const names = list.map((group) => String(group.seller_group_name || '')).filter(Boolean);
+  const [snapshotRows] = names.length
+    ? await connection.query(
+      `SELECT seller_group_name_snapshot name, COUNT(*) total FROM lot_project_commissions
+       WHERE seller_group_name_snapshot IN (${names.map(() => '?').join(',')}) GROUP BY seller_group_name_snapshot`,
+      names
+    ).catch(() => [[]])
+    : [[]];
+
+  const count = (rows, groupId) => Number((rows || []).find((row) => Number(row.seller_group_id) === groupId)?.total || 0);
+  for (const group of list) {
+    const groupId = Number(group.seller_group_id);
+    const externalUserId = externalAccountIds.get(groupId) || 0;
+    const memberCount = memberRows.filter((row) => Number(row.seller_group_id) === groupId && Number(row.user_id) !== externalUserId).length;
+    const salesCount = count(saleRows, groupId);
+    const commissionCount = count(commissionRows, groupId)
+      + Number((snapshotRows || []).find((row) => row.name === group.seller_group_name)?.total || 0);
+    const reasons = [];
+    if (memberCount) reasons.push(`${memberCount} member${memberCount === 1 ? '' : 's'}`);
+    if (salesCount) reasons.push(`${salesCount} sale${salesCount === 1 ? '' : 's'}`);
+    if (!salesCount && commissionCount) reasons.push('commission history');
+    result.set(groupId, {
+      canDelete: reasons.length === 0,
+      memberCount,
+      salesCount,
+      commissionCount,
+      reason: reasons.length ? `This Network already has ${reasons.join(' and ')}. Deactivate it instead so history is kept.` : '',
+    });
+  }
+  return result;
+};
+
+export const deleteGroup = async (req, res) => {
+  const connection = await db.getConnection();
+  try {
+    const groupId = Number(req.params.id);
+    if (!groupId) return res.status(400).json({ message: 'Invalid Network id.' });
+    await connection.beginTransaction();
+    const [rows] = await connection.query(`SELECT * FROM seller_groups WHERE seller_group_id = ? LIMIT 1 FOR UPDATE`, [groupId]);
+    const group = rows[0];
+    if (!group) { await connection.rollback(); return res.status(404).json({ message: 'Network not found.' }); }
+    await assertCanMutateWholeGroup(connection, req.authUser, groupId);
+    // A Network inside an active correction cycle stays put until that case is finished.
+    await assertEntityNotReviewLocked(connection, { entityType: 'seller_group', entityId: groupId });
+    await assertEntityNotReviewLocked(connection, { entityType: 'seller_group_project_rates', entityId: groupId });
+
+    const status = (await getNetworkDeletionStatus(connection, [group])).get(groupId);
+    if (!status?.canDelete) {
+      throw Object.assign(new Error(status?.reason || 'This Network can no longer be deleted. Deactivate it instead.'), { statusCode: 409, code: 'NETWORK_NOT_DELETABLE' });
+    }
+
+    const [rateRows] = await connection.query(
+      `SELECT lot_project_id, seller_group_pool_rate, company_profit_rate, division_manager_rate, sales_director_rate,
+              unit_manager_rate, sales_agent_rate, seller_group_lot_project_rate_status
+       FROM seller_group_lot_project_rates WHERE seller_group_id = ? ORDER BY lot_project_id`,
+      [groupId]
+    );
+    const externalAccount = normalizeSellerGroupType(group.seller_group_type) === 'external'
+      ? await getExternalAccount(connection, groupId)
+      : null;
+    const beforeSnapshot = {
+      ...buildNetworkSnapshot({ group }),
+      rates: normalizeRateReviewPayload(rateRows),
+      ...(externalAccount ? { externalAccount: { name: externalAccount.full_name, email: externalAccount.email } } : {}),
+    };
+
+    await connection.query(`DELETE FROM seller_group_lot_project_rates WHERE seller_group_id = ?`, [groupId]);
+    if (externalAccount?.user_id) {
+      await connection.query(`UPDATE seller_groups SET seller_group_external_account_user_id = NULL WHERE seller_group_id = ?`, [groupId]);
+      if (externalAccount.accredited_seller_id) {
+        await connection.query(`DELETE FROM accredited_sellers WHERE accredited_seller_id = ?`, [externalAccount.accredited_seller_id]);
+      }
+      try {
+        await connection.query(`DELETE FROM users WHERE id = ? AND role = ?`, [externalAccount.user_id, EXTERNAL_GROUP_ROLE]);
+      } catch (error) {
+        if (!['ER_ROW_IS_REFERENCED_2', 'ER_ROW_IS_REFERENCED'].includes(error?.code)) throw error;
+        // Still referenced elsewhere (audit history): keep the login-disabled
+        // account but inactive, and free the email for a corrected Network.
+        await connection.query(
+          `UPDATE users SET status = 'inactive', can_login = 0, email = LEFT(CONCAT('deleted+', id, '+', email), 150) WHERE id = ?`,
+          [externalAccount.user_id]
+        );
+      }
+    }
+    await connection.query(`DELETE FROM seller_groups WHERE seller_group_id = ?`, [groupId]);
+
+    await writeAuditLog(connection, req, {
+      action: 'delete',
+      module: 'Groups',
+      entityType: 'seller_group',
+      entityId: String(groupId),
+      entityLabel: group.seller_group_name,
+      title: `Deleted ${groupTypeLabel(group.seller_group_type)}`,
+      description: `Deleted empty ${groupTypeLabel(group.seller_group_type)} ${group.seller_group_name}. It had no members and no sales.`,
+      metadata: { before: beforeSnapshot, reason: String(req.body?.reason || '').trim() || null },
+    });
+
+    const review = await createOperationalReview(connection, {
+      actor: req.authUser,
+      actionKey: 'network.delete',
+      department: 'marketing',
+      projectId: null,
+      entityType: 'seller_group',
+      entityId: groupId,
+      entityLabel: group.seller_group_name,
+      beforeSnapshot,
+      afterSnapshot: { ...beforeSnapshot, status: 'deleted', rates: [] },
+    });
+
+    await connection.commit();
+    return res.json({ message: `${group.seller_group_name} was deleted.`, review });
   } catch (error) {
     try { await connection.rollback(); } catch {}
     return res.status(error.statusCode || 500).json({ code: error?.code, message: getErrorMessage(error) });
@@ -2571,3 +2773,5 @@ export const commitNetworkMemberImport = async (req, res) => {
     connection.release();
   }
 };
+
+

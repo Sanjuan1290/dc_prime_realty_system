@@ -4,6 +4,8 @@ import { FiEdit3, FiX } from 'react-icons/fi'
 import StatusAlert from '../../Shared/StatusAlert'
 import ConfirmActionModal from '../../Shared/ConfirmActionModal'
 import ProjectAccreditationFields from './ProjectAccreditationFields'
+import { BrokerNameWarning } from './BrokerNameWarning'
+import { getDuplicateBrokerMatches, useBrokerNameMatches } from './useBrokerNameMatches'
 import { getCompanyProfitError, getMaxCompanyProfitPercent } from '../../../utils/companyProfitPolicy'
 import { getSellerRoleLabel } from '../../../config/sellerRoles'
 import {useFetch as fetchJson, useFetchPut as putJson, getDoubleCheckNotice} from '../../../utils/useFetch'
@@ -43,7 +45,10 @@ const EditGroupModal = ({ setShowEditGroupModal, selectedGroup, onSaved, groupTy
   const groupLabel = isExternal ? 'External Network' : 'In-House Network'
   const [notice, setNotice] = useState(null)
   const [projectPendingRemoval, setProjectPendingRemoval] = useState(null)
+  const [serverBrokerMatches, setServerBrokerMatches] = useState(null)
+  const originalBrokerName = selectedGroup?.broker_name || selectedGroup?.brokerName || ''
   const [form, setForm] = useState({
+    confirm_duplicate_broker: false,
     seller_group_type: groupType,
     seller_group_name: selectedGroup?.seller_group_name || '',
     broker_name: selectedGroup?.broker_name || selectedGroup?.brokerName || '',
@@ -107,6 +112,8 @@ const EditGroupModal = ({ setShowEditGroupModal, selectedGroup, onSaved, groupTy
   const groupHeadRole = selectedHead?.role || selectedGroup?.seller_group_head_role || 'division_manager'
   const projects = projectsQuery.data?.data || []
   const poolShares = poolSharesQuery.data?.data || { division_manager: 14.18, sales_director: 15.82, unit_manager: 20, sales_agent: 50 }
+  const brokerCheck = useBrokerNameMatches(form.broker_name, { excludeGroupId: selectedGroup?.seller_group_id, originalBrokerName })
+  const brokerMatches = brokerCheck.matches.length ? brokerCheck.matches : (serverBrokerMatches || [])
 
   const mutation = useMutation({
     mutationFn: () => putJson(`/seller-groups/edit/${selectedGroup.seller_group_id}`, { ...form, ...(workflowReviewId ? { reviewId: workflowReviewId } : {}), ...(workflowAuditCaseId ? { auditCaseId: workflowAuditCaseId } : {}) }, {
@@ -115,6 +122,7 @@ const EditGroupModal = ({ setShowEditGroupModal, selectedGroup, onSaved, groupTy
         mode: 'edit',
         data: {
           ...form,
+          duplicate_broker_matches: brokerMatches,
           seller_group_head_name: selectedHead?.full_name || '',
           seller_group_head_role: groupHeadRole,
           pool_shares: poolShares,
@@ -135,18 +143,38 @@ const EditGroupModal = ({ setShowEditGroupModal, selectedGroup, onSaved, groupTy
       queryClient.invalidateQueries({ queryKey: ['users'] })
       queryClient.invalidateQueries({ queryKey: ['accredited'] })
       setShowEditGroupModal(false)
-      onSaved?.([data?.message || `${groupLabel} updated successfully.`, ...(Array.isArray(data?.warnings) ? data.warnings : [])].join(' '))
+      const warnings = Array.isArray(data?.warnings) ? data.warnings : []
+      onSaved?.(
+        warnings.length
+          ? `${data?.message || `${groupLabel} updated successfully.`} Same broker name as another Network; you confirmed this is a different broker.`
+          : (data?.message || `${groupLabel} updated successfully.`),
+        warnings.length ? 'warning' : 'success'
+      )
     },
-    onError: (error) => setNotice(getDoubleCheckNotice(error, `Failed to update ${groupLabel}.`)),
+    onError: (error) => {
+      const duplicates = getDuplicateBrokerMatches(error)
+      if (duplicates) {
+        setServerBrokerMatches(duplicates)
+        setForm((current) => ({ ...current, confirm_duplicate_broker: false }))
+        setNotice({ type: 'warning', message: 'This broker name is already used by another Network. Check the warning under Broker Name, then confirm before saving.' })
+        return
+      }
+      setNotice(getDoubleCheckNotice(error, `Failed to update ${groupLabel}.`))
+    },
   })
 
-  const updateForm = (field, value) => { setNotice(null); setForm((current) => ({ ...current, [field]: value })) }
+  const updateForm = (field, value) => {
+    setNotice(null)
+    if (field === 'broker_name') setServerBrokerMatches(null)
+    setForm((current) => ({ ...current, [field]: value, ...(field === 'broker_name' ? { confirm_duplicate_broker: false } : {}) }))
+  }
   const updateExternal = (field, value) => { setNotice(null); setForm((current) => ({ ...current, external_account: { ...current.external_account, [field]: value } })) }
 
   const submit = (event) => {
     event.preventDefault()
     if (!form.seller_group_name.trim()) return setNotice({ type: 'error', message: 'Network Name is required.' })
     if (!form.broker_name.trim() || !form.broker_license_number.trim() || !form.realty_name.trim() || !form.broker_prc_number.trim()) return setNotice({ type: 'error', message: 'Broker Name, Broker License Number, Realty Name, and PRC Number are required.' })
+    if (brokerMatches.length && !form.confirm_duplicate_broker) return setNotice({ type: 'warning', message: 'This broker name is already used by another Network. Confirm it is a different broker before saving.' })
     if (isExternal && (!form.external_account.first_name.trim() || !form.external_account.last_name.trim() || !form.external_account.email.trim())) return setNotice({ type: 'error', message: 'Representative first name, last name, and email are required.' })
     const projectError = validateProjectRates(form.project_rates, groupType, poolShares)
     if (projectError) return setNotice({ type: 'error', message: projectError })
@@ -163,7 +191,7 @@ const EditGroupModal = ({ setShowEditGroupModal, selectedGroup, onSaved, groupTy
         <div className="overflow-y-auto p-5"><div className="grid gap-5">
           {notice ? <StatusAlert type={notice.type} message={notice.message} onClose={notice.type === 'loading' ? undefined : () => setNotice(null)} /> : null}
           <section className="rounded-2xl border border-slate-200 p-4"><h3 className="font-black text-slate-950">Network Information</h3><div className="mt-4 grid gap-4 md:grid-cols-2">
-            <Field autoFocus label="Network Name" required value={form.seller_group_name} onChange={(event) => updateForm('seller_group_name', event.target.value)} disabled={mutation.isPending} /><Field label="Broker Name" required value={form.broker_name} onChange={(event) => updateForm('broker_name', event.target.value)} disabled={mutation.isPending} /><Field label="Broker License Number" required value={form.broker_license_number} onChange={(event) => updateForm('broker_license_number', event.target.value)} disabled={mutation.isPending} /><Field label="Realty Name" required value={form.realty_name} onChange={(event) => updateForm('realty_name', event.target.value)} disabled={mutation.isPending} /><Field label="PRC Number" required value={form.broker_prc_number} onChange={(event) => updateForm('broker_prc_number', event.target.value)} disabled={mutation.isPending} />
+            <Field autoFocus label="Network Name" required value={form.seller_group_name} onChange={(event) => updateForm('seller_group_name', event.target.value)} disabled={mutation.isPending} /><Field label="Broker Name" required value={form.broker_name} onChange={(event) => updateForm('broker_name', event.target.value)} disabled={mutation.isPending} /><Field label="Broker License Number" required value={form.broker_license_number} onChange={(event) => updateForm('broker_license_number', event.target.value)} disabled={mutation.isPending} /><Field label="Realty Name" required value={form.realty_name} onChange={(event) => updateForm('realty_name', event.target.value)} disabled={mutation.isPending} /><BrokerNameWarning brokerName={form.broker_name} matches={brokerMatches} confirmed={form.confirm_duplicate_broker} onConfirmChange={(value) => { setNotice(null); setForm((current) => ({ ...current, confirm_duplicate_broker: value })) }} disabled={mutation.isPending} /><Field label="PRC Number" required value={form.broker_prc_number} onChange={(event) => updateForm('broker_prc_number', event.target.value)} disabled={mutation.isPending} />
             {!isExternal ? <label className="flex flex-col gap-1.5"><span className="text-xs font-black text-slate-700">Internal Hierarchy Head</span><select value={form.seller_group_head_user_id} onChange={(event) => {
               const nextHeadId = event.target.value
               setForm((current) => ({ ...current, seller_group_head_user_id: nextHeadId }))
@@ -183,3 +211,5 @@ const EditGroupModal = ({ setShowEditGroupModal, selectedGroup, onSaved, groupTy
 }
 
 export default EditGroupModal
+
+
