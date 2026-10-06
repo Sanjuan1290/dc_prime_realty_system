@@ -55,41 +55,70 @@ const reviewQueueWhere = (actor, { alias = 'r' } = {}) => {
   };
 };
 
+const reviewHistoryWhere = (actor, { alias = 'r' } = {}) => {
+  const role = String(actor?.role || '');
+  const actorId = Number(actor?.id || 0);
+
+  if (role === 'auditor') {
+    return {
+      sql: `(
+        ${alias}.head_reviewed_at IS NOT NULL
+        OR ${alias}.auditor_reviewed_by_user_id IS NOT NULL
+        OR COALESCE(${alias}.approval_type,'') IN ('head_self','head_preapproved','head_confirmed','head_corrected','emergency_super_admin')
+        OR EXISTS (SELECT 1 FROM audit_cases hac WHERE hac.operational_review_id=${alias}.operational_review_id)
+      )`,
+      params: [],
+    };
+  }
+
+  if (role === 'system_admin') {
+    return {
+      sql: `EXISTS (
+        SELECT 1 FROM audit_cases hac
+        WHERE hac.operational_review_id=${alias}.operational_review_id
+          AND NOT (COALESCE(${alias}.approval_type,'')='emergency_super_admin' OR ${alias}.initiated_by_role='super_admin')
+      )`,
+      params: [],
+    };
+  }
+
+  if (role === 'super_admin') {
+    return {
+      sql: `(COALESCE(${alias}.approval_type,'')='emergency_super_admin' OR ${alias}.initiated_by_role='super_admin')`,
+      params: [],
+    };
+  }
+
+  const department = getRoleDepartment(actor);
+  const isHead = department && DEPARTMENT_HEAD_ROLE[department] === role;
+  if (!isHead) return { sql: '1=0', params: [] };
+
+  return {
+    sql: `${alias}.department = ?
+      AND (${alias}.lot_project_id IS NULL OR COALESCE(?,0)=1 OR EXISTS (
+        SELECT 1 FROM user_project_access hupa
+        WHERE hupa.user_id=? AND hupa.lot_project_id=${alias}.lot_project_id
+      ))`,
+    params: [department, Number(actor?.all_projects_access || actor?.admin_all_projects || 0), actorId],
+  };
+};
+
 const canActorOpenReview = async (connection, actor, review) => {
   if (!actor || !review) return false;
-  const role = String(actor.role || '');
-  if (role === 'auditor') {
-    if (['pending_auditor_review','pending_auditor_recheck'].includes(review.status)) return true;
-    if (review.status !== 'audit_case_open') return false;
-    const [rows] = await connection.query(`SELECT status FROM audit_cases WHERE operational_review_id=? ORDER BY audit_case_id DESC LIMIT 1`, [review.operational_review_id]);
-    return rows[0]?.status === 'under_auditor_review';
-  }
-  if (role === 'system_admin') {
-    if (review.status === 'correction_required') return !(review.approval_type === 'emergency_super_admin' || review.initiated_by_role === 'super_admin');
-    if (review.status !== 'audit_case_open') return false;
-    const [rows] = await connection.query(`SELECT status,assigned_responder_user_id FROM audit_cases WHERE operational_review_id=? ORDER BY audit_case_id DESC LIMIT 1`, [review.operational_review_id]);
-    return rows[0]?.status === 'awaiting_head_response' && !rows[0]?.assigned_responder_user_id;
-  }
-  if (role === 'super_admin') {
-    return review.status === 'correction_required' && (review.approval_type === 'emergency_super_admin' || review.initiated_by_role === 'super_admin');
-  }
-  const department = getRoleDepartment(actor);
-  if (!department || DEPARTMENT_HEAD_ROLE[department] !== role || review.department !== department) return false;
-  if (!(await canActorSeeReview(connection, actor, review))) return false;
-  if (review.status === 'pending_head_review') return true;
-  if (review.status !== 'audit_case_open') return false;
-  const [rows] = await connection.query(`SELECT * FROM audit_cases WHERE operational_review_id=? ORDER BY audit_case_id DESC LIMIT 1`, [review.operational_review_id]);
-  const auditCase = rows[0];
-  if (!auditCase || auditCase.status !== 'awaiting_head_response') return false;
-  const responders = await resolveAuditCaseResponders(connection, { ...review, ...auditCase });
-  return responders.userIds.includes(Number(actorId));
+  const access = reviewHistoryWhere(actor);
+  const [rows] = await connection.query(
+    `SELECT 1 FROM operational_reviews r WHERE r.operational_review_id=? AND ${access.sql} LIMIT 1`,
+    [Number(review.operational_review_id || 0), ...access.params]
+  );
+  return Boolean(rows.length);
 };
 
 export const listOperationalReviews = async (req, res) => {
   try {
     const { page, limit } = pageValues(req.query);
     const offset = (page - 1) * limit;
-    const access = reviewQueueWhere(req.authUser);
+    const scope = String(req.query.scope || 'action').trim().toLowerCase() === 'history' ? 'history' : 'action';
+    const access = scope === 'history' ? reviewHistoryWhere(req.authUser) : reviewQueueWhere(req.authUser);
     const statuses = String(req.query.status || '').trim().split(',').map((v) => v.trim()).filter(Boolean);
     const params = [...access.params];
     let statusSql = '';
@@ -111,7 +140,7 @@ export const listOperationalReviews = async (req, res) => {
        ORDER BY r.updated_at DESC,r.operational_review_id DESC LIMIT ? OFFSET ?`,
       [...params, limit, offset]
     );
-    return res.json({ data: rows, pagination: { page, limit, total: Number(countRows[0]?.total || 0), totalPages: Math.max(1,Math.ceil(Number(countRows[0]?.total || 0)/limit)) } });
+    return res.json({ data: rows, scope, pagination: { page, limit, total: Number(countRows[0]?.total || 0), totalPages: Math.max(1,Math.ceil(Number(countRows[0]?.total || 0)/limit)) } });
   } catch (error) { return res.status(500).json({ message: errorMessage(error) }); }
 };
 
@@ -250,7 +279,7 @@ export const confirmHeadReview = async (req, res) => {
     await notifyAuditors(connection, { reviewId: review.operational_review_id, title: `Audit review required · ${review.entity_label || review.entity_type}`, message: `${review.review_number} was confirmed by the ${review.department} Head.` });
     await writeAuditLog(connection, req, { action:'approve',module:'Review Center',entityType:'operational_review',entityId:String(review.operational_review_id),entityLabel:review.review_number,title:'Department Head confirmed review',description:`${review.review_number} moved to Auditor review.`,metadata:{department:review.department,action_key:review.action_key} });
     await connection.commit();
-    return res.json({ message: 'Confirmed. The Auditor has been notified.' });
+    return res.json({ message: 'Confirmed. The Auditor has been notified. You can continue tracking this review in History & Tracking.' });
   } catch (error) { try { await connection.rollback(); } catch {} return res.status(error.statusCode || 500).json({ code:error.code,message:errorMessage(error) }); } finally { connection.release(); }
 };
 
@@ -308,7 +337,7 @@ export const auditorVerifyReview = async (req, res) => {
     await appendReviewEvent(connection, { reviewId:review.operational_review_id,eventType:previous==='pending_auditor_recheck'?'correction_verified':'auditor_verified',actor:req.authUser,fromStatus:previous,toStatus:'closed',message:String(req.body?.note || 'Auditor verified no issue.').slice(0,1000) });
     await writeAuditLog(connection, req, { action:'approve',module:'Review Center',entityType:'operational_review',entityId:String(review.operational_review_id),entityLabel:review.review_number,title:'Auditor verified operational review',description:`${review.review_number} closed after independent verification.`,metadata:{action_key:review.action_key} });
     await connection.commit();
-    return res.json({ message: 'Audit verification completed. Review closed.' });
+    return res.json({ message: 'Audit verification completed. Review closed. It remains available in History & Tracking.' });
   } catch (error) { try { await connection.rollback(); } catch {} return res.status(error.statusCode || 500).json({ code:error.code,message:errorMessage(error) }); } finally { connection.release(); }
 };
 

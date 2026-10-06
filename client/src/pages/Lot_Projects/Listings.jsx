@@ -11,6 +11,7 @@ import ListingImportHistoryModal from '../../components/Lot_Projects/ListingComp
 import {useFetch, useFetchDelete, useFetchPost, getDoubleCheckNotice} from '../../utils/useFetch'
 import useCurrentUser from '../../utils/useCurrentUser'
 import { hasPermission, PERMISSIONS } from '../../config/permissions'
+import { selectAxisPropsNeededForCartesianGridTicksGenerator } from 'recharts/types/state/selectors/axisSelectors'
 
 const money = (value) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value || 0))
 

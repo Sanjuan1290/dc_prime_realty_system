@@ -11,7 +11,8 @@ test('system-user creation no longer exposes a temporary password field', async 
   assert.doesNotMatch(source, /form\.password/);
   assert.doesNotMatch(source, /Temporary Password \*/);
   assert.match(source, /Final Review/);
-  assert.match(source, /account identity is retained if the user is later promoted, demoted, or transferred/);
+  assert.match(source, /permanent role\/account identity/);
+  assert.doesNotMatch(source, /account identity is retained if the user is later promoted, demoted, or transferred/i);
 });
 
 test('System Users removes the redundant Reset Password action because login has Forgot Password', async () => {

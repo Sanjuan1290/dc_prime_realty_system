@@ -35,7 +35,7 @@ const parseJson = (value) => {
   try { return JSON.parse(value) } catch { return null }
 }
 
-const titleCase = (value = '') => String(value || '').replace(/[._-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+const titleCase = (value = '') => String(value || '').replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/[._-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 const fmtDate = (value) => value ? new Date(value).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' }) : '—'
 const statusClass = (status = '') => {
   if (['closed', 'auditor_verified'].includes(status)) return 'bg-emerald-50 text-emerald-700 border-emerald-200'
@@ -58,23 +58,91 @@ const REVIEW_STATUS_LABELS = Object.freeze({
 const reviewStatusLabel = (status = '') => REVIEW_STATUS_LABELS[status] || titleCase(status)
 const isRoutinePostActionReview = (status = '') => ['pending_head_review', 'pending_auditor_review'].includes(status)
 
-const SnapshotValue = ({ value }) => {
+const SNAPSHOT_LABELS = Object.freeze({
+  broker: 'Broker Details',
+  broker_license_number: 'Broker License Number',
+  broker_name: 'Broker Name',
+  broker_prc_number: 'Broker PRC Number',
+  realty_name: 'Realty Name',
+  description: 'Description',
+  groupId: 'Network ID',
+  groupType: 'Network Type',
+  headUserId: 'Network Head',
+  name: 'Network Name',
+  rates: 'Project Rates',
+  projectId: 'Project ID',
+  poolRate: 'Pool Rate',
+  companyProfitRate: 'Company Profit',
+  divisionManagerRate: 'Division Manager',
+  salesDirectorRate: 'Sales Director',
+  unitManagerRate: 'Unit Manager',
+  salesAgentRate: 'Sales Agent',
+  status: 'Status',
+  listingIds: 'Listing IDs',
+  projectSlug: 'Project',
+  batchId: 'Batch ID',
+  batchReference: 'Batch Reference',
+  importedRows: 'Imported Rows',
+  filename: 'File Name',
+})
+
+const snapshotLabel = (key = '') => SNAPSHOT_LABELS[key] || titleCase(key)
+const isTechnicalSnapshotField = (key = '') => String(key).endsWith('_normalized')
+
+const formatSnapshotPrimitive = (value, key = '') => {
+  if (value == null || value === '') return '—'
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No'
+  if (key === 'groupType') return String(value) === 'external' ? 'External Network' : 'In-House Network'
+  if (key === 'status') return titleCase(value)
+  if (/Rate$/.test(key) && Number.isFinite(Number(value))) return `${Number(value)}%`
+  return String(value)
+}
+
+const SnapshotValue = ({ value, fieldKey = '', depth = 0 }) => {
   if (value == null || value === '') return <p className="mt-1 text-sm font-black text-slate-500">—</p>
-  if (typeof value === 'object') {
-    return <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-950 p-3 text-xs font-semibold leading-5 text-slate-100">{JSON.stringify(value, null, 2)}</pre>
+
+  if (Array.isArray(value)) {
+    if (!value.length) return <p className="mt-1 text-sm font-black text-slate-500">None</p>
+    const objectItems = value.some((item) => item && typeof item === 'object')
+    if (!objectItems) {
+      const visible = value.slice(0, 24)
+      return <div className="mt-2 flex flex-wrap gap-1.5">
+        {visible.map((item, index) => <span key={`${fieldKey}-${index}`} className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-bold text-slate-700">{formatSnapshotPrimitive(item, fieldKey)}</span>)}
+        {value.length > visible.length ? <span className="rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-black text-blue-700">+{value.length - visible.length} more</span> : null}
+      </div>
+    }
+    return <div className="mt-2 grid gap-2">
+      {value.map((item, index) => <div key={`${fieldKey}-${index}`} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+        <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">{fieldKey === 'rates' ? `Project Rate ${index + 1}` : `Item ${index + 1}`}</p>
+        <SnapshotValue value={item} fieldKey={fieldKey} depth={depth + 1} />
+      </div>)}
+    </div>
   }
-  return <p className="mt-1 break-words text-sm font-black text-slate-800">{String(value)}</p>
+
+  if (typeof value === 'object') {
+    const entries = Object.entries(value).filter(([key]) => !isTechnicalSnapshotField(key))
+    if (!entries.length) return <p className="mt-1 text-sm font-black text-slate-500">No displayable values</p>
+    return <div className={`mt-2 grid gap-2 ${depth < 2 ? 'sm:grid-cols-2' : ''}`}>
+      {entries.map(([key, item]) => <div key={key} className={`rounded-xl border border-slate-200 bg-white p-3 ${item && typeof item === 'object' ? 'sm:col-span-2' : ''}`}>
+        <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">{snapshotLabel(key)}</p>
+        <SnapshotValue value={item} fieldKey={key} depth={depth + 1} />
+      </div>)}
+    </div>
+  }
+
+  return <p className="mt-1 break-words text-sm font-black text-slate-800">{formatSnapshotPrimitive(value, fieldKey)}</p>
 }
 
 const Snapshot = ({ title, value }) => {
   const data = parseJson(value)
   if (!data || typeof data !== 'object') return null
+  const entries = Object.entries(data).filter(([key]) => !isTechnicalSnapshotField(key))
   return <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
     <p className="text-xs font-black uppercase tracking-wide text-slate-500">{title}</p>
     <div className="mt-3 grid gap-2 sm:grid-cols-2">
-      {Object.entries(data).map(([key, item]) => <div key={key} className={`rounded-xl border border-slate-200 bg-white p-3 ${typeof item === 'object' && item !== null ? 'sm:col-span-2' : ''}`}>
-        <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">{titleCase(key)}</p>
-        <SnapshotValue value={item} />
+      {entries.map(([key, item]) => <div key={key} className={`rounded-xl border border-slate-200 bg-white p-3 ${typeof item === 'object' && item !== null ? 'sm:col-span-2' : ''}`}>
+        <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">{snapshotLabel(key)}</p>
+        <SnapshotValue value={item} fieldKey={key} />
       </div>)}
     </div>
   </section>
@@ -83,13 +151,13 @@ const Snapshot = ({ title, value }) => {
 const ChangedFields = ({ beforeValue, afterValue }) => {
   const before = parseJson(beforeValue) || {}
   const after = parseJson(afterValue) || {}
-  const keys = [...new Set([...Object.keys(before), ...Object.keys(after)])]
+  const keys = [...new Set([...Object.keys(before), ...Object.keys(after)])].filter((key) => !isTechnicalSnapshotField(key))
   const changed = keys.filter((key) => JSON.stringify(before[key] ?? null) !== JSON.stringify(after[key] ?? null))
 
   if (!changed.length) {
     return <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
       <p className="text-xs font-black uppercase tracking-wide text-emerald-700">Changed Fields</p>
-      <p className="mt-2 text-sm font-semibold text-emerald-900">No top-level field difference is available in the saved snapshots.</p>
+      <p className="mt-2 text-sm font-semibold text-emerald-900">No visible field difference is available in the saved snapshots.</p>
     </section>
   }
 
@@ -100,9 +168,9 @@ const ChangedFields = ({ beforeValue, afterValue }) => {
     </div>
     <div className="divide-y divide-slate-100">
       {changed.map((key) => <div key={key} className="grid gap-3 p-4 lg:grid-cols-[180px_1fr_1fr]">
-        <div><p className="text-xs font-black uppercase tracking-wide text-slate-500">{titleCase(key)}</p></div>
-        <div className="rounded-xl border border-red-100 bg-red-50/50 p-3"><p className="text-[10px] font-black uppercase tracking-wide text-red-500">Before</p><SnapshotValue value={before[key]} /></div>
-        <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 p-3"><p className="text-[10px] font-black uppercase tracking-wide text-emerald-600">After</p><SnapshotValue value={after[key]} /></div>
+        <div><p className="text-xs font-black uppercase tracking-wide text-slate-500">{snapshotLabel(key)}</p></div>
+        <div className="rounded-xl border border-red-100 bg-red-50/50 p-3"><p className="text-[10px] font-black uppercase tracking-wide text-red-500">Before</p><SnapshotValue value={before[key]} fieldKey={key} /></div>
+        <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 p-3"><p className="text-[10px] font-black uppercase tracking-wide text-emerald-600">After</p><SnapshotValue value={after[key]} fieldKey={key} /></div>
       </div>)}
     </div>
   </section>
@@ -181,7 +249,16 @@ export const ReviewDetails = ({ reviewId, onClose, onChanged }) => {
       await onChanged?.()
       await query.refetch()
     },
-    onError: (error) => setNotice(getDoubleCheckNotice(error, 'Workflow action failed.')),
+    onError: async (error) => {
+      if (Number(error?.status || 0) === 409) {
+        await query.refetch()
+        await onChanged?.()
+        setAction(null)
+        setNotice({ type: 'info', message: 'This review already moved to its next workflow stage. The latest status is now shown below.' })
+        return
+      }
+      setNotice(getDoubleCheckNotice(error, 'Workflow action failed.'))
+    },
   })
 
   const before = parseJson(review?.before_snapshot_json) || {}
@@ -346,7 +423,7 @@ export const ReviewDetails = ({ reviewId, onClose, onChanged }) => {
       <header className="flex items-start justify-between gap-4 border-b border-slate-200 p-5 sm:p-6"><div><div className="flex flex-wrap items-center gap-2"><span className="font-mono text-sm font-black text-blue-700">{review.review_number}</span><span className={`rounded-full border px-2.5 py-1 text-[11px] font-black ${statusClass(review.status)}`}>{reviewStatusLabel(review.status)}</span>{review.approval_type ? <span className={`rounded-full border px-2.5 py-1 text-[11px] font-black ${review.approval_type === 'emergency_super_admin' ? 'border-red-200 bg-red-50 text-red-700' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>{APPROVAL_TYPE_LABELS[review.approval_type] || titleCase(review.approval_type)}</span> : null}</div><h2 className="mt-2 text-2xl font-black">{review.entity_label || titleCase(review.entity_type)}</h2><p className="mt-1 text-sm font-semibold text-slate-500">{titleCase(review.department)} · {titleCase(review.action_key)} · {review.lot_project_name || 'No project scope'}</p></div></header>
       <div className="grid gap-5 p-5 sm:p-6">
         {notice ? <StatusAlert type={notice.type} message={notice.message} onClose={() => setNotice(null)} /> : null}
-        {operationAlreadyCompleted ? <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-950"><div className="flex items-start gap-3"><FiCheckCircle className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" /><div><p className="font-black">Operation completed successfully</p><p className="mt-1 text-sm font-semibold leading-6 text-emerald-800">This is a post-action quality check. The record remains usable and other operations may continue while the Head/Auditor reviews this entry. If the same user edits it again before the check is finished, this Review is refreshed to the latest saved values.</p></div></div></section> : null}
+        {operationAlreadyCompleted ? <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-950"><div className="flex items-start gap-3"><FiCheckCircle className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" /><div><p className="font-black">Operation completed successfully</p><p className="mt-1 text-sm font-semibold leading-6 text-emerald-800">This is a post-action quality check. Routine review queues do not block completed operations. The record remains usable and other operations may continue while the Head/Auditor reviews this entry. If the same user edits it again before the check is finished, this Review is refreshed to the latest saved values.</p></div></div></section> : null}
         {review.status === 'returned_for_correction' ? <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950"><div className="flex items-start gap-3"><FiAlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" /><div><p className="font-black">Department Head requested a correction</p><p className="mt-1 text-sm font-semibold leading-6 text-amber-900">Normal operations elsewhere may continue, but this exact record is now in correction mode. The original staff member should open it from this Review, fix the requested values, and resubmit the same Review to the Head.</p></div></div></section> : null}
         {review.status === 'correction_required' ? <section className="rounded-2xl border border-red-300 bg-red-50 p-4 text-red-950"><div className="flex items-start gap-3"><FiAlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-700" /><div><p className="font-black">Controlled correction required</p><p className="mt-1 text-sm font-semibold leading-6 text-red-900">The Auditor confirmed a real issue. This exact record is temporarily held while {correctionRoleLabel} applies the authorized correction. After saving, the Auditor must recheck it before the case closes.</p></div></div></section> : null}
         <section className="grid gap-3 rounded-2xl border border-slate-200 p-4 sm:grid-cols-3"><div><p className="text-xs font-black uppercase text-slate-400">Entered by</p><p className="mt-1 font-black">{review.initiated_by_name || `User #${review.initiated_by_user_id}`}</p><p className="text-xs font-semibold text-slate-500">{ROLE_LABELS[review.initiated_by_role] || titleCase(review.initiated_by_role)}</p></div><div><p className="text-xs font-black uppercase text-slate-400">Department Check</p><p className="mt-1 font-black">{headReviewLabel}</p><p className="text-xs font-semibold text-slate-500">{review.head_reviewed_at ? fmtDate(review.head_reviewed_at) : 'Does not block operations'}</p></div><div><p className="text-xs font-black uppercase text-slate-400">Independent Audit</p><p className="mt-1 font-black">{auditorReviewLabel}</p><p className="text-xs font-semibold text-slate-500">{review.auditor_reviewed_at ? fmtDate(review.auditor_reviewed_at) : 'Runs after the operation'}</p></div></section>
@@ -391,12 +468,18 @@ const ReviewCenter = () => {
   const queueCopy = getQueueCopy(actor.role)
   const actorRoot = `/portal/${actor.role || 'super_admin'}`
   const [tab, setTab] = useState('reviews')
+  const [reviewScope, setReviewScope] = useState('action')
   const [status, setStatus] = useState('')
+  const [reviewPage, setReviewPage] = useState(1)
   const [search, setSearch] = useState('')
   const [approvalStatus, setApprovalStatus] = useState('')
   const [notice, setNotice] = useState(null)
   const summary = useQuery({ queryKey: ['workflow-summary'], queryFn: () => useFetch('/workflow/summary'), enabled: REVIEW_CENTER_ROLES.has(actor.role), refetchInterval: 30_000 })
-  const reviews = useQuery({ queryKey: ['workflow-reviews', status], queryFn: () => useFetch(`/workflow/reviews?limit=100${status ? `&status=${encodeURIComponent(status)}` : ''}`), enabled: REVIEW_CENTER_ROLES.has(actor.role) && tab === 'reviews' })
+  const reviews = useQuery({
+    queryKey: ['workflow-reviews', reviewScope, status, reviewPage],
+    queryFn: () => useFetch(`/workflow/reviews?scope=${reviewScope}&page=${reviewPage}&limit=10${status ? `&status=${encodeURIComponent(status)}` : ''}`),
+    enabled: REVIEW_CENTER_ROLES.has(actor.role) && tab === 'reviews',
+  })
   const approvals = useQuery({ queryKey: ['workflow-protected-changes', approvalStatus], queryFn: () => useFetch(`/workflow/protected-changes?limit=100${approvalStatus ? `&status=${encodeURIComponent(approvalStatus)}` : ''}`), enabled: REVIEW_CENTER_ROLES.has(actor.role) && isHead && tab === 'approvals' })
   const notifications = useQuery({ queryKey: ['workflow-notifications'], queryFn: () => useFetch('/workflow/notifications?limit=100'), enabled: REVIEW_CENTER_ROLES.has(actor.role) && tab === 'notifications' })
   const approvalMutation = useMutation({
@@ -416,6 +499,26 @@ const ReviewCenter = () => {
     return rows.filter((row) => [row.review_number, row.entity_label, row.action_key, row.lot_project_name, row.initiated_by_name].some((v) => String(v || '').toLowerCase().includes(needle)))
   }, [reviews.data, search])
   const counts = summary.data?.data || {}
+  const actionStatuses = actor.role === 'auditor'
+    ? ['pending_auditor_review', 'audit_case_open', 'pending_auditor_recheck']
+    : actor.role === 'system_admin'
+      ? ['correction_required', 'audit_case_open']
+      : actor.role === 'super_admin'
+        ? ['correction_required']
+        : ['pending_head_review', 'audit_case_open']
+  const visibleStatuses = reviewScope === 'action'
+    ? actionStatuses
+    : ['pending_head_review', 'returned_for_correction', 'pending_auditor_review', 'audit_case_open', 'correction_required', 'pending_auditor_recheck', 'closed']
+  const reviewPagination = reviews.data?.pagination || { page: reviewPage, totalPages: 1, total: 0 }
+  const changeReviewScope = (scope) => {
+    setReviewScope(scope)
+    setStatus('')
+    setReviewPage(1)
+  }
+  const changeReviewStatus = (nextStatus) => {
+    setStatus(nextStatus)
+    setReviewPage(1)
+  }
   const refreshAll = async () => { await Promise.all([summary.refetch(), reviews.refetch(), approvals.refetch(), notifications.refetch()]) }
 
   if (actor.role && !REVIEW_CENTER_ROLES.has(actor.role)) return <Navigate to={`/portal/${actor.role}`} replace />
@@ -434,8 +537,15 @@ const ReviewCenter = () => {
       <div className="flex flex-wrap gap-2 border-b border-slate-200 p-4">{[['reviews','Reviews',FiClock], ...(isHead ? [['approvals','Protected Approvals',FiUserCheck]] : []), ['notifications','Internal Notifications',FiBell]].map(([key,label,Icon]) => <button key={key} type="button" onClick={() => setTab(key)} className={`inline-flex h-10 items-center gap-2 rounded-xl px-4 text-sm font-black ${tab === key ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600'}`}><Icon />{label}</button>)}</div>
 
       {tab === 'reviews' ? <div className="p-4 sm:p-5">
-        <div className="mb-4 flex flex-wrap gap-2"><label className="relative min-w-[240px] flex-1"><FiSearch className="absolute left-3 top-3.5 text-slate-400" /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search review, unit, action, project..." className="h-11 w-full rounded-xl border border-slate-300 pl-10 pr-3 font-semibold" /></label><select value={status} onChange={(e) => setStatus(e.target.value)} className="h-11 rounded-xl border border-slate-300 px-3 font-bold"><option value="">All statuses</option>{['pending_head_review','returned_for_correction','pending_auditor_review','audit_case_open','correction_required','pending_auditor_recheck','closed'].map((item) => <option key={item} value={item}>{reviewStatusLabel(item)}</option>)}</select></div>
-        {reviews.isLoading ? <StatusAlert type="loading" message="Loading reviews..." /> : reviewRows.length ? <div className="overflow-x-auto"><table className="min-w-full text-left text-sm"><thead><tr className="border-b bg-slate-50 text-xs uppercase text-slate-500"><th className="px-3 py-3">Review</th><th className="px-3 py-3">Record</th><th className="px-3 py-3">Department</th><th className="px-3 py-3">Entered By</th><th className="px-3 py-3">Status</th><th className="px-3 py-3"></th></tr></thead><tbody>{reviewRows.map((row) => <tr key={row.operational_review_id} className="border-b last:border-0"><td className="px-3 py-3"><p className="font-mono font-black text-blue-700">{row.review_number}</p><p className="text-xs font-semibold text-slate-500">{fmtDate(row.created_at)}</p></td><td className="px-3 py-3"><p className="font-black">{row.entity_label || titleCase(row.entity_type)}</p><p className="text-xs font-semibold text-slate-500">{titleCase(row.action_key)} · {row.lot_project_name || '—'}</p></td><td className="px-3 py-3 font-bold">{titleCase(row.department)}</td><td className="px-3 py-3"><p className="font-bold">{row.initiated_by_name || `User #${row.initiated_by_user_id}`}</p><p className="text-xs text-slate-500">{ROLE_LABELS[row.initiated_by_role] || titleCase(row.initiated_by_role)}</p></td><td className="px-3 py-3"><span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-black ${statusClass(row.status)}`}>{reviewStatusLabel(row.status)}</span></td><td className="px-3 py-3 text-right"><button type="button" onClick={() => navigate(`${actorRoot}/review-center/reviews/${row.operational_review_id}`)} className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 font-black text-blue-700">Open</button></td></tr>)}</tbody></table></div> : <StatusAlert type="info" message="No reviews match this queue." />}
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
+            <button type="button" onClick={() => changeReviewScope('action')} className={`h-9 rounded-lg px-3 text-sm font-black ${reviewScope === 'action' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600'}`}>Needs My Action</button>
+            <button type="button" onClick={() => changeReviewScope('history')} className={`h-9 rounded-lg px-3 text-sm font-black ${reviewScope === 'history' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-600'}`}>History &amp; Tracking</button>
+          </div>
+          <p className="text-sm font-semibold text-slate-500">{reviewScope === 'action' ? 'Only reviews currently waiting for your role.' : 'Read-only tracking of reviews your role has already handled or can legitimately follow.'}</p>
+        </div>
+        <div className="mb-4 flex flex-wrap gap-2"><label className="relative min-w-[240px] flex-1"><FiSearch className="absolute left-3 top-3.5 text-slate-400" /><input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search review, unit, action, project..." className="h-11 w-full rounded-xl border border-slate-300 pl-10 pr-3 font-semibold" /></label><select value={status} onChange={(e) => changeReviewStatus(e.target.value)} className="h-11 rounded-xl border border-slate-300 px-3 font-bold"><option value="">All visible statuses</option>{visibleStatuses.map((item) => <option key={item} value={item}>{reviewStatusLabel(item)}</option>)}</select></div>
+        {reviews.isLoading ? <StatusAlert type="loading" message="Loading reviews..." /> : reviewRows.length ? <><div className="overflow-x-auto"><table className="min-w-full text-left text-sm"><thead><tr className="border-b bg-slate-50 text-xs uppercase text-slate-500"><th className="px-3 py-3">Review</th><th className="px-3 py-3">Record</th><th className="px-3 py-3">Department</th><th className="px-3 py-3">Entered By</th><th className="px-3 py-3">Status</th><th className="px-3 py-3"></th></tr></thead><tbody>{reviewRows.map((row) => <tr key={row.operational_review_id} className="border-b last:border-0"><td className="px-3 py-3"><p className="font-mono font-black text-blue-700">{row.review_number}</p><p className="text-xs font-semibold text-slate-500">{fmtDate(row.created_at)}</p></td><td className="px-3 py-3"><p className="font-black">{row.entity_label || titleCase(row.entity_type)}</p><p className="text-xs font-semibold text-slate-500">{titleCase(row.action_key)} · {row.lot_project_name || '—'}</p></td><td className="px-3 py-3 font-bold">{titleCase(row.department)}</td><td className="px-3 py-3"><p className="font-bold">{row.initiated_by_name || `User #${row.initiated_by_user_id}`}</p><p className="text-xs text-slate-500">{ROLE_LABELS[row.initiated_by_role] || titleCase(row.initiated_by_role)}</p></td><td className="px-3 py-3"><span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-black ${statusClass(row.status)}`}>{reviewStatusLabel(row.status)}</span></td><td className="px-3 py-3 text-right"><button type="button" onClick={() => navigate(`${actorRoot}/review-center/reviews/${row.operational_review_id}`)} className="rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 font-black text-blue-700">Open</button></td></tr>)}</tbody></table></div><div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4"><p className="text-sm font-semibold text-slate-500">Page {Number(reviewPagination.page || 1)} of {Number(reviewPagination.totalPages || 1)} · {Number(reviewPagination.total || 0)} review{Number(reviewPagination.total || 0) === 1 ? '' : 's'}</p><div className="flex gap-2"><button type="button" onClick={() => setReviewPage((page) => Math.max(1, page - 1))} disabled={Number(reviewPagination.page || 1) <= 1} className="h-9 rounded-xl border border-slate-300 px-3 font-black text-slate-700 disabled:cursor-not-allowed disabled:opacity-40">Previous</button><button type="button" onClick={() => setReviewPage((page) => Math.min(Number(reviewPagination.totalPages || 1), page + 1))} disabled={Number(reviewPagination.page || 1) >= Number(reviewPagination.totalPages || 1)} className="h-9 rounded-xl border border-slate-300 px-3 font-black text-slate-700 disabled:cursor-not-allowed disabled:opacity-40">Next</button></div></div></> : <StatusAlert type="info" message={reviewScope === 'action' ? 'No reviews are waiting for your action.' : 'No review history matches these filters.'} />}
       </div> : null}
 
       {tab === 'approvals' && isHead ? <div className="p-4 sm:p-5"><div className="mb-4 flex flex-wrap items-center justify-between gap-3"><p className="text-sm font-semibold text-slate-500">{actor.role === 'auditor' ? 'Full approval history, read-only. Approved changes reach your Reviews queue once they are saved.' : 'Head approvals for protected changes.'}</p><label className="flex items-center gap-2 text-sm font-black text-slate-700">Status<select value={approvalStatus} onChange={(e) => setApprovalStatus(e.target.value)} className="h-10 rounded-xl border border-slate-300 px-3 font-semibold">{[['','All'],['pending','Pending'],['approved','Approved, not yet used'],['used','Used'],['rejected','Rejected'],['expired','Expired'],['cancelled','Cancelled']].map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label></div>{approvals.isLoading ? <StatusAlert type="loading" message="Loading approval requests..." /> : (approvals.data?.data || []).length ? <div className="grid gap-3">{approvals.data.data.map((row) => <div key={row.protected_change_request_id} className="rounded-2xl border border-slate-200 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-mono text-sm font-black text-blue-700">{row.request_number}</p><p className="mt-1 text-lg font-black">{row.entity_label || titleCase(row.entity_type)}</p><p className="text-sm font-semibold text-slate-500">{titleCase(row.action_key)} · {titleCase(row.department)} · {row.lot_project_name || '—'}</p><p className="mt-2 text-sm text-slate-600"><strong>Reason:</strong> {row.reason}</p><p className="mt-1 text-xs font-semibold text-slate-500">Requested by {row.requested_by_name || `User #${row.requested_by_user_id}`} on {fmtDate(row.created_at)}</p>{row.reviewed_at ? <p className="mt-1 text-xs font-semibold text-slate-500">{row.status === 'rejected' ? 'Rejected' : 'Approved'} by {row.reviewed_by_head_name || `User #${row.reviewed_by_head_user_id}`} on {fmtDate(row.reviewed_at)}{row.head_note ? `. Note: ${row.head_note}` : ''}</p> : null}{row.used_at ? <p className="mt-1 text-xs font-semibold text-emerald-700">Change applied on {fmtDate(row.used_at)}</p> : null}{row.status === 'pending' ? <p className="mt-1 text-xs font-semibold text-amber-700">Expires {fmtDate(row.expires_at)}</p> : null}</div><span className={`rounded-full border px-3 py-1 text-xs font-black ${row.status === 'approved' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : row.status === 'rejected' ? 'border-red-200 bg-red-50 text-red-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>{titleCase(row.status)}</span></div>{row.status === 'pending' && DEPARTMENT_HEAD_ROLE[row.department] === actor.role ? <div className="mt-4 flex gap-2 border-t pt-4"><button type="button" onClick={() => approvalMutation.mutate({ id: row.protected_change_request_id, decision: 'approve' })} className="h-10 rounded-xl bg-emerald-600 px-4 font-black text-white">Approve Exact Change</button><button type="button" onClick={() => approvalMutation.mutate({ id: row.protected_change_request_id, decision: 'reject' })} className="h-10 rounded-xl bg-red-600 px-4 font-black text-white">Reject</button></div> : null}</div>)}</div> : <StatusAlert type="info" message="No protected change requests are visible to your account." />}</div> : null}

@@ -64,7 +64,7 @@ test('Super Admin, System Admin and Auditor are always scoped to All Projects', 
   assert.match(projectAccess, /hasForcedAllProjectsAccess = \(user = \{\}\) => GLOBAL_PROJECT_ROLES\.includes/);
   assert.match(usersController, /if \(\['super_admin', 'system_admin', 'auditor'\]\.includes\(role\)\) return;/);
   assert.match(usersController, /const projectAccess = \['super_admin', 'system_admin', 'auditor'\]\.includes\(role\)/);
-  assert.match(usersController, /const forcedAllProjects = \['system_admin', 'auditor'\]\.includes\(newRole\)/);
+  assert.doesNotMatch(usersController, /changeUserPosition|forcedAllProjects[\s\S]*newRole/);
   assert.match(clientPermissions, /\['super_admin', 'system_admin', 'auditor'\]\.includes\(user\.role\)/);
   assert.match(createSystemUser, /GLOBAL_PROJECT_ROLES = \['super_admin', 'system_admin', 'auditor'\]/);
   assert.match(usersPage, /\['super_admin','system_admin','auditor'\]\.includes\(user\.role\)/);
