@@ -278,7 +278,6 @@ const CreateSystemUserModal = ({ onClose, onSaved }) => {
                 <p className="mt-1 text-sm font-semibold text-amber-900">This account has {outsideNormalPermissions.length} permission{outsideNormalPermissions.length === 1 ? '' : 's'} outside the normal {ROLE_LABELS[form.role]} profile. These are allowed, but confirm they are intentional.</p>
                 <div className="mt-3 grid gap-2 sm:grid-cols-2">{outsideNormalPermissions.map((key) => <div key={key} className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-sm font-bold text-slate-800">{permissionLabelByKey[key] || key}</div>)}</div>
               </div> : null}
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">The account identity is retained if the user is later promoted, demoted, or transferred. Role changes are recorded in Role History and invalidate existing sessions.</div>
             </section>
           ) : null}
 
@@ -296,5 +295,3 @@ const CreateSystemUserModal = ({ onClose, onSaved }) => {
 }
 
 export default CreateSystemUserModal
-
-
