@@ -15,9 +15,10 @@ test('Role & Access Control hides Optional status labels while preserving select
   assert.doesNotMatch(matrix, />Select All<\/button>/);
   assert.match(matrix, /Select all View/);
   assert.match(matrix, />Clear All<\/button>/);
-  assert.match(matrix, /stateFor\(key\) !== 'optional'/);
+  assert.match(matrix, /const isLocked = \(\) => disabled/);
   assert.match(matrix, /Outside normal role/);
   assert.doesNotMatch(matrix, />Not Allowed</);
   assert.doesNotMatch(roleAccess, /Optional permissions may be adjusted below\./);
-  assert.match(roleAccess, /Business permissions from other departments may also be selected/);
+  assert.match(roleAccess, /including permissions from other departments, can be added to any role/);
 });
+

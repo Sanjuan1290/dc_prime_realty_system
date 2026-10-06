@@ -39,6 +39,12 @@ const ComparisonRow = ({ label, before, after, currency = false }) => (
 )
 
 const ReservationCorrectionModal = ({ open, projectSlug, listingId, onClose, onCorrected, actorRole = '', auditCaseId = null }) => {
+  // Super Admin and System Admin are both owner-level. Opened from an Auditor
+  // case they use the case-correction flow; otherwise the emergency flow
+  // (current password + email code).
+  const isOwner = ['super_admin', 'system_admin'].includes(actorRole)
+  const caseMode = isOwner && Number(auditCaseId || 0) > 0
+  const emergencyMode = isOwner && !caseMode
   const [destinationListingId, setDestinationListingId] = useState('')
   const [destinationSearch, setDestinationSearch] = useState('')
   const [terms, setTerms] = useState(null)
@@ -95,15 +101,15 @@ const ReservationCorrectionModal = ({ open, projectSlug, listingId, onClose, onC
     mutationFn: () => useFetchPost(
       `/projects/lot-projects/${projectSlug}/listings/${listingId}/reservation-correction/code`,
       {
-        password: actorRole === 'super_admin' ? superAdminPassword : undefined,
+        password: emergencyMode ? superAdminPassword : undefined,
         destinationListingId: Number(destinationListingId),
         terms: normalizedTerms,
         reason: reason.trim(),
-        auditCaseId: actorRole === 'system_admin' ? Number(auditCaseId || 0) || undefined : undefined,
+        auditCaseId: caseMode ? Number(auditCaseId || 0) || undefined : undefined,
       },
       { confirmationHandled: 'technical' }
     ),
-    onMutate: () => setNotice({ type: 'loading', message: actorRole === 'super_admin' ? 'Verifying emergency owner credentials...' : 'Checking Department Head authorization...' }),
+    onMutate: () => setNotice({ type: 'loading', message: emergencyMode ? 'Verifying emergency owner credentials...' : 'Checking Department Head authorization...' }),
     onSuccess: (result) => {
       const response = result?.data || {}
       setAuthorization({
@@ -130,10 +136,10 @@ const ReservationCorrectionModal = ({ open, projectSlug, listingId, onClose, onC
         destinationListingId: Number(destinationListingId),
         terms: normalizedTerms,
         reason: reason.trim(),
-        verificationId: controlledMode && actorRole === 'super_admin' ? verificationId : undefined,
-        code: controlledMode && actorRole === 'super_admin' ? verificationCode.trim() : undefined,
+        verificationId: controlledMode && emergencyMode ? verificationId : undefined,
+        code: controlledMode && emergencyMode ? verificationCode.trim() : undefined,
         approvalRequestId: controlledMode && !['super_admin','sales_head','system_admin'].includes(actorRole) ? authorization?.approvalRequestId || undefined : undefined,
-        auditCaseId: controlledMode && actorRole === 'system_admin' ? authorization?.auditCaseId || Number(auditCaseId || 0) || undefined : undefined,
+        auditCaseId: controlledMode && caseMode ? authorization?.auditCaseId || Number(auditCaseId || 0) || undefined : undefined,
       },
       {
         doubleCheck: {
@@ -390,22 +396,22 @@ const ReservationCorrectionModal = ({ open, projectSlug, listingId, onClose, onC
                 <section className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4 sm:p-5">
                   <h3 className="font-black text-slate-950">5. Governed authorization</h3>
                   <p className="mt-1 text-sm font-semibold text-slate-600">
-                    {actorRole === 'super_admin'
+                    {emergencyMode
                       ? 'Super Admin is emergency fallback only. Emergency use requires your password and email code.'
-                      : actorRole === 'system_admin'
+                      : caseMode
                         ? 'System Admin can apply this only from a valid Auditor case for this exact buyer account.'
                         : actorRole === 'sales_head'
                           ? 'Sales Head can apply the exact correction directly; it will go to the Auditor afterward.'
                           : 'This exact correction must be approved by a Sales Head before it can be applied.'}
                   </p>
                   {authorization?.requestNumber ? <p className="mt-3 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-black text-blue-900">{authorization.requestNumber} · {authorization.status === 'approved' || authorization.directCorrection ? 'Approved' : 'Pending Head Review'}</p> : null}
-                  {actorRole === 'super_admin' && !verificationId ? (
+                  {emergencyMode && !verificationId ? (
                     <label className="mt-4 block max-w-md">
                       <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-600">Super Admin Password *</span>
                       <input type="password" value={superAdminPassword} onChange={(event) => setSuperAdminPassword(event.target.value)} disabled={busy} autoComplete="current-password" className={fieldClass} placeholder="Emergency owner password" />
                     </label>
                   ) : null}
-                  {actorRole === 'super_admin' && verificationId ? (
+                  {emergencyMode && verificationId ? (
                     <div className="mt-4 grid gap-3 sm:grid-cols-2">
                       <div className="rounded-xl border border-emerald-200 bg-white p-3"><p className="text-xs font-black uppercase text-emerald-700">Emergency password verified</p><p className="mt-1 text-sm font-semibold text-slate-600">Code sent to {maskedEmail || 'the Super Admin email'}.</p></div>
                       <label className="block"><span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-600">Email Verification Code *</span><input inputMode="numeric" maxLength={6} value={verificationCode} onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, '').slice(0, 6))} disabled={busy} className={fieldClass} placeholder="6-digit code" /></label>
@@ -419,20 +425,20 @@ const ReservationCorrectionModal = ({ open, projectSlug, listingId, onClose, onC
 
         <div className="sticky bottom-0 flex flex-col-reverse gap-2 border-t border-slate-200 bg-white px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
           <button type="button" onClick={onClose} disabled={busy} className="h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 transition hover:bg-slate-50 disabled:opacity-50">Cancel</button>
-          {controlledMode && !(authorization?.status === 'approved' || authorization?.directCorrection) && !(actorRole === 'super_admin' && verificationId) ? (
+          {controlledMode && !(authorization?.status === 'approved' || authorization?.directCorrection) && !(emergencyMode && verificationId) ? (
             <button
               type="button"
               onClick={() => verificationMutation.mutate()}
-              disabled={!previewIsCurrent || reason.trim().length < 5 || !acknowledged || verificationMutation.isPending || hardBlockers.length > 0 || (actorRole === 'super_admin' && !superAdminPassword.trim()) || (actorRole === 'system_admin' && !Number(auditCaseId || 0))}
+              disabled={!previewIsCurrent || reason.trim().length < 5 || !acknowledged || verificationMutation.isPending || hardBlockers.length > 0 || (emergencyMode && !superAdminPassword.trim()) || (caseMode && !Number(auditCaseId || 0))}
               className="h-11 rounded-xl bg-amber-600 px-5 text-sm font-black text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
             >
-              {verificationMutation.isPending ? 'Checking...' : actorRole === 'super_admin' ? 'Verify Password & Send Emergency Code' : actorRole === 'system_admin' ? 'Validate Audit Case' : actorRole === 'sales_head' ? 'Continue as Sales Head' : authorization?.status === 'pending' ? 'Check Sales Head Approval' : 'Request Sales Head Approval'}
+              {verificationMutation.isPending ? 'Checking...' : emergencyMode ? 'Verify Password & Send Emergency Code' : caseMode ? 'Validate Audit Case' : actorRole === 'sales_head' ? 'Continue as Sales Head' : authorization?.status === 'pending' ? 'Check Sales Head Approval' : 'Request Sales Head Approval'}
             </button>
           ) : (
             <button
               type="button"
               onClick={() => correctionMutation.mutate()}
-              disabled={!previewIsCurrent || reason.trim().length < 5 || !acknowledged || correctionMutation.isPending || hardBlockers.length > 0 || (controlledMode && actorRole === 'super_admin' && (!verificationId || verificationCode.trim().length !== 6)) || (controlledMode && !['super_admin','sales_head','system_admin'].includes(actorRole) && !(authorization?.status === 'approved'))}
+              disabled={!previewIsCurrent || reason.trim().length < 5 || !acknowledged || correctionMutation.isPending || hardBlockers.length > 0 || (controlledMode && emergencyMode && (!verificationId || verificationCode.trim().length !== 6)) || (controlledMode && !['super_admin','sales_head','system_admin'].includes(actorRole) && !(authorization?.status === 'approved'))}
               className="h-11 rounded-xl bg-red-600 px-5 text-sm font-black text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
             >
               {correctionMutation.isPending ? 'Correcting Reservation...' : controlledMode ? 'Review & Apply Controlled Correction' : 'Review & Correct Reservation'}
@@ -445,3 +451,4 @@ const ReservationCorrectionModal = ({ open, projectSlug, listingId, onClose, onC
 }
 
 export default ReservationCorrectionModal
+

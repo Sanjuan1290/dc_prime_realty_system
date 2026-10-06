@@ -1,3 +1,4 @@
+import { isOwnerAdministrator } from '../../../config/permissions.js';
 import bcrypt from 'bcrypt';
 import {
   db,
@@ -208,7 +209,7 @@ export const requestLotProjectSettingsCode = async (req, res) => {
 
     await connection.beginTransaction();
 
-    if (actor.role === 'system_admin' || (actor.role === 'super_admin' && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
+    if ((isOwnerAdministrator(actor) && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
       const auditCase = await getPendingAuditCorrectionCase(connection, {
         actor: req.authUser,
         auditCaseId,
@@ -262,17 +263,17 @@ export const requestLotProjectSettingsCode = async (req, res) => {
       });
     }
 
-    if (actor.role !== 'super_admin') {
+    if (!isOwnerAdministrator(actor)) {
       throw Object.assign(new Error('This protected settings change requires Operations Staff/Head, System Admin correction authority, or Super Admin emergency access.'), { statusCode: 403 });
     }
 
-    if (!actor.email) throw Object.assign(new Error('Your Super Admin account must have an email address before emergency authorization can be used.'), { statusCode: 400 });
+    if (!actor.email) throw Object.assign(new Error('Your account must have an email address before emergency authorization can be used.'), { statusCode: 400 });
     if (!(await tableExists(connection, 'destructive_action_verifications'))) {
       throw Object.assign(new Error('Sensitive-action verification table is missing. Apply the latest database schema first.'), { statusCode: 500 });
     }
     const password = String(req.body.password || '');
     if (!actor.password_hash || !(await bcrypt.compare(password, actor.password_hash))) {
-      throw Object.assign(new Error('Super Admin password is incorrect.'), { statusCode: 401 });
+      throw Object.assign(new Error('Your password is incorrect.'), { statusCode: 401 });
     }
 
     const { verificationId, code } = await createSensitiveActionVerification(connection, {
@@ -344,7 +345,7 @@ export const updateLotProjectSettings = async (req, res) => {
     let auditCase = null;
     let verificationId = null;
 
-    if (currentUser.role === 'system_admin' || (currentUser.role === 'super_admin' && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
+    if ((isOwnerAdministrator(currentUser) && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
       auditCase = await getPendingAuditCorrectionCase(connection, {
         actor: req.authUser,
         auditCaseId,
@@ -368,7 +369,7 @@ export const updateLotProjectSettings = async (req, res) => {
       });
       authorizationType = 'head_approval';
       headPreApprovedByUserId = Number(approval.reviewed_by_head_user_id || 0) || null;
-    } else if (currentUser.role === 'super_admin') {
+    } else if (isOwnerAdministrator(currentUser)) {
       if (!(await tableExists(connection, 'destructive_action_verifications'))) {
         throw Object.assign(new Error('Sensitive-action verification table is missing. Apply the latest database schema first.'), { statusCode: 500 });
       }
@@ -506,5 +507,6 @@ export const updateLotProjectSettings = async (req, res) => {
     connection.release();
   }
 };
+
 
 

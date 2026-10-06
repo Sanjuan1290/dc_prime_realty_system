@@ -89,7 +89,7 @@ test('commission release, hold, and unhold remain independent', () => {
 });
 
 test('sensitive owner-level safeguards remain stronger than ordinary permissions', () => {
-  assert.match(routeLine("accounts/:accountId/purge-preview"), /requireExactRole\('super_admin'\)/);
+  assert.match(routeLine("accounts/:accountId/purge-preview"), /requireExactRole\('super_admin', 'system_admin'\)/);
   assert.match(projectRouter, /commission-adjustment-code'[\s\S]*LOT_COMMISSIONS_ADJUST/);
   assert.doesNotMatch(projectRouter, /commission-adjustment-code'[^\n]*requireExactRole/);
   assert.match(projectRouter, /reservation-correction\/code'[\s\S]*LOT_RESERVATION_CORRECT/);
@@ -102,3 +102,4 @@ test('system reports and notifications enforce project scope in their controller
   assert.match(notificationsController, /appendProjectAccessFilter/);
   assert.match(notificationsController, /canAccessProject/);
 });
+

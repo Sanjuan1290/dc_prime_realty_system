@@ -40,7 +40,7 @@ const normalizePercent = (value, fallback) => {
   return Math.round((numeric + Number.EPSILON) * 10000) / 10000;
 };
 
-const isSettingsAuthority = (user) => String(user?.role || '').toLowerCase() === 'super_admin';
+const isSettingsAuthority = (user) => isFullAccessAdministrator(user);
 
 const syncInHouseNetworkRateCache = async (connection, payload) => {
   if (!(await tableExists(connection, 'seller_group_lot_project_rates'))) return;
@@ -469,3 +469,4 @@ export const updateSystemSettings = async (req, res) => {
     connection.release();
   }
 };
+

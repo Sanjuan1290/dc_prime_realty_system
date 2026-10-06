@@ -18,9 +18,10 @@ test('Admin is permission-backed and generalized project access replaces legacy 
   const accessModal = read('client/src/components/System/userComponents/UserAccessModal.jsx');
   const migration = read('server/migrations/20260925_system_rbac_roles_and_access.sql');
 
-  assert.match(serverPermissions, /if \(actor\.role === 'super_admin'\) return allPermissions\.has\(permission\)/);
+  assert.match(serverPermissions, /if \(OWNER_ROLES\.includes\(actor\.role\)\) return allPermissions\.has\(permission\)/);
+  assert.match(serverPermissions, /OWNER_ROLES = Object\.freeze\(\['super_admin', 'system_admin'\]\)/);
   assert.match(serverPermissions, /return normalizedPermissionSet\(actor\)\.has\(permission\)/);
-  assert.match(serverPermissions, /isFullAccessAdministrator[\s\S]*role === 'super_admin'/);
+  assert.match(serverPermissions, /isFullAccessAdministrator = \(userOrRole = \{\}\) => OWNER_ROLES\.includes/);
   assert.doesNotMatch(clientPermissions, /ADMIN_TYPES/);
   assert.match(usersController, /replaceAdminProjectAccess/);
   assert.match(projectAccess, /user_project_access/);
@@ -33,7 +34,7 @@ test('Admin is permission-backed and generalized project access replaces legacy 
   assert.match(migration, /INSERT IGNORE INTO user_project_access[\s\S]*FROM admin_project_access/);
 });
 
-test('owner-only operations remain Super Admin-only while routine protected corrections use governed department workflows', () => {
+test('owner-only operations are limited to Super Admin and System Admin while routine protected corrections use governed department workflows', () => {
   const router = read('server/routers/System/projects.routers.js');
   const settingsRouter = read('server/routers/System/systemSettings.routers.js');
   const middleware = read('server/middleware/auth.middleware.js');
@@ -41,12 +42,12 @@ test('owner-only operations remain Super Admin-only while routine protected corr
   const payments = read('client/src/components/Lot_Projects/ListingProfileComponents/PaymentsSOA/Payments_SOA.jsx');
 
   assert.match(middleware, /export const requireExactRole/);
-  assert.match(router, /purge-preview'[\s\S]*requireExactRole\('super_admin'\)/);
+  assert.match(router, /purge-preview'[\s\S]*requireExactRole\('super_admin', 'system_admin'\)/);
   assert.match(router, /commission-adjustment-code'[\s\S]*LOT_COMMISSIONS_ADJUST/);
   assert.doesNotMatch(router, /commission-adjustment-code'[^\n]*requireExactRole/);
   assert.match(router, /reservation-correction\/code'[\s\S]*LOT_RESERVATION_CORRECT/);
   assert.doesNotMatch(router, /reservation-correction\/code'[^\n]*requireExactRole/);
-  assert.match(settingsRouter, /\/code'[\s\S]*requireExactRole\('super_admin'\)[\s\S]*requireCurrentPassword/);
+  assert.match(settingsRouter, /\/code'[\s\S]*requireExactRole\('super_admin', 'system_admin'\)[\s\S]*requireCurrentPassword/);
 
   assert.match(router, /payments\/:paymentId\/correction-code'[\s\S]*requirePaymentCorrectionPermission/);
   assert.doesNotMatch(router, /payments\/:paymentId\/correction-code'[^\n]*requireExactRole/);
@@ -68,3 +69,4 @@ test('Admin dashboard ranges now match delegated operational capability', () => 
   assert.match(systemReports, /administratorNeedsConfirmation/);
   assert.match(lotDashboard, /const canLoadDateRange = !hasInvalidDateRange/);
 });
+

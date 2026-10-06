@@ -1,3 +1,4 @@
+import { isOwnerAdministrator } from '../../../config/permissions.js';
 import {
   db,
   getErrorMessage,
@@ -1545,7 +1546,7 @@ export const updateLotProjectListing = async (req, res) => {
     const currentListingStatus = String(existingListing.lot_project_listing_status || '').trim().toLowerCase();
     const isInventoryEditable = ['available', 'hold'].includes(currentListingStatus);
     const isProtectedListing = !isInventoryEditable;
-    const isSuperAdmin = req.authUser?.role === 'super_admin';
+    const isSuperAdmin = isOwnerAdministrator(req.authUser);
 
     // Available and Hold are inventory states and remain editable by users with
     // LOT_LISTINGS_MANAGE. Once a real sale/reservation state exists, the
@@ -1591,7 +1592,7 @@ export const updateLotProjectListing = async (req, res) => {
     let inventoryAuditCase = null;
     let returnedInventoryReview = null;
     if (isInventoryEditable && !isCancellationAction) {
-      if (req.authUser?.role === 'system_admin' || (req.authUser?.role === 'super_admin' && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
+      if ((isOwnerAdministrator(req.authUser) && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
         inventoryAuditCase = await getPendingAuditCorrectionCase(connection, {
           actor: req.authUser,
           auditCaseId: req.body?.auditCaseId,
@@ -3066,4 +3067,5 @@ export const deleteLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
+
 

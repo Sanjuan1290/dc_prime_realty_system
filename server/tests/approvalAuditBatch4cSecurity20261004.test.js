@@ -51,43 +51,49 @@ const normalWritePermissions = [
   PERMISSIONS.LOT_PENALTY_CORRECT,
 ];
 
-test('Auditor is hard-enforced read-only for normal business mutations', () => {
+test('Auditor default is read-only and an Auditor holds only the permissions saved on the account', () => {
   const enforced = new Set(getAuditorEnforcedPermissions());
+  const auditorDefault = new Set(getStaticRolePolicy('auditor').recommended);
   for (const permission of normalWritePermissions) {
     assert.equal(enforced.has(permission), false, permission);
-    assert.equal(roleHasPermission({ role: 'auditor', permissions: [permission] }, permission), false, permission);
+    assert.equal(auditorDefault.has(permission), false, permission);
+    // Granting a write is possible now (shown with a warning), but never implicit.
+    assert.equal(roleHasPermission({ role: 'auditor', permissions: [] }, permission), false, permission);
   }
   for (const permission of [
     PERMISSIONS.WORKFLOW_AUDIT_REVIEW,
     PERMISSIONS.WORKFLOW_AUDIT_CASE_CREATE,
     PERMISSIONS.WORKFLOW_AUDIT_CASE_RESOLVE,
     PERMISSIONS.WORKFLOW_AUDIT_CORRECTION_VERIFY,
-  ]) assert.equal(roleHasPermission({ role: 'auditor' }, permission), true, permission);
+  ]) {
+    assert.ok(auditorDefault.has(permission), permission);
+    assert.equal(roleHasPermission({ role: 'auditor', permissions: [permission] }, permission), true, permission);
+  }
 });
 
-test('System Admin cannot create/manage/promote protected governance roles', () => {
+test('System Admin cannot create, manage or promote into owner roles, but manages Auditor', () => {
   const actor = { role: 'system_admin' };
-  for (const role of ['super_admin', 'system_admin', 'auditor']) {
+  for (const role of ['super_admin', 'system_admin']) {
     assert.equal(canActorManageUserRole(actor, role), false, role);
     assert.equal(canActorCreateUserRole(actor, role), false, role);
   }
+  assert.equal(canActorManageUserRole(actor, 'auditor'), true);
+  assert.equal(canActorCreateUserRole(actor, 'auditor'), true);
   assert.equal(canActorChangeUserRole(actor, 'accounting_staff', 'accounting_head'), true);
-  assert.equal(canActorChangeUserRole(actor, 'accounting_staff', 'auditor'), false);
+  assert.equal(canActorChangeUserRole(actor, 'accounting_staff', 'auditor'), true);
   assert.equal(canActorChangeUserRole(actor, 'accounting_head', 'system_admin'), false);
+  assert.equal(canActorChangeUserRole(actor, 'system_admin', 'accounting_head'), false);
 });
 
-test('System Admin ceiling excludes owner and Auditor authority', () => {
+test('System Admin holds owner and Auditor authority because it is owner-level', () => {
   const policy = getStaticRolePolicy('system_admin');
-  for (const forbidden of [
+  for (const key of [
     PERMISSIONS.SYSTEM_SETTINGS_MANAGE,
     PERMISSIONS.AUDIT_LOGS_ARCHIVE,
     PERMISSIONS.WORKFLOW_AUDIT_REVIEW,
-    PERMISSIONS.WORKFLOW_AUDIT_CASE_CREATE,
-    PERMISSIONS.WORKFLOW_AUDIT_CASE_RESOLVE,
-    PERMISSIONS.WORKFLOW_AUDIT_CORRECTION_VERIFY,
     PERMISSIONS.WORKFLOW_EMERGENCY_OVERRIDE,
-  ]) assert.equal(policy.ceiling.includes(forbidden), false, forbidden);
-  assert.ok(policy.required.includes(PERMISSIONS.WORKFLOW_SYSTEM_CORRECTION_APPLY));
+    PERMISSIONS.WORKFLOW_SYSTEM_CORRECTION_APPLY,
+  ]) assert.ok(policy.required.includes(key), key);
 });
 
 test('generic System Admin correction acknowledgement endpoint is removed', () => {
@@ -96,12 +102,12 @@ test('generic System Admin correction acknowledgement endpoint is removed', () =
   for (const handler of ['correctReservationUnit','adjustLotProjectListingCommission','updateLotProjectSettings','updateLotProjectListingPayment','deleteLotProjectListingPayment','restoreSeparateLegalMiscFeeFromAuditCase']) assert.ok(projectsRouter.includes(handler), handler);
 });
 
-test('owner-only break-glass and destructive routes remain exact Super Admin', () => {
-  assert.match(ownerSettingsRouter, /requireExactRole\('super_admin'\)/);
-  assert.match(auditRouter, /archive\/request[\s\S]*requireExactRole\('super_admin'\)/);
-  assert.match(auditRouter, /archive\/confirm[\s\S]*requireExactRole\('super_admin'\)/);
-  assert.match(projectsRouter, /purge-code[^\n]*requireExactRole\('super_admin'\)/);
-  assert.match(projectsRouter, /accounts\/:accountId\/purge'[^\n]*requireExactRole\('super_admin'\)/);
+test('owner-only break-glass and destructive routes are limited to Super Admin and System Admin', () => {
+  assert.match(ownerSettingsRouter, /requireExactRole\('super_admin', 'system_admin'\)/);
+  assert.match(auditRouter, /archive\/request[\s\S]*requireExactRole\('super_admin', 'system_admin'\)/);
+  assert.match(auditRouter, /archive\/confirm[\s\S]*requireExactRole\('super_admin', 'system_admin'\)/);
+  assert.match(projectsRouter, /purge-code[^\n]*requireExactRole\('super_admin', 'system_admin'\)/);
+  assert.match(projectsRouter, /accounts\/:accountId\/purge'[^\n]*requireExactRole\('super_admin', 'system_admin'\)/);
 });
 
 test('legacy document router can never become an unauthenticated mutation backdoor', () => {
@@ -117,8 +123,7 @@ test('legacy project-access imports delegate to persisted-role-safe authoritativ
   assert.match(compatibilityProjectAccess, /replaceAdminProjectAccess = replaceUserProjectAccess/);
   assert.match(compatibilityProjectAccess, /hydrateAdminProjectAccess = hydrateUserProjectAccess/);
   assert.match(authoritativeProjectAccess, /persisted account role wins/);
-  assert.match(authoritativeProjectAccess, /\['super_admin', 'auditor'\]/);
-  assert.doesNotMatch(authoritativeProjectAccess, /\['super_admin', 'system_admin', 'auditor'\]/);
+  assert.match(authoritativeProjectAccess, /GLOBAL_PROJECT_ROLES = Object\.freeze\(\['super_admin', 'system_admin', 'auditor'\]\)/);
 });
 
 test('Head approval is single-requester, exact-record, exact-action and exact-payload', () => {
@@ -130,9 +135,9 @@ test('Head approval is single-requester, exact-record, exact-action and exact-pa
   assert.match(protectedChange, /status='used',used_at=NOW\(\)/);
 });
 
-test('Role & Access keeps governance ceilings while Super Admin may tune System Admin and Auditor extras', () => {
-  assert.match(accessController, /\[\.\.\.ROLE_DEFAULT_EDITABLE_ROLES, 'system_admin', 'auditor'\]/);
-  assert.match(accessController, /if \(actor\?\.role === 'super_admin'\)/);
+test('Role & Access lets both owner roles edit every non-owner default and protects owner accounts', () => {
+  assert.match(accessController, /\['super_admin', 'system_admin'\]\.includes\(actor\?\.role\) && ROLE_DEFAULT_EDITABLE_ROLES\.includes\(role\)/);
+  assert.match(accessController, /if \(actor\?\.role === 'super_admin'\) return targetRole !== 'super_admin'/);
   assert.match(accessController, /SYSTEM_ADMIN_MANAGEABLE_ROLES\.includes\(targetRole\)/);
-  assert.match(accessController, /actor\?\.role === 'system_admin'[\s\S]*ROLE_DEFAULT_EDITABLE_ROLES\.includes\(role\)/);
 });
+

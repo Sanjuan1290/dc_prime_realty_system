@@ -53,7 +53,7 @@ test('System Settings stay owner-only while Lot Project Settings keep department
   const authorizationModal = read('client/src/components/Lot_Projects/SettingsComponents/ProjectSettingsAuthorizationModal.jsx');
   const settingsReview = read('client/src/components/Shared/DoubleCheckComponents/SettingsDoubleCheck.jsx');
 
-  assert.match(systemRouter, /post\('\/code'[\s\S]*SYSTEM_SETTINGS_MANAGE[\s\S]*requireExactRole\('super_admin'\)[\s\S]*requireCurrentPassword/);
+  assert.match(systemRouter, /post\('\/code'[\s\S]*SYSTEM_SETTINGS_MANAGE[\s\S]*requireExactRole\('super_admin', 'system_admin'\)[\s\S]*requireCurrentPassword/);
   assert.match(projectRouter, /settings\/code'[\s\S]*LOT_SETTINGS_MANAGE[\s\S]*requestLotProjectSettingsCode/);
   assert.doesNotMatch(projectRouter, /settings\/code'[^\n]*requireCurrentPassword/);
   assert.doesNotMatch(projectRouter, /settings\/code'[^\n]*requireExactRole/);
@@ -63,13 +63,13 @@ test('System Settings stay owner-only while Lot Project Settings keep department
   assert.match(projectController, /PROJECT_SETTINGS_REVIEW_ACTION/);
   assert.match(projectController, /operations_staff/);
   assert.match(projectController, /operations_head/);
-  assert.match(projectController, /system_admin/);
+  assert.match(projectController, /isOwnerAdministrator\(/);
   assert.match(projectController, /super_admin_emergency/);
   assert.match(authorizationModal, /Operations Head Approval/);
   assert.match(authorizationModal, /Auditor Case/);
   assert.match(authorizationModal, /Super Admin Emergency Override/);
   assert.match(authorizationModal, /Email Verification Code/);
-  assert.match(systemPage, /const canManage = actor\.role === 'super_admin'/);
+  assert.match(systemPage, /const canManage = \['super_admin', 'system_admin'\]\.includes\(actor\.role\)/);
   assert.match(systemPage, /disabled=\{!canManage/);
   assert.match(projectPage, /ProjectSettingsAuthorizationModal/);
   assert.match(projectPage, /disabled=\{!canEdit/);
@@ -97,3 +97,4 @@ test('System Admin can perform permission-backed administration while owner-only
   assert.doesNotMatch(users, />Reset<\/button>/);
   assert.match(users, /canDeactivate && canManageTarget\(user\) && user\.status === 'active'/);
 });
+

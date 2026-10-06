@@ -26,7 +26,10 @@ test('Permission grid keeps ordinary cross-department permissions selectable and
   assert.match(matrix, /Sensitive/);
   assert.match(matrix, /cleanPermissionLabel/);
   assert.match(matrix, /Outside normal role/);
-  assert.match(matrix, /Restricted governance/);
+  assert.match(matrix, /Usually System Admin only/);
+  // 2026-10-06: one uniform grid; nothing is locked, restricted or hidden.
+  assert.doesNotMatch(matrix, /Restricted governance/);
+  assert.doesNotMatch(matrix, /Fixed by role/);
   assert.doesNotMatch(matrix, />Not Allowed</);
   assert.doesNotMatch(matrix, /Not available for this role/);
 });
@@ -38,12 +41,14 @@ test('permission metadata classifies types and governed permissions', async () =
   assert.match(meta, /marketing: \['Seller Groups'/);
 });
 
-test('Role & Access Control explains recommended defaults, cross-department exceptions, Head inheritance, and unsaved changes', async () => {
+test('Role & Access Control explains role defaults, cross-department grants, owner full access, and unsaved changes', async () => {
   const roleAccess = await read('client/src/components/System/settingsComponents/RoleAccessControl.jsx');
   assert.doesNotMatch(roleAccess, /<h2 className="text-xl font-black text-slate-950">Role & Access Control<\/h2>/);
-  assert.match(roleAccess, /Head inheritance/);
+  assert.match(roleAccess, /including permissions from other departments/);
   assert.match(roleAccess, /Outside normal role/);
+  assert.match(roleAccess, /Super Admin and System Admin always have full access/);
   assert.match(roleAccess, /Compare Staff vs Head/);
   assert.match(roleAccess, /Discard and switch/);
   assert.match(roleAccess, /sticky bottom-0/);
 });
+

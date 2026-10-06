@@ -10,6 +10,10 @@ import { DEPARTMENT_PRIORITY_GROUPS, getRoleDepartment } from '../../../utils/pe
 
 const initial = { first_name: '', middle_name: '', last_name: '', email: '', contact_no: '', tin_no: '', prc_no: '', address: '', role: 'marketing_staff', status: 'active' }
 const steps = ['Personal Information', 'Role & Account Code', 'Permissions', 'Project Access', 'Final Review']
+// Super Admin and System Admin are owner-level: full access, all projects.
+// Auditor is global (all projects) but uses the normal permission grid.
+const FULL_ACCESS_ROLES = ['super_admin', 'system_admin']
+const GLOBAL_PROJECT_ROLES = ['super_admin', 'system_admin', 'auditor']
 const sameSet = (left = [], right = []) => {
   const rightSet = new Set(right)
   return new Set(left).size === rightSet.size && left.every((key) => rightSet.has(key))
@@ -36,7 +40,7 @@ const CreateSystemUserModal = ({ onClose, onSaved }) => {
   const { data: projectData, isLoading: projectsLoading, error: projectsError } = useQuery({
     queryKey: ['lot-project-options'],
     queryFn: () => useFetch('/projects/lot-projects/options'),
-    enabled: canCreateSystemUsers && !['super_admin','auditor'].includes(form.role),
+    enabled: canCreateSystemUsers && !GLOBAL_PROJECT_ROLES.includes(form.role),
   })
   const { data: accountCodePreview, isFetching: previewLoading } = useQuery({
     queryKey: ['system-account-code-preview', form.role],
@@ -47,60 +51,44 @@ const CreateSystemUserModal = ({ onClose, onSaved }) => {
     mutationFn: (email) => useFetch(`/user/email-availability?email=${encodeURIComponent(email)}`),
   })
 
-  // Every configurable role (Auditor and System Admin included) starts from its
-  // saved role default. Super Admin bypasses the permission matrix entirely.
+  // Every non-owner role (Auditor included) starts from its saved role default.
+  // Super Admin and System Admin have full access and no permission grid.
   useEffect(() => {
     setCustomizing(false)
-    if (form.role === 'super_admin') {
+    if (FULL_ACCESS_ROLES.includes(form.role)) {
       setPermissions([])
       return
     }
     setPermissions(roleData?.defaults?.[form.role] || [])
   }, [form.role, roleData])
 
-  // Load the role's rules. Business permissions outside the normal position are
-  // assignable with a warning; only genuine governance/security keys stay locked.
+  // Every permission is adjustable; the role default is the starting point and
+  // anything beyond it is flagged as outside the normal role.
   const rolePolicy = roleData?.policies?.[form.role] || null
   const roleDefaults = roleData?.defaults?.[form.role] || []
-  const parentRole = rolePolicy?.parentRole || null
-  const recommendedSet = useMemo(() => new Set(rolePolicy?.recommended || []), [rolePolicy])
+  const recommendedSet = useMemo(() => new Set(rolePolicy?.recommended || roleDefaults), [rolePolicy, roleDefaults])
   const permissionLabelByKey = useMemo(() => Object.fromEntries((roleData?.catalog || []).flatMap((group) =>
     (group.items || []).map(([label, key]) => [key, `${group.group} → ${label}`])
   )), [roleData])
-  // What the account will actually hold: selected keys plus the role's Required
-  // and Head-inherited keys, limited to the role ceiling (mirrors the server).
+  // What the account will hold: exactly the selected permissions.
   const effectivePermissions = useMemo(() => {
-    if (form.role === 'super_admin') return []
-    const ceiling = rolePolicy?.ceiling ? new Set(rolePolicy.ceiling) : null
-    return [...new Set([...permissions, ...(rolePolicy?.required || []), ...(rolePolicy?.inherited || [])])]
-      .filter((key) => !ceiling || ceiling.has(key))
-  }, [form.role, permissions, rolePolicy])
-  const permissionBreakdown = useMemo(() => {
-    const required = new Set(rolePolicy?.required || [])
-    const inherited = new Set((rolePolicy?.inherited || []).filter((key) => !required.has(key)))
-    return {
-      required: effectivePermissions.filter((key) => required.has(key)).length,
-      inherited: effectivePermissions.filter((key) => inherited.has(key)).length,
-      direct: effectivePermissions.filter((key) => !required.has(key) && !inherited.has(key)).length,
-    }
-  }, [effectivePermissions, rolePolicy])
+    if (FULL_ACCESS_ROLES.includes(form.role)) return []
+    return [...new Set(permissions)]
+  }, [form.role, permissions])
   const usingRoleDefaults = sameSet(effectivePermissions, roleDefaults)
   const permissionCountLabel = `${effectivePermissions.length} permission${effectivePermissions.length === 1 ? '' : 's'}`
 
   const outsideNormalPermissions = useMemo(() => {
-    if (!recommendedSet.size || ['super_admin','auditor'].includes(form.role)) return []
-    const required = new Set(rolePolicy?.required || [])
-    const inherited = new Set(rolePolicy?.inherited || [])
-    const ceiling = new Set(rolePolicy?.ceiling || [])
-    return permissions.filter((key) => ceiling.has(key) && !required.has(key) && !inherited.has(key) && !recommendedSet.has(key))
-  }, [form.role, permissions, rolePolicy])
+    if (!recommendedSet.size || FULL_ACCESS_ROLES.includes(form.role)) return []
+    return effectivePermissions.filter((key) => !recommendedSet.has(key))
+  }, [form.role, effectivePermissions, recommendedSet])
 
   const mutation = useMutation({
     mutationFn: () => useFetchPost('/user/createUser', {
       ...form,
-      all_projects_access: ['super_admin','auditor'].includes(form.role) ? true : allProjects,
-      project_ids: ['super_admin','auditor'].includes(form.role) ? [] : projectIds,
-      ...(form.role !== 'super_admin' ? { permissions } : {}),
+      all_projects_access: GLOBAL_PROJECT_ROLES.includes(form.role) ? true : allProjects,
+      project_ids: GLOBAL_PROJECT_ROLES.includes(form.role) ? [] : projectIds,
+      ...(!FULL_ACCESS_ROLES.includes(form.role) ? { permissions } : {}),
     }, { confirmationHandled: 'compact' }),
     onMutate: () => setAlert({ type: 'loading', message: 'Creating system account...' }),
     onSuccess: (result) => {
@@ -114,7 +102,7 @@ const CreateSystemUserModal = ({ onClose, onSaved }) => {
     return (
       <div className="fixed inset-0 z-[80] overflow-y-auto bg-slate-950/50 p-4">
         <div className="mx-auto my-10 max-w-2xl rounded-3xl bg-white p-6 shadow-2xl">
-          <StatusAlert type="error" message="Only Super Admin or System Admin can create internal system accounts. System Admin is limited to department Staff and Head roles." />
+          <StatusAlert type="error" message="Only Super Admin or System Admin can create internal system accounts. Only Super Admin can create System Admin accounts." />
           <div className="mt-5 flex justify-end"><button type="button" onClick={onClose} className="h-11 rounded-xl border px-5 font-bold">Close</button></div>
         </div>
       </div>
@@ -140,11 +128,11 @@ const CreateSystemUserModal = ({ onClose, onSaved }) => {
       setAlert({ type: 'error', message: 'First name, last name, and email are required.' })
       return false
     }
-    if (step === 1 && form.role !== 'super_admin' && !roleData?.defaults?.[form.role]) {
+    if (step === 1 && !FULL_ACCESS_ROLES.includes(form.role) && !roleData?.defaults?.[form.role]) {
       setAlert({ type: 'error', message: roleDataLoading ? 'Role default permissions are still loading. Try again in a moment.' : (roleDataError?.message || `Role default permissions for ${ROLE_LABELS[form.role] || form.role} could not be loaded.`) })
       return false
     }
-    if (step === 3 && !['super_admin','auditor'].includes(form.role) && !allProjects && projectIds.length === 0) {
+    if (step === 3 && !GLOBAL_PROJECT_ROLES.includes(form.role) && !allProjects && projectIds.length === 0) {
       setAlert({ type: 'error', message: 'Select All Projects or at least one project.' })
       return false
     }
@@ -175,7 +163,7 @@ const CreateSystemUserModal = ({ onClose, onSaved }) => {
   const back = () => { setAlert(null); setStep((current) => Math.max(0, current - 1)) }
   const changeRole = (role) => {
     setField('role', role)
-    setAllProjects(['super_admin','auditor'].includes(role))
+    setAllProjects(GLOBAL_PROJECT_ROLES.includes(role))
     setProjectIds([])
   }
 
@@ -233,21 +221,21 @@ const CreateSystemUserModal = ({ onClose, onSaved }) => {
                 <p className="mt-2 font-mono text-2xl font-black text-blue-950">{previewLoading ? 'Generating…' : accountCodePreview?.account_code || 'Generating preview…'}</p>
                 <p className="mt-2 text-xs font-semibold text-blue-700">Account codes use only the role abbreviation plus the Users table ID. Example: user ID 2 with the Sales role becomes SS-00002. The preview uses the database's current next user ID; the final code is rebuilt from the actual ID when the account is created.</p>
               </div>
-              {form.role === 'super_admin' ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-bold text-emerald-800">Super Admin is always Full System Access, All Projects, and every valid permission. It cannot be restricted.</div> : null}
+              {FULL_ACCESS_ROLES.includes(form.role) ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-bold text-emerald-800">{ROLE_LABELS[form.role]} always has Full System Access, All Projects, and every permission.{form.role === 'system_admin' ? ' Only Super Admin can create or manage System Admin accounts.' : ''}</div> : null}
             </section>
           ) : null}
 
           {step === 2 ? (
-            ['super_admin','auditor'].includes(form.role) ? (
-              <div className="rounded-2xl border border-blue-200 bg-blue-50 p-5 text-blue-900"><p className="text-lg font-black">Governed Access</p><p className="mt-1 text-sm font-semibold">{form.role === 'super_admin' ? 'Super Admin keeps owner-level Full System Access.' : form.role === 'auditor' ? 'Auditor receives required global read-only + audit workflow access. Only Super Admin can later adjust the limited allowed export/print permissions.' : 'System Admin receives required administration + audit-correction access within its safe permission ceiling. Choose the projects this account can operate on.'}</p></div>
+            FULL_ACCESS_ROLES.includes(form.role) ? (
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-900"><p className="text-lg font-black">Full System Access</p><p className="mt-1 text-sm font-semibold">{ROLE_LABELS[form.role]} has every permission in the system. There is nothing to choose here.</p></div>
             ) : (
               <section className="grid gap-3">
-                <div><h3 className="text-lg font-black">Permissions</h3><p className="text-sm font-semibold text-slate-500">Most accounts should use the {ROLE_LABELS[form.role]} defaults. Customize only for exceptions; changes apply to this new account only.{parentRole ? ` ${ROLE_LABELS[form.role]} also inherits everything from ${ROLE_LABELS[parentRole] || parentRole}.` : ''}</p></div>
+                <div><h3 className="text-lg font-black">Permissions</h3><p className="text-sm font-semibold text-slate-500">Starts from the {ROLE_LABELS[form.role]} default. Any permission can be added or removed; anything outside the normal role is flagged. Changes apply to this new account only.</p></div>
                 {!customizing ? (
                   <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-4">
                     <div>
                       <p className="font-black text-blue-950">{usingRoleDefaults ? `Using ${ROLE_LABELS[form.role]} defaults` : `Customized from ${ROLE_LABELS[form.role]} defaults`}</p>
-                      <p className="mt-1 text-sm font-semibold text-blue-800">{permissionCountLabel} in total: {permissionBreakdown.direct} role-specific{parentRole ? `, ${permissionBreakdown.inherited} from ${ROLE_LABELS[parentRole] || parentRole}` : ''}, {permissionBreakdown.required} required.</p>
+                      <p className="mt-1 text-sm font-semibold text-blue-800">{permissionCountLabel}{outsideNormalPermissions.length ? `, ${outsideNormalPermissions.length} outside the normal role` : ''}.</p>
                     </div>
                     <button type="button" onClick={() => setCustomizing(true)} className="h-10 rounded-xl border border-blue-300 bg-white px-4 text-sm font-black text-blue-700">Customize</button>
                   </div>
@@ -267,8 +255,8 @@ const CreateSystemUserModal = ({ onClose, onSaved }) => {
           ) : null}
 
           {step === 3 ? (
-            ['super_admin','auditor'].includes(form.role) ? (
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-900"><p className="text-lg font-black">All Projects</p><p className="mt-1 text-sm font-semibold">Super Admin and Auditor always receive All Projects access.</p></div>
+            GLOBAL_PROJECT_ROLES.includes(form.role) ? (
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-900"><p className="text-lg font-black">All Projects</p><p className="mt-1 text-sm font-semibold">Super Admin, System Admin and Auditor always receive All Projects access.</p></div>
             ) : (
               <AdminProjectAccessFields projects={projectData?.data || []} allProjects={allProjects} selectedProjectIds={projectIds} onAllProjectsChange={(checked) => { setAllProjects(checked); if (checked) setProjectIds([]) }} onProjectToggle={toggleProject} canSelectAllProjects isLoading={projectsLoading} error={projectsError?.message || ''} />
             )
@@ -282,8 +270,8 @@ const CreateSystemUserModal = ({ onClose, onSaved }) => {
                 {reviewItem('Email', form.email)}
                 {reviewItem('Role', ROLE_LABELS[form.role])}
                 {reviewItem('Account Code', accountCodePreview?.account_code || 'Generated at creation')}
-                {reviewItem('Permissions', form.role === 'super_admin' ? 'Full System Access' : form.role === 'auditor' ? `Enforced Global Read-Only (${permissionCountLabel})` : form.role === 'system_admin' ? `System Administration (${permissionCountLabel})` : `${permissionCountLabel}${usingRoleDefaults ? ' (role default)' : ' (customized)'}`)}
-                {reviewItem('Project Scope', ['super_admin','auditor'].includes(form.role) || allProjects ? 'All Projects' : selectedProjectNames.join(', ') || `${projectIds.length} selected project(s)`)}
+                {reviewItem('Permissions', FULL_ACCESS_ROLES.includes(form.role) ? 'Full System Access' : `${permissionCountLabel}${usingRoleDefaults ? ' (role default)' : ' (customized)'}`)}
+                {reviewItem('Project Scope', GLOBAL_PROJECT_ROLES.includes(form.role) || allProjects ? 'All Projects' : selectedProjectNames.join(', ') || `${projectIds.length} selected project(s)`)}
               </div>
               {outsideNormalPermissions.length ? <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4">
                 <p className="font-black text-amber-950">Additional / Cross-Department Permissions</p>
@@ -308,4 +296,5 @@ const CreateSystemUserModal = ({ onClose, onSaved }) => {
 }
 
 export default CreateSystemUserModal
+
 

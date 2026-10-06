@@ -1,3 +1,4 @@
+import { isOwnerAdministrator } from '../../../config/permissions.js';
 import {
   db,
   getErrorMessage,
@@ -143,7 +144,7 @@ const getPaymentProofWorkflowContext = async (connection, req, paymentId) => {
   let auditCase = null;
   let allowReviewId = null;
 
-  if (req.authUser?.role === 'system_admin' || (req.authUser?.role === 'super_admin' && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
+  if ((isOwnerAdministrator(req.authUser) && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
     auditCase = await getPendingAuditCorrectionCase(connection, {
       actor: req.authUser,
       auditCaseId: req.body?.auditCaseId || req.body?.audit_case_id,
@@ -802,4 +803,5 @@ export const deleteLotProjectPaymentProof = async (req, res) => {
     connection.release();
   }
 };
+
 

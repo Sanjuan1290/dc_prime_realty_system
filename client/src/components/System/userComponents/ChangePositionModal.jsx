@@ -18,7 +18,7 @@ const ChangePositionModal = ({ user, onClose, onSaved }) => {
   const [allProjects, setAllProjects] = useState(false)
   const [projectIds, setProjectIds] = useState([])
   const [alert, setAlert] = useState(null)
-  const forcedAll = role === 'auditor'
+  const forcedAll = ['system_admin', 'auditor'].includes(role)
   const { data: projectData } = useQuery({ queryKey: ['lot-project-options'], queryFn: () => useFetch('/projects/lot-projects/options'), enabled: !forcedAll })
   const { data: preview } = useQuery({ queryKey: ['position-preview', user.id, role], queryFn: () => useFetch(`/user/${user.id}/change-position/preview?role=${encodeURIComponent(role)}`), enabled: Boolean(role && role !== user.role) })
   const mutation = useMutation({
@@ -45,3 +45,4 @@ const ChangePositionModal = ({ user, onClose, onSaved }) => {
   </div></div>
 }
 export default ChangePositionModal
+

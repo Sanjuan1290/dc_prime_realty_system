@@ -45,20 +45,24 @@ test('Batch 1 migrates legacy internal roles in place to Staff/Head governance r
   assert.equal(ROLE_PARENT.accounting_head, 'accounting_staff');
 });
 
-test('Auditor is enforced read-only for normal business permissions', () => {
-  const auditor = { role: 'auditor', permissions: [PERMISSIONS.LOT_PAYMENTS_EDIT, PERMISSIONS.SYSTEM_PROJECTS_EDIT] };
+test('Auditor holds only saved permissions; the Auditor default stays read-only plus audit workflow', () => {
+  const auditor = { role: 'auditor', permissions: [PERMISSIONS.LOT_PAYMENTS_VIEW, PERMISSIONS.WORKFLOW_AUDIT_CASE_CREATE] };
   assert.equal(roleHasPermission(auditor, PERMISSIONS.LOT_PAYMENTS_VIEW), true);
   assert.equal(roleHasPermission(auditor, PERMISSIONS.WORKFLOW_AUDIT_CASE_CREATE), true);
   assert.equal(roleHasPermission(auditor, PERMISSIONS.LOT_PAYMENTS_EDIT), false);
   assert.equal(roleHasPermission(auditor, PERMISSIONS.SYSTEM_PROJECTS_EDIT), false);
+  const auditorDefault = getStaticRolePolicy('auditor').recommended;
+  assert.ok(auditorDefault.includes(PERMISSIONS.LOT_PAYMENTS_VIEW));
+  assert.ok(auditorDefault.includes(PERMISSIONS.WORKFLOW_AUDIT_CASE_CREATE));
+  assert.ok(!auditorDefault.includes(PERMISSIONS.LOT_PAYMENTS_EDIT));
   assert.ok(getAuditorEnforcedPermissions().includes(PERMISSIONS.WORKFLOW_AUDIT_CASE_CREATE));
 });
 
-test('System Admin can manage department Staff/Head but not protected governance roles', () => {
+test('System Admin manages department Staff/Head and Auditor but not owner roles', () => {
   const actor = { role: 'system_admin' };
   assert.equal(canActorManageUserRole(actor, 'accounting_staff'), true);
   assert.equal(canActorManageUserRole(actor, 'accounting_head'), true);
-  assert.equal(canActorManageUserRole(actor, 'auditor'), false);
+  assert.equal(canActorManageUserRole(actor, 'auditor'), true);
   assert.equal(canActorManageUserRole(actor, 'system_admin'), false);
   assert.equal(canActorManageUserRole(actor, 'super_admin'), false);
   const policy = getStaticRolePolicy('system_admin');
@@ -69,7 +73,7 @@ test('System Admin can manage department Staff/Head but not protected governance
   assert.ok(policy.required.includes(PERMISSIONS.LOT_COMMISSIONS_ADJUST));
   assert.ok(policy.required.includes(PERMISSIONS.LOT_PENALTY_CORRECT));
   assert.ok(policy.required.includes(PERMISSIONS.LOT_SETTINGS_MANAGE));
-  assert.ok(!policy.ceiling.includes(PERMISSIONS.WORKFLOW_EMERGENCY_OVERRIDE));
+  assert.ok(policy.required.includes(PERMISSIONS.WORKFLOW_EMERGENCY_OVERRIDE));
 });
 
 test('Batch 2 creates reviews, immutable events and internal notifications', () => {
@@ -131,11 +135,11 @@ test('System Admin correction is restricted to the exact Auditor-approved paymen
 });
 
 test('Super Admin remains emergency fallback with password and email code only', () => {
-  assert.match(paymentController, /actor\.role === 'super_admin'/);
+  assert.match(paymentController, /isOwnerAdministrator\(actor\)/);
   assert.match(paymentController, /bcrypt\.compare\(password, actor\.password_hash\)/);
   assert.match(paymentController, /Emergency verification code sent/);
   assert.match(paymentController, /authorizationType: 'emergency_super_admin'/);
-  assert.match(paymentUi, /Super Admin is emergency fallback only/);
+  assert.match(paymentUi, /Emergency correction\. Your current password and an email verification code are required\./);
 });
 
 test('Payment correction UI sends Review/Audit Case IDs and supports direct authority without an email code', () => {
@@ -161,9 +165,9 @@ test('Review Center preserves Batches 1-3 endpoints and adds Batch 4 protected-c
   assert.match(systemLayout, /Review Center/);
 });
 
-test('Role & Access UI includes the new governance groups', () => {
-  for (const label of ['SYSTEM','AUDIT','MARKETING','SALES','ACCOUNTING','OPERATIONS','OWNER']) assert.ok(roleAccessUi.includes(`'${label}'`), label);
-  assert.match(roleAccessUi, /Auditor · Governed Global Read-Only/);
-  assert.match(roleAccessUi, /Head inheritance/);
+test('Role & Access UI groups Auditor, departments and the two full-access owner roles', () => {
+  for (const label of ['AUDIT','MARKETING','SALES','ACCOUNTING','OPERATIONS','OWNER · FULL ACCESS']) assert.ok(roleAccessUi.includes(`'${label}'`), label);
+  assert.match(roleAccessUi, /const OWNER_ROLES = \['super_admin', 'system_admin'\]/);
+  assert.match(roleAccessUi, /Full System Access/);
 });
 

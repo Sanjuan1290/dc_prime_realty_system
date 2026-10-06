@@ -32,15 +32,19 @@ const ProjectSettingsAuthorizationModal = ({
   const [notice, setNotice] = useState(null)
   const [busy, setBusy] = useState(false)
 
-  const isSuperAdmin = actorRole === 'super_admin'
+  // Super Admin and System Admin are both owner-level. Opened from an Auditor
+  // case they use the case-correction flow; otherwise the emergency flow
+  // (current password + email code).
+  const isOwner = ['super_admin', 'system_admin'].includes(actorRole)
+  const isSuperAdmin = isOwner && !(Number(auditCaseId || 0) > 0)
   const isStaff = actorRole === 'operations_staff'
   const isHead = actorRole === 'operations_head'
-  const isSystemAdmin = actorRole === 'system_admin'
+  const isSystemAdmin = isOwner && Number(auditCaseId || 0) > 0
 
   const requestAuthorization = async () => {
     const cleanReason = reason.trim()
     if (cleanReason.length < 5) return setNotice({ type: 'error', message: 'Enter a clear reason for this settings change.' })
-    if (isSuperAdmin && !password) return setNotice({ type: 'error', message: 'Super Admin password is required for emergency override.' })
+    if (isSuperAdmin && !password) return setNotice({ type: 'error', message: 'Your password is required for emergency override.' })
     if (isSystemAdmin && !Number(auditCaseId || 0)) return setNotice({ type: 'error', message: 'Open this correction from a valid Auditor case in Review Center.' })
 
     setBusy(true)
@@ -162,3 +166,4 @@ const ProjectSettingsAuthorizationModal = ({
 }
 
 export default ProjectSettingsAuthorizationModal
+

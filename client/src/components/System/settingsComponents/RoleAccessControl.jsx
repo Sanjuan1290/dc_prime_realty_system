@@ -5,14 +5,14 @@ import PermissionMatrix from '../userComponents/PermissionMatrix'
 import { useFetch, useFetchPut } from '../../../utils/useFetch'
 import { cleanPermissionLabel, DEPARTMENT_PRIORITY_GROUPS, getRoleDepartment } from '../../../utils/permissionMeta'
 
+const OWNER_ROLES = ['super_admin', 'system_admin']
 const groups = [
-  ['SYSTEM', ['system_admin']],
   ['AUDIT', ['auditor']],
   ['MARKETING', ['marketing_staff', 'marketing_head']],
   ['SALES', ['sales_staff', 'sales_head']],
   ['ACCOUNTING', ['accounting_staff', 'accounting_head']],
   ['OPERATIONS', ['operations_staff', 'operations_head']],
-  ['OWNER', ['super_admin']],
+  ['OWNER · FULL ACCESS', OWNER_ROLES],
 ]
 
 const sameSet = (left = [], right = []) => left.length === right.length && left.every((key) => right.includes(key))
@@ -70,7 +70,7 @@ const RoleAccessControl = () => {
   const isDirty = editable && !sameSet(selected, savedDefaults)
   const department = getRoleDepartment(role)
   const hasDepartmentPair = ['marketing', 'sales', 'accounting', 'operations'].includes(department)
-  const effectiveCount = role === 'super_admin' ? null : effectiveFor(role, data, selected).size
+  const effectiveCount = OWNER_ROLES.includes(role) ? null : effectiveFor(role, data, selected).size
 
   useEffect(() => {
     if (!data) return
@@ -101,7 +101,7 @@ const RoleAccessControl = () => {
 
   return <section className="rounded-3xl border border-slate-200 bg-white p-5 pb-0 shadow-sm">
     {/* The page card above already carries the "Role & Access Control" title (plan item 31). */}
-    <p className="text-sm font-semibold text-slate-500">Role defaults are recommended starting access. Cross-department business permissions are allowed with warnings; Head inheritance, Auditor read-only policy, and System Admin governance are enforced by the server.</p>
+    <p className="text-sm font-semibold text-slate-500">Role defaults are the starting permissions for new accounts. Any permission, including permissions from other departments, can be added to any role; anything beyond the role default is flagged as Outside normal role. Super Admin and System Admin always have full access.</p>
     {alert ? <div className="mt-4"><StatusAlert type={alert.type} message={alert.message} onClose={alert.type === 'loading' ? undefined : () => setAlert(null)} /></div> : null}
     {isLoading ? <div className="mt-4"><StatusAlert type="loading" message="Loading role defaults..." /></div> : null}
     {isError ? <div className="mt-4"><StatusAlert type="error" message={error?.message || 'Failed to load role defaults.'} /></div> : null}
@@ -117,22 +117,22 @@ const RoleAccessControl = () => {
         <span className="flex gap-2"><button type="button" onClick={() => setPendingRole(null)} className="h-10 rounded-xl border border-amber-300 bg-white px-4 font-black">Keep editing</button><button type="button" onClick={discardAndSwitch} className="h-10 rounded-xl bg-amber-600 px-4 font-black text-white">Discard and switch</button></span>
       </div> : null}
 
-      {role === 'super_admin' ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-900"><p className="text-lg font-black">Owner / Emergency Full Access</p><p className="mt-1 text-sm font-semibold">Super Admin remains the break-glass fallback. Its permissions and project scope cannot be restricted.</p></div> : <>
+      {OWNER_ROLES.includes(role) ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-900"><p className="text-lg font-black">Full System Access</p><p className="mt-1 text-sm font-semibold">{role === 'super_admin' ? 'Super Admin is the owner account and has every permission in the system.' : 'System Admin runs the system on the owner\'s behalf and has every permission in the system. Only Super Admin can create or manage System Admin accounts.'}</p></div> : <>
         <div className="flex flex-wrap items-end justify-between gap-3 border-b border-slate-200 pb-4">
           <div>
             <p className="text-xs font-black uppercase tracking-wide text-slate-400">{editable ? 'Editing' : 'Viewing'}</p>
             <h3 className="text-xl font-black text-slate-950">{roleLabels[role] || role} <span className="text-base font-bold text-slate-500">({effectiveCount} permission{effectiveCount === 1 ? '' : 's'})</span></h3>
-            {policy?.parentRole ? <p className="mt-1 text-sm font-semibold text-blue-700">Inherits everything from {roleLabels[policy.parentRole] || policy.parentRole}.</p> : null}
+
           </div>
           {hasDepartmentPair ? <div className="flex rounded-xl border border-slate-300 bg-white p-1 text-xs font-black" role="group" aria-label="View">
             {[['edit', 'Permissions'], ['compare', 'Compare Staff vs Head']].map(([value, label]) => <button key={value} type="button" onClick={() => setView(value)} className={`rounded-lg px-3 py-1.5 ${view === value ? 'bg-blue-600 text-white' : 'text-slate-600'}`}>{label}</button>)}
           </div> : null}
         </div>
 
-        {role === 'system_admin' ? <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm font-semibold text-blue-800"><span className="font-black text-blue-950">System Admin · Governed Administration</span> Core administration, Review Center, and audit-approved correction permissions are Required. Super Admin may adjust additional allowed permissions within the System Admin ceiling. System Admin cannot expand its own governance level.</div> : role === 'auditor' ? <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4 text-sm font-semibold text-violet-800"><span className="font-black text-violet-950">Auditor · Governed Global Read-Only</span> Global read access and audit workflow actions are Required. Operational write permissions remain restricted governance access. Only Super Admin may adjust the limited export/print permissions allowed for Auditor.</div> : <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900"><span className="font-black text-amber-950">{roleLabels[role] || role}</span>{policy?.parentRole ? <> uses Head inheritance from <span className="font-black text-blue-700">{roleLabels[policy.parentRole] || policy.parentRole}</span>.</> : null} Business permissions from other departments may also be selected. They are highlighted as <span className="font-black">Outside normal role</span> so unusual access is deliberate rather than blocked.</div>}
+
 
         {view === 'compare' && hasDepartmentPair ? <StaffHeadComparison data={data} department={department} editingRole={role} selected={selected} roleLabels={roleLabels} /> : <>
-          {editable ? <div className="flex justify-end"><button type="button" onClick={() => setSelected(data.recommendedDefaults?.[role] || [])} className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-black text-violet-700">Load Recommended Defaults</button></div> : null}
+          {editable ? <div className="flex justify-end"><button type="button" onClick={() => setSelected(policy?.recommended || data.recommendedDefaults?.[role] || [])} className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-black text-violet-700">Load Recommended Defaults</button></div> : null}
           <PermissionMatrix
             catalog={data.catalog || []}
             selected={selected}
@@ -147,7 +147,7 @@ const RoleAccessControl = () => {
       </>}
     </div> : null}
 
-    {data && editable && role !== 'super_admin' ? <div className={`sticky bottom-0 z-10 -mx-5 flex flex-wrap items-center justify-between gap-4 rounded-b-3xl border-t px-5 py-4 ${isDirty ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-white'}`}>
+    {data && editable && !OWNER_ROLES.includes(role) ? <div className={`sticky bottom-0 z-10 -mx-5 flex flex-wrap items-center justify-between gap-4 rounded-b-3xl border-t px-5 py-4 ${isDirty ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-white'}`}>
       <p className="text-sm font-semibold text-slate-600">{isDirty ? <span className="font-black text-amber-900">Unsaved changes to {roleLabels[role] || role}. </span> : null}Existing users keep their current direct permissions until Apply Latest Role Default is used on that account.</p>
       <div className="flex gap-2">
         <button type="button" onClick={() => setSelected(savedDefaults)} disabled={!isDirty || save.isPending} className="h-11 rounded-xl border border-slate-300 bg-white px-5 font-black text-slate-700 disabled:opacity-40">Discard</button>
@@ -157,3 +157,4 @@ const RoleAccessControl = () => {
   </section>
 }
 export default RoleAccessControl
+

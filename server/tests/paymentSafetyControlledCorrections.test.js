@@ -105,7 +105,7 @@ test('cancelled payments no longer block simple unit correction but verified pay
 
 test('controlled unit correction preserves payment facts, protected account files, and replays verified payments', () => {
   assert.match(reservationController, /sales_head/);
-  assert.match(reservationController, /system_admin/);
+  assert.match(reservationController, /isOwnerAdministrator\(actor\)/);
   assert.match(reservationController, /emergency_super_admin/);
   assert.match(reservationController, /reconcileAccountProtectedStorage/);
   assert.match(reservationController, /retargetAccountProtectedFileMetadata/);
@@ -187,3 +187,4 @@ test('sensitive verification hashes bind the code and exact proposed payload', (
     else process.env.DESTRUCTIVE_ACTION_CODE_SECRET = oldSecret;
   }
 });
+

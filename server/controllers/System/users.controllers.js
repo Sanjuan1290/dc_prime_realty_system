@@ -1,3 +1,4 @@
+import { isOwnerAdministrator } from '../../config/permissions.js';
 import { db } from '../../db/connect.js';
 import { assertSellerIdentityAvailable } from '../../services/sellerIdentity.service.js';
 import crypto from 'node:crypto';
@@ -325,7 +326,7 @@ const normalizeSystemProjectAccess = (body = {}) => ({
 });
 
 const assertSystemProjectSelection = (role, access) => {
-  if (['super_admin', 'auditor'].includes(role)) return;
+  if (['super_admin', 'system_admin', 'auditor'].includes(role)) return;
   if (configurableSystemRoles.has(role) && !access.allProjects && !access.projectIds.length) {
     throw createValidationError('Select at least one project this user can access, or choose All Projects.');
   }
@@ -690,7 +691,7 @@ export const login = async (req, res) => {
   if (!isPasswordCorrect) return res.status(401).json({ message: 'Invalid email or password.' });
 
   const availability = await getSystemAvailability({ force: true });
-  if (availability.status === 'maintenance' && user.role !== 'super_admin') {
+  if (availability.status === 'maintenance' && !isOwnerAdministrator(user)) {
     return res.status(503).json({
       code: 'MAINTENANCE_MODE',
       message:
@@ -1583,7 +1584,7 @@ export const createUser = async (req, res) => {
     }
 
     if (systemUserRoles.has(role)) {
-      const projectAccess = ['super_admin', 'auditor'].includes(role)
+      const projectAccess = ['super_admin', 'system_admin', 'auditor'].includes(role)
         ? { allProjects: true, projectIds: [] }
         : normalizeSystemProjectAccess(req.body);
       assertSystemProjectSelection(role, projectAccess);
@@ -1617,7 +1618,7 @@ export const createUser = async (req, res) => {
       const accountCode = buildAccountCode({ role, userId });
       await connection.query('UPDATE users SET account_code = ? WHERE id = ?', [accountCode, userId]);
 
-      if (role !== 'super_admin') {
+      if (!['super_admin', 'system_admin'].includes(role)) {
         await replaceAdminProjectAccess(connection, {
           userId,
           role,
@@ -1983,7 +1984,7 @@ export const editUser = async (req, res) => {
     let allowReviewId = null;
 
     if (sellerRoles.has(role) && existingAccreditedSellerId) {
-      if (req.authUser?.role === 'system_admin' || (req.authUser?.role === 'super_admin' && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
+      if ((isOwnerAdministrator(req.authUser) && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
         auditCase = await getPendingAuditCorrectionCase(connection, {
           actor: req.authUser,
           auditCaseId: req.body?.auditCaseId || req.body?.audit_case_id,
@@ -2378,7 +2379,7 @@ export const changeUserPosition = async (req, res) => {
       return res.status(400).json({ message: 'Enter a clear reason for the role change.' });
     }
 
-    const projectAccess = newRole === 'auditor'
+    const projectAccess = ['system_admin', 'auditor'].includes(newRole)
       ? { allProjects: true, projectIds: [] }
       : normalizeSystemProjectAccess(req.body);
     assertSystemProjectSelection(newRole, projectAccess);
@@ -2404,7 +2405,7 @@ export const changeUserPosition = async (req, res) => {
     }
 
     const previousRole = user.role;
-    const forcedAllProjects = newRole === 'auditor';
+    const forcedAllProjects = ['system_admin', 'auditor'].includes(newRole);
     await connection.query(
       `UPDATE users
        SET role = ?,

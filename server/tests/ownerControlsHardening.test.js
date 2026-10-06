@@ -22,14 +22,14 @@ test('Archive Old Audit Logs is owner-only with password plus email verification
   const router = read('server/routers/System/auditLogs.router.js');
   const controller = read('server/controllers/System/auditLogs.controller.js');
 
-  assert.match(page, /const canArchive = currentUserData\?\.user\?\.role === 'super_admin'/);
+  assert.match(page, /const canArchive = \['super_admin', 'system_admin'\]\.includes\(currentUserData\?\.user\?\.role\)/);
   assert.match(page, /disabled=\{!canArchive\}/);
   assert.match(page, /Super Admin authority is required/);
-  assert.match(router, /archive\/request'[\s\S]*requireExactRole\('super_admin'\)/);
-  assert.match(router, /archive\/confirm'[\s\S]*requireExactRole\('super_admin'\)/);
-  assert.match(router, /archive\/exports\/:batchId'[\s\S]*requireExactRole\('super_admin'\)/);
+  assert.match(router, /archive\/request'[\s\S]*requireExactRole\('super_admin', 'system_admin'\)/);
+  assert.match(router, /archive\/confirm'[\s\S]*requireExactRole\('super_admin', 'system_admin'\)/);
+  assert.match(router, /archive\/exports\/:batchId'[\s\S]*requireExactRole\('super_admin', 'system_admin'\)/);
   assert.match(controller, /requireArchiveAuthority/);
-  assert.match(controller, /user\.role !== 'super_admin'/);
+  assert.match(controller, /!isOwnerAdministrator\(user\)/);
   assert.match(controller, /bcrypt\.compare/);
   assert.match(modal, /Super Admin password/);
   assert.match(modal, /Verify Password & Send Code/);
@@ -59,3 +59,4 @@ test('Cancellation actions are permission-based while sensitive settlement and r
   assert.match(modal, /Current Account Password/);
   assert.match(modal, /Email Verification Code/);
 });
+

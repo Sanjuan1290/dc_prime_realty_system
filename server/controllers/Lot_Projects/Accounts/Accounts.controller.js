@@ -1,3 +1,4 @@
+import { isOwnerAdministrator } from '../../../config/permissions.js';
 import crypto from 'node:crypto';
 
 import {
@@ -24,7 +25,7 @@ const requestIp = (req) => clean(req.headers['x-forwarded-for'] || req.socket?.r
 const requirePurgeAuthority = async (req) => {
   const actor = await getAuthenticatedUser(req);
   if (!actor) throw Object.assign(new Error('You must be logged in to permanently delete account records.'), { statusCode: 401 });
-  if (String(actor.role || '').toLowerCase() !== 'super_admin') {
+  if (!isOwnerAdministrator(actor)) {
     throw Object.assign(new Error('Only Super Admin can permanently delete account records.'), { statusCode: 403 });
   }
   return actor;
@@ -662,3 +663,4 @@ export const purgeLotProjectAccount = async (req, res) => {
     connection.release();
   }
 };
+

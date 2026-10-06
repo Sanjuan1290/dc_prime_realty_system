@@ -13,7 +13,7 @@ test('unit commission adjustment uses Accounting Head approval, Auditor case cor
   assert.match(controller, /createProtectedChangeRequest/);
   assert.match(controller, /department: 'accounting'/);
   assert.match(controller, /accounting_head/);
-  assert.match(controller, /system_admin/);
+  assert.match(controller, /isOwnerAdministrator\(/);
   assert.match(controller, /emergency_super_admin/);
   assert.match(controller, /createProtectedChangeRequest/);
   assert.match(controller, /getPendingAuditCorrectionCase/);
@@ -50,3 +50,4 @@ test('client requires exact allocation before governed commission authorization 
   assert.match(modal, /Auditor Case|auditCase/);
   assert.match(modal, /Emergency|Super Admin/);
 });
+

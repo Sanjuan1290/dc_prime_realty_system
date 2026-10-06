@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { FiAlertTriangle, FiChevronDown, FiChevronRight, FiLock, FiRotateCcw, FiSearch } from 'react-icons/fi'
+import { FiAlertTriangle, FiChevronDown, FiChevronRight, FiRotateCcw, FiSearch } from 'react-icons/fi'
 import {
   ACCESS_LEVELS,
   cleanPermissionLabel,
@@ -10,10 +10,7 @@ import {
 } from '../../../utils/permissionMeta'
 
 const tone = {
-  required: 'border-emerald-200 bg-emerald-50 text-emerald-900',
-  inherited: 'border-blue-200 bg-blue-50 text-blue-900',
-  restricted: 'border-slate-200 bg-slate-100 text-slate-400',
-  optional: 'border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:bg-blue-50',
+  normal: 'border-slate-200 bg-white text-slate-700 hover:border-blue-200 hover:bg-blue-50',
   outside: 'border-amber-300 bg-amber-50 text-slate-800 hover:border-amber-400 hover:bg-amber-100',
 }
 
@@ -43,17 +40,14 @@ const GroupCheckbox = ({ checked, indeterminate, disabled, onChange, label }) =>
 /**
  * Permission grid used by Create User, User Access and Role & Access Control.
  *
- * Each module is one compact row with an access level (No access / View only /
- * Can edit / Full access). A level is only a shortcut: it ticks the module's
- * permission keys by tier, and the saved data is still the same permission
- * keys the server enforces. "Details" opens the individual permissions for
- * fine-tuning; anything that does not match a level shows as Custom.
+ * Every role uses the same grid. Each permission is a normal checkbox that
+ * starts from the role default; nothing is locked or hidden. Anything granted
+ * beyond the role default shows an "Outside normal role" warning, and
+ * owner-level permissions get an extra "Usually System Admin only" warning.
  *
- * Role defaults are recommendations, not hard department ceilings. Normal
- * business permissions remain assignable across departments and are flagged as
- * "Outside normal role" when they are unusual for the selected position.
- * Genuine governance/security permissions can still be restricted by the
- * server policy and are shown as "Restricted governance".
+ * Each module is one compact row with an access level (No access / View only /
+ * Can edit / Full access). A level is only a shortcut that ticks the module's
+ * permission keys; anything that does not match a level shows as Custom.
  */
 const PermissionMatrix = ({
   catalog = [],
@@ -68,38 +62,30 @@ const PermissionMatrix = ({
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('all')
   const [expanded, setExpanded] = useState({})
-  const [showRestricted, setShowRestricted] = useState(false)
   const [confirmViewAll, setConfirmViewAll] = useState(false)
 
   const selectedSet = new Set(selected || [])
-  const required = new Set(policy?.required || [])
-  const inherited = new Set(policy?.inherited || [])
-  const ceiling = policy?.ceiling ? new Set(policy.ceiling) : null
   const recommended = new Set(policy?.recommended || baseline || [])
+  const ownerLevel = new Set(policy?.ownerLevel || [])
   const baselineSet = baseline ? new Set(baseline) : null
   const allKeys = catalog.flatMap((group) => (group.items || []).map(([, key]) => key))
 
-  const stateFor = (key) => {
-    if (required.has(key)) return 'required'
-    if (inherited.has(key)) return 'inherited'
-    if (ceiling && !ceiling.has(key)) return 'restricted'
-    return 'optional'
-  }
-  const isOutsideNormal = (key) => stateFor(key) === 'optional' && recommended.size > 0 && !recommended.has(key)
-  const isLocked = (key) => disabled || stateFor(key) !== 'optional'
-  const effectiveChecked = (key) => required.has(key) || inherited.has(key) || selectedSet.has(key)
-  const optionalKeys = allKeys.filter((key) => stateFor(key) === 'optional')
+  // Every permission is adjustable for every role.
+  const isOutsideNormal = (key) => recommended.size > 0 && !recommended.has(key)
+  const isLocked = () => disabled
+  const effectiveChecked = (key) => selectedSet.has(key)
+  const optionalKeys = allKeys
   const optionalViewKeys = optionalKeys.filter((key) => getPermissionType(key) === 'View')
   const commit = (next) => onChange?.([...next])
 
   const added = baselineSet ? optionalKeys.filter((key) => selectedSet.has(key) && !baselineSet.has(key)) : []
   const removed = baselineSet ? optionalKeys.filter((key) => !selectedSet.has(key) && baselineSet.has(key)) : []
   const changedSet = new Set([...added, ...removed])
-  const grantedCount = allKeys.filter((key) => stateFor(key) !== 'restricted' && effectiveChecked(key)).length
+  const grantedCount = allKeys.filter((key) => effectiveChecked(key)).length
   const outsideSelected = optionalKeys.filter((key) => selectedSet.has(key) && isOutsideNormal(key))
 
   const toggle = (key) => {
-    if (isLocked(key)) return
+    if (isLocked()) return
     const next = new Set(selectedSet)
     if (next.has(key)) next.delete(key)
     else next.add(key)
@@ -108,7 +94,7 @@ const PermissionMatrix = ({
 
   const toggleGroup = (group) => {
     if (disabled) return
-    const keys = (group.items || []).map(([, key]) => key).filter((key) => stateFor(key) === 'optional')
+    const keys = (group.items || []).map(([, key]) => key)
     const allSelected = keys.length > 0 && keys.every((key) => selectedSet.has(key))
     const next = new Set(selectedSet)
     keys.forEach((key) => allSelected ? next.delete(key) : next.add(key))
@@ -119,14 +105,12 @@ const PermissionMatrix = ({
   // lower level are dropped (a module with only View permissions shows just
   // "No access" and "View only").
   const levelsFor = (group) => {
-    const optional = (group.items || []).map(([, key]) => key).filter((key) => stateFor(key) === 'optional')
-    const hasLocked = (group.items || []).some(([, key]) => ['required', 'inherited'].includes(stateFor(key)))
+    const optional = (group.items || []).map(([, key]) => key)
     const levels = []
     ACCESS_LEVELS.forEach((level) => {
       const keys = new Set(optional.filter((key) => level.tiers.includes(getAccessTier(key))))
       if (levels.some((existing) => sameKeys(existing.keys, keys))) return
-      const label = level.value === 'none' && hasLocked ? 'Role baseline' : level.label
-      levels.push({ ...level, label, keys })
+      levels.push({ ...level, keys })
     })
     return { optional, levels }
   }
@@ -169,10 +153,7 @@ const PermissionMatrix = ({
   })
 
   const priority = new Map(priorityGroups.map((name, index) => [name, index]))
-  const usable = (group) => (group.items || []).some(([, key]) => stateFor(key) !== 'restricted')
   const orderedGroups = [...catalog].sort((a, b) => (priority.get(a.group) ?? 999) - (priority.get(b.group) ?? 999))
-  const usableGroups = orderedGroups.filter(usable)
-  const restrictedGroups = orderedGroups.filter((group) => !usable(group))
 
   // Details stay closed by default so the screen is one line per module.
   // Searching or filtering opens matching modules automatically.
@@ -180,13 +161,13 @@ const PermissionMatrix = ({
   const setAllExpanded = (value) => setExpanded(Object.fromEntries(catalog.map((group) => [group.group, value])))
 
   const renderItem = (group, [label, key]) => {
-    const state = stateFor(key)
     const type = getPermissionType(key)
     const changed = changedSet.has(key)
-    const outsideNormal = isOutsideNormal(key)
-    const cardTone = outsideNormal ? tone.outside : tone[state]
-    return <label key={key} className={`flex items-start gap-2.5 rounded-lg border px-3 py-2 text-sm ${cardTone} ${changed ? 'ring-2 ring-amber-300' : ''} ${isLocked(key) ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
-      <input type="checkbox" checked={effectiveChecked(key)} disabled={isLocked(key)} onChange={() => toggle(key)} className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600" />
+    const granted = effectiveChecked(key)
+    const outsideNormal = granted && isOutsideNormal(key)
+    const cardTone = outsideNormal ? tone.outside : tone.normal
+    return <label key={key} className={`flex items-start gap-2.5 rounded-lg border px-3 py-2 text-sm ${cardTone} ${changed ? 'ring-2 ring-amber-300' : ''} ${isLocked() ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+      <input type="checkbox" checked={granted} disabled={isLocked()} onChange={() => toggle(key)} className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600" />
       <span className="min-w-0">
         <span className="font-semibold">{cleanPermissionLabel(label)}</span>
         <span className="mt-1 flex flex-wrap gap-1 text-[10px] font-black">
@@ -194,9 +175,7 @@ const PermissionMatrix = ({
           {isSensitivePermission(key) ? <span className="rounded bg-red-100 px-1.5 py-0.5 text-red-700">Sensitive</span> : null}
           {needsHeadApproval(key) ? <span className="rounded bg-violet-100 px-1.5 py-0.5 text-violet-700">Needs Head approval</span> : null}
           {outsideNormal ? <span className="rounded bg-amber-200 px-1.5 py-0.5 text-amber-900">Outside normal role</span> : null}
-          {state === 'required' ? <span className="rounded bg-white/70 px-1.5 py-0.5 uppercase tracking-wide opacity-80">Required</span> : null}
-          {state === 'inherited' ? <span className="rounded bg-white/70 px-1.5 py-0.5 uppercase tracking-wide opacity-80">From Staff Role</span> : null}
-          {state === 'restricted' ? <span className="rounded bg-white/70 px-1.5 py-0.5 uppercase tracking-wide opacity-80">Restricted governance</span> : null}
+          {outsideNormal && ownerLevel.has(key) ? <span className="rounded bg-red-600 px-1.5 py-0.5 text-white">Usually System Admin only</span> : null}
           {changed ? <span className="rounded bg-amber-100 px-1.5 py-0.5 text-amber-800">{selectedSet.has(key) ? 'Added' : 'Removed'}</span> : null}
         </span>
       </span>
@@ -207,12 +186,11 @@ const PermissionMatrix = ({
     const items = visibleItems(group)
     if ((needle || filter !== 'all') && !items.length) return null
     const groupKeys = (group.items || []).map(([, key]) => key)
-    const optional = groupKeys.filter((key) => stateFor(key) === 'optional')
-    const assignableKeys = groupKeys.filter((key) => stateFor(key) !== 'restricted')
+    const optional = groupKeys
+    const assignableKeys = groupKeys
     const grantedInGroup = assignableKeys.filter((key) => effectiveChecked(key)).length
     const allSelected = optional.length > 0 && optional.every((key) => selectedSet.has(key))
     const someSelected = optional.some((key) => selectedSet.has(key))
-    const lockedCount = groupKeys.filter((key) => ['required', 'inherited'].includes(stateFor(key))).length
     const changedInGroup = groupKeys.filter((key) => changedSet.has(key)).length
     const outsideInGroup = optional.filter((key) => selectedSet.has(key) && isOutsideNormal(key)).length
     const open = isExpanded(group)
@@ -227,20 +205,19 @@ const PermissionMatrix = ({
             <span className="block font-black text-slate-900">{group.group}</span>
             <span className="flex flex-wrap items-center gap-1.5 text-[11px] font-bold text-slate-500">
               <span>{`${grantedInGroup} of ${assignableKeys.length}`} granted</span>
-              {lockedCount ? <span className="inline-flex items-center gap-1 text-emerald-700"><FiLock /> {lockedCount} fixed by role</span> : null}
               {outsideInGroup ? <span className="rounded bg-amber-200 px-1.5 text-amber-900">Outside normal role</span> : null}
               {changedInGroup ? <span className="rounded bg-amber-100 px-1.5 text-amber-800">Changed</span> : null}
             </span>
           </span>
         </button>
-        {optional.length ? (
+        {(
           <div className="flex flex-wrap rounded-lg border border-slate-200 bg-slate-50 p-0.5 text-[11px] font-black" role="radiogroup" aria-label={`${group.group} access level`}>
             {levels.map((level) => (
               <button key={level.value} type="button" role="radio" aria-checked={current === level.value} disabled={disabled} onClick={() => applyLevel(group, level)} title={level.keys.size ? `${level.keys.size} permission${level.keys.size === 1 ? '' : 's'}` : 'Removes every adjustable permission in this module'} className={`rounded-md px-2.5 py-1.5 disabled:cursor-not-allowed ${current === level.value ? levelTone[level.value] : 'text-slate-600 hover:bg-white'}`}>{level.label}</button>
             ))}
             {current === 'custom' ? <span className="rounded-md bg-amber-500 px-2.5 py-1.5 text-white" title="Individual permissions were chosen in Details">Custom</span> : null}
           </div>
-        ) : <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1.5 text-[11px] font-black text-emerald-700"><FiLock /> Fixed by role</span>}
+        )}
       </div>
       {open ? <div className="grid gap-1.5 border-t border-slate-100 p-3 sm:grid-cols-2">
         {items.map((item) => renderItem(group, item))}
@@ -292,12 +269,7 @@ const PermissionMatrix = ({
             <summary className="cursor-pointer font-black text-slate-700">What the levels and colors mean</summary>
             <div className="mt-2 grid gap-1.5">
               <p><span className="font-black">View only</span>: see records. <span className="font-black">Can edit</span>: also create, edit, export and print. <span className="font-black">Full access</span>: also delete and sensitive actions (money corrections, cancellations, releases). <span className="font-black">Custom</span>: individual permissions were chosen in a module's details.</p>
-              <div className="flex flex-wrap gap-2 text-[11px] font-black uppercase tracking-wide">
-                <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-700">Required</span>
-                <span className="rounded-full bg-blue-100 px-2.5 py-1 text-blue-700">From Staff Role</span>
-                <span className="rounded-full bg-amber-100 px-2.5 py-1 text-amber-800">Outside normal role</span>
-                <span className="rounded-full bg-slate-200 px-2.5 py-1 text-slate-500">Restricted governance</span>
-              </div>
+              <p>Every permission starts from the role default and can be changed. <span className="rounded bg-amber-200 px-1.5 text-amber-900">Outside normal role</span> marks access the role does not normally have; <span className="rounded bg-red-600 px-1.5 text-white">Usually System Admin only</span> marks owner-level access.</p>
             </div>
           </details>
           <div className="flex flex-wrap gap-2">
@@ -312,20 +284,8 @@ const PermissionMatrix = ({
       </div>
 
       <div className="grid gap-2">
-        {usableGroups.map(renderModule)}
+        {orderedGroups.map(renderModule)}
       </div>
-
-      {restrictedGroups.length ? (
-        <section className="rounded-xl border border-dashed border-slate-300 bg-slate-50">
-          <button type="button" onClick={() => setShowRestricted((value) => !value)} className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left text-sm font-black text-slate-500" aria-expanded={showRestricted || Boolean(needle)}>
-            <span className="inline-flex items-center gap-2"><FiLock /> Restricted governance ({restrictedGroups.length} module{restrictedGroups.length === 1 ? '' : 's'})</span>
-            {showRestricted || needle ? <FiChevronDown /> : <FiChevronRight />}
-          </button>
-          {showRestricted || needle ? <div className="grid gap-1.5 border-t border-slate-200 p-3 sm:grid-cols-2">
-            {restrictedGroups.flatMap((group) => visibleItems(group).map((item) => renderItem(group, item)))}
-          </div> : null}
-        </section>
-      ) : null}
     </div>
   )
 }

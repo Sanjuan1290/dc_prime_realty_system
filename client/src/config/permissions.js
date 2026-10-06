@@ -135,11 +135,17 @@ export const CONFIGURABLE_SYSTEM_ROLES = Object.freeze(
 );
 
 export const ROLE_DEFAULT_EDITABLE_ROLES = Object.freeze([
+  'auditor',
   ...DEPARTMENT_STAFF_ROLES,
   ...DEPARTMENT_HEAD_ROLES,
 ]);
 
+// Super Admin and System Admin are both owner-level, full-access accounts.
+// System Admin cannot create or manage Super Admin / System Admin accounts.
+export const OWNER_ROLES = Object.freeze(['super_admin', 'system_admin']);
+
 export const SYSTEM_ADMIN_MANAGEABLE_ROLES = Object.freeze([
+  'auditor',
   ...DEPARTMENT_STAFF_ROLES,
   ...DEPARTMENT_HEAD_ROLES,
 ]);
@@ -269,14 +275,14 @@ export const isDepartmentHead = (userOrRole) => DEPARTMENT_HEAD_ROLES.includes(n
 export const isDepartmentStaff = (userOrRole) => DEPARTMENT_STAFF_ROLES.includes(normalizeActor(userOrRole).role);
 export const getRoleDepartment = (userOrRole) => ROLE_DEPARTMENT[normalizeActor(userOrRole).role] || null;
 
-// Full-access means owner-level break-glass bypass. System Admin is intentionally NOT included.
-export const isFullAccessAdministrator = (userOrRole = {}) => normalizeActor(userOrRole).role === 'super_admin';
+// Owner-level full access: Super Admin and System Admin.
+export const isFullAccessAdministrator = (userOrRole = {}) => OWNER_ROLES.includes(normalizeActor(userOrRole).role);
+export const isOwnerAdministrator = isFullAccessAdministrator;
 
 export const roleHasPermission = (userOrRole, permission) => {
   if (!permission) return false;
   const actor = normalizeActor(userOrRole);
-  if (actor.role === 'super_admin') return allPermissions.has(permission);
-  if (actor.role === 'auditor') return AUDITOR_ENFORCED_PERMISSIONS.has(permission);
+  if (OWNER_ROLES.includes(actor.role)) return allPermissions.has(permission);
   return normalizedPermissionSet(actor).has(permission);
 };
 
@@ -285,8 +291,8 @@ export const canActorManageUserRole = (userOrRole, targetRole) => {
   const target = String(targetRole || '');
   if (!knownUserRoles.has(target)) return false;
   if (actor.role === 'super_admin') return true;
-  if (actor.role !== 'system_admin') return false;
-  return SYSTEM_ADMIN_MANAGEABLE_ROLES.includes(target);
+  if (actor.role === 'system_admin') return !OWNER_ROLES.includes(target);
+  return false;
 };
 
 export const canActorCreateUserRole = (userOrRole, requestedRole) => {
@@ -294,8 +300,9 @@ export const canActorCreateUserRole = (userOrRole, requestedRole) => {
   const requested = String(requestedRole || '');
   if (!knownUserRoles.has(requested)) return false;
   if (actor.role === 'super_admin') return SYSTEM_USER_ROLES.includes(requested) || SELLER_USER_ROLES.includes(requested) || requested === 'external_group';
-  if (actor.role !== 'system_admin') return false;
-  return SYSTEM_ADMIN_MANAGEABLE_ROLES.includes(requested);
+  // System Admin can create everything Super Admin can, except owner accounts.
+  if (actor.role === 'system_admin') return !OWNER_ROLES.includes(requested);
+  return false;
 };
 
 export const canActorChangeUserRole = (userOrRole, currentRole, requestedRole) => {
@@ -307,7 +314,7 @@ export const canActorChangeUserRole = (userOrRole, currentRole, requestedRole) =
 
   // Accredited-seller hierarchy keeps its own legacy behavior.
   if (!SYSTEM_USER_ROLES.includes(current) && !SYSTEM_USER_ROLES.includes(requested)) {
-    return actor.role === 'super_admin' || roleHasPermission(actor, PERMISSIONS.SYSTEM_USERS_EDIT);
+    return OWNER_ROLES.includes(actor.role) || roleHasPermission(actor, PERMISSIONS.SYSTEM_USERS_EDIT);
   }
 
   if (actor.role === 'super_admin') return current !== 'super_admin';
@@ -370,8 +377,9 @@ export const getFirstAllowedLotProjectPath = (user = {}, projectSlug = '') => {
 
 export const hasProjectScope = (user = {}, projectSlug = '') => {
   if (!user || !projectSlug || !isSystemUserRole(user?.role)) return false
-  if (['super_admin', 'auditor'].includes(user.role) || user.all_projects_access === true || Number(user.all_projects_access || user.admin_all_projects || 0) === 1) return true
+  if (['super_admin', 'system_admin', 'auditor'].includes(user.role) || user.all_projects_access === true || Number(user.all_projects_access || user.admin_all_projects || 0) === 1) return true
   const projects = Array.isArray(user.projects) ? user.projects : (Array.isArray(user.admin_projects) ? user.admin_projects : [])
   const normalizedSlug = String(projectSlug).trim().toLowerCase()
   return projects.some((project) => String(project?.slug || project?.lot_project_slug || '').trim().toLowerCase() === normalizedSlug)
 }
+

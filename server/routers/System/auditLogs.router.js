@@ -12,8 +12,9 @@ const router = express.Router();
 router.use(authenticateUser);
 
 router.get('/', requirePermission(PERMISSIONS.AUDIT_LOGS_VIEW), getAuditLogs);
-router.post('/archive/request', requirePermission(PERMISSIONS.AUDIT_LOGS_ARCHIVE), requireExactRole('super_admin'), requestAuditLogArchive);
-router.post('/archive/confirm', requirePermission(PERMISSIONS.AUDIT_LOGS_ARCHIVE), requireExactRole('super_admin'), confirmAuditLogArchive);
-router.get('/archive/exports/:batchId', requirePermission(PERMISSIONS.AUDIT_LOGS_ARCHIVE), requireExactRole('super_admin'), downloadAuditLogArchiveExport);
+router.post('/archive/request', requirePermission(PERMISSIONS.AUDIT_LOGS_ARCHIVE), requireExactRole('super_admin', 'system_admin'), requestAuditLogArchive);
+router.post('/archive/confirm', requirePermission(PERMISSIONS.AUDIT_LOGS_ARCHIVE), requireExactRole('super_admin', 'system_admin'), confirmAuditLogArchive);
+router.get('/archive/exports/:batchId', requirePermission(PERMISSIONS.AUDIT_LOGS_ARCHIVE), requireExactRole('super_admin', 'system_admin'), downloadAuditLogArchiveExport);
 
 export default router;
+

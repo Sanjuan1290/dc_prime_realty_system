@@ -11,7 +11,8 @@ const router = express.Router();
 router.use(authenticateUser);
 
 router.get('/', requirePermission(PERMISSIONS.SYSTEM_SETTINGS_VIEW), getSystemSettings);
-router.post('/code', requirePermission(PERMISSIONS.SYSTEM_SETTINGS_MANAGE), requireExactRole('super_admin'), requireCurrentPassword({ field: 'password', label: 'Super Admin password' }), requestSystemSettingsCode);
-router.put('/', requirePermission(PERMISSIONS.SYSTEM_SETTINGS_MANAGE), requireExactRole('super_admin'), updateSystemSettings);
+router.post('/code', requirePermission(PERMISSIONS.SYSTEM_SETTINGS_MANAGE), requireExactRole('super_admin', 'system_admin'), requireCurrentPassword({ field: 'password', label: 'Your password' }), requestSystemSettingsCode);
+router.put('/', requirePermission(PERMISSIONS.SYSTEM_SETTINGS_MANAGE), requireExactRole('super_admin', 'system_admin'), updateSystemSettings);
 
 export default router;
+

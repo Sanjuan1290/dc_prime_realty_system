@@ -1,3 +1,4 @@
+import { isOwnerAdministrator } from '../config/permissions.js';
 import crypto from 'node:crypto';
 import { DEPARTMENT_HEAD_ROLE, getRoleDepartment } from '../config/permissions.js';
 import { createInternalNotifications, notifyAuditors, notifyDepartmentHeads } from './internalNotification.service.js';
@@ -103,7 +104,7 @@ const refreshOwnRoutineReview = async (connection, {
 
   const expectedHeadRole = DEPARTMENT_HEAD_ROLE[department];
   const isDepartmentHead = actor.role === expectedHeadRole;
-  const isSuperAdmin = actor.role === 'super_admin';
+  const isSuperAdmin = isOwnerAdministrator(actor);
   const fromStatus = open.status;
   const previousAfterSnapshot = open.after_snapshot_json ?? null;
   const previousActionKey = open.action_key;
@@ -289,7 +290,7 @@ export const createOperationalReview = async (connection, {
   if (!expectedHeadRole) throw Object.assign(new Error('Review department is invalid.'), { statusCode: 400 });
   assertRegisteredReviewAction(actionKey, department);
 
-  const isEmergency = actor.role === 'super_admin';
+  const isEmergency = isOwnerAdministrator(actor);
   const isDepartmentHead = actor.role === expectedHeadRole;
   const preApprovedHeadId = isEmergency ? 0 : Number(headPreApprovedByUserId || 0);
 
@@ -479,4 +480,5 @@ export const canActorSeeReview = async (connection, actor, review) => {
 };
 
 export const buildReviewPayloadHash = (payload) => crypto.createHash('sha256').update(JSON.stringify(payload ?? null)).digest('hex');
+
 

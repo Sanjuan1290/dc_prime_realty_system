@@ -20,9 +20,10 @@ test('each module offers one access level selector instead of a checkbox per per
   assert.match(meta, /export const getAccessTier/);
   assert.match(matrix, /role="radiogroup"/);
   assert.match(matrix, /applyLevel\(group, level\)/);
-  assert.match(matrix, /'Role baseline'/);
   assert.match(matrix, />Custom</);
-  assert.match(matrix, /Fixed by role/);
+  // 2026-10-06: no locked levels; every role sees the same four levels.
+  assert.doesNotMatch(matrix, /'Role baseline'/);
+  assert.doesNotMatch(matrix, /Fixed by role/);
 });
 
 test('levels are shortcuts over the same permission keys, so storage and server checks are unchanged', () => {
@@ -39,9 +40,10 @@ test('per-permission checkboxes stay available under each module, closed by defa
   assert.match(matrix, /Hide all details/);
 });
 
-test('fully restricted modules fold into one Restricted governance section', () => {
-  assert.match(matrix, /restrictedGroups/);
-  assert.match(matrix, /Restricted governance \(\{restrictedGroups\.length\} module/);
+test('every module is listed for every role; nothing is folded away as restricted', () => {
+  assert.doesNotMatch(matrix, /restrictedGroups/);
+  assert.doesNotMatch(matrix, /Restricted governance/);
+  assert.match(matrix, /\{orderedGroups\.map\(renderModule\)\}/);
 });
 
 test('sensitive and destructive keys need Full access; price list and buyer printouts count as viewing', () => {

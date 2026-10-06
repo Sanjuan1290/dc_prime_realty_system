@@ -63,7 +63,7 @@ const Login = () => {
       const user = data?.user
       queryClient.setQueryData(['currentUser'], { user })
 
-      if (systemStatus?.status === 'maintenance' && user?.role !== 'super_admin') {
+      if (systemStatus?.status === 'maintenance' && !['super_admin', 'system_admin'].includes(user?.role)) {
         navigate('/maintenance', {
           replace: true,
           state: { message: systemStatus.maintenanceMessage },
@@ -92,7 +92,7 @@ const Login = () => {
   if (
     systemStatus?.status === 'maintenance'
     && currentUser?.user
-    && currentUser.user.role !== 'super_admin'
+    && !['super_admin', 'system_admin'].includes(currentUser.user.role)
   ) {
     return (
       <Navigate
@@ -219,3 +219,4 @@ const Login = () => {
 }
 
 export default Login
+

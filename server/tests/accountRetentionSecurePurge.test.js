@@ -21,7 +21,7 @@ test('secure purge is owner-only with password and email-code routes', () => {
   const listingProfile = read('client/src/pages/Lot_Projects/ListingProfile.jsx');
   const accountHistory = read('client/src/components/Lot_Projects/ListingProfileComponents/AccountHistory/AccountHistoryPanel.jsx');
   assert.match(router, /accounts\/:accountId\/purge-code/);
-  assert.match(router, /requireExactRole\('super_admin'\)/);
+  assert.match(router, /requireExactRole\('super_admin', 'system_admin'\)/);
   assert.match(router, /requireCurrentPassword/);
   assert.match(router, /accounts\/:accountId\/purge'/);
   assert.match(controller, /crypto\.randomInt\(100000, 1000000\)/);
@@ -124,3 +124,4 @@ test('account foreign keys block accidental deletion outside the verified purge'
   assert.match(migration, /fk_client_document_account[\s\S]*RESTRICT/);
   assert.match(migration, /fk_commission_account[\s\S]*RESTRICT/);
 });
+

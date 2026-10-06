@@ -1,3 +1,4 @@
+import { isOwnerAdministrator } from '../../../config/permissions.js';
 import bcrypt from 'bcrypt';
 import {
   db,
@@ -487,7 +488,7 @@ const requirePaymentCorrectionVerification = async (connection, req, { action, l
 
   // Super Admin remains the owner-level emergency fallback and keeps the existing
   // email-code verification path. Password is checked when the code is requested.
-  if (actor.role === 'super_admin') {
+  if (isOwnerAdministrator(actor)) {
     const verificationId = Number(req.body.verificationId || req.body.verification_id || 0);
     const code = cleanPaymentCorrectionValue(req.body.code || req.body.verificationCode || req.body.verification_code);
     if (!verificationId || !code) throw createHttpError(400, 'Emergency Super Admin correction requires email verification.');
@@ -764,7 +765,7 @@ const authorizeAccountingAdjustment = async (connection, {
     return { authorized: true, authorizationType: 'department_head', headPreApprovedByUserId: actor.id };
   }
 
-  if (actor.role === 'system_admin' || (actor.role === 'super_admin' && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
+  if ((isOwnerAdministrator(actor) && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
     const auditCase = await getPendingAuditCorrectionCase(connection, {
       actor: req.authUser,
       auditCaseId: req.body.auditCaseId || req.body.audit_case_id,
@@ -1170,7 +1171,7 @@ export const requestLotProjectPaymentCorrectionCode = async (req, res) => {
       });
     }
 
-    if (actor.role === 'system_admin' || (actor.role === 'super_admin' && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
+    if ((isOwnerAdministrator(actor) && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
       const auditCaseId = Number(req.body.auditCaseId || req.body.audit_case_id || 0);
       if (!auditCaseId) throw createHttpError(409, 'A valid Auditor-approved Audit Case is required for System Admin payment correction.');
       const [caseRows] = await connection.query(
@@ -1213,7 +1214,7 @@ export const requestLotProjectPaymentCorrectionCode = async (req, res) => {
       });
     }
 
-    if (actor.role !== 'super_admin') {
+    if (!isOwnerAdministrator(actor)) {
       throw createHttpError(409, 'Accounting Staff can correct this payment only after the Accounting Head returns its review for correction.');
     }
 
@@ -1222,9 +1223,9 @@ export const requestLotProjectPaymentCorrectionCode = async (req, res) => {
     }
     if (!actor.email) throw createHttpError(400, 'Super Admin email is required for emergency verification.');
     const password = String(req.body?.password || '');
-    if (!password) throw createHttpError(400, 'Super Admin password is required for emergency verification.');
+    if (!password) throw createHttpError(400, 'Your password is required for emergency verification.');
     if (!actor.password_hash || !(await bcrypt.compare(password, actor.password_hash))) {
-      throw createHttpError(401, 'Super Admin password is incorrect.');
+      throw createHttpError(401, 'Your password is incorrect.');
     }
 
     const { verificationId, code } = await createSensitiveActionVerification(connection, {
@@ -3742,4 +3743,5 @@ export const restorePaymentSchedulePenaltyWaiver = async (req, res) => {
     connection.release();
   }
 };
+
 

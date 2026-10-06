@@ -61,7 +61,7 @@ test('login is email-only, maintenance-aware, and lands on the first permitted m
   assert.match(usersController, /Invalid email or password/);
   assert.match(usersController, /getSystemAvailability\(\{ force: true \}\)/);
   assert.match(usersController, /code: 'MAINTENANCE_MODE'/);
-  assert.match(usersController, /user\.role !== 'super_admin'/);
+  assert.match(usersController, /availability\.status === 'maintenance' && !isOwnerAdministrator\(user\)/);
   assert.match(login, /getFirstAllowedSystemPath/);
   assert.match(changePassword, /getFirstAllowedSystemPath/);
   assert.match(clientPermissions, /SYSTEM_LANDING_CANDIDATES/);
@@ -130,7 +130,7 @@ test('project settings use Operations Head approval, Auditor correction, and own
   assert.doesNotMatch(projectsRouter, /settings\/code'[^\n]*requireCurrentPassword/);
   assert.match(settingsController, /operations_staff/);
   assert.match(settingsController, /operations_head/);
-  assert.match(settingsController, /system_admin/);
+  assert.match(settingsController, /isOwnerAdministrator\(/);
   assert.match(settingsController, /super_admin_emergency/);
   assert.match(lotSettingsPage, /ProjectSettingsAuthorizationModal/);
   assert.match(settingsAuthModal, /Super Admin Emergency Override/);
@@ -143,3 +143,4 @@ test('accredited seller print/upload UI follows dedicated permissions', () => {
   assert.match(accreditedPage, /readOnly=\{!canUpload\}/);
   assert.match(accreditedPage, /\/portal\/accredited\/proof-of-income\/print/);
 });
+

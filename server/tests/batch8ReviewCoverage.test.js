@@ -54,11 +54,11 @@ test('Batch 1 adds no new Head-preapproval action, so governedAction authorizati
   }
 });
 
-test('System Admin correction ceiling includes buyer-profile edits but does not gain routine reservation creation', () => {
+test('System Admin is owner-level: buyer-profile edits and routine reservation creation are both included', () => {
   const policy = getStaticRolePolicy('system_admin');
-  assert.equal(policy.ceiling.includes(PERMISSIONS.LOT_BUYER_PROFILE_EDIT), true);
+  assert.equal(policy.fullAccess, true);
   assert.equal(policy.required.includes(PERMISSIONS.LOT_BUYER_PROFILE_EDIT), true);
-  assert.equal(policy.ceiling.includes(PERMISSIONS.LOT_RESERVATIONS_CREATE), false);
+  assert.equal(policy.required.includes(PERMISSIONS.LOT_RESERVATIONS_CREATE), true);
 });
 
 test('Review Center links Batch 1 Sales entities and only exposes Correct & Confirm where a safe edit path exists', async () => {
@@ -123,14 +123,11 @@ test('signed acknowledgement receipt upload/replacement is review-locked and sup
   assert.doesNotMatch(source, /authorizeGovernedAction/);
 });
 
-test('System Admin can reach signed-receipt correction UI without gaining routine commission release authority', () => {
+test('System Admin can reach signed-receipt corrections and, as an owner, commission release authority', () => {
   const policy = getStaticRolePolicy('system_admin');
-  assert.equal(policy.required.includes(PERMISSIONS.LOT_PRINTOUTS_USE), true);
-  assert.equal(policy.required.includes(PERMISSIONS.LOT_PAYMENTS_EDIT), true);
-  assert.equal(policy.required.includes(PERMISSIONS.LOT_PAYMENT_DELETE), true);
-  assert.equal(policy.ceiling.includes(PERMISSIONS.LOT_COMMISSIONS_RELEASE), false);
-  assert.equal(policy.ceiling.includes(PERMISSIONS.LOT_COMMISSIONS_HOLD), false);
-  assert.equal(policy.ceiling.includes(PERMISSIONS.LOT_COMMISSIONS_UNHOLD), false);
+  for (const key of [PERMISSIONS.LOT_PRINTOUTS_USE, PERMISSIONS.LOT_PAYMENTS_EDIT, PERMISSIONS.LOT_PAYMENT_DELETE, PERMISSIONS.LOT_COMMISSIONS_RELEASE, PERMISSIONS.LOT_COMMISSIONS_HOLD, PERMISSIONS.LOT_COMMISSIONS_UNHOLD]) {
+    assert.equal(policy.required.includes(key), true, key);
+  }
 });
 
 test('Review Center routes Batch 2 Accounting entities and keeps commission-stage reviews compensating-action only', async () => {
@@ -222,7 +219,7 @@ test('Marketing controllers review Network/member/seller mutations and pre-autho
 // Intentional policy change: ordinary cross-department business permissions are
 // explicit grants, so seller-management helpers now follow the permission rather
 // than hard-coding the Marketing role name.
-test('Marketing role policy allows Network and in-house seller administration without opening governance-role authority', async () => {
+test('Marketing role policy allows Network and in-house seller administration and keeps Audit Review out of its default', async () => {
   const staff = getStaticRolePolicy('marketing_staff');
   const head = getStaticRolePolicy('marketing_head');
   for (const permission of [PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW, PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE, PERMISSIONS.SYSTEM_USERS_CREATE, PERMISSIONS.SYSTEM_USERS_EDIT]) {
@@ -233,7 +230,9 @@ test('Marketing role policy allows Network and in-house seller administration wi
   assert.match(permissionsSource, /DEPARTMENT_STAFF_ROLES[\s\S]*DEPARTMENT_HEAD_ROLES[\s\S]*SELLER_USER_ROLES\.includes/);
   assert.match(permissionsSource, /SYSTEM_USERS_CREATE/);
   assert.match(permissionsSource, /SYSTEM_USERS_EDIT/);
-  assert.equal(staff.ceiling.includes(PERMISSIONS.WORKFLOW_AUDIT_REVIEW), false);
+  // Audit Review is not part of the Marketing default; granting it is possible but flagged.
+  assert.equal(staff.recommended.includes(PERMISSIONS.WORKFLOW_AUDIT_REVIEW), false);
+  assert.equal(head.recommended.includes(PERMISSIONS.WORKFLOW_AUDIT_REVIEW), false);
 });
 
 test('Marketing permission migration is idempotent and does not mutate existing per-user grants', async () => {
@@ -255,3 +254,4 @@ test('Review Center routes Operations and Marketing records and marks destructiv
   for (const workflow of ['listing_documents_update_review', 'listing_import_review', 'network_rates_review', 'network_edit_review', 'seller_edit_review']) assert.match(source, new RegExp(workflow));
   for (const key of ['listing.delete', 'listing.import', 'listing.import_undo', 'network.members.import']) assert.match(source, new RegExp(key.replaceAll('.', '\\.')));
 });
+

@@ -201,9 +201,9 @@ router.put('/lot-projects/:projectSlug/settings', requirePermission(PERMISSIONS.
 router.get('/lot-projects/:projectSlug/listings/:listingId', requirePermission(PERMISSIONS.LOT_LISTING_PROFILE_VIEW), getLotProjectListingProfile);
 router.get('/lot-projects/:projectSlug/listings/:listingId/accounts', requirePermission(PERMISSIONS.LOT_ACCOUNT_HISTORY_VIEW), getLotProjectListingAccountHistory);
 router.get('/lot-projects/:projectSlug/listings/:listingId/accounts/:accountId', requirePermission(PERMISSIONS.LOT_LISTING_PROFILE_VIEW), getLotProjectListingProfile);
-router.get('/lot-projects/:projectSlug/accounts/:accountId/purge-preview', requirePermission(PERMISSIONS.LOT_ACCOUNT_HISTORY_VIEW), requireExactRole('super_admin'), getLotProjectAccountPurgePreview);
-router.post('/lot-projects/:projectSlug/accounts/:accountId/purge-code', requirePermission(PERMISSIONS.LOT_ACCOUNT_HISTORY_VIEW), requireExactRole('super_admin'), requireCurrentPassword({ field: 'password', label: 'Super Admin password' }), requestLotProjectAccountPurgeCode);
-router.post('/lot-projects/:projectSlug/accounts/:accountId/purge', requirePermission(PERMISSIONS.LOT_ACCOUNT_HISTORY_VIEW), requireExactRole('super_admin'), purgeLotProjectAccount);
+router.get('/lot-projects/:projectSlug/accounts/:accountId/purge-preview', requirePermission(PERMISSIONS.LOT_ACCOUNT_HISTORY_VIEW), requireExactRole('super_admin', 'system_admin'), getLotProjectAccountPurgePreview);
+router.post('/lot-projects/:projectSlug/accounts/:accountId/purge-code', requirePermission(PERMISSIONS.LOT_ACCOUNT_HISTORY_VIEW), requireExactRole('super_admin', 'system_admin'), requireCurrentPassword({ field: 'password', label: 'Your password' }), requestLotProjectAccountPurgeCode);
+router.post('/lot-projects/:projectSlug/accounts/:accountId/purge', requirePermission(PERMISSIONS.LOT_ACCOUNT_HISTORY_VIEW), requireExactRole('super_admin', 'system_admin'), purgeLotProjectAccount);
 router.get('/lot-projects/:projectSlug/document-files/:fileId/access-url', requirePermission(PERMISSIONS.LOT_BUYER_DOCUMENTS_VIEW), getLotProjectDocumentFileAccessUrl);
 router.get('/lot-projects/:projectSlug/document-files/:fileId/content', requirePermission(PERMISSIONS.LOT_BUYER_DOCUMENTS_VIEW), getLotProjectDocumentFileContent);
 router.post(
@@ -279,3 +279,4 @@ router.post('/lot-projects/:projectSlug/listings/:listingId/payment-schedules/:s
 router.post('/lot-projects/:projectSlug/listings/:listingId/penalty-reliefs/:reliefId/restore', requirePermission(PERMISSIONS.LOT_PENALTY_CORRECT), restorePaymentSchedulePenaltyWaiver);
 
 export default router;
+

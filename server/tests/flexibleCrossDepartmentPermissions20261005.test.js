@@ -27,19 +27,24 @@ test('department roles can be explicitly granted ordinary permissions from anoth
   assert.equal(roleHasPermission(marketingWithSalesAccess, PERMISSIONS.LOT_BUYER_PROFILE_EDIT), true);
 });
 
-test('governance/security authority stays restricted even though business permissions are flexible', () => {
+test('owner-level authority is assignable to any role but never part of a department default, and is flagged', () => {
   const policy = getStaticRolePolicy('marketing_staff');
-  for (const restricted of [
+  const ownerLevel = new Set(policy.ownerLevel);
+  for (const key of [
     PERMISSIONS.SYSTEM_ACCESS_CONTROL_MANAGE,
-    PERMISSIONS.WORKFLOW_AUDIT_REVIEW,
     PERMISSIONS.WORKFLOW_SYSTEM_CORRECTION_APPLY,
     PERMISSIONS.WORKFLOW_EMERGENCY_OVERRIDE,
     PERMISSIONS.SYSTEM_SETTINGS_MANAGE,
-  ]) assert.equal(policy.ceiling.includes(restricted), false, restricted);
+  ]) {
+    assert.ok(policy.ceiling.includes(key), key);
+    assert.ok(!policy.recommended.includes(key), key);
+    assert.ok(ownerLevel.has(key), key);
+  }
+  assert.ok(!policy.recommended.includes(PERMISSIONS.WORKFLOW_AUDIT_REVIEW));
 
   const head = getStaticRolePolicy('marketing_head');
-  assert.ok(head.ceiling.includes(PERMISSIONS.WORKFLOW_DEPARTMENT_REVIEW));
-  assert.ok(!policy.ceiling.includes(PERMISSIONS.WORKFLOW_DEPARTMENT_REVIEW));
+  assert.ok(head.recommended.includes(PERMISSIONS.WORKFLOW_DEPARTMENT_REVIEW));
+  assert.ok(!policy.recommended.includes(PERMISSIONS.WORKFLOW_DEPARTMENT_REVIEW));
 });
 
 test('seller user-management authority follows explicit permissions rather than the Marketing role name', () => {
@@ -57,6 +62,9 @@ test('permission UI warns on unusual access instead of disabling normal business
   const matrix = readClient('components/System/userComponents/PermissionMatrix.jsx');
   assert.match(matrix, /Outside normal role/);
   assert.match(matrix, /This is allowed for cross-department responsibilities/);
-  assert.match(matrix, /Restricted governance/);
+  assert.match(matrix, /Usually System Admin only/);
+  assert.doesNotMatch(matrix, /Restricted governance/);
+  assert.doesNotMatch(matrix, /Fixed by role/);
   assert.doesNotMatch(matrix, />Not Allowed</);
 });
+

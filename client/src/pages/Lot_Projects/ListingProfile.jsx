@@ -114,7 +114,7 @@ const ListingProfile = () => {
   const [searchParams] = useSearchParams()
   const { data: currentUserData } = useCurrentUser()
   const user = currentUserData?.user
-  const isSuperAdmin = user?.role === 'super_admin'
+  const isSuperAdmin = ['super_admin', 'system_admin'].includes(user?.role)
   const canEditListingPermission = hasPermission(user, PERMISSIONS.LOT_LISTINGS_EDIT)
   const canReservePermission = hasPermission(user, PERMISSIONS.LOT_RESERVATIONS_CREATE)
   const canEditBuyerProfile = hasPermission(user, PERMISSIONS.LOT_BUYER_PROFILE_EDIT)
@@ -976,7 +976,7 @@ const ListingProfile = () => {
         <AccountHistoryPanel
           projectSlug={projectSlug}
           listingId={listingId}
-          canPermanentlyDelete={currentUserData?.user?.role === 'super_admin'}
+          canPermanentlyDelete={['super_admin', 'system_admin'].includes(currentUserData?.user?.role)}
         />
       ) : null}
 
@@ -1076,3 +1076,4 @@ const ListingProfile = () => {
 }
 
 export default ListingProfile
+

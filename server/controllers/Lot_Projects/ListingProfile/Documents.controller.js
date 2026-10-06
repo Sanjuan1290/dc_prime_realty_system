@@ -1,3 +1,4 @@
+import { isOwnerAdministrator } from '../../../config/permissions.js';
 import {
   db,
   getErrorMessage,
@@ -277,7 +278,7 @@ export const updateLotProjectListingDocumentRequirements = async (req, res) => {
 
     let auditCase = null;
     let returnedReview = null;
-    if (req.authUser?.role === 'system_admin' || (req.authUser?.role === 'super_admin' && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
+    if ((isOwnerAdministrator(req.authUser) && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
       auditCase = await getPendingAuditCorrectionCase(connection, {
         actor: req.authUser,
         auditCaseId: req.body?.auditCaseId,
@@ -1231,4 +1232,5 @@ export const clearLotProjectListingDocument = async (req, res) => {
     connection.release();
   }
 };
+
 

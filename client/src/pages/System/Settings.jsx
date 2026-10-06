@@ -55,7 +55,7 @@ const mapSettingsToForm = (settings = {}) => ({
 const Settings = () => {
   const { data: currentUserData } = useCurrentUser()
   const actor = currentUserData?.user || {}
-  const canManage = actor.role === 'super_admin'
+  const canManage = ['super_admin', 'system_admin'].includes(actor.role)
   const canViewRoleAccess = hasPermission(actor, PERMISSIONS.SYSTEM_ACCESS_CONTROL_VIEW)
   const canManageRoleAccess = hasPermission(actor, PERMISSIONS.SYSTEM_ACCESS_CONTROL_MANAGE)
   const queryClient = useQueryClient()
@@ -129,7 +129,7 @@ const Settings = () => {
               type="button"
               onClick={() => canManage && setIsEditing(true)}
               disabled={!canManage || isLoading || isError || !settings}
-              title={!canManage ? 'Only the Super Admin can change System Settings. Saving requires the Super Admin password and email verification code.' : 'Edit protected System Settings'}
+              title={!canManage ? 'Only Super Admin or System Admin can change System Settings. Saving requires your password and an email verification code.' : 'Edit protected System Settings'}
               className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 disabled:shadow-none"
             >
               <FiEdit2 className="h-4 w-4" />
@@ -139,7 +139,7 @@ const Settings = () => {
         </div>
       </div>
 
-      {!canManage ? <ReadOnlyNotice message="System Settings are owner-controlled. The Edit Settings button remains visible for reference but only the Super Admin can use it with password and email verification." /> : null}
+      {!canManage ? <ReadOnlyNotice message="System Settings are owner-controlled. The Edit Settings button remains visible for reference but only Super Admin or System Admin can use it with password and email verification." /> : null}
 
       {alert ? (
         <StatusAlert type={alert.type} message={alert.message} onClose={alert.type === 'loading' ? undefined : () => setAlert(null)} />
@@ -169,7 +169,7 @@ const Settings = () => {
             <div>
               <h2 className="text-lg font-black text-slate-950">Role &amp; Access Control</h2>
               <p className="mt-1 text-sm font-semibold leading-6 text-slate-500">
-                Manage Staff/Head role defaults, System Admin governance, and Auditor read-only policy. Super Admin keeps emergency Full System Access.
+                Manage the default permissions of Auditor, Staff and Head roles. Super Admin and System Admin always have full access.
               </p>
             </div>
           </div>
@@ -206,7 +206,7 @@ const Settings = () => {
       {pendingAuthorization ? (
         <SettingsAuthorizationModal
           title="Authorize System Settings Change"
-          description="System Settings are owner-controlled. Verify the current Super Admin password, reason, and email code before the final review."
+          description="System Settings are owner-controlled. Verify your current password, reason, and email code before the final review."
           codeEndpoint="/system-settings/code"
           settingsPayload={pendingAuthorization}
           isSaving={saveMutation.isPending}
@@ -219,3 +219,4 @@ const Settings = () => {
 }
 
 export default Settings
+

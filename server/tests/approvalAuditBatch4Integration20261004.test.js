@@ -33,21 +33,19 @@ test('Batch 4 persists exact-payload protected approvals and governed permission
   ]) assert.ok(migration.includes(`('${pair[0]}', '${pair[1]}'`), pair.join(':'));
 });
 
-test('System Admin correction ceiling includes all Batch 4 governed correction routes but not owner-only settings', () => {
+test('System Admin is owner-level and holds every Batch 4 governed correction and owner permission', () => {
   const policy = getStaticRolePolicy('system_admin');
-  for (const key of [PERMISSIONS.LOT_RESERVATION_CORRECT, PERMISSIONS.LOT_COMMISSIONS_ADJUST, PERMISSIONS.LOT_PENALTY_CORRECT, PERMISSIONS.LOT_SETTINGS_MANAGE]) {
+  assert.equal(policy.fullAccess, true);
+  for (const key of [PERMISSIONS.LOT_RESERVATION_CORRECT, PERMISSIONS.LOT_COMMISSIONS_ADJUST, PERMISSIONS.LOT_PENALTY_CORRECT, PERMISSIONS.LOT_SETTINGS_MANAGE, PERMISSIONS.SYSTEM_SETTINGS_MANAGE, PERMISSIONS.AUDIT_LOGS_ARCHIVE, PERMISSIONS.WORKFLOW_EMERGENCY_OVERRIDE]) {
     assert.ok(policy.required.includes(key), key);
   }
-  assert.ok(!policy.ceiling.includes(PERMISSIONS.SYSTEM_SETTINGS_MANAGE));
-  assert.ok(!policy.ceiling.includes(PERMISSIONS.AUDIT_LOGS_ARCHIVE));
-  assert.ok(!policy.ceiling.includes(PERMISSIONS.WORKFLOW_EMERGENCY_OVERRIDE));
 });
 
 test('Project Settings follows Operations Staff -> Head -> Auditor and exact Audit Case correction', () => {
   assert.match(settingsController, /actor\.role === 'operations_staff'/);
   assert.match(settingsController, /actor\.role === 'operations_head'/);
-  assert.match(settingsController, /actor\.role === 'system_admin'/);
-  assert.match(settingsController, /actor\.role !== 'super_admin'/);
+  assert.match(settingsController, /isOwnerAdministrator\(actor\) && Number\(req\.body\?\.auditCaseId/);
+  assert.match(settingsController, /if \(!isOwnerAdministrator\(actor\)\) \{/);
   assert.match(settingsController, /createProtectedChangeRequest/);
   assert.match(settingsController, /consumeProtectedChange/);
   assert.match(settingsController, /entityType: PROJECT_SETTINGS_REVIEW_ENTITY/);
@@ -100,6 +98,7 @@ test('Review Center deep-links every Batch 4 correction class to the exact recor
 });
 
 test('owner-level destructive/system governance remains outside routine Head approvals', () => {
-  assert.match(projectsRouter, /purge-code[^\n]*requireExactRole\('super_admin'\)/);
+  assert.match(projectsRouter, /purge-code[^\n]*requireExactRole\('super_admin', 'system_admin'\)/);
   assert.match(workflowRouter, /protected-changes/);
 });
+

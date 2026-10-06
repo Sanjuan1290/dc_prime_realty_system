@@ -28,7 +28,7 @@ test('Data Integrity stays hidden from navigation and opens only through the PIN
   assert.match(router, /router\.get\('\/', getDataIntegrityReport\)/);
   assert.match(router, /router\.get\('\/summary', getDataIntegritySummary\)/);
   assert.match(router, /router\.get\('\/accounts\/:accountId', getDataIntegrityAccount\)/);
-  assert.doesNotMatch(router, /requireExactRole\('super_admin'\)/);
+  assert.doesNotMatch(router, /requireExactRole\('super_admin', 'system_admin'\)/);
   assert.doesNotMatch(router, /router\.(put|patch|delete)\(/i);
 
   assert.match(accessMiddleware, /DATA_INTEGRITY_PINCODE/);
@@ -197,3 +197,4 @@ test('Integrity Records uses server-backed pagination capped at 10 records per p
   assert.match(page, />Previous<\/button>/);
   assert.match(page, />Next<\/button>/);
 });
+

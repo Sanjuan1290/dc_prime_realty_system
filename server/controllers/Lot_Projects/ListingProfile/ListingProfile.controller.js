@@ -1,3 +1,4 @@
+import { isOwnerAdministrator } from '../../../config/permissions.js';
 import bcrypt from 'bcrypt';
 import crypto from 'node:crypto';
 
@@ -1140,7 +1141,7 @@ export const requestLotProjectListingCommissionAdjustmentCode = async (req, res)
     });
     const entityId = Number(context.listing.lot_project_account_id);
 
-    if (actor.role === 'system_admin' || (actor.role === 'super_admin' && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
+    if ((isOwnerAdministrator(actor) && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
       const auditCase = await getPendingAuditCorrectionCase(connection, {
         actor: req.authUser,
         auditCaseId: req.body?.auditCaseId || req.body?.audit_case_id,
@@ -1165,10 +1166,10 @@ export const requestLotProjectListingCommissionAdjustmentCode = async (req, res)
       return res.json({ success: true, message: 'Accounting Head may apply this exact commission adjustment directly. It will be sent to the Auditor after saving.', data: { status: 'approved', directHeadApproval: true, authorizationType: 'department_head', before: context.currentRows, after: getAdjustedCommissionPreview(context, adjustment) } });
     }
 
-    if (actor.role === 'super_admin') {
+    if (isOwnerAdministrator(actor)) {
       const password = String(req.body?.password || '');
-      if (!password) throw Object.assign(new Error('Super Admin password is required for emergency verification.'), { statusCode: 400 });
-      if (!actor.password_hash || !(await bcrypt.compare(password, actor.password_hash))) throw Object.assign(new Error('Super Admin password is incorrect.'), { statusCode: 401 });
+      if (!password) throw Object.assign(new Error('Your password is required for emergency verification.'), { statusCode: 400 });
+      if (!actor.password_hash || !(await bcrypt.compare(password, actor.password_hash))) throw Object.assign(new Error('Your password is incorrect.'), { statusCode: 401 });
       if (!actor.email) throw Object.assign(new Error('The Super Admin account must have an email address.'), { statusCode: 400 });
       if (!(await tableExists(connection, 'destructive_action_verifications'))) throw Object.assign(new Error('Sensitive-action verification table is missing. Apply the latest database schema first.'), { statusCode: 500 });
       const payloadHash = hashCommissionAdjustmentPayload(payload);
@@ -1246,7 +1247,7 @@ export const adjustLotProjectListingCommission = async (req, res) => {
     let authorization = null;
     let allowReviewId = null;
 
-    if (actor.role === 'system_admin' || (actor.role === 'super_admin' && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
+    if ((isOwnerAdministrator(actor) && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
       const auditCase = await getPendingAuditCorrectionCase(connection, {
         actor: req.authUser,
         auditCaseId: req.body?.auditCaseId || req.body?.audit_case_id,
@@ -1262,7 +1263,7 @@ export const adjustLotProjectListingCommission = async (req, res) => {
     if (!authorization && actor.role === 'accounting_head') {
       authorization = { type: 'department_head', headPreApprovedByUserId: actor.id };
     }
-    if (!authorization && actor.role === 'super_admin') {
+    if (!authorization && isOwnerAdministrator(actor)) {
       const verificationId = Number(req.body?.verificationId || 0);
       const code = cleanCommissionAdjustmentValue(req.body?.code);
       if (!verificationId) return res.status(400).json({ message: 'Emergency verification request is required.' });
@@ -1717,4 +1718,5 @@ export const unholdLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
+
 

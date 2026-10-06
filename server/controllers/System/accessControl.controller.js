@@ -60,19 +60,18 @@ const permissionCatalog = [
   { group: 'Document Templates', kind: 'OPERATE', items: [['View Templates', PERMISSIONS.SYSTEM_DOCUMENT_TEMPLATES_VIEW], ['Create Templates', PERMISSIONS.SYSTEM_DOCUMENT_TEMPLATES_CREATE], ['Edit Templates', PERMISSIONS.SYSTEM_DOCUMENT_TEMPLATES_EDIT], ['Delete Templates', PERMISSIONS.SYSTEM_DOCUMENT_TEMPLATES_DELETE]] },
 ];
 
-const actorCanManageRoleDefaults = (actor, role) => {
-  if (actor?.role === 'super_admin') {
-    return [...ROLE_DEFAULT_EDITABLE_ROLES, 'system_admin', 'auditor'].includes(role);
-  }
-  return actor?.role === 'system_admin' && ROLE_DEFAULT_EDITABLE_ROLES.includes(role);
-};
+// Super Admin and System Admin both edit every non-owner role default
+// (Auditor and all Staff/Head roles). Owner roles always have full access.
+const actorCanManageRoleDefaults = (actor, role) =>
+  ['super_admin', 'system_admin'].includes(actor?.role) && ROLE_DEFAULT_EDITABLE_ROLES.includes(role);
 
 const actorCanViewUserAccess = (actor, targetRole) => {
-  if (actor?.role === 'super_admin' || actor?.role === 'auditor') return SYSTEM_USER_ROLES.includes(targetRole);
-  if (actor?.role === 'system_admin') return SYSTEM_ADMIN_MANAGEABLE_ROLES.includes(targetRole) || targetRole === 'system_admin' || targetRole === 'auditor';
+  if (['super_admin', 'system_admin', 'auditor'].includes(actor?.role)) return SYSTEM_USER_ROLES.includes(targetRole);
   return false;
 };
 
+// System Admin manages every account except owner accounts (Super Admin and
+// other System Admins); only Super Admin manages System Admin accounts.
 const actorCanManageUserAccess = (actor, targetRole) => {
   if (actor?.role === 'super_admin') return targetRole !== 'super_admin';
   return actor?.role === 'system_admin' && SYSTEM_ADMIN_MANAGEABLE_ROLES.includes(targetRole);
@@ -142,7 +141,7 @@ export const getUserAccessControl = async (req, res) => {
     if (!SYSTEM_USER_ROLES.includes(user.role)) return res.status(400).json({ message: 'Access Control applies only to internal system users.' });
     if (!actorCanViewUserAccess(req.authUser, user.role)) return res.status(403).json({ message: 'You cannot view access for this account.' });
 
-    if (user.role === 'super_admin') {
+    if (['super_admin', 'system_admin'].includes(user.role)) {
       return res.json({ user: { ...user, permissions: Object.values(PERMISSIONS), all_projects_access: true, project_ids: [] }, locked: true, lock_reason: 'owner' });
     }
 

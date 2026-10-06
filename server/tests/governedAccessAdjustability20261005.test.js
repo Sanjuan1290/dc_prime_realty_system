@@ -9,45 +9,35 @@ import {
 } from '../config/permissions.js';
 import { getStaticRolePolicy } from '../config/rolePolicies.js';
 
-// Intentional policy change: System Admin stays adjustable inside a safe governance ceiling, not the full catalog.
-test('System Admin has required governance baseline plus adjustable permissions within its safe ceiling', () => {
+// 2026-10-06 policy change: System Admin is owner-level (full access). Auditor
+// uses the same adjustable model as every other non-owner role: its default is
+// the core read-only + audit workflow set, and anything else is a flagged grant.
+test('System Admin is owner-level with every permission', () => {
   const policy = getStaticRolePolicy('system_admin');
-  assert.ok(policy.required.includes(PERMISSIONS.SYSTEM_ACCESS_CONTROL_MANAGE));
-  assert.ok(policy.required.includes(PERMISSIONS.WORKFLOW_SYSTEM_CORRECTION_APPLY));
-  assert.ok(policy.ceiling.includes(PERMISSIONS.SYSTEM_REPORTS_VIEW));
-  assert.ok(!policy.required.includes(PERMISSIONS.SYSTEM_REPORTS_VIEW));
-  assert.ok(!policy.ceiling.includes(PERMISSIONS.SYSTEM_SETTINGS_MANAGE));
-  assert.ok(!policy.ceiling.includes(PERMISSIONS.WORKFLOW_EMERGENCY_OVERRIDE));
+  assert.equal(policy.fullAccess, true);
+  for (const key of Object.values(PERMISSIONS)) assert.ok(policy.required.includes(key), key);
 });
 
-test('Auditor core permissions are mandatory and optional ceiling is export/print only', () => {
+test('Auditor default is the core read-only and audit workflow set; every permission is adjustable', () => {
   const policy = getStaticRolePolicy('auditor');
-  const required = new Set(getAuditorEnforcedPermissions());
+  const core = new Set(getAuditorEnforcedPermissions());
   const optional = new Set(getAuditorOptionalPermissions());
-  const allowed = new Set(getAuditorAllowedPermissions());
-
-  assert.ok(required.has(PERMISSIONS.LOT_PAYMENTS_VIEW));
-  assert.ok(required.has(PERMISSIONS.WORKFLOW_AUDIT_CASE_CREATE));
+  assert.ok(core.has(PERMISSIONS.LOT_PAYMENTS_VIEW));
+  assert.ok(core.has(PERMISSIONS.WORKFLOW_AUDIT_CASE_CREATE));
   assert.ok(optional.has(PERMISSIONS.SYSTEM_REPORTS_EXPORT));
-  assert.ok(optional.has(PERMISSIONS.LOT_REPORTS_EXPORT));
-  assert.ok(optional.has(PERMISSIONS.LOT_PRINTOUTS_USE));
-  assert.equal(optional.has(PERMISSIONS.LOT_PAYMENTS_EDIT), false);
-  assert.equal(optional.has(PERMISSIONS.SYSTEM_PROJECTS_EDIT), false);
-  assert.equal(optional.has(PERMISSIONS.AUDIT_LOGS_ARCHIVE), false);
-  assert.equal(policy.required.includes(PERMISSIONS.SYSTEM_REPORTS_EXPORT), false);
-  assert.equal(policy.ceiling.includes(PERMISSIONS.SYSTEM_REPORTS_EXPORT), true);
-  assert.deepEqual(new Set(policy.ceiling), allowed);
+  assert.deepEqual(new Set(policy.recommended), core);
+  assert.equal(policy.required.length, 0);
+  assert.deepEqual(new Set(policy.ceiling), new Set(Object.values(PERMISSIONS)));
+  assert.equal(policy.recommended.includes(PERMISSIONS.LOT_PAYMENTS_EDIT), false);
+  assert.ok(getAuditorAllowedPermissions().length >= core.size);
 });
 
-test('Auditor optional export must be explicitly assigned while writes stay blocked even if injected', () => {
-  const baselineAuditor = { role: 'auditor', permissions: [] };
+test('Auditor holds exactly its saved permissions: export only when assigned, writes only when explicitly granted', () => {
+  const baselineAuditor = { role: 'auditor', permissions: getAuditorEnforcedPermissions() };
   assert.equal(roleHasPermission(baselineAuditor, PERMISSIONS.LOT_PAYMENTS_VIEW), true);
   assert.equal(roleHasPermission(baselineAuditor, PERMISSIONS.SYSTEM_REPORTS_EXPORT), false);
+  assert.equal(roleHasPermission(baselineAuditor, PERMISSIONS.LOT_PAYMENTS_EDIT), false);
 
   const auditorWithExport = { role: 'auditor', permissions: [PERMISSIONS.SYSTEM_REPORTS_EXPORT] };
   assert.equal(roleHasPermission(auditorWithExport, PERMISSIONS.SYSTEM_REPORTS_EXPORT), true);
-
-  const injected = { role: 'auditor', permissions: [PERMISSIONS.LOT_PAYMENTS_EDIT, PERMISSIONS.SYSTEM_PROJECTS_EDIT] };
-  assert.equal(roleHasPermission(injected, PERMISSIONS.LOT_PAYMENTS_EDIT), false);
-  assert.equal(roleHasPermission(injected, PERMISSIONS.SYSTEM_PROJECTS_EDIT), false);
 });

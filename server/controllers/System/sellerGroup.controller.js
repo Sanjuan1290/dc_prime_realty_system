@@ -1,3 +1,4 @@
+import { isOwnerAdministrator } from '../../config/permissions.js';
 import bcrypt from 'bcrypt';
 import { randomUUID } from 'node:crypto';
 import { db } from '../../db/connect.js';
@@ -1188,7 +1189,7 @@ export const editGroup = async (req, res) => {
     let networkAuditCase = null;
     let rateAuditCase = null;
     let returnedReview = null;
-    if (req.authUser?.role === 'system_admin' || (req.authUser?.role === 'super_admin' && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
+    if ((isOwnerAdministrator(req.authUser) && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
       networkAuditCase = await getPendingAuditCorrectionCase(connection, {
         actor: req.authUser,
         auditCaseId: req.body?.auditCaseId,
@@ -1390,7 +1391,7 @@ export const toggleGroupStatus = async (req, res) => {
 
     let auditCase = null;
     let returnedReview = null;
-    if (req.authUser?.role === 'system_admin' || (req.authUser?.role === 'super_admin' && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
+    if ((isOwnerAdministrator(req.authUser) && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
       auditCase = await getPendingAuditCorrectionCase(connection, {
         actor: req.authUser,
         auditCaseId: req.body?.auditCaseId,
@@ -2058,7 +2059,7 @@ export const updateGroupProjectPool = async (req, res) => {
 
     let auditCase = null;
     let governance = null;
-    if (req.authUser?.role === 'system_admin' || (req.authUser?.role === 'super_admin' && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
+    if ((isOwnerAdministrator(req.authUser) && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
       auditCase = await getPendingAuditCorrectionCase(connection, {
         actor: req.authUser,
         auditCaseId: req.body?.auditCaseId,

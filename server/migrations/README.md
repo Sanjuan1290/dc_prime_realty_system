@@ -78,3 +78,16 @@ Role defaults customised in Role & Access Control are kept, and existing `user_p
 `20261006_batch9_seed_missing_role_defaults.sql` seeds the recommended role templates into `role_permission_defaults`. A database built from a structure-only export never received the earlier seed migrations, which left every Staff role with 1 default permission and every Head with 5. Run it after Batch 8. It is idempotent and TiDB-safe.
 
 A role is seeded only if none of its rows were saved from Role & Access Control, and `INSERT IGNORE` never changes or removes an existing row. Existing `user_permissions` rows are not changed: use **Apply Latest Role Default** on any existing account that should receive the seeded defaults.
+
+## 2026-10-06 Batch 10: one permission model for every non-owner role
+
+`20261006_batch10_single_permission_model.sql` must run after Batch 9 and **together with the matching server release** (deploy the code and run the migration in the same window).
+
+Super Admin and System Admin now have full access. Every other account (Auditor, Staff, Head) holds exactly its stored permission rows; nothing is added at login any more. The migration converts the data so that no account gains or loses access in the switch:
+
+1. Removes stored rows the old rules silently ignored (outside a role's old limits), so they cannot become active.
+2. Stores the keys the old server added at login: each role's old Required keys, and for Heads the current Staff role default they inherited.
+3. Completes each role default into a full template (Head = Staff default + Head extras).
+4. Removes rows for System Admin accounts and the System Admin template, which now always have full access.
+
+It is idempotent (`INSERT IGNORE` only) and TiDB-safe. It was verified on a copy of the 2026-10-06 backup with one test account per role: every non-owner account and template kept exactly the same access; only System Admin changed, to full access.

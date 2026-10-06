@@ -39,7 +39,7 @@ export const maintenanceGuard = async (req, res, next) => {
       return
     }
 
-    if (getSignedUserRole(req) === 'super_admin') {
+    if (['super_admin', 'system_admin'].includes(getSignedUserRole(req))) {
       next()
       return
     }
@@ -59,3 +59,4 @@ export const maintenanceGuard = async (req, res, next) => {
     })
   }
 }
+

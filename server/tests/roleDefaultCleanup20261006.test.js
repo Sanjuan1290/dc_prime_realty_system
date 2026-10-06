@@ -17,12 +17,11 @@ const keptKeys = (role) => {
   return new Set([...match[1].matchAll(/'([^']+)'/g)].map(([, key]) => key));
 };
 
-test('cleanup keeps every in-ceiling key, so no effective System Admin or Auditor default is removed', () => {
-  for (const role of ['system_admin', 'auditor']) {
-    const kept = keptKeys(role);
-    for (const key of getStaticRolePolicy(role).ceiling) assert.ok(kept.has(key), `${role} keeps ${key}`);
-    for (const key of RECOMMENDED_ROLE_PERMISSIONS[role]) assert.ok(kept.has(key), `${role} keeps recommended ${key}`);
-  }
+test('cleanup never removes a key from the Auditor default, and Batch 10 later drops the System Admin template', () => {
+  const kept = keptKeys('auditor');
+  for (const key of getStaticRolePolicy('auditor').recommended) assert.ok(kept.has(key), `auditor keeps ${key}`);
+  const batch10 = read('migrations/20261006_batch10_single_permission_model.sql');
+  assert.match(batch10, /DELETE FROM role_permission_defaults WHERE role = 'system_admin';/);
 });
 
 test('cleanup removes the legacy Admin rows that sit outside the System Admin ceiling', () => {
@@ -32,7 +31,7 @@ test('cleanup removes the legacy Admin rows that sit outside the System Admin ce
   }
 });
 
-test('System Admin default gains Data Integrity, which is now visible in the permission grid', () => {
+test('Data Integrity is in the recommended System Admin template and visible in the permission grid', () => {
   assert.ok(RECOMMENDED_ROLE_PERMISSIONS.system_admin.includes(PERMISSIONS.SYSTEM_DATA_INTEGRITY_VIEW));
   assert.match(sql, /\('system_admin', 'system\.data_integrity\.view', 1, NULL\)/);
   assert.match(accessControl, /\['View Data Integrity', PERMISSIONS\.SYSTEM_DATA_INTEGRITY_VIEW\]/);
@@ -51,3 +50,4 @@ test('Create System User starts every configurable role from its saved default a
   assert.doesNotMatch(createSystemUser, /plus \$\{rolePolicy\.required\.length\} required/);
   assert.match(createSystemUser, /Role default permissions are still loading/);
 });
+

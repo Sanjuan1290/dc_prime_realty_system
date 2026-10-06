@@ -82,6 +82,7 @@ test('legacy system roles migrate without touching accredited seller roles', () 
 test('Role & Access Control is permission-managed while protected System Settings remain owner-controlled', () => {
   assert.match(settingsPage, /SYSTEM_ACCESS_CONTROL_MANAGE/);
   assert.match(settingsPage, /canManageRoleAccess/);
-  assert.match(settingsPage, /only the Super Admin can use it with password and email verification/i);
+  assert.match(settingsPage, /only Super Admin or System Admin can use it with password and email verification/i);
   assert.match(roleAccess, /SYSTEM|AUDIT|MARKETING|SALES|ACCOUNTING|OPERATIONS|OWNER/);
 });
+

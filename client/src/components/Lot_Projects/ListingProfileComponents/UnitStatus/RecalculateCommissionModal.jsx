@@ -57,9 +57,13 @@ const RecalculateCommissionModal = ({
   const unitId = listing?.unit_id || listing?.unitCode || '-'
   const isAllowed = Boolean(commissionState.allowed)
   const busy = isRequestingCode || isSaving
-  const isSuperAdmin = actorRole === 'super_admin'
+  // Super Admin and System Admin are both owner-level. Opened from an Auditor
+  // case they use the case-correction flow; otherwise the emergency flow
+  // (current password + email code).
+  const isOwner = ['super_admin', 'system_admin'].includes(actorRole)
+  const isSuperAdmin = isOwner && !(Number(auditCaseId || 0) > 0)
   const isAccountingHead = actorRole === 'accounting_head'
-  const isSystemAdminAuditCorrection = actorRole === 'system_admin' && Number(auditCaseId || 0) > 0
+  const isSystemAdminAuditCorrection = isOwner && Number(auditCaseId || 0) > 0
   const authorizationReady = Boolean(
     requestData?.directCorrection
     || requestData?.directHeadApproval
@@ -106,8 +110,7 @@ const RecalculateCommissionModal = ({
   const requestCode = async (event) => {
     event.preventDefault()
     if (validationMessage) return setNotice({ type: 'warning', message: validationMessage })
-    if (isSuperAdmin && !password) return setNotice({ type: 'warning', message: 'Enter the Super Admin password for emergency fallback.' })
-    if (actorRole === 'system_admin' && !Number(auditCaseId || 0)) return setNotice({ type: 'warning', message: 'Open this correction from a valid Auditor case.' })
+    if (isSuperAdmin && !password) return setNotice({ type: 'warning', message: 'Enter your password for emergency fallback.' })
 
     setNotice({ type: 'loading', message: isSuperAdmin ? 'Verifying emergency owner credentials...' : 'Checking governed commission authorization...' })
     try {
@@ -296,7 +299,7 @@ const RecalculateCommissionModal = ({
         <footer className="flex flex-col-reverse gap-2 border-t border-slate-200 bg-slate-50 px-5 py-4 sm:flex-row sm:justify-end sm:px-6">
           <button type="button" onClick={requestData ? () => { setRequestData(null); setCode(''); setConfirmed(false); setNotice(null) } : onClose} disabled={busy} className="h-11 rounded-xl border border-slate-300 bg-white px-5 text-sm font-black text-slate-700 disabled:opacity-50">{requestData ? 'Start Over' : 'Close'}</button>
           {!authorizationReady ? (
-            <button type="submit" disabled={busy || Boolean(validationMessage) || (isSuperAdmin && !password) || (actorRole === 'system_admin' && !Number(auditCaseId || 0))} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300">
+            <button type="submit" disabled={busy || Boolean(validationMessage) || (isSuperAdmin && !password) || false} className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300">
               {isRequestingCode ? <FiLoader className="animate-spin" /> : <FiLock />} {isRequestingCode ? 'Checking...' : isSuperAdmin ? 'Verify Password & Send Emergency Code' : isSystemAdminAuditCorrection ? 'Validate Audit Case' : isAccountingHead ? 'Continue as Accounting Head' : requestData?.status === 'pending' ? 'Check Head Approval' : 'Request Accounting Head Approval'}
             </button>
           ) : (
@@ -311,3 +314,4 @@ const RecalculateCommissionModal = ({
 }
 
 export default RecalculateCommissionModal
+

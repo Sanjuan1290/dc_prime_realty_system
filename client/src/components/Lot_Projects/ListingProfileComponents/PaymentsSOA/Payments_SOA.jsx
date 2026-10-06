@@ -309,14 +309,18 @@ const PaymentAccountConfirmationModal = ({ data, acknowledged, setAcknowledged, 
   )
 }
 
-const PaymentCorrectionAuthorizationModal = ({ request, actorRole, authorization, reason, setReason, password, setPassword, verificationId, code, setCode, maskedEmail, alert, isSending, isApplying, onClose, onCheckAuthorization, onApply }) => {
+const PaymentCorrectionAuthorizationModal = ({ request, actorRole, auditCaseId = null, authorization, reason, setReason, password, setPassword, verificationId, code, setCode, maskedEmail, alert, isSending, isApplying, onClose, onCheckAuthorization, onApply }) => {
   if (!request) return null
   const isVoid = request.action === 'void'
   const payment = request.payment || {}
   const proposed = request.proposed || {}
-  const isSuperAdmin = actorRole === 'super_admin'
+  // Super Admin and System Admin are both owner-level. Opened from an Auditor
+  // case they use the case-correction flow; otherwise the emergency flow
+  // (current password + email code).
+  const isOwner = ['super_admin', 'system_admin'].includes(actorRole)
+  const isSuperAdmin = isOwner && !(Number(auditCaseId || 0) > 0)
   const isHead = actorRole === 'accounting_head'
-  const isSystemAdmin = actorRole === 'system_admin'
+  const isSystemAdmin = isOwner && Number(auditCaseId || 0) > 0
   const isStaff = actorRole === 'accounting_staff'
   const directAuthorized = Boolean(authorization?.approved)
   const readyForCheck = reason.trim().length >= 5 && (!isSuperAdmin || password.trim().length > 0)
@@ -324,11 +328,11 @@ const PaymentCorrectionAuthorizationModal = ({ request, actorRole, authorization
   const authorityLabel = isHead
     ? 'Accounting Head correction'
     : isSystemAdmin
-      ? 'Auditor-approved System Admin correction'
+      ? 'Auditor-approved correction'
       : isStaff
         ? 'Returned Accounting Head review correction'
         : isSuperAdmin
-          ? 'Emergency Super Admin correction'
+          ? 'Emergency owner correction'
           : 'Controlled correction'
 
   return (
@@ -348,8 +352,8 @@ const PaymentCorrectionAuthorizationModal = ({ request, actorRole, authorization
           <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm font-semibold text-blue-900">
             {isStaff ? 'Staff corrections are allowed only when the Accounting Head returned this payment review for correction.' : null}
             {isHead ? 'Accounting Head corrections skip self-review and go directly to the Auditor.' : null}
-            {isSystemAdmin ? 'System Admin may correct only the exact payment authorized by a valid Auditor Audit Case.' : null}
-            {isSuperAdmin ? 'Super Admin is emergency fallback only. Current password and email verification are still required.' : null}
+            {isSystemAdmin ? 'Only the exact payment authorized by this Auditor Audit Case may be corrected.' : null}
+            {isSuperAdmin ? 'Emergency correction. Your current password and an email verification code are required.' : null}
           </div>
 
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -1002,7 +1006,7 @@ const PaymentsSOA = ({
       { action, password, reason, proposed, reviewId, auditCaseId },
       { confirmationHandled: 'technical' }
     ),
-    onMutate: () => setPaymentCorrectionAlert({ type: 'loading', message: actorRole === 'super_admin' ? 'Verifying emergency Super Admin credentials...' : 'Checking correction authority...' }),
+    onMutate: () => setPaymentCorrectionAlert({ type: 'loading', message: ['super_admin', 'system_admin'].includes(actorRole) && !workflowAuditCaseId ? 'Verifying emergency owner credentials...' : 'Checking correction authority...' }),
     onSuccess: (result) => {
       const verificationId = result?.data?.verificationId || null
       setPaymentCorrectionVerificationId(verificationId)
@@ -1092,7 +1096,7 @@ const PaymentsSOA = ({
     mutationFn: ({ scheduleId, ...payload }) =>
       useFetchPost(
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/payment-schedules/${scheduleId}/lmf-waiver`,
-        { ...payload, auditCaseId: currentUser.role === 'system_admin' ? workflowAuditCaseId || undefined : undefined },
+        { ...payload, auditCaseId: ['super_admin', 'system_admin'].includes(currentUser.role) ? workflowAuditCaseId || undefined : undefined },
         { doubleCheck: { type: 'penalty-adjustment', title: 'Review LMF Waiver', confirmLabel: 'Confirm & Waive LMF', actionLabel: 'Waive Legal / Misc Fee', data: { soaRow: lmfWaiverRow || { scheduleId }, waiver: payload } } }
       ),
     onSuccess: async (result) => {
@@ -1112,7 +1116,7 @@ const PaymentsSOA = ({
     mutationFn: ({ scheduleId, ...payload }) =>
       useFetchPost(
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/payment-schedules/${scheduleId}/penalty-extension`,
-        { ...payload, auditCaseId: currentUser.role === 'system_admin' ? workflowAuditCaseId || undefined : undefined },
+        { ...payload, auditCaseId: ['super_admin', 'system_admin'].includes(currentUser.role) ? workflowAuditCaseId || undefined : undefined },
         { doubleCheck: { type: 'penalty-adjustment', title: 'Review Penalty-Free Extension', confirmLabel: 'Confirm & Save New Payment Date', actionLabel: 'Penalty-Free Extension', data: { soaRow: penaltyReliefRow || { scheduleId }, extension: payload } } }
       ),
     onSuccess: async (result) => {
@@ -1132,7 +1136,7 @@ const PaymentsSOA = ({
     mutationFn: ({ scheduleId, reliefId, ...payload }) =>
       useFetchPut(
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/payment-schedules/${scheduleId}/penalty-extension/${reliefId}`,
-        { ...payload, auditCaseId: currentUser.role === 'system_admin' ? workflowAuditCaseId || undefined : undefined },
+        { ...payload, auditCaseId: ['super_admin', 'system_admin'].includes(currentUser.role) ? workflowAuditCaseId || undefined : undefined },
         { doubleCheck: { type: 'penalty-adjustment', title: 'Review Extension Changes', confirmLabel: 'Confirm & Save Extension', actionLabel: 'Edit Penalty-Free Extension', data: { soaRow: penaltyReliefRow || { scheduleId, reliefId }, extension: payload } } }
       ),
     onSuccess: async (result) => {
@@ -1152,7 +1156,7 @@ const PaymentsSOA = ({
     mutationFn: ({ scheduleId, ...payload }) =>
       useFetchPost(
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/payment-schedules/${scheduleId}/penalty-correction`,
-        { ...payload, auditCaseId: currentUser.role === 'system_admin' ? workflowAuditCaseId || undefined : undefined },
+        { ...payload, auditCaseId: ['super_admin', 'system_admin'].includes(currentUser.role) ? workflowAuditCaseId || undefined : undefined },
         { doubleCheck: { type: 'penalty-adjustment', title: 'Review Penalty Correction', confirmLabel: 'Confirm & Correct Penalty', actionLabel: 'Correct Penalty', data: { soaRow: penaltyReliefRow || { scheduleId }, correction: payload } } }
       ),
     onSuccess: async (result) => {
@@ -1172,7 +1176,7 @@ const PaymentsSOA = ({
     mutationFn: ({ scheduleId, ...payload }) =>
       useFetchPost(
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/payment-schedules/${scheduleId}/penalty-waiver`,
-        { ...payload, auditCaseId: currentUser.role === 'system_admin' ? workflowAuditCaseId || undefined : undefined },
+        { ...payload, auditCaseId: ['super_admin', 'system_admin'].includes(currentUser.role) ? workflowAuditCaseId || undefined : undefined },
         { doubleCheck: { type: 'penalty-adjustment', title: 'Review Penalty Reduction', confirmLabel: 'Confirm & Reduce Penalty', actionLabel: 'Reduce Penalty', data: { soaRow: penaltyReliefRow || { scheduleId }, reduction: payload } } }
       ),
     onSuccess: async (result) => {
@@ -1192,7 +1196,7 @@ const PaymentsSOA = ({
     mutationFn: ({ reliefId, ...payload }) =>
       useFetchPost(
         `/projects/lot-projects/${projectSlug}/listings/${listingId}/penalty-reliefs/${reliefId}/restore`,
-        { ...payload, auditCaseId: currentUser.role === 'system_admin' ? workflowAuditCaseId || undefined : undefined },
+        { ...payload, auditCaseId: ['super_admin', 'system_admin'].includes(currentUser.role) ? workflowAuditCaseId || undefined : undefined },
         { doubleCheck: { type: 'penalty-adjustment', title: 'Review Penalty Restore', confirmLabel: 'Confirm & Restore Penalty', actionLabel: 'Restore Penalty', data: { soaRow: penaltyReliefRow || { reliefId }, restore: payload } } }
       ),
     onSuccess: async (result) => {
@@ -1370,7 +1374,7 @@ const PaymentsSOA = ({
       setPenaltyReliefRow(targetRow)
       setPenaltyReliefAlert({ type: 'info', message: `Audit Case #${workflowAuditCaseId || '—'} authorizes a controlled correction on this penalty row.` })
     }
-    if (workflowAction === 'lmf_correction' && currentUser.role === 'system_admin' && workflowAuditCaseId) {
+    if (workflowAction === 'lmf_correction' && ['super_admin', 'system_admin'].includes(currentUser.role) && workflowAuditCaseId) {
       setLmfAuditRestoreRow(targetRow)
       setLmfAuditRestoreAlert({ type: 'info', message: `Audit Case #${workflowAuditCaseId} authorizes restoration of the pre-waiver LMF snapshot.` })
     }
@@ -2150,6 +2154,7 @@ const PaymentsSOA = ({
         <PaymentCorrectionAuthorizationModal
           request={paymentCorrection}
           actorRole={actorRole}
+          auditCaseId={workflowAuditCaseId || null}
           authorization={paymentCorrectionAuthorization}
           reason={paymentCorrectionReason}
           setReason={(value) => {
@@ -2183,3 +2188,4 @@ const PaymentsSOA = ({
 }
 
 export default PaymentsSOA
+

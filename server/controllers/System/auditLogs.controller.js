@@ -1,3 +1,4 @@
+import { isOwnerAdministrator } from '../../config/permissions.js';
 import crypto from 'node:crypto';
 import {
   bcrypt,
@@ -176,7 +177,7 @@ const requireArchiveAuthority = async (req) => {
     throw error;
   }
 
-  if (user.role !== 'super_admin') {
+  if (!isOwnerAdministrator(user)) {
     const error = new Error('Only Super Admin can archive audit logs.');
     error.statusCode = 403;
     throw error;
@@ -1150,3 +1151,4 @@ export const downloadAuditLogArchiveExport = async (req, res) => {
     connection.release();
   }
 };
+

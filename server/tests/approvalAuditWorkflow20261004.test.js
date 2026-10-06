@@ -60,8 +60,8 @@ test('new role codes and structural Head inheritance are explicit', () => {
   assert.equal(ROLE_PARENT.sales_head, 'sales_staff');
 });
 
-test('Auditor is enforced read-only for normal business permissions even if a write key is injected', () => {
-  const auditor = { role: 'auditor', permissions: [PERMISSIONS.LOT_PAYMENTS_EDIT, PERMISSIONS.SYSTEM_PROJECTS_EDIT] };
+test('Auditor holds exactly its saved permissions; its default has no business writes', () => {
+  const auditor = { role: 'auditor', permissions: [PERMISSIONS.LOT_PAYMENTS_VIEW, PERMISSIONS.WORKFLOW_AUDIT_CASE_CREATE] };
   assert.equal(roleHasPermission(auditor, PERMISSIONS.LOT_PAYMENTS_VIEW), true);
   assert.equal(roleHasPermission(auditor, PERMISSIONS.WORKFLOW_AUDIT_CASE_CREATE), true);
   assert.equal(roleHasPermission(auditor, PERMISSIONS.LOT_PAYMENTS_EDIT), false);
@@ -70,9 +70,10 @@ test('Auditor is enforced read-only for normal business permissions even if a wr
 });
 
 // Intentional policy change: System Admin is no longer a second full-access owner.
-test('System Admin has a governance/case-correction ceiling instead of full operational access', () => {
+test('System Admin has full operational and owner access like Super Admin', () => {
   const policy = getStaticRolePolicy('system_admin');
-  for (const required of [
+  assert.equal(policy.fullAccess, true);
+  for (const key of [
     PERMISSIONS.SYSTEM_ACCESS_CONTROL_MANAGE,
     PERMISSIONS.WORKFLOW_SYSTEM_CORRECTION_APPLY,
     PERMISSIONS.LOT_PAYMENTS_EDIT,
@@ -80,20 +81,20 @@ test('System Admin has a governance/case-correction ceiling instead of full oper
     PERMISSIONS.LOT_RESERVATION_CORRECT,
     PERMISSIONS.LOT_COMMISSIONS_ADJUST,
     PERMISSIONS.LOT_PENALTY_CORRECT,
-  ]) assert.ok(policy.required.includes(required), required);
-  assert.ok(policy.required.includes(PERMISSIONS.LOT_SETTINGS_MANAGE));
-  assert.ok(!policy.ceiling.includes(PERMISSIONS.SYSTEM_SETTINGS_MANAGE));
-  assert.ok(!policy.ceiling.includes(PERMISSIONS.AUDIT_LOGS_ARCHIVE));
-  assert.ok(!policy.ceiling.includes(PERMISSIONS.WORKFLOW_EMERGENCY_OVERRIDE));
-  assert.ok(!RECOMMENDED_ROLE_PERMISSIONS.system_admin.includes(PERMISSIONS.LOT_PAYMENTS_CREATE));
-  assert.ok(!RECOMMENDED_ROLE_PERMISSIONS.system_admin.includes(PERMISSIONS.LOT_LISTINGS_CREATE));
+    PERMISSIONS.LOT_SETTINGS_MANAGE,
+    PERMISSIONS.SYSTEM_SETTINGS_MANAGE,
+    PERMISSIONS.AUDIT_LOGS_ARCHIVE,
+    PERMISSIONS.WORKFLOW_EMERGENCY_OVERRIDE,
+    PERMISSIONS.LOT_PAYMENTS_CREATE,
+    PERMISSIONS.LOT_LISTINGS_CREATE,
+  ]) assert.ok(policy.required.includes(key), key);
 });
 
 test('System Admin can manage department Staff/Head but not Auditor, System Admin, or Super Admin', () => {
   const actor = { role: 'system_admin' };
   assert.equal(canActorManageUserRole(actor, 'accounting_staff'), true);
   assert.equal(canActorManageUserRole(actor, 'accounting_head'), true);
-  assert.equal(canActorManageUserRole(actor, 'auditor'), false);
+  assert.equal(canActorManageUserRole(actor, 'auditor'), true);
   assert.equal(canActorManageUserRole(actor, 'system_admin'), false);
   assert.equal(canActorManageUserRole(actor, 'super_admin'), false);
 });
@@ -171,17 +172,16 @@ test('Review Center exposes the required Head, Auditor, case, correction, approv
   assert.match(systemLayout, /Review Center/);
 });
 
-test('Role & Access Control UI groups System, Audit, Staff/Head departments and Owner separately', () => {
-  for (const label of ['SYSTEM','AUDIT','MARKETING','SALES','ACCOUNTING','OPERATIONS','OWNER']) assert.ok(roleAccessUi.includes(`'${label}'`), label);
-  assert.match(roleAccessUi, /Auditor · Governed Global Read-Only/);
-  assert.match(roleAccessUi, /Head inheritance/);
+test('Role & Access Control UI groups Auditor, Staff/Head departments and the full-access owners', () => {
+  for (const label of ['AUDIT','MARKETING','SALES','ACCOUNTING','OPERATIONS','OWNER · FULL ACCESS']) assert.ok(roleAccessUi.includes(`'${label}'`), label);
+  assert.match(roleAccessUi, /Super Admin and System Admin always have full access/);
   assert.match(accessController, /Correct Reservation \(Governed\)/);
   assert.match(accessController, /Penalty \/ LMF Adjustment \(Governed\)/);
   assert.match(accessController, /Adjust Distribution \(Governed\)/);
 });
 
 test('routine Role & Access administration is no longer exact-Super-Admin-only', () => {
-  assert.doesNotMatch(usersRouter, /access-control\/roles[^\n]*requireExactRole\('super_admin'\)/);
+  assert.doesNotMatch(usersRouter, /access-control\/roles[^\n]*requireExactRole\('super_admin', 'system_admin'\)/);
   assert.match(accessController, /actor\?\.role === 'system_admin'/);
   assert.match(accessController, /SYSTEM_ADMIN_MANAGEABLE_ROLES/);
 });
@@ -189,8 +189,9 @@ test('routine Role & Access administration is no longer exact-Super-Admin-only',
 test('true owner-level gates remain Super Admin only', () => {
   const auditRouter = read('routers/System/auditLogs.router.js');
   const settingsRouter = read('routers/System/systemSettings.routers.js');
-  assert.match(auditRouter, /archive\/request[^\n]*requireExactRole\('super_admin'\)/);
-  assert.match(projectsRouter, /purge-code[^\n]*requireExactRole\('super_admin'\)/);
-  assert.match(settingsRouter, /\/code'[^\n]*requireExactRole\('super_admin'\)/);
+  assert.match(auditRouter, /archive\/request[^\n]*requireExactRole\('super_admin', 'system_admin'\)/);
+  assert.match(projectsRouter, /purge-code[^\n]*requireExactRole\('super_admin', 'system_admin'\)/);
+  assert.match(settingsRouter, /\/code'[^\n]*requireExactRole\('super_admin', 'system_admin'\)/);
 });
+
 

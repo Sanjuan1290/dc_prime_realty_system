@@ -9,13 +9,15 @@ test('Role & Access permission group cards do not render READ/OPERATE/SYSTEM/REV
   assert.doesNotMatch(matrix, />\{group\.kind\}</);
 });
 
-test('Role & Access still renders group names and permission-state indicators', () => {
+test('Role & Access still renders group names and the outside-normal warnings, with no locked states', () => {
   assert.match(matrix, /\{group\.group\}/);
-  assert.match(matrix, />Required</);
-  // Intentional UI change: inherited access is labeled in plain language and
-  // normal cross-department permissions warn instead of being blocked.
-  assert.match(matrix, /From Staff Role/);
+  // 2026-10-06: Required / From Staff Role / Restricted governance were removed;
+  // every permission is a normal checkbox and unusual access only warns.
+  assert.doesNotMatch(matrix, />Required</);
+  assert.doesNotMatch(matrix, /From Staff Role/);
+  assert.doesNotMatch(matrix, /Restricted governance/);
   assert.match(matrix, /Outside normal role/);
-  assert.match(matrix, /Restricted governance/);
+  assert.match(matrix, /Usually System Admin only/);
   assert.doesNotMatch(matrix, />Not Allowed</);
 });
+

@@ -42,7 +42,7 @@ test('Role & Access endpoints are permission-governed instead of exact-Super-Adm
   ]) assert.ok(usersRouter.includes(route), route);
   assert.match(usersRouter, /SYSTEM_ACCESS_CONTROL_VIEW/);
   assert.match(usersRouter, /SYSTEM_ACCESS_CONTROL_MANAGE/);
-  assert.doesNotMatch(usersRouter, /access-control\/roles'[\s\S]{0,160}requireExactRole\('super_admin'\)/);
+  assert.doesNotMatch(usersRouter, /access-control\/roles'[\s\S]{0,160}requireExactRole\('super_admin', 'system_admin'\)/);
 });
 
 test('System Admin can manage Staff/Head accounts but governance roles remain constrained', () => {
@@ -56,13 +56,13 @@ test('System Admin can manage Staff/Head accounts but governance roles remain co
   assert.match(usersPage, /SYSTEM_ADMIN_MANAGEABLE_ROLES/);
 });
 
-test('Auditor core access stays enforced while only whitelisted export/print extras are configurable by Super Admin', () => {
+test('Auditor uses the normal adjustable model: core set is its default, access is exactly what is saved', () => {
   assert.match(permissions, /AUDITOR_ENFORCED_PERMISSIONS/);
   assert.match(permissions, /AUDITOR_OPTIONAL_PERMISSIONS/);
-  assert.match(permissions, /if \(!AUDITOR_OPTIONAL_PERMISSIONS\.has\(permission\)\) return false/);
-  assert.match(rolePolicies, /auditorCeiling/);
-  assert.match(accessController, /\[\.\.\.ROLE_DEFAULT_EDITABLE_ROLES, 'system_admin', 'auditor'\]/);
-  assert.match(accessController, /actor\?\.role === 'super_admin'/);
+  assert.doesNotMatch(permissions, /if \(!AUDITOR_OPTIONAL_PERMISSIONS\.has\(permission\)\) return false/);
+  assert.match(permissions, /Every other role, Auditor included, has exactly the permissions saved/);
+  assert.match(rolePolicies, /if \(role === 'auditor'\) return \[\.\.\.getAuditorEnforcedPermissions\(\)/);
+  assert.match(permissions, /export const ROLE_DEFAULT_EDITABLE_ROLES = Object\.freeze\(\[\s*'auditor'/);
 });
 
 test('Head roles structurally inherit Staff defaults', () => {
@@ -74,30 +74,31 @@ test('Head roles structurally inherit Staff defaults', () => {
   assert.match(accessController, /getRolePolicyForAccessControl/);
 });
 
-test('Role & Access UI groups governance and department roles clearly', () => {
-  for (const label of ['SYSTEM','AUDIT','MARKETING','SALES','ACCOUNTING','OPERATIONS','OWNER']) {
+test('Role & Access UI groups Auditor, departments and the full-access owners clearly', () => {
+  for (const label of ['AUDIT','MARKETING','SALES','ACCOUNTING','OPERATIONS','OWNER · FULL ACCESS']) {
     assert.match(roleAccess, new RegExp(label));
   }
   assert.match(roleAccess, /system_admin/);
   assert.match(roleAccess, /auditor/);
   assert.match(roleAccess, /super_admin/);
-  assert.match(permissionMatrix, /Required/);
-  // Intentional UI change: cross-department business access is warning-based,
-  // while only governance/security restrictions remain locked.
-  assert.match(permissionMatrix, /From Staff Role/);
+  // 2026-10-06: one uniform grid. No locked states; unusual access only warns.
+  assert.doesNotMatch(permissionMatrix, />Required</);
+  assert.doesNotMatch(permissionMatrix, /From Staff Role/);
+  assert.doesNotMatch(permissionMatrix, /Restricted governance/);
   assert.match(permissionMatrix, /Outside normal role/);
-  assert.match(permissionMatrix, /Restricted governance/);
   assert.doesNotMatch(permissionMatrix, />Not Allowed</);
   assert.doesNotMatch(permissionMatrix, />Optional<\/span>/);
   assert.doesNotMatch(permissionMatrix, />Select All Optional<\/button>/);
   assert.doesNotMatch(permissionMatrix, />Clear Optional<\/button>/);
 });
 
-test('per-account access UI keeps Super Admin full access and governed Auditor policy visible', () => {
-  assert.match(userAccess, /All Projects · Required/);
+test('per-account access UI shows Full System Access for both owner roles and the normal grid for everyone else', () => {
+  assert.match(userAccess, /const fullAccess = \['super_admin', 'system_admin'\]\.includes\(user\.role\)/);
+  assert.match(userAccess, /Full System Access · All Projects/);
+  assert.match(userAccess, /Only Super Admin can change a System Admin account/);
   assert.match(userAccess, /governed at a higher authority level/);
-  assert.match(userAccess, /auditor|Auditor/);
   assert.match(userAccess, /all_projects_access|All Projects/);
+  assert.doesNotMatch(userAccess, /All Projects · Required/);
 });
 
 test('change-position routes use granular Edit Users permission and same-account role transition', () => {
@@ -106,3 +107,4 @@ test('change-position routes use granular Edit Users permission and same-account
   assert.match(usersController, /same_account:\s*true/);
   assert.match(usersController, /INSERT INTO user_role_history/);
 });
+
