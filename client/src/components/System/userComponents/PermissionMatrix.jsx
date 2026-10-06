@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { FiAlertTriangle, FiChevronDown, FiChevronRight, FiRotateCcw, FiSearch } from 'react-icons/fi'
+import { FiAlertTriangle, FiChevronDown, FiChevronRight, FiLock, FiRotateCcw, FiSearch } from 'react-icons/fi'
 import {
+  ACCESS_LEVELS,
   cleanPermissionLabel,
+  getAccessTier,
   getPermissionType,
   isSensitivePermission,
   needsHeadApproval,
@@ -22,6 +24,15 @@ const typeTone = {
   'Export / Print': 'bg-sky-50 text-sky-700',
 }
 
+const levelTone = {
+  none: 'bg-slate-700 text-white',
+  view: 'bg-blue-600 text-white',
+  edit: 'bg-indigo-600 text-white',
+  full: 'bg-violet-700 text-white',
+}
+
+const sameKeys = (left, right) => left.size === right.size && [...left].every((key) => right.has(key))
+
 // Section checkbox with a real partly-selected state.
 const GroupCheckbox = ({ checked, indeterminate, disabled, onChange, label }) => {
   const ref = useRef(null)
@@ -31,6 +42,12 @@ const GroupCheckbox = ({ checked, indeterminate, disabled, onChange, label }) =>
 
 /**
  * Permission grid used by Create User, User Access and Role & Access Control.
+ *
+ * Each module is one compact row with an access level (No access / View only /
+ * Can edit / Full access). A level is only a shortcut: it ticks the module's
+ * permission keys by tier, and the saved data is still the same permission
+ * keys the server enforces. "Details" opens the individual permissions for
+ * fine-tuning; anything that does not match a level shows as Custom.
  *
  * Role defaults are recommendations, not hard department ceilings. Normal
  * business permissions remain assignable across departments and are flagged as
@@ -50,7 +67,8 @@ const PermissionMatrix = ({
 }) => {
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('all')
-  const [collapsed, setCollapsed] = useState({})
+  const [expanded, setExpanded] = useState({})
+  const [showRestricted, setShowRestricted] = useState(false)
   const [confirmViewAll, setConfirmViewAll] = useState(false)
 
   const selectedSet = new Set(selected || [])
@@ -97,6 +115,37 @@ const PermissionMatrix = ({
     commit(next)
   }
 
+  // Levels a module actually offers. Levels that would grant the same keys as a
+  // lower level are dropped (a module with only View permissions shows just
+  // "No access" and "View only").
+  const levelsFor = (group) => {
+    const optional = (group.items || []).map(([, key]) => key).filter((key) => stateFor(key) === 'optional')
+    const hasLocked = (group.items || []).some(([, key]) => ['required', 'inherited'].includes(stateFor(key)))
+    const levels = []
+    ACCESS_LEVELS.forEach((level) => {
+      const keys = new Set(optional.filter((key) => level.tiers.includes(getAccessTier(key))))
+      if (levels.some((existing) => sameKeys(existing.keys, keys))) return
+      const label = level.value === 'none' && hasLocked ? 'Role baseline' : level.label
+      levels.push({ ...level, label, keys })
+    })
+    return { optional, levels }
+  }
+
+  const levelOf = (group) => {
+    const { optional, levels } = levelsFor(group)
+    const current = new Set(optional.filter((key) => selectedSet.has(key)))
+    return levels.find((level) => sameKeys(level.keys, current))?.value || 'custom'
+  }
+
+  const applyLevel = (group, level) => {
+    if (disabled) return
+    const { optional } = levelsFor(group)
+    const next = new Set(selectedSet)
+    optional.forEach((key) => next.delete(key))
+    level.keys.forEach((key) => next.add(key))
+    commit(next)
+  }
+
   // View-only "select all" still requires a second click because it may include
   // cross-department View permissions.
   const grantAllView = () => {
@@ -121,29 +170,89 @@ const PermissionMatrix = ({
 
   const priority = new Map(priorityGroups.map((name, index) => [name, index]))
   const usable = (group) => (group.items || []).some(([, key]) => stateFor(key) !== 'restricted')
-  const orderedGroups = [...catalog].sort((a, b) => {
-    const usableDelta = Number(usable(b)) - Number(usable(a))
-    if (usableDelta) return usableDelta
-    return (priority.get(a.group) ?? 999) - (priority.get(b.group) ?? 999)
-  })
+  const orderedGroups = [...catalog].sort((a, b) => (priority.get(a.group) ?? 999) - (priority.get(b.group) ?? 999))
+  const usableGroups = orderedGroups.filter(usable)
+  const restrictedGroups = orderedGroups.filter((group) => !usable(group))
 
-  const isGroupCollapsed = (group) => {
-    if (needle || filter !== 'all') return false
-    if (collapsed[group.group] !== undefined) return collapsed[group.group]
-    return (group.items || []).every(([, key]) => stateFor(key) === 'restricted')
+  // Details stay closed by default so the screen is one line per module.
+  // Searching or filtering opens matching modules automatically.
+  const isExpanded = (group) => Boolean(needle || filter !== 'all' || expanded[group.group])
+  const setAllExpanded = (value) => setExpanded(Object.fromEntries(catalog.map((group) => [group.group, value])))
+
+  const renderItem = (group, [label, key]) => {
+    const state = stateFor(key)
+    const type = getPermissionType(key)
+    const changed = changedSet.has(key)
+    const outsideNormal = isOutsideNormal(key)
+    const cardTone = outsideNormal ? tone.outside : tone[state]
+    return <label key={key} className={`flex items-start gap-2.5 rounded-lg border px-3 py-2 text-sm ${cardTone} ${changed ? 'ring-2 ring-amber-300' : ''} ${isLocked(key) ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
+      <input type="checkbox" checked={effectiveChecked(key)} disabled={isLocked(key)} onChange={() => toggle(key)} className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600" />
+      <span className="min-w-0">
+        <span className="font-semibold">{cleanPermissionLabel(label)}</span>
+        <span className="mt-1 flex flex-wrap gap-1 text-[10px] font-black">
+          <span className={`rounded px-1.5 py-0.5 ${typeTone[type]}`}>{type}</span>
+          {isSensitivePermission(key) ? <span className="rounded bg-red-100 px-1.5 py-0.5 text-red-700">Sensitive</span> : null}
+          {needsHeadApproval(key) ? <span className="rounded bg-violet-100 px-1.5 py-0.5 text-violet-700">Needs Head approval</span> : null}
+          {outsideNormal ? <span className="rounded bg-amber-200 px-1.5 py-0.5 text-amber-900">Outside normal role</span> : null}
+          {state === 'required' ? <span className="rounded bg-white/70 px-1.5 py-0.5 uppercase tracking-wide opacity-80">Required</span> : null}
+          {state === 'inherited' ? <span className="rounded bg-white/70 px-1.5 py-0.5 uppercase tracking-wide opacity-80">From Staff Role</span> : null}
+          {state === 'restricted' ? <span className="rounded bg-white/70 px-1.5 py-0.5 uppercase tracking-wide opacity-80">Restricted governance</span> : null}
+          {changed ? <span className="rounded bg-amber-100 px-1.5 py-0.5 text-amber-800">{selectedSet.has(key) ? 'Added' : 'Removed'}</span> : null}
+        </span>
+      </span>
+    </label>
   }
-  const setAllCollapsed = (value) => setCollapsed(Object.fromEntries(catalog.map((group) => [group.group, value])))
+
+  const renderModule = (group) => {
+    const items = visibleItems(group)
+    if ((needle || filter !== 'all') && !items.length) return null
+    const groupKeys = (group.items || []).map(([, key]) => key)
+    const optional = groupKeys.filter((key) => stateFor(key) === 'optional')
+    const assignableKeys = groupKeys.filter((key) => stateFor(key) !== 'restricted')
+    const grantedInGroup = assignableKeys.filter((key) => effectiveChecked(key)).length
+    const allSelected = optional.length > 0 && optional.every((key) => selectedSet.has(key))
+    const someSelected = optional.some((key) => selectedSet.has(key))
+    const lockedCount = groupKeys.filter((key) => ['required', 'inherited'].includes(stateFor(key))).length
+    const changedInGroup = groupKeys.filter((key) => changedSet.has(key)).length
+    const outsideInGroup = optional.filter((key) => selectedSet.has(key) && isOutsideNormal(key)).length
+    const open = isExpanded(group)
+    const { levels } = levelsFor(group)
+    const current = levelOf(group)
+    return <section key={group.group} className="rounded-xl border border-slate-200 bg-white">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5">
+        <GroupCheckbox label={group.group} checked={allSelected} indeterminate={!allSelected && someSelected} disabled={disabled || !optional.length} onChange={() => toggleGroup(group)} />
+        <button type="button" onClick={() => setExpanded((state) => ({ ...state, [group.group]: !open }))} className="flex min-w-[180px] flex-1 items-center gap-2 text-left" aria-expanded={open}>
+          {open ? <FiChevronDown className="shrink-0 text-slate-400" /> : <FiChevronRight className="shrink-0 text-slate-400" />}
+          <span className="min-w-0">
+            <span className="block font-black text-slate-900">{group.group}</span>
+            <span className="flex flex-wrap items-center gap-1.5 text-[11px] font-bold text-slate-500">
+              <span>{`${grantedInGroup} of ${assignableKeys.length}`} granted</span>
+              {lockedCount ? <span className="inline-flex items-center gap-1 text-emerald-700"><FiLock /> {lockedCount} fixed by role</span> : null}
+              {outsideInGroup ? <span className="rounded bg-amber-200 px-1.5 text-amber-900">Outside normal role</span> : null}
+              {changedInGroup ? <span className="rounded bg-amber-100 px-1.5 text-amber-800">Changed</span> : null}
+            </span>
+          </span>
+        </button>
+        {optional.length ? (
+          <div className="flex flex-wrap rounded-lg border border-slate-200 bg-slate-50 p-0.5 text-[11px] font-black" role="radiogroup" aria-label={`${group.group} access level`}>
+            {levels.map((level) => (
+              <button key={level.value} type="button" role="radio" aria-checked={current === level.value} disabled={disabled} onClick={() => applyLevel(group, level)} title={level.keys.size ? `${level.keys.size} permission${level.keys.size === 1 ? '' : 's'}` : 'Removes every adjustable permission in this module'} className={`rounded-md px-2.5 py-1.5 disabled:cursor-not-allowed ${current === level.value ? levelTone[level.value] : 'text-slate-600 hover:bg-white'}`}>{level.label}</button>
+            ))}
+            {current === 'custom' ? <span className="rounded-md bg-amber-500 px-2.5 py-1.5 text-white" title="Individual permissions were chosen in Details">Custom</span> : null}
+          </div>
+        ) : <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1.5 text-[11px] font-black text-emerald-700"><FiLock /> Fixed by role</span>}
+      </div>
+      {open ? <div className="grid gap-1.5 border-t border-slate-100 p-3 sm:grid-cols-2">
+        {items.map((item) => renderItem(group, item))}
+      </div> : null}
+    </section>
+  }
 
   return (
-    <div className="grid gap-4">
+    <div className="grid gap-3">
       <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-wrap gap-2 text-[11px] font-black uppercase tracking-wide">
-            <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-700">Required</span>
-            <span className="rounded-full bg-blue-100 px-2.5 py-1 text-blue-700">From Staff Role</span>
-            <span className="rounded-full bg-amber-100 px-2.5 py-1 text-amber-800">Outside normal role</span>
-            <span className="rounded-full bg-slate-200 px-2.5 py-1 text-slate-500">Restricted governance</span>
-          </div>
+          <p className="text-sm font-semibold text-slate-600">Pick an access level for each module. Open a module to fine-tune single permissions.</p>
           <p className="text-sm font-black text-slate-700">{grantedCount} permission{grantedCount === 1 ? '' : 's'} granted</p>
         </div>
 
@@ -176,62 +285,47 @@ const PermissionMatrix = ({
               <button key={value} type="button" onClick={() => setFilter(value)} className={`rounded-lg px-3 py-1.5 ${filter === value ? 'bg-blue-600 text-white' : 'text-slate-600'}`}>{label}</button>
             ))}
           </div>
-          <button type="button" onClick={() => setAllCollapsed(false)} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700">Expand all</button>
-          <button type="button" onClick={() => setAllCollapsed(true)} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700">Collapse all</button>
-          {!disabled ? <>
-            <button type="button" onClick={grantAllView} disabled={!optionalViewKeys.length} className={`rounded-xl border px-3 py-2 text-xs font-black ${confirmViewAll ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-300 bg-white text-slate-700'} disabled:opacity-50`}>{confirmViewAll ? `Confirm: grant ${optionalViewKeys.length} view permissions` : 'Select all View'}</button>
-            <button type="button" onClick={() => commit(new Set())} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700">Clear All</button>
-          </> : null}
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <details className="text-xs font-semibold text-slate-600">
+            <summary className="cursor-pointer font-black text-slate-700">What the levels and colors mean</summary>
+            <div className="mt-2 grid gap-1.5">
+              <p><span className="font-black">View only</span>: see records. <span className="font-black">Can edit</span>: also create, edit, export and print. <span className="font-black">Full access</span>: also delete and sensitive actions (money corrections, cancellations, releases). <span className="font-black">Custom</span>: individual permissions were chosen in a module's details.</p>
+              <div className="flex flex-wrap gap-2 text-[11px] font-black uppercase tracking-wide">
+                <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-emerald-700">Required</span>
+                <span className="rounded-full bg-blue-100 px-2.5 py-1 text-blue-700">From Staff Role</span>
+                <span className="rounded-full bg-amber-100 px-2.5 py-1 text-amber-800">Outside normal role</span>
+                <span className="rounded-full bg-slate-200 px-2.5 py-1 text-slate-500">Restricted governance</span>
+              </div>
+            </div>
+          </details>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => setAllExpanded(true)} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700">Show all details</button>
+            <button type="button" onClick={() => setAllExpanded(false)} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700">Hide all details</button>
+            {!disabled ? <>
+              <button type="button" onClick={grantAllView} disabled={!optionalViewKeys.length} className={`rounded-xl border px-3 py-2 text-xs font-black ${confirmViewAll ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-300 bg-white text-slate-700'} disabled:opacity-50`}>{confirmViewAll ? `Confirm: grant ${optionalViewKeys.length} view permissions` : 'Select all View'}</button>
+              <button type="button" onClick={() => commit(new Set())} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700">Clear All</button>
+            </> : null}
+          </div>
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        {orderedGroups.map((group) => {
-          const items = visibleItems(group)
-          if ((needle || filter !== 'all') && !items.length) return null
-          const groupKeys = (group.items || []).map(([, key]) => key)
-          const optional = groupKeys.filter((key) => stateFor(key) === 'optional')
-          const assignableKeys = groupKeys.filter((key) => stateFor(key) !== 'restricted')
-          const grantedInGroup = assignableKeys.filter((key) => effectiveChecked(key)).length
-          const allSelected = optional.length > 0 && optional.every((key) => selectedSet.has(key))
-          const someSelected = optional.some((key) => selectedSet.has(key))
-          const isCollapsed = isGroupCollapsed(group)
-          return <section key={group.group} className="rounded-2xl border border-slate-200 bg-white p-4">
-            <div className="flex items-center gap-3">
-              <GroupCheckbox label={group.group} checked={allSelected} indeterminate={!allSelected && someSelected} disabled={disabled || !optional.length} onChange={() => toggleGroup(group)} />
-              <button type="button" onClick={() => setCollapsed((current) => ({ ...current, [group.group]: !isCollapsed }))} className="flex flex-1 items-center justify-between gap-2 text-left" aria-expanded={!isCollapsed}>
-                <span className={`font-black ${assignableKeys.length ? 'text-slate-900' : 'text-slate-400'}`}>{group.group}</span>
-                <span className="flex items-center gap-2 text-xs font-black text-slate-500">{assignableKeys.length ? `${grantedInGroup} of ${assignableKeys.length}` : 'Restricted governance only'}{isCollapsed ? <FiChevronRight /> : <FiChevronDown />}</span>
-              </button>
-            </div>
-            {!isCollapsed ? <div className="mt-3 grid gap-2 sm:grid-cols-2">
-              {items.map(([label, key]) => {
-                const state = stateFor(key)
-                const type = getPermissionType(key)
-                const changed = changedSet.has(key)
-                const outsideNormal = isOutsideNormal(key)
-                const cardTone = outsideNormal ? tone.outside : tone[state]
-                return <label key={key} className={`flex items-start gap-3 rounded-xl border p-3 text-sm ${cardTone} ${changed ? 'ring-2 ring-amber-300' : ''} ${isLocked(key) ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
-                  <input type="checkbox" checked={effectiveChecked(key)} disabled={isLocked(key)} onChange={() => toggle(key)} className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600" />
-                  <span className="min-w-0">
-                    <span className="font-semibold">{cleanPermissionLabel(label)}</span>
-                    <span className="mt-1.5 flex flex-wrap gap-1 text-[10px] font-black">
-                      <span className={`rounded px-1.5 py-0.5 ${typeTone[type]}`}>{type}</span>
-                      {isSensitivePermission(key) ? <span className="rounded bg-red-100 px-1.5 py-0.5 text-red-700">Sensitive</span> : null}
-                      {needsHeadApproval(key) ? <span className="rounded bg-violet-100 px-1.5 py-0.5 text-violet-700">Needs Head approval</span> : null}
-                      {outsideNormal ? <span className="rounded bg-amber-200 px-1.5 py-0.5 text-amber-900">Outside normal role</span> : null}
-                      {state === 'required' ? <span className="rounded bg-white/70 px-1.5 py-0.5 uppercase tracking-wide opacity-80">Required</span> : null}
-                      {state === 'inherited' ? <span className="rounded bg-white/70 px-1.5 py-0.5 uppercase tracking-wide opacity-80">From Staff Role</span> : null}
-                      {state === 'restricted' ? <span className="rounded bg-white/70 px-1.5 py-0.5 uppercase tracking-wide opacity-80">Restricted governance</span> : null}
-                      {changed ? <span className="rounded bg-amber-100 px-1.5 py-0.5 text-amber-800">{selectedSet.has(key) ? 'Added' : 'Removed'}</span> : null}
-                    </span>
-                  </span>
-                </label>
-              })}
-            </div> : null}
-          </section>
-        })}
+      <div className="grid gap-2">
+        {usableGroups.map(renderModule)}
       </div>
+
+      {restrictedGroups.length ? (
+        <section className="rounded-xl border border-dashed border-slate-300 bg-slate-50">
+          <button type="button" onClick={() => setShowRestricted((value) => !value)} className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left text-sm font-black text-slate-500" aria-expanded={showRestricted || Boolean(needle)}>
+            <span className="inline-flex items-center gap-2"><FiLock /> Restricted governance ({restrictedGroups.length} module{restrictedGroups.length === 1 ? '' : 's'})</span>
+            {showRestricted || needle ? <FiChevronDown /> : <FiChevronRight />}
+          </button>
+          {showRestricted || needle ? <div className="grid gap-1.5 border-t border-slate-200 p-3 sm:grid-cols-2">
+            {restrictedGroups.flatMap((group) => visibleItems(group).map((item) => renderItem(group, item)))}
+          </div> : null}
+        </section>
+      ) : null}
     </div>
   )
 }

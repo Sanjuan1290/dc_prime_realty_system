@@ -2354,6 +2354,29 @@ export const commitNetworkMemberImport = async (req, res) => {
       });
     }
 
+    // Existing seller records may be overwritten only when Final Double-Check
+    // showed that exact seller. A row that became an existing-seller update after
+    // the browser preview (or was never shown) is rejected, never applied.
+    const acknowledgedExistingSellerUpdateEmails = new Set(
+      (Array.isArray(req.body?.acknowledgedExistingSellerUpdateEmails) ? req.body.acknowledgedExistingSellerUpdateEmails : [])
+        .map((email) => normalizeNetworkMemberImportEmail(email))
+        .filter(Boolean)
+    );
+    const newlyUnacknowledgedExistingUpdates = lockedPreview.rows.filter((row) =>
+      row.requiresExistingSellerUpdateConfirmation
+      && !acknowledgedExistingSellerUpdateEmails.has(normalizeNetworkMemberImportEmail(row.email))
+    );
+    if (newlyUnacknowledgedExistingUpdates.length) {
+      await connection.rollback();
+      transactionStarted = false;
+      const count = newlyUnacknowledgedExistingUpdates.length;
+      return res.status(409).json({
+        code: 'EXISTING_SELLER_UPDATE_CONFIRMATION_REQUIRED',
+        message: `${count} existing seller record${count === 1 ? '' : 's'} would be updated without being confirmed in Final Double-Check (${newlyUnacknowledgedExistingUpdates.map((row) => `row ${row.sourceRow}`).join(', ')}). Review the updated Preview and confirm again. Nothing was saved.`,
+        data: lockedPreview,
+      });
+    }
+
     await assertEntityNotReviewLocked(connection, {
       actor: req.authUser,
       entityType: 'seller_group',
@@ -2563,4 +2586,5 @@ export const commitNetworkMemberImport = async (req, res) => {
     connection.release();
   }
 };
+
 

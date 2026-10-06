@@ -44,9 +44,39 @@ export const cleanPermissionLabel = (label = '') => String(label).replace(/\s*\(
 // Sections each department works in most. Shown first for that role.
 export const DEPARTMENT_PRIORITY_GROUPS = Object.freeze({
   marketing: ['Seller Groups', 'Accredited Sellers', 'Reports', 'Dashboard', 'Documents'],
-  sales: ['Listings / Units', 'Buyer / Profile', 'Project Dashboard & Reports', 'Accredited Sellers', 'Reports'],
+  sales: ['Listings / Units', 'Reservations', 'Buyer / Profile', 'Project Dashboard & Reports', 'Accredited Sellers', 'Reports'],
   accounting: ['Payments', 'Commissions', 'Employee Salary', 'Buyer / Profile', 'Reports'],
-  operations: ['Projects', 'Listings / Units', 'Project Settings', 'Documents', 'Employees', 'Attendance'],
+  operations: ['Projects', 'Listings / Units', 'Reservations', 'Project Settings', 'Documents', 'Document Templates', 'Employees', 'Attendance'],
 })
 
 export const getRoleDepartment = (role = '') => String(role).replace(/_(staff|head)$/, '')
+
+
+// Access levels for the module-level selector. Every permission falls into one
+// tier, and a level grants its own tier plus every tier below it:
+//   view  View only   - look at records
+//   edit  Can edit    - everyday create / edit / export / print work
+//   full  Full access - deletes and sensitive actions (money corrections,
+//                       cancellations, releases, payroll finalisation, ...)
+// Storage is unchanged: a level is only a shortcut that ticks permission keys.
+export const ACCESS_LEVELS = Object.freeze([
+  { value: 'none', label: 'No access', tiers: [] },
+  { value: 'view', label: 'View only', tiers: ['view'] },
+  { value: 'edit', label: 'Can edit', tiers: ['view', 'edit'] },
+  { value: 'full', label: 'Full access', tiers: ['view', 'edit', 'full'] },
+])
+
+const VIEW_TIER_PRINTS = new Set([
+  PERMISSIONS.SYSTEM_PROJECTS_PRINT_PRICE_LIST,
+  PERMISSIONS.LOT_PRINTOUTS_USE,
+])
+
+export const getAccessTier = (key = '') => {
+  const type = getPermissionType(key)
+  if (type === 'View') return 'view'
+  // Printing the price list or buyer printouts only outputs what the user can
+  // already see. Exports and seller-record printing stay at editing level.
+  if (VIEW_TIER_PRINTS.has(String(key))) return 'view'
+  if (type === 'Delete' || isSensitivePermission(key)) return 'full'
+  return 'edit'
+}

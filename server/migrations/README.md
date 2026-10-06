@@ -71,3 +71,10 @@ The migration **does not modify existing `user_permissions` rows**. After deploy
 `20261006_batch8_role_default_cleanup.sql` removes System Admin and Auditor role-default rows that sit outside their permission ceiling (including the 29 legacy Admin rows still stored for System Admin, which the application already ignored) and adds `system.data_integrity.view` to the System Admin default. Run it after Batch 7. It is idempotent and TiDB-safe.
 
 Role defaults customised in Role & Access Control are kept, and existing `user_permissions` rows are not changed. Use **Apply Latest Role Default** on existing System Admin accounts that should receive Data Integrity access.
+
+
+## 2026-10-06 Batch 9: seed missing role permission defaults
+
+`20261006_batch9_seed_missing_role_defaults.sql` seeds the recommended role templates into `role_permission_defaults`. A database built from a structure-only export never received the earlier seed migrations, which left every Staff role with 1 default permission and every Head with 5. Run it after Batch 8. It is idempotent and TiDB-safe.
+
+A role is seeded only if none of its rows were saved from Role & Access Control, and `INSERT IGNORE` never changes or removes an existing row. Existing `user_permissions` rows are not changed: use **Apply Latest Role Default** on any existing account that should receive the seeded defaults.
