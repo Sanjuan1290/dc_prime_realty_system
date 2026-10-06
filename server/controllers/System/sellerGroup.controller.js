@@ -28,6 +28,7 @@ import { loadActiveSellerIdentityMatches } from '../../services/sellerIdentity.s
 import {
   assertEntityNotReviewLocked,
   createOperationalReview,
+  getOperationalReviewForUpdate,
   getReturnedOperationalReviewForActor,
   resubmitReturnedOperationalReview,
 } from '../../services/operationalReview.service.js';
@@ -77,6 +78,63 @@ const normalizeRateReviewPayload = (rates = []) => rates
   .sort((left, right) => left.projectId - right.projectId);
 
 const rateReviewSignature = (rates = []) => JSON.stringify(normalizeRateReviewPayload(rates));
+
+const buildSingleProjectRateReviewSnapshot = ({ groupId, groupType, project = {}, rate = {} }) => ({
+  groupId: Number(groupId || 0),
+  groupType: normalizeSellerGroupType(groupType),
+  projectId: Number(project.lot_project_id || rate.lot_project_id || rate.projectId || 0),
+  projectSlug: project.lot_project_slug || rate.projectSlug || null,
+  poolRate: Number(rate.seller_group_pool_rate ?? rate.poolRate ?? 0),
+  companyProfitRate: Number(rate.company_profit_rate ?? rate.companyProfitRate ?? 0),
+  divisionManagerRate: Number(rate.division_manager_rate ?? rate.divisionManagerRate ?? 0),
+  salesDirectorRate: Number(rate.sales_director_rate ?? rate.salesDirectorRate ?? 0),
+  unitManagerRate: Number(rate.unit_manager_rate ?? rate.unitManagerRate ?? 0),
+  salesAgentRate: Number(rate.sales_agent_rate ?? rate.salesAgentRate ?? 0),
+  status: normalizeStatus(rate.seller_group_lot_project_rate_status ?? rate.status ?? 'active'),
+});
+
+// A returned Network-rate Review may have been created by the full Network editor
+// (entity id = groupId) or by the per-project rate editor
+// (entity id = groupId:projectId). Correction links carry reviewId, so validate
+// that exact Review belongs to the original Staff user instead of opening a new
+// review and leaving the returned one locked.
+const getReturnedNetworkRateReviewForActor = async (connection, { actor, groupId, reviewId = null, projectId = null }) => {
+  const normalizedGroupId = Number(groupId || 0);
+  const normalizedProjectId = Number(projectId || 0);
+  if (!actor?.id || !normalizedGroupId) return null;
+
+  if (normalizedProjectId) {
+    const exact = await getReturnedOperationalReviewForActor(connection, {
+      actor,
+      actionKey: 'network.rates.update',
+      entityType: 'seller_group_project_rates',
+      entityId: `${normalizedGroupId}:${normalizedProjectId}`,
+      reviewId,
+    });
+    if (exact) return exact;
+  }
+
+  const bulk = await getReturnedOperationalReviewForActor(connection, {
+    actor,
+    actionKey: 'network.rates.update',
+    entityType: 'seller_group_project_rates',
+    entityId: normalizedGroupId,
+    reviewId,
+  });
+  if (bulk || !reviewId) return bulk;
+
+  const candidate = await getOperationalReviewForUpdate(connection, reviewId);
+  if (!candidate
+    || candidate.status !== 'returned_for_correction'
+    || candidate.action_key !== 'network.rates.update'
+    || candidate.entity_type !== 'seller_group_project_rates'
+    || Number(candidate.initiated_by_user_id || 0) !== Number(actor.id || 0)) return null;
+
+  const [candidateGroup, candidateProject] = String(candidate.entity_id || '').split(':').map(Number);
+  if (candidateGroup !== normalizedGroupId) return null;
+  if (normalizedProjectId && candidateProject && candidateProject !== normalizedProjectId) return null;
+  return candidate;
+};
 
 const buildNetworkSnapshot = ({ group = {}, name = null, headUserId = null, description = null, status = null, broker = null } = {}) => ({
   groupId: Number(group.seller_group_id || 0) || null,
@@ -1231,6 +1289,7 @@ export const editGroup = async (req, res) => {
     let networkAuditCase = null;
     let rateAuditCase = null;
     let returnedReview = null;
+    let rateReturnedReview = null;
     if ((isOwnerAdministrator(req.authUser) && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
       networkAuditCase = await getPendingAuditCorrectionCase(connection, {
         actor: req.authUser,
@@ -1275,6 +1334,16 @@ export const editGroup = async (req, res) => {
           if (returnedReview) break;
         }
       }
+      if (!returnedReview && req.body?.reviewId) {
+        rateReturnedReview = await getReturnedNetworkRateReviewForActor(connection, {
+          actor: req.authUser,
+          groupId,
+          reviewId: req.body.reviewId,
+        });
+      }
+      if (rateReturnedReview && JSON.stringify(beforeNetwork) !== JSON.stringify(afterNetwork)) {
+        throw Object.assign(new Error('This returned Review is limited to Network project rates. Leave the Network identity/status fields unchanged and correct only the requested rates.'), { statusCode: 409, code: 'RETURNED_REVIEW_SCOPE_MISMATCH' });
+      }
     }
 
     await assertEntityNotReviewLocked(connection, {
@@ -1286,13 +1355,22 @@ export const editGroup = async (req, res) => {
 
     let ratesGovernance = null;
     if (ratesChanged) {
+      const returnedRateEntityId = rateReturnedReview?.entity_id ? String(rateReturnedReview.entity_id) : String(groupId);
+      const returnedRateProjectId = Number(returnedRateEntityId.split(':')[1] || 0);
+      if (rateReturnedReview && returnedRateProjectId) {
+        const beforeOther = normalizeRateReviewPayload(existingRateRows).filter((rate) => rate.projectId !== returnedRateProjectId);
+        const afterOther = normalizeRateReviewPayload(normalizedRates).filter((rate) => rate.projectId !== returnedRateProjectId);
+        if (JSON.stringify(beforeOther) !== JSON.stringify(afterOther)) {
+          throw Object.assign(new Error('This returned Review applies to one project rate only. Correct that project without changing rates for other projects.'), { statusCode: 409, code: 'RETURNED_REVIEW_SCOPE_MISMATCH' });
+        }
+      }
       await assertEntityNotReviewLocked(connection, {
         actor: req.authUser,
         entityType: 'seller_group_project_rates',
-        entityId: groupId,
-        allowReviewId: rateAuditCase?.operational_review_id || null,
+        entityId: returnedRateEntityId,
+        allowReviewId: rateAuditCase?.operational_review_id || rateReturnedReview?.operational_review_id || null,
       });
-      if (!rateAuditCase) {
+      if (!rateAuditCase && !rateReturnedReview) {
         ratesGovernance = await authorizeGovernedAction(connection, {
           actor: req.authUser,
           actionKey: 'network.rates.update',
@@ -1368,8 +1446,22 @@ export const editGroup = async (req, res) => {
 
     let rateReview = null;
     if (ratesChanged) {
-      const beforeRates = { groupId, groupType, rates: normalizeRateReviewPayload(existingRateRows) };
-      const afterRates = { groupId, groupType, rates: normalizeRateReviewPayload(normalizedRates) };
+      const returnedRateProjectId = Number(String(rateReturnedReview?.entity_id || '').split(':')[1] || 0);
+      const returnedRateProject = returnedRateProjectId
+        ? projects.find((project) => Number(project.lot_project_id) === returnedRateProjectId) || {}
+        : null;
+      const beforeRateRecord = returnedRateProjectId
+        ? existingRateRows.find((rate) => Number(rate.lot_project_id) === returnedRateProjectId) || {}
+        : null;
+      const afterRateRecord = returnedRateProjectId
+        ? normalizedRates.find((rate) => Number(rate.lot_project_id || rate.projectId) === returnedRateProjectId) || {}
+        : null;
+      const beforeRates = returnedRateProjectId
+        ? buildSingleProjectRateReviewSnapshot({ groupId, groupType, project: returnedRateProject, rate: beforeRateRecord })
+        : { groupId, groupType, rates: normalizeRateReviewPayload(existingRateRows) };
+      const afterRates = returnedRateProjectId
+        ? buildSingleProjectRateReviewSnapshot({ groupId, groupType, project: returnedRateProject, rate: afterRateRecord })
+        : { groupId, groupType, rates: normalizeRateReviewPayload(normalizedRates) };
       if (rateAuditCase) {
         rateReview = await advanceAuditCaseToRecheck(connection, {
           auditCase: rateAuditCase,
@@ -1377,6 +1469,17 @@ export const editGroup = async (req, res) => {
           correctionSummary: String(req.body?.correctionSummary || 'Corrected Network project rates from the Audit Case.').trim(),
           afterSnapshot: afterRates,
           metadata: { actionKey: 'network.rates.update' },
+        });
+      } else if (rateReturnedReview) {
+        rateReview = await resubmitReturnedOperationalReview(connection, {
+          review: rateReturnedReview,
+          actor: req.authUser,
+          department: 'marketing',
+          projectId: returnedRateProjectId || null,
+          entityLabel: rateReturnedReview.entity_label || `${name} project rates`,
+          beforeSnapshot: beforeRates,
+          afterSnapshot: afterRates,
+          message: 'Network project rates corrected and resubmitted for Marketing Head review.',
         });
       } else {
         rateReview = await createOperationalReview(connection, {
@@ -2249,6 +2352,7 @@ export const updateGroupProjectPool = async (req, res) => {
     };
 
     let auditCase = null;
+    let returnedReview = null;
     let governance = null;
     if ((isOwnerAdministrator(req.authUser) && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
       auditCase = await getPendingAuditCorrectionCase(connection, {
@@ -2261,22 +2365,30 @@ export const updateGroupProjectPool = async (req, res) => {
         throw Object.assign(new Error('This administrative Network rate change requires an Auditor-approved correction case.'), { statusCode: 403, code: 'AUDIT_CORRECTION_REQUIRED' });
       }
     } else {
-      governance = await authorizeGovernedAction(connection, {
+      returnedReview = await getReturnedNetworkRateReviewForActor(connection, {
         actor: req.authUser,
-        actionKey: 'network.rates.update',
+        groupId,
         projectId,
-        entityId,
-        entityLabel: `${group.seller_group_name} — ${group.lot_project_name}`,
-        payload: afterSnapshot,
-        reason: req.body?.reason || `Update Network project rates for ${group.seller_group_name}`,
+        reviewId: req.body?.reviewId,
       });
+      if (!returnedReview) {
+        governance = await authorizeGovernedAction(connection, {
+          actor: req.authUser,
+          actionKey: 'network.rates.update',
+          projectId,
+          entityId,
+          entityLabel: `${group.seller_group_name} — ${group.lot_project_name}`,
+          payload: afterSnapshot,
+          reason: req.body?.reason || `Update Network project rates for ${group.seller_group_name}`,
+        });
+      }
     }
 
     await assertEntityNotReviewLocked(connection, {
       actor: req.authUser,
       entityType: 'seller_group_project_rates',
-      entityId,
-      allowReviewId: auditCase?.operational_review_id || null,
+      entityId: returnedReview?.entity_id || entityId,
+      allowReviewId: auditCase?.operational_review_id || returnedReview?.operational_review_id || null,
     });
 
     await connection.query(
@@ -2307,18 +2419,29 @@ export const updateGroupProjectPool = async (req, res) => {
           afterSnapshot,
           metadata: { actionKey: 'network.rates.update' },
         })
-      : await createOperationalReview(connection, {
-          actor: req.authUser,
-          actionKey: 'network.rates.update',
-          department: 'marketing',
-          projectId,
-          entityType: 'seller_group_project_rates',
-          entityId,
-          entityLabel: `${group.seller_group_name} — ${group.lot_project_name}`,
-          beforeSnapshot,
-          afterSnapshot,
-          headPreApprovedByUserId: governance?.headPreApprovedByUserId || null,
-        });
+      : returnedReview
+        ? await resubmitReturnedOperationalReview(connection, {
+            review: returnedReview,
+            actor: req.authUser,
+            department: 'marketing',
+            projectId,
+            entityLabel: returnedReview.entity_label || `${group.seller_group_name} — ${group.lot_project_name}`,
+            beforeSnapshot,
+            afterSnapshot,
+            message: 'Network project rate corrected and resubmitted for Marketing Head review.',
+          })
+        : await createOperationalReview(connection, {
+            actor: req.authUser,
+            actionKey: 'network.rates.update',
+            department: 'marketing',
+            projectId,
+            entityType: 'seller_group_project_rates',
+            entityId,
+            entityLabel: `${group.seller_group_name} — ${group.lot_project_name}`,
+            beforeSnapshot,
+            afterSnapshot,
+            headPreApprovedByUserId: governance?.headPreApprovedByUserId || null,
+          });
 
     await connection.commit();
     return res.json({
@@ -2773,5 +2896,3 @@ export const commitNetworkMemberImport = async (req, res) => {
     connection.release();
   }
 };
-
-

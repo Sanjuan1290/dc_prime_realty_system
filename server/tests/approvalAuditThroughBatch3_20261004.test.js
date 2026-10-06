@@ -170,4 +170,3 @@ test('Role & Access UI groups Auditor, departments and the two full-access owner
   assert.match(roleAccessUi, /const OWNER_ROLES = \['super_admin', 'system_admin'\]/);
   assert.match(roleAccessUi, /Full System Access/);
 });
-

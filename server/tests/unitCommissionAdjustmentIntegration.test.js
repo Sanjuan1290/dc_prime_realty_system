@@ -50,4 +50,3 @@ test('client requires exact allocation before governed commission authorization 
   assert.match(modal, /Auditor Case|auditCase/);
   assert.match(modal, /Emergency|Super Admin/);
 });
-

@@ -101,4 +101,3 @@ test('owner-level destructive/system governance remains outside routine Head app
   assert.match(projectsRouter, /purge-code[^\n]*requireExactRole\('super_admin', 'system_admin'\)/);
   assert.match(workflowRouter, /protected-changes/);
 });
-

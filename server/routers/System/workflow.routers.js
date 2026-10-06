@@ -9,10 +9,11 @@ const router=express.Router();
 const REVIEW_CENTER_ROLES = new Set([
   'super_admin','system_admin','auditor',
   'marketing_head','sales_head','accounting_head','operations_head',
+  'marketing_staff','sales_staff','accounting_staff','operations_staff',
 ]);
 const requireReviewCenterRole = (req,res,next) => {
   if (!REVIEW_CENTER_ROLES.has(String(req.authUser?.role || ''))) {
-    return res.status(403).json({ message: 'Review Center is available only to Department Heads, Auditor, System Admin and Super Admin.' });
+    return res.status(403).json({ message: 'Review Center is available only to Department Staff/Heads, Auditor, System Admin and Super Admin.' });
   }
   return next();
 };

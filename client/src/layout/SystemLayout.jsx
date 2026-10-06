@@ -132,7 +132,7 @@ const SystemLayout = () => {
         title: "REVIEW & COMPLIANCE",
         description: "Department review, audit, and system records",
         items: [
-          { label: "Review Center", pathname: "review-center", icon: FiShield, badge: workflowBadgeCount, permission: PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW, roles: ['super_admin','system_admin','auditor','marketing_head','sales_head','accounting_head','operations_head'] },
+          { label: "Review Center", pathname: "review-center", icon: FiShield, badge: workflowBadgeCount, permission: PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW, roles: ['super_admin','system_admin','auditor','marketing_head','sales_head','accounting_head','operations_head','marketing_staff','sales_staff','accounting_staff','operations_staff'] },
           { label: "Documents", pathname: "documents", icon: FiFileText, permission: PERMISSIONS.SYSTEM_DOCUMENTS_VIEW },
           { label: "Notifications", pathname: "notifications", icon: FiBell, badge: notificationCount, permission: PERMISSIONS.SYSTEM_NOTIFICATIONS_VIEW },
           { label: "Audit Logs", pathname: "audit-logs", icon: FiActivity, permission: PERMISSIONS.AUDIT_LOGS_VIEW },
@@ -433,4 +433,3 @@ const SystemLayout = () => {
 };
 
 export default SystemLayout;
-

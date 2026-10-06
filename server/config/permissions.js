@@ -353,4 +353,3 @@ export const ROLE_PERMISSIONS = Object.freeze({
   super_admin: allPermissions,
   auditor: AUDITOR_ALLOWED_PERMISSIONS,
 });
-

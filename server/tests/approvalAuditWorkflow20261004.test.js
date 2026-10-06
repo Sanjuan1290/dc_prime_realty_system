@@ -194,6 +194,3 @@ test('true owner-level gates remain Super Admin only', () => {
   assert.match(projectsRouter, /purge-code[^\n]*requireExactRole\('super_admin', 'system_admin'\)/);
   assert.match(settingsRouter, /\/code'[^\n]*requireExactRole\('super_admin', 'system_admin'\)/);
 });
-
-
-

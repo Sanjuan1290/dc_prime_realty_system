@@ -91,3 +91,9 @@ Super Admin and System Admin now have full access. Every other account (Auditor,
 4. Removes rows for System Admin accounts and the System Admin template, which now always have full access.
 
 It is idempotent (`INSERT IGNORE` only) and TiDB-safe. It was verified on a copy of the 2026-10-06 backup with one test account per role: every non-owner account and template kept exactly the same access; only System Admin changed, to full access.
+
+## 2026-10-06 Batch 13: Staff correction access to Review Center
+
+`20261006_batch13_staff_correction_review_center.sql` runs after Batch 12. It restores `workflow.review_center.view` for Department Staff role defaults **and existing Staff accounts** because returned corrections are now actionable from Review Center.
+
+Staff access remains server-scoped: **Needs My Action** contains only the current user's own `returned_for_correction` reviews, while **History & Tracking** contains only reviews that user originally entered. This migration does not grant Department Head, Auditor, or administrative workflow permissions to Staff.

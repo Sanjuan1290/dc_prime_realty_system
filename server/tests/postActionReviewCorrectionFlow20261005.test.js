@@ -139,5 +139,5 @@ test('Review Center explains correction ownership and gives original Staff a Cor
   assert.match(page, /Correct &amp; Resubmit/);
   assert.match(page, /Controlled correction required/);
   assert.match(page, /correctionRoleLabel/);
-  assert.match(page, /same user edits it again before the check is finished/);
+  assert.match(page, /Any edit made before the review is completed updates this Review to the latest saved values/);
 });

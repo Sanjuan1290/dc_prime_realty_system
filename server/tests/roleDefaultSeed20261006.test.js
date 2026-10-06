@@ -12,8 +12,8 @@ const seeded = new Map(CONFIGURABLE_SYSTEM_ROLES.map((role) => [role, []]));
 for (const [, role, key] of sql.matchAll(/^\('([a-z_]+)', '([a-z_.]+)'\)/gm)) seeded.get(role).push(key);
 
 // Batch 9 seeds direct rows (the pre-2026-10-06 shape); Batch 10 then turns
-// them into complete templates. Batch 12 removes Review Center from Staff only,
-// while Heads retain Review Center as part of their own saved templates.
+// them into complete templates. Batch 12 removed Review Center from Staff;
+// Batch 13 restores it because Staff must action returned corrections.
 const batch10 = readFileSync(new URL('../migrations/20261006_batch10_single_permission_model.sql', import.meta.url), 'utf8');
 const requiredBlock = batch10.slice(batch10.indexOf('INSERT INTO rbac_20261006_required'), batch10.indexOf(';', batch10.indexOf('INSERT INTO rbac_20261006_required')));
 const batch10Required = new Map();
@@ -29,13 +29,17 @@ const afterBatch10 = (role) => {
 };
 
 const batch12 = readFileSync(new URL('../migrations/20261006_batch12_role_specific_review_queues.sql', import.meta.url), 'utf8');
+const batch13 = readFileSync(new URL('../migrations/20261006_batch13_staff_correction_review_center.sql', import.meta.url), 'utf8');
 const STAFF_ROLES = new Set(['marketing_staff', 'sales_staff', 'accounting_staff', 'operations_staff']);
-const afterCurrentMigrations = (role) => afterBatch10(role).filter(
-  (key) => !(STAFF_ROLES.has(role) && key === 'workflow.review_center.view')
-);
+const afterCurrentMigrations = (role) => {
+  const after12 = afterBatch10(role).filter((key) => !(STAFF_ROLES.has(role) && key === 'workflow.review_center.view'));
+  return STAFF_ROLES.has(role) ? [...new Set([...after12, 'workflow.review_center.view'])].sort() : after12.sort();
+};
 
-test('Batch 9, Batch 10 and Batch 12 give every non-owner role exactly its current recommended template', () => {
+test('Batch 9 through Batch 13 give every non-owner role exactly its current recommended template', () => {
   assert.match(batch12, /DELETE FROM `role_permission_defaults`[\s\S]*workflow\.review_center\.view/);
+  assert.match(batch13, /INSERT INTO `role_permission_defaults`[\s\S]*workflow\.review_center\.view/);
+  assert.match(batch13, /INSERT INTO `user_permissions`[\s\S]*marketing_staff/);
   for (const role of CONFIGURABLE_SYSTEM_ROLES.filter((r) => r !== 'system_admin')) {
     assert.deepEqual(afterCurrentMigrations(role), [...getStaticRolePolicy(role).recommended].sort(), role);
   }

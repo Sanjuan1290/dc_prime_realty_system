@@ -67,4 +67,3 @@ test('permission UI warns on unusual access instead of disabling normal business
   assert.doesNotMatch(matrix, /Fixed by role/);
   assert.doesNotMatch(matrix, />Not Allowed</);
 });
-

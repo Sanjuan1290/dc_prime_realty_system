@@ -50,4 +50,3 @@ test('Create System User starts every configurable role from its saved default a
   assert.doesNotMatch(createSystemUser, /plus \$\{rolePolicy\.required\.length\} required/);
   assert.match(createSystemUser, /Role default permissions are still loading/);
 });
-

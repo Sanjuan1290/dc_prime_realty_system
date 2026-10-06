@@ -171,12 +171,11 @@ test('Review Center makes post-action checks explicit and keeps correction contr
   const page = await readProjectFile('client/src/pages/System/ReviewCenter.jsx');
   assert.match(page, /Completed · Head Check Pending/);
   assert.match(page, /Completed · Auditor Check Pending/);
-  assert.match(page, /Operation completed successfully/);
-  assert.match(page, /do not block completed operations/);
+  assert.match(page, /Operation saved successfully/);
+  assert.match(page, /does not block normal work/);
   assert.match(page, /Super Admin direct entry/);
   assert.match(page, /Correct &amp; Confirm/);
   assert.match(page, /reassign-responder/);
   assert.match(page, /responders\?\.canRespond/);
   assert.match(page, /approvalStatus/);
 });
-

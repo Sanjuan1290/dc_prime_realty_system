@@ -204,5 +204,3 @@ const SellerGroup = ({ groupType = 'in_house' }) => {
 }
 
 export default SellerGroup
-
-

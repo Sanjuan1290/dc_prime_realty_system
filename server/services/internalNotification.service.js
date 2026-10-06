@@ -165,5 +165,3 @@ export const notifySystemAdmins = async (connection, { reviewId, auditCaseId = n
   const userIds = await getEligibleRoleUserIds(connection, { role: 'system_admin' });
   return createInternalNotifications(connection, { userIds, type, title, message, reviewId, auditCaseId });
 };
-
-

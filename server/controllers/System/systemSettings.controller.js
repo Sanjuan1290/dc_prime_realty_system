@@ -469,4 +469,3 @@ export const updateSystemSettings = async (req, res) => {
     connection.release();
   }
 };
-

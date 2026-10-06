@@ -1,5 +1,5 @@
 import { db } from '../../db/connect.js';
-import { DEPARTMENT_HEAD_ROLE, getRoleDepartment } from '../../config/permissions.js';
+import { DEPARTMENT_HEAD_ROLE, DEPARTMENT_STAFF_ROLES, getRoleDepartment } from '../../config/permissions.js';
 import { writeAuditLog } from './auditLogs.controller.js';
 import { activeNotificationSql, createInternalNotifications, notifyAuditors, notifySystemAdmins, REVIEW_ACTION_NOTIFICATION_STAGES } from '../../services/internalNotification.service.js';
 import { appendReviewEvent, canActorSeeReview, getOperationalReviewForUpdate } from '../../services/operationalReview.service.js';
@@ -33,6 +33,13 @@ const reviewQueueWhere = (actor, { alias = 'r' } = {}) => {
     return {
       sql: `${alias}.status='correction_required' AND (COALESCE(${alias}.approval_type,'')='emergency_super_admin' OR ${alias}.initiated_by_role='super_admin')`,
       params: [],
+    };
+  }
+
+  if (DEPARTMENT_STAFF_ROLES.includes(role)) {
+    return {
+      sql: `${alias}.status='returned_for_correction' AND ${alias}.initiated_by_user_id=?`,
+      params: [actorId],
     };
   }
 
@@ -74,6 +81,12 @@ const canActorOpenReview = async (connection, actor, review) => {
   if (role === 'super_admin') {
     return review.status === 'correction_required' && (review.approval_type === 'emergency_super_admin' || review.initiated_by_role === 'super_admin');
   }
+  if (DEPARTMENT_STAFF_ROLES.includes(role)) {
+    return review.status === 'returned_for_correction'
+      && Number(review.initiated_by_user_id || 0) === Number(actor.id || 0)
+      && await canActorSeeReview(connection, actor, review);
+  }
+
   const department = getRoleDepartment(actor);
   if (!department || DEPARTMENT_HEAD_ROLE[department] !== role || review.department !== department) return false;
   if (!(await canActorSeeReview(connection, actor, review))) return false;
@@ -142,7 +155,7 @@ const reviewHistoryWhere = (actor, { alias = 'r' } = {}) => {
 // review now) appear only while that review is still in this account's own
 // queue: once someone else acts, or it is reassigned, it disappears for
 // everyone else. Informational notifications always stay.
-const QUEUE_GATED_NOTIFICATION_TYPES = Object.keys(REVIEW_ACTION_NOTIFICATION_STAGES).filter((type) => type !== 'review_returned');
+const QUEUE_GATED_NOTIFICATION_TYPES = Object.keys(REVIEW_ACTION_NOTIFICATION_STAGES);
 const notificationVisibilityWhere = (actor, { reviewAlias = 'nr' } = {}) => {
   const queue = reviewQueueWhere(actor, { alias: reviewAlias });
   return {
@@ -268,7 +281,12 @@ export const getReviewCenterSummary = async (req, res) => {
     let protectedSql = 'p.requested_by_user_id = ? AND p.status IN (\'pending\',\'approved\')';
     let protectedParams = [actor.id];
     const actorDepartment = getRoleDepartment(actor);
-    if (actorDepartment && DEPARTMENT_HEAD_ROLE[actorDepartment] === actor.role) {
+    if (DEPARTMENT_STAFF_ROLES.includes(actor.role)) {
+      // Staff use Review Center only for their own returned corrections/history.
+      // Protected approvals are handled in the source workflow and are not a Staff tab.
+      protectedSql = '1=0';
+      protectedParams = [];
+    } else if (actorDepartment && DEPARTMENT_HEAD_ROLE[actorDepartment] === actor.role) {
       protectedSql = `p.department = ? AND p.status = 'pending' AND (p.lot_project_id IS NULL OR COALESCE(?,0)=1 OR EXISTS(SELECT 1 FROM user_project_access upa WHERE upa.user_id=? AND upa.lot_project_id=p.lot_project_id))`;
       protectedParams = [actorDepartment, Number(actor.all_projects_access || actor.admin_all_projects || 0), actor.id];
     } else if (['super_admin','system_admin','auditor'].includes(actor.role)) {
@@ -281,7 +299,18 @@ export const getReviewCenterSummary = async (req, res) => {
     const notificationAccess = notificationVisibilityWhere(actor);
     const [notificationRows] = await db.query(`SELECT COUNT(*) unread FROM internal_notifications n ${notificationAccess.join} WHERE n.user_id=? AND n.read_at IS NULL AND ${notificationAccess.sql}`, [actor.id, ...notificationAccess.params]);
     const unreadNotifications = Number(notificationRows[0]?.unread || 0);
-    return res.json({ data: { counts, actionable, pendingProtectedChanges, unreadNotifications, badgeCount: actionable + pendingProtectedChanges + unreadNotifications } });
+    const actionTypes = Object.keys(REVIEW_ACTION_NOTIFICATION_STAGES);
+    const [actionNotificationRows] = actionTypes.length
+      ? await db.query(
+          `SELECT COUNT(*) unread FROM internal_notifications n ${notificationAccess.join} WHERE n.user_id=? AND n.read_at IS NULL AND n.notification_type IN (${actionTypes.map(() => '?').join(',')}) AND ${notificationAccess.sql}`,
+          [actor.id, ...actionTypes, ...notificationAccess.params]
+        )
+      : [[{ unread: 0 }]];
+    const unreadActionNotifications = Number(actionNotificationRows[0]?.unread || 0);
+    // Action notifications mirror the same work already counted in `actionable`.
+    // Do not double-count one returned review as both a queue item and a badge alert.
+    const unreadInformationalNotifications = Math.max(0, unreadNotifications - unreadActionNotifications);
+    return res.json({ data: { counts, actionable, pendingProtectedChanges, unreadNotifications, badgeCount: actionable + pendingProtectedChanges + unreadInformationalNotifications } });
   } catch (error) { return res.status(500).json({ message: errorMessage(error) }); }
 };
 
@@ -417,9 +446,15 @@ export const returnReviewForCorrection = async (req, res) => {
     if (review.status !== 'pending_head_review') throw Object.assign(new Error('This review cannot be returned from its current state.'), { statusCode: 409 });
     await connection.query(`UPDATE operational_reviews SET status='returned_for_correction',claimed_by_user_id=?,claimed_at=COALESCE(claimed_at,NOW()),head_reviewed_by_user_id=?,head_reviewed_at=NOW() WHERE operational_review_id=?`, [req.authUser.id,req.authUser.id,review.operational_review_id]);
     await appendReviewEvent(connection, { reviewId: review.operational_review_id, eventType: 'returned_for_correction', actor: req.authUser, fromStatus: review.status, toStatus: 'returned_for_correction', message: reason });
-    await createInternalNotifications(connection, { userIds:[review.initiated_by_user_id],type:'review_returned',title:`Correction required · ${review.entity_label || review.entity_type}`,message:`${review.review_number}: ${reason}`,reviewId:review.operational_review_id });
+    await createInternalNotifications(connection, {
+      userIds:[review.initiated_by_user_id],
+      type:'review_returned',
+      title:`Correction requested — action required · ${review.entity_label || review.entity_type}`,
+      message:`${review.review_number}: ${reason} Open this Review, correct the affected record, then use Correct & Resubmit to send the same Review back to the Head.`,
+      reviewId:review.operational_review_id,
+    });
     await connection.commit();
-    return res.json({ message: 'Returned to the staff member for correction.' });
+    return res.json({ message: 'Returned for correction. The original staff member has been notified and this record is now in correction mode.' });
   } catch (error) { try { await connection.rollback(); } catch {} return res.status(error.statusCode || 500).json({ code:error.code,message:errorMessage(error) }); } finally { connection.release(); }
 };
 
@@ -629,9 +664,3 @@ export const reviewProtectedChangeRequest = async (req,res) => {
     await connection.commit(); return res.json({message:`Protected change ${decision}d.`,data:{requestId:row.protected_change_request_id,requestNumber:row.request_number,status:row.status}});
   }catch(error){try{await connection.rollback()}catch{}return res.status(error.statusCode||500).json({code:error.code,message:errorMessage(error)});}finally{connection.release();}
 };
-
-
-
-
-
-

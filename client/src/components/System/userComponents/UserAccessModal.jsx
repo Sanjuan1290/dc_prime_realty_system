@@ -60,5 +60,3 @@ const UserAccessModal = ({ user, onClose, onSaved }) => {
   </div></div>
 }
 export default UserAccessModal
-
-

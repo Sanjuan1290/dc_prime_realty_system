@@ -45,4 +45,3 @@ const ChangePositionModal = ({ user, onClose, onSaved }) => {
   </div></div>
 }
 export default ChangePositionModal
-

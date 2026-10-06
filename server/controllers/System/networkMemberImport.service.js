@@ -458,4 +458,3 @@ export const sortNetworkMemberImportRows = (rows = []) => [...rows].sort((a, b) 
   if (roleDelta) return roleDelta;
   return Number(a.sourceRow || 0) - Number(b.sourceRow || 0);
 });
-

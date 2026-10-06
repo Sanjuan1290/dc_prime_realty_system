@@ -51,5 +51,3 @@ router.patch('/toggle-status/:id', requirePermission(PERMISSIONS.SYSTEM_SELLER_G
 router.delete('/:id', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE), deleteGroup);
 
 export default router;
-
-

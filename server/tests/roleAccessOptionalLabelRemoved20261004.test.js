@@ -21,4 +21,3 @@ test('Role & Access Control hides Optional status labels while preserving select
   assert.doesNotMatch(roleAccess, /Optional permissions may be adjusted below\./);
   assert.match(roleAccess, /including permissions from other departments, can be added to any role/);
 });
-

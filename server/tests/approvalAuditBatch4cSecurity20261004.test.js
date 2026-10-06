@@ -140,4 +140,3 @@ test('Role & Access lets both owner roles edit every non-owner default and prote
   assert.match(accessController, /if \(actor\?\.role === 'super_admin'\) return targetRole !== 'super_admin'/);
   assert.match(accessController, /SYSTEM_ADMIN_MANAGEABLE_ROLES\.includes\(targetRole\)/);
 });
-

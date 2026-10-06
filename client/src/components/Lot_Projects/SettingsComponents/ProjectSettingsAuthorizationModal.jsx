@@ -166,4 +166,3 @@ const ProjectSettingsAuthorizationModal = ({
 }
 
 export default ProjectSettingsAuthorizationModal
-

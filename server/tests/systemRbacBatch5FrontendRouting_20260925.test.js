@@ -143,4 +143,3 @@ test('accredited seller print/upload UI follows dedicated permissions', () => {
   assert.match(accreditedPage, /readOnly=\{!canUpload\}/);
   assert.match(accreditedPage, /\/portal\/accredited\/proof-of-income\/print/);
 });
-

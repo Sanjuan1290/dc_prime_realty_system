@@ -103,5 +103,3 @@ const SellerGroupDoubleCheck = ({ request, onConfirm, onCancel }) => {
 }
 
 export default SellerGroupDoubleCheck
-
-

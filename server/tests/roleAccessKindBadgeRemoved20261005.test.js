@@ -20,4 +20,3 @@ test('Role & Access still renders group names and the outside-normal warnings, w
   assert.match(matrix, /Usually System Admin only/);
   assert.doesNotMatch(matrix, />Not Allowed</);
 });
-

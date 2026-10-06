@@ -20,14 +20,15 @@ import ReviewSnapshotDiff from '../../components/Shared/ReviewSnapshotDiff'
 import { matchSnapshotRecords, RECORD_STATE_STYLES, sameValue } from '../../utils/reviewSnapshotFormat'
 import useCurrentUser from '../../utils/useCurrentUser'
 import { getDoubleCheckNotice, useFetch, useFetchPatch, useFetchPost, useFetchPost as postWorkflow } from '../../utils/useFetch'
-import { DEPARTMENT_HEAD_ROLE, ROLE_LABELS } from '../../config/permissions'
+import { DEPARTMENT_HEAD_ROLE, DEPARTMENT_STAFF_ROLES, ROLE_LABELS } from '../../config/permissions'
 
-const REVIEW_CENTER_ROLES = new Set(['super_admin','system_admin','auditor','marketing_head','sales_head','accounting_head','operations_head'])
+const REVIEW_CENTER_ROLES = new Set(['super_admin','system_admin','auditor','marketing_head','sales_head','accounting_head','operations_head', ...DEPARTMENT_STAFF_ROLES])
 
 const getQueueCopy = (role) => {
   if (role === 'auditor') return { title: 'Auditor Review Queue', description: 'Shows only Head-approved work waiting for independent audit, audit findings waiting for your decision, and corrections ready for recheck.' }
   if (role === 'system_admin') return { title: 'System Correction Queue', description: 'Shows only Auditor-confirmed cases that require controlled System Admin correction or an unassigned Head response.' }
   if (role === 'super_admin') return { title: 'Owner Correction Queue', description: 'Shows only correction cases that specifically require Super Admin authority.' }
+  if (DEPARTMENT_STAFF_ROLES.includes(role)) return { title: 'My Correction Queue', description: 'Shows only records you entered that your Department Head returned for correction. Open an item, review the reason, correct the record, and resubmit the same Review.' }
   return { title: 'Department Head Review Queue', description: 'Shows only Staff changes from your department and Audit Cases waiting for your explanation.' }
 }
 
@@ -184,13 +185,13 @@ const SNAPSHOT_LIST_RENDERERS = Object.freeze({ rates: ProjectRatesValue })
 const reviewStatusLabel = (status = '') => REVIEW_STATUS_LABELS[status] || titleCase(status)
 const isRoutinePostActionReview = (status = '') => ['pending_head_review', 'pending_auditor_review'].includes(status)
 
-const TextActionModal = ({ title, label, placeholder, confirmLabel, tone = 'blue', onClose, onConfirm, busy }) => {
+const TextActionModal = ({ title, label, placeholder, confirmLabel, helper = '', tone = 'blue', onClose, onConfirm, busy }) => {
   const [text, setText] = useState('')
   const classes = tone === 'red' ? 'bg-red-600 hover:bg-red-700' : tone === 'emerald' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-600 hover:bg-blue-700'
   return <div className="fixed inset-0 z-[95] flex items-center justify-center bg-slate-950/60 p-4">
     <div className="w-full max-w-xl rounded-3xl bg-white shadow-2xl">
       <header className="flex items-start justify-between border-b border-slate-200 p-5"><div><h3 className="text-xl font-black">{title}</h3><p className="mt-1 text-sm font-semibold text-slate-500">This response becomes part of the immutable review history.</p></div><button type="button" onClick={onClose} disabled={busy} className="rounded-xl border p-2"><FiX /></button></header>
-      <div className="p-5"><label className="grid gap-2 text-sm font-black text-slate-700">{label}<textarea rows={5} value={text} onChange={(e) => setText(e.target.value)} placeholder={placeholder} className="rounded-xl border border-slate-300 p-3 font-semibold outline-none focus:border-blue-400" /></label></div>
+      <div className="p-5"><label className="grid gap-2 text-sm font-black text-slate-700">{label}{helper ? <span className="text-xs font-semibold leading-5 text-slate-500">{helper}</span> : null}<textarea rows={5} value={text} onChange={(e) => setText(e.target.value)} placeholder={placeholder} className="rounded-xl border border-slate-300 p-3 font-semibold outline-none focus:border-blue-400" /></label></div>
       <footer className="flex justify-end gap-2 border-t p-5"><button type="button" onClick={onClose} disabled={busy} className="h-11 rounded-xl border px-5 font-black">Cancel</button><button type="button" onClick={() => onConfirm(text.trim())} disabled={busy || text.trim().length < 5} className={`h-11 rounded-xl px-5 font-black text-white disabled:opacity-50 ${classes}`}>{busy ? 'Saving...' : confirmLabel}</button></footer>
     </div>
   </div>
@@ -434,6 +435,7 @@ export const ReviewDetails = ({ reviewId, onClose, onChanged }) => {
   const isOriginalStaffCorrection = review?.status === 'returned_for_correction'
     && Number(review?.initiated_by_user_id || 0) === Number(actor?.id || 0)
   const canApplyAuditCorrection = canAct && review?.status === 'correction_required' && actor?.role === correctionRole
+  const latestCorrectionRequest = [...(review?.events || [])].reverse().find((event) => event.event_type === 'returned_for_correction') || null
 
   if (query.isLoading) return <main className="grid gap-4"><StatusAlert type="loading" message="Loading review..." /></main>
   if (query.isError) return <main className="grid gap-4"><button type="button" onClick={onClose} className="inline-flex w-fit items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2 font-black text-slate-700"><FiArrowLeft />Back to Review Center</button><StatusAlert type="error" message={query.error?.message || 'Failed to load this review.'} /></main>
@@ -447,8 +449,8 @@ export const ReviewDetails = ({ reviewId, onClose, onChanged }) => {
         {notice ? <StatusAlert type={notice.type} message={notice.message} onClose={() => setNotice(null)} /> : null}
         {!canAct ? <StatusAlert type="info" title="View only" message={review.status === 'closed' || review.status === 'auditor_verified' ? 'This review is complete. Nothing else is needed from anyone.' : `This review is now at "${reviewStatusLabel(review.status)}". Nothing is waiting on your account, so it is shown for reference only.`} /> : null}
         {review.entityExists === false ? <StatusAlert type="info" message="The original record was deleted. The values below are what was saved at the time of this review." /> : null}
-        {operationAlreadyCompleted && canAct ? <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-950"><div className="flex items-start gap-3"><FiCheckCircle className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" /><div><p className="font-black">Operation completed successfully</p><p className="mt-1 text-sm font-semibold leading-6 text-emerald-800">This is a post-action quality check. Routine Head and Auditor checks do not block completed operations. The record remains usable and other operations may continue while the Head/Auditor reviews this entry. If the same user edits it again before the check is finished, this Review is refreshed to the latest saved values.</p></div></div></section> : null}
-        {review.status === 'returned_for_correction' ? <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950"><div className="flex items-start gap-3"><FiAlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" /><div><p className="font-black">Department Head requested a correction</p><p className="mt-1 text-sm font-semibold leading-6 text-amber-900">Normal operations elsewhere may continue, but this exact record is now in correction mode. The original staff member should open it from this Review, fix the requested values, and resubmit the same Review to the Head.</p></div></div></section> : null}
+        {operationAlreadyCompleted && canAct ? <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-950"><div className="flex items-start gap-3"><FiCheckCircle className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" /><div><p className="font-black">Operation saved successfully</p><p className="mt-1 text-sm font-semibold leading-6 text-emerald-800">The change is already active. This Review is a post-action quality check and does not block normal work. If a correction is required, the affected record enters correction mode and the responsible user is notified. Any edit made before the review is completed updates this Review to the latest saved values.</p></div></div></section> : null}
+        {review.status === 'returned_for_correction' ? <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950"><div className="flex items-start gap-3"><FiAlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" /><div className="min-w-0 flex-1"><p className="font-black">Correction required — action needed</p><p className="mt-1 text-sm font-semibold leading-6 text-amber-900">Your Department Head returned this record for correction. This exact record is in correction mode until the original staff member fixes it and resubmits the same Review.</p>{latestCorrectionRequest?.message ? <div className="mt-3 rounded-xl border border-amber-200 bg-white/80 p-3"><p className="text-xs font-black uppercase tracking-wide text-amber-700">What needs to be corrected</p><p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-amber-950">{latestCorrectionRequest.message}</p><p className="mt-2 text-xs font-semibold text-amber-700">Returned by {latestCorrectionRequest.actor_name || ROLE_LABELS[latestCorrectionRequest.actor_role] || 'Department Head'} · {fmtDate(latestCorrectionRequest.created_at)}</p></div> : null}</div></div></section> : null}
         {review.status === 'correction_required' ? <section className="rounded-2xl border border-red-300 bg-red-50 p-4 text-red-950"><div className="flex items-start gap-3"><FiAlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-700" /><div><p className="font-black">Controlled correction required</p><p className="mt-1 text-sm font-semibold leading-6 text-red-900">The Auditor confirmed a real issue. This exact record is temporarily held while {correctionRoleLabel} applies the authorized correction. After saving, the Auditor must recheck it before the case closes.</p></div></div></section> : null}
         <section className="grid gap-3 rounded-2xl border border-slate-200 p-4 sm:grid-cols-3"><div><p className="text-xs font-black uppercase text-slate-400">Entered by</p><p className="mt-1 font-black">{review.initiated_by_name || `User #${review.initiated_by_user_id}`}</p><p className="text-xs font-semibold text-slate-500">{ROLE_LABELS[review.initiated_by_role] || titleCase(review.initiated_by_role)}</p></div><div><p className="text-xs font-black uppercase text-slate-400">Department Check</p><p className="mt-1 font-black">{headReviewLabel}</p><p className="text-xs font-semibold text-slate-500">{review.head_reviewed_at ? fmtDate(review.head_reviewed_at) : 'Does not block operations'}</p></div><div><p className="text-xs font-black uppercase text-slate-400">Independent Audit</p><p className="mt-1 font-black">{auditorReviewLabel}</p><p className="text-xs font-semibold text-slate-500">{review.auditor_reviewed_at ? fmtDate(review.auditor_reviewed_at) : 'Runs after the operation'}</p></div></section>
         <section className="rounded-2xl border border-slate-200 bg-white">
@@ -480,7 +482,7 @@ export const ReviewDetails = ({ reviewId, onClose, onChanged }) => {
         </section>
       </div>
     </section>
-    {action === 'return' ? <TextActionModal title="Return for Correction" label="What needs to be corrected?" placeholder="Example: Reference ID does not match the deposit slip." confirmLabel="Return to Staff" tone="red" busy={mutation.isPending} onClose={() => setAction(null)} onConfirm={(text) => mutation.mutate({ type: 'return', text })} /> : null}
+    {action === 'return' ? <TextActionModal title="Return for Correction" label="What needs to be corrected?" helper="The original staff member will receive an action-required alert. This record will stay in correction mode until they correct it and resubmit this same Review." placeholder="Example: Reference ID does not match the deposit slip." confirmLabel="Return & Notify Staff" tone="red" busy={mutation.isPending} onClose={() => setAction(null)} onConfirm={(text) => mutation.mutate({ type: 'return', text })} /> : null}
     {action === 'open-case' ? <TextActionModal title="Open Audit Case" label="Audit finding" placeholder="Describe the exact mismatch or error." confirmLabel="Open Audit Case" tone="red" busy={mutation.isPending} onClose={() => setAction(null)} onConfirm={(text) => mutation.mutate({ type: 'open-case', text })} /> : null}
     {action === 'head-response' ? <TextActionModal title="Explain Audit Finding" label="Explanation" placeholder="Explain why the recorded values are correct, or acknowledge the mistake." confirmLabel="Submit Explanation" busy={mutation.isPending} onClose={() => setAction(null)} onConfirm={(text) => mutation.mutate({ type: 'head-response', text })} /> : null}
     {action === 'resolve-invalid' ? <TextActionModal title="Mark Finding Invalid" label="Auditor resolution" placeholder="Explain why the original record is valid." confirmLabel="Close as Invalid" tone="emerald" busy={mutation.isPending} onClose={() => setAction(null)} onConfirm={(text) => mutation.mutate({ type: 'resolve-case', decision: 'invalid', text })} /> : null}
@@ -558,9 +560,3 @@ const ReviewCenter = () => {
 }
 
 export default ReviewCenter
-
-
-
-
-
-

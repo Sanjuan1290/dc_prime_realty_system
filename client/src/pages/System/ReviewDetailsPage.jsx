@@ -11,6 +11,10 @@ const REVIEW_CENTER_ROLES = new Set([
   'sales_head',
   'accounting_head',
   'operations_head',
+  'marketing_staff',
+  'sales_staff',
+  'accounting_staff',
+  'operations_staff',
 ])
 
 const ReviewDetailsPage = () => {
