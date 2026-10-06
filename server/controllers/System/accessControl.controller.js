@@ -174,7 +174,7 @@ export const updateUserAccessControl = async (req, res) => {
     const user = rows[0];
     if (!user) throw Object.assign(new Error('User not found.'), { statusCode: 404 });
     if (!actorCanManageUserAccess(req.authUser, user.role)) throw Object.assign(new Error('You cannot modify access for this account.'), { statusCode: 403 });
-    if (user.status !== 'active') throw Object.assign(new Error('This historical account is permanently deactivated and its access can no longer be changed.'), { statusCode: 409, code: 'ACCOUNT_PERMANENTLY_DEACTIVATED' });
+    if (user.status !== 'active') throw Object.assign(new Error('This account is deactivated. Reactivate it before changing access.'), { statusCode: 409, code: 'ACCOUNT_DEACTIVATED' });
 
     const permissions = await replaceUserPermissions(connection, {
       userId,
@@ -212,7 +212,7 @@ export const applyRoleDefaultsToUser = async (req, res) => {
     const user = rows[0];
     if (!user) throw Object.assign(new Error('User not found.'), { statusCode: 404 });
     if (!actorCanManageUserAccess(req.authUser, user.role)) throw Object.assign(new Error('You cannot reset access for this account.'), { statusCode: 403 });
-    if (user.status !== 'active') throw Object.assign(new Error('This historical account is permanently deactivated and its permissions can no longer be reset.'), { statusCode: 409, code: 'ACCOUNT_PERMANENTLY_DEACTIVATED' });
+    if (user.status !== 'active') throw Object.assign(new Error('This account is deactivated. Reactivate it before resetting permissions.'), { statusCode: 409, code: 'ACCOUNT_DEACTIVATED' });
 
     const permissions = await copyRoleDefaultsToUser(connection, { userId, role: user.role, changedByUserId: req.authUser?.id || null });
     await connection.query('UPDATE users SET auth_version = COALESCE(auth_version, 0) + 1 WHERE id = ?', [userId]);
@@ -229,5 +229,6 @@ export const applyRoleDefaultsToUser = async (req, res) => {
     return res.status(error?.statusCode || 500).json({ code: error?.code, message: error?.message || 'Failed to apply role defaults.' });
   } finally { connection.release(); }
 };
+
 
 

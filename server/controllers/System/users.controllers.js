@@ -270,7 +270,7 @@ const sendUserDeactivationVerificationCodeEmail = async ({ actor, target, reason
     `Email: ${target.email || '-'}`,
     `Reason: ${reason}`,
     '',
-    `This code expires in ${SENSITIVE_ACTION_CODE_EXPIRY_MINUTES} minutes and authorizes only this exact permanent deactivation request.`,
+    `This code expires in ${SENSITIVE_ACTION_CODE_EXPIRY_MINUTES} minutes and authorizes only this exact account deactivation request.`,
     'If you did not request this action, do not share or use this code.',
     '',
     'D&C Prime Realty',
@@ -279,10 +279,10 @@ const sendUserDeactivationVerificationCodeEmail = async ({ actor, target, reason
     <div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;color:#0f172a;line-height:1.6">
       <h2>D&amp;C Prime Realty</h2>
       <p>Hello ${escapeEmailHtml(actorName)},</p>
-      <p>Use this code to authorize the permanent deactivation of <strong>${escapeEmailHtml(targetName)}</strong>.</p>
+      <p>Use this code to authorize the deactivation of <strong>${escapeEmailHtml(targetName)}</strong>.</p>
       <div style="font-size:30px;font-weight:800;letter-spacing:8px;padding:18px;background:#fef2f2;border:1px solid #fecaca;border-radius:12px;text-align:center;color:#991b1b">${escapeEmailHtml(code)}</div>
       <p><strong>Account code:</strong> ${escapeEmailHtml(target.account_code || '-')}<br/><strong>Email:</strong> ${escapeEmailHtml(target.email || '-')}<br/><strong>Reason:</strong> ${escapeEmailHtml(reason)}</p>
-      <p style="color:#991b1b"><strong>This action is permanent.</strong> The code expires in ${SENSITIVE_ACTION_CODE_EXPIRY_MINUTES} minutes and is bound to this exact account and reason.</p>
+      <p style="color:#991b1b"><strong>This disables login and freezes the account until an owner administrator reactivates it.</strong> The code expires in ${SENSITIVE_ACTION_CODE_EXPIRY_MINUTES} minutes and is bound to this exact account and reason.</p>
     </div>`;
   await sendEmail({ to: actor.email, subject, text, html });
 };
@@ -1425,6 +1425,46 @@ export const previewSystemAccountCode = async (req, res) => {
   }
 };
 
+export const checkSystemUserEmailAvailability = async (req, res) => {
+  try {
+    const email = normalizeResetEmail(req.query?.email);
+    if (!isValidResetEmail(email)) {
+      return res.status(400).json({
+        available: false,
+        code: 'INVALID_EMAIL',
+        message: 'Enter a valid email address.',
+      });
+    }
+
+    const [rows] = await db.query(
+      `
+        SELECT id
+        FROM users
+        WHERE LOWER(TRIM(email)) = LOWER(?)
+          AND status = 'active'
+        LIMIT 1
+      `,
+      [email]
+    );
+
+    if (rows.length) {
+      return res.status(200).json({
+        available: false,
+        code: 'USER_EMAIL_ALREADY_EXISTS',
+        message: 'That email is already assigned to an active account. Use a different email address.',
+      });
+    }
+
+    return res.status(200).json({
+      available: true,
+      email,
+      message: 'Email is available.',
+    });
+  } catch (error) {
+    return res.status(500).json({ message: getErrorMessage(error) });
+  }
+};
+
 export const createUser = async (req, res) => {
   const connection = await db.getConnection();
 
@@ -1813,8 +1853,8 @@ export const editUser = async (req, res) => {
       }
       if (targetUser.status !== 'active') {
         return res.status(409).json({
-          code: 'ACCOUNT_PERMANENTLY_DEACTIVATED',
-          message: 'This account is permanently deactivated and retained as a historical identity.',
+          code: 'ACCOUNT_DEACTIVATED',
+          message: 'This account is deactivated. Reactivate it before editing account details.',
         });
       }
 
@@ -2245,7 +2285,7 @@ export const deactivateUserPermanently = async (req, res) => {
     return res.json({
       message: 'Account deactivated. Only Super Admin or System Admin can reactivate it.',
       status: 'inactive',
-      permanent: true,
+      reactivatable_by_owner: true,
     });
   } catch (error) {
     try { await connection.rollback(); } catch {}
@@ -2331,7 +2371,7 @@ export const resetUserPassword = async (req, res) => {
     }
     if (user.status !== 'active') {
       await connection.rollback();
-      return res.status(409).json({ code: PERMANENT_DEACTIVATION_CODE, legacy_code: LEGACY_PERMANENT_DEACTIVATION_CODE, message: 'This account is permanently deactivated. Create a new account instead of resetting historical credentials.' });
+      return res.status(409).json({ code: 'ACCOUNT_DEACTIVATED', message: 'This account is deactivated. Reactivate it before resetting login credentials.' });
     }
     if (!actorCanPerformUserAction(req, user.role)) {
       await connection.rollback();

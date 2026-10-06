@@ -180,8 +180,9 @@ test('Role & Access Control UI groups Auditor, Staff/Head departments and the fu
   assert.match(accessController, /Adjust Distribution \(Governed\)/);
 });
 
-test('routine Role & Access administration is no longer exact-Super-Admin-only', () => {
-  assert.doesNotMatch(usersRouter, /access-control\/roles[^\n]*requireExactRole\('super_admin', 'system_admin'\)/);
+test('Role & Access administration is owner-only for Super Admin and System Admin', () => {
+  assert.match(usersRouter, /access-control\/roles[^\n]*requireExactRole\('super_admin', 'system_admin'\)/);
+  assert.match(usersRouter, /access-control\/users\/:id[^\n]*requireExactRole\('super_admin', 'system_admin'\)/);
   assert.match(accessController, /actor\?\.role === 'system_admin'/);
   assert.match(accessController, /SYSTEM_ADMIN_MANAGEABLE_ROLES/);
 });
@@ -193,5 +194,6 @@ test('true owner-level gates remain Super Admin only', () => {
   assert.match(projectsRouter, /purge-code[^\n]*requireExactRole\('super_admin', 'system_admin'\)/);
   assert.match(settingsRouter, /\/code'[^\n]*requireExactRole\('super_admin', 'system_admin'\)/);
 });
+
 
 

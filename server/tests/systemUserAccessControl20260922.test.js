@@ -61,12 +61,11 @@ test('Head defaults inherit Staff permissions and add review/approval authority'
   assert.match(permissions, /marketing_head:\s*'marketing_staff'/);
 });
 
-test('system-role position changes preserve the same account and record role history', () => {
-  assert.match(usersController, /export const changeUserPosition/);
-  assert.match(usersController, /UPDATE users[\s\S]*SET role = \?/);
-  assert.match(usersController, /INSERT INTO user_role_history/);
-  assert.match(usersController, /same_account:\s*true/);
-  assert.match(usersRouter, /change-position\/:id[\s\S]*SYSTEM_USERS_EDIT/);
+test('system-user role is immutable after creation and no change-position route remains', () => {
+  assert.doesNotMatch(usersController, /export const changeUserPosition/);
+  assert.doesNotMatch(usersRouter, /change-position\/:id/);
+  assert.match(usersController, /SYSTEM_ROLE_IMMUTABLE/);
+  assert.match(usersController, /Deactivate the old account and create a new account for the new role/);
 });
 
 test('legacy system roles migrate without touching accredited seller roles', () => {
@@ -85,4 +84,5 @@ test('Role & Access Control is permission-managed while protected System Setting
   assert.match(settingsPage, /only Super Admin or System Admin can use it with password and email verification/i);
   assert.match(roleAccess, /SYSTEM|AUDIT|MARKETING|SALES|ACCOUNTING|OPERATIONS|OWNER/);
 });
+
 

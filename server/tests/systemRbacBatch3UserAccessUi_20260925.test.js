@@ -32,7 +32,7 @@ test('new Staff/Head/System Admin/Auditor role model is shared by server and mig
   assert.match(migration, /operations[\s\S]*operations_staff/);
 });
 
-test('Role & Access endpoints are permission-governed instead of exact-Super-Admin-only', () => {
+test('Role & Access endpoints are restricted to Super Admin and System Admin', () => {
   for (const route of [
     "router.get('/access-control/roles'",
     "router.put('/access-control/roles/:role'",
@@ -40,9 +40,9 @@ test('Role & Access endpoints are permission-governed instead of exact-Super-Adm
     "router.put('/access-control/users/:id'",
     "router.post('/access-control/users/:id/apply-role-defaults'",
   ]) assert.ok(usersRouter.includes(route), route);
-  assert.match(usersRouter, /SYSTEM_ACCESS_CONTROL_VIEW/);
-  assert.match(usersRouter, /SYSTEM_ACCESS_CONTROL_MANAGE/);
-  assert.doesNotMatch(usersRouter, /access-control\/roles'[\s\S]{0,160}requireExactRole\('super_admin', 'system_admin'\)/);
+  const accessRoutes = usersRouter.split('\n').filter((line) => line.includes('/access-control/'));
+  assert.equal(accessRoutes.length, 5);
+  for (const line of accessRoutes) assert.match(line, /requireExactRole\('super_admin', 'system_admin'\)/);
 });
 
 test('System Admin can manage Staff/Head accounts but governance roles remain constrained', () => {
@@ -101,10 +101,11 @@ test('per-account access UI shows Full System Access for both owner roles and th
   assert.doesNotMatch(userAccess, /All Projects · Required/);
 });
 
-test('change-position routes use granular Edit Users permission and same-account role transition', () => {
-  assert.match(usersRouter, /change-position\/:id\/preview[\s\S]*SYSTEM_USERS_EDIT/);
-  assert.match(usersRouter, /change-position\/:id'[\s\S]*SYSTEM_USERS_EDIT/);
-  assert.match(usersController, /same_account:\s*true/);
-  assert.match(usersController, /INSERT INTO user_role_history/);
+test('system-user position changes are removed and account roles stay immutable', () => {
+  assert.doesNotMatch(usersRouter, /change-position/);
+  assert.doesNotMatch(usersController, /export const changeUserPosition/);
+  assert.match(usersController, /SYSTEM_ROLE_IMMUTABLE/);
+  assert.match(usersController, /Deactivate the old account and create a new account for the new role/);
 });
+
 

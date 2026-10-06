@@ -50,8 +50,8 @@ router.get('/account-code-preview', authenticateUser, requireExactRole('super_ad
 router.get('/email-availability', authenticateUser, requireExactRole('super_admin', 'system_admin'), checkSystemUserEmailAvailability);
 router.post('/createUser', authenticateUser, requireExactRole('super_admin', 'system_admin'), createUser);
 router.put('/editUser/:id', authenticateUser, requirePermission(PERMISSIONS.SYSTEM_USERS_EDIT), editUser);
-router.post('/deactivate/:id/code', authenticateUser, requireExactRole('super_admin', 'system_admin'), requireCurrentPassword({ field: 'password', label: 'Administrator password' }), requestUserDeactivationCode);
-router.patch('/deactivate/:id', authenticateUser, requireExactRole('super_admin', 'system_admin'), deactivateUserPermanently);
+router.post('/deactivate/:id/code', authenticateUser, requireExactRole('super_admin', 'system_admin'), requirePermission(PERMISSIONS.SYSTEM_USERS_DEACTIVATE), requireCurrentPassword({ field: 'password', label: 'Administrator password' }), requestUserDeactivationCode);
+router.patch('/deactivate/:id', authenticateUser, requireExactRole('super_admin', 'system_admin'), requirePermission(PERMISSIONS.SYSTEM_USERS_DEACTIVATE), deactivateUserPermanently);
 router.post('/reactivate/:id', authenticateUser, requireExactRole('super_admin', 'system_admin'), requireCurrentPassword({ field: 'password', label: 'Administrator password' }), reactivateUser);
 router.patch('/resetPassword/:id', authenticateUser, requirePermission(PERMISSIONS.SYSTEM_USERS_RESET_PASSWORD), resetUserPassword);
 

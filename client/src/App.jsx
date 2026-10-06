@@ -52,6 +52,7 @@ const ProjectWorkspaceList = lazy(() => import('./pages/System/ProjectWorkspaceL
 const Notifications = lazy(() => import('./pages/System/Notifications'))
 const AuditLogs = lazy(() => import('./pages/System/AuditLogs'))
 const ReviewCenter = lazy(() => import('./pages/System/ReviewCenter'))
+const ReviewDetailsPage = lazy(() => import('./pages/System/ReviewDetailsPage'))
 const DataIntegrityAccess = lazy(() => import('./pages/System/DataIntegrityAccess'))
 const Settings = lazy(() => import('./pages/System/Settings'))
 const AccessDenied = lazy(() => import('./pages/System/AccessDenied'))
@@ -133,6 +134,7 @@ const systemRoleRoutes = SYSTEM_USER_ROLES.map((role) => (
     <Route path="users/groups/external/:groupId" element={<LegacySellerGroupRedirect groupType="external" />} />
     <Route path="notifications" element={protect(PERMISSIONS.SYSTEM_NOTIFICATIONS_VIEW, <Notifications />)} />
     <Route path="review-center" element={protect(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW, <ReviewCenter />)} />
+    <Route path="review-center/reviews/:reviewId" element={protect(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW, <ReviewDetailsPage />)} />
     <Route path="audit-logs" element={protect(PERMISSIONS.AUDIT_LOGS_VIEW, <AuditLogs />)} />
     <Route path="employees" element={protect(PERMISSIONS.EMPLOYEES_VIEW, <Employees />)} />
     <Route path="attendance" element={protect(PERMISSIONS.ATTENDANCE_VIEW, <Attendance />)} />
@@ -229,3 +231,4 @@ const App = () => {
 }
 
 export default App
+

@@ -16,7 +16,7 @@ const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'u
 
 const usersController = read('server/controllers/System/users.controllers.js');
 const createModal = read('client/src/components/System/userComponents/CreateSystemUserModal.jsx');
-const positionModal = read('client/src/components/System/userComponents/ChangePositionModal.jsx');
+const usersPage = read('client/src/pages/System/Users.jsx');
 const loginPage = read('client/src/auth/Login.jsx');
 
 test('visible account code is role abbreviation plus the users table id only', () => {
@@ -66,19 +66,17 @@ test('preview falls back to max id plus one if AUTO_INCREMENT metadata is unavai
   assert.equal(await getNextUserIdPreview(connection), 9);
 });
 
-test('new account codes are rebuilt from insertId while later role changes preserve the same account code', () => {
+test('new account codes are rebuilt from insertId and system-role changes do not mutate an existing account code', () => {
   assert.match(usersController, /const userId = Number\(result\.insertId\);[\s\S]*buildAccountCode\(\{ role, userId \}\)/);
   assert.match(usersController, /UPDATE users SET account_code = \? WHERE id = \?/);
-  assert.match(usersController, /UPDATE users[\s\S]*SET role = \?/);
-  assert.match(usersController, /account_code_preserved/);
+  assert.match(usersController, /SYSTEM_ROLE_IMMUTABLE/);
+  assert.doesNotMatch(usersController, /export const changeUserPosition/);
   assert.doesNotMatch(usersController, /buildAccountCode\(\{[^}]*lastName/);
 });
 
-test('role history is separate from the visible account code and same-account role changes are recorded', () => {
-  assert.match(usersController, /INSERT INTO user_role_history/);
-  assert.match(usersController, /previous_role/);
-  assert.match(usersController, /new_role/);
-  assert.match(positionModal, /same account|retained|Role History/i);
+test('position changes use deactivate-old plus create-new instead of same-account role history', () => {
+  assert.match(usersController, /Deactivate the old account and create a new account for the new role/);
+  assert.doesNotMatch(usersPage, /Change Position|ChangePositionModal/);
 });
 
 test('create-user UI describes account-code format while login remains email-only', () => {
@@ -90,3 +88,4 @@ test('create-user UI describes account-code format while login remains email-onl
   assert.doesNotMatch(loginPage, /ADM-00002/);
   assert.doesNotMatch(loginPage, /Email or Account Code/);
 });
+
