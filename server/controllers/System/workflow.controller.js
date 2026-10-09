@@ -454,7 +454,7 @@ export const returnReviewForCorrection = async (req, res) => {
       reviewId:review.operational_review_id,
     });
     await connection.commit();
-    return res.json({ message: 'Returned for correction. The original staff member has been notified and this record is now in correction mode.' });
+    return res.json({ message: 'Returned for correction. The original staff member has been notified. The record remains editable by authorized users and all edits are logged.' });
   } catch (error) { try { await connection.rollback(); } catch {} return res.status(error.statusCode || 500).json({ code:error.code,message:errorMessage(error) }); } finally { connection.release(); }
 };
 
@@ -664,3 +664,4 @@ export const reviewProtectedChangeRequest = async (req,res) => {
     await connection.commit(); return res.json({message:`Protected change ${decision}d.`,data:{requestId:row.protected_change_request_id,requestNumber:row.request_number,status:row.status}});
   }catch(error){try{await connection.rollback()}catch{}return res.status(error.statusCode||500).json({code:error.code,message:errorMessage(error)});}finally{connection.release();}
 };
+

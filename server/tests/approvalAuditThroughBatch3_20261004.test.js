@@ -82,7 +82,7 @@ test('Batch 2 creates reviews, immutable events and internal notifications', () 
   assert.match(batch2, /CREATE TABLE IF NOT EXISTS internal_notifications/);
   assert.match(workflowService, /actor\.role === expectedHeadRole[\s\S]*pending_auditor_review/);
   assert.match(workflowService, /notifyDepartmentHeads\(connection, \{ department, projectId/);
-  assert.match(workflowService, /returned_for_correction'[\s\S]*'audit_case_open'[\s\S]*'correction_required'[\s\S]*'pending_auditor_recheck/);
+  assert.match(workflowService, /export const assertEntityNotReviewLocked = async .* => true/);
 });
 
 test('Review visibility prevents ordinary Staff from seeing the whole department queue', () => {
@@ -170,3 +170,4 @@ test('Role & Access UI groups Auditor, departments and the two full-access owner
   assert.match(roleAccessUi, /const OWNER_ROLES = \['super_admin', 'system_admin'\]/);
   assert.match(roleAccessUi, /Full System Access/);
 });
+

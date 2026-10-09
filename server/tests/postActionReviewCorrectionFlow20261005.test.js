@@ -97,18 +97,12 @@ test('Staff edit after Head check reopens the same Review for Head review of the
   assert.ok(connection.calls.some((call) => /record_changed_after_head_check/.test(String(call.params))));
 });
 
-test('returned-for-correction is a controlled lock, but the exact returned Review can authorize its own resubmission', async () => {
-  const returned = { operational_review_id: 55, review_number: 'REV-00000055', status: 'returned_for_correction', department: 'marketing' };
-  const connection = fakeConnection([[
-    /FROM operational_reviews WHERE entity_type=\?/,
-    (_sql, params) => [Number(params.at(-1)) === 55 ? [] : [returned]],
-  ]]);
-
-  await assert.rejects(
-    assertEntityNotReviewLocked(connection, { entityType: 'seller_group', entityId: 8 }),
-    /returned for correction/
-  );
-  assert.equal(await assertEntityNotReviewLocked(connection, { entityType: 'seller_group', entityId: 8, allowReviewId: 55 }), true);
+test('returned reviews and active Audit Cases never lock edits', async () => {
+  const connection = fakeConnection([[ /FROM operational_reviews WHERE entity_type=\?/, () => { throw new Error('No lock query should run.'); } ]]);
+  for (const stage of ['returned_for_correction', 'audit_case_open', 'correction_required', 'pending_auditor_recheck']) {
+    assert.equal(await assertEntityNotReviewLocked(connection, { entityType: 'seller_group', entityId: 8, stage }), true);
+  }
+  assert.equal(connection.calls.length, 0);
 });
 
 test('Audit correction owner is System Admin normally, but Super Admin for a Super Admin direct entry', async () => {
@@ -137,7 +131,8 @@ test('Review Center explains correction ownership and gives original Staff a Cor
   const page = await readProjectFile('client/src/pages/System/ReviewCenter.jsx');
   assert.match(page, /Correction Requested · Staff Action Required/);
   assert.match(page, /Correct &amp; Resubmit/);
-  assert.match(page, /Controlled correction required/);
+  assert.match(page, /Auditor-confirmed correction required/);
   assert.match(page, /correctionRoleLabel/);
-  assert.match(page, /Any edit made before the review is completed updates this Review to the latest saved values/);
+  assert.match(page, /Authorized edits remain available during returned corrections and open Audit Cases/);
 });
+

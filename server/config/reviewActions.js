@@ -7,7 +7,7 @@
 // Head / Auditor workflow or route to the wrong Head.
 //
 //   department          Head that reviews it (marketing | sales | accounting | operations)
-//   entityType          Record the review locks while it is open
+//   entityType          Record that the review tracks (never locked by a review/case)
 //   label               Shown in the Review Center
 //   headApprovalBefore  true = Staff need Head approval BEFORE the change is saved
 //                       (Head and emergency Super Admin act directly).
@@ -85,3 +85,4 @@ export const assertRegisteredReviewAction = (actionKey, department) => {
 };
 
 export const getReviewActionLabel = (actionKey) => getReviewAction(actionKey)?.label || String(actionKey || '');
+

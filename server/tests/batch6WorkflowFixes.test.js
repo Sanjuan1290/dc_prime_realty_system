@@ -101,23 +101,12 @@ test('Head change on a record with an open Staff review becomes Correct & Confir
   assert.ok(!connection.calls.some((call) => /INSERT INTO operational_reviews/.test(call.sql)), 'no second review');
 });
 
-test('routine post-action Head/Auditor reviews do not lock the record; correction cases still do', async () => {
-  const routine = fakeConnection([[
-    /FROM operational_reviews WHERE entity_type=\?/,
-    (_sql, params) => [params.includes('pending_head_review') || params.includes('pending_auditor_review')
-      ? [{ operational_review_id: 1, review_number: 'REV-1', status: 'pending_auditor_review', department: 'accounting' }]
-      : []],
-  ]]);
-  assert.equal(await assertEntityNotReviewLocked(routine, { entityType: 'p', entityId: 1, actor: { id: 3, role: 'accounting_staff' } }), true);
-
-  const correction = fakeConnection([[
-    /FROM operational_reviews WHERE entity_type=\?/,
-    () => [[{ operational_review_id: 2, review_number: 'REV-2', status: 'correction_required', department: 'accounting' }]],
-  ]]);
-  await assert.rejects(
-    assertEntityNotReviewLocked(correction, { entityType: 'p', entityId: 1, actor: { id: 3, role: 'accounting_staff' } }),
-    /REV-2 has an active controlled correction/
-  );
+test('all review and case stages leave records editable without querying a review lock', async () => {
+  const connection = fakeConnection([[ /FROM operational_reviews WHERE entity_type=\?/, () => { throw new Error('No review-lock SELECT allowed'); } ]]);
+  for (const status of ['pending_head_review','pending_auditor_review','returned_for_correction','audit_case_open','correction_required','pending_auditor_recheck']) {
+    assert.equal(await assertEntityNotReviewLocked(connection, { entityType: 'p', entityId: 1, status }), true);
+  }
+  assert.equal(connection.calls.length, 0);
 });
 
 test('Audit Case responders: emergency, original Head, fallback, reassigned', async () => {
@@ -172,10 +161,11 @@ test('Review Center makes post-action checks explicit and keeps correction contr
   assert.match(page, /Completed · Head Check Pending/);
   assert.match(page, /Completed · Auditor Check Pending/);
   assert.match(page, /Operation saved successfully/);
-  assert.match(page, /does not block normal work/);
+  assert.match(page, /never locks the record/);
   assert.match(page, /Super Admin direct entry/);
   assert.match(page, /Correct &amp; Confirm/);
   assert.match(page, /reassign-responder/);
   assert.match(page, /responders\?\.canRespond/);
   assert.match(page, /approvalStatus/);
 });
+

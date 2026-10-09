@@ -108,10 +108,10 @@ test('Batches 2-4 create the review, immutable event, notification, Audit Case, 
   assert.match(batch4, /request_payload_hash CHAR\(64\) NOT NULL/);
 });
 
-test('review engine skips Head self-review, routes Staff to project-aware Head, and locks active review states', () => {
+test('review engine skips Head self-review, routes Staff to project-aware Head, and does not lock cases', () => {
   assert.match(workflowService, /actor\.role === expectedHeadRole[\s\S]*pending_auditor_review/);
   assert.match(workflowService, /notifyDepartmentHeads\(connection, \{ department, projectId/);
-  assert.match(workflowService, /returned_for_correction'[\s\S]*'audit_case_open'[\s\S]*'correction_required'[\s\S]*'pending_auditor_recheck/);
+  assert.match(workflowService, /export const assertEntityNotReviewLocked = async .* => true/);
   assert.match(workflowService, /initiated_by_user_id/);
 });
 
@@ -194,3 +194,4 @@ test('true owner-level gates remain Super Admin only', () => {
   assert.match(projectsRouter, /purge-code[^\n]*requireExactRole\('super_admin', 'system_admin'\)/);
   assert.match(settingsRouter, /\/code'[^\n]*requireExactRole\('super_admin', 'system_admin'\)/);
 });
+

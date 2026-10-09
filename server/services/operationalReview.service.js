@@ -4,15 +4,10 @@ import { DEPARTMENT_HEAD_ROLE, getRoleDepartment } from '../config/permissions.j
 import { createInternalNotifications, notifyAuditors, notifyDepartmentHeads, settleReviewNotifications } from './internalNotification.service.js';
 import { assertRegisteredReviewAction, getReviewActionLabel } from '../config/reviewActions.js';
 
-// Routine Head/Auditor reviews are POST-ACTION checks and must never block
-// subsequent business operations. Only an active finding/correction cycle locks
-// the record so evidence and the required correction cannot be changed underneath
-// the Auditor/System Admin workflow.
-export const REVIEW_LOCKING_STATUSES = Object.freeze([
-  // A Head/Auditor queue is only a post-action check. The record becomes
-  // controlled only after a reviewer has explicitly requested a correction.
-  'returned_for_correction', 'audit_case_open', 'correction_required', 'pending_auditor_recheck',
-]);
+// Operational reviews and Audit Cases are evidence/review queues, not record locks.
+// Access controls and protected pre-approvals still apply to the underlying action.
+// Keep this exported constant for compatibility with callers and existing tests.
+export const REVIEW_LOCKING_STATUSES = Object.freeze([]);
 
 const jsonValue = (value) => value == null ? null : JSON.stringify(value);
 const reviewNumber = (id) => `REV-${String(id).padStart(8, '0')}`;
@@ -73,6 +68,35 @@ const notifyInitiatorReviewState = async (connection, {
     reviewId,
     link,
   });
+};
+
+/**
+ * Audit Case evidence stays visible even if someone edits the record while a
+ * case is open. Do not change the case state, reviewer assignments or routing.
+ * Review events retain the editor, timestamp, and before/after snapshots; the
+ * normal business controller also records the change in system Audit Logs.
+ */
+const recordChangeDuringOpenAuditCase = async (connection, {
+  actor, actionKey, entityType, entityId, beforeSnapshot, afterSnapshot,
+}) => {
+  const [rows] = await connection.query(
+    `SELECT c.audit_case_id, c.case_number, r.operational_review_id
+     FROM audit_cases c
+     INNER JOIN operational_reviews r ON r.operational_review_id=c.operational_review_id
+     WHERE r.entity_type=? AND r.entity_id=?
+       AND c.status IN ('awaiting_head_response','under_auditor_review',
+         'pending_system_admin_correction','pending_auditor_recheck')`,
+    [entityType, String(entityId)]
+  );
+  for (const auditCase of rows) {
+    await appendReviewEvent(connection, {
+      reviewId: auditCase.operational_review_id,
+      eventType: 'record_changed_during_audit_case',
+      actor,
+      message: `${getReviewActionLabel(actionKey)} was saved while ${auditCase.case_number || 'an Audit Case'} was active. Check the newer values and Audit Logs before resolving the finding.`,
+      metadata: { auditCaseId: auditCase.audit_case_id, actionKey, beforeSnapshot, afterSnapshot },
+    });
+  }
 };
 
 /**
@@ -304,13 +328,19 @@ export const createOperationalReview = async (connection, {
     const absorbed = await absorbOpenStaffReviewIntoHeadCorrection(connection, {
       actor, actionKey, department, projectId, entityType, entityId, entityLabel, beforeSnapshot, afterSnapshot,
     });
-    if (absorbed) return absorbed;
+    if (absorbed) {
+      await recordChangeDuringOpenAuditCase(connection, { actor, actionKey, entityType, entityId, beforeSnapshot, afterSnapshot });
+      return absorbed;
+    }
   }
 
   const refreshed = await refreshOwnRoutineReview(connection, {
     actor, actionKey, department, projectId, entityType, entityId, entityLabel, afterSnapshot, link,
   });
-  if (refreshed) return refreshed;
+  if (refreshed) {
+    await recordChangeDuringOpenAuditCase(connection, { actor, actionKey, entityType, entityId, beforeSnapshot, afterSnapshot });
+    return refreshed;
+  }
 
   // Super Admin direct entries skip Department Head self-review and go straight
   // to independent audit. The persisted approval_type value is retained for
@@ -370,6 +400,7 @@ export const createOperationalReview = async (connection, {
       : `${number} is a post-action review. Your change is already active and is queued for independent Auditor verification.`,
   });
 
+  await recordChangeDuringOpenAuditCase(connection, { actor, actionKey, entityType, entityId, beforeSnapshot, afterSnapshot });
   return { reviewId, reviewNumber: number, status: initialStatus, approvalType };
 };
 
@@ -379,31 +410,13 @@ export const getOperationalReviewForUpdate = async (connection, reviewId) => {
 };
 
 /**
- * Routine review is intentionally non-blocking: pending Head/Auditor checks are
- * evidence queues, not approval gates. Once a Head explicitly returns a record
- * for correction, or an Auditor opens/validates a case, that exact record enters
- * controlled correction mode. `allowReviewId` lets the authorized correction
- * request work on the record that its own Review locks.
+ * Deliberately non-blocking. A Head's returned correction or an active Audit
+ * Case must NEVER prevent an otherwise authorized user from editing a record.
+ * This compatibility entry point is still called by controllers, so switching
+ * off locks here covers their existing update paths without weakening RBAC.
+ * Row-level SQL FOR UPDATE locks used for transactional consistency remain.
  */
-export const assertEntityNotReviewLocked = async (connection, { entityType, entityId, allowReviewId = null }) => {
-  const statuses = REVIEW_LOCKING_STATUSES.map(() => '?').join(',');
-  const params = [entityType, String(entityId), ...REVIEW_LOCKING_STATUSES];
-  let exclusion = '';
-  if (allowReviewId) { exclusion = ' AND operational_review_id <> ?'; params.push(Number(allowReviewId)); }
-  const [rows] = await connection.query(
-    `SELECT operational_review_id,review_number,status,department,claimed_by_user_id FROM operational_reviews WHERE entity_type=? AND entity_id=? AND status IN (${statuses})${exclusion} ORDER BY operational_review_id DESC LIMIT 1`, params
-  );
-  const lock = rows[0];
-  if (!lock) return true;
-  const label = lock.review_number || `Review #${lock.operational_review_id}`;
-  const returned = lock.status === 'returned_for_correction';
-  throw Object.assign(
-    new Error(returned
-      ? `${label} was returned for correction. Use the correction link from Review Center so the original staff entry can be fixed and resubmitted.`
-      : `${label} has an active controlled correction (${lock.status.replaceAll('_',' ')}). Complete that correction workflow before changing this exact record.`),
-    { statusCode: 409, code: returned ? 'REVIEW_RETURNED_FOR_CORRECTION' : 'REVIEW_CORRECTION_LOCKED', review: lock }
-  );
-};
+export const assertEntityNotReviewLocked = async (_connection, _options = {}) => true;
 
 export const getReturnedOperationalReviewForActor = async (connection, {
   actor, actionKey, entityType, entityId, reviewId = null,
@@ -486,3 +499,4 @@ export const canActorSeeReview = async (connection, actor, review) => {
 };
 
 export const buildReviewPayloadHash = (payload) => crypto.createHash('sha256').update(JSON.stringify(payload ?? null)).digest('hex');
+

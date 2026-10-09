@@ -31,7 +31,7 @@ test('reservation creation records both the reservation review and buyer-form ap
   assert.match(source, /entityType: 'lot_project_buyer_form'/);
 });
 
-test('buyer-profile edits are review-locked, reuse returned Staff reviews, and support Audit Case corrections', async () => {
+test('buyer-profile edits are review-tracked, reuse returned Staff reviews, and support Audit Case corrections', async () => {
   const source = await readProjectFile('server/controllers/Lot_Projects/ListingProfile/ClientProfile.controller.js');
   assert.match(source, /assertEntityNotReviewLocked\(connection, \{[\s\S]*entityType: 'lot_project_client_profile'/);
   assert.match(source, /actionKey: 'buyer_profile\.edit'/);
@@ -91,7 +91,7 @@ test('Batch 2 Accounting review actions are registered with the confirmed depart
   assert.deepEqual(COMMISSION_STAGE_HEAD_APPROVAL_BEFORE, { release: false, hold: false, unhold: false });
 });
 
-test('commission release, hold, and unhold are review-locked and create Accounting reviews before commit', async () => {
+test('commission release, hold, and unhold are review-tracked and create Accounting reviews before commit', async () => {
   const source = await readProjectFile('server/controllers/Lot_Projects/Commissions/Commissions.controller.js');
   for (const key of ['commission.release', 'commission.hold', 'commission.unhold']) assert.match(source, new RegExp(key.replace('.', '\\.')));
   assert.match(source, /assertEntityNotReviewLocked\(connection, \{[\s\S]*entityType: 'lot_project_commission'/);
@@ -111,7 +111,7 @@ test('payment proof file changes use one canonical payment-scoped review and sup
   assert.doesNotMatch(source, /authorizeGovernedAction/);
 });
 
-test('signed acknowledgement receipt upload/replacement is review-locked and supports returned/Audit Case corrections', async () => {
+test('signed acknowledgement receipt upload/replacement is review-tracked and supports returned/Audit Case corrections', async () => {
   const source = await readProjectFile('server/controllers/Lot_Projects/ListingProfile/SignedAcknowledgement.controller.js');
   assert.match(source, /actionKey: 'signed_receipt\.upload'/);
   assert.match(source, /entityType: 'lot_project_signed_receipt'[\s\S]*entityId: paymentId/);
@@ -255,3 +255,4 @@ test('Review Center routes Operations and Marketing records and marks destructiv
   for (const workflow of ['listing_documents_update_review', 'listing_import_review', 'network_rates_review', 'network_edit_review', 'seller_edit_review']) assert.match(source, new RegExp(workflow));
   for (const key of ['listing.delete', 'listing.import', 'listing.import_undo', 'network.members.import']) assert.match(source, new RegExp(key.replaceAll('.', '\\.')));
 });
+

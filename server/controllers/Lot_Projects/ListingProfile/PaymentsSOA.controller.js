@@ -418,7 +418,7 @@ const requirePaymentCorrectionVerification = async (connection, req, { action, l
   validatePaymentCorrectionRequest({ action, reason, payload });
 
   // The Head can enter a correction directly only when the record is not already
-  // locked by an active review/case. The saved change is sent straight to Auditor review.
+  // tracked by an active review/case. The saved change is sent straight to Auditor review.
   if (actor.role === 'accounting_head') {
     return { ok: true, actor, reason, payload, authorizationType: 'department_head', headPreApprovedByUserId: actor.id };
   }
@@ -3743,3 +3743,4 @@ export const restorePaymentSchedulePenaltyWaiver = async (req, res) => {
     connection.release();
   }
 };
+

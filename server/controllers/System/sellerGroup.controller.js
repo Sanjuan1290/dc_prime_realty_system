@@ -97,7 +97,7 @@ const buildSingleProjectRateReviewSnapshot = ({ groupId, groupType, project = {}
 // (entity id = groupId) or by the per-project rate editor
 // (entity id = groupId:projectId). Correction links carry reviewId, so validate
 // that exact Review belongs to the original Staff user instead of opening a new
-// review and leaving the returned one locked.
+// review and leaving the returned one pending.
 const getReturnedNetworkRateReviewForActor = async (connection, { actor, groupId, reviewId = null, projectId = null }) => {
   const normalizedGroupId = Number(groupId || 0);
   const normalizedProjectId = Number(projectId || 0);
@@ -2896,3 +2896,4 @@ export const commitNetworkMemberImport = async (req, res) => {
     connection.release();
   }
 };
+
