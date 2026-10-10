@@ -12,7 +12,6 @@ import {
   FiMail,
   FiMapPin,
   FiPhone,
-  FiRefreshCw,
   FiRotateCcw,
   FiSearch,
   FiShoppingBag,
@@ -467,14 +466,6 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
           >
             <FiArrowLeft /> Back
           </NavLink>
-          <button
-            type="button"
-            onClick={refresh}
-            className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50"
-          >
-            <FiRefreshCw />
-            Refresh
-          </button>
 
           {!isExternal && canAddMember ? (
             <button

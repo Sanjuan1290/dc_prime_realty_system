@@ -1,3 +1,5 @@
+USE `dc_prime_realty_system_db`;
+
 -- 2026-10-10: reversible in-house Network Excel imports (new imports only).
 -- Non-destructive. Apply before deploying the import/undo API.
 CREATE TABLE IF NOT EXISTS network_member_import_batches (
@@ -32,7 +34,6 @@ CREATE TABLE IF NOT EXISTS network_member_import_items (
   linked_employee_ids_json JSON NULL,
   before_managers_json JSON NULL,
   after_managers_json JSON NOT NULL,
-  PRIMARY KEY (item_id),
   UNIQUE KEY uq_member_import_batch_row (batch_id, source_row),
   INDEX idx_member_import_user (user_id, batch_id),
   INDEX idx_member_import_seller (accredited_seller_id, batch_id),
