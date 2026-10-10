@@ -13,7 +13,9 @@ test('workflow notifications only surface review-linked items currently assigned
   assert.match(controller, /const notificationVisibilityWhere/)
   assert.match(controller, /reviewQueueWhere\(actor, \{ alias: reviewAlias \}\)/)
   assert.match(controller, /LEFT JOIN operational_reviews nr ON nr\.operational_review_id=n\.operational_review_id/)
-  assert.match(controller, /n\.user_id=\? AND n\.read_at IS NULL AND \$\{notificationAccess\.sql\}/)
+  const counter = read('server/services/workflowSummaryNotifications.service.js')
+  assert.match(counter, /n\.user_id=\? AND n\.read_at IS NULL AND \$\{visibility\.sql\}/)
+  assert.match(controller, /visibility: notificationVisibilityWhere\(actor\)/)
   assert.match(controller, /const access = notificationVisibilityWhere\(req\.authUser\)/)
 })
 
@@ -36,3 +38,4 @@ test('review details never render raw JSON blocks and use user-facing Network ra
   assert.doesNotMatch(center, /<pre/)
   assert.doesNotMatch(center, /JSON\.stringify\(value, null, 2\)/)
 })
+

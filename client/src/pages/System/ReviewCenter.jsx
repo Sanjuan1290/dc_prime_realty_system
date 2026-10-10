@@ -440,6 +440,7 @@ export const ReviewDetails = ({ reviewId, onClose, onChanged }) => {
 
   return <div className="grid gap-4">
     <div className="flex flex-wrap items-center justify-between gap-3"><button type="button" onClick={onClose} className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-black text-slate-700 shadow-sm hover:bg-slate-50"><FiArrowLeft />Back to Review Center</button><p className="text-xs font-semibold text-slate-500">Dedicated review workspace</p></div>
+    {(counts.notificationCountsAvailable === false || counts.protectedCountsAvailable === false) ? <p role="status" className="text-sm text-amber-800">Some alert totals are temporarily unavailable. Your review queue is still accessible; retry Refresh or contact your system administrator if this persists.</p> : null}
     <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
       <header className="flex items-start justify-between gap-4 border-b border-slate-200 p-5 sm:p-6"><div><div className="flex flex-wrap items-center gap-2"><span className="font-mono text-sm font-black text-blue-700">{review.review_number}</span><span className={`rounded-full border px-2.5 py-1 text-[11px] font-black ${statusClass(review.status)}`}>{reviewStatusLabel(review.status)}</span>{review.approval_type ? <span className={`rounded-full border px-2.5 py-1 text-[11px] font-black ${review.approval_type === 'emergency_super_admin' ? 'border-red-200 bg-red-50 text-red-700' : 'border-slate-200 bg-slate-50 text-slate-600'}`}>{approvalTypeLabel(review)}</span> : null}</div><h2 className="mt-2 text-2xl font-black">{review.entity_label || titleCase(review.entity_type)}</h2><p className="mt-1 text-sm font-semibold text-slate-500">{titleCase(review.department)} department, {review.action_label || titleCase(review.action_key)}{review.lot_project_name ? `, ${review.lot_project_name}` : ''}</p></div></header>
       <div className="grid gap-5 p-5 sm:p-6">
@@ -539,8 +540,8 @@ const ReviewCenter = () => {
     {notice ? <StatusAlert type={notice.type} message={notice.message} onClose={() => setNotice(null)} /> : null}
     <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
       <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4"><p className="text-xs font-black uppercase text-blue-600">Actionable</p><p className="mt-1 text-3xl font-black text-blue-950">{Number(counts.actionable || 0)}</p></div>
-      {isHead ? <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4"><p className="text-xs font-black uppercase text-amber-600">Protected Approvals</p><p className="mt-1 text-3xl font-black text-amber-950">{Number(counts.pendingProtectedChanges || 0)}</p></div> : null}
-      <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4"><p className="text-xs font-black uppercase text-violet-600">Unread Internal Alerts</p><p className="mt-1 text-3xl font-black text-violet-950">{Number(counts.unreadNotifications || 0)}</p></div>
+      {isHead ? <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4"><p className="text-xs font-black uppercase text-amber-600">Protected Approvals</p><p className="mt-1 text-3xl font-black text-amber-950">{counts.protectedCountsAvailable === false ? '—' : Number(counts.pendingProtectedChanges || 0)}</p></div> : null}
+      <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4"><p className="text-xs font-black uppercase text-violet-600">Unread Internal Alerts</p><p className="mt-1 text-3xl font-black text-violet-950">{counts.notificationCountsAvailable === false ? '—' : Number(counts.unreadNotifications || 0)}</p></div>
       <div className="rounded-2xl border border-slate-200 bg-white p-4"><p className="text-xs font-black uppercase text-slate-500">Your Role</p><p className="mt-2 text-lg font-black text-slate-950">{ROLE_LABELS[actor.role] || titleCase(actor.role)}</p></div>
     </section>
 
@@ -561,5 +562,6 @@ const ReviewCenter = () => {
 }
 
 export default ReviewCenter
+
 
 

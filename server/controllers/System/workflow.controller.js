@@ -8,9 +8,20 @@ import { resolveAuditCaseResponders, RESPONDER_MODE_LABELS } from '../../service
 import { getAuditCorrectionRole } from '../../services/auditCaseAuthorization.service.js';
 import { getReviewActionLabel, REVIEW_ACTIONS } from '../../config/reviewActions.js';
 import { resolveReviewRecordLocation } from '../../services/reviewRecordLocation.service.js';
+import { countWorkflowSummaryNotifications } from '../../services/workflowSummaryNotifications.service.js';
 
 const errorMessage = (error) => error?.message || 'Workflow operation failed.';
 const pageValues = (query = {}) => ({ page: Math.max(Number(query.page || 1),1), limit: Math.min(Math.max(Number(query.limit || 25),1),100) });
+// Keep diagnostic information server-side. Never expose SQL or database error
+// messages in API responses (the browser does not need database internals).
+const logWorkflowSummaryError = (stage, error, actor) => console.error('[workflow/summary]', {
+  stage,
+  role: String(actor?.role || 'unknown'),
+  code: error?.code || null,
+  errno: error?.errno || null,
+  sqlState: error?.sqlState || null,
+  message: error?.message || 'Unknown database error',
+});
 
 const reviewQueueWhere = (actor, { alias = 'r' } = {}) => {
   const role = String(actor?.role || '');
@@ -284,25 +295,40 @@ export const getReviewCenterSummary = async (req, res) => {
       protectedSql = '1=0';
       protectedParams = [];
     }
-    const [protectedRows] = await db.query(`SELECT COUNT(*) total FROM protected_change_requests p WHERE ${protectedSql}`, protectedParams).catch(() => [[{ total: 0 }]]);
+    let protectedCountsAvailable = true;
+    const [protectedRows] = await db.query(
+      `SELECT COUNT(*) total FROM protected_change_requests p WHERE ${protectedSql}`,
+      protectedParams
+    ).catch((error) => {
+      protectedCountsAvailable = false;
+      logWorkflowSummaryError('protected_changes_count', error, actor);
+      return [[{ total: 0 }]];
+    });
     const pendingProtectedChanges = Number(protectedRows?.[0]?.total || 0);
 
-    const notificationAccess = notificationVisibilityWhere(actor);
-    const [notificationRows] = await db.query(`SELECT COUNT(*) unread FROM internal_notifications n ${notificationAccess.join} WHERE n.user_id=? AND n.read_at IS NULL AND ${notificationAccess.sql}`, [actor.id, ...notificationAccess.params]);
-    const unreadNotifications = Number(notificationRows[0]?.unread || 0);
-    const actionTypes = Object.keys(REVIEW_ACTION_NOTIFICATION_STAGES);
-    const [actionNotificationRows] = actionTypes.length
-      ? await db.query(
-          `SELECT COUNT(*) unread FROM internal_notifications n ${notificationAccess.join} WHERE n.user_id=? AND n.read_at IS NULL AND n.notification_type IN (${actionTypes.map(() => '?').join(',')}) AND ${notificationAccess.sql}`,
-          [actor.id, ...actionTypes, ...notificationAccess.params]
-        )
-      : [[{ unread: 0 }]];
-    const unreadActionNotifications = Number(actionNotificationRows[0]?.unread || 0);
-    // Action notifications mirror the same work already counted in `actionable`.
-    // Do not double-count one returned review as both a queue item and a badge alert.
-    const unreadInformationalNotifications = Math.max(0, unreadNotifications - unreadActionNotifications);
-    return res.json({ data: { counts, actionable, pendingProtectedChanges, unreadNotifications, badgeCount: actionable + pendingProtectedChanges + unreadInformationalNotifications } });
-  } catch (error) { return res.status(500).json({ message: errorMessage(error) }); }
+    // An optional alert counter must not take down the entire Review Center.
+    // The queue count is authoritative and continues to work if this complex
+    // notification query is unsupported or fails on a particular DB version.
+    const notificationCounts = await countWorkflowSummaryNotifications({
+      connection: db,
+      actorId: actor.id,
+      visibility: notificationVisibilityWhere(actor),
+      actionTypes: Object.keys(REVIEW_ACTION_NOTIFICATION_STAGES),
+      onError: (error) => logWorkflowSummaryError('notification_counts', error, actor),
+    });
+    const { unreadNotifications, unreadActionNotifications, notificationCountsAvailable } = notificationCounts;
+    const unreadInformationalNotifications = notificationCountsAvailable
+      ? Math.max(0, unreadNotifications - unreadActionNotifications)
+      : 0;
+    return res.json({ data: {
+      counts, actionable, pendingProtectedChanges, unreadNotifications,
+      protectedCountsAvailable, notificationCountsAvailable,
+      badgeCount: actionable + pendingProtectedChanges + unreadInformationalNotifications,
+    } });
+  } catch (error) {
+    logWorkflowSummaryError('review_queue_count', error, req.authUser);
+    return res.status(500).json({ message: 'Unable to load the Review Center summary. Please try again.' });
+  }
 };
 
 export const getOperationalReview = async (req, res) => {
@@ -655,5 +681,6 @@ export const reviewProtectedChangeRequest = async (req,res) => {
     await connection.commit(); return res.json({message:`Protected change ${decision}d.`,data:{requestId:row.protected_change_request_id,requestNumber:row.request_number,status:row.status}});
   }catch(error){try{await connection.rollback()}catch{}return res.status(error.statusCode||500).json({code:error.code,message:errorMessage(error)});}finally{connection.release();}
 };
+
 
 

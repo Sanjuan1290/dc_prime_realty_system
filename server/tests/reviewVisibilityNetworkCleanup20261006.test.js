@@ -58,7 +58,8 @@ test('settling notifications selects first, then updates by id (MySQL safe)', as
 
 test('notification list and unread count both hide moved-on action notifications', () => {
   const controller = read('server/controllers/System/workflow.controller.js');
-  assert.match(controller, /SELECT COUNT\(\*\) unread FROM internal_notifications n \$\{notificationAccess\.join\} WHERE n\.user_id=\? AND n\.read_at IS NULL AND \$\{notificationAccess\.sql\}/);
+  const counter = read('server/services/workflowSummaryNotifications.service.js');
+  assert.match(counter, /SELECT COUNT\(\*\) unread FROM internal_notifications n \$\{visibility\.join\} WHERE n\.user_id=\? AND n\.read_at IS NULL AND \$\{visibility\.sql\}/);
   assert.match(controller, /SELECT n\.\* FROM internal_notifications n \$\{access\.join\} WHERE n\.user_id=\? AND \$\{access\.sql\}/);
   // Stale-stage filtering still applies inside the account visibility rule.
   assert.match(controller, /sql: `\(\$\{activeNotificationSql\('n'\)\}/);
@@ -113,3 +114,4 @@ test('Listings page has no imports from recharts internal type paths', () => {
   const listings = read('client/src/pages/Lot_Projects/Listings.jsx');
   assert.doesNotMatch(listings, /from 'recharts\/types\//);
 });
+
