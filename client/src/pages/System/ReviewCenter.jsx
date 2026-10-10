@@ -17,7 +17,9 @@ import {
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
 import ReviewSnapshotDiff from '../../components/Shared/ReviewSnapshotDiff'
+import NetworkImportReviewSummary from '../../components/Shared/NetworkImportReviewSummary'
 import { matchSnapshotRecords, RECORD_STATE_STYLES, sameValue } from '../../utils/reviewSnapshotFormat'
+import { getReviewRecordLink } from '../../utils/reviewRecordLinks'
 import useCurrentUser from '../../utils/useCurrentUser'
 import { getDoubleCheckNotice, useFetch, useFetchPatch, useFetchPost, useFetchPost as postWorkflow } from '../../utils/useFetch'
 import { DEPARTMENT_HEAD_ROLE, DEPARTMENT_STAFF_ROLES, ROLE_LABELS } from '../../config/permissions'
@@ -95,6 +97,7 @@ const SNAPSHOT_LABELS = Object.freeze({
   externalAccount: 'External Representative',
   memberCountBefore: 'Members Before Import',
   importedCount: 'Members Imported',
+  networkName: 'Network Name',
   processed: 'Imported Members',
   accredited_seller_id: 'Seller',
   row: 'Spreadsheet Row',
@@ -114,6 +117,22 @@ const SNAPSHOT_LABELS = Object.freeze({
   tcp: 'TCP',
   lmf: 'Legal / Misc Fee',
   dp: 'Down Payment',
+})
+
+// Import-only vocabulary applies equally for Auditor, Staff, Head, and Admin
+// because they all use the same ReviewDetails component.
+const IMPORT_SNAPSHOT_LABELS = Object.freeze({
+  ...SNAPSHOT_LABELS,
+  summary: 'Import Summary',
+  total: 'Total Spreadsheet Rows',
+  ready: 'Valid Rows Ready for Import',
+  create: 'New Accounts Created',
+  update: 'Existing Accounts Updated',
+  existingUpdates: 'Existing Records Affected',
+  transfer: 'Members Transferred',
+  errors: 'Rows With Errors',
+  warnings: 'Import Warnings',
+  processed: 'Imported Members',
 })
 
 // Reading order for the common fields; everything else keeps its saved order.
@@ -286,8 +305,6 @@ export const ReviewDetails = ({ reviewId, onClose, onChanged }) => {
   const after = parseJson(review?.after_snapshot_json) || {}
   const recordListingId = after?.listingId || before?.listingId || null
   const recordPaymentId = after?.paymentId || before?.paymentId || null
-  const auditSuffix = auditCase?.audit_case_id ? `&auditCaseId=${auditCase.audit_case_id}` : ''
-  const actorRoot = `/portal/${actor.role || 'super_admin'}`
   const reviewActionKey = String(review?.action_key || '')
   const listingWorkflowAction = reviewActionKey === 'listing.documents.update'
     ? 'listing_documents_update_review'
@@ -329,33 +346,13 @@ export const ReviewDetails = ({ reviewId, onClose, onChanged }) => {
                                     : review?.entity_type === 'accredited_seller'
                                       ? 'seller_edit_review'
                                       : ''
-  const groupId = Number(after?.groupId || before?.groupId || (review?.entity_type === 'seller_group' ? review?.entity_id : String(review?.entity_id || '').split(':')[0]) || 0) || null
-  const groupType = String(after?.groupType || before?.groupType || 'in_house') === 'external' ? 'external' : 'in-house'
-  const sellerGroupId = Number(after?.sellerGroupId || before?.sellerGroupId || 0) || null
-  const sellerUserId = Number(after?.userId || before?.userId || 0) || null
-  const networkLink = groupId
-    ? `${actorRoot}/accredited/groups/${groupType}/${groupId}?workflowAction=${workflowAction}&reviewId=${reviewId}${auditSuffix}`
-    : null
-  const sellerLink = sellerGroupId
-    ? `${actorRoot}/accredited/groups/in-house/${sellerGroupId}?workflowAction=seller_edit_review&reviewId=${reviewId}${sellerUserId ? `&sellerId=${sellerUserId}` : ''}${auditSuffix}`
-    : `${actorRoot}/accredited?workflowAction=seller_edit_review&reviewId=${reviewId}${auditSuffix}`
-  const recordLink = review?.entityExists === false || reviewActionKey === 'network.delete'
-    ? null
-    : review?.entity_type === 'lot_project_settings' && review?.lot_project_slug
-    ? `/portal/lot-projects/${review.lot_project_slug}/settings?workflowAction=project_settings_correction&reviewId=${reviewId}${auditSuffix}`
-    : review?.entity_type === 'lot_project_commission' && review?.lot_project_slug
-      ? `/portal/lot-projects/${review.lot_project_slug}/commissions?workflowAction=commission_stage_review&reviewId=${reviewId}&commissionId=${review.entity_id}${auditSuffix}`
-      : review?.entity_type === 'lot_project_listing_import' && review?.lot_project_slug
-        ? `/portal/lot-projects/${review.lot_project_slug}/listings?workflowAction=listing_import_review&reviewId=${reviewId}${auditSuffix}`
-        : review?.entity_type === 'lot_project_listing' && reviewActionKey === 'listing.delete' && review?.lot_project_slug
-          ? `/portal/lot-projects/${review.lot_project_slug}/listings?workflowAction=listing_delete_review&reviewId=${reviewId}${auditSuffix}`
-          : ['seller_group', 'seller_group_project_rates'].includes(review?.entity_type)
-            ? networkLink
-            : review?.entity_type === 'accredited_seller'
-              ? sellerLink
-              : workflowAction && review?.lot_project_slug && recordListingId
-                ? `/portal/lot-projects/${review.lot_project_slug}/listings/${recordListingId}?workflowAction=${workflowAction}&reviewId=${reviewId}${['lot_project_payment','lot_project_payment_proof','lot_project_signed_receipt'].includes(review?.entity_type) && recordPaymentId ? `&paymentId=${recordPaymentId}` : ''}${['lot_project_penalty_schedule','lot_project_lmf_schedule'].includes(review?.entity_type) ? `&scheduleId=${review.entity_id}` : ''}${auditSuffix}`
-                : null
+  const isNetworkImportReview = reviewActionKey === 'network.members.import'
+  const recordLink = getReviewRecordLink({
+    review, actorRole: actor.role, reviewId, auditCaseId: auditCase?.audit_case_id,
+    before, after, workflowAction,
+    recordListingId, recordPaymentId,
+  })
+  const snapshotLabels = isNetworkImportReview ? IMPORT_SNAPSHOT_LABELS : SNAPSHOT_LABELS
   const recordActionLabel = review?.entity_type === 'lot_project_payment'
     ? 'Open Payment for Controlled Correction'
     : review?.entity_type === 'lot_project_reservation'
@@ -458,11 +455,15 @@ export const ReviewDetails = ({ reviewId, onClose, onChanged }) => {
             <h3 className="text-base font-black text-slate-900">What changed</h3>
             <p className="mt-0.5 text-sm font-semibold text-slate-500">Only the values that differ are listed. Internal field names and raw JSON are intentionally hidden; open the full record below if you need everything.</p>
           </div>
-          <div className="p-4"><ReviewSnapshotDiff beforeValue={review.before_snapshot_json} afterValue={review.after_snapshot_json} lookups={review.lookups} labels={SNAPSHOT_LABELS} fieldOrder={SNAPSHOT_FIELD_ORDER} isHiddenField={isTechnicalSnapshotField} listRenderers={SNAPSHOT_LIST_RENDERERS} mode="changes" /></div>
+          <div className="p-4">
+            {isNetworkImportReview
+              ? <NetworkImportReviewSummary before={before} after={after} />
+              : <ReviewSnapshotDiff beforeValue={review.before_snapshot_json} afterValue={review.after_snapshot_json} lookups={review.lookups} labels={snapshotLabels} fieldOrder={SNAPSHOT_FIELD_ORDER} isHiddenField={isTechnicalSnapshotField} listRenderers={SNAPSHOT_LIST_RENDERERS} mode="changes" />}
+          </div>
         </section>
         <details className="rounded-2xl border border-slate-200 bg-slate-50">
           <summary className="cursor-pointer px-4 py-3 text-sm font-black text-slate-700">Show the full record before and after</summary>
-          <div className="border-t border-slate-200 bg-white p-4"><ReviewSnapshotDiff beforeValue={review.before_snapshot_json} afterValue={review.after_snapshot_json} lookups={review.lookups} labels={SNAPSHOT_LABELS} fieldOrder={SNAPSHOT_FIELD_ORDER} isHiddenField={isTechnicalSnapshotField} listRenderers={SNAPSHOT_LIST_RENDERERS} mode="full" /></div>
+          <div className="border-t border-slate-200 bg-white p-4"><ReviewSnapshotDiff beforeValue={review.before_snapshot_json} afterValue={review.after_snapshot_json} lookups={review.lookups} labels={snapshotLabels} fieldOrder={SNAPSHOT_FIELD_ORDER} isHiddenField={isTechnicalSnapshotField} listRenderers={SNAPSHOT_LIST_RENDERERS} mode="full" /></div>
         </details>
         {auditCase ? <section className="rounded-2xl border border-red-200 bg-red-50 p-4"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-xs font-black uppercase tracking-wide text-red-600">Audit Case</p><p className="text-lg font-black text-red-950">{auditCase.case_number}</p></div><span className="rounded-full border border-red-200 bg-white px-3 py-1 text-xs font-black text-red-700">{titleCase(auditCase.status)}</span></div><div className="mt-3 grid gap-3"><div><p className="text-xs font-black uppercase text-red-600">Finding</p><p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-red-950">{auditCase.finding}</p></div>{auditCase.head_response ? <div><p className="text-xs font-black uppercase text-red-600">Responder Explanation</p><p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-red-950">{auditCase.head_response}</p></div> : null}{auditCase.auditor_resolution ? <div><p className="text-xs font-black uppercase text-red-600">Auditor Resolution</p><p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-red-950">{auditCase.auditor_resolution}</p></div> : null}{auditCase.correction_summary ? <div><p className="text-xs font-black uppercase text-red-600">{correctionRoleLabel} Correction</p><p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-red-950">{auditCase.correction_summary}</p></div> : null}{responders ? <div><p className="text-xs font-black uppercase text-red-600">Who must answer</p><p className="mt-1 text-sm font-semibold text-red-950">{responders.label}{responders.users?.length ? `: ${responders.users.map((user) => user.full_name).join(', ')}` : ': nobody is available. An administrator must reassign the responder.'}</p></div> : null}</div></section> : null}
         <section className="rounded-2xl border border-slate-200 p-4"><p className="text-xs font-black uppercase tracking-wide text-slate-500">Review History</p><div className="mt-3 space-y-3">{(review.events || []).map((event) => <div key={event.operational_review_event_id} className="flex gap-3 border-l-2 border-blue-200 pl-3"><div className="min-w-0"><p className="font-black text-slate-800">{titleCase(event.event_type)}</p><p className="text-xs font-semibold text-slate-500">{event.actor_name || ROLE_LABELS[event.actor_role] || 'System'} · {fmtDate(event.created_at)}</p>{event.message ? <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{event.message}</p> : null}</div></div>)}</div></section>
@@ -478,6 +479,7 @@ export const ReviewDetails = ({ reviewId, onClose, onChanged }) => {
           {isActingAuditor && auditCase?.status === 'under_auditor_review' ? <><button type="button" onClick={() => setAction('resolve-invalid')} className="h-10 rounded-xl border border-emerald-300 bg-emerald-50 px-4 font-black text-emerald-700">Finding Invalid</button><button type="button" onClick={() => setAction('resolve-valid')} className="h-10 rounded-xl bg-red-600 px-4 font-black text-white">Finding Valid</button></> : null}
           {canApplyAuditCorrection && supportsRecordCorrection && recordLink ? <button type="button" onClick={() => navigate(recordLink)} className="h-10 rounded-xl bg-violet-700 px-4 font-black text-white"><FiExternalLink className="mr-2 inline" />{recordActionLabel}</button> : null}
           {isActingAuditor && review.status === 'pending_auditor_recheck' ? <><button type="button" onClick={() => mutation.mutate({ type: 'audit-verify' })} className="h-10 rounded-xl bg-emerald-600 px-4 font-black text-white">Verify Correction & Close</button><button type="button" onClick={() => setAction('recheck-reject')} className="h-10 rounded-xl bg-red-600 px-4 font-black text-white">Correction Still Wrong</button></> : null}
+          {review?.recordUnavailableReason && !recordLink ? <p role="status" className="w-full rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">{review.recordUnavailableReason}</p> : null}
           {recordLink && !canApplyAuditCorrection ? <button type="button" onClick={() => navigate(recordLink)} className="h-10 rounded-xl border border-slate-300 px-4 font-black text-slate-700"><FiExternalLink className="mr-2 inline" />Open Record</button> : null}
         </section>
       </div>
@@ -498,7 +500,6 @@ const ReviewCenter = () => {
   const actor = me?.user || {}
   const isHead = Boolean(Object.values(DEPARTMENT_HEAD_ROLE).includes(actor.role))
   const queueCopy = getQueueCopy(actor.role)
-  const actorRoot = `/portal/${actor.role || 'super_admin'}`
   const [tab, setTab] = useState('reviews')
   const [status, setStatus] = useState('')
   const [reviewScope, setReviewScope] = useState('queue')
@@ -560,4 +561,5 @@ const ReviewCenter = () => {
 }
 
 export default ReviewCenter
+
 

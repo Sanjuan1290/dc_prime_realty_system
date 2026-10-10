@@ -7,6 +7,7 @@ import { approveProtectedChange } from '../../services/protectedChange.service.j
 import { resolveAuditCaseResponders, RESPONDER_MODE_LABELS } from '../../services/auditCaseResponder.service.js';
 import { getAuditCorrectionRole } from '../../services/auditCaseAuthorization.service.js';
 import { getReviewActionLabel, REVIEW_ACTIONS } from '../../config/reviewActions.js';
+import { resolveReviewRecordLocation } from '../../services/reviewRecordLocation.service.js';
 
 const errorMessage = (error) => error?.message || 'Workflow operation failed.';
 const pageValues = (query = {}) => ({ page: Math.max(Number(query.page || 1),1), limit: Math.min(Math.max(Number(query.limit || 25),1),100) });
@@ -218,16 +219,6 @@ const buildReviewLookups = async (connection, review) => {
   return lookups;
 };
 
-// Whether the reviewed record still exists (e.g. a Network deleted while empty).
-const reviewEntityExists = async (connection, review) => {
-  const groupEntity = ['seller_group', 'seller_group_project_rates'].includes(review.entity_type);
-  if (!groupEntity) return true;
-  const groupId = Number(String(review.entity_id || '').split(':')[0] || 0);
-  if (!groupId) return true;
-  const [rows] = await connection.query('SELECT 1 FROM seller_groups WHERE seller_group_id=? LIMIT 1', [groupId]).catch(() => [[{ 1: 1 }]]);
-  return Boolean(rows?.length);
-};
-
 export const listOperationalReviews = async (req, res) => {
   try {
     const { page, limit } = pageValues(req.query);
@@ -383,8 +374,8 @@ export const getOperationalReview = async (req, res) => {
         ? actionKeys.reduce((text, key) => text.split(key).join(getReviewActionLabel(key)), String(event.message))
         : event.message,
     }));
-    const [lookups, entityExists] = await Promise.all([buildReviewLookups(db, review), reviewEntityExists(db, review)]);
-    return res.json({ data: { ...review, action_label: getReviewActionLabel(review.action_key), events: readableEvents, auditCase, lookups, entityExists, viewer: { canAct, readOnly: !canAct } } });
+    const [lookups, location] = await Promise.all([buildReviewLookups(db, review), resolveReviewRecordLocation(db, review)]);
+    return res.json({ data: { ...review, action_label: getReviewActionLabel(review.action_key), events: readableEvents, auditCase, lookups, ...location, viewer: { canAct, readOnly: !canAct } } });
   } catch (error) { return res.status(500).json({ message: errorMessage(error) }); }
 };
 
@@ -664,4 +655,5 @@ export const reviewProtectedChangeRequest = async (req,res) => {
     await connection.commit(); return res.json({message:`Protected change ${decision}d.`,data:{requestId:row.protected_change_request_id,requestNumber:row.request_number,status:row.status}});
   }catch(error){try{await connection.rollback()}catch{}return res.status(error.statusCode||500).json({code:error.code,message:errorMessage(error)});}finally{connection.release();}
 };
+
 

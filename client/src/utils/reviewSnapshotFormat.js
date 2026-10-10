@@ -44,6 +44,20 @@ export const humanizeKey = (key = '') => {
 const trimNumber = (value, max = 4) => Number(value).toLocaleString('en-PH', { minimumFractionDigits: 0, maximumFractionDigits: max })
 const peso = (value) => `₱${Number(value).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
+// Counts (including import summary.total) must never be inferred as pesos.
+// Currency is opt-in for fields that explicitly represent money, rather than
+// guessing from generic words such as "total" or "paymentCount".
+export const snapshotNumericType = (key) => {
+  const name = String(key || '')
+  if (/(rate|percent|percentage|share)$/i.test(name)) return 'percent'
+  if (/(count|rows?|members|warnings?|errors?|ready|created|updated|transferred)$/i.test(name)
+      || /^(total|create|update|transfer|existingUpdates|processed|importedCount)$/i.test(name)) return 'count'
+  if (/(amount|price|tcp|fee|balance|payment|commission|lmf|dp|cost|salary|revenue|deposit|refund|penalty|profit|paid|due)$/i.test(name)
+      || /^(grandTotal|salesTotal|grossTotal|netTotal|paymentTotal|commissionTotal|contractTotal)$/i.test(name)) return 'currency'
+  return 'number'
+}
+
+
 const lookupName = (key, value, lookups = {}) => {
   const rule = LOOKUP_RULES.find((entry) => entry.test(key))
   if (!rule) return null
@@ -65,11 +79,15 @@ export const formatSnapshotValue = (key, value, { lookups = {}, labelFor = human
   }
   const numeric = typeof value === 'number' || (typeof value === 'string' && /^-?\d+(\.\d+)?$/.test(value.trim()))
   if (numeric) {
+    // Do not strip leading zeros from identifiers like a licence, PRC, TIN,
+    // phone number, ZIP code, account code, or a human-issued reference.
+    if (typeof value === 'string' && /^0\d+$/.test(value) && /(license|prc|tin|phone|contact|mobile|postal|zip|code|reference|account)/i.test(key)) return value
     const name = lookupName(key, value, lookups)
     if (name) return name
-    if (/(rate|percent|share)$/i.test(key)) return `${trimNumber(value)}%`
-    if (/(amount|price|tcp|fee|balance|total|payment|commission|lmf|dp)$/i.test(key)) return peso(value)
-    return trimNumber(value, 4)
+    const type = snapshotNumericType(key)
+    if (type === 'percent') return `${trimNumber(value)}%`
+    if (type === 'currency') return peso(value)
+    return trimNumber(value, type === 'count' ? 0 : 4)
   }
   const text = String(value)
   if (VALUE_LABELS[text]) return VALUE_LABELS[text]
@@ -105,3 +123,4 @@ export const RECORD_STATE_STYLES = Object.freeze({
   changed: { label: 'Changed', badge: 'bg-amber-100 text-amber-800', border: 'border-amber-200' },
   unchanged: { label: 'No Change', badge: 'bg-slate-100 text-slate-600', border: 'border-slate-200' },
 })
+

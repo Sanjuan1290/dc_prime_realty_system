@@ -54,7 +54,14 @@ const flattenRows = (ctx, before, after, prefix = []) => {
   return rows
 }
 
-const pathLabel = (ctx, path) => path.map(ctx.labelFor).join(' / ')
+const pathLabel = (ctx, path) => {
+  // Network-import summary has descriptive leaf labels. Avoid showing
+  // 'Summary / Create' and similar internal implementation names.
+  if (path[0] === 'summary' && ctx.labelFor('summary') === 'Import Summary') {
+    return path.slice(1).map(ctx.labelFor).join(' / ') || 'Import Summary'
+  }
+  return path.map(ctx.labelFor).join(' / ')
+}
 
 const ValueCell = ({ ctx, field, value, tone }) => {
   const empty = isEmptyValue(value)
@@ -163,3 +170,4 @@ const ReviewSnapshotDiff = ({ beforeValue, afterValue, lookups = {}, mode = 'cha
 }
 
 export default ReviewSnapshotDiff
+

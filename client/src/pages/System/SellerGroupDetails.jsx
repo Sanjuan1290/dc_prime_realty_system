@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { NavLink, useLocation, useParams, useSearchParams } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   FiArrowLeft,
@@ -216,6 +216,7 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
   const { groupId } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
   const location = useLocation()
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const portalRole = location.pathname.split('/')[2] || 'super_admin'
   const rootPath = `/portal/${portalRole}`
@@ -276,6 +277,15 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
   const isExternal = groupType === 'external'
   const groupsPath = `${rootPath}/accredited/groups/${isExternal ? 'external' : 'in-house'}`
 
+  // Old bookmarks and legacy Review Center links may contain the wrong section.
+  // Correct the address to the network's verified type without dropping the
+  // reviewId, workflowAction, project, or audit-case context.
+  useEffect(() => {
+    if (!expectedGroupType || !['in_house', 'external'].includes(groupOption.type) || expectedGroupType === groupOption.type) return
+    const correctSection = groupOption.type === 'external' ? 'external' : 'in-house'
+    navigate(`${rootPath}/accredited/groups/${correctSection}/${groupId}${location.search}`, { replace: true })
+  }, [expectedGroupType, groupOption.type, groupId, location.search, navigate, rootPath])
+
   useEffect(() => {
     if (!accreditedProjects.length) return
 
@@ -284,10 +294,11 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
         (project) => Number(project.lot_project_id) === selectedProjectId
       )
     ) {
-      setSearchParams(
-        { project: String(accreditedProjects[0].lot_project_id) },
-        { replace: true }
-      )
+      setSearchParams((previous) => {
+        const next = new URLSearchParams(previous)
+        next.set('project', String(accreditedProjects[0].lot_project_id))
+        return next
+      }, { replace: true })
     }
   }, [accreditedProjects, selectedProjectId, setSearchParams])
 
@@ -545,14 +556,6 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
         />
       ) : null}
 
-      {expectedGroupType &&
-      groupOption.type &&
-      expectedGroupType !== groupOption.type ? (
-        <StatusAlert
-          type="error"
-          message="This Network was opened from the wrong Network section."
-        />
-      ) : null}
 
       {configuration ? (
         <>

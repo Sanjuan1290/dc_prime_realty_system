@@ -132,9 +132,9 @@ const SystemLayout = () => {
         title: "REVIEW & COMPLIANCE",
         description: "Department review, audit, and system records",
         items: [
-          { label: "Review Center", pathname: "review-center", icon: FiShield, badge: workflowBadgeCount, permission: PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW, roles: ['super_admin','system_admin','auditor','marketing_head','sales_head','accounting_head','operations_head','marketing_staff','sales_staff','accounting_staff','operations_staff'] },
+          { label: "Review Center", pathname: "review-center", icon: FiShield, badge: workflowBadgeCount, badgeLabel: 'reviews awaiting your action', permission: PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW, roles: ['super_admin','system_admin','auditor','marketing_head','sales_head','accounting_head','operations_head','marketing_staff','sales_staff','accounting_staff','operations_staff'] },
           { label: "Documents", pathname: "documents", icon: FiFileText, permission: PERMISSIONS.SYSTEM_DOCUMENTS_VIEW },
-          { label: "Notifications", pathname: "notifications", icon: FiBell, badge: notificationCount, permission: PERMISSIONS.SYSTEM_NOTIFICATIONS_VIEW },
+          { label: "Notifications", pathname: "notifications", icon: FiBell, badge: notificationCount, badgeLabel: 'unread notifications', permission: PERMISSIONS.SYSTEM_NOTIFICATIONS_VIEW },
           { label: "Audit Logs", pathname: "audit-logs", icon: FiActivity, permission: PERMISSIONS.AUDIT_LOGS_VIEW },
         ],
       },
@@ -332,7 +332,11 @@ const SystemLayout = () => {
 
                           <span className="min-w-0 flex-1 truncate">{item.label}</span>
                           {Number(item.badge || 0) > 0 ? (
-                            <span title={`${item.badge} pending notifications`} className="inline-flex min-w-6 shrink-0 items-center justify-center rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-black text-white">
+                            <span
+                              title={`${item.badge} ${item.badgeLabel || 'pending items'}`}
+                              aria-label={`${item.badge} ${item.badgeLabel || 'pending items'}`}
+                              className={`inline-flex min-w-6 shrink-0 items-center justify-center rounded-full px-2 py-0.5 text-[10px] font-black text-white ${item.pathname === 'review-center' ? 'bg-blue-600' : 'bg-red-500'}`}
+                            >
                               {Number(item.badge) > 99 ? '99+' : item.badge}
                             </span>
                           ) : null}
@@ -433,3 +437,4 @@ const SystemLayout = () => {
 };
 
 export default SystemLayout;
+
