@@ -26,6 +26,10 @@ import {
 } from './networkMemberImport.service.js';
 import { loadActiveSellerIdentityMatches } from '../../services/sellerIdentity.service.js';
 import {
+  IMPORT_USER_COLUMNS, IMPORT_SELLER_COLUMNS, snapshotImportFields,
+  sameImportFields, importUndoBlockMessage,
+} from './networkMemberUndo.service.js';
+import {
   assertEntityNotReviewLocked,
   createOperationalReview,
   getOperationalReviewForUpdate,
@@ -2708,6 +2712,14 @@ export const commitNetworkMemberImport = async (req, res) => {
       if (email) userIdByEmail.set(email, Number(member.user_id));
     });
 
+    // Persist a complete, exact batch ledger before writing members. The ledger
+    // commits or rolls back together with the import and never guesses by email.
+    const [batchResult] = await connection.query(
+      `INSERT INTO network_member_import_batches
+       (seller_group_id, imported_by_user_id, member_count) VALUES (?, ?, ?)`,
+      [groupId, req.authUser?.id || null, sortedRows.length]
+    );
+    const batchId = Number(batchResult.insertId);
     const processed = [];
     for (const row of sortedRows) {
       const reportsUnderUserId = row.isCurrentHead
@@ -2722,6 +2734,19 @@ export const commitNetworkMemberImport = async (req, res) => {
 
       let userId = Number(row.existingUserId || 0);
       let accreditedSellerId = Number(row.existingAccreditedSellerId || 0);
+      const userCreated = row.action === 'CREATE';
+      const sellerCreated = !accreditedSellerId;
+      const [[beforeUser]] = userId
+        ? await connection.query('SELECT * FROM users WHERE id = ? FOR UPDATE', [userId])
+        : [[null]];
+      const [[beforeSeller]] = accreditedSellerId
+        ? await connection.query('SELECT * FROM accredited_sellers WHERE accredited_seller_id = ? FOR UPDATE', [accreditedSellerId])
+        : [[null]];
+      const linkedEmployeeIds = [];
+      const [beforeManagerRows] = accreditedSellerId
+        ? await connection.query('SELECT manager_accredited_seller_id FROM accredited_seller_managed_sellers WHERE managed_accredited_seller_id = ?', [accreditedSellerId])
+        : [[]];
+      const beforeManagerIds = beforeManagerRows.map((manager) => Number(manager.manager_accredited_seller_id));
 
       if (row.action === 'CREATE') {
         const passwordHash = passwordHashes.get(row.email) || await bcrypt.hash('password', 10);
@@ -2768,6 +2793,11 @@ export const commitNetworkMemberImport = async (req, res) => {
         );
         accreditedSellerId = Number(sellerResult.insertId);
         if (await tableExists(connection, 'employees')) {
+          const [unlinkedEmployees] = await connection.query(
+            'SELECT employee_id FROM employees WHERE LOWER(TRIM(email)) = LOWER(?) AND linked_user_id IS NULL FOR UPDATE',
+            [row.email]
+          );
+          linkedEmployeeIds.push(...unlinkedEmployees.map((employee) => Number(employee.employee_id)));
           await connection.query(
             `UPDATE employees
                 SET linked_user_id = COALESCE(linked_user_id, ?)
@@ -2821,6 +2851,26 @@ export const commitNetworkMemberImport = async (req, res) => {
       userIdByEmail.set(row.email, userId);
       existingSellerIdByEmail.set(row.email, accreditedSellerId);
       await syncImportedManagedSellerLink(connection, accreditedSellerId, reportsUnderUserId || null);
+      const [[afterUser]] = await connection.query('SELECT * FROM users WHERE id = ?', [userId]);
+      const [[afterSeller]] = await connection.query('SELECT * FROM accredited_sellers WHERE accredited_seller_id = ?', [accreditedSellerId]);
+      const [afterManagerRows] = await connection.query('SELECT manager_accredited_seller_id FROM accredited_seller_managed_sellers WHERE managed_accredited_seller_id = ?', [accreditedSellerId]);
+      await connection.query(
+        `INSERT INTO network_member_import_items (
+          batch_id, source_row, user_id, accredited_seller_id, member_email,
+          import_action, user_created, seller_created, before_user_json, after_user_json,
+          before_seller_json, after_seller_json, linked_employee_ids_json,
+          before_managers_json, after_managers_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [batchId, row.sourceRow, userId, accreditedSellerId, row.email, row.action,
+         userCreated ? 1 : 0, sellerCreated ? 1 : 0,
+         beforeUser ? JSON.stringify(snapshotImportFields(beforeUser, IMPORT_USER_COLUMNS)) : null,
+         JSON.stringify(snapshotImportFields(afterUser, IMPORT_USER_COLUMNS)),
+         beforeSeller ? JSON.stringify(snapshotImportFields(beforeSeller, IMPORT_SELLER_COLUMNS)) : null,
+         JSON.stringify(snapshotImportFields(afterSeller, IMPORT_SELLER_COLUMNS)),
+         JSON.stringify(linkedEmployeeIds.map((employeeId) => ({ employeeId, userId: Number(row.sourcePersonUserId || userId) }))),
+         JSON.stringify(beforeManagerIds),
+         JSON.stringify(afterManagerRows.map((manager) => Number(manager.manager_accredited_seller_id)))]
+      );
       processed.push({
         row: row.sourceRow,
         email: row.email,
@@ -2851,6 +2901,7 @@ export const commitNetworkMemberImport = async (req, res) => {
         created: lockedPreview.summary.create,
         updated: lockedPreview.summary.update,
         transferred: lockedPreview.summary.transfer,
+        import_batch_id: batchId,
         imported_emails: processed.slice(0, 100).map((item) => item.email),
       },
     });
@@ -2872,6 +2923,7 @@ export const commitNetworkMemberImport = async (req, res) => {
         groupId,
         networkName: lockedPreview.network.name,
         importedCount: processed.length,
+        importBatchId: batchId,
         summary: lockedPreview.summary,
         processed: processed.slice(0, 100),
       },
@@ -2885,6 +2937,7 @@ export const commitNetworkMemberImport = async (req, res) => {
       data: {
         network: lockedPreview.network,
         summary: lockedPreview.summary,
+        importBatchId: batchId,
         processed,
         review: workflow,
       },
@@ -2897,3 +2950,324 @@ export const commitNetworkMemberImport = async (req, res) => {
   }
 };
 
+
+
+const parseImportSnapshot = (value) => {
+  if (!value) return null;
+  return typeof value === 'string' ? JSON.parse(value) : value;
+};
+
+const getImportBatchRows = async (connection, groupId, batchId, lock = false) => {
+  const [batches] = await connection.query(
+    `SELECT * FROM network_member_import_batches
+     WHERE seller_group_id = ? AND batch_id = ?${lock ? ' FOR UPDATE' : ''}`,
+    [groupId, batchId]
+  );
+  if (!batches.length) return null;
+  const [items] = await connection.query(
+    `SELECT * FROM network_member_import_items WHERE batch_id = ? ORDER BY item_id${lock ? ' FOR UPDATE' : ''}`,
+    [batchId]
+  );
+  return { batch: batches[0], items };
+};
+
+// Fail closed: ANY sale by ANY member blocks reversal of the entire batch,
+// regardless of project, date, cancelled status, or commission release status.
+const getImportUndoEligibility = async (connection, entry, lock = false) => {
+  const { batch, items } = entry;
+  if (batch.status !== 'committed') return { canUndo: false, reason: 'This import has already been undone.' };
+  if (!items.length || Number(batch.member_count) !== items.length) {
+    return { canUndo: false, reason: 'The import history is incomplete. Undo is unavailable.' };
+  }
+  const ids = items.map((item) => Number(item.accredited_seller_id));
+  const userIds = items.map((item) => Number(item.user_id));
+  const [laterImports] = await connection.query(
+    `SELECT item.item_id FROM network_member_import_items item
+      INNER JOIN network_member_import_batches newer ON newer.batch_id = item.batch_id
+      WHERE newer.status = 'committed' AND newer.batch_id > ? AND newer.batch_id <> ?
+        AND (item.user_id IN (${userIds.map(() => '?').join(',')}) OR item.accredited_seller_id IN (${ids.map(() => '?').join(',')}))
+      LIMIT 1`, [batch.batch_id, batch.batch_id, ...userIds, ...ids]
+  );
+  if (laterImports.length) return { canUndo: false, reason: 'A newer import also includes one of these members. Undo the newer import first.' };
+  const idMarks = ids.map(() => '?').join(',');
+  const userMarks = userIds.map(() => '?').join(',');
+  // Lock seller records first. New reservations/commissions require FK shared locks
+  // on these sellers and cannot race this transaction's final check and delete.
+  const [sellerRows] = await connection.query(
+    `SELECT * FROM accredited_sellers WHERE accredited_seller_id IN (${idMarks})${lock ? ' FOR UPDATE' : ''}`,
+    ids
+  );
+  const [userRows] = await connection.query(
+    `SELECT * FROM users WHERE id IN (${userMarks})${lock ? ' FOR UPDATE' : ''}`,
+    userIds
+  );
+  const sellers = new Map(sellerRows.map((r) => [Number(r.accredited_seller_id), r]));
+  const users = new Map(userRows.map((r) => [Number(r.id), r]));
+  let changed = items.some((item) => {
+    const seller = sellers.get(Number(item.accredited_seller_id));
+    const user = users.get(Number(item.user_id));
+    return !sameImportFields(seller, parseImportSnapshot(item.after_seller_json), IMPORT_SELLER_COLUMNS)
+      || !sameImportFields(user, parseImportSnapshot(item.after_user_json), IMPORT_USER_COLUMNS)
+      // Newly created identities must not be deleted if someone changed even
+      // a field outside the Excel columns after the import.
+      || (Number(item.user_created) && user?.updated_at !== user?.created_at)
+      || (Number(item.seller_created) && seller?.accredited_seller_updated_at !== seller?.accredited_seller_created_at);
+  });
+  const [sales] = await connection.query(
+    `SELECT COUNT(*) AS total FROM lot_project_client_profiles
+      WHERE assigned_accredited_seller_id IN (${idMarks})`, ids
+  );
+  const [commissions] = await connection.query(
+    `SELECT COUNT(*) AS total FROM lot_project_commissions
+      WHERE accredited_seller_id IN (${idMarks})
+         OR sale_origin_accredited_seller_id IN (${idMarks})
+         OR sale_owner_accredited_seller_id IN (${idMarks})`, [...ids, ...ids, ...ids]
+  );
+  const [historicalReleases] = await connection.query(
+    `SELECT COUNT(*) AS total FROM lot_project_archived_commission_releases
+      WHERE accredited_seller_id IN (${idMarks}) OR sale_owner_accredited_seller_id IN (${idMarks})`, [...ids, ...ids]
+  );
+  let salesCount = Number(sales[0]?.total || 0) + Number(commissions[0]?.total || 0) + Number(historicalReleases[0]?.total || 0);
+  // Cancelled reservations may have been archived and their live commission
+  // rows deleted before any payment was released. Inspect both retained JSON
+  // snapshots rather than assuming a missing live commission means no sale.
+  if (salesCount === 0 && await tableExists(connection, 'lot_project_cancelled_sale_archives')) {
+    const archivedFields = [
+      ['buyer_profile_snapshot', 'assigned_accredited_seller_id'],
+      ['commission_snapshot', 'accredited_seller_id'],
+      ['commission_snapshot', 'sale_origin_accredited_seller_id'],
+      ['commission_snapshot', 'sale_owner_accredited_seller_id'],
+    ];
+    const clauses = [];
+    const params = [];
+    for (const sellerId of ids) {
+      for (const [column, key] of archivedFields) {
+        clauses.push(`JSON_CONTAINS(${column}, JSON_OBJECT('${key}', ?))`);
+        params.push(sellerId);
+      }
+    }
+    const [archivedSales] = await connection.query(
+      `SELECT COUNT(*) AS total FROM lot_project_cancelled_sale_archives WHERE ${clauses.join(' OR ')}`,
+      params
+    );
+    salesCount += Number(archivedSales[0]?.total || 0);
+  }
+  // Other members, added after this import, may now depend on its hierarchy.
+  const newIdentityItems = items.filter((item) => Number(item.user_created) || Number(item.seller_created));
+  let reports = 0;
+  if (newIdentityItems.length) {
+    const newUserIds = newIdentityItems.map((item) => Number(item.user_id));
+    const newSellerIds = newIdentityItems.map((item) => Number(item.accredited_seller_id));
+    const [outsideReports] = await connection.query(
+      `SELECT COUNT(*) AS total FROM accredited_sellers
+        WHERE accredited_seller_reports_under_user_id IN (${newUserIds.map(() => '?').join(',')})
+        AND accredited_seller_id NOT IN (${idMarks})`, [...newUserIds, ...ids]
+    );
+    const [outsideLinks] = await connection.query(
+      `SELECT COUNT(*) AS total FROM accredited_seller_managed_sellers
+        WHERE manager_accredited_seller_id IN (${newSellerIds.map(() => '?').join(',')})
+        AND managed_accredited_seller_id NOT IN (${idMarks})`, [...newSellerIds, ...ids]
+    );
+    reports = Number(outsideReports[0]?.total || 0) + Number(outsideLinks[0]?.total || 0);
+  }
+  const [currentManagerRows] = await connection.query(
+    `SELECT managed_accredited_seller_id, manager_accredited_seller_id FROM accredited_seller_managed_sellers
+      WHERE managed_accredited_seller_id IN (${idMarks})`, ids
+  );
+  for (const item of items) {
+    const expected = (parseImportSnapshot(item.after_managers_json) || []).map(Number).sort((a, b) => a - b);
+    const actual = currentManagerRows.filter((r) => Number(r.managed_accredited_seller_id) === Number(item.accredited_seller_id))
+      .map((r) => Number(r.manager_accredited_seller_id)).sort((a, b) => a - b);
+    if (JSON.stringify(actual) !== JSON.stringify(expected)) changed = true;
+  }
+  let usage = false;
+  const createdSellers = items.filter((item) => Number(item.seller_created));
+  const createdUsers = items.filter((item) => Number(item.user_created));
+  const checks = [
+    ['accredited_seller_documents', 'accredited_seller_id'],
+    ['accredited_seller_lot_project_rates', 'accredited_seller_id'],
+    ['agent_lot_project_direct_rates', 'accredited_seller_id'],
+    ['seller_hierarchy_lot_project_overrides', 'child_accredited_seller_id'],
+    ['seller_hierarchy_lot_project_overrides', 'parent_accredited_seller_id'],
+  ];
+  if (createdSellers.length) {
+    const sellerCreatedIds = createdSellers.map((item) => Number(item.accredited_seller_id));
+    for (const [table, col] of checks) {
+      const [found] = await connection.query(
+        `SELECT 1 FROM ${table} WHERE ${col} IN (${sellerCreatedIds.map(() => '?').join(',')}) LIMIT 1`, sellerCreatedIds
+      );
+      if (found.length) { usage = true; break; }
+    }
+  }
+  if (!usage && createdUsers.length) {
+    const createdIds = createdUsers.map((item) => Number(item.user_id));
+    const userChecks = [
+      ['audit_logs', 'actor_user_id'], ['operational_reviews', 'initiated_by_user_id'],
+      ['user_permissions', 'user_id'], ['user_project_access', 'user_id'],
+      ['user_role_history', 'user_id'], ['user_password_reset_codes', 'user_id'],
+    ];
+    for (const [table, col] of userChecks) {
+      const [found] = await connection.query(
+        `SELECT 1 FROM ${table} WHERE ${col} IN (${createdIds.map(() => '?').join(',')}) LIMIT 1`, createdIds
+      );
+      if (found.length) { usage = true; break; }
+    }
+    if (!usage) usage = createdUsers.some((item) => users.get(Number(item.user_id))?.last_login);
+  }
+  if (!usage && await tableExists(connection, 'employees')) {
+    for (const item of items) {
+      const expected = parseImportSnapshot(item.linked_employee_ids_json) || [];
+      for (const link of expected) {
+        const [found] = await connection.query('SELECT linked_user_id FROM employees WHERE employee_id = ?', [link.employeeId]);
+        if (Number(found[0]?.linked_user_id || 0) !== Number(link.userId)) changed = true;
+      }
+    }
+    if (createdUsers.length) {
+      const idsCreated = createdUsers.map((item) => Number(item.user_id));
+      const [linked] = await connection.query(
+        `SELECT employee_id FROM employees WHERE linked_user_id IN (${idsCreated.map(() => '?').join(',')})`, idsCreated
+      );
+      const permitted = new Set(items.flatMap((item) => (parseImportSnapshot(item.linked_employee_ids_json) || [])
+        .filter((link) => Number(link.userId) === Number(item.user_id)).map((link) => Number(link.employeeId))));
+      if (linked.some((employee) => !permitted.has(Number(employee.employee_id)))) usage = true;
+    }
+  }
+  const reason = importUndoBlockMessage({ sales: salesCount, changed, reports, usage });
+  return { canUndo: !reason, reason, salesCount, changed, reports, usage };
+};
+
+export const getNetworkMemberImportHistory = async (req, res) => {
+  const groupId = Number(req.params.groupId || 0);
+  if (!groupId) return res.status(400).json({ message: 'Invalid Network id.' });
+  const connection = await db.getConnection();
+  try {
+    const [batches] = await connection.query(
+      `SELECT batch_id, seller_group_id, member_count, status, imported_at, undone_at
+       FROM network_member_import_batches WHERE seller_group_id = ?
+       ORDER BY batch_id DESC LIMIT 25`, [groupId]
+    );
+    const history = [];
+    for (const batch of batches) {
+      const entry = await getImportBatchRows(connection, groupId, batch.batch_id);
+      const eligibility = await getImportUndoEligibility(connection, entry);
+      history.push({ ...batch, ...eligibility, members: entry.items.map((item) => ({
+        email: item.member_email, action: item.import_action,
+      })) });
+    }
+    return res.json({ success: true, data: history });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
+  } finally { connection.release(); }
+};
+
+export const undoNetworkMemberImport = async (req, res) => {
+  const groupId = Number(req.params.groupId || 0);
+  const batchId = Number(req.params.batchId || 0);
+  if (!Number.isSafeInteger(groupId) || groupId <= 0 || !Number.isSafeInteger(batchId) || batchId <= 0) {
+    return res.status(400).json({ message: 'Invalid Network or import batch id.' });
+  }
+  const connection = await db.getConnection();
+  let started = false;
+  try {
+    await connection.beginTransaction(); started = true;
+    const [groupRows] = await connection.query(
+      'SELECT seller_group_id, seller_group_name, seller_group_type FROM seller_groups WHERE seller_group_id = ? FOR UPDATE', [groupId]
+    );
+    if (!groupRows[0] || groupRows[0].seller_group_type !== 'in_house') {
+      throw Object.assign(new Error('In-House Network not found.'), { statusCode: 404 });
+    }
+    await assertCanMutateWholeGroup(connection, req.authUser, groupId);
+    const entry = await getImportBatchRows(connection, groupId, batchId, true);
+    if (!entry) throw Object.assign(new Error('Import batch not found.'), { statusCode: 404 });
+    const eligibility = await getImportUndoEligibility(connection, entry, true);
+    if (!eligibility.canUndo) {
+      throw Object.assign(new Error(eligibility.reason), { statusCode: 409 });
+    }
+
+    const affectedGroups = new Set([groupId]);
+    for (const item of entry.items) {
+      const previousSeller = parseImportSnapshot(item.before_seller_json);
+      if (previousSeller?.seller_group_id) affectedGroups.add(Number(previousSeller.seller_group_id));
+    }
+    for (const affectedGroupId of affectedGroups) {
+      if (affectedGroupId !== groupId) await assertCanMutateWholeGroup(connection, req.authUser, affectedGroupId);
+    }
+    // Revert all original records first, so none depend on newly created users.
+    for (const item of entry.items) {
+      if (!Number(item.seller_created)) {
+        const snapshot = parseImportSnapshot(item.before_seller_json);
+        if (!snapshot) throw createValidationError('Missing original seller state. Import cannot be undone.');
+        await connection.query(
+          `UPDATE accredited_sellers
+           SET seller_group_id = ?, accredited_seller_reports_under_user_id = ?,
+               accredited_seller_accreditation_date = ?, accredited_seller_status = ?
+           WHERE accredited_seller_id = ?`,
+          [...IMPORT_SELLER_COLUMNS.map((col) => snapshot[col]), item.accredited_seller_id]
+        );
+        await connection.query('DELETE FROM accredited_seller_managed_sellers WHERE managed_accredited_seller_id = ?', [item.accredited_seller_id]);
+        for (const managerId of parseImportSnapshot(item.before_managers_json) || []) {
+          await connection.query(
+            'INSERT INTO accredited_seller_managed_sellers (manager_accredited_seller_id, managed_accredited_seller_id) VALUES (?, ?)',
+            [managerId, item.accredited_seller_id]
+          );
+        }
+      }
+      if (!Number(item.user_created)) {
+        const snapshot = parseImportSnapshot(item.before_user_json);
+        if (!snapshot) throw createValidationError('Missing original user state. Import cannot be undone.');
+        await connection.query(
+          `UPDATE users SET first_name = ?, last_name = ?, middle_name = ?,
+               contact_no = ?, tin_no = ?, prc_no = ?, status = ? WHERE id = ?`,
+          [...IMPORT_USER_COLUMNS.map((col) => snapshot[col]), item.user_id]
+        );
+      }
+    }
+    // First remove new seller identities, then their corresponding user accounts.
+    for (const item of entry.items) {
+      if (Number(item.seller_created)) await connection.query(
+        'DELETE FROM accredited_sellers WHERE accredited_seller_id = ?', [item.accredited_seller_id]
+      );
+    }
+    if (await tableExists(connection, 'employees')) {
+      for (const item of entry.items) {
+        for (const link of parseImportSnapshot(item.linked_employee_ids_json) || []) {
+          await connection.query(
+            'UPDATE employees SET linked_user_id = NULL WHERE employee_id = ? AND linked_user_id = ?',
+            [link.employeeId, link.userId]
+          );
+        }
+      }
+    }
+    for (const item of entry.items) {
+      if (Number(item.user_created)) await connection.query('DELETE FROM users WHERE id = ?', [item.user_id]);
+    }
+    for (const id of affectedGroups) {
+      await assertSellerGroupRoleHierarchy(connection, id);
+      await assertGroupCurrentPathsWithinPools(connection, id);
+    }
+    await connection.query(
+      `UPDATE network_member_import_batches SET status = 'undone', undone_at = NOW(), undone_by_user_id = ?
+       WHERE batch_id = ? AND status = 'committed'`, [req.authUser?.id || null, batchId]
+    );
+    await writeAuditLog(connection, req, {
+      action: 'delete', module: 'Accredited Sellers', entityType: 'seller_network_member_import',
+      entityId: String(groupId), entityLabel: groupRows[0].seller_group_name,
+      title: 'Undid In-House Network member import',
+      description: `Undid import batch #${batchId} (${entry.items.length} members) in ${groupRows[0].seller_group_name}.`,
+      metadata: { import_batch_id: batchId, seller_group_id: groupId, member_count: entry.items.length,
+        imported_emails: entry.items.map((item) => item.member_email) },
+    });
+    await createOperationalReview(connection, {
+      actor: req.authUser, actionKey: 'network.members.import.undo', department: 'marketing',
+      projectId: null, entityType: 'seller_group', entityId: groupId,
+      entityLabel: groupRows[0].seller_group_name,
+      beforeSnapshot: { batchId, members: entry.items.map((item) => item.member_email) },
+      afterSnapshot: { batchId, undone: true, count: entry.items.length },
+    });
+    await connection.commit(); started = false;
+    return res.json({ success: true, message: `Import #${batchId} undone. ${entry.items.length} member${entry.items.length === 1 ? '' : 's'} reverted.`, data: { batchId } });
+  } catch (error) {
+    if (started) await connection.rollback();
+    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
+  } finally { connection.release(); }
+};

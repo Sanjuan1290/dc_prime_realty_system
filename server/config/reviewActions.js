@@ -67,6 +67,7 @@ export const REVIEW_ACTIONS = Object.freeze({
   'network.delete': { department: 'marketing', entityType: 'seller_group', label: 'Empty Network deletion', headApprovalBefore: false },
   'network.rates.update': { department: 'marketing', entityType: 'seller_group_project_rates', label: 'Network project rates', headApprovalBefore: false },
   'network.members.import': { department: 'marketing', entityType: 'seller_group', label: 'Network member import', headApprovalBefore: false },
+  'network.members.import.undo': { department: 'marketing', entityType: 'seller_group', label: 'Network member import undo', headApprovalBefore: false },
   'seller.create': { department: 'marketing', entityType: 'accredited_seller', label: 'Accredited seller creation', headApprovalBefore: false },
   'seller.edit': { department: 'marketing', entityType: 'accredited_seller', label: 'Accredited seller edit', headApprovalBefore: false },
 });
@@ -85,4 +86,5 @@ export const assertRegisteredReviewAction = (actionKey, department) => {
 };
 
 export const getReviewActionLabel = (actionKey) => getReviewAction(actionKey)?.label || String(actionKey || '');
+
 

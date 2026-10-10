@@ -13,6 +13,7 @@ import {
   FiMapPin,
   FiPhone,
   FiRefreshCw,
+  FiRotateCcw,
   FiSearch,
   FiShoppingBag,
   FiTrendingUp,
@@ -24,6 +25,7 @@ import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
 import EditGroupModal from '../../components/System/sellerGroupComponents/EditGroupModal'
 import NetworkMemberImportModal from '../../components/System/sellerGroupComponents/NetworkMemberImportModal'
+import NetworkMemberImportHistoryModal from '../../components/System/sellerGroupComponents/NetworkMemberImportHistoryModal'
 import CreateUserModal from '../../components/System/userComponents/CreateUserModal'
 import EditUserModal from '../../components/System/userComponents/EditUserModal'
 import { getSellerRoleLabel } from '../../config/sellerRoles'
@@ -223,6 +225,7 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
   const [memberPage, setMemberPage] = useState(1)
   const [showCreateUser, setShowCreateUser] = useState(false)
   const [showMemberImport, setShowMemberImport] = useState(false)
+  const [showImportHistory, setShowImportHistory] = useState(false)
   const [selectedMember, setSelectedMember] = useState(null)
   const [showEditGroupModal, setShowEditGroupModal] = useState(false)
   const [range, setRange] = useState(defaultRange)
@@ -492,6 +495,16 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
             >
               <FiUpload />
               Import Members
+            </button>
+          ) : null}
+
+          {!isExternal && canImportMembers ? (
+            <button
+              type="button"
+              onClick={() => setShowImportHistory(true)}
+              className="inline-flex h-10 items-center gap-2 rounded-xl border border-amber-200 bg-white px-4 text-sm font-semibold text-amber-800 transition hover:bg-amber-50"
+            >
+              <FiRotateCcw /> Undo Import
             </button>
           ) : null}
 
@@ -1101,6 +1114,19 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
         </>
       ) : null}
 
+      {showImportHistory ? (
+        <NetworkMemberImportHistoryModal
+          groupId={Number(group.id || groupId)}
+          networkName={group.name || groupOption.name || 'In-House Network'}
+          onClose={() => setShowImportHistory(false)}
+          onUndone={(message) => {
+            setShowImportHistory(false)
+            setAlert({ type: 'success', message })
+            refresh()
+          }}
+        />
+      ) : null}
+
       {showMemberImport ? (
         <NetworkMemberImportModal
           groupId={Number(group.id || groupId)}
@@ -1179,3 +1205,4 @@ const SellerGroupDetails = ({ expectedGroupType }) => {
 }
 
 export default SellerGroupDetails
+

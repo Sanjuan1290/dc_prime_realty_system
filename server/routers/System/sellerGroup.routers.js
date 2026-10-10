@@ -13,6 +13,8 @@ import {
   updateGroupProjectPool,
   previewNetworkMemberImport,
   commitNetworkMemberImport,
+  getNetworkMemberImportHistory,
+  undoNetworkMemberImport,
   checkNetworkBrokerName,
   deleteGroup,
 } from '../../controllers/System/sellerGroup.controller.js';
@@ -40,6 +42,16 @@ router.post('/:groupId/members/import/commit',
   commitNetworkMemberImport
 );
 
+router.get('/:groupId/members/import/history',
+  requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW), getNetworkMemberImportHistory
+);
+router.post('/:groupId/members/import/:batchId/undo',
+  requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE),
+  requirePermission(PERMISSIONS.SYSTEM_USERS_CREATE),
+  requirePermission(PERMISSIONS.SYSTEM_USERS_EDIT),
+  undoNetworkMemberImport
+);
+
 router.get('/:groupId/projects', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW), getGroupProjectOptions);
 router.get('/:groupId/projects/:projectId/analytics', requireProjectPermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW, { projectIdParam: 'projectId' }), getGroupProjectAnalytics);
 router.get('/:groupId/projects/:projectId', requireProjectPermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_VIEW, { projectIdParam: 'projectId' }), getGroupProjectConfiguration);
@@ -51,3 +63,4 @@ router.patch('/toggle-status/:id', requirePermission(PERMISSIONS.SYSTEM_SELLER_G
 router.delete('/:id', requirePermission(PERMISSIONS.SYSTEM_SELLER_GROUPS_MANAGE), deleteGroup);
 
 export default router;
+
