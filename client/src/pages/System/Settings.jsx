@@ -6,6 +6,7 @@ import StatusAlert from '../../components/Shared/StatusAlert'
 import ReadOnlyNotice from '../../components/Shared/ReadOnlyNotice'
 import SettingsAuthorizationModal from '../../components/Shared/SettingsAuthorizationModal'
 import useCurrentUser from '../../utils/useCurrentUser'
+import { getSettingsAuthorizationLabel } from '../../utils/settingsAuthorizationRole'
 import { PERMISSIONS, hasPermission } from '../../config/permissions'
 import SystemSettingsForm from '../../components/System/settingsComponents/SystemSettingsForm'
 import RoleAccessControl from '../../components/System/settingsComponents/RoleAccessControl'
@@ -208,6 +209,7 @@ const Settings = () => {
           title="Authorize System Settings Change"
           description="System Settings are owner-controlled. Verify your current password, reason, and email code before the final review."
           codeEndpoint="/system-settings/code"
+          authorizationLabel={getSettingsAuthorizationLabel(actor.role)}
           settingsPayload={pendingAuthorization}
           isSaving={saveMutation.isPending}
           onClose={() => !saveMutation.isPending && setPendingAuthorization(null)}
@@ -219,4 +221,5 @@ const Settings = () => {
 }
 
 export default Settings
+
 

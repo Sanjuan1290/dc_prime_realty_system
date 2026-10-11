@@ -58,9 +58,11 @@ const HierarchyPreviewContent = ({ preview, isLoading = false, error = null, has
 
   return (
     <div className="grid gap-4">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <PreviewCard label="Commission Base (Before Discount)" value={money(preview?.commissionBase)} />
         <PreviewCard label="Network Pool" value={`${Number(preview?.poolRate || 0).toFixed(4)}%`} tone="blue" />
+        <PreviewCard label="Company Profit (%)" value={`${Number(preview?.companyProfitRate || 0).toFixed(4)}%`} tone="blue" />
+        <PreviewCard label="Estimated Company Profit" value={money(preview?.estimatedCompanyProfit)} tone="slate" />
         <PreviewCard label="Total Allocated" value={`${Number(preview?.allocatedRate || 0).toFixed(4)}%`} tone={preview?.isValid ? 'emerald' : 'red'} />
         <PreviewCard label="Unallocated" value={`${Number(preview?.unallocatedRate || 0).toFixed(4)}%`} tone="amber" />
         <PreviewCard label="Estimated Total" value={money(preview?.estimatedTotal)} tone="emerald" />
@@ -195,4 +197,5 @@ export const ReservationPaymentPreview = ({ contractPricing = {}, paymentForm = 
 }
 
 export { PreviewCard }
+
 

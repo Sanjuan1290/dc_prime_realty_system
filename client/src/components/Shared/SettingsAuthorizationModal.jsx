@@ -7,13 +7,13 @@ const inputClass = 'h-11 w-full rounded-xl border border-slate-300 bg-white px-3
 
 const SettingsAuthorizationModal = ({
   title = 'Authorize Settings Change',
-  description = 'Settings changes require the current Super Admin password and email verification code.',
+  description = 'Settings changes require your current account password and email verification code.',
   codeEndpoint,
   settingsPayload,
   onClose,
   onConfirm,
   isSaving = false,
-  authorizationLabel = 'Super Admin',
+  authorizationLabel = 'Current Account',
 }) => {
   const [reason, setReason] = useState('')
   const [password, setPassword] = useState('')
@@ -113,4 +113,5 @@ const SettingsAuthorizationModal = ({
 }
 
 export default SettingsAuthorizationModal
+
 
