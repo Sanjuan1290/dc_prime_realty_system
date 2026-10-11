@@ -11,7 +11,9 @@
     "migrate:cloudinary-documents": "node scripts/migrate-cloudinary-buyer-documents.js",
     "migrate:cloudinary-storage": "node scripts/migrate-cloudinary-buyer-documents.js",
     "migrate:cloudinary-storage-ids": "node scripts/migrate-cloudinary-storage-ids-v3.js",
-    "migrate:cloudinary-account-storage": "node scripts/migrate-cloudinary-account-storage-v4.js"
+    "migrate:cloudinary-account-storage": "node scripts/migrate-cloudinary-account-storage-v4.js",
+    "check:imports": "node scripts/check-local-imports.mjs",
+    "prestart": "npm run check:imports"
   },
   "keywords": [],
   "author": "",
@@ -33,4 +35,3 @@
     "nodemon": "^3.1.14"
   }
 }
-

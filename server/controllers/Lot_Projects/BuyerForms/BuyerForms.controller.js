@@ -1,3 +1,4 @@
+import { sendBuyerFormSubmissionNotice } from './buyerFormSubmissionNotice.js';
 import { toBusinessInstant } from '../../../utils/businessDateTime.js';
 import { isResendConfigured, sendEmail } from '../../../services/email.service.js';
 import {
@@ -811,6 +812,22 @@ export const submitPublicBuyerForm = async (req, res) => {
     });
 
     await connection.commit();
+    // Buyer data and temporary hold are already committed. Email failure
+    // must never roll back a successful client submission.
+    try {
+      await sendBuyerFormSubmissionNotice({
+        connection,
+        projectId: record.lot_project_id,
+        submissionId,
+        projectName: record.lot_project_name,
+        unitId: record.lot_project_listing_unit_id,
+        buyerName: profile.buyerName,
+      });
+    } catch (notificationError) {
+      console.error('Buyer form saved; reservation contact email could not be sent', {
+        submissionId, projectId: record.lot_project_id, error: notificationError?.message,
+      });
+    }
     return res.status(201).json({
       success: true,
       message: 'Your buyer information was submitted. The unit is temporarily held while D&C Prime Realty reviews the reservation.',
@@ -835,5 +852,6 @@ export const resetBuyerFormDataForAvailable = resetBuyerFormsForAvailable;
 export const supersedeBuyerFormLinks = revokeOpenBuyerFormLinks;
 export const readBuyerFormStateForProfile = getBuyerFormAdminState;
 export const decodeBuyerSubmissionPayload = parseJsonObject;
+
 
 

@@ -4,14 +4,13 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
+import { formatPhilippineDateTime } from '../../client/src/utils/formatDateTime.js'
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
-const source = fs.readFileSync(path.join(repoRoot, 'client/src/pages/System/ReviewCenter.jsx'), 'utf8')
-const match = source.match(/const fmtDate = \(value\) => \{[\s\S]*?\n\}\nconst statusClass/)
-assert.ok(match, 'Review Center formatter must exist')
-const functionText = match[0].replace(/\nconst statusClass$/, '')
-const fmtDate = new Function(`${functionText}\nreturn fmtDate`)()
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
+const source = fs.readFileSync(path.join(root, 'client/src/pages/System/ReviewCenter.jsx'), 'utf8')
+const utility = path.join(root, 'client/src/utils/formatDateTime.js')
 
+const fmtDate = (value) => formatPhilippineDateTime(value, { fallback: '—', timeZoneLabel: true })
 const samples = [
   ['2026-10-11 04:53:00', 'Oct 11, 2026, 12:53 PM PHT'],
   ['2026-10-11 03:48:00', 'Oct 11, 2026, 11:48 AM PHT'],
@@ -37,7 +36,9 @@ test('invalid or missing date is displayed safely', () => {
   assert.equal(fmtDate(''), '—')
 })
 
-test('Review Center calls the same formatter for list, details, events, notices and approval timestamps', () => {
+test('Review Center delegates formatting to the shared timezone utility', () => {
+  assert.match(source, /import \{ formatPhilippineDateTime \} from '\.\.\/\.\.\/utils\/formatDateTime'/)
+  assert.match(source, /const fmtDate = \(value\) => formatPhilippineDateTime\(value, \{ fallback: '—', timeZoneLabel: true \}\)/)
   assert.match(source, /fmtDate\(row\.created_at\)/)
   assert.match(source, /fmtDate\(event\.created_at\)/)
   assert.match(source, /fmtDate\(row\.reviewed_at\)/)
@@ -45,10 +46,10 @@ test('Review Center calls the same formatter for list, details, events, notices 
   assert.ok((source.match(/fmtDate\(/g) || []).length >= 6)
 })
 
-test('formatting is independent of local browser/server timezone', () => {
+test('Review timestamp formatting does not depend on viewer browser timezone', () => {
   for (const tz of ['UTC', 'Asia/Manila', 'America/Los_Angeles']) {
-    const script = `${functionText}\nprocess.stdout.write(fmtDate('2026-10-11 04:53:00'))`
-    const run = spawnSync(process.execPath, ['-e', script], { env: { ...process.env, TZ: tz }, encoding: 'utf8' })
+    const script = `import { formatPhilippineDateTime } from ${JSON.stringify(new URL('file://' + utility).href)};\nprocess.stdout.write(formatPhilippineDateTime('2026-10-11 04:53:00', {fallback: '—', timeZoneLabel: true}))`
+    const run = spawnSync(process.execPath, ['--input-type=module', '-e', script], { env: { ...process.env, TZ: tz }, encoding: 'utf8' })
     assert.equal(run.status, 0, `${tz}: ${run.stderr}`)
     assert.equal(run.stdout, 'Oct 11, 2026, 12:53 PM PHT', tz)
   }
