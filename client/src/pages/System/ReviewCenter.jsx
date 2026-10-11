@@ -499,6 +499,9 @@ const ReviewCenter = () => {
   const navigate = useNavigate()
   const { data: me } = useCurrentUser()
   const actor = me?.user || {}
+  // Use the authenticated role for Review Center links across all system portals.
+  // This must be declared in this component: both list and notification clicks use it.
+  const actorRoot = actor.role ? `/portal/${actor.role}` : ''
   const isHead = Boolean(Object.values(DEPARTMENT_HEAD_ROLE).includes(actor.role))
   const queueCopy = getQueueCopy(actor.role)
   const [tab, setTab] = useState('reviews')
