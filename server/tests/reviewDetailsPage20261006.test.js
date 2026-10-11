@@ -34,7 +34,6 @@ test('Dedicated review workspace prioritizes changed fields and keeps full snaps
 test('Dedicated review page preserves Head, Auditor and correction actions', () => {
   const center = read('client/src/pages/System/ReviewCenter.jsx')
   for (const label of [
-    'Claim Review',
     'Confirm — No Mistake',
     'Return for Correction',
     'Open Audit Case',
@@ -45,6 +44,8 @@ test('Dedicated review page preserves Head, Auditor and correction actions', () 
     'Correction Still Wrong',
     'Correct &amp; Confirm',
     'Correct &amp; Resubmit',
+    'Submit Correction Details for Recheck',
   ]) assert.match(center, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
 })
+
 

@@ -265,9 +265,6 @@ const absorbOpenStaffReviewIntoHeadCorrection = async (connection, {
   );
   const open = rows[0];
   if (!open) return null;
-  if (open.claimed_by_user_id && Number(open.claimed_by_user_id) !== Number(actor.id)) {
-    throw Object.assign(new Error(`${open.review_number || 'This review'} is claimed by another Head. Ask them to release it before correcting the record.`), { statusCode: 409, code: 'REVIEW_CLAIMED_BY_OTHER_HEAD' });
-  }
   const withType = await hasApprovalTypeColumn(connection);
   await connection.query(
     `UPDATE operational_reviews
@@ -499,5 +496,6 @@ export const canActorSeeReview = async (connection, actor, review) => {
 };
 
 export const buildReviewPayloadHash = (payload) => crypto.createHash('sha256').update(JSON.stringify(payload ?? null)).digest('hex');
+
 
 

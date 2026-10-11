@@ -1,7 +1,7 @@
 import { db } from '../../db/connect.js';
 import { DEPARTMENT_HEAD_ROLE, DEPARTMENT_STAFF_ROLES, getRoleDepartment } from '../../config/permissions.js';
 import { writeAuditLog } from './auditLogs.controller.js';
-import { activeNotificationSql, createInternalNotifications, notifyAuditors, notifySystemAdmins, REVIEW_ACTION_NOTIFICATION_STAGES } from '../../services/internalNotification.service.js';
+import { activeNotificationSql, createInternalNotifications, notifyDepartmentHeads, notifyAuditors, notifySystemAdmins, REVIEW_ACTION_NOTIFICATION_STAGES } from '../../services/internalNotification.service.js';
 import { appendReviewEvent, canActorSeeReview, getOperationalReviewForUpdate } from '../../services/operationalReview.service.js';
 import { approveProtectedChange } from '../../services/protectedChange.service.js';
 import { resolveAuditCaseResponders, RESPONDER_MODE_LABELS } from '../../services/auditCaseResponder.service.js';
@@ -434,12 +434,9 @@ export const confirmHeadReview = async (req, res) => {
     const review = await getOperationalReviewForUpdate(connection, req.params.id);
     if (!review) throw Object.assign(new Error('Review not found.'), { statusCode: 404 });
     await assertHeadForReview(connection, req.authUser, review);
-    if (review.claimed_by_user_id && Number(review.claimed_by_user_id) !== Number(req.authUser.id)) {
-      throw Object.assign(new Error('Another Head already claimed this review.'), { statusCode: 409 });
-    }
     if (review.status !== 'pending_head_review') throw Object.assign(new Error('This review is no longer pending Head confirmation.'), { statusCode: 409 });
     const withApprovalType = Object.prototype.hasOwnProperty.call(review, 'approval_type');
-    await connection.query(`UPDATE operational_reviews SET status='pending_auditor_review',claimed_by_user_id=COALESCE(claimed_by_user_id,?),claimed_at=COALESCE(claimed_at,NOW()),head_reviewed_by_user_id=?,head_reviewed_at=NOW()${withApprovalType ? ",approval_type='head_confirmed'" : ''} WHERE operational_review_id=?`, [req.authUser.id,req.authUser.id,review.operational_review_id]);
+    await connection.query(`UPDATE operational_reviews SET status='pending_auditor_review',claimed_by_user_id=?,claimed_at=NOW(),head_reviewed_by_user_id=?,head_reviewed_at=NOW()${withApprovalType ? ",approval_type='head_confirmed'" : ''} WHERE operational_review_id=?`, [req.authUser.id,req.authUser.id,review.operational_review_id]);
     await appendReviewEvent(connection, { reviewId: review.operational_review_id, eventType: 'head_confirmed', actor: req.authUser, fromStatus: review.status, toStatus: 'pending_auditor_review', message: String(req.body?.note || 'Head confirmed no mistake.').slice(0,1000) });
     await notifyAuditors(connection, { reviewId: review.operational_review_id, title: `Audit review required · ${review.entity_label || review.entity_type}`, message: `${review.review_number} was confirmed by the ${review.department} Head.` });
     await writeAuditLog(connection, req, { action:'approve',module:'Review Center',entityType:'operational_review',entityId:String(review.operational_review_id),entityLabel:review.review_number,title:'Department Head confirmed review',description:`${review.review_number} moved to Auditor review.`,metadata:{department:review.department,action_key:review.action_key} });
@@ -457,22 +454,86 @@ export const returnReviewForCorrection = async (req, res) => {
     const review = await getOperationalReviewForUpdate(connection, req.params.id);
     if (!review) throw Object.assign(new Error('Review not found.'), { statusCode: 404 });
     await assertHeadForReview(connection, req.authUser, review);
-    if (review.claimed_by_user_id && Number(review.claimed_by_user_id) !== Number(req.authUser.id)) {
-      throw Object.assign(new Error('Another Head already claimed this review.'), { statusCode: 409 });
-    }
     if (review.status !== 'pending_head_review') throw Object.assign(new Error('This review cannot be returned from its current state.'), { statusCode: 409 });
-    await connection.query(`UPDATE operational_reviews SET status='returned_for_correction',claimed_by_user_id=?,claimed_at=COALESCE(claimed_at,NOW()),head_reviewed_by_user_id=?,head_reviewed_at=NOW() WHERE operational_review_id=?`, [req.authUser.id,req.authUser.id,review.operational_review_id]);
+    await connection.query(`UPDATE operational_reviews SET status='returned_for_correction',claimed_by_user_id=?,claimed_at=NOW(),head_reviewed_by_user_id=?,head_reviewed_at=NOW() WHERE operational_review_id=?`, [req.authUser.id,req.authUser.id,review.operational_review_id]);
     await appendReviewEvent(connection, { reviewId: review.operational_review_id, eventType: 'returned_for_correction', actor: req.authUser, fromStatus: review.status, toStatus: 'returned_for_correction', message: reason });
     await createInternalNotifications(connection, {
       userIds:[review.initiated_by_user_id],
       type:'review_returned',
       title:`Correction requested — action required · ${review.entity_label || review.entity_type}`,
-      message:`${review.review_number}: ${reason} Open this Review, correct the affected record, then use Correct & Resubmit to send the same Review back to the Head.`,
+      message:`${review.review_number}: ${reason} Open this Review, complete a permitted correction, then use ${MANUAL_RESUBMIT_ACTION_KEYS.has(review.action_key) || MANUAL_RESUBMIT_ENTITY_TYPES.has(review.entity_type) ? 'Submit Correction Details for Recheck' : 'Correct & Resubmit'} to send it back to the Head.`,
       reviewId:review.operational_review_id,
     });
     await connection.commit();
     return res.json({ message: 'Returned for correction. The original staff member has been notified. The record remains editable by authorized users and all edits are logged.' });
   } catch (error) { try { await connection.rollback(); } catch {} return res.status(error.statusCode || 500).json({ code:error.code,message:errorMessage(error) }); } finally { connection.release(); }
+};
+
+// Completed actions (imports, releases, deletes, etc.) cannot always be edited
+// in place. Staff can perform an authorized compensating action, then describe
+// the correction here. This resubmits the SAME review without changing the
+// original operation snapshots or falsely asserting an in-place edit occurred.
+const MANUAL_RESUBMIT_ACTION_KEYS = new Set([
+  'reservation.create', 'buyer_form.approve', 'commission.release', 'commission.hold',
+  'commission.unhold', 'listing.delete', 'listing.import', 'listing.import_undo',
+  'network.members.import',
+]);
+const MANUAL_RESUBMIT_ENTITY_TYPES = new Set(['lot_project_account', 'lot_project_buyer_form', 'lot_project_commission']);
+
+export const resubmitManualReviewCorrection = async (req, res) => {
+  const correctionSummary = String(req.body?.correctionSummary || '').trim();
+  if (correctionSummary.length < 15 || correctionSummary.length > 4000) {
+    return res.status(400).json({ message: 'Describe the completed correction and reference the affected records (15–4000 characters).' });
+  }
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    const review = await getOperationalReviewForUpdate(connection, req.params.id);
+    if (!review) throw Object.assign(new Error('Review not found.'), { statusCode: 404 });
+    if (review.status !== 'returned_for_correction') {
+      throw Object.assign(new Error('This review is no longer awaiting staff correction.'), { statusCode: 409 });
+    }
+    if (!DEPARTMENT_STAFF_ROLES.includes(req.authUser?.role)
+      || Number(review.initiated_by_user_id) !== Number(req.authUser?.id)
+      || getRoleDepartment(req.authUser) !== review.department
+      || !(await canActorSeeReview(connection, req.authUser, review))) {
+      throw Object.assign(new Error('Only the original authorized staff member can resubmit this review.'), { statusCode: 403 });
+    }
+    if (!MANUAL_RESUBMIT_ACTION_KEYS.has(review.action_key) && !MANUAL_RESUBMIT_ENTITY_TYPES.has(review.entity_type)) {
+      throw Object.assign(new Error('Use the record correction workflow for this review.'), { statusCode: 409 });
+    }
+    await connection.query(
+      `UPDATE operational_reviews SET status='pending_head_review', revision=revision+1,
+          claimed_by_user_id=NULL, claimed_at=NULL,
+          head_reviewed_by_user_id=NULL, head_reviewed_at=NULL,
+          auditor_reviewed_by_user_id=NULL, auditor_reviewed_at=NULL
+       WHERE operational_review_id=? AND status='returned_for_correction'`,
+      [review.operational_review_id]
+    );
+    await appendReviewEvent(connection, {
+      reviewId: review.operational_review_id, eventType: 'staff_correction_submitted', actor: req.authUser,
+      fromStatus: 'returned_for_correction', toStatus: 'pending_head_review',
+      message: `Staff-reported follow-up correction (original action preserved): ${correctionSummary}`,
+      metadata: { correctionMode: 'manual_follow_up', actionKey: review.action_key },
+    });
+    await notifyDepartmentHeads(connection, {
+      department: review.department, projectId: review.lot_project_id,
+      reviewId: review.operational_review_id,
+      title: `Correction submitted for Head recheck · ${review.review_number}`,
+      message: `${review.entity_label || review.entity_type}: the original staff member reports a follow-up correction. Verify the actual record and audit trail before confirmation.`,
+    });
+    await writeAuditLog(connection, req, {
+      action: 'update', module: 'Review Center', entityType: 'operational_review',
+      entityId: String(review.operational_review_id), entityLabel: review.review_number,
+      title: 'Staff submitted correction details for recheck', description: correctionSummary,
+      metadata: { department: review.department, action_key: review.action_key, mode: 'manual_follow_up' },
+    });
+    await connection.commit();
+    return res.json({ message: 'Correction details sent to the Department Head for recheck. Your original operation and the follow-up note remain in the review history.' });
+  } catch (error) {
+    try { await connection.rollback(); } catch {}
+    return res.status(error.statusCode || 500).json({ code: error.code, message: errorMessage(error) });
+  } finally { connection.release(); }
 };
 
 export const auditorVerifyReview = async (req, res) => {
@@ -681,6 +742,7 @@ export const reviewProtectedChangeRequest = async (req,res) => {
     await connection.commit(); return res.json({message:`Protected change ${decision}d.`,data:{requestId:row.protected_change_request_id,requestNumber:row.request_number,status:row.status}});
   }catch(error){try{await connection.rollback()}catch{}return res.status(error.statusCode||500).json({code:error.code,message:errorMessage(error)});}finally{connection.release();}
 };
+
 
 
 

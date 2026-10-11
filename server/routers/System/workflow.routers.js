@@ -2,7 +2,7 @@ import express from 'express';
 import { authenticateUser, requirePermission } from '../../middleware/auth.middleware.js';
 import { PERMISSIONS } from '../../config/permissions.js';
 import {
-  listOperationalReviews,getReviewCenterSummary,getOperationalReview,claimOperationalReview,confirmHeadReview,returnReviewForCorrection,auditorVerifyReview,listInternalNotifications,markInternalNotificationRead,openAuditCase,respondToAuditCase,reassignAuditCaseResponder,resolveAuditCase,getAuditCase,listProtectedChangeRequests,reviewProtectedChangeRequest,
+  listOperationalReviews,getReviewCenterSummary,getOperationalReview,claimOperationalReview,confirmHeadReview,returnReviewForCorrection,resubmitManualReviewCorrection,auditorVerifyReview,listInternalNotifications,markInternalNotificationRead,openAuditCase,respondToAuditCase,reassignAuditCaseResponder,resolveAuditCase,getAuditCase,listProtectedChangeRequests,reviewProtectedChangeRequest,
 } from '../../controllers/System/workflow.controller.js';
 
 const router=express.Router();
@@ -25,6 +25,7 @@ router.get('/reviews/:id',requireReviewCenterRole,requirePermission(PERMISSIONS.
 router.post('/reviews/:id/claim',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_DEPARTMENT_REVIEW),claimOperationalReview);
 router.post('/reviews/:id/head-confirm',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_DEPARTMENT_REVIEW),confirmHeadReview);
 router.post('/reviews/:id/return',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_DEPARTMENT_RETURN_FOR_CORRECTION),returnReviewForCorrection);
+router.post('/reviews/:id/resubmit-manual',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW),resubmitManualReviewCorrection);
 router.post('/reviews/:id/auditor-verify',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_AUDIT_REVIEW),auditorVerifyReview);
 router.post('/reviews/:id/audit-case',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_AUDIT_CASE_CREATE),openAuditCase);
 router.get('/audit-cases/:caseId',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW),getAuditCase);
@@ -36,4 +37,5 @@ router.post('/protected-changes/:requestId/review',requireReviewCenterRole,requi
 router.get('/notifications',requirePermission(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW),listInternalNotifications);
 router.patch('/notifications/:id/read',requirePermission(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW),markInternalNotificationRead);
 export default router;
+
 
