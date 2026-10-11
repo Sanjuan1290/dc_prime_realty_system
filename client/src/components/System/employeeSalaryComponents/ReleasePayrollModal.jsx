@@ -85,3 +85,4 @@ const ReleasePayrollModal = ({ payroll, onClose, onReleased }) => {
 }
 
 export default ReleasePayrollModal
+

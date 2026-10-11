@@ -46,3 +46,4 @@ const useNotificationBadge = (user) => {
 }
 
 export default useNotificationBadge
+

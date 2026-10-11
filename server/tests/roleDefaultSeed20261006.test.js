@@ -58,3 +58,4 @@ test('seed skips roles saved from Role & Access Control and never overwrites or 
   assert.doesNotMatch(sql, /ON DUPLICATE KEY UPDATE/);
   assert.doesNotMatch(sql, /user_permissions/);
 });
+

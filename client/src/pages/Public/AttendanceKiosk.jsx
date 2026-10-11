@@ -312,3 +312,4 @@ const AttendanceKiosk = () => {
 }
 
 export default AttendanceKiosk
+

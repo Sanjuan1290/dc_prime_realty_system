@@ -82,3 +82,4 @@ const PayrollSummaryExportModal = ({ month, periodType, periodLabel, onClose }) 
 }
 
 export default PayrollSummaryExportModal
+

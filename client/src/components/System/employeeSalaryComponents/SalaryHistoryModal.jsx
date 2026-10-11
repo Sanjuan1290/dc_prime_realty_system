@@ -95,3 +95,4 @@ const SalaryHistoryModal = ({ employee, canCorrect = false, canRelease = false, 
 }
 
 export default SalaryHistoryModal
+

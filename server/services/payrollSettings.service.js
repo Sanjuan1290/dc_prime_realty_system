@@ -142,3 +142,4 @@ export const updatePayrollSettings = async (connection, { body, updatedByUserId 
   const after = await getPayrollSettings(connection);
   return { before, after };
 };
+

@@ -18,3 +18,4 @@ ON DUPLICATE KEY UPDATE
   allowed = VALUES(allowed),
   updated_by_user_id = VALUES(updated_by_user_id),
   updated_at = CURRENT_TIMESTAMP;
+

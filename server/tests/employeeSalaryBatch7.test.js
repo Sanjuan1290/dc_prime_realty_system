@@ -131,3 +131,4 @@ test('released payroll remains official, historical, and exportable rather than 
   assert.doesNotMatch(salaryDetail, /canRecalculate && payroll\?\.payroll_status === 'released'/)
   assert.match(historyModal, /Released payroll remains historical and exportable/)
 })
+

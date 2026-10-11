@@ -13,3 +13,4 @@ ALTER TABLE lot_project_settings
 UPDATE lot_project_settings lps
 JOIN system_settings ss ON ss.system_setting_id = 1
 SET lps.payment_entry_email_notification_enabled = COALESCE(ss.payment_entry_email_notification_enabled, 0);
+

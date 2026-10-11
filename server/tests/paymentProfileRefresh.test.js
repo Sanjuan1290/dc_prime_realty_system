@@ -19,3 +19,4 @@ test('payment mutations refresh the exact active listing profile cache key', () 
   assert.match(payments, /Payment saved successfully[\s\S]*await refreshProfile\(\)/);
   assert.doesNotMatch(payments, /listing\?\.accountId \|\| 'current'/);
 });
+

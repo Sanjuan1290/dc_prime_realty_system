@@ -50,3 +50,4 @@ test('server-provided commission rate labels and adjustment messages use four-de
   assert.match(adjustment, /normalizedGroupRate\.toFixed\(4\)/)
   assert.match(adjustment, /allocatedRate\.toFixed\(4\)/)
 })
+

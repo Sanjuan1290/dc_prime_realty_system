@@ -41,3 +41,4 @@ test('Auditor holds exactly its saved permissions: export only when assigned, wr
   const auditorWithExport = { role: 'auditor', permissions: [PERMISSIONS.SYSTEM_REPORTS_EXPORT] };
   assert.equal(roleHasPermission(auditorWithExport, PERMISSIONS.SYSTEM_REPORTS_EXPORT), true);
 });
+

@@ -102,3 +102,4 @@ test('system reports and notifications enforce project scope in their controller
   assert.match(notificationsController, /appendProjectAccessFilter/);
   assert.match(notificationsController, /canAccessProject/);
 });
+

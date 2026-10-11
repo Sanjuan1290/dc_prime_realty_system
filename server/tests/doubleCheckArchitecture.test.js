@@ -51,3 +51,4 @@ test('review confirmation tokens are one-time and short-lived', () => {
   assert.match(source, /consumeDoubleCheckToken/)
   assert.match(source, /isDoubleCheckCancelled/)
 })
+

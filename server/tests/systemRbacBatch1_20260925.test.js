@@ -64,3 +64,4 @@ test('combined server-side permission plus project-scope middleware exists for r
   assert.match(authMiddleware, /roleHasPermission\(req\.authUser, permission\)/);
   assert.match(authMiddleware, /canAccessProject\(req\.authUser, projectId\)/);
 });
+

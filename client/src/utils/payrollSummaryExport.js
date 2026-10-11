@@ -185,3 +185,4 @@ export const downloadPayrollSummaryExcel = (summary) => {
   XLSX.writeFile(buildPayrollSummaryWorkbook(summary), filename, { compression: true, cellStyles: true })
   return filename
 }
+

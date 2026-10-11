@@ -22,3 +22,4 @@ const BlogCard = ({ blog }) => (
 )
 
 export default BlogCard
+

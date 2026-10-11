@@ -28,3 +28,4 @@ CREATE INDEX IF NOT EXISTS idx_network_broker_name_normalized
 ALTER TABLE system_settings
   ADD COLUMN IF NOT EXISTS max_company_profit_percent_of_pool DECIMAL(7,4) NOT NULL DEFAULT 50.0000
   AFTER in_house_sa_pool_share_percent;
+

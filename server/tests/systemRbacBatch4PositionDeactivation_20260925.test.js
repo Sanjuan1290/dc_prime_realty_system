@@ -92,3 +92,4 @@ test('email login and forgot-password resolve only the active login account', ()
   assert.match(usersController, /requestForgotPasswordCode[\s\S]*LOWER\(email\) = LOWER\(\?\)[\s\S]*status = 'active'/);
   assert.match(usersController, /verifyForgotPasswordCode[\s\S]*row\.status !== 'active'/);
 });
+

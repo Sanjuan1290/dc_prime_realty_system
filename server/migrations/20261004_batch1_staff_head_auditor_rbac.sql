@@ -181,3 +181,4 @@ VALUES
   ('auditor', 'workflow.audit.case.resolve', 1, NULL),
   ('auditor', 'workflow.audit.correction.verify', 1, NULL)
 ON DUPLICATE KEY UPDATE allowed = VALUES(allowed), updated_at = CURRENT_TIMESTAMP;
+

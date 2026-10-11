@@ -45,3 +45,4 @@ router.post('/payrolls/:employeePayrollId/corrections', requirePermission(PERMIS
 router.post('/payrolls/:employeePayrollId/release', requirePermission(PERMISSIONS.PAYROLL_RELEASE), releaseEmployeePayroll);
 
 export default router;
+

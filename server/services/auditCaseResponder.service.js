@@ -82,3 +82,4 @@ export const RESPONDER_MODE_LABELS = Object.freeze({
   department_head_fallback: 'Any active Head of the department (original Head is no longer available)',
   department_head: 'Any active Head of the department',
 });
+

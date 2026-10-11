@@ -76,3 +76,4 @@ const PayrollSummaryPrint = ({ summary }) => {
 }
 
 export default PayrollSummaryPrint
+

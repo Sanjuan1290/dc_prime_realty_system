@@ -69,3 +69,4 @@ test('Super Admin, System Admin and Auditor are always scoped to All Projects', 
   assert.match(createSystemUser, /GLOBAL_PROJECT_ROLES = \['super_admin', 'system_admin', 'auditor'\]/);
   assert.match(usersPage, /\['super_admin','system_admin','auditor'\]\.includes\(user\.role\)/);
 });
+

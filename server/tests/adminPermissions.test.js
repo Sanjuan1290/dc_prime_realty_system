@@ -59,3 +59,4 @@ test('Super Admin retains every permission and owner-only account authority', ()
   assert.equal(canActorManageUserRole(superAdmin, 'super_admin'), true);
   assert.equal(canActorCreateUserRole(superAdmin, 'super_admin'), true);
 });
+

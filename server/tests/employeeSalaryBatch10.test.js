@@ -163,3 +163,4 @@ test('final QA still reproduces the supplied Fund Release receipt benchmark exac
   assert.equal(receipt.total_deduction, 1031.61)
   assert.equal(receipt.total, 6468.39)
 })
+

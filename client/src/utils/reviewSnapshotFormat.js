@@ -124,3 +124,4 @@ export const RECORD_STATE_STYLES = Object.freeze({
   unchanged: { label: 'No Change', badge: 'bg-slate-100 text-slate-600', border: 'border-slate-200' },
 })
 
+

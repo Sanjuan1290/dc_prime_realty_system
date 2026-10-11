@@ -96,3 +96,4 @@ const PayrollSettingsModal = ({ onClose, onSaved }) => {
 }
 
 export default PayrollSettingsModal
+

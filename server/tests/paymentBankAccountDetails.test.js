@@ -32,3 +32,4 @@ test('non-cash payments collect and persist bank/account details for receipts', 
   assert.match(migration, /lot_project_payment_bank_name/);
   assert.match(migration, /lot_project_payment_account_number/);
 });
+

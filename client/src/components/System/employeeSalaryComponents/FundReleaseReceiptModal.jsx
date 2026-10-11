@@ -91,3 +91,4 @@ const FundReleaseReceiptModal = ({ payrollId, canPrint = false, canExport = fals
 }
 
 export default FundReleaseReceiptModal
+

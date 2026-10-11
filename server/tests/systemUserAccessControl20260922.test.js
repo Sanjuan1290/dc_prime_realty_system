@@ -84,3 +84,4 @@ test('Role & Access Control is permission-managed while protected System Setting
   assert.match(settingsPage, /only Super Admin or System Admin can use it with password and email verification/i);
   assert.match(roleAccess, /SYSTEM|AUDIT|MARKETING|SALES|ACCOUNTING|OPERATIONS|OWNER/);
 });
+

@@ -164,3 +164,4 @@ test('Open Audit Case never blocks editing and captures changed values in case h
     && event.reviewId === 70 && event.actorId === env.staff.id
     && JSON.parse(event.metadata).afterSnapshot.amount === 110));
 });
+

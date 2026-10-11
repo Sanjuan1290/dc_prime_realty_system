@@ -120,3 +120,4 @@ test('one canonical receipt component powers preview, print and PDF export', () 
   assert.match(salary, /Preview Receipt/);
   assert.doesNotMatch(salary, /Preview Receipt is implemented in Batch 5/);
 });
+

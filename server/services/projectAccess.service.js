@@ -189,3 +189,4 @@ export const grantAdminProjectAccess = async (connection, {
   projectId,
   changedByUserId = null,
 } = {}) => grantProjectAccessToUser(connection, userId, projectId, changedByUserId);
+

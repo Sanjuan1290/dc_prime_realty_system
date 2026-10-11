@@ -169,3 +169,4 @@ test('full account snapshot exposes one canonical object for context, cash, rece
   assert.equal(snapshot.commission.grossCommission, 93600);
   assert.equal(snapshot.commission.netPayable, 93600);
 });
+

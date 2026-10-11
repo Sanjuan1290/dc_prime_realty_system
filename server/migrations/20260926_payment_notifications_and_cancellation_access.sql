@@ -19,3 +19,4 @@ ALTER TABLE system_settings
 --   lot_project.cancellations.release_unit
 -- Persisted role defaults represent ALLOWED permissions only. Leaving these
 -- absent means Admin/Marketing/Sales/Accounting/Operations start with them OFF.
+

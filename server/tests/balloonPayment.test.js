@@ -64,3 +64,4 @@ test('balloon payments are not allocated to monthly rows and payment search is r
   assert.doesNotMatch(paymentsSource, /Search client, unit, project, reference/);
   assert.doesNotMatch(paymentsSource, /FiSearch/);
 });
+

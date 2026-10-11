@@ -71,3 +71,4 @@ test('Employees UI exposes history and promotion actions without restoring the l
   assert.match(employees, /employee\.position/);
   assert.doesNotMatch(app, /\/portal\/employee-payroll/);
 });
+

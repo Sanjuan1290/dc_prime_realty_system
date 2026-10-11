@@ -4,3 +4,4 @@ export const guidanceServices = [
   { title: 'Payment samples', description: 'Request current quotations and payment examples from an authorized representative.' },
   { title: 'Reservation guidance', description: 'Review the documents and next steps required before a reservation.' },
 ]
+

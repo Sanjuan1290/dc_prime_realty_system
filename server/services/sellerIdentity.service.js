@@ -173,3 +173,4 @@ export const assertSellerIdentityAvailable = async (connection, {
   });
   return { warnings };
 };
+

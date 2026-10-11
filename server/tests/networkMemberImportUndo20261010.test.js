@@ -67,3 +67,4 @@ test('undo is permission protected, review registered, and modal confirms exact 
   assert.match(modal, /confirmation\.trim\(\) !== `UNDO \$\{selected\.batch_id\}`/);
   assert.match(modal, /\/undo`/);
 });
+

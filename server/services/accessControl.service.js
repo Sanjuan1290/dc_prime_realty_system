@@ -171,3 +171,4 @@ export const hydrateUserPermissions = async (user, connection = db) => {
   if (OWNER_ROLES.includes(String(user.role))) return { ...user, permissions: Object.values(PERMISSIONS) };
   return { ...user, permissions: await getUserPermissionKeys(user.id, connection) };
 };
+

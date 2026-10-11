@@ -66,3 +66,4 @@ export const getManilaMonth = () => {
   const month = parts.find((part) => part.type === 'month')?.value
   return `${year}-${month}`
 }
+

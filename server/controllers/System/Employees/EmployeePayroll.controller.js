@@ -559,3 +559,4 @@ export const releaseEmployeePayroll = async (req, res) => {
     connection.release();
   }
 };
+

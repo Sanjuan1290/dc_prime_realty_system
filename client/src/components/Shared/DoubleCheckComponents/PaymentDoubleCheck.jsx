@@ -41,3 +41,4 @@ const PaymentDoubleCheck = ({ request, onConfirm, onCancel }) => {
 }
 
 export default PaymentDoubleCheck
+

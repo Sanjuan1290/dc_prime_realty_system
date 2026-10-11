@@ -53,3 +53,4 @@ test('frontend exposes protected edit to Operations and Super Admin and locks co
   assert.match(editModal, /disabled=\{isProtectedListing\}/);
   assert.match(editModal, /Protected listing: pricing, lot area, reservation fee, LMF, interest rate/);
 });
+

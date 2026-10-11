@@ -130,3 +130,4 @@ ALTER TABLE lot_project_listing_cadastral_lots
   REFERENCES lot_project_cadastral_lot_numbers (lot_project_cadastral_lot_number_id)
   ON DELETE RESTRICT
   ON UPDATE CASCADE;
+

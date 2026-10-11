@@ -88,3 +88,4 @@ test('listing profile tabs and routes have user-facing error recovery', async ()
   assert.match(boundary, /This tab could not be displayed/);
   assert.match(routeError, /Reload Page/);
 });
+

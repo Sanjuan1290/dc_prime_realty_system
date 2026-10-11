@@ -119,3 +119,4 @@ test('top-level in-house accounts become the Network hierarchy head and previews
   assert.match(commissionSource, /requireGroupHead: true/);
   assert.match(commissionSource, /Only active Sales Agents can be assigned/);
 });
+

@@ -37,3 +37,4 @@ UPDATE users
 SET admin_all_projects = 0,
     admin_type = NULL
 WHERE role <> 'admin';
+

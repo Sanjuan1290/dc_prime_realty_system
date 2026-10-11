@@ -55,3 +55,4 @@ test('cancelled-sale archive preserves the external receipt status', () => {
   assert.match(listingsController, /historical_release_note,[\s\S]*external_agent_receipt_status,[\s\S]*receipt_date/);
   assert.match(listingsController, /r\.historical_release_note,[\s\S]*r\.external_agent_receipt_status,[\s\S]*receipt\.receipt_date/);
 });
+

@@ -47,3 +47,4 @@ test('Dedicated review page preserves Head, Auditor and correction actions', () 
     'Correct &amp; Resubmit',
   ]) assert.match(center, new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
 })
+

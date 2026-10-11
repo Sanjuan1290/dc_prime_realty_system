@@ -20,3 +20,4 @@ Only `client/src/website` was changed for this phase.
 ## Important backend boundary
 
 The scheduler is intentionally frontend-only in this phase. Its availability states are mock preview data and browser-local requests are not guaranteed appointments. A future backend should replace the mock availability provider and local request storage with real slot capacity, booking, lookup, reschedule/cancel and admin-calendar APIs.
+

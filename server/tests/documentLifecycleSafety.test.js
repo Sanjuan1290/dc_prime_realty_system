@@ -54,3 +54,4 @@ test('listing profile preserves used documents and displays master deactivation 
   assert.match(documents, /Deactivated/);
   assert.match(documents, /LibraryStatusPill/);
 });
+

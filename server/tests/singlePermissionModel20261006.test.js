@@ -82,3 +82,4 @@ test('Batch 10 converts data without changing access: drops ignored rows, stores
   // only INSERT IGNORE, so a re-run is a no-op
   assert.doesNotMatch(sql, /ON DUPLICATE KEY UPDATE/);
 });
+

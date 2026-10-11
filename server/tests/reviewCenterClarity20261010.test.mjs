@@ -97,3 +97,4 @@ test('network project selection retains workflow context and corrects outdated r
   assert.match(source, /groups\/\$\{correctSection\}/)
   assert.doesNotMatch(source, /message="This Network was opened from the wrong Network section/)
 })
+

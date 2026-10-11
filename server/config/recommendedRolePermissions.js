@@ -104,3 +104,4 @@ export const RECOMMENDED_ROLE_PERMISSIONS = Object.freeze({
   accounting_head: Object.freeze([...new Set([...(BASE_ROLE_PERMISSIONS.accounting_staff || []), ...headExtras])]),
   operations_head: Object.freeze([...new Set([...(BASE_ROLE_PERMISSIONS.operations_staff || []), ...headExtras])]),
 });
+

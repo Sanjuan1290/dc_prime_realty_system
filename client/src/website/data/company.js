@@ -53,3 +53,4 @@ export const siteNavigation = [
 ]
 
 export const flattenNavigation = siteNavigation.flatMap((item) => item.children || [item])
+

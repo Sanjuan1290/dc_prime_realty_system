@@ -12,3 +12,4 @@ ALTER TABLE `lot_project_client_profiles`
   ADD COLUMN IF NOT EXISTS `soa_downpayment_amount`
     DECIMAL(14,2) NULL
     AFTER `soa_downpayment_input_mode`;
+

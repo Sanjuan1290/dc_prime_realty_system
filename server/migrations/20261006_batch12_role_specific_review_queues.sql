@@ -44,3 +44,4 @@ WHERE u.`role` IN ('marketing_staff','sales_staff','accounting_staff','operation
   AND up.`permission_key` = 'workflow.review_center.view'
   AND up.`allowed` = 1
 GROUP BY u.`role`;
+

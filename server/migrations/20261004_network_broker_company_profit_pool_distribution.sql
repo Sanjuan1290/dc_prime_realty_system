@@ -122,3 +122,4 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_network_realty_name_normalized
   ON seller_groups (realty_name_normalized);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_network_broker_prc_normalized
   ON seller_groups (broker_prc_number_normalized);
+

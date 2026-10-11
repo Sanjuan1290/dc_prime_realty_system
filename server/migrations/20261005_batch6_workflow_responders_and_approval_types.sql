@@ -47,3 +47,4 @@ SET approval_type = 'head_self'
 WHERE approval_type IS NULL
   AND initiated_by_role IN ('marketing_head','sales_head','accounting_head','operations_head')
   AND head_reviewed_by_user_id = initiated_by_user_id;
+

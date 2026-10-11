@@ -51,3 +51,4 @@ test('Role & Access Control explains role defaults, cross-department grants, own
   assert.match(roleAccess, /Discard and switch/);
   assert.match(roleAccess, /sticky bottom-0/);
 });
+

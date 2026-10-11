@@ -278,3 +278,4 @@ const NewGroupModal = ({ setShowNewGroupModal, onSaved, groupType = 'in_house' }
 }
 
 export default NewGroupModal
+

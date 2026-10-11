@@ -115,3 +115,4 @@ const FundReleaseReceipt = ({ receipt }) => {
 }
 
 export default FundReleaseReceipt
+

@@ -68,3 +68,4 @@ export const clampPayrollAttendanceThrough = ({ periodStart, periodEnd, today })
   }
   return periodEnd < current ? periodEnd : current;
 };
+

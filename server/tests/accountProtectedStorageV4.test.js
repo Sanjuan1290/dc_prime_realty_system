@@ -65,3 +65,4 @@ test('controlled correction preserves generic account files and blocks signed ac
   assert.match(correction, /protectedStorage/);
   assert.match(correction, /protectedFileMetadata/);
 });
+

@@ -45,3 +45,4 @@ export async function resolveReviewRecordLocation(connection, review) {
   }
   return { entityExists: true, recordLocation: null, recordUnavailableReason: null }
 }
+

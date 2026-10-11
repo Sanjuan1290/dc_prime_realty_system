@@ -28,3 +28,4 @@ export const importUndoBlockMessage = ({ sales = 0, changed = false, reports = 0
   if (usage) return 'Imported accounts have other activity or linked records. Undo is blocked to prevent data loss.';
   return '';
 };
+

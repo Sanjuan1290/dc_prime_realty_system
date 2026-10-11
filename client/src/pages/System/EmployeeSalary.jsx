@@ -183,3 +183,4 @@ const EmployeeSalary = () => {
 }
 
 export default EmployeeSalary
+

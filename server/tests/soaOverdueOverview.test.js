@@ -43,3 +43,4 @@ test('overdue base plus outstanding penalty reconciles to total overdue', () => 
   assert.equal(outstandingPenalty, 250)
   assert.equal(overdueWithoutPenalty + outstandingPenalty, totalOutstanding)
 })
+

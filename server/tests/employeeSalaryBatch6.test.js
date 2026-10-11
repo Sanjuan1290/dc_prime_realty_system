@@ -65,3 +65,4 @@ test('Batch 6 migration grants payroll-history defaults to Admin and Accounting 
   assert.doesNotMatch(migration, /UPDATE employee_payrolls/i);
   assert.doesNotMatch(migration, /DELETE FROM employee_payrolls/i);
 });
+

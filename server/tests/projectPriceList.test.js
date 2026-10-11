@@ -88,3 +88,4 @@ test('project price list print audit endpoint is registered', async () => {
     /router\.post\('\/lot-projects\/:projectSlug\/price-list\/print-audit',\s*requirePermission\(PERMISSIONS\.SYSTEM_PROJECTS_PRINT_PRICE_LIST\),\s*auditLotProjectPriceListPrint\);/
   );
 });
+

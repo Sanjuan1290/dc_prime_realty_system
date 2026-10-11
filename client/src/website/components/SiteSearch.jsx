@@ -45,3 +45,4 @@ const SiteSearch = ({ open, onClose }) => {
 }
 
 export default SiteSearch
+

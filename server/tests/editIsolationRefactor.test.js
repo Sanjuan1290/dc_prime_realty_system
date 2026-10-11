@@ -118,3 +118,4 @@ test('project list aggregates and client mappings preserve cadastral usage witho
   assert.match(dashboard, /project\.cadastralLotDetails/);
   assert.match(dashboard, /listingCount/);
 });
+

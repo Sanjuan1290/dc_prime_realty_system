@@ -110,3 +110,4 @@ export const headApprovalPendingResponse = (governance, definitionLabel) => {
     data: { ...governance.pending, department: governance.department },
   };
 };
+

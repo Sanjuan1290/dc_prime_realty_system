@@ -122,3 +122,4 @@ const FinalizePayrollModal = ({ payrollId, onClose, onFinalized }) => {
 }
 
 export default FinalizePayrollModal
+

@@ -78,3 +78,4 @@ test('Accredited Sellers owns In-House and External Network navigation', async (
   assert.match(permissions, /SELLER_USER_ROLES/);
   assert.match(permissions, /'external_group'/);
 });
+

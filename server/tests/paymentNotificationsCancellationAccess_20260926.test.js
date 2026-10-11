@@ -114,3 +114,4 @@ test('cancellation sensitive actions require exact permission plus current passw
   assert.match(modal, /Email Verification Code/);
   assert.match(modal, /Verify Password & Send Code/);
 });
+

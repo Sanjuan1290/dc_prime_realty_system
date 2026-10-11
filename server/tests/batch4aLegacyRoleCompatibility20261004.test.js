@@ -40,3 +40,4 @@ test('system-user authoring UI uses only the new governance role model', () => {
     assert.match(permissions, new RegExp(`['\"]${role}['\"]`))
   }
 })
+

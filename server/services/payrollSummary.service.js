@@ -9,3 +9,4 @@ export const getPayrollPeriodSummary = async (connection, { month, periodType })
   const rows = await listPayrollDrafts(connection, { month, periodType });
   return buildPayrollSummaryFromRows({ rows, period });
 };
+

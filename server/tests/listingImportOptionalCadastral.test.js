@@ -31,3 +31,4 @@ test('listing import treats cadastral lot number as optional', () => {
   assert.match(modal, /numFmt: '@'/)
   assert.match(modal, /Unit ID column is formatted as Text so leading zeroes are preserved/)
 })
+

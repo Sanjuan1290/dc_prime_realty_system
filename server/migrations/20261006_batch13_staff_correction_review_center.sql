@@ -54,3 +54,4 @@ WHERE u.`role` IN ('marketing_staff','sales_staff','accounting_staff','operation
   AND up.`allowed` = 1
 GROUP BY u.`role`
 ORDER BY u.`role`;
+

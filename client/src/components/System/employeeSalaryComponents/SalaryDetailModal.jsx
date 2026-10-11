@@ -179,3 +179,4 @@ const SalaryDetailModal = ({ payrollId, initialTab = 'salary', canRecalculate = 
 }
 
 export default SalaryDetailModal
+

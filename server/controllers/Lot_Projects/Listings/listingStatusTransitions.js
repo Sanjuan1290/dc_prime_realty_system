@@ -113,3 +113,4 @@ export const validateListingStatusTransition = ({
     `Listing status cannot be changed directly from ${current.replaceAll('_', ' ')} to ${next.replaceAll('_', ' ')}.`
   );
 };
+

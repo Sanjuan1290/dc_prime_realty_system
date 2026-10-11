@@ -60,3 +60,4 @@ export const getEffectiveCompensationForPeriod = async (connection, {
 
   return record;
 };
+

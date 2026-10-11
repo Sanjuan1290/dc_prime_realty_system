@@ -25,3 +25,4 @@ test('Network rate controller no longer returns APR pending for rate saves', () 
   assert.match(controller, /actionKey: 'network\.rates\.update'/);
   assert.match(controller, /createOperationalReview\(connection, \{[\s\S]*actionKey: 'network\.rates\.update'/);
 });
+

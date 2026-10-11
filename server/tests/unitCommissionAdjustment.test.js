@@ -138,3 +138,4 @@ test('unit commission adjustment preserves four-decimal rates and allows a CP-re
   const payload = buildUnitCommissionAdjustmentPayload({ groupRate: 5, rates: result.rates });
   assert.equal(payload.rates.find((row) => row.commissionId === 23).rate, 0.791);
 });
+

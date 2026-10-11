@@ -25,7 +25,8 @@ const NetworkMemberImportHistoryModal = ({ groupId, networkName, onClose, onUndo
     setSubmitting(true)
     setError('')
     try {
-      const result = await useFetchPost(`/seller-groups/${groupId}/members/import/${selected.batch_id}/undo`)
+      // The exact-batch text confirmation above is the compact review step.
+      const result = await useFetchPost(`/seller-groups/${groupId}/members/import/${selected.batch_id}/undo`, {}, { confirmationHandled: 'compact' })
       await queryClient.invalidateQueries({ queryKey: ['network-member-import-history', groupId] })
       onUndone(result?.message || 'Import undone successfully.')
     } catch (err) {
@@ -99,3 +100,4 @@ const NetworkMemberImportHistoryModal = ({ groupId, networkName, onClose, onUndo
 }
 
 export default NetworkMemberImportHistoryModal
+

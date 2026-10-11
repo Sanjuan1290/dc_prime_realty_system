@@ -391,3 +391,4 @@ const ReportsPrintPage = () => {
 }
 
 export default ReportsPrintPage
+

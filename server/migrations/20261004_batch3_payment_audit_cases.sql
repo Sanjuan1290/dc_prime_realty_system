@@ -37,3 +37,4 @@ CREATE TABLE IF NOT EXISTS audit_cases (
 
 ALTER TABLE internal_notifications
   ADD CONSTRAINT fk_internal_notification_case FOREIGN KEY (audit_case_id) REFERENCES audit_cases(audit_case_id) ON DELETE CASCADE ON UPDATE CASCADE;
+

@@ -71,3 +71,4 @@ test('lot project workspace options endpoint returns the database location', asy
   assert.equal(responseBody.data[0].location, 'Maragondon, Cavite');
   assert.equal(responseBody.data[0].lot_project_location, 'Maragondon, Cavite');
 });
+

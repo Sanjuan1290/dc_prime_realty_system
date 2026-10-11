@@ -80,3 +80,4 @@ export const getAccessTier = (key = '') => {
   if (type === 'Delete' || isSensitivePermission(key)) return 'full'
   return 'edit'
 }
+

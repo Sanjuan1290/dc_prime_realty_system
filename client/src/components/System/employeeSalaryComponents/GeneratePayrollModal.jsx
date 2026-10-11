@@ -74,3 +74,4 @@ const GeneratePayrollModal = ({ month, periodType, periodLabel, onClose, onGener
 }
 
 export default GeneratePayrollModal
+

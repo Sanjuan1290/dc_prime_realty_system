@@ -25,3 +25,4 @@ WHERE u.status = 'active' AND u.role IN ('admin', 'accounting')
 ON DUPLICATE KEY UPDATE allowed = 1, updated_at = CURRENT_TIMESTAMP;
 
 COMMIT;
+

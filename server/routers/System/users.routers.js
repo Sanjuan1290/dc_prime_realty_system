@@ -56,3 +56,4 @@ router.post('/reactivate/:id', authenticateUser, requireExactRole('super_admin',
 router.patch('/resetPassword/:id', authenticateUser, requirePermission(PERMISSIONS.SYSTEM_USERS_RESET_PASSWORD), resetUserPassword);
 
 export default router;
+

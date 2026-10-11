@@ -23,3 +23,4 @@ const DoubleCheckSection = ({ title, helper = '', children, tone = 'slate', badg
 }
 
 export default DoubleCheckSection
+

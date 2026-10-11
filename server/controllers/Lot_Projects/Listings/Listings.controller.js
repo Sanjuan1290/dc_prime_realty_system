@@ -325,15 +325,16 @@ export const getLotProjectListings = async (req, res) => {
             ON cp.lot_project_client_profile_id = current_account.lot_project_client_profile_id
         `
       : `
+          /* Legacy schema fallback: select the latest active buyer profile
+             without a subquery inside JOIN ON (unsupported by TiDB). */
+          LEFT JOIN (
+            SELECT lot_project_listing_id, MAX(lot_project_client_profile_id) AS latest_active_profile_id
+            FROM lot_project_client_profiles
+            WHERE lot_project_client_profile_status = 'active'
+            GROUP BY lot_project_listing_id
+          ) cp_current ON cp_current.lot_project_listing_id = l.lot_project_listing_id
           LEFT JOIN lot_project_client_profiles cp
-            ON cp.lot_project_client_profile_id = (
-              SELECT cp_current.lot_project_client_profile_id
-              FROM lot_project_client_profiles cp_current
-              WHERE cp_current.lot_project_listing_id = l.lot_project_listing_id
-                AND cp_current.lot_project_client_profile_status = 'active'
-              ORDER BY cp_current.lot_project_client_profile_id DESC
-              LIMIT 1
-            )
+            ON cp.lot_project_client_profile_id = cp_current.latest_active_profile_id
         `;
 
     const [rows] = await connection.query(
@@ -3067,3 +3068,4 @@ export const deleteLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
+

@@ -36,3 +36,4 @@ router.post('/protected-changes/:requestId/review',requireReviewCenterRole,requi
 router.get('/notifications',requirePermission(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW),listInternalNotifications);
 router.patch('/notifications/:id/read',requirePermission(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW),markInternalNotificationRead);
 export default router;
+

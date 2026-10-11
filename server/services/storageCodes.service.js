@@ -125,3 +125,4 @@ export const parsePaymentProofSequenceFromName = (storedFileName) => {
   const match = clean(storedFileName).match(/__PROOF-(\d{1,6})\./i);
   return match ? Number(match[1]) : 1;
 };
+

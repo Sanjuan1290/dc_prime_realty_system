@@ -196,3 +196,4 @@ export const buildFundReleaseReceipt = (payroll, { today = null } = {}) => {
     source: official && payroll?.finalized_snapshot ? 'finalized_snapshot' : 'draft_calculation',
   };
 };
+

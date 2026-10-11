@@ -111,3 +111,4 @@ test('Corrected payroll remains official and can still be released, while Releas
   assert.match(salaryDetail, /canRelease && \['finalized', 'corrected'\]\.includes\(payroll\?\.payroll_status\)/)
   assert.match(correctionService, /RELEASED_PAYROLL_CORRECTION_BLOCKED/)
 })
+

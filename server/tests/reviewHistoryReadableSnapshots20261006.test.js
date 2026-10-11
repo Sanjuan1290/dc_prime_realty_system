@@ -43,3 +43,4 @@ test('completed transitions stay visible instead of producing stale workflow err
   assert.match(controller, /Confirmed\. The Auditor has been notified\. You can continue tracking this review in History & Tracking\./)
   assert.match(controller, /Audit verification completed\. Review closed\. It remains available in History & Tracking\./)
 })
+

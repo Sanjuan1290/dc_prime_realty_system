@@ -47,3 +47,4 @@ const CommissionReleaseDoubleCheck = ({ request, onConfirm, onCancel }) => {
 }
 
 export default CommissionReleaseDoubleCheck
+

@@ -75,9 +75,14 @@ export const activeNotificationSql = (alias = 'n') => {
     OR EXISTS (
       SELECT 1
       FROM operational_reviews r
-      LEFT JOIN audit_cases ac ON ac.audit_case_id = (
-        SELECT MAX(lac.audit_case_id) FROM audit_cases lac WHERE lac.operational_review_id = r.operational_review_id
-      )
+      /* TiDB does not support subqueries in JOIN ON conditions.
+         Resolve the latest case per review using a derived table instead. */
+      LEFT JOIN (
+        SELECT operational_review_id, MAX(audit_case_id) AS latest_audit_case_id
+        FROM audit_cases
+        GROUP BY operational_review_id
+      ) latest_case ON latest_case.operational_review_id = r.operational_review_id
+      LEFT JOIN audit_cases ac ON ac.audit_case_id = latest_case.latest_audit_case_id
       WHERE r.operational_review_id = ${alias}.operational_review_id
         AND (CASE ${alias}.notification_type ${cases} ELSE 1 END)
         /* A newer copy of the same action notification replaces older copies. */
@@ -165,3 +170,4 @@ export const notifySystemAdmins = async (connection, { reviewId, auditCaseId = n
   const userIds = await getEligibleRoleUserIds(connection, { role: 'system_admin' });
   return createInternalNotifications(connection, { userIds, type, title, message, reviewId, auditCaseId });
 };
+

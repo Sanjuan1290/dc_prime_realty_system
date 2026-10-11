@@ -120,3 +120,4 @@ export const blogs = [
 ]
 
 export const getBlogBySlug = (slug) => blogs.find((blog) => blog.slug === slug)
+

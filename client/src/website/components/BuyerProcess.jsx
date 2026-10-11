@@ -25,3 +25,4 @@ const BuyerProcess = () => (
 )
 
 export default BuyerProcess
+

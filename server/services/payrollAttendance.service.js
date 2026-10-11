@@ -222,3 +222,4 @@ export const getPayrollAttendanceSummary = async (connection, { employeeId, date
     summary: summarizeAttendancePayrollRows({ rows, regularWorkingMinutes: runtime.regularWorkingMinutes }),
   };
 };
+

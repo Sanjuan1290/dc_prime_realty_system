@@ -125,3 +125,4 @@ test('Network migration is TiDB-safe and does not rely on stored procedures or s
   assert.match(migration, /ALTER TABLE seller_groups\s+ADD COLUMN IF NOT EXISTS broker_name[\s\S]*?;\s*ALTER TABLE seller_groups\s+ADD COLUMN IF NOT EXISTS broker_license_number/i);
   assert.match(migration, /ALTER TABLE system_settings\s+ADD COLUMN IF NOT EXISTS in_house_dm_pool_share_percent[\s\S]*?;\s*ALTER TABLE system_settings\s+ADD COLUMN IF NOT EXISTS in_house_sd_pool_share_percent/i);
 });
+

@@ -48,3 +48,4 @@ FROM `users`
 WHERE COALESCE(`account_category`, 'seller') = 'system'
    OR `role` IN ('super_admin','admin','marketing','sales','accounting','operations')
 ORDER BY `id`;
+

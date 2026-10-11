@@ -143,3 +143,4 @@ test('Payroll Settings UI clearly keeps rates blank until approved and exposes o
   assert.match(settingsModal, /Payroll Boundary Only — 1st or 16th/)
   assert.match(settingsModal, /current Attendance does not yet expose separate Regular Holiday OT minutes/)
 })
+

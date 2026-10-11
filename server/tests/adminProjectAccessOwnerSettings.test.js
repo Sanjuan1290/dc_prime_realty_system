@@ -97,3 +97,4 @@ test('System Admin can perform permission-backed administration while owner-only
   assert.doesNotMatch(users, />Reset<\/button>/);
   assert.match(users, /canDeactivate && canManageTarget\(user\) && user\.status === 'active'/);
 });
+

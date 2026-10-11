@@ -796,3 +796,4 @@ export const editTemplate = async (req, res) => {
     connection.release();
   }
 };
+

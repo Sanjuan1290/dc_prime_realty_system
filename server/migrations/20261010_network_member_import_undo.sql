@@ -39,3 +39,4 @@ CREATE TABLE IF NOT EXISTS network_member_import_items (
   INDEX idx_member_import_seller (accredited_seller_id, batch_id),
   CONSTRAINT fk_member_import_item_batch FOREIGN KEY (batch_id) REFERENCES network_member_import_batches (batch_id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+

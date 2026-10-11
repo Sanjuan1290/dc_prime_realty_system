@@ -393,3 +393,4 @@ for (const [label, applied] of [['applied to DP', 1], ['separate', 0]]) {
     assert.equal(terms.financedBalance, applied ? 686400 : 636400);
   });
 }
+

@@ -145,3 +145,4 @@ const Code128Barcode = ({ value, employeeName = '', employeeCode = '', showPrint
 }
 
 export default Code128Barcode
+

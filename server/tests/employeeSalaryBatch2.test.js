@@ -150,3 +150,4 @@ test('Batch 2 records premium hours without hard-coding money multipliers; later
   assert.match(calculator, /nightDifferentialPercentage === null \? 0/);
   assert.doesNotMatch(calculator, /const regularOtMultiplier = 1\.25|const restDayOtMultiplier = 1\.30|const regularHolidayMultiplier = 2\.00|const nightDifferentialPercentage = 10/);
 });
+

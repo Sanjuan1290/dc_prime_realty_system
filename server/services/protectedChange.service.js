@@ -45,3 +45,4 @@ export const consumeProtectedChange=async(connection,{requestId,actor,actionKey,
   await connection.query("UPDATE protected_change_requests SET status='used',used_at=NOW() WHERE protected_change_request_id=?",[row.protected_change_request_id]);
   return row;
 };
+

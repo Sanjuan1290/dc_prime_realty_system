@@ -346,3 +346,4 @@ export const summarizeGroupFixedRates = (rates = {}, { poolShares = DEFAULT_IN_H
     projectName: 'Network project',
   });
 };
+

@@ -23,3 +23,4 @@ test('employee activation and deactivation require a warning confirmation', () =
   assert.match(page, /no longer be included in active attendance operations or future attendance Excel exports/)
   assert.match(page, /onConfirm=\{\(\) => confirmEmployee && statusMutation\.mutate\(confirmEmployee\)\}/)
 })
+

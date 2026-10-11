@@ -18,3 +18,4 @@ const DocumentDoubleCheck = ({ request, onConfirm, onCancel }) => {
 }
 
 export default DocumentDoubleCheck
+

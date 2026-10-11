@@ -37,3 +37,4 @@ test('Batch 4 protected modules are assigned to their intended departments', () 
   assert.match(payments, /department:\s*['\"]accounting['\"]/);
   assert.match(settings, /PROJECT_SETTINGS_DEPARTMENT\s*=\s*['\"]operations['\"]/);
 });
+

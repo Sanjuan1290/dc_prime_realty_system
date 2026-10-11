@@ -62,3 +62,4 @@ SELECT `permission_key`, `allowed`
 FROM `role_permission_defaults`
 WHERE `role` = 'auditor'
 ORDER BY `permission_key`;
+

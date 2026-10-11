@@ -279,3 +279,4 @@ export const applyEmploymentChange = async (connection, {
     after: mapEmploymentHistoryRow(newRows[0]),
   };
 };
+

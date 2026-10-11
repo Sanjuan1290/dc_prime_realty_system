@@ -52,3 +52,4 @@ test('SOA first due date may be past or future when it is not before the saved a
   assert.doesNotMatch(controller, /First Due Date must be today or a future date/)
   assert.doesNotMatch(controller, /historicalMinimum|shiftDateYears/)
 })
+

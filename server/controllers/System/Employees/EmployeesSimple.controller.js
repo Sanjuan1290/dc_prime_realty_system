@@ -646,3 +646,4 @@ export const createEmployeeEmploymentChange = async (req, res) => {
     connection.release();
   }
 };
+

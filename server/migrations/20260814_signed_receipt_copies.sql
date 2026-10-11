@@ -133,3 +133,4 @@ FROM lot_project_commission_receipt_files
 UNION ALL
 SELECT 'lot_project_payment_acknowledgement_files', COUNT(*)
 FROM lot_project_payment_acknowledgement_files;
+
