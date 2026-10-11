@@ -28,6 +28,8 @@ const TECHNICAL_MUTATION_PATTERNS = [
   /\/attendance\/scan$/i,
   /\/attendance-kiosk\/(?:unlock|lock|scan)$/i,
   /\/workflow\/notifications\/\d+\/read$/i,
+  // Read-only inbox state (not a review approval or business record change).
+  /\/workflow\/notifications\/read-all$/i,
 ]
 
 const normalizeBaseUrl = (value) =>
@@ -298,4 +300,5 @@ export const requestApiBlob = async (
     }
   }
 }
+
 
