@@ -27,6 +27,7 @@ import {
   buildSettingsVerificationPayload,
   LOT_PROJECT_SETTINGS_ACTION,
   sendSettingsVerificationCodeEmail,
+  deliverCommittedSettingsCode,
   SETTINGS_VERIFICATION_ENTITY,
 } from '../../../services/settingsVerification.service.js';
 
@@ -192,9 +193,19 @@ export const getLotProjectSettings = async (req, res) => {
 };
 
 export const requestLotProjectSettingsCode = async (req, res) => {
-  const connection = await db.getConnection();
+  let connection = null;
+  let transactionOpen = false;
+  let stage = 'acquire_connection';
+  const startedAt = Date.now();
+  // These stage markers distinguish a platform 502 from an app-level Resend
+  // or TiDB failure. Never log the password, code, or submitted settings.
+  console.info('[lot-project-settings-code] started', {
+    projectSlug: String(req.params?.projectSlug || ''),
+    actorRole: req.authUser?.role || 'unknown',
+  });
 
   try {
+    connection = await db.getConnection();
     const actor = req.authUser || await getAuthenticatedUser(req);
     if (!actor?.id) return res.status(401).json({ success: false, message: 'Please login before authorizing project settings.' });
     if (!canEditProjectSettings(actor)) {
@@ -215,7 +226,9 @@ export const requestLotProjectSettingsCode = async (req, res) => {
     const governedPayload = buildProjectSettingsVerificationPayload({ actor, project, settingsPayload, reason });
     const auditCaseId = Number(req.body.auditCaseId || req.body.audit_case_id || 0);
 
+    stage = 'begin_transaction';
     await connection.beginTransaction();
+    transactionOpen = true;
 
     if ((isOwnerAdministrator(actor) && Number(req.body?.auditCaseId || req.body?.audit_case_id || 0) > 0)) {
       const auditCase = await getPendingAuditCorrectionCase(connection, {
@@ -226,6 +239,7 @@ export const requestLotProjectSettingsCode = async (req, res) => {
       });
       if (!auditCase) throw Object.assign(new Error('Open this project-settings correction from a valid Auditor-approved case.'), { statusCode: 409, code: 'AUDIT_CASE_REQUIRED' });
       await connection.commit();
+      transactionOpen = false;
       return res.json({
         success: true,
         message: 'Auditor-approved correction case verified. Continue to Final Review.',
@@ -235,6 +249,7 @@ export const requestLotProjectSettingsCode = async (req, res) => {
 
     if (actor.role === 'operations_head') {
       await connection.commit();
+      transactionOpen = false;
       return res.json({
         success: true,
         message: 'Operations Head authority verified. Continue to Final Review.',
@@ -255,6 +270,7 @@ export const requestLotProjectSettingsCode = async (req, res) => {
         reason,
       });
       await connection.commit();
+      transactionOpen = false;
       const approved = approval.status === 'approved';
       return res.status(approved ? 200 : 202).json({
         success: true,
@@ -284,6 +300,7 @@ export const requestLotProjectSettingsCode = async (req, res) => {
       throw Object.assign(new Error('Your password is incorrect.'), { statusCode: 401 });
     }
 
+    stage = 'create_verification';
     const { verificationId, code } = await createSensitiveActionVerification(connection, {
       userId: actor.id,
       actionType: LOT_PROJECT_SETTINGS_ACTION,
@@ -293,16 +310,52 @@ export const requestLotProjectSettingsCode = async (req, res) => {
       reason,
       requestIp: getSensitiveActionRequestIp(req),
     });
-    await sendSettingsVerificationCodeEmail({
-      actor,
-      code,
-      scopeLabel: 'Lot Project Settings Emergency Override',
-      entityLabel: project.lot_project_name || project.lot_project_slug || 'Lot Project',
-      reason,
-      settings: settingsPayload,
-    });
+    // Commit the one-time challenge and release TiDB *before* contacting Resend.
+    // Holding a DB transaction open across an external HTTP call can exhaust
+    // connections or retain locks when the email provider is slow/unavailable.
+    stage = 'commit_verification';
     await connection.commit();
+    transactionOpen = false;
+    connection.release();
+    connection = null;
 
+    stage = 'send_verification_email';
+    await deliverCommittedSettingsCode({
+      deliver: () => sendSettingsVerificationCodeEmail({
+        actor,
+        code,
+        scopeLabel: 'Lot Project Settings Emergency Override',
+        entityLabel: project.lot_project_name || project.lot_project_slug || 'Lot Project',
+        reason,
+        settings: settingsPayload,
+      }),
+      // A failed send must not leave a live code the requester cannot use.
+      invalidate: async () => {
+        const cleanupConnection = await db.getConnection();
+        try {
+          await cleanupConnection.query(
+            `UPDATE destructive_action_verifications
+             SET status = 'expired'
+             WHERE destructive_action_verification_id = ?
+               AND user_id = ? AND action_type = ? AND status = 'pending'`,
+            [verificationId, actor.id, LOT_PROJECT_SETTINGS_ACTION]
+          );
+        } finally {
+          cleanupConnection.release();
+        }
+      },
+      onInvalidationError: (cleanupError) => {
+        console.error('[lot-project-settings-code] verification cleanup failed:', cleanupError?.code || cleanupError?.message);
+      },
+    }).catch((emailError) => {
+      console.error('[lot-project-settings-code] email delivery failed:', emailError?.code || emailError?.message);
+      throw Object.assign(new Error('Unable to send the verification email right now. Check the Resend service and try again.'), {
+        statusCode: 503,
+        code: 'SETTINGS_VERIFICATION_DELIVERY_FAILED',
+      });
+    });
+
+    console.info('[lot-project-settings-code] delivered', { durationMs: Date.now() - startedAt });
     return res.json({
       success: true,
       message: `Emergency verification code sent to ${maskSensitiveActionEmail(actor.email)}.`,
@@ -314,10 +367,21 @@ export const requestLotProjectSettingsCode = async (req, res) => {
       },
     });
   } catch (error) {
-    try { await connection.rollback(); } catch (_) {}
+    if (transactionOpen && connection) {
+      try { await connection.rollback(); } catch (rollbackError) {
+        console.error('[lot-project-settings-code] rollback failed:', rollbackError?.code || rollbackError?.message);
+      }
+    }
+    // No password, code, email address, or settings values are logged.
+    console.error('[lot-project-settings-code] failed:', {
+      stage,
+      durationMs: Date.now() - startedAt,
+      code: error?.code || 'UNKNOWN',
+      message: error?.message || 'Unknown error',
+    });
     return res.status(error.statusCode || 500).json({ success: false, message: getErrorMessage(error), code: error.code || undefined });
   } finally {
-    connection.release();
+    connection?.release();
   }
 };
 

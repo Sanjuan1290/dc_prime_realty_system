@@ -74,3 +74,21 @@ export const sendSettingsVerificationCodeEmail = async ({
   });
 };
 
+
+
+// Called only after the verification challenge is committed and the connection
+// returned to the pool. If Resend fails, invalidate that unused challenge.
+// This helper is dependency-injected so delivery/cleanup behavior is testable
+// without contacting Resend or a live TiDB instance.
+export const deliverCommittedSettingsCode = async ({ deliver, invalidate, onInvalidationError = () => {} }) => {
+  try {
+    return await deliver();
+  } catch (deliveryError) {
+    try {
+      await invalidate();
+    } catch (cleanupError) {
+      onInvalidationError(cleanupError);
+    }
+    throw deliveryError;
+  }
+};
