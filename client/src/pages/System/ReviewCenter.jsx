@@ -107,6 +107,21 @@ const SNAPSHOT_LABELS = Object.freeze({
   unitCode: 'Unit Code',
   lotType: 'Lot Type',
   lotAreaSqm: 'Lot Area (sqm)',
+  installmentPricePerSqm: 'Installment Price / sqm',
+  cashPricePerSqm: 'Cash Price / sqm',
+  netSellingPrice: 'Net Selling Price',
+  legalMiscRate: 'Legal / Misc Rate',
+  legalMiscAmount: 'Legal / Misc Amount',
+  reservationFee: 'Reservation Fee',
+  annualInterestRate: 'Annual Interest Rate',
+  cadastralLots: 'Cadastral Lot Numbers',
+  documentRequirements: 'Document Requirements',
+  documentCount: 'Document Requirements Count',
+  listings: 'Imported Units and Prices',
+  removedUnits: 'Removed Units and Prices',
+  documentId: 'Document',
+  isRequired: 'Required',
+  responsibleParty: 'Responsible Party',
   oldUnitIds: 'Previous Unit Codes',
   soldSubstatus: 'Sold Status',
   importedRows: 'Imported Rows',
@@ -452,6 +467,7 @@ export const ReviewDetails = ({ reviewId, onClose, onChanged }) => {
             <p className="mt-0.5 text-sm font-semibold text-slate-500">Only the values that differ are listed. Internal field names and raw JSON are intentionally hidden; open the full record below if you need everything.</p>
           </div>
           <div className="p-4">
+            {review.snapshotRecoveredFromAuditLog ? <p role="status" className="mb-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800">Original price changes were recovered from the matching Audit Log for this older review. No stored review or listing values were changed.</p> : null}
             {isNetworkImportReview
               ? <NetworkImportReviewSummary before={before} after={after} />
               : <ReviewSnapshotDiff beforeValue={review.before_snapshot_json} afterValue={review.after_snapshot_json} lookups={review.lookups} labels={snapshotLabels} fieldOrder={SNAPSHOT_FIELD_ORDER} isHiddenField={isTechnicalSnapshotField} listRenderers={SNAPSHOT_LIST_RENDERERS} mode="changes" />}

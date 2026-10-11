@@ -107,7 +107,9 @@ const RecordListDiff = ({ ctx, row, showUnchanged }) => {
   const shown = showUnchanged ? entries : entries.filter((entry) => entry.state !== 'unchanged')
   const hiddenCount = entries.length - shown.length
   if (!shown.length && !hiddenCount) return <p className="text-sm font-semibold italic text-slate-400">None</p>
-  return <div className="grid gap-3">
+  const ListContainer = shown.length > 10 ? 'details' : 'div'
+  return <ListContainer className="grid gap-3">
+    {shown.length > 10 ? <summary className="mb-3 cursor-pointer text-sm font-black text-blue-700">Show details for {shown.length} records</summary> : null}
     {shown.map((entry) => {
       const style = RECORD_STATE_STYLES[entry.state]
       const title = recordTitle(ctx, entry.after || entry.before, idKey, entry.index)
@@ -131,7 +133,7 @@ const RecordListDiff = ({ ctx, row, showUnchanged }) => {
       </div>
     })}
     {hiddenCount ? <p className="text-xs font-semibold text-slate-500">{hiddenCount} other {hiddenCount === 1 ? 'entry is' : 'entries are'} unchanged.</p> : null}
-  </div>
+  </ListContainer>
 }
 
 /**
@@ -151,7 +153,7 @@ const ReviewSnapshotDiff = ({ beforeValue, afterValue, lookups = {}, mode = 'cha
   const isNewRecord = !parseSnapshotValue(beforeValue)
 
   if (!showUnchanged && !changedFieldCount && !listRows.length) {
-    return <p className="text-sm font-semibold text-emerald-800">The saved values before and after this action are the same.</p>
+    return <p className="text-sm font-semibold text-amber-800">No differences were captured in this review snapshot. This does not prove the record was unchanged; check the full record and Audit Logs for details.</p>
   }
 
   return <div className="grid gap-5">
@@ -170,5 +172,6 @@ const ReviewSnapshotDiff = ({ beforeValue, afterValue, lookups = {}, mode = 'cha
 }
 
 export default ReviewSnapshotDiff
+
 
 

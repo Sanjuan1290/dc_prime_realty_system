@@ -340,7 +340,20 @@ export const importLotProjectListings = async (req, res) => {
           documentCount: defaultDocuments.length,
         },
       })
-      imported.push({ listingId: inserted.listingId, unitCode: row.normalized.unitCode })
+      imported.push({
+        listingId: inserted.listingId,
+        unitCode: row.normalized.unitCode,
+        lotType: row.normalized.lotType,
+        lotAreaSqm: row.normalized.lotAreaSqm,
+        installmentPricePerSqm: row.normalized.installmentPricePerSqm,
+        cashPricePerSqm: row.normalized.cashPricePerSqm,
+        netSellingPrice: inserted.pricing.netSellingPrice,
+        legalMiscRate: row.normalized.legalMiscRate,
+        legalMiscAmount: inserted.pricing.lmfAmount,
+        tcp: inserted.pricing.tcp,
+        reservationFee: row.normalized.reservationFee,
+        annualInterestRate: row.normalized.annualInterestRate,
+      })
     }
 
     await connection.query(
@@ -377,6 +390,8 @@ export const importLotProjectListings = async (req, res) => {
         filename,
         importedRows: imported.length,
         listingIds: imported.map((item) => item.listingId),
+        // Audit each imported unit's actual saved price, not just the batch count.
+        listings: imported,
       },
     })
 
@@ -569,7 +584,13 @@ export const revertLotProjectListingImport = async (req, res) => {
         description: `Removed ${row.unit_id_snapshot} from import batch ${batch.batch_reference}.`,
         metadata: { source: 'import_reversal', batchId, batchReference: batch.batch_reference, reason, originalListing: normalized },
       })
-      removed.push({ listingId, unitCode: row.unit_id_snapshot })
+      removed.push({
+        listingId, unitCode: row.unit_id_snapshot,
+        lotType: normalized.lotType,
+        lotAreaSqm: normalized.lotAreaSqm,
+        installmentPricePerSqm: normalized.installmentPricePerSqm,
+        cashPricePerSqm: normalized.cashPricePerSqm,
+      })
     }
 
     const [[remainingRow]] = await connection.query(
@@ -614,6 +635,7 @@ export const revertLotProjectListingImport = async (req, res) => {
         removedCount: removed.length,
         remainingCount: remaining,
         removedListingIds: removed.map((item) => item.listingId),
+        removedUnits: removed,
       },
     })
 
@@ -628,4 +650,5 @@ export const revertLotProjectListingImport = async (req, res) => {
     return res.status(error?.statusCode || 500).json({ message: getErrorMessage(error) })
   } finally { connection.release() }
 }
+
 

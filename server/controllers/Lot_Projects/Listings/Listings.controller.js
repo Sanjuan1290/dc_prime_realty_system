@@ -121,6 +121,33 @@ import {
 import { getPendingAuditCorrectionCase, advanceAuditCaseToRecheck } from '../../../services/auditCaseAuthorization.service.js';
 import { getReviewActionLabel } from '../../../config/reviewActions.js';
 
+// Review snapshots must include the financial fields actually saved by the
+// listing controller. Without these, a price-only edit looks unchanged to the
+// Department Head even though the operation and audit log were successful.
+// This mapper is also used for creates/deletes, so every listing review shows
+// the same vocabulary and retains the original values at the moment of saving.
+const storedListingReviewFinancials = (listing = {}) => ({
+  installmentPricePerSqm: Number(listing.lot_project_listing_installment_price_per_sqm ?? listing.lot_project_listing_price_per_sqm ?? 0),
+  cashPricePerSqm: Number(listing.lot_project_listing_cash_price_per_sqm ?? listing.lot_project_listing_price_per_sqm ?? 0),
+  netSellingPrice: Number(listing.lot_project_listing_net_selling_price ?? 0),
+  legalMiscRate: Number(listing.lot_project_listing_lmf_rate ?? 0),
+  legalMiscAmount: Number(listing.lot_project_listing_lmf_amount ?? 0),
+  tcp: Number(listing.lot_project_listing_tcp ?? 0),
+  reservationFee: Number(listing.lot_project_listing_reservation_fee ?? 0),
+  annualInterestRate: Number(listing.annual_interest_rate ?? 0),
+});
+
+const listingReviewFinancialsAfterEdit = ({ installmentPricePerSqm, cashPricePerSqm, installmentPricing, legalMiscRate, reservationFee, annualInterestRate }) => ({
+  installmentPricePerSqm,
+  cashPricePerSqm,
+  netSellingPrice: installmentPricing.netSellingPrice,
+  legalMiscRate,
+  legalMiscAmount: installmentPricing.lmfAmount,
+  tcp: installmentPricing.tcp,
+  reservationFee,
+  annualInterestRate,
+});
+
 // Fields a reserved/sold listing edit can change. The Head approves exactly
 // these values; submitting different values needs a new approval.
 const buildProtectedListingEditPayload = (body = {}, listing = {}) => {
@@ -2260,6 +2287,7 @@ export const updateLotProjectListing = async (req, res) => {
     }
 
     let cadastralSyncResult = { added: 0, removed: 0, skipped: true };
+    let reviewCadastralDiff = null;
     // Cancellation settlement is a status/account operation. It must never
     // reinterpret display placeholders or change the listing's cadastral links.
     const cadastralWasSubmitted = !completesCancellation && (
@@ -2333,9 +2361,16 @@ export const updateLotProjectListing = async (req, res) => {
         );
       }
       cadastralSyncResult = { added: addedIds.length, removed: removedIds.length, skipped: addedIds.length === 0 && removedIds.length === 0 };
+      if (addedIds.length || removedIds.length) {
+        reviewCadastralDiff = {
+          before: [...currentByNumber.keys()].sort(),
+          after: [...requestedByNumber.keys()].sort(),
+        };
+      }
     }
 
     let listingDocumentSyncResult = { count: null, skipped: true };
+    let reviewDocumentsDiff = null;
     if (Array.isArray(req.body.documentRequirements)) {
       const requestedListingDocuments = req.body.documentRequirements.length
         ? req.body.documentRequirements
@@ -2357,6 +2392,16 @@ export const updateLotProjectListing = async (req, res) => {
       const requestedSignature = signature(requestedClean);
 
       if (currentSignature !== requestedSignature) {
+        const snapshotDocuments = (rows) => rows.map((doc) => ({
+          documentId: Number(doc.document_id),
+          isRequired: Number((doc.is_required ?? doc.lot_project_listing_document_is_required) || 0),
+          responsibleParty: String((doc.responsible_party ?? doc.lot_project_listing_document_responsible_party) || 'client').toLowerCase(),
+          status: String((doc.status ?? doc.lot_project_listing_document_status) || 'active').toLowerCase(),
+        })).sort((a, b) => a.documentId - b.documentId);
+        reviewDocumentsDiff = {
+          before: snapshotDocuments(currentDocumentRows),
+          after: snapshotDocuments(requestedClean),
+        };
         if (isProtectedListing) {
           throw Object.assign(
             new Error('Listing document requirements are locked after this listing has been reserved. Manage the buyer account documents instead.'),
@@ -2473,6 +2518,7 @@ export const updateLotProjectListing = async (req, res) => {
         oldUnitIds: existingListing.lot_project_listing_old_unit_ids,
         lotType: existingListing.lot_project_listing_unit_type,
         lotAreaSqm: Number(existingListing.lot_project_listing_area_sqm || 0),
+        ...storedListingReviewFinancials(existingListing),
       };
       const governedAfterSnapshot = {
         projectSlug: slug,
@@ -2482,7 +2528,8 @@ export const updateLotProjectListing = async (req, res) => {
         soldSubstatus: listingStatus.soldSubstatus,
         oldUnitIds: toNullable(oldUnitIdsValue),
         lotType: normalizeLotType(req.body.lotType || req.body.lot_type),
-        lotAreaSqm,
+        lotAreaSqm: isProtectedListing ? Number(existingListing.lot_project_listing_area_sqm || 0) : lotAreaSqm,
+        ...(isProtectedListing ? storedListingReviewFinancials(existingListing) : listingReviewFinancialsAfterEdit({ installmentPricePerSqm, cashPricePerSqm, installmentPricing, legalMiscRate, reservationFee, annualInterestRate })),
         statusTransitionAction,
         refundAmount: req.body.refundAmount ?? null,
         cancellationReason: req.body.cancellationReason || null,
@@ -2525,6 +2572,9 @@ export const updateLotProjectListing = async (req, res) => {
         oldUnitIds: existingListing.lot_project_listing_old_unit_ids,
         lotType: existingListing.lot_project_listing_unit_type,
         lotAreaSqm: Number(existingListing.lot_project_listing_area_sqm || 0),
+        ...storedListingReviewFinancials(existingListing),
+        ...(reviewCadastralDiff ? { cadastralLots: reviewCadastralDiff.before } : {}),
+        ...(reviewDocumentsDiff ? { documentRequirements: reviewDocumentsDiff.before } : {}),
       };
       const afterSnapshot = {
         projectSlug: slug,
@@ -2535,6 +2585,9 @@ export const updateLotProjectListing = async (req, res) => {
         oldUnitIds: toNullable(oldUnitIdsValue),
         lotType: normalizeLotType(req.body.lotType || req.body.lot_type),
         lotAreaSqm,
+        ...listingReviewFinancialsAfterEdit({ installmentPricePerSqm, cashPricePerSqm, installmentPricing, legalMiscRate, reservationFee, annualInterestRate }),
+        ...(reviewCadastralDiff ? { cadastralLots: reviewCadastralDiff.after } : {}),
+        ...(reviewDocumentsDiff ? { documentRequirements: reviewDocumentsDiff.after } : {}),
         documentRequirementsChanged: listingDocumentSyncResult?.skipped === false,
       };
       if (inventoryAuditCase) {
@@ -2859,6 +2912,9 @@ export const createLotProjectListing = async (req, res) => {
         soldSubstatus: listingStatus.soldSubstatus,
         lotType: normalizeLotType(req.body.lotType || req.body.unitType),
         lotAreaSqm,
+        oldUnitIds: toNullable(req.body.oldUnitIds),
+        ...listingReviewFinancialsAfterEdit({ installmentPricePerSqm, cashPricePerSqm, installmentPricing, legalMiscRate, reservationFee, annualInterestRate }),
+        cadastralLots: requestedCadastralLots,
         documentCount: listingDocuments.length,
       },
     });
@@ -3049,6 +3105,10 @@ export const deleteLotProjectListing = async (req, res) => {
         listingId: existingListing.lot_project_listing_id,
         unitCode: existingListing.lot_project_listing_unit_id,
         status: existingListing.lot_project_listing_status,
+        soldSubstatus: existingListing.lot_project_listing_sold_substatus,
+        lotType: existingListing.lot_project_listing_unit_type,
+        lotAreaSqm: Number(existingListing.lot_project_listing_area_sqm || 0),
+        ...storedListingReviewFinancials(existingListing),
       },
       afterSnapshot: {
         projectSlug: slug,
@@ -3068,4 +3128,5 @@ export const deleteLotProjectListing = async (req, res) => {
     connection.release();
   }
 };
+
 

@@ -10,6 +10,7 @@ import { getReviewActionLabel, REVIEW_ACTIONS } from '../../config/reviewActions
 import { resolveReviewRecordLocation } from '../../services/reviewRecordLocation.service.js';
 import { countWorkflowSummaryNotifications } from '../../services/workflowSummaryNotifications.service.js';
 import { markVisibleInternalNotificationsRead } from '../../services/internalNotificationRead.service.js';
+import { enrichLegacyListingReviewSnapshots } from '../../services/legacyListingReviewSnapshot.service.js';
 
 const errorMessage = (error) => error?.message || 'Workflow operation failed.';
 const pageValues = (query = {}) => ({ page: Math.max(Number(query.page || 1),1), limit: Math.min(Math.max(Number(query.limit || 25),1),100) });
@@ -188,6 +189,7 @@ const notificationVisibilityWhere = (actor, { reviewAlias = 'nr' } = {}) => {
 const ID_LOOKUP_RULES = [
   { kind: 'project', test: (key) => /^(projectId|lotProjectId|lot_project_id|project_id)$/.test(key) },
   { kind: 'listing', test: (key) => /^(listingId|lot_project_listing_id|listing_id)$/.test(key) },
+  { kind: 'document', test: (key) => /^(documentId|document_id)$/.test(key) },
   { kind: 'group', test: (key) => /^(groupId|sellerGroupId|seller_group_id|networkId)$/.test(key) },
   { kind: 'seller', test: (key) => /(SellerId|seller_id)$/i.test(key) && !/user/i.test(key) },
   { kind: 'user', test: (key) => /(^userId$|UserId$|user_id$)/.test(key) },
@@ -213,10 +215,10 @@ const parseSnapshot = (value) => {
 };
 
 const buildReviewLookups = async (connection, review) => {
-  const bucket = { project: new Set(), listing: new Set(), group: new Set(), seller: new Set(), user: new Set() };
+  const bucket = { project: new Set(), listing: new Set(), document: new Set(), group: new Set(), seller: new Set(), user: new Set() };
   collectSnapshotIds(parseSnapshot(review.before_snapshot_json), bucket);
   collectSnapshotIds(parseSnapshot(review.after_snapshot_json), bucket);
-  const lookups = { project: {}, listing: {}, group: {}, seller: {}, user: {} };
+  const lookups = { project: {}, listing: {}, document: {}, group: {}, seller: {}, user: {} };
   const load = async (kind, sql) => {
     const ids = [...bucket[kind]].slice(0, 200);
     if (!ids.length) return;
@@ -225,6 +227,7 @@ const buildReviewLookups = async (connection, review) => {
   };
   await load('project', `SELECT lot_project_id id, lot_project_name label FROM lot_projects WHERE lot_project_id IN (?)`);
   await load('listing', `SELECT lot_project_listing_id id, lot_project_listing_unit_id label FROM lot_project_listings WHERE lot_project_listing_id IN (?)`);
+  await load('document', `SELECT document_id id, document_name label FROM documents WHERE document_id IN (?)`);
   await load('group', `SELECT seller_group_id id, seller_group_name label FROM seller_groups WHERE seller_group_id IN (?)`);
   await load('seller', `SELECT a.accredited_seller_id id, TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)) label FROM accredited_sellers a INNER JOIN users u ON u.id=a.user_id WHERE a.accredited_seller_id IN (?)`);
   await load('user', `SELECT id, TRIM(CONCAT_WS(' ', first_name, middle_name, last_name)) label FROM users WHERE id IN (?)`);
@@ -407,8 +410,9 @@ export const getOperationalReview = async (req, res) => {
         ? actionKeys.reduce((text, key) => text.split(key).join(getReviewActionLabel(key)), String(event.message))
         : event.message,
     }));
-    const [lookups, location] = await Promise.all([buildReviewLookups(db, review), resolveReviewRecordLocation(db, review)]);
-    return res.json({ data: { ...review, action_label: getReviewActionLabel(review.action_key), events: readableEvents, auditCase, lookups, ...location, viewer: { canAct, readOnly: !canAct } } });
+    const displayReview = await enrichLegacyListingReviewSnapshots(db, review);
+    const [lookups, location] = await Promise.all([buildReviewLookups(db, displayReview), resolveReviewRecordLocation(db, displayReview)]);
+    return res.json({ data: { ...displayReview, action_label: getReviewActionLabel(displayReview.action_key), events: readableEvents, auditCase, lookups, ...location, viewer: { canAct, readOnly: !canAct } } });
   } catch (error) { return res.status(500).json({ message: errorMessage(error) }); }
 };
 

@@ -1415,13 +1415,16 @@ export const editGroup = async (req, res) => {
       metadata: { groupType, status: normalizeStatus(seller_group_status), broker, projectRates: normalizedRates },
     });
 
+    // Network Edit and Network Project Rates have separate review actions.
+    // Do not add rates only to the Network Edit "After" snapshot: that would
+    // falsely label existing, unchanged rates as newly added by this edit.
     let networkReview = null;
     if (networkAuditCase) {
       networkReview = await advanceAuditCaseToRecheck(connection, {
         auditCase: networkAuditCase,
         actor: req.authUser,
         correctionSummary: String(req.body?.correctionSummary || 'Corrected Network details from the Audit Case.').trim(),
-        afterSnapshot: { ...afterNetwork, rates: normalizeRateReviewPayload(normalizedRates) },
+        afterSnapshot: afterNetwork,
         metadata: { actionKey: 'network.edit' },
       });
     } else if (returnedReview) {
@@ -1432,7 +1435,7 @@ export const editGroup = async (req, res) => {
         projectId: null,
         entityLabel: name,
         beforeSnapshot: beforeNetwork,
-        afterSnapshot: { ...afterNetwork, rates: normalizeRateReviewPayload(normalizedRates) },
+        afterSnapshot: afterNetwork,
       });
     } else {
       networkReview = await createOperationalReview(connection, {
@@ -1444,7 +1447,7 @@ export const editGroup = async (req, res) => {
         entityId: groupId,
         entityLabel: name,
         beforeSnapshot: beforeNetwork,
-        afterSnapshot: { ...afterNetwork, rates: normalizeRateReviewPayload(normalizedRates) },
+        afterSnapshot: afterNetwork,
       });
     }
 
@@ -3271,4 +3274,5 @@ export const undoNetworkMemberImport = async (req, res) => {
     return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) });
   } finally { connection.release(); }
 };
+
 
