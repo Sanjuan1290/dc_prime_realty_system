@@ -20,7 +20,8 @@ test('review snapshots render structured fields instead of raw JSON blocks', () 
 test('Head and Auditor can track reviews after their action without keeping them actionable', () => {
   const controller = read('server/controllers/System/workflow.controller.js')
   assert.match(controller, /const reviewHistoryWhere/)
-  assert.match(controller, /scope === 'history' \? reviewHistoryWhere\(req\.authUser\) : reviewQueueWhere\(req\.authUser\)/)
+  assert.match(controller, /const history = scope === 'history' \? reviewHistoryWhere\(req\.authUser\) : null/);
+  assert.match(controller, /sql: `\(\$\{history\.sql\}\) AND NOT \(\$\{queue\.sql\}\)`/)
   assert.match(controller, /role === 'auditor'[\s\S]*head_reviewed_at IS NOT NULL/)
   assert.match(controller, /department = \?[\s\S]*user_project_access hupa/)
   assert.match(controller, /canActorOpenReview[\s\S]*reviewHistoryWhere\(actor\)/)
@@ -29,7 +30,7 @@ test('Head and Auditor can track reviews after their action without keeping them
 test('Review Center separates actionable work from history and paginates it', () => {
   const center = read('client/src/pages/System/ReviewCenter.jsx')
   assert.match(center, /Needs My Action/)
-  assert.match(center, /History &amp; Tracking/)
+  assert.match(center, /History/)
   assert.match(center, /scope=\$\{reviewScope\}/)
   assert.match(center, /limit=10/)
   assert.match(center, /Previous/)
@@ -40,7 +41,8 @@ test('completed transitions stay visible instead of producing stale workflow err
   const center = read('client/src/pages/System/ReviewCenter.jsx')
   const controller = read('server/controllers/System/workflow.controller.js')
   assert.match(center, /This review already moved to its next workflow stage\. The latest status is now shown below\./)
-  assert.match(controller, /Confirmed\. The Auditor has been notified\. You can continue tracking this review in History & Tracking\./)
-  assert.match(controller, /Audit verification completed\. Review closed\. It remains available in History & Tracking\./)
+  assert.match(controller, /Confirmed\. The Auditor has been notified\. You can view this review in History\./)
+  assert.match(controller, /Audit verification completed\. Review closed\. It remains available in History\./)
 })
+
 

@@ -12,14 +12,14 @@ test('Head audit-case access check uses the actor id (no undefined variable)', (
   assert.match(controller, /responders\.userIds\.includes\(Number\(actor\.id \|\| 0\)\)/);
 });
 
-test('Review list supports a History & Tracking scope and flags work waiting on the viewer', () => {
+test('Review list supports a History scope, excluding work waiting on the viewer', () => {
   const controller = read('server/controllers/System/workflow.controller.js');
   assert.match(controller, /req\.query\.scope/);
   assert.match(controller, /reviewHistoryWhere/);
   assert.match(controller, /needs_my_action/);
   const center = read('client/src/pages/System/ReviewCenter.jsx');
   assert.match(center, /Needs My Action/);
-  assert.match(center, /History &amp; Tracking/);
+  assert.match(center, />History<\/button>/);
   assert.match(center, /&scope=\$\{reviewScope\}/);
 });
 
@@ -105,7 +105,7 @@ test('repeated status updates for the same review show only the newest one', () 
   assert.match(sql, /newer_info\.internal_notification_id > n\.internal_notification_id/);
 });
 
-test('History & Tracking keeps Head-stage work out of the Auditor view', () => {
+test('History keeps Head-stage work out of the Auditor view', () => {
   const controller = read('server/controllers/System/workflow.controller.js');
   assert.match(controller, /head_reviewed_at IS NOT NULL AND \$\{alias\}\.status NOT IN \('pending_head_review','returned_for_correction'\)/);
 });
@@ -114,4 +114,5 @@ test('Listings page has no imports from recharts internal type paths', () => {
   const listings = read('client/src/pages/Lot_Projects/Listings.jsx');
   assert.doesNotMatch(listings, /from 'recharts\/types\//);
 });
+
 

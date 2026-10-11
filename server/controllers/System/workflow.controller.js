@@ -117,7 +117,7 @@ const canActorOpenReview = async (connection, actor, review) => {
 // still limited by canActorOpenReview() and by each action endpoint.
 const canActorViewReview = async (connection, actor, review) => {
   if (!actor || !review) return false;
-  // Same rule as the History & Tracking list, so anything listed there opens.
+  // Same visibility rules as the History list, so anything listed there opens.
   const history = reviewHistoryWhere(actor);
   const [historyRows] = await connection.query(
     `SELECT 1 FROM operational_reviews r WHERE r.operational_review_id=? AND ${history.sql} LIMIT 1`,
@@ -135,7 +135,7 @@ const canActorViewReview = async (connection, actor, review) => {
   return Boolean(rows?.length);
 };
 
-// History & Tracking scope (read-only). Lets a Head or Auditor keep following a
+// History visibility scope (read-only). Lets a Head or Auditor keep following a
 // review after their own step is done, without it staying in Needs My Action.
 //   Auditor:            everything that reached the audit stage
 //   System/Super Admin: every review
@@ -237,7 +237,13 @@ export const listOperationalReviews = async (req, res) => {
     const offset = (page - 1) * limit;
     const scope = String(req.query.scope || 'queue') === 'history' ? 'history' : 'queue';
     const queue = reviewQueueWhere(req.authUser);
-    const access = scope === 'history' ? reviewHistoryWhere(req.authUser) : reviewQueueWhere(req.authUser);
+    // History means visible reviews that do NOT currently need this user's action.
+    // Apply the exclusion in SQL *before* counting and paginating, otherwise
+    // actionable reviews overlap with History and page totals become incorrect.
+    const history = scope === 'history' ? reviewHistoryWhere(req.authUser) : null;
+    const access = history
+      ? { sql: `(${history.sql}) AND NOT (${queue.sql})`, params: [...history.params, ...queue.params] }
+      : queue;
     const statuses = String(req.query.status || '').trim().split(',').map((v) => v.trim()).filter(Boolean);
     const params = [...access.params];
     let statusSql = '';
@@ -442,7 +448,7 @@ export const confirmHeadReview = async (req, res) => {
     await notifyAuditors(connection, { reviewId: review.operational_review_id, title: `Audit review required · ${review.entity_label || review.entity_type}`, message: `${review.review_number} was confirmed by the ${review.department} Head.` });
     await writeAuditLog(connection, req, { action:'approve',module:'Review Center',entityType:'operational_review',entityId:String(review.operational_review_id),entityLabel:review.review_number,title:'Department Head confirmed review',description:`${review.review_number} moved to Auditor review.`,metadata:{department:review.department,action_key:review.action_key} });
     await connection.commit();
-    return res.json({ message: 'Confirmed. The Auditor has been notified. You can continue tracking this review in History & Tracking.' });
+    return res.json({ message: 'Confirmed. The Auditor has been notified. You can view this review in History.' });
   } catch (error) { try { await connection.rollback(); } catch {} return res.status(error.statusCode || 500).json({ code:error.code,message:errorMessage(error) }); } finally { connection.release(); }
 };
 
@@ -570,7 +576,7 @@ export const auditorVerifyReview = async (req, res) => {
     await appendReviewEvent(connection, { reviewId:review.operational_review_id,eventType:previous==='pending_auditor_recheck'?'correction_verified':'auditor_verified',actor:req.authUser,fromStatus:previous,toStatus:'closed',message:String(req.body?.note || 'Auditor verified no issue.').slice(0,1000) });
     await writeAuditLog(connection, req, { action:'approve',module:'Review Center',entityType:'operational_review',entityId:String(review.operational_review_id),entityLabel:review.review_number,title:'Auditor verified operational review',description:`${review.review_number} closed after independent verification.`,metadata:{action_key:review.action_key} });
     await connection.commit();
-    return res.json({ message: 'Audit verification completed. Review closed. It remains available in History & Tracking.' });
+    return res.json({ message: 'Audit verification completed. Review closed. It remains available in History.' });
   } catch (error) { try { await connection.rollback(); } catch {} return res.status(error.statusCode || 500).json({ code:error.code,message:errorMessage(error) }); } finally { connection.release(); }
 };
 
