@@ -1,3 +1,4 @@
+import { formatPhilippineDateTime } from '../../utils/formatDateTime'
 import { useEffect, useMemo, useState } from 'react'
 import { FiAlertCircle, FiCheckCircle, FiClock, FiFileText, FiLoader, FiMapPin } from 'react-icons/fi'
 import { useParams } from 'react-router-dom'
@@ -10,17 +11,7 @@ import { getDoubleCheckNotice } from '../../utils/doubleCheck'
 
 const BRAND_LOGO = '/website/images/brand/dc-prime-email-logo.png'
 
-const formatDateTime = (value) => {
-  if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return String(value)
-  return new Intl.DateTimeFormat('en-PH', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-    timeZone: 'Asia/Manila',
-  }).format(date)
-}
-
+const formatDateTime = (value) => formatPhilippineDateTime(value, { timeZoneLabel: true })
 const BuyerForm = () => {
   const { token } = useParams()
   const [formInfo, setFormInfo] = useState(null)
@@ -301,4 +292,5 @@ const BuyerForm = () => {
 }
 
 export default BuyerForm
+
 

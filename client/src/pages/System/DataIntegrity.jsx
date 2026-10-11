@@ -1,3 +1,4 @@
+import { formatPhilippineDateTime } from '../../utils/formatDateTime'
 import { useEffect, useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useSearchParams } from 'react-router-dom'
@@ -23,18 +24,7 @@ const money = (value) => new Intl.NumberFormat('en-PH', {
   minimumFractionDigits: 2,
 }).format(Number(value || 0))
 
-const dateTimeText = (value) => {
-  if (!value) return '-'
-  try {
-    return new Intl.DateTimeFormat('en-PH', {
-      year: 'numeric', month: 'short', day: '2-digit', hour: 'numeric', minute: '2-digit',
-      timeZone: 'Asia/Manila',
-    }).format(new Date(value))
-  } catch {
-    return String(value)
-  }
-}
-
+const dateTimeText = (value) => formatPhilippineDateTime(value)
 const statusMeta = {
   balanced: {
     label: 'Balanced',
@@ -305,4 +295,5 @@ const DataIntegrity = () => {
 }
 
 export default DataIntegrity
+
 

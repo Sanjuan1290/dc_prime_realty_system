@@ -1,18 +1,9 @@
+import { formatPhilippineDateTime } from '../../../../utils/formatDateTime'
 import { useEffect, useState } from 'react'
 import { FiClipboard, FiLink, FiLoader, FiMail, FiRefreshCw, FiSlash, FiX } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
 
-const formatDateTime = (value) => {
-  if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return String(value)
-  return new Intl.DateTimeFormat('en-PH', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-    timeZone: 'Asia/Manila',
-  }).format(date)
-}
-
+const formatDateTime = (value) => formatPhilippineDateTime(value, { timeZoneLabel: true })
 const activeStatuses = new Set(['active', 'opened'])
 
 const BuyerFormLinkModal = ({
@@ -174,4 +165,5 @@ const BuyerFormLinkModal = ({
 }
 
 export default BuyerFormLinkModal
+
 

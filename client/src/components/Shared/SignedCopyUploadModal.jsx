@@ -1,3 +1,4 @@
+import { formatPhilippineDateTime } from '../../utils/formatDateTime'
 import { useEffect, useRef, useState } from 'react'
 import {
   FiExternalLink,
@@ -33,15 +34,7 @@ const formatBytes = (bytes = 0) => {
   return `${(value / (1024 * 1024)).toFixed(1)} MB`
 }
 
-const formatDateTime = (value) => {
-  if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return String(value)
-  return new Intl.DateTimeFormat('en-PH', {
-    year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Manila',
-  }).format(date)
-}
-
+const formatDateTime = (value) => formatPhilippineDateTime(value)
 const createPreviewUrl = (file) => (typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function' ? URL.createObjectURL(file) : '')
 const revokePreviewUrl = (url) => { if (url && typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(url) }
 
@@ -300,4 +293,5 @@ const SignedCopyUploadModal = ({
 }
 
 export default SignedCopyUploadModal
+
 

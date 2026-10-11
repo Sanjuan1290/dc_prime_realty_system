@@ -1,3 +1,4 @@
+import { formatPhilippineCalendarDate } from '../../../../utils/formatDateTime'
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useParams, useSearchParams } from 'react-router-dom'
@@ -34,19 +35,7 @@ const cleanMoney = (value) => {
   return Number(String(value || '').replace(/[₱,\s]/g, '')) || 0
 }
 
-const formatDate = (value) => {
-  if (!value || value === '-') return '-'
-
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return String(value).slice(0, 10)
-
-  return new Intl.DateTimeFormat('en-CA', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(date)
-}
-
+const formatDate = (value) => formatPhilippineCalendarDate(value)
 const getListingValue = (listing, keys, fallback = '') => {
   for (const key of keys) {
     if (
@@ -2188,4 +2177,5 @@ const PaymentsSOA = ({
 }
 
 export default PaymentsSOA
+
 

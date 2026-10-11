@@ -1,12 +1,11 @@
+import { formatPhilippineDateTime } from '../../../utils/formatDateTime'
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { FiAlertTriangle, FiCheckCircle, FiRotateCcw, FiX } from 'react-icons/fi'
 import { useFetch, useFetchPost } from '../../../utils/useFetch'
 import StatusAlert from '../../Shared/StatusAlert'
 
-const dateLabel = (value) => value
-  ? new Date(value).toLocaleString('en-PH', { dateStyle: 'medium', timeStyle: 'short' })
-  : '—'
+const dateLabel = (value) => formatPhilippineDateTime(value, { fallback: '—' })
 
 const NetworkMemberImportHistoryModal = ({ groupId, networkName, onClose, onUndone }) => {
   const queryClient = useQueryClient()
@@ -100,4 +99,5 @@ const NetworkMemberImportHistoryModal = ({ groupId, networkName, onClose, onUndo
 }
 
 export default NetworkMemberImportHistoryModal
+
 

@@ -1,3 +1,4 @@
+import { formatPhilippineCalendarDate } from '../../../../utils/formatDateTime'
 import { useRef, useState } from 'react'
 import { FiDownload, FiLoader, FiPrinter, FiX } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
@@ -16,20 +17,7 @@ const cleanMoney = (value) => {
   return Number(String(value || '').replace(/[₱,\s]/g, '')) || 0
 }
 
-const formatDate = (value) => {
-  if (!value || value === '-') return '-'
-
-  const date = new Date(value)
-
-  if (Number.isNaN(date.getTime())) return value
-
-  return new Intl.DateTimeFormat('en-CA', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(date)
-}
-
+const formatDate = (value) => formatPhilippineCalendarDate(value)
 const getValue = (source, keys, fallback = '-') => {
   for (const key of keys) {
     if (source?.[key] !== undefined && source?.[key] !== null && source?.[key] !== '') {
@@ -433,4 +421,5 @@ const PrintPreviewModal = ({
 }
 
 export default PrintPreviewModal
+
 

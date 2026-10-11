@@ -1,3 +1,4 @@
+import { formatPhilippineDateTime } from '../../../utils/formatDateTime'
 import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FiAlertTriangle, FiSave, FiSettings, FiX } from 'react-icons/fi'
@@ -79,7 +80,7 @@ const PayrollSettingsModal = ({ onClose, onSaved }) => {
 
             <section className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm font-semibold leading-6 text-blue-950">
               <p><strong>Settings revision:</strong> {settingsQuery.data?.data?.settings_revision ?? '—'}</p>
-              <p><strong>Last updated:</strong> {settingsQuery.data?.data?.updated_at ? new Date(settingsQuery.data.data.updated_at).toLocaleString() : 'Not yet updated'}</p>
+              <p><strong>Last updated:</strong> {settingsQuery.data?.data?.updated_at ? formatPhilippineDateTime(settingsQuery.data.data.updated_at, { timeZoneLabel: true }) : 'Not yet updated'}</p>
               <p><strong>Updated by:</strong> {settingsQuery.data?.data?.updated_by_name || '—'}</p>
               <p className="mt-2">Changing settings does not alter Finalized/Corrected/Released payroll. Existing Draft payroll must be recalculated before Finalization.</p>
             </section>
@@ -96,4 +97,5 @@ const PayrollSettingsModal = ({ onClose, onSaved }) => {
 }
 
 export default PayrollSettingsModal
+
 

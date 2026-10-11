@@ -1,16 +1,7 @@
+import { formatPhilippineDateTime } from '../../../../utils/formatDateTime'
 import { FiAlertCircle, FiCheckCircle, FiXCircle } from 'react-icons/fi'
 
-const formatDateTime = (value) => {
-  if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return String(value)
-  return new Intl.DateTimeFormat('en-PH', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-    timeZone: 'Asia/Manila',
-  }).format(date)
-}
-
+const formatDateTime = (value) => formatPhilippineDateTime(value, { timeZoneLabel: true })
 const BuyerFormStatusBanner = ({ submission, onReview, onReject, isSaving = false }) => {
   if (!submission) return null
 
@@ -55,4 +46,5 @@ const BuyerFormStatusBanner = ({ submission, onReview, onReject, isSaving = fals
 }
 
 export default BuyerFormStatusBanner
+
 

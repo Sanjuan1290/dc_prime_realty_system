@@ -1,10 +1,11 @@
+import { formatPhilippineDateTime } from '../../../../utils/formatDateTime'
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FiCheckSquare, FiRotateCcw, FiX } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
 import { useFetch, useFetchPost } from '../../../../utils/useFetch'
 
-const formatDateTime = (value) => value ? new Date(value).toLocaleString('en-PH') : '-'
+const formatDateTime = (value) => formatPhilippineDateTime(value)
 
 const ListingImportHistoryModal = ({ projectSlug, canUndo = false, onClose }) => {
   const queryClient = useQueryClient()
@@ -130,4 +131,5 @@ const ListingImportHistoryModal = ({ projectSlug, canUndo = false, onClose }) =>
 }
 
 export default ListingImportHistoryModal
+
 

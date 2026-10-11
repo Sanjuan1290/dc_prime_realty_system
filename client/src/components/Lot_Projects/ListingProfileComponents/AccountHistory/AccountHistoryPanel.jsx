@@ -1,3 +1,4 @@
+import { formatPhilippineDateTime, formatPhilippineCalendarDate } from '../../../../utils/formatDateTime'
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { FiArrowRight, FiClock, FiRefreshCw, FiShield, FiTrash2, FiUser } from 'react-icons/fi'
@@ -7,7 +8,9 @@ import { useFetch } from '../../../../utils/useFetch'
 import DeleteAccountRecordsModal from './DeleteAccountRecordsModal'
 
 const money = (value) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 2 }).format(Number(value || 0))
-const dateText = (value) => value ? new Intl.DateTimeFormat('en-PH', { year: 'numeric', month: 'short', day: '2-digit', timeZone: 'Asia/Manila' }).format(new Date(value)) : '-'
+const dateText = (value) => value && String(value).trim().length > 10
+  ? formatPhilippineDateTime(value, { timeStyle: 'short' }).split(', ').slice(0, 2).join(', ')
+  : formatPhilippineCalendarDate(value, { style: 'medium' })
 const statusLabel = (value) => String(value || '-').replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
 const statusTone = (value) => ({ active: 'bg-emerald-50 text-emerald-700 ring-emerald-100', pending_cancellation: 'bg-amber-50 text-amber-700 ring-amber-100', cancelled: 'bg-red-50 text-red-700 ring-red-100', closed_fully_paid: 'bg-blue-50 text-blue-700 ring-blue-100', deletion_pending: 'bg-violet-50 text-violet-700 ring-violet-100' }[value] || 'bg-slate-100 text-slate-700 ring-slate-200')
 
@@ -138,4 +141,5 @@ const AccountHistoryPanel = ({ projectSlug, listingId, canPermanentlyDelete = fa
 }
 
 export default AccountHistoryPanel
+
 

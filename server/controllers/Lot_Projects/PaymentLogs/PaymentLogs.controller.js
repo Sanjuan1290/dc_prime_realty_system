@@ -1,3 +1,4 @@
+import { displayBusinessInstant } from '../../../utils/businessDateTime.js';
 import {
   db,
   getErrorMessage,
@@ -12,19 +13,7 @@ const dateOnly = (value) => {
   if (typeof value === 'string') return value.slice(0, 10);
   return new Date(value).toISOString().slice(0, 10);
 };
-const dateTimeText = (value) => {
-  if (!value) return '-';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleString('en-PH', {
-    timeZone: 'Asia/Manila',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-};
+const dateTimeText = (value) => displayBusinessInstant(value);
 const isDateOnly = (value = '') => /^\d{4}-\d{2}-\d{2}$/.test(String(value || '').trim());
 
 const titleCase = (value = '') =>
@@ -179,4 +168,5 @@ export const getLotProjectPaymentLogs = async (req, res) => {
     connection.release();
   }
 };
+
 

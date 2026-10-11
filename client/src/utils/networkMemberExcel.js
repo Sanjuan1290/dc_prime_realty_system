@@ -1,3 +1,4 @@
+import { formatPhilippineDateTime } from './formatDateTime'
 import * as XLSX from 'xlsx-js-style'
 
 // One column layout for both Import Members (template) and Export Members, so a
@@ -121,7 +122,7 @@ export const exportNetworkMembersWorkbook = ({ network = {}, members = [], proje
 
   const notes = [
     ['Network', network.seller_group_name || 'In-House Network'],
-    ['Exported', new Date().toLocaleString()],
+    ['Exported (PHT)', formatPhilippineDateTime(new Date(), { timeZoneLabel: true })],
     ['Members', `${memberRows.length} seller${memberRows.length === 1 ? '' : 's'}`],
     ['Re-importing', 'Columns A to I match the Import Members template. The grey columns are for reference only and are ignored on import.'],
     ['Inactive rows', 'Import sets every row Active. Delete Inactive members from the sheet first unless you mean to reactivate them.'],
@@ -137,4 +138,5 @@ export const exportNetworkMembersWorkbook = ({ network = {}, members = [], proje
   XLSX.writeFile(workbook, `${safeFilePart(network.seller_group_name)}-Members-${stamp}.xlsx`, { compression: true, cellStyles: true })
   return memberRows.length
 }
+
 

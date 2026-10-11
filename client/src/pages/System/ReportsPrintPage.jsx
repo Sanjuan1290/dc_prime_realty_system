@@ -1,3 +1,4 @@
+import { formatPhilippineDateTime, formatPhilippineCalendarDate } from '../../utils/formatDateTime'
 import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import PrintPageShell from '../../components/Lot_Projects/ListingProfileComponents/Printouts/PrintPageShell'
@@ -11,12 +12,8 @@ const money = (value) => new Intl.NumberFormat('en-PH', {
 
 const number = (value) => new Intl.NumberFormat('en-PH').format(Number(value || 0))
 const percent = (value) => `${Number(value || 0).toFixed(2)}%`
-const dateOnly = (value) => value
-  ? new Intl.DateTimeFormat('en-PH', { dateStyle: 'medium' }).format(new Date(`${String(value).slice(0, 10)}T00:00:00`))
-  : '-'
-const dateTime = (value) => value
-  ? new Intl.DateTimeFormat('en-PH', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value))
-  : '-'
+const dateOnly = (value) => formatPhilippineCalendarDate(value, { style: 'medium' })
+const dateTime = (value) => formatPhilippineDateTime(value, { timeZoneLabel: true })
 
 const MetricCard = ({ label, value, helper, emphasis = false }) => (
   <div className={`rounded-lg border p-3 ${emphasis ? 'border-slate-900 bg-slate-950 text-white' : 'border-slate-200 bg-white'}`}>
@@ -391,4 +388,5 @@ const ReportsPrintPage = () => {
 }
 
 export default ReportsPrintPage
+
 

@@ -44,7 +44,13 @@ export const createListingStorageCode = (listingId) => `LST-${permanentIdPart(li
 
 export const createPaymentStorageCode = (paymentId, createdAt = new Date()) => {
   const date = new Date(createdAt || Date.now());
-  const year = Number.isNaN(date.getTime()) ? new Date().getFullYear() : date.getFullYear();
+  // DB DATE/DATETIME starts with the business calendar year; do not reinterpret
+  // a date-only value through the Render process timezone.
+  const dbYear = typeof createdAt === 'string' && /^\d{4}-\d{2}-\d{2}/.test(createdAt)
+    ? Number(createdAt.slice(0, 4)) : null;
+  const year = dbYear || (Number.isNaN(date.getTime())
+    ? Number(new Intl.DateTimeFormat('en-US', { year: 'numeric', timeZone: 'Asia/Manila' }).format(new Date()))
+    : Number(new Intl.DateTimeFormat('en-US', { year: 'numeric', timeZone: 'Asia/Manila' }).format(date)));
   return `PAY-${year}-${pad(paymentId, 6)}`;
 };
 
@@ -125,4 +131,5 @@ export const parsePaymentProofSequenceFromName = (storedFileName) => {
   const match = clean(storedFileName).match(/__PROOF-(\d{1,6})\./i);
   return match ? Number(match[1]) : 1;
 };
+
 

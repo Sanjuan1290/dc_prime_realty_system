@@ -1,3 +1,4 @@
+import { formatPhilippineDateTime, formatPhilippineCalendarDate } from './formatDateTime'
 // Shared formatting for Review Center snapshots: turns saved values into what a
 // reviewer reads (names instead of ids, % for rates, pesos for amounts).
 
@@ -13,13 +14,12 @@ const VALUE_LABELS = Object.freeze({
 const LOOKUP_RULES = [
   { kind: 'project', test: (key) => /^(projectId|lotProjectId|lot_project_id|project_id)$/.test(key) },
   { kind: 'listing', test: (key) => /^(listingId|listingIds|lot_project_listing_id|listing_id)$/.test(key) },
-  { kind: 'document', test: (key) => /^(documentId|document_id)$/.test(key) },
   { kind: 'group', test: (key) => /^(groupId|sellerGroupId|seller_group_id|networkId)$/.test(key) },
   { kind: 'seller', test: (key) => /(SellerId|seller_id)$/i.test(key) && !/user/i.test(key) },
   { kind: 'user', test: (key) => /(^userId$|UserId$|user_id$)/.test(key) },
 ]
 
-const IDENTITY_KEYS = ['projectId', 'lot_project_id', 'listingId', 'lot_project_listing_id', 'accreditedSellerId', 'accredited_seller_id', 'userId', 'documentId', 'document_id', 'id', 'key', 'code']
+const IDENTITY_KEYS = ['projectId', 'lot_project_id', 'listingId', 'lot_project_listing_id', 'accreditedSellerId', 'accredited_seller_id', 'userId', 'id', 'key', 'code']
 
 export const isPlainObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value)
 export const isEmptyValue = (value) => value === null || value === undefined || value === '' || (Array.isArray(value) && !value.length)
@@ -50,7 +50,6 @@ const peso = (value) => `₱${Number(value).toLocaleString('en-PH', { minimumFra
 // guessing from generic words such as "total" or "paymentCount".
 export const snapshotNumericType = (key) => {
   const name = String(key || '')
-  if (/(price_?per_?sqm|PricePerSqm)$/i.test(name)) return 'currency'
   if (/(rate|percent|percentage|share)$/i.test(name)) return 'percent'
   if (/(count|rows?|members|warnings?|errors?|ready|created|updated|transferred)$/i.test(name)
       || /^(total|create|update|transfer|existingUpdates|processed|importedCount)$/i.test(name)) return 'count'
@@ -67,15 +66,8 @@ const lookupName = (key, value, lookups = {}) => {
 }
 
 export const formatSnapshotValue = (key, value, { lookups = {}, labelFor = humanizeKey, isHidden = () => false } = {}) => {
-  // Review snapshots can include payment bank accounts. Even authorized review
-  // screens should not expose the entire account number in the change table.
-  if (/(?:^|_)(?:bank_?)?account_?number$|^(?:bank)?AccountNumber$/i.test(String(key)) && !isEmptyValue(value)) {
-    const digits = String(value).replace(/\s+/g, '');
-    return digits.length > 4 ? `••••${digits.slice(-4)}` : '••••';
-  }
   if (isEmptyValue(value)) return 'Not set'
   if (typeof value === 'boolean') return value ? 'Yes' : 'No'
-  if (/^(is[A-Z_]|has[A-Z_])/.test(String(key)) && (value === 0 || value === 1 || value === '0' || value === '1')) return Number(value) === 1 ? 'Yes' : 'No'
   if (Array.isArray(value)) {
     const items = value.map((item) => formatSnapshotValue(key, item, { lookups, labelFor, isHidden }))
     return items.length > 12 ? `${items.slice(0, 12).join(', ')} and ${items.length - 12} more` : items.join(', ')
@@ -99,10 +91,11 @@ export const formatSnapshotValue = (key, value, { lookups = {}, labelFor = human
     return trimNumber(value, type === 'count' ? 0 : 4)
   }
   const text = String(value)
-  if (key === 'paymentType' && text.toLowerCase() === 'reservation') return 'Reservation Payment'
   if (VALUE_LABELS[text]) return VALUE_LABELS[text]
   if (/(At|_at|Date|_date)$/.test(key) && !Number.isNaN(Date.parse(text))) {
-    return new Date(text).toLocaleString('en-PH', { dateStyle: 'medium', ...(text.length > 10 ? { timeStyle: 'short' } : {}) })
+    return text.length > 10
+      ? formatPhilippineDateTime(text, { fallback: text, timeZoneLabel: true })
+      : formatPhilippineCalendarDate(text, { fallback: text, style: 'medium' })
   }
   if (/^[a-z]+(_[a-z]+)+$/.test(text)) return humanizeKey(text)
   return text
