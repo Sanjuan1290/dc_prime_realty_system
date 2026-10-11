@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react'
 import { FiCloudOff, FiRefreshCw } from 'react-icons/fi'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { requestApi } from '../../utils/apiClient'
+import { safeAvailabilityMessage } from '../../utils/availabilityMessage'
 
 const readSavedMessage = () => {
   try {
     const value = JSON.parse(
       window.sessionStorage.getItem('dc_prime_availability_state') || '{}'
     )
-    return String(value?.message || '')
+    return safeAvailabilityMessage(value?.message)
   } catch {
     return ''
   }
@@ -19,8 +20,7 @@ const ServerDown = () => {
   const navigate = useNavigate()
   const [isChecking, setIsChecking] = useState(false)
   const [message, setMessage] = useState(
-    location.state?.message
-      || readSavedMessage()
+    safeAvailabilityMessage(location.state?.message || readSavedMessage())
       || 'The server cannot be reached right now.'
   )
 
@@ -43,10 +43,7 @@ const ServerDown = () => {
 
       navigate('/portal', { replace: true })
     } catch (error) {
-      setMessage(
-        error?.message
-          || 'The server is still unavailable. Please try again shortly.'
-      )
+      setMessage(safeAvailabilityMessage(error?.message || 'The server is still unavailable. Please try again shortly.'))
     } finally {
       setIsChecking(false)
     }
@@ -92,4 +89,5 @@ const ServerDown = () => {
 }
 
 export default ServerDown
+
 

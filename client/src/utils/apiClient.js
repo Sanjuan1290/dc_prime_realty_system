@@ -99,8 +99,18 @@ const parseResponseBody = async (response) => {
   const contentType = response.headers.get('content-type') || ''
   if (contentType.includes('application/json')) return response.json().catch(() => ({}))
   const text = await response.text().catch(() => '')
-  return text ? { message: text } : null
+  // Cloudflare/Render may return an HTML 502 page. Never expose its markup,
+  // internal addresses, or diagnostic content in the application UI.
+  if (/text\/html/i.test(contentType) || /<\s*(?:!doctype\s+html|html|head|body)\b/i.test(text)) {
+    return { message: 'The API server is temporarily unavailable. Please try again after checking its status.' }
+  }
+  return text ? { message: text.slice(0, 500) } : null
 }
+
+// A failed mutation has an uncertain outcome: the database may have committed
+// even when the response was lost. Never navigate away and discard form state.
+const shouldRedirectOnUnavailable = (method, redirectOnUnavailable) =>
+  redirectOnUnavailable && ['GET', 'HEAD'].includes(String(method || '').toUpperCase())
 
 const requireMutationConfirmation = async ({ normalizedPath, method, body, doubleCheck, confirmationHandled, confirmationToken }) => {
   if (!MUTATING_METHODS.has(method)) return
@@ -214,7 +224,7 @@ export const requestApi = async (
       })
       if (redirectOnUnavailable && isMaintenanceError(error)) {
         redirectToAvailabilityPage('/maintenance', { message: error.message })
-      } else if (redirectOnUnavailable && isServerUnavailableError(error)) {
+      } else if (shouldRedirectOnUnavailable(method, redirectOnUnavailable) && isServerUnavailableError(error)) {
         redirectToAvailabilityPage('/server-down', { message: error.message })
       }
       throw error
@@ -225,7 +235,7 @@ export const requestApi = async (
     const apiError = error?.name === 'AbortError'
       ? new ApiError('The server took too long to respond.', { code: 'REQUEST_TIMEOUT', cause: error })
       : new ApiError('The server could not be reached.', { code: 'SERVER_UNAVAILABLE', cause: error })
-    if (redirectOnUnavailable) redirectToAvailabilityPage('/server-down', { message: apiError.message })
+    if (shouldRedirectOnUnavailable(method, redirectOnUnavailable)) redirectToAvailabilityPage('/server-down', { message: apiError.message })
     throw apiError
   } finally {
     if (timeoutId) {
@@ -275,7 +285,7 @@ export const requestApiBlob = async (
       })
       if (redirectOnUnavailable && isMaintenanceError(error)) {
         redirectToAvailabilityPage('/maintenance', { message: error.message })
-      } else if (redirectOnUnavailable && isServerUnavailableError(error)) {
+      } else if (shouldRedirectOnUnavailable(method, redirectOnUnavailable) && isServerUnavailableError(error)) {
         redirectToAvailabilityPage('/server-down', { message: error.message })
       }
       throw error
@@ -300,5 +310,6 @@ export const requestApiBlob = async (
     }
   }
 }
+
 
 

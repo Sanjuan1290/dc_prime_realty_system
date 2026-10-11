@@ -7,6 +7,8 @@ import StatusAlert from '../../components/Shared/StatusAlert'
 import ProjectSettingsAuthorizationModal from '../../components/Lot_Projects/SettingsComponents/ProjectSettingsAuthorizationModal'
 import EditSettingsModal from '../../components/Lot_Projects/SettingsComponents/EditSettingsModal/EditSettingsModal'
 import {useFetch, useFetchPut, getDoubleCheckNotice} from '../../utils/useFetch'
+import { isServerUnavailableError } from '../../utils/apiClient'
+import { projectSettingsMatchPayload } from '../../utils/projectSettingsSaveStatus'
 import useCurrentUser from '../../utils/useCurrentUser'
 
 const daySuffix = (value) => {
@@ -53,7 +55,7 @@ const Settings = () => {
 
   const { data, isLoading, isFetching, isError, error, refetch } = useQuery({
     queryKey: ['lot-project-settings', projectSlug],
-    queryFn: () => useFetch(`/projects/lot-projects/${projectSlug}/settings`),
+    queryFn: () => useFetch(`/projects/lot-projects/${projectSlug}/settings`, { redirectOnUnavailable: false }),
     enabled: Boolean(projectSlug),
   })
 
@@ -65,6 +67,7 @@ const Settings = () => {
 
   const updateSettingsMutation = useMutation({
     mutationFn: (payload) => useFetchPut(`/projects/lot-projects/${projectSlug}/settings`, payload, {
+      redirectOnUnavailable: false,
       doubleCheck: {
         type: 'settings',
         scope: 'project',
@@ -83,8 +86,28 @@ const Settings = () => {
       queryClient.invalidateQueries({ queryKey: ['lot-project-settings', projectSlug] })
       queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] })
     },
-    onError: (mutationError) => {
-      setAlert(getDoubleCheckNotice(mutationError, 'Failed to save settings.'))
+    onError: async (mutationError, submittedSettings) => {
+      if (!isServerUnavailableError(mutationError)) {
+        setAlert(getDoubleCheckNotice(mutationError, 'Failed to save settings.'))
+        return
+      }
+      setAlert({ type: 'warning', message: 'Connection was lost while saving. Checking whether the settings were saved...' })
+      try {
+        const latest = await useFetch(`/projects/lot-projects/${projectSlug}/settings`, {
+          redirectOnUnavailable: false,
+          timeoutMs: 15_000,
+        })
+        queryClient.setQueryData(['lot-project-settings', projectSlug], latest)
+        if (projectSettingsMatchPayload(latest?.data, submittedSettings)) {
+          setShowEdit(false)
+          setPendingAuthorization(null)
+          setAlert({ type: 'success', message: 'Settings are confirmed saved. The server connection dropped after the operation.' })
+        } else {
+          setAlert({ type: 'warning', message: 'The server responded, but these settings are not confirmed saved. Review the current values before starting a new authorization. Do not submit the same change twice.' })
+        }
+      } catch {
+        setAlert({ type: 'warning', message: 'The server is temporarily unavailable. The save result cannot be confirmed. Keep this dialog open and check the saved settings when the API returns before resubmitting.' })
+      }
     },
   })
 
@@ -224,6 +247,7 @@ const Settings = () => {
           actorRole={actorRole}
           auditCaseId={workflowAuditCaseId || null}
           isSaving={updateSettingsMutation.isPending}
+          saveNotice={alert?.type === 'warning' || alert?.type === 'error' ? alert : null}
           onClose={() => !updateSettingsMutation.isPending && setPendingAuthorization(null)}
           onConfirm={(authorizedPayload) => updateSettingsMutation.mutate(authorizedPayload)}
         />
@@ -233,4 +257,5 @@ const Settings = () => {
 }
 
 export default Settings
+
 

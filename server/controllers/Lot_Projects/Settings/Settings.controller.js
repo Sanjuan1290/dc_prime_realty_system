@@ -4,6 +4,7 @@ import {
   db,
   getErrorMessage,
   tableExists,
+  columnExists,
   getProjectBySlug,
   getAuthenticatedUser,
   getUserFullName,
@@ -43,8 +44,15 @@ const PROJECT_SETTINGS_REVIEW_ACTION = 'project.settings.update';
 const PROJECT_SETTINGS_REVIEW_ENTITY = 'lot_project_settings';
 const PROJECT_SETTINGS_DEPARTMENT = 'operations';
 
-const ensureProjectPaymentNotificationColumn = async (connection) => {
-  await connection.query(`ALTER TABLE lot_project_settings ADD COLUMN IF NOT EXISTS payment_entry_email_notification_enabled TINYINT(1) NOT NULL DEFAULT 0 AFTER company_contact_number`);
+const assertProjectPaymentNotificationColumn = async (connection) => {
+  // Schema migrations must be applied during deployment, never from an API
+  // request. Repeated ALTER TABLE can stall settings reads/saves on TiDB.
+  if (!(await columnExists(connection, 'lot_project_settings', 'payment_entry_email_notification_enabled'))) {
+    throw Object.assign(new Error('Project settings require the payment-notification database migration (20260927_project_payment_entry_notifications.sql). Contact your system administrator.'), {
+      statusCode: 500,
+      code: 'PROJECT_PAYMENT_NOTIFICATION_SCHEMA_MISSING',
+    });
+  }
 };
 
 const normalizeProjectSettingsPayload = (body = {}) => {
@@ -161,7 +169,7 @@ export const getLotProjectSettings = async (req, res) => {
     if (!(await tableExists(connection, 'lot_project_settings'))) {
       return res.status(500).json({ success: false, message: 'lot_project_settings table does not exist.' });
     }
-    await ensureProjectPaymentNotificationColumn(connection);
+    await assertProjectPaymentNotificationColumn(connection);
 
     const currentUser = await getAuthenticatedUser(req);
     const settings = await getOrCreateSettingsRow(connection, project);
@@ -177,7 +185,7 @@ export const getLotProjectSettings = async (req, res) => {
       },
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: getErrorMessage(error) });
+    return res.status(error.statusCode || 500).json({ success: false, message: getErrorMessage(error), code: error.code || undefined });
   } finally {
     connection.release();
   }
@@ -199,7 +207,7 @@ export const requestLotProjectSettingsCode = async (req, res) => {
     if (!(await tableExists(connection, 'lot_project_settings'))) {
       return res.status(500).json({ success: false, message: 'lot_project_settings table does not exist.' });
     }
-    await ensureProjectPaymentNotificationColumn(connection);
+    await assertProjectPaymentNotificationColumn(connection);
 
     const reason = clean(req.body.reason);
     if (reason.length < 5) return res.status(400).json({ success: false, message: 'A clear reason for changing settings is required.' });
@@ -323,7 +331,7 @@ export const updateLotProjectSettings = async (req, res) => {
     if (!(await tableExists(connection, 'lot_project_settings'))) {
       return res.status(500).json({ success: false, message: 'lot_project_settings table does not exist.' });
     }
-    await ensureProjectPaymentNotificationColumn(connection);
+    await assertProjectPaymentNotificationColumn(connection);
 
     const currentUser = req.authUser || await getAuthenticatedUser(req);
     if (!currentUser) return res.status(401).json({ success: false, message: 'Please login before updating settings.' });
@@ -507,4 +515,5 @@ export const updateLotProjectSettings = async (req, res) => {
     connection.release();
   }
 };
+
 

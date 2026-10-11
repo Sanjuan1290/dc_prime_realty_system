@@ -21,6 +21,7 @@ const ProjectSettingsAuthorizationModal = ({
   onClose,
   onConfirm,
   isSaving = false,
+  saveNotice = null,
 }) => {
   const [reason, setReason] = useState('')
   const [password, setPassword] = useState('')
@@ -60,7 +61,7 @@ const ProjectSettingsAuthorizationModal = ({
         reason: cleanReason,
         password: isEmergencyOwner ? password : undefined,
         auditCaseId: isAuditCaseCorrection ? Number(auditCaseId) : undefined,
-      }, { confirmationHandled: 'technical' })
+      }, { confirmationHandled: 'technical', redirectOnUnavailable: false })
       const data = result?.data || {}
 
       if (data.verificationId) {
@@ -132,6 +133,7 @@ const ProjectSettingsAuthorizationModal = ({
 
         <div className="grid gap-4 p-6">
           {notice ? <StatusAlert type={notice.type} message={notice.message} onClose={notice.type === 'loading' ? undefined : () => setNotice(null)} /> : null}
+          {saveNotice ? <StatusAlert type={saveNotice.type} message={saveNotice.message} /> : null}
 
           <label className="grid gap-2">
             <span className="text-sm font-black text-slate-700">Reason for change *</span>
