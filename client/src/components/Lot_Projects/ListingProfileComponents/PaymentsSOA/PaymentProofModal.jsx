@@ -28,6 +28,7 @@ import {
 
 const MAX_FILE_BYTES = 15 * 1024 * 1024
 const MAX_FILES = 5
+const SCAN_STATUS_POLL_MS = 4_000
 const allowedTypes = new Set(['image/jpeg', 'image/png', 'application/pdf'])
 
 const money = (value) =>
@@ -115,6 +116,8 @@ const PaymentProofModal = ({
   const [deletingProofId, setDeletingProofId] = useState(0)
   const [scanFallback, setScanFallback] = useState(null)
   const taskIdsRef = useRef([])
+  const onCountChangeRef = useRef(onCountChange)
+  onCountChangeRef.current = onCountChange
   const {
     addUpload,
     updateUpload,
@@ -130,6 +133,7 @@ const PaymentProofModal = ({
 
   const remainingSlots = Math.max(MAX_FILES - proofs.length, 0)
   const isBusy = isLoading || isUploading || Boolean(deletingProofId)
+  const hasPendingProofScans = proofs.some((proof) => getMalwareScanStatus(proof) === 'pending')
 
   const createStatusTasks = () => {
     const taskIds = files.map((file) => addUpload({
@@ -196,6 +200,47 @@ const PaymentProofModal = ({
     // Payment ID identifies the modal contents. Parent callbacks are intentionally excluded.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paymentId])
+
+  // The Uploads & Security panel tracks new uploads, but the proof list needs
+  // its own refresh for scans that complete while this modal remains open.
+  // Poll only while saved proofs are pending, without showing a loading state
+  // or allowing a stale request to overwrite an upload/delete operation.
+  useEffect(() => {
+    if (!paymentId || !hasPendingProofScans || isUploading || deletingProofId) return undefined
+
+    let active = true
+    let inFlight = false
+    const refreshScanStatuses = async () => {
+      if (!active || inFlight || document.visibilityState === 'hidden') return
+      inFlight = true
+      try {
+        const result = await useFetch(basePath)
+        if (!active || !Array.isArray(result?.data?.proofs)) return
+        const nextProofs = result.data.proofs
+        setProofs(nextProofs)
+        if (result.data.payment) {
+          setPaymentDetails((current) => ({ ...current, ...result.data.payment }))
+        }
+        onCountChangeRef.current?.(nextProofs.length)
+      } catch {
+        // A transient status-check failure must not interrupt an upload, hide
+        // existing proofs, or imply that an unverified file has passed scanning.
+      } finally {
+        inFlight = false
+      }
+    }
+
+    const intervalId = window.setInterval(() => { void refreshScanStatuses() }, SCAN_STATUS_POLL_MS)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void refreshScanStatuses()
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => {
+      active = false
+      window.clearInterval(intervalId)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [basePath, paymentId, hasPendingProofScans, isUploading, deletingProofId])
 
   const uploadOne = async (file, uploadIndex, uploadCount, { allowUnscanned = false, fallbackToken = '' } = {}) => {
     const signatureResponse = await useFetchPost(`${basePath}/upload-signature`, {
@@ -534,6 +579,7 @@ const PaymentProofModal = ({
               <div>
                 <h3 className="text-sm font-black text-slate-950">Saved Proof Files</h3>
                 <p className="text-xs font-semibold text-slate-500">{proofs.length} of {MAX_FILES} file slots used</p>
+                {hasPendingProofScans ? <p className="mt-1 text-xs font-semibold text-amber-700">Security scan status updates automatically.</p> : null}
               </div>
               <span className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-black text-blue-700"><FiPaperclip /> {proofs.length}</span>
             </div>
@@ -551,7 +597,7 @@ const PaymentProofModal = ({
                       <p className="truncate text-sm font-black text-slate-950">{proof.fileName}</p>
                       <p className="mt-0.5 text-xs font-semibold text-slate-500">{formatBytes(proof.fileSize)} · Uploaded by {proof.uploadedBy} · {formatDateTime(proof.uploadedAt)}</p>
                       {proof.storedFileName ? <p className="mt-1 truncate font-mono text-[11px] font-bold text-slate-500">Cloudinary: {proof.storedFileName}</p> : null}
-                      <p className={`mt-1 text-[11px] font-black ${
+                      <p role="status" className={`mt-1 flex items-center gap-1.5 text-[11px] font-black ${
                         getMalwareScanStatus(proof) === 'approved'
                           ? 'text-emerald-700'
                           : getMalwareScanStatus(proof) === 'pending'
@@ -560,6 +606,7 @@ const PaymentProofModal = ({
                               ? 'text-red-700'
                               : 'text-amber-700'
                       }`}>
+                        {getMalwareScanStatus(proof) === 'pending' ? <FiLoader className="h-3 w-3 animate-spin" aria-hidden="true" /> : null}
                         {malwareScanLabel(proof)}
                       </p>
                       {proof.note ? <p className="mt-1 text-xs font-semibold text-slate-600">Note: {proof.note}</p> : null}
@@ -660,4 +707,5 @@ const PaymentProofModal = ({
 }
 
 export default PaymentProofModal
+
 
