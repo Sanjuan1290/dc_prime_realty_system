@@ -18,6 +18,7 @@ import {
 import PageHeader from '../../components/Shared/PageHeader'
 import StatusAlert from '../../components/Shared/StatusAlert'
 import ReviewSnapshotDiff from '../../components/Shared/ReviewSnapshotDiff'
+import PaymentProofReviewFiles from '../../components/Shared/PaymentProofReviewFiles'
 import NetworkImportReviewSummary from '../../components/Shared/NetworkImportReviewSummary'
 import { matchSnapshotRecords, RECORD_STATE_STYLES, sameValue } from '../../utils/reviewSnapshotFormat'
 import { getReviewRecordLink } from '../../utils/reviewRecordLinks'
@@ -127,6 +128,9 @@ const SNAPSHOT_LABELS = Object.freeze({
   importedRows: 'Imported Rows',
   batchReference: 'Import Reference',
   filename: 'File Name',
+  paymentType: 'Payment Type',
+  referenceId: 'Payment Reference',
+  unitId: 'Unit',
   groupId: 'Network',
   sellerGroupId: 'Network',
   userId: 'Person',
@@ -276,6 +280,7 @@ export const ReviewDetails = ({ reviewId, onClose, onChanged }) => {
     queryKey: ['workflow-review', actor.id || 0, actor.role || '', reviewId],
     queryFn: () => useFetch(`/workflow/reviews/${reviewId}`),
     retry: (count, error) => !(Number(error?.status || 0) >= 400 && Number(error?.status || 0) < 500) && count < 2,
+    refetchInterval: (result) => result.state.data?.data?.proofFiles?.some((file) => file.malwareScanStatus === 'pending') ? 5000 : false,
   })
   const review = query.data?.data || null
   const auditCase = review?.auditCase || null
@@ -369,6 +374,9 @@ export const ReviewDetails = ({ reviewId, onClose, onChanged }) => {
     recordListingId, recordPaymentId,
   })
   const snapshotLabels = isNetworkImportReview ? IMPORT_SNAPSHOT_LABELS : SNAPSHOT_LABELS
+  const reviewSnapshotHidden = (key) => isTechnicalSnapshotField(key)
+    || (reviewActionKey === 'payment.create' && ['paymentId', 'scheduleId', 'listingId'].includes(key))
+    || (reviewActionKey === 'payment_proof.verify' && ['paymentId', 'listingId', 'proofId', 'proofSequence', 'proofStatus', 'malwareScanStatus'].includes(key))
   const recordActionLabel = review?.entity_type === 'lot_project_payment'
     ? 'Open Payment for Controlled Correction'
     : review?.entity_type === 'lot_project_reservation'
@@ -470,12 +478,13 @@ export const ReviewDetails = ({ reviewId, onClose, onChanged }) => {
             {review.snapshotRecoveredFromAuditLog ? <p role="status" className="mb-3 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800">Original price changes were recovered from the matching Audit Log for this older review. No stored review or listing values were changed.</p> : null}
             {isNetworkImportReview
               ? <NetworkImportReviewSummary before={before} after={after} />
-              : <ReviewSnapshotDiff beforeValue={review.before_snapshot_json} afterValue={review.after_snapshot_json} lookups={review.lookups} labels={snapshotLabels} fieldOrder={SNAPSHOT_FIELD_ORDER} isHiddenField={isTechnicalSnapshotField} listRenderers={SNAPSHOT_LIST_RENDERERS} mode="changes" />}
+              : <ReviewSnapshotDiff beforeValue={review.before_snapshot_json} afterValue={review.after_snapshot_json} lookups={review.lookups} labels={snapshotLabels} fieldOrder={SNAPSHOT_FIELD_ORDER} isHiddenField={reviewSnapshotHidden} listRenderers={SNAPSHOT_LIST_RENDERERS} mode="changes" />}
           </div>
         </section>
+        {reviewActionKey === 'payment_proof.verify' ? <PaymentProofReviewFiles reviewId={reviewId} files={review.proofFiles || []} /> : null}
         <details className="rounded-2xl border border-slate-200 bg-slate-50">
           <summary className="cursor-pointer px-4 py-3 text-sm font-black text-slate-700">Show the full record before and after</summary>
-          <div className="border-t border-slate-200 bg-white p-4"><ReviewSnapshotDiff beforeValue={review.before_snapshot_json} afterValue={review.after_snapshot_json} lookups={review.lookups} labels={snapshotLabels} fieldOrder={SNAPSHOT_FIELD_ORDER} isHiddenField={isTechnicalSnapshotField} listRenderers={SNAPSHOT_LIST_RENDERERS} mode="full" /></div>
+          <div className="border-t border-slate-200 bg-white p-4"><ReviewSnapshotDiff beforeValue={review.before_snapshot_json} afterValue={review.after_snapshot_json} lookups={review.lookups} labels={snapshotLabels} fieldOrder={SNAPSHOT_FIELD_ORDER} isHiddenField={reviewSnapshotHidden} listRenderers={SNAPSHOT_LIST_RENDERERS} mode="full" /></div>
         </details>
         {auditCase ? <section className="rounded-2xl border border-red-200 bg-red-50 p-4"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="text-xs font-black uppercase tracking-wide text-red-600">Audit Case</p><p className="text-lg font-black text-red-950">{auditCase.case_number}</p></div><span className="rounded-full border border-red-200 bg-white px-3 py-1 text-xs font-black text-red-700">{titleCase(auditCase.status)}</span></div><div className="mt-3 grid gap-3"><div><p className="text-xs font-black uppercase text-red-600">Finding</p><p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-red-950">{auditCase.finding}</p></div>{auditCase.head_response ? <div><p className="text-xs font-black uppercase text-red-600">Responder Explanation</p><p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-red-950">{auditCase.head_response}</p></div> : null}{auditCase.auditor_resolution ? <div><p className="text-xs font-black uppercase text-red-600">Auditor Resolution</p><p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-red-950">{auditCase.auditor_resolution}</p></div> : null}{auditCase.correction_summary ? <div><p className="text-xs font-black uppercase text-red-600">{correctionRoleLabel} Correction</p><p className="mt-1 whitespace-pre-wrap text-sm font-semibold text-red-950">{auditCase.correction_summary}</p></div> : null}{responders ? <div><p className="text-xs font-black uppercase text-red-600">Who must answer</p><p className="mt-1 text-sm font-semibold text-red-950">{responders.label}{responders.users?.length ? `: ${responders.users.map((user) => user.full_name).join(', ')}` : ': nobody is available. An administrator must reassign the responder.'}</p></div> : null}</div></section> : null}
         <section className="rounded-2xl border border-slate-200 p-4"><p className="text-xs font-black uppercase tracking-wide text-slate-500">Review History</p><div className="mt-3 space-y-3">{(review.events || []).map((event) => <div key={event.operational_review_event_id} className="flex gap-3 border-l-2 border-blue-200 pl-3"><div className="min-w-0"><p className="font-black text-slate-800">{titleCase(event.event_type)}</p><p className="text-xs font-semibold text-slate-500">{event.actor_name || ROLE_LABELS[event.actor_role] || 'System'} · {fmtDate(event.created_at)}</p>{event.message ? <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{event.message}</p> : null}</div></div>)}</div></section>

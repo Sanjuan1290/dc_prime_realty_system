@@ -99,6 +99,7 @@ export const formatSnapshotValue = (key, value, { lookups = {}, labelFor = human
     return trimNumber(value, type === 'count' ? 0 : 4)
   }
   const text = String(value)
+  if (key === 'paymentType' && text.toLowerCase() === 'reservation') return 'Reservation Payment'
   if (VALUE_LABELS[text]) return VALUE_LABELS[text]
   if (/(At|_at|Date|_date)$/.test(key) && !Number.isNaN(Date.parse(text))) {
     return new Date(text).toLocaleString('en-PH', { dateStyle: 'medium', ...(text.length > 10 ? { timeStyle: 'short' } : {}) })

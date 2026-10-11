@@ -11,6 +11,7 @@ import { resolveReviewRecordLocation } from '../../services/reviewRecordLocation
 import { countWorkflowSummaryNotifications } from '../../services/workflowSummaryNotifications.service.js';
 import { markVisibleInternalNotificationsRead } from '../../services/internalNotificationRead.service.js';
 import { enrichLegacyListingReviewSnapshots } from '../../services/legacyListingReviewSnapshot.service.js';
+import { sendAuthenticatedAssetContent } from '../../services/secureCloudinary.service.js';
 
 const errorMessage = (error) => error?.message || 'Workflow operation failed.';
 const pageValues = (query = {}) => ({ page: Math.max(Number(query.page || 1),1), limit: Math.min(Math.max(Number(query.limit || 25),1),100) });
@@ -341,6 +342,102 @@ export const getReviewCenterSummary = async (req, res) => {
   }
 };
 
+// Proof review snapshots are immutable: they record scan status at upload time.
+// Resolve *current* scan statuses separately so reviewers never mistake an old
+// `pending` snapshot for a live scan result. No direct Cloudinary URLs/IDs leave
+// this endpoint.
+const isPaymentProofReview = (review) =>
+  review?.action_key === 'payment_proof.verify' && review?.entity_type === 'lot_project_payment_proof';
+
+const reviewProofIds = (review) => {
+  const snapshot = parseSnapshot(review?.after_snapshot_json) || {};
+  return [...new Set((Array.isArray(snapshot.proofs) ? snapshot.proofs : [])
+    .map((proof) => Number(proof?.proofId || 0))
+    .filter((id) => Number.isSafeInteger(id) && id > 0))].slice(0, 25);
+};
+
+const liveReviewProofs = async (connection, review) => {
+  if (!isPaymentProofReview(review)) return [];
+  const paymentId = Number(review.entity_id || 0);
+  const proofIds = reviewProofIds(review);
+  if (!Number.isSafeInteger(paymentId) || paymentId <= 0 || !proofIds.length) return [];
+  const [rows] = await connection.query(
+    `SELECT lot_project_payment_proof_id, lot_project_payment_id, file_name,
+            file_mime_type, proof_status, malware_scan_status,
+            malware_scan_reason, malware_scanned_at, created_at
+       FROM lot_project_payment_proofs
+      WHERE lot_project_payment_id = ?
+        AND lot_project_payment_proof_id IN (${proofIds.map(() => '?').join(',')})`,
+    [paymentId, ...proofIds]
+  );
+  const found = new Map((rows || []).map((row) => [Number(row.lot_project_payment_proof_id), row]));
+  const after = parseSnapshot(review.after_snapshot_json) || {};
+  const byId = new Map((Array.isArray(after.proofs) ? after.proofs : []).map((p) => [Number(p?.proofId || 0), p]));
+  return proofIds.map((proofId) => {
+    const row = found.get(proofId);
+    const snapshot = byId.get(proofId) || {};
+    const status = String(row?.malware_scan_status || 'unknown').toLowerCase();
+    return {
+      proofId,
+      fileName: row?.file_name || snapshot.fileName || 'Payment proof',
+      fileType: row?.file_mime_type || '',
+      proofStatus: row?.proof_status || 'unavailable',
+      malwareScanStatus: status,
+      malwareScanReason: row?.malware_scan_reason || null,
+      malwareScannedAt: row?.malware_scanned_at || null,
+      uploadedAt: row?.created_at || null,
+      previewAvailable: status === 'approved' && row?.proof_status === 'active',
+    };
+  });
+};
+
+// Use the review's own visibility permissions (including History) and bind the
+// proof to the payment and proof IDs captured in that review. This prevents
+// guessing IDs to open unrelated Cloudinary assets.
+export const getOperationalReviewProofContent = async (req, res) => {
+  try {
+    const reviewId = Number(req.params.id || 0);
+    const proofId = Number(req.params.proofId || 0);
+    if (!Number.isSafeInteger(reviewId) || reviewId <= 0 || !Number.isSafeInteger(proofId) || proofId <= 0) {
+      return res.status(400).json({ message: 'Invalid review or proof reference.' });
+    }
+    const [reviews] = await db.query('SELECT * FROM operational_reviews WHERE operational_review_id = ? LIMIT 1', [reviewId]);
+    const review = reviews[0];
+    if (!review || !isPaymentProofReview(review) || !reviewProofIds(review).includes(proofId)) {
+      return res.status(404).json({ message: 'Payment proof not found in this review.' });
+    }
+    const canAct = await canActorOpenReview(db, req.authUser, review);
+    if (!canAct && !(await canActorViewReview(db, req.authUser, review))) {
+      return res.status(403).json({ message: 'You do not have access to this review.' });
+    }
+    const [proofs] = await db.query(
+      `SELECT cloudinary_public_id, cloudinary_format, cloudinary_resource_type,
+              file_name, file_mime_type, malware_scan_status, proof_status
+         FROM lot_project_payment_proofs
+        WHERE lot_project_payment_proof_id = ? AND lot_project_payment_id = ? LIMIT 1`,
+      [proofId, Number(review.entity_id)]
+    );
+    const proof = proofs[0];
+    if (!proof || proof.proof_status !== 'active') {
+      return res.status(404).json({ message: 'This payment proof is no longer available.' });
+    }
+    // Unlike ordinary proof access, in-review previews only accept confirmed
+    // passed scans: no preview of pending, rejected, errored, or unscanned data.
+    if (String(proof.malware_scan_status || '').toLowerCase() !== 'approved') {
+      return res.status(423).json({ code: 'PROOF_NOT_SCAN_APPROVED', message: 'Preview is unavailable until the security scan passes.' });
+    }
+    return await sendAuthenticatedAssetContent(res, {
+      publicId: proof.cloudinary_public_id,
+      format: proof.cloudinary_format,
+      resourceType: proof.cloudinary_resource_type,
+      fileName: proof.file_name || 'payment-proof',
+      fileMimeType: proof.file_mime_type,
+    });
+  } catch (error) {
+    return res.status(error?.statusCode || 500).json({ message: 'Unable to open the protected payment proof.' });
+  }
+};
+
 export const getOperationalReview = async (req, res) => {
   try {
     const reviewId = Number(req.params.id || 0);
@@ -411,8 +508,8 @@ export const getOperationalReview = async (req, res) => {
         : event.message,
     }));
     const displayReview = await enrichLegacyListingReviewSnapshots(db, review);
-    const [lookups, location] = await Promise.all([buildReviewLookups(db, displayReview), resolveReviewRecordLocation(db, displayReview)]);
-    return res.json({ data: { ...displayReview, action_label: getReviewActionLabel(displayReview.action_key), events: readableEvents, auditCase, lookups, ...location, viewer: { canAct, readOnly: !canAct } } });
+    const [lookups, location, proofFiles] = await Promise.all([buildReviewLookups(db, displayReview), resolveReviewRecordLocation(db, displayReview), liveReviewProofs(db, displayReview)]);
+    return res.json({ data: { ...displayReview, action_label: getReviewActionLabel(displayReview.action_key), events: readableEvents, auditCase, lookups, proofFiles, ...location, viewer: { canAct, readOnly: !canAct } } });
   } catch (error) { return res.status(500).json({ message: errorMessage(error) }); }
 };
 

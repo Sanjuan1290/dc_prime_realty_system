@@ -2,7 +2,7 @@ import express from 'express';
 import { authenticateUser, requirePermission } from '../../middleware/auth.middleware.js';
 import { PERMISSIONS } from '../../config/permissions.js';
 import {
-  listOperationalReviews,getReviewCenterSummary,getOperationalReview,claimOperationalReview,confirmHeadReview,returnReviewForCorrection,resubmitManualReviewCorrection,auditorVerifyReview,listInternalNotifications,markInternalNotificationRead,markAllInternalNotificationsRead,openAuditCase,respondToAuditCase,reassignAuditCaseResponder,resolveAuditCase,getAuditCase,listProtectedChangeRequests,reviewProtectedChangeRequest,
+  listOperationalReviews,getReviewCenterSummary,getOperationalReview,getOperationalReviewProofContent,claimOperationalReview,confirmHeadReview,returnReviewForCorrection,resubmitManualReviewCorrection,auditorVerifyReview,listInternalNotifications,markInternalNotificationRead,markAllInternalNotificationsRead,openAuditCase,respondToAuditCase,reassignAuditCaseResponder,resolveAuditCase,getAuditCase,listProtectedChangeRequests,reviewProtectedChangeRequest,
 } from '../../controllers/System/workflow.controller.js';
 
 const router=express.Router();
@@ -22,6 +22,7 @@ router.use(authenticateUser);
 router.get('/reviews',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW),listOperationalReviews);
 router.get('/summary',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW),getReviewCenterSummary);
 router.get('/reviews/:id',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW),getOperationalReview);
+router.get('/reviews/:id/proofs/:proofId/content',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW),getOperationalReviewProofContent);
 router.post('/reviews/:id/claim',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_DEPARTMENT_REVIEW),claimOperationalReview);
 router.post('/reviews/:id/head-confirm',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_DEPARTMENT_REVIEW),confirmHeadReview);
 router.post('/reviews/:id/return',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_DEPARTMENT_RETURN_FOR_CORRECTION),returnReviewForCorrection);
