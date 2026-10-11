@@ -2,7 +2,7 @@ import express from 'express';
 import { authenticateUser, requirePermission } from '../../middleware/auth.middleware.js';
 import { PERMISSIONS } from '../../config/permissions.js';
 import {
-  listOperationalReviews,getReviewCenterSummary,getOperationalReview,claimOperationalReview,confirmHeadReview,returnReviewForCorrection,resubmitManualReviewCorrection,auditorVerifyReview,listInternalNotifications,markInternalNotificationRead,openAuditCase,respondToAuditCase,reassignAuditCaseResponder,resolveAuditCase,getAuditCase,listProtectedChangeRequests,reviewProtectedChangeRequest,
+  listOperationalReviews,getReviewCenterSummary,getOperationalReview,claimOperationalReview,confirmHeadReview,returnReviewForCorrection,resubmitManualReviewCorrection,auditorVerifyReview,listInternalNotifications,markInternalNotificationRead,markAllInternalNotificationsRead,openAuditCase,respondToAuditCase,reassignAuditCaseResponder,resolveAuditCase,getAuditCase,listProtectedChangeRequests,reviewProtectedChangeRequest,
 } from '../../controllers/System/workflow.controller.js';
 
 const router=express.Router();
@@ -35,6 +35,7 @@ router.post('/audit-cases/:caseId/resolve',requireReviewCenterRole,requirePermis
 router.get('/protected-changes',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW),listProtectedChangeRequests);
 router.post('/protected-changes/:requestId/review',requireReviewCenterRole,requirePermission(PERMISSIONS.WORKFLOW_DEPARTMENT_APPROVE_PROTECTED_CHANGE),reviewProtectedChangeRequest);
 router.get('/notifications',requirePermission(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW),listInternalNotifications);
+router.patch('/notifications/read-all',requirePermission(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW),markAllInternalNotificationsRead);
 router.patch('/notifications/:id/read',requirePermission(PERMISSIONS.WORKFLOW_REVIEW_CENTER_VIEW),markInternalNotificationRead);
 export default router;
 

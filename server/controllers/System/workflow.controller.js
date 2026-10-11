@@ -9,6 +9,7 @@ import { getAuditCorrectionRole } from '../../services/auditCaseAuthorization.se
 import { getReviewActionLabel, REVIEW_ACTIONS } from '../../config/reviewActions.js';
 import { resolveReviewRecordLocation } from '../../services/reviewRecordLocation.service.js';
 import { countWorkflowSummaryNotifications } from '../../services/workflowSummaryNotifications.service.js';
+import { markVisibleInternalNotificationsRead } from '../../services/internalNotificationRead.service.js';
 
 const errorMessage = (error) => error?.message || 'Workflow operation failed.';
 const pageValues = (query = {}) => ({ page: Math.max(Number(query.page || 1),1), limit: Math.min(Math.max(Number(query.limit || 25),1),100) });
@@ -588,6 +589,26 @@ export const listInternalNotifications = async (req, res) => {
 export const markInternalNotificationRead = async (req,res) => {
   try { await db.query('UPDATE internal_notifications SET read_at=COALESCE(read_at,NOW()) WHERE internal_notification_id=? AND user_id=?',[Number(req.params.id),req.authUser.id]); return res.json({message:'Notification marked read.'}); }
   catch(error){ return res.status(500).json({message:errorMessage(error)}); }
+};
+
+// Read state is independent of the operational review workflow. Mark only
+// currently visible unread messages belonging to the authenticated account.
+export const markAllInternalNotificationsRead = async (req, res) => {
+  let connection;
+  try {
+    const access = notificationVisibilityWhere(req.authUser);
+    connection = await db.getConnection();
+    await connection.beginTransaction();
+    const markedCount = await markVisibleInternalNotificationsRead(connection, req.authUser.id, access);
+    await connection.commit();
+    return res.json({ message: markedCount ? `${markedCount} notification${markedCount === 1 ? '' : 's'} marked as read.` : 'All notifications are already read.', markedCount });
+  } catch (error) {
+    if (connection) { try { await connection.rollback(); } catch {} }
+    console.error('[workflow/notifications/read-all]', { code: error?.code || null, message: error?.message || 'Unknown error' });
+    return res.status(500).json({ message: 'Unable to mark notifications as read. Please retry.' });
+  } finally {
+    if (connection) connection.release();
+  }
 };
 
 const caseNumber = (id) => `CASE-${String(id).padStart(8, '0')}`;

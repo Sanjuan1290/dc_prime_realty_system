@@ -6,6 +6,7 @@ import {
   FiArrowLeft,
   FiBell,
   FiCheckCircle,
+  FiCheck,
   FiClock,
   FiExternalLink,
   FiRefreshCw,
@@ -520,6 +521,15 @@ const ReviewCenter = () => {
   const markRead = useMutation({
     mutationFn: (id) => useFetchPatch(`/workflow/notifications/${id}/read`, {}, { confirmationHandled: 'technical' }),
     onSuccess: async () => { await Promise.all([notifications.refetch(), summary.refetch()]) },
+    onError: (error) => setNotice({ type: 'error', message: error.message || 'Unable to mark notification as read.' }),
+  })
+  const markAllRead = useMutation({
+    mutationFn: () => useFetchPatch('/workflow/notifications/read-all', {}, { confirmationHandled: 'technical' }),
+    onSuccess: async (result) => {
+      await Promise.all([notifications.refetch(), summary.refetch()])
+      setNotice({ type: 'success', message: result.message || 'Notifications marked as read.' })
+    },
+    onError: (error) => setNotice({ type: 'error', message: error.message || 'Unable to mark notifications as read.' }),
   })
 
   const reviewPagination = reviews.data?.pagination || { page: reviewPage, totalPages: 1, total: 0 }
@@ -530,6 +540,9 @@ const ReviewCenter = () => {
     return rows.filter((row) => [row.review_number, row.entity_label, row.action_label, row.action_key, row.lot_project_name, row.initiated_by_name].some((v) => String(v || '').toLowerCase().includes(needle)))
   }, [reviews.data, search])
   const counts = summary.data?.data || {}
+  const visibleUnread = (notifications.data?.data || []).filter((item) => !item.read_at).length
+  const hasUnreadNotifications = visibleUnread > 0 || (counts.notificationCountsAvailable !== false && Number(counts.unreadNotifications || 0) > 0)
+  const notificationBusy = markRead.isPending || markAllRead.isPending
   const refreshAll = async () => { await Promise.all([summary.refetch(), reviews.refetch(), approvals.refetch(), notifications.refetch()]) }
 
   if (actor.role && !REVIEW_CENTER_ROLES.has(actor.role)) return <Navigate to={`/portal/${actor.role}`} replace />
@@ -556,7 +569,44 @@ const ReviewCenter = () => {
 
       {tab === 'approvals' && isHead ? <div className="p-4 sm:p-5"><div className="mb-4 flex flex-wrap items-center justify-between gap-3"><p className="text-sm font-semibold text-slate-500">{actor.role === 'auditor' ? 'Full approval history, read-only. Approved changes reach your Reviews queue once they are saved.' : 'Head approvals for protected changes.'}</p><label className="flex items-center gap-2 text-sm font-black text-slate-700">Status<select value={approvalStatus} onChange={(e) => setApprovalStatus(e.target.value)} className="h-10 rounded-xl border border-slate-300 px-3 font-semibold">{[['','All'],['pending','Pending'],['approved','Approved, not yet used'],['used','Used'],['rejected','Rejected'],['expired','Expired'],['cancelled','Cancelled']].map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select></label></div>{approvals.isLoading ? <StatusAlert type="loading" message="Loading approval requests..." /> : (approvals.data?.data || []).length ? <div className="grid gap-3">{approvals.data.data.map((row) => <div key={row.protected_change_request_id} className="rounded-2xl border border-slate-200 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-mono text-sm font-black text-blue-700">{row.request_number}</p><p className="mt-1 text-lg font-black">{row.entity_label || titleCase(row.entity_type)}</p><p className="text-sm font-semibold text-slate-500">{titleCase(row.action_key)} · {titleCase(row.department)} · {row.lot_project_name || '—'}</p><p className="mt-2 text-sm text-slate-600"><strong>Reason:</strong> {row.reason}</p><p className="mt-1 text-xs font-semibold text-slate-500">Requested by {row.requested_by_name || `User #${row.requested_by_user_id}`} on {fmtDate(row.created_at)}</p>{row.reviewed_at ? <p className="mt-1 text-xs font-semibold text-slate-500">{row.status === 'rejected' ? 'Rejected' : 'Approved'} by {row.reviewed_by_head_name || `User #${row.reviewed_by_head_user_id}`} on {fmtDate(row.reviewed_at)}{row.head_note ? `. Note: ${row.head_note}` : ''}</p> : null}{row.used_at ? <p className="mt-1 text-xs font-semibold text-emerald-700">Change applied on {fmtDate(row.used_at)}</p> : null}{row.status === 'pending' ? <p className="mt-1 text-xs font-semibold text-amber-700">Expires {fmtDate(row.expires_at)}</p> : null}</div><span className={`rounded-full border px-3 py-1 text-xs font-black ${row.status === 'approved' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : row.status === 'rejected' ? 'border-red-200 bg-red-50 text-red-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>{titleCase(row.status)}</span></div>{row.status === 'pending' && DEPARTMENT_HEAD_ROLE[row.department] === actor.role ? <div className="mt-4 flex gap-2 border-t pt-4"><button type="button" onClick={() => approvalMutation.mutate({ id: row.protected_change_request_id, decision: 'approve' })} className="h-10 rounded-xl bg-emerald-600 px-4 font-black text-white">Approve Exact Change</button><button type="button" onClick={() => approvalMutation.mutate({ id: row.protected_change_request_id, decision: 'reject' })} className="h-10 rounded-xl bg-red-600 px-4 font-black text-white">Reject</button></div> : null}</div>)}</div> : <StatusAlert type="info" message="No protected change requests are visible to your account." />}</div> : null}
 
-      {tab === 'notifications' ? <div className="p-4 sm:p-5">{notifications.isLoading ? <StatusAlert type="loading" message="Loading notifications..." /> : (notifications.data?.data || []).length ? <div className="grid gap-2">{notifications.data.data.map((row) => <button key={row.internal_notification_id} type="button" onClick={() => { if (!row.read_at) markRead.mutate(row.internal_notification_id); if (row.operational_review_id) navigate(`${actorRoot}/review-center/reviews/${row.operational_review_id}`) }} className={`w-full rounded-2xl border p-4 text-left ${row.read_at ? 'border-slate-200 bg-white' : 'border-blue-200 bg-blue-50'}`}><div className="flex items-start justify-between gap-3"><div><p className="font-black text-slate-900">{row.title}</p><p className="mt-1 text-sm font-semibold text-slate-600">{row.message || ''}</p><p className="mt-2 text-xs font-semibold text-slate-400">{fmtDate(row.created_at)}</p></div>{!row.read_at ? <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-blue-600" /> : null}</div></button>)}</div> : <StatusAlert type="info" message="No internal workflow notifications yet." />}</div> : null}
+      {tab === 'notifications' ? <div className="p-4 sm:p-5">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="font-black text-slate-900">Internal Notifications</h2>
+            <p className="mt-1 text-sm font-semibold text-slate-500">Messages and updates only. Marking these read does not complete pending reviews or corrections.</p>
+          </div>
+          <button type="button" onClick={() => markAllRead.mutate()} disabled={notificationBusy || notifications.isLoading || !hasUnreadNotifications} className="inline-flex h-10 items-center gap-2 rounded-xl border border-blue-200 bg-white px-4 text-sm font-black text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-40">
+            <FiCheckCircle /> {markAllRead.isPending ? 'Marking as read...' : 'Mark All as Read'}
+          </button>
+        </div>
+        {notifications.isLoading ? <StatusAlert type="loading" message="Loading notifications..." />
+          : notifications.isError ? <StatusAlert type="error" message={notifications.error?.message || 'Unable to load notifications. Try Refresh.'} />
+          : (notifications.data?.data || []).length ? <div className="grid gap-2">
+            {notifications.data.data.map((row) => <div key={row.internal_notification_id} className={`rounded-2xl border p-4 ${row.read_at ? 'border-slate-200 bg-white' : 'border-blue-200 bg-blue-50'}`}>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                {row.operational_review_id ? <button type="button" onClick={() => {
+                  if (!row.read_at) markRead.mutate(row.internal_notification_id)
+                  if (row.operational_review_id) navigate(`${actorRoot}/review-center/reviews/${row.operational_review_id}`)
+                }} className="min-w-0 flex-1 text-left" aria-label={`Open review for ${row.title}`}>
+                  <p className="font-black text-slate-900">{row.title}</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-600">{row.message || ''}</p>
+                  <p className="mt-2 text-xs font-semibold text-slate-400">{fmtDate(row.created_at)}</p>
+                  <p className="mt-2 inline-flex items-center gap-1 text-xs font-black text-blue-700">Open Review <FiExternalLink /></p>
+                </button> : <div className="min-w-0 flex-1">
+                  <p className="font-black text-slate-900">{row.title}</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-600">{row.message || ''}</p>
+                  <p className="mt-2 text-xs font-semibold text-slate-400">{fmtDate(row.created_at)}</p>
+                </div>}
+                <div className="flex shrink-0 items-center gap-2">
+                  {row.read_at ? <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-bold text-slate-500"><FiCheck /> Read</span> : <>
+                    <span className="rounded-full border border-blue-200 bg-white px-2.5 py-1 text-xs font-black text-blue-700">Unread</span>
+                    <button type="button" onClick={() => markRead.mutate(row.internal_notification_id)} disabled={notificationBusy} className="rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-black text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-40">Mark as Read</button>
+                  </>}
+                </div>
+              </div>
+            </div>)}
+          </div> : <StatusAlert type="info" message="No internal workflow notifications yet." />}
+      </div> : null}
     </section>
   </main>
 }
