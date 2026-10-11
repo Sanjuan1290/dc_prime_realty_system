@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { getSettingsAuthorizationLabel } from '../../client/src/utils/settingsAuthorizationRole.js';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(dirname, '..', '..');
@@ -16,7 +17,7 @@ test('Admin informational access banner is no longer displayed on Users', () => 
   assert.doesNotMatch(users, /Dashboard reports are limited to 12 months/);
 });
 
-test('Archive Old Audit Logs is owner-only with password plus email verification', () => {
+test('Archive Old Audit Logs is owner-only with role-aware password plus email verification', () => {
   const page = read('client/src/pages/System/AuditLogs.jsx');
   const modal = read('client/src/components/System/auditLogsComponents/ArchiveAuditLogsModal.jsx');
   const router = read('server/routers/System/auditLogs.router.js');
@@ -24,14 +25,20 @@ test('Archive Old Audit Logs is owner-only with password plus email verification
 
   assert.match(page, /const canArchive = \['super_admin', 'system_admin'\]\.includes\(currentUserData\?\.user\?\.role\)/);
   assert.match(page, /disabled=\{!canArchive\}/);
-  assert.match(page, /Super Admin authority is required/);
+  assert.match(page, /Super Admin or System Admin authority is required/);
+  assert.match(page, /actorRole=\{currentUserData\?\.user\?\.role\}/);
   assert.match(router, /archive\/request'[\s\S]*requireExactRole\('super_admin', 'system_admin'\)/);
   assert.match(router, /archive\/confirm'[\s\S]*requireExactRole\('super_admin', 'system_admin'\)/);
   assert.match(router, /archive\/exports\/:batchId'[\s\S]*requireExactRole\('super_admin', 'system_admin'\)/);
   assert.match(controller, /requireArchiveAuthority/);
   assert.match(controller, /!isOwnerAdministrator\(user\)/);
   assert.match(controller, /bcrypt\.compare/);
-  assert.match(modal, /Super Admin password/);
+  assert.match(modal, /actorRole = ''/);
+  assert.match(modal, /getSettingsAuthorizationLabel\(actorRole\)/);
+  assert.match(modal, /\{administratorLabel\} password/);
+  assert.match(modal, /placeholder=\{`Enter \$\{administratorLabel\} password`\}/);
+  assert.equal(getSettingsAuthorizationLabel('super_admin'), 'Super Admin');
+  assert.equal(getSettingsAuthorizationLabel('system_admin'), 'System Admin');
   assert.match(modal, /Verify Password & Send Code/);
   assert.match(modal, /6-digit email code/);
   assert.match(modal, /requestData\.maskedEmail/);
@@ -59,4 +66,5 @@ test('Cancellation actions are permission-based while sensitive settlement and r
   assert.match(modal, /Current Account Password/);
   assert.match(modal, /Email Verification Code/);
 });
+
 

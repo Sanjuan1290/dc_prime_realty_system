@@ -3,6 +3,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { FiAlertTriangle, FiArrowRight, FiCheckCircle, FiRefreshCw, FiSearch, FiX } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
 import { getDoubleCheckNotice, useFetch, useFetchPost } from '../../../../utils/useFetch'
+import { getSettingsAuthorizationLabel } from '../../../../utils/settingsAuthorizationRole'
 
 const money = (value) => new Intl.NumberFormat('en-PH', {
   style: 'currency',
@@ -45,6 +46,7 @@ const ReservationCorrectionModal = ({ open, projectSlug, listingId, onClose, onC
   const isOwner = ['super_admin', 'system_admin'].includes(actorRole)
   const caseMode = isOwner && Number(auditCaseId || 0) > 0
   const emergencyMode = isOwner && !caseMode
+  const administratorLabel = getSettingsAuthorizationLabel(actorRole)
   const [destinationListingId, setDestinationListingId] = useState('')
   const [destinationSearch, setDestinationSearch] = useState('')
   const [terms, setTerms] = useState(null)
@@ -397,7 +399,7 @@ const ReservationCorrectionModal = ({ open, projectSlug, listingId, onClose, onC
                   <h3 className="font-black text-slate-950">5. Governed authorization</h3>
                   <p className="mt-1 text-sm font-semibold text-slate-600">
                     {emergencyMode
-                      ? 'Super Admin is emergency fallback only. Emergency use requires your password and email code.'
+                      ? `${administratorLabel} emergency access requires your password and email code.`
                       : caseMode
                         ? 'System Admin can apply this only from a valid Auditor case for this exact buyer account.'
                         : actorRole === 'sales_head'
@@ -407,13 +409,13 @@ const ReservationCorrectionModal = ({ open, projectSlug, listingId, onClose, onC
                   {authorization?.requestNumber ? <p className="mt-3 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-black text-blue-900">{authorization.requestNumber} · {authorization.status === 'approved' || authorization.directCorrection ? 'Approved' : 'Pending Head Review'}</p> : null}
                   {emergencyMode && !verificationId ? (
                     <label className="mt-4 block max-w-md">
-                      <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-600">Super Admin Password *</span>
+                      <span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-600">{administratorLabel} Password *</span>
                       <input type="password" value={superAdminPassword} onChange={(event) => setSuperAdminPassword(event.target.value)} disabled={busy} autoComplete="current-password" className={fieldClass} placeholder="Emergency owner password" />
                     </label>
                   ) : null}
                   {emergencyMode && verificationId ? (
                     <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                      <div className="rounded-xl border border-emerald-200 bg-white p-3"><p className="text-xs font-black uppercase text-emerald-700">Emergency password verified</p><p className="mt-1 text-sm font-semibold text-slate-600">Code sent to {maskedEmail || 'the Super Admin email'}.</p></div>
+                      <div className="rounded-xl border border-emerald-200 bg-white p-3"><p className="text-xs font-black uppercase text-emerald-700">Emergency password verified</p><p className="mt-1 text-sm font-semibold text-slate-600">Code sent to {maskedEmail || `your ${administratorLabel} email`}.</p></div>
                       <label className="block"><span className="mb-1.5 block text-xs font-black uppercase tracking-wide text-slate-600">Email Verification Code *</span><input inputMode="numeric" maxLength={6} value={verificationCode} onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, '').slice(0, 6))} disabled={busy} className={fieldClass} placeholder="6-digit code" /></label>
                     </div>
                   ) : null}
@@ -451,4 +453,5 @@ const ReservationCorrectionModal = ({ open, projectSlug, listingId, onClose, onC
 }
 
 export default ReservationCorrectionModal
+
 

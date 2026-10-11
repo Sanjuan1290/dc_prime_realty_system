@@ -17,6 +17,7 @@ import {
 import StatusAlert from '../../../Shared/StatusAlert'
 import {useFetchPost, useFetchPut, getDoubleCheckNotice} from '../../../../utils/useFetch'
 import useCurrentUser from '../../../../utils/useCurrentUser'
+import { getSettingsAuthorizationLabel } from '../../../../utils/settingsAuthorizationRole'
 import AddSOAPaymentModal from './AddSOAPaymentModal'
 import PenaltyReliefModal from './PenaltyReliefModal'
 import PaymentProofModal from './PaymentProofModal'
@@ -308,6 +309,7 @@ const PaymentCorrectionAuthorizationModal = ({ request, actorRole, auditCaseId =
   // (current password + email code).
   const isOwner = ['super_admin', 'system_admin'].includes(actorRole)
   const isSuperAdmin = isOwner && !(Number(auditCaseId || 0) > 0)
+  const administratorLabel = getSettingsAuthorizationLabel(actorRole)
   const isHead = actorRole === 'accounting_head'
   const isSystemAdmin = isOwner && Number(auditCaseId || 0) > 0
   const isStaff = actorRole === 'accounting_staff'
@@ -372,7 +374,7 @@ const PaymentCorrectionAuthorizationModal = ({ request, actorRole, auditCaseId =
 
           {isSuperAdmin && !verificationId && !directAuthorized ? (
             <label className="block">
-              <span className="text-sm font-black text-slate-700">Super Admin Password *</span>
+              <span className="text-sm font-black text-slate-700">{administratorLabel} Password *</span>
               <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" placeholder="Enter current password" className="mt-1.5 h-11 w-full rounded-xl border border-slate-300 px-3 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50" />
             </label>
           ) : null}
@@ -380,7 +382,7 @@ const PaymentCorrectionAuthorizationModal = ({ request, actorRole, auditCaseId =
           {verificationId ? (
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
               <p className="font-black text-emerald-900">Emergency password verified</p>
-              <p className="mt-1 text-sm font-semibold text-emerald-800">A 6-digit code was sent to {maskedEmail || 'your Super Admin email'}.</p>
+              <p className="mt-1 text-sm font-semibold text-emerald-800">A 6-digit code was sent to {maskedEmail || `your ${administratorLabel} email`}.</p>
               <label className="mt-3 block">
                 <span className="text-sm font-black text-emerald-950">Email Verification Code *</span>
                 <input inputMode="numeric" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="6-digit code" className="mt-1.5 h-11 w-full rounded-xl border border-emerald-300 bg-white px-3 text-sm font-black tracking-[0.35em] outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100" />
@@ -2177,5 +2179,6 @@ const PaymentsSOA = ({
 }
 
 export default PaymentsSOA
+
 
 

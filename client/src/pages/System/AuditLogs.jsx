@@ -277,7 +277,7 @@ const AuditLogs = () => {
             type="button"
             onClick={() => canArchive && openArchiveModal()}
             disabled={!canArchive}
-            title={!canArchive ? 'Super Admin authority is required to archive old audit logs.' : 'Archive old audit logs'}
+            title={!canArchive ? 'Super Admin or System Admin authority is required to archive old audit logs.' : 'Archive old audit logs'}
             className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-blue-600 px-5 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none disabled:hover:bg-slate-100"
           >
             <FiArchive className="h-4 w-4" />
@@ -349,6 +349,7 @@ const AuditLogs = () => {
 
       {showArchiveModal ? (
         <ArchiveAuditLogsModal
+          actorRole={currentUserData?.user?.role}
           onClose={closeArchiveModal}
           onRequestCode={(payload) => requestArchiveMutation.mutate(payload)}
           onConfirmCode={(code) => confirmArchiveMutation.mutate(code)}
@@ -367,4 +368,5 @@ const AuditLogs = () => {
 }
 
 export default AuditLogs
+
 

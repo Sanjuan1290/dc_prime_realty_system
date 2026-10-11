@@ -13,6 +13,7 @@ import {
 } from 'react-icons/fi'
 import StatusAlert from '../../../Shared/StatusAlert'
 import CommissionDistribution from './CommissionDistribution'
+import { getSettingsAuthorizationLabel } from '../../../../utils/settingsAuthorizationRole'
 
 const money = (value) =>
   new Intl.NumberFormat('en-PH', {
@@ -62,6 +63,7 @@ const RecalculateCommissionModal = ({
   // (current password + email code).
   const isOwner = ['super_admin', 'system_admin'].includes(actorRole)
   const isSuperAdmin = isOwner && !(Number(auditCaseId || 0) > 0)
+  const administratorLabel = getSettingsAuthorizationLabel(actorRole)
   const isAccountingHead = actorRole === 'accounting_head'
   const isSystemAdminAuditCorrection = isOwner && Number(auditCaseId || 0) > 0
   const authorizationReady = Boolean(
@@ -264,14 +266,14 @@ const RecalculateCommissionModal = ({
                     <p className="text-sm font-black text-slate-900">Governed authorization</p>
                     <p className="mt-1 text-xs font-semibold text-slate-600">
                       {isSuperAdmin
-                        ? 'Super Admin is emergency fallback only and requires password + email verification.'
+                        ? `${administratorLabel} emergency access requires password and email verification.`
                         : isSystemAdminAuditCorrection
                           ? 'System Admin may apply only the correction authorized by the Auditor case.'
                           : isAccountingHead
                             ? 'Accounting Head changes skip self-approval and go to the Auditor after saving.'
                             : 'Accounting Staff must obtain Accounting Head approval for this exact rate distribution.'}
                     </p>
-                    {isSuperAdmin ? <div className="relative mt-3"><input id="commission-adjustment-password" type={showPassword ? 'text' : 'password'} value={password} onChange={(event) => { setPassword(event.target.value); setNotice(null) }} disabled={busy} autoComplete="current-password" placeholder="Emergency Super Admin password" className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 pr-12 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-100" /><button type="button" onClick={() => setShowPassword((current) => !current)} disabled={busy} className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-slate-500" aria-label={showPassword ? 'Hide password' : 'Show password'}>{showPassword ? <FiEyeOff /> : <FiEye />}</button></div> : null}
+                    {isSuperAdmin ? <div className="relative mt-3"><input id="commission-adjustment-password" type={showPassword ? 'text' : 'password'} value={password} onChange={(event) => { setPassword(event.target.value); setNotice(null) }} disabled={busy} autoComplete="current-password" placeholder={`Enter ${administratorLabel} password`} className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 pr-12 text-sm font-semibold outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-100" /><button type="button" onClick={() => setShowPassword((current) => !current)} disabled={busy} className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-slate-500" aria-label={showPassword ? 'Hide password' : 'Show password'}>{showPassword ? <FiEyeOff /> : <FiEye />}</button></div> : null}
                     {isSystemAdminAuditCorrection ? <p className="mt-3 rounded-xl border border-violet-200 bg-white px-3 py-2 text-xs font-black text-violet-800">Audit Case #{auditCaseId} will be validated against this exact commission record.</p> : null}
                   </div>
                 </div>
@@ -314,4 +316,5 @@ const RecalculateCommissionModal = ({
 }
 
 export default RecalculateCommissionModal
+
 

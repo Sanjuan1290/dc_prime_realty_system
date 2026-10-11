@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { FiCheckCircle, FiClock, FiKey, FiLock, FiMail, FiShield, FiX } from 'react-icons/fi'
 import StatusAlert from '../../Shared/StatusAlert'
 import { useFetchPost } from '../../../utils/useFetch'
+import { getSettingsAuthorizationLabel } from '../../../utils/settingsAuthorizationRole'
 
 const inputClass = 'h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-800 outline-none transition focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100'
 
@@ -36,28 +37,29 @@ const ProjectSettingsAuthorizationModal = ({
   // case they use the case-correction flow; otherwise the emergency flow
   // (current password + email code).
   const isOwner = ['super_admin', 'system_admin'].includes(actorRole)
-  const isSuperAdmin = isOwner && !(Number(auditCaseId || 0) > 0)
+  const isEmergencyOwner = isOwner && !(Number(auditCaseId || 0) > 0)
   const isStaff = actorRole === 'operations_staff'
   const isHead = actorRole === 'operations_head'
-  const isSystemAdmin = isOwner && Number(auditCaseId || 0) > 0
+  const isAuditCaseCorrection = isOwner && Number(auditCaseId || 0) > 0
+  const administratorLabel = getSettingsAuthorizationLabel(actorRole)
 
   const requestAuthorization = async () => {
     const cleanReason = reason.trim()
     if (cleanReason.length < 5) return setNotice({ type: 'error', message: 'Enter a clear reason for this settings change.' })
-    if (isSuperAdmin && !password) return setNotice({ type: 'error', message: 'Your password is required for emergency override.' })
-    if (isSystemAdmin && !Number(auditCaseId || 0)) return setNotice({ type: 'error', message: 'Open this correction from a valid Auditor case in Review Center.' })
+    if (isEmergencyOwner && !password) return setNotice({ type: 'error', message: 'Your password is required for emergency override.' })
+    if (isAuditCaseCorrection && !Number(auditCaseId || 0)) return setNotice({ type: 'error', message: 'Open this correction from a valid Auditor case in Review Center.' })
 
     setBusy(true)
     setNotice({
       type: 'loading',
-      message: isStaff ? 'Requesting / checking Operations Head approval...' : isSuperAdmin ? 'Verifying emergency access...' : 'Checking authorization...',
+      message: isStaff ? 'Requesting / checking Operations Head approval...' : isEmergencyOwner ? 'Verifying emergency access...' : 'Checking authorization...',
     })
     try {
       const result = await useFetchPost(`/projects/lot-projects/${projectSlug}/settings/code`, {
         ...settingsPayload,
         reason: cleanReason,
-        password: isSuperAdmin ? password : undefined,
-        auditCaseId: isSystemAdmin ? Number(auditCaseId) : undefined,
+        password: isEmergencyOwner ? password : undefined,
+        auditCaseId: isAuditCaseCorrection ? Number(auditCaseId) : undefined,
       }, { confirmationHandled: 'technical' })
       const data = result?.data || {}
 
@@ -99,17 +101,17 @@ const ProjectSettingsAuthorizationModal = ({
       ...settingsPayload,
       reason: cleanReason,
       approvalRequestId: isStaff ? approvalRequestId : undefined,
-      auditCaseId: isSystemAdmin ? Number(auditCaseId || 0) || undefined : undefined,
+      auditCaseId: isAuditCaseCorrection ? Number(auditCaseId || 0) || undefined : undefined,
     })
   }
 
   const statusTitle = isStaff
     ? 'Operations Head Approval'
-    : isSystemAdmin
+    : isAuditCaseCorrection
       ? 'Auditor Case Correction'
       : isHead
         ? 'Operations Head Authority'
-        : 'Super Admin Emergency Override'
+        : actorRole === 'system_admin' ? 'System Admin Emergency Override' : 'Super Admin Emergency Override'
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/55 p-4">
@@ -121,8 +123,8 @@ const ProjectSettingsAuthorizationModal = ({
             <p className="mt-1 text-sm font-semibold leading-6 text-slate-500">
               {isStaff ? 'The exact proposed settings must be approved by an Operations Head before they can be saved.' :
                 isHead ? 'Your Operations Head role satisfies the department approval. The saved change will still go to Auditor review.' :
-                  isSystemAdmin ? `Audit Case #${auditCaseId || '—'} must authorize this exact Project Settings correction.` :
-                    'Emergency owner access requires your password and email code. System Admin and Auditor will be notified.'}
+                  isAuditCaseCorrection ? `Audit Case #${auditCaseId || '—'} must authorize this exact Project Settings correction.` :
+                    'Emergency owner access requires your current password and an email code. Review notifications follow the configured workflow.'}
             </p>
           </div>
           <button type="button" onClick={onClose} disabled={isSaving || busy} className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100 disabled:opacity-50" aria-label="Close authorization"><FiX /></button>
@@ -136,15 +138,15 @@ const ProjectSettingsAuthorizationModal = ({
             <textarea value={reason} disabled={Boolean(verificationId) || authorized} onChange={(event) => setReason(event.target.value)} placeholder="Explain why these Project Settings are being changed." className="min-h-24 resize-none rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm font-semibold text-slate-800 outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50 disabled:bg-slate-100" />
           </label>
 
-          {isSuperAdmin && !verificationId ? <label className="grid gap-2">
-            <span className="flex items-center gap-2 text-sm font-black text-slate-700"><FiLock /> Super Admin Password *</span>
-            <input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} className={inputClass} placeholder="Enter Super Admin password" />
+          {isEmergencyOwner && !verificationId ? <label className="grid gap-2">
+            <span className="flex items-center gap-2 text-sm font-black text-slate-700"><FiLock /> {administratorLabel} Password *</span>
+            <input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} className={inputClass} placeholder={`Enter ${administratorLabel} password`} />
           </label> : null}
 
           {verificationId ? <label className="grid gap-2">
             <span className="flex items-center gap-2 text-sm font-black text-slate-700"><FiMail /> Email Verification Code *</span>
             <input inputMode="numeric" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))} className={`${inputClass} tracking-[0.35em]`} placeholder="000000" />
-            <span className="text-xs font-semibold text-slate-500">Code sent to {maskedEmail || 'your Super Admin email'}.</span>
+            <span className="text-xs font-semibold text-slate-500">Code sent to {maskedEmail || `your ${administratorLabel} email`}.</span>
           </label> : null}
 
           {isStaff && approvalRequestId && !authorized ? <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">
@@ -166,4 +168,5 @@ const ProjectSettingsAuthorizationModal = ({
 }
 
 export default ProjectSettingsAuthorizationModal
+
 
