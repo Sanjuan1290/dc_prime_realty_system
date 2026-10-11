@@ -236,13 +236,36 @@ const AddSOAPaymentModal = ({
   )
 
   const selectedRowDueDate = String(selectedRow?.dueDate || selectedRow?.due_date || '').slice(0, 10)
-  const isSelectedRowPaidEarly = Boolean(
-    requiresSoaRow &&
-    form.paymentType !== 'Advance Payment' &&
-    /^\d{4}-\d{2}-\d{2}$/.test(form.paymentDate) &&
-    /^\d{4}-\d{2}-\d{2}$/.test(selectedRowDueDate) &&
-    form.paymentDate < selectedRowDueDate
-  )
+  const validPaymentDate = /^\d{4}-\d{2}-\d{2}$/.test(form.paymentDate)
+  const validDueDate = /^\d{4}-\d{2}-\d{2}$/.test(selectedRowDueDate)
+  // The next contractual installment includes already-paid rows. Filtering
+  // to only unpaid rows would incorrectly make November "Paid Early" after
+  // the October installment has been settled ahead of schedule.
+  const nextContractInstallmentDate = rows
+    .filter((row) => !['cancelled'].includes(String(row.status || '').toLowerCase()))
+    .filter((row) => ['Downpayment', 'Monthly'].includes(getPaymentTypeFromDescription(row.description)))
+    .map((row) => String(row.dueDate || row.due_date || '').slice(0, 10))
+    .filter((dueDate) => /^\d{4}-\d{2}-\d{2}$/.test(dueDate) && validPaymentDate && dueDate >= form.paymentDate)
+    .sort()[0] || ''
+  const selectedTiming = !requiresSoaRow || !validPaymentDate || !validDueDate
+    ? null
+    : form.paymentDate === selectedRowDueDate
+      ? 'on_time'
+      : form.paymentDate > selectedRowDueDate
+        ? 'late'
+        : selectedRowDueDate === nextContractInstallmentDate
+          ? 'early'
+          : ['Downpayment', 'Monthly'].includes(getPaymentTypeFromDescription(selectedRow?.description))
+            ? 'advance'
+            : 'early'
+  const selectedTimingHint = selectedTiming === 'early'
+    ? 'Paid Early: This is the next scheduled installment and you are recording payment before its due date.'
+    : selectedTiming === 'advance'
+      ? 'Advance Payment: This installment is due after the next scheduled one. The SOA will show it as an advance payment.'
+      : null
+  const selectedDueDateLabel = validDueDate
+    ? new Date(`${selectedRowDueDate}T12:00:00Z`).toLocaleDateString('en-PH', { timeZone: 'UTC', month: 'short', day: 'numeric', year: 'numeric' })
+    : '' 
 
   useEffect(() => {
     if (typeof onPreview !== 'function' || !form.paymentDate || (requiresSoaRow && !form.soaRowId)) {
@@ -647,13 +670,13 @@ const AddSOAPaymentModal = ({
                 ) : selectedRow ? (
                   <>
                     <p className="mt-1 text-xs font-semibold text-blue-700">
-                      Payment applies to{' '}
-                      <span className="font-black">{selectedRow.description}</span> ·{' '}
-                      Suggested unpaid amount: {money(suggestedAmount)}
+                      Payment for <span className="font-black">{selectedRow.description}</span>
+                      {selectedDueDateLabel ? ` (due ${selectedDueDateLabel})` : ''} ·
+                      {' '}Remaining amount: {money(suggestedAmount)}
                     </p>
-                    {isSelectedRowPaidEarly ? (
+                    {selectedTimingHint ? (
                       <p className="mt-1 text-xs font-black text-emerald-700">
-                        Paid before the due date. The nearest upcoming obligation is shown as Paid Early; any amount carried into later future installments is shown as Advance Payment automatically.
+                        {selectedTimingHint}
                       </p>
                     ) : null}
                   </>
@@ -756,7 +779,7 @@ const AddSOAPaymentModal = ({
               label="Payment Type"
               value={form.paymentType}
               onChange={(value) => updateField('paymentType', value)}
-              helper="The nearest upcoming obligation paid before its due date is shown as Paid Early. Any amount carried into later future installments is shown as Advance Payment automatically. Use Advance Payment when the transaction itself is intentionally for future monthly obligations."
+              helper="Choose what the payment is for. The SOA decides if it is Paid, Paid Early, or Advance Payment using the payment date and full installment schedule."
               required
             >
               {paymentTypes.map((type) => (
@@ -812,7 +835,7 @@ const AddSOAPaymentModal = ({
               value={form.paymentDate}
               max={todayISO()}
               onChange={(value) => updateField('paymentDate', value)}
-              helper="Penalty and outstanding balance are recalculated using this payment date. Future dates are blocked."
+              helper="Enter the date you received the payment. Any late fees and remaining balance are calculated from this date. Future dates are not allowed."
               required
             />
 
@@ -900,4 +923,5 @@ const AddSOAPaymentModal = ({
 }
 
 export default AddSOAPaymentModal
+
 

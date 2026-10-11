@@ -2943,7 +2943,8 @@ export const getScheduleAllocationTimingMap = async (
   lotProjectId,
   listingId,
   clientProfileId = 0,
-  accountId = 0
+  accountId = 0,
+  contractScheduleRows = []
 ) => {
   if (!(await tableExists(connection, 'lot_project_payment_allocations'))) return new Map();
   if (!(await tableExists(connection, 'lot_project_payments'))) return new Map();
@@ -2983,7 +2984,7 @@ export const getScheduleAllocationTimingMap = async (
     ]
   );
 
-  return buildLatestScheduleAllocationTiming(rows);
+  return buildLatestScheduleAllocationTiming(rows, contractScheduleRows);
 };
 
 export const canGenerateListingSoa = (listingRow = {}) => {
@@ -3094,7 +3095,8 @@ export const getListingSoaRows = async (
       lotProjectId,
       listingId,
       clientProfileId,
-      selectedAccountId
+      selectedAccountId,
+      visibleScheduleRows
     );
     const storedRows = visibleScheduleRows.map((row, index) => {
       const scheduleId = Number(row.lot_project_payment_schedule_id || 0);
@@ -4599,4 +4601,5 @@ export const addIfColumnExists = async (connection, tableName, columns, values, 
 };
 
 // End of lotProject.shared.js — verified complete.
+
 

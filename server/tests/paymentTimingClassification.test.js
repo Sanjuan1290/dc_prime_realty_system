@@ -105,8 +105,9 @@ test('SOA server and client expose Advance Payment / Partial Advance without cha
   assert.match(soa, /paymentTiming === 'advance'\) return 'Advance Payment'/)
   assert.match(soa, /'partial advance'/)
   assert.match(soa, /<StatusPill status=\{row\.displayStatus \|\| row\.status\} \/>/)
-  assert.match(modal, /nearest upcoming obligation/)
-  assert.match(modal, /later future installments is shown as Advance Payment automatically/)
+  assert.match(modal, /nextContractInstallmentDate/)
+  assert.match(modal, /Advance Payment: This installment is due after the next scheduled one/)
+  assert.match(modal, /Future dates are not allowed/)
 })
 
 test('legacy migration still normalizes old Advance schedule_status values to Paid', () => {
@@ -117,3 +118,58 @@ test('legacy migration still normalizes old Advance schedule_status values to Pa
   assert.match(migration, /WHERE schedule_status = 'Advance'/)
 })
 
+
+
+test('separate October, November, December payments use full contract instead of transaction-only timing', () => {
+  const schedule = [
+    { lot_project_payment_schedule_id: 1, description: 'Reservation Fee', due_date: '2026-10-11', schedule_status: 'Paid' },
+    { lot_project_payment_schedule_id: 2, description: '1st Downpayment', due_date: '2026-10-15', schedule_status: 'Paid' },
+    { lot_project_payment_schedule_id: 3, description: '2nd Downpayment', due_date: '2026-11-15', schedule_status: 'Paid' },
+    { lot_project_payment_schedule_id: 4, description: '3rd Downpayment', due_date: '2026-12-15', schedule_status: 'Paid' },
+  ];
+  const payments = [
+    allocation({ id: 1, paymentId: 1, scheduleId: 1, paymentDate: '2026-10-11', dueDate: '2026-10-11' }),
+    allocation({ id: 2, paymentId: 2, scheduleId: 2, paymentDate: '2026-10-11', dueDate: '2026-10-15' }),
+    allocation({ id: 3, paymentId: 3, scheduleId: 3, paymentDate: '2026-10-11', dueDate: '2026-11-15' }),
+    allocation({ id: 4, paymentId: 4, scheduleId: 4, paymentDate: '2026-10-11', dueDate: '2026-12-15' }),
+  ];
+  const timing = buildLatestScheduleAllocationTiming(payments, schedule);
+  assert.equal(timing.get(1)?.timing, 'on_time');
+  assert.equal(timing.get(2)?.timing, 'early');
+  assert.equal(timing.get(3)?.timing, 'advance');
+  assert.equal(timing.get(4)?.timing, 'advance');
+});
+
+test('already paid nearest installment remains the early anchor on the payment date', () => {
+  const schedule = [
+    { lot_project_payment_schedule_id: 1, description: '1st Downpayment', due_date: '2026-10-15', schedule_status: 'Paid' },
+    { lot_project_payment_schedule_id: 2, description: '2nd Downpayment', due_date: '2026-11-15', schedule_status: 'Unpaid' },
+  ];
+  const timing = buildLatestScheduleAllocationTiming([
+    allocation({ id: 1, paymentId: 10, scheduleId: 2, paymentDate: '2026-10-11', dueDate: '2026-11-15' }),
+  ], schedule);
+  assert.equal(timing.get(2)?.timing, 'advance');
+});
+
+test('when the payment date reaches the next cycle, the next obligation can be paid early', () => {
+  const schedule = [
+    { lot_project_payment_schedule_id: 1, description: '1st Downpayment', due_date: '2026-10-15', schedule_status: 'Paid' },
+    { lot_project_payment_schedule_id: 2, description: '2nd Downpayment', due_date: '2026-11-15', schedule_status: 'Unpaid' },
+    { lot_project_payment_schedule_id: 3, description: '3rd Downpayment', due_date: '2026-12-15', schedule_status: 'Unpaid' },
+  ];
+  const timing = buildLatestScheduleAllocationTiming([
+    allocation({ id: 1, paymentId: 10, scheduleId: 2, paymentDate: '2026-10-20', dueDate: '2026-11-15' }),
+    allocation({ id: 2, paymentId: 11, scheduleId: 3, paymentDate: '2026-10-20', dueDate: '2026-12-15' }),
+  ], schedule);
+  assert.equal(timing.get(2)?.timing, 'early');
+  assert.equal(timing.get(3)?.timing, 'advance');
+});
+
+test('payment timing passes every contractual SOA row to allocation classifier', () => {
+  const shared = read('server/controllers/Lot_Projects/_shared/lotProject.shared.js');
+  assert.match(shared, /buildLatestScheduleAllocationTiming\(rows, contractScheduleRows\)/);
+  assert.match(shared, /selectedAccountId,\s+visibleScheduleRows/);
+  const modal = read('client/src/components/Lot_Projects/ListingProfileComponents/PaymentsSOA/AddSOAPaymentModal.jsx');
+  assert.match(modal, /\.filter\(\(row\) => \['Downpayment', 'Monthly'\]\.includes/);
+  assert.match(modal, /selectedRowDueDate === nextContractInstallmentDate/);
+});
