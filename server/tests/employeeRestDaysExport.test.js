@@ -37,7 +37,12 @@ test('employees UI requires multiple Rest Day selection and shows Rest Days', ()
   assert.match(modal, /Monday/)
   assert.match(modal, /Sunday/)
   assert.match(modal, /rest_days_effective_from/)
-  assert.match(modal, /RD OT/)
+  // Keep the clear, nontechnical wording while testing multi-day selection.
+  assert.match(modal, /Choose the days this employee is normally off\./)
+  assert.match(modal, /const toggleRestDay = \(day\) =>/)
+  assert.match(modal, /rest_days: current\.rest_days\.includes\(day\)/)
+  assert.match(modal, /checked=\{checked\} onChange=\{\(\) => toggleRestDay\(value\)\}/)
+  assert.match(modal, /Rest Days Start Date/)
   assert.match(employees, /Rest Days/)
 })
 
@@ -73,4 +78,5 @@ test('attendance export uses saved settings by default but still allows temporar
   assert.doesNotMatch(workbook, /remark: 'RD OT'/)
   assert.match(workbook, /\[h\]:mm:ss/)
 })
+
 

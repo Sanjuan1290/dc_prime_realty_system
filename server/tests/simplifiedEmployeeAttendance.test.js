@@ -32,7 +32,11 @@ test('employee module keeps secure Attendance Barcodes separate while creating t
   assert.match(modal, /Full Time/);
   assert.match(modal, /Probationary/);
   assert.match(modal, /Part Time/);
-  assert.match(modal, /Initial Employment & Compensation/);
+  // The original data is collected under a clearer heading.
+  assert.match(modal, /Job & Starting Pay/);
+  assert.match(modal, /setValue\('monthly_basic_salary', e\.target\.value\)/);
+  assert.match(modal, /hire_date: getManilaDate\(\)/);
+  assert.match(modal, /value=\{form\.hire_date\}/);
   assert.match(modal, /Monthly Basic Salary/);
   assert.match(modal, /Rice Allowance/);
   assert.doesNotMatch(modal, /Work Days|Shift Start|Cash Advance/);
@@ -121,4 +125,5 @@ test('Super Admin receives real Employees and Attendance routes while cash advan
   assert.doesNotMatch(projects, /Add House & Lot Project/);
   assert.doesNotMatch(dashboard, /label: 'House & Lot Projects'/);
 });
+
 

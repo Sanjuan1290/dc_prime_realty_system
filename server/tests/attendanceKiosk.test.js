@@ -49,7 +49,12 @@ test('employee modal separates human Employee Code from secure Attendance Barcod
   const barcode = read('client/src/components/System/employeeComponents/Code128Barcode.jsx')
   assert.match(modal, /Employee Code/)
   assert.match(modal, /Attendance Barcode/)
-  assert.match(modal, /Regenerate Attendance Barcode/)
+  // A shorter button label must not remove the protected regeneration action.
+  assert.match(modal, /Generate New Barcode/)
+  assert.match(modal, /onClick=\{regenerateAttendanceBarcode\}/)
+  assert.match(modal, /const regenerateAttendanceBarcode = \(\) =>/)
+  assert.match(modal, /\/regenerate-barcode/)
+  assert.match(modal, /window\.confirm\('Regenerate this employee/)
   assert.match(barcode, /employeeCode/)
   assert.match(barcode, /Print Attendance Barcode/)
 })
@@ -65,4 +70,5 @@ test('duplicate attendance scans use friendly Already Timed In / Already Timed O
   assert.match(kiosk, /title: 'Already Timed Out'/)
   assert.doesNotMatch(kiosk, />Attendance not recorded</)
 })
+
 
