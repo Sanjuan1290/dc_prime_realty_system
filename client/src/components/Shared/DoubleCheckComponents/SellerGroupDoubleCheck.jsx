@@ -64,8 +64,8 @@ const SellerGroupDoubleCheck = ({ request, onConfirm, onCancel }) => {
     },
     {
       key: 'rates',
-      title: 'Project Allocation',
-      content: <DoubleCheckSection title="Project Commission Allocation" helper={external ? 'Verify the selected projects and full Pool Rates.' : 'Verify Pool Rate, Company Profit, and the calculated role allocation.'} tone="amber" badge={`${rates.length} project${rates.length === 1 ? '' : 's'}`}>
+      title: 'Commission Allocation',
+      content: <DoubleCheckSection title="Commission Allocation" helper={external ? 'Verify the selected projects and full Pool Rates.' : 'Verify Pool Rate, Company Profit, and the calculated role allocation.'} tone="amber" badge={`${rates.length} project${rates.length === 1 ? '' : 's'}`}>
         {rates.length ? <div className="space-y-3">{rates.map((rate, index) => {
           const allocation = calculateAllocation(rate, shares)
           return <DoubleCheckListCard key={`${pick(rate, 'lot_project_id') || index}`} title={pick(rate, 'projectName', 'project_name', 'lot_project_name', 'reviewTitle') || `Project ${index + 1}`} index={index} total={rates.length} fields={[
@@ -103,4 +103,5 @@ const SellerGroupDoubleCheck = ({ request, onConfirm, onCancel }) => {
 }
 
 export default SellerGroupDoubleCheck
+
 
