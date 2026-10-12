@@ -7,6 +7,7 @@ import SignedCopyUploadModal from '../../../Shared/SignedCopyUploadModal'
 import { FiFileText, FiPrinter } from 'react-icons/fi'
 import ReleaseReceiptFields, { emptyReleaseReceipt, validateReleaseReceipt } from '../ReleaseReceiptFields'
 import { selectCompanyProfitsForAccount } from '../../../../utils/networkProfitSelector'
+import { buildMissingProofOfIncomeReview } from '../missingProofOfIncomeReview'
 import { FiAlertCircle, FiLoader, FiPauseCircle, FiPlayCircle, FiSave, FiX } from 'react-icons/fi'
 
 const money = (value) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP', minimumFractionDigits: 2 }).format(Number(value || 0))
@@ -362,7 +363,8 @@ const ReleaseDetailsModal = ({ commissionGroup, projectSlug, onClose, onAction, 
         // An older payment must never be released twice just to make a receipt.
         // The existing Accredited Seller receipt endpoint attaches the exact stage.
         setMissingReceiptChoice({
-          ...error.data.legacyReceipt, stage: stage.stage, amount: stage.netAmount, purpose,
+          ...error.data.legacyReceipt, stage: stage.stage, amount: stage.netAmount,
+          releasePercent: stage.releasePercent, triggerPercent: stage.triggerPercent, purpose,
         })
         setMissingReceiptDetails(emptyReleaseReceipt())
         setLegacyReceiptError('')
@@ -377,6 +379,17 @@ const ReleaseDetailsModal = ({ commissionGroup, projectSlug, onClose, onAction, 
     const invalid = validateReleaseReceipt(missingReceiptDetails, String(missingReceiptChoice.actualReleaseDate || '').slice(0, 10))
     if (invalid) { setLegacyReceiptError(invalid); return }
     setLegacyReceiptError('')
+    // Build the exact ProofOfIncomeDoubleCheck schema before opening Final Review.
+    // Missing identities must never be presented as "Not provided" for confirmation.
+    let reviewData
+    try {
+      reviewData = buildMissingProofOfIncomeReview({
+        commissionGroup, commission, missingReceiptChoice, receiptDetails: missingReceiptDetails,
+      })
+    } catch (error) {
+      setLegacyReceiptError(error.message)
+      return
+    }
     setLegacyReceiptSaving(true)
     try {
       await postJson(`/accredited/${missingReceiptChoice.sellerId}/proof-of-income-receipts`, {
@@ -386,11 +399,9 @@ const ReleaseDetailsModal = ({ commissionGroup, projectSlug, onClose, onAction, 
       }, { doubleCheck: {
         type: 'proof-of-income',
         summary: `Record missing Proof of Income only · ${commission.seller} · ${missingReceiptChoice.stage}`,
-        data: { action: 'create-existing-release-receipt', commissionId: missingReceiptChoice.commissionId,
-          releaseId: missingReceiptChoice.releaseId, recipient: commission.seller,
-          amount: missingReceiptChoice.amount, receiptDate: missingReceiptDetails.receiptDate,
-          referenceNumber: missingReceiptDetails.referenceNumber,
-          note: 'The commission payment was already released. This action creates its receipt only.' },
+        description: 'Verify the existing paid milestone and receipt details. No commission will be released again.',
+        confirmLabel: 'Confirm & Link Receipt',
+        data: reviewData,
       } })
       setMissingReceiptChoice(null)
       setNotice({ type: 'success', title: 'Receipt linked', message: 'The receipt was attached to the existing released milestone. No additional payout was made. Open Print Acknowledgment or Signed Copy again.' })
@@ -836,3 +847,4 @@ const ReleaseDetailsModal = ({ commissionGroup, projectSlug, onClose, onAction, 
 }
 
 export default ReleaseDetailsModal
+

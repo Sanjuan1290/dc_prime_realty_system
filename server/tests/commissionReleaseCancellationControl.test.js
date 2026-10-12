@@ -15,7 +15,16 @@ test('commission milestones cannot be manually cancelled from the release detail
   assert.match(modal, /hold_stage/);
   assert.match(modal, /unhold_stage/);
   assert.doesNotMatch(modal, /cancel_stage/);
-  assert.doesNotMatch(modal, />\s*Cancel\s*<\/button>/);
+
+  // Scope the UI assertion to the milestone table. The historical Proof of
+  // Income dialog legitimately has a Cancel button to dismiss receipt entry;
+  // that button does not cancel an already-paid commission.
+  const milestoneStart = modal.indexOf('Main Release Milestones');
+  const milestoneEnd = modal.indexOf('</table>', milestoneStart);
+  assert.ok(milestoneStart >= 0 && milestoneEnd > milestoneStart, 'milestone table must exist');
+  const milestoneTable = modal.slice(milestoneStart, milestoneEnd);
+  assert.doesNotMatch(milestoneTable, />\s*Cancel(?: Stage| Commission)?\s*<\/button>/i);
+  assert.doesNotMatch(milestoneTable, /openConfirm\(['"]cancel(?:_stage)?['"]/);
 });
 
 test('commission update endpoint rejects manual milestone and legacy commission cancellation actions', () => {
@@ -36,4 +45,5 @@ test('automatic cancellation settlement statuses remain supported as historical 
   assert.match(modal, /Earned on Cancellation/);
   assert.match(modal, /Forfeited on Cancellation/);
 });
+
 
