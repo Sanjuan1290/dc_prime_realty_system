@@ -206,6 +206,7 @@ const Commission = () => {
       else setAlert(notice)
 
       queryClient.invalidateQueries({ queryKey: ['lot-commissions', projectSlug] })
+      queryClient.invalidateQueries({ queryKey: ['lot-payment-logs', projectSlug] })
       queryClient.invalidateQueries({ queryKey: ['lot-dashboard', projectSlug] })
 
       // Keep the open account modal in sync while the background query reloads.
@@ -507,3 +508,4 @@ const Commission = () => {
 }
 
 export default Commission
+

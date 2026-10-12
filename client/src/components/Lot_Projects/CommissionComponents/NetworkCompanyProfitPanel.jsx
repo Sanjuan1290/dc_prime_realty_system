@@ -68,6 +68,7 @@ export default function NetworkCompanyProfitPanel({ projectSlug, canRelease = fa
       setNotice({ type: 'success', message: result.message || 'Company Profit released successfully.' })
       queryClient.invalidateQueries({ queryKey })
       queryClient.invalidateQueries({ queryKey: ['lot-commissions', projectSlug] })
+      queryClient.invalidateQueries({ queryKey: ['lot-payment-logs', projectSlug] })
     },
     onError: (err) => setNotice({ type: 'error', message: err.message || 'Company Profit release failed. Nothing was released.' }),
   })
@@ -186,3 +187,4 @@ export default function NetworkCompanyProfitPanel({ projectSlug, canRelease = fa
       onClose={() => setSignedChoice(null)} /> : null}
   </section>
 }
+
