@@ -1,5 +1,5 @@
 import PerformanceLeaderboard from '../../components/Reports/PerformanceLeaderboard'
-import { mergePerformance } from '../../utils/reportPerformance'
+import { includeUnrankedSellers, mergePerformance } from '../../utils/reportPerformance'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
@@ -520,7 +520,15 @@ const Reports = () => {
     pendingCancellationCount: 0,
   }), [projectReports])
 
-  const crossProjectSellers = useMemo(() => mergePerformance(projectReports, 'sellerPerformance'), [projectReports])
+  const sellerRosterQuery = useQuery({
+    queryKey: ['system-reports-accredited-seller-roster'],
+    queryFn: () => useFetch('/projects/reports/seller-roster'),
+    enabled: shouldLoadLotProjects,
+  })
+  const crossProjectSellers = useMemo(() => includeUnrankedSellers(
+    mergePerformance(projectReports, 'sellerPerformance'),
+    shouldLoadLotProjects ? (sellerRosterQuery.data?.data || []) : [],
+  ), [projectReports, shouldLoadLotProjects, sellerRosterQuery.data])
   const crossProjectNetworks = useMemo(() => mergePerformance(projectReports, 'groupPerformance'), [projectReports])
   const companySalesTrend = useMemo(() => mergeCompanyTrend(projectReports), [projectReports])
   const cancellationTrend = useMemo(() => mergeCancellationTrend(projectReports), [projectReports])
@@ -691,7 +699,7 @@ const Reports = () => {
         <MetricCard label="Discontinued Amount" value={isLoading ? '...' : money(summary.totalDiscontinuedAmount)} formula="Cancellation cash collected − refunded amount" helper="Cancelled-buyer cash retained by the company across the included projects in the selected range." icon={FiActivity} tone="amber" />
       </section>
 
-      <PerformanceLeaderboard sellers={crossProjectSellers} networks={crossProjectNetworks} scope="system" />
+      <PerformanceLeaderboard sellers={crossProjectSellers} networks={crossProjectNetworks} scope="system" rosterLoading={shouldLoadLotProjects && sellerRosterQuery.isLoading} rosterError={shouldLoadLotProjects && sellerRosterQuery.isError} />
 
       <section className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">

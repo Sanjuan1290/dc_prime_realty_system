@@ -135,6 +135,55 @@ const filterSearch = (rows, search) => {
   return rows.filter((row) => Object.values(row).some((value) => String(value ?? '').toLowerCase().includes(term)))
 }
 
+// System Reports uses the same seller identities as Accredited Sellers, including
+// people with no sale or commission in any reporting period. No seller-manager
+// permission is needed, but Report access and project visibility are enforced.
+export const getSystemPerformanceSellerRoster = async (req, res) => {
+  const connection = await db.getConnection()
+  try {
+    const accessibleProjectIds = await getAccessibleProjectIds(req.authUser, connection)
+    if (accessibleProjectIds !== null && !accessibleProjectIds.length) return res.json({ data: [] })
+    const scoped = accessibleProjectIds !== null
+    const placeholders = scoped ? accessibleProjectIds.map(() => '?').join(', ') : ''
+    const whereScope = scoped ? `AND (
+      EXISTS (
+        SELECT 1 FROM seller_group_lot_project_rates gr
+        WHERE gr.seller_group_id = s.seller_group_id
+          AND gr.lot_project_id IN (${placeholders})
+          AND gr.seller_group_lot_project_rate_status = 'active'
+      ) OR EXISTS (
+        SELECT 1 FROM accredited_seller_lot_project_rates sr
+        WHERE sr.accredited_seller_id = s.accredited_seller_id
+          AND sr.lot_project_id IN (${placeholders})
+          AND sr.accredited_seller_lot_project_rate_status = 'active'
+      ) OR EXISTS (
+        SELECT 1 FROM lot_project_commissions c
+        WHERE c.accredited_seller_id = s.accredited_seller_id
+          AND c.lot_project_id IN (${placeholders})
+      )
+    )` : ''
+    const params = scoped ? [...accessibleProjectIds, ...accessibleProjectIds, ...accessibleProjectIds] : []
+    const [rows] = await connection.query(`
+      SELECT s.accredited_seller_id AS id,
+             COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)), ''), 'Unnamed Seller') AS seller,
+             u.role AS role, s.accredited_seller_status AS status,
+             sg.seller_group_id AS groupId, sg.seller_group_name AS \`group\`,
+             sg.seller_group_type AS groupType
+      FROM accredited_sellers s
+      INNER JOIN users u ON u.id = s.user_id
+      LEFT JOIN seller_groups sg ON sg.seller_group_id = s.seller_group_id
+      WHERE COALESCE(s.is_system_dummy, 0) = 0
+      ${whereScope}
+      ORDER BY seller ASC, s.accredited_seller_id ASC
+    `, params)
+    return res.json({ data: rows })
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ message: getErrorMessage(error) })
+  } finally {
+    connection.release()
+  }
+}
+
 export const getSystemReports = async (req, res) => {
   const connection = await db.getConnection()
   try {

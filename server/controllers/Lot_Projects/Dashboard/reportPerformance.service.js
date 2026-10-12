@@ -4,7 +4,7 @@ const amount = (value) => Number(value || 0);
 const money = (value) => Math.round((amount(value) + Number.EPSILON) * 100) / 100;
 const sellerKey = (id) => String(id || 'unassigned');
 
-export const buildPerformanceRankings = ({ sales = [], commissions = [], profits = [] } = {}) => {
+export const buildPerformanceRankings = ({ roster = [], sales = [], commissions = [], profits = [] } = {}) => {
   const sellerMap = new Map();
   const groupMap = new Map();
   const seenAccounts = new Set();
@@ -15,6 +15,7 @@ export const buildPerformanceRankings = ({ sales = [], commissions = [], profits
       id, seller: row.seller_name || row.sellerName || 'Unassigned Seller',
       role: row.seller_role || row.sellerRole || '-', group: row.group_name || row.groupName || '-',
       groupId: Number(row.group_id || row.groupId || 0), groupType: row.group_type || row.groupType || '',
+      status: row.seller_status || row.status || 'active',
       units: 0, salesAmount: 0, cashCollected: 0, grossCommission: 0,
       eligibleCommission: 0, releasedCommission: 0, remainingCommission: 0,
     });
@@ -34,6 +35,12 @@ export const buildPerformanceRankings = ({ sales = [], commissions = [], profits
     });
     return groupMap.get(key);
   };
+
+  // Seed the directory first: no-sale and zero-commission sellers remain ranked.
+  // The query has already limited these identities to this particular project.
+  for (const seller of roster) {
+    if (Number(seller.seller_id || seller.sellerId || 0) > 0) ensureSeller(seller);
+  }
 
   for (const sale of sales) {
     const account = Number(sale.account_id || sale.accountId || 0);
@@ -80,7 +87,7 @@ export const buildPerformanceRankings = ({ sales = [], commissions = [], profits
   }
   const sort = (a, b) => b.salesAmount - a.salesAmount || b.units - a.units || b.grossCommission - a.grossCommission || String(a.seller || a.group).localeCompare(String(b.seller || b.group));
   return {
-    sellerPerformance: [...sellerMap.values()].filter((r) => r.units || r.grossCommission).sort(sort),
+    sellerPerformance: [...sellerMap.values()].filter((r) => r.id > 0 || r.units || r.grossCommission).sort(sort),
     groupPerformance: [...groupMap.values()].filter((r) => r.units || r.grossCommission).sort(sort),
   };
 };
@@ -172,5 +179,39 @@ export const loadProjectPerformance = async (connection, projectId, from, to, { 
     `, [projectId, from, to]);
     profits = rows;
   }
-  return buildPerformanceRankings({ sales, commissions, profits });
+  // Membership comes from the current project accreditation, not from a sale.
+  // Include previously involved sellers even if their accreditation was later disabled,
+  // but exclude synthetic hierarchy placeholders. Neither earnings nor payments change.
+  const [roster] = await connection.query(`
+    SELECT s.accredited_seller_id AS seller_id,
+           COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)), ''), 'Unnamed Seller') AS seller_name,
+           u.role AS seller_role, s.accredited_seller_status AS seller_status,
+           sg.seller_group_id AS group_id, sg.seller_group_name AS group_name,
+           sg.seller_group_type AS group_type
+    FROM accredited_sellers s
+    INNER JOIN users u ON u.id = s.user_id
+    LEFT JOIN seller_groups sg ON sg.seller_group_id = s.seller_group_id
+    WHERE COALESCE(s.is_system_dummy, 0) = 0
+      AND (
+        EXISTS (
+          SELECT 1 FROM seller_group_lot_project_rates gr
+          WHERE gr.seller_group_id = s.seller_group_id
+            AND gr.lot_project_id = ?
+            AND gr.seller_group_lot_project_rate_status = 'active'
+        )
+        OR EXISTS (
+          SELECT 1 FROM accredited_seller_lot_project_rates sr
+          WHERE sr.accredited_seller_id = s.accredited_seller_id
+            AND sr.lot_project_id = ?
+            AND sr.accredited_seller_lot_project_rate_status = 'active'
+        )
+        OR EXISTS (
+          SELECT 1 FROM lot_project_commissions c
+          WHERE c.accredited_seller_id = s.accredited_seller_id
+            AND c.lot_project_id = ?
+        )
+      )
+    ORDER BY seller_name ASC, s.accredited_seller_id ASC
+  `, [projectId, projectId, projectId]);
+  return buildPerformanceRankings({ roster, sales, commissions, profits });
 };

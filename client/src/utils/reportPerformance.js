@@ -29,3 +29,28 @@ export const rankPerformance = (rows = [], { metric = 'salesAmount', search = ''
     && (!needle || [r.seller,r.group,r.role,r.payee,r.groupType].some((v) => String(v || '').toLowerCase().includes(needle))))
     .sort((a,b) => Number(b[metric] || 0)-Number(a[metric] || 0) || Number(b.units || 0)-Number(a.units || 0) || String(a.group || a.seller).localeCompare(String(b.group || b.seller)))
 }
+
+// Adds sellers without project sales to System Reports, retaining any real ranking
+// values already aggregated from the selected projects. Uses IDs, never names,
+// to avoid merging separate people with the same full name.
+export const includeUnrankedSellers = (ranked = [], roster = []) => {
+  const byId = new Map(ranked.map((row) => [Number(row.id), row]))
+  for (const entry of roster) {
+    const id = Number(entry.id)
+    if (!Number.isSafeInteger(id) || id <= 0) continue
+    if (byId.has(id)) {
+      const existing = byId.get(id)
+      if (!existing.status) byId.set(id, { ...existing, status: entry.status || 'active' })
+      continue
+    }
+    byId.set(id, {
+      id, seller: entry.seller || 'Unnamed Seller', role: entry.role || '-',
+      group: entry.group || '-', groupId: Number(entry.groupId || 0),
+      groupType: entry.groupType || '', status: entry.status || 'active',
+      units: 0, salesAmount: 0, cashCollected: 0, grossCommission: 0,
+      eligibleCommission: 0, releasedCommission: 0, remainingCommission: 0,
+      projectCount: 0, projects: [],
+    })
+  }
+  return [...byId.values()]
+}

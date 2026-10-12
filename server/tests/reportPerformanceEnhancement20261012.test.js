@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { buildPerformanceRankings, loadProjectPerformance } from '../controllers/Lot_Projects/Dashboard/reportPerformance.service.js'
-import { mergePerformance, rankPerformance } from '../../client/src/utils/reportPerformance.js'
+import { includeUnrankedSellers, mergePerformance, rankPerformance } from '../../client/src/utils/reportPerformance.js'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const read = (relative) => readFileSync(path.join(root, relative), 'utf8')
@@ -71,7 +71,7 @@ test('project performance SQL uses the exact buyer account, sale origin, type, p
   const queries=[]
   const connection={query:async (sql,params)=>{queries.push({sql,params});return [[]]}}
   await loadProjectPerformance(connection,17,'2026-10-01','2026-10-31',{hasProfit:true})
-  assert.equal(queries.length,3)
+  assert.equal(queries.length,4)
   assert.match(queries[0].sql,/a\.lot_project_account_id AS account_id/)
   assert.match(queries[0].sql,/sale_origin_accredited_seller_id/)
   assert.match(queries[0].sql,/lot_project_payment_status = 'Verified'/)
@@ -79,7 +79,13 @@ test('project performance SQL uses the exact buyer account, sale origin, type, p
   assert.match(queries[0].sql,/a\.account_status IN \('active','pending_cancellation','closed_fully_paid'\)/)
   assert.match(queries[1].sql,/lot_project_commission_releases/)
   assert.match(queries[2].sql,/lot_project_network_profit_accounts/)
-  for(const query of queries){assert.ok(query.params.includes(17));assert.ok(query.params.includes('2026-10-01'));assert.ok(query.params.includes('2026-10-31'))}
+  assert.match(queries[3].sql,/FROM accredited_sellers s/);
+  assert.match(queries[3].sql,/COALESCE\(s.is_system_dummy, 0\) = 0/);
+  assert.match(queries[3].sql,/seller_group_lot_project_rates/);
+  assert.match(queries[3].sql,/accredited_seller_lot_project_rates/);
+  assert.match(queries[3].sql,/lot_project_commissions/);
+  assert.deepEqual(queries[3].params, [17,17,17]);
+  for(const query of queries.slice(0,3)){assert.ok(query.params.includes(17));assert.ok(query.params.includes('2026-10-01'));assert.ok(query.params.includes('2026-10-31'))}
 })
 
 test('only Seller Performance Details changes; original Lot charts and financial cards remain', () => {
@@ -117,6 +123,7 @@ test('performance loader maps project-scoped source rows into independent ledger
     [sale(30001,4,8,'in_house'), sale(30002,12,9,'external',960000)],
     [earned(4,8,'in_house',31200),earned(5,8,'in_house',12480),earned(12,9,'external',72000)],
     [{group_id:8,group_name:'Network 8', group_type:'in_house',payee_name:'Saved Realty',gross_profit:7800,eligible_profit:1560,released_profit:1560,remaining_profit:6240}],
+    [{seller_id:4,seller_name:'Seller 4',seller_role:'sales_agent',seller_status:'active',group_id:8,group_name:'Network 8',group_type:'in_house'}, {seller_id:50,seller_name:'New Seller',seller_role:'sales_agent',seller_status:'active',group_id:8,group_name:'Network 8',group_type:'in_house'}],
   ]
   const queries=[]
   const connection={query: async (sql,params)=>{queries.push({sql,params});return [dataset[queries.length-1]]}}
@@ -127,6 +134,8 @@ test('performance loader maps project-scoped source rows into independent ledger
   assert.equal(result.groupPerformance.find((r)=>r.id===9).grossCommission,72000)
   assert.equal(result.sellerPerformance.filter((r)=>r.units>0).length,2)
   assert.equal(result.sellerPerformance.find((r)=>r.id===5).units,0)
+  assert.equal(result.sellerPerformance.find((r)=>r.id===50).units,0)
+  assert.equal(result.sellerPerformance.find((r)=>r.id===50).grossCommission,0)
   assert.ok(queries.every((r)=>r.params.includes(1)))
 })
 
@@ -134,7 +143,7 @@ test('older schemas can report seller and external network data without profit t
   let calls=0
   const connection={query:async()=>{calls++;return [[]]}}
   const data=await loadProjectPerformance(connection,1,'2026-10-01','2026-10-31',{hasProfit:false})
-  assert.equal(calls,2)
+  assert.equal(calls,3)
   assert.deepEqual(data,{sellerPerformance:[],groupPerformance:[]})
 })
 
@@ -167,4 +176,58 @@ test('existing PDF export remains unchanged and no detailed performance CSV endp
   assert.doesNotMatch(system,/performance_csv|handlePerformanceExport/)
   assert.doesNotMatch(router,/performance-export-audit/)
   assert.doesNotMatch(controller,/isPerformanceCsv/)
+})
+
+
+test('no-sale roster sellers appear as zero-valued rows after performers', () => {
+  const roster = [
+    {seller_id:8,seller_name:'Brand New Seller',seller_role:'sales_agent',seller_status:'active',group_id:10,group_name:'North Star',group_type:'in_house'},
+    {seller_id:9,seller_name:'Inactive Seller',seller_role:'unit_manager',seller_status:'inactive',group_id:10,group_name:'North Star',group_type:'in_house'},
+    {seller_id:9,seller_name:'Inactive Seller',seller_role:'unit_manager',seller_status:'inactive',group_id:10,group_name:'North Star',group_type:'in_house'},
+  ]
+  const ranked = buildPerformanceRankings({ roster, sales:[sale(30001,4,10,'in_house')] })
+  assert.equal(ranked.sellerPerformance.length,3)
+  assert.equal(ranked.sellerPerformance[0].id,4)
+  assert.equal(ranked.sellerPerformance[1].units,0)
+  assert.equal(ranked.sellerPerformance[1].grossCommission,0)
+  assert.equal(ranked.sellerPerformance.find((r)=>r.id===9).status,'inactive')
+  assert.equal(ranked.groupPerformance.length,1) // A no-sale seller must not create a sale or Network earnings.
+  assert.deepEqual(rankPerformance(ranked.sellerPerformance, {role:'unit_manager'}).map(r=>r.id),[9])
+})
+
+test('System Reports fills unassigned and zero-sale seller directory without duplicating active performers', () => {
+  const projectRows=mergePerformance([{id:17,name:'Bailen',sellerPerformance:buildPerformanceRankings({ sales:[sale(30001,4,8,'in_house')] }).sellerPerformance}],'sellerPerformance')
+  const all=includeUnrankedSellers(projectRows,[
+    {id:4,seller:'Seller 4',role:'sales_agent',groupType:'in_house'},
+    {id:21,seller:'New No Project Seller',role:'sales_agent',group:'-',status:'active'},
+    {id:22,seller:'Archived Seller',role:'unit_manager',group:'Old Realty',status:'inactive'},
+  ])
+  assert.equal(all.length,3)
+  assert.equal(all.find(r=>r.id===4).units,1)
+  assert.equal(all.find(r=>r.id===4).projectCount,1)
+  assert.equal(all.find(r=>r.id===21).units,0)
+  assert.equal(all.find(r=>r.id===21).projectCount,0)
+  assert.deepEqual(all.find(r=>r.id===21).projects,[])
+  assert.equal(all.find(r=>r.id===22).status,'inactive')
+  assert.equal(rankPerformance(all,{metric:'salesAmount'}).at(-1).salesAmount,0)
+})
+
+test('report-only seller directory endpoint enforces report permission and project visibility', () => {
+  const router=read('server/routers/System/projects.routers.js')
+  const controller=read('server/controllers/System/reports.controller.js')
+  const performance=read('server/controllers/Lot_Projects/Dashboard/reportPerformance.service.js')
+  const system=read('client/src/pages/System/Reports.jsx')
+  const component=read('client/src/components/Reports/PerformanceLeaderboard.jsx')
+  assert.match(router,/reports\/seller-roster', requirePermission\(PERMISSIONS.SYSTEM_REPORTS_VIEW\)/)
+  assert.match(controller,/getAccessibleProjectIds\(req.authUser, connection\)/)
+  assert.match(controller,/COALESCE\(s.is_system_dummy, 0\) = 0/)
+  assert.match(controller,/AND gr.lot_project_id IN/)
+  assert.match(performance,/seller_group_lot_project_rate_status = 'active'/)
+  assert.match(performance,/accredited_seller_lot_project_rate_status = 'active'/)
+  assert.match(performance,/c.accredited_seller_id = s.accredited_seller_id/)
+  assert.match(system,/includeUnrankedSellers/)
+  assert.match(component,/No sales in period/)
+  assert.match(component,/accredited sellers ranked/)
+  assert.match(component,/rosterError/)
+  assert.match(system,/rosterError=\{shouldLoadLotProjects && sellerRosterQuery.isError\}/)
 })

@@ -32,6 +32,7 @@ import {
 
 import {
   getSystemReports,
+  getSystemPerformanceSellerRoster,
   auditSystemReportExport,
 } from '../../controllers/System/reports.controller.js';
 import {
@@ -189,6 +190,7 @@ router.param('projectSlug', requireProjectAccessBySlug);
 
 router.get('/dashboard-summary', requirePermission(PERMISSIONS.SYSTEM_DASHBOARD_VIEW), getSystemDashboardSummary);
 router.get('/reports', requirePermission(PERMISSIONS.SYSTEM_REPORTS_VIEW), getSystemReports);
+router.get('/reports/seller-roster', requirePermission(PERMISSIONS.SYSTEM_REPORTS_VIEW), getSystemPerformanceSellerRoster);
 router.post('/reports/export-audit', requirePermission(PERMISSIONS.SYSTEM_REPORTS_EXPORT), auditSystemReportExport);
 router.get('/lot-projects', requirePermission(PERMISSIONS.SYSTEM_PROJECTS_VIEW), getLotProjects);
 router.get('/lot-projects/options', requirePermission(PERMISSIONS.LOT_PROJECT_VIEW), getLotProjectOptions);
