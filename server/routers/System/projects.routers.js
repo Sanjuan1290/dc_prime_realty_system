@@ -38,7 +38,6 @@ import {
   getLotProjectDashboard,
   getLotProjectPriceList,
   auditLotProjectPriceListPrint,
-  auditLotProjectPerformanceExport,
 } from '../../controllers/Lot_Projects/Dashboard/Dashboard.controller.js';
 import {
   getLotProjectListings,
@@ -195,7 +194,6 @@ router.get('/lot-projects', requirePermission(PERMISSIONS.SYSTEM_PROJECTS_VIEW),
 router.get('/lot-projects/options', requirePermission(PERMISSIONS.LOT_PROJECT_VIEW), getLotProjectOptions);
 router.get('/lot-projects/document-compliance', requirePermission(PERMISSIONS.SYSTEM_PROJECTS_VIEW), getLotProjectDocumentCompliance);
 router.get('/lot-projects/:projectSlug/dashboard', requirePermission(PERMISSIONS.LOT_DASHBOARD_VIEW), getLotProjectDashboard);
-router.post('/lot-projects/:projectSlug/performance-export-audit', requirePermission(PERMISSIONS.LOT_REPORTS_EXPORT), auditLotProjectPerformanceExport);
 router.get('/lot-projects/:projectSlug/price-list', requirePermission(PERMISSIONS.SYSTEM_PROJECTS_PRINT_PRICE_LIST), getLotProjectPriceList);
 router.post('/lot-projects/:projectSlug/price-list/print-audit', requirePermission(PERMISSIONS.SYSTEM_PROJECTS_PRINT_PRICE_LIST), auditLotProjectPriceListPrint);
 router.get('/lot-projects/:projectSlug/listings', requirePermission(PERMISSIONS.LOT_LISTINGS_VIEW), getLotProjectListings);

@@ -827,7 +827,6 @@ export const auditSystemReportExport = async (req, res) => {
     const from = normalizeDate(req.body?.from)
     const to = normalizeDate(req.body?.to)
     if (!from || !to || from > to) return res.status(400).json({ message: 'A valid report date range is required.' })
-    const isPerformanceCsv = req.body?.reportType === 'performance_csv'
     await connection.beginTransaction()
     await writeAuditLog(connection, req, {
       action: 'export',
@@ -835,8 +834,8 @@ export const auditSystemReportExport = async (req, res) => {
       entityType: 'system_report',
       entityId: `${from}:${to}`,
       entityLabel: `Financial report ${from} to ${to}`,
-      title: isPerformanceCsv ? 'Exported performance rankings to CSV' : 'Exported financial report to PDF',
-      description: isPerformanceCsv ? `Prepared System Reports seller and Network rankings for ${from} through ${to}.` : `Prepared the management report for ${from} through ${to} for PDF export.`,
+      title: 'Exported financial report to PDF',
+      description: `Prepared the management report for ${from} through ${to} for PDF export.`,
       metadata: {
         from,
         to,
@@ -844,10 +843,6 @@ export const auditSystemReportExport = async (req, res) => {
         sellerId: Number(req.body?.sellerId || 0) || null,
         search: clean(req.body?.search) || null,
         filename: clean(req.body?.filename) || null,
-        reportType: isPerformanceCsv ? 'performance_csv' : 'management_summary_pdf',
-        ranking: isPerformanceCsv ? clean(req.body?.ranking) || null : null,
-        networkType: isPerformanceCsv ? clean(req.body?.networkType) || null : null,
-        projectScope: isPerformanceCsv ? clean(req.body?.projectScope) || null : null,
       },
     })
     await connection.commit()

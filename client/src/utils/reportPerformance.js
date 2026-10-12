@@ -29,14 +29,3 @@ export const rankPerformance = (rows = [], { metric = 'salesAmount', search = ''
     && (!needle || [r.seller,r.group,r.role,r.payee,r.groupType].some((v) => String(v || '').toLowerCase().includes(needle))))
     .sort((a,b) => Number(b[metric] || 0)-Number(a[metric] || 0) || Number(b.units || 0)-Number(a.units || 0) || String(a.group || a.seller).localeCompare(String(b.group || b.seller)))
 }
-
-export const exportPerformanceCsv = (rows = [], mode = 'network') => {
-  const header = ['Rank', mode === 'network' ? 'Network' : 'Seller', 'Network Type', 'Role', 'Projects', 'Units Sold', 'Sales Value', 'Cash Collected', mode === 'network' ? 'Network Earnings' : 'Gross Commission', 'Released', 'Remaining', 'Company Profit']
-  const quote = (value) => {
-    const input = String(value ?? '')
-    // Excel/Sheets may execute untrusted names as formulas when exported as CSV.
-    const safe = /^[\s]*[=+@-]/.test(input) && typeof value === 'string' ? `'${input}` : input
-    return `"${safe.replaceAll('\"','\"\"')}"`
-  }
-  return [header, ...rows.map((row,index) => [index+1, mode === 'network' ? row.group : row.seller, row.groupType, row.role, row.projectCount ?? 1, row.units, row.salesAmount, row.cashCollected, row.grossCommission, row.releasedCommission, row.remainingCommission, row.companyProfit || 0])].map((line) => line.map(quote).join(',')).join('\r\n')
-}

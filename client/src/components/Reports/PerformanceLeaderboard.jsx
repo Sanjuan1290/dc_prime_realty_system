@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'react'
-import { exportPerformanceCsv, rankPerformance } from '../../utils/reportPerformance'
+import { rankPerformance } from '../../utils/reportPerformance'
 
 const money = (value) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value || 0))
 const number = (value) => new Intl.NumberFormat('en-PH').format(Number(value || 0))
 const selectClass = 'h-10 min-w-0 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700'
 const metrics = [{ value: 'salesAmount', label: 'Sales Value' }, { value: 'units', label: 'Units Sold' }, { value: 'cashCollected', label: 'Cash Collected' }, { value: 'grossCommission', label: 'Earnings' }, { value: 'releasedCommission', label: 'Released' }]
 
-const PerformanceLeaderboard = ({ sellers = [], networks = [], scope = 'project', allowExport = false, onBeforeExport }) => {
-  const [tab,setTab] = useState('network')
+const PerformanceLeaderboard = ({ sellers = [], networks = [], scope = 'project' }) => {
+  const [tab,setTab] = useState('seller')
   const [type,setType] = useState('all')
   const [role,setRole] = useState('all')
   const [metric,setMetric] = useState('salesAmount')
@@ -15,47 +15,24 @@ const PerformanceLeaderboard = ({ sellers = [], networks = [], scope = 'project'
   const [page,setPage] = useState(1)
   const [pageSize,setPageSize] = useState(10)
   const [expanded,setExpanded] = useState(null)
-  const [exportError,setExportError] = useState('')
-  const [exporting,setExporting] = useState(false)
   const roles = useMemo(() => [...new Set(sellers.map((seller) => seller.role).filter(Boolean))].sort(), [sellers])
   const filtered = useMemo(() => rankPerformance(tab === 'network' ? networks : sellers, { metric, search, networkType: type, role: tab === 'seller' ? role : 'all' }), [tab, networks, sellers, metric, search, type, role])
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
   const current = Math.min(page, totalPages)
   const rows = filtered.slice((current-1)*pageSize, current*pageSize)
   const changeFilter = (setter) => (value) => { setter(value); setPage(1); setExpanded(null) }
-  const download = async () => {
-    if (exporting || !filtered.length) return
-    setExportError('')
-    setExporting(true)
-    try {
-      if (onBeforeExport) await onBeforeExport({ ranking: tab, networkType: type, metric, count: filtered.length })
-    const csv = '\ufeff' + exportPerformanceCsv(filtered, tab)
-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }))
-    const anchor = document.createElement('a')
-    anchor.href = url
-    anchor.download = `${scope}-${tab}-performance.csv`
-    anchor.click()
-    URL.revokeObjectURL(url)
-    } catch (error) {
-      setExportError(error?.message || 'Unable to record the performance export.')
-    } finally {
-      setExporting(false)
-    }
-  }
   return (
     <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
       <header className="flex flex-col gap-3 border-b border-slate-200 p-5 xl:flex-row xl:items-center xl:justify-between">
         <div>
-          <h2 className="text-lg font-black text-slate-950">Seller &amp; Company/Network Performance</h2>
-          <p className="mt-1 text-xs font-semibold text-slate-500">Sales use buyer accounts reserved in the selected period; cash includes their verified payments in that period. Each account is attributed once. Manager overrides are earnings, not additional sales. {scope === 'system' ? 'All selected projects.' : 'Current Lot Project only.'}</p>
+          <h2 className="text-lg font-black text-slate-950">Seller Performance Details</h2>
+          <p className="mt-1 text-xs font-semibold text-slate-500">Compare Seller and Company/Network performance. Sales use buyer accounts reserved in the selected period; cash includes their verified payments in that period. Each account is attributed once. Manager overrides are earnings, not additional sales. {scope === 'system' ? 'All selected projects.' : 'Current Lot Project only.'}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => { changeFilter(setTab)('network') }} className={`rounded-xl px-4 py-2 text-xs font-black ${tab === 'network' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'}`}>Company / Network</button>
           <button type="button" onClick={() => { changeFilter(setTab)('seller') }} className={`rounded-xl px-4 py-2 text-xs font-black ${tab === 'seller' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'}`}>Sellers</button>
-          {allowExport ? <button type="button" onClick={download} disabled={!filtered.length || exporting} className="rounded-xl border border-blue-200 px-4 py-2 text-xs font-black text-blue-700 disabled:opacity-40">Export Performance CSV</button> : null}
         </div>
       </header>
-      {exportError ? <p role="alert" className="mx-5 mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-semibold text-red-700">{exportError}</p> : null}
       <div className="flex flex-wrap items-end gap-3 border-b border-slate-100 px-5 py-4">
         <label className="flex min-w-[180px] flex-1 flex-col gap-1 text-xs font-black text-slate-500">Search<input aria-label="Search performance" value={search} onChange={(event) => changeFilter(setSearch)(event.target.value)} placeholder="Seller, Network, payee..." className={selectClass} /></label>
         <label className="flex flex-col gap-1 text-xs font-black text-slate-500">Network Type<select aria-label="Network Type" className={selectClass} value={type} onChange={(event) => changeFilter(setType)(event.target.value)}><option value="all">All Networks</option><option value="in_house">In-House</option><option value="external">External</option></select></label>

@@ -35,6 +35,7 @@ test('Lot Project workspace separates operational Dashboard from Reports', () =>
   assert.match(reports, /Graph Date Filter/)
   assert.match(reports, /Business Snapshot/)
   assert.match(reports, /PerformanceLeaderboard/)
+  assert.match(read('client/src/components/Reports/PerformanceLeaderboard.jsx'), /Seller Performance Details/)
   assert.doesNotMatch(reports, />View Details<\/button>/)
   assert.doesNotMatch(reports, />Edit Project<\/button>/)
   assert.doesNotMatch(reports, />Price List<\/button>/)

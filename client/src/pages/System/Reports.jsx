@@ -1,7 +1,6 @@
-import { useMemo, useState } from 'react'
 import PerformanceLeaderboard from '../../components/Reports/PerformanceLeaderboard'
 import { mergePerformance } from '../../utils/reportPerformance'
-import ReportPerformanceInsights from '../../components/Reports/ReportPerformanceInsights'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -464,10 +463,8 @@ const Reports = () => {
       stats: dashboard.stats || {},
       salesTrend: dashboard.salesTrend || [],
       cancellationTrend: dashboard.cancellationTrend || [],
-      id: payload.id || payload.lot_project_id || project.lot_project_id,
-      sellerPerformance: dashboard.sellerPerformance || [],
-      groupPerformance: dashboard.groupPerformance || [],
-      overdueAging: dashboard.overdueAging || {},
+      sellerPerformance: dashboard.performanceRankings?.sellerPerformance || [],
+      groupPerformance: dashboard.performanceRankings?.groupPerformance || [],
     }
   }), [dashboardList, selectedProjects])
 
@@ -525,10 +522,6 @@ const Reports = () => {
 
   const crossProjectSellers = useMemo(() => mergePerformance(projectReports, 'sellerPerformance'), [projectReports])
   const crossProjectNetworks = useMemo(() => mergePerformance(projectReports, 'groupPerformance'), [projectReports])
-  const currentOverdueAging = useMemo(() => projectReports.reduce((totals, report) => {
-    for (const key of Object.keys(totals)) totals[key] += Number(report.overdueAging?.[key] || 0)
-    return totals
-  }, { days1To30: 0, days31To60: 0, days61To90: 0, daysOver90: 0 }), [projectReports])
   const companySalesTrend = useMemo(() => mergeCompanyTrend(projectReports), [projectReports])
   const cancellationTrend = useMemo(() => mergeCancellationTrend(projectReports), [projectReports])
   const projectSalesChart = projectReports.map((report) => ({
@@ -570,15 +563,6 @@ const Reports = () => {
   const projectsError = lotProjectsQuery.error || houseLotProjectsQuery.error
   const isLoading = isProjectsLoading || (canLoadRange && isDashboardsLoading)
   const selectedScopeLabel = projectScopeOptions.find((option) => option.value === projectScope)?.label || 'All Projects'
-
-  const handlePerformanceExport = async ({ ranking, networkType, metric }) => {
-    if (!canExport || !canLoadRange) throw new Error('You do not have permission to export this report.')
-    await useFetchPost('/projects/reports/export-audit', {
-      from: fromDate, to: toDate, projectScope,
-      ranking, networkType, metric, reportType: 'performance_csv',
-      filename: `DC-Prime-${ranking}-performance_${fromDate}_to_${toDate}.csv`,
-    }, { confirmationHandled: 'technical' })
-  }
 
   const handleExportPdf = async () => {
     if (!canExport || !canLoadRange || isExporting) return
@@ -707,6 +691,8 @@ const Reports = () => {
         <MetricCard label="Discontinued Amount" value={isLoading ? '...' : money(summary.totalDiscontinuedAmount)} formula="Cancellation cash collected − refunded amount" helper="Cancelled-buyer cash retained by the company across the included projects in the selected range." icon={FiActivity} tone="amber" />
       </section>
 
+      <PerformanceLeaderboard sellers={crossProjectSellers} networks={crossProjectNetworks} scope="system" />
+
       <section className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex items-start justify-between gap-4"><div><p className="text-sm font-black text-slate-950">{selectedScopeLabel}</p><p className="mt-2 text-3xl font-black">{number(projectReports.length)}</p><p className="mt-1 text-sm font-semibold text-slate-500">Project workspaces included in this report view.</p></div><div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-700"><FiMapPin className="h-6 w-6" /></div></div>
@@ -723,9 +709,6 @@ const Reports = () => {
           {projectReservationChart.length ? <ResponsiveContainer width="100%" height="100%"><BarChart data={projectReservationChart} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="project" tick={{ fontSize: 11 }} /><YAxis allowDecimals={false} tick={{ fontSize: 11 }} /><Tooltip content={<ChartTooltip />} /><Legend /><Bar dataKey="reservations" name="Reservations" fill={chartColors.blue} radius={[8, 8, 0, 0]} /><Bar dataKey="cancellations" name="Cancellations" fill={chartColors.red} radius={[8, 8, 0, 0]} /><Bar dataKey="paymentEntries" name="Payment Entries" fill={chartColors.green} radius={[8, 8, 0, 0]} /></BarChart></ResponsiveContainer> : <EmptyChart />}
         </ChartCard>
       </section>
-
-      <ReportPerformanceInsights stats={summary} aging={currentOverdueAging} networks={crossProjectNetworks} scope="system" />
-      <PerformanceLeaderboard sellers={crossProjectSellers} networks={crossProjectNetworks} scope="system" allowExport={canExport} onBeforeExport={handlePerformanceExport} />
 
       <section className="grid gap-6 xl:grid-cols-2">
         <ChartCard title="Company Sales Trend" description="The chart uses the same gross sales, cash, net collectibles, reservations, and net sales definitions as the summary cards.">
@@ -820,7 +803,7 @@ const Reports = () => {
 
               <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm font-semibold text-blue-950">
                 <p className="font-black">Summary export only</p>
-                <p className="mt-1 text-blue-800">Detailed transaction records, buyer-level tables, individual unit rows, payment transactions, and seller-level records are not included in this management-summary PDF. Use the separate Performance CSV for rankings.</p>
+                <p className="mt-1 text-blue-800">Detailed transaction records, buyer-level tables, individual unit rows, payment transactions, and seller-level records are not included.</p>
               </div>
             </div>
 

@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { buildPerformanceRankings, loadProjectPerformance } from '../controllers/Lot_Projects/Dashboard/reportPerformance.service.js'
-import { mergePerformance, rankPerformance, exportPerformanceCsv } from '../../client/src/utils/reportPerformance.js'
+import { mergePerformance, rankPerformance } from '../../client/src/utils/reportPerformance.js'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const read = (relative) => readFileSync(path.join(root, relative), 'utf8')
@@ -61,12 +61,10 @@ test('system aggregation joins stable IDs across projects without mixing network
   assert.equal(rankPerformance(combinedNetworks,{metric:'units'})[0].id,8)
 })
 
-test('CSV escaping and filtering do not add duplicate payouts', () => {
-  const row={id:1,group:'Agency, "Corp"',groupType:'external',units:1,salesAmount:123,projectCount:1}
-  const csv=exportPerformanceCsv([row],'network')
-  assert.match(csv,/"Agency, ""Corp"""/)
-  assert.match(csv,/"123"/)
-  assert.equal(rankPerformance([row],{networkType:'in_house'}).length,0)
+test('Network filter separates In-House and External rows', () => {
+  const rows = [{ id: 1, group:'Internal', groupType:'in_house', units:2 }, { id:2, group:'External', groupType:'external', units:1 }]
+  assert.deepEqual(rankPerformance(rows,{networkType:'in_house'}).map((row)=>row.id),[1])
+  assert.deepEqual(rankPerformance(rows,{networkType:'external'}).map((row)=>row.id),[2])
 })
 
 test('project performance SQL uses the exact buyer account, sale origin, type, project and dates', async () => {
@@ -84,23 +82,34 @@ test('project performance SQL uses the exact buyer account, sale origin, type, p
   for(const query of queries){assert.ok(query.params.includes(17));assert.ok(query.params.includes('2026-10-01'));assert.ok(query.params.includes('2026-10-31'))}
 })
 
-test('Lot and System Reports use one shared leaderboard and preserve every protected financial KPI', () => {
-  const lot=read('client/src/pages/Lot_Projects/Reports.jsx')
-  const system=read('client/src/pages/System/Reports.jsx')
-  const component=read('client/src/components/Reports/PerformanceLeaderboard.jsx')
-  const dashboard=read('server/controllers/Lot_Projects/Dashboard/Dashboard.controller.js')
-  assert.match(lot,/PerformanceLeaderboard sellers=\{sellerPerformance\}/)
+test('only Seller Performance Details changes; original Lot charts and financial cards remain', () => {
+  const lot = read('client/src/pages/Lot_Projects/Reports.jsx')
+  const system = read('client/src/pages/System/Reports.jsx')
+  const component = read('client/src/components/Reports/PerformanceLeaderboard.jsx')
+  const dashboard = read('server/controllers/Lot_Projects/Dashboard/Dashboard.controller.js')
+  assert.match(lot,/PerformanceLeaderboard/)
   assert.match(system,/PerformanceLeaderboard sellers=\{crossProjectSellers\}/)
-  assert.doesNotMatch(lot,/Network Sales Comparison/)
-  assert.match(system,/mergePerformance\(projectReports, 'sellerPerformance'\)/)
+  assert.match(lot,/Network Sales Comparison/)
+  assert.match(lot,/groupChartData = buildBreakdownChartData\(groupPerformance, 'group'\)/)
+  for (const label of ['Sales and Settlement Trend','Commission Comparison','Inventory Value Comparison','Unit Status Mix','Recent Unit Records']) assert.ok(lot.includes(label), label)
+  assert.match(component,/Seller Performance Details/)
   assert.match(component,/Company \/ Network/)
   assert.match(component,/In-House/)
   assert.match(component,/External/)
-  assert.match(component,/Export Performance CSV/)
-  assert.match(dashboard,/sellerPerformance: rankings\.sellerPerformance/)
-  for(const metric of ['Total Gross Sales','Cash Collected','Penalty Summary','Cash Collectibles − Discount','Total Number of Reservations','Total Net Sales','Pending Cancellations','Finalized Cancellations','Refunded Amount','Discontinued Amount']) assert.ok(lot.includes(metric),metric)
-  assert.match(system,/totalGrossSales: roundMoney|totalGrossSales/) // existing formula untouched
+  assert.match(component,/Seller Role/)
+  assert.match(dashboard,/sellerPerformance: sellerRows\.map/)
+  assert.match(dashboard,/groupPerformance: groupRows\.map/)
+  assert.match(dashboard,/performanceRankings,/)
+  assert.match(lot,/performanceRankings\?\.sellerPerformance/)
+  assert.match(system,/dashboard\.performanceRankings\?\.groupPerformance/)
+  for (const metric of ['Total Gross Sales','Cash Collected','Penalty Summary','Cash Collectibles − Discount','Total Number of Reservations','Total Net Sales','Pending Cancellations','Finalized Cancellations','Refunded Amount','Discontinued Amount']) {
+    assert.ok(lot.includes(metric),metric)
+    assert.ok(system.includes(metric),metric)
+  }
   assert.match(dashboard,/totalGrossSales: totalSales/)
+  assert.doesNotMatch(lot,/ReportPerformanceInsights|overdueAging|performance-export-audit/)
+  assert.doesNotMatch(system,/ReportPerformanceInsights|performance_csv/)
+  assert.doesNotMatch(component,/Export Performance CSV/)
 })
 
 test('performance loader maps project-scoped source rows into independent ledgers', async () => {
@@ -129,54 +138,33 @@ test('older schemas can report seller and external network data without profit t
   assert.deepEqual(data,{sellerPerformance:[],groupPerformance:[]})
 })
 
-test('CSV quoting neutralizes spreadsheet formulas and preserves network names', () => {
-  const csv=exportPerformanceCsv([{id:1,group:'=1+1',groupType:'external',units:1,salesAmount:1}], 'network')
-  assert.match(csv,/"'=1\+1"/)
+test('ranking does not mutate unrelated financial KPI input', () => {
+  const original = [{id:1, group:'Internal', groupType:'in_house',units:1,salesAmount:50000}]
+  assert.equal(rankPerformance(original,{metric:'salesAmount'})[0].salesAmount,50000)
 })
 
-test('overdue aging is current-state and main financial snapshot formulas remain untouched', () => {
+test('the separate performance dataset is read only and cannot replace original chart series', () => {
   const dashboard=read('server/controllers/Lot_Projects/Dashboard/Dashboard.controller.js')
-  const insights=read('client/src/components/Reports/ReportPerformanceInsights.jsx')
-  const system=read('client/src/pages/System/Reports.jsx')
   const lot=read('client/src/pages/Lot_Projects/Reports.jsx')
-  assert.match(dashboard,/const \[agingRows\] = hasSchedules/)
-  assert.match(dashboard,/getLatestActiveScheduleGenerationPredicate\('s'\)/)
-  assert.match(dashboard,/overdueAging: currentOverdueAging/)
-  assert.match(insights,/Current Overdue Aging/)
-  assert.match(insights,/not historical balances reconstructed/)
-  assert.match(insights,/In-House Company Profit/)
-  assert.match(insights,/External Network Commission/)
-  assert.match(system,/ReportPerformanceInsights stats=\{summary\}/)
-  assert.match(lot,/ReportPerformanceInsights stats=\{stats\}/)
-  assert.match(dashboard,/totalGrossSales: totalSales/)
+  assert.match(dashboard,/const performanceRankings = hasCommissions/)
+  assert.match(dashboard,/sellerPerformance: sellerRows\.map/)
+  assert.match(dashboard,/groupPerformance: groupRows\.map/)
+  assert.match(lot,/const groupPerformance = data\?\.data\?\.groupPerformance/)
+  assert.match(lot,/networks=\{data\?\.data\?\.performanceRankings\?\.groupPerformance/)
 })
 
-test('detailed report export follows the same granular role permissions as existing reports', () => {
-  const system=read('client/src/pages/System/Reports.jsx')
-  const lot=read('client/src/pages/Lot_Projects/Reports.jsx')
-  assert.match(system,/allowExport=\{canExport\}/)
-  assert.match(system,/PERMISSIONS\.SYSTEM_REPORTS_EXPORT/)
-  assert.match(lot,/PERMISSIONS\.LOT_REPORTS_EXPORT/)
-  assert.match(lot,/allowExport=\{canExportPerformance\}/)
+test('performance details retain search, sort, filters, pagination and project breakdown', () => {
+  const component = read('client/src/components/Reports/PerformanceLeaderboard.jsx')
+  for (const label of ['Search performance','Network Type','Rank By','Rows per page','Seller Role','Project breakdown','Details']) assert.ok(component.includes(label),label)
+  assert.doesNotMatch(component,/Export Performance CSV/)
 })
 
-
-test('performance exports write audit logs and preserve project scope and granular permissions', () => {
-  const router=read('server/routers/System/projects.routers.js')
-  const controller=read('server/controllers/Lot_Projects/Dashboard/Dashboard.controller.js')
-  const system=read('server/controllers/System/reports.controller.js')
-  const guard=read('client/src/utils/apiClient.js')
-  const leaderboard=read('client/src/components/Reports/PerformanceLeaderboard.jsx')
-  const systemReports=read('client/src/pages/System/Reports.jsx')
-  const lotReports=read('client/src/pages/Lot_Projects/Reports.jsx')
-  assert.match(router,/router.param\('projectSlug', requireProjectAccessBySlug\)/)
-  assert.match(router,/performance-export-audit', requirePermission\(PERMISSIONS\.LOT_REPORTS_EXPORT\), auditLotProjectPerformanceExport/)
-  assert.match(router,/router.post\('\/reports\/export-audit', requirePermission\(PERMISSIONS\.SYSTEM_REPORTS_EXPORT\)/)
-  assert.match(controller,/export const auditLotProjectPerformanceExport/)
-  assert.match(controller,/writeAuditLog\(connection, req/)
-  assert.match(system,/isPerformanceCsv \? 'Exported performance rankings to CSV'/)
-  assert.match(guard,/performance-export-audit\$\/i/)
-  assert.match(leaderboard,/if \(onBeforeExport\) await onBeforeExport/)
-  assert.match(systemReports,/reportType: 'performance_csv'/)
-  assert.match(lotReports,/performance-export-audit/)
+test('existing PDF export remains unchanged and no detailed performance CSV endpoint remains', () => {
+  const system = read('client/src/pages/System/Reports.jsx')
+  const router = read('server/routers/System/projects.routers.js')
+  const controller = read('server/controllers/System/reports.controller.js')
+  assert.match(system,/Export Management Summary/)
+  assert.doesNotMatch(system,/performance_csv|handlePerformanceExport/)
+  assert.doesNotMatch(router,/performance-export-audit/)
+  assert.doesNotMatch(controller,/isPerformanceCsv/)
 })
