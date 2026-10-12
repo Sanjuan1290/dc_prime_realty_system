@@ -123,6 +123,11 @@ export const CommissionReceiptPrint = ({ seller = {}, receipt = {} }) => {
           Acknowledgement Receipt for Fund Release:
         </h1>
 
+        {receipt.isConsolidatedSummary ? (
+          <p className="mt-3 rounded border border-[#888] p-2 text-[11px] font-bold uppercase">
+            Consolidated summary of existing Company Profit releases — not a replacement for individual signed receipts.
+          </p>
+        ) : null}
         <table className="mt-6 w-full table-fixed border-collapse text-[12px]">
           <colgroup>
             <col className="w-[25%]" />
@@ -157,7 +162,12 @@ export const CommissionReceiptPrint = ({ seller = {}, receipt = {} }) => {
                   <p>PHP {amountText}</p>
                   <p>{receipt.unitId || '-'}</p>
                   <p>{receipt.buyerName || '-'}</p>
-                  {releaseStages ? <p>{releaseStages}</p> : null}
+                  {releaseStages && !receipt.isConsolidatedSummary ? <p>{releaseStages}</p> : null}
+                  {receipt.isConsolidatedSummary ? releases.map((release, index) => (
+                    <p key={index} className="mt-1 text-[10px] font-normal normal-case">
+                      {release.stage}: {formatLongDate(release.actualReleaseDate)} · {release.referenceNumber || '-'} · PHP {amountNumber(release.amount)}
+                    </p>
+                  )) : null}
                   {tranchePercent > 0 ? (
                     <p>{formatPercent(tranchePercent)}% TRANCHE RELEASE</p>
                   ) : null}
@@ -187,7 +197,7 @@ export const CommissionReceiptPrint = ({ seller = {}, receipt = {} }) => {
           TOTAL AMOUNT: {amountInWords(totalAmount)} ({amountText}).
         </p>
 
-        <div className="mt-12">
+        {!receipt.isConsolidatedSummary ? <div className="mt-12">
           <p className="text-[14px]">Payee:</p>
           <div className="mt-10 w-[78mm] border-b border-[#555]" />
           <p className="mt-1 text-[13px] font-bold uppercase">
@@ -204,8 +214,9 @@ export const CommissionReceiptPrint = ({ seller = {}, receipt = {} }) => {
             {receipt.witnessName || '-'}
           </p>
           <p className="text-[12px]">Signature and Date</p>
-        </div>
+        </div> : null}
 
+        {receipt.isConsolidatedSummary ? <p className="mt-10 text-[12px] font-medium">This summary combines the selected existing payments only. Refer to each original release acknowledgement for payment instructions, witness and signatures.</p> : null}
         <div className="mt-12 border-t border-dashed border-slate-300 pt-3 text-[9px] text-slate-500 print:hidden">
           <p>Bank: {receipt.bankName || '-'} · Account No.: {receipt.accountNumber || '-'} · Reference No.: {receipt.referenceNumber || '-'}</p>
         </div>
@@ -231,5 +242,6 @@ const AccreditedSellerProofOfIncomePrintPage = () => {
 }
 
 export default AccreditedSellerProofOfIncomePrintPage
+
 
 

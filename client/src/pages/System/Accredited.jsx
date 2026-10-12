@@ -1036,7 +1036,7 @@ const Accredited = () => {
                   <p className="font-semibold text-slate-700">{seller.seller_group_name || "No Network"}</p>
                   <p className="text-slate-600">{seller.reports_under_name || "Direct to Developer"}</p>
                   <div><span className={`w-fit rounded-full border px-3 py-1 text-xs font-bold capitalize ${seller.accredited_seller_status === "active" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-slate-50 text-slate-500"}`}>{seller.accredited_seller_status}</span><p className="mt-1 text-xs text-slate-500">{seller.accredited_seller_updated_at ? formatDateTime(seller.accredited_seller_updated_at) : "—"}</p></div>
-                  <div className="flex flex-wrap gap-2">{canOpenProofWorkspace ? <button type="button" onClick={() => handlePrintProof(seller)} className="inline-flex min-h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50"><FiPrinter className="h-4 w-4" />Proof of Income</button> : <span className="text-xs font-semibold text-slate-400">View only</span>}</div>
+                  <div className="flex flex-wrap gap-2">{canOpenProofWorkspace ? <button type="button" onClick={() => handlePrintProof(seller)} className="inline-flex min-h-9 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50"><FiPrinter className="h-4 w-4" />Print Proof of Income</button> : <span className="text-xs font-semibold text-slate-400">View only</span>}</div>
                 </div>
               );
             })}
@@ -1048,6 +1048,7 @@ const Accredited = () => {
 
       {canOpenProofWorkspace && hasPermission(actor, PERMISSIONS.LOT_COMMISSIONS_VIEW) ?
         <NetworkProfitAcknowledgementLibrary embedded
+          canPrint={canPrint}
           canViewFiles={hasPermission(actor, PERMISSIONS.LOT_COMMISSIONS_VIEW)}
           canUpload={hasPermission(actor, PERMISSIONS.LOT_COMMISSIONS_RELEASE)} /> : null}
 
@@ -1065,3 +1066,4 @@ const Accredited = () => {
 };
 
 export default Accredited;
+

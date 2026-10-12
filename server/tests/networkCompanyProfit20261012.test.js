@@ -68,7 +68,11 @@ test('Company Profit shares the Commission Details modal but keeps separate docu
   assert.match(panel, /<CommissionReceiptPreview/);
   assert.match(panel, /commissionRole: 'network_company_profit'/);
   assert.match(source('client/src/components/Lot_Projects/ListingProfileComponents/Printouts/AccreditedSellerProofOfIncomePrintPage.jsx'), /isCompanyProfit/);
-  assert.match(library, /readOnly=\{!canUpload\}/);
+  assert.match(library, /<NetworkProfitProofOfIncomeModal/);
+  const modal = source('client/src/components/Lot_Projects/CommissionComponents/NetworkProfitProofOfIncomeModal.jsx');
+  assert.match(modal, /<SignedCopyUploadModal/);
+  assert.match(modal, /readOnly=\{!canUpload\}/);
+  assert.match(modal, /<CommissionReceiptPreview/);
   assert.match(source('client/src/pages/System/Accredited.jsx'), /hasPermission\(actor, PERMISSIONS\.LOT_COMMISSIONS_VIEW\)/);
 });
 
@@ -89,3 +93,4 @@ test('Company Profit controller imports only an actual exported money utility', 
   assert.match(controller, /import \{ roundProfitMoney \} from '\.\.\/\.\.\/\.\.\/services\/networkCompanyProfitTerms\.js'/);
   assert.match(source('server/services/networkCompanyProfitTerms.js'), /export const roundProfitMoney/);
 });
+

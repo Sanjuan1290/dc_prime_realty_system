@@ -232,7 +232,7 @@ export const getNetworkCompanyProfitAcknowledgments = async (req, res) => {
     if (!access.allProjects && access.projectIds.length === 0) return res.json({ success: true, data: [] });
     const projectFilter = access.allProjects ? '' : ` AND p.lot_project_id IN (${access.projectIds.map(() => '?').join(', ')})`;
     const [rows] = await connection.query(`
-      SELECT p.id AS profit_id, p.lot_project_account_id, p.lot_project_id,
+      SELECT p.id AS profit_id, p.lot_project_account_id, p.lot_project_id, p.seller_group_id,
         p.network_name_snapshot, p.broker_name_snapshot, p.payee_name_snapshot,
         p.commission_base_snapshot, p.company_profit_rate_snapshot, p.gross_profit_snapshot,
         lp.lot_project_name AS project_name, lp.lot_project_slug,
@@ -253,7 +253,7 @@ export const getNetworkCompanyProfitAcknowledgments = async (req, res) => {
     return res.json({ success: true, data: rows.map((row) => ({
       profit: {
         id: Number(row.profit_id), accountId: Number(row.lot_project_account_id), projectId: Number(row.lot_project_id),
-        projectSlug: row.lot_project_slug, network: row.network_name_snapshot, broker: row.broker_name_snapshot,
+        sellerGroupId: Number(row.seller_group_id), projectSlug: row.lot_project_slug, network: row.network_name_snapshot, broker: row.broker_name_snapshot,
         payee: row.payee_name_snapshot, commissionBase: Number(row.commission_base_snapshot),
         companyProfitRate: Number(row.company_profit_rate_snapshot), totalProfit: Number(row.gross_profit_snapshot),
         project: row.project_name, unit: row.unit, accountReference: row.account_reference, buyer: row.buyer,
@@ -268,3 +268,4 @@ export const getNetworkCompanyProfitAcknowledgments = async (req, res) => {
   } catch (error) { return res.status(error.statusCode || 500).json({ success: false, message: getErrorMessage(error) }); }
   finally { connection.release(); }
 };
+

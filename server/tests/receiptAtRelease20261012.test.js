@@ -66,10 +66,13 @@ test('Accredited Sellers embeds table and preserves printing, signed uploads, an
   assert.match(page, /<NetworkProfitAcknowledgementLibrary embedded/)
   assert.doesNotMatch(page, /setShowCompanyProfit\(/)
   assert.match(library, /<table className=/)
-  assert.match(library, /pageRecords.map/)
-  assert.match(library, /setPrintChoice/)
-  assert.match(library, /SignedCopyUploadModal/)
-  assert.match(library, /canViewFiles \?/)
+  assert.match(library, /pageGroups.map/)
+  assert.match(library, /groupNetworkProfitReceiptRows/)
+  assert.match(library, /<NetworkProfitProofOfIncomeModal/)
+  const modal=read('client/src/components/Lot_Projects/CommissionComponents/NetworkProfitProofOfIncomeModal.jsx')
+  assert.match(modal, /setPrintChoice/)
+  assert.match(modal, /SignedCopyUploadModal/)
+  assert.match(modal, /canViewFiles \?/)
 })
 
 test('TiDB receipt migration is non-destructive and idempotent', () => {
@@ -79,3 +82,4 @@ test('TiDB receipt migration is non-destructive and idempotent', () => {
   }
   assert.doesNotMatch(sql,/\b(?:TRUNCATE|DELETE FROM|DROP TABLE)\b/i)
 })
+
